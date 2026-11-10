@@ -22,7 +22,7 @@ import { handleRuntimeRequest, type RuntimeApiContext } from "../src/runtime-api
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
-import { base32Decode, hotp, totpStep } from "../src/web-remote-access.js";
+import { adminKey, base32Decode, hotp, HOST_ADMIN_KEY, totpStep } from "../src/web-remote-access.js";
 import { setLocale, t } from "../src/locale.js";
 
 const dirs: string[] = [], hubs: RuntimeCoordinator[] = [];
@@ -207,20 +207,52 @@ describe("#3327 a real fleet", () => {
       expect((h.fm.fleetConfig as { runtimes?: { remote_runtime?: boolean } }).runtimes?.remote_runtime).toBeUndefined();
     } finally { await h.stop(); }
   }, 30_000);
-  it("an authenticator set up again, or removed, is announced; a first set-up is not", async () => {
+  it("every authenticator set-up, replacement, removal and switch change is announced, naming the admin — the first set-up and the host's own included (AGEND-122, per admin)", async () => {
     const h = await startFleet();
     try {
-      vi.spyOn(h.any, "liveOwner").mockReturnValue({ handle: "0123456789abcdef", current: () => true });
+      const HOST = { adapter_id: "host", user_id: "operator" };
+      // AGEND-122: the app is bound by any admin role, not liveOwner; `authenticatorOwner` says whose it is (`who`) and on which computer.
+      const owner = vi.spyOn(h.any, "authenticatorOwner").mockReturnValue({ handle: "0123456789abcdef", who: HOST_ADMIN_KEY, actor: HOST, onHost: true, current: () => true });
+      const name = t("settings_confirm.host_operator_label");
       const enrol = () => {
-        const begun = h.fm.webOutsideBeginEnrollment({} as IncomingMessage)!;
+        const begun = h.fm.webOutsideBeginEnrollment({} as IncomingMessage) as { secret: string };
         expect(h.fm.webOutsideConfirmEnrollment({} as IncomingMessage, hotp(base32Decode(begun.secret)!, totpStep(Date.now())))).toBe("ok");
       };
+      const said = () => h.notices.mock.calls.map(c => c[0]);
       enrol();
-      expect(h.notices).not.toHaveBeenCalled();
+      expect(said()).toEqual([t("outside.enrolled_notice_by", name)]);                    // a first set-up is announced too
       enrol();
-      expect(h.notices.mock.calls.map(c => c[0])).toEqual([t("outside.reenrolled_notice")]);
+      expect(said()).toEqual([t("outside.enrolled_notice_by", name), t("outside.reenrolled_notice_by", name)]);
+      expect(h.fm.webOutsideStrict({} as IncomingMessage, true)).toBe("ok");
+      expect(h.fm.webOutsideStrict({} as IncomingMessage, true)).toBe("ok");              // already on: nothing changed, nothing announced
+      expect(h.fm.webOutsideStrict({} as IncomingMessage, false)).toBe("ok");              // on the AgEnD computer: no code asked
       expect(h.fm.webOutsideRemove({} as IncomingMessage)).toBe("ok");
-      expect(h.notices.mock.calls.map(c => c[0])).toEqual([t("outside.reenrolled_notice"), t("outside.removed_notice")]);
+      expect(said()).toEqual([t("outside.enrolled_notice_by", name), t("outside.reenrolled_notice_by", name), t("outside.strict_on_notice_by", name),
+        t("outside.strict_off_notice_by", name), t("outside.removed_notice_by", name)]);
+      // Each one is never throttled (a security Notice that must not be silent).
+      expect(h.notices.mock.calls.every(c => (c[1] as { throttle?: boolean } | undefined)?.throttle === false)).toBe(true);
+      // Nothing to remove: nothing announced.
+      expect(h.fm.webOutsideRemove({} as IncomingMessage)).toBe("ok");
+      expect(h.notices).toHaveBeenCalledTimes(5);
+      // Another admin (a chat account, on this computer's browser here for the test): THEIR record, THEIR name.
+      const account = { adapter_id: "telegram", user_id: "1" }, who = adminKey(account.adapter_id, account.user_id);
+      owner.mockReturnValue({ handle: "fedcba9876543210", who, actor: account, onHost: true, current: () => true });
+      h.notices.mockClear();
+      enrol();
+      const theirs = h.any.adminName(account) as string;
+      expect(theirs).not.toBe(name);
+      expect(said()).toEqual([t("outside.enrolled_notice_by", theirs)]);
+      expect([h.any.webRemoteAccess().isEnrolled(who), h.any.webRemoteAccess().isEnrolled(HOST_ADMIN_KEY)]).toEqual([true, false]);
+    } finally { await h.stop(); }
+  }, 30_000);
+  it("when no Notice target takes it (a chat fleet with no General reachable), the security Notice goes to the web Notices store directly", async () => {
+    const h = await startFleet();
+    try {
+      h.notices.mockReturnValue(false);                                                    // notifyFleetError: nowhere to post
+      const add = vi.fn(() => ({ id: "n1" })), store = { add, unread: () => 1 };
+      vi.spyOn(h.any, "webNoticeStore").mockReturnValue(store);
+      h.any.postFleetSecurityNotice("a security thing");
+      expect([h.notices.mock.calls[0], add.mock.calls.length]).toEqual([["a security thing", { throttle: false }], 1]);
     } finally { await h.stop(); }
   }, 30_000);
 });

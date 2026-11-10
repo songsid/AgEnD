@@ -1279,6 +1279,9 @@ img.amb-p { object-fit: contain; }
   .row-item .btn, .s-row .btn, .n-actions .btn { min-height: var(--tap); }
   .s-row .icon-btn { min-width: var(--tap); min-height: var(--tap); }
   .p-settings .s-company-join :is(.field input, .btn) { min-height: var(--tap); }
+  /* AGEND-122: Owner verification's own buttons, dialog fields and switches are phone tap targets (style guide rule 7); the Devices
+     card's primary action beside it matches (one primary button height on the page). */
+  .p-settings .s-outside :is(.save-row .btn, .field input, label.check), .p-settings .s-devices .save-row .btn { min-height: var(--tap); }
   .s-update .s-update-row .btn { min-height: var(--tap); }   /* M-2738: the Version and update card's buttons */
   .kv { flex-direction: column; align-items: flex-start; gap: 2px; }
 }
@@ -1763,7 +1766,7 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .pending-actions { display: flex; justify-content: flex-end; }
 .pending-self { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .pending-self > .note { flex: 1 1 16rem; min-width: 0; }
-.pending-host summary { cursor: pointer; color: var(--text-2); font-size: var(--fs-xs); }
+.pending-host summary, .pending-details summary { cursor: pointer; color: var(--text-2); font-size: var(--fs-xs); }
 /* AGEND-118: the other ways to confirm, folded under one summary. */
 .pending-more { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
 .pending-host code { display: block; margin-top: var(--s-1); font-size: var(--fs-xs); overflow-wrap: anywhere; user-select: all; }

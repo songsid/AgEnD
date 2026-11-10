@@ -79,8 +79,8 @@ function publish() {
       totpNotSetUp: view.totp === "not_set_up" && view.state === "pending",
       // Over a link (the leader's ruling (b)): no code here — confirm it in the host computer's own browser, or in General.
       onHost: view.totp === "on_host" && view.state === "pending",
-      // A link option turned on (#2453, the leader's ruling on D3): only the browser on the AgEnD computer itself confirms it.
-      hostBrowser: view.totp === "host_browser" && view.state === "pending",
+      // AGEND-122: the owner turned on "Only this computer can authorize": only the AgEnD computer's own browser confirms.
+      hostOnly: view.totp === "host_only" && view.state === "pending",
       dismiss: TERMINAL.has(view.state) ? () => forget(view.id) : null,
       // AGEND-118: a request that ended without applying can be sent again (the same write, a new confirmation).
       retry: retry && resendable(view) ? () => resend(view.id) : null,

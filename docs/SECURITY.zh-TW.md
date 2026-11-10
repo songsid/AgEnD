@@ -98,7 +98,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 
 **透過管理員固定網域的網頁授權（#2453），需自行開啟，預設關閉。** `web.verified_authority.named_link: true` 讓管理員自己 named tunnel 網域上的 session 也能透過帳號的確認卡授權（#1939 §0.2）。
 - **哪些請求算數。** 只有 gateway 鎖定的主機正好是設定的網域時，請求才會標為 named。任何 header 都無法設定或改變這一點。Quick tunnel 的請求由下方的臨時公開連結選項決定。
-- **開啟**是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能用驗證碼確認，更不能透過公開連結修改。**唯一的例外**：主機操作者自己的 session，也就是在 AgEnD 電腦本機的瀏覽器上使用（在那台電腦用 `agend web` 登入，走 loopback、沒有轉送標頭）的 session，可以像確認其他變更一樣確認它。在純網頁 fleet 上是「直接套用」；在有聊天連線的 fleet 上，則是在沒有 General 能接收確認卡時套用（D3）。純網頁 fleet 上的其他 session，會被告知請到 AgEnD 電腦本機的瀏覽器操作。快速連結選項也一樣。「在 AgEnD 電腦上」指的是 loopback 請求、loopback Host、沒有轉送標頭。本機的連接埠轉送（`ssh -L`、IDE 的連接埠轉送）進來的請求正是這樣，所以會被當成這台電腦。能建立這種轉送的人本來就已經掌控主機，因此這和威脅模型一致。
+- **開啟**和其他被擋下的設定變更一樣，且不能透過公開連結提出。自 AGEND-122 起，已登入的管理員可以從任何能連到 dashboard 的地方按「直接套用」確認（見[敏感 Settings 需要第二次確認](#敏感-settings-需要第二次確認)）；確認者自己開啟了「要我的驗證碼」開關時改用驗證碼，但要求驗證碼時不能透過連結確認。從另一台裝置確認時一定會發 Notice，因為開啟連結就是讓網際網路進來的那項變更。「在 AgEnD 電腦上」指 loopback 請求、loopback Host、沒有轉送 header。本機的 port-forward（`ssh -L`、IDE 的連接埠轉送）到達時一模一樣，所以也算這台電腦；能建立它的人本來就有主機，這與威脅模型一致。quick-link 選項規則相同。
 - **關閉**立即生效，所有 named-link session 的回執都會視為無（`downgraded: named_link_off`）。再開啟會推進撤銷 epoch，那些回執不會回來。
 - **`loopback_only`** 仍然優先。
 - **開啟即接受的風險。** Cloudflare 終止 TLS，看得到流量，包括 session cookie。已授權的 named-link session 的 cookie 若被盜，在以下任一情況前都能從任何地方重播：
@@ -111,7 +111,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 
 **透過臨時公開連結的網頁授權（#1939 §0.3），自 #2819 起預設開啟。** `/web` 開出的臨時公開連結（quick tunnel，`*.trycloudflare.com`）上的 session 也能透過帳號的確認卡授權，除非設定 `web.verified_authority.quick_link: false`。預設值本身不會授予任何權限：每個 session 仍須由帳號在私訊中確認。
 - **哪些請求算數。** 所有不是 named 的 gateway 請求，只依監聽端判定；任何 header 都無法設定或改變。session 必須屬於目前這次開放，而每個 quick 網址都是新的一次。
-- **重新開啟**（從 `false` 改成 `true` 或移除這個鍵）是需確認的設定變更：由 General 的卡片或主機 CLI 確認。網頁已驗證的 session 不能自行確認（#2170），也不能透過公開連結修改。和上面的命名連結一樣，AgEnD 電腦本機上主機操作者自己的 session 是唯一的例外。判斷依生效中的值（沒設定就是預設值：開啟；`true`、`false` 以外的值視為關閉）。每次開啟（第一次也一樣）都會在同一次寫入中推進撤銷 epoch：到目前為止給出的所有授權都會結束，瀏覽器需要重新確認。從未設定這個鍵的 fleet，更新到 #2819 後第一次啟動時也是如此。
+- **重新開啟**（從 `false` 改成 `true` 或移除這個鍵）和其他被擋下的設定變更一樣，且不能透過公開連結修改：已登入的管理員可從任何裝置按「直接套用」確認，確認者自己開啟了「要我的驗證碼」開關時，則用他自己的驗證碼，從另一台裝置確認會發 Notice（見[敏感 Settings 需要第二次確認](#敏感-settings-需要第二次確認)）。依目前生效的值判斷（沒設定代表預設的開；`true`／`false` 以外的值視為關）。經臨時連結進來的 session 只有在這個選項開啟時才能確認；固定連結與 `named_link` 也一樣。每次開啟（包括第一次）都會在同一次寫入中移動撤銷世代：到目前為止給出的所有授權都會結束，瀏覽器需要重新確認。從未設定這個鍵的 fleet，更新到 #2819 後第一次啟動時也是如此。
 - **關閉**立即生效，所有 quick-link session 的回執都會視為無（`downgraded: quick_link_off`），那些 session 的授權也會被刪除。再開啟會推進撤銷 epoch，那些回執不會回來。
 - **`loopback_only`** 仍然優先。
 - **開啟期間接受的風險。** quick 網址是網際網路上的公開位址：任何拿到它的人都能到登入頁。屏障和固定網域相同：私下傳給允許帳號的登入碼，以及該帳號對這個 session 的確認。Cloudflare 的 quick tunnel 服務終止 TLS，看得到流量，包括 session cookie；AgEnD 啟動 quick tunnel 時前面沒有任何驗證。已授權的 quick-link session 的 cookie 若被盜，在以下任一情況前都能從任何地方重播：
@@ -148,9 +148,22 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 
 ### 敏感 Settings 需要第二次確認
 
-瀏覽器 session（本機或公開連結）可以提出存取／F／C 名單、憑證、connection 目的地／順序、公開曝光及控制類 instance 設定的變更，不能自行提交。伺服器將不可變的請求留在記憶體最多五分鐘，綁定有效 session 與設定快照。General 顯示完整且有界的 diff 和 Confirm／Reject 按鈕；只有其所屬 adapter 的 fleet admin 能確認。Secret 值只顯示 key 與 fingerprint。一般 model／display 變更仍可直接套用，但寫入前會核對快照。
+瀏覽器 session（本機或公開連結）可以提出存取／F／C 名單、憑證、connection 目的地／順序、公開曝光及控制類 instance 設定的變更。伺服器在記憶體中保存一份不可變的請求，最長五分鐘，綁定目前的 session 與設定快照，並顯示完整且有界的 diff；secret 值只顯示金鑰名稱與指紋。一般的模型／顯示變更仍然即時生效，寫入前會檢查快照。AGEND-122（上游 [#3486](https://github.com/songsid/AgEnD/issues/3486)）改變了「誰能確認」，舊規則見下方「改了什麼」。
 
-**例外（#2170）：通過網頁驗證的帳號，按套用本身就是確認。** 通過網頁驗證的本機 session（#1939：帳號已在 Discord 或 Telegram 私訊確認過這個瀏覽器），當它的帳號和變更在同一平台、是每一個 effect owner 的 fleet admin（聊天卡片的規則）、變更範圍已知、且那個平台上有一個不受影響且已連線的 General 時，本身就是第二次確認。伺服器會在聊天提示送出之前先認領這個請求，所以不會出現卡片；執行時會再確認 session 仍以同一個帳號通過網頁驗證（沒有到期、被撤銷、登出或關閉開關），也仍是那些 owner 的 admin，否則以 stale 結束。那個 General 會收到一則純文字通知（不 mention 任何人）。執行時也會再確認仍有能收到聊天卡片的 General。這改變的邊界是：第二次確認變成帳號對這個 session 的**一次**授權（#1939），直到被撤銷、到期或 session 結束都有效——不是每次套用都證明帳號本人在場。任何操作這個已驗證 session 的人（無人看管但仍登入的瀏覽器，或持有它 session cookie 的人）都能以同樣方式確認；登出或撤銷授權（設定 → 存取與安全 → **撤銷網頁授權**，或私訊卡片上的 **不是我**）即結束。公開連結、訪客、未驗證的 session 與 host 沒有帳號的 `agend web` session 永遠不適用，需要 host CLI 確認的變更也照舊。**之後從卡片確認（#2868）：** 請求還在等待時，同一個 session 也可以確認自己的請求，也就是待確認卡片上的 **直接套用**（`POST /api/settings/pending/<id>/confirm`），例如存檔後才授權的瀏覽器。權限相同、檢查相同：按下時檢查一次，執行時再檢查一次。只有提出請求的 session 能用（別的 session 的請求一律找不到），不能透過公開連結，是一般帶 session CSRF 值的寫入，也會送出同樣的 General 通知。檢查不通過就拒絕（403），請求繼續等待。
+**誰能確認：依角色，每次請求都重新判斷。** 使用 **網頁 cookie session** 登入的人類 fleet 管理員，可以對等待確認的變更按「直接套用」（`POST /api/settings/pending/<id>/confirm`，或存檔當下直接完成），不論從哪裡連到 dashboard：AgEnD 電腦自己的瀏覽器、直接的區域網路或 tailnet 連線，或公開連結。適用所有種類的變更（secret、存取名單、connection、對外 Hub、開啟連結），聊天型與 web-only fleet 相同。不需要先做任何每個瀏覽器一次的證明：不用 DM 確認（#1939）、不用「General 卡片發得出去」、不用跑到主機。詢問當下和變更執行時都會再檢查即時的 session（登出、過期、被撤銷或管理員身分被移除，變更就變成過期，什麼都不套用）：
+- 管理員等級的 cookie session；聊天帳號仍是自己 connection 的管理員，也是變更涉及的每個 connection 的管理員（帳號 id 以平台區分）；
+- 擁有者自己的開關仍然有效：網頁授權總開關（`web.verified_authority.enabled`）、**只有這台電腦可以授權**（`loopback_only`：只有 AgEnD 電腦自己的瀏覽器能確認，有沒有驗證碼都一樣），以及經由臨時或固定連結時該連結的選項（`quick_link`、`named_link`）。web-only fleet 的 session 經由連結時，必須是用驗證器從外面登入的擁有者（#3008）。
+
+**絕不能確認的。** agent 絕不能確認自己的請求，包含被 prompt injection 牽著走的 agent。擋住它的是它沒有真人的瀏覽器 cookie session，不是它的位置：在主機上的 agent 同樣在 loopback。`agend settings confirm` 拒絕 agent 環境，agent token 也不是 session。訪客、唯讀 session、非管理員、header token（CLI 用的）、已配對的 Windows 電腦，都不能確認 Settings。聊天型 fleet 的 General 卡片仍是另一個確認管道；主機上的 `agend settings confirm <id>` 仍是主機與 setup 頁（fleet 尚未存在時）的做法。
+
+**你自己的驗證器與你自己的開關（每位管理員各自獨立）。** 每位管理員可以設定自己的驗證器 App，並開啟自己的「從其他裝置確認變更時要我的驗證碼」（設定 → 存取與安全 → **擁有者驗證** 卡片上的開關；預設關閉；需要先設定你自己的 App）。沒有人被要求綁定：沒有 App 的管理員照預設確認。這個開關**只約束該管理員自己的確認**；任何管理員都不能替別人開啟，也不能設定、更換、停用或關閉別人的 App——只有本人，或用本人帳號在 AgEnD 電腦自己的瀏覽器上才行。你的開關開啟時，你從不是 AgEnD 電腦自己瀏覽器的頁面發出的確認不再有「直接套用」，不論 session 是什麼（區域網路或 tailnet、經由連結、從外面登入的擁有者）：每項變更都要輸入**你的** App 對**那一項變更**的驗證碼——綁定變更的 digest（先檢查 digest 再檢查驗證碼）、每個時間步只能用一次、全 fleet 共用的錯誤次數限制，執行時再對同一個 App 檢查。聊天帳號在進入時與執行時仍須是變更涉及 connection 的管理員。**只有這台電腦可以授權**仍是全 fleet 適用、僅限主機，連驗證碼也擋。開啟連結的變更在要求驗證碼時絕不能透過連結確認。AgEnD 電腦自己的瀏覽器不會被要求輸入。更動「已存在的 App」——更換、停用、關閉你的開關——是 App 擁有者的事，在 AgEnD 電腦以外要輸入該 App 目前的驗證碼，**不論你的開關有沒有開**（開關管的是一般確認；這是 App 本身的所有權）。還沒有 App 時沒有舊驗證碼可問：第一次設定不問任何驗證碼，AgEnD 電腦自己的瀏覽器也永遠不問，那就是復原路徑。在電腦上開始、或在沒有要求驗證碼時開始的綁定，不能被現在要求驗證碼的 session 完成。最多 64 位管理員可以有驗證器：第 65 位的設定會在一開始就被拒絕，不會先接受、重啟後才被丟掉。全 fleet 共用的錯誤驗證碼暫停，只有在 AgEnD 電腦本機完成的設定才會清除，遠端使用的 host 身分不會。「AgEnD 電腦」指來自 loopback 位址、loopback Host、沒有轉送 header 的請求，所以 `ssh -L`、IDE 的連接埠轉送，以及主機上的任何程序都算主機（與威脅模型一致）。**這個開關不會封住所有路徑：**聊天型 fleet 上，General 的確認卡是另一條確認同一項變更的管道（包括開關的變更），不需要驗證碼；它需要管理員的聊天帳號，是另一個因素。web-only fleet 只有一位管理員（擁有者），所以只有一個驗證器，也就是外部連線使用的那一個。**被盜的 session 能做什麼：**拿到沒有 App 的管理員的 cookie，可以綁一個攻擊者自己的 App 並開啟開關——那位管理員之後從其他裝置的確認就需要只有攻擊者持有的驗證碼，真正的管理員在回到 AgEnD 電腦自己的瀏覽器（不問驗證碼，可以停用 App、關閉開關）之前無法從其他裝置確認。它鎖不住任何其他管理員，而且每次綁定與開關變更都會通知全體管理員。App 檔案遺失時該管理員的開關也一併消失（回到預設），不會變成鎖死。
+
+**Notice。** 除了稽核紀錄之外一定會發：(1) 從另一台裝置（不是 AgEnD 電腦自己的瀏覽器）確認「開啟公開連結」或「更改 secret」的變更；以及不論從哪裡（包括 AgEnD 電腦）發生的 (2) 每一次驗證器的設定、重新綁定或停用，(3) 每一次「要我的驗證碼」開關的開啟或關閉，都會寫明是哪位管理員。它們發給全體管理員：每個 connection 的 General（各 connection 的管理員名單可能互不相交；完全沒有 General 時發到主要 connection 的通知目標），**而且一律**寫入 dashboard 的 Notices（持久保存、每位管理員都看得到），所以聊天訊息送出後才失敗，Notice 仍在。web-only fleet 的對象就是 dashboard Notices。Notice 帶的是已遮蔽的 diff、誰、結果，絕不含 secret 值。稽核紀錄仍照舊記下誰確認、用什麼方式。
+
+**你接受的風險，白話說明。** 在管理員開啟自己的「要我的驗證碼」開關（只保護那位管理員）或擁有者開啟**只有這台電腦可以授權**之前，任何持有已登入管理員 session 的人（沒登出的瀏覽器、或它的 session cookie）都能從任何連得到 dashboard 的裝置做任何變更，包括開啟公開連結和更改 secret，不需要第二步。Notice 是讓擁有者知道的方式，不是關卡。裝置登入碼、session 時限和 `/web revoke` 限制這種 session 能活多久。程式與這些說明裡的「LAN」指「直接連線、而且不在 AgEnD 電腦上」：擁有者自己架的 tailnet、反向代理或 funnel 也會這樣到達，即使來自網際網路。它不是「私有區域網路」的意思。
+
+**改了什麼（AGEND-122）。** 以前：等待確認的變更要有帳號對該瀏覽器的一次 DM 確認（#2170）加上發得出去的 General 卡片，或 AgEnD 電腦上主機自己的 session；對外 Hub 變更與開啟連結只有主機自己的 session 能確認；驗證碼（#3355）只用於 web-only fleet 的區域網路或 loopback 管理員 session，而且絕不用於開啟連結的變更。現在：所有種類、所有地點用同一條角色規則，所有種類都可以選擇改用驗證碼，並加上 Notice。臨時連結與固定連結的選項、網頁授權總開關、**只有這台電腦可以授權**都沒變，仍會縮小符合資格的人。本來就不能透過公開連結提出的設定（網頁設定、Hub、runtime 開關）仍在提出之前就被拒絕。
+
 
 受影響的 connection 無法安全收到提示時，AgEnD 先找另一個 world 的 General，否則要求本機執行 `agend settings confirm <id>`。該命令走獨立、同使用者的 Unix socket（父目錄 0700、socket 0600），拒絕 agent 環境。它先列出權威的來源、請求人及 diff，再接受互動確認或明確的 `--yes`。HTTP／MCP 沒有確認入口。Fleet 尚未存在的 Setup 也需要同樣的 host 確認；pending 回應絕不啟動 fleet。
 

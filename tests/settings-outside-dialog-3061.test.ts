@@ -10,7 +10,10 @@
  *  - Enter in the code field verifies (once the code is 6 digits); nothing closes it while the code is being checked;
  *  - no second question before "Set up again" opens it; an enrolment the server answers after the dialog closed, or will
  *    not give at all, opens nothing;
- *  - both languages. Only on this computer: from elsewhere there is no button, so no dialog (settings-outside-3008).
+ *  - both languages. Only for a session that can manage the app (GET /ui/outside's `manage`: an admin on a direct connection —
+ *    AGEND-122: this computer or another device, a chat fleet too); one that cannot has no button, so no dialog (settings-outside-3008,
+ *    which also covers the current-code dialog that Set up again / Remove open while the admin's OWN switch is on and the session is off the computer).
+ * AGEND-122: pending set-ups are per session handle (WebRemoteAccess.pending is a Map: another session's begin replaces nothing here).
  * Review of #3165 (P2 2), the last describe: closing and opening the dialog again while a request for a secret is still out must not
  * leave the screen showing a secret the server no longer holds. The server here is the REAL pending-secret store
  * (WebRemoteAccess), and a request can be held on its way to it, so the order the requests REACH it in is the test's to choose.
@@ -70,7 +73,7 @@ afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
 beforeEach(() => { sent = []; answers = {}; holds = {}; holdEach = {}; store = null; });
 afterEach(async () => { await p.unmount(); });
 
-const base = { webOnly: true, here: true, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null };
+const base = { webOnly: true, here: true, manage: true, codeNeeded: false, strict: false, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null };
 const ENROLLED = { ...base, enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) };
 const text = (el: any) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
 async function open(over: Record<string, unknown> = {}) {
@@ -303,7 +306,8 @@ describe("Refs #3061 review (P2 2): closing and opening the dialog again while a
   const shownKey = (w: Awaited<ReturnType<typeof open>>) => text(w.$("#outKey")).replace(/\s/g, "");
   /** The code an authenticator holding that key shows now. */
   const codeFor = (secret: string) => hotp(base32Decode(secret)!, totpStep(Date.now()));
-  const pendingSecret = (s: WebRemoteAccess): string => (s as any).pending.secret;
+  // Pending set-ups are per session handle now (a second session's begin does not replace the first's): this page's session is OWNER.
+  const pendingSecret = (s: WebRemoteAccess): string => (s as any).pending.get(OWNER).secret;
 
   it("control: set up, and set up again, with nothing delayed — the key on the screen is the one that confirms", async () => {
     const server = realStore();
@@ -379,6 +383,23 @@ describe("Refs #3061 review (P2 2): closing and opening the dialog again while a
     expect(enrolls()).toBe(2);
     expect(shownKey(w)).not.toBe(first);
     expect(shownKey(w)).toBe(pendingSecret(server));
+  });
+
+  // AGEND-122 (per admin): pending set-ups are per session handle, so another session's begin (another admin, or this admin's other tab) does
+  // not take the secret out from under the dialog on screen — the key shown here still confirms.
+  it("another session's set-up begun while this dialog is open does not replace the key on screen: it still confirms", async () => {
+    const server = realStore();
+    const w = await open();
+    await w.click(w.$("#outSetUp"));
+    for (let n = 0; n < 40 && !w.$("#outKey"); n++) await settle(4);
+    const mine = shownKey(w);
+    const theirs = server.beginEnrollment("another-session-handle", "pc", "telegram\u0000other-admin");
+    expect(theirs.secret).not.toBe(mine);
+    expect(pendingSecret(server)).toBe(mine);                                                   // this session's pending one is untouched
+    await w.type(w.$("#outCode"), codeFor(mine));
+    status = ENROLLED;
+    await w.click(w.$("#outConfirm"));
+    expect([w.dialog(), server.enrolled, server.isEnrolled("telegram\u0000other-admin")]).toEqual([null, true, false]);   // the other one is still pending, not enrolled
   });
 
   it("A that fails while the dialog is open again closes that dialog with the usual failure, and the next try asks anew", async () => {

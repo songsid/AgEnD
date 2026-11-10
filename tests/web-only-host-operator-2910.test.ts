@@ -1,9 +1,15 @@
 /**
  * #2910 D1: on a web-only fleet (no Discord or Telegram connection) the host operator is a principal — a session signed
  * in with the host's own code (`agend web --code`: the web token in a header, i.e. shell access to this computer), used
- * from this computer, is web-verified with actor host/operator for its life (capped as every authorization). It confirms
- * its own Settings changes. Never over the public link, never from another machine; a fleet with a chat connection keeps
- * today's rule (the operator's session is not an account: no_account); a code sent by chat (/dashboard) is never the host's.
+ * from this computer, is web-verified with actor host/operator for its life (capped as every authorization). Never over the
+ * public link, never from another machine; a fleet with a chat connection keeps today's rule (the operator's session is not
+ * an account: no_account); a code sent by chat (/dashboard) is never the host's. That is a rule of what a web *message*
+ * carries (evaluateWebAuthority) and is unchanged.
+ * AGEND-122 (upstream #3486, R1) changed the other thing this file held: who confirms a held Settings change. It is no
+ * longer the host operator's own session on this computer alone — any signed-in admin session on a web-only fleet (the host's,
+ * a sign-in code's, one from another device on the LAN or a tailnet) presses Apply now, labelled "This fleet's admin"
+ * (settingsSelfConfirmation, src/authority/settings-role.ts); it is asked again at execution; a guest and a public-link
+ * session without the owner's outside sign-in never do; a chat fleet's admin session needs the host's own flag (or an account).
  * The rule itself (evaluateWebAuthority), the flags that carry "the host's own code" (web-login → web-session), and a
  * real fleet's sign-in over HTTP.
  */
@@ -18,7 +24,7 @@ import { WebLoginCodes } from "../src/web-login.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch, type SessionRecord } from "../src/web-session.js";
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { prepareSettingsEffect } from "../src/settings-effect.js";
-import { WEB_CSRF_HEADER } from "../src/web-auth.js";
+import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE_SECURE } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { setLocale } from "../src/locale.js";
 
@@ -145,7 +151,7 @@ async function startFleet(config: Record<string, unknown> = {}) {
 }
 
 describe("#2910 D1 a real fleet: `agend web --code`, signed in on this computer", () => {
-  it("web-only: verified as this computer's admin at once — web-verified host/operator here, refused from another machine; the device list names it", async () => {
+  it("web-only: verified as this fleet's admin at once — web-verified host/operator here, refused from another machine; the device list names it", async () => {
     setLocale("en");
     const h = await startFleet();
     try {
@@ -155,7 +161,7 @@ describe("#2910 D1 a real fleet: `agend web --code`, signed in on this computer"
       expect([here.refusal, here.authority.kind, here.authority.actor]).toEqual([null, "web-verified", { adapter_id: "host", user_id: "operator" }]);
       expect(h.fm.webAuthority({ session: s.record, gateway: false, peer: "lan" }).refusal).toBe("loopback_only");
       expect((await h.status(s.cookie, { "x-forwarded-for": "10.0.0.9" })).reason).toBe("loopback_only");
-      expect(h.fm.webAuthorityOverview().authorized.map(a => [a.handle, a.account])).toEqual([[s.record.handle, "This computer's admin"]]);
+      expect(h.fm.webAuthorityOverview().authorized.map(a => [a.handle, a.account])).toEqual([[s.record.handle, "This fleet's admin"]]);
     } finally { await h.stop(); }
   }, 20_000);
   it("web-only, signed in from another machine (a forwarded request): a host session, never authorized — not even when later used here", async () => {
@@ -195,7 +201,7 @@ describe("#2910 D1 a real fleet: `agend web --code`, signed in on this computer"
   }, 20_000);
 });
 
-describe("#2910 D1 Settings: the host operator applies its own change", () => {
+describe("#2910 D1 Settings: the host operator applies its own change — AGEND-122: and any signed-in admin session does", () => {
   async function held(h: Awaited<ReturnType<typeof startFleet>>) {
     const store = new SettingsConfirmationStore({ audit: vi.fn(), notify: vi.fn() }); stores.push(store);
     // Connecting a Telegram bot: a held change (one that never needs confirming would not reach the confirmation at all).
@@ -208,50 +214,77 @@ describe("#2910 D1 Settings: the host operator applies its own change", () => {
   }
   const reqOf = (h: Awaited<ReturnType<typeof startFleet>>, sessionId: string, extra: Record<string, string> = {}) => ({ method: "PUT", socket: { remoteAddress: "127.0.0.1" },
     headers: { host: `127.0.0.1:${h.port}`, origin: h.origin, "sec-fetch-site": "same-origin", cookie: `agend_session=${sessionId}`, [WEB_CSRF_HEADER]: csrfTokenFor(sessionId), ...extra } });
-  it("web-only: confirmed by applying it, labelled this computer's admin; asked again at execution (a revocation since: stale, not applied)", async () => {
+  /** The same cookie over the public link: the link's own origin and cookie name, bound by the gateway as the listener does. */
+  const LINK_ORIGIN = "https://abc.trycloudflare.com", EXPOSURE = "e".repeat(32);
+  const linkReqOf = (h: Awaited<ReturnType<typeof startFleet>>, sessionId: string) => {
+    const req = reqOf(h, sessionId, { origin: LINK_ORIGIN, cookie: `${WEB_SESSION_COOKIE_SECURE}=${sessionId}` });
+    bindGatewayRequest(req, { surface: "gateway", exposureId: EXPOSURE, expectedOrigin: LINK_ORIGIN, isCurrent: () => true });
+    return req;
+  };
+  const make = (h: Awaited<ReturnType<typeof startFleet>>, o: { tier?: "admin" | "guest"; link?: boolean } = {}) => {
+    const c = h.any.webSessions.create({ tier: o.tier ?? "admin", surface: o.link ? "gateway" : "local", label: "browser", tokenEpoch: tokenEpoch(h.token),
+      ...(o.tier === "guest" ? { owner: { adapterId: "telegram", userId: "42" } } : {}), ...(o.link ? { exposureId: EXPOSURE } : {}) });
+    return c.sessionId as string;
+  };
+  it("web-only: confirmed by applying it, labelled this fleet's admin; asked again at execution (a sign-out since: stale, not applied; the #1939 authorization revoked since no longer matters)", async () => {
     setLocale("en");
     const h = await startFleet();
     try {
       const s = await h.signIn();
       const a = await held(h);
       const self = h.any.settingsSelfConfirmation(a.store, reqOf(h, s.sessionId), a.view.id);
-      expect([self?.label, self?.current()]).toEqual(["This computer's admin", true]);
+      expect([self?.label, self?.current()]).toEqual(["This fleet's admin", true]);
       const done = await a.store.decide(a.view.id, "confirm", { ...self, via: "web" });
-      expect([done.state, done.outcome?.decided_by_label, a.apply.mock.calls.length]).toEqual(["applied", "This computer's admin", 1]);
+      expect([done.state, done.outcome?.decided_by_label, a.apply.mock.calls.length]).toEqual(["applied", "This fleet's admin", 1]);
       const b = await held(h);
       const later = h.any.settingsSelfConfirmation(b.store, reqOf(h, s.sessionId), b.view.id);
       const deciding = b.store.decide(b.view.id, "confirm", { ...later, via: "web" });   // Apply: current then…
-      h.fm.revokeWebAuthority();                                                          // …revoked before it executes
+      h.any.webSessions.revokeByHandle(s.record.handle);                                   // …signed out before it executes
       const stale = await deciding;
       expect([stale.state, b.apply.mock.calls.length]).toEqual(["stale", 0]);
+      // What a message carries (#1939) is another thing: revoking every authorization ends no session's say over Settings (it was the old proof's end).
+      const s2 = await h.signIn(), c = await held(h), kept = h.any.settingsSelfConfirmation(c.store, reqOf(h, s2.sessionId), c.view.id);
+      h.fm.revokeWebAuthority();
+      expect([kept?.current(), (await h.status(s2.cookie)).reason]).toEqual([true, "host_sign_in"]);
+      expect((await c.store.decide(c.view.id, "confirm", { ...kept, via: "web" })).state).toBe("applied");
     } finally { await h.stop(); }
   }, 20_000);
-  it("…and a channel added meanwhile ends it (no longer web-only); from another machine, over the public link, or a chat fleet: none", async () => {
+  it("a channel added meanwhile: the host's own session stays this fleet's admin, one that is not the host's (a code sent by chat, no account) ends with web-only", async () => {
+    const h = await startFleet();
+    try {
+      const host = await h.signIn(), code = await h.signIn(h.fm.issueDashboardLogin()!.display);
+      const a = await held(h);
+      const own = h.any.settingsSelfConfirmation(a.store, reqOf(h, host.sessionId), a.view.id), other = h.any.settingsSelfConfirmation(a.store, reqOf(h, code.sessionId), a.view.id);
+      expect([host.record.host, code.record.host, own?.current(), other?.current()]).toEqual([true, undefined, true, true]);      // web-only: every admin session is the fleet's own
+      Object.assign(h.fm.fleetConfig!, CHAT);                                                                                   // no longer web-only
+      expect([own.current(), other.current()]).toEqual([true, false]);
+      expect([h.any.settingsSelfConfirmation(a.store, reqOf(h, host.sessionId), a.view.id)?.label, h.any.settingsSelfConfirmation(a.store, reqOf(h, code.sessionId), a.view.id)]).toEqual(["This fleet's admin", null]);
+      delete (h.fm.fleetConfig as any).channel;
+    } finally { await h.stop(); }
+  }, 20_000);
+  it("from another machine: Apply now too (it was none) — forwarded or a LAN Host; over the public link, a guest, or without the owner's outside sign-in: none", async () => {
+    setLocale("en");
     const h = await startFleet();
     try {
       const s = await h.signIn();
       const a = await held(h);
-      const self = h.any.settingsSelfConfirmation(a.store, reqOf(h, s.sessionId), a.view.id);
-      expect(self?.current()).toBe(true);
-      Object.assign(h.fm.fleetConfig!, CHAT);
-      expect(self.current()).toBe(false);
-      delete (h.fm.fleetConfig as any).channel;
-      expect(h.any.settingsSelfConfirmation(a.store, reqOf(h, s.sessionId, { "x-forwarded-for": "10.0.0.9" }), a.view.id)).toBeNull();
-      const gw = reqOf(h, s.sessionId);
-      bindGatewayRequest(gw, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://abc.trycloudflare.com", isCurrent: () => true });
-      expect(h.any.settingsSelfConfirmation(a.store, gw, a.view.id)).toBeNull();
+      const ask = (req: any) => h.any.settingsSelfConfirmation(a.store, req, a.view.id);
+      expect(ask(reqOf(h, s.sessionId, { "x-forwarded-for": "10.0.0.9" }))?.label).toBe("This fleet's admin");
+      expect(ask(reqOf(h, s.sessionId, { host: "192.168.1.5:19280", origin: "http://192.168.1.5:19280" }))?.label).toBe("This fleet's admin");
+      const why = (req: any) => [ask(req), h.any.settingsRole(req).role.reason];
+      expect(why(linkReqOf(h, s.sessionId))).toEqual([null, "not_session"]);              // the local session's cookie over the link: not that surface
+      expect(why(reqOf(h, make(h, { tier: "guest" }), { "x-forwarded-for": "10.0.0.9" }))).toEqual([null, "not_admin_session"]);
+      expect(why(linkReqOf(h, make(h, { link: true })))).toEqual([null, "outside_sign_in"]);   // a session over the link that is not the owner signed in from outside (#3008)
+      expect(a.apply).not.toHaveBeenCalled();
     } finally { await h.stop(); }
     const c = await startFleet(CHAT);
     try {
-      const s = await c.signIn();
+      const s = await c.signIn(), other = await c.signIn(c.fm.issueDashboardLogin()!.display);
       const a = await held(c);
-      // A chat fleet: a change a General can take keeps its card (D1) — no Apply now for the host's session.
-      const card = vi.spyOn(c.any, "settingsCardPossible").mockReturnValue(true);
-      expect(c.any.settingsSelfConfirmation(a.store, reqOf(c, s.sessionId), a.view.id)).toBeNull();
-      // D3 (bcbb541f): one no General can take (this fleet has none) would wait for the host's command — the host's own
-      // session here confirms it instead (tests/d3-launch-link-confirm.test.ts covers the rule).
-      card.mockRestore();
-      expect(c.any.settingsSelfConfirmation(a.store, reqOf(c, s.sessionId), a.view.id)?.label).toBe("This computer's admin");
+      // A chat fleet: the host's own session (it carries the host flag) confirms, whether or not a General's card could take it; a session with no account and not the host's does not.
+      vi.spyOn(c.any, "settingsCardPossible").mockReturnValue(true);
+      expect(c.any.settingsSelfConfirmation(a.store, reqOf(c, s.sessionId), a.view.id)?.label).toBe("This fleet's admin");
+      expect([c.any.settingsSelfConfirmation(a.store, reqOf(c, other.sessionId), a.view.id), c.any.settingsSelfConfirmation(a.store, linkReqOf(c, s.sessionId), a.view.id)]).toEqual([null, null]);
     } finally { await c.stop(); }
   }, 20_000);
 });

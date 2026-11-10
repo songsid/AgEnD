@@ -63,8 +63,8 @@ describe("company Start Settings authority", () => {
   it("company Start stays outward-Hub sensitive and rejects browser-supplied authority/origin/redirect fields", () => {
     const context = { config: { defaults: {}, instances: {} } as any, classic: {} };
     const body = { address: "https://hub.example.test", label: "My Fleet" };
-    expect(prepareSettingsEffect("POST", "/api/hub/member/company-join/start", body, context).diff).toMatchObject({ noSelfConfirm: true, hostLocalConfirm: true,
-      authority: { primaryGeneral: true, connections: [] } });
+    expect(prepareSettingsEffect("POST", "/api/hub/member/company-join/start", body, context).diff).toMatchObject({ authority: { primaryGeneral: true, connections: [] } });   // AGEND-122: still the Hub's authority scope, no longer host-only
+    expect(prepareSettingsEffect("POST", "/api/hub/member/company-join/start", body, context).diff).not.toHaveProperty("noSelfConfirm");
     for (const extra of [{ fleetOrigin: "https://victim.test" }, { hostHere: true }, { return_to: "https://evil.test" }]) {
       expect(() => prepareSettingsEffect("POST", "/api/hub/member/company-join/start", { ...body, ...extra }, context)).toThrow();
     }

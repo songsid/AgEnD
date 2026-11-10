@@ -6,8 +6,10 @@
  * - Admission: option off → quick_link_off; loopback_only on → loopback_only; on → the same §3 checks as local, peer
  *   `quick_link`; never claimed off the gateway. Each link's option is its own.
  * - Read now: option off → its receipts read as none (quick_link_off) at once; back on (it was on before) moves the epoch.
- * - Settings: an effective widening (false → true, or an explicit false removed to inherit the default) is confirmed and
- *   marked never self-confirmed, alone or mixed; off is immediate; a removed key is judged against the release default.
+ * - Settings: an effective widening (false → true, or an explicit false removed to inherit the default) is a confirmed
+ *   change marked `opensLink`, alone or mixed (AGEND-122: any signed-in admin session confirms it; the mark only brings a
+ *   Notice for a remote confirmation and the strict mode's "never over a link"); off is immediate; a removed key is judged
+ *   against the release default.
  * - The fleet: a quick-link session authorized by the Confirm path is web-verified with peer quick_link; off drops only
  *   the quick-link sessions' authorizations; the link's end takes them too.
  * Real modules; temp homes only (no fleet started, no tunnel, no network).
@@ -169,15 +171,16 @@ describe("the state: quick_link remembered; back on after it was on moves the ep
   });
 });
 
-describe("Settings: an effective widening is confirmed and never self-confirmed; off is immediate", () => {
+describe("Settings: an effective widening is a confirmed change marked opensLink (AGEND-122: no host-only rule); off is immediate", () => {
   const FLEET = { defaults: {}, channels: [{ id: "dc", type: "discord", group_id: "G", bot_token_env: "X" }], instances: { a: { working_directory: "/tmp" } } };
   const judge = (va: unknown, current?: Record<string, unknown>) =>
     prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority: va }, { config: { ...structuredClone(FLEET), web: current ? { verified_authority: current } : {} } as any, classic: {} }).diff;
   // The guard (§0.3): a false removed is a widening only on the value in force — a check on the raw key sees no change.
-  it("on from an explicit false — true, or the false removed (#2819: it inherits on): confirmed, marked noSelfConfirm, alone or mixed", () => {
+  it("on from an explicit false — true, or the false removed (#2819: it inherits on): confirmed, marked opensLink, alone or mixed", () => {
     const off = { quick_link: false };
     const alone = judge({ quick_link: true }, off), removed = judge({ quick_link: null }, off), mixed = judge({ quick_link: null, loopback_only: true, max_session_hours: 6 }, off);
-    expect([alone?.noSelfConfirm, alone?.summary.join("\n").includes("quick\\_link"), removed?.noSelfConfirm, mixed?.noSelfConfirm]).toEqual([true, true, true, true]);
+    expect([alone?.opensLink, alone?.summary.join("\n").includes("quick\\_link"), removed?.opensLink, mixed?.opensLink]).toEqual([true, true, true, true]);
+    expect([alone, removed, mixed].map(d => d && "noSelfConfirm" in d)).toEqual([false, false, false]);          // the old host-only marks are gone
   });
   it("off, a re-save, true over the default, or a key removed from true: immediate (no confirmation, no mark)", () => {
     expect([judge({ quick_link: false }), judge({ quick_link: false }, { quick_link: true }), judge({ quick_link: true }, { quick_link: true }),

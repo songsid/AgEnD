@@ -57,7 +57,13 @@ export interface Fixture {
   instances: FixtureInstance[];
   browser: any;
   /** A signed-in page for one matrix case (fresh context, overlays skipped, host theme pref set). */
-  page(c: MatrixCase, opts?: { path?: string; storage?: Record<string, string>; prefs?: Record<string, string> }): Promise<{ ctx: any; page: any; csp: () => Promise<string[]> }>;
+  page(c: MatrixCase, opts?: { path?: string; storage?: Record<string, string>; prefs?: Record<string, string>;
+    /** "lan": the page is on http://dashboard.lan.example:<port> (a Host that is not loopback, as a LAN or tailnet name is). */
+    origin?: "loopback" | "lan";
+    /** Sent with every request of the page, as a proxy in front of the dashboard would (e.g. `tailscale serve`'s X-Forwarded-For). */
+    headers?: Record<string, string>;
+    /** Sign in as the host's own session (or not), whatever the fixture was booted with. */
+    host?: boolean }): Promise<{ ctx: any; page: any; csp: () => Promise<string[]> }>;
   /**
    * Set a theme the way the product would accept it: a card's tagline/bio must pass the product's own canonical
    * checks (ThemeStore.setTheme does not validate), the write must succeed, and the card must read back unchanged.
@@ -148,7 +154,7 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   const owns = (srv: any, port: number) => { const a = srv?.listening ? srv.address() : null; return !!a && typeof a === "object" && a.port === port && a.address === "127.0.0.1"; };
   if (!(await until(() => fm.healthServerListening === true && owns(fm.healthServer, o.port), 10000))) throw new Error(`the fixture's health listener did not bind 127.0.0.1:${o.port}`);
   if (!(await until(() => fm.previewListening === true && owns(fm.previewListener?.server, o.port + 1), 10000))) throw new Error(`the fixture's preview listener did not bind 127.0.0.1:${o.port + 1}`);
-  const code = () => { fm.initializeWebSessions(); return fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), ...(o.host ? { host: true } : {}) }).display; };
+  const code = (host: boolean | undefined = o.host) => { fm.initializeWebSessions(); return fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), ...(host ? { host: true } : {}) }).display; };
   // PW_ENGINE=webkit runs the same smoke in WebKit (Safari's engine; its system libraries come with the Playwright
   // image, e.g. mcr.microsoft.com/playwright). Default: CHROME if set, else playwright-core's own Chromium
   // (`npx playwright-core install chromium` in PW_DIR).
@@ -175,8 +181,16 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
       await ctx.addInitScript({ content: `try { ${Object.entries(storage).map(([k, v]) => `localStorage.setItem(${q(k)}, ${q(v)});`).join(" ")} } catch {}
         window.__csp = []; document.addEventListener("securitypolicyviolation", e => window.__csp.push(e.violatedDirective + " " + (e.blockedURI || "")));` });
       const page = await ctx.newPage();
-      await page.goto(`${base}/signin`); await page.waitForSelector("#code"); await page.fill("#code", code()); await page.click("#go"); await page.waitForURL(`${base}/ui`);
-      if (opts.path) { await page.goto(base + opts.path); }
+      let at = base;
+      if (opts.origin === "lan") {
+        // A name the dashboard answers to, as an operator adds one to web.allowed_hosts for a LAN or tailnet browser.
+        const hosts: string[] = fm.fleetConfig.web.allowed_hosts ?? [];
+        if (!hosts.includes(LAN_HOST)) fm.fleetConfig.web.allowed_hosts = [...hosts, LAN_HOST];
+        at = `http://${LAN_HOST}:${o.port}`;
+      }
+      if (opts.headers) await ctx.setExtraHTTPHeaders(opts.headers);
+      await page.goto(`${at}/signin`); await page.waitForSelector("#code"); await page.fill("#code", code(opts.host)); await page.click("#go"); await page.waitForURL(`${at}/ui`);
+      if (opts.path) { await page.goto(at + opts.path); }
       await page.waitForTimeout(500);
       return { ctx, page, csp: async () => page.evaluate("window.__csp || []") as Promise<string[]> };
     },

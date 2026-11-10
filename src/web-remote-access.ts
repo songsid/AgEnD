@@ -13,6 +13,12 @@
  *   code resets it — #3008 C(b), confirmed by the user, decision 0471da59). Never a permanent
  *   lock (the user's decision 4). It is fleet-wide: one guesser from many addresses is one guesser.
  *
+ * AGEND-122 (upstream #3486, per-admin): the authenticator is each admin's own. The record above is the HOST OPERATOR's — a
+ * web-only fleet's one person, and the one connections from outside sign in with — and a chat fleet's other admins each have
+ * their own under `admins`, keyed by connection and account. An admin enrols, replaces and removes only their own; each has
+ * their own "ask for my code to confirm from other devices" switch (`strict`), kept with the record so removing the app removes
+ * it. The wrong-code limiter stays fleet-wide.
+ *
  * The secret never leaves this module except once, to the host operator who is setting it up (beginEnrollment). It is
  * never logged, never in a status, a Notice or an error.
  */
@@ -123,9 +129,26 @@ export function otpauthUri(secretBase32: string, account: string): string {
   return `otpauth://totp/${label}?secret=${secretBase32}&issuer=AgEnD&algorithm=SHA1&digits=${TOTP_DIGITS}&period=${TOTP_STEP_SECONDS}`;
 }
 
+/** One admin's authenticator: the secret, when it was set up, the last step accepted, and their own "ask for my code" switch. */
+interface Rec { secret: string; enrolledAt: number; lastStep: number; strict?: boolean }
+/** The host operator's key (a web-only fleet's one admin; also a chat fleet's host session). */
+export const HOST_ADMIN_KEY = "host\u0000operator";
+/** An admin's key: their connection and their account on it (ids are per platform). */
+export const adminKey = (adapterId: string, userId: string): string => `${adapterId}\u0000${userId}`;
+/** At most this many admins have an authenticator (a chat fleet's admin lists are short). */
+export const ADMIN_AUTHENTICATORS_MAX = 64;
+const readRec = (t: unknown): Rec | undefined => {
+  const r = t as Partial<Rec> | null | undefined;
+  return r && typeof r.secret === "string" && (base32Decode(r.secret)?.length ?? 0) >= 16 && Number.isSafeInteger(r.enrolledAt)
+    && Number.isSafeInteger(r.lastStep) ? { secret: r.secret, enrolledAt: r.enrolledAt as number, lastStep: r.lastStep as number, ...(r.strict === true ? { strict: true } : {}) } : undefined;
+};
+
 interface Saved {
   v: 1;
-  totp?: { secret: string; enrolledAt: number; lastStep: number };
+  /** The host operator's authenticator (what connections from outside sign in with). */
+  totp?: Rec;
+  /** Every other admin's own (chat fleets), by adminKey. */
+  admins?: Record<string, Rec>;
   outside: boolean;
   /** Wrong codes since the last wait (or the last correct code). */
   wrong: number;
@@ -160,6 +183,8 @@ export type TotpVerdict =
 export interface RemoteAccessStatus {
   enrolled: boolean;
   enrolledAt: number | null;
+  /** This admin's own "ask for my code to confirm from other devices" switch. */
+  strict: boolean;
   outside: boolean;
   /** A wait in force now (ms left), else 0. */
   pausedForMs: number;
@@ -169,7 +194,8 @@ const blank = (): Saved => ({ v: 1, outside: false, wrong: 0, level: 0, pausedUn
 
 export class WebRemoteAccess {
   private state: Saved = blank();
-  private pending: { secret: string; handle: string; until: number } | null = null;
+  /** Set-ups waiting for their first code, per session handle: one session's start never replaces another's. */
+  private pending = new Map<string, { secret: string; who: string; until: number }>();
   private warned = false;
   /** The state in memory is not on disk yet (a write failed): written again, by the next change or the retry timer. */
   private dirty = false;
@@ -185,11 +211,13 @@ export class WebRemoteAccess {
     try {
       const v = JSON.parse(raw) as Partial<Saved>;
       if (v.v !== 1) throw new Error("shape");
-      const t = v.totp;
-      const totp = t && typeof t.secret === "string" && (base32Decode(t.secret)?.length ?? 0) >= 16 && Number.isSafeInteger(t.enrolledAt)
-        && Number.isSafeInteger(t.lastStep) ? { secret: t.secret, enrolledAt: t.enrolledAt, lastStep: t.lastStep } : undefined;
+      const totp = readRec(v.totp);
+      const admins: Record<string, Rec> = {};
+      if (v.admins && typeof v.admins === "object" && !Array.isArray(v.admins)) {
+        for (const [k, r] of Object.entries(v.admins).slice(0, ADMIN_AUTHENTICATORS_MAX)) { const rec = readRec(r); if (rec && k.length <= 400) admins[k] = rec; }
+      }
       const count = (n: unknown): number => (Number.isSafeInteger(n) && (n as number) >= 0 ? n as number : 0);
-      this.state = { v: 1, ...(totp ? { totp } : {}),
+      this.state = { v: 1, ...(totp ? { totp } : {}), ...(Object.keys(admins).length ? { admins } : {}),
         // Never on without an app set up: a file that says otherwise is read as off.
         outside: v.outside === true && !!totp,
         wrong: Math.min(count(v.wrong), TOTP_WRONG_LIMIT - 1), level: Math.min(count(v.level), 32),
@@ -203,19 +231,43 @@ export class WebRemoteAccess {
     }
   }
 
-  status(): RemoteAccessStatus {
-    return { enrolled: !!this.state.totp, enrolledAt: this.state.totp?.enrolledAt ?? null, outside: this.state.outside,
+  /** One admin's record (the host operator's by default). */
+  private rec(who: string): Rec | undefined { return who === HOST_ADMIN_KEY ? this.state.totp : this.state.admins?.[who]; }
+  /** The state with `who`'s record set (undefined: removed). */
+  private withRec(state: Saved, who: string, rec: Rec | undefined): Saved {
+    if (who === HOST_ADMIN_KEY) { const { totp: _old, ...rest } = state; return { ...rest, ...(rec ? { totp: rec } : {}) }; }
+    const { admins: _old, ...rest } = state, admins = { ...(state.admins ?? {}) };
+    if (rec) admins[who] = rec; else delete admins[who];
+    return { ...rest, ...(Object.keys(admins).length ? { admins } : {}) };
+  }
+  status(who: string = HOST_ADMIN_KEY): RemoteAccessStatus {
+    const r = this.rec(who);
+    return { enrolled: !!r, enrolledAt: r?.enrolledAt ?? null, outside: this.state.outside, strict: !!r?.strict,
       pausedForMs: Math.max(0, this.state.pausedUntil - this.now()) };
   }
   get enrolled(): boolean { return !!this.state.totp; }
+  /** Whether `who` has an authenticator set up. */
+  isEnrolled(who: string): boolean { return !!this.rec(who); }
+  /** `who`'s own "ask for my code to confirm from other devices" switch (never on without an app). */
+  strictOf(who: string): boolean { return !!this.rec(who)?.strict; }
   /**
    * #3355 review (Prism P2): which app is set up — an opaque id of this enrollment (its secret and when it was set up), null
    * when none. Replacing the app, or removing it and setting one up again, gives another id: what a code from the old one
    * authorized can tell it no longer holds. Never the secret itself.
    */
-  get enrollment(): string | null {
-    const t = this.state.totp;
-    return t ? createHash("sha256").update(`agend-totp-enrollment\0${t.secret}\0${t.enrolledAt}`).digest("hex").slice(0, 32) : null;
+  get enrollment(): string | null { return this.enrollmentOf(HOST_ADMIN_KEY); }
+  enrollmentOf(who: string): string | null {
+    const t = this.rec(who);
+    return t ? createHash("sha256").update(`agend-totp-enrollment\0${who}\0${t.secret}\0${t.enrolledAt}`).digest("hex").slice(0, 32) : null;
+  }
+  /** Turn `who`'s own switch on or off. On only with their app set up. "unsaved": in force in memory, not on disk yet. */
+  setStrict(who: string, on: boolean): "ok" | "not_enrolled" | "unsaved" {
+    const r = this.rec(who);
+    if (!r) return "not_enrolled";
+    if (!!r.strict === on && !this.dirty) return "ok";
+    const { strict: _s, ...rest } = r;
+    this.state = this.withRec(this.state, who, on ? { ...rest, strict: true } : rest);
+    return this.flush() ? "ok" : "unsaved";
   }
   /** The sessions authorized from outside since the last revocation (their receipts hold). */
   get admitted(): ReadonlySet<string> { return new Set(this.state.handles); }
@@ -241,44 +293,64 @@ export class WebRemoteAccess {
   }
   get outside(): boolean { return this.state.outside && !!this.state.totp; }
 
+  /** Whether `who` can have a record: they already do, or there is room (the host operator's is always allowed). */
+  hasRoom(who: string): boolean {
+    return who === HOST_ADMIN_KEY || !!this.state.admins?.[who] || Object.keys(this.state.admins ?? {}).length < ADMIN_AUTHENTICATORS_MAX;
+  }
+  /** Void the set-up the session `handle` began: its secret can never be finished (a fresh begin is the only way on). */
+  cancelEnrollment(handle: string): void { this.pending.delete(handle); }
   /**
-   * A new secret for the session `handle` to set up (it replaces nothing until confirmEnrollment). Returned once: the
-   * caller shows it to that session and forgets it.
+   * A new secret for the session `handle` to set up, as `who` (it replaces nothing until confirmEnrollment). Returned once:
+   * the caller shows it to that session and forgets it.
    */
-  beginEnrollment(handle: string, account: string): { secret: string; uri: string; expiresInMs: number } {
+  beginEnrollment(handle: string, account: string, who: string = HOST_ADMIN_KEY): { secret: string; uri: string; expiresInMs: number } {
     const secret = base32Encode(randomBytes(SECRET_BYTES));
-    this.pending = { secret, handle, until: this.monotonic() + TOTP_ENROLL_TTL_MS };
+    this.pending.delete(handle);
+    this.pending.set(handle, { secret, who, until: this.monotonic() + TOTP_ENROLL_TTL_MS });
+    for (const [h, p] of this.pending) if (this.monotonic() > p.until) this.pending.delete(h);
+    while (this.pending.size > 32) this.pending.delete(this.pending.keys().next().value!);
     return { secret, uri: otpauthUri(secret, account), expiresInMs: TOTP_ENROLL_TTL_MS };
   }
 
   /**
-   * The first code from the app being set up, by the session that began it. "ok": it is now the one (a previous one is
-   * replaced; the limiter starts afresh). The caller then ends the sessions signed in with the old one.
+   * The first code from the app being set up, by the session that began it. "ok": it is now `who`'s (a previous one is
+   * replaced, their switch kept). The host operator's also ends what was authorized from outside, and starts the limiter
+   * afresh only when made on the AgEnD computer itself (`physicalHost`); another admin's does neither — enrolling must not be a way
+   * to reset the fleet-wide wrong-code limit. "full": no room for another admin's record (a record is never accepted that a restart
+   * would drop).
    */
-  confirmEnrollment(handle: string, code: string): "ok" | "wrong" | "expired" | "unsaved" {
-    const p = this.pending;
-    if (!p || p.handle !== handle || this.monotonic() > p.until) { if (p && this.monotonic() > p.until) this.pending = null; return "expired"; }
+  confirmEnrollment(handle: string, code: string, opts: { physicalHost?: boolean } = {}): "ok" | "wrong" | "expired" | "unsaved" | "full" {
+    const p = this.pending.get(handle);
+    if (!p || this.monotonic() > p.until) { this.pending.delete(handle); return "expired"; }
+    // Capacity is enforced before a new record is acknowledged: one that would not survive a restart is never accepted.
+    if (!this.hasRoom(p.who)) return "full";
     const step = matchTotp(base32Decode(p.secret)!, code, this.now(), -1);
     if (step === null) return "wrong";
-    const before = this.state, wasDirty = this.dirty;
-    // A new app replaces the old one: what was authorized under the old one ends (the admitted sessions are forgotten).
-    this.state = { ...this.state, totp: { secret: p.secret, enrolledAt: this.now(), lastStep: step }, wrong: 0, level: 0, pausedUntil: 0, handles: [] };
+    const before = this.state, wasDirty = this.dirty, old = this.rec(p.who);
+    const rec: Rec = { secret: p.secret, enrolledAt: this.now(), lastStep: step, ...(old?.strict ? { strict: true } : {}) };
+    // A new host app replaces the old one: what was authorized under it ends (the admitted sessions are forgotten). The fleet-wide
+    // wrong-code pause is reset only by an enrolment made on the AgEnD computer itself (`physicalHost`, the caller's proof of where
+    // it came from): the host operator's identity used remotely — a host cookie on another device — never clears it.
+    const reset = p.who === HOST_ADMIN_KEY && opts.physicalHost === true;
+    this.state = p.who === HOST_ADMIN_KEY ? { ...this.withRec(this.state, p.who, rec), ...(reset ? { wrong: 0, level: 0, pausedUntil: 0 } : {}), handles: [] } : this.withRec(this.state, p.who, rec);
     if (!this.flush()) {
       // Not set up: the state before stands — and if it was itself still owed to the disk (an unsaved Off), it still is.
       this.restore(before, wasDirty);
       return "unsaved";
     }
-    this.pending = null;
+    this.pending.delete(handle);
     return "ok";
   }
 
   /**
-   * Forget the app; the outside switch goes off with it, and what was authorized from outside ends (handles). In force in
-   * memory at once; false: not saved yet (retried — a restart before that would read the old file).
+   * Forget `who`'s app (their switch with it); the host operator's also turns the outside switch off and ends what was
+   * authorized from outside. Nothing set up: nothing happens — in particular a set-up still waiting for its first code is left
+   * alone (a recovery begun on the host must not be cleared by someone else's Remove). In force in memory at once; false: not
+   * saved yet (retried — a restart before that would read the old file).
    */
-  remove(): boolean {
-    this.pending = null;
-    this.state = { ...blank() };
+  remove(who: string = HOST_ADMIN_KEY): boolean {
+    if (!this.rec(who)) return true;
+    this.state = who === HOST_ADMIN_KEY ? { ...blank(), ...(this.state.admins ? { admins: this.state.admins } : {}) } : this.withRec(this.state, who, undefined);
     return this.flush();
   }
 
@@ -294,16 +366,16 @@ export class WebRemoteAccess {
   }
 
   /** A code typed at sign-in from outside. Each step is accepted once; wrong codes count toward a wait. */
-  verify(code: string): TotpVerdict {
-    const t = this.state.totp;
+  verify(code: string, who: string = HOST_ADMIN_KEY): TotpVerdict {
+    const t = this.rec(who);
     if (!t) return { kind: "not_enrolled" };
     const now = this.now();
     if (now < this.state.pausedUntil) return { kind: "paused", retryAfterMs: this.state.pausedUntil - now };
     const step = matchTotp(base32Decode(t.secret)!, code, now, t.lastStep);
     if (step !== null) {
       const before = this.state;
-      this.state = { ...this.state, totp: { ...t, lastStep: step }, wrong: 0, level: 0, pausedUntil: 0 };
-      if (!this.flush()) { this.state = { ...before, totp: { ...t, lastStep: step } }; return { kind: "unavailable" }; }
+      this.state = { ...this.withRec(this.state, who, { ...t, lastStep: step }), wrong: 0, level: 0, pausedUntil: 0 };
+      if (!this.flush()) { this.state = this.withRec(before, who, { ...t, lastStep: step }); return { kind: "unavailable" }; }
       return { kind: "ok" };
     }
     const skewSteps = totpSkew(base32Decode(t.secret)!, code, now);

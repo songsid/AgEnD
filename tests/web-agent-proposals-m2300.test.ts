@@ -98,7 +98,7 @@ describe("alpha.2 the server: a web-only fleet's owner decides an agent's reques
       expect(listed.proposals[0].remaining_ms).toBeGreaterThan(60_000);
       const r = await h.decide(s, view.id, "confirm");
       expect([r.status, r.body.view.state, r.body.view.outcome.decided_by_label, r.body.agent, apply.mock.calls.length])
-        .toEqual([200, "applied", "This computer's admin", "win-builder", 1]);
+        .toEqual([200, "applied", "This fleet's admin", "win-builder", 1]);
       expect(r.body.view.confirmation.kind).toBe("web");
       expect((await h.list(s.cookie)).proposals).toEqual([]);                          // decided: off the list
       // A second click: no second apply, and the request as it stands.

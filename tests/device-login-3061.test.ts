@@ -227,7 +227,8 @@ describe("#3061 P2a: signing a new device in with its code", () => {
       const r = await h.local(fresh, "POST", `/ui/devices/${op}`, { code: another.code });
       expect([r.status, parse(r)]).toEqual([403, { error: "owner_required" }]);
     }
-    expect((await h.local(fresh, "POST", "/ui/outside/enroll", {})).status).toBe(403);
+    // AGEND-122 (R1): setting up the authenticator is any signed-in admin's, over a direct connection — the fresh device session may begin it.
+    expect((await h.local(fresh, "POST", "/ui/outside/enroll", {})).status).toBe(200);
     expect(parse(await h.local(fresh, "GET", "/ui/agent-proposals"))).toEqual({ owner: false, proposals: [] });
     // The other request is untouched: the owner still finds it pending.
     expect(parse(await lookup(h, owner, another.code)).request.state).toBe("pending");
