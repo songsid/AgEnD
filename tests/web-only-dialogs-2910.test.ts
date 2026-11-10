@@ -2,8 +2,8 @@
  * #2910 D4: on a web-only fleet, a Claude Code or Codex dialog AgEnD holds for a person (a Bash or tool permission, a
  * trust / Bypass screen it did not recognise, "Background work is running", "Switch model?", Codex's selections, any
  * numbered prompt the #1691 catch-all holds) is put to the dashboard as a #2675 card: its own options as buttons, keyed
- * in on a verified cursor. Never Esc (on Claude's trust screen it exits the CLI). A chat fleet is unchanged (its parked
- * notice and General's controls). A shell prompt (sudo, password) on a web-only fleet with no General is a Notice
+ * in on a verified cursor. Never Esc (on Claude's trust screen it exits the CLI). #3334 also offers the card in
+ * chat fleets to their admins. A shell prompt (sudo, password) on a web-only fleet with no General is a Notice
  * pointing at the agent's View. Real pane fixtures; the answer walk on a scripted pane; the fleet's gate.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -159,7 +159,7 @@ describe("#2910 D4 put to the person: its options only; Esc refused", () => {
   });
 });
 
-describe("#2910 D4 the fleet: only a web-only fleet puts it to people", () => {
+describe("#2910 D4 / #3334 the fleet: dialogs reach the dashboard and the instance topic", () => {
   function fleet(config: Record<string, unknown> = {}) {
     const dir = temp("agend-2910-dlg-");
     vi.stubEnv("AGEND_HOME", dir);
@@ -170,20 +170,20 @@ describe("#2910 D4 the fleet: only a web-only fleet puts it to people", () => {
     return { fm, any: fm as any, posted };
   }
   const CHAT = { channel: { type: "telegram", mode: "topic", bot_token_env: "T", group_id: "-100", access: { mode: "locked", allowed_users: ["1"] } } };
-  it("web-only: posted to the dashboard with the dialog's options; a chat fleet: not posted (its parked notice stands)", async () => {
+  it("web-only keeps its dashboard choices; a chat fleet posts the same choices in its topic", async () => {
     const card = selectionCard(fixture("claude-2.1.291-background-work-exit.pane.txt"), "Claude Code")!;
     const web = fleet();
     await web.fm.postRemoteCard("agent-1", card);
     const args = web.posted.mock.calls[0]![0] as any;
     expect([args.prefix, args.adapterId, args.choices.map((c: any) => c.action), args.remoteCard ?? args.extra?.remoteCard?.identity === card.identity]).toEqual(["card-answer:", "web", ["opt-1", "opt-2", "opt-3"], true]);
-    // A chat fleet whose agent has a topic to post in: still not posted (the gate, not a missing place, refuses it)…
+    // A chat fleet with a topic offers the same dialog through its existing remote-card path.
     const chat = fleet(CHAT);
     vi.spyOn(chat.any, "remoteCardPlace").mockReturnValue({ adapter: {}, adapterId: "tg", chatId: "-100", threadId: "7" });
     await chat.fm.postRemoteCard("agent-1", card);
-    expect(chat.posted).not.toHaveBeenCalled();
-    // …while a kiro card (not webOnly) is posted in that topic, as before.
+    expect(chat.posted).toHaveBeenCalledWith(expect.objectContaining({ adapterId: "tg", choices: args.choices }));
+    // Ordinary Kiro questions still use that topic, as before.
     await chat.fm.postRemoteCard("agent-1", { ...card, webOnly: undefined, noSkip: undefined });
-    expect((chat.posted.mock.calls[0]?.[0] as any)?.adapterId).toBe("tg");
+    expect((chat.posted.mock.calls[1]?.[0] as any)?.adapterId).toBe("tg");
   });
   it("a shell prompt on a web-only fleet with no General: a Notice pointing at its View; with a General: the assist prompt on the dashboard (as before)", async () => {
     setLocale("en");
