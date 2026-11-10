@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { redactSecrets } from "./tool-progress.js";
 export interface SubagentRun {
   key: string; parentTurn: string; parentStartedAt: number; parentTask?: string; name: string; type?: string; task: string;
-  state: "running" | "completed" | "unknown"; startedAt: number; durationMs?: number; summary?: string;
+  state: "running" | "completed" | "unknown"; startedAt: number; durationMs?: number; summary?: string; expiresAt?: number;
 }
 export interface SubagentArtifact { records: unknown[]; meta?: unknown }
 export interface SubagentProjection {
@@ -12,6 +12,8 @@ export interface SubagentProjection {
 }
 export const SUBAGENT_MAX = 16;
 export const SUBAGENT_FRESH_MS = 30_000;
+export const SUBAGENT_UNKNOWN_MS = 120_000;
+export const SUBAGENT_COMPLETED_MS = 15_000;
 type Obj = Record<string, any>;
 const obj = (v: unknown): Obj => v && typeof v === "object" && !Array.isArray(v) ? v as Obj : {};
 const uuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(s);
@@ -79,22 +81,59 @@ function tag(s: string, name: string): string | null {
   const matches = [...s.matchAll(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`, "g"))];
   return matches.length === 1 ? matches[0][1].trim() : null;
 }
+/** A duration record must name an admitted assistant from that exact prompt, not a later notification turn. */
+function parentEnds(i: SubagentProjection): Map<string, number> {
+  const ends = new Map<string, number>(), assistants = new Map<string, string>();
+  let turn = "";
+  for (const raw of i.parent) {
+    const r = obj(raw), time = at(r.timestamp);
+    if (i.backend === "claude-code") {
+      if (r.sessionId !== i.sessionId || r.cwd !== i.cwd || r.isSidechain !== false) continue;
+      if (r.type === "user" && uuid(r.promptId)) {
+        if (r.origin?.kind === "human" || (r.origin?.kind === "task-notification" && r.origin.producer === "session-task" && r.promptSource === "system")) turn = r.promptId;
+        else if (r.promptId !== turn) turn = "";
+      }
+      if (r.type === "assistant" && uuid(r.uuid) && turn) assistants.set(r.uuid, turn);
+      if (r.type !== "system" || r.subtype !== "turn_duration") continue;
+      const original = assistants.get(r.parentUuid); if (!original) continue;
+      if (time && time <= i.now + 1000 && !ends.has(original)) ends.set(original, time);
+    } else {
+      const p = obj(r.payload);
+      if (r.type === "event_msg" && p.type === "task_complete" && uuid(p.turn_id) && time && time <= i.now + 1000 && !ends.has(p.turn_id)) ends.set(p.turn_id, time);
+    }
+  }
+  return ends;
+}
+const diagnostic = (r: Obj) => r.type === "api-request-shape" || r.type === "api-request-blob" || r.type === "api-request";
 export function projectSubagents(i: SubagentProjection): SubagentRun[] {
+  const ends = parentEnds(i);
   return subagentLaunches(i).map(edge => {
     const { id, call, turn, ...display } = edge;
-    const row: SubagentRun = { ...display, key: key(i.backend, i.sessionId, turn, call, id), parentTurn: turn, state: "unknown" };
+    const row: SubagentRun = { ...display, key: key(i.backend, i.sessionId, turn, call, id), parentTurn: turn, state: "unknown", expiresAt: edge.startedAt + SUBAGENT_UNKNOWN_MS };
+    const completed = (finishedAt: number, ms: number, summary: unknown): SubagentRun => {
+      if (!finishedAt || finishedAt > i.now + 1000) return row;
+      const end = ends.get(turn);
+      // Background children often outlive the parent's yield. Give those a short visible completion;
+      // otherwise leave with the proven original parent turn. No wall-clock observation resets this.
+      const expiresAt = end && end >= row.startedAt ? (end >= finishedAt ? end : finishedAt + SUBAGENT_COMPLETED_MS) : finishedAt + SUBAGENT_UNKNOWN_MS;
+      return { ...row, state: "completed", durationMs: ms, summary: text(summary, 1500), expiresAt };
+    };
     const child = i.children.get(id);
     if (!child || !child.records.length || child.records.length > 20000) return row;
-    const rs = child.records.map(obj);
+    const all = child.records.map(obj), rs = i.backend === "claude-code" ? all.filter(r => !diagnostic(r)) : all;
     let latest = 0;
     if (i.backend === "claude-code") {
       const meta = obj(child.meta);
       if (meta.toolUseId !== call || meta.agentType !== edge.type || meta.spawnDepth !== 1
+        // These three captured diagnostic schemas omit cwd/isSidechain. Ignore their payload/activity,
+        // retaining their explicit session/child binding and every message/sidechain check below.
+        || all.some(r => diagnostic(r) && (r.sessionId !== i.sessionId || r.agentId !== id))
         || rs.some(r => r.sessionId !== i.sessionId || r.cwd !== i.cwd || r.agentId !== id || r.isSidechain !== true)
         || !rs.some(r => r.type === "user" && r.promptId === turn)
         // A later resumed child run must not inherit this spawn's old completion.
         || rs.some(r => r.type === "user" && r.promptId && r.promptId !== turn)) return row;
       for (const r of rs) latest = Math.max(latest, at(r.timestamp));
+      if (latest && latest <= i.now + 1000) row.expiresAt = Math.max(row.startedAt, latest) + SUBAGENT_UNKNOWN_MS;
       const completions = i.parent.map(obj).filter(r => r.sessionId === i.sessionId && r.cwd === i.cwd && r.isSidechain === false
         && r.type === "user" && r.origin?.kind === "task-notification" && r.origin.producer === "session-task"
         && r.promptSource === "system" && at(r.timestamp) >= edge.startedAt && typeof r.message?.content === "string")
@@ -102,7 +141,7 @@ export function projectSubagents(i: SubagentProjection): SubagentRun[] {
       const last = completions.at(-1);
       if (last && meta.finished === true && tag(last.message.content, "status") === "completed") {
         const d = tag(last.message.content, "duration_ms"), ms = d !== null && /^\d+(?:\.\d+)?$/.test(d) ? Number(d) : NaN;
-        if (duration(ms)) return { ...row, state: "completed", durationMs: ms, summary: text(tag(last.message.content, "result"), 1500) };
+        if (duration(ms)) return completed(at(last.timestamp), ms, tag(last.message.content, "result"));
       }
       if (last || meta.finished === true) return row;
     } else {
@@ -118,16 +157,19 @@ export function projectSubagents(i: SubagentProjection): SubagentRun[] {
         || t.root_turn_id !== turn || at(start!.timestamp) < edge.startedAt - 5000) return row;
       row.startedAt = at(start!.timestamp);
       for (const r of rs) latest = Math.max(latest, at(r.timestamp));
+      if (latest && latest <= i.now + 1000) row.expiresAt = Math.max(row.startedAt, latest) + SUBAGENT_UNKNOWN_MS;
       const finishes = rs.filter(r => r.type === "event_msg" && r.payload?.type === "task_complete" && at(r.timestamp) >= row.startedAt);
       if (finishes.some(r => r.payload.turn_id !== t.turn_id || r.payload.root_turn_id !== turn)) return row;
       const finished = finishes.at(-1);
       if (finished) {
         const p = finished.payload;
-        if (!p.error && at(finished.timestamp) >= row.startedAt && duration(p.duration_ms)) return { ...row, state: "completed", durationMs: p.duration_ms, summary: text(p.last_agent_message, 1500) };
+        if (!p.error && at(finished.timestamp) >= row.startedAt && duration(p.duration_ms)) return completed(at(finished.timestamp), p.duration_ms, p.last_agent_message);
         return row;
       }
     }
-    if (i.live && latest >= row.startedAt && latest <= i.now + 1000 && i.now - latest <= SUBAGENT_FRESH_MS) row.state = "running";
+    // The captured child's first user is written 6–11ms before the async launch result. Binding proves
+    // the edge; allow that bounded write ordering, without making an old silent child look live.
+    if (i.live && latest >= row.startedAt - 1000 && latest <= i.now + 1000 && i.now - latest <= SUBAGENT_FRESH_MS) row.state = "running";
     return row;
-  });
+  }).filter(row => row.expiresAt !== undefined && i.now < row.expiresAt);
 }
