@@ -321,7 +321,7 @@ import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permis
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, setCapacityLookup, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, checkAuthStatus, checkAuthIdentity, authIdentitySupported, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import type { AccountIdentity } from "./claude-auth-status.js";
-import { LoginSession, type LoginSessionEvents } from "./login-manager.js";
+import { LoginSession, LoginAdmissionRefused, type LoginSessionEvents } from "./login-manager.js";
 import { runOnLoginShell } from "./login-shell.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
@@ -22149,13 +22149,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       successPattern: /$^/,
       timeoutMs: this.installTimeoutMs,
     };
-    const session = new LoginSession(flow, tmux, events, this.logger);
+    // AGEND-148 (Prism R3 on #3539, P2-2): the look above is not the last. `session.start()` awaits tmux (the strict window listing, the reuse / respawn steps) before the command that
+    // runs the installer is sent, and a revocation can land in any of those waits: the asker is carried into the session and asked again up to that command.
+    const session = new LoginSession(flow, tmux, events, this.logger, undefined, asker ?? undefined);
     this.activeInstall = { session, backend };
     try {
       await session.start();
     } catch (err) {
       this.activeInstall = null;
       this.loginWindow.release(claim);
+      if (err instanceof LoginAdmissionRefused) return { failure: "not_allowed" };
       return { failure: "start", message: (err as Error).message, cleanupFailed: !!(err as { cleanupFailed?: boolean }).cleanupFailed };
     }
     if (session.state === "done") {

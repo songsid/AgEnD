@@ -14,8 +14,12 @@ import { exitCodeFromMarker, withoutExitMarker } from "./unattended-install.js";
 
 /** The slice of TmuxManager a login session drives (injectable for tests). */
 export interface LoginTmux {
-  /** Must complete or fail within a hard bound; a window it may have created is reachable by `windowName` even if the id was never learned. */
-  createWindow(command: string, cwd: string, windowName?: string): Promise<string>;
+  /**
+   * Must complete or fail within a hard bound; a window it may have created is reachable by `windowName` even if the id was never learned.
+   * `admission` (AGEND-148): asked again after every wait inside, and immediately before the tmux command that starts `command`; it throws when the caller's authority is gone,
+   * and nothing is started then.
+   */
+  createWindow(command: string, cwd: string, windowName?: string, admission?: () => void): Promise<string>;
   setRemainOnExit(): Promise<void>;
   capturePaneJoined(lines?: number): Promise<string>;
   getPaneStatus(): Promise<{ alive: boolean; exitCode?: number } | null>;
@@ -37,6 +41,11 @@ export interface LoginSessionEvents {
 
 export type LoginSessionState = "starting" | "done";
 
+/** AGEND-148: the authority of whoever asked for this session was gone before its command was sent; nothing was started. */
+export class LoginAdmissionRefused extends Error {
+  constructor() { super("The request is no longer authorized"); this.name = "LoginAdmissionRefused"; }
+}
+
 const POLL_INTERVAL_MS = 2_000;
 
 export class LoginSession {
@@ -55,6 +64,8 @@ export class LoginSession {
     private readonly events: LoginSessionEvents,
     private readonly logger: Logger,
     private readonly pollIntervalMs = POLL_INTERVAL_MS,
+    /** AGEND-148: is whoever asked for this session still entitled to it? Carried into the window's creation, through every await up to the command that starts it. */
+    private readonly authority?: () => boolean,
   ) {}
 
   async start(): Promise<void> {
@@ -64,7 +75,9 @@ export class LoginSession {
     // crash.
     // finish() waits for this before its one confirmed kill, so a cancel that
     // races createWindow still removes the window — and reports if it cannot.
-    this.startInFlight = this.tmux.createWindow(this.flow.command, process.env.HOME ?? "/", `agend-login-${this.flow.backend}`);
+    const authority = this.authority;
+    const admission = authority ? (): void => { let ok = false; try { ok = authority(); } catch { /* unreadable: not authorized */ } if (!ok) throw new LoginAdmissionRefused(); } : undefined;
+    this.startInFlight = this.tmux.createWindow(this.flow.command, process.env.HOME ?? "/", `agend-login-${this.flow.backend}`, admission);
     try {
       await this.startInFlight;
       // finish() owns the cleanup; start() must not return before it completes,
