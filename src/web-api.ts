@@ -389,6 +389,8 @@ export interface WebApiContext {
   readonly webSessions?: WebSessionStore | null;
   /** #2233: dashboard-started backend sign-ins (FleetManager); absent in a hand-built context. */
   readonly webBackendLogins?: import("./web-backend-login.js").WebBackendLogins;
+  /** AGEND-133: the Install button of Settings → Agents → AI sign-ins (FleetManager.webHostInstalls); absent in a hand-built context. */
+  readonly webHostInstalls?: import("./web-host-install.js").WebHostInstalls;
   readonly browserBackendSignIns?: import("./browser-backend-signins.js").BrowserBackendSignIns;
   /** #3190 Part 3c: dashboard sign-ins on a paired computer (machine-signins.ts), reached through the same `/ui/browser-backend-signins` with `?machine=&profile=`. */
   readonly machineSignIns?: import("./machine-signins.js").MachineSignIns;
@@ -1353,6 +1355,53 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
       else json(res, 200, { message: await logins.cancel() });
     }
   })().catch(() => { try { json(res, 500, { error: "sign_in_request_failed" }); } catch { /* response ended */ } });
+  return true;
+}
+
+/**
+ * AGEND-133 (upstream #3521): installing a CLI on the AgEnD host from the dashboard (web-host-install.ts). The gate is the sign-in routes' own — a signed-in admin
+ * session on the local surface; never the CLI's header token (an agent's), a guest, a read session, or the public link (refused before the body is read, and again
+ * after it). `GET` reads the current install; `POST` `{ backend }` starts one — the browser names a CLI, the server looks up the registry's command, nothing it sends
+ * is ever run; `POST …/cancel` `{}` stops the running one. Every answer is no-store.
+ */
+const HOST_INSTALL_STATUS: Readonly<Record<string, number>> = { not_allowed: 403, unsupported: 400, already: 409, busy: 409, shutting_down: 503, failed: 500 };
+function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  const reading = method === "GET";
+  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "install_not_over_public_link" }); return true; }
+  const who = (): { handle: string; label: string } | { error: string; status: number } => {
+    const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
+    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "install_needs_a_local_admin", status: 403 };
+    return { handle: v.session.handle, label: v.session.label };
+  };
+  const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
+  const installs = ctx.webHostInstalls;
+  if (!installs) { json(res, 404, { error: "install_unavailable" }); return true; }
+  if (reading && path === "/ui/host-install" && [...url.searchParams.keys()].length === 0) {
+    try { json(res, 200, { install: installs.view() }); } catch { json(res, 503, { error: "install_unavailable" }); }
+    return true;
+  }
+  if (method !== "POST") { json(res, 404, { error: "not_found" }); return true; }
+  (async () => {
+    let bytes: Buffer;
+    try { bytes = await readBoundedWebBody(req, 1024); } catch { json(res, 413, { error: "install_body_bound" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
+    if (now.handle !== first.handle) { json(res, 409, { error: "install_session_changed" }); return; }
+    let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "install_json" }); return; }
+    if (path === "/ui/host-install/cancel") {
+      if (!z.strictObject({}).safeParse(body).success) { json(res, 400, { error: "install_args" }); return; }
+      json(res, 200, { cancelled: await installs.cancel() });
+      return;
+    }
+    const parsed = z.strictObject({ backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/) }).safeParse(body);
+    if (!parsed.success) { json(res, 400, { error: "install_args" }); return; }
+    const result = await installs.begin(now, parsed.data.backend);
+    if ("error" in result) json(res, HOST_INSTALL_STATUS[result.error] ?? 409, { error: result.error, ...(result.message ? { message: result.message } : {}) });
+    else json(res, 200, result);
+  })().catch(() => { try { json(res, 500, { error: "install_request_failed" }); } catch { /* response ended */ } });
   return true;
 }
 
@@ -2858,6 +2907,7 @@ export function handleWebRequest(
   // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
   if (path === "/ui/browser-backend-signins") return handleBrowserBackendSignIns(req, res, url, ctx);
   if (path === "/ui/backend-login" || path.startsWith("/ui/backend-login/")) return handleBackendLogin(req, res, url, ctx, path, method);
+  if (path === "/ui/host-install" || path === "/ui/host-install/cancel") return handleHostInstall(req, res, url, ctx, path, method);
   // #3292: before the accounts prefix — its Add pattern (`POST /ui/accounts/<backend>`) would read "keep-alive" as a backend.
   if (path === "/ui/accounts/keep-alive") return handleAccountKeepAlive(req, res, url, ctx, method);
   if (path.startsWith("/ui/accounts/")) return handleAccountWrite(req, res, url, ctx, path, method);

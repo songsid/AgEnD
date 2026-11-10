@@ -321,7 +321,7 @@ import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permis
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, setCapacityLookup, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, checkAuthStatus, checkAuthIdentity, authIdentitySupported, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import type { AccountIdentity } from "./claude-auth-status.js";
-import { LoginSession } from "./login-manager.js";
+import { LoginSession, type LoginSessionEvents } from "./login-manager.js";
 import { runOnLoginShell } from "./login-shell.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
@@ -339,6 +339,7 @@ import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } 
 import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
+import { WebHostInstalls, type HostInstallReporter, type HostInstallStart } from "./web-host-install.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
 import { BrowserBackendSignIns } from "./browser-backend-signins.js";
@@ -21051,7 +21052,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // (Keep-alive is the host's: it is built from the host's profiles above and never given to a computer's rows.)
     let machines: Awaited<ReturnType<MachineAccounts["list"]>> = [];
     if (remoteRuntimeEnabled()) { try { machines = await this.machineAccounts.list(); } catch (err) { this.logger.debug({ err: (err as Error).message }, "Computer accounts not read"); } }
-    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, shortUsage: shortWindow, keepAlive, machines });
+    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, shortUsage: shortWindow, keepAlive, machines, installShown: this.webHostInstalls.view()?.backend ?? null });
   }
 
   /**
@@ -21993,11 +21994,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // machine — an install is a login flow with no auth hints): run the
   // installer, judge by exit code, verify the binary on a fresh login shell,
   // then sign in (the hand-off below).
-  private activeInstall: {
-    session: LoginSession;
-    backend: string;
-    chat: { adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string };
-  } | null = null;
+  private activeInstall: { session: LoginSession; backend: string } | null = null;
   /** M-2281: how long `/login`'s install window may run (a field so a smoke can shorten it). */
   installTimeoutMs = INSTALL_TIMEOUT_MS;
   /** An install that succeeded, between its success line and the sign-in it hands over to (#1131). */
@@ -22016,35 +22013,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claim && await checkBinaryInstalledAsync(info.binary)) { this.loginWindow.release(claim); return t("install.already", backend, info.binary); }
     if (!claim) return this.loginWindow.busyMessage();
 
-    let tmux: TmuxManager;
-    try {
-      const sessionName = getTmuxSession();
-      await TmuxManager.ensureSession(sessionName);
-      if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return t("login.web_shutting_down"); }
-      tmux = new TmuxManager(sessionName, "");
-    } catch (err) {
-      this.loginWindow.release(claim);
-      return t("install.failed", backend, (err as Error).message);
-    }
-    // A synthetic flow: success is decided by the installer's exit code
-    // (LoginSession treats a clean exit as success), never by pane text. The
-    // session only judges that verdict; it does not read the output for URLs or prompts.
-    // M-2281 (#2980): no terminal to ask on, low priority, stoppable as a whole, the user's own $SHELL — see
-    // unattended-install.ts. A prompt nobody can answer fails at once instead of waiting out the timeout.
-    const shell = (await loginShell()) ?? null;
-    if (!this.loginWindow.isCurrent(claim)) {
-      this.loginWindow.release(claim);
-      return t("login.web_shutting_down");
-    }
-    // The wrapper says its own exit code after this marker: tmux may never record it (unattended-install.ts).
-    const exitMarker = installExitMarker();
-    const flow: LoginFlow = {
-      backend,
-      command: unattendedInstallCommand(info.unattended ?? info.install, shell, exitMarker),
-      exitMarker,
-      successPattern: /$^/,
-      timeoutMs: this.installTimeoutMs,
-    };
     // M-2281: the installer's output, live, in the chat that asked — no page shows this window.
     // Telegram gets its own <pre> (its markdown conversion keeps a fence as literal backticks); others a fenced block.
     const frameStyle = chat.adapter.type === "telegram" ? "html" as const : "markdown" as const;
@@ -22054,7 +22022,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       warn: (message, err) => this.logger.debug({ backend, err: (err as Error)?.message ?? String(err) }, message),
     }, t("install.stream_running", backend), undefined, undefined, frameStyle);
     const minutes = String(Math.max(1, Math.round(this.installTimeoutMs / 60_000)));
-    const session = new LoginSession(flow, tmux, {
+    const opened = await this.openInstallWindow(backend, info, claim, {
       onProgress: pane => stream.update(pane),
       onDone: async ({ ok, detail, cleanupFailed }) => {
         this.activeInstall = null;
@@ -22086,7 +22054,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // fresh login shell sees that, the fleet process's PATH may not.
         // #3009 (leader, cid-3017-3029-overlap): both lookups off the fleet's main thread — the login shell's own check,
         // then the installer's own directories through backend-availability's check (a killable child tests each one).
-        const installedAt = (await this.locateBinaryOnLoginShell(info.binary)) ?? (await this.locateInstalledBackend(backend));
+        const installedAt = await this.locateInstalledCli(backend, info.binary);
         if (handoff.cancelled || this.installHandoff !== handoff) return;
         if (!installedAt) {
           this.installHandoff = null;
@@ -22130,29 +22098,137 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             .catch(err => this.logger.warn({ err, backend }, "Could not post the sign-in step after an install"));
         }
       },
-    }, this.logger);
+    });
+    if ("failure" in opened) {
+      if (opened.failure === "shutting_down") return t("login.web_shutting_down");
+      if (opened.failure === "cancelled") return this.loginWindow.isClosed ? t("login.web_shutting_down") : t("install.cancelled", backend);
+      const text = t("install.failed", backend, opened.message);
+      return opened.cleanupFailed ? `${text}\n${t("login.web_cleanup_failed", backend)}` : text;
+    }
+    return t("install.started", backend);
+  }
 
-    this.activeInstall = { session, backend, chat };
+  /**
+   * The install window itself, for `/login`'s chat install and the dashboard's Install button alike (AGEND-133): a tmux window running the registry's
+   * command through `unattendedInstallCommand` (no terminal to ask on, low priority, stoppable as a whole, the user's own $SHELL), judged by the installer's
+   * own exit code. The caller holds `claim` (taken before its first await) and gets it released here on every failure; once the session is running,
+   * `events.onDone` owns the release. `activeInstall` is set while it runs, so `/login cancel`, the dashboard's Cancel and a fleet stop all reach it.
+   */
+  private async openInstallWindow(backend: string, info: { install: string; unattended?: string }, claim: import("./login-window-lock.js").LoginWindowClaim,
+    events: LoginSessionEvents): Promise<{ session: LoginSession } | { failure: "shutting_down" } | { failure: "cancelled" } | { failure: "start"; message: string; cleanupFailed: boolean }> {
+    let tmux: TmuxManager;
+    try {
+      const sessionName = getTmuxSession();
+      await TmuxManager.ensureSession(sessionName);
+      if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return { failure: "shutting_down" }; }
+      tmux = new TmuxManager(sessionName, "");
+    } catch (err) {
+      this.loginWindow.release(claim);
+      return { failure: "start", message: (err as Error).message, cleanupFailed: false };
+    }
+    // A synthetic flow: success is decided by the installer's exit code
+    // (LoginSession treats a clean exit as success), never by pane text. The
+    // session only judges that verdict; it does not read the output for URLs or prompts.
+    // M-2281 (#2980): no terminal to ask on, low priority, stoppable as a whole, the user's own $SHELL — see
+    // unattended-install.ts. A prompt nobody can answer fails at once instead of waiting out the timeout.
+    const shell = (await loginShell()) ?? null;
+    if (!this.loginWindow.isCurrent(claim)) {
+      this.loginWindow.release(claim);
+      return { failure: "shutting_down" };
+    }
+    // The wrapper says its own exit code after this marker: tmux may never record it (unattended-install.ts).
+    const exitMarker = installExitMarker();
+    const flow: LoginFlow = {
+      backend,
+      command: unattendedInstallCommand(info.unattended ?? info.install, shell, exitMarker),
+      exitMarker,
+      successPattern: /$^/,
+      timeoutMs: this.installTimeoutMs,
+    };
+    const session = new LoginSession(flow, tmux, events, this.logger);
+    this.activeInstall = { session, backend };
     try {
       await session.start();
     } catch (err) {
       this.activeInstall = null;
       this.loginWindow.release(claim);
-      const text = t("install.failed", backend, (err as Error).message);
-      return (err as { cleanupFailed?: boolean }).cleanupFailed ? `${text}\n${t("login.web_cleanup_failed", backend)}` : text;
+      return { failure: "start", message: (err as Error).message, cleanupFailed: !!(err as { cleanupFailed?: boolean }).cleanupFailed };
     }
     if (session.state === "done") {
       this.activeInstall = null;
       this.loginWindow.release(claim);
-      return this.loginWindow.isClosed ? t("login.web_shutting_down") : t("install.cancelled", backend);
+      return { failure: "cancelled" };
     }
     if (!this.loginWindow.isCurrent(claim)) {
       await session.cancel("cancelled").catch(() => { /* already finished */ });
       this.activeInstall = null;
       this.loginWindow.release(claim);
-      return t("login.web_shutting_down");
+      return { failure: "shutting_down" };
     }
-    return t("install.started", backend);
+    return { session };
+  }
+
+  /** AGEND-133: the dashboard's Install button — what the Accounts page asks of `/login`'s install, with no chat to report in. */
+  private webHostInstallsInstance: WebHostInstalls | null = null;
+  get webHostInstalls(): WebHostInstalls {
+    this.webHostInstallsInstance ??= new WebHostInstalls({
+      isLocalAdmin: handle => this.isLocalAdminSession(handle),
+      installable: backend => !isRemovedBackend(backend) && !!BACKEND_INSTALLATION_INFO[backend],
+      start: (backend, reporter) => this.startWebInstall(backend, reporter),
+      cancel: async () => { if (!this.activeInstall) return false; await this.cancelInstallSession(); return true; },
+      // No details in the event: each page reads GET /ui/host-install. The Accounts list reads itself again on the same event (the CLI is installed now).
+      changed: () => { broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")); },
+    });
+    return this.webHostInstallsInstance;
+  }
+
+  /**
+   * AGEND-133: install a CLI for the dashboard. Only the CLI's id arrives (the caller validated it against the registry's table); the command is
+   * `info.unattended ?? info.install` read here, the window and its judgement are `/login`'s (openInstallWindow). The verdict is then checked the way chat's
+   * is — a fresh login shell, else the installer's own directories — and the availability probe reads the version for the page. Everything is
+   * reported through `reporter`; nothing is posted to any chat, and no sign-in is started (the page offers Sign in itself).
+   */
+  async startWebInstall(backendArg: string, reporter: HostInstallReporter): Promise<HostInstallStart> {
+    const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
+    const info = BACKEND_INSTALLATION_INFO[backend];
+    if (!info || isRemovedBackend(backend)) return { refused: "unsupported" };
+    // The fleet-wide window, claimed before the first await (shared with /login, chat's install and sign-in).
+    const claim = this.loginWindow.tryClaim("install", backend);
+    if (!claim) return { refused: this.loginWindow.isClosed ? "shutting_down" : "busy" };
+    if (await checkBinaryInstalledAsync(info.binary)) { this.loginWindow.release(claim); return { refused: "already" }; }
+    this.recordLoginFlow(backend, "install_only", "web");
+    const opened = await this.openInstallWindow(backend, info, claim, {
+      onProgress: pane => { try { reporter.progress(pane); } catch { /* a view never stops the install */ } },
+      onDone: async ({ ok, detail, cleanupFailed }) => {
+        this.activeInstall = null;
+        this.loginWindow.release(claim);
+        let verified = false, version: string | null = null;
+        if (ok) {
+          // The installer may only have added the binary to a profile PATH; a fresh login shell sees that, the fleet's own PATH may not.
+          const installedAt = await this.locateInstalledCli(backend, info.binary).catch(() => null);
+          if (installedAt) {
+            verified = true;
+            this.adoptBinaryDirectory(installedAt, backend);
+            // The binary probe: the same refresh that makes the pickers know it (#2072) — awaited here, for the version the page shows.
+            await this.backendAvailability.refresh([backend], { force: true }).catch(() => {});
+            version = this.backendAvailabilityRows().find(row => row.backend === backend)?.version ?? null;
+          }
+        }
+        this.logger.info({ backend, ok, verified, ...(ok ? {} : { detail }) }, "Dashboard install ended");
+        try { reporter.done({ ok, detail, cleanupFailed, verified, version, signIn: !!LOGIN_FLOWS[backend] && dashboardSignInSupported(backend) }); } catch { /* a view never stops the install */ }
+      },
+    });
+    if ("failure" in opened) {
+      if (opened.failure === "shutting_down") return { refused: "shutting_down" };
+      if (opened.failure === "cancelled") return { refused: this.loginWindow.isClosed ? "shutting_down" : "failed", message: "cancelled" };
+      return { refused: "failed", message: opened.message };
+    }
+    return { started: true };
+  }
+
+  /** A fresh login shell's answer for `binary`, else the installer's own directories (see locateBinaryOnLoginShell / locateInstalledBackend). */
+  private async locateInstalledCli(backend: string, binary: string): Promise<string | null> {
+    return (await this.locateBinaryOnLoginShell(binary)) ?? (await this.locateInstalledBackend(backend));
   }
 
   /** Whether this backend's CLI is on the fleet's PATH (what `/login` installs when it is not). */
