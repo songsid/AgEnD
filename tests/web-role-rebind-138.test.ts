@@ -114,7 +114,7 @@ describe("AGEND-138: Re-bind in the popover", () => {
     fire(pop.querySelector("button.webauth-rebind"), "click"); await settle(6);
     const input = pop.querySelector("input.webauth-rebind-code");
     input.value = "NOPE"; fire(input, "input"); await settle(4);
-    for (const [status, text] of [[401, "That code didn't work"], [429, "Too many wrong codes"], [503, "could not confirm the sign-in"]] as const) {
+    for (const [status, text] of [[401, "That sign-in code didn't work"], [429, "Too many wrong codes"], [503, "could not confirm the sign-in"]] as const) {
       loginStatus = status;
       fire(pop.querySelector("form.webauth-rebind-form"), "submit"); await settle(10);
       expect(pop.querySelector("[role=alert]").textContent, String(status)).toContain(text);
