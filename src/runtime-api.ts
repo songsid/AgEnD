@@ -180,6 +180,12 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
         const input: unknown = JSON.parse(raw.toString("utf8"));
         if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length !== 1 || !("cli" in input) || !isInstallableCli(input.cli)) throw Error("Choose a CLI this Runtime installs");
         const cli = input.cli;
+        // AGEND-152 (Prism R4 on #3539): this one route is Install and Update (the page sends the CLI's id and nothing else), so it is told apart by what the computer already has. A CLI the computer
+        // already has, whose `runtime.update` is not "yes" (Antigravity updates itself; OpenCode's Update is not built), is refused here — before the job, the call and the one-shot admission —
+        // whatever the page showed. A computer whose inventory has not been read has nothing to refuse on, and is installed to as before.
+        if (!runtimeFacts(cli, "update") && (machine.inventory?.clis ?? []).some(item => item.id === cli && item.path)) {
+          json(res, 409, { error: `${runtimeFacts(cli, "provider")?.name ?? cli} is already installed on that computer and is not updated from here` }); return;
+        }
         if (jobs.get(id)?.state === "installing") { json(res, 409, { error: "An install is already running on this computer", job: jobs.get(id) }); return; }
         // #3542's rule for an effect that outlives the request: the confirmed change's admission ends at the one effect, asked once more right here with nothing awaited between it and the
         // request to that computer (a stale execution throws: nothing is sent, and no job is left).

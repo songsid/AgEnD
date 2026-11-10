@@ -115,6 +115,29 @@ describe("install a CLI from the dashboard: what may be asked", () => {
   });
 });
 
+describe("AGEND-152 (Prism R4 on #3539): an update is only sent for a CLI whose runtime.update is supported", () => {
+  // The route has one POST for Install and Update (the page sends the CLI's id and nothing else), so the server tells them apart by what the computer already has.
+  const has = (id: string, version: string) => { machine.inventory = { home: "C:\\D", clis: [{ id, path: `C:\\tools\\${id}.exe`, version }] }; };
+  it("Antigravity and OpenCode already installed (an older copy): refused with a sentence, nothing is sent to the computer, and no job is left", async () => {
+    for (const [cli, version] of [["antigravity", "1.3.5"], ["opencode", "1.18.34"]] as const) {
+      has(cli, version);
+      const refused = await ask(INSTALL, "POST", "replay", { cli });
+      expect(refused.status, cli).toBe(409); expect(refused.json.error, cli).toMatch(/not updated from here/);
+    }
+    expect(calls.filter(call => call.operation === "cli.install")).toEqual([]);
+    expect((await ask(SETUP, "GET", "admin")).json.job).toBeNull();
+  });
+  it("control: Codex already installed at an older version is updated (runtime.update is supported), and an install-only CLI that is not installed is installed", async () => {
+    has("codex", "0.161.0");
+    expect((await ask(INSTALL, "POST", "replay", { cli: "codex" })).status).toBe(202);
+    await vi.waitFor(async () => expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ state: "done" }));
+    has("claude-code", "2.1.316");
+    machine.inventory = { home: "C:\\D", clis: [] };
+    expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity" })).status).toBe(202);
+    expect(calls.filter(call => call.operation === "cli.install").map(call => call.payload.cli)).toEqual(["codex", "antigravity"]);
+  });
+});
+
 describe("install a CLI from the dashboard: a run under way", () => {
   it("follows the job, refuses a second install while one runs, then shows how it ended", async () => {
     let finish: (value: unknown) => void = () => {}; outcome = () => new Promise(done => { finish = done; });

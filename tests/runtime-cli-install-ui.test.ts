@@ -87,6 +87,48 @@ describe("F1: what the CLI printed is compared by its version number", () => {
   });
 });
 
+describe("AGEND-152 (Prism R4 on #3539): Update is offered only where the registry's runtime.update says so", () => {
+  // The panel is mounted for real, as the reviewer did: the computer has an OLDER copy of the CLI installed, and the catalog has the audited pin.
+  const olderCopy = async (cliId: string, version: string, navKey: string) => {
+    machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [{ ...claude, id: cliId, version }] } })];
+    await p.mount(h(Panel, { navKey })); await settle(14);
+  };
+  it("Antigravity 1.3.5 installed (audited 1.5.3): it shows both versions and has NO Update button — it updates itself", async () => {
+    await olderCopy("antigravity", "1.3.5", "r4-agy");
+    expect(rowOf("antigravity").textContent).toContain("Installed 1.3.5");
+    expect(rowOf("antigravity").textContent).toContain("1.5.3");
+    expect(rowOf("antigravity").textContent).toContain("not updated from here");
+    expect(installButton("antigravity")).toBeNull();
+    expect(rowOf("antigravity").textContent).not.toContain("Update to");
+  });
+  it("OpenCode 1.18.34 installed (audited 1.19.5): it shows both versions and has NO Update button — Update is not built for it", async () => {
+    await olderCopy("opencode", "1.18.34", "r4-opencode");
+    expect(rowOf("opencode").textContent).toContain("Installed 1.18.34");
+    expect(rowOf("opencode").textContent).toContain("1.19.5");
+    expect(installButton("opencode")).toBeNull();
+    expect(rowOf("opencode").textContent).not.toContain("Update to");
+  });
+  it("an install-only CLI whose version cannot be read has no button either (nothing to reinstall over)", async () => {
+    await olderCopy("opencode", "unknown", "r4-opencode-unknown");
+    expect(installButton("opencode")).toBeNull();
+  });
+  it("control: Codex 0.161.0 installed (audited 0.167.0) still has Update, because the registry says runtime.update is supported", async () => {
+    await olderCopy("codex", "codex-cli 0.161.0", "r4-codex");
+    expect(installButton("codex").textContent).toBe("Update to 0.167.0");
+  });
+  it("an install-only CLI that is not installed still has Install", async () => {
+    await p.mount(h(Panel, { navKey: "r4-install" })); await settle(14);
+    expect(installButton("antigravity").textContent).toBe("Install 1.5.3");
+    expect(installButton("opencode").textContent).toBe("Install 1.19.5");
+  });
+  it("the no-update sentence is in zh-TW too", async () => {
+    i18n.setLang("zh-TW", { store: false });
+    await olderCopy("antigravity", "1.3.5", "r4-agy-zh");
+    expect(rowOf("antigravity").textContent).toContain("不從這裡更新"); expect(installButton("antigravity")).toBeNull();
+    i18n.setLang("en", { store: false });
+  });
+});
+
 describe("Settings → Runtime: install a CLI on a paired computer", () => {
   it("lists Claude Code and Codex with their state; one at the audited version has no button, one that is not installed has Install", async () => {
     await p.mount(h(Panel, { navKey: "install-list" })); await settle(14);
