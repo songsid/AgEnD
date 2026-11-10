@@ -22024,7 +22024,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       warn: (message, err) => this.logger.debug({ backend, err: (err as Error)?.message ?? String(err) }, message),
     }, t("install.stream_running", backend), undefined, undefined, frameStyle);
     const minutes = String(Math.max(1, Math.round(this.installTimeoutMs / 60_000)));
-    const opened = await this.openInstallWindow(backend, info, claim, {
+    const opened = await this.openInstallWindow(backend, info, claim, null, {
       onProgress: pane => stream.update(pane),
       onDone: async ({ ok, detail, cleanupFailed }) => {
         this.activeInstall = null;
@@ -22103,7 +22103,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
     if ("failure" in opened) {
       if (opened.failure === "shutting_down") return t("login.web_shutting_down");
-      if (opened.failure === "cancelled") return this.loginWindow.isClosed ? t("login.web_shutting_down") : t("install.cancelled", backend);
+      if (opened.failure === "cancelled" || opened.failure === "not_allowed") return this.loginWindow.isClosed ? t("login.web_shutting_down") : t("install.cancelled", backend);
       const text = t("install.failed", backend, opened.message);
       return opened.cleanupFailed ? `${text}\n${t("login.web_cleanup_failed", backend)}` : text;
     }
@@ -22117,7 +22117,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * `events.onDone` owns the release. `activeInstall` is set while it runs, so `/login cancel`, the dashboard's Cancel and a fleet stop all reach it.
    */
   private async openInstallWindow(backend: string, info: { install: string; unattended?: string }, claim: import("./login-window-lock.js").LoginWindowClaim,
-    events: LoginSessionEvents): Promise<{ session: LoginSession } | { failure: "shutting_down" } | { failure: "cancelled" } | { failure: "start"; message: string; cleanupFailed: boolean }> {
+    asker: (() => boolean) | null, events: LoginSessionEvents): Promise<{ session: LoginSession } | { failure: "shutting_down" } | { failure: "not_allowed" } | { failure: "cancelled" } | { failure: "start"; message: string; cleanupFailed: boolean }> {
     let tmux: TmuxManager;
     try {
       const sessionName = getTmuxSession();
@@ -22138,6 +22138,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.loginWindow.release(claim);
       return { failure: "shutting_down" };
     }
+    // AGEND-144: the last look at who asked, after every wait above and immediately before the effect (the window that runs the installer opens in `session.start()`).
+    if (asker && !asker()) { this.loginWindow.release(claim); return { failure: "not_allowed" }; }
     // The wrapper says its own exit code after this marker: tmux may never record it (unattended-install.ts).
     const exitMarker = installExitMarker();
     const flow: LoginFlow = {
@@ -22174,10 +22176,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private webHostInstallsInstance: WebHostInstalls | null = null;
   get webHostInstalls(): WebHostInstalls {
     this.webHostInstallsInstance ??= new WebHostInstalls({
-      isLocalAdmin: handle => this.isLocalAdminSession(handle),
       installable: backend => !isRemovedBackend(backend) && !!BACKEND_INSTALLATION_INFO[backend],
       updatable: backend => !isRemovedBackend(backend) && !!BACKEND_INSTALLATION_INFO[backend] && !!hostUpdatePlan(backend),
-      start: (backend, reporter, mode) => this.startWebInstall(backend, reporter, mode),
+      start: (backend, reporter, mode, current) => this.startWebInstall(backend, reporter, mode, current),
       cancel: async () => { if (!this.activeInstall) return false; await this.cancelInstallSession(); return true; },
       // No details in the event: each page reads GET /ui/host-install. The Accounts list reads itself again on the same event (the CLI is installed now).
       changed: () => { broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")); },
@@ -22191,7 +22192,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * is — a fresh login shell, else the installer's own directories — and the availability probe reads the version for the page. Everything is
    * reported through `reporter`; nothing is posted to any chat, and no sign-in is started (the page offers Sign in itself).
    */
-  async startWebInstall(backendArg: string, reporter: HostInstallReporter, mode: HostInstallMode = "install"): Promise<HostInstallStart> {
+  async startWebInstall(backendArg: string, reporter: HostInstallReporter, mode: HostInstallMode = "install", current: () => boolean = () => true): Promise<HostInstallStart> {
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const base = BACKEND_INSTALLATION_INFO[backend];
     if (!base || isRemovedBackend(backend)) return { refused: "unsupported" };
@@ -22202,20 +22203,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // The fleet-wide window, claimed before the first await (shared with /login, chat's install and sign-in).
     const claim = this.loginWindow.tryClaim("install", backend);
     if (!claim) return { refused: this.loginWindow.isClosed ? "shutting_down" : "busy" };
+    // AGEND-144 (Prism on #3539): the claim is a lock, not the asker's authority. The asker's own session / admin role / confirmation (`current`) is asked again after each wait
+    // (the binary check, the version refresh) and once more, inside openInstallWindow, right before the installer window opens; a refusal gives the claim back.
+    const asker = (): boolean => { try { return current(); } catch { return false; } };
     const present = await checkBinaryInstalledAsync(base.binary);
     if (mode === "install" && present) { this.loginWindow.release(claim); return { refused: "already" }; }
     // An update needs the CLI where the Accounts page found it: on the fleet's PATH, else (a fresh login shell, then) the installer's own directories (~/.grok/bin, ~/.opencode/bin …).
     if (mode === "update" && !present && !(await this.locateInstalledCli(backend, base.binary).catch(() => null))) { this.loginWindow.release(claim); return { refused: "not_installed" }; }
+    if (!asker()) { this.loginWindow.release(claim); return { refused: "not_allowed" }; }
     let versionBefore: string | null = null;
     if (plan) {
       // The version the page shows as "before" is the binary probe's own, read now (not the last snapshot), and an update only starts when the CLI is really behind the audited release.
       await this.backendAvailability.refresh([backend], { force: true }).catch(() => {});
       versionBefore = this.backendAvailabilityRows().find(row => row.backend === backend)?.version ?? null;
       if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return { refused: "shutting_down" }; }
+      if (!asker()) { this.loginWindow.release(claim); return { refused: "not_allowed" }; }
       if (cliUpdateView(backend, versionBefore, true)?.button !== true) { this.loginWindow.release(claim); return { refused: "up_to_date" }; }
       try { reporter.update?.(versionOf(versionBefore), plan.target); } catch { /* a view never stops the update */ }
     } else this.recordLoginFlow(backend, "install_only", "web");
-    const opened = await this.openInstallWindow(backend, info, claim, {
+    const opened = await this.openInstallWindow(backend, info, claim, asker, {
       onProgress: pane => { try { reporter.progress(pane); } catch { /* a view never stops the install */ } },
       onDone: async ({ ok, detail, cleanupFailed }) => {
         this.activeInstall = null;
@@ -22238,6 +22244,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
     if ("failure" in opened) {
       if (opened.failure === "shutting_down") return { refused: "shutting_down" };
+      if (opened.failure === "not_allowed") return { refused: "not_allowed" };
       if (opened.failure === "cancelled") return { refused: this.loginWindow.isClosed ? "shutting_down" : "failed", message: "cancelled" };
       return { refused: "failed", message: opened.message };
     }

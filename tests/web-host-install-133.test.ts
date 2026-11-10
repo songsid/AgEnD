@@ -8,15 +8,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { WEB_INSTALL_KEEP_ENDED_MS, WebHostInstalls, exitCodeOf, installLines, type HostInstallReporter, type HostInstallStart } from "../src/web-host-install.js";
 
-const WHO = { handle: "aaaaaaaaaaaaaaaa", label: "Firefox on Linux" };
-function make(over: { start?: (backend: string, r: HostInstallReporter, mode?: string) => Promise<HostInstallStart>; admin?: boolean; installable?: (b: string) => boolean } = {}) {
+const WHO = { label: "Firefox on Linux", current: () => true };
+function make(over: { start?: (backend: string, r: HostInstallReporter, mode: string, current: () => boolean) => Promise<HostInstallStart>; admin?: boolean; installable?: (b: string) => boolean } = {}) {
   let clock = 1_000;
   const reporters: HostInstallReporter[] = [];
   const changed = vi.fn();
   const cancel = vi.fn(async () => true);
   const start = vi.fn(over.start ?? (async (_b: string, r: HostInstallReporter) => { reporters.push(r); return { started: true } as const; }));
   const installs = new WebHostInstalls({
-    isLocalAdmin: () => over.admin !== false, installable: over.installable ?? (b => ["codex", "grok", "claude-code"].includes(b)),
+    installable: over.installable ?? (b => ["codex", "grok", "claude-code"].includes(b)),
     start, cancel, changed, now: () => clock,
   });
   return { installs, reporters, changed, cancel, start, tick: (ms: number) => { clock += ms; } };
@@ -24,8 +24,8 @@ function make(over: { start?: (backend: string, r: HostInstallReporter, mode?: s
 
 describe("who and what", () => {
   it("a session that is not a local admin starts nothing (the route checks too; this is the second look)", async () => {
-    const t = make({ admin: false });
-    expect(await t.installs.begin(WHO, "codex")).toEqual({ error: "not_allowed" });
+    const t = make();
+    expect(await t.installs.begin({ ...WHO, current: () => false }, "codex")).toEqual({ error: "not_allowed" });
     expect(t.start).not.toHaveBeenCalled();
     expect(t.installs.view()).toBeNull();
   });
@@ -35,14 +35,15 @@ describe("who and what", () => {
     expect(await t.installs.begin(WHO, "rm -rf /")).toEqual({ error: "unsupported" });
     expect(t.start).not.toHaveBeenCalled();
   });
-  it("only the CLI's id reaches the fleet: the start is given the id and a reporter, nothing else", async () => {
+  it("only the CLI's id reaches the fleet: the start is given the id, a reporter and the asker's authority, nothing else", async () => {
     const t = make();
     await t.installs.begin(WHO, "codex");
     expect(t.start).toHaveBeenCalledTimes(1);
-    // The id, the reporter and the mode (AGEND-136: "install" here); nothing the browser could have sent.
-    expect(t.start.mock.calls[0]!.length).toBe(3);
+    // The id, the reporter, the mode (AGEND-136: "install" here) and the asker's authority, asked again by the fleet (AGEND-144); nothing the browser could have sent.
+    expect(t.start.mock.calls[0]!.length).toBe(4);
     expect(t.start.mock.calls[0]![0]).toBe("codex");
     expect(t.start.mock.calls[0]![2]).toBe("install");
+    expect(t.start.mock.calls[0]![3]).toBe(WHO.current);
   });
 });
 

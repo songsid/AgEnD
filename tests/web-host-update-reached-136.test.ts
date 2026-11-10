@@ -5,11 +5,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { WebHostInstalls, type HostInstallReporter, type HostInstallStart } from "../src/web-host-install.js";
 
-const WHO = { handle: "aaaaaaaaaaaaaaaa", label: "Firefox on Linux" };
+const WHO = { label: "Firefox on Linux", current: () => true };
 function make() {
   const reporters: HostInstallReporter[] = [];
-  const start = vi.fn(async (_b: string, r: HostInstallReporter, mode?: string): Promise<HostInstallStart> => { if (mode === "update") r.update?.("1.0.70", "1.0.77"); reporters.push(r); return { started: true }; });
-  const installs = new WebHostInstalls({ isLocalAdmin: () => true, installable: () => true, updatable: () => true, start, cancel: async () => true });
+  const start = vi.fn(async (_b: string, r: HostInstallReporter, mode?: string, _current?: () => boolean): Promise<HostInstallStart> => { if (mode === "update") r.update?.("1.0.70", "1.0.77"); reporters.push(r); return { started: true }; });
+  const installs = new WebHostInstalls({ installable: () => true, updatable: () => true, start, cancel: async () => true });
   return { installs, reporters };
 }
 const ok = (version: string | null, verified = true) => ({ ok: true, detail: "clean exit", verified, version, signIn: true });

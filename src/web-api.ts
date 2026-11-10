@@ -32,6 +32,8 @@ import { gatewayRequestContext } from "./web-request-context.js";
 import type { WebUpdateHost } from "./web-update.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
 import { permitWebContinuation } from "./web-continuation.js";
+import { cachedSettingsBody, settingsRequestAuthorityCurrent, settingsRequestLabel } from "./settings-request-capability.js";
+import { HOST_CLI_PATHS } from "./settings-effect.js";
 /**
  * Web UI HTTP API handler.
  * All /ui/* routes are handled here, extracted from fleet-manager.ts.
@@ -1370,6 +1372,24 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
   res.setHeader("X-Content-Type-Options", "nosniff");
   const reading = method === "GET";
   if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "install_not_over_public_link" }); return true; }
+  const installs = ctx.webHostInstalls;
+  // AGEND-144 (Prism on #3536/#3539): starting an install is the Settings gate's confirmed replay and nothing else (settings-http-confirmation.ts proposed it, and the administrator's own
+  // Apply now / digest-bound code confirmed it). A request that did not come through it — a hand-built call, a replayed cookie — starts nothing. The asker's authority is the replay's
+  // (`settingsRequestAuthorityCurrent`), asked again after every wait and right before the installer opens; there is no session in a replay, so nothing here reads one.
+  if (method === "POST" && HOST_CLI_PATHS.has(path)) {
+    if (!isSettingsReplay(req) || !settingsRequestAuthorityCurrent(req)) { json(res, 403, { error: "install_needs_confirmation" }); return true; }
+    if (!installs) { json(res, 404, { error: "install_unavailable" }); return true; }
+    (async () => {
+      let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(cachedSettingsBody(req) ?? Buffer.alloc(0))); } catch { json(res, 400, { error: "install_json" }); return; }
+      const parsed = z.strictObject({ backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/) }).safeParse(body);
+      if (!parsed.success) { json(res, 400, { error: "install_args" }); return; }
+      // AGEND-136: `POST /ui/host-update { backend }` is the same request for an update: the server picks the command and the audited release; the page sends only the CLI's id.
+      const result = await installs.begin({ label: settingsRequestLabel(req) ?? "browser", current: () => settingsRequestAuthorityCurrent(req) }, parsed.data.backend, path === "/ui/host-update" ? "update" : "install");
+      if ("error" in result) json(res, HOST_INSTALL_STATUS[result.error] ?? 409, { error: result.error, ...(result.message ? { message: result.message } : {}) });
+      else json(res, 200, result);
+    })().catch(() => { try { json(res, 500, { error: "install_request_failed" }); } catch { /* response ended */ } });
+    return true;
+  }
   const who = (): { handle: string; label: string } | { error: string; status: number } => {
     const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
@@ -1377,13 +1397,13 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
     return { handle: v.session.handle, label: v.session.label };
   };
   const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
-  const installs = ctx.webHostInstalls;
   if (!installs) { json(res, 404, { error: "install_unavailable" }); return true; }
   if (reading && path === "/ui/host-install" && [...url.searchParams.keys()].length === 0) {
     try { json(res, 200, { install: installs.view() }); } catch { json(res, 503, { error: "install_unavailable" }); }
     return true;
   }
-  if (method !== "POST") { json(res, 404, { error: "not_found" }); return true; }
+  if (method !== "POST" || path !== "/ui/host-install/cancel") { json(res, 404, { error: "not_found" }); return true; }
+  // Cancel only takes something away (any local admin may stop it, as `/login cancel`): it is not a held change.
   (async () => {
     let bytes: Buffer;
     try { bytes = await readBoundedWebBody(req, 1024); } catch { json(res, 413, { error: "install_body_bound" }); return; }
@@ -1391,17 +1411,8 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
     const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
     if (now.handle !== first.handle) { json(res, 409, { error: "install_session_changed" }); return; }
     let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "install_json" }); return; }
-    if (path === "/ui/host-install/cancel") {
-      if (!z.strictObject({}).safeParse(body).success) { json(res, 400, { error: "install_args" }); return; }
-      json(res, 200, { cancelled: await installs.cancel() });
-      return;
-    }
-    const parsed = z.strictObject({ backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/) }).safeParse(body);
-    if (!parsed.success) { json(res, 400, { error: "install_args" }); return; }
-    // AGEND-136: `POST /ui/host-update { backend }` is the same request for an update: the server picks the command and the audited release; the page sends only the CLI's id.
-    const result = await installs.begin(now, parsed.data.backend, path === "/ui/host-update" ? "update" : "install");
-    if ("error" in result) json(res, HOST_INSTALL_STATUS[result.error] ?? 409, { error: result.error, ...(result.message ? { message: result.message } : {}) });
-    else json(res, 200, result);
+    if (!z.strictObject({}).safeParse(body).success) { json(res, 400, { error: "install_args" }); return; }
+    json(res, 200, { cancelled: await installs.cancel() });
   })().catch(() => { try { json(res, 500, { error: "install_request_failed" }); } catch { /* response ended */ } });
   return true;
 }
@@ -1991,7 +2002,7 @@ export function handleWebRequest(
   // the panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
     const approved = isSettingsReplay(req) && method === "POST"
-      && (path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path))
+      && (path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path) || HOST_CLI_PATHS.has(path))
       ? settingsRequestExecution(req) : undefined;
     if (approved) {
       try { approved.assert(); } catch { json(res, 409, { error: "settings_execution_stale" }); return true; }

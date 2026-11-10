@@ -8,6 +8,7 @@ import { html, useEffect, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { toast } from "/assets/ui-toast.js";
+import { confirmedWrite } from "./settings-confirm.js";
 
 register("hostinstall", {
   en: {
@@ -27,6 +28,8 @@ register("hostinstall", {
     err_install_needs_a_local_admin: "Only a fleet admin signed in on this machine or its network can install a CLI.",
     err_install_not_over_public_link: "Installing is not available over the public link. Open the dashboard on the machine running AgEnD.",
     err_failed: "The install could not start.", err_other: "That did not work.",
+    cardLabel: "Install {0} on this AgEnD computer", cardLabelUpdate: "Update {0} on this AgEnD computer", err_expired: "The install was not confirmed in time.", err_rejected: "The install was turned down.", err_stale: "Settings changed before the install could start. Try again.",
+    err_install_needs_confirmation: "The install must be confirmed first.",
   },
   "zh-TW": {
     install: "安裝", installing: "安裝中…", cancel: "取消安裝", dismiss: "關閉",
@@ -45,6 +48,8 @@ register("hostinstall", {
     err_install_needs_a_local_admin: "只有在這台機器或它的網路上登入的 fleet 管理員，才能安裝 CLI。",
     err_install_not_over_public_link: "公開連結上不能安裝。請在執行 AgEnD 的機器上開啟儀表板。",
     err_failed: "安裝無法開始。", err_other: "沒有成功。",
+    cardLabel: "在這台 AgEnD 電腦上安裝 {0}", cardLabelUpdate: "在這台 AgEnD 電腦上更新 {0}", err_expired: "安裝沒有在時限內確認。", err_rejected: "安裝已被拒絕。", err_stale: "安裝開始前設定已經改變。請再試一次。",
+    err_install_needs_confirmation: "安裝必須先經過確認。",
   },
 });
 // AGEND-136 (#3521): the Update button beside Install. The page names the CLI and nothing else (POST /ui/host-update { backend }); the server picks the command and the
@@ -109,32 +114,35 @@ const errorText = (code, backend) => {
   return text === `hostinstall.${key}` ? th("err_other") : text;
 };
 
-/** Install `backend` on the host. Resolves true when the server started it. The page sends the CLI's id and nothing else. */
-export async function startHostInstall(backend) {
-  if (hostInstallStore.get().starting) return false;
-  hostInstallStore.set({ starting: backend });
-  const r = await post("/ui/host-install", { backend });
-  hostInstallStore.set({ starting: null });
-  if (r.ok && r.body && r.body.install) { hostInstallStore.set({ loaded: true, run: r.body.install }); return true; }
-  toast(errorText(r.body && r.body.error, backend));
-  void refreshHostInstall();
-  return false;
-}
+/** Why a confirmed install did not start, as the Settings gate reports it (`apply_rejected: busy`), else what the write itself answered. */
+const refusalOf = (r) => {
+  const outcome = r.confirmed && r.confirmed.outcome;
+  const m = outcome && typeof outcome.detail === "string" ? /apply_rejected: ([a-z_]+)/.exec(outcome.detail) : null;
+  if (m) return m[1];
+  if (r.confirmed && ["expired", "rejected", "stale"].includes(r.confirmed.state)) return r.confirmed.state;
+  return r.body && r.body.error;
+};
 
 /**
- * Update `backend` on the host to the audited release (AGEND-136). Resolves true when the server started it. The page sends the CLI's id and nothing else; which release
- * and which command are the server's.
+ * Install (or update) `backend` on the host. Resolves true when the server started it. The page sends the CLI's id and nothing else — and through the Settings gate (AGEND-144):
+ * both are held changes like any other that acts on the host. Where the lenient default applies the change is applied at once; for an administrator who asked for their own code the
+ * card asks for it, bound to the digest of this change. Whatever the gate answers, the run shown is the server's. (Which release an update goes to and which command runs are the server's.)
  */
-export async function startHostUpdate(backend) {
+async function startHostCli(path, backend, labelKey) {
   if (hostInstallStore.get().starting) return false;
   hostInstallStore.set({ starting: backend });
-  const r = await post("/ui/host-update", { backend });
+  let r;
+  try { r = await confirmedWrite(path, { method: "POST", body: { backend }, label: th(labelKey, backend), displaySummary: () => th(labelKey, backend) }); }
+  catch { r = { ok: false, status: 0, body: null }; }
   hostInstallStore.set({ starting: null });
   if (r.ok && r.body && r.body.install) { hostInstallStore.set({ loaded: true, run: r.body.install }); return true; }
-  toast(errorText(r.body && r.body.error, backend));
+  toast(errorText(refusalOf(r), backend));
   void refreshHostInstall();
   return false;
 }
+export const startHostInstall = (backend) => startHostCli("/ui/host-install", backend, "cardLabel");
+/** Update `backend` on the host to the audited release (AGEND-136). */
+export const startHostUpdate = (backend) => startHostCli("/ui/host-update", backend, "cardLabelUpdate");
 
 export async function cancelHostInstall() {
   const r = await post("/ui/host-install/cancel", {});

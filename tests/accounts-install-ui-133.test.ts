@@ -141,11 +141,30 @@ describe("the Install button", () => {
     expect(reqs.filter(r => r.method === "GET" && r.url === "/ui/host-install").length).toBeGreaterThanOrEqual(2);
     expect(HI.hostInstallStore.get().starting).toBeNull();
   });
+  // AGEND-144: Install is a held change of the Settings gate; the page follows it with the shared confirmation helper and shows the run the server made.
+  it("Install goes through the Settings gate: a held change (202), the idempotency key, only the id; the applied outcome carries the run", async () => {
+    postAnswer = () => ({ status: 202, body: { ok: true, result: "pending_confirmation", pending_change: { id: "c".repeat(32), state: "applied", section: "access", summary: ["Install grok"], outcome: { state: "applied", result: { install: RUN() } } } } });
+    await mount();
+    fire(installBtn("grok"), "click"); await settle(10);
+    expect(post()).toHaveLength(1);
+    expect(post()[0]!.body).toEqual({ backend: "grok" });
+    expect(HI.hostInstallStore.get().run).toMatchObject({ backend: "grok", phase: "running" });
+    expect(HI.hostInstallStore.get().starting).toBeNull();
+  });
+  it("a confirmed install the fleet then refused (apply_rejected: busy) shows no run, and the page reads the install again", async () => {
+    postAnswer = () => ({ status: 202, body: { ok: true, result: "pending_confirmation", pending_change: { id: "d".repeat(32), state: "failed", section: "access", summary: ["Install grok"],
+      outcome: { state: "failed", reason_code: "apply_failed", detail: "apply_rejected: busy" } } } });
+    await mount();
+    fire(installBtn("grok"), "click"); await settle(10);
+    expect(HI.hostInstallStore.get().run).toBeNull();
+    expect(HI.hostInstallStore.get().starting).toBeNull();
+    expect(reqs.filter(r => r.method === "GET" && r.url === "/ui/host-install").length).toBeGreaterThanOrEqual(2);
+  });
   it("the words exist in both languages: no raw key", async () => {
     for (const lang of ["en", "zh-TW"]) {
       i18n.setLang(lang, { store: false });
       for (const key of ["install", "installing", "cancel", "dismiss", "notInstalled", "running", "ok", "okVersion", "okUnverified", "failed", "failedCode", "cancelled", "timeout", "cleanup", "output",
-        "err_unsupported", "err_already", "err_busy", "err_shutting_down", "err_not_allowed", "err_install_needs_a_local_admin", "err_install_not_over_public_link", "err_failed", "err_other"]) {
+        "err_unsupported", "err_already", "err_busy", "err_shutting_down", "err_not_allowed", "err_install_needs_a_local_admin", "err_install_not_over_public_link", "err_failed", "err_other", "cardLabel", "err_expired", "err_rejected", "err_stale", "err_install_needs_confirmation"]) {
         const s = HI.hostInstallText(key, "grok", "1");
         expect(s, `${lang}:${key}`).not.toBe(`hostinstall.${key}`);
         if (lang === "zh-TW") expect(s, `${lang}:${key}`).toMatch(/[一-鿿]/);

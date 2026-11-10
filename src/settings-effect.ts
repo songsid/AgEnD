@@ -33,6 +33,8 @@ import { parseHubBrowserCertificateApply, type HubBrowserCertificateProposal } f
 import { parseHubRetention } from "./hub-retention-policy.js";
 import { parseHubMembership } from "./hub-membership-settings.js";
 import { t } from "./locale.js";
+import { hostFacts } from "./cli-registry.js";
+import { hostUpdatePlan } from "./web-host-install.js";
 import { parseCompanyAddress } from "./hub/join/descriptor.js";
 
 export interface SettingsSecretProof {
@@ -51,6 +53,8 @@ export interface SettingsEffectContext {
   /** S3c PR B: a Hub pairing step's summary (connect, confirm the fingerprint, disconnect). Throws on a refused input. */
   hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[] };
 }
+/** The dashboard's host CLI installs (web-host-install.ts): the change this gate holds is "install <CLI>" — only its id is ever in the request. */
+export const HOST_CLI_PATHS: ReadonlySet<string> = new Set(["/ui/host-install", "/ui/host-update"]);
 export function isSettingsMutation(method: string, path: string): boolean {
   if (method === "POST" && /^\/api\/hub\/member\/company-join\/(start|resume|repair-trust)$/.test(path)) return true;
   if (method === "PUT" && path === "/api/settings/hub/membership") return true;
@@ -61,6 +65,8 @@ export function isSettingsMutation(method: string, path: string): boolean {
   if (method === "POST" && path === "/api/hub/member/exposures") return true;      // S3c: an owner's publish/revise
   if (method === "POST" && /^\/api\/hub\/member\/pairing\/(?:connect|confirm|disconnect)$/.test(path)) return true;   // S3c PR B
   if (method === "POST" && path === "/api/settings/public-tunnel-token/apply") return true;
+  // AGEND-144 (Prism on #3536/#3539): installing an AI CLI on the AgEnD computer from the dashboard is a held change like any other that acts on the host.
+  if (method === "POST" && HOST_CLI_PATHS.has(path)) return true;
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
   return /^\/api\/settings\/(?:fleet\/(?:defaults|channels|web|appearance|runtimes|instances(?:\/[^/]+)?)|classic\/(?:defaults|channels\/[^/]+)|(?:provider-secrets|secrets)\/[^/]+\/apply|connections\/[^/]+\/(?:secret|binding)\/apply|quickstart\/commit)$/.test(path)
     || path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path);
@@ -98,6 +104,19 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
         t("hub.browserCertificate.expires", proposal.certificate.validTo),
         ...(proposal.certificate.selfSigned ? [t("hub.browserCertificate.selfSigned")] : [])],
       affectedConnections: [], authority: HUB_AUTHORITY } };
+  }
+  if (HOST_CLI_PATHS.has(path)) {
+    if (method !== "POST") throw new SettingsConfirmationError(404, "unavailable");
+    const b = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+    // The request is exactly `{ backend }` naming a CLI whose registry entry has an install: refused before it is proposed, so a held change is never one that cannot run.
+    if (!b || Object.keys(b).length !== 1 || typeof b.backend !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(b.backend)) throw new SettingsConfirmationError(400, "install_args");
+    const update = path === "/ui/host-update";
+    // An update is proposed only for a CLI that has one and an audited release to go to (the release is the server's, never the page's); the change shows it.
+    const plan = update ? hostUpdatePlan(b.backend) : null;
+    if (update ? !plan : !hostFacts(b.backend, "install")) throw new SettingsConfirmationError(400, "unsupported");
+    const input = { backend: b.backend, ...(plan ? { target: plan.target } : {}) }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
+      summary: [update ? t("host_cli.update", input.backend, plan!.target) : t("host_cli.install", input.backend)], affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (path === "/api/settings/hub/retention") {
     if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
