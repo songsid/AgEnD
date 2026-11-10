@@ -77,7 +77,7 @@ describe("buildAccountsView", () => {
     const listed = buildAccountsView({ ...installed, versions: new Map([["opencode", "1.17.20"]]) }).clis.find((c) => c.backend === "opencode")!;
     expect(listed).toMatchObject({ installOnly: true, installed: true });
     expect(listed.rows).toHaveLength(1);
-    expect(listed.rows[0]).toMatchObject({ version: "1.17.20", cliUpdate: { state: "behind", audited: "1.18.34", installed: "1.17.20", button: true, via: "dashboard" } });
+    expect(listed.rows[0]).toMatchObject({ version: "1.17.20", cliUpdate: { state: "behind", audited: "1.19.5", installed: "1.17.20", button: true, via: "dashboard" } });
     expect(buildAccountsView({ ...installed, installShown: "opencode" }).clis.find((c) => c.backend === "opencode")).toMatchObject({ installOnly: true, installed: true });
   });
   it("an installed CLI keeps its card while its install is shown (the verdict stays beside it)", () => {

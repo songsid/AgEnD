@@ -27,7 +27,12 @@ import { shellStore } from "/assets/app-shell.js";
 import { AddAccountDialog, RemoveAccountDialog, SignOutDialog, SIGN_OUT_CLIS, manageWords } from "./accounts-manage.js";   // #3212 PR 2, PR 3
 import { machineSignInStore, openMachineSignIn } from "./machine-signin.js";   // #3190 Part 3c
 import { KeepAliveControl } from "./accounts-keepalive.js";   // #3292
-import { HostInstallRun, InstallButton, VersionLine, hostInstallStore, hostInstallText, installRunning, refreshHostInstall, runFor } from "./host-install.js";   // AGEND-133 (#3521)
+// AGEND-133 (#3521). AGEND-144 (Prism on #3539, P2-5): `VersionLine` is new in #3539's host-install.js. A static named import of it fails to LINK against a retained older host-install.js (a tab or
+// cache that still holds #3536's module: "does not provide an export named 'VersionLine'") and takes the whole page with it. A namespace import links with either; the names both modules
+// have are read as before, and a copy of host-install.js without the version line simply shows no version line (the Install button and the run are all it ever had).
+import * as hostInstall from "./host-install.js";
+const { HostInstallRun, InstallButton, hostInstallStore, hostInstallText, installRunning, refreshHostInstall, runFor } = hostInstall;
+const VersionLine = typeof hostInstall.VersionLine === "function" ? hostInstall.VersionLine : () => null;
 
 register("accounts", {
   en: {

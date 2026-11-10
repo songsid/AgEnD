@@ -56,18 +56,18 @@ export interface InstallableCli {
 export interface ExpectedSigner { cn: string; o: string }
 export const INSTALLABLE_CLIS: Readonly<Record<InstallableCliId, InstallableCli>> = Object.freeze({
   "claude-code": {
-    id: "claude-code", spec: "@anthropic-ai/claude-code", version: "2.1.318",
+    id: "claude-code", spec: "@anthropic-ai/claude-code", version: "2.1.319",
     integrity: {
-      "node_modules/@anthropic-ai/claude-code": "sha512-OTJgLxcvWefv8IdTsq5n90Z2IxEhLwKqHUBhwZYE4odXzKA/Tb6p2Zb5Iy9Vq7JIVcNZzn9cPxW5sb42wLF95Q==",
-      "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-g/fa2hqcU/+Qd3NMaY/8i+AoX6HQt3zBcj+V/Ot9icr5TN4PmOmuy6YhVNFLHb2IniLIrBA+gZFqonUe0aYLxg==",
+      "node_modules/@anthropic-ai/claude-code": "sha512-XoyAxGXBmNsb9ahz0xLAtyz/I6b1j+4lyLpucyTQIq4FcKUxrMDM2AzA2sHipHoN1DdMJINQQrLZxRZRq7FqBA==",
+      "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-wncPKSYL/zvjs84k7wZEj+IGQx/LjqQNhgnQhzDEibP0yAVBguAs4p8nBfFAEDbDdUc4Z2co+OaKZV1t02xINA==",
     },
     native: { path: "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe", signer: { cn: "Anthropic, PBC", o: "Anthropic, PBC" } },
   },
   codex: {
-    id: "codex", spec: "@openai/codex", version: "0.166.0",
+    id: "codex", spec: "@openai/codex", version: "0.167.0",
     integrity: {
-      "node_modules/@openai/codex": "sha512-2Szlp1l1cz5TX1ccpX4Zok3DZrot9xeZe0km+6/1v8JmqxADwyJxKBJah4dBymkwtS25j/u6dipJusTOI97Z8Q==",
-      "node_modules/@openai/codex-win32-x64": "sha512-NS8Ps5oG5r19pCrMCUXwUqOui6odnUIoBlQkrjCJ+h1k6KiwCzC/+mI9d3nSZCqFoVONPBTmqyq8NYq3YaFGyA==",
+      "node_modules/@openai/codex": "sha512-1FSQgbTIKAdTub5Ln6z36NT4eXDmBRkinfigzycbgn9yLZdJ3UdkQZqr0N7jnl8/D1xxT/Pz3Fl2l7S2dmRaFA==",
+      "node_modules/@openai/codex-win32-x64": "sha512-duPCBwflc8qhQdLekbL8fDYF646tW4gj0/l9BDnsVhEzoqm6OwxMAJXDFwSOLUUJPCmjBeM+eHYAx4fP/hwfjg==",
     },
     native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: { cn: "OpenAI OpCo, LLC", o: "OpenAI OpCo, LLC" } },
   },

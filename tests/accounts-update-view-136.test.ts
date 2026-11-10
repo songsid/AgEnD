@@ -18,25 +18,25 @@ const hostRow = (view: ReturnType<typeof buildAccountsView>, backend: string) =>
 
 describe("the version of an installed CLI against the audited release", () => {
   const view = buildAccountsView(input({
-    "claude-code": "2.1.316 (Claude Code)", codex: "codex-cli 0.166.0", "kiro-cli": "kiro-cli 3.1.0", antigravity: "1.3.5", grok: "grok 1.0.99 (abc)", muse: "1.4.12-R6909.1", opencode: null,
+    "claude-code": "2.1.316 (Claude Code)", codex: "codex-cli 0.167.0", "kiro-cli": "kiro-cli 3.1.0", antigravity: "1.3.5", grok: "grok 1.0.99 (abc)", muse: "1.4.12-R6909.1", opencode: null,
   }));
   it("behind, and the registry has an update: a dashboard Update to the audited release", () => {
-    expect(hostRow(view, "claude-code")).toMatchObject({ version: "2.1.316", cliUpdate: { state: "behind", installed: "2.1.316", audited: "2.1.318", button: true, via: "dashboard" } });
+    expect(hostRow(view, "claude-code")).toMatchObject({ version: "2.1.316", cliUpdate: { state: "behind", installed: "2.1.316", audited: "2.1.319", button: true, via: "dashboard" } });
   });
   it("at the audited release: current, no button", () => {
-    expect(hostRow(view, "codex")).toMatchObject({ version: "0.166.0", cliUpdate: { state: "current", audited: "0.166.0", button: false, via: "dashboard" } });
+    expect(hostRow(view, "codex")).toMatchObject({ version: "0.167.0", cliUpdate: { state: "current", audited: "0.167.0", button: false, via: "dashboard" } });
     expect(hostRow(view, "kiro-cli")).toMatchObject({ cliUpdate: { state: "current", button: false } });
   });
   it("newer than anything audited: newer (not verified by AgEnD yet), never a button", () => {
     expect(hostRow(view, "grok")).toMatchObject({ version: "1.0.99", cliUpdate: { state: "newer", audited: "1.0.77", installed: "1.0.99", button: false } });
   });
   it("a CLI that updates itself shows the versions and who updates it, and no button even when behind", () => {
-    expect(hostRow(view, "antigravity")).toMatchObject({ cliUpdate: { state: "behind", installed: "1.3.5", audited: "1.3.6", button: false, via: "self" } });
-    expect(hostRow(view, "muse")).toMatchObject({ version: "1.4.12", cliUpdate: { state: "behind", audited: "1.4.14", button: false, via: "self" } });
+    expect(hostRow(view, "antigravity")).toMatchObject({ cliUpdate: { state: "behind", installed: "1.3.5", audited: "1.5.3", button: false, via: "self" } });
+    expect(hostRow(view, "muse")).toMatchObject({ version: "1.4.12-R6909.1", cliUpdate: { state: "behind", installed: "1.4.12-R6909.1", audited: "1.4.14-R7309.1", button: false, via: "self" } });
   });
   it("a version the probe could not read: unknown, no button, no version", () => {
     const opencode = hostRow(view, "opencode");
-    expect(opencode?.cliUpdate).toMatchObject({ state: "unknown", installed: null, audited: "1.18.34", button: false });
+    expect(opencode?.cliUpdate).toMatchObject({ state: "unknown", installed: null, audited: "1.19.5", button: false });
     expect(opencode && "version" in opencode).toBe(false);
   });
   it("a CLI that is not installed has neither; the profile rows never carry one", () => {

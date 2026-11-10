@@ -54,7 +54,11 @@ An installed CLI shows its version on its row (Settings → Agents → AI accoun
 The browser sends only the CLI's id (`POST /ui/host-update { backend }`; any other key is a 400). The server picks the command (`host.update`, `{version}` ← the audited release,
 checked against `^\d+\.\d+\.\d+$`) and runs it through the same install window as `/login` and the Install button (`openInstallWindow`): one window fleet-wide, cancellable, judged by the
 exit code; the page shows the version before and after (the binary probe) or the exit code and the last lines. An update that exits 0 is a success only if the version read afterwards equals the audited release (`reached`); if not (or if it cannot be read) the page shows a warning naming the installed and the audited version. Who may: the Install button's gate (a fleet admin on the local surface; never a guest,
-a read session, the CLI's header token or the public link). A Windows computer additionally needs its owner's `install` switch.
+a read session, the CLI's header token or the public link). **Install and Update are held changes of the Settings gate** (`/ui/host-install`, `/ui/host-update` in `HOST_CLI_PATHS`, `settings-effect.ts`): the lenient default
+applies an administrator's change at once (the same path as the ordinary New Agent shortcut), and an administrator who turned on "ask for my code" takes their own authenticator code, bound to the digest of the change, when they are not
+on the computer. The route runs only as the gate's confirmed replay; the asker's authority is asked again after every wait and right before the installer window opens. An update's admission also needs one **fresh, successful** version
+reading of the executable that resolves now (`BackendAvailabilityStore.freshVersion`); the published row keeps the old number when a probe fails (the pickers fail open) and is never an update's authorization — unreadable refuses (`version_unreadable`).
+A Windows computer additionally needs its owner's `install` switch.
 
 What each CLI does (checked 2026-11-09: the vendors' docs, and the CLIs' own `--help` run in an isolated HOME — no real account, nothing of the host's touched):
 
@@ -76,7 +80,12 @@ when the computer's copy is older, "up to date" at it, and "not verified by AgEn
 the registry says why (`runtime.update`).
 
 **Adding a release to the ledger:** when the upstream watch marks a version audited, add it to `AUDITED_CLI_VERSIONS` (the same change carries the audit's tests and fixtures). For Claude Code or Codex that
-is also a new pin in `runtime-cli-install.ts` (its sha512 of each package, taken from the registry, and the Authenticode signer checked on the real `.exe`).
+is also a new pin in `runtime-cli-install.ts` (its sha512 of each package, taken from the registry, and the Authenticode signer checked on the real `.exe`). Maintaining this shipped ledger is part of our audit PRs: when a version is marked
+audited, adding it here is the maintainer's step. A CLI that ships a build keeps it in the entry and in what the page reads (`versionOf`: Muse's `1.4.14-R7309.1`), so an installed `1.4.14-R7012.1` is told apart from the audited release.
+
+The ledger as the maintainer confirmed it (2026-11-09 21:00 Taipei): Claude Code 2.1.319, Codex 0.167.0, Kiro 3.1.0, Grok 1.0.77, Antigravity 1.5.3, OpenCode 1.19.5, Muse 1.4.14-R7309.1. Re-measured 2026-11-10 for the two npm pins this changes:
+`@anthropic-ai/claude-code@2.1.319` (+ `-win32-x64`) and `@openai/codex@0.167.0` (+ `0.167.0-win32-x64`) — the registry's sha512 equals the pinned values, `npm audit signatures` verified the registry signatures, `claude.exe` is Authenticode `Valid`
+(Anthropic, PBC) and `codex.exe` is `Valid` (OpenAI OpCo, LLC).
 
 ## Adding a CLI
 
