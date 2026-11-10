@@ -1,5 +1,5 @@
 {
-  "base": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "base": "d841d54d3452f1bd876f161ac8f126105285fefa",
   "scope": "fake Grok only; no vendor/backend CLI, credentials or fleet execution",
   "focused": {
     "files": 9,
@@ -70,10 +70,11 @@
     "failure logs stay private; no random private binding is committed"
   ],
   "sha256": {
-    "src/backend/grok.ts": "a1b77a13eea27c84a98cd915e6b32b90691b09bbc6012370b56778c1a5803a25",
+    "src/backend/grok.ts": "7bccfa27b0ae95512c3a36d0d36a3eafdfeab42e91fb8087cb9f95ec89102531",
     "src/backend/grok-mcp.ts": "a2d260852b50a8743a07f95d208e7745b5c4e682874af0f796619948d3e10d80",
     "tests/grok-mcp-isolation-1411.test.ts": "af7242f3748becfd960c59510e99f0dbe0e2495b3747fe8ddbfda0418a7e8093",
     "tests/owned-children-1450.test.ts": "4069bc24a138056e38c8c8293940abd32feb5bd3185eca0f72b4fde085ae712b",
     "scripts/manual/grok-mcp-isolation/accept.mts": "54c3e377b876d743972ffcec913e73907e11f1281f02004d962b8e58b869094d"
-  }
+  },
+  "mainTwin": "3609 @11d406e3caa519772d60e19b0fd5272ab71d1e4b"
 }
