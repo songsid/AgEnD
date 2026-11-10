@@ -7,7 +7,7 @@ export const CLI_CAPS = Object.freeze({
   "antigravity": Object.freeze({ signOut: false, namedAccounts: false, carry: null, structuredSignIn: false, structuredNamedSignIn: false, firstRunSignIn: "console", runtimeInstall: false, runtimeName: null }),
   "grok": Object.freeze({ signOut: false, namedAccounts: false, carry: null, structuredSignIn: false, structuredNamedSignIn: false, firstRunSignIn: null, runtimeInstall: false, runtimeName: null }),
   "muse": Object.freeze({ signOut: false, namedAccounts: false, carry: null, structuredSignIn: false, structuredNamedSignIn: false, firstRunSignIn: null, runtimeInstall: false, runtimeName: null }),
-  "opencode": Object.freeze({ signOut: false, namedAccounts: false, carry: null, structuredSignIn: false, structuredNamedSignIn: false, firstRunSignIn: null, runtimeInstall: false, runtimeName: null }),
+  "opencode": Object.freeze({ signOut: false, namedAccounts: false, carry: null, structuredSignIn: false, structuredNamedSignIn: false, firstRunSignIn: null, runtimeInstall: true, runtimeName: "OpenCode" }),
 });
 /** The CLIs the first-run page offers a sign-in for, in its order. */
 export const FIRST_RUN_BACKENDS = Object.freeze(["kiro-cli", "claude-code", "codex", "antigravity"]);

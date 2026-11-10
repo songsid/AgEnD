@@ -15,8 +15,8 @@
  *     what we run (its `bin/claude.exe` stays a 500-byte placeholder until the postinstall links it, and hangs if run);
  *   - four checks, all required before anything is switched: npm's own integrity check, our pin of the registry sha512 of each package,
  *     `npm audit signatures`, then the Windows Authenticode signer of the native binary (its subject's CN and O, each compared whole, see signerMatches).
- * Kiro (an MSI into Program Files), Grok and Antigravity (vendor PowerShell scripts, no npm package) are NOT in this table on purpose: the
- * dashboard shows their official command and the computer's owner runs it.
+ * Kiro (an MSI into Program Files), Grok (an unsigned binary) and Antigravity (a vendor PowerShell script, no npm package) are NOT in this table on purpose:
+ * the dashboard shows their official command and the computer's owner runs it. Why each one cannot be pinned the way these are: docs/dev/cli-registry.md.
  *
  * Built-ins and shared Runtime modules only: part of the Runtime bundle.
  */
@@ -70,6 +70,18 @@ export const INSTALLABLE_CLIS: Readonly<Record<InstallableCliId, InstallableCli>
       "node_modules/@openai/codex-win32-x64": "sha512-duPCBwflc8qhQdLekbL8fDYF646tW4gj0/l9BDnsVhEzoqm6OwxMAJXDFwSOLUUJPCmjBeM+eHYAx4fP/hwfjg==",
     },
     native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: { cn: "OpenAI OpCo, LLC", o: "OpenAI OpCo, LLC" } },
+  },
+  // AGEND-133 (#3521): OpenCode — npm `opencode-ai` (published from GitHub Actions by npm trusted publishing) and its per-platform packages. npm installs BOTH Windows x64
+  // builds (they share os/cpu): the AVX2 one and the `-baseline` one for CPUs without AVX2; all three are pinned. The `-baseline` build is the one that runs: it works on every x64
+  // CPU (OpenCode's own postinstall picks by AVX2, which a `--ignore-scripts` install does not run). Both binaries carry the same Authenticode signature (measured 2026-11-09).
+  opencode: {
+    id: "opencode", spec: "opencode-ai", version: "1.19.5",
+    integrity: {
+      "node_modules/opencode-ai": "sha512-tEqMvQahfhdDj8vceYpXtoIrvjPXm5XRfetWnPN5YISueU7adNx9JcUA3zZ+2GKuDVgDpGdQe1ZLtCZDjqodvA==",
+      "node_modules/opencode-windows-x64": "sha512-xCVbrA8A/qQTAdBIKyhK5tx3/mcq18yF82Mi8phry0MJb2631nnnpxF9m6FFfWAVHyer4qFGrO7hbWXesHQ1Gg==",
+      "node_modules/opencode-windows-x64-baseline": "sha512-yRHN+TsfLjfLmdQVAVWqTGfGP1yq8YtUFy9Jw33XhlPIp77slBdCJrj2PC4amuEl6BJtaIQDhDFbpJ8+a5z7Qw==",
+    },
+    native: { path: "node_modules/opencode-windows-x64-baseline/bin/opencode.exe", signer: { cn: "Anomaly Innovations, Inc https://anoma.ly/", o: "Anomaly Innovations, Inc https://anoma.ly/" } },
   },
 });
 /**

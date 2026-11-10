@@ -1,5 +1,5 @@
 /** OpenCode (Anomaly). See cli-capability.ts for what each capability means. Built-ins only: part of the Runtime bundle. */
-import { byDesign, none, notApplicable, notYetBuilt, toVerify, yes, type CliSpec } from "./cli-capability.js";
+import { none, notApplicable, notYetBuilt, toVerify, yes, type CliSpec } from "./cli-capability.js";
 
 export const OPENCODE_SPEC = {
   id: "opencode",
@@ -27,8 +27,9 @@ export const OPENCODE_SPEC = {
       permission: "native-policy", permissionNote: "Uses the native CLI permission policy; no --auto or permission allow override is added.",
       promptTransport: "stdin-text", modelProbe: ["models"], rank: 5,
     }),
-    install: byDesign("OpenCode is not in the Runtime's pinned installer table (runtime-cli-install.ts)."),
-    update: notYetBuilt("#3521", "The Runtime has no pinned OpenCode install yet (runtime.install), and an update is that install over an older copy; it follows the install."),
+    // AGEND-133 (#3521): pinned npm package (opencode-ai + its Windows x64 packages) with the registry's sha512 of each, `npm audit signatures` and the Authenticode signer of the binary.
+    install: yes({ kind: "npm" }),
+    update: notYetBuilt("#3521", "OpenCode's Windows install is pinned (runtime.install), but its Update button is not wired and audited for a computer yet; until then the dashboard shows the installed and the audited versions."),
     signIn: notApplicable("AgEnD has no sign-in flow for OpenCode."),
     namedAccounts: toVerify("Whether `opencode` on Windows can keep more than one set of credentials side by side has not been checked."),
     accountRows: none("OpenCode has no card on Settings → Accounts."),

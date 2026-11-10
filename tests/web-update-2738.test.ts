@@ -33,6 +33,8 @@ vi.mock("../src/update-launch.js", async importOriginal => {
 const { FleetManager } = await import("../src/fleet-manager.js");
 const { csrfTokenFor, tokenEpoch } = await import("../src/web-session.js");
 const { isPublicWebRoute } = await import("../src/public-web-gateway.js");
+const { handleWebRequest } = await import("../src/web-api.js");
+const { bindGatewayRequest } = await import("../src/web-request-context.js");
 const { DELAYED_UPDATE_SCRIPT } = await import("../src/update-dispatch.js");
 const { readUpdateProgress, beginUpdateProgress, setUpdateProgressStage } = await import("../src/update-marker.js");
 const { failureCause, updateOffer, webProgressOf, webUpdateTarget, WEB_UPDATE_ADAPTER, SETTLED_SHOWN_MS } = await import("../src/web-update.js");
@@ -288,6 +290,86 @@ describe("M-2738 Prism #3505 review: ownership, the asking session, idempotency,
       await new Promise(r => setTimeout(r, 15));
       expect((await raw(f.port, "GET", "/ui/update/log", admin.read)).status).toBe(200);           // control: the person opened the log
       expect(seen()).toBeGreaterThan(before);
+    } finally { await f.stop(); }
+  });
+});
+
+describe("M-2738 Fable #3504 review: who may reach the routes, asked at the handler itself", () => {
+  /** handleWebRequest with a hand-made request: `gateway` binds it to a public link; `body`, when given, arrives on a later tick. */
+  function call(f: Awaited<ReturnType<typeof fleet>>, o: { method: string; path: string; headers: Record<string, string>; body?: unknown; gateway?: boolean; beforeBody?: () => void }) {
+    return new Promise<{ status: number; body: any }>(resolve => {
+      let code = 0;
+      const res: any = { headersSent: false, destroyed: false, setHeader() {}, writeHead(c: number) { code = c; res.headersSent = true; return res; }, end(b: string) { resolve({ status: code, body: b ? JSON.parse(String(b)) : null }); } };
+      const req = Object.assign(new EventEmitter(), { method: o.method, url: o.path, headers: o.headers, socket: { remoteAddress: "127.0.0.1" }, destroy() {}, resume() {} });
+      if (o.gateway) bindGatewayRequest(req as never, { surface: "gateway", named: false, exposureId: "e".repeat(32), expectedOrigin: `https://x.trycloudflare.com`, isCurrent: () => true });
+      expect(handleWebRequest(req as never, res, new URL(`http://127.0.0.1:${f.port}${o.path}`), f.fm)).toBe(true);
+      if (o.body !== undefined) setImmediate(() => { o.beforeBody?.(); req.emit("data", Buffer.from(JSON.stringify(o.body))); req.emit("end"); });
+    });
+  }
+  const ROUTES = [["GET", "/ui/update"], ["POST", "/ui/update/check"], ["POST", "/ui/update/start"], ["GET", "/ui/update/log"]] as const;
+
+  it("(1) a request bound to a public link is answered 404 on every /ui/update route, even an admin's", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const sid = f.fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken), owner: { adapterId: "discord", userId: "1" } }).sessionId;
+      for (const [method, path] of ROUTES) {
+        const r = await call(f, { method, path, gateway: true, headers: { host: "x.trycloudflare.com", cookie: `__Host-agend_session=${sid}`, origin: "https://x.trycloudflare.com",
+          "x-agend-csrf": csrfTokenFor(sid), "content-type": "application/json", "idempotency-key": "k-gw-00001" }, ...(method === "POST" ? { body: { confirm: "update-agend" } } : {}) });
+        expect([path, r.status], path).toEqual([path, 404]);
+      }
+      await new Promise(r => setTimeout(r, 30));
+      expect(spawned).toEqual([]);
+    } finally { await f.stop(); }
+  });
+
+  it("(2) the CLI's header token and a guest session are refused at the handler: 403 update_needs_a_signed_in_person", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const guest = f.fm.webSessions.create({ tier: "guest", surface: "local", label: "t", tokenEpoch: tokenEpoch(f.fm.webToken), owner: { adapterId: "discord", userId: "7" } }).sessionId;
+      const origin = `http://127.0.0.1:${f.port}`;
+      const asToken = { host: `127.0.0.1:${f.port}`, "x-agend-token": f.fm.webToken, "content-type": "application/json", "idempotency-key": "k-tok-0001" };
+      const asGuest = { host: `127.0.0.1:${f.port}`, cookie: `agend_session=${guest}`, origin, "x-agend-csrf": csrfTokenFor(guest), "content-type": "application/json", "idempotency-key": "k-gst-0001" };
+      for (const headers of [asToken, asGuest]) {
+        expect(await call(f, { method: "GET", path: "/ui/update", headers })).toEqual({ status: 403, body: { error: "update_needs_a_signed_in_person" } });
+        expect(await call(f, { method: "POST", path: "/ui/update/start", headers, body: { confirm: "update-agend" } })).toEqual({ status: 403, body: { error: "update_needs_a_signed_in_person" } });
+      }
+      await new Promise(r => setTimeout(r, 30));
+      expect(spawned).toEqual([]);
+    } finally { await f.stop(); }
+  });
+
+  it("(3) a session no longer an admin's by the time the body has arrived cannot start", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const admin = f.session("admin");
+      const record = [...(f.fm.webSessions as any).byHash.values()].find((r: any) => r.tier === "admin");
+      const r = await call(f, { method: "POST", path: "/ui/update/start", headers: { host: `127.0.0.1:${f.port}`, ...admin.write("k-dem-0001") }, body: { confirm: "update-agend" },
+        beforeBody: () => { record.tier = "read"; } });                              // demoted between admission and the body
+      expect(r).toEqual({ status: 403, body: { error: "update_needs_an_admin_session" } });
+      await new Promise(r => setTimeout(r, 30));
+      expect([spawned, readUpdateProgress(f.dir)]).toEqual([[], null]);
+    } finally { await f.stop(); }
+  });
+
+  it("(5) the claim lasts while the updater runs: a cleared or expired marker does not admit a second start until it exits", async () => {
+    const f = await fleet();
+    try {
+      await f.offer("2.3.5-beta.3");
+      const admin = f.session("admin");
+      expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-run-0001"), START)).status).toBe(202);
+      await vi.waitFor(() => expect(spawned).toHaveLength(1));
+      const { clearUpdateMarker } = await import("../src/update-marker.js");
+      clearUpdateMarker(f.dir);                                                    // the marker gone (or expired) …
+      expect(await raw(f.port, "POST", "/ui/update/start", admin.write("k-run-0002"), START)).toEqual({ status: 409, body: { error: "update_running" } });
+      vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 16 * 60_000 });
+      expect(await raw(f.port, "POST", "/ui/update/start", admin.write("k-run-0003"), START)).toEqual({ status: 409, body: { error: "update_running" } });
+      vi.useRealTimers();
+      spawned[0]!.child.emit("exit", 1, null);                                     // … the updater ended: now a start is admitted
+      expect((await raw(f.port, "POST", "/ui/update/start", admin.write("k-run-0004"), START)).status).toBe(202);
+      await vi.waitFor(() => expect(spawned).toHaveLength(2));
     } finally { await f.stop(); }
   });
 });

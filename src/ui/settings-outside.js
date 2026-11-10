@@ -43,7 +43,7 @@ register("outside", {
     askStrictOff: "Turning this off needs your current code.",
     askTitle: "Enter the current code", askLead: "Your authenticator is asked for here: enter the code your authenticator app shows now to continue.",
     askRemove: "Your code will no longer be accepted, and while your switch was on, your confirmations from other devices will take Apply now again.",
-    askContinue: "Continue", askRemoveGo: "Remove", askCode: "Current code",
+    askContinue: "Continue", askRemoveGo: "Remove", askCode: "Authenticator code",
   },
   "zh-TW": {
     title: "擁有者驗證", lead: "使用驗證器 App 的 6 位數驗證碼，從外面證明你是這個 fleet 的擁有者。",
@@ -72,7 +72,7 @@ register("outside", {
     askStrictOff: "關閉需要你目前的驗證碼。",
     askTitle: "請輸入目前的驗證碼", askLead: "這裡要求你的驗證器：請輸入驗證器 App 現在顯示的驗證碼才能繼續。",
     askRemove: "之後不再接受你的驗證碼；你原本開啟的要求也會一併結束，從其他裝置的確認會回到「直接套用」。",
-    askContinue: "繼續", askRemoveGo: "停用", askCode: "目前的驗證碼",
+    askContinue: "繼續", askRemoveGo: "停用", askCode: "6 位數驗證碼（驗證器 App）",
   },
 });
 const to = (k, ...v) => t(`outside.${k}`, ...v);

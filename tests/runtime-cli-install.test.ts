@@ -9,7 +9,7 @@ beforeEach(() => { home = mkdtempSync(join(tmpdir(), "agend-cli-install-")); nod
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
 /** A fake npm: `install` writes the lock file (with integrity as given) and the native file; `audit` answers with the given exit code. */
-function fakeRun(id: "claude-code" | "codex", options: { integrity?: Record<string, string>; auditCode?: number | null; installCode?: number | null } = {}): { run: NonNullable<InstallDeps["run"]>; calls: string[][] } {
+function fakeRun(id: "claude-code" | "codex" | "opencode", options: { integrity?: Record<string, string>; auditCode?: number | null; installCode?: number | null } = {}): { run: NonNullable<InstallDeps["run"]>; calls: string[][] } {
   const cli = INSTALLABLE_CLIS[id], calls: string[][] = [];
   return { calls, run: async (file, args, { cwd }) => {
     calls.push([file, ...args]);
@@ -30,7 +30,7 @@ describe("managed CLI install (#3190 3b)", () => {
     for (const cli of Object.values(INSTALLABLE_CLIS)) {
       expect(cli.version).toMatch(/^\d+\.\d+\.\d+$/);
       expect(Object.keys(cli.integrity).length).toBeGreaterThanOrEqual(2);
-      for (const [path, hash] of Object.entries(cli.integrity)) { expect(path).toMatch(/^node_modules\/@[a-z-]+\/[a-z0-9-]+$/); expect(hash).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/); }
+      for (const [path, hash] of Object.entries(cli.integrity)) { expect(path).toMatch(/^node_modules\/(?:@[a-z-]+\/)?[a-z0-9-]+$/); expect(hash).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/); }
       expect(cli.integrity[`node_modules/${cli.spec}`]).toBeDefined();
       expect(cli.native.path.startsWith("node_modules/")).toBe(true);
     }
@@ -47,6 +47,31 @@ describe("managed CLI install (#3190 3b)", () => {
     expect(result.version).toBe("2.1.319");
     expect(JSON.parse(readFileSync(join(root, "claude-code", "current.json"), "utf8"))).toEqual({ version: "2.1.319" });
     expect(managedCliExecutable(root, "claude-code")).toMatchObject({ command: result.command, args: [], version: "2.1.319" });
+  });
+  // AGEND-133 (#3521): OpenCode — an unscoped package, three pinned packages (both Windows x64 builds land), the baseline build is the one that runs, and its own signer.
+  it("OpenCode: pinned opencode-ai@1.19.5 with both Windows x64 builds, the baseline one runs, and the publisher is Anomaly Innovations (measured Authenticode subject)", async () => {
+    const cli = INSTALLABLE_CLIS.opencode;
+    expect(cli.spec).toBe("opencode-ai");
+    expect(Object.keys(cli.integrity)).toEqual(["node_modules/opencode-ai", "node_modules/opencode-windows-x64", "node_modules/opencode-windows-x64-baseline"]);
+    expect(cli.native.path).toBe("node_modules/opencode-windows-x64-baseline/bin/opencode.exe");
+    const subject = 'CN="Anomaly Innovations, Inc https://anoma.ly/", O="Anomaly Innovations, Inc https://anoma.ly/", L=Dover, S=Delaware, C=US';
+    expect(signerMatches(subject, cli.native.signer)).toBe(true);
+    expect(signerMatches('CN="Anomaly Innovations, Inc https://anoma.ly/ Evil", O="Anomaly Innovations, Inc https://anoma.ly/"', cli.native.signer)).toBe(false);
+    const { run, calls } = fakeRun("opencode"), steps: string[] = [], root = join(home, "cli");
+    const result = await installManagedCli("opencode", { root, nodePath: node, run, signerOf: async () => ({ status: "Valid", subject }), report: s => steps.push(s) });
+    expect(steps).toEqual(["installing", "checking-integrity", "checking-signatures", "checking-publisher", "ready"]);
+    expect(calls[0].slice(3, 7)).toEqual(["opencode-ai@1.19.5", "--save-exact", "--ignore-scripts", "--no-audit"]);
+    expect(result.version).toBe("1.19.5");
+    expect(managedCliExecutable(root, "opencode")).toMatchObject({ command: result.command, version: "1.19.5" });
+    expect(result.command.endsWith(join("node_modules", "opencode-windows-x64-baseline", "bin", "opencode.exe"))).toBe(true);
+  });
+  it("OpenCode: a registry hash that is not the pinned one, or a binary signed by someone else, installs nothing", async () => {
+    const root = join(home, "cli");
+    const wrong = { ...INSTALLABLE_CLIS.opencode.integrity, "node_modules/opencode-windows-x64-baseline": "sha512-" + "A".repeat(86) + "==" };
+    await expect(installManagedCli("opencode", { root, nodePath: node, run: fakeRun("opencode", { integrity: wrong }).run, signerOf: async () => ({ status: "Valid", subject: "" }) })).rejects.toMatchObject({ reason: "integrity-mismatch" });
+    await expect(installManagedCli("opencode", { root, nodePath: node, run: fakeRun("opencode").run, signerOf: async () => ({ status: "Valid", subject: 'CN="Someone Else", O="Someone Else"' }) })).rejects.toMatchObject({ reason: "publisher-mismatch" });
+    await expect(installManagedCli("opencode", { root, nodePath: node, run: fakeRun("opencode").run, signerOf: async () => ({ status: "NotSigned", subject: "" }) })).rejects.toMatchObject({ reason: "publisher-mismatch" });
+    expect(managedCliExecutable(root, "opencode")).toBeNull();
   });
   it("refuses everything that is not in the table: an unknown id, a package name, a version or a path", async () => {
     const deps = { root: join(home, "cli"), nodePath: node, run: fakeRun("codex").run };

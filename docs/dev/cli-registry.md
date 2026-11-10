@@ -35,6 +35,22 @@ Plain data: strings, numbers, booleans and lists of them; no function, no RegExp
 | `runtime.authStatus` | the status probe the Runtime runs (never a login) | `windows-cli-worker.ts` |
 | `runtime.identity` / `runtime.usage` | the Runtime reports the account / its usage | — |
 
+### Why a CLI is, or is not, in the Windows Runtime's installer (`runtime.install`, #3521)
+
+The rule stays "pinned and verifiable, or not at all" (the maintainer's answer on #3521): an exact version, the registry's hash of every package that lands, and who published the program.
+Measured 2026-11-09 (the hashes and signers are in `runtime-cli-install.ts` and the specs):
+
+| CLI | Verdict | Evidence |
+|---|---|---|
+| Claude Code, Codex | installed (pinned npm) | unchanged from #3190 Part 3b |
+| OpenCode | **installed (pinned npm)** | `opencode-ai@1.19.5` (npm trusted publishing; the maintainer-confirmed audited version, 2026-11-09; re-measured 2026-11-10: the registry's sha512 of all three packages equals the pinned values, `npm audit signatures` verified 3 signatures with `--os=win32 --cpu=x64`, Authenticode `Valid` on both exes) + `opencode-windows-x64` + `opencode-windows-x64-baseline`, each with its registry sha512; `npm audit signatures`; both binaries are Authenticode `Valid`, signer `Anomaly Innovations, Inc https://anoma.ly/`. The `-baseline` build runs (it works on CPUs without AVX2; OpenCode's own postinstall, which picks by AVX2, is not run with `--ignore-scripts`). |
+| Antigravity | not yet — **possible** | No npm package (`agy`, `antigravity-cli` on npm are not Google's). The vendor script downloads `…/antigravity-cli/<version>/windows-x64/cli_windows_x64.exe` named by a manifest with its `sha512`; that file's sha512 matches and it is Authenticode `Valid`, signer `Google LLC`. A pinned download (exact URL + sha512 + signer) meets Part 3b but needs a download step the Runtime does not have (`runtime-cli-install.ts` is npm-only). The CLI also updates itself, so the pin only governs what is first installed. |
+| Grok | no | `@xai-official/grok` (publisher `xai-security`) is on npm, but its Windows program (`grok.exe`, shipped brotli-compressed and unpacked by the package's own postinstall into `~/.grok`) is **not signed** (`NotSigned`): a registry hash and no statement of who built it. The vendor script installs whatever is current, so it cannot be pinned. |
+| Kiro | no | The stable manifest lists one Windows artifact, an MSI (no zip, no per-user package); the script runs `msiexec` into `C:\Program Files\Kiro-Cli`, which needs elevation (maintainer: keep elevation out of one-click). |
+| Muse | no | No npm package; its launcher (`muse-launcher.ps1`, not versioned) installs itself, and updates itself, from the vendor's server: there is no fixed file to pin. The registry says why (`runtime.install`); #44's page shows the official command with the same reason. |
+
+A CLI that stays "official command only" says why on the page (`OFFICIAL_COMMANDS` in `src/ui/runtime-cli-install.js`, from the same facts).
+
 A `no` says why: `cli_has_none` (the tool has no such thing), `not_applicable` (it needs a capability this CLI lacks), `by_design` (decided against; the note says where),
 `needs_verification` (nobody has run the tool to find out; the note says what to check), or `not_yet_built` (it can be done; `tracking` is `#<n>` or `undecided`).
 

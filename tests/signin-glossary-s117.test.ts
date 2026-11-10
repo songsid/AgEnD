@@ -207,3 +207,29 @@ describe("S-117 alpha: the used launch link, the authenticator, another device, 
     expect(read("src/ui/hub-quick-strings.js")).toContain('code: "手動配對碼"');
   });
 });
+
+// After #3503 (AGEND-122): a held Settings change is confirmed by a signed-in admin's own Apply — authorizing the browser
+// (#1939, still how chat messages carry your authority) is no longer a step of it, so the docs and the agents' skill must
+// not describe #2170's "web-verified browser" rule; #3503's authenticator words follow the glossary.
+describe("S-117 after #3503: browser authorization is not how a Settings change is confirmed", () => {
+  const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
+  it("docs and the web-dashboard skill describe the admin's own Apply, not a web-verified browser", () => {
+    for (const f of ["docs/web-dashboard.md", "docs/web-dashboard.zh-TW.md", "src/general-knowledge/skills/web-dashboard/SKILL.md"]) {
+      expect(read(f), f).not.toMatch(/#2170/);
+      expect(read(f), f).toMatch(/AGEND-122/);
+    }
+    expect(read("docs/web-dashboard.md")).toContain("no DM step and no browser authorization are needed for it");
+    expect(read("docs/web-dashboard.zh-TW.md")).toContain("不需要私訊確認，也不需要授權瀏覽器");
+  });
+  it("the pending card no longer offers Authorize this browser; the chat's own line still does (#1939)", () => {
+    expect(read("src/ui/shared/app-shell.js")).not.toMatch(/Authorize this browser|webauth\.authorize|useWebAuthorization/);
+    expect(read("src/ui/panel-chat.js")).toContain("ComposerAuth");
+  });
+  it("#3503's authenticator field and docs use the glossary's 6 位數驗證碼（驗證器 App）, never 代碼", () => {
+    expect(read("src/ui/settings-outside.js")).toContain('askCode: "6 位數驗證碼（驗證器 App）"');
+    const zh = read("docs/web-dashboard.zh-TW.md");
+    const card = zh.slice(zh.indexOf("**卡片上的說明（#2868）。**"), zh.indexOf("**哪個 bot 的 admin 能確認？**"));
+    expect(card.length).toBeGreaterThan(100);
+    expect(card).not.toContain("代碼");
+  });
+});
