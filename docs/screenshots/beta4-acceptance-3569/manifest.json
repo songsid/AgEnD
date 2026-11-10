@@ -1,12 +1,12 @@
 {
   "candidate": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
   "productTrackedDiffBeforeExport": [],
-  "pngCount": 40,
+  "pngCount": 50,
   "files": [
     {
       "file": "README.md",
       "bytes": 4893,
-      "sha256": "c758d6d9a3b9f7f08be215a6396e5ab82b272f964139b77ca909238645054e5b"
+      "sha256": "956ebbeadaf796bc692c0a5fa1d9c001e740d38c04c9b6144c9a25f86d007c2b"
     },
     {
       "file": "cleanup.json",
@@ -204,6 +204,16 @@
       "sha256": "9cb70f8491243cd91a6a420ee615c292e6c1142d23e5b43ed5808c4b0668ae65"
     },
     {
+      "file": "quotes/smoke-chat-quote-2789/skew-old-css.png",
+      "bytes": 123344,
+      "sha256": "f7326c344b15bcd6690281f4dd711f4a6533f62ae98a8dd4f5d31650a7e05da1"
+    },
+    {
+      "file": "quotes/smoke-chat-quote-2789/skew-old-panel.png",
+      "bytes": 125300,
+      "sha256": "6d45c7664cdd5d1c5f1b378e67854e81bee4da83d24235335bc9fcf100cbc250"
+    },
+    {
       "file": "smoke-syntax.json",
       "bytes": 305,
       "sha256": "b77ff0eef32d4cbae43a185ccfd7f78860302e25dfb618242bbf328766883ac0"
@@ -217,6 +227,16 @@
       "file": "subagents/desk-light-zh-TW-completed-retired.png",
       "bytes": 70228,
       "sha256": "31b551e3f041b8870c6421d9ee7473959f3c9ff364cdf677892cddfbd4c5756d"
+    },
+    {
+      "file": "subagents/desk-light-zh-TW-completed.png",
+      "bytes": 112502,
+      "sha256": "62d75eefde3a825ac584ecc2d23ad3ffc620ed4484c2b67823b93524a0af8b00"
+    },
+    {
+      "file": "subagents/desk-light-zh-TW-running.png",
+      "bytes": 110830,
+      "sha256": "54b9bcffe66e6a2f3abe36bed7dc69935a6ccafb3b67918ce8fe653c042c26f6"
     },
     {
       "file": "subagents/desk-light-zh-TW-unknown-retired.png",
@@ -239,6 +259,16 @@
       "sha256": "2f5416cbaeb9f605e8c34aa9019449e2d00d7e11957f4fc0ca8ba7420456af57"
     },
     {
+      "file": "subagents/phone-dark-zh-TW-completed.png",
+      "bytes": 53621,
+      "sha256": "e46b2d95a60a6dfa939e4437429f5bcfaccf4d92c519945ba0a395b2abd473c8"
+    },
+    {
+      "file": "subagents/phone-dark-zh-TW-running.png",
+      "bytes": 54395,
+      "sha256": "e1c3bc47cdabbe6354f919ccaa56b026992bb08970fdd8d3752f7aa4e3086dd1"
+    },
+    {
       "file": "subagents/phone-dark-zh-TW-unknown-retired.png",
       "bytes": 26782,
       "sha256": "2f5416cbaeb9f605e8c34aa9019449e2d00d7e11957f4fc0ca8ba7420456af57"
@@ -252,6 +282,26 @@
       "file": "subagents/receipt.json",
       "bytes": 2142,
       "sha256": "880f1f375aee583b73c9509f00113c396ab4e7a1130d2efc62b1499dbe2b414f"
+    },
+    {
+      "file": "subagents/skew-missing-module.png",
+      "bytes": 27103,
+      "sha256": "2f2f771d6b6656e4bcc4c650e8fce0767c16b25a99e155a84b848de6ac997729"
+    },
+    {
+      "file": "subagents/skew-old-client.png",
+      "bytes": 29282,
+      "sha256": "3e55f9409f419937094f3750505de32dead392ed7de9dbd6916dc72120a47a90"
+    },
+    {
+      "file": "subagents/skew-old-panel.png",
+      "bytes": 29282,
+      "sha256": "3e55f9409f419937094f3750505de32dead392ed7de9dbd6916dc72120a47a90"
+    },
+    {
+      "file": "subagents/skew-old-server.png",
+      "bytes": 29463,
+      "sha256": "70c860364fbca2d97aa676b18384359be430790016a50a24fc69b709bd12eacd"
     },
     {
       "file": "update-current/web-update-2738/desk-light-zh-TW-1-banner.png",
