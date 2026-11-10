@@ -1,0 +1,38 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "web-update",
+  "result": "PASS within the stated scope",
+  "scope": "Actual banner/confirm/cancel/progress/failure/log/reload/Settings/chat-update UI. Version offer and update launch are injected; marker is written by fixture. No npm, real AgEnD update or fleet restart.",
+  "commandScript": "scripts/manual/smoke/smoke-web-update-2738.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 17,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-1-banner.png",
+    "desk-light-zh-TW-2-confirm.png",
+    "desk-light-zh-TW-3-progress.png",
+    "desk-light-zh-TW-4-failed.png",
+    "desk-light-zh-TW-4b-log.png",
+    "desk-light-zh-TW-5-reload.png",
+    "desk-light-zh-TW-6-settings-available.png",
+    "desk-light-zh-TW-7-settings-current.png",
+    "desk-light-zh-TW-8-settings-alpha-stable.png",
+    "desk-light-zh-TW-9-chat-update.png",
+    "phone-dark-zh-TW-1-banner.png",
+    "phone-dark-zh-TW-2-confirm.png",
+    "phone-dark-zh-TW-3-progress.png",
+    "phone-dark-zh-TW-4-failed.png",
+    "phone-dark-zh-TW-4b-log.png",
+    "phone-dark-zh-TW-5-reload.png",
+    "phone-dark-zh-TW-6-settings-available.png",
+    "phone-dark-zh-TW-7-settings-current.png",
+    "phone-dark-zh-TW-8-settings-alpha-stable.png",
+    "phone-dark-zh-TW-9-chat-update.png"
+  ],
+  "checks": []
+}

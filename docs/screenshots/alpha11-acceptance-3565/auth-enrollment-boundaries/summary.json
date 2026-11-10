@@ -1,0 +1,18 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "auth-enrollment-boundaries",
+  "result": "PASS within the stated scope",
+  "scope": "Supplemental three focused suites136/136: per-admin authenticator sign-in identity/rate/replay/demotion, encrypted enrollment/token lifetime and role rebinding. Not native install or additional browser acceptance.",
+  "commandScript": "scripts/manual/a11-acceptance/auth-enrollment-checks.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 6,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [],
+  "checks": [],
+  "focusedTestsPassed": 136
+}

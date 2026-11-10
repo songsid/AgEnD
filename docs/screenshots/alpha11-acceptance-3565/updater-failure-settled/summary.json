@@ -1,0 +1,67 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "updater-failure-settled",
+  "result": "PASS within the stated scope",
+  "scope": "Same real page/routes, inert failed updater completion. No executable changes. Final screenshots wait until the pending change is no longer applying.",
+  "commandScript": "scripts/manual/a11-acceptance/host-update-failure.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 17,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-failure-diagnostic.png",
+    "desk-light-zh-TW-grok-available.png",
+    "desk-light-zh-TW-grok-failed.png",
+    "desk-light-zh-TW-grok-progress.png",
+    "phone-dark-zh-TW-failure-diagnostic.png",
+    "phone-dark-zh-TW-grok-available.png",
+    "phone-dark-zh-TW-grok-failed.png",
+    "phone-dark-zh-TW-grok-progress.png"
+  ],
+  "checks": [
+    {
+      "name": "desk-light-zh-TW grok target explained",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW grok update request accepted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW grok latest ACK",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW updater failure shown",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW grok dispatched once",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW grok target explained",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW grok update request accepted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW grok latest ACK",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW updater failure shown",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW grok dispatched once",
+      "ok": true
+    }
+  ]
+}

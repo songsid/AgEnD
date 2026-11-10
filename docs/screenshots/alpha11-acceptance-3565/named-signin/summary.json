@@ -1,0 +1,30 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "named-signin",
+  "result": "PASS within the stated scope",
+  "scope": "Actual Accounts page/session gates/shared LoginController, synthetic named work profiles and terminal/auth boundary. Current + alpha.10 retained modules; correct profile env in launch spec. No real OAuth, vendor login or real CLI.",
+  "commandScript": "scripts/manual/a11-acceptance/named-signin.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 24,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-zh-TW-current-codex-confirm.png",
+    "desk-zh-TW-current-codex-running.png",
+    "desk-zh-TW-current-kiro-cli-confirm.png",
+    "desk-zh-TW-current-kiro-cli-running.png",
+    "desk-zh-TW-skew-codex-confirm.png",
+    "desk-zh-TW-skew-kiro-cli-confirm.png",
+    "phone-zh-TW-current-codex-confirm.png",
+    "phone-zh-TW-current-codex-running.png",
+    "phone-zh-TW-current-kiro-cli-confirm.png",
+    "phone-zh-TW-current-kiro-cli-running.png",
+    "phone-zh-TW-skew-codex-confirm.png",
+    "phone-zh-TW-skew-kiro-cli-confirm.png"
+  ],
+  "checks": []
+}

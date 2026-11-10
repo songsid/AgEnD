@@ -1,0 +1,36 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "auth-verified",
+  "result": "PASS within the stated scope",
+  "scope": "Named synthetic Discord administrators; actual sessions/Settings/TOTP/UI, inert chat adapters, deletion lifecycle and auth checks. Two unrelated baseline agents only; no compatibility/CLI discovery.",
+  "commandScript": "scripts/manual/a11-acceptance/auth.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 35,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-1-chat-no-app.png",
+    "desk-light-zh-TW-2-chat-app-off.png",
+    "desk-light-zh-TW-3-chat-code.png",
+    "desk-light-zh-TW-4a-card-not-set-up.png",
+    "desk-light-zh-TW-4c-card-set-up.png",
+    "desk-light-zh-TW-4d-replace-asks-code.png",
+    "desk-light-zh-TW-4e-switch-off-asks-code.png",
+    "desk-light-zh-TW-4f-remove-asks-code-switch-off.png",
+    "desk-light-zh-TW-5-dashboard-notices.png",
+    "phone-dark-zh-TW-1-chat-no-app.png",
+    "phone-dark-zh-TW-2-chat-app-off.png",
+    "phone-dark-zh-TW-3-chat-code.png",
+    "phone-dark-zh-TW-4a-card-not-set-up.png",
+    "phone-dark-zh-TW-4c-card-set-up.png",
+    "phone-dark-zh-TW-4d-replace-asks-code.png",
+    "phone-dark-zh-TW-4e-switch-off-asks-code.png",
+    "phone-dark-zh-TW-4f-remove-asks-code-switch-off.png",
+    "phone-dark-zh-TW-5-dashboard-notices.png"
+  ],
+  "checks": []
+}

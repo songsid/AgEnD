@@ -1,0 +1,30 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "quotes",
+  "result": "PASS within the stated scope",
+  "scope": "Actual text-selection Range, Quote button/composer/request through the production web route with inert agent boundary. Browser touch viewport is not a native mobile OS long-press test.",
+  "commandScript": "scripts/manual/a11-acceptance/quotes.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 23,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-1-select.png",
+    "desk-light-zh-TW-2-select.png",
+    "desk-light-zh-TW-3-select.png",
+    "desk-light-zh-TW-4-composer.png",
+    "desk-light-zh-TW-5-sent.png",
+    "phone-dark-zh-TW-1-select.png",
+    "phone-dark-zh-TW-2-select.png",
+    "phone-dark-zh-TW-3-select.png",
+    "phone-dark-zh-TW-4-composer.png",
+    "phone-dark-zh-TW-5-sent.png",
+    "skew-old-css.png",
+    "skew-old-panel.png"
+  ],
+  "checks": []
+}

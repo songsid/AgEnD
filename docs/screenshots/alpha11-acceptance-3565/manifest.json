@@ -1,0 +1,298 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "tree": "8f3252fffa70a0653ccd1290b5f0b2c418c1f3c4",
+  "scope": "Isolated source acceptance; real Chromium desktop/phone; vendors/OS boundaries as listed. No real accounts/live fleet/pilot.",
+  "campaigns": [
+    {
+      "name": "build",
+      "result": "PASS scoped",
+      "pngs": 0,
+      "scope": "Exact candidate npm run build; source product bytes unchanged. TypeScript-source web rig rather than published npm package."
+    },
+    {
+      "name": "auth-verified",
+      "result": "PASS scoped",
+      "pngs": 18,
+      "scope": "Named synthetic Discord administrators; actual sessions/Settings/TOTP/UI, inert chat adapters, deletion lifecycle and auth checks. Two unrelated baseline agents only; no compatibility/CLI discovery."
+    },
+    {
+      "name": "auth-retained-confirm",
+      "result": "PASS scoped",
+      "pngs": 6,
+      "scope": "Same named-admin sensitive-change journey with all four alpha.10 shared assets retained. The retained shell keeps its OLD folded Advanced host-command fallback; the new in-page code path still works. This is not a claim that old bytes adopt current wording."
+    },
+    {
+      "name": "signin",
+      "result": "PASS scoped",
+      "pngs": 4,
+      "scope": "Actual signed-out web-only browser/code sign-in, seeded own synthetic TOTP secret. Named/ambiguous/demoted-admin controls are supplemental route tests, not separate browser sign-ins."
+    },
+    {
+      "name": "roles-final-verified",
+      "result": "PASS scoped",
+      "pngs": 10,
+      "scope": "Actual owner host-code session and public HTTP/browser. Other device/read/guest sessions are setup through the owned real store. Full identity parsed from synthetic Claude auth-status JSON; no vendor identity probe."
+    },
+    {
+      "name": "host-install",
+      "result": "PASS scoped",
+      "pngs": 24,
+      "scope": "Actual Accounts/Settings/per-admin authenticator gate; missing CLI inventory and installer dispatch are injected. Four EN/zh/desktop/phone cells plus old alpha.10 shared assets; no install command executes."
+    },
+    {
+      "name": "runtime-final",
+      "result": "PASS scoped",
+      "pngs": 21,
+      "scope": "Real Fleet web, command generation, X25519/AES-GCM enrollment, server fingerprint proof, credentialed public WS and correct remote operation. Installer service has an inert bundle and real script template; Windows inventory/owner-switch/install/update/failure replies are fake. NO actual PowerShell, Windows download/signature/autostart/registry or OS installation. Generated command is never run."
+    },
+    {
+      "name": "host-update-final",
+      "result": "PASS scoped",
+      "pngs": 12,
+      "scope": "Actual Accounts/Settings gate/update job projection and audited/latest acknowledgement request. Inventory, launch and exit callbacks are inert. Fake updater reports version; this does not prove vendor updater success."
+    },
+    {
+      "name": "updater-failure-settled",
+      "result": "PASS scoped",
+      "pngs": 8,
+      "scope": "Same real page/routes, inert failed updater completion. No executable changes. Final screenshots wait until the pending change is no longer applying."
+    },
+    {
+      "name": "quotes",
+      "result": "PASS scoped",
+      "pngs": 12,
+      "scope": "Actual text-selection Range, Quote button/composer/request through the production web route with inert agent boundary. Browser touch viewport is not a native mobile OS long-press test."
+    },
+    {
+      "name": "web-update",
+      "result": "PASS scoped",
+      "pngs": 20,
+      "scope": "Actual banner/confirm/cancel/progress/failure/log/reload/Settings/chat-update UI. Version offer and update launch are injected; marker is written by fixture. No npm, real AgEnD update or fleet restart."
+    },
+    {
+      "name": "subagents",
+      "result": "PASS scoped",
+      "pngs": 20,
+      "scope": "Actual bounded reader, owner/admin web route and saved mock-API CLI records. Derived live phases and fixed observation/browser clock exercise 15s/120s retirement and no revival; no fresh live CLI, no performance claim."
+    },
+    {
+      "name": "usage",
+      "result": "PASS scoped",
+      "pngs": 12,
+      "scope": "Actual shell/shared usage card with synthetic usage API projection and fetch seam. Four EN/zh desktop/phone cells, current and beta.3 CSS/strings."
+    },
+    {
+      "name": "usage-empty",
+      "result": "PASS scoped",
+      "pngs": 12,
+      "scope": "Same usage projection with no provider rows, refreshing then idle. Empty source is synthetic; no vendor usage probe."
+    },
+    {
+      "name": "hub",
+      "result": "PASS scoped",
+      "pngs": 10,
+      "scope": "Actual sealed Hub HTTPS/WSS, production AD driver against owned TLS/BER fake directory, actual Fleet host sign-in/company join/sharing/pause/resume. Setup policy via public guarded API, no response stubs, no model or task."
+    },
+    {
+      "name": "hub-admin",
+      "result": "PASS scoped",
+      "pngs": 9,
+      "scope": "Actual Hub sign-in/group editor/company switch/individual invite/manual offer. Synthetic TLS/BER directory; generated temporary link/code areas masked. No invitation redeemed or real directory modified."
+    },
+    {
+      "name": "hub-lifecycle",
+      "result": "PASS scoped",
+      "pngs": 6,
+      "scope": "Initialized through owned D3 prepare/test/commit setup API, then real Fleet browser Stop/cancel/Run and actual Hub listener off/ready. Web-only host rig; no General confirmation card required."
+    },
+    {
+      "name": "models-apply-final",
+      "result": "PASS scoped",
+      "pngs": 23,
+      "scope": "Real Settings/chat catalog endpoints and disk save. Catalog worker, auth check and runtime model-switch acknowledgement are inert. Explicit ordinary status frame uses production getUiStatus because the fixture does not start the fleet tick. Select Opus, persist YAML, UI reflects Opus. Backend-switch dialog cancellation starts no backend."
+    },
+    {
+      "name": "named-signin",
+      "result": "PASS scoped",
+      "pngs": 12,
+      "scope": "Actual Accounts page/session gates/shared LoginController, synthetic named work profiles and terminal/auth boundary. Current + alpha.10 retained modules; correct profile env in launch spec. No real OAuth, vendor login or real CLI."
+    },
+    {
+      "name": "chat-reload-zh",
+      "result": "PASS scoped",
+      "pngs": 6,
+      "scope": "Real TLS Hub/SQLite/auth/grants/history/lease release, synthetic directory and protocol-member answer. Desktop/phone zh-TW reload/reopen <10s gives200; genuine held-capacity429 and Retry-After10 recover."
+    },
+    {
+      "name": "boundaries",
+      "result": "PASS scoped",
+      "pngs": 0,
+      "scope": "Supplemental nine focused suites142/142, not browser evidence: update npm bounds, ClassicBot generated relay instructions, latest-update acknowledgements, owner/device fences, Hub Stop sessions, subagent access, identity parsing."
+    },
+    {
+      "name": "auth-enrollment-boundaries",
+      "result": "PASS scoped",
+      "pngs": 0,
+      "scope": "Supplemental three focused suites136/136: per-admin authenticator sign-in identity/rate/replay/demotion, encrypted enrollment/token lifetime and role rebinding. Not native install or additional browser acceptance."
+    }
+  ],
+  "productTrackedDiff": "",
+  "productFiles": [
+    {
+      "file": "src/ui/panel-chat.js",
+      "sha256": "80bb5ee2dda8d2affb9525854578a6378a911a1cb5d7b815721b8f8cb5df8431"
+    },
+    {
+      "file": "src/ui/accounts-view.js",
+      "sha256": "c80c3a14bd107848231b94f3c9a6a860e459ba95c4952f9f175369351c62574a"
+    },
+    {
+      "file": "src/ui/host-install.js",
+      "sha256": "18a6da06ecfef4b973d6e1413d8dac278eaff9e9eb694270ad84df52b8ba250e"
+    },
+    {
+      "file": "src/ui/runtime-cli-install.js",
+      "sha256": "91e78717871978fdebed44815a2f2b554419d279b97b01edaca8b90619a41981"
+    },
+    {
+      "file": "src/ui/panel-runtimes.js",
+      "sha256": "484771b55207fcb99a54c2adbd5d3606462a7acd4c059a24a74fc2b9c442cb8d"
+    },
+    {
+      "file": "src/ui/settings-hub-connection.js",
+      "sha256": "77ec3cdfbf5e06f360f9ce9c8995c9bc8aa567de4e5ff96a990a9b3852ec435d"
+    },
+    {
+      "file": "src/ui/settings-hub-section.js",
+      "sha256": "ae35b9de1c93479e5b7cedf247db3cf5c19c9023140477985347e1082864744f"
+    },
+    {
+      "file": "src/ui/settings-confirm.js",
+      "sha256": "a9516dc099d479a5c6648386d2b91928603c32908107bad0f5c9fa5faff47d15"
+    },
+    {
+      "file": "src/ui/settings-outside.js",
+      "sha256": "7a93e505f558ecb8f1874630ee86da888ef0618b8c6d4e03515458b5edf6ecef"
+    },
+    {
+      "file": "src/ui/shared/app-shell.js",
+      "sha256": "a693665000dafd4858ef877fa9b5fcc91420fe29827e6452f972f892752152db"
+    },
+    {
+      "file": "src/ui/signin-authenticator.html",
+      "sha256": "75787b34dde126cf10be988426dc80177f252f228b07ad482acc076420576278"
+    },
+    {
+      "file": "src/subagent-records.ts",
+      "sha256": "febf682dae0a5a4ed3e025a50329a2a81e829e11d99ba35135a53c0e7ce84d25"
+    },
+    {
+      "file": "src/subagent-service.ts",
+      "sha256": "74d32b3ce656d1f9bd74c8be0cb0b7173ba4ecabf16f691af3b9d3afdee3a0f0"
+    },
+    {
+      "file": "src/fleet-manager.ts",
+      "sha256": "d999e1b4717d486f9a904c2ebc2b6dcc90677a4fe7eabd70572209858dfe0f4f"
+    },
+    {
+      "file": "src/auth-api.ts",
+      "sha256": "17387b09ee07404e1294f8ca1b1843a2f72522928626321035452ae1d6fa1702"
+    },
+    {
+      "file": "src/web-api.ts",
+      "sha256": "dcc612131c6960e2ca2fbbeb4df7289ab0ad582985bbe38c79f921f3874a8b87"
+    },
+    {
+      "file": "src/runtime-coordinator.ts",
+      "sha256": "d04848b4e1a4daff9ff948b34361aea63a6307a5db5b29e1ac50b9b897039ba6"
+    },
+    {
+      "file": "src/runtime-install.ts",
+      "sha256": "a40884ab1751aa9d5e40a9153ace05bf1f4eeef9211780d9338988df7b2b9a19"
+    },
+    {
+      "file": "src/update-npm-env.ts",
+      "sha256": "39f392802946612857fbbdc855699bce4a46aee5512757276738e403c1833254"
+    }
+  ],
+  "harnessFiles": [
+    {
+      "file": "scripts/manual/a11-acceptance/auth-enrollment-checks.mts",
+      "sha256": "e07665be7a707f61bb72215648d229db603dd2501f852ca0bcf701528af9f1d1"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/auth.mts",
+      "sha256": "226ea3884a055789a08b8719056725e2d5c0ad04ee5d49145fbd8ab80fd19870"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/chat-reload.mts",
+      "sha256": "b3705c167447ceaac59e4b1660c0aa88ae5de712cd3f1d32b13c16cb7c7c89cf"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/checks.mts",
+      "sha256": "b9a04409e19026c4c9c4a1ca66c9d0f3b05c13761e8318ddc974bf82b38a6d7e"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/host-install.mts",
+      "sha256": "c116a736e2a133c1d268ddff70ecb53fc8531f88882cee6fc817629597e0bd35"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/host-update-failure.mts",
+      "sha256": "a085fef67d0e3e23a943505ebc984ec193736b13205d45ba330d5932d621ce4c"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/host-update.mts",
+      "sha256": "518a692870e5620858f2dee7e96a44b6832214c13da495b981672f5fdd4667a3"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/hub-admin.mts",
+      "sha256": "152ab60f1056e0c74a456e93702598a5574b25977b4b6a6cda51d52a6e4bb8f2"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/hub-lifecycle.mts",
+      "sha256": "980081bd996972cf8d84001ea65e2558afabec5f595f3b1e4128c35843da7760"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/hub.mts",
+      "sha256": "9209186a4627bfe582f785a5ad461910ecfa2b2a1471a6c2d3c9cde601e28503"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/models-apply.mts",
+      "sha256": "b870508559cb6feebd358aac443c9bba851631f169d4c1a8f99e33a5fa670c2e"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/models.mts",
+      "sha256": "9aaec36d5818b130d794be474582d0ee957300fb4068751749c3159a72caee37"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/named-signin.mts",
+      "sha256": "03c61331d1b7fa994b4fca33a5e05d42794373c242826f9f9b8188d19bce1627"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/quotes.mts",
+      "sha256": "f1cf6151df54e15eb08c2045f7acc57a1832e2895eb406028a105305bd4bc246"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/roles-email.mts",
+      "sha256": "f20eabe3b6bf46c292d4d9df80b9e3ee29f4127939e55de07229d059a7dda087"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/runtime-failure.mts",
+      "sha256": "f939b45509b26b0d8598f5b1df1192d4d19d1fc91b358219a9bc4455f8367bcc"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/runtime.mts",
+      "sha256": "c2b3d835e9ea7621b4ade88bc7d03399ad057e2c80e6380f03851004a52712f8"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/signin.mts",
+      "sha256": "63c54e6432eebefea72866eb5e19696f519cae83f1d2da6eeb923e064abb98f7"
+    },
+    {
+      "file": "scripts/manual/a11-acceptance/usage-empty.mts",
+      "sha256": "b2c3e84dbaf713a9347610a18919d2f4e83e0311b28fe0d471321cf309f3f718"
+    }
+  ],
+  "pngCount": 245,
+  "focusedTestsPassed": 278
+}

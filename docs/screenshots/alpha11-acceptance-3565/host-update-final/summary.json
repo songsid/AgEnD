@@ -1,0 +1,95 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "host-update-final",
+  "result": "PASS within the stated scope",
+  "scope": "Actual Accounts/Settings gate/update job projection and audited/latest acknowledgement request. Inventory, launch and exit callbacks are inert. Fake updater reports version; this does not prove vendor updater success.",
+  "commandScript": "scripts/manual/a11-acceptance/host-update.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 17,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-antigravity-available.png",
+    "desk-light-zh-TW-antigravity-done.png",
+    "desk-light-zh-TW-antigravity-progress.png",
+    "desk-light-zh-TW-grok-available.png",
+    "desk-light-zh-TW-grok-done.png",
+    "desk-light-zh-TW-grok-progress.png",
+    "phone-dark-zh-TW-antigravity-available.png",
+    "phone-dark-zh-TW-antigravity-done.png",
+    "phone-dark-zh-TW-antigravity-progress.png",
+    "phone-dark-zh-TW-grok-available.png",
+    "phone-dark-zh-TW-grok-done.png",
+    "phone-dark-zh-TW-grok-progress.png"
+  ],
+  "checks": [
+    {
+      "name": "desk-light-zh-TW grok target explained",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW grok update request accepted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW grok latest ACK",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW grok dispatched once",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW antigravity target explained",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW antigravity update request accepted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW antigravity latest ACK",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW antigravity dispatched once",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW grok target explained",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW grok update request accepted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW grok latest ACK",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW grok dispatched once",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW antigravity target explained",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW antigravity update request accepted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW antigravity latest ACK",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW antigravity dispatched once",
+      "ok": true
+    }
+  ]
+}

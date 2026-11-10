@@ -1,0 +1,24 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "chat-reload-zh",
+  "result": "PASS within the stated scope",
+  "scope": "Real TLS Hub/SQLite/auth/grants/history/lease release, synthetic directory and protocol-member answer. Desktop/phone zh-TW reload/reopen <10s gives200; genuine held-capacity429 and Retry-After10 recover.",
+  "commandScript": "scripts/manual/a11-acceptance/chat-reload.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 14,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-busy-retrying.png",
+    "desk-light-zh-TW-reload-visible.png",
+    "desk-light-zh-TW-retry-recovered.png",
+    "phone-dark-zh-TW-busy-retrying.png",
+    "phone-dark-zh-TW-reload-visible.png",
+    "phone-dark-zh-TW-retry-recovered.png"
+  ],
+  "checks": []
+}

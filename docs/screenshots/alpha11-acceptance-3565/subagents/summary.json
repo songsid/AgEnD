@@ -1,0 +1,38 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "subagents",
+  "result": "PASS within the stated scope",
+  "scope": "Actual bounded reader, owner/admin web route and saved mock-API CLI records. Derived live phases and fixed observation/browser clock exercise 15s/120s retirement and no revival; no fresh live CLI, no performance claim.",
+  "commandScript": "scripts/manual/subagent-row/async-accept.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 30,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-before-unknown.png",
+    "desk-light-zh-TW-completed-retired.png",
+    "desk-light-zh-TW-completed.png",
+    "desk-light-zh-TW-reopened.png",
+    "desk-light-zh-TW-running-collapsed.png",
+    "desk-light-zh-TW-running.png",
+    "desk-light-zh-TW-unknown-retired.png",
+    "desk-light-zh-TW-unknown.png",
+    "phone-dark-zh-TW-before-unknown.png",
+    "phone-dark-zh-TW-completed-retired.png",
+    "phone-dark-zh-TW-completed.png",
+    "phone-dark-zh-TW-reopened.png",
+    "phone-dark-zh-TW-running-collapsed.png",
+    "phone-dark-zh-TW-running.png",
+    "phone-dark-zh-TW-unknown-retired.png",
+    "phone-dark-zh-TW-unknown.png",
+    "skew-missing-module.png",
+    "skew-old-client.png",
+    "skew-old-panel.png",
+    "skew-old-server.png"
+  ],
+  "checks": []
+}

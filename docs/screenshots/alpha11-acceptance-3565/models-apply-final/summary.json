@@ -1,0 +1,41 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "models-apply-final",
+  "result": "PASS within the stated scope",
+  "scope": "Real Settings/chat catalog endpoints and disk save. Catalog worker, auth check and runtime model-switch acknowledgement are inert. Explicit ordinary status frame uses production getUiStatus because the fixture does not start the fleet tick. Select Opus, persist YAML, UI reflects Opus. Backend-switch dialog cancellation starts no backend.",
+  "commandScript": "scripts/manual/a11-acceptance/models-apply.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 17,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-agent-dialog.png",
+    "desk-light-zh-TW-backend-confirm.png",
+    "desk-light-zh-TW-backend-effort.png",
+    "desk-light-zh-TW-backend-model.png",
+    "desk-light-zh-TW-backend.png",
+    "desk-light-zh-TW-chat-chosen-model.png",
+    "desk-light-zh-TW-chat-model.png",
+    "desk-light-zh-TW-chat-more.png",
+    "desk-light-zh-TW-refresh-busy.png",
+    "desk-light-zh-TW-refresh-error.png",
+    "desk-light-zh-TW-settings.png",
+    "phone-dark-zh-TW-agent-dialog.png",
+    "phone-dark-zh-TW-backend-confirm.png",
+    "phone-dark-zh-TW-backend-effort.png",
+    "phone-dark-zh-TW-backend-model.png",
+    "phone-dark-zh-TW-backend.png",
+    "phone-dark-zh-TW-chat-chosen-model.png",
+    "phone-dark-zh-TW-chat-model.png",
+    "phone-dark-zh-TW-chat-more.png",
+    "phone-dark-zh-TW-phone-latest.png",
+    "phone-dark-zh-TW-refresh-busy.png",
+    "phone-dark-zh-TW-refresh-error.png",
+    "phone-dark-zh-TW-settings.png"
+  ],
+  "checks": []
+}

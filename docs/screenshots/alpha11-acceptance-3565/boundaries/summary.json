@@ -1,0 +1,18 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "boundaries",
+  "result": "PASS within the stated scope",
+  "scope": "Supplemental nine focused suites142/142, not browser evidence: update npm bounds, ClassicBot generated relay instructions, latest-update acknowledgements, owner/device fences, Hub Stop sessions, subagent access, identity parsing.",
+  "commandScript": "scripts/manual/a11-acceptance/checks.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 12,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [],
+  "checks": [],
+  "focusedTestsPassed": 142
+}

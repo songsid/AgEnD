@@ -1,0 +1,133 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "roles-final-verified",
+  "result": "PASS within the stated scope",
+  "scope": "Actual owner host-code session and public HTTP/browser. Other device/read/guest sessions are setup through the owned real store. Full identity parsed from synthetic Claude auth-status JSON; no vendor identity probe.",
+  "commandScript": "scripts/manual/a11-acceptance/roles-email.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 25,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-admin-refused.png",
+    "desk-light-zh-TW-devices.png",
+    "desk-light-zh-TW-full-email.png",
+    "desk-light-zh-TW-owner-revoked.png",
+    "desk-light-zh-TW-revoke-confirm.png",
+    "phone-dark-zh-TW-admin-refused.png",
+    "phone-dark-zh-TW-devices.png",
+    "phone-dark-zh-TW-full-email.png",
+    "phone-dark-zh-TW-owner-revoked.png",
+    "phone-dark-zh-TW-revoke-confirm.png"
+  ],
+  "checks": [
+    {
+      "name": "desk-light-zh-TW owner enabled",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW owner server canRevoke",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW admin cannot revoke",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW backend owner fence",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW one device list",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW named other device visible",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW epoch advanced",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW owner remains authorized",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW full email",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW email not clipped",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no document overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW read no account disclosure",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW guest no account disclosure",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW owner enabled",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW owner server canRevoke",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW admin cannot revoke",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW backend owner fence",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW one device list",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW named other device visible",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW epoch advanced",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW owner remains authorized",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW full email",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW email not clipped",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no document overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW read no account disclosure",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW guest no account disclosure",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "auth-retained-confirm",
+  "result": "PASS within the stated scope",
+  "scope": "Same named-admin sensitive-change journey with all four alpha.10 shared assets retained. The retained shell keeps its OLD folded Advanced host-command fallback; the new in-page code path still works. This is not a claim that old bytes adopt current wording.",
+  "commandScript": "scripts/manual/a11-acceptance/auth.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 29,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-1-chat-no-app.png",
+    "desk-light-zh-TW-2-chat-app-off.png",
+    "desk-light-zh-TW-3-chat-code.png",
+    "phone-dark-zh-TW-1-chat-no-app.png",
+    "phone-dark-zh-TW-2-chat-app-off.png",
+    "phone-dark-zh-TW-3-chat-code.png"
+  ],
+  "checks": []
+}

@@ -1,0 +1,137 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "hub",
+  "result": "PASS within the stated scope",
+  "scope": "Actual sealed Hub HTTPS/WSS, production AD driver against owned TLS/BER fake directory, actual Fleet host sign-in/company join/sharing/pause/resume. Setup policy via public guarded API, no response stubs, no model or task.",
+  "commandScript": "scripts/manual/a11-acceptance/hub.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 31,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-agents-chosen.png",
+    "desk-light-zh-TW-connected.png",
+    "desk-light-zh-TW-paused-reloaded.png",
+    "desk-light-zh-TW-resumed.png",
+    "desk-light-zh-TW-unconnected.png",
+    "phone-dark-zh-TW-agents-chosen.png",
+    "phone-dark-zh-TW-connected.png",
+    "phone-dark-zh-TW-paused-reloaded.png",
+    "phone-dark-zh-TW-resumed.png",
+    "phone-dark-zh-TW-unconnected.png"
+  ],
+  "checks": [
+    {
+      "name": "desk-light-zh-TW single frame",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no startup effect",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW actual ready link",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no automatic sharing",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW explicit share saved",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW pause retained profile",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no active member after pause",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW retained summary",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW resume preserved chosen Agents",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no native lifecycle",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW single frame",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no startup effect",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW actual ready link",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no automatic sharing",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW phone tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW explicit share saved",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW pause retained profile",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no active member after pause",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW retained summary",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW resume preserved chosen Agents",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no native lifecycle",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no CSP",
+      "ok": true
+    },
+    {
+      "name": "nonempty selection",
+      "ok": true
+    },
+    {
+      "name": "no script errors",
+      "ok": true
+    }
+  ]
+}

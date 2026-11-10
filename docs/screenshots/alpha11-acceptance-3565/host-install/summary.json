@@ -1,0 +1,42 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "host-install",
+  "result": "PASS within the stated scope",
+  "scope": "Actual Accounts/Settings/per-admin authenticator gate; missing CLI inventory and installer dispatch are injected. Four EN/zh/desktop/phone cells plus old alpha.10 shared assets; no install command executes.",
+  "commandScript": "scripts/manual/a11-acceptance/host-install.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 35,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "after-desk-light-en-applied.png",
+    "after-desk-light-en-code.png",
+    "after-desk-light-en-wrong.png",
+    "after-desk-light-zh-TW-applied.png",
+    "after-desk-light-zh-TW-code.png",
+    "after-desk-light-zh-TW-wrong.png",
+    "after-phone-dark-en-applied.png",
+    "after-phone-dark-en-code.png",
+    "after-phone-dark-en-wrong.png",
+    "after-phone-dark-zh-TW-applied.png",
+    "after-phone-dark-zh-TW-code.png",
+    "after-phone-dark-zh-TW-wrong.png",
+    "skew-desk-light-en-applied.png",
+    "skew-desk-light-en-code.png",
+    "skew-desk-light-en-wrong.png",
+    "skew-desk-light-zh-TW-applied.png",
+    "skew-desk-light-zh-TW-code.png",
+    "skew-desk-light-zh-TW-wrong.png",
+    "skew-phone-dark-en-applied.png",
+    "skew-phone-dark-en-code.png",
+    "skew-phone-dark-en-wrong.png",
+    "skew-phone-dark-zh-TW-applied.png",
+    "skew-phone-dark-zh-TW-code.png",
+    "skew-phone-dark-zh-TW-wrong.png"
+  ],
+  "checks": []
+}

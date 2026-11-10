@@ -1,0 +1,24 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "hub-lifecycle",
+  "result": "PASS within the stated scope",
+  "scope": "Initialized through owned D3 prepare/test/commit setup API, then real Fleet browser Stop/cancel/Run and actual Hub listener off/ready. Web-only host rig; no General confirmation card required.",
+  "commandScript": "scripts/manual/a11-acceptance/hub-lifecycle.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 14,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-running.png",
+    "desk-light-zh-TW-stop-confirm.png",
+    "desk-light-zh-TW-stopped.png",
+    "phone-dark-zh-TW-running.png",
+    "phone-dark-zh-TW-stop-confirm.png",
+    "phone-dark-zh-TW-stopped.png"
+  ],
+  "checks": []
+}

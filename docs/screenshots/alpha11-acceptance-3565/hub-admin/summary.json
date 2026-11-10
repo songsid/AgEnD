@@ -1,0 +1,128 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "hub-admin",
+  "result": "PASS within the stated scope",
+  "scope": "Actual Hub sign-in/group editor/company switch/individual invite/manual offer. Synthetic TLS/BER directory; generated temporary link/code areas masked. No invitation redeemed or real directory modified.",
+  "commandScript": "scripts/manual/a11-acceptance/hub-admin.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 14,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-advanced-code.png",
+    "desk-light-zh-TW-advanced-overview.png",
+    "desk-light-zh-TW-allowed-and-individual.png",
+    "desk-light-zh-TW-off.png",
+    "phone-dark-zh-TW-advanced-code.png",
+    "phone-dark-zh-TW-advanced-overview.png",
+    "phone-dark-zh-TW-allowed-and-individual.png",
+    "phone-dark-zh-TW-individual-invitation.png",
+    "phone-dark-zh-TW-off.png"
+  ],
+  "checks": [
+    {
+      "name": "desk-light-zh-TW access first",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW off copy explained",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW manual starts folded",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW exact address and identity link",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW explicit invitation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW scoped invitation explained",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW existing group editor",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW manual code retained",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW only explicit effects",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW access first",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW off copy explained",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW manual starts folded",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW exact address and identity link",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW explicit invitation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW scoped invitation explained",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW existing group editor",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW manual code retained",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW phone tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW only explicit effects",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no CSP",
+      "ok": true
+    },
+    {
+      "name": "nonempty matrix",
+      "ok": true
+    },
+    {
+      "name": "no script errors",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "build",
+  "result": "PASS within the stated scope",
+  "scope": "Exact candidate npm run build; source product bytes unchanged. TypeScript-source web rig rather than published npm package.",
+  "commandScript": "BUILD",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 7,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [],
+  "checks": []
+}

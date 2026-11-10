@@ -1,0 +1,30 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "usage",
+  "result": "PASS within the stated scope",
+  "scope": "Actual shell/shared usage card with synthetic usage API projection and fetch seam. Four EN/zh desktop/phone cells, current and beta.3 CSS/strings.",
+  "commandScript": "scripts/manual/smoke/smoke-usage-refresh-m2805.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 35,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "after-desk-light-en-idle.png",
+    "after-desk-light-en-updating.png",
+    "after-desk-light-zh-TW-idle.png",
+    "after-desk-light-zh-TW-updating.png",
+    "after-phone-dark-en-idle.png",
+    "after-phone-dark-en-updating.png",
+    "after-phone-dark-zh-TW-idle.png",
+    "after-phone-dark-zh-TW-updating.png",
+    "skew-desk-light-en-updating.png",
+    "skew-desk-light-zh-TW-updating.png",
+    "skew-phone-dark-en-updating.png",
+    "skew-phone-dark-zh-TW-updating.png"
+  ],
+  "checks": []
+}

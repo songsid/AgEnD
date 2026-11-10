@@ -1,0 +1,22 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "signin",
+  "result": "PASS within the stated scope",
+  "scope": "Actual signed-out web-only browser/code sign-in, seeded own synthetic TOTP secret. Named/ambiguous/demoted-admin controls are supplemental route tests, not separate browser sign-ins.",
+  "commandScript": "scripts/manual/a11-acceptance/signin.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 20,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-1-authenticator.png",
+    "desk-light-zh-TW-2-wrong-code.png",
+    "phone-dark-zh-TW-1-authenticator.png",
+    "phone-dark-zh-TW-2-wrong-code.png"
+  ],
+  "checks": []
+}

@@ -1,0 +1,15 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "ownedProcessScan": [],
+  "allWrapperReceipts": 55,
+  "allRecordedOwnedLivePids": [],
+  "allOwnedTemporaryRootsRemoved": true,
+  "removedPersistentScratchDirectories": [
+    "homes",
+    "named-signin/private"
+  ],
+  "selectedCampaigns": 22,
+  "selectedGuardViolations": 0,
+  "preparatoryRuns": "Earlier harness errors and guard-blocked probes retained privately; no real backend was allowed to run. See README fixture corrections.",
+  "untouched": "Live fleet/accounts/pilot/OS and pre-existing root website tips changes untouched."
+}

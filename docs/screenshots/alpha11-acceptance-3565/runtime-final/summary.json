@@ -1,0 +1,124 @@
+{
+  "candidate": "636328df913c8a01081f3a35d1d14f408635977b",
+  "campaign": "runtime-final",
+  "result": "PASS within the stated scope",
+  "scope": "Real Fleet web, command generation, X25519/AES-GCM enrollment, server fingerprint proof, credentialed public WS and correct remote operation. Installer service has an inert bundle and real script template; Windows inventory/owner-switch/install/update/failure replies are fake. NO actual PowerShell, Windows download/signature/autostart/registry or OS installation. Generated command is never run.",
+  "commandScript": "scripts/manual/a11-acceptance/runtime-failure.mts",
+  "cleanup": {
+    "exitCode": 0,
+    "trackedPids": 17,
+    "liveOwnedPids": [],
+    "guardViolations": [],
+    "ownedTempRemoved": true
+  },
+  "network": "Private user/network namespace, only loopback enabled, no external route; unchanged native process guard preloaded.",
+  "pngs": [
+    "desk-light-zh-TW-agy-install-confirm.png",
+    "desk-light-zh-TW-agy-install-result.png",
+    "desk-light-zh-TW-agy-latest-update-confirm.png",
+    "desk-light-zh-TW-agy-latest-update-result.png",
+    "desk-light-zh-TW-install-failed.png",
+    "desk-light-zh-TW-install-owner-off.png",
+    "desk-light-zh-TW-one-command-masked.png",
+    "desk-light-zh-TW-online.png",
+    "desk-light-zh-TW-opencode-audited-update-confirm.png",
+    "desk-light-zh-TW-opencode-audited-update-result.png",
+    "desk-light-zh-TW-opencode-install-confirm.png",
+    "desk-light-zh-TW-opencode-install-result.png",
+    "phone-dark-zh-TW-agy-install-confirm.png",
+    "phone-dark-zh-TW-agy-install-result.png",
+    "phone-dark-zh-TW-agy-latest-update-confirm.png",
+    "phone-dark-zh-TW-agy-latest-update-result.png",
+    "phone-dark-zh-TW-install-failed.png",
+    "phone-dark-zh-TW-opencode-audited-update-confirm.png",
+    "phone-dark-zh-TW-opencode-audited-update-result.png",
+    "phone-dark-zh-TW-opencode-install-confirm.png",
+    "phone-dark-zh-TW-opencode-install-result.png"
+  ],
+  "checks": [
+    {
+      "name": "UI enrollment201",
+      "ok": true
+    },
+    {
+      "name": "command contains private one-use token",
+      "ok": true
+    },
+    {
+      "name": "public hello200",
+      "ok": true
+    },
+    {
+      "name": "server proof matches UI fingerprint",
+      "ok": true
+    },
+    {
+      "name": "sealed enroll201 no approval",
+      "ok": true
+    },
+    {
+      "name": "install command provenance",
+      "ok": true
+    },
+    {
+      "name": "remote owner switch disables install",
+      "ok": true
+    },
+    {
+      "name": "latest warning visible",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW failed installer preserves absence",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW failure sent only one target",
+      "ok": true
+    },
+    {
+      "name": "actual protocol chose pinned install",
+      "ok": true
+    },
+    {
+      "name": "actual protocol chose latest update",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no page errors",
+      "ok": true
+    },
+    {
+      "name": "latest warning visible",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW failed installer preserves absence",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW failure sent only one target",
+      "ok": true
+    },
+    {
+      "name": "actual protocol chose pinned install",
+      "ok": true
+    },
+    {
+      "name": "actual protocol chose latest update",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no page errors",
+      "ok": true
+    }
+  ]
+}
