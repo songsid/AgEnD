@@ -13,7 +13,7 @@ import type { WindowsCliProbe } from "./windows-cli.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
 import { runtimeServerOrigin } from "./runtime-connection.js";
 import type { RuntimeInstallService } from "./runtime-install.js";
-import { cachedSettingsBody, isSettingsReplay, settingsRequestActor, settingsRequestAuthorityCurrent } from "./settings-request-capability.js";
+import { cachedSettingsBody, isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestRequester } from "./settings-request-capability.js";
 
 export interface RuntimeApiContext extends WindowsCliApiContext { runtimeCoordinator?(): RuntimeCoordinator; runtimeInstaller?(): RuntimeInstallService }
 /**
@@ -142,13 +142,18 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
   if (setupRoute) {
     // Only a local administrator session (remoteSetupActor); a header token, guest, public link or gateway gets nothing, and is not told why.
     const id = setupRoute[1], what = setupRoute[2], machine = hub.machine(id);
-    // AGEND-148 (Prism R3 on #3539): an install (and the Update that reuses it) is the Settings gate's confirmed replay and nothing else (settings-http-confirmation.ts proposed it, and the administrator's
-    // own Apply now / digest-bound code confirmed it). The replay has no session: the administrator is the gate's — still the same one, the execution not stale, the confirmation current — and the
-    // name the computer's audit log keeps is the opaque `admin:<handle>` the gate carried. The computer's owner's own switch is asked on that computer, separately (`cli.install` below).
+    // AGEND-148 (Prism R3 on #3539): an install (and the Update that reuses it) is the Settings gate's confirmed replay and nothing else — the same gate, principal, per-admin policy and replay
+    // that #3542 put in front of the host's install (settings-http-confirmation.ts proposes it; the administrator's own Apply now / digest-bound code confirms it). The replay has no session: the
+    // administrator is the gate's requester, asked the way the host route asks (`settingsRequestLocalAdmin`: the execution not stale, the local-admin principal live), and the name the
+    // computer's audit log keeps is the opaque `admin:<handle>`. The computer's owner's own switch is asked on that computer, separately (`cli.install` below).
     const viaGate = isSettingsReplay(req);
-    const actorNow = (): string | null => viaGate ? (settingsRequestAuthorityCurrent(req) ? settingsRequestActor(req) ?? null : null) : remoteSetupActor(req, url, ctx);
+    const actorNow = (): string | null => {
+      if (!viaGate) return remoteSetupActor(req, url, ctx);
+      const handle = settingsRequestRequester(req)?.handle;
+      try { return handle && /^[a-f0-9]{16}$/.test(handle) && settingsRequestLocalAdmin(req) ? `admin:${handle}` : null; } catch { return null; }
+    };
     if (viaGate && !(what === "cli-install" && method === "POST") || !actorNow()) { json(res, 403, { error: "Installing CLIs on a computer needs a local dashboard administrator" }); return true; }
-    if (what === "cli-install" && method === "POST" && !viaGate) { json(res, 403, { error: "install_needs_confirmation" }); return true; }
+    if (what === "cli-install" && method === "POST" && !viaGate) { json(res, 403, { error: "install_confirmation_required" }); return true; }
     if (!machine) { json(res, 404, { error: "Runtime machine not found" }); return true; }
     const jobs = jobsOf(hub);
     if (what === "remote-setup" && method === "GET") {
@@ -167,6 +172,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
       return true;
     }
     if (what === "cli-install" && method === "POST") {
+      let spent = false;                                               // the confirmed change's admission was used: its authority is not asked about again (see `execution.complete()`)
       void (async () => {
         const raw = cachedSettingsBody(req) ?? Buffer.alloc(0);       // the gate's replay carries the body it held; there is no stream to read
         const actor = actorNow();
@@ -175,6 +181,9 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
         if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length !== 1 || !("cli" in input) || !isInstallableCli(input.cli)) throw Error("Choose a CLI this Runtime installs");
         const cli = input.cli;
         if (jobs.get(id)?.state === "installing") { json(res, 409, { error: "An install is already running on this computer", job: jobs.get(id) }); return; }
+        // #3542's rule for an effect that outlives the request: the confirmed change's admission ends at the one effect, asked once more right here with nothing awaited between it and the
+        // request to that computer (a stale execution throws: nothing is sent, and no job is left).
+        settingsRequestExecution(req)!.complete(); spent = true;
         // Fixed fields only: the Runtime takes the CLI id and the asker's name, and decides everything else itself.
         const job: CliInstallJob = { cli, state: "installing", startedAt: Date.now() };
         // Taken in the same synchronous step as the check above, before any await: of two requests at once, only one gets here.
@@ -196,7 +205,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
           job.state = "done"; if (typeof version === "string") job.version = version.slice(0, 64);
         });
         json(res, 202, { job });
-      })().catch(error => { const ok = !!actorNow(); json(res, ok ? 400 : 403, { error: ok ? error instanceof Error ? error.message : "Install request failed" : "Authorization expired" }); });
+      })().catch(error => { const ok = spent || !!actorNow(); json(res, ok ? 400 : 403, { error: ok ? error instanceof Error ? error.message : "Install request failed" : "Authorization expired" }); });
       return true;
     }
     json(res, 404, { error: "Unknown runtime operation" }); return true;

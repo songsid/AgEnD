@@ -321,7 +321,7 @@ import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permis
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, setCapacityLookup, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, checkAuthStatus, checkAuthIdentity, authIdentitySupported, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import type { AccountIdentity } from "./claude-auth-status.js";
-import { LoginSession, LoginAdmissionRefused, type LoginSessionEvents } from "./login-manager.js";
+import { LoginSession, type LoginSessionEvents } from "./login-manager.js";
 import { runOnLoginShell } from "./login-shell.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
@@ -3430,7 +3430,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
         if (auth.kind !== "ok" || !current()) return null;
         const record = auth.session, sessions = this.webSessions, exposure = gatewayRequestContext(req);
-        return { localSession: this.hubCompanySession(req) ?? undefined, id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session", actor: `admin:${record.handle}`,
+        return { requester: { handle: record.handle, label: record.label }, localSession: this.hubCompanySession(req) ?? undefined, id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
           localAdmin: () => record.tier === "admin" && record.surface === "local" && !exposure,
           current: () => current() && sessions === this.webSessions && !!this.webToken
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
@@ -3440,6 +3440,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       remote: req => this.settingsPageIsRemote(req),
       directCreationPolicy: req => this.settingsDirectCreationAllowed(req),
       directAgentCreation: true,
+      directHostInstall: true,
       directCompanyJoin: true,
       job: async id => {
         const settlement = this.settingsJobSettlements.get(id);
@@ -22024,7 +22025,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       warn: (message, err) => this.logger.debug({ backend, err: (err as Error)?.message ?? String(err) }, message),
     }, t("install.stream_running", backend), undefined, undefined, frameStyle);
     const minutes = String(Math.max(1, Math.round(this.installTimeoutMs / 60_000)));
-    const opened = await this.openInstallWindow(backend, info, claim, null, {
+    const opened = await this.openInstallWindow(backend, info, claim, {
       onProgress: pane => stream.update(pane),
       onDone: async ({ ok, detail, cleanupFailed }) => {
         this.activeInstall = null;
@@ -22103,7 +22104,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
     if ("failure" in opened) {
       if (opened.failure === "shutting_down") return t("login.web_shutting_down");
-      if (opened.failure === "cancelled" || opened.failure === "not_allowed") return this.loginWindow.isClosed ? t("login.web_shutting_down") : t("install.cancelled", backend);
+      if (opened.failure === "cancelled") return this.loginWindow.isClosed ? t("login.web_shutting_down") : t("install.cancelled", backend);
       const text = t("install.failed", backend, opened.message);
       return opened.cleanupFailed ? `${text}\n${t("login.web_cleanup_failed", backend)}` : text;
     }
@@ -22117,11 +22118,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * `events.onDone` owns the release. `activeInstall` is set while it runs, so `/login cancel`, the dashboard's Cancel and a fleet stop all reach it.
    */
   private async openInstallWindow(backend: string, info: { install: string; unattended?: string }, claim: import("./login-window-lock.js").LoginWindowClaim,
-    asker: (() => boolean) | null, events: LoginSessionEvents): Promise<{ session: LoginSession } | { failure: "shutting_down" } | { failure: "not_allowed" } | { failure: "cancelled" } | { failure: "start"; message: string; cleanupFailed: boolean }> {
+    events: LoginSessionEvents, execution?: SettingsExecution): Promise<{ session: LoginSession } | { failure: "shutting_down" } | { failure: "cancelled" } | { failure: "start"; message: string; cleanupFailed: boolean }> {
     let tmux: TmuxManager;
     try {
       const sessionName = getTmuxSession();
       await TmuxManager.ensureSession(sessionName);
+      execution?.assert();
       if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return { failure: "shutting_down" }; }
       tmux = new TmuxManager(sessionName, "");
     } catch (err) {
@@ -22134,12 +22136,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // M-2281 (#2980): no terminal to ask on, low priority, stoppable as a whole, the user's own $SHELL — see
     // unattended-install.ts. A prompt nobody can answer fails at once instead of waiting out the timeout.
     const shell = (await loginShell()) ?? null;
-    if (!this.loginWindow.isCurrent(claim)) {
+    if (!this.loginWindow.isCurrent(claim) || (execution && !execution.current())) {
       this.loginWindow.release(claim);
       return { failure: "shutting_down" };
     }
-    // AGEND-144: the last look at who asked, after every wait above and immediately before the effect (the window that runs the installer opens in `session.start()`).
-    if (asker && !asker()) { this.loginWindow.release(claim); return { failure: "not_allowed" }; }
     // The wrapper says its own exit code after this marker: tmux may never record it (unattended-install.ts).
     const exitMarker = installExitMarker();
     const flow: LoginFlow = {
@@ -22149,16 +22149,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       successPattern: /$^/,
       timeoutMs: this.installTimeoutMs,
     };
-    // AGEND-148 (Prism R3 on #3539, P2-2): the look above is not the last. `session.start()` awaits tmux (the strict window listing, the reuse / respawn steps) before the command that
-    // runs the installer is sent, and a revocation can land in any of those waits: the asker is carried into the session and asked again up to that command.
-    const session = new LoginSession(flow, tmux, events, this.logger, undefined, asker ?? undefined);
+    const session = new LoginSession(flow, tmux, events, this.logger);
     this.activeInstall = { session, backend };
     try {
-      await session.start();
+      // Admission ends at the actual tmux command dispatch, after its own asynchronous preparation.
+      if (execution) await session.start(() => execution.complete());
+      else await session.start();
     } catch (err) {
       this.activeInstall = null;
       this.loginWindow.release(claim);
-      if (err instanceof LoginAdmissionRefused) return { failure: "not_allowed" };
       return { failure: "start", message: (err as Error).message, cleanupFailed: !!(err as { cleanupFailed?: boolean }).cleanupFailed };
     }
     if (session.state === "done") {
@@ -22179,9 +22178,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private webHostInstallsInstance: WebHostInstalls | null = null;
   get webHostInstalls(): WebHostInstalls {
     this.webHostInstallsInstance ??= new WebHostInstalls({
+      isLocalAdmin: handle => this.isLocalAdminSession(handle),
       installable: backend => !isRemovedBackend(backend) && !!BACKEND_INSTALLATION_INFO[backend],
       updatable: backend => !isRemovedBackend(backend) && !!BACKEND_INSTALLATION_INFO[backend] && !!hostUpdatePlan(backend),
-      start: (backend, reporter, mode, current) => this.startWebInstall(backend, reporter, mode, current),
+      start: (backend, reporter, execution, mode) => this.startWebInstall(backend, reporter, execution, mode),
       cancel: async () => { if (!this.activeInstall) return false; await this.cancelInstallSession(); return true; },
       // No details in the event: each page reads GET /ui/host-install. The Accounts list reads itself again on the same event (the CLI is installed now).
       changed: () => { broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")); },
@@ -22195,7 +22195,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * is — a fresh login shell, else the installer's own directories — and the availability probe reads the version for the page. Everything is
    * reported through `reporter`; nothing is posted to any chat, and no sign-in is started (the page offers Sign in itself).
    */
-  async startWebInstall(backendArg: string, reporter: HostInstallReporter, mode: HostInstallMode = "install", current: () => boolean = () => true): Promise<HostInstallStart> {
+  async startWebInstall(backendArg: string, reporter: HostInstallReporter, execution?: SettingsExecution, mode: HostInstallMode = "install"): Promise<HostInstallStart> {
+    execution?.assert();
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const base = BACKEND_INSTALLATION_INFO[backend];
     if (!base || isRemovedBackend(backend)) return { refused: "unsupported" };
@@ -22206,14 +22207,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // The fleet-wide window, claimed before the first await (shared with /login, chat's install and sign-in).
     const claim = this.loginWindow.tryClaim("install", backend);
     if (!claim) return { refused: this.loginWindow.isClosed ? "shutting_down" : "busy" };
-    // AGEND-144 (Prism on #3539): the claim is a lock, not the asker's authority. The asker's own session / admin role / confirmation (`current`) is asked again after each wait
-    // (the binary check, the version refresh) and once more, inside openInstallWindow, right before the installer window opens; a refusal gives the claim back.
-    const asker = (): boolean => { try { return current(); } catch { return false; } };
+    // #3542 / AGEND-144 (Prism on #3539): the claim is a lock, not the asker's authority. The confirmed change's own execution (its session, role, confirmation and the settings it was held
+    // against) is asked again after each wait (the binary check, the version refresh), and its admission ends at the tmux command that starts the installer (openInstallWindow → `launch`).
+    const asker = (): boolean => { try { return !execution || execution.current(); } catch { return false; } };
     const present = await checkBinaryInstalledAsync(base.binary);
     if (mode === "install" && present) { this.loginWindow.release(claim); return { refused: "already" }; }
     // An update needs the CLI where the Accounts page found it: on the fleet's PATH, else (a fresh login shell, then) the installer's own directories (~/.grok/bin, ~/.opencode/bin …).
     if (mode === "update" && !present && !(await this.locateInstalledCli(backend, base.binary).catch(() => null))) { this.loginWindow.release(claim); return { refused: "not_installed" }; }
-    if (!asker()) { this.loginWindow.release(claim); return { refused: "not_allowed" }; }
+    if (!asker()) { this.loginWindow.release(claim); return { refused: "failed" }; }
     let versionBefore: string | null = null;
     if (plan) {
       // The version the page shows as "before" is the binary probe's own, read now (not the last snapshot), and an update only starts when the CLI is really behind the audited release.
@@ -22226,12 +22227,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const fresh = await this.backendAvailability.freshVersion(backend).catch(() => null);
       versionBefore = fresh?.version ?? null;
       if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return { refused: "shutting_down" }; }
-      if (!asker()) { this.loginWindow.release(claim); return { refused: "not_allowed" }; }
+      if (!asker()) { this.loginWindow.release(claim); return { refused: "failed" }; }
       if (!fresh) { this.loginWindow.release(claim); return { refused: "version_unreadable" }; }
       if (cliUpdateView(backend, versionBefore, true)?.button !== true) { this.loginWindow.release(claim); return { refused: "up_to_date" }; }
       try { reporter.update?.(versionOf(versionBefore), plan.target); } catch { /* a view never stops the update */ }
     } else this.recordLoginFlow(backend, "install_only", "web");
-    const opened = await this.openInstallWindow(backend, info, claim, asker, {
+    const opened = await this.openInstallWindow(backend, info, claim, {
       onProgress: pane => { try { reporter.progress(pane); } catch { /* a view never stops the install */ } },
       onDone: async ({ ok, detail, cleanupFailed }) => {
         this.activeInstall = null;
@@ -22251,10 +22252,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.info({ backend, mode, ok, verified, ...(plan ? { to: plan.target } : {}), ...(ok ? {} : { detail }) }, mode === "update" ? "Dashboard update ended" : "Dashboard install ended");
         try { reporter.done({ ok, detail, cleanupFailed, verified, version, signIn: !!LOGIN_FLOWS[backend] && dashboardSignInSupported(backend) }); } catch { /* a view never stops the install */ }
       },
-    });
+    }, execution);
     if ("failure" in opened) {
       if (opened.failure === "shutting_down") return { refused: "shutting_down" };
-      if (opened.failure === "not_allowed") return { refused: "not_allowed" };
       if (opened.failure === "cancelled") return { refused: this.loginWindow.isClosed ? "shutting_down" : "failed", message: "cancelled" };
       return { refused: "failed", message: opened.message };
     }

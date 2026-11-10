@@ -1,0 +1,40 @@
+{
+  "source": "1be11da9186914756d12fb021e8d8822cc70ab86",
+  "before": true,
+  "browser": "156.0.8078.4",
+  "scope": "Actual shell/HTTP/settings/TOTP core; synthetic inventory+installer, no real CLI/fleet/account. Cached shared assets only, current lazy host-install/settings-confirm modules.",
+  "results": [
+    {
+      "name": "before-desk-light-en",
+      "starts": 1,
+      "oldReads": 0,
+      "expectedWrong": [],
+      "observedErrors": [],
+      "pass": true
+    },
+    {
+      "name": "before-desk-light-zh-TW",
+      "starts": 1,
+      "oldReads": 0,
+      "expectedWrong": [],
+      "observedErrors": [],
+      "pass": true
+    },
+    {
+      "name": "before-phone-dark-en",
+      "starts": 1,
+      "oldReads": 0,
+      "expectedWrong": [],
+      "observedErrors": [],
+      "pass": true
+    },
+    {
+      "name": "before-phone-dark-zh-TW",
+      "starts": 1,
+      "oldReads": 0,
+      "expectedWrong": [],
+      "observedErrors": [],
+      "pass": true
+    }
+  ]
+}

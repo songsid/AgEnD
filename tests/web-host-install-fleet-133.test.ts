@@ -16,7 +16,7 @@ vi.mock("../src/login-manager.js", async (importOriginal) => {
     state = "starting";
     record: { flow: any; events: any; cancelled: string[] };
     constructor(public flow: any, _tmux: any, public events: any) { this.record = { flow, events, cancelled: [] }; fakeSessions.push(this.record); }
-    async start() { if (startGate) await startGate; }
+    async start(launch?: () => void) { if (startGate) await startGate; launch?.(); }
     async cancel(reason = "cancelled") { this.record.cancelled.push(reason); this.state = "done"; }
   }
   return { ...real, LoginSession: FakeLoginSession };
@@ -29,6 +29,7 @@ vi.mock("../src/tmux-manager.js", async (importOriginal) => {
 
 import { FleetManager } from "../src/fleet-manager.js";
 import { checkBinaryInstalled, BACKEND_INSTALLATION_INFO } from "../src/instance-lifecycle.js";
+import { SettingsExecution } from "../src/settings-transaction.js";
 import type { HostInstallReporter } from "../src/web-host-install.js";
 
 let root: string, home: string, profileBin: string;
@@ -73,6 +74,23 @@ describe("startWebInstall", () => {
     expect(flow.command).toContain(info.unattended ?? info.install);
     expect(flow.exitMarker).toMatch(/^AGEND-INSTALL-EXIT-[0-9a-f]{16}=$/);
   });
+  it("keeps held-change admission through the FleetManager and login-window handoff", async () => {
+    const { fm, reporter } = fleet();
+    let release!: () => void;
+    startGate = new Promise<void>(r => { release = r; });
+    let current = true;
+    const execution = new SettingsExecution({ current: () => current, snapshot: () => null });
+    const complete = vi.spyOn(execution, "complete");
+    try {
+      const start = fm.startWebInstall("grok", reporter(), execution);
+      await vi.waitFor(() => expect(fakeSessions).toHaveLength(1));
+      current = false; release();
+      expect(await start).toMatchObject({ refused: "failed" });
+      expect(complete).toHaveBeenCalledTimes(1);
+      expect(execution.completed).toBe(false);
+      expect((fm as any).loginWindow.isHeld).toBe(false);
+    } finally { release(); execution.close(); }
+  });
   it("an id the registry does not install is refused; a CLI that is already installed too; nothing is started for either", async () => {
     const { fm, reporter } = fleet();
     expect(await fm.startWebInstall("rm -rf /", reporter())).toEqual({ refused: "unsupported" });
@@ -81,25 +99,6 @@ describe("startWebInstall", () => {
     expect(await fm.startWebInstall("grok", reporter())).toEqual({ refused: "already" });
     expect(fakeSessions).toHaveLength(0);
     expect((fm as any).loginWindow.isHeld).toBe(false);
-  });
-  // AGEND-144 (Prism on #3539): the claim is a lock, not the asker's authority. The asker (`current`) is asked after the waits and right before the window opens.
-  it("the asker no longer current after the waits: no window opens, the claim is given back, and the same asker, current, then starts (the control)", async () => {
-    const { fm, reporter } = fleet();
-    expect(await fm.startWebInstall("grok", reporter(), "install", () => false)).toEqual({ refused: "not_allowed" });
-    expect(fakeSessions).toHaveLength(0);
-    expect((fm as any).loginWindow.isHeld).toBe(false);
-    expect(await fm.startWebInstall("grok", reporter(), "install", () => true)).toEqual({ started: true });
-    expect(fakeSessions).toHaveLength(1);
-  });
-  it("the asker current at admission but revoked while the installer window is being prepared (the last look, right before the effect): nothing opens and the claim is released", async () => {
-    const { fm, reporter } = fleet();
-    let asked = 0;
-    // 1st look: after the binary check; 2nd: inside openInstallWindow, after the tmux session and login shell waits, right before the window.
-    expect(await fm.startWebInstall("grok", reporter(), "install", () => ++asked < 2)).toEqual({ refused: "not_allowed" });
-    expect(asked).toBe(2);
-    expect(fakeSessions).toHaveLength(0);
-    expect((fm as any).loginWindow.isHeld).toBe(false);
-    expect((fm as any).activeInstall).toBeNull();
   });
   it("the start returns while the installer runs: the fleet is not held, only the one window is", async () => {
     const { fm, reporter } = fleet();
@@ -162,7 +161,7 @@ describe("webHostInstalls (the page's side)", () => {
   it("a session that is not a live local admin starts nothing", async () => {
     const { fm } = fleet();
     vi.spyOn(fm as any, "isLocalAdminSession").mockReturnValue(false);
-    expect(await fm.webHostInstalls.begin({ label: "x", current: () => false }, "grok")).toEqual({ error: "not_allowed" });
+    expect(await fm.webHostInstalls.begin({ handle: "a".repeat(16), label: "x" }, "grok")).toEqual({ error: "not_allowed" });
     expect(fakeSessions).toHaveLength(0);
   });
   it("start → progress → verdict shows in the view; the pages are told twice (started, ended); cancel stops the running window", async () => {
@@ -170,7 +169,7 @@ describe("webHostInstalls (the page's side)", () => {
     vi.spyOn(fm as any, "isLocalAdminSession").mockReturnValue(true);
     const frames: string[] = [];
     (fm as any).sseClients = new Set([{ write: (c: string) => { frames.push(String(c)); return true; }, destroyed: false, writableEnded: false }]);
-    const first = await fm.webHostInstalls.begin({ label: "Firefox", current: () => true }, "grok");
+    const first = await fm.webHostInstalls.begin({ handle: "a".repeat(16), label: "Firefox" }, "grok");
     expect(first).toMatchObject({ install: { backend: "grok", phase: "running" } });
     fakeSessions[0]!.events.onProgress("step 1\n");
     expect(fm.webHostInstalls.view()!.lines).toEqual(["step 1"]);

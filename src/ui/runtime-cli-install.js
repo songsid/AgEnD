@@ -76,10 +76,10 @@ register("runtimeInstall", {
 register("runtimeInstall", {
   en: { loading: "Reading this computer's install setting…", copy: "Copy", copied: "Copied", switchCommand: "Command for that computer",
     cardLabel: "Install {0} on {1}", cardLabelUpdate: "Update {0} on {1}", err_expired: "The install was not confirmed in time.", err_rejected: "The install was turned down.",
-    err_stale: "Settings changed before the install could start. Try again.", err_install_needs_confirmation: "The install must be confirmed first." },
+    err_stale: "Settings changed before the install could start. Try again.", err_install_confirmation_required: "The install must be confirmed first." },
   "zh-TW": { loading: "正在讀取這台電腦的安裝設定…", copy: "複製", copied: "已複製", switchCommand: "在那台電腦執行的指令",
     cardLabel: "在 {1} 上安裝 {0}", cardLabelUpdate: "在 {1} 上更新 {0}", err_expired: "安裝沒有在時限內確認。", err_rejected: "安裝已被拒絕。",
-    err_stale: "安裝開始前設定已經改變。請再試一次。", err_install_needs_confirmation: "安裝必須先經過確認。" },
+    err_stale: "安裝開始前設定已經改變。請再試一次。", err_install_confirmation_required: "安裝必須先經過確認。" },
 });
 // AGEND-133 (#3521): why a CLI is not installed from here — AgEnD installs only what it can pin and check (an exact version, its hashes, and who published it).
 register("runtimeInstall", {
@@ -109,7 +109,7 @@ const refusalOf = (r) => {
   if (detail) return detail[1];
   if (r.confirmed && ["expired", "rejected", "stale"].includes(r.confirmed.state)) return text(`err_${r.confirmed.state}`);
   const code = r.body && r.body.error;
-  return code === "install_needs_confirmation" ? text("err_install_needs_confirmation") : code || `HTTP ${r.status}`;
+  return code === "install_confirmation_required" ? text("err_install_confirmation_required") : code || `HTTP ${r.status}`;
 };
 
 export function CliInstall({ machine, lease, onChanged }) {

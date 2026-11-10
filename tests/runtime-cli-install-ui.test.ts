@@ -149,7 +149,7 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
   });
   // AGEND-148 (Prism R3 on #3539, P2-1): the install goes through the Settings gate's confirmed write, like any change that acts on a computer.
   it("AGEND-148: the install is a confirmed write (an Idempotency-Key, the CLI's id and nothing else); a gate that held it and was turned down is told in words, never as an install", async () => {
-    installAnswer = { status: 403, body: { error: "install_needs_confirmation" } };
+    installAnswer = { status: 403, body: { error: "install_confirmation_required" } };
     await p.mount(h(Panel, { navKey: "install-gate" })); await settle(14);
     fire(installButton("codex"), "click"); await settle(14);
     expect(posts).toEqual([{ path: `/ui/runtimes/machines/${idA}/cli-install`, body: { cli: "codex" } }]);

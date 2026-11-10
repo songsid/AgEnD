@@ -12,9 +12,6 @@
  * - **Update (AGEND-136).** The same machinery, asked for with `mode: "update"`: `POST /ui/host-update { backend }`. The command is the registry's `host.update`, its `{version}`
  *   filled on the server with the newest AUDITED release of that CLI (cli-audited.ts) — never "latest", never anything the browser sent. It is refused unless the CLI is
  *   installed and older than that release; the page shows the version before and after (the binary probe).
- * - **Update (AGEND-136).** The same machinery, asked for with `mode: "update"`: `POST /ui/host-update { backend }`. The command is the registry's `host.update`, its `{version}`
- *   filled on the server with the newest AUDITED release of that CLI (cli-audited.ts) — never "latest", never anything the browser sent. It is refused unless the CLI is
- *   installed and older than that release; the page shows the version before and after (the binary probe).
  * - **One at a time, fleet-wide.** The login window is one lock shared with `/login` and sign-in: a second install, or an install
  *   during a sign-in, is refused with `busy`, never queued.
  * - **What the page is shown.** The CLI, who started it, its phase, the last lines of the installer's output (ANSI stripped,
@@ -26,6 +23,7 @@ import { AUDITED_VERSION, auditedVersion, versionOf } from "./cli-audited.js";
 import { hostFacts } from "./cli-registry.js";
 import { dialogScreenText } from "./dialog-screen-text.js";
 import { installerOutput } from "./install-stream.js";
+import type { SettingsExecution } from "./settings-transaction.js";
 
 /** How long an ended install is still shown, then it is gone. */
 export const WEB_INSTALL_KEEP_ENDED_MS = 10 * 60_000;
@@ -55,12 +53,14 @@ export interface HostInstallReporter {
 }
 
 export interface WebHostInstallDeps {
+  /** Is the session with this handle live, admin and local right now? */
+  isLocalAdmin(handle: string): boolean;
   /** Which CLIs have an install at all (the registry's `host.install`). */
   installable(backend: string): boolean;
   /** Which CLIs have an update (the registry's `host.update`). */
   updatable?(backend: string): boolean;
-  /** FleetManager.startWebInstall: claim the window and run the installer (or, for `update`, the registry's update command); `reporter` is told how it goes. */
-  start(backend: string, reporter: HostInstallReporter, mode: HostInstallMode, current: () => boolean): Promise<HostInstallStart>;
+  /** FleetManager.startWebInstall: claim the window and run the installer (or, for `update`, the registry's update command); `reporter` is told how it goes. The confirmed change's execution is asked again up to the tmux command. */
+  start(backend: string, reporter: HostInstallReporter, execution?: SettingsExecution, mode?: HostInstallMode): Promise<HostInstallStart>;
   /** Stop the running install (the window and its process group); true when there was one. */
   cancel(): Promise<boolean>;
   /** The run started, or ended: the pages read it again (no details in the event; the page also reads it every couple of seconds while one runs). */
@@ -69,13 +69,10 @@ export interface WebHostInstallDeps {
 }
 
 export interface WebHostInstallRequester {
+  /** The session's handle (web-session.ts). */
+  handle: string;
   /** Its device label, shown to the other sessions. */
   label: string;
-  /**
-   * Is the administrator who asked still that administrator, right now — the same session, still an admin on the local surface, the confirmation they gave still current
-   * (the Settings gate's execution, asked again each time)? A lock claim is not current administrator authority: it is asked again after every wait and just before the installer opens.
-   */
-  current(): boolean;
 }
 
 export interface HostInstallView {
@@ -159,8 +156,9 @@ export class WebHostInstalls {
    * Start installing `backend`. Who is re-checked here (the route checked it too). Refusals are codes; a start that worked answers with the run
    * as it is now (running, or — for an installer that ended before the answer — already over).
    */
-  async begin(who: WebHostInstallRequester, backend: string, mode: HostInstallMode = "install"): Promise<{ install: HostInstallView } | { error: HostInstallRefusal | "not_allowed"; message?: string }> {
-    if (!who.current()) return { error: "not_allowed" };
+  async begin(who: WebHostInstallRequester, backend: string, execution?: SettingsExecution, mode: HostInstallMode = "install"): Promise<{ install: HostInstallView } | { error: HostInstallRefusal | "not_allowed"; message?: string }> {
+    execution?.assert();
+    if (!this.deps.isLocalAdmin(who.handle)) return { error: "not_allowed" };
     if (!(mode === "update" ? this.deps.updatable?.(backend) === true : this.deps.installable(backend))) return { error: "unsupported" };
     const run: Run = {
       id: randomBytes(16).toString("hex"), backend, mode, fromVersion: null, targetVersion: null, label: who.label, startedAt: this.now(), phase: "running", endedAt: null,
@@ -189,7 +187,8 @@ export class WebHostInstalls {
       },
     };
     let started: HostInstallStart;
-    try { started = await this.deps.start(backend, reporter, mode, who.current); }
+    // An install is asked of the fleet exactly as before (#3542: the CLI's id, a reporter, the confirmed change's execution); only an update says its mode.
+    try { started = mode === "update" ? await this.deps.start(backend, reporter, execution, mode) : execution ? await this.deps.start(backend, reporter, execution) : await this.deps.start(backend, reporter); }
     catch (err) { started = { refused: "failed", message: (err as Error)?.message ?? String(err) }; }
     if (!("started" in started)) return { error: started.refused, ...(started.message ? { message: started.message } : {}) };
     this.run = run; published = true;

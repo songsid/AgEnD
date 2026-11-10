@@ -76,7 +76,7 @@ function harness(o: { enrolled?: boolean; strict?: boolean } = {}) {
       const auth = authorizeSession(req, any.webToken, any.webSessions, { touch: false });
       if (auth.kind !== "ok") return null;
       const record = auth.session, sessions = any.webSessions, exposure = gatewayRequestContext(req);
-      return { id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session", actor: `admin:${record.handle}`,
+      return { id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session", requester: { handle: record.handle, label: record.label },
         localAdmin: () => record.tier === "admin" && record.surface === "local" && !exposure,
         current: () => sessions === any.webSessions && !!any.webToken && sessions.isCurrent(record, tokenEpoch(any.webToken)) && (!exposure || exposure.isCurrent()) };
     },
@@ -86,7 +86,7 @@ function harness(o: { enrolled?: boolean; strict?: boolean } = {}) {
     totp: { state: (req, id) => any.settingsTotpState(store, req, id), confirm: (req, id, code, digest) => any.settingsTotpConfirm(store, req, id, code, digest) },
     remote: req => any.settingsPageIsRemote(req),
     directCreationPolicy: req => any.settingsDirectCreationAllowed(req),
-    directAgentCreation: true,
+    directHostInstall: true,
   });
   const next = (rq: any, rs: any, u: URL) => handleWebRequest(rq, rs, u, fm as any);
   const send = (s: { req: any; gateway?: boolean; host?: string }, method: string, path: string, body: unknown, through: "gate" | "route" = "gate") => new Promise<{ status: number; body: any }>((resolve, reject) => {
@@ -189,7 +189,7 @@ describe("who may not, and what never becomes a held change", () => {
   it("a request that did not come through the gate — a hand-built POST carrying a valid admin cookie — sends nothing", async () => {
     const h = harness({ enrolled: true, strict: true }), s = h.session("code", "lan");
     const r = await h.send(s, "POST", INSTALL, { cli: "codex" }, "route");
-    expect([r.status, r.body.error]).toEqual([403, "install_needs_confirmation"]);
+    expect([r.status, r.body.error]).toEqual([403, "install_confirmation_required"]);
     expect(h.calls).toEqual([]);
   });
   it.each([

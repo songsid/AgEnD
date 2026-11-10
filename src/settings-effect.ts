@@ -33,7 +33,6 @@ import { parseHubBrowserCertificateApply, type HubBrowserCertificateProposal } f
 import { parseHubRetention } from "./hub-retention-policy.js";
 import { parseHubMembership } from "./hub-membership-settings.js";
 import { t } from "./locale.js";
-import { hostFacts } from "./cli-registry.js";
 import { hostUpdatePlan } from "./web-host-install.js";
 import { INSTALLABLE_CLIS, isInstallableCli } from "./runtime-cli-install.js";
 import { parseCompanyAddress } from "./hub/join/descriptor.js";
@@ -104,6 +103,14 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
 } {
   const cfg = context.config, before: any = { fleet: structuredClone(cfg), classic: structuredClone(context.classic) }, after = structuredClone(before);
   const operation = `${method} ${path}`;
+  if (path === "/ui/host-install") {
+    const input = record(body);
+    if (method !== "POST" || Object.keys(input).length !== 1 || typeof input.backend !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(input.backend))
+      throw new SettingsConfirmationError(400, "install_args");
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input.backend]),
+      summary: [t("host_cli.install_confirm", input.backend)], affectedConnections: [], authority: HUB_AUTHORITY } };
+  }
   if (path === "/api/settings/hub/browser-certificate/apply") {
     if (method !== "POST" || !cfg || !binding || !context.hubBrowserCertificate) throw new SettingsConfirmationError(404, "unavailable");
     let input, proposal;
@@ -116,18 +123,18 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
         ...(proposal.certificate.selfSigned ? [t("hub.browserCertificate.selfSigned")] : [])],
       affectedConnections: [], authority: HUB_AUTHORITY } };
   }
-  if (HOST_CLI_PATHS.has(path)) {
+  // AGEND-136: the Update button beside Install (#3542's held install is `/ui/host-install` above; an update is that change with the audited release in it).
+  if (path === "/ui/host-update") {
     if (method !== "POST") throw new SettingsConfirmationError(404, "unavailable");
     const b = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
-    // The request is exactly `{ backend }` naming a CLI whose registry entry has an install: refused before it is proposed, so a held change is never one that cannot run.
+    // The request is exactly `{ backend }` naming a CLI that has an update and an audited release to go to (the release is the server's, never the page's; the change shows it):
+    // refused before it is proposed, so a held change is never one that cannot run.
     if (!b || Object.keys(b).length !== 1 || typeof b.backend !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(b.backend)) throw new SettingsConfirmationError(400, "install_args");
-    const update = path === "/ui/host-update";
-    // An update is proposed only for a CLI that has one and an audited release to go to (the release is the server's, never the page's); the change shows it.
-    const plan = update ? hostUpdatePlan(b.backend) : null;
-    if (update ? !plan : !hostFacts(b.backend, "install")) throw new SettingsConfirmationError(400, "unsupported");
-    const input = { backend: b.backend, ...(plan ? { target: plan.target } : {}) }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    const plan = hostUpdatePlan(b.backend);
+    if (!plan) throw new SettingsConfirmationError(400, "unsupported");
+    const input = { backend: b.backend, target: plan.target }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
-      summary: [update ? t("host_cli.update", input.backend, plan!.target) : t("host_cli.install", input.backend)], affectedConnections: [], authority: HUB_AUTHORITY } };
+      summary: [t("host_cli.update", input.backend, plan.target)], affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (isRuntimeCliInstallPath(path)) {
     if (method !== "POST") throw new SettingsConfirmationError(404, "unavailable");

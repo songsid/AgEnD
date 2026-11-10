@@ -82,7 +82,7 @@ describe("startWebInstall — update", () => {
     writeGrok("1.0.70"); onPath();
     const { fm, reporter } = fleet();
     const update = vi.fn<(from: string | null, target: string) => void>();
-    expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ started: true });
+    expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ started: true });
     expect(update).toHaveBeenCalledWith("1.0.70", "1.0.77");
     expect(fakeSessions).toHaveLength(1);
     const { flow } = fakeSessions[0]!;
@@ -96,7 +96,7 @@ describe("startWebInstall — update", () => {
     writeGrok("1.0.70"); onPath();
     const { fm, reporter } = fleet();
     const r = reporter();
-    await fm.startWebInstall("grok", r, "update");
+    await fm.startWebInstall("grok", r, undefined, "update");
     writeGrok("1.0.77");                                   // what the installer did
     await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
     expect(r.done).toHaveBeenCalledTimes(1);
@@ -108,7 +108,7 @@ describe("startWebInstall — update", () => {
     writeGrok("1.0.70"); onPath();
     const { fm, reporter } = fleet();
     const r = reporter();
-    await fm.startWebInstall("grok", r, "update");
+    await fm.startWebInstall("grok", r, undefined, "update");
     await fakeSessions[0]!.events.onDone({ ok: false, detail: "CLI exited with code 22 — curl failed" });
     expect(r.done.mock.calls[0]![0]).toMatchObject({ ok: false, verified: false, version: null, detail: "CLI exited with code 22 — curl failed" });
     expect((fm as any).loginWindow.isHeld).toBe(false);
@@ -116,7 +116,7 @@ describe("startWebInstall — update", () => {
   it("cancel reaches the update's window like an install's", async () => {
     writeGrok("1.0.70"); onPath();
     const { fm, reporter } = fleet();
-    await fm.startWebInstall("grok", reporter(), "update");
+    await fm.startWebInstall("grok", reporter(), undefined, "update");
     await fm.cancelInstallSession();
     expect(fakeSessions[0]!.cancelled).toEqual(["cancelled"]);
   });
@@ -124,7 +124,7 @@ describe("startWebInstall — update", () => {
     writeGrok(version); onPath();
     const { fm, reporter } = fleet();
     const update = vi.fn();
-    expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ refused: "up_to_date" });
+    expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ refused: "up_to_date" });
     expect(update).not.toHaveBeenCalled();
     expect(fakeSessions).toHaveLength(0);
     expect((fm as any).loginWindow.isHeld).toBe(false);
@@ -139,7 +139,7 @@ describe("startWebInstall — update", () => {
     await fm.backendAvailability.refresh(["grok"], { force: true });
     expect(fm.backendAvailability.get("grok")?.version, "the picker's fail-open snapshot keeps the old number (unchanged behaviour)").toBe("1.0.70");
     const update = vi.fn();
-    expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ refused: "version_unreadable" });
+    expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ refused: "version_unreadable" });
     expect(update).not.toHaveBeenCalled();
     expect(fakeSessions).toHaveLength(0);
     expect((fm as any).loginWindow.isHeld).toBe(false);
@@ -150,7 +150,7 @@ describe("startWebInstall — update", () => {
     await fm.backendAvailability.refresh(["grok"], { force: true });
     writeGrok("1.0.72");                                                             // replaced in place, readable: the update goes from what is there NOW
     const update = vi.fn<(from: string | null, target: string) => void>();
-    expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ started: true });
+    expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ started: true });
     expect(update).toHaveBeenCalledWith("1.0.72", "1.0.77");
   });
   // AGEND-148 (Prism R3 on #3539, P2-3): the admission decides on the NEWEST observation. The old order read freshVersion, then awaited a forced refresh (a second probe, published) and
@@ -162,7 +162,7 @@ describe("startWebInstall — update", () => {
     reads.mockReset();
     reads.mockImplementationOnce(async () => "1.0.70").mockImplementation(async () => "1.0.78");   // time-ordered observations of the one executable
     const update = vi.fn();
-    expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ refused: "up_to_date" });
+    expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ refused: "up_to_date" });
     expect(update).not.toHaveBeenCalled();
     expect(fakeSessions).toHaveLength(0);
     expect((fm as any).loginWindow.isHeld).toBe(false);
@@ -174,7 +174,7 @@ describe("startWebInstall — update", () => {
     reads.mockReset();
     reads.mockImplementationOnce(async () => "1.0.78").mockImplementation(async () => "1.0.70");
     const update = vi.fn<(from: string | null, target: string) => void>();
-    expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ started: true });
+    expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ started: true });
     expect(update).toHaveBeenCalledWith("1.0.70", "1.0.77");
   });
   it("freshVersion is not a published value: no executable, or no answer, is null; nothing is cached", async () => {
@@ -188,23 +188,23 @@ describe("startWebInstall — update", () => {
     rmSync(join(home, ".bash_profile"));                    // … which no login shell adds to PATH here
     const { fm, reporter } = fleet();
     const update = vi.fn<(from: string | null, target: string) => void>();
-    expect(await fm.startWebInstall("grok", { ...reporter(), update }, "update")).toEqual({ started: true });
+    expect(await fm.startWebInstall("grok", { ...reporter(), update }, undefined, "update")).toEqual({ started: true });
     expect(update).toHaveBeenCalledWith("1.0.70", "1.0.77");
     expect(fakeSessions).toHaveLength(1);
   });
   it("a CLI that is not installed anywhere is refused as not_installed; one that updates itself, or that is not a CLI, as unsupported", async () => {
     rmSync(join(profileBin, "grok"));                       // not in the installer's directory, not on any PATH
     const { fm, reporter } = fleet();
-    expect(await fm.startWebInstall("grok", reporter(), "update")).toEqual({ refused: "not_installed" });
-    for (const backend of ["antigravity", "muse", "rm -rf /", "gemini"]) expect(await fm.startWebInstall(backend, reporter(), "update"), backend).toEqual({ refused: "unsupported" });
+    expect(await fm.startWebInstall("grok", reporter(), undefined, "update")).toEqual({ refused: "not_installed" });
+    for (const backend of ["antigravity", "muse", "rm -rf /", "gemini"]) expect(await fm.startWebInstall(backend, reporter(), undefined, "update"), backend).toEqual({ refused: "unsupported" });
     expect(fakeSessions).toHaveLength(0);
     expect((fm as any).loginWindow.isHeld).toBe(false);
   });
   it("one window: an update during an install (or another update) is refused as busy, never queued", async () => {
     writeGrok("1.0.70"); onPath();
     const { fm, reporter } = fleet();
-    expect(await fm.startWebInstall("grok", reporter(), "update")).toEqual({ started: true });
-    expect(await fm.startWebInstall("grok", reporter(), "update")).toEqual({ refused: "busy" });
+    expect(await fm.startWebInstall("grok", reporter(), undefined, "update")).toEqual({ started: true });
+    expect(await fm.startWebInstall("grok", reporter(), undefined, "update")).toEqual({ refused: "busy" });
     expect(await fm.startWebInstall("codex", reporter())).toEqual({ refused: "busy" });
     expect(fakeSessions).toHaveLength(1);
   });

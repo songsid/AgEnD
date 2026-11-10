@@ -93,7 +93,14 @@
       }
     }
     const response = await nativeFetch(input, init);
-    if (sameOrigin && response.status === 401 && !target.pathname.startsWith("/auth/")) { endSession("unauthorized"); sessionEndedBanner(); }
+    if (sameOrigin && response.status === 401 && !target.pathname.startsWith("/auth/")) {
+      // A refused authenticator code leaves the authenticated session valid. All other 401s still close it.
+      let wrongCode = false;
+      if (method === "POST" && /^\/api\/settings\/pending\/[0-9a-f]{32}\/confirm-totp$/.test(target.pathname)) {
+        try { wrongCode = (await response.clone().json()).error === "wrong_code"; } catch { /* not a proven code refusal */ }
+      }
+      if (!wrongCode) { endSession("unauthorized"); sessionEndedBanner(); }
+    }
     return response;
   };
 

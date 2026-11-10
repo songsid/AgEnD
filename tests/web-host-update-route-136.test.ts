@@ -18,11 +18,12 @@ import { bindGatewayRequest } from "../src/web-request-context.js";
 const servers: Server[] = [];
 afterEach(async () => { for (const s of servers.splice(0)) await new Promise<void>(r => s.close(() => r())); });
 
-async function setup(over: { start?: (backend: string, r: HostInstallReporter, mode: HostInstallMode, current: () => boolean) => Promise<HostInstallStart> } = {}) {
+async function setup(over: { start?: (backend: string, r: HostInstallReporter, execution: SettingsExecution | undefined, mode: HostInstallMode) => Promise<HostInstallStart> } = {}) {
   const token = "update-scratch-token", sessions = new WebSessionStore({});
-  const start = vi.fn(over.start ?? (async (_b: string, r: HostInstallReporter, mode: HostInstallMode) => { if (mode === "update") r.update?.("1.0.70", "1.0.77"); return { started: true } as HostInstallStart; }));
+  const start = vi.fn(over.start ?? (async (_b: string, r: HostInstallReporter, _execution: SettingsExecution | undefined, mode: HostInstallMode) => { if (mode === "update") r.update?.("1.0.70", "1.0.77"); return { started: true } as HostInstallStart; }));
   const cancel = vi.fn(async () => true);
   const installs = new WebHostInstalls({
+    isLocalAdmin: handle => !!sessions.findByHandle(handle) && sessions.findByHandle(handle)!.tier === "admin" && sessions.findByHandle(handle)!.surface === "local",
     installable: b => ["grok", "codex", "muse"].includes(b), updatable: b => ["grok", "codex"].includes(b), start, cancel,
   });
   const ctx = { webToken: token, webSessions: sessions, webHostInstalls: installs } as unknown as WebApiContext;
@@ -46,7 +47,9 @@ async function setup(over: { start?: (backend: string, r: HostInstallReporter, m
 /** What the Settings gate hands the route once an administrator has confirmed: a server-made replay with the asker's authority and label. */
 async function replay(t: Awaited<ReturnType<typeof setup>>, body: unknown, path = "/ui/host-update") {
   const execution = new SettingsExecution({ current: () => true, snapshot: () => ({}) });
-  const req = createSettingsReplay({ method: "POST", url: path, body: Buffer.from(typeof body === "string" ? body : JSON.stringify(body)), binding: "owned", localAdmin: () => true, label: "Firefox on Linux" }, execution);
+  // The administrator behind the confirmed change (#3542: the gate carries only the non-secret requester; the route asks the session store about its handle again).
+  const asker = t.sessions.create({ tier: "admin", surface: "local", label: "Firefox on Linux", tokenEpoch: tokenEpoch(t.token) } as never);
+  const req = createSettingsReplay({ method: "POST", url: path, body: Buffer.from(typeof body === "string" ? body : JSON.stringify(body)), binding: "owned", localAdmin: () => true, requester: { handle: (asker.record as { handle: string }).handle, label: "Firefox on Linux" } }, execution);
   req.headers = {};
   Object.defineProperty(req, "socket", { value: { remoteAddress: "127.0.0.1" }, configurable: true });
   return new Promise<{ status: number; body: any }>(resolve => {
@@ -62,14 +65,14 @@ describe("who may ask", () => {
   it("the local admin session: the update starts in update mode, and the run says it is an update with the versions before and after", async () => {
     const t = await setup();
     const direct = await t.call("POST", "/ui/host-update", t.as("admin"), { backend: "grok" });      // a hand-built POST is not the gate's replay
-    expect([direct.status, direct.body]).toEqual([403, { error: "install_needs_confirmation" }]);
+    expect([direct.status, direct.body]).toEqual([403, { error: "install_confirmation_required" }]);
     expect(t.start).not.toHaveBeenCalled();
     const r = await replay(t, { backend: "grok" });
     expect(r.status).toBe(200);
     expect(r.body.install).toMatchObject({ backend: "grok", mode: "update", phase: "running", fromVersion: "1.0.70", targetVersion: "1.0.77", startedOn: "Firefox on Linux" });
     expect(t.start).toHaveBeenCalledTimes(1);
     expect(t.start.mock.calls[0]!.slice(0, 1)).toEqual(["grok"]);
-    expect(t.start.mock.calls[0]![2]).toBe("update");
+    expect(t.start.mock.calls[0]![3]).toBe("update");
     // The page reads it back from the same GET as an install.
     expect((await t.call("GET", "/ui/host-install", t.as("admin"))).body.install).toMatchObject({ mode: "update", fromVersion: "1.0.70" });
   });

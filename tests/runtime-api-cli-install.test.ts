@@ -26,7 +26,7 @@ const store = new WebSessionStore();
 function request(path: string, method: string, kind: Kind, body: unknown = {}, omit?: Omit): { req: IncomingMessage; res: Response } {
   if (kind === "replay") {
     const execution = new SettingsExecution({ current: () => live, snapshot: () => ({}) });
-    const replay = createSettingsReplay({ method, url: path, body: Buffer.from(JSON.stringify(body)), binding: "owned", localAdmin: () => live, label: "test", actor: "admin:0123456789abcdef" }, execution);
+    const replay = createSettingsReplay({ method, url: path, body: Buffer.from(JSON.stringify(body)), binding: "owned", localAdmin: () => live, requester: { handle: "0123456789abcdef", label: "test" } }, execution);
     return { req: replay, res: new Response(replay) };
   }
   const req = Readable.from([JSON.stringify(body)]) as unknown as IncomingMessage;
@@ -74,7 +74,7 @@ describe("install a CLI from the dashboard: who may ask", () => {
     expect(calls).toEqual([]);
   });
   it("AGEND-148: a signed-in administrator's own POST (cookie, CSRF and Origin all valid) is not the gate's replay: refused, and nothing is sent; a replay whose authority has gone is refused too", async () => {
-    expect(await ask(INSTALL, "POST", "admin", { cli: "codex" })).toMatchObject({ status: 403, json: { error: "install_needs_confirmation" } });
+    expect(await ask(INSTALL, "POST", "admin", { cli: "codex" })).toMatchObject({ status: 403, json: { error: "install_confirmation_required" } });
     live = false;
     expect((await ask(INSTALL, "POST", "replay", { cli: "codex" })).status).toBe(403);
     expect(calls).toEqual([]);

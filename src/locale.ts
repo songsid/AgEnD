@@ -23,6 +23,7 @@ export function detectLocale(fleetConfig?: { defaults?: { locale?: string } }): 
 }
 
 const enMessages = {
+  "host_cli.install_confirm": "Install {0} on the AgEnD host",
     "logs.capped_tail": "Capped at {0} lines; only the recent log tail is available here.",
     "config.general_missing": "no general_topic instance for connection \"{0}\" — messages there outside an agent’s topic have no dispatcher (in Settings → Agents, open an agent’s settings → Advanced, enable General topic (fleet dispatcher), and select this connection)",
   "general_location.offline": "General’s Windows PC is offline. AgEnD is still running here. Reconnect that PC, or switch General back to this host in Settings. Pending or uncertain requests will not be sent again automatically.",
@@ -355,7 +356,6 @@ const enMessages = {
     "hub.membership.disable": "Disable this fleet's Hub membership. New Hub work and answer disclosure stop; existing agent conversations remain.",
     "hub.retention.events": "Hub event records: keep {0} days",
     "hub.retention.purge": "Shorter periods can permanently remove older records at the next daily cleanup.",
-    "host_cli.install": "Install {0} on the AgEnD computer with its registry command (the vendor's installer, run unattended). Only this CLI is installed; nothing the page sent is run.",
     "runtime_cli.install": "Install {0} {1} on the paired Windows computer {2}: the version AgEnD pins, checked on that computer (its pinned hashes, the registry's signatures, the publisher's signature). Only this CLI is installed; nothing the page sent is run. That computer's owner's own switch still has to allow it.",
     "host_cli.update": "Update {0} on the AgEnD computer to {1}, the release AgEnD has audited (the registry's update command, run unattended). Only this CLI changes; nothing the page sent is run.",
     "hub.run.start": "Start this fleet's Hub. People can sign in to it again and chats with shared agents resume.",
@@ -1651,6 +1651,7 @@ const enMessages = {
 } as const;
 
 const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
+  "host_cli.install_confirm": "在 AgEnD 主機上安裝 {0}",
     "logs.capped_tail": "最多顯示 {0} 行；這裡僅提供最近的日誌末段。",
     "config.general_missing": "連線「{0}」沒有 general_topic Agent，因此不在 Agent 主題裡的訊息沒有分派器（請到「設定 → Agent → 該 Agent 的設定 → 進階」，啟用「General topic（fleet 分派器）」並選擇這個連線）",
   "general_location.offline": "General 所在的 Windows 電腦已離線。AgEnD 仍在這台主機運作。請重新連線那台電腦，或到設定把 General 切回這台主機。待處理或結果不明的請求不會自動重送。",
@@ -1980,7 +1981,6 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "hub.membership.disable": "停用這個 Fleet 的 Hub 成員功能。停止新的 Hub 工作與回答傳送；既有 Agent 對話會保留。",
     "hub.retention.events": "Hub 事件紀錄：保留 {0} 天",
     "hub.retention.purge": "縮短保留天數後，下次每日清理可能永久刪除較早的紀錄。",
-    "host_cli.install": "在 AgEnD 這台電腦上安裝 {0}，使用登錄表裡的指令（廠商的安裝程式，無人值守執行）。只會安裝這個 CLI；頁面送來的內容不會被執行。",
     "runtime_cli.install": "在已配對的 Windows 電腦 {2} 上安裝 {0} {1}：AgEnD 固定的版本，並在那台電腦上檢查（固定的雜湊、registry 簽章、發行者簽章）。只會安裝這個 CLI；頁面送來的內容不會被執行。仍需要那台電腦主人自己的開關允許。",
     "host_cli.update": "在 AgEnD 這台電腦上把 {0} 更新到 {1}（AgEnD 稽核過的版本），使用登錄表裡的更新指令（無人值守執行）。只會更新這個 CLI；頁面送來的內容不會被執行。",
     "hub.run.start": "啟動這個 Fleet 的 Hub。大家可以再次登入，與分享的 Agent 的對話會恢復。",

@@ -284,19 +284,13 @@ export class TmuxManager implements Pane {
   /** Window name handed to createWindow(), kept so a cleanup can find a window whose id we never learned. */
   private pendingWindowName: string | null = null;
 
-  /**
-   * `admission` (AGEND-148): a callback that throws when whoever asked for this window may no longer have it. It is asked first, again after the strict listing (the await that can
-   * outlast a revocation), through the reuse / respawn path, and immediately before `new-window` — with no await between that last look and the command.
-   */
-  async createWindow(command: string, cwd: string, windowName?: string, admission?: () => void): Promise<string> {
+  async createWindow(command: string, cwd: string, windowName?: string, launch?: () => void): Promise<string> {
     this.pendingWindowName = windowName ?? null;
-    admission?.();
     if (windowName) {
       // Strict listing: a tmux that cannot answer must not be read as "no
       // duplicates" — that would create a second window (fail-closed).
       const sameName = (await TmuxManager.listWindowsStrict(this.sessionName))
         .filter(window => window.name === windowName);
-      admission?.();
       if (sameName.length > 0) {
         // Reuse one exact window id instead of creating another window with the
         // same display name. `respawn-window -k` is atomic from tmux's point of
@@ -309,7 +303,7 @@ export class TmuxManager implements Pane {
           await new TmuxManager(this.sessionName, stale.id, this.logicalSize).killWindow();
         }
         this.windowId = survivor.id;
-        await this.respawnWindow(command, cwd, admission);
+        await this.respawnWindow(command, cwd, undefined, launch);
         await exec(tmuxBinary(), TmuxManager.tmuxArgs([
           "set-window-option", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
           "allow-rename", "off",
@@ -321,8 +315,8 @@ export class TmuxManager implements Pane {
     const args = ["new-window", "-a", "-t", this.sessionName, "-c", cwd];
     if (windowName) args.push("-n", windowName);
     args.push("-P", "-F", "#{window_id}", command);
-    admission?.();                                    // nothing is awaited between this look and the command
     // Hard bound: a wedged tmux must not hold a login/install teardown open forever.
+    launch?.();
     const { stdout } = await exec(tmuxBinary(), TmuxManager.tmuxArgs(args), { timeout: 15_000 });
     this.windowId = stdout.trim();
     try {
@@ -342,13 +336,14 @@ export class TmuxManager implements Pane {
   }
 
   /** Restart the process inside the existing window, preserving its window id. */
-  async respawnWindow(command: string, cwd: string, admission?: () => void): Promise<void> {
+  async respawnWindow(command: string, cwd: string, admission?: () => void, launch?: () => void): Promise<void> {
     if (!this.windowId) throw new Error("Cannot respawn tmux window without a window id");
     // Apply before respawn so the new CLI sees the intended COLUMNS/LINES from
     // its first frame. Reapplying is idempotent and repairs external drift.
     admission?.();
     await this.applyLogicalSize();
     admission?.();
+    launch?.();
     await exec(tmuxBinary(), TmuxManager.tmuxArgs([
       "respawn-window", "-k", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
       "-c", cwd, command,

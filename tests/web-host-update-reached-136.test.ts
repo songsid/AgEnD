@@ -5,11 +5,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { WebHostInstalls, type HostInstallReporter, type HostInstallStart } from "../src/web-host-install.js";
 
-const WHO = { label: "Firefox on Linux", current: () => true };
+const WHO = { handle: "0123456789abcdef", label: "Firefox on Linux" };
 function make() {
   const reporters: HostInstallReporter[] = [];
-  const start = vi.fn(async (_b: string, r: HostInstallReporter, mode?: string, _current?: () => boolean): Promise<HostInstallStart> => { if (mode === "update") r.update?.("1.0.70", "1.0.77"); reporters.push(r); return { started: true }; });
-  const installs = new WebHostInstalls({ installable: () => true, updatable: () => true, start, cancel: async () => true });
+  const start = vi.fn(async (_b: string, r: HostInstallReporter, _execution?: unknown, mode?: string): Promise<HostInstallStart> => { if (mode === "update") r.update?.("1.0.70", "1.0.77"); reporters.push(r); return { started: true }; });
+  const installs = new WebHostInstalls({ isLocalAdmin: () => true, installable: () => true, updatable: () => true, start, cancel: async () => true });
   return { installs, reporters };
 }
 const ok = (version: string | null, verified = true) => ({ ok: true, detail: "clean exit", verified, version, signIn: true });
@@ -17,19 +17,19 @@ const ok = (version: string | null, verified = true) => ({ ok: true, detail: "cl
 describe("reached", () => {
   it.each([["1.0.77", true], ["1.0.76", false], ["1.0.70", false], ["grok 1.0.77 (abc)", true], [null, null], ["no number", null]] as const)("an update that ends with %j: reached %j", async (version, reached) => {
     const t = make();
-    await t.installs.begin(WHO, "grok", "update");
+    await t.installs.begin(WHO, "grok", undefined, "update");
     t.reporters[0]!.done(ok(version));
     expect(t.installs.view()).toMatchObject({ mode: "update", phase: "ok", fromVersion: "1.0.70", targetVersion: "1.0.77", reached, signIn: false });
   });
   it("a binary that was not found afterwards: not verified, so nothing is claimed (reached null)", async () => {
     const t = make();
-    await t.installs.begin(WHO, "grok", "update");
+    await t.installs.begin(WHO, "grok", undefined, "update");
     t.reporters[0]!.done(ok("1.0.77", false));
     expect(t.installs.view()).toMatchObject({ verified: false, reached: null });
   });
   it("a failed update has no verdict on it; an install never has one", async () => {
     const t = make();
-    await t.installs.begin(WHO, "grok", "update");
+    await t.installs.begin(WHO, "grok", undefined, "update");
     t.reporters[0]!.done({ ok: false, detail: "CLI exited with code 22 — x", verified: false, version: null, signIn: false });
     expect(t.installs.view()).toMatchObject({ phase: "failed", exitCode: 22, reached: null });
     await t.installs.begin(WHO, "grok");

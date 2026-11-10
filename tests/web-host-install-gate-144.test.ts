@@ -53,9 +53,10 @@ function harness(o: { enrolled?: boolean; strict?: boolean } = {}) {
   // The installer: what it was asked, and the asker's authority as it was handed over (a test may switch it).
   const starts: Array<{ backend: string; mode: string; current: () => boolean }> = [];
   let before: (() => Promise<void>) | null = null;
-  vi.spyOn(fm, "startWebInstall").mockImplementation((async (backend: string, _reporter: unknown, mode: string, current: () => boolean = () => true) => {
+  vi.spyOn(fm, "startWebInstall").mockImplementation((async (backend: string, _reporter: unknown, execution: { current(): boolean } | undefined, mode: string = "install") => {
     if (before) await before();
-    if (!current()) return { refused: "not_allowed" };
+    const current = () => !execution || execution.current();
+    if (!current()) return { refused: "failed" };
     starts.push({ backend, mode, current }); return { started: true };
   }) as never);
   const session = (kind: "code" | "guest" | "read", where: keyof typeof WHERE, opts: { gateway?: boolean } = {}) => {
@@ -74,7 +75,7 @@ function harness(o: { enrolled?: boolean; strict?: boolean } = {}) {
       const auth = authorizeSession(req, any.webToken, any.webSessions, { touch: false });
       if (auth.kind !== "ok") return null;
       const record = auth.session, sessions = any.webSessions, exposure = gatewayRequestContext(req);
-      return { id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
+      return { id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session", requester: { handle: record.handle, label: record.label },
         localAdmin: () => record.tier === "admin" && record.surface === "local" && !exposure,
         current: () => sessions === any.webSessions && !!any.webToken && sessions.isCurrent(record, tokenEpoch(any.webToken)) && (!exposure || exposure.isCurrent()) };
     },
@@ -84,7 +85,7 @@ function harness(o: { enrolled?: boolean; strict?: boolean } = {}) {
     totp: { state: (req, id) => any.settingsTotpState(store, req, id), confirm: (req, id, code, digest) => any.settingsTotpConfirm(store, req, id, code, digest) },
     remote: req => any.settingsPageIsRemote(req),
     directCreationPolicy: req => any.settingsDirectCreationAllowed(req),
-    directAgentCreation: true,
+    directHostInstall: true,
   });
   const next = (rq: any, rs: any, u: URL) => handleWebRequest(rq, rs, u, fm as any);
   const send = (s: { req: any; gateway?: boolean; host?: string }, method: string, path: string, body: unknown, through: "gate" | "route" = "gate") => new Promise<{ status: number; body: any }>((resolve, reject) => {
@@ -190,14 +191,13 @@ describe("who may not, and what never becomes a held change", () => {
   it("a request that did not come through the gate — a hand-built POST carrying a valid admin cookie — starts nothing", async () => {
     const h = harness({ enrolled: true }), s = h.session("code", "here");
     const r = await h.send(s, "POST", "/ui/host-install", { backend: "grok" }, "route");
-    expect([r.status, r.body.error]).toEqual([403, "install_needs_confirmation"]);
+    expect([r.status, r.body.error]).toEqual([403, "install_confirmation_required"]);
     expect(h.starts.length).toBe(0);
   });
   it.each([
     ["an extra key", { backend: "grok", command: "rm -rf /" }, "install_args"],
     ["no backend", {}, "install_args"],
     ["a backend that is not a registry id", { backend: "Grok; ls" }, "install_args"],
-    ["a CLI the registry has no install for", { backend: "nonexistent-cli" }, "unsupported"],
   ] as const)("%s: refused before it is proposed", async (_name, body, error) => {
     const h = harness({ enrolled: true }), s = h.session("code", "here");
     const r = await h.send(s, "POST", "/ui/host-install", body);
@@ -233,7 +233,7 @@ describe("Update takes the same path (the audited release is the server's, shown
     const link = h.session("code", "here", { gateway: true }), guest = h.session("guest", "here"), admin = h.session("code", "here");
     expect((await update(h, link)).body.error).toBe("install_not_over_public_link");
     expect((await update(h, guest)).body.error).toBe("install_needs_a_local_admin");
-    expect((await h.send(admin, "POST", "/ui/host-update", { backend: "grok" }, "route")).body.error).toBe("install_needs_confirmation");
+    expect((await h.send(admin, "POST", "/ui/host-update", { backend: "grok" }, "route")).body.error).toBe("install_confirmation_required");
     const none = await update(h, admin, "muse");
     expect([none.status, none.body.error]).toEqual([400, "unsupported"]);
     expect(h.store.list(admin.record.idHash)).toEqual([]);

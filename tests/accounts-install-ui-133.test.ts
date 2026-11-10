@@ -164,7 +164,7 @@ describe("the Install button", () => {
     for (const lang of ["en", "zh-TW"]) {
       i18n.setLang(lang, { store: false });
       for (const key of ["install", "installing", "cancel", "dismiss", "notInstalled", "running", "ok", "okVersion", "okUnverified", "failed", "failedCode", "cancelled", "timeout", "cleanup", "output",
-        "err_unsupported", "err_already", "err_busy", "err_shutting_down", "err_not_allowed", "err_install_needs_a_local_admin", "err_install_not_over_public_link", "err_failed", "err_other", "cardLabel", "err_expired", "err_rejected", "err_stale", "err_install_needs_confirmation"]) {
+        "err_unsupported", "err_already", "err_busy", "err_shutting_down", "err_not_allowed", "err_install_needs_a_local_admin", "err_install_not_over_public_link", "err_failed", "err_other", "confirm", "cardLabelUpdate", "err_expired", "err_rejected", "err_stale", "err_install_confirmation_required"]) {
         const s = HI.hostInstallText(key, "grok", "1");
         expect(s, `${lang}:${key}`).not.toBe(`hostinstall.${key}`);
         if (lang === "zh-TW") expect(s, `${lang}:${key}`).toMatch(/[一-鿿]/);

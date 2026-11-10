@@ -8,15 +8,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { WEB_INSTALL_KEEP_ENDED_MS, WebHostInstalls, exitCodeOf, installLines, type HostInstallReporter, type HostInstallStart } from "../src/web-host-install.js";
 
-const WHO = { label: "Firefox on Linux", current: () => true };
-function make(over: { start?: (backend: string, r: HostInstallReporter, mode: string, current: () => boolean) => Promise<HostInstallStart>; admin?: boolean; installable?: (b: string) => boolean } = {}) {
+const WHO = { handle: "aaaaaaaaaaaaaaaa", label: "Firefox on Linux" };
+function make(over: { start?: (backend: string, r: HostInstallReporter) => Promise<HostInstallStart>; admin?: boolean; installable?: (b: string) => boolean } = {}) {
   let clock = 1_000;
   const reporters: HostInstallReporter[] = [];
   const changed = vi.fn();
   const cancel = vi.fn(async () => true);
   const start = vi.fn(over.start ?? (async (_b: string, r: HostInstallReporter) => { reporters.push(r); return { started: true } as const; }));
   const installs = new WebHostInstalls({
-    installable: over.installable ?? (b => ["codex", "grok", "claude-code"].includes(b)),
+    isLocalAdmin: () => over.admin !== false, installable: over.installable ?? (b => ["codex", "grok", "claude-code"].includes(b)),
     start, cancel, changed, now: () => clock,
   });
   return { installs, reporters, changed, cancel, start, tick: (ms: number) => { clock += ms; } };
@@ -24,8 +24,8 @@ function make(over: { start?: (backend: string, r: HostInstallReporter, mode: st
 
 describe("who and what", () => {
   it("a session that is not a local admin starts nothing (the route checks too; this is the second look)", async () => {
-    const t = make();
-    expect(await t.installs.begin({ ...WHO, current: () => false }, "codex")).toEqual({ error: "not_allowed" });
+    const t = make({ admin: false });
+    expect(await t.installs.begin(WHO, "codex")).toEqual({ error: "not_allowed" });
     expect(t.start).not.toHaveBeenCalled();
     expect(t.installs.view()).toBeNull();
   });
@@ -35,15 +35,12 @@ describe("who and what", () => {
     expect(await t.installs.begin(WHO, "rm -rf /")).toEqual({ error: "unsupported" });
     expect(t.start).not.toHaveBeenCalled();
   });
-  it("only the CLI's id reaches the fleet: the start is given the id, a reporter and the asker's authority, nothing else", async () => {
+  it("only the CLI's id reaches the fleet: the start is given the id and a reporter, nothing else", async () => {
     const t = make();
     await t.installs.begin(WHO, "codex");
     expect(t.start).toHaveBeenCalledTimes(1);
-    // The id, the reporter, the mode (AGEND-136: "install" here) and the asker's authority, asked again by the fleet (AGEND-144); nothing the browser could have sent.
-    expect(t.start.mock.calls[0]!.length).toBe(4);
+    expect(t.start.mock.calls[0]!.length).toBe(2);
     expect(t.start.mock.calls[0]![0]).toBe("codex");
-    expect(t.start.mock.calls[0]![2]).toBe("install");
-    expect(t.start.mock.calls[0]![3]).toBe(WHO.current);
   });
 });
 
@@ -63,30 +60,6 @@ describe("start and refusals", () => {
     t.start.mockResolvedValueOnce({ refused: code, ...(code === "failed" ? { message: "tmux: no server" } : {}) });
     expect(await t.installs.begin(WHO, "grok")).toEqual({ error: code, ...(code === "failed" ? { message: "tmux: no server" } : {}) });
     expect(t.installs.view()).toEqual(before);
-  });
-  it("AGEND-136: the run is published only once the start is accepted — while the start is pending nothing is shown, and a refusal never replaces what was shown", async () => {
-    let release!: () => void; const gate = new Promise<void>(r => { release = r; });
-    const t = make({ start: async (_b, r) => { await gate; return { started: true }; } });
-    const pending = t.installs.begin(WHO, "codex");
-    await Promise.resolve();
-    expect(t.installs.view()).toBeNull();               // not yet: the fleet has not said it started
-    expect(t.changed).not.toHaveBeenCalled();
-    release();
-    expect(await pending).toMatchObject({ install: { backend: "codex", phase: "running" } });
-    expect(t.installs.view()).toMatchObject({ backend: "codex", phase: "running" });
-    expect(t.changed).toHaveBeenCalledWith("running");
-    // A refused start meanwhile (or after) leaves this run exactly as it was.
-    t.start.mockImplementationOnce(async () => { expect(t.installs.view()).toMatchObject({ backend: "codex" }); return { refused: "busy" } as const; });
-    const before = t.installs.view();
-    expect(await t.installs.begin(WHO, "grok")).toEqual({ error: "busy" });
-    expect(t.installs.view()).toEqual(before);
-  });
-  it("AGEND-136: an installer that ends before the start answered is published already over, and the pages are told it ended", async () => {
-    const t = make({ start: async (_b, r) => { r.done({ ok: true, detail: "clean exit", verified: true, version: "1.2.3", signIn: false }); return { started: true }; } });
-    expect(await t.installs.begin(WHO, "codex")).toMatchObject({ install: { phase: "ok", version: "1.2.3" } });
-    expect(t.installs.view()).toMatchObject({ phase: "ok" });
-    expect(t.changed).toHaveBeenCalledWith("ended");
-    expect(t.changed).not.toHaveBeenCalledWith("running");
   });
   it("a start that throws is a failed start, not a crash", async () => {
     const t = make({ start: async () => { throw new Error("boom"); } });

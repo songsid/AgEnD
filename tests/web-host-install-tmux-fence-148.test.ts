@@ -1,7 +1,8 @@
 /**
  * AGEND-148 (Prism R3 on #3539, P2-2): the asker's authority is carried through every await of opening the installer window, up to the tmux command that starts it — not only
- * checked before `session.start()`. Real here: FleetManager.startWebInstall, the real LoginSession and the real TmuxManager.createWindow (its listing, its reuse / respawn path
- * and its `new-window`). Faked: only the tmux process (`tmuxExecHelper.exec` records each command and answers) and the session listing, which a test can hold.
+ * checked before `session.start()`. #3542 gave the install that fence (`session.start(() => execution.complete())`, asked at the tmux dispatch); the Update button takes the same path,
+ * and this pins it where the reviewer reproduced the gap. Real here: FleetManager.startWebInstall (install and update mode), the real LoginSession and the real TmuxManager.createWindow
+ * (its listing, its reuse / respawn path and its `new-window`). Faked: only the tmux process (`tmuxExecHelper.exec` records each command and answers) and the session listing, which a test can hold.
  *   - hold the listing → revoke the asker → release it: no `new-window` (and, on the reuse path, no `respawn-window`) is dispatched, the claim is given back, the start is refused;
  *   - the same sequence with the asker unchanged dispatches exactly one.
  */
@@ -13,6 +14,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 import { tmuxExecHelper } from "../src/tmux-exec-helper.js";
 import { binaryProbe } from "../src/binary-probe.js";
+import { SettingsExecution } from "../src/settings-transaction.js";
 import type { HostInstallReporter } from "../src/web-host-install.js";
 
 let root: string;
@@ -53,18 +55,20 @@ describe.each([
   it(`the asker revoked after the listing began and before it returns: no ${verb} is sent, the start is refused, the window is free`, async () => {
     const h = harness([...existing]);
     let allowed = true;
-    const started = h.fm.startWebInstall("grok", reporter(), "install", () => allowed);
+    const execution = new SettingsExecution({ current: () => allowed, snapshot: () => ({}) });
+    const started = h.fm.startWebInstall("grok", reporter(), execution, "install");
     await h.listing;                                  // createWindow is now waiting on the listing
     allowed = false;                                  // the session is revoked meanwhile
     h.release();
-    expect(await started).toEqual({ refused: "not_allowed" });
+    expect(await started).toMatchObject({ refused: "failed", message: "settings_execution_stale" });
     expect(h.sent(verb)).toBe(0);
     expect((h.fm as any).loginWindow.isHeld).toBe(false);
     expect((h.fm as any).activeInstall).toBeNull();
   });
   it(`the control: the same sequence with the asker unchanged sends exactly one ${verb}`, async () => {
     const h = harness([...existing]);
-    const started = h.fm.startWebInstall("grok", reporter(), "install", () => true);
+    const execution = new SettingsExecution({ current: () => true, snapshot: () => ({}) });
+    const started = h.fm.startWebInstall("grok", reporter(), execution, "install");
     await h.listing;
     h.release();
     expect(await started).toEqual({ started: true });
