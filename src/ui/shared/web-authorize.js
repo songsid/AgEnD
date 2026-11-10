@@ -34,12 +34,6 @@ register("webauth", {
     authorizeWhy: "Not verified: authorize this browser to speak as you",
     notVerifiedWhy: "Not verified: {0}",
     waitingShort: "Waiting for your Confirm ({0})",
-    // AGEND-138: the four roles a sign-in can have, shown in the session menu and in Settings → Devices.
-    role: "Role",
-    roleOwner: "Owner ✓",
-    roleAdminUnverified: "Admin · not verified",
-    roleGuest: "Guest",
-    roleRead: "Read-only",
     // AGEND-138: sign this browser in again, in place, with a fresh code from this computer.
     rebind: "Re-bind",
     rebindHow: "On this computer, run agend web --code and enter the sign-in code it prints.",
@@ -80,11 +74,6 @@ register("webauth", {
     authorizeWhy: "未驗證：授權這個瀏覽器以你的身分發言",
     notVerifiedWhy: "未驗證：{0}",
     waitingShort: "等待確認（{0}）",
-    role: "角色",
-    roleOwner: "擁有者 ✓",
-    roleAdminUnverified: "管理者 · 未驗證",
-    roleGuest: "訪客",
-    roleRead: "唯讀",
     rebind: "重新綁定",
     rebindHow: "在這台電腦執行 agend web --code，輸入它顯示的登入碼。",
     rebindCode: "agend web --code 取得的登入碼",
@@ -98,16 +87,6 @@ register("webauth", {
   },
 });
 const tn = (k, ...v) => t(`webauth.${k}`, ...v);
-/**
- * AGEND-138: a sign-in's role as one of four words — the session menu's and Settings → Devices' alike. `tier` is the
- * session's (admin / read / guest); `verified`: its owner authorization is valid now (this computer's code sign-in or a
- * chat account's confirm). Only an admin can be an owner; an admin without that is "Admin · not verified".
- */
-export function roleName(tier, verified) {
-  if (tier === "guest") return tn("roleGuest");
-  if (tier === "read") return tn("roleRead");
-  return verified ? tn("roleOwner") : tn("roleAdminUnverified");
-}
 // The switch and "Only this computer" are changed in Settings on this computer — never over the public link (#2525 review).
 const fixable = (reason) => (reason === "disabled" || reason === "loopback_only") && globalThis.document?.body?.dataset?.publicLink !== "1";
 const REASONS = ["disabled", "loopback_only", "no_account", "host_sign_in", "not_admin", "not_admin_session", "token_rotated", "public_link", "named_link_off", "quick_link_off", "not_session"];
@@ -274,12 +253,12 @@ export function Rebind() {
     } catch { setMsg(tn("rebindNetwork")); }
     setBusy(false);
   };
-  if (!open) return html`<button type="button" class="btn btn-sm webauth-rebind" onClick=${() => setOpen(true)}>${tn("rebind")}</button>`;
+  if (!open) return html`<button type="button" class="btn webauth-rebind" onClick=${() => setOpen(true)}>${tn("rebind")}</button>`;
   return html`<form class="webauth-rebind-form" onSubmit=${submit}>
     <p class="note">${tn("rebindHow")}</p>
-    <div class="row"><input type="text" class="webauth-rebind-code" value=${code} onInput=${(e) => setCode(e.target.value)} autocomplete="off" autocapitalize="characters" spellcheck=${false}
-      aria-label=${tn("rebindCode")} placeholder=${tn("rebindPlaceholder")} disabled=${busy} />
-      <button type="submit" class="btn btn-sm" disabled=${busy || !code.trim()}>${busy ? tn("rebindWorking") : tn("rebindGo")}</button></div>
+    <div class="row"><div class="field webauth-rebind-field"><input type="text" class="webauth-rebind-code" value=${code} onInput=${(e) => setCode(e.target.value)} autocomplete="off" autocapitalize="characters" spellcheck=${false}
+      aria-label=${tn("rebindCode")} placeholder=${tn("rebindPlaceholder")} disabled=${busy} /></div>
+      <button type="submit" class="btn" disabled=${busy || !code.trim()}>${busy ? tn("rebindWorking") : tn("rebindGo")}</button></div>
     ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
   </form>`;
 }

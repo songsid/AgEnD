@@ -85,12 +85,12 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
     if (!overview.you || !overview.you.canRevoke) return;                // the server refuses a non-owner regardless
     // AGEND-138: the devices that lose their authorization are named, and this one (you) is said to stay.
     const others = overview.authorized.filter((a) => a.handle !== overview.you.handle).map((a) => a.label);
-    const message = [tn("vaRevokeConfirm"), others.length ? tn("vaRevokeAffected", others.join(", ")) : tn("vaRevokeNoOthers"), tn("vaRevokeKept")].join("\n\n");
-    const yes = await confirmDialog({ title: tn("vaRevokeTitle"), message, confirmLabel: tn("vaRevoke"), danger: true });
+    const message = [tn("vaRevokeOthersConfirm"), others.length ? tn("vaRevokeAffected", others.join(", ")) : tn("vaRevokeNoOthers"), tn("vaRevokeKept")].join("\n\n");
+    const yes = await confirmDialog({ title: tn("vaRevokeOthersTitle"), message, confirmLabel: tn("vaRevokeOthers"), danger: true });
     if (!yes) return;
     let r = null;
     try { r = await api("/api/settings/web-authority/revoke", { method: "POST", body: "{}" }); } catch { r = null; }
-    if (r && r.ok) { toast(tn(r.body && r.body.durable === false ? "vaRevokedNotDurable" : r.body && r.body.kept === false ? "vaRevokedAll" : "vaRevoked")); load(); }
+    if (r && r.ok) { toast(tn(r.body && r.body.durable === false ? "vaRevokedNotDurable" : r.body && r.body.kept === false ? "vaRevokedAll" : "vaRevokedOthers")); load(); }
     else toast(tn(r && r.status === 403 ? "vaRevokeOwnerOnly" : "vaRevokeFailed"), false);
   };
 
@@ -119,6 +119,6 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
             <strong>${a.label}</strong> <span class="note">${a.account}</span>${a.named ? html` <span class="note s-va-named">${tn("vaSessionNamed")}</span>` : null}${a.quick ? html` <span class="note s-va-named s-va-quick">${tn("vaSessionQuick")}</span>` : null}<br /><span class="note">${tn("vaSessionUntil", when(a.authorizedAt), when(a.until))}</span></li>`)}</ul>`
         : html`<p class="note" id="vaSessionsNone">${tn("vaSessionsNone")}</p>`}
     </fieldset>
-    <div class="save-row s-authority-revoke"><button type="button" class="btn btn-danger" id="vaRevoke" disabled=${disabled || !canRevoke} aria-describedby=${canRevoke ? undefined : "vaRevokeWhy"} onClick=${revoke}>${tn("vaRevoke")}</button>
+    <div class="save-row s-authority-revoke"><button type="button" class="btn btn-danger" id="vaRevoke" disabled=${disabled || !canRevoke} aria-describedby=${canRevoke ? undefined : "vaRevokeWhy"} onClick=${revoke}>${tn("vaRevokeOthers")}</button>
       ${canRevoke ? null : html`<p class="note" id="vaRevokeWhy">${tn("vaRevokeOwnerOnly")}</p>`}</div>`);
 }

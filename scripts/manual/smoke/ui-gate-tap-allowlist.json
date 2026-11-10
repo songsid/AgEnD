@@ -12,7 +12,6 @@
  "access section.card.s-access-session > details.s-setting-details > summary": 1,
  "access section.card.s-access-session > div.field > select#webNotifyLogin": 1,
  "access section.card.s-web-authority > details.s-setting-details > summary": 1,
- "access section.card.s-web-authority > div.save-row.s-authority-revoke > button#vaRevoke.btn.btn-danger": 1,
  "access section#devicesCard.card.s-devices > div.s-dev-listhead > button#devicesRefresh.btn.btn-sm": 1,
  "advanced div.s-dev-bar > div.s-dev-actions > button.btn.btn-sm": 3,
  "advanced div.s-dev-bar > div.seg-inline > button.btn.btn-sm": 2,

@@ -6,7 +6,8 @@
 import { html, useEffect, useRef, useState } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { t, lang } from "./app-i18n.js";
-import { AuthorizeChip, roleName, useWebAuthorization } from "./web-authorize.js";
+import { AuthorizeChip, useWebAuthorization } from "./web-authorize.js";
+import { roleName } from "./device-roles.js";             // its own file: a retained older web-authorize.js has no roleName (PR #3553 review)
 
 async function getJson(url) {
   try {

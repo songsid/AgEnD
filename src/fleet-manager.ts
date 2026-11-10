@@ -3798,10 +3798,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { session: me, any: true, may: r => r.handle === me.handle || r.tier !== "admin" || principal(r) === principal(me), blocked: "other_admin" };
   }
 
-  /** AGEND-138: auth-api's narrowing of `DELETE /auth/sessions[/<handle>]` for an admin on a chat fleet; undefined: as before. */
-  endableSessions(req: IncomingMessage): ((r: SessionRecord) => boolean) | undefined {
+  /**
+   * AGEND-138: auth-api's narrowing of `DELETE /auth/sessions[/<handle>]` for an admin. Three answers, never confused:
+   * a predicate (what this caller may end), `undefined` (a web-only fleet: no narrowing here, its own owner check stands) and
+   * `null` — the caller could not be authenticated AGAIN just now (expired or signed out since auth-api's first check): a denial,
+   * which must never be read as "no restriction" (PR #3553 review).
+   */
+  endableSessions(req: IncomingMessage): ((r: SessionRecord) => boolean) | undefined | null {
     if (this.isWebOnlyFleet()) return undefined;
-    return this.sessionEndRule(req)?.may;
+    return this.sessionEndRule(req)?.may ?? null;
   }
 
   /**

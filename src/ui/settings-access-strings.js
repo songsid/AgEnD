@@ -40,3 +40,21 @@ register("settingsLayout", {
     revAuthorityRule: "裝置登入與擁有者授權分開判斷。關閉後，已驗證的網頁工作階段也不能核准需授權的操作。",
   },
 });
+
+// AGEND-138 (PR #3553 review): the revoke card's words (see above for why they live here).
+register("settings", {
+  en: {
+    // AGEND-138 (PR #3553 review): "Revoke other devices' authorization". New keys on purpose (the old settings.vaRevoke* stay in
+    // settings-strings.js untouched): a tab that already ran the previous settings-strings.js must not read a missing key.
+    vaRevokeOthers: "Revoke other devices' authorization", vaRevokeOthersTitle: "Revoke other devices' authorization?",
+    vaRevokeOthersConfirm: "Every other device's authorization ends, and every authority given from the web so far reads as none. Nobody is signed out, and this does not end any session's ability to confirm Settings changes: to make a session stop working, use Sign out everywhere or /web revoke.",
+    vaRevokeAffected: "These devices lose their authorization: {0}.", vaRevokeNoOthers: "No other device is authorized now.", vaRevokeKept: "This device (you) stays authorized.", vaRevokeOwnerOnly: "Only a verified owner can revoke.",
+    vaRevokedOthers: "Other devices' authorization is revoked. This device stays authorized.", vaRevokedAll: "Web authority given so far is revoked, this device's included.",
+  },
+  "zh-TW": {
+    vaRevokeOthers: "撤銷其他裝置的授權", vaRevokeOthersTitle: "撤銷其他裝置的授權？",
+    vaRevokeOthersConfirm: "其他裝置的授權都會結束，到目前為止從網頁給出的授權也都視為無。不會登出任何人，也不會讓任何 session 失去確認設定變更的能力：要讓某個 session 失效，請用「全部登出」或 /web revoke。",
+    vaRevokeAffected: "這些裝置會失去授權：{0}。", vaRevokeNoOthers: "目前沒有其他已授權的裝置。", vaRevokeKept: "這台裝置（你）會保留授權。", vaRevokeOwnerOnly: "只有已驗證擁有者能撤銷。",
+    vaRevokedOthers: "已撤銷其他裝置的授權，這台裝置仍保有授權。", vaRevokedAll: "已撤銷到目前為止的網頁授權，包含這台裝置。",
+  },
+});

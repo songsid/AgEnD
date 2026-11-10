@@ -39,7 +39,9 @@ const OLD = Object.fromEntries(NAMESPACES.map(({ ns, old }) => [ns, words(old, n
 const placeholders = (s: string) => (s.match(/\{\d+\}/g) ?? []).sort().join(",");
 
 /** The words this review found missing in a stale tab (the review's probe printed the first two as raw keys). */
-const KEYS = { settings: ["webLoginQr", "webLoginQrHint"], settingsLayout: ["revAuthorityBriefWeb", "revAuthorityEnabledWeb", "revAuthorityRule"] } as const;
+const KEYS = { settings: ["webLoginQr", "webLoginQrHint",
+  // AGEND-138 (PR #3553 review): the revoke card's words — new keys here, the old settings.vaRevoke* untouched in settings-strings.js
+  "vaRevokeOthers", "vaRevokeOthersTitle", "vaRevokeOthersConfirm", "vaRevokeAffected", "vaRevokeNoOthers", "vaRevokeKept", "vaRevokeOwnerOnly", "vaRevokedOthers", "vaRevokedAll"], settingsLayout: ["revAuthorityBriefWeb", "revAuthorityEnabledWeb", "revAuthorityRule"] } as const;
 
 const modules = (d = UI): string[] => readdirSync(d).flatMap((n) => {
   const p = join(d, n);

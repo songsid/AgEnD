@@ -21,7 +21,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { Dialog } from "/assets/ui-dialog.js";
-import { roleName } from "/assets/web-authorize.js";
+import { roleName } from "/assets/device-roles.js";   // its own file: a retained older web-authorize.js has no roleName (PR #3553 review)
 import { api } from "./settings-confirm.js";
 
 register("devices", {
