@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { nativeHumanOrigin } from "../src/human-delivery-receipts.js";
 import { outboundHandlers } from "../src/outbound-handlers.js";
 
 const fixtures: Array<{ root: string; outbox: DeliveryOutbox }> = [];
@@ -279,4 +280,72 @@ describe("explicit row-scoped forwards (#1756)", () => {
     expect(outbox.getByOperation("leader", "op-leader-worker")).toEqual([]);
     expect(ctx.sendCancelButton).not.toHaveBeenCalled();
   });
+});
+
+
+describe("pending forwarded receipts (#3578)", () => {
+  const pending = "Could not accept the message for delivery: Forwarded message verification is pending delivery confirmation; check delivery_status and retry this forward after it is delivered. Do not resend the original message.";
+  const unavailable = "Could not accept the message for delivery: Forwarded message verification is unavailable";
+  function human(outbox: DeliveryOutbox) {
+    const row = outbox.createHumanReceipt({ targetInstance: "leader", originalBody: "Approve only this resource", inputKind: "fleet_inbound",
+      managerBootId: "manager", origin: nativeHumanOrigin("discord", "mock-bot", "mock-human", "Test person", false, "mock-platform-message")! });
+    const bound = outbox.bindHumanReceipt(row.receipt_id, "leader", "owner", "wire", "manager");
+    const delivered = () => expect(outbox.settleHumanReceipt(row.receipt_id, "leader", "owner", {
+      receipt_id: row.receipt_id, verification_id: row.message_id, wire_sha256: bound.wire_sha256, owner_key: "owner", mode: "idle_submit", tag: "unique-id-pane",
+    }, "owner")).toBe(true);
+    return { id: row.message_id, delivered };
+  }
+  it.each(["send_to_instance", "delegate_task"])("%s refuses an owned queued human reference with pending guidance, then admits the same forward only after positive delivery", async tool => {
+    const {ctx,outbox}=harness(), receipt=human(outbox);
+    const first=await send(ctx,"leader","worker",[receipt.id],tool,"pending-human");
+    expect(first).toEqual({result:null,error:pending});
+    expect(outbox.getByOperation("leader","pending-human")).toEqual([]);
+    expect(outbox.queryStatusForInstance("worker",{messageId:receipt.id}).items).toEqual([]);
+    expect(ctx.scheduleDeliveryOutboxPump).not.toHaveBeenCalled(); expect(ctx.sendCancelButton).not.toHaveBeenCalled(); expect(ctx.emitSseEvent).not.toHaveBeenCalled();
+    receipt.delivered();
+    const next=await send(ctx,"leader","worker",[receipt.id],tool,"pending-human");
+    expect(next.error).toBeUndefined();expect(next.result.sent).toBe(true);
+    expect(outbox.getByOperation("leader","pending-human")).toHaveLength(1);
+    expect(outbox.queryStatusForInstance("worker",{messageId:receipt.id}).items).toMatchObject([{state:"delivered"}]);
+    expect((await send(ctx,"leader","worker",[receipt.id],tool,"pending-human")).result.duplicate).toBe(true);
+    expect(outbox.getByOperation("leader","pending-human")).toHaveLength(1);
+  });
+  it.each(["queued", "delivering", "submission_started", "retry_wait", "reconciliation_pending"])("an owned %s delivery is pending, never forwardable", async state => {
+    const {ctx,outbox}=harness(),row=original(outbox);
+    (outbox as any).db.prepare("UPDATE deliveries SET state=? WHERE delivery_id=?").run(state === "reconciliation_pending" ? "submission_started" : state,row.deliveryId);
+    if(state === "reconciliation_pending") (outbox as any).db.prepare("UPDATE deliveries SET reconciliation_pending=1 WHERE delivery_id=?").run(row.deliveryId);
+    expect((await send(ctx,"leader","worker",["xmsg-original"])).error).toBe(pending);
+    expect(outbox.getByOperation("leader","op-leader-worker")).toEqual([]);
+    expect(outbox.queryStatusForInstance("worker",{messageId:"xmsg-original"}).items).toEqual([]);
+  });
+  it.each(["queued","delivered","uncertain"])("hidden %s human receipts reveal no pending/existence distinction", async state=>{
+    const {ctx,outbox}=harness(),receipt=human(outbox);
+    if(state==="delivered")receipt.delivered();else if(state==="uncertain")outbox.markHumanReceiptUncertain(receipt.id.slice(5),"leader");
+    expect((await send(ctx,"outsider","worker",[receipt.id])).error).toBe(unavailable);
+    expect((await send(ctx,"outsider","worker",["hmsg-missing"])).error).toBe(unavailable);
+    if(state==="uncertain")expect((await send(ctx,"leader","worker",[receipt.id])).error).toBe(unavailable);
+  });
+  it.each(["queued","delivered","uncertain","failed","cancelled"])("hidden %s normal references reveal no pending/existence distinction", async state=>{
+    const {ctx,outbox}=harness(),row=original(outbox);
+    (outbox as any).db.prepare("UPDATE deliveries SET state=? WHERE delivery_id=?").run(state === "reconciliation_pending" ? "submission_started" : state,row.deliveryId);
+    if(state === "reconciliation_pending") (outbox as any).db.prepare("UPDATE deliveries SET reconciliation_pending=1 WHERE delivery_id=?").run(row.deliveryId);
+    expect((await send(ctx,"outsider","worker",["xmsg-original"])).error).toBe(unavailable);
+    expect((await send(ctx,"outsider","worker",["xmsg-missing"])).error).toBe(unavailable);
+    if(["uncertain","failed","cancelled"].includes(state))expect((await send(ctx,"leader","worker",["xmsg-original"])).error).toBe(unavailable);
+  });
+  it("a mixed delivered/pending list admits no delivery or partial grant",async()=>{
+    const {ctx,outbox}=harness();original(outbox);const receipt=human(outbox);
+    expect((await send(ctx,"leader","worker",["xmsg-original",receipt.id])).error).toBe(pending);
+    expect(outbox.getByOperation("leader","op-leader-worker")).toEqual([]);
+    expect(outbox.queryStatusForInstance("worker",{messageId:"xmsg-original"}).items).toEqual([]);
+    expect(outbox.queryStatusForInstance("worker",{messageId:receipt.id}).items).toEqual([]);
+  });
+  it("ambiguous visible references remain unavailable rather than exposing one queued duplicate",async()=>{
+    const {ctx,outbox}=harness();original(outbox);
+    outbox.admit({operationId:"duplicate-id",sourceKey:"duplicate-id",sourceInstance:"classic",sourceDaemonBootId:"classic-boot",targetInstance:"leader",kind:"fleet_inbound",payload:{content:"another message",meta:{message_id:"xmsg-original"}}});
+    expect((await send(ctx,"leader","worker",["xmsg-original"])).error).toBe(unavailable);
+    expect(outbox.getByOperation("leader","op-leader-worker")).toEqual([]);
+    expect(outbox.queryStatusForInstance("worker",{messageId:"xmsg-original"}).items).toEqual([]);
+  });
+
 });
