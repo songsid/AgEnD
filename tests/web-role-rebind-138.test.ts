@@ -66,7 +66,7 @@ describe("AGEND-138: the role in the session menu", () => {
     expect(role()).toBe("角色 擁有者 ✓");
     authorization = { state: "none", reason: "host_sign_in" };
     await menu();
-    expect(role()).toBe("角色 管理者 · 未驗證");
+    expect(role()).toBe("角色 管理員 · 未驗證");
     tier = "guest"; await menu();
     expect(role()).toBe("角色 訪客");
     tier = "read"; await menu();

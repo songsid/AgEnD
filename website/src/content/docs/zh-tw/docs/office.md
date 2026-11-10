@@ -26,13 +26,13 @@ description: 網頁儀表板上把 fleet 畫成像素辦公室：風格與外觀
 - **辦公桌：** 每個 team 一間房，每個 agent 一張桌子。
 - **工作室：** 一個有四個區域的場景（工作區、休息區、求救區、午睡角）；每個 agent 會走到符合狀態的區域。
 - **溫馨：** 同類型的場景，畫在 AgEnD 內建的一張溫暖像素風房間裡。新的辦公室，以及還沒選過風格的瀏覽器，預設都用它。
-- **外觀包** 是畫師的圖：一個 `manifest.json` 加上 PNG 檔。fleet 管理者在 **編輯辦公室 → 外觀包** 上傳；主機會檢查並原封不動地保存。保存的外觀包會出現在每個風格選單裡。怎麼製作請見[製作外觀包](https://github.com/songsid/AgEnD/blob/main/docs/office.zh-TW.md#製作外觀包)。
+- **外觀包** 是畫師的圖：一個 `manifest.json` 加上 PNG 檔。fleet 管理員在 **編輯辦公室 → 外觀包** 上傳；主機會檢查並原封不動地保存。保存的外觀包會出現在每個風格選單裡。怎麼製作請見[製作外觀包](https://github.com/songsid/AgEnD/blob/main/docs/office.zh-TW.md#製作外觀包)。
 
-fleet 管理者為 **整個 fleet** 選的風格，就是每台裝置與每個分享連結看到的風格。其他人可以為自己的瀏覽器另選一種。
+fleet 管理員為 **整個 fleet** 選的風格，就是每台裝置與每個分享連結看到的風格。其他人可以為自己的瀏覽器另選一種。
 
 ## 設定辦公室
 
-fleet 管理者在直接連線的 dashboard 上，使用辦公室工具列的 **編輯辦公室**：
+fleet 管理員在直接連線的 dashboard 上，使用辦公室工具列的 **編輯辦公室**：
 
 1. **新增辦公室**，取個名稱。
 2. **成員：** **全部**、**指定**（整個 team 或個別 agent），或 **沒有人（只有 NPC）**：只有風格裡角色的房間。
@@ -53,7 +53,7 @@ fleet 上的每個人看到的是同一組辦公室。主機把它們存在 AgEn
 
 ## 辦公室裡的 agent
 
-為某個 agent 開啟 **辦公室** 儀表板功能後（`office_access: true`，沒有人設定就是關閉），它能看到自己所在的辦公室，並暫時走動、說一句短句或擺個姿勢（`office_view`、`office_set`）。另一個開關 **辦公室外觀包**（`office_pack_access: true`）讓 agent 檢查、上傳、取代、刪除與還原外觀包；預設每次變更都要等 fleet 管理者核准。請見[辦公室裡的 agent](https://github.com/songsid/AgEnD/blob/main/docs/office.zh-TW.md#辦公室裡的-agent)。
+為某個 agent 開啟 **辦公室** 儀表板功能後（`office_access: true`，沒有人設定就是關閉），它能看到自己所在的辦公室，並暫時走動、說一句短句或擺個姿勢（`office_view`、`office_set`）。另一個開關 **辦公室外觀包**（`office_pack_access: true`）讓 agent 檢查、上傳、取代、刪除與還原外觀包；預設每次變更都要等 fleet 管理員核准。請見[辦公室裡的 agent](https://github.com/songsid/AgEnD/blob/main/docs/office.zh-TW.md#辦公室裡的-agent)。
 
 ## 降版
 

@@ -17,3 +17,4 @@ tests/web-appearance-copy-2056.test.ts
 tests/web-authority-s2a-1939.test.ts
 tests/web-command-copy-1655.test.ts
 tests/website-notes.test.ts
+tests/zh-admin-word-2820.test.ts

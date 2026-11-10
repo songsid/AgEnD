@@ -345,7 +345,7 @@ describe("#3061 P2b: the signed-in devices", () => {
       const w = await open({ webOnly: true, owner: true, canEndOthers: true, devices: ROWS_OWNER });
       expect(w.text(w.$("#devicesListTitle"))).toBe("已登入的裝置");
       expect(rowText(w, "aaaaaaaaaaaaaaaa")).toEqual(["Firefox on Linux 這台裝置", "核准方式：主機 · 擁有者 ✓ · 剛剛活動", ""]);
-      expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "核准方式：其他裝置核准 · 管理者 · 未驗證 · 5 分鐘前活動", "登出"]);
+      expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "核准方式：其他裝置核准 · 管理員 · 未驗證 · 5 分鐘前活動", "登出"]);
       expect(rowText(w, "cccccccccccccccc")[1]).toContain("核准方式：驗證器 App");
       expect(rowText(w, "dddddddddddddddd")[1]).toContain("核准方式：一次性裝置登入碼");
       await w.click(w.$('[data-signout="bbbbbbbbbbbbbbbb"]'));
@@ -492,9 +492,9 @@ describe("AGEND-138 (#3486): Settings → Devices on a fleet with a chat connect
     i18n.setLang("zh-TW");
     try {
       const w = await open(CHAT);
-      expect(["a", "b", "d", "e"].map(h => w.text(w.$(`[data-handle="${h.repeat(16)}"] [data-role]`)))).toEqual(["擁有者 ✓", "管理者 · 未驗證", "訪客", "唯讀"]);
-      expect(w.text(w.$("#devicesSignOutOtherAdmin"))).toBe("只有這台裝置所屬的管理者本人能登出它。");
-      expect(w.text(w.$("#devicesLead"))).toContain("別的管理者的裝置只有那位管理者本人能登出");
+      expect(["a", "b", "d", "e"].map(h => w.text(w.$(`[data-handle="${h.repeat(16)}"] [data-role]`)))).toEqual(["擁有者 ✓", "管理員 · 未驗證", "訪客", "唯讀"]);
+      expect(w.text(w.$("#devicesSignOutOtherAdmin"))).toBe("只有這台裝置所屬的管理員本人能登出它。");
+      expect(w.text(w.$("#devicesLead"))).toContain("別的管理員的裝置只有那位管理員本人能登出");
     } finally { i18n.setLang("en"); }
   });
 });

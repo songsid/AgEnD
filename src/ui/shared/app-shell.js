@@ -797,7 +797,7 @@ register("pendingEnded", {
   },
   "zh-TW": {
     why_withdrawn: "你已撤回這項變更，沒有任何設定被修改。",
-    why_rejected: "管理者拒絕了這項變更，沒有任何設定被修改。",
+    why_rejected: "管理員拒絕了這項變更，沒有任何設定被修改。",
     why_expired: "5 分鐘內沒有完成，請確認設定目前的內容。",
     why_not_found: "AgEnD 已經沒有這項請求（已逾時或已清除），請確認設定目前的內容。",
     why_settings_changed: "你送出之後設定又被修改了，所以沒有套用。請檢查設定後，到設定重新做一次這項變更。",
