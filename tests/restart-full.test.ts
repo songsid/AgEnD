@@ -185,6 +185,7 @@ describe("/restart full command surface", () => {
     await rearmed.promise;
     expect(rearm).toHaveBeenCalledOnce();
     fleet.onFullRestartSignal();
+    await new Promise<void>(resolve => setImmediate(resolve));
     expect(exit).not.toHaveBeenCalled();
     shutdown.resolve();
     await exited.promise;
