@@ -1,0 +1,29 @@
+{
+  "package": "fonts-noto-cjk",
+  "version": "1:20230817+repack1-3",
+  "archive": "fonts-noto-cjk_20230817+repack1-3_all.deb",
+  "url": "https://archive.ubuntu.com/ubuntu/pool/main/f/fonts-noto-cjk/fonts-noto-cjk_20230817+repack1-3_all.deb",
+  "digest": "7d64b985f6fe128c99eae5610d5c047338e572bdcfb2bb09736be01b824a7f6c",
+  "files": {
+    "NotoSansCJK-Regular.ttc": "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a",
+    "NotoSansCJK-Bold.ttc": "faa5f3656a78b2e2d450d27fe8382c778bc2b6bb5ea29c986664a6a435056ceb",
+    "NotoSerifCJK-Regular.ttc": "93069d8e9e45d515cc421c971a79e6a5777704b348e36a9ef86578bf58adef77",
+    "NotoSerifCJK-Bold.ttc": "9d3c0d769c703cfe41c49cbe2b14d4718e26545593dc247485486335b783fe94"
+  },
+  "checks": [
+    {
+      "pattern": "Noto Sans CJK TC:lang=zh-tw",
+      "file": "NotoSansCJK-Regular.ttc",
+      "family": "Noto Sans CJK TC"
+    },
+    {
+      "pattern": "Noto Sans CJK TC:lang=zh-tw:weight=bold",
+      "file": "NotoSansCJK-Bold.ttc",
+      "family": "Noto Sans CJK TC"
+    }
+  ],
+  "fontconfigRule": {
+    "path": "usr/share/fontconfig/conf.avail/70-fonts-noto-cjk.conf",
+    "digest": "2417ac0e6720fe8da55ee59f16e36cfe96737bc21432460a322bb0f395e3a521"
+  }
+}

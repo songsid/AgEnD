@@ -1,0 +1,23 @@
+{
+  "031052363ae0e41a05321e21333dfd8856e9377d37b6748004cc95ab12a58e39": [
+    ".github/workflows/ci.yml"
+  ],
+  "67823066b62419d02880e4712f3aed06273e48abfe5ccab3d84c3fc7eac054bc": [
+    "tests/ui-gate-fonts.test.ts"
+  ],
+  "11d1e11d6786b47e1e072bb10b3bb0580ae101bec440f2983f96f9b03451ed13": [
+    "scripts/ci/ui-gate-fonts.json"
+  ],
+  "d0da4ad2234b3adf11e5909006f2c9f66b2b4cb92521fd88b4a988ae1c24e457": [
+    "scripts/ci/prepare-ui-gate-fonts.mjs"
+  ],
+  "d43d04908588ee4fabf873f06089db9f146f92e69808b48b537004ca1d3be62d": [
+    "scripts/ci/prepare-ui-gate-fonts.d.mts"
+  ],
+  "237d2863320ecd1d197f28a7ef4e9fb9baa0e67b0aa75bcc7d7da9e299c69d9b": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822-alpha/README.md"
+  ],
+  "8a9c15d374d2921a5888e14bebb71aada98f8bfca74d1ee5ea31701919bb25fe": [
+    "docs/evidence/ui-gate-cjk-fonts-m2822-alpha/checks.json"
+  ]
+}

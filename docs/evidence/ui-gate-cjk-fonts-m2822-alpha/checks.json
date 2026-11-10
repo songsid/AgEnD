@@ -1,0 +1,16 @@
+{
+  "baseDuringLocalChecks": "ead0d7bd3",
+  "mainSource": "3ff2d9e2f56e34ad9137b7380290fcb92d16c2e7",
+  "focused": {
+    "passed": 150,
+    "failed": 0,
+    "skipped": 0
+  },
+  "testTypesExit": 0,
+  "actionsPinning": "ok: 15 files, every remote uses: is a 40-char SHA",
+  "actualPreparation": [
+    "CJK font cache hit; archive checksum verified (no download)",
+    "CJK fonts ready: fonts-noto-cjk 1:20230817+repack1-3; cache; regular/bold zh-TW faces verified"
+  ],
+  "scope": "Fresh helper/cache and focused checks; main control glyph/browser/cold/failure evidence carries its original main scope. No fresh alpha full browser matrix."
+}
