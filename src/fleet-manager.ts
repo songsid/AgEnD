@@ -323,6 +323,7 @@ import { describeSelfOom } from "./session-oom.js";
 import { assertNoSessionOomStop, readSessionOomStop, captureSessionOomRetry, clearSessionOomStopForRetry, SessionOomStoppedError, sessionOomStopHint, type SessionOomRetry } from "./session-oom-stop.js";
 import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot, RemoteCard } from "./backend/types.js";
 import type { RemoteCardAction, RemoteCardOutcome } from "./remote-card-answer.js";
+import { redactSecrets } from "./tool-progress.js";
 import { idleGateTimeoutLog } from "./idle-gate-log.js";
 import { DEFAULT_STUCK_TIMEOUT_MS, readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
@@ -997,7 +998,8 @@ const WEB_ONLY_REPLY_SINK = {
 /**
  * Where an instance-health prompt (hang, clean exit, interactive prompt) is posted on a fleet with no chat platform:
  * nowhere but the dashboard (#1307 item 6). Posting "succeeds" with an id of its own, so the prompt is armed and
- * offered on the web exactly as a platform prompt is; there are no platform buttons to edit afterwards, and the
+ * offered on the web exactly as a platform prompt is; also used for CLI dialogs belonging to public Classic rooms
+ * (#3334). There are no platform buttons to edit afterwards, and the
  * outcome reaches the page through prompt_resolved as for any web-answered prompt.
  */
 const WEB_ONLY_PROMPT_SINK = {
@@ -17137,18 +17139,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #3334: CLI-owned dialogs also reach chat fleets. Their legacy webOnly marker now requires the owning
     // adapter's fleet admin to answer; ordinary agent questions retain their existing conversation authority.
     this.retireRemoteCard(instanceName, null, t("card.answered_in_pane"));
-    const place = this.remoteCardPlace(instanceName);
+    const requiresAdmin = card.kind === "question" && card.webOnly === true;
+    // Classic rooms may include people outside the fleet. Keep their generic parked notice; the full CLI dialog
+    // and its approval live only on the existing admin dashboard, never in that room or an assumed-private General.
+    const privateDashboard = requiresAdmin && this.classicChannels?.getChannelIdByInstance(instanceName) !== undefined;
+    const place = privateDashboard ? { adapter: WEB_ONLY_PROMPT_SINK, adapterId: "web", chatId: "web" } : this.remoteCardPlace(instanceName);
     if (!place) {
       this.logger.warn({ instanceName }, "A card is waiting on screen but the instance has no place to post it — the parked notice stands");
       return;
     }
-    const prompt = remoteCardPrompt(instanceName, card);
+    // Redact before labels are clipped. Keep the raw request's identity for the pane check, and retain only the
+    // displayed option titles for the chat outcome too, so selecting an option cannot re-disclose its secret.
+    const shown = card.kind === "question" && requiresAdmin && place.adapter.type !== "web" ? {
+      ...card, title: redactSecrets(card.title), question: redactSecrets(card.question),
+      options: card.options.map(o => ({ ...o, title: redactSecrets(o.title), description: o.description === null ? null : redactSecrets(o.description) })),
+    } : card;
+    const prompt = remoteCardPrompt(instanceName, shown);
     const nonce = await this.postNonceButtonPrompt({
       prefix: REMOTE_CARD_CALLBACK_PREFIX, alertType: "interactive_prompt", instanceName, ...place,
       message: prompt.message, choices: prompt.choices, webInput: prompt.webInput,
       expiredText: t("card.expired", instanceName), timeoutMs: REMOTE_CARD_TIMEOUT_MS,
-      extra: { remoteCard: { identity: card.identity, kind: card.kind, options: card.kind === "question" ? card.options.map(o => ({ n: o.n, title: o.title })) : [],
-        requiresAdmin: card.kind === "question" && card.webOnly === true } },
+      extra: { remoteCard: { identity: card.identity, kind: card.kind, options: shown.kind === "question" ? shown.options.map(o => ({ n: o.n, title: o.title })) : [],
+        requiresAdmin } },
     });
     if (nonce) this.remoteCardPosts.set(instanceName, nonce);
   }

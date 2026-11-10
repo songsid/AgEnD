@@ -1,8 +1,8 @@
 {
   "algorithm": "SHA-256",
-  "base": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
+  "sourceParent": "30bb3780968ed4c7025b768725b812d33dba9644",
   "entries": {
-    "c2a5d3e7c5e67f97b4ae9ebf148a68bc2b10da088d07a4308509c70a17ee7d5d": [
+    "1c2c93ac457402f5e0ae8fed1867516ae1fcac89655f19e8a74ff47bd3f6bf8c": [
       "src/fleet-manager.ts"
     ],
     "658d0e2910ee8dfb3f189513f426b7160d045ee9844a27c23d4dedb487fa01a8": [
@@ -17,7 +17,10 @@
     "476c1dab4e774b98742913c2e3c43896aa9113dd42c198e7bfff86187de1220c": [
       "src/remote-card-prompt.ts"
     ],
-    "d1a3b81bac6137b803ab72444a0cfa761e9eadb0b324a778e5d2697dac9863d1": [
+    "094e075dd18e21e96e8ad35062a9c1badb659ce254db2e4b04d1f8ea5e592baa": [
+      "src/tool-progress.ts"
+    ],
+    "e73d185b7988346541b5ff91c6510e746d5b9e00828c3cc1c5983040a2647cef": [
       "tests/cli-question-chat-3334.test.ts"
     ],
     "c95a215fc10f7fb69c994fc3df85095e295b92232cb501bdb39241888687c762": [

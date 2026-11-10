@@ -1,8 +1,10 @@
 {
   "base": "6ef9f3f6bdceabedf42e3feaf83c40a8218e3f1e",
-  "scope": "main modified working tree; manifest binds tested source and fixtures",
+  "sourceParent": "30bb3780968ed4c7025b768725b812d33dba9644",
+  "scope": "R1 modified working tree; manifest binds tested source and fixtures",
   "testFiles": [
     "tests/admin-gate-754.test.ts",
+    "tests/changelog-fragments.test.ts",
     "tests/claude-file-send-card-2322.test.ts",
     "tests/cli-question-chat-3334.test.ts",
     "tests/kiro-remote-card-2675.test.ts",
@@ -11,84 +13,106 @@
     "tests/needs-you-fleet-1386.test.ts",
     "tests/needs-you-web-1386.test.ts",
     "tests/nonce-button-shutdown.test.ts",
+    "tests/tool-progress.test.ts",
     "tests/web-chat-c4.test.ts",
     "tests/web-only-dialogs-2910.test.ts"
   ],
-  "related": {
-    "passed": 235,
-    "failed": 0,
-    "skipped": 0
-  },
-  "fragmentSuite": {
-    "passed": 75,
+  "relatedAndFragments": {
+    "passed": 349,
     "failed": 0,
     "skipped": 0
   },
   "sourceTypes": "passed",
   "testTypes": "passed",
+  "r1FailFirst": {
+    "total": 21,
+    "passed": 17,
+    "failed": 4
+  },
   "mutations": [
     {
       "name": "M1-old-chat-gate",
       "compiles": true,
       "passed": 19,
-      "failed": 15,
-      "total": 34
+      "failed": 19,
+      "total": 38
     },
     {
       "name": "M2-drop-captured-admin-marker",
       "compiles": true,
-      "passed": 24,
-      "failed": 10,
-      "total": 34
+      "passed": 30,
+      "failed": 8,
+      "total": 38
     },
     {
       "name": "M3-drop-admin-check",
       "compiles": true,
-      "passed": 24,
-      "failed": 10,
-      "total": 34
+      "passed": 30,
+      "failed": 8,
+      "total": 38
     },
     {
       "name": "M4-primary-admin-instead-of-owner",
       "compiles": true,
-      "passed": 32,
+      "passed": 36,
       "failed": 2,
-      "total": 34
+      "total": 38
     },
     {
-      "name": "M5-classic-bypass-before-admin",
+      "name": "M5-disclose-classic-dialog",
       "compiles": true,
-      "passed": 32,
+      "passed": 36,
       "failed": 2,
-      "total": 34
+      "total": 38
     },
     {
       "name": "M6-all-questions-admin-only",
       "compiles": true,
-      "passed": 32,
+      "passed": 36,
       "failed": 2,
-      "total": 34
+      "total": 38
     },
     {
       "name": "M7-drop-thread-binding",
       "compiles": true,
-      "passed": 32,
+      "passed": 36,
       "failed": 2,
-      "total": 34
+      "total": 38
     },
     {
       "name": "M8-drop-chat-binding",
       "compiles": true,
-      "passed": 32,
+      "passed": 36,
       "failed": 2,
-      "total": 34
+      "total": 38
     },
     {
       "name": "M9-drop-message-binding",
       "compiles": true,
-      "passed": 32,
+      "passed": 36,
       "failed": 2,
-      "total": 34
+      "total": 38
+    },
+    {
+      "name": "M10-drop-redaction",
+      "compiles": true,
+      "passed": 36,
+      "failed": 2,
+      "total": 38
+    },
+    {
+      "name": "M11-raw-option-outcome",
+      "compiles": true,
+      "passed": 36,
+      "failed": 2,
+      "total": 38
+    },
+    {
+      "name": "M12-raw-option-presentation",
+      "compiles": true,
+      "passed": 36,
+      "failed": 2,
+      "total": 38
     }
   ]
 }

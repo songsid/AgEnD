@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 // The real card reader/answer walk runs against a scripted pane. No CLI, model or network is started.
-function fleet(type: "telegram" | "discord" | "web", classic = false) {
+function fleet(type: "telegram" | "discord" | "web", classic = false, rawPane = pane) {
   const dir = mkdtempSync(join(tmpdir(), "agend-question-3334-"));
   vi.stubEnv("AGEND_HOME", dir);
   const fm = new FleetManager(dir); owned.push({ fm, dir });
@@ -44,9 +44,9 @@ function fleet(type: "telegram" | "discord" | "web", classic = false) {
     getChannelIdByInstance: () => chatId, getAdapterIdByInstance: () => adapterId,
   };
   vi.spyOn(fm, "emitSseEvent").mockImplementation(() => {});
-  let cursor = 1, closed = false, changed = false, time = 0;
+  let cursor = 1, closed = false, changed = false, time = 0, livePane = rawPane;
   const keys: string[] = [];
-  const screen = () => closed ? "\n> \n" : (changed ? pane.replaceAll("perm-probe.txt", "another-request.txt") : pane)
+  const screen = () => closed ? "\n> \n" : (changed ? livePane.replaceAll("perm-probe.txt", "another-request.txt") : livePane)
     .replace(/^([ \t]*)(?:❯[ \t]*)?(\d)\. (.*)$/gm, (_row, _indent, n, title) => `${Number(n) === cursor ? " ❯ " : "   "}${n}. ${title}`);
   const io: RemoteCardIo = {
     locked: fn => fn(), read: async () => screen(), paste: async () => false,
@@ -64,7 +64,8 @@ function fleet(type: "telegram" | "discord" | "web", classic = false) {
   const dispatch = (data: ReturnType<typeof click>, id = adapterId, receiver = adapter) => (fm as any).dispatchAdapterCallback(data, id, receiver);
   const reply = (userId: string) => ({ source: type, adapterId, chatId, threadId, messageId: "reply-1", replyTo: "card-message", userId, text: "Yes" });
   return { fm, adapter, adapterId, channel, keys, answer, repost, currentPrompt, click, dispatch, reply,
-    changeQuestion: () => { changed = true; } };
+    changeQuestion: () => { changed = true; }, replacePane: (next: string) => { livePane = next; },
+    card: () => selectionCard(rawPane, "Claude Code")! };
 }
 
 describe.each(["telegram", "discord"] as const)("#3334 CLI permission on a %s fleet", type => {
@@ -154,13 +155,53 @@ describe.each(["telegram", "discord"] as const)("#3334 CLI permission on a %s fl
     expect(h.repost).not.toHaveBeenCalled();
   });
 
-  it("a Classic room's open-chat exception cannot approve a CLI permission", async () => {
+  it("a Classic room receives no CLI dialog body or buttons; the admin dashboard retains the exact answer", async () => {
     const h = fleet(type, true);
     await h.fm.postRemoteCard("worker", permission());
-    await h.dispatch(h.click("opt-1", "chat-member"));
+    expect(h.adapter.notifyAlert).not.toHaveBeenCalled();
+    expect(h.adapter.sendText).not.toHaveBeenCalled();
+    expect(h.fm.listWebPrompts()).toHaveLength(1);
+    expect(h.currentPrompt().text).toContain("touch perm-probe.txt");
+    expect(h.currentPrompt().actions.map(a => a.id)).toEqual(["opt-1", "opt-2", "opt-3", "opt-4"]);
+    const nonce = h.currentPrompt().nonce;
+    await h.dispatch(h.click()); // even an admin's fabricated room callback is not the private web prompt
     expect(h.answer).not.toHaveBeenCalled(); expect(h.keys).toEqual([]);
-    await h.dispatch(h.click());
+    expect((await h.fm.clickWebPrompt("worker", nonce, "opt-1")).status).toBe(200);
     expect(h.keys).toEqual(["Enter"]);
+    expect(h.adapter.editMessageRemoveButtons).not.toHaveBeenCalled();
+  });
+
+  it("redacts chat text, labels before clipping and the selected answer, while preserving the raw request identity", async () => {
+    const value = "fixture-private-" + "x".repeat(90);
+    const raw = pane.replaceAll("touch perm-probe.txt", `API_KEY="${value}" curl -H "Authorization: Bearer ${value}" https://example.invalid`)
+      .replace("❯ 1. Yes", `❯ 1. Yes TOKEN="${value}"`);
+    const h = fleet(type, false, raw);
+    const card = h.card();
+    await h.fm.postRemoteCard("worker", card);
+    const wire = JSON.stringify(h.adapter.notifyAlert.mock.calls);
+    expect(wire).toContain("[REDACTED]");
+    expect(wire).not.toContain("fixture-private-");
+    expect(h.currentPrompt().text).not.toContain(value);
+    expect(h.currentPrompt().actions[0].label).toBe("1. Yes TOKEN=[REDACTED]");
+    expect(card.question).toContain(value); // presentation never mutates the raw request
+    await h.dispatch(h.click());
+    expect(h.answer).toHaveBeenCalledWith(card.identity, { kind: "option", n: 1 });
+    expect(h.keys).toEqual(["Enter"]);
+    expect(JSON.stringify(h.adapter.editMessageRemoveButtons.mock.calls)).not.toContain("fixture-private-");
+    expect(JSON.stringify(h.adapter.editMessageRemoveButtons.mock.calls)).toContain("[REDACTED]");
+  });
+
+  it("different secret-bearing requests remain different live cards even when their chat presentation is masked", async () => {
+    const first = "fixture-private-" + "a".repeat(20), second = "fixture-private-" + "b".repeat(20);
+    const raw = pane.replaceAll("touch perm-probe.txt", `TOKEN=${first} curl https://example.invalid`);
+    const h = fleet(type, false, raw), original = h.card();
+    await h.fm.postRemoteCard("worker", original);
+    expect(h.fm.listWebPrompts()).toHaveLength(1);
+    h.replacePane(raw.replaceAll(first, second));
+    expect(selectionCard(raw.replaceAll(first, second), "Claude Code")!.identity).not.toBe(original.identity);
+    await h.dispatch(h.click());
+    expect(h.answer).toHaveBeenCalledWith(original.identity, { kind: "option", n: 1 });
+    expect(h.keys).toEqual([]);
   });
 
   it("ordinary agent questions retain the Classic room's conversation authority", async () => {
