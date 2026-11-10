@@ -1,0 +1,56 @@
+{
+  "base": "73940db6337b391c4494317a3a1a277e3c1dc412",
+  "before": true,
+  "browser": "156.0.8078.4",
+  "scope": "real shell/shared card; synthetic usage response; beta.3 cached CSS+strings; no vendor/fleet start",
+  "results": [
+    {
+      "tag": "before-desk-light-en",
+      "updating": "Updated 1 min ago · Refreshing…",
+      "idle": "Updated 1 min ago",
+      "oldReads": 0,
+      "lines": {
+        "rects": 4,
+        "textHeight": 39,
+        "lineHeight": 24
+      },
+      "pass": true
+    },
+    {
+      "tag": "before-desk-light-zh-TW",
+      "updating": "1 分鐘前更新 · 更新中…",
+      "idle": "1 分鐘前更新",
+      "oldReads": 0,
+      "lines": {
+        "rects": 6,
+        "textHeight": 39,
+        "lineHeight": 24
+      },
+      "pass": true
+    },
+    {
+      "tag": "before-phone-dark-en",
+      "updating": "Updated 1 min ago · Refreshing…",
+      "idle": "Updated 1 min ago",
+      "oldReads": 0,
+      "lines": {
+        "rects": 4,
+        "textHeight": 39,
+        "lineHeight": 24
+      },
+      "pass": true
+    },
+    {
+      "tag": "before-phone-dark-zh-TW",
+      "updating": "1 分鐘前更新 · 更新中…",
+      "idle": "1 分鐘前更新",
+      "oldReads": 0,
+      "lines": {
+        "rects": 6,
+        "textHeight": 39,
+        "lineHeight": 24
+      },
+      "pass": true
+    }
+  ]
+}

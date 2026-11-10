@@ -1,0 +1,104 @@
+{
+  "base": "73940db6337b391c4494317a3a1a277e3c1dc412",
+  "before": false,
+  "browser": "156.0.8078.4",
+  "scope": "real shell/shared card; synthetic usage response; beta.3 cached CSS+strings; no vendor/fleet start",
+  "results": [
+    {
+      "tag": "after-desk-light-en",
+      "updating": "Updating…",
+      "idle": "Updated 1 min ago",
+      "oldReads": 0,
+      "lines": {
+        "rects": 2,
+        "textHeight": 15,
+        "lineHeight": 24
+      },
+      "pass": true
+    },
+    {
+      "tag": "skew-desk-light-en",
+      "updating": "Refreshing…",
+      "idle": "Updated 1 min ago",
+      "oldReads": 2,
+      "lines": {
+        "rects": 2,
+        "textHeight": 15,
+        "lineHeight": 24
+      },
+      "pass": true
+    },
+    {
+      "tag": "after-desk-light-zh-TW",
+      "updating": "更新中…",
+      "idle": "1 分鐘前更新",
+      "oldReads": 0,
+      "lines": {
+        "rects": 2,
+        "textHeight": 15,
+        "lineHeight": 24
+      },
+      "pass": true
+    },
+    {
+      "tag": "skew-desk-light-zh-TW",
+      "updating": "更新中…",
+      "idle": "1 分鐘前更新",
+      "oldReads": 2,
+      "lines": {
+        "rects": 2,
+        "textHeight": 15,
+        "lineHeight": 24
+      },
+      "pass": true
+    },
+    {
+      "tag": "after-phone-dark-en",
+      "updating": "Updating…",
+      "idle": "Updated 1 min ago",
+      "oldReads": 0,
+      "lines": {
+        "rects": 2,
+        "textHeight": 15,
+        "lineHeight": 24
+      },
+      "pass": true
+    },
+    {
+      "tag": "skew-phone-dark-en",
+      "updating": "Refreshing…",
+      "idle": "Updated 1 min ago",
+      "oldReads": 2,
+      "lines": {
+        "rects": 2,
+        "textHeight": 15,
+        "lineHeight": 24
+      },
+      "pass": true
+    },
+    {
+      "tag": "after-phone-dark-zh-TW",
+      "updating": "更新中…",
+      "idle": "1 分鐘前更新",
+      "oldReads": 0,
+      "lines": {
+        "rects": 2,
+        "textHeight": 15,
+        "lineHeight": 24
+      },
+      "pass": true
+    },
+    {
+      "tag": "skew-phone-dark-zh-TW",
+      "updating": "更新中…",
+      "idle": "1 分鐘前更新",
+      "oldReads": 2,
+      "lines": {
+        "rects": 2,
+        "textHeight": 15,
+        "lineHeight": 24
+      },
+      "pass": true
+    }
+  ]
+}
