@@ -1,8 +1,8 @@
 /**
  * #3486 (upstream #3486, the maintainer's follow-up): a browser that is not signed in yet signs in as ONE admin with the code of
- * THAT admin's own authenticator — POST /auth/totp `{ account, code }` — on chat fleets and web-only fleets, on a direct connection
+ * THAT admin's own authenticator — POST /auth/totp `{ code }` (AGEND-155: the code alone; `{ account, code }` is still accepted) — on chat fleets and web-only fleets, on a direct connection
  * and (where the fleet allows it) over a public link. The rules this file holds:
- *   - who: the typed name resolves, among admins that have an app and are still admins, to exactly one; the session is that
+ *   - who: the code is compared with every admin's app (a typed name, if one is still sent, resolves to exactly one); the session is that
  *     account's own (a web-only fleet's is the fleet admin's) and the settings role it gets is the one #3503 gives that admin;
  *   - nothing tells admins apart from strangers: a wrong code, a name that is nobody's, an admin with no app, one demoted since, and a
  *     name two admins share are the same answer (401 wrong_code), counted the same way (the fleet-wide sign-in limit grows for all);
@@ -22,7 +22,7 @@ import { bindGatewayRequest } from "../src/web-request-context.js";
 import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { evaluateSettingsRole } from "../src/authority/settings-role.js";
-import { base32Decode, base32Encode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, OUTSIDE_LINK_OWNER, SIGNIN_BROWSER_WRONG_LIMIT, SIGNIN_FLEET_WRONG_LIMIT, SIGNIN_WRONG_LIMIT, TOTP_SIGNIN_OVER_PUBLIC_LINK, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
+import { base32Decode, base32Encode, hotp, totpStep, adminKey, HOST_ADMIN_KEY, OUTSIDE_LINK_OWNER, SIGNIN_BROWSER_WRONG_LIMIT, SIGNIN_FLEET_WRONG_LIMIT, SIGNIN_KNOWN_WRONG_LIMIT, SIGNIN_WRONG_LIMIT, TOTP_SIGNIN_OVER_PUBLIC_LINK, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
 import { SIGNIN_KNOWN_COOKIE, addSigninKnownDevice, buildSigninCookie, findSigninKnownEntry, signinKnownDevice } from "../src/web-signin-device.js";
 import { fleetCookieName } from "../src/web-cookie-names.js";
 import { setLocale } from "../src/locale.js";
@@ -50,12 +50,12 @@ type Where = keyof typeof WHERE;
  * `chat`: a Telegram connection `a` whose admins are ADMIN and ADMIN_B (and NO_APP, who has no app) — ADMIN_B's and ADMIN's apps are seeded;
  * not chat: a web-only fleet with the host operator's app.
  */
-function fleet(o: { chat?: boolean; hostApp?: boolean; admins?: string[]; allowed?: string[]; outside?: boolean; va?: Record<string, unknown>; names?: boolean } = {}) {
+function fleet(o: { chat?: boolean; hostApp?: boolean; admins?: string[]; allowed?: string[]; outside?: boolean; va?: Record<string, unknown>; names?: boolean; secrets?: Record<string, string> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agend-3486-")); roots.push(dir);
   const chat = o.chat ?? true, apps = o.admins ?? (chat ? [ADMIN, ADMIN_B] : []);
   const rec = (secret: string) => ({ secret, enrolledAt: 1, lastStep: 0 });
   writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), JSON.stringify({ v: 1, ...(o.hostApp ?? !chat ? { totp: rec(HOST_SECRET) } : {}),
-    ...(apps.length ? { admins: Object.fromEntries(apps.map(u => [adminKey("a", u), rec(secretFor(u))])) } : {}),
+    ...(apps.length ? { admins: Object.fromEntries(apps.map(u => [adminKey("a", u), rec(o.secrets?.[u] ?? secretFor(u))])) } : {}),
     outside: o.outside ?? false, wrong: 0, level: 0, pausedUntil: 0, handles: [] }), { mode: 0o600 });
   const fm = new FleetManager(dir), any = fm as any;
   fm.fleetConfig = { defaults: { backend: "codex" },
@@ -177,7 +177,7 @@ describe("who signs in: the admin the name stands for, with their own code", () 
     const f = fleet({ admins: [ADMIN, ADMIN_B], hostApp: true });
     expect(f.access().isEnrolled(HOST_ADMIN_KEY)).toBe(true);
     for (const account of ["host", "operator", "host:operator", ""]) expect(summary(await f.totp({ account, code: codeOf(HOST_SECRET) }))).toEqual(WRONG);
-    expect(summary(await f.totp({ code: codeOf(HOST_SECRET, 1) }))).toEqual(WRONG);                // no name at all: never a match against "everyone"
+    expect(summary(await f.totp({ code: codeOf(HOST_SECRET, 1) }))).toEqual(WRONG);                // no name: compared with the chat admins' apps only — the host's is not one of them
   });
   it("the session is never more than the admin session of that account: no host flag, no authorization, nothing an agent takes as a go-ahead", async () => {
     const f = fleet();
@@ -360,6 +360,7 @@ describe("limits: this browser first, then the shared ceilings (the admin's, the
     for (let n = 0; n < SIGNIN_WRONG_LIMIT - 1; n++) wrongOnce(n, "y");
     clock += 61 * 60_000;                                                             // an hour of quiet is NOT enough for a shared count …
     expect(wrongOnce(0, "y").kind).toBe("paused");                                    // … the tenth since the first still pauses
+    clock += 25 * 60 * 60_000;                                                        // (a quiet day, so the whole sign-in's own count — 20 now — is out of the way)
     // …while this browser's own count (one key) is forgotten after an hour.
     const one = (name: string) => store.signIn(null, name, "000000", { key: "same-browser", known: false });
     for (let n = 0; n < SIGNIN_BROWSER_WRONG_LIMIT - 1; n++) expect(one(`n${n}`).kind).toBe("wrong");
@@ -683,7 +684,7 @@ describe("the admins hear of a slow guesser half-way, once", () => {
 
 describe("the route's CSRF edge, and what is checked after the answer", () => {
   /** Everything a refused request must leave alone: the saved state (every limiter and every admin's `lastStep`), the browsers' counts, the sessions. */
-  const state = (f: ReturnType<typeof fleet>) => ({ file: readFileSync(join(f.dir, WEB_REMOTE_ACCESS_FILE), "utf8"), browsers: f.any.webRemoteAccess().browserLim.size,
+  const state = (f: ReturnType<typeof fleet>) => ({ file: readFileSync(join(f.dir, WEB_REMOTE_ACCESS_FILE), "utf8"), browsers: (f.any.webRemoteAccess() as any).browserLim.size,
     sessions: f.any.webSessions.list(undefined, () => true).length });
   const who = adminKey("a", ADMIN_B);
   it.each([["no Origin header", null], ["another site's Origin", "http://evil.example"], ["the opaque Origin 'null'", "null"]] as const)("%s: 403, and nothing is counted, saved, handed out or spent", async (_why, origin) => {
@@ -760,20 +761,21 @@ describe("what is unchanged", () => {
     const f = fleet();
     expect(summary(await f.totp({ account: NO_APP, code: "123456" }))).toEqual(WRONG);
   });
-  it("the page lists nobody and offers no suggestions: no admin names, no datalist; the name field is for the browser to remember (autocomplete=username)", async () => {
+  it("the page asks for the code only: no name field, no list, no suggestions; and it sends only the code", async () => {
     const html = readFileSync(join(process.cwd(), "src", "ui", "signin-authenticator.html"), "utf8");
     expect(html).not.toMatch(/datalist|list="/i);
-    expect(html).toMatch(/id="account"[^>]*autocomplete="username"/);      // the browser may remember the person's own name; the page never suggests one
+    expect(html).not.toMatch(/id="account"|name="account"|autocomplete="username"/);
+    expect(readFileSync(join(process.cwd(), "src", "ui", "shared", "signin-authenticator.js"), "utf8")).not.toMatch(/account/);
     expect(html).toMatch(/id="code"[^>]*autocomplete="one-time-code"/);
     const js = readFileSync(join(process.cwd(), "src", "ui", "shared", "signin-authenticator.js"), "utf8");
     expect(js).not.toMatch(/\/auth\/(sessions|device-login)|admins|enumerate/);
   });
-  it("the status a signed-in admin reads says what THEY type as the name (their handle, else their id) — never anyone else's", () => {
+  it("the status a signed-in admin reads no longer carries a sign-in name (AGEND-155: nobody types one any more); it still says whether they have an app", () => {
     const f = fleet();
     const a = f.withCookie({ headers: { "Set-Cookie": `agend_session=${f.any.webSessions.create({ tier: "admin", surface: "local", label: "x", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "a", userId: ADMIN } }).sessionId}` } }, "lan");
-    expect(f.any.webOutsideStatus(a.req)).toMatchObject({ enrolled: true, signinName: "Alice_TG" });
-    const g = fleet({ names: false }), b = g.withCookie({ headers: { "Set-Cookie": `agend_session=${g.any.webSessions.create({ tier: "admin", surface: "local", label: "x", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "a", userId: ADMIN_B } }).sessionId}` } }, "lan");
-    expect(g.any.webOutsideStatus(b.req)).toMatchObject({ signinName: ADMIN_B });
+    const status = f.any.webOutsideStatus(a.req);
+    expect(status).toMatchObject({ enrolled: true });
+    expect(status).not.toHaveProperty("signinName");
   });
   it("a stranger's session cookie, a guest's and a header token never reach the route's result (it takes only a code and a name)", async () => {
     const f = fleet();
@@ -781,5 +783,342 @@ describe("what is unchanged", () => {
     expect(evaluateSettingsRole({ session: guest.record, gateway: false, peer: "lan", tokenEpoch: tokenEpoch(TOKEN), webOnly: false,
       policy: { enabled: true, loopbackOnly: false, namedLink: false, quickLink: true }, isAdmin: () => true, outside: null })).toEqual({ ok: false, reason: "not_admin_session" });
     expect(summary(await f.totp({ account: STRANGER, code: "123456" }))).toEqual(WRONG);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// AGEND-155 (#3486, the product owner's decision): the browser types the CODE ONLY. The server compares it with every admin's app.
+// ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+describe("code only: the server works out which admin it is (AGEND-155)", () => {
+  const saved = (f: ReturnType<typeof fleet>) => JSON.parse(readFileSync(join(f.dir, WEB_REMOTE_ACCESS_FILE), "utf8"));
+  const sessions = (f: ReturnType<typeof fleet>) => f.any.webSessions.list(undefined, () => true);
+  const shape = (r: { status: number; json: unknown; headers: Record<string, any> }) => [r.status, r.json, Object.keys(r.headers).sort()];
+  /** The apps compared, in order, by one request. */
+  const traced = (f: ReturnType<typeof fleet>): (string | null)[] => { const seen: (string | null)[] = []; f.access().compareTrace = who => seen.push(who); return seen; };
+  const A = adminKey("a", ADMIN), B = adminKey("a", ADMIN_B), C = adminKey("a", NO_APP);
+
+  it.each(["lan", "tailnetServe", "here"] as const)("chat fleet, direct (%s): the code alone signs in as the admin it belongs to, each of them", async where => {
+    const f = fleet();
+    const a = await f.totp({ code: codeOf(secretFor(ADMIN)) }, { where });
+    expect(a.status).toBe(200);
+    expect(f.withCookie(a, where).record).toMatchObject({ tier: "admin", surface: "local", owner: { adapterId: "a", userId: ADMIN } });
+    expect(f.withCookie(a, where).record.host).toBeUndefined();
+    const b = await f.totp({ code: codeOf(secretFor(ADMIN_B)) }, { where });
+    expect(b.status).toBe(200);
+    expect(f.withCookie(b, where).record.owner).toEqual({ adapterId: "a", userId: ADMIN_B });
+    // the role is the one #3503 gives THAT admin
+    expect(f.any.settingsRole(f.withCookie(b, where).req).role).toMatchObject({ ok: true, actor: { adapter_id: "a", user_id: ADMIN_B }, account: true });
+  });
+  it("chat fleet over a public link: the code alone signs in as that admin, over the gateway", async () => {
+    const f = fleet({ va: { quick_link: true } }); f.openLink();
+    const r = await f.totp({ code: codeOf(secretFor(ADMIN_B)) }, { link: "quick" });
+    expect(r.status).toBe(200);
+    expect(f.withCookie(r, "lan", "quick").record).toMatchObject({ surface: "gateway", exposureId: "x", owner: { adapterId: "a", userId: ADMIN_B } });
+  });
+  it("web-only fleet: the code alone (direct, and over the outside link as the #3008 remote session)", async () => {
+    const f = fleet({ chat: false });
+    const r = await f.totp({ code: codeOf(HOST_SECRET) });
+    expect(r.status).toBe(200);
+    expect([f.withCookie(r, "lan").record.owner, f.withCookie(r, "lan").record.remote]).toEqual([undefined, undefined]);
+    const o = fleet({ chat: false, outside: true }); o.openLink(OUTSIDE_LINK_OWNER);
+    const l = await o.totp({ code: codeOf(HOST_SECRET) }, { link: "quick" });
+    expect(l.status).toBe(200);
+    expect(o.withCookie(l, "lan", "quick").record).toMatchObject({ remote: "totp", surface: "gateway" });
+  });
+  it("a chat fleet's own host operator is not someone a code can sign in as (its app is not among the candidates)", async () => {
+    const f = fleet({ admins: [ADMIN, ADMIN_B], hostApp: true });
+    const seen = traced(f);
+    expect(summary(await f.totp({ code: codeOf(HOST_SECRET) }))).toEqual(WRONG);
+    expect(seen).toEqual([A, B]);
+  });
+  it("the same time step cannot be used twice, and a step used by a confirmation (or by the switch) cannot sign in — both ways", async () => {
+    const f = fleet();
+    const code = codeOf(secretFor(ADMIN));
+    expect((await f.totp({ code })).status).toBe(200);
+    expect(summary(await f.totp({ code }))).toEqual(WRONG);
+    expect(f.access().verify(code, A)).toMatchObject({ kind: "wrong" });
+    const next = codeOf(secretFor(ADMIN), 1);
+    expect(f.access().verify(next, A)).toEqual({ kind: "ok" });
+    expect(summary(await f.totp({ code: next }))).toEqual(WRONG);
+    // …and the other admin's code, in the same step, is unaffected
+    expect((await f.totp({ code: codeOf(secretFor(ADMIN_B)) })).status).toBe(200);
+  });
+
+  describe("every admin with an app is compared, each time, whatever the answer", () => {
+    const three = () => fleet({ admins: [ADMIN, ADMIN_B, NO_APP] });
+    it("a code that belongs to the first, the middle, the last, and to nobody: the same list of comparisons", async () => {
+      const f = three(), seen = traced(f);
+      for (const [code, ok] of [[codeOf(secretFor(ADMIN)), true], [codeOf(secretFor(ADMIN_B)), true], [codeOf(secretFor(NO_APP)), true], ["000000", false]] as const) {
+        seen.length = 0;
+        expect((await f.totp({ code })).status).toBe(ok ? 200 : 401);
+        expect(seen).toEqual([A, B, C]);                                                // nothing stops at a match
+      }
+    });
+    it("an admin who is no longer one (demoted) is compared too — and cannot sign in; their step is not spent", async () => {
+      const f = three(), seen = traced(f);
+      f.fm.fleetConfig!.channels![0]!.access!.allowed_users = [ADMIN, NO_APP];            // ADMIN_B demoted
+      expect(summary(await f.totp({ code: codeOf(secretFor(ADMIN_B)) }))).toEqual(WRONG);
+      expect(seen).toEqual([A, B, C]);
+      expect(saved(f).admins[B].lastStep).toBe(0);
+    });
+    it("every admin's standing is asked, whether or not an earlier one matched", async () => {
+      const f = three(), asked: string[] = [], real = f.any.adminGate.bind(f.any);
+      vi.spyOn(f.any, "adminGate").mockImplementation(((u: string, a: string) => { asked.push(u); return real(u, a); }) as any);
+      await f.totp({ code: codeOf(secretFor(ADMIN)) });
+      expect([...new Set(asked.filter(u => [ADMIN, ADMIN_B, NO_APP].includes(u)))].sort()).toEqual([ADMIN, ADMIN_B, NO_APP].sort());   // (the matched admin is asked once more as the session is made)
+    });
+    it("with no one having an app, one comparison is made with a decoy; the answer is the same 401", async () => {
+      const f = fleet({ admins: [] }), seen = traced(f);
+      expect(summary(await f.totp({ code: "123456" }))).toEqual(WRONG);
+      expect(seen).toEqual([null]);
+    });
+    it("a web-only fleet compares its one app", async () => {
+      const f = fleet({ chat: false }), seen = traced(f);
+      await f.totp({ code: "000000" });
+      expect(seen).toEqual([HOST_ADMIN_KEY]);
+    });
+  });
+
+  describe("two apps matching at once: nobody is signed in, and it is not an oracle", () => {
+    /** Two secrets whose codes are equal at the same step (found by search: about 3 in a million per pair, so we look). */
+    const collide = (): [string, string, number] => {
+      const T = Math.floor(Date.now() / 30_000) * 30_000 + 10_000, seen = new Map<string, string>();
+      for (let i = 0; i < 20_000; i++) {
+        const secret = base32Encode(Buffer.from(`collide-${i}`.padEnd(20, "#").slice(0, 20)));
+        const code = hotp(base32Decode(secret)!, totpStep(T));
+        const other = seen.get(code);
+        if (other) return [other, secret, T];
+        seen.set(code, secret);
+      }
+      throw new Error("no collision found");
+    };
+    afterEach(() => { vi.useRealTimers(); });
+    it("the code of both: 401 like any wrong code, nobody signed in, no step spent, counted like a wrong code", async () => {
+      const [sa, sb, T] = collide();
+      vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(T);
+      const f = fleet({ secrets: { [ADMIN]: sa, [ADMIN_B]: sb } }), plain = fleet({ secrets: { [ADMIN]: sa, [ADMIN_B]: sb } });
+      const code = codeOf(sa);
+      expect(code).toBe(codeOf(sb));
+      const both = await f.totp({ code }), wrong = await plain.totp({ code: code === "000000" ? "000001" : "000000" });
+      expect(shape(both)).toEqual(shape(wrong));
+      expect(both.status).toBe(401); expect(both.json).toEqual({ error: "wrong_code" });
+      expect(sessions(f)).toEqual([]);
+      expect([saved(f).admins[A].lastStep, saved(f).admins[B].lastStep]).toEqual([0, 0]);          // not spent: a collision cannot burn anyone's step
+      expect(saved(f).signin.wrong).toBe(1);                                                        // counted exactly as a wrong code is …
+      expect(saved(f).signin.wrong).toBe(saved(plain).signin.wrong);
+      expect([saved(f).admins[A].lim, saved(f).admins[B].lim, saved(f).idents]).toEqual([undefined, undefined, undefined]);   // … and nothing names either admin
+      expect(f.notified).toEqual([]);                                                               // no Notice for it
+      expect(f.access().verify(code, A)).toEqual({ kind: "ok" });                                  // A's own confirmation can still use that code
+    });
+    it("the next code (next step) of either one signs that one in", async () => {
+      const [sa, sb, T] = collide();
+      vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(T);
+      const f = fleet({ secrets: { [ADMIN]: sa, [ADMIN_B]: sb } });
+      expect((await f.totp({ code: codeOf(sa) })).status).toBe(401);
+      expect((await f.totp({ code: codeOf(sa, 1) })).status).toBe(200);
+      expect(f.withCookie(await f.totp({ code: codeOf(sb, -1) }), "lan").record).toMatchObject({ owner: { userId: ADMIN_B } });
+    });
+    it("a collision with an app that has already used that step is not a collision: the other one signs in", async () => {
+      const [sa, sb, T] = collide();
+      vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(T);
+      const f = fleet({ secrets: { [ADMIN]: sa, [ADMIN_B]: sb } });
+      expect(f.access().verify(codeOf(sa), A)).toEqual({ kind: "ok" });
+      const r = await f.totp({ code: codeOf(sb) });
+      expect(r.status).toBe(200);
+      expect(f.withCookie(r, "lan").record.owner).toEqual({ adapterId: "a", userId: ADMIN_B });
+    });
+  });
+
+  describe("no oracle: every way of not getting in is one answer, counted the same", () => {
+    it("wrong, nobody's, demoted, already used, an admin with no app: the same status, body, headers and the same saved counters", async () => {
+      const run = async (make: (f: ReturnType<typeof fleet>) => Promise<{ status: number; json: unknown; headers: Record<string, any> }>) => {
+        const f = fleet(), r = await make(f), s = saved(f);
+        return { r: shape(r), signin: s.signin?.wrong, admins: Object.values(s.admins as Record<string, any>).map(x => [x.lastStep, x.lim, x.klim]), idents: s.idents, sessions: sessions(f).length };
+      };
+      const answers = await Promise.all([
+        run(f => f.totp({ code: "000000" })),                                                                  // right for nobody
+        run(f => f.totp({ code: codeOf(secretFor(ADMIN), 5) })),                                              // a step far outside the window
+        run(async f => { f.fm.fleetConfig!.channels![0]!.access!.allowed_users = [ADMIN_B]; return f.totp({ code: codeOf(secretFor(ADMIN)) }); }),   // right, but demoted
+        run(async f => { const c = codeOf(secretFor(ADMIN)); await f.totp({ code: c }); return f.totp({ code: c }); }),   // used: one sign-in, then the same step again
+        run(f => f.totp({ code: codeOf(secretFor(NO_APP)) })),                                                // an admin with no app
+      ]);
+      for (const a of answers) expect(a.r).toEqual([401, { error: "wrong_code" }, ["Content-Type", "Set-Cookie"]]);
+      expect(answers.map(a => a.signin)).toEqual([1, 1, 1, 1, 1]);
+      for (const a of answers) expect(a.idents).toBeUndefined();
+      expect(answers.map(a => a.sessions)).toEqual([0, 0, 0, 1, 0]);                                         // (the used-code run did sign in once, first)
+    });
+    it("a wrong code with no name touches the browser's count and the whole sign-in's — no admin's own count, no name's", async () => {
+      const f = fleet();
+      for (let n = 0; n < 4; n++) await f.totp({ code: "000000" });
+      const s = saved(f);
+      expect(s.signin.wrong).toBe(4);
+      expect(Object.values(s.admins as Record<string, any>).map(a => [a.lim, a.klim])).toEqual([[undefined, undefined], [undefined, undefined]]);
+      expect(s.idents).toBeUndefined();
+      expect((f.access() as any).browserLim.size).toBe(4);                                                              // one per browser (no cookies were sent)
+    });
+    it("a body that is not {code: string} is a 400; a code that is not six digits is just a wrong code", async () => {
+      const f = fleet();
+      expect((await f.totp({ code: 123456 })).status).toBe(400);
+      expect((await f.totp({})).status).toBe(400);
+      for (const code of ["", "12345", "1234567", "abcdef", "12 34 5"]) expect((await f.totp({ code })).status).toBe(401);
+    });
+  });
+
+  describe("limits for the code alone", () => {
+    it("the whole sign-in's ceiling is 20 now, for every browser, with no cookies kept: the 20th wrong code pauses all new devices (the right code too)", async () => {
+      expect(SIGNIN_FLEET_WRONG_LIMIT).toBe(20);
+      const f = fleet();
+      for (let n = 1; n < SIGNIN_FLEET_WRONG_LIMIT; n++) expect((await f.totp({ code: "000000" })).status).toBe(401);
+      const last = await f.totp({ code: "000000" });
+      expect([last.status, last.json.error, last.headers["Retry-After"]]).toEqual([429, "paused", "900"]);
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN)) })).status).toBe(429);
+      expect(f.notified.filter(t => /paused/.test(t))).toHaveLength(1);                                      // said once, to the admins
+      expect(f.notified.filter(t => /keeps trying/.test(t))).toHaveLength(1);                                // …and once half-way, at 10
+    });
+    it("the half-way Notice comes at the 10th wrong code, once per cycle, with no code or name in it", async () => {
+      const f = fleet();
+      for (let n = 0; n < SIGNIN_FLEET_WRONG_LIMIT / 2 - 1; n++) await f.totp({ code: "000000" });
+      expect(f.notified.filter(t => /keeps trying/.test(t))).toHaveLength(0);
+      await f.totp({ code: "000000" });
+      expect(f.notified.filter(t => /keeps trying/.test(t))).toHaveLength(1);
+      for (let n = 0; n < 5; n++) await f.totp({ code: "000000" });
+      expect(f.notified.filter(t => /keeps trying/.test(t))).toHaveLength(1);
+      expect(f.notified.find(t => /keeps trying/.test(t))).not.toMatch(/000000|bob|alice/i);
+    });
+    it("one browser's own limit is unchanged: 5 wrong codes pause that browser (429, 5 minutes); another browser signs in at once", async () => {
+      const f = fleet(), mine = f.browser();
+      const seen: number[] = [];
+      for (let n = 0; n < SIGNIN_BROWSER_WRONG_LIMIT; n++) seen.push((await mine.post({ code: "000000" })).status);
+      expect(seen).toEqual([401, 401, 401, 401, 429]);
+      expect((await mine.post({ code: codeOf(secretFor(ADMIN_B)) })).status).toBe(429);
+      expect((await f.browser().post({ code: codeOf(secretFor(ADMIN_B)) })).status).toBe(200);
+    });
+    it("clearing cookies does not clear the whole sign-in's count (and a success does not either)", async () => {
+      const f = fleet(), mine = f.browser();
+      for (let n = 0; n < 8; n++) { mine.shed(); await mine.post({ code: "000000" }); }
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN)) })).status).toBe(200);
+      expect(saved(f).signin.wrong).toBe(8);
+    });
+    it("a known device is not held by the whole sign-in's pause: it signs in with the right code; its own browser limit still holds", async () => {
+      const f = fleet(), mine = f.browser();
+      expect((await mine.post({ code: codeOf(secretFor(ADMIN_B)) })).status).toBe(200);                      // the mark is handed out
+      for (let n = 0; n < SIGNIN_FLEET_WRONG_LIMIT; n++) await f.totp({ code: "000000" });                   // strangers pause the whole sign-in
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN), 1) })).status).toBe(429);                         // a new device waits …
+      expect((await mine.post({ code: codeOf(secretFor(ADMIN_B), 1) })).status).toBe(200);                    // … the known one is let in
+      for (let n = 0; n < SIGNIN_FLEET_WRONG_LIMIT; n++) await f.totp({ code: "000000" });
+      for (let n = 1; n < SIGNIN_BROWSER_WRONG_LIMIT; n++) expect((await mine.post({ code: "000000" })).status).toBe(401);
+      expect((await mine.post({ code: "000000" })).status).toBe(429);                                          // its browser limit
+      expect((await mine.post({ code: codeOf(secretFor(ADMIN_B), 2) })).status).toBe(429);
+    });
+    it("a known device vouches only for its own admin: with Bob's mark, Alice's code is held like anyone's while the whole sign-in is paused", async () => {
+      const f = fleet(), mine = f.browser();
+      expect((await mine.post({ code: codeOf(secretFor(ADMIN_B)) })).status).toBe(200);
+      for (let n = 0; n < SIGNIN_FLEET_WRONG_LIMIT; n++) await f.totp({ code: "000000" });
+      const r = await mine.post({ code: codeOf(secretFor(ADMIN), 1) });
+      expect(r.status).not.toBe(200);
+      expect(sessions(f).filter((x: any) => x.owner?.userId === ADMIN)).toEqual([]);
+    });
+    it("known path by mark × admin, as before: a stolen mark with its browser id shed every time is counted by the mark, and by the admin's known-path limiter (30)", async () => {
+      const f = fleet(), mine = f.browser();
+      expect((await mine.post({ code: codeOf(secretFor(ADMIN_B)) })).status).toBe(200);
+      const known = [...mine.jar].find(([k]) => /^agend_signin_known/.test(k))!, cookie = `${known[0]}=${known[1]}`;
+      const seen: number[] = [];
+      for (let n = 0; n < SIGNIN_BROWSER_WRONG_LIMIT; n++) seen.push((await f.totp({ code: "000000" }, { cookie })).status);   // a new browser id each time
+      expect(seen).toEqual([401, 401, 401, 401, 429]);                                                                          // counted by the mark
+      expect(SIGNIN_KNOWN_WRONG_LIMIT).toBe(30);
+      expect(saved(f).admins[B].klim.wrong).toBeGreaterThan(0);
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN_B), 1) }, { cookie })).status).toBe(429);                              // the right code waits too
+    });
+    it("every mark of one admin counts together in the known-path limiter (30): several stolen marks cannot add up their tries", async () => {
+      const f = fleet();
+      const cookie = (n: number) => { const v = addSigninKnownDevice(TOKEN, undefined, B, f.access().enrollmentOf(B)!, f.any.webAuthorityState().epoch, Date.now() + n * 1000); return buildSigninCookie("known", v, false, TOKEN).split(";")[0]!; };
+      const marks = Array.from({ length: 10 }, (_, n) => cookie(n));
+      const wrong = async (n: number) => (await f.totp({ code: "000000" }, { cookie: marks[n]! })).status;
+      for (let m = 0; m < 7; m++) for (let n = 0; n < SIGNIN_BROWSER_WRONG_LIMIT - 1; n++) expect(await wrong(m)).toBe(401);
+      expect(await wrong(7)).toBe(401);                                                                      // 29 in all
+      expect(await wrong(8)).toBe(429);                                                                      // the 30th overall: the known-path ceiling
+      expect(saved(f).admins[B].klim.level).toBe(1);
+      expect(f.notified.filter(t => /keeps trying/.test(t))).toHaveLength(2);                                // the whole sign-in's half (10) and the known path's (15), once each
+    });
+    it("a stranger's wrong codes never touch the known-path count, and a success clears this admin's counts but not the whole sign-in's", async () => {
+      const f = fleet(), mine = f.browser();
+      expect((await mine.post({ code: codeOf(secretFor(ADMIN_B)) })).status).toBe(200);
+      for (let n = 0; n < 12; n++) await f.totp({ code: "000000" });
+      expect(saved(f).admins[B].klim).toBeUndefined();
+      expect((await mine.post({ code: codeOf(secretFor(ADMIN_B), 1) })).status).toBe(200);
+      expect(saved(f).signin.wrong).toBe(12);
+    });
+    it("an admin's own ceiling (started by requests that still send a name) holds that admin's code back from the code-only path too, as an ordinary wrong code", async () => {
+      const f = fleet();
+      for (let n = 0; n < SIGNIN_WRONG_LIMIT; n++) await f.totp({ account: ["bob", ADMIN_B][n % 2], code: "000000" });
+      const r = await f.totp({ code: codeOf(secretFor(ADMIN_B)) });
+      expect([r.status, r.json]).toEqual([401, { error: "wrong_code" }]);
+      expect(sessions(f)).toEqual([]);
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN)) })).status).toBe(200);                           // another admin is not held
+    });
+    it("a restart changes nothing: the whole sign-in's count is saved", async () => {
+      const f = fleet();
+      for (let n = 0; n < SIGNIN_FLEET_WRONG_LIMIT - 1; n++) await f.totp({ code: "000000" });
+      f.restart();
+      expect((await f.totp({ code: "000000" })).status).toBe(429);
+    });
+    it("a guesser who never stops, from fresh browsers, gets about 20 tries a day in the long run (what docs/SECURITY.md's arithmetic uses)", () => {
+      let clock = 1_800_000_000_000;
+      const dir = mkdtempSync(join(tmpdir(), "agend-155-sim-")); roots.push(dir);
+      const keys = [0, 1, 2].map(i => adminKey("a", String(1000 + i)));
+      writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), JSON.stringify({ v: 1, admins: Object.fromEntries(keys.map(k => [k, { secret: secretFor(k.slice(-4)), enrolledAt: 1, lastStep: 0 }])), outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] }));
+      const store = new WebRemoteAccess(join(dir, WEB_REMOTE_ACCESS_FILE), { warn: () => {} }, () => clock);
+      const t0 = clock, end = t0 + 365 * 86_400_000, byDay: Record<number, number> = {};
+      let tried = 0, id = 0;
+      while (clock < end) {
+        const v = store.signInByCode("000000", { key: `b${id++}` }, keys.map(who => ({ who, eligible: true })), []);
+        if (v.kind === "paused") { if (v.began.waitMs > 0) tried++; clock += v.retryAfterMs + 1; } else { tried++; clock += 1000; }
+        for (const d of [1, 7, 30, 365]) if (!byDay[d] && clock - t0 >= d * 86_400_000) byDay[d] = tried;
+      }
+      expect(byDay[1]).toBeLessThanOrEqual(150);       // 20 at once, then waits of 15 min, 30, 60, 2 h, 4, 8 h …
+      expect(byDay[7]).toBeLessThanOrEqual(270);
+      expect(byDay[30]).toBeLessThanOrEqual(730);
+      expect(tried).toBeLessThanOrEqual(7500);         // a year: 20 a day once the wait is 24 h
+      expect(tried).toBeGreaterThanOrEqual(7000);
+    });
+  });
+
+  describe("what stays, and the compatibility path", () => {
+    it("a request that still sends `account` works as before (the name resolves to one admin, the code is that admin's); blank names are code-only", async () => {
+      const f = fleet();
+      expect((await f.totp({ account: "alice_tg", code: codeOf(secretFor(ADMIN)) })).status).toBe(200);
+      expect((await f.totp({ account: "a:200", code: codeOf(secretFor(ADMIN_B)) })).status).toBe(200);
+      expect((await f.totp({ account: "", code: codeOf(secretFor(ADMIN_B), 1) })).status).toBe(200);          // blank: the code stands alone
+      expect((await f.totp({ account: "  @ ", code: codeOf(secretFor(ADMIN), 1) })).status).toBe(200);
+      // a name that is nobody's still gives 401 for a right code (the name is what was asked for)
+      expect(summary(await f.totp({ account: "ghost", code: codeOf(secretFor(ADMIN), 2) }))).toEqual(WRONG);
+    });
+    it("\"Only this computer can authorize\" closes the code-only route: 404 from the network and over a link, nothing counted; this computer's own browser still signs in", async () => {
+      const f = fleet({ va: { loopback_only: true } });
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN)) }, { where: "lan" })).status).toBe(404);
+      f.openLink();
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN)) }, { link: "quick" })).status).toBe(404);
+      expect((await f.totp({ code: "000000" }, { where: "tailnetServe" })).status).toBe(404);
+      expect(saved(f).signin).toBeUndefined();
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN)) }, { where: "here" })).status).toBe(200);
+    });
+    it("a link this fleet does not allow, or the public-link switch off, is a 404 as if the route were not there", async () => {
+      const f = fleet();
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN)) }, { link: "quick" })).status).toBe(404);          // no link is open
+    });
+    it("rechecked as the session is made: the app replaced between the code and the session ends it (no admission)", () => {
+      const f = fleet();
+      const first = f.any.totpSignIn({ exposureId: undefined, peer: "lan", account: undefined, code: codeOf(secretFor(ADMIN)), browser: { id: "b".repeat(32), address: "192.0.2.20" }, knownCookie: undefined });
+      expect(first.kind).toBe("ok");
+      const b = f.access().beginEnrollment("h", "x", A); f.access().confirmEnrollment("h", codeOf(b.secret, -1));
+      const rec = f.any.webSessions.create({ tier: "admin", surface: "local", label: "x", tokenEpoch: tokenEpoch(TOKEN), owner: (first as any).session.owner }).record;
+      expect((first as any).commit(rec, "x")).toBe(false);
+    });
+    it("the success Notice goes to all admins and says who signed in", async () => {
+      const f = fleet();
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN)) })).status).toBe(200);
+      expect(f.feed()).toHaveLength(1);
+      expect(f.feed()[0]).toMatch(/signed in from a new browser/);
+    });
   });
 });
