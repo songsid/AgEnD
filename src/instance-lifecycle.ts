@@ -1,5 +1,6 @@
 import { SettingsExecution, settingsUndo, undoSettingsPaths, type SettingsUndo } from "./settings-transaction.js";
 import { instanceTeams } from "./team-membership.js";
+import { classifyInstanceChange } from "./instance-config-impact.js";
 import type { ActiveDecisionRow } from "./daemon.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
@@ -2109,7 +2110,32 @@ export class InstanceLifecycle {
   private async wakeInTransition(name: string, timeoutMs: number, transition: TransitionHandle): Promise<void> {
     assertNoSessionOomStop(this.ctx.getInstanceDir(name));
     const epoch = this.epochOf(name);
-    const daemon = this.daemons.get(name);
+    let daemon = this.daemons.get(name);
+    if (daemon?.waitForPauseWakeTransition) {
+      do {
+        await daemon.waitForPauseWakeTransition();
+        if (this.epochOf(name) !== epoch || this.daemons.get(name) !== daemon) throw new SupersededStartError(name);
+        assertNoSessionOomStop(this.ctx.getInstanceDir(name));
+        // An admission may have started in the caller's await gap. No yield
+        // after this check until the cold stop's existing retirement fence.
+      } while (daemon.hasPendingPauseWake);
+    }
+    const instances = this.ctx.fleetConfig?.instances;
+    const next = instances && Object.hasOwn(instances, name) ? instances[name] : undefined;
+    const launched = daemon?.getConfigSnapshot?.();
+    if (daemon?.isPaused && next && launched && classifyInstanceChange(launched, next) === "restart") {
+      // A resident paused daemon still owns its old cold config. Recreate it
+      // at this launch boundary, as a marker-only wake already does, rather
+      // than respawning the old profile/model. Keep the same serialized wake.
+      const instanceDir = this.ctx.getInstanceDir(name);
+      const pausedAt = this.getLastPausedAt(name) ?? Date.now();
+      const reason = readPauseReason(instanceDir);
+      await this.stop(name, transition);
+      // Our stop invalidates once; a newer stop/restart must not be revived.
+      if (this.epochOf(name) !== epoch + 1) throw new SupersededStartError(name);
+      writePausedMarker(instanceDir, pausedAt, reason);
+      daemon = undefined;
+    }
     if (daemon) {
       await daemon.wake(timeoutMs);
       // A stop/restart requested while the resident CLI was respawning is
