@@ -566,7 +566,7 @@ export class WebRemoteAccess {
    * (asked of each by the caller, so that does not stop early either); with none, one comparison with a decoy secret is made. `known`:
    * the admins whose "known device" mark this browser carries (valid as their app and the epoch stand now), `browser.key` the mark's
    * own key when there is one, else the cookie id's.
-   * - exactly one candidate matches (eligible, a step newer than their `lastStep`, not held by their own ceiling, and — unless this
+   * - exactly one candidate matches (eligible, a step newer than their `lastStep`, and — unless this
    *   browser is a known device of that admin — no wait in force for the whole sign-in): that admin is signed in and their step spent;
    * - none matches: a wrong code. The same answer — and the same counting — as a code that is right for no one;
    * - two or more match (for a right code, ≈ 3 in 10⁶ per other admin): nobody is signed in, **nothing is spent**, and it is a wrong code in every way: counted in the same
@@ -576,7 +576,8 @@ export class WebRemoteAccess {
    * device — in the known-path limiter of each admin whose mark it carries (by mark × admin, as with a name). The per-admin and per-name
    * counts do not apply to it (they stay for a request that still sends a name). What can pause an attempt: this browser's wait and the
    * whole sign-in's (a known device: its mark's and its admins' known-path waits), the same answer for any code. An admin's own ceiling
-   * (started by named attempts) still holds their code back, as an ordinary wrong code. A success clears that admin's own counts and
+   * (started only by named attempts) does not apply here: otherwise anyone could block an admin's code-only sign-in by typing wrong
+   * codes under that admin's name. A success clears that admin's own counts and
    * this browser's, never the whole sign-in's.
    */
   signInByCode(code: string, browser: { key: string }, candidates: { who: string; eligible: boolean }[], known: string[]): SignInVerdict {
@@ -599,10 +600,12 @@ export class WebRemoteAccess {
       this.compareTrace?.(c.who);
       const secret = base32Decode(rec.secret)!;
       const step = matchTotp(secret, code, now, rec.lastStep);
-      const own = marks.includes(c.who), held = !own && settle(rec.lim ?? NO_LIM, now).pausedUntil > now;
       // A known device is not held by the whole sign-in's wait for its own admin; for anyone else it is (the wait was not checked above).
-      const open = own || (!held && fleet.pausedUntil <= now);
-      if (step !== null && c.eligible && open) hits.push(c.who); else { const sk = totpSkew(secret, code, now); if (sk !== null) skews.push(sk); }
+      // The admin's own ceiling (started by named attempts) is not read: it holds the named path only.
+      const open = marks.includes(c.who) || fleet.pausedUntil <= now;
+      // The clock-skew look (log only) is made for every candidate, a hit or not, so the work does not depend on whether someone matched.
+      const sk = totpSkew(secret, code, now);
+      if (step !== null && c.eligible && open) hits.push(c.who); else if (sk !== null) skews.push(sk);
     }
     if (!compared) { this.compareTrace?.(null); matchTotp(this.decoySecret, code, now, -1); totpSkew(this.decoySecret, code, now); }
     if (hits.length === 1) {

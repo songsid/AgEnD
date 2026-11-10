@@ -1048,13 +1048,21 @@ describe("code only: the server works out which admin it is (AGEND-155)", () => 
       expect((await mine.post({ code: codeOf(secretFor(ADMIN_B), 1) })).status).toBe(200);
       expect(saved(f).signin.wrong).toBe(12);
     });
-    it("an admin's own ceiling (started by requests that still send a name) holds that admin's code back from the code-only path too, as an ordinary wrong code", async () => {
+    it("an admin's own ceiling (started only by requests that still send a name) does not block that admin's code-only sign-in: typing wrong codes under Bob's name cannot lock Bob out", async () => {
       const f = fleet();
       for (let n = 0; n < SIGNIN_WRONG_LIMIT; n++) await f.totp({ account: ["bob", ADMIN_B][n % 2], code: "000000" });
-      const r = await f.totp({ code: codeOf(secretFor(ADMIN_B)) });
-      expect([r.status, r.json]).toEqual([401, { error: "wrong_code" }]);
-      expect(sessions(f)).toEqual([]);
-      expect((await f.totp({ code: codeOf(secretFor(ADMIN)) })).status).toBe(200);                           // another admin is not held
+      expect(saved(f).admins[B].lim.level).toBe(1);                                                          // the named path is held for Bob …
+      expect((await f.totp({ account: "bob", code: codeOf(secretFor(ADMIN_B)) })).status).toBe(401);          // … including his right code, under his name
+      const r = await f.totp({ code: codeOf(secretFor(ADMIN_B), 1) });                                        // … but not the code alone
+      expect(r.status).toBe(200);
+      expect(f.withCookie(r, "lan").record.owner).toEqual({ adapterId: "a", userId: ADMIN_B });
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN)) })).status).toBe(200);                           // another admin is not held either
+    });
+    it("the whole sign-in's ceiling and the browser's limit still bound that same code-only path (nothing else was removed)", async () => {
+      const f = fleet();
+      for (let n = 0; n < SIGNIN_WRONG_LIMIT; n++) await f.totp({ account: "bob", code: "000000" });
+      for (let n = 0; n < SIGNIN_FLEET_WRONG_LIMIT - SIGNIN_WRONG_LIMIT; n++) await f.totp({ code: "000000" });
+      expect((await f.totp({ code: codeOf(secretFor(ADMIN_B), 1) })).status).toBe(429);                      // the whole sign-in is paused: the right code waits
     });
     it("a restart changes nothing: the whole sign-in's count is saved", async () => {
       const f = fleet();
@@ -1075,11 +1083,9 @@ describe("code only: the server works out which admin it is (AGEND-155)", () => 
         if (v.kind === "paused") { if (v.began.waitMs > 0) tried++; clock += v.retryAfterMs + 1; } else { tried++; clock += 1000; }
         for (const d of [1, 7, 30, 365]) if (!byDay[d] && clock - t0 >= d * 86_400_000) byDay[d] = tried;
       }
-      expect(byDay[1]).toBeLessThanOrEqual(150);       // 20 at once, then waits of 15 min, 30, 60, 2 h, 4, 8 h …
-      expect(byDay[7]).toBeLessThanOrEqual(270);
-      expect(byDay[30]).toBeLessThanOrEqual(730);
-      expect(tried).toBeLessThanOrEqual(7500);         // a year: 20 a day once the wait is 24 h
-      expect(tried).toBeGreaterThanOrEqual(7000);
+      // The figures docs/SECURITY.md's table is built on: 20 at once, then waits of 15 min, 30, 60, 2 h, 4, 8, 16 h, then 24 h. The fake clock makes them exact, so a changed
+      // constant or doubling rule fails here instead of quietly making the table wrong.
+      expect([byDay[1], byDay[7], byDay[30], tried]).toEqual([140, 260, 720, 7420]);
     });
   });
 
