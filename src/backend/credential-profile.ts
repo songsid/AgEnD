@@ -553,6 +553,18 @@ export function credentialSwitchStartsFresh(backendName: string): boolean {
   return credentialHomeSpec(backendName)?.switchStartsFreshSession ?? true;
 }
 
+/**
+ * The one "is this profile signed out?" check Settings and New agent share (#3212): the login command to show when it is
+ * certainly signed out, null when it is signed in OR cannot be told (a backend with no probe, a probe that throws) —
+ * silence is never a refusal.
+ */
+export function signedOutCredentialProfile(dataDir: string, backendName: string, profile: string): { readonly loginCommand: string } | null {
+  try {
+    const login = credentialProfileLogin(dataDir, backendName, profile);
+    return login.state === "signed-out" ? { loginCommand: login.loginCommand } : null;
+  } catch { return null; }
+}
+
 /** #1753: does a profile switch on this backend copy the conversation into the new profile and resume it there? */
 export function credentialSwitchCarriesConversation(backendName: string): boolean {
   return credentialHomeSpec(backendName)?.switchCarriesConversation === true;
