@@ -52,6 +52,7 @@ export interface SettingsEffectContext {
   hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[] };
 }
 export function isSettingsMutation(method: string, path: string): boolean {
+  if (method === "POST" && path === "/ui/host-install") return true;
   if (method === "POST" && /^\/api\/hub\/member\/company-join\/(start|resume|repair-trust)$/.test(path)) return true;
   if (method === "PUT" && path === "/api/settings/hub/membership") return true;
   if (method === "POST" && path === "/api/settings/hub/browser-certificate/apply") return true;
@@ -87,6 +88,14 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
 } {
   const cfg = context.config, before: any = { fleet: structuredClone(cfg), classic: structuredClone(context.classic) }, after = structuredClone(before);
   const operation = `${method} ${path}`;
+  if (path === "/ui/host-install") {
+    const input = record(body);
+    if (method !== "POST" || Object.keys(input).length !== 1 || typeof input.backend !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(input.backend))
+      throw new SettingsConfirmationError(400, "install_args");
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input.backend]),
+      summary: [t("host_cli.install_confirm", input.backend)], affectedConnections: [], authority: HUB_AUTHORITY } };
+  }
   if (path === "/api/settings/hub/browser-certificate/apply") {
     if (method !== "POST" || !cfg || !binding || !context.hubBrowserCertificate) throw new SettingsConfirmationError(404, "unavailable");
     let input, proposal;

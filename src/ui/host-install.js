@@ -8,6 +8,7 @@ import { html, useEffect, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { toast } from "/assets/ui-toast.js";
+import { confirmedWrite } from "./settings-confirm.js";
 
 register("hostinstall", {
   en: {
@@ -20,7 +21,7 @@ register("hostinstall", {
     cancelled: "The {0} install was cancelled.", timeout: "The {0} install took too long and was stopped.",
     cleanup: "The install window could not be confirmed closed: check the AgEnD host.",
     output: "Installer output (last lines)",
-    started: "Installing {0}…",
+    started: "Installing {0}…", confirm: "Install {0} on the AgEnD host",
     err_unsupported: "This CLI cannot be installed from here.", err_already: "{0} is already installed on this host.",
     err_busy: "Another install or sign-in is running. Wait for it to end, or cancel it.", err_shutting_down: "AgEnD is shutting down.",
     err_not_allowed: "Only a fleet admin signed in on this machine or its network can install a CLI.",
@@ -38,7 +39,7 @@ register("hostinstall", {
     cancelled: "已取消 {0} 的安裝。", timeout: "{0} 的安裝花太久，已停止。",
     cleanup: "無法確認安裝視窗已關閉：請檢查 AgEnD 主機。",
     output: "安裝程式輸出（最後幾行）",
-    started: "正在安裝 {0}…",
+    started: "正在安裝 {0}…", confirm: "在 AgEnD 主機上安裝 {0}",
     err_unsupported: "這個 CLI 不能從這裡安裝。", err_already: "這台主機已經安裝 {0}。",
     err_busy: "另一個安裝或登入正在進行。請等它結束，或先取消它。", err_shutting_down: "AgEnD 正在關閉。",
     err_not_allowed: "只有在這台機器或它的網路上登入的 fleet 管理員，才能安裝 CLI。",
@@ -48,6 +49,16 @@ register("hostinstall", {
   },
 });
 const th = (k, ...v) => t(`hostinstall.${k}`, ...v);
+function installStyles() {
+  if (typeof document === "undefined" || !document.head || document.querySelector('link[href="/assets/host-install.css"]')) return;
+  const link = document.createElement("link");
+  link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/host-install.css"); document.head.appendChild(link);
+}
+function revealPending(id) {
+  const show = () => Array.from(document.querySelectorAll("[data-pending]")).find(n => n.getAttribute("data-pending") === id)?.scrollIntoView?.({ block: "center" });
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => requestAnimationFrame(show));
+  else setTimeout(show, 0);
+}
 
 /** What this page knows: the current (or last) install as the server shows it, and the ones the person has dismissed. */
 export const hostInstallStore = createStore({ loaded: false, run: null, dismissed: [], starting: null });
@@ -79,10 +90,13 @@ const errorText = (code, backend) => {
 
 /** Install `backend` on the host. Resolves true when the server started it. The page sends the CLI's id and nothing else. */
 export async function startHostInstall(backend) {
+  installStyles();
   if (hostInstallStore.get().starting) return false;
   hostInstallStore.set({ starting: backend });
-  const r = await post("/ui/host-install", { backend });
-  hostInstallStore.set({ starting: null });
+  let r;
+  try { r = await confirmedWrite("/ui/host-install", { body: { backend }, label: th("confirm", backend), displaySummary: () => [th("confirm", backend)], onPending: revealPending }); }
+  catch { r = { ok: false, body: null }; }
+  finally { hostInstallStore.set({ starting: null }); }
   if (r.ok && r.body && r.body.install) { hostInstallStore.set({ loaded: true, run: r.body.install }); return true; }
   toast(errorText(r.body && r.body.error, backend));
   void refreshHostInstall();
@@ -117,6 +131,7 @@ export const installRunning = (state) => !!state.starting || !!(state.run && sta
  * (or a sign-in does: `blocked`), the button waits.
  */
 export function InstallButton({ backend, blocked = false }) {
+  installStyles();
   const state = useStore(hostInstallStore);
   if (!hostInstallOffered()) return null;
   return html`<button type="button" class="btn btn-sm btn-primary s-account-install" disabled=${blocked || installRunning(state)} onClick=${() => { void startHostInstall(backend); }}>${th("install")}</button>`;

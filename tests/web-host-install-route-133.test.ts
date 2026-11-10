@@ -13,9 +13,12 @@ import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
 import { WebHostInstalls, type HostInstallReporter, type HostInstallStart } from "../src/web-host-install.js";
 import { WEB_SESSION_COOKIE_SECURE } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
+import { evaluateWebRequest } from "../src/web-auth.js";
+import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
+import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 
-const servers: Server[] = [];
-afterEach(async () => { for (const s of servers.splice(0)) await new Promise<void>(r => s.close(() => r())); });
+const servers: Server[] = [], stores: SettingsConfirmationStore[] = [];
+afterEach(async () => { for (const s of servers.splice(0)) await new Promise<void>(r => s.close(() => r())); for (const s of stores.splice(0)) s.close(); });
 
 /**
  * A store whose answer to "who is this session?" can be bent by a test, to reach what the real store would never hand the route: a record on the wrong surface
@@ -37,7 +40,20 @@ async function setup(over: { start?: (backend: string, r: HostInstallReporter) =
   const installs = new WebHostInstalls({ isLocalAdmin: handle => !!sessions.findByHandle(handle) && sessions.findByHandle(handle)!.tier === "admin" && sessions.findByHandle(handle)!.surface === "local",
     installable: b => ["grok", "codex"].includes(b), start, cancel });
   const ctx = { webToken: token, webSessions: sessions, webHostInstalls: installs } as unknown as WebApiContext;
-  const server = createServer((req, res) => { if (!handleWebRequest(req, res, new URL(req.url!, "http://localhost"), ctx)) { res.writeHead(404); res.end(); } });
+  const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
+  const gate = new SettingsHttpConfirmation(store, {
+    principal: req => {
+      const auth = () => evaluateWebRequest(req, new URL(req.url!, "http://localhost"), token, sessions, { touch: false });
+      const v = auth(); if (v.kind !== "allow" || v.via !== "session") return null;
+      const s = v.session;
+      return { id: s.idHash, label: s.label, source: "web_session", requester: { handle: s.handle, label: s.label },
+        current: () => { const now = auth(); return now.kind === "allow" && now.via === "session" && now.session.idHash === s.idHash; },
+        localAdmin: () => { const now = auth(); return now.kind === "allow" && now.via === "session" && now.session.tier === "admin" && now.session.surface === "local"; } };
+    }, baseline: async () => ({ fingerprint: "baseline", config: null, classic: {} }), snapshot: () => null,
+    directHostInstall: true, directCreationPolicy: () => true,
+  });
+  const next = (req: IncomingMessage, res: ServerResponse, url: URL) => handleWebRequest(req, res, url, ctx);
+  const server = createServer((req, res) => { const url = new URL(req.url!, "http://localhost"); if (!gate.handle(req, res, url, next) && !next(req, res, url)) { res.writeHead(404); res.end(); } });
   servers.push(server); await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
   const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   const as = (tier: "admin" | "read" | "guest", surface: "local" | "gateway" = "local") => {
@@ -52,7 +68,11 @@ async function setup(over: { start?: (backend: string, r: HostInstallReporter) =
     }); r.on("error", reject); r.end(data ?? undefined);
   });
   const begin = vi.spyOn(installs, "begin");
-  return { token, sessions, start, cancel, installs, begin, ctx, as, call, origin };
+  const settled = async (id: string) => {
+    for (let i = 0; i < 50; i++) { const v = store.inspect(id)!; if (v.state !== "applying" && v.state !== "pending") return v; await new Promise<void>(r => setImmediate(r)); }
+    throw Error("install confirmation did not settle");
+  };
+  return { token, sessions, start, cancel, installs, begin, ctx, as, call, origin, settled };
 }
 
 describe("who may ask", () => {
@@ -63,8 +83,9 @@ describe("who may ask", () => {
     expect([none.status, none.body]).toEqual([200, { install: null }]);
     expect(none.headers["cache-control"]).toContain("no-store");
     const started = await t.call("POST", "/ui/host-install", admin, { backend: "grok" });
-    expect(started.status).toBe(200);
-    expect(started.body.install).toMatchObject({ backend: "grok", phase: "running", startedOn: "Firefox on Linux" });
+    expect(started.status).toBe(202);
+    const done = await t.settled(started.body.pending_change.id);
+    expect(done.outcome!.result).toMatchObject({ install: { backend: "grok", phase: "running", startedOn: "Firefox on Linux" } });
     expect(t.start).toHaveBeenCalledTimes(1);
     expect((t.start.mock.calls[0] as unknown[])[0]).toBe("grok");
     expect((await t.call("GET", "/ui/host-install", admin)).body.install).toMatchObject({ backend: "grok", phase: "running" });
@@ -77,7 +98,7 @@ describe("who may ask", () => {
       expect((await t.call("POST", "/ui/host-install/cancel", headers, {})).status).toBe(403);
     }
     const viaToken = { "x-agend-token": t.token, "content-type": "application/json" };
-    expect((await t.call("POST", "/ui/host-install", viaToken, { backend: "grok" })).status).toBe(403);
+    expect((await t.call("POST", "/ui/host-install", viaToken, { backend: "grok" })).status).toBe(401);
     expect([401, 403]).toContain((await t.call("POST", "/ui/host-install", { "content-type": "application/json" }, { backend: "grok" })).status);
     expect(t.start).not.toHaveBeenCalled();
     expect(t.cancel).not.toHaveBeenCalled();
@@ -155,14 +176,12 @@ describe("who may ask", () => {
     expect([r.status, r.body.error]).toEqual([409, "install_session_changed"]);
     expect(t.begin).not.toHaveBeenCalled();
   });
-  it("a continuation the settings store no longer allows (permitWebContinuation) never reaches begin", async () => {
+  it("a stale server-owned continuation never reaches begin", async () => {
     const t = await setup();
     const admin = t.as("admin");
-    // Live while the body is taken (that reader asks once, and refuses a stale one itself); stale by the time the route asks again.
-    let asked = 0;
-    const execution = new SettingsExecution({ current: () => ++asked <= 1, snapshot: () => ({}) });
-    // A server-made replay carrying this execution. Its headers are only a cookie jar here, so the session gate would let it through: the check
-    // under test is the one that asks the execution, after the body and before the second who().
+    const execution = new SettingsExecution({ current: () => true, snapshot: () => ({}) });
+    execution.cancel();
+    // Even a server-owned replay with a valid cookie cannot revive a cancelled execution.
     const req = createSettingsReplay({ method: "POST", url: "/ui/host-install", body: Buffer.from('{"backend":"grok"}'), binding: "owned" }, execution);
     req.headers = { ...admin, host: new URL(t.origin).host };
     Object.defineProperty(req, "socket", { value: { remoteAddress: "127.0.0.1" }, configurable: true });
@@ -173,7 +192,7 @@ describe("who may ask", () => {
       res.end = ((chunk?: unknown) => { out.body += String(chunk ?? ""); resolve(out); return res; }) as never;
       expect(handleWebRequest(req, res, new URL("/ui/host-install", "http://localhost"), t.ctx)).toBe(true);
     });
-    expect(sent.status).toBe(500);
+    expect(sent.status).toBe(409);
     expect(t.begin).not.toHaveBeenCalled();
     expect(t.start).not.toHaveBeenCalled();
   });
@@ -200,16 +219,18 @@ describe("what is asked", () => {
     }
     expect(t.start).not.toHaveBeenCalled();
   });
-  it("a CLI the registry does not install: 400 unsupported, nothing runs", async () => {
+  it("an unsupported CLI's refusal is preserved in the held outcome, nothing runs", async () => {
     const t = await setup();
     const r = await t.call("POST", "/ui/host-install", t.as("admin"), { backend: "opencode" });
-    expect([r.status, r.body]).toEqual([400, { error: "unsupported" }]);
+    expect(r.status).toBe(202);
+    expect((await t.settled(r.body.pending_change.id)).outcome!.detail).toContain("unsupported");
     expect(t.start).not.toHaveBeenCalled();
   });
   it.each([["busy", 409], ["already", 409], ["shutting_down", 503], ["failed", 500]] as const)("the fleet refuses with %s: its code and status come back", async (code, status) => {
     const t = await setup({ start: async () => ({ refused: code }) });
     const r = await t.call("POST", "/ui/host-install", t.as("admin"), { backend: "grok" });
-    expect([r.status, r.body.error]).toEqual([status, code]);
+    expect(r.status).toBe(202);
+    expect((await t.settled(r.body.pending_change.id)).outcome!.detail).toContain(code);
   });
   it("cancel: any local admin; the body must be {}", async () => {
     const t = await setup();

@@ -11,7 +11,7 @@ import { binaryProbe } from "./binary-probe.js";
 import type { CachedImage } from "./web-images.js";
 import type { SettingsExecution } from "./settings-transaction.js";
 import type { PaneContextSource } from "./pane-context-cache.js";
-import { settingsRequestExecution, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
+import { settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestRequester, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
 import { readBoundedWebBody } from "./web-body.js";
 import type { OwnerCssStore } from "./web-owner-css-store.js";
 import { APP_ICON_MAX_BYTES, type AppIconStore } from "./web-app-icon.js";
@@ -1371,6 +1371,11 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
   const reading = method === "GET";
   if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "install_not_over_public_link" }); return true; }
   const who = (): { handle: string; label: string } | { error: string; status: number } => {
+    if (isSettingsReplay(req)) {
+      const requester = settingsRequestRequester(req);
+      if (!requester || !settingsRequestLocalAdmin(req)) return { error: "install_needs_a_local_admin", status: 403 };
+      return requester;
+    }
     const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
     if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "install_needs_a_local_admin", status: 403 };
@@ -1398,7 +1403,8 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
     }
     const parsed = z.strictObject({ backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/) }).safeParse(body);
     if (!parsed.success) { json(res, 400, { error: "install_args" }); return; }
-    const result = await installs.begin(now, parsed.data.backend);
+    if (!isSettingsReplay(req) || !settingsRequestExecution(req)) { json(res, 403, { error: "install_confirmation_required" }); return; }
+    const result = await installs.begin(now, parsed.data.backend, settingsRequestExecution(req));
     if ("error" in result) json(res, HOST_INSTALL_STATUS[result.error] ?? 409, { error: result.error, ...(result.message ? { message: result.message } : {}) });
     else json(res, 200, result);
   })().catch(() => { try { json(res, 500, { error: "install_request_failed" }); } catch { /* response ended */ } });
@@ -1990,7 +1996,7 @@ export function handleWebRequest(
   // the panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
     const approved = isSettingsReplay(req) && method === "POST"
-      && (path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path))
+      && (path === "/ui/config" || path === "/ui/instances" || path === "/ui/host-install" || /^\/ui\/instances\/[^/]+\/delete$/.test(path))
       ? settingsRequestExecution(req) : undefined;
     if (approved) {
       try { approved.assert(); } catch { json(res, 409, { error: "settings_execution_stale" }); return true; }

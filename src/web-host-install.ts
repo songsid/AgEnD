@@ -18,6 +18,7 @@
 import { randomBytes } from "node:crypto";
 import { dialogScreenText } from "./dialog-screen-text.js";
 import { installerOutput } from "./install-stream.js";
+import type { SettingsExecution } from "./settings-transaction.js";
 
 /** How long an ended install is still shown, then it is gone. */
 export const WEB_INSTALL_KEEP_ENDED_MS = 10 * 60_000;
@@ -48,7 +49,7 @@ export interface WebHostInstallDeps {
   /** Which CLIs have an install at all (the registry's `host.install`). */
   installable(backend: string): boolean;
   /** FleetManager.startWebInstall: claim the window and run the installer; `reporter` is told how it goes. */
-  start(backend: string, reporter: HostInstallReporter): Promise<HostInstallStart>;
+  start(backend: string, reporter: HostInstallReporter, execution?: SettingsExecution): Promise<HostInstallStart>;
   /** Stop the running install (the window and its process group); true when there was one. */
   cancel(): Promise<boolean>;
   /** The run started, or ended: the pages read it again (no details in the event; the page also reads it every couple of seconds while one runs). */
@@ -122,7 +123,8 @@ export class WebHostInstalls {
    * Start installing `backend`. Who is re-checked here (the route checked it too). Refusals are codes; a start that worked answers with the run
    * as it is now (running, or — for an installer that ended before the answer — already over).
    */
-  async begin(who: WebHostInstallRequester, backend: string): Promise<{ install: HostInstallView } | { error: HostInstallRefusal | "not_allowed"; message?: string }> {
+  async begin(who: WebHostInstallRequester, backend: string, execution?: SettingsExecution): Promise<{ install: HostInstallView } | { error: HostInstallRefusal | "not_allowed"; message?: string }> {
+    execution?.assert();
     if (!this.deps.isLocalAdmin(who.handle)) return { error: "not_allowed" };
     if (!this.deps.installable(backend)) return { error: "unsupported" };
     const run: Run = {
@@ -147,7 +149,7 @@ export class WebHostInstalls {
       },
     };
     let started: HostInstallStart;
-    try { started = await this.deps.start(backend, reporter); }
+    try { started = execution ? await this.deps.start(backend, reporter, execution) : await this.deps.start(backend, reporter); }
     catch (err) { started = { refused: "failed", message: (err as Error)?.message ?? String(err) }; }
     if (!("started" in started)) {
       if (this.run === run) this.run = previous;

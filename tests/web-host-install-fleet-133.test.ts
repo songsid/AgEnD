@@ -16,7 +16,7 @@ vi.mock("../src/login-manager.js", async (importOriginal) => {
     state = "starting";
     record: { flow: any; events: any; cancelled: string[] };
     constructor(public flow: any, _tmux: any, public events: any) { this.record = { flow, events, cancelled: [] }; fakeSessions.push(this.record); }
-    async start() { if (startGate) await startGate; }
+    async start(launch?: () => void) { if (startGate) await startGate; launch?.(); }
     async cancel(reason = "cancelled") { this.record.cancelled.push(reason); this.state = "done"; }
   }
   return { ...real, LoginSession: FakeLoginSession };
@@ -29,6 +29,7 @@ vi.mock("../src/tmux-manager.js", async (importOriginal) => {
 
 import { FleetManager } from "../src/fleet-manager.js";
 import { checkBinaryInstalled, BACKEND_INSTALLATION_INFO } from "../src/instance-lifecycle.js";
+import { SettingsExecution } from "../src/settings-transaction.js";
 import type { HostInstallReporter } from "../src/web-host-install.js";
 
 let root: string, home: string, profileBin: string;
@@ -72,6 +73,23 @@ describe("startWebInstall", () => {
     expect(flow.command).toContain("agend-install");
     expect(flow.command).toContain(info.unattended ?? info.install);
     expect(flow.exitMarker).toMatch(/^AGEND-INSTALL-EXIT-[0-9a-f]{16}=$/);
+  });
+  it("keeps held-change admission through the FleetManager and login-window handoff", async () => {
+    const { fm, reporter } = fleet();
+    let release!: () => void;
+    startGate = new Promise<void>(r => { release = r; });
+    let current = true;
+    const execution = new SettingsExecution({ current: () => current, snapshot: () => null });
+    const complete = vi.spyOn(execution, "complete");
+    try {
+      const start = fm.startWebInstall("grok", reporter(), execution);
+      await vi.waitFor(() => expect(fakeSessions).toHaveLength(1));
+      current = false; release();
+      expect(await start).toMatchObject({ refused: "failed" });
+      expect(complete).toHaveBeenCalledTimes(1);
+      expect(execution.completed).toBe(false);
+      expect((fm as any).loginWindow.isHeld).toBe(false);
+    } finally { release(); execution.close(); }
   });
   it("an id the registry does not install is refused; a CLI that is already installed too; nothing is started for either", async () => {
     const { fm, reporter } = fleet();
