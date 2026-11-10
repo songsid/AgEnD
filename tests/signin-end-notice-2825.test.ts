@@ -131,4 +131,30 @@ describe("FleetManager: the sign-ins in use, warned about in Needs you", () => {
     expect(items.map((i: any) => [i.reason, i.id.replace(/\d+$/, "N"), !!i.signIn])).toEqual([
       ["backend_signin", "keepalive:ending:claude-code:hsinlin:N", true], ["backend_signin", "keepalive:ended:claude-code::N", true]]);
   });
+  it("#3577 review P2: a profile saved but not yet applied — the agent still runs on the old one (as launched), which stays in use and warned about until the restart", async () => {
+    const yaml = (profile: string) => [
+      "health_port: 0", "instances:",
+      `  cc:\n    working_directory: ${join(dir, "w")}\n    backend: claude-code\n    backend_options:\n      claude-code:\n        credential_profile: ${profile}`,
+      `  cc2:\n    working_directory: ${join(dir, "w")}\n    backend: claude-code`,
+    ].join("\n") + "\n";
+    // cc started on hsinlin (a real lease, as a start takes it), and is running.
+    const launched = fm.fleetConfig.instances.cc;
+    const held = await fm.admitCredentialUse("cc", launched, "claude-code", () => {});
+    held.published();
+    fm.daemons.set("cc", { getConfigSnapshot: () => launched });
+    // Then its profile is saved as "spare" (not applied: no restart).
+    writeFileSync(join(dir, "fleet.yaml"), yaml("spare")); fm.loadConfig(join(dir, "fleet.yaml"));
+    claudeCreds(join(dir, "credential-profiles", "claude-code", "spare"), T + 30 * 24 * 3_600_000);
+    expect(fm.signInsInUse()).toEqual([{ backend: "claude-code", profile: "spare" }, { backend: "claude-code", profile: null }, { backend: "claude-code", profile: "hsinlin" }]);
+    expect(fm.keepAliveAttention().map((l: any) => [l.profile, l.kind])).toEqual([[null, "ended"], ["hsinlin", "ending"]]);
+    // Restarted on spare: the old lease is gone, and so is hsinlin's line (spare's end is a month off).
+    held.release(); fm.daemons.delete("cc");
+    expect(fm.signInsInUse().map((u: any) => u.profile)).toEqual(["spare", null]);
+    expect(fm.keepAliveAttention().map((l: any) => l.profile)).toEqual([null]);
+    // A lease left by an agent no longer running (not starting, no daemon) is not in use.
+    const stale = await fm.admitCredentialUse("cc", launched, "claude-code", () => {}); stale.published();
+    expect(fm.signInsInUse().map((u: any) => u.profile)).toEqual(["spare", null]);
+    stale.release();
+    writeFileSync(join(dir, "fleet.yaml"), yaml("hsinlin")); fm.loadConfig(join(dir, "fleet.yaml"));
+  });
 });

@@ -21295,7 +21295,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * admitCredentialUse) from the configuration it launched with — never re-resolved against today's defaults. An entry
    * whose start ended without a daemon, or whose daemon is gone, is dropped when next read.
    */
-  private readonly credentialLeases = new Map<string, { key: string; starting: boolean }>();
+  // M-2825 review: with the sign-in as launched (backend, profile as written) — what is in use until the agent restarts.
+  private readonly credentialLeases = new Map<string, { key: string; starting: boolean; backend?: string; profile?: string | null }>();
   /** #3292 review: Keep sign-in alive runs in flight, by sign-in: a start on that sign-in waits for its end. */
   private readonly keepAliveRenewing = new Map<string, Promise<void>>();
   private credentialKey(backend: string, profile: string | null): string { return `${backend}\0${(profile ?? "").toLowerCase()}`; }
@@ -21305,16 +21306,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Daemon's clone of that config hands its CLI. Never today's defaults: an older config object keeps its own.
    */
   private launchCredentialKey(config: InstanceConfig, backend: string): string {
-    let profile: string | null = null;
-    try { profile = resolveCredentialProfile(config.backend_options?.[backend]); } catch { profile = null; }
-    return this.credentialKey(backend, profile);
+    return this.credentialKey(backend, this.launchCredentialProfile(config, backend));
+  }
+  private launchCredentialProfile(config: InstanceConfig, backend: string): string | null {
+    try { return resolveCredentialProfile(config.backend_options?.[backend]); } catch { return null; }
   }
 
   /**
    * #3313 review r2: failed starts whose CLI was not proven gone keep holding their sign-in (across a retry of the same
    * agent too) until a check finds it ended.
    */
-  private readonly credentialOrphans = new Map<symbol, { key: string; ended: () => Promise<boolean> }>();
+  private readonly credentialOrphans = new Map<symbol, { key: string; ended: () => Promise<boolean>; backend?: string; profile?: string | null }>();
   private orphanCheck: Promise<void> | null = null;
   private recheckCredentialOrphans(): void {
     if (this.orphanCheck || !this.credentialOrphans.size) return;
@@ -21339,7 +21341,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await renewing; assertCurrent();
       key = this.launchCredentialKey(config, backend);
     }
-    const lease = { key, starting: true };
+    const lease = { key, starting: true, backend, profile: this.launchCredentialProfile(config, backend) };
     this.credentialLeases.set(name, lease);
     const drop = () => { if (this.credentialLeases.get(name) === lease) this.credentialLeases.delete(name); };
     return {
@@ -21347,7 +21349,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       release: drop,
       current: c => this.launchCredentialKey(c, backend) === key,
       // A failed start whose CLI may still run: the sign-in stays held (by itself, not by the agent's name) until it is seen gone.
-      unknownEnd: ended => { drop(); this.credentialOrphans.set(Symbol(name), { key, ended }); this.recheckCredentialOrphans(); },
+      unknownEnd: ended => { drop(); this.credentialOrphans.set(Symbol(name), { key, ended, backend, profile: lease.profile }); this.recheckCredentialOrphans(); },
     };
   }
 
@@ -21433,16 +21435,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * M-2825: the host sign-ins in use — each agent's (its effective profile; a paired computer's agents use that computer's
-   * own accounts) and each ClassicBot room's — once each. Whose end date is warned about even when it is not kept alive.
+   * M-2825: the host sign-ins in use, once each — whose end date is warned about even when it is not kept alive:
+   * - each agent's and ClassicBot room's as configured (accountUses: a paired computer's agents use that computer's own);
+   * - #3577 review P2: the one each host agent is starting or running on AS LAUNCHED (its lease; a failed start whose CLI
+   *   may still run; a running agent with no lease, by its own launch snapshot) — a profile saved but not yet applied
+   *   leaves the old one in use until the restart, as keepAliveInUse() counts it.
    */
   private signInsInUse(): Array<{ backend: string; profile: string | null }> {
-    let uses: ReturnType<FleetManager["accountUses"]>;
-    try { uses = this.accountUses(); } catch { return []; }
     const seen = new Set<string>(), out: Array<{ backend: string; profile: string | null }> = [];
-    for (const u of [...uses.agents, ...uses.classic]) {
-      const key = `${u.backend}\0${u.profile ?? ""}`;
-      if (!seen.has(key)) { seen.add(key); out.push({ backend: u.backend, profile: u.profile }); }
+    const add = (backend: string | undefined, profile: string | null | undefined) => {
+      if (!backend) return;
+      const key = this.credentialKey(backend, profile ?? null);
+      if (!seen.has(key)) { seen.add(key); out.push({ backend, profile: profile ?? null }); }
+    };
+    try { const uses = this.accountUses(); for (const u of [...uses.agents, ...uses.classic]) add(u.backend, u.profile); } catch { /* the launched ones below still count */ }
+    for (const [name, lease] of this.credentialLeases) if (lease.starting || this.daemons?.has(name)) add(lease.backend, lease.profile);
+    for (const o of this.credentialOrphans.values()) add(o.backend, o.profile);
+    const defaultBackend = this.fleetConfig?.defaults?.backend ?? "claude-code";
+    for (const [name, daemon] of this.daemons ?? []) {
+      if (this.credentialLeases.has(name)) continue;
+      let snap: InstanceConfig | undefined;
+      try { snap = daemon.getConfigSnapshot?.(); } catch { snap = undefined; }
+      if (!snap || isWindowsInstance(snap)) continue;
+      const backend = snap.backend ?? defaultBackend;
+      add(backend, this.launchCredentialProfile(snap, backend));
     }
     return out;
   }
