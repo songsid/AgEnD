@@ -15,7 +15,7 @@ register("webauth", {
     reason_disabled: "Web authority is turned off.",
     reason_loopback_only: "Only this computer can authorize, and this browser is not on it.",
     reason_no_account: "This browser has no chat-account identity. Open General in Telegram or Discord and send /web to sign in as your account.",
-    reason_host_sign_in: "This browser no longer has this computer's admin authority. This sign-in cannot be renewed on this page.",
+    reason_host_sign_in: "This browser no longer has this computer's admin authority. Re-bind it with a new sign-in code from this computer.",
     reason_not_admin: "Your account is not a fleet admin here.",
     reason_not_admin_session: "Guests can't authorize.",
     reason_token_rotated: "The dashboard's token changed: sign in again.",
@@ -34,6 +34,17 @@ register("webauth", {
     authorizeWhy: "Not verified: authorize this browser to speak as you",
     notVerifiedWhy: "Not verified: {0}",
     waitingShort: "Waiting for your Confirm ({0})",
+    // AGEND-138: sign this browser in again, in place, with a fresh code from this computer.
+    rebind: "Re-bind",
+    rebindHow: "On this computer, run agend web --code and enter the sign-in code it prints.",
+    rebindCode: "Sign-in code from agend web --code",
+    rebindPlaceholder: "XXXX-XXXX",
+    rebindGo: "Bind",
+    rebindWorking: "Binding…",
+    rebindRefused: "That sign-in code didn't work. Run agend web --code again for a new one.",
+    rebindPaused: "Too many wrong codes. Wait a moment, then try again.",
+    rebindUnconfirmed: "The fleet could not confirm the sign-in. Try again with a new sign-in code.",
+    rebindNetwork: "Could not reach the fleet. Try again.",
   },
   "zh-TW": {
     verified: "已驗證 · 以你的身分發言到 {0}",
@@ -44,7 +55,7 @@ register("webauth", {
     reason_disabled: "網頁授權已關閉。",
     reason_loopback_only: "只有這台電腦可以授權，而這個瀏覽器不在這台電腦上。",
     reason_no_account: "這個瀏覽器沒有聊天帳號身分。請到 Telegram 或 Discord 的 General 傳送 /web，以你的帳號登入。",
-    reason_host_sign_in: "這個瀏覽器已沒有這台電腦的管理者授權。這個頁面無法重新取得這個登入的授權。",
+    reason_host_sign_in: "這個瀏覽器已沒有這台電腦的管理者授權。請用這台電腦的新登入碼重新綁定。",
     reason_not_admin: "你的帳號在這裡不是 fleet 管理者。",
     reason_not_admin_session: "訪客無法授權。",
     reason_token_rotated: "儀表板的 token 已變更：請重新登入。",
@@ -63,6 +74,16 @@ register("webauth", {
     authorizeWhy: "未驗證：授權這個瀏覽器以你的身分發言",
     notVerifiedWhy: "未驗證：{0}",
     waitingShort: "等待確認（{0}）",
+    rebind: "重新綁定",
+    rebindHow: "在這台電腦執行 agend web --code，輸入它顯示的登入碼。",
+    rebindCode: "agend web --code 取得的登入碼",
+    rebindPlaceholder: "XXXX-XXXX",
+    rebindGo: "綁定",
+    rebindWorking: "綁定中…",
+    rebindRefused: "這組登入碼不能用。請重新執行 agend web --code 取得新碼。",
+    rebindPaused: "錯誤次數太多，請稍候再試。",
+    rebindUnconfirmed: "fleet 無法確認這次登入。請用新的登入碼再試一次。",
+    rebindNetwork: "連不上 fleet，請再試一次。",
   },
 });
 const tn = (k, ...v) => t(`webauth.${k}`, ...v);
@@ -213,6 +234,35 @@ export function ComposerAuth() {
     ? html` · <a href="/settings/access" title=${why}>${tn("settings")}</a>` : null}</span>`;
 }
 
+/**
+ * AGEND-138: "Re-bind" — a browser whose host sign-in lost this computer's admin authority (a revocation, or the
+ * authorization ran out) signs in again right here: run `agend web --code` on this computer, type the code, and the
+ * page reloads as the new session. The code is the proof; there is deliberately no code-free button, because a request
+ * from this computer (127.0.0.1, which a program on Windows reaching into WSL also is) doesn't say who is using it.
+ */
+export function Rebind() {
+  const [open, setOpen] = useState(false), [code, setCode] = useState(""), [busy, setBusy] = useState(false), [msg, setMsg] = useState("");
+  const submit = async (e) => {
+    e.preventDefault();
+    if (busy || !code.trim()) return;
+    setBusy(true); setMsg("");
+    try {
+      const r = await fetch("/auth/login", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code.trim() }) });
+      if (r.ok) { resetWebAuthorization(); globalThis.location.reload(); return; }
+      setMsg(tn(r.status === 429 ? "rebindPaused" : r.status >= 500 ? "rebindUnconfirmed" : "rebindRefused"));
+    } catch { setMsg(tn("rebindNetwork")); }
+    setBusy(false);
+  };
+  if (!open) return html`<button type="button" class="btn webauth-rebind" onClick=${() => setOpen(true)}>${tn("rebind")}</button>`;
+  return html`<form class="webauth-rebind-form" onSubmit=${submit}>
+    <p class="note">${tn("rebindHow")}</p>
+    <div class="row"><div class="field webauth-rebind-field"><input type="text" class="webauth-rebind-code" value=${code} onInput=${(e) => setCode(e.target.value)} autocomplete="off" autocapitalize="characters" spellcheck=${false}
+      aria-label=${tn("rebindCode")} placeholder=${tn("rebindPlaceholder")} disabled=${busy} /></div>
+      <button type="submit" class="btn" disabled=${busy || !code.trim()}>${busy ? tn("rebindWorking") : tn("rebindGo")}</button></div>
+    ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
+  </form>`;
+}
+
 function body(a) {
   const st = a.st;
   if (st.state === "verified") return html`<span class="webauth-ok">✓ ${tn("verified", clock(st.until))}</span>`;
@@ -221,5 +271,5 @@ function body(a) {
     return html`<span class="note">${tn("notVerified")} ·</span> <button type="button" class="btn btn-sm" onClick=${a.ask}>${tn("authorize")}</button>`;
   const why = REASONS.includes(st.reason) ? tn(`reason_${st.reason}`) : tn("reason_other");
   // The fix, where there is one the person can take here: the switch lives in Settings → Web.
-  return html`<span class="note">${tn("notVerified")}: ${why}</span>${fixable(st.reason) ? html` <a href="/settings/access">${tn("settings")}</a>` : null}`;
+  return html`<span class="note">${tn("notVerified")}: ${why}</span>${fixable(st.reason) ? html` <a href="/settings/access">${tn("settings")}</a>` : null}${st.reason === "host_sign_in" ? html` <${Rebind} />` : null}`;
 }

@@ -16,6 +16,7 @@ import { editsOf, keepDraft, syncStage } from "./settings-draft.js";
 import { resetWebAuthorization } from "/assets/web-authorize.js";
 import "./settings-strings.js";
 import { layoutText } from "./settings-layout.js";
+import "./settings-revoke-strings.js";   // the revoke card's own words: a file of its own (PR #3553 review: a retained settings-access-strings.js would lack them)
 import "./settings-access-strings.js";   // revAuthorityBriefWeb / revAuthorityEnabledWeb / revAuthorityRule: an older settings-layout.js from a tab that visited Fleet first lacks them (#3061)
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -78,15 +79,20 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
   const stuckOff = f.enabled && original.enabled && !overview.state.enabled;
   const warnHosts = !f.loopbackOnly && overview.lanHosts.length > 0;
   const when = (ms) => new Date(ms).toLocaleString();
+  const canRevoke = !!(overview.you && overview.you.canRevoke);        // AGEND-138: only the verified owner (the server decides)
 
   const fc = (cls, key) => `${cls}${!sameValue(f[key], original[key]) ? " s-dirty" : ""}`;
   const revoke = async () => {
-    const yes = await confirmDialog({ title: tn("vaRevokeTitle"), message: tn("vaRevokeConfirm"), confirmLabel: tn("vaRevoke"), danger: true });
+    if (!overview.you || !overview.you.canRevoke) return;                // the server refuses a non-owner regardless
+    // AGEND-138: the devices that lose their authorization are named, and this one (you) is said to stay.
+    const others = overview.authorized.filter((a) => a.handle !== overview.you.handle).map((a) => a.label);
+    const message = [tn("vaRevokeOthersConfirm"), others.length ? tn("vaRevokeAffected", others.join(", ")) : tn("vaRevokeNoOthers"), tn("vaRevokeKept")].join("\n\n");
+    const yes = await confirmDialog({ title: tn("vaRevokeOthersTitle"), message, confirmLabel: tn("vaRevokeOthers"), danger: true });
     if (!yes) return;
     let r = null;
     try { r = await api("/api/settings/web-authority/revoke", { method: "POST", body: "{}" }); } catch { r = null; }
-    if (r && r.ok) { toast(tn(r.body && r.body.durable === false ? "vaRevokedNotDurable" : "vaRevoked")); load(); }
-    else toast(tn("vaRevokeFailed"), false);
+    if (r && r.ok) { toast(tn(r.body && r.body.durable === false ? "vaRevokedNotDurable" : r.body && r.body.kept === false ? "vaRevokedAll" : "vaRevokedOthers")); load(); }
+    else toast(tn(r && r.status === 403 ? "vaRevokeOwnerOnly" : "vaRevokeFailed"), false);
   };
 
   return card(html`<fieldset class="s-va-fields" disabled=${disabled}>
@@ -114,5 +120,6 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
             <strong>${a.label}</strong> <span class="note">${a.account}</span>${a.named ? html` <span class="note s-va-named">${tn("vaSessionNamed")}</span>` : null}${a.quick ? html` <span class="note s-va-named s-va-quick">${tn("vaSessionQuick")}</span>` : null}<br /><span class="note">${tn("vaSessionUntil", when(a.authorizedAt), when(a.until))}</span></li>`)}</ul>`
         : html`<p class="note" id="vaSessionsNone">${tn("vaSessionsNone")}</p>`}
     </fieldset>
-    <div class="save-row s-authority-revoke"><button type="button" class="btn btn-danger" id="vaRevoke" disabled=${disabled} onClick=${revoke}>${tn("vaRevoke")}</button></div>`);
+    <div class="save-row s-authority-revoke"><button type="button" class="btn btn-danger" id="vaRevoke" disabled=${disabled || !canRevoke} aria-describedby=${canRevoke ? undefined : "vaRevokeWhy"} onClick=${revoke}>${tn("vaRevokeOthers")}</button>
+      ${canRevoke ? null : html`<p class="note" id="vaRevokeWhy">${tn("vaRevokeOwnerOnly")}</p>`}</div>`);
 }

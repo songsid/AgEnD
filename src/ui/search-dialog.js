@@ -16,6 +16,7 @@ import { Skeleton } from "/assets/ui-states.js";
 import { goToSetting, searchSettings, settingLabel } from "./settings-registry.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // the "where" of a result is settings.sec_<section>; sec_agent-defaults is one of these words
+import "./settings-revoke-strings.js";   // a result shows its label: settings.vaRevokeOthers is one of these words (PR #3553 review)
 import "./settings-access-strings.js";   // a result shows its label: settings.webLoginQr is one of these words (#3061)
 
 register("search", {

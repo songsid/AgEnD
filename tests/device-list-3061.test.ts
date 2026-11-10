@@ -2,9 +2,10 @@
  * Refs #3061 (P2b): the device list and ending another device's session, over HTTP against a real fleet — its public link
  * through the REAL gateway with only the tunnel stubbed (as device-login-3061.test.ts).
  *
- *  - THE LIST (GET /ui/devices): this fleet's admin sessions — how each was approved (sign-in code / host / device code /
- *    authenticator), whether it carries owner authority, which one is the reader's own — to an admin session only (a guest,
- *    the CLI's header token, a chat fleet: nothing); no id, no hash, no cookie in it;
+ *  - THE LIST (GET /ui/devices): every fleet's signed-in sessions of any tier — how each was approved (sign-in code / host /
+ *    device code / authenticator), its tier and whether it carries owner authority (the role), which one is the reader's own,
+ *    and whether the reader may sign it out — to an admin session only (a guest, the CLI's header token: nothing); no id, no
+ *    hash, no cookie in it;
  *  - ENDING ANOTHER DEVICE needs the verified owner, on EVERY way in: POST /ui/devices/signout, and the older
  *    `DELETE /auth/sessions/<handle>` and `DELETE /auth/sessions` (an admin session could always do these — a session a
  *    code or a device approval made would otherwise sign the owner out). A non-owner gets 403 before anything is looked up
@@ -127,10 +128,10 @@ async function startFleet(opts: { chat?: boolean; web?: Record<string, unknown> 
   const sessionOf = (s: Signed, surface: "local" | "gateway" = "local") =>
     any.webSessions.authenticate(s.sessionId, tokenEpoch(token), { touch: false, surface, ...(surface === "gateway" ? { exposureId: any.publicWebLink.exposureId } : {}) }) as SessionRecord | null;
   /** A session made straight in the store: `via` "code" (none of host / device / authenticator), or a guest's. */
-  const stored = (input: { tier?: "admin" | "guest"; surface?: "local" | "gateway"; label: string }): Signed => {
+  const stored = (input: { tier?: "admin" | "guest" | "read"; surface?: "local" | "gateway"; label: string; owner?: { adapterId: string; userId: string } }): Signed => {
     const surface = input.surface ?? "local";
     const { sessionId } = any.webSessions.create({ tier: input.tier ?? "admin", surface, label: input.label, tokenEpoch: tokenEpoch(token),
-      ...(input.tier === "guest" ? { owner: { adapterId: "discord", userId: "9" } } : {}), ...(surface === "gateway" ? { exposureId: any.publicWebLink.exposureId } : {}) });
+      ...(input.owner ? { owner: input.owner } : input.tier === "guest" ? { owner: { adapterId: "discord", userId: "9" } } : {}), ...(surface === "gateway" ? { exposureId: any.publicWebLink.exposureId } : {}) });
     return { sessionId, cookie: `${surface === "gateway" ? fleetCookieName(WEB_SESSION_COOKIE_SECURE, token) : WEB_SESSION_COOKIE}=${sessionId}` };
   };
   const alive = async (s: Signed) => (await raw(port, "GET", "/auth/session", { cookie: s.cookie, origin })).status === 200;
@@ -142,7 +143,7 @@ const signOut = (h: Fleet, by: Signed, handle: string) => h.local(by, "POST", "/
 const list = async (h: Fleet, s: Signed) => parse(await h.local(s, "GET", "/ui/devices"));
 
 describe("#3061 P2b: the device list", () => {
-  it("lists this fleet's admin sessions with how each was approved and whether its owner is verified — and nothing that signs anyone in", async () => {
+  it("lists this fleet's sessions of every tier with how each was approved and whether it is verified — and nothing that signs anyone in", async () => {
     const h = await startFleet();
     const owner = await h.hostSignIn();
     const remote = await h.outsideOwner(owner);                                           // via the authenticator, over the link
@@ -151,29 +152,30 @@ describe("#3061 P2b: the device list", () => {
     const plain = h.stored({ label: "Plain code" });                                      // any other one-time code
     const guest = h.stored({ tier: "guest", label: "A guest" });
     const body = await list(h, owner);
-    expect(body).toMatchObject({ webOnly: true, owner: true });
+    expect(body).toMatchObject({ webOnly: true, owner: true, canEndOthers: true });
     const rows = body.devices as Array<Record<string, any>>;
     const by = (s: Signed, surface: "local" | "gateway" = "local") => rows.find(r => r.handle === handleOf(h, s, surface))!;
     // The same keys on every row, and none of them is a credential.
-    for (const row of rows) expect(Object.keys(row).sort()).toEqual(["created", "current", "expiresAt", "handle", "label", "lastSeen", "ownerVerified", "surface", "via"]);
+    for (const row of rows) expect(Object.keys(row).sort()).toEqual(["canSignOut", "created", "current", "expiresAt", "handle", "label", "lastSeen", "surface", "tier", "verified", "via"]);
     expect(JSON.stringify(body)).not.toMatch(/[0-9a-f]{64}/);
     for (const s of [owner, remote, approved, lan, plain, guest]) expect(JSON.stringify(body)).not.toContain(s.sessionId);
     // How, and whether the owner is verified (the §3 verdict for the session as it signs in).
-    expect([by(owner).via, by(owner).ownerVerified, by(owner).current, by(owner).surface]).toEqual(["host", true, true, "local"]);
-    expect([by(remote, "gateway").via, by(remote, "gateway").ownerVerified, by(remote, "gateway").surface]).toEqual(["totp", true, "gateway"]);
-    expect([by(approved).via, by(approved).ownerVerified, by(approved).label]).toEqual(["device", false, "Chrome on Android"]);
-    expect([by(lan).via, by(lan).ownerVerified]).toEqual(["host", false]);                // a host code used from the network is no owner
-    expect([by(plain).via, by(plain).ownerVerified]).toEqual(["code", false]);
-    // Exactly one is the reader's own; a guest's session is the Guests page's, not here.
+    expect([by(owner).via, by(owner).verified, by(owner).current, by(owner).surface]).toEqual(["host", true, true, "local"]);
+    expect([by(remote, "gateway").via, by(remote, "gateway").verified, by(remote, "gateway").surface]).toEqual(["totp", true, "gateway"]);
+    expect([by(approved).via, by(approved).verified, by(approved).label]).toEqual(["device", false, "Chrome on Android"]);
+    expect([by(lan).via, by(lan).verified]).toEqual(["host", false]);                // a host code used from the network is no owner
+    expect([by(plain).via, by(plain).verified]).toEqual(["code", false]);
+    // Exactly one is the reader's own (never signed out here); a guest's session is a row too, tier guest, never verified.
     expect(rows.filter(r => r.current).map(r => r.handle)).toEqual([handleOf(h, owner)]);
-    expect(rows.some(r => r.handle === handleOf(h, guest))).toBe(false);
-    expect(rows.length).toBe(5);
+    expect([by(owner).canSignOut, by(approved).canSignOut, by(guest).canSignOut]).toEqual([false, true, true]);
+    expect([by(owner).tier, by(guest).tier, by(guest).verified, by(guest).via]).toEqual(["admin", "guest", false, "code"]);
+    expect(rows.length).toBe(6);
     // Read as another session, the "current" mark moves with the reader.
     const asDevice = (await list(h, approved)).devices as Array<Record<string, any>>;
     expect(asDevice.filter(r => r.current).map(r => r.label)).toEqual(["Chrome on Android"]);
   }, 60_000);
 
-  it("is the admin's list: a guest, the CLI's header token and a chat fleet get none — and a non-owner admin sees it but is told it may not end a device", async () => {
+  it("is the admin's list: a guest and the CLI's header token get none — and a non-owner admin sees it but is told it may not end a device", async () => {
     const h = await startFleet();
     const owner = await h.hostSignIn();
     const approved = await h.deviceSession(owner);
@@ -185,11 +187,10 @@ describe("#3061 P2b: the device list", () => {
     const cli = await raw(h.port, "GET", "/ui/devices", { "x-agend-token": h.token, origin: h.origin });
     expect(parse(cli)?.devices ?? []).toEqual([]);
     const seen = await list(h, approved);
-    expect(seen.owner).toBe(false);
-    expect(seen.devices.length).toBe(2);
-    const chat = await startFleet({ chat: true });
-    const admin = chat.stored({ label: "chat admin" });
-    expect(await list(chat, admin)).toEqual({ webOnly: false, owner: false, authority: false, devices: [] });
+    expect([seen.owner, seen.canEndOthers]).toEqual([false, false]);
+    expect(seen.devices.length).toBeGreaterThanOrEqual(2);
+    const ownersRow = seen.devices.find((r: { handle: string }) => r.handle === handleOf(h, owner));
+    expect([ownersRow.canSignOut, ownersRow.signOutBlocked]).toEqual([false, "owner_required"]);
   }, 40_000);
 
   it("the methods themselves hand nothing to a guest (the gate's guest scope stops one first; this is the second line)", async () => {
@@ -197,8 +198,8 @@ describe("#3061 P2b: the device list", () => {
     const owner = await h.hostSignIn();
     const guest = h.stored({ tier: "guest", label: "A guest" });
     const asked = (s: Signed) => ({ method: "GET", headers: { cookie: s.cookie, host: `127.0.0.1:${h.port}` }, socket: { remoteAddress: "127.0.0.1" } });
-    expect(h.any.webDevicesStatus(asked(guest))).toEqual({ webOnly: true, owner: false, authority: true, devices: [] });
-    expect(h.any.webDevicesStatus(asked(owner)).devices.map((r: { label: string }) => r.label).sort()).toEqual([h.sessionOf(owner)!.label]);
+    expect(h.any.webDevicesStatus(asked(guest))).toEqual({ webOnly: true, owner: false, authority: true, canEndOthers: false, devices: [] });
+    expect(h.any.webDevicesStatus(asked(owner)).devices.map((r: { label: string }) => r.label).sort()).toEqual([h.sessionOf(owner)!.label, "A guest"].sort());
     expect(h.any.webDeviceSignOut(asked(guest), handleOf(h, owner))).toEqual({ status: 403, body: { error: "owner_required" } });
     expect(await h.alive(owner)).toBe(true);
   }, 30_000);
@@ -226,7 +227,7 @@ describe("#3061 P2b: ending another device — only the verified owner, on every
     expect(await h.alive(approved)).toBe(false);
     expect(h.sessionOf(approved)).toBeNull();
     expect(((await list(h, owner)).devices as Array<{ handle: string }>).some(r => r.handle === approvedHandle)).toBe(false);
-    expect(h.infos.some(([o, m]) => m === "Device signed out by the owner" && o.handle === approvedHandle && o.by === handleOf(h, owner).slice(0, 8) && o.via === "device")).toBe(true);
+    expect(h.infos.some(([o, m]) => m === "Device signed out by an admin" && o.handle === approvedHandle && o.by === handleOf(h, owner).slice(0, 8) && o.via === "device")).toBe(true);
     // …and one with an authorization loses it as well.
     expect((await signOut(h, owner, remoteHandle)).status).toBe(200);
     expect(h.any.sessionAuthorizationStore().get(remoteHandle)).toBeFalsy();
@@ -261,7 +262,7 @@ describe("#3061 P2b: ending another device — only the verified owner, on every
     expect(await h.alive(owner)).toBe(true);
   }, 60_000);
 
-  it("what it takes and what it ends: the owner's OWN session is not ended here, an unknown or a guest's handle is 404 (the guest lives), a malformed one 400, cross-site and a missing CSRF 403", async () => {
+  it("what it takes and what it ends: the owner's OWN session is not ended here, an unknown handle is 404, a guest's is ended, a malformed one 400, cross-site and a missing CSRF 403", async () => {
     const h = await startFleet();
     const owner = await h.hostSignIn();
     const guest = h.stored({ tier: "guest", label: "A guest" });
@@ -270,9 +271,9 @@ describe("#3061 P2b: ending another device — only the verified owner, on every
     expect([own.status, parse(own)]).toEqual([400, { error: "this_device" }]);
     expect(await h.alive(owner)).toBe(true);
     expect((await signOut(h, owner, "f".repeat(16))).status).toBe(404);
-    const g = await signOut(h, owner, guestHandle);
-    expect([g.status, parse(g)]).toEqual([404, { error: "not_found" }]);
-    expect(await h.alive(guest)).toBe(true);
+    const g = await signOut(h, owner, guestHandle);                                       // a guest's session is a device in the list now: the owner ends it
+    expect([g.status, parse(g)]).toEqual([200, { ok: true }]);
+    expect(await h.alive(guest)).toBe(false);
     for (const bad of ["", "xyz", "F".repeat(16), "0".repeat(15), "0".repeat(17), 7, null, undefined]) {
       expect((await h.local(owner, "POST", "/ui/devices/signout", { handle: bad })).status, JSON.stringify(bad)).toBe(400);
     }
@@ -293,7 +294,7 @@ describe("#3061 P2b: ending another device — only the verified owner, on every
     const res = await signOut(h, owner, handleOf(h, other));
     expect([res.status, parse(res)]).toEqual([500, { ok: false, durable: false, error: "not_durable" }]);
     expect(h.sessionOf(other)).toBeNull();                                                // gone from memory all the same
-    expect(h.infos.some(([o, m]) => m === "Device signed out by the owner" && o.durable === false)).toBe(true);
+    expect(h.infos.some(([o, m]) => m === "Device signed out by an admin" && o.durable === false)).toBe(true);
   }, 30_000);
 
   it("THE OLDER WAY IN is closed the same: DELETE /auth/sessions/<handle> and DELETE /auth/sessions by a non-owner are 403 — while ending one's OWN session stays everyone's", async () => {
@@ -334,7 +335,8 @@ describe("#3061 P2b: ending another device — only the verified owner, on every
     const body = await list(h, owner);
     expect(body.owner).toBe(false);
     expect(body.authority).toBe(false);                                                   // …and the page is told why, to say so (settings-devices-3061)
-    expect((body.devices as Array<{ ownerVerified: boolean }>).every(r => !r.ownerVerified)).toBe(true);
+    expect(body.devices.length).toBeGreaterThan(1);                                         // (an empty list would pass `every` too)
+    expect((body.devices as Array<{ verified: boolean }>).every(r => r.verified === false)).toBe(true);
     expect((await signOut(h, owner, handleOf(h, other))).status).toBe(403);
     expect((await h.local(owner, "DELETE", `/auth/sessions/${handleOf(h, other)}`)).status).toBe(403);
     expect(await h.alive(other)).toBe(true);
@@ -379,18 +381,139 @@ describe("#3061 P2b: ending another device — only the verified owner, on every
     expect(await h.alive(host)).toBe(true);
   }, 60_000);
 
-  it("a fleet with a chat connection is as it was: no such route (404), an admin still ends the others with the old routes", async () => {
+  it("a fleet with a chat connection: the same route, and the old routes, follow one rule (see the chat-fleet describe below)", async () => {
     const h = await startFleet({ chat: true });
-    const a = h.stored({ label: "chat admin A" }), b = h.stored({ label: "chat admin B" }), c = h.stored({ label: "chat admin C" });
-    const res = await signOut(h, a, handleOf(h, b));
-    expect([res.status, parse(res)]).toEqual([404, { error: "not_found" }]);
-    expect(await h.alive(b)).toBe(true);
+    const a = h.stored({ label: "chat admin A", owner: { adapterId: "tg", userId: "1" } }), a2 = h.stored({ label: "chat admin A again", owner: { adapterId: "tg", userId: "1" } });
+    const res = await signOut(h, a, handleOf(h, a2));
+    expect([res.status, parse(res)]).toEqual([200, { ok: true }]);
+    expect(await h.alive(a2)).toBe(false);
     const asA = parse(await raw(h.port, "GET", "/auth/sessions", { cookie: a.cookie, origin: h.origin }));
     expect(asA.canEndOthers).toBeUndefined();
-    expect((await h.local(a, "DELETE", `/auth/sessions/${handleOf(h, b)}`)).status).toBe(200);
-    expect(await h.alive(b)).toBe(false);
-    expect((await h.local(a, "DELETE", "/auth/sessions")).status).toBe(200);
-    expect(await h.alive(c)).toBe(false);
+  }, 40_000);
+});
+
+describe("AGEND-138 (#3486): one device list and one sign-out rule on a fleet with a chat connection", () => {
+  async function chatFleet() {
+    const h = await startFleet({ chat: true });
+    const acct = (userId: string) => ({ adapterId: "tg", userId });
+    const a = h.stored({ label: "Admin A laptop", owner: acct("1") }), a2 = h.stored({ label: "Admin A phone", owner: acct("1") });
+    const b = h.stored({ label: "Admin B laptop", owner: acct("2") });
+    const guest = h.stored({ tier: "guest", label: "A guest" }), read = h.stored({ tier: "read", label: "A reader" });
+    return { h, a, a2, b, guest, read };
+  }
+
+  it("GET /ui/devices: every tier, one row each, the fields the overview reads; an admin ends its own and any guest's or reader's, not another admin's — and says why", async () => {
+    const { h, a, a2, b, guest, read } = await chatFleet();
+    const body = await list(h, a);
+    expect(body).toMatchObject({ webOnly: false, owner: false, canEndOthers: true });
+    const rows = body.devices as Array<Record<string, any>>;
+    const by = (s: Signed) => rows.find(r => r.handle === handleOf(h, s))!;
+    expect(rows.length).toBe(5);
+    expect(rows.map(r => r.tier).sort()).toEqual(["admin", "admin", "admin", "guest", "read"]);
+    for (const row of rows) expect(Object.keys(row).sort().filter(k => k !== "signOutBlocked")).toEqual(["canSignOut", "created", "current", "expiresAt", "handle", "label", "lastSeen", "surface", "tier", "verified", "via"]);
+    expect([by(a).current, by(a).canSignOut, by(a).signOutBlocked]).toEqual([true, false, undefined]);
+    expect([by(a2).canSignOut, by(guest).canSignOut, by(read).canSignOut]).toEqual([true, true, true]);
+    expect([by(b).canSignOut, by(b).signOutBlocked]).toEqual([false, "other_admin"]);
+    expect([by(guest).tier, by(read).tier, by(guest).verified, by(read).verified]).toEqual(["guest", "read", false, false]);
+    // From B's side the same rows read the other way round.
+    const asB = (await list(h, b)).devices as Array<Record<string, any>>;
+    expect([asB.find(r => r.handle === handleOf(h, a))!.canSignOut, asB.find(r => r.handle === handleOf(h, guest))!.canSignOut]).toEqual([false, true]);
+    expect(JSON.stringify(body)).not.toMatch(/[0-9a-f]{64}/);
+    for (const s of [a, a2, b, guest, read]) expect(JSON.stringify(body)).not.toContain(s.sessionId);
+  }, 60_000);
+
+  it("a chat admin whose account confirmed the session reads as verified (Owner ✓); the others as not", async () => {
+    const { h, a, b } = await chatFleet();
+    vi.spyOn(h.any, "adminGate").mockReturnValue("ok");
+    expect(h.fm.authorizeWebSession(h.sessionOf(a)!, "loopback", false).ok).toBe(true);
+    const rows = (await list(h, a)).devices as Array<Record<string, any>>;
+    expect([rows.find(r => r.handle === handleOf(h, a))!.verified, rows.find(r => r.handle === handleOf(h, b))!.verified]).toEqual([true, false]);
+    expect((await list(h, a)).owner).toBe(true);
+    expect((await list(h, b)).owner).toBe(false);
+  }, 40_000);
+
+  it("a guest sees no one's devices (the gate refuses it) and cannot sign anyone out", async () => {
+    const { h, a, guest } = await chatFleet();
+    const asGuest = await h.local(guest, "GET", "/ui/devices");
+    expect([401, 403]).toContain(asGuest.status);
+    expect(parse(asGuest)?.devices).toBeUndefined();
+    const out = await signOut(h, guest, handleOf(h, a));
+    expect([401, 403]).toContain(out.status);
+    expect(await h.alive(a)).toBe(true);
+    const direct = (s: Signed) => ({ method: "GET", headers: { cookie: s.cookie, host: `127.0.0.1:${h.port}` }, socket: { remoteAddress: "127.0.0.1" } });
+    expect(h.any.webDevicesStatus(direct(guest))).toMatchObject({ canEndOthers: false, devices: [] });
+  }, 40_000);
+
+  it("POST /ui/devices/signout: own devices, a guest's and a reader's are ended; another admin's is refused 403 other_admin and lives", async () => {
+    const { h, a, a2, b, guest, read } = await chatFleet();
+    const refused = await signOut(h, a, handleOf(h, b));
+    expect([refused.status, parse(refused)]).toEqual([403, { error: "other_admin" }]);
+    expect(await h.alive(b)).toBe(true);
+    for (const target of [a2, guest, read]) {
+      const ok = await signOut(h, a, handleOf(h, target));
+      expect([ok.status, parse(ok)], target.cookie).toEqual([200, { ok: true }]);
+      expect(await h.alive(target)).toBe(false);
+    }
+    expect(await h.alive(a)).toBe(true);
+    // …and the other way round: B cannot end A's.
+    expect((await signOut(h, b, handleOf(h, a))).status).toBe(403);
+    expect(await h.alive(a)).toBe(true);
+    // One's own is Sign out, not this; an unknown handle is 404.
+    expect([(await signOut(h, a, handleOf(h, a))).status, (await signOut(h, a, "f".repeat(16))).status]).toEqual([400, 404]);
+  }, 60_000);
+
+  it("the older routes follow the same rule: DELETE /auth/sessions/<handle> of another admin's device is 403, own and guests' are 200; DELETE /auth/sessions ends what the caller may and spares other admins", async () => {
+    const { h, a, a2, b, guest, read } = await chatFleet();
+    const refused = await h.local(a, "DELETE", `/auth/sessions/${handleOf(h, b)}`);
+    expect([refused.status, parse(refused)]).toEqual([403, { error: "other_admin" }]);
+    expect(await h.alive(b)).toBe(true);
+    expect((await h.local(a, "DELETE", `/auth/sessions/${handleOf(h, guest)}`)).status).toBe(200);
+    expect(await h.alive(guest)).toBe(false);
+    const all = await h.local(a, "DELETE", "/auth/sessions");
+    expect(all.status).toBe(200);
+    expect([await h.alive(a), await h.alive(a2), await h.alive(read), await h.alive(b)]).toEqual([false, false, false, true]);
+  }, 60_000);
+
+  it("the host's own code sign-in is one principal, not any chat admin: neither ends the other's; and the host's revoke-all is unchanged", async () => {
+    const { h, a, b } = await chatFleet();
+    const host = await h.hostSignIn();
+    expect((await signOut(h, host, handleOf(h, a))).status).toBe(403);
+    expect((await signOut(h, a, handleOf(h, host))).status).toBe(403);
+    const host2 = await h.hostSignIn();
+    expect((await signOut(h, host, handleOf(h, host2))).status).toBe(200);
+    // /dashboard revoke: everyone, including the other admins (the emergency button).
+    h.any.revokeWebSessions();
+    expect([await h.alive(a), await h.alive(b), await h.alive(host)]).toEqual([false, false, false]);
+  }, 60_000);
+
+  it("a caller that is not an admin session (the header token, no session) is told owner_required — never other_admin; GET /auth/sessions rows carry canSignOut", async () => {
+    const { h, a, a2, b, guest } = await chatFleet();
+    const bare = { method: "POST", headers: { host: `127.0.0.1:${h.port}` }, socket: { remoteAddress: "127.0.0.1" } };
+    expect(h.any.webDeviceSignOut(bare, handleOf(h, a))).toEqual({ status: 403, body: { error: "owner_required" } });
+    const cli = await raw(h.port, "POST", "/ui/devices/signout", { "x-agend-token": h.token, origin: h.origin, "content-type": "application/json" }, JSON.stringify({ handle: handleOf(h, a) }));
+    expect([401, 403]).toContain(cli.status);
+    expect(parse(cli)?.error).not.toBe("other_admin");
+    // The older list carries the same verdict per row on a chat fleet (the one rule), and none where there is no narrowing.
+    const rows = parse(await raw(h.port, "GET", "/auth/sessions", { cookie: a.cookie, origin: h.origin })).sessions as Array<{ handle: string; current: boolean; canSignOut?: boolean }>;
+    const by = (s: Signed) => rows.find(r => r.handle === handleOf(h, s))!;
+    expect([by(a).canSignOut, by(a2).canSignOut, by(b).canSignOut, by(guest).canSignOut]).toEqual([undefined, true, false, true]);
+    const web = await startFleet();
+    const owner = await web.hostSignIn(), other = web.stored({ label: "Plain code" });
+    const wrows = parse(await raw(web.port, "GET", "/auth/sessions", { cookie: owner.cookie, origin: web.origin })).sessions as Array<{ canSignOut?: boolean }>;
+    expect(wrows.every(r => r.canSignOut === undefined)).toBe(true);
+    expect(other).toBeTruthy();
+  }, 60_000);
+
+  it("with `loopback_only` the session menu's verdict (/ui/authorization) and the list's `verified` for the reader's own row agree — here and from the network", async () => {
+    const h = await startFleet({ chat: true, web: { verified_authority: { enabled: true, loopback_only: true } } });
+    vi.spyOn(h.any, "adminGate").mockReturnValue("ok");
+    const a = h.stored({ label: "Admin A", owner: { adapterId: "tg", userId: "1" } });
+    expect(h.fm.authorizeWebSession(h.sessionOf(a)!, "loopback", false).ok).toBe(true);        // confirmed in chat, from this computer
+    for (const [where, extra] of [["this computer", {}], ["the network", { "x-forwarded-for": "10.0.0.9" }]] as const) {
+      const menu = parse(await h.local(a, "GET", "/ui/authorization", undefined, extra));
+      const row = ((parse(await h.local(a, "GET", "/ui/devices", undefined, extra))).devices as Array<{ current: boolean; verified: boolean }>).find(r => r.current)!;
+      expect([where, menu.state === "verified", row.verified], where).toEqual([where, where === "this computer", where === "this computer"]);
+    }
   }, 40_000);
 });
 

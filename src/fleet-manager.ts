@@ -3759,38 +3759,83 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * GET /ui/devices: is this a web-only fleet, may THIS session approve a new device and end another (is it the verified
-   * owner), and — to an admin session, never to a guest or the CLI's header token — the signed-in devices (Refs #3061, P2b).
-   * `authority`: web authorization is on. With it off nobody is an owner (liveOwner → null), so nobody may add a device or
-   * sign another out; the page says why and points to `agend web-token rotate` on this computer instead of "use the AgEnD
-   * computer", which would not help.
+   * GET /ui/devices — the one device list, for every fleet (AGEND-138, #3486): is this a web-only fleet, may THIS session
+   * approve a new device (web-only: the verified owner) and end the others' (`canEndOthers`), and — to an admin session,
+   * never to a guest or the CLI's header token — every signed-in session of any tier, one row each (webDeviceRows).
+   * `owner`: the verified owner (web-only: this computer's admin here or from outside; a chat fleet: an admin whose chat
+   * account confirmed this session). `authority`: web authorization is on; with it off nobody is an owner, so on a web-only
+   * fleet nobody may add a device or sign another out and the page says so.
    */
-  webDevicesStatus(req: IncomingMessage): { webOnly: boolean; owner: boolean; authority: boolean; devices: WebDeviceRow[] } {
+  webDevicesStatus(req: IncomingMessage): { webOnly: boolean; owner: boolean; authority: boolean; canEndOthers: boolean; devices: WebDeviceRow[] } {
     const webOnly = this.isWebOnlyFleet();
-    const owner = webOnly && !!this.deviceApprovalOwner(req);
-    return { webOnly, owner, authority: webOnly && this.webAuthorityState().enabled, devices: webOnly ? this.webDeviceRows(req) : [] };
+    const owner = webOnly ? !!this.deviceApprovalOwner(req) : !!this.webAuthorityRevoker(req);
+    const rule = this.sessionEndRule(req);
+    return { webOnly, owner, authority: this.webAuthorityState().enabled, canEndOthers: !!rule && (webOnly ? owner : true), devices: this.webDeviceRows(req) };
   }
 
   /**
-   * Refs #3061 (P2b): the device list — this fleet's admin sessions, newest activity first (a guest's sessions are the
-   * Guests page's, and a read-only tier has none): how each was approved, whether it carries owner authority, and which
-   * one is the reader's own. The same people may read this as may read `GET /auth/sessions` (any admin session).
+   * AGEND-138 (#3486): which sessions may this ADMIN request sign out — one rule for every way in (POST /ui/devices/signout,
+   * DELETE /auth/sessions[/<handle>]) and for the list's `canSignOut`; asked of the live session each time. Null: not an
+   * admin session (a guest or read-only one ends only its own account's, auth-api; the header token none).
+   *  - a web-only fleet: the verified owner ends any; every other admin only itself (`any: false`);
+   *  - a fleet with a chat connection: an admin ends their OWN other devices (the same chat account) and any guest's or
+   *    read-only one; ANOTHER admin's devices only that admin. Every admin sign-in there records its account (`owner`: /web,
+   *    /dashboard and the per-admin authenticator); only a session with NO chat account (the host's own `agend web --code`,
+   *    or one persisted before accounts were recorded) counts as the host's — one principal that only another such session
+   *    may end, and that ends no chat admin's. It does not re-check that the account is still an admin (an existing
+   *    limitation of every admin API; follow-up).
+   * Revoke-all (`revokeWebSessions`, /dashboard revoke) is the host's emergency button and is not this rule.
+   */
+  private sessionEndRule(req: IncomingMessage): { session: SessionRecord; any: boolean; may(r: SessionRecord): boolean; blocked: "owner_required" | "other_admin" } | null {
+    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (auth.kind !== "ok" || auth.session.tier !== "admin") return null;
+    const me = auth.session;
+    if (this.isWebOnlyFleet()) {
+      const owner = !!this.deviceApprovalOwner(req);
+      return { session: me, any: owner, may: r => r.handle === me.handle || owner, blocked: "owner_required" };
+    }
+    const principal = (r: SessionRecord): string => (r.owner ? `${r.owner.adapterId}\u0000${r.owner.userId}` : "\u0000host");
+    return { session: me, any: true, may: r => r.handle === me.handle || r.tier !== "admin" || principal(r) === principal(me), blocked: "other_admin" };
+  }
+
+  /**
+   * AGEND-138: auth-api's narrowing of `DELETE /auth/sessions[/<handle>]` for an admin. Three answers, never confused:
+   * a predicate (what this caller may end), `undefined` (a web-only fleet: no narrowing here, its own owner check stands) and
+   * `null` — the caller could not be authenticated AGAIN just now (expired or signed out since auth-api's first check): a denial,
+   * which must never be read as "no restriction" (PR #3553 review).
+   */
+  endableSessions(req: IncomingMessage): ((r: SessionRecord) => boolean) | undefined | null {
+    if (this.isWebOnlyFleet()) return undefined;
+    return this.sessionEndRule(req)?.may ?? null;
+  }
+
+  /**
+   * Refs #3061 (P2b), AGEND-138: the device list — every signed-in session of any tier, newest activity first: its tier,
+   * how it was approved, whether it carries owner authority, whether it is the reader's own, and whether the reader may sign
+   * it out (and if not, why). Only an admin session reads it: a guest, a read-only session and the header token get none,
+   * so no one sees another person's devices unless they are an admin.
    *
-   * `ownerVerified` is the §3 verdict for the session as it would be used from where it signs in (a host session from
-   * this computer, a session from outside over the link): one that signed in with a one-time code or a device approval is
-   * not an owner until the authenticator vouches for it. Display only — the checks that act on it run again at each use.
+   * `verified` is the §3 verdict for an admin session as it would be used from where it signs in (a host session from this
+   * computer, a session from outside over the link, a chat account's confirmed one): one that signed in with a one-time
+   * code or a device approval is not an owner until the authenticator vouches for it. Display only — the checks that act
+   * on it run again at each use.
    */
   private webDeviceRows(req: IncomingMessage): WebDeviceRow[] {
-    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
-    if (auth.kind !== "ok" || auth.session.tier !== "admin" || !this.webSessions) return [];
+    const rule = this.sessionEndRule(req);
+    if (!rule || !this.webSessions) return [];
     const authorizations = this.sessionAuthorizationStore();
-    return this.webSessions.list(auth.session.idHash, r => r.tier === "admin").map(summary => {
+    return this.webSessions.list(rule.session.idHash, () => true).map(summary => {
       const record = this.webSessions!.findByHandle(summary.handle);
-      const gateway = summary.surface === "gateway";
-      const peer: WebPeer = gateway ? authorizations?.get(summary.handle)?.peer ?? "quick_link" : record?.host === true ? "loopback" : "lan";
-      return { handle: summary.handle, label: summary.label, via: summary.via, current: summary.current, surface: summary.surface,
+      // The reader's own row is judged on the request that asks (as the session menu's /ui/authorization is: tests/…-138), another
+      // session as it signed in (we cannot know where it is now).
+      const gateway = summary.current ? !!gatewayRequestContext(req) : summary.surface === "gateway";
+      const peer: WebPeer = summary.current ? webPeerOf(req)
+        : gateway ? authorizations?.get(summary.handle)?.peer ?? "quick_link" : record?.host === true ? "loopback" : authorizations?.get(summary.handle)?.peer ?? "lan";
+      const verified = summary.tier === "admin" && !!record && !this.webAuthority({ session: record, gateway, peer }).refusal;
+      const may = !summary.current && !!record && rule.may(record);
+      return { handle: summary.handle, label: summary.label, tier: summary.tier, via: summary.via, verified, current: summary.current, surface: summary.surface,
         created: summary.created, lastSeen: summary.lastSeen, expiresAt: Math.min(summary.absoluteExpiry, summary.idleExpiry),
-        ownerVerified: !!record && !this.webAuthority({ session: record, gateway, peer }).refusal };
+        canSignOut: may, ...(!summary.current && !may ? { signOutBlocked: rule.blocked } : {}) };
     });
   }
 
@@ -3798,30 +3843,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Refs #3061 (P2b): may this request's session end ANOTHER session — one signed in elsewhere, or all of them (auth-api
    * `DELETE /auth/sessions…`, which an admin session could always do). On a web-only fleet that is the verified owner's:
    * a session a code or a device approval made is signed in but not an owner, and could otherwise sign out the owner's
-   * own. A fleet with a chat connection is as it was (its admins are the chat's). Ending one's OWN session is never this.
+   * own. A fleet with a chat connection: yes for an admin, within endableSessions' rule (AGEND-138). Ending one's OWN
+   * session is never this.
    */
   mayEndOtherSessions(req: IncomingMessage): boolean {
     return !this.isWebOnlyFleet() || !!this.deviceApprovalOwner(req);
   }
 
   /**
-   * Refs #3061 (P2b): POST /ui/devices/signout {handle} — the owner ends another signed-in device (the settings list's
-   * button). Only the verified owner, asked of the LIVE session each time (a non-owner learns nothing about any handle:
-   * 403 before anything is looked up); only an admin session of this fleet (a guest's is the Guests page's; an unknown
-   * handle and a guest's are the same 404); never the owner's own session here (Sign out is /auth/logout). The device's
-   * authorization goes with it, so a copy of its cookie is nobody's.
+   * Refs #3061 (P2b), AGEND-138: POST /ui/devices/signout {handle} — an admin ends another signed-in session, by the one
+   * rule (sessionEndRule), asked of the live session each time. A web-only fleet: only the verified owner, and a non-owner
+   * is refused (403 `owner_required`) BEFORE any handle is looked up, so it learns nothing about which handles exist. A chat
+   * fleet: any admin for their own devices and any guest's or read-only one; another admin's device is refused (403
+   * `other_admin`). Never the reader's own session here (Sign out is /auth/logout). The device's authorization goes with
+   * it, so a copy of its cookie is nobody's.
    */
   webDeviceSignOut(req: IncomingMessage, handle: string): { status: number; body: Record<string, unknown> } {
-    if (!this.isWebOnlyFleet() || !this.webSessions) return { status: 404, body: { error: "not_found" } };
-    const owner = this.deviceApprovalOwner(req);
-    if (!owner) return { status: 403, body: { error: "owner_required" } };
-    if (handle === owner.handle) return { status: 400, body: { error: "this_device" } };
+    if (!this.webSessions) return { status: 404, body: { error: "not_found" } };
+    const rule = this.sessionEndRule(req);
+    if (!rule) return { status: 403, body: { error: "owner_required" } };        // not an admin session at all: the header token, a guest
+    if (this.isWebOnlyFleet() && !rule.any) return { status: 403, body: { error: "owner_required" } };
+    if (handle === rule.session.handle) return { status: 400, body: { error: "this_device" } };
     const target = this.webSessions.findByHandle(handle);
-    if (!target || target.tier !== "admin") return { status: 404, body: { error: "not_found" } };
-    const { found, durable } = this.webSessions.revokeByHandle(handle, r => r.tier === "admin");
+    if (!target) return { status: 404, body: { error: "not_found" } };
+    if (!rule.may(target)) return { status: 403, body: { error: rule.blocked } };
+    const { found, durable } = this.webSessions.revokeByHandle(handle);
     if (!found) return { status: 404, body: { error: "not_found" } };
     this.sessionAuthorizationStore()?.prune(a => a.handle !== handle);
-    this.logger.info({ by: owner.handle.slice(0, 8), handle, label: target.label, via: sessionVia(target), durable }, "Device signed out by the owner");
+    this.logger.info({ by: rule.session.handle.slice(0, 8), handle, label: target.label, tier: target.tier, via: sessionVia(target), durable }, "Device signed out by an admin");
     if (!durable) return { status: 500, body: { ok: false, durable: false, error: "not_durable" } };
     return { status: 200, body: { ok: true } };
   }
@@ -9026,11 +9075,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * A single-use login code for the dashboard, for a channel only the operator
    * can read (`/dashboard`). Null while the panel is closed (no web.token).
    */
-  issueDashboardLogin(): { display: string; expiresAt: number; ttlMinutes: number } | null {
+  issueDashboardLogin(recipient?: { adapterId: string; userId: string; username?: string }): { display: string; expiresAt: number; ttlMinutes: number } | null {
     const token = this.webToken;
     if (!token) return null;
     this.initializeWebSessions();
-    const issued = this.webLoginCodes!.issue({ tier: "admin", epoch: tokenEpoch(token) });
+    // AGEND-138 (#3486): given the admin it is for, the session this code makes is that admin's own (auth-api binds the session's
+    // `owner` to the recipient) — so the devices rule (sessionEndRule) tells two admins apart. Without one: no account, the host's.
+    const issued = this.webLoginCodes!.issue({ tier: "admin", epoch: tokenEpoch(token), ...(recipient ? { recipient } : {}) });
     return { display: issued.display, expiresAt: issued.expiresAt, ttlMinutes: Math.round(LOGIN_CODE_TTL_MS / 60_000) };
   }
 
@@ -18600,14 +18651,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1939 S1: the design's §3 for one web request (authority/web-authority.ts), with this fleet's admins, policy and
    * token; `instance` once the body has named it. Observe only: receipts record it, no agent acts on it yet.
    */
-  webAuthority(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer; instance?: string }): WebAuthorityResult {
+  webAuthority(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer; instance?: string; authorization?: SessionAuthorization | null }): WebAuthorityResult {
     const state = this.webAuthorityState();
     return evaluateWebAuthority({
       session: input.session, gateway: input.gateway, peer: input.peer,
       tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       ...(input.instance !== undefined ? { target: { adapterId: this.getInstanceAdapterId(input.instance) } } : {}),
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
-      authorization: input.session ? this.sessionAuthorizationStore()?.get(input.session.handle) ?? null : null,
+      authorization: input.authorization !== undefined ? input.authorization : input.session ? this.sessionAuthorizationStore()?.get(input.session.handle) ?? null : null,
       policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now: Date.now(),
       hostOperator: this.isWebOnlyFleet(), outside: this.outsideLink(),
     });
@@ -19128,7 +19179,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * written), what fleet.yaml says, the hosts that make the dashboard reachable from elsewhere (the warning while
    * loopback_only is off), and the sessions authorized now (§0): each one's device, account, and when it runs out.
    */
-  webAuthorityOverview(): {
+  webAuthorityOverview(req?: IncomingMessage): {
+    /** AGEND-138: this browser's own session, and whether it may revoke the others' authorization (the verified owner only). */
+    you: { handle: string | null; canRevoke: boolean };
     state: AuthorityState; configured: WebVerifiedAuthorityConfig; hours: typeof VERIFIED_SESSION_HOURS; lanHosts: string[];
     authorized: Array<{ handle: string; label: string; account: string; authorizedAt: number; until: number; named?: true; quick?: true }>;
     /** #2453 (§0.2): the admin's named-tunnel hostname, while one is configured (the named-link row shows only then). */
@@ -19150,7 +19203,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Over a link: the temporary one (§0.3), else the named one (a record from before §0.3 has no peer).
         ...(sessions.get(a.handle)!.surface === "gateway" ? (a.peer === "quick_link" ? { quick: true as const } : { named: true as const }) : {}) })) : [];
     const host = this.fleetConfig?.web?.public_link?.hostname;
-    return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null, webOnly: this.isWebOnlyFleet() };
+    const own = req ? authorizeSession(req, this.webToken, this.webSessions, { touch: false }) : null;
+    return { you: { handle: own && own.kind === "ok" ? own.session.handle : null, canRevoke: !!req && !!this.webAuthorityRevoker(req) },
+      state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null, webOnly: this.isWebOnlyFleet() };
   }
 
   private authorizationRequests: SessionAuthorizationRequests | null = null;
@@ -19262,13 +19317,60 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { state: "none", reason: this.webAuthorityQualifies(input) ?? (verdict.refusal ?? "not_authorized") };
   }
 
-  /** #1939 §10: revoke every web authority given so far (receipts read as none), without signing anyone out. */
-  revokeWebAuthority(): { epoch: number; durable: boolean } {
+  /**
+   * #1939 §10: revoke every web authority given so far (receipts read as none), without signing anyone out.
+   * AGEND-138: `keep` — the session that asked (the verified owner's own): the epoch still moves, so every other session
+   * and every stored receipt is ended, but this one is authorized again under the new epoch at once (§3 asked afresh,
+   * with the end it already had: a revocation never stretches an authorization). A host session only where it is
+   * allowed to be one — on this computer — as at sign-in.
+   */
+  revokeWebAuthority(keep?: { session: SessionRecord; peer: WebPeer; gateway: boolean }): { epoch: number; durable: boolean; kept: boolean } {
     this.webAuthorityState();                                            // any switch change first, then this revocation
+    const store = this.sessionAuthorizationStore();
+    const prev = keep ? store?.get(keep.session.handle) ?? null : null;
     const result = this.authorityStateStore?.revoke() ?? { epoch: 0, durable: false };
     if (result.durable) this.logger.info({ epoch: result.epoch }, "Web authority revoked");
     else this.logger.warn({ epoch: result.epoch }, "Web authority revoked in memory only — web authority stays off until its state can be written; a restart before then undoes this revocation");
-    return result;
+    let kept = false;
+    if (keep && prev && store) {
+      const now = Date.now(), epoch = this.webAuthorityState().epoch;
+      const again = { ...prev, epoch };
+      if (!this.webAuthority({ session: keep.session, gateway: keep.gateway, peer: keep.peer, authorization: again }).refusal) {
+        const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
+        store.prune(a => a.handle === prev.handle && live.has(a.handle));      // every other authorization ends with the old epoch
+        store.authorize(prev.handle, prev.owner, prev.authorizedAt, epoch, prev.until, prev.peer);
+        kept = true;
+        this.logger.info({ handle: prev.handle, at: now }, "Web authority revoked: the owner's own session kept");
+      }
+    }
+    return { ...result, kept };
+  }
+
+  /**
+   * AGEND-138: who may "Revoke authorization of other devices" — the verified owner only, asked of the LIVE session each
+   * time. A web-only fleet: its owner (this computer's admin here, or signed in from outside). A fleet with a chat
+   * connection: an admin session that is web-verified now (its account confirmed in Discord / Telegram) — the same §3
+   * verdict the rest of web authority uses. A guest, a read-only session, an admin not verified (a device-code or one-time-code
+   * sign-in), the header token: null. `revoke()` ends everyone else's and keeps this session verified.
+   */
+  webAuthorityRevoker(req: IncomingMessage): { handle: string; current(): boolean; revoke(): { epoch: number; durable: boolean; kept: boolean } } | null {
+    if (gatewayRequestContext(req)) return null;
+    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (auth.kind !== "ok" || auth.session.tier !== "admin") return null;
+    const handle = auth.session.handle, peer = webPeerOf(req);
+    const live = () => {
+      const now = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+      return now.kind === "ok" && now.session.handle === handle && now.session.tier === "admin" ? now.session : null;
+    };
+    const verified = (): boolean => {
+      const session = live();
+      if (!session) return false;
+      if (this.isWebOnlyFleet()) return !!this.liveOwner(req, { hostOnly: false })?.current();
+      const v = this.webAuthority({ session, gateway: false, peer });
+      return !v.refusal && v.authority.kind === "web-verified" && v.authority.session?.handle === handle;
+    };
+    if (!verified()) return null;
+    return { handle, current: verified, revoke: () => { const session = live(); return this.revokeWebAuthority(session ? { session, peer, gateway: false } : undefined); } };
   }
 
   /** #1269: an instance's chat command from the web chat (web-commands.ts); `publicLink`: a gateway request. */

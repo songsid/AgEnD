@@ -138,8 +138,10 @@ export interface SettingsApiContext extends AppShellContext {
   /** #2348: an admin's "Send sign-in code": DM only; the outcome as the Settings card shows it. */
   sendGuestCodeByAdmin?(owner: { adapterId: string; userId: string }, by: string, current?: () => boolean): Promise<{ status: number; body: Record<string, unknown> }>;
   /** #1939 S2a: Settings → Web → Web authority — what is in force, the actions to pick from, and the revocation. */
-  webAuthorityOverview?(): unknown;
-  revokeWebAuthority?(): { epoch: number; durable: boolean };
+  webAuthorityOverview?(req?: IncomingMessage): unknown;
+  revokeWebAuthority?(): { epoch: number; durable: boolean; kept?: boolean };
+  /** AGEND-138: the verified owner asking to revoke (and what revoking then does for them), else null. */
+  webAuthorityRevoker?(req: IncomingMessage): { handle: string; current(): boolean; revoke(): { epoch: number; durable: boolean; kept: boolean } } | null;
   readonly webToken?: string | null;
   readonly webSessions?: import("./web-session.js").WebSessionStore | null;
   fleetConfig: FleetConfig | null;
@@ -900,19 +902,26 @@ export function handleSettingsRequest(
     if (gatewayRequestContext(req)) { json(res, 403, { error: "web_authority_not_over_public_link" }); return true; }
     if (!ctx.webAuthorityOverview) { json(res, 404, { error: "not available" }); return true; }
     res.setHeader("Cache-Control", "no-store");
-    json(res, 200, ctx.webAuthorityOverview());
+    json(res, 200, ctx.webAuthorityOverview(req));
     return true;
   }
   if (path === "/api/settings/web-authority/revoke" && method === "POST") {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "web_authority_not_over_public_link" }); return true; }
     if (!ctx.revokeWebAuthority) { json(res, 404, { error: "not available" }); return true; }
+    // AGEND-138: only the verified owner (webAuthorityRevoker: this fleet's owner, or a chat fleet's web-verified admin) may
+    // revoke — any other admin sign-in, a guest, a read-only session: 403 `owner_required`, whatever the page showed. The
+    // owner's own session stays verified; everyone else's authorization ends. The CLI's header token (the host's own
+    // credential, no session to keep) revokes everything, as it always could.
     const caller = guestSettingsCaller(req, url, ctx);
     if (!caller) { json(res, 401, { error: "not authorized" }); return true; }
+    const owner = caller === "header-token" ? null : ctx.webAuthorityRevoker?.(req) ?? null;
+    if (caller !== "header-token" && !owner) { json(res, 403, { error: "owner_required" }); return true; }
     readBody(req, 1024).then(() => {
       if (!permitWebContinuation(req, res, ctx)) return;
       if (guestSettingsCaller(req, url, ctx) !== caller) return json(res, 401, { error: "no longer authorized" });
-      const r = ctx.revokeWebAuthority!();
-      json(res, 200, { ok: true, epoch: r.epoch, durable: r.durable });
+      if (owner && !owner.current()) return json(res, 403, { error: "owner_required" });          // asked again, the body is in
+      const r = owner ? owner.revoke() : ctx.revokeWebAuthority!();
+      json(res, 200, { ok: true, epoch: r.epoch, durable: r.durable, kept: "kept" in r ? r.kept : false });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }

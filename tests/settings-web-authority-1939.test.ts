@@ -49,7 +49,7 @@ afterEach(async () => {
 
 function overviewFor(configured: Record<string, any>, extra: Record<string, unknown> = {}) {
   return { state: { enabled: configured.enabled !== false, loopbackOnly: configured.loopback_only === true, epoch: 1 }, configured,
-    hours: { min: 1, max: 48, default: 48 }, lanHosts: [], authorized: [], ...extra };
+    hours: { min: 1, max: 48, default: 48 }, lanHosts: [], authorized: [], you: { handle: "a".repeat(16), canRevoke: true }, ...extra };
 }
 async function open(configured: Record<string, any> = {}, extra: Record<string, unknown> = {}) {
   fleet = { defaults: { locale: "en" }, instances: {}, channels: [], web: { verified_authority: configured } };
@@ -153,13 +153,40 @@ describe("Settings → Web → Web authority, as rendered", () => {
     const asked: string[] = [];
     (globalThis as any).confirm = (m: string) => { asked.push(m); return false; };
     await w.click(w.$("#vaRevoke"));
-    expect(asked.join("\n")).toContain("every session's authorization ends");
+    expect(asked.join("\n")).toContain("Every other device's authorization ends");
     expect(sent.filter((s) => s.path === "/api/settings/web-authority/revoke")).toEqual([]);
     const before = sent.filter((s) => s.path === "/api/settings/web-authority").length;
     (globalThis as any).confirm = () => true;
     await w.click(w.$("#vaRevoke")); await settle(6);
     expect(sent.filter((s) => s.path === "/api/settings/web-authority/revoke").map((s) => s.method)).toEqual(["POST"]);
     expect(sent.filter((s) => s.path === "/api/settings/web-authority").length, "reloaded").toBe(before + 1);
+  });
+  it("AGEND-138: the button is 'Revoke other devices' authorization'; the question names the devices that lose theirs and says this one stays", async () => {
+    const mine = "a".repeat(16), other = "b".repeat(16);
+    const w = await open({ enabled: true }, { authorized: [
+      { handle: mine, label: "Firefox on Linux", account: "This computer's admin", authorizedAt: Date.now() - 60_000, until: Date.now() + 3_600_000 },
+      { handle: other, label: "Chrome on Android", account: "This computer's admin", authorizedAt: Date.now() - 60_000, until: Date.now() + 3_600_000 }] });
+    expect(w.$("#vaRevoke").textContent).toBe("Revoke other devices' authorization");
+    expect(w.$("#vaRevoke").disabled).toBeFalsy();
+    const asked: string[] = [];
+    (globalThis as any).confirm = (m: string) => { asked.push(m); return false; };
+    await w.click(w.$("#vaRevoke"));
+    expect(asked.join("\n")).toContain("These devices lose their authorization: Chrome on Android.");
+    expect(asked.join("\n")).not.toContain("Firefox on Linux");
+    expect(asked.join("\n")).toContain("This device (you) stays authorized.");
+    expect(sent.filter((s) => s.path === "/api/settings/web-authority/revoke")).toEqual([]);
+  });
+  it("AGEND-138: a session that is not the verified owner sees the button disabled with the reason; nothing is sent", async () => {
+    const w = await open({ enabled: true }, { you: { handle: "c".repeat(16), canRevoke: false } });
+    expect(w.$("#vaRevoke").disabled).toBe(true);
+    expect(w.$("#vaRevokeWhy").textContent).toBe("Only a verified owner can revoke.");
+    (globalThis as any).confirm = () => true;
+    await w.click(w.$("#vaRevoke")); await settle(6);
+    expect(sent.filter((s) => s.path === "/api/settings/web-authority/revoke")).toEqual([]);
+  });
+  it("AGEND-138: an older server that says nothing about the caller leaves the button disabled (the server decides; nothing is offered it cannot do)", async () => {
+    const w = await open({ enabled: true }, { you: undefined });
+    expect(w.$("#vaRevoke").disabled).toBe(true);
   });
   it("an answer that isn't the overview (an older server) says it could not be loaded, and Retry asks again", async () => {
     const w = await open();

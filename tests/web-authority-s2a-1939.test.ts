@@ -221,7 +221,7 @@ describe("the FleetManager: admission and delivery_status use the state in force
     const h = fm({ verified_authority: { enabled: true } });
     h.s.webAuthorityState();
     const id = h.receive(webHumanOrigin(false, webSession(1)));
-    expect(h.s.revokeWebAuthority()).toEqual({ epoch: 2, durable: true });
+    expect(h.s.revokeWebAuthority()).toEqual({ epoch: 2, durable: true, kept: false });
     expect(h.status(id).authority.downgraded).toBe("revoked");
     expect(h.s.webAuthorityState().enabled).toBe(true);
     expect(JSON.parse(readFileSync(join(h.dir, "web-authority.json"), "utf8")).epoch).toBe(2);

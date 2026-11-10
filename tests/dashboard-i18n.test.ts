@@ -19,6 +19,7 @@ vm.runInContext(strip(read(join(UI, "shared", "chat-strings.js"))), ctx);
 vm.runInContext(strip(read(join(UI, "workspace-strings.js"))), ctx);   // #3153: the Files & changes panel's own words
 vm.runInContext(strip(read(join(UI, "workspace-follow-strings.js"))), ctx);   // #3160: Follow agent's own words
 vm.runInContext(strip(read(join(UI, "shared", "chat-md-strings.js"))), ctx);   // M-2448: the Markdown panel's own words
+vm.runInContext(strip(read(join(UI, "shared", "device-roles.js"))), ctx);   // AGEND-138 (#3486): the roles and the session menu's "Manage devices" (app.manageDevices), a module of its own so a tab holding the older app-i18n.js still has it
 vm.runInContext(strip(read(join(UI, "panel-fleet.js"))), ctx);
 // The task board's words (Fleet › Tasks): its shared module and the card dialog.
 vm.runInContext(strip(read(join(UI, "fleet-task-common.js"))), ctx);
