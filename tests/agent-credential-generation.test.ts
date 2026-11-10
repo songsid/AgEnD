@@ -3,17 +3,29 @@ import { createServer, request as httpRequest } from "node:http";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleAgentRequest } from "../src/agent-endpoint.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { AgentCredentials, agentCredentialPolicy } from "../src/agent-credentials.js";
+import { FakeProbeWorker } from "./helpers/probe-worker.js";
+
+// Settings publication can schedule discovery in another isolate; parent backend mocks do not reach it.
+vi.mock("node:worker_threads", async original => ({
+  ...await original<typeof import("node:worker_threads")>(), Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker,
+}));
 
 const roots: string[] = [];
-afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+const managers: any[] = [];
+beforeEach(() => { FakeProbeWorker.reset(); FakeProbeWorker.answer = () => null; });
+afterEach(() => {
+  for (const fm of managers.splice(0)) fm.stopCliEnvProbes();
+  vi.restoreAllMocks();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "agend-agent-generation-")); roots.push(root);
-  const fm = new FleetManager(root) as any;
+  const fm = new FleetManager(root) as any; managers.push(fm);
   const path = join(root, "fleet.yaml");
   writeFileSync(path, `defaults:\n  dashboard:\n    task_board: false\ninstances:\n  dev:\n    working_directory: ${JSON.stringify(root)}\n    tool_set: worker\n`);
   fm.loadConfig(path);
@@ -135,6 +147,12 @@ describe("agent credential generations", () => {
     const h = fixture(), held = request(h.fm), config = { ...h.fm.fleetConfig.instances.dev };
     delete h.fm.fleetConfig.instances.dev; h.fm.saveFleetConfig();
     h.fm.fleetConfig.instances.dev = config; h.fm.saveFleetConfig();
+    // This save really schedules discovery, but only the owned fake worker may handle it.
+    expect(FakeProbeWorker.workers).toHaveLength(1);
+    const worker = FakeProbeWorker.workers[0]!;
+    expect(worker.input).toMatchObject({ mode: "env", backend: "claude-code", refreshVendorCatalog: false });
+    await Promise.all([...h.fm.pendingCliEnvProbes.values()]);
+    expect(worker.terminate).toHaveBeenCalledOnce();
     expect((await held.finish()).status).toBe(401);
     expect((await request(h.fm).finish()).status).toBe(401);
     h.issue("recreated-test-token");
