@@ -8,15 +8,25 @@
 import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import yaml from "js-yaml";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// Saving an account also refreshes its model catalog (#3530). These Settings
+// fixtures exercise the save/Apply boundary, never a real backend probe isolate.
+vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
+import { FakeProbeWorker } from "./helpers/probe-worker.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
 import { changedOutside } from "../src/yaml-shared-nodes.js";
 
 const dirs: string[] = [];
-afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+const managers: FleetManager[] = [];
+beforeEach(() => { FakeProbeWorker.reset(); FakeProbeWorker.answer = () => null; });
+afterEach(() => {
+  for (const fm of managers.splice(0)) (fm as unknown as { stopCliEnvProbes(): void }).stopCliEnvProbes();
+  vi.restoreAllMocks();
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
 
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), "agend-accounts-set-")); dirs.push(dir);
@@ -27,7 +37,7 @@ function fixture() {
   mkdirSync(join(profiles, "work"), { recursive: true }); mkdirSync(join(profiles, "off"));
   writeFileSync(join(profiles, "work", ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "00000000-0000-4000-8000-000000000001" } }));
   writeFileSync(join(profiles, "work", ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "c".repeat(32), refreshToken: "c".repeat(32), expiresAt: Date.now() + 86400000 } }));
-  const fm = new FleetManager(dir);
+  const fm = new FleetManager(dir); managers.push(fm);
   fm.loadConfig(path);
   return { dir, path, fm };
 }
@@ -58,6 +68,9 @@ describe("Settings: an agent's account (#3212)", () => {
     const back = await settingsRequest(fm, "/api/settings/fleet/instances/dev", "PATCH", { backend_options: { "claude-code": { credential_profile: null } } });
     expect(back.status).toBe(200);
     expect(saved(path).instances.dev.backend_options?.["claude-code"]?.credential_profile).toBeUndefined();   // follows the default again
+    // Both saves still request discovery; only its physical Worker is inert.
+    expect(FakeProbeWorker.workers.map(worker => [worker.input.backend, worker.input.config.credentialStoreHome ? basename(worker.input.config.credentialStoreHome) : null]))
+      .toEqual([["claude-code", "work"], ["claude-code", null]]);
   });
   it("an unchanged profile is not checked again (a save of other fields still works when it was signed out meanwhile)", async () => {
     const { path, fm } = fixture();
