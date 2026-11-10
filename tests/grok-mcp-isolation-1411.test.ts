@@ -78,6 +78,11 @@ describe("Grok MCP configuration belongs to its launch, not every agent sharing 
     writeFileSync(join(r.cwd,".mcp.json"),'{"keep":"untouched", "mcpServers": {'+Object.entries(entries).map(([k,v])=>JSON.stringify(k)+':'+JSON.stringify(v)).join(',')+','+user+'}}');
     r.agent("new-worker");const text=readFileSync(join(r.cwd,".mcp.json"),"utf8");expect(text).toContain(user);expect(text).toContain('"keep":"untouched"');expect(Object.keys(JSON.parse(text).mcpServers)).toEqual(["agend-user","agend"]);
   });
+  it("migrates a canonical old wrapper with properly quoted multiline prompt and description",async()=>{
+    const r=await rig(),name="old-worker",dir=join(r.root,"instances",name);mkdirSync(dir,{recursive:true});const path=join(dir,"mcp-wrapper-agend.sh");
+    writeFileSync(path,`#!/bin/bash\nexport AGEND_SOCKET_PATH=${shellQuote(r.socketPath)}\nexport AGEND_INSTANCE_NAME=${shellQuote(name)}\nexport AGEND_CUSTOM_PROMPT=${shellQuote("first-line\nsecond-line 'quoted' $HOME")}\nexport AGEND_DESCRIPTION=${shellQuote("description\nnext line")}\n# Wait for IPC socket to be ready (up to 10s)\nfor i in $(seq 1 20); do [ -S "$AGEND_SOCKET_PATH" ] && break; sleep 0.5; done\nexec ${shellQuote(process.execPath)} ${shellQuote(r.child)}\n`);
+    writeFileSync(join(r.cwd,".mcp.json"),JSON.stringify({mcpServers:{"agend-old-worker":{command:path,args:[]}}}));const a=r.agent("new-worker");expect(Object.keys(JSON.parse(readFileSync(join(r.cwd,".mcp.json"),"utf8")).mcpServers)).toEqual(["agend"]);expect(r.launch(a).map(x=>x.instance)).toEqual(["new-worker"]);
+  });
   it.each(["foreign","wrong-key","symlink","extra-script"])("refuses a %s old identity-bearing entry without touching user config",async kind=>{
     const r=await rig(),dir=join(r.root,kind==="foreign"?"other-fleet":"instances","old-worker");mkdirSync(dir,{recursive:true});const real=join(dir,"mcp-wrapper-agend.sh");
     const body=`#!/bin/bash\nexport AGEND_SOCKET_PATH=${shellQuote(r.socketPath)}\nexport AGEND_INSTANCE_NAME='old-worker'\n# Wait for IPC socket to be ready (up to 10s)\nfor i in $(seq 1 20); do [ -S "$AGEND_SOCKET_PATH" ] && break; sleep 0.5; done\nexec ${shellQuote(process.execPath)} ${shellQuote(r.child)}\n`;
@@ -88,7 +93,7 @@ describe("Grok MCP configuration belongs to its launch, not every agent sharing 
   it.each(['{broken','{"mcpServers": []}','{"mcpServers":{},"mcpServers":{}}','{"mcpServers":{"agend":{"command":"user-command"}}}'])("malformed/ambiguous/conflicting project remains unchanged: %s",async text=>{
     const r=await rig();writeFileSync(join(r.cwd,".mcp.json"),text);expect(()=>r.agent("a")).toThrow();expect(readFileSync(join(r.cwd,".mcp.json"),"utf8")).toBe(text);
   });
-  it("private manifest and wrapper stay owner-only",async()=>{const r=await rig(),a=r.agent("a");expect(statSync(join(a.config.instanceDir,"grok-mcp.json")).mode&0o777).toBe(0o600);expect(statSync(join(a.config.instanceDir,"mcp-wrapper-agend.sh")).mode&0o777).toBe(0o700);});
+  it("private manifest and wrapper stay owner-only",async()=>{const r=await rig(),a=r.agent("a");expect(statSync(a.config.instanceDir).mode&0o777).toBe(0o700);expect(statSync(join(a.config.instanceDir,"grok-mcp.json")).mode&0o777).toBe(0o600);expect(statSync(join(a.config.instanceDir,"mcp-wrapper-agend.sh")).mode&0o777).toBe(0o700);});
   it("a concurrent project edit before rename is kept and refuses launch preparation",async()=>{
     const r=await rig(),path=join(r.cwd,".mcp.json"),real=atomic.atomicWriteFileSync,changed='{"mcpServers":{}, "userEdit":"keep"}';
     vi.spyOn(atomic,"atomicWriteFileSync").mockImplementation((p,data,opts)=>real(p,data,{...opts,beforeRename:tmp=>{if(p===path)writeFileSync(path,changed);opts?.beforeRename?.(tmp);}}));

@@ -1,5 +1,5 @@
 {
-  "source": "working-tree",
+  "source": "11d406e3-plus-r1",
   "scope": "production GrokBackend.writeConfig/buildCommand; fake Grok models project MCP discovery and actually executes only owned fixture wrappers; no real Grok/account/vendor",
   "checks": [
     {
