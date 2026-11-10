@@ -3,6 +3,7 @@ import { register, t } from "/assets/app-i18n.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { CLI_CAPS } from "./cli-caps.js";
+import { confirmedWrite } from "./settings-confirm.js";
 
 /**
  * #3190 Part 3b: install a CLI on a paired Windows computer, from Settings → Runtime. The page sends only a CLI id; the Runtime on that computer decides the
@@ -69,8 +70,12 @@ register("runtimeInstall", {
 
 // Ridge #3321 S06 / S09: the words of the loading state and the copyable commands.
 register("runtimeInstall", {
-  en: { loading: "Reading this computer's install setting…", copy: "Copy", copied: "Copied", switchCommand: "Command for that computer" },
-  "zh-TW": { loading: "正在讀取這台電腦的安裝設定…", copy: "複製", copied: "已複製", switchCommand: "在那台電腦執行的指令" },
+  en: { loading: "Reading this computer's install setting…", copy: "Copy", copied: "Copied", switchCommand: "Command for that computer",
+    cardLabel: "Install {0} on {1}", cardLabelUpdate: "Update {0} on {1}", err_expired: "The install was not confirmed in time.", err_rejected: "The install was turned down.",
+    err_stale: "Settings changed before the install could start. Try again.", err_install_needs_confirmation: "The install must be confirmed first." },
+  "zh-TW": { loading: "正在讀取這台電腦的安裝設定…", copy: "複製", copied: "已複製", switchCommand: "在那台電腦執行的指令",
+    cardLabel: "在 {1} 上安裝 {0}", cardLabelUpdate: "在 {1} 上更新 {0}", err_expired: "安裝沒有在時限內確認。", err_rejected: "安裝已被拒絕。",
+    err_stale: "安裝開始前設定已經改變。請再試一次。", err_install_needs_confirmation: "安裝必須先經過確認。" },
 });
 // AGEND-133 (#3521): why a CLI is not installed from here — AgEnD installs only what it can pin and check (an exact version, its hashes, and who published it).
 register("runtimeInstall", {
@@ -95,6 +100,15 @@ function CommandCard({ label, command }) {
     <pre class="runtime-command-text" tabindex="0" aria-label=${label}><code>${command}</code></pre>
     <button type="button" class="btn btn-sm" onClick=${copy}>${text(copied ? "copied" : "copy")}</button></div></div>`;
 }
+
+/** Why a confirmed install did not start: the computer's own sentence when the gate says `apply_rejected: …`, else the state of the held change, else what the write answered. */
+const refusalOf = (r) => {
+  const detail = r.confirmed && r.confirmed.outcome && typeof r.confirmed.outcome.detail === "string" ? /apply_rejected: (.+)$/.exec(r.confirmed.outcome.detail) : null;
+  if (detail) return detail[1];
+  if (r.confirmed && ["expired", "rejected", "stale"].includes(r.confirmed.state)) return text(`err_${r.confirmed.state}`);
+  const code = r.body && r.body.error;
+  return code === "install_needs_confirmation" ? text("err_install_needs_confirmation") : code || `HTTP ${r.status}`;
+};
 
 export function CliInstall({ machine, lease, onChanged }) {
   const [view, setView] = useState(null), [error, setError] = useState(""), [note, setNote] = useState(""), [busy, setBusy] = useState(false);
@@ -145,10 +159,12 @@ export function CliInstall({ machine, lease, onChanged }) {
       if (!lease.current()) return;
       setBusy(true); setError(""); setNote("");
       try {
-        const response = await lease.fetch(`/ui/runtimes/machines/${encodeURIComponent(machine.id)}/cli-install`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cli: cli.id }) });
-        const value = await response.json().catch(() => ({}));
+        // AGEND-148 (Prism R3 on #3539): through the Settings gate like any change that acts on a computer — held, and (for an administrator who asked for their own code) confirmed with it on
+        // the card — and the page sends the CLI's id and nothing else. The computer's own owner-switch is asked on that computer afterwards, as before.
+        const label = text(behind ? "cardLabelUpdate" : "cardLabel", cli.label, machine.name);
+        const response = await confirmedWrite(`/ui/runtimes/machines/${encodeURIComponent(machine.id)}/cli-install`, { method: "POST", body: { cli: cli.id }, label, displaySummary: () => label });
         if (!lease.current()) return;
-        if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
+        if (!response.ok) throw new Error(refusalOf(response));
         await load();
       } catch (e) { if (lease.current()) setError(text("requestFailed", e.message)); }
       finally { if (lease.current()) setBusy(false); }

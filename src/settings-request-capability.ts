@@ -3,22 +3,24 @@ import { Readable } from "node:stream";
 import type { JoinLocalAuthority, JoinLocalSession } from "./hub/join/local-journal.js";
 import type { SettingsExecution } from "./settings-transaction.js";
 
-interface Continuation { body: Buffer; execution: SettingsExecution; binding: string; localAdmin?: () => boolean; localSession?: JoinLocalSession; confirmedCurrent?: () => boolean; label?: string }
+interface Continuation { body: Buffer; execution: SettingsExecution; binding: string; localAdmin?: () => boolean; localSession?: JoinLocalSession; confirmedCurrent?: () => boolean; label?: string; actor?: string }
 const continuations = new WeakMap<object, Continuation>();
 const bodies = new WeakMap<object, Buffer>();
 const replays = new WeakSet<object>();
 export function isSettingsReplay(req: object): boolean { return replays.has(req); }
 /** Only server code creates a replay; bearer cookies/tokens are never replayed. */
-export function createSettingsReplay(input: { method: string; url: string; key?: string; body: Buffer; binding: string; localAdmin?: () => boolean; localSession?: JoinLocalSession; confirmedCurrent?: () => boolean; label?: string }, execution: SettingsExecution): IncomingMessage {
+export function createSettingsReplay(input: { method: string; url: string; key?: string; body: Buffer; binding: string; localAdmin?: () => boolean; localSession?: JoinLocalSession; confirmedCurrent?: () => boolean; label?: string; actor?: string }, execution: SettingsExecution): IncomingMessage {
   const req = Readable.from([]) as unknown as IncomingMessage;
   req.method = input.method; req.url = input.url; replays.add(req);
   req.headers = input.key ? { "idempotency-key": input.key } : {};
-  continuations.set(req, { body: Buffer.from(input.body), execution, binding: input.binding, localAdmin: input.localAdmin, localSession: input.localSession, confirmedCurrent: input.confirmedCurrent, label: input.label });
+  continuations.set(req, { body: Buffer.from(input.body), execution, binding: input.binding, localAdmin: input.localAdmin, localSession: input.localSession, confirmedCurrent: input.confirmedCurrent, label: input.label, actor: input.actor });
   return req;
 }
 export function settingsRequestExecution(req: object): SettingsExecution | undefined { return continuations.get(req)?.execution; }
 /** The label of the browser that asked (the pending change's `requestedBy`), carried to its replay: what a page then shows as "started on". */
 export function settingsRequestLabel(req: object): string | undefined { return continuations.get(req)?.label; }
+/** AGEND-148: the opaque `admin:<handle>` name of the administrator behind this confirmed replay (what a paired computer's audit log records), if the gate's principal gave one. */
+export function settingsRequestActor(req: object): string | undefined { const actor = continuations.get(req)?.actor; return typeof actor === "string" && /^[A-Za-z0-9._:-]{1,64}$/.test(actor) ? actor : undefined; }
 export function settingsRequestBinding(req: object): string | undefined { return continuations.get(req)?.binding; }
 /** A server-owned continuation retains authority through a current non-secret principal, never replayed headers. */
 export function settingsRequestLocalAdmin(req: object): boolean {

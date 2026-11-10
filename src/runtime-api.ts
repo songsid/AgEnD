@@ -12,6 +12,7 @@ import type { WindowsCliProbe } from "./windows-cli.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
 import { runtimeServerOrigin } from "./runtime-connection.js";
 import type { RuntimeInstallService } from "./runtime-install.js";
+import { cachedSettingsBody, isSettingsReplay, settingsRequestActor, settingsRequestAuthorityCurrent } from "./settings-request-capability.js";
 
 export interface RuntimeApiContext extends WindowsCliApiContext { runtimeCoordinator?(): RuntimeCoordinator; runtimeInstaller?(): RuntimeInstallService }
 /**
@@ -140,7 +141,13 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
   if (setupRoute) {
     // Only a local administrator session (remoteSetupActor); a header token, guest, public link or gateway gets nothing, and is not told why.
     const id = setupRoute[1], what = setupRoute[2], machine = hub.machine(id);
-    if (!remoteSetupActor(req, url, ctx)) { json(res, 403, { error: "Installing CLIs on a computer needs a local dashboard administrator" }); return true; }
+    // AGEND-148 (Prism R3 on #3539): an install (and the Update that reuses it) is the Settings gate's confirmed replay and nothing else (settings-http-confirmation.ts proposed it, and the administrator's
+    // own Apply now / digest-bound code confirmed it). The replay has no session: the administrator is the gate's — still the same one, the execution not stale, the confirmation current — and the
+    // name the computer's audit log keeps is the opaque `admin:<handle>` the gate carried. The computer's owner's own switch is asked on that computer, separately (`cli.install` below).
+    const viaGate = isSettingsReplay(req);
+    const actorNow = (): string | null => viaGate ? (settingsRequestAuthorityCurrent(req) ? settingsRequestActor(req) ?? null : null) : remoteSetupActor(req, url, ctx);
+    if (viaGate && !(what === "cli-install" && method === "POST") || !actorNow()) { json(res, 403, { error: "Installing CLIs on a computer needs a local dashboard administrator" }); return true; }
+    if (what === "cli-install" && method === "POST" && !viaGate) { json(res, 403, { error: "install_needs_confirmation" }); return true; }
     if (!machine) { json(res, 404, { error: "Runtime machine not found" }); return true; }
     const jobs = jobsOf(hub);
     if (what === "remote-setup" && method === "GET") {
@@ -150,7 +157,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
         const capable = machine.runtimeInfo?.capabilities.includes("cli-install") === true;
         let answered: unknown, got = false;
         if (capable && machine.status === "online") { try { answered = await hub.callAccount(id, "accounts.switches", {}, 15_000); got = true; } catch { /* shown as "could not read" */ } }
-        if (!remoteSetupActor(req, url, ctx)) { json(res, 403, { error: "Authorization expired" }); return; }
+        if (!actorNow()) { json(res, 403, { error: "Authorization expired" }); return; }
         // What came back from the computer is checked before the browser sees it: a wrong shape is one fixed error, not a pass-through.
         if (got) { switches = switchStatesOf(answered); if (!switches) { json(res, 502, { error: "That computer's answer about its setup was not understood" }); return; } }
         json(res, 200, { capable, online: machine.status === "online", switches, job: jobs.get(id) ?? null,
@@ -160,8 +167,8 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
     }
     if (what === "cli-install" && method === "POST") {
       void (async () => {
-        const raw = await readBoundedWebBody(req, 1024);
-        const actor = remoteSetupActor(req, url, ctx);
+        const raw = cachedSettingsBody(req) ?? Buffer.alloc(0);       // the gate's replay carries the body it held; there is no stream to read
+        const actor = actorNow();
         if (!actor) { json(res, 403, { error: "Authorization expired" }); return; }
         const input: unknown = JSON.parse(raw.toString("utf8"));
         if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length !== 1 || !("cli" in input) || !isInstallableCli(input.cli)) throw Error("Choose Claude Code or Codex");
@@ -188,7 +195,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
           job.state = "done"; if (typeof version === "string") job.version = version.slice(0, 64);
         });
         json(res, 202, { job });
-      })().catch(error => { const ok = !!remoteSetupActor(req, url, ctx); json(res, ok ? 400 : 403, { error: ok ? error instanceof Error ? error.message : "Install request failed" : "Authorization expired" }); });
+      })().catch(error => { const ok = !!actorNow(); json(res, ok ? 400 : 403, { error: ok ? error instanceof Error ? error.message : "Install request failed" : "Authorization expired" }); });
       return true;
     }
     json(res, 404, { error: "Unknown runtime operation" }); return true;

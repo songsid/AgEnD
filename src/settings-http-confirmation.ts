@@ -3,7 +3,7 @@ import { ServerResponse as Response } from "node:http";
 import { readBoundedWebBody } from "./web-body.js";
 import { requestSessionBinding } from "./connection-secrets.js";
 import { cacheSettingsBody, createSettingsReplay, settingsRequestExecution } from "./settings-request-capability.js";
-import { prepareSettingsEffect, isSettingsMutation, HOST_CLI_PATHS, type SettingsEffectContext } from "./settings-effect.js";
+import { prepareSettingsEffect, isSettingsMutation, isCliInstallPath, type SettingsEffectContext } from "./settings-effect.js";
 import { SettingsConfirmationStore, SettingsConfirmationError, type SettingsPendingView } from "./settings-confirmation.js";
 import { SettingsExecution, settingsFingerprint } from "./settings-transaction.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -12,6 +12,8 @@ import {sanitizeInstanceName} from "./instance-names.js";
 
 export interface SettingsPrincipal {
   id: string; label: string; source: SettingsPendingView["source"]; current(): boolean;
+  /** AGEND-148: the opaque name a signed-in administrator's change is recorded under on a paired computer (`admin:<handle>`); never an address or a label. */
+  actor?: string;
   /** Only an authenticated local web administrator supplies this; setup/header/public principals do not. */
   localAdmin?(): boolean;
   localSession?: import("./hub/join/local-journal.js").JoinLocalSession;
@@ -126,7 +128,7 @@ export class SettingsHttpConfirmation {
     if (path === "/api/settings/fleet/runtimes" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
     if (path.startsWith("/api/settings/hub/") && gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
     // AGEND-144: an install on the AgEnD computer is never asked for over the public link (refused before anything is proposed, as before it was a held change).
-    if (HOST_CLI_PATHS.has(path) && gatewayRequestContext(req)) { json(res, 403, { error: "install_not_over_public_link" }); return true; }
+    if (isCliInstallPath(path) && gatewayRequestContext(req)) { json(res, 403, { error: "install_not_over_public_link" }); return true; }
     if (path.startsWith("/api/hub/member/") && gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
     if (path === "/api/hub/member/exposures" && gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
     if (path === "/api/settings/general-location" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
@@ -141,7 +143,7 @@ export class SettingsHttpConfirmation {
     const principal = this.options.principal(req);
     const localAdmin = principal?.localAdmin ? () => principal.current() && principal.localAdmin?.() === true : undefined;
     // AGEND-144: only a signed-in local administrator proposes a host CLI install (a guest, a read session or a header token never even holds one for another admin to confirm).
-    if (HOST_CLI_PATHS.has(url.pathname)) {
+    if (isCliInstallPath(url.pathname)) {
       if (!principal?.current()) throw new SettingsConfirmationError(401, "session_required");
       if (localAdmin?.() !== true) throw new SettingsConfirmationError(403, "install_needs_a_local_admin");
     }
@@ -164,7 +166,7 @@ export class SettingsHttpConfirmation {
     }
     if (!principal?.current()) throw new SettingsConfirmationError(401, "session_required");
     const binding = requestSessionBinding(req), snapshot = settingsFingerprint(this.options.snapshot());
-    const payload = { method, url: url.pathname + url.search, key, body: Buffer.from(raw), binding, localAdmin, localSession: principal.localSession, label: principal.label };
+    const payload = { method, url: url.pathname + url.search, key, body: Buffer.from(raw), binding, localAdmin, localSession: principal.localSession, label: principal.label, actor: principal.actor };
     const result = this.store.propose({ session: principal.id, key: key ?? `operation:${requestFingerprint}`,
       requestFingerprint, fingerprint: effect.diff.fingerprint, section: effect.diff.section, requestedBy: principal.label,
       source: principal.source, summary: effect.diff.summary, affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,
@@ -212,7 +214,7 @@ export class SettingsHttpConfirmation {
     // authorize; the admin's own code switch), asked here and again at execution. Refused: the creation waits as a held change.
     // AGEND-144: so is Install (and Update) of an AI CLI on the AgEnD computer — an administrator's ordinary dashboard operation, whose request is exactly `{ backend }`
     // (the effect refused anything else before it was proposed). The same policy; a strict admin off this computer takes their own digest-bound code instead.
-    const ordinaryHostCli = method === "POST" && HOST_CLI_PATHS.has(url.pathname);
+    const ordinaryHostCli = method === "POST" && isCliInstallPath(url.pathname);
     const policy = (): boolean => this.options.directCreationPolicy?.(req) !== false;
     const direct = this.options.directAgentCreation === true && (ordinaryCreate || ordinaryHostCli) && principal.source === "web_session"
       && !gatewayRequestContext(req) && localAdmin?.() === true && policy();

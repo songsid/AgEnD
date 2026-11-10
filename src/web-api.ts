@@ -33,7 +33,7 @@ import type { WebUpdateHost } from "./web-update.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { cachedSettingsBody, settingsRequestAuthorityCurrent, settingsRequestLabel } from "./settings-request-capability.js";
-import { HOST_CLI_PATHS } from "./settings-effect.js";
+import { HOST_CLI_PATHS, isRuntimeCliInstallPath } from "./settings-effect.js";
 /**
  * Web UI HTTP API handler.
  * All /ui/* routes are handled here, extracted from fleet-manager.ts.
@@ -2002,7 +2002,7 @@ export function handleWebRequest(
   // the panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
     const approved = isSettingsReplay(req) && method === "POST"
-      && (path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path) || HOST_CLI_PATHS.has(path))
+      && (path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path) || HOST_CLI_PATHS.has(path) || isRuntimeCliInstallPath(path))
       ? settingsRequestExecution(req) : undefined;
     if (approved) {
       try { approved.assert(); } catch { json(res, 409, { error: "settings_execution_stale" }); return true; }

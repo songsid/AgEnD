@@ -9,6 +9,7 @@ const claude = { id: "claude-code", path: "C:\\tools\\claude.exe", runnable: tru
 const caps = (extra: string[]) => ({ version: "2.3.5-alpha", buildId: "a".repeat(64), protocolVersions: [1], capabilities: ["exec", "mcp", "panes", ...extra] });
 const machine = (id: string, name: string, over: any = {}) => ({ id, name, status: "online", platform: "win32", lastSeenAt: Date.now(), inventoryUpdatedAt: Date.now(), runtimeInfo: caps(["credential-profiles", "remote-signin", "cli-install"]),
   inventory: { home: `C:\\${name}`, clis: [claude] }, ...over });
+const keys: Array<string | undefined> = [];
 let machines: any[], setup: any, posts: Array<{ path: string; body: any }>, installAnswer: { status: number; body: any };
 // Ridge #3321 S06: a remote-setup read the test holds or fails (null: answered at once with `setup`).
 let setupAnswer: null | (() => Promise<any>) = null;
@@ -23,7 +24,7 @@ beforeAll(async () => {
   p = page({ url: "http://localhost/settings/runtimes", storage: { agend_lang: "en" } });
   globalThis.fetch = (async (path: string, options: any = {}) => {
     const body = options.body ? JSON.parse(options.body) : null;
-    if (options.method === "POST") posts.push({ path, body });
+    if (options.method === "POST") { posts.push({ path, body }); keys.push(options.headers?.["Idempotency-Key"]); }
     if (path === "/ui/runtimes") return response({ enabled: true, machines });
     if (path.endsWith("/remote-setup")) return setupAnswer ? setupAnswer() : response(setup);
     if (path.endsWith("/cli-install")) return response(installAnswer.body, installAnswer.status);
@@ -35,7 +36,7 @@ beforeAll(async () => {
   Panel = (await import("/ui/js/panel-runtimes.js")).RuntimesPanel;
 });
 beforeEach(() => {
-  posts = []; (globalThis as any).confirm = () => true; setupAnswer = null;
+  posts = []; keys.length = 0; (globalThis as any).confirm = () => true; setupAnswer = null;
   machines = [machine(idA, "Desktop"), machine(idB, "Old Laptop", { runtimeInfo: caps(["credential-profiles"]) })];
   setup = { capable: true, online: true, switches: { accounts: { on: false }, install: { on: true } }, job: null, catalog: catalogRows };
   installAnswer = { status: 202, body: { job: { cli: "codex", state: "installing", startedAt: 1 } } };
@@ -145,6 +146,15 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
     await p.mount(h(Panel, { navKey: "install-refused" })); await settle(14);
     fire(installButton("codex"), "click"); await settle(14);
     expect(card().querySelector(".runtime-error").textContent).toContain("Could not start the install: The owner of that computer has not turned this on.");
+  });
+  // AGEND-148 (Prism R3 on #3539, P2-1): the install goes through the Settings gate's confirmed write, like any change that acts on a computer.
+  it("AGEND-148: the install is a confirmed write (an Idempotency-Key, the CLI's id and nothing else); a gate that held it and was turned down is told in words, never as an install", async () => {
+    installAnswer = { status: 403, body: { error: "install_needs_confirmation" } };
+    await p.mount(h(Panel, { navKey: "install-gate" })); await settle(14);
+    fire(installButton("codex"), "click"); await settle(14);
+    expect(posts).toEqual([{ path: `/ui/runtimes/machines/${idA}/cli-install`, body: { cli: "codex" } }]);
+    expect(keys).toHaveLength(1); expect(typeof keys[0]).toBe("string"); expect(keys[0]!.length).toBeGreaterThan(8);
+    expect(card().querySelector(".runtime-error").textContent).toContain("Could not start the install: The install must be confirmed first.");
   });
   it("an older Runtime is told to update, and an offline computer that it is offline", async () => {
     setup = { capable: false, online: true, switches: null, job: null, catalog: catalogRows };
