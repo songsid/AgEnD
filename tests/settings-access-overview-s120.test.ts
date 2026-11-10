@@ -145,6 +145,36 @@ describe("S-120: the public link", () => {
     expect(text($("#ovLinkNote"))).toBe("公開連結已關閉。");
   });
 
+  // #3600 (alpha.12 acceptance, P3): the close takes effect at once, but the status frame only says so on its next tick
+  // (~10 s). The card shows the link closed as soon as the close went through, and a refused close changes nothing.
+  it("after a close that went through the card says closed at once, before the next status frame; that frame decides after", async () => {
+    store.appStore.set({ publicLink: { state: "open", expiresAt: Date.now() + 100 * m } });
+    await mount("zh-TW");
+    $("#ovCloseLink").click(); await settle(3);
+    $("#ovCloseGo").click(); await settle(4);
+    expect(text($("#ovEntry"))).not.toContain("開啟中");          // the same (stale) frame is still in the store
+    expect(text($("#ovEntry"))).toContain("已關閉");
+    expect($("#ovCloseLink")).toBeNull();
+    // The next frame is what counts again: a link opened since then shows as open, with its button.
+    store.appStore.set({ publicLink: { state: "open", expiresAt: Date.now() + 50 * m } }); await settle(4);
+    expect(text($("#ovEntry"))).toContain("開啟中");
+    expect($("#ovCloseLink")).not.toBeNull();
+  });
+
+  it.each([
+    ["refused (the outside link, 409)", { status: 409, body: { error: "outside_link" } }],
+    ["failed (500)", { status: 500, body: { error: "public_link_close_failed" } }],
+    ["nothing was open (closed: false)", { status: 200, body: { closed: false } }],
+  ])("a close that %s leaves the badge and the button as they were", async (_why, preset) => {
+    store.appStore.set({ publicLink: { state: "open", expiresAt: Date.now() + 100 * m } });
+    answers["POST /ui/public-link/close"] = preset;
+    await mount("zh-TW");
+    $("#ovCloseLink").click(); await settle(3);
+    $("#ovCloseGo").click(); await settle(4);
+    expect(text($("#ovEntry"))).toContain("開啟中");
+    expect($("#ovCloseLink")).not.toBeNull();
+  });
+
   it("no button while it is closed or over the public link itself", async () => {
     await mount("zh-TW");
     expect($("#ovCloseLink")).toBeNull();
