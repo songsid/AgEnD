@@ -1,0 +1,6 @@
+c5419ac38435a1bc595d6de4a8708be008910066b1f75d703891f00c9bbf23e9  src/auth-api.ts
+125079b5eb0c0f5db6649cda72a358e134e7e57744bde2b8729217fbe47de6ba  src/fleet-manager.ts
+7248a69614752dbc744f9556f9c3deeb8da49ef6d55360fe6f80b10e6fd1a0be  src/web-remote-access.ts
+6876de428ede21164983d23aec0da53f4aa521b52f7ef59970510892f508efcc  src/ui/signin.html
+037b6bbd28264d4d6a9ad23d6efef95d7bf4671d427adf7a6a4d5d60c48e1c67  src/ui/shared/signin.js
+d6c225cfc41f4c06c339f16947b6b8876d151343148958977ed84c87c3826b8a  scripts/manual/smoke/smoke-signin-chat-s118.mts

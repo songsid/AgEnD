@@ -241,15 +241,15 @@ describe("the panels adopt the shell", () => {
   // so no page loads the old shell.js or places its own nav any more.
   it("no page of the app is its own page any more: no HTML file under src/ui but the shell and the gate's own pages", () => {
     const pages = readdirSync(join(process.cwd(), "src", "ui")).filter(f => f.endsWith(".html")).sort();
-    // The gate's own pages, not the app's: sign-in, and what a guest's browser gets for a page it cannot open (#2449). #3486: the
-    // temporary page for signing in with an admin's own authenticator (the leader's sign-in page replaces it).
-    expect(pages).toEqual(["app.html", "guest-refused.html", "signin-authenticator.html", "signin.html"]);
+    // The gate's own pages: unified sign-in (including the authenticator entry),
+    // and what a guest's browser gets for a page it cannot open (#2449).
+    expect(pages).toEqual(["app.html", "guest-refused.html", "signin.html"]);
     for (const file of pages) {
       expect(ui(file), file).not.toContain("/assets/shell.js");
       expect(ui(file), file).not.toContain("data-agend-nav");
     }
     // The gate's pages never load the app (no panel of their own): their one script each, and no app module.
-    for (const [file, script] of [["signin.html", "/assets/signin.js"], ["signin-authenticator.html", "/assets/signin-authenticator.js"], ["guest-refused.html", "/assets/guest-refused.js"]]) {
+    for (const [file, script] of [["signin.html", "/assets/signin.js"], ["guest-refused.html", "/assets/guest-refused.js"]]) {
       expect(ui(file!), file).toContain(`<script src="${script}"></script>`);
       expect(ui(file!), file).not.toContain("/assets/app.js");
     }

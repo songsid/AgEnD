@@ -57,6 +57,8 @@ export function applyStatus(d) {
     startup: d.startup?.phase === "starting" ? d.startup : null,
     connections: typeof d.connections === "number" ? d.connections : null,
     windowsCli: d.windows_cli === true,
+    // S-120: the public link's state as the status frame carries it ({ state, expiresAt?, noExpiry? }), for 存取與安全 → 總覽.
+    publicLink: d.publicLink && typeof d.publicLink.state === "string" ? d.publicLink : null,
     // #1665: the host preferences' revision (app-prefs.js re-reads them when it moves).
     prefsRev: typeof d.prefs_rev === "number" ? d.prefs_rev : null,
     // #1629: the agents' themes' revision (app-themes.js re-reads them when it moves).

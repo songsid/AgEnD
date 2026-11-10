@@ -17,6 +17,8 @@ import { CliPicker, cliLabel as productLabel } from "./cli-picker.js";
 import { useWindowsCliCatalog, WindowsCliDiscoveryStatus, detectionText } from "./windows-cli-catalog.js";
 import { useRuntimeCatalog } from "./runtime-catalog.js";
 import { ClaudeAccountSelect } from "./credential-profile-select.js";
+import { AccountSelect } from "./accounts-view.js";   // the same Account field as the agent dialog (a new module: never a stale named import)
+import { capsOf } from "./cli-caps.js";
 import { chatPath, fleetPath, FLEET_TABS, rememberFleetTab } from "/assets/app-route.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
@@ -544,6 +546,9 @@ export function CreateInstanceDialog({ onClose }) {
   };
   const [sandbox,setSandbox] = useState("read-only");
   const nativeCli = native?.clis?.find(cli => cli.id === f.backend);
+  // This host (WSL / Linux): the account the new agent starts under, for a CLI with named accounts — the same field as the Agent dialog's.
+  const hostBackend = f.backend || defaultBackend;
+  const hostAccount = !!runtime && !windows && !!capsOf(hostBackend)?.namedAccounts;
   const nativeChoices = (native?.clis || []).filter(cli => cli.path && cli.supports?.execution !== false && cli.supports?.resume !== false).map(cli => ({value:cli.id,label:productLabel(cli.id),disabled:!cli.runnable,description:cli.authenticated === false ? t("fleet.notSignedIn") : cli.version || "Windows"}));
   useEffect(() => {
     if(nativeAdapter==="pane"&&!['codex','claude-code'].includes(f.backend))setNativeAdapter("exec");
@@ -569,6 +574,7 @@ export function CreateInstanceDialog({ onClose }) {
     if (f.branch.trim()) body.branch = f.branch.trim();
     const tags = f.tags.split(",").map(x => x.trim()).filter(Boolean); if (tags.length) body.tags = tags;
     if (f.prompt.trim()) body.systemPrompt = f.prompt.trim();
+    if (hostAccount && credentialProfile) body.credentialProfile = credentialProfile;
     return body;
   } };
   const canNext = !!runtime && (!machineId || machine?.status === "online") && (windows ? nativeCli?.runnable === true : backends !== null);
@@ -584,7 +590,7 @@ export function CreateInstanceDialog({ onClose }) {
     ${machineId ? html`<p class="note">${tr(!nativeChoices.length ? "noRemoteCli" : "remotePolicy")}</p>${machine?.inventoryUpdatedAt ? html`<p class="note">${t("runtime.inventoryAt",new Date(machine.inventoryUpdatedAt).toLocaleString())}</p>` : null}` : html`<${WindowsCliDiscoveryStatus} state=${discovery} />`}
     ${!machineId && native && !discovery.loading && !discovery.error ? html`<p class="note">${!nativeChoices.length ? tr("noCli") : tr("nativeHint")}</p>` : null}
     ${machineId ? html`<${ClaudeAccountSelect} id="native-create-claude-account" machine=${machine} backend=${f.backend} value=${credentialProfile} onChange=${setCredentialProfile} disabled=${machine?.status !== "online"} />` : null}</div>`
-    : field(tr("backend"),backends ? html`<${CliPicker} label=${tr("backend")} value=${f.backend} choices=${[{value:"",label:t("fleet.fleetDefault")},...backends.filter(b => backendState(b) !== "not_installed" && !b.deprecated).map(b => ({value:b.name,label:productLabel(b.name),disabled:backendBlocked(b),description:backendNote(b)}))]} onChange=${value => setF(x => ({...x,backend:value,model:""}))} />` : html`<div role="status" aria-busy="true"><${Skeleton} lines=${1} /><span class="note">${tr("loadingClis")}</span></div>`);
+    : html`${field(tr("backend"),backends ? html`<${CliPicker} label=${tr("backend")} value=${f.backend} choices=${[{value:"",label:t("fleet.fleetDefault")},...backends.filter(b => backendState(b) !== "not_installed" && !b.deprecated).map(b => ({value:b.name,label:productLabel(b.name),disabled:backendBlocked(b),description:backendNote(b)}))]} onChange=${value => { setCredentialProfile(""); setF(x => ({...x,backend:value,model:""})); }} />` : html`<div role="status" aria-busy="true"><${Skeleton} lines=${1} /><span class="note">${tr("loadingClis")}</span></div>`)}${hostAccount ? html`<${AccountSelect} id="create-host-account" backend=${hostBackend} value=${credentialProfile} onChange=${setCredentialProfile} creating=${true} />` : null}`;
   const actions = ({busy,go}) => step === 3 ? html`<button type="button" class="btn" onClick=${onClose}>${tr("finish")}</button><button type="button" class="btn btn-primary" onClick=${() => { onClose(); navigate(destination || "/settings/agents"); }}>${tr(destination ? "openChat" : "viewAgents")}<${Icon} name="forward" size=${16} /></button>`
     : html`<button type="button" class="btn" disabled=${busy || assistBusy} onClick=${step === 1 ? onClose : () => setStep(1)}>${step === 1 ? t("fleet.cancel") : tr("back")}</button>
       <button type="button" class="btn btn-primary" disabled=${busy || (step === 1 ? !canNext : !canCreate)} onClick=${step === 1 ? advance : go}>${step === 1 ? tr("next") : busy ? t("fleet.creating") : t("fleet.create")}${step === 1 ? html`<${Icon} name="forward" size=${16} />` : null}</button>`;

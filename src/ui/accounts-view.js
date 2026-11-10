@@ -60,6 +60,7 @@ register("accounts", {
     why_default_login: "This is the Windows user's own connection on {0}. It is never changed from here: add an account instead.",
     acctLabel: "Account", acctInherit: "Fleet default ({0})", acctInheritDefault: "Fleet default (default connection)", acctNotSignedIn: "{0} — not connected",
     acctHint: "Changing the account restarts the agent. A disconnected account can't be chosen: connect it under Accounts first.",
+    acctHintCreate: "The new agent connects with this account from its first start. A disconnected account can't be chosen: connect it under Accounts first.",
     acctDefaultBlocked: "This fleet's default for {0} is “{1}”, so an agent follows it unless it names another account.",
     usedPopTitle: "Agents using this account — choose one to open its settings",
   },
@@ -88,6 +89,7 @@ register("accounts", {
     why_default_login: "這是 {0} 上 Windows 使用者自己的連接，永遠不會從這裡更改：請改用新增帳號。",
     acctLabel: "帳號", acctInherit: "Fleet 預設（{0}）", acctInheritDefault: "Fleet 預設（預設連接）", acctNotSignedIn: "{0}——尚未連接",
     acctHint: "更換帳號會重新啟動 Agent。尚未連接的帳號不能選，請先在「帳號」連接。",
+    acctHintCreate: "新 Agent 從第一次啟動就會使用這個帳號。尚未連接的帳號不能選，請先在「帳號」連接。",
     acctDefaultBlocked: "這個 Fleet 的 {0} 預設帳號是「{1}」，Agent 除非指定其他帳號，否則會使用它。",
     usedPopTitle: "使用此帳號的 Agent（點擊跳轉設定）",
   },
@@ -445,16 +447,16 @@ function MoveDialog({ cli, row, instances, stageAgent, onClose }) {
  * The Agent dialog's Account field (host agents of a CLI with credential profiles). `value`: the agent's own profile
  * ("" = it names none and follows the fleet default). A signed-out account is listed but disabled.
  */
-export function AccountSelect({ id, backend, value, onChange }) {
+export function AccountSelect({ id, backend, value, onChange, creating = false, disabled = false }) {
   const { loaded, view } = useStore(accountsStore);
   useEffect(() => { if (!loaded) void refreshAccounts(); }, []);
   const choices = accountChoices(view, backend);
   if (!choices) return null;
   const inherit = choices.fleetDefault ? tx("acctInherit", choices.fleetDefault) : tx("acctInheritDefault");
   return html`<div class="field s-account-select"><label for=${id}>${tx("acctLabel")}</label>
-    <select id=${id} value=${value || ""} onChange=${(e) => onChange(e.target.value)}>
+    <select id=${id} value=${value || ""} disabled=${disabled} onChange=${(e) => onChange(e.target.value)}>
       <option value="">${inherit}</option>
       ${choices.rows.map((r) => html`<option value=${r.profile} disabled=${r.state === "not_signed_in" && r.profile !== value}>${r.state === "not_signed_in" ? tx("acctNotSignedIn", r.profile) : r.profile}</option>`)}
     </select>
-    <p class="note">${tx("acctHint")}${choices.fleetDefault ? ` ${tx("acctDefaultBlocked", cliLabel(backend), choices.fleetDefault)}` : ""}</p></div>`;
+    <p class="note">${tx(creating ? "acctHintCreate" : "acctHint")}${choices.fleetDefault ? ` ${tx("acctDefaultBlocked", cliLabel(backend), choices.fleetDefault)}` : ""}</p></div>`;
 }

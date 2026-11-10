@@ -1,4 +1,4 @@
-// #3486 follow-up: a browser that is not signed in yet signs in as an admin with that admin's own authenticator. A real browser on the shared
+// #3486 follow-up (AGEND-155: the code alone, no name): a browser that is not signed in yet signs in as an admin with that admin's own authenticator. A real browser on the shared
 // fixture (the product's own web server, a scratch home, no fleet start); the browser is signed OUT, on this computer's own listener. Fake data only.
 //   MODE=before  the page a new browser has today at its sign-in address: /signin (the 8-character sign-in code);
 //   MODE=after   the new page, /signin/authenticator, and its wrong-code state; the same run also signs in with the right code (checked, not shot).
@@ -37,8 +37,8 @@ try {
       check(`${cn}:before-page`, errs.length === 0, errs);
     } else {
       await page.goto(`${fx.base}/signin/authenticator`); await page.waitForSelector("#code", { timeout: 15000 }); await page.waitForTimeout(300);
-      const attrs = await page.evaluate(() => [document.getElementById("account")?.getAttribute("autocomplete"), document.getElementById("code")?.getAttribute("autocomplete"), (document.getElementById("accountRow") as HTMLElement).hidden].join(","));
-      check(`${cn}:autocomplete-and-web-only-has-no-name-field`, attrs === "username,one-time-code,true", attrs);
+      const attrs = await page.evaluate(() => [document.getElementById("account") === null ? "no-name-field" : "name-field", document.getElementById("code")?.getAttribute("autocomplete")].join(","));
+      check(`${cn}:code-only-page-has-no-name-field`, attrs === "no-name-field,one-time-code", attrs);
       await page.screenshot({ path: shotPath(SMOKE, cn, "1-authenticator") });
       await page.fill("#code", "000000"); await page.click("#go");
       await page.waitForFunction(() => (document.getElementById("msg")?.textContent ?? "").length > 0, null, { timeout: 15000 });

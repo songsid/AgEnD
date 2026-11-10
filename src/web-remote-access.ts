@@ -51,7 +51,10 @@ export const TOTP_PAUSE_MAX_MS = 24 * 60 * 60_000;
 /**
  * #3486 (new-device sign-in with an admin's own authenticator): the wrong-code limits of that sign-in, which are NOT the
  * confirmation limiter above — an unauthenticated route must not be able to pause the confirmations of admins already signed in.
- * Four layers, so that one person's typos stop only that person, and the shared ones are only ceilings:
+ * The browser types the code alone (AGEND-155): a wrong code with no name belongs to no admin, so it is counted in the browser's
+ * limiter and the whole sign-in's only (layers 1 and 4; plus a known device's own, below). Layers 2 and 3 are the legacy path where the
+ * request still carries a name (`account`, accepted for compatibility). Four layers, so that one person's typos stop only that person,
+ * and the shared ones are only ceilings:
  * 1. **this browser** (first to trip): SIGNIN_BROWSER_WRONG_LIMIT wrong codes pause that browser alone — 5 minutes, doubling up to
  *    an hour. Memory only; it counts every failure the same, whatever name was typed;
  * 2. **the admin**, 3. **the name typed** (a name that is no admin's is counted exactly like one that is: nothing tells them apart)
@@ -66,7 +69,12 @@ export const SIGNIN_BROWSER_WRONG_LIMIT = 5;
 export const SIGNIN_BROWSER_PAUSE_MS = 5 * 60_000;
 export const SIGNIN_BROWSER_PAUSE_MAX_MS = 60 * 60_000;
 export const SIGNIN_WRONG_LIMIT = 10;
-export const SIGNIN_FLEET_WRONG_LIMIT = 50;
+/**
+ * The whole sign-in's ceiling: wrong codes, from every browser and every way of typing (with a name or without), before a wait that
+ * doubles. Tightened from 50 to 20 when the name went away (AGEND-155, #3486): a code with no name can match any of the N admins who
+ * have an app, so one wrong guess is worth N times as much to a guesser — docs/SECURITY.md has the arithmetic.
+ */
+export const SIGNIN_FLEET_WRONG_LIMIT = 20;
 /** A shared wrong-code count is forgotten after this long without one (a slow guesser must not escape by pacing); the doubling level drops one step per SIGNIN_LEVEL_QUIET_MS without one. */
 export const SIGNIN_COUNT_QUIET_MS = 24 * 60 * 60_000;
 /** This browser's own count forgets sooner: it only holds that browser. */
@@ -162,6 +170,31 @@ export function totpSkew(secret: Uint8Array, code: string, nowMs: number): numbe
   return null;
 }
 
+/**
+ * AGEND-155: how far, in time steps either side of now, a code-only sign-in looks at EVERY admin's app, always — the accepted window
+ * (k = max(TOTP_PAST_STEPS, TOTP_FUTURE_STEPS) steps), plus the further k..2k a collision is looked for in (below), which also covers
+ * the clock-skew probe. 3k = 3 steps, so 2·3+1 = 7 codes (7 HMACs) per admin per request, whatever the code typed is, whether a
+ * step was already used and whether the admin may sign in.
+ */
+export const TOTP_REACH_STEPS = Math.max(3 * Math.max(TOTP_PAST_STEPS, TOTP_FUTURE_STEPS), TOTP_SKEW_PROBE_STEPS);
+/**
+ * AGEND-155: an app that is removed or replaced keeps counting, for a short while, in the collision rule — never for anything else.
+ * A collision refused at a moment when admin B's app matched must stay refused while the other admin's matching step is still accepted;
+ * if B then removes or replaces their app, B's old secret is kept here ("retired", saved with the rest, so a restart keeps it) for
+ * (4k+2) steps — 3 minutes — which is longer than any step the refused digits could still be accepted for (at most 4k steps after B's
+ * app went). It is read by `signInByCode`'s collision check only: it can never sign anyone in, confirm anything or be asked for.
+ * The pool is fleet-wide and a fixed size, always compared in full (padded with decoys), so the work does not depend on how many apps
+ * were retired. If more are retired within the keep time than the pool holds, the oldest is dropped and code-only sign-in is
+ * refused (as an ordinary wrong code) until that one's keep time would have run out (`holdUntil`): nothing is ever forgotten quietly.
+ */
+export const TOTP_RETIRED_KEEP_MS = (4 * Math.max(TOTP_PAST_STEPS, TOTP_FUTURE_STEPS) + 2) * TOTP_STEP_SECONDS * 1000;
+export const TOTP_RETIRED_SLOTS = 8;
+/** The codes of one app for every step from now−TOTP_REACH_STEPS to now+TOTP_REACH_STEPS (index 0 is the earliest): fixed work, no early exit. */
+function codeReach(secret: Uint8Array, nowMs: number): string[] {
+  const first = totpStep(nowMs) - TOTP_REACH_STEPS;
+  return Array.from({ length: 2 * TOTP_REACH_STEPS + 1 }, (_, i) => hotp(secret, first + i));
+}
+
 /** The `otpauth://` URI an authenticator app reads from the QR code (or the key typed in by hand). */
 export function otpauthUri(secretBase32: string, account: string): string {
   const label = encodeURIComponent(`AgEnD:${account}`);
@@ -218,6 +251,10 @@ interface Saved {
   totp?: Rec;
   /** Every other admin's own (chat fleets), by adminKey. */
   admins?: Record<string, Rec>;
+  /** AGEND-155: secrets of apps removed or replaced, kept TOTP_RETIRED_KEEP_MS for the collision check only (oldest first; at most TOTP_RETIRED_SLOTS). Never used to sign in or confirm. */
+  retired?: { who: string; secret: string; until: number }[];
+  /** AGEND-155: code-only sign-in is refused (as a wrong code) until this time, because a retired secret still needed had to be dropped. */
+  holdUntil?: number;
   outside: boolean;
   /** #3486: the fleet-wide sign-in limiter (any admin or identifier). */
   signin?: Lim;
@@ -266,7 +303,8 @@ export interface RemoteAccessStatus {
 /** Whose shared limit a wrong code started, for the Notices (never part of an answer): `fleet`, or `admin` (their own or the name typed, when it is a real admin's). */
 export interface SignInBegan { fleet: boolean; admin: boolean; waitMs: number; /** Half-way through the whole sign-in's / a real admin's count, first time this cycle: the admins are told once. */ halfFleet: boolean; halfAdmin: boolean }
 export type SignInVerdict =
-  | { kind: "ok" }
+  /** `who`: the admin signed in (the one the typed name stood for; with no name, the one admin the code matched). */
+  | { kind: "ok"; who: string }
   /** `skewSteps`: for a real admin, the code would have matched that many steps out — this computer's clock is likely off (logged, never answered). */
   | { kind: "wrong"; skewSteps?: number; began: SignInBegan }
   /** A wait is in force (or this wrong code started one): the same answer for every name. */
@@ -288,6 +326,8 @@ export class WebRemoteAccess {
   private browserLim = new Map<string, Lim>();
   /** #3486: what a sign-in for an identifier that is no admin's is compared with — a secret nobody has, so the work done is the same. */
   private readonly decoySecret = randomBytes(SECRET_BYTES);
+  /** Test seam (AGEND-155): told of every comparison a code-only sign-in makes — the admin's key, or null for the decoy. Never set in production. */
+  compareTrace?: (who: string | null) => void;
 
   constructor(private readonly path: string, private readonly log: { warn(obj: object, msg?: string): void },
     private readonly now: () => number = Date.now, private readonly monotonic: () => number = () => performance.now()) {
@@ -306,11 +346,18 @@ export class WebRemoteAccess {
       }
       const count = (n: unknown): number => (Number.isSafeInteger(n) && (n as number) >= 0 ? n as number : 0);
       const signin = readLimWith(v.signin, SIGNIN_FLEET_WRONG_LIMIT);
+      const now0 = this.now();
+      const retired = (Array.isArray(v.retired) ? v.retired : []).filter((r): r is { who: string; secret: string; until: number } => !!r && typeof r === "object"
+        && typeof (r as { who?: unknown }).who === "string" && (r as { who: string }).who.length <= 400 && typeof (r as { secret?: unknown }).secret === "string"
+        && (base32Decode((r as { secret: string }).secret)?.length ?? 0) >= 16 && Number.isSafeInteger((r as { until?: unknown }).until)
+        && (r as { until: number }).until > now0 && (r as { until: number }).until <= now0 + TOTP_RETIRED_KEEP_MS).slice(-TOTP_RETIRED_SLOTS);
+      const holdUntil = Number.isSafeInteger(v.holdUntil) && (v.holdUntil as number) > now0 ? Math.min(v.holdUntil as number, now0 + TOTP_RETIRED_KEEP_MS) : 0;
       const idents: Record<string, Lim> = {};
       if (v.idents && typeof v.idents === "object" && !Array.isArray(v.idents)) {
         for (const [k, l] of Object.entries(v.idents).slice(-SIGNIN_IDENT_MAX)) { const lim = /^[0-9a-f]{64}$/.test(k) ? readLimWith(l, SIGNIN_WRONG_LIMIT) : undefined; if (lim) idents[k] = lim; }
       }
       this.state = { v: 1, ...(totp ? { totp } : {}), ...(Object.keys(admins).length ? { admins } : {}), ...(signin ? { signin } : {}), ...(Object.keys(idents).length ? { idents } : {}),
+        ...(retired.length ? { retired } : {}), ...(holdUntil ? { holdUntil } : {}),
         // Never on without an app set up: a file that says otherwise is read as off.
         outside: v.outside === true && !!totp,
         wrong: Math.min(count(v.wrong), TOTP_WRONG_LIMIT - 1), level: Math.min(count(v.level), 32),
@@ -335,6 +382,20 @@ export class WebRemoteAccess {
     const { admins: _old, ...rest } = state, admins = { ...(state.admins ?? {}) };
     if (rec) admins[who] = rec; else delete admins[who];
     return { ...rest, ...(Object.keys(admins).length ? { admins } : {}) };
+  }
+  /**
+   * `state` with `secret` (the app `who` is losing) kept as a retired one for TOTP_RETIRED_KEEP_MS. The host operator's is not kept: a
+   * web-only fleet has one admin, so there is no other admin to collide with. When the pool is full its oldest entry is dropped and
+   * code-only sign-in is held until that entry's own keep time would have run out.
+   */
+  private withRetired(state: Saved, who: string, secret: string): Saved {
+    if (who === HOST_ADMIN_KEY) return state;
+    const now = this.now(), live = (state.retired ?? []).filter(r => r.until > now);
+    let hold = state.holdUntil && state.holdUntil > now ? state.holdUntil : 0;
+    while (live.length >= TOTP_RETIRED_SLOTS) hold = Math.max(hold, live.shift()!.until);
+    live.push({ who, secret, until: now + TOTP_RETIRED_KEEP_MS });
+    const { holdUntil: _old, ...rest } = state;
+    return { ...rest, retired: live, ...(hold ? { holdUntil: hold } : {}) };
   }
   status(who: string = HOST_ADMIN_KEY): RemoteAccessStatus {
     const r = this.rec(who);
@@ -428,7 +489,8 @@ export class WebRemoteAccess {
     // wrong-code pause is reset only by an enrolment made on the AgEnD computer itself (`physicalHost`, the caller's proof of where
     // it came from): the host operator's identity used remotely — a host cookie on another device — never clears it.
     const reset = p.who === HOST_ADMIN_KEY && opts.physicalHost === true;
-    this.state = p.who === HOST_ADMIN_KEY ? { ...this.withRec(this.state, p.who, rec), ...(reset ? { wrong: 0, level: 0, pausedUntil: 0 } : {}), handles: [] } : this.withRec(this.state, p.who, rec);
+    this.state = p.who === HOST_ADMIN_KEY ? { ...this.withRec(this.state, p.who, rec), ...(reset ? { wrong: 0, level: 0, pausedUntil: 0 } : {}), handles: [] }
+      : this.withRec(old ? this.withRetired(this.state, p.who, old.secret) : this.state, p.who, rec);
     if (!this.flush()) {
       // Not set up: the state before stands — and if it was itself still owed to the disk (an unsaved Off), it still is.
       this.restore(before, wasDirty);
@@ -445,8 +507,10 @@ export class WebRemoteAccess {
    * saved yet (retried — a restart before that would read the old file).
    */
   remove(who: string = HOST_ADMIN_KEY): boolean {
-    if (!this.rec(who)) return true;
-    this.state = who === HOST_ADMIN_KEY ? { ...blank(), ...(this.state.admins ? { admins: this.state.admins } : {}), ...(this.state.signin ? { signin: this.state.signin } : {}), ...(this.state.idents ? { idents: this.state.idents } : {}) } : this.withRec(this.state, who, undefined);
+    const old = this.rec(who);
+    if (!old) return true;
+    this.state = who === HOST_ADMIN_KEY ? { ...blank(), ...(this.state.admins ? { admins: this.state.admins } : {}), ...(this.state.signin ? { signin: this.state.signin } : {}), ...(this.state.idents ? { idents: this.state.idents } : {}),
+      ...(this.state.retired ? { retired: this.state.retired } : {}), ...(this.state.holdUntil ? { holdUntil: this.state.holdUntil } : {}) } : this.withRec(this.withRetired(this.state, who, old.secret), who, undefined);
     return this.flush();
   }
 
@@ -523,7 +587,7 @@ export class WebRemoteAccess {
         if (beforeBrowser) this.browserLim.set(browser.key, beforeBrowser);
         return { kind: "unavailable" };
       }
-      return { kind: "ok" };
+      return { kind: "ok", who };
     }
     // Wrong, or no such admin, or the admin's ceiling: the same counters, the same write — and the same clock-skew look (the decoy when there is no admin).
     const skew = totpSkew(secret, code, now);
@@ -546,6 +610,115 @@ export class WebRemoteAccess {
     // Answered by what every name shares: this browser's wait, the name's, the whole sign-in's (a known device: its mark's and its admin's known-path wait).
     const started = Math.max(w.wait, ...(known ? [k.wait] : [f.wait, i.wait]));
     return started > 0 ? { kind: "paused", retryAfterMs: started, began } : { kind: "wrong", ...(rec && skew !== null ? { skewSteps: skew } : {}), began };
+  }
+
+  /**
+   * AGEND-155 (#3486): a new browser types ONLY the code; the server works out whose it is. The code is compared with the app of EVERY
+   * candidate — each one, every time, three time steps each, never stopping at a match — so the work is the same whoever (or nobody)
+   * it belongs to. `candidates` is every admin with an app, `eligible` saying whether they are still an admin of their connection
+   * (asked of each by the caller, so that does not stop early either); with none, one comparison with a decoy secret is made. `known`:
+   * the admins whose "known device" mark this browser carries (valid as their app and the epoch stand now), `browser.key` the mark's
+   * own key when there is one, else the cookie id's.
+   * - exactly one candidate matches (eligible, a step newer than their `lastStep`, and — unless this
+   *   browser is a known device of that admin — no wait in force for the whole sign-in): that admin is signed in and their step spent;
+   * - none matches: a wrong code. The same answer — and the same counting — as a code that is right for no one;
+   * - two apps match (for a right code, ≈ 3 in 10⁶ per other admin; "match" = the raw codes of the two apps, one in the accepted window and
+   *   the other within 2k steps of it, whoever has spent what): nobody is signed in, **nothing is spent**, and it is a wrong code in every way:
+   *   counted in the same counters, answered with the same 401, so neither the answer nor a count says "your code collided with someone's".
+   *   Not spending the step means a collision cannot be used to burn an admin's step; the person waits for the next code. Because it is a
+   *   rule on the raw codes, those digits stay refused for as long as any step they matched is still accepted — after a step was spent, an
+   *   admin was demoted, a limit moved, or one of the two steps aged out — and a restart changes nothing (no state is kept for it).
+   * Counting: a wrong code has no admin to blame, so it is counted in this browser's limiter, the whole sign-in's, and — for a known
+   * device — in the known-path limiter of each admin whose mark it carries (by mark × admin, as with a name). The per-admin and per-name
+   * counts do not apply to it (they stay for a request that still sends a name). What can pause an attempt: this browser's wait and the
+   * whole sign-in's (a known device: its mark's and its admins' known-path waits), the same answer for any code. An admin's own ceiling
+   * (started only by named attempts) does not apply here: otherwise anyone could block an admin's code-only sign-in by typing wrong
+   * codes under that admin's name. A success clears that admin's own counts and
+   * this browser's, never the whole sign-in's.
+   */
+  signInByCode(code: string, browser: { key: string }, candidates: { who: string; eligible: boolean }[], known: string[]): SignInVerdict {
+    const now = this.now(), fleet = settle(this.state.signin ?? NO_LIM, now);
+    const byBrowser = settle(this.browserLim.get(browser.key) ?? NO_LIM, now, SIGNIN_BROWSER_QUIET_MS);
+    const marks = known.filter((w, i) => known.indexOf(w) === i && this.rec(w));
+    const isKnown = marks.length > 0;
+    const knownLim = (w: string): Lim => settle(this.rec(w)?.klim ?? NO_LIM, now);
+    const waits = [byBrowser.pausedUntil, ...(isKnown ? marks.map(w => knownLim(w).pausedUntil) : [fleet.pausedUntil])].map(p => Math.min(p - now, TOTP_PAUSE_MAX_MS));
+    const wait = Math.max(...waits);
+    const idle: SignInBegan = { fleet: false, admin: false, waitMs: 0, halfFleet: false, halfAdmin: false };
+    if (wait > 0) return { kind: "paused", retryAfterMs: wait, began: idle };
+    // Every candidate, always, the same work: all TOTP_REACH_STEPS-each-side codes of their app (7 HMACs), compared in full, no early exit;
+    // only afterwards is anything decided by what was spent, who may sign in here, and what is open. With no app at all, one app's worth
+    // of work is done with a decoy secret.
+    const typed = code.replace(/\s/g, ""), valid = /^\d{6}$/.test(typed), R = TOTP_REACH_STEPS, at = totpStep(now), k = Math.max(TOTP_PAST_STEPS, TOTP_FUTURE_STEPS);
+    const same = (candidate: string): boolean => timingSafeEqual(Buffer.from(candidate), Buffer.from(valid ? typed : "x".repeat(candidate.length))) && valid;
+    const rows: { who: string; eligible: boolean; lastStep: number; eq: boolean[]; retired?: true }[] = [];
+    for (const c of candidates) {
+      const rec = this.rec(c.who);
+      if (!rec) continue;
+      this.compareTrace?.(c.who);
+      rows.push({ who: c.who, eligible: c.eligible, lastStep: rec.lastStep, eq: codeReach(base32Decode(rec.secret)!, now).map(same) });
+    }
+    const compared = rows.length > 0;
+    if (!compared) { this.compareTrace?.(null); codeReach(this.decoySecret, now).map(same); }
+    // The retired apps (see TOTP_RETIRED_KEEP_MS): a fixed number of slots, every one compared in full — an empty slot with a decoy — so the work is the
+    // same whatever has been removed or replaced. They take part in the collision check below and in nothing else.
+    const retired = (this.state.retired ?? []).filter(r => r.until > now).slice(-TOTP_RETIRED_SLOTS);
+    for (let slot = 0; slot < TOTP_RETIRED_SLOTS; slot++) {
+      const r = retired[slot];
+      const eq = codeReach(r ? base32Decode(r.secret)! : this.decoySecret, now).map(same);
+      if (r) rows.push({ who: r.who, eligible: false, lastStep: Number.MAX_SAFE_INTEGER, eq, retired: true });
+    }
+    const accepted = (i: number): boolean => i - R >= -TOTP_PAST_STEPS && i - R <= TOTP_FUTURE_STEPS;
+    // A code that matches TWO admins' apps — in the accepted window for one, within 2k steps of it for the other — is refused, whatever has
+    // happened to either since: spent steps, demotion, limits and time (while any of the steps it matched is still accepted) do not
+    // matter, because only the raw codes of the apps are looked at. It needs no memory, so a restart cannot lose it. Without this a refused
+    // collision could be used later (after one admin spent their step, or after one of the steps aged out) to sign the same digits in as the other.
+    let ambiguous = (this.state.holdUntil ?? 0) > now;     // a retired app that was still needed had to be dropped: refused until its keep time is over
+    for (const x of rows) for (const y of rows) {
+      if (x.who === y.who) continue;                         // one admin's old and new app do not collide with each other
+      for (let i = 0; i < x.eq.length; i++) for (let j = 0; j < y.eq.length; j++) ambiguous = ambiguous || (accepted(i) && x.eq[i]! && y.eq[j]! && Math.abs(i - j) <= 2 * k);
+    }
+    const hits: string[] = [], skews: number[] = [];
+    for (const r of rows) {
+      if (r.retired) continue;                               // never a way in
+      let step: number | null = null;
+      for (let i = 0; i < r.eq.length; i++) if (step === null && accepted(i) && r.eq[i] && at + i - R > r.lastStep) step = at + i - R;
+      // A known device is not held by the whole sign-in's wait for its own admin; for anyone else it is (the wait was not checked above).
+      // The admin's own ceiling (started by named attempts) is not read: it holds the named path only.
+      const open = marks.includes(r.who) || fleet.pausedUntil <= now;
+      if (step !== null && r.eligible && open && !ambiguous) hits.push(r.who);
+      else for (let i = 0; i < r.eq.length; i++) if (r.eq[i] && !accepted(i) && Math.abs(i - R) <= TOTP_SKEW_PROBE_STEPS) skews.push(i - R);   // the clock-skew look: log only
+    }
+    if (hits.length === 1) {
+      const who = hits[0]!, rec = this.rec(who)!, row = rows.find(r => r.who === who)!;
+      let step = -1;
+      for (let i = 0; i < row.eq.length; i++) if (step < 0 && accepted(i) && row.eq[i] && at + i - R > rec.lastStep) step = at + i - R;
+      const before = this.state, beforeBrowser = this.browserLim.get(browser.key);
+      const { lim: _lim, klim: _klim, ...clean } = rec;
+      this.state = this.withRec(this.state, who, { ...clean, lastStep: step });
+      this.browserLim.delete(browser.key);
+      if (!this.flush()) {
+        this.state = this.withRec(before, who, { ...clean, lastStep: step });
+        if (beforeBrowser) this.browserLim.set(browser.key, beforeBrowser);
+        return { kind: "unavailable" };
+      }
+      return { kind: "ok", who };
+    }
+    // Wrong (or no one's, or a collision): the browser's own count, the whole sign-in's, a known device's known-path counts. Nothing else.
+    const f = bumpLim(fleet, SIGNIN_FLEET_WRONG_LIMIT, TOTP_PAUSE_MS, TOTP_PAUSE_MAX_MS, now, SIGNIN_COUNT_QUIET_MS, SIGNIN_FLEET_WRONG_LIMIT / 2);
+    const w = bumpLim(byBrowser, SIGNIN_BROWSER_WRONG_LIMIT, SIGNIN_BROWSER_PAUSE_MS, SIGNIN_BROWSER_PAUSE_MAX_MS, now, SIGNIN_BROWSER_QUIET_MS);
+    this.browserLim.delete(browser.key); this.browserLim.set(browser.key, w.lim);
+    while (this.browserLim.size > SIGNIN_BROWSER_MAX) this.browserLim.delete(this.browserLim.keys().next().value!);
+    let next: Saved = this.state;
+    const ks = marks.map(who => ({ who, ...bumpLim(knownLim(who), SIGNIN_KNOWN_WRONG_LIMIT, TOTP_PAUSE_MS, TOTP_PAUSE_MAX_MS, now, SIGNIN_COUNT_QUIET_MS, SIGNIN_KNOWN_WRONG_LIMIT / 2) }));
+    for (const k of ks) next = this.withRec(next, k.who, { ...this.rec(k.who)!, klim: k.lim });
+    this.state = { ...next, signin: f.lim };
+    this.flush();
+    const kWait = Math.max(0, ...ks.map(k => k.wait));
+    const began: SignInBegan = { fleet: f.wait > 0, admin: kWait > 0, waitMs: Math.max(f.wait, kWait), halfFleet: f.half, halfAdmin: ks.some(k => k.half) };
+    const started = Math.max(w.wait, isKnown ? kWait : f.wait);
+    return started > 0 ? { kind: "paused", retryAfterMs: started, began }
+      : { kind: "wrong", ...(hits.length === 0 && compared && !ambiguous && skews.length === 1 ? { skewSteps: skews[0] } : {}), began };
   }
 
   /**

@@ -8,7 +8,7 @@ import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
-import { credentialProfileLogin, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { instanceCredentialProfile, signedOutCredentialProfile } from "./backend/credential-profile.js";
 import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestLocalAdminCurrent, settingsRequestJoinAuthority, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
@@ -1430,9 +1430,8 @@ export function handleSettingsRequest(
         for (const b of Object.keys(sent as object)) {
           const after = instanceCredentialProfile(undefined, merged as never, b), before = instanceCredentialProfile(undefined, cfg.defaults as never, b);
           if (!after || after === before) continue;
-          let login: ReturnType<typeof credentialProfileLogin> | null = null;
-          try { login = credentialProfileLogin(ctx.dataDir, b, after); } catch { login = null; }
-          if (login?.state === "signed-out") return json(res, 409, { error: "credential_profile_signed_out", backend: b, profile: after, loginCommand: login.loginCommand });
+          const login = signedOutCredentialProfile(ctx.dataDir, b, after);
+          if (login) return json(res, 409, { error: "credential_profile_signed_out", backend: b, profile: after, loginCommand: login.loginCommand });
         }
       }
       // #1310: locale:null means "clear the key" (user chose Auto). Mirrors
@@ -1840,9 +1839,8 @@ export function handleSettingsRequest(
       const profileAfter = instanceCredentialProfile(mergedInst, cfg!.defaults, backendAfter);
       const profileBefore = exists ? instanceCredentialProfile(base as never, cfg!.defaults, backendBefore) : null;
       if (profileAfter && (profileAfter !== profileBefore || backendAfter !== backendBefore)) {
-        let login: ReturnType<typeof credentialProfileLogin> | null = null;
-        try { login = credentialProfileLogin(ctx.dataDir, backendAfter, profileAfter); } catch { login = null; }
-        if (login?.state === "signed-out") { json(res, 409, { error: "credential_profile_signed_out", backend: backendAfter, profile: profileAfter, loginCommand: login.loginCommand }); return; }
+        const login = signedOutCredentialProfile(ctx.dataDir, backendAfter, profileAfter);
+        if (login) { json(res, 409, { error: "credential_profile_signed_out", backend: backendAfter, profile: profileAfter, loginCommand: login.loginCommand }); return; }
       }
     }
     // #3055 review r2: a topic whose agent is being deleted is going away on the platform now — binding it here would
