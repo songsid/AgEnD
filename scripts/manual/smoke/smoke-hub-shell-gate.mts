@@ -26,6 +26,7 @@ import { createServer } from "node:https";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { caseName, matrix, shotPath, VIEWPORTS, type MatrixCase } from "../smoke-fixture/index.mts";
+import { listenLoopback } from "../smoke-fixture/listen-loopback.mts";
 
 const SMOKE = "smoke-hub-shell-gate";
 const REPO = process.env.REPO ?? process.cwd();
@@ -42,14 +43,29 @@ const { provisionHubIdentity } = await import(REPO + "/src/hub/tls.ts");
 // What the Hub's own listener serves under /ui/js (the authority — the page may ask for nothing else there).
 const { HUB_UI_MODULES } = await import(REPO + "/src/hub/http/compose.ts") as { HUB_UI_MODULES: readonly string[] };
 const allowed = (path: string) => /^\/(hub\/v1\/|assets\/|ui\/hub|favicon)/.test(path) || (path.startsWith("/ui/js/") && HUB_UI_MODULES.includes(path.slice(7)));
-const port = 48700 + Math.floor(Math.random() * 90), origin = `https://127.0.0.1:${port}`;
-const rig = await s3bRig({ webOrigin: origin });
+async function startListener() {
+  const server = createServer();
+  const keys = mkdtempSync(join(OUT, "keys-")); chmodSync(keys, 0o700);
+  let rig: Awaited<ReturnType<typeof s3bRig>> | undefined;
+  try {
+    const port = await listenLoopback(server), origin = `https://127.0.0.1:${port}`;
+    // Keep port 0's reservation through certificate provisioning and Hub composition.
+    await provisionHubIdentity({ home: keys, memberOrigin: origin });
+    server.setSecureContext({ key: readFileSync(join(keys, "hub/keys/tls-key.pem")), cert: readFileSync(join(keys, "hub/keys/tls-cert.pem")) });
+    rig = await s3bRig({ webOrigin: origin });
+    const http = rig.http;
+    server.on("request", (req, res) => { if (!http.handle(req, res)) { res.writeHead(404, { "Content-Type": "text/plain" }); res.end("not found"); } });
+    console.log(`Hub shell gate listener: ${origin}`);
+    return { server, origin, keys, rig };
+  } catch (error) {
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    await rig?.close(); rmSync(keys, { recursive: true, force: true });
+    throw error;
+  }
+}
+const { server, origin, keys, rig } = await startListener();
 const http = rig.http;
-const keys = mkdtempSync(join(OUT, "keys-")); chmodSync(keys, 0o700);
-await provisionHubIdentity({ home: keys, memberOrigin: origin });
-const server = createServer({ key: readFileSync(join(keys, "hub/keys/tls-key.pem")), cert: readFileSync(join(keys, "hub/keys/tls-cert.pem")) },
-  (req, res) => { if (!http.handle(req, res)) { res.writeHead(404, { "Content-Type": "text/plain" }); res.end("not found"); } });
-await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
 // The world: olivia's fleet publishes two agents (the administrator sees them in Administration).
 const olivia = rig.addPerson("olivia", "Olivia Chen");
 const fleetId = randomUUID(), link = rig.link(fleetId, olivia);
@@ -266,6 +282,6 @@ try {
   writeFileSync(join(OUT, "result.json"), JSON.stringify(r, null, 1));
   for (const f of fail.slice(0, 30)) console.log(`FAIL ${f}: ${JSON.stringify((r[f] as any)?.FAIL ?? r.error ?? "").slice(0, 600)}`);
   console.log(fail.length ? `Hub shell gate FAILED (${fail.length}) in ${r.seconds}s — pictures and result.json in ${OUT}` : `Hub shell gate passed in ${r.seconds}s (${Object.keys(r).length - 2} checks)`);
-  await browser.close(); server.close(); await rig.close?.(); rmSync(keys, { recursive: true, force: true });
+  await browser.close(); await new Promise<void>(resolve => server.close(() => resolve())); await rig.close?.(); rmSync(keys, { recursive: true, force: true });
   process.exit(fail.length ? 1 : 0);
 }
