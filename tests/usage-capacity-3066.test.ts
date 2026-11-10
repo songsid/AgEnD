@@ -280,18 +280,7 @@ describe("the dialog (#3066 §1)", () => {
   let p: AppPage, D: any;
   beforeAll(async () => { p = page({ url: "http://127.0.0.1:19280/ui/fleet" }); D = await import("/assets/usage-dialog.js"); });
   afterAll(() => p.restore());
-  const cap = { status: "ok", line: { text: "100% ≈ $412 ($378–$455) · ≈ 31.0M tokens · from 3 weeks", i18n: { key: "usage.capacity.line", args: ["$412", "$378", "$455", "31.0M", 3] } },
-    notes: [{ text: "Counts only this fleet's agents; use of the same account elsewhere makes this low.", i18n: { key: "usage.capacity.only_agend", args: [] } }] };
-  it("under the weekly bar: the line and the fleet-only limit", async () => {
-    await p.mount(h(D.UsageMetric, { m: { label: "Weekly", type: "percent", used: 62, windowMs: WEEK, capacity: cap } })); await settle(2);
-    expect(p.root.querySelector(".u-cap-line").textContent).toBe("100% ≈ $412 ($378–$455) · ≈ 31.0M tokens · from 3 weeks");
-    expect(p.root.querySelectorAll(".u-cap-note").map((n: any) => n.textContent)).toEqual(["Counts only this fleet's agents; use of the same account elsewhere makes this low."]);
-    await p.unmount();
-  });
-  it("a stale tab (its strings predate the key): the server's English, never the bare key", () => {
-    expect(D.capacityLine({ text: "100% ≈ 2.5M tokens", i18n: { key: "usage.capacity.not_in_this_tab", args: [] } })).toBe("100% ≈ 2.5M tokens");
-    expect(D.capacityLine(cap.line)).toBe("100% ≈ $412 ($378–$455) · ≈ 31.0M tokens · from 3 weeks");
-  });
+  // M-2815: the card no longer shows the capacity footnote (tests/usage-fable-card-2815.test.ts); get_usage keeps it.
   it("no capacity: nothing more under the bar", async () => {
     await p.mount(h(D.UsageMetric, { m: { label: "Weekly", type: "percent", used: 62, windowMs: WEEK } })); await settle(2);
     expect(p.root.querySelector(".u-cap")).toBeNull();
