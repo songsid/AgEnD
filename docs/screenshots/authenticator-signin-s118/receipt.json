@@ -203,19 +203,20 @@
     "phone-dark-zh-TW-skew-old-js-primary.png",
     "phone-dark-zh-TW-skew-old-html-primary.png"
   ],
-  "sources": {
-    "src/auth-api.ts": "ce964573ccb48a061562dc9fc7768f79856a7fea57fae16596ba716c94a2bce7",
-    "src/ui/signin.html": "6876de428ede21164983d23aec0da53f4aa521b52f7ef59970510892f508efcc",
-    "src/ui/shared/signin.js": "a59f23ebd7ae4a24b5928217211d629041715e49b1c69a6df95f26683dea994d",
-    "src/ui/settings-devices.js": "2dd334efadb0761603d694372882347d4f69cf275d5edd59c1e89c3ef07c5419",
-    "src/ui/settings-access-strings.js": "c9ddaa923d255d2e5b286cec02ecaa587ab64f37f8e122e7777ba3e0aecccac9"
-  },
-  "captureBoundary": "Precommit working-source hashes above; final original PNGs. Source tree not a released build. Browser driver itself uses __name identity helper for tsx instrumentation only.",
+  "captureBoundary": "Precommit working-source hashes in PRODUCTION_SHA256SUMS; final original PNGs. Source tree not a released build. Browser driver itself uses __name identity helper for tsx instrumentation only.",
   "limitations": [
     "Only real web-only core with account omitted; chat code-only and double-match are NOT RUN pending Junsion core.",
     "Before is exact base UI HTML/JS/tokens routed to owned current listener, not a separate base daemon.",
     "SKEW old HTML keeps its centered layout and lacks the new nowrap class; phone zh can split 自動登入. Functional sign-in is verified.",
     "No real account, live fleet, CLI, model, tunnel, native host or public-link creation."
   ],
-  "polish": "English helper shortened after original-size inspection so code is not left alone on a second phone line; fresh full matrix recaptured."
+  "polish": "English helper shortened after original-size inspection so code is not left alone on a second phone line; fresh full matrix recaptured.",
+  "sourceFiles": [
+    "src/auth-api.ts",
+    "src/ui/signin.html",
+    "src/ui/shared/signin.js",
+    "src/ui/settings-devices.js",
+    "src/ui/settings-access-strings.js"
+  ],
+  "sourceManifest": "PRODUCTION_SHA256SUMS"
 }

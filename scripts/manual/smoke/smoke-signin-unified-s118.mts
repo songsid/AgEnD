@@ -103,7 +103,8 @@ try {
   mkdirSync(OUT, { recursive: true });
   const files = ["src/auth-api.ts", "src/ui/signin.html", "src/ui/shared/signin.js", "src/ui/settings-devices.js", "src/ui/settings-access-strings.js"];
   writeFileSync(join(OUT, "s118-result.json"), JSON.stringify({ base: BASE, chrome: fx.browser.version(), scope: "Owned scratch real web-only core; before/SKEW routed exact base UI assets; no chat/double-match proof", checks, images,
-    sources: Object.fromEntries(files.map(p => [p, createHash("sha256").update(readFileSync(join(REPO, p))).digest("hex")])) }, null, 2));
+    sourceFiles: files, sourceManifest: "PRODUCTION_SHA256SUMS" }, null, 2));
+  writeFileSync(join(OUT, "PRODUCTION_SHA256SUMS"), files.map(p => createHash("sha256").update(readFileSync(join(REPO, p))).digest("hex") + "  " + p).join("\n") + "\n");
   await fx.close();
 }
 console.log(JSON.stringify({ passed: Object.keys(checks).length, images: images.length }));
