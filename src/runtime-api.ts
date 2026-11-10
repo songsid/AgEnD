@@ -13,6 +13,7 @@ import type { WindowsCliProbe } from "./windows-cli.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
 import { runtimeServerOrigin } from "./runtime-connection.js";
 import type { RuntimeInstallService } from "./runtime-install.js";
+import { cachedSettingsBody, isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestRequester } from "./settings-request-capability.js";
 
 export interface RuntimeApiContext extends WindowsCliApiContext { runtimeCoordinator?(): RuntimeCoordinator; runtimeInstaller?(): RuntimeInstallService }
 /**
@@ -141,7 +142,18 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
   if (setupRoute) {
     // Only a local administrator session (remoteSetupActor); a header token, guest, public link or gateway gets nothing, and is not told why.
     const id = setupRoute[1], what = setupRoute[2], machine = hub.machine(id);
-    if (!remoteSetupActor(req, url, ctx)) { json(res, 403, { error: "Installing CLIs on a computer needs a local dashboard administrator" }); return true; }
+    // AGEND-148 (Prism R3 on #3539): an install (and the Update that reuses it) is the Settings gate's confirmed replay and nothing else — the same gate, principal, per-admin policy and replay
+    // that #3542 put in front of the host's install (settings-http-confirmation.ts proposes it; the administrator's own Apply now / digest-bound code confirms it). The replay has no session: the
+    // administrator is the gate's requester, asked the way the host route asks (`settingsRequestLocalAdmin`: the execution not stale, the local-admin principal live), and the name the
+    // computer's audit log keeps is the opaque `admin:<handle>`. The computer's owner's own switch is asked on that computer, separately (`cli.install` below).
+    const viaGate = isSettingsReplay(req);
+    const actorNow = (): string | null => {
+      if (!viaGate) return remoteSetupActor(req, url, ctx);
+      const handle = settingsRequestRequester(req)?.handle;
+      try { return handle && /^[a-f0-9]{16}$/.test(handle) && settingsRequestLocalAdmin(req) ? `admin:${handle}` : null; } catch { return null; }
+    };
+    if (viaGate && !(what === "cli-install" && method === "POST") || !actorNow()) { json(res, 403, { error: "Installing CLIs on a computer needs a local dashboard administrator" }); return true; }
+    if (what === "cli-install" && method === "POST" && !viaGate) { json(res, 403, { error: "install_confirmation_required" }); return true; }
     if (!machine) { json(res, 404, { error: "Runtime machine not found" }); return true; }
     const jobs = jobsOf(hub);
     if (what === "remote-setup" && method === "GET") {
@@ -151,7 +163,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
         const capable = machine.runtimeInfo?.capabilities.includes("cli-install") === true;
         let answered: unknown, got = false;
         if (capable && machine.status === "online") { try { answered = await hub.callAccount(id, "accounts.switches", {}, 15_000); got = true; } catch { /* shown as "could not read" */ } }
-        if (!remoteSetupActor(req, url, ctx)) { json(res, 403, { error: "Authorization expired" }); return; }
+        if (!actorNow()) { json(res, 403, { error: "Authorization expired" }); return; }
         // What came back from the computer is checked before the browser sees it: a wrong shape is one fixed error, not a pass-through.
         if (got) { switches = switchStatesOf(answered); if (!switches) { json(res, 502, { error: "That computer's answer about its setup was not understood" }); return; } }
         json(res, 200, { capable, online: machine.status === "online", switches, job: jobs.get(id) ?? null,
@@ -160,14 +172,24 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
       return true;
     }
     if (what === "cli-install" && method === "POST") {
+      let spent = false;                                               // the confirmed change's admission was used: its authority is not asked about again (see `execution.complete()`)
       void (async () => {
-        const raw = await readBoundedWebBody(req, 1024);
-        const actor = remoteSetupActor(req, url, ctx);
+        const raw = cachedSettingsBody(req) ?? Buffer.alloc(0);       // the gate's replay carries the body it held; there is no stream to read
+        const actor = actorNow();
         if (!actor) { json(res, 403, { error: "Authorization expired" }); return; }
         const input: unknown = JSON.parse(raw.toString("utf8"));
         if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length !== 1 || !("cli" in input) || !isInstallableCli(input.cli)) throw Error("Choose a CLI this Runtime installs");
         const cli = input.cli;
+        // AGEND-152 (Prism R4 on #3539): this one route is Install and Update (the page sends the CLI's id and nothing else), so it is told apart by what the computer already has. A CLI the computer
+        // already has, whose `runtime.update` is not "yes" (Antigravity updates itself; OpenCode's Update is not built), is refused here — before the job, the call and the one-shot admission —
+        // whatever the page showed. A computer whose inventory has not been read has nothing to refuse on, and is installed to as before.
+        if (!runtimeFacts(cli, "update") && (machine.inventory?.clis ?? []).some(item => item.id === cli && item.path)) {
+          json(res, 409, { error: `${runtimeFacts(cli, "provider")?.name ?? cli} is already installed on that computer and is not updated from here` }); return;
+        }
         if (jobs.get(id)?.state === "installing") { json(res, 409, { error: "An install is already running on this computer", job: jobs.get(id) }); return; }
+        // #3542's rule for an effect that outlives the request: the confirmed change's admission ends at the one effect, asked once more right here with nothing awaited between it and the
+        // request to that computer (a stale execution throws: nothing is sent, and no job is left).
+        settingsRequestExecution(req)!.complete(); spent = true;
         // Fixed fields only: the Runtime takes the CLI id and the asker's name, and decides everything else itself.
         const job: CliInstallJob = { cli, state: "installing", startedAt: Date.now() };
         // Taken in the same synchronous step as the check above, before any await: of two requests at once, only one gets here.
@@ -189,7 +211,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
           job.state = "done"; if (typeof version === "string") job.version = version.slice(0, 64);
         });
         json(res, 202, { job });
-      })().catch(error => { const ok = !!remoteSetupActor(req, url, ctx); json(res, ok ? 400 : 403, { error: ok ? error instanceof Error ? error.message : "Install request failed" : "Authorization expired" }); });
+      })().catch(error => { const ok = spent || !!actorNow(); json(res, ok ? 400 : 403, { error: ok ? error instanceof Error ? error.message : "Install request failed" : "Authorization expired" }); });
       return true;
     }
     json(res, 404, { error: "Unknown runtime operation" }); return true;

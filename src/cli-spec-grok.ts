@@ -5,6 +5,7 @@ export const GROK_SPEC = {
   id: "grok",
   host: {
     install: yes({ binary: "grok", command: "curl -fsSL https://x.ai/cli/install.sh | bash" }),
+    update: yes({ binary: "grok", command: "curl -fsSL https://x.ai/cli/install.sh | bash -s {version}" }),
     chatLogin: yes({ aliases: [], mode: "device-code" }),
     dashboardSignIn: yes({ named: false }),
     structuredSignIn: notYetBuilt("undecided", "Grok signs in through the device-code page of the older dashboard flow; it has not been moved to the structured sign-in."),
@@ -28,6 +29,7 @@ export const GROK_SPEC = {
     // (Get-AuthenticodeSignature: NotSigned), and the package relies on its own postinstall to unpack into ~/.grok. A `--ignore-scripts` install would have a registry hash and nothing that
     // says who built the program; Part 3b's publisher check cannot be made. The vendor script (x.ai/cli/install.ps1) fetches whatever is current, so it cannot be pinned either.
     install: byDesign("Grok's Windows program is not signed by its publisher, so AgEnD could not check who built it before running it; the vendor script installs whatever version is current. The dashboard shows the official command for the computer's owner."),
+    update: byDesign("Grok is not in the Runtime's pinned installer table, so there is no audited, verifiable release for the Runtime to install; its owner can run `grok update --version <audited release>` on that computer."),
     signIn: notYetBuilt("undecided", "Only Claude Code is signed in from the dashboard on a computer."),
     namedAccounts: toVerify("Whether `grok` on Windows can keep more than one login side by side has not been checked."),
     accountRows: notYetBuilt("undecided", "Accounts shows a computer's Claude Code accounts only."),

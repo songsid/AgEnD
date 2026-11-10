@@ -339,7 +339,8 @@ import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } 
 import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
-import { WebHostInstalls, type HostInstallReporter, type HostInstallStart } from "./web-host-install.js";
+import { WebHostInstalls, hostUpdatePlan, type HostInstallMode, type HostInstallReporter, type HostInstallStart } from "./web-host-install.js";
+import { cliUpdateView, versionOf } from "./cli-audited.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
 import { BrowserBackendSignIns } from "./browser-backend-signins.js";
@@ -21053,7 +21054,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // (Keep-alive is the host's: it is built from the host's profiles above and never given to a computer's rows.)
     let machines: Awaited<ReturnType<MachineAccounts["list"]>> = [];
     if (remoteRuntimeEnabled()) { try { machines = await this.machineAccounts.list(); } catch (err) { this.logger.debug({ err: (err as Error).message }, "Computer accounts not read"); } }
-    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, shortUsage: shortWindow, keepAlive, machines, installShown: this.webHostInstalls.view()?.backend ?? null });
+    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, shortUsage: shortWindow, keepAlive, machines, installShown: this.webHostInstalls.view()?.backend ?? null,
+      versions: new Map(this.backendAvailabilityRows().map(row => [row.backend, row.version ?? null] as const)) });
   }
 
   /**
@@ -22178,7 +22180,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.webHostInstallsInstance ??= new WebHostInstalls({
       isLocalAdmin: handle => this.isLocalAdminSession(handle),
       installable: backend => !isRemovedBackend(backend) && !!BACKEND_INSTALLATION_INFO[backend],
-      start: (backend, reporter, execution) => this.startWebInstall(backend, reporter, execution),
+      updatable: backend => !isRemovedBackend(backend) && !!BACKEND_INSTALLATION_INFO[backend] && !!hostUpdatePlan(backend),
+      start: (backend, reporter, execution, mode) => this.startWebInstall(backend, reporter, execution, mode),
       cancel: async () => { if (!this.activeInstall) return false; await this.cancelInstallSession(); return true; },
       // No details in the event: each page reads GET /ui/host-install. The Accounts list reads itself again on the same event (the CLI is installed now).
       changed: () => { broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")); },
@@ -22192,17 +22195,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * is — a fresh login shell, else the installer's own directories — and the availability probe reads the version for the page. Everything is
    * reported through `reporter`; nothing is posted to any chat, and no sign-in is started (the page offers Sign in itself).
    */
-  async startWebInstall(backendArg: string, reporter: HostInstallReporter, execution?: SettingsExecution): Promise<HostInstallStart> {
+  async startWebInstall(backendArg: string, reporter: HostInstallReporter, execution?: SettingsExecution, mode: HostInstallMode = "install"): Promise<HostInstallStart> {
     execution?.assert();
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
-    const info = BACKEND_INSTALLATION_INFO[backend];
-    if (!info || isRemovedBackend(backend)) return { refused: "unsupported" };
+    const base = BACKEND_INSTALLATION_INFO[backend];
+    if (!base || isRemovedBackend(backend)) return { refused: "unsupported" };
+    // AGEND-136: an update runs the registry's `host.update` command with the audited release in it (hostUpdatePlan); the window, its judgement and its release are the install's.
+    const plan = mode === "update" ? hostUpdatePlan(backend) : null;
+    if (mode === "update" && !plan) return { refused: "unsupported" };
+    const info = plan ? { install: plan.command } : base;
     // The fleet-wide window, claimed before the first await (shared with /login, chat's install and sign-in).
     const claim = this.loginWindow.tryClaim("install", backend);
     if (!claim) return { refused: this.loginWindow.isClosed ? "shutting_down" : "busy" };
-    if (await checkBinaryInstalledAsync(info.binary)) { this.loginWindow.release(claim); return { refused: "already" }; }
-    if (execution && !execution.current()) { this.loginWindow.release(claim); return { refused: "failed" }; }
-    this.recordLoginFlow(backend, "install_only", "web");
+    // #3542 / AGEND-144 (Prism on #3539): the claim is a lock, not the asker's authority. The confirmed change's own execution (its session, role, confirmation and the settings it was held
+    // against) is asked again after each wait (the binary check, the version refresh), and its admission ends at the tmux command that starts the installer (openInstallWindow → `launch`).
+    const asker = (): boolean => { try { return !execution || execution.current(); } catch { return false; } };
+    const present = await checkBinaryInstalledAsync(base.binary);
+    if (mode === "install" && present) { this.loginWindow.release(claim); return { refused: "already" }; }
+    // An update needs the CLI where the Accounts page found it: on the fleet's PATH, else (a fresh login shell, then) the installer's own directories (~/.grok/bin, ~/.opencode/bin …).
+    if (mode === "update" && !present && !(await this.locateInstalledCli(backend, base.binary).catch(() => null))) { this.loginWindow.release(claim); return { refused: "not_installed" }; }
+    if (!asker()) { this.loginWindow.release(claim); return { refused: "failed" }; }
+    let versionBefore: string | null = null;
+    if (plan) {
+      // The version the page shows as "before" is the binary probe's own, read now (not the last snapshot), and an update only starts when the CLI is really behind the audited release.
+      // AGEND-144 (Prism on #3539, P2-3): that reading must be FRESH, SUCCESSFUL and of the executable that resolves now. The published row is not enough: a forced refresh keeps the previous
+      // version when the new probe fails for the same path (right for the pickers, which fail open), so a replaced binary whose version cannot be read would still carry the old
+      // number and an update to an older release would be accepted. Unreadable refuses. (The published row is refreshed too, as before, for the pickers and the page.)
+      // AGEND-148 (Prism R3 on #3539, P2-3): the admission's reading comes AFTER the other awaited preparation (the forced refresh publishes a probe of its own), so it is the newest
+      // observation — a version published while this update was being prepared is never discarded for an earlier one.
+      await this.backendAvailability.refresh([backend], { force: true }).catch(() => {});
+      const fresh = await this.backendAvailability.freshVersion(backend).catch(() => null);
+      versionBefore = fresh?.version ?? null;
+      if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return { refused: "shutting_down" }; }
+      if (!asker()) { this.loginWindow.release(claim); return { refused: "failed" }; }
+      if (!fresh) { this.loginWindow.release(claim); return { refused: "version_unreadable" }; }
+      if (cliUpdateView(backend, versionBefore, true)?.button !== true) { this.loginWindow.release(claim); return { refused: "up_to_date" }; }
+      try { reporter.update?.(versionOf(versionBefore), plan.target); } catch { /* a view never stops the update */ }
+    } else this.recordLoginFlow(backend, "install_only", "web");
     const opened = await this.openInstallWindow(backend, info, claim, {
       onProgress: pane => { try { reporter.progress(pane); } catch { /* a view never stops the install */ } },
       onDone: async ({ ok, detail, cleanupFailed }) => {
@@ -22211,7 +22240,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         let verified = false, version: string | null = null;
         if (ok) {
           // The installer may only have added the binary to a profile PATH; a fresh login shell sees that, the fleet's own PATH may not.
-          const installedAt = await this.locateInstalledCli(backend, info.binary).catch(() => null);
+          const installedAt = await this.locateInstalledCli(backend, base.binary).catch(() => null);
           if (installedAt) {
             verified = true;
             this.adoptBinaryDirectory(installedAt, backend);
@@ -22220,7 +22249,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             version = this.backendAvailabilityRows().find(row => row.backend === backend)?.version ?? null;
           }
         }
-        this.logger.info({ backend, ok, verified, ...(ok ? {} : { detail }) }, "Dashboard install ended");
+        this.logger.info({ backend, mode, ok, verified, ...(plan ? { to: plan.target } : {}), ...(ok ? {} : { detail }) }, mode === "update" ? "Dashboard update ended" : "Dashboard install ended");
         try { reporter.done({ ok, detail, cleanupFailed, verified, version, signIn: !!LOGIN_FLOWS[backend] && dashboardSignInSupported(backend) }); } catch { /* a view never stops the install */ }
       },
     }, execution);

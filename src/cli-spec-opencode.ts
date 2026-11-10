@@ -5,6 +5,7 @@ export const OPENCODE_SPEC = {
   id: "opencode",
   host: {
     install: yes({ binary: "opencode", command: "curl -fsSL https://opencode.ai/install | bash" }),
+    update: yes({ binary: "opencode", command: "curl -fsSL https://opencode.ai/install | bash -s -- --version {version}" }),
     // `/login opencode` installs it; there is no sign-in flow behind it (login-flows.ts).
     chatLogin: yes({ aliases: [], mode: "install-only" }),
     dashboardSignIn: notApplicable("There is no sign-in flow to run from the dashboard."),
@@ -28,6 +29,7 @@ export const OPENCODE_SPEC = {
     }),
     // AGEND-133 (#3521): pinned npm package (opencode-ai + its Windows x64 packages) with the registry's sha512 of each, `npm audit signatures` and the Authenticode signer of the binary.
     install: yes({ kind: "npm", pin: "audited" }),
+    update: notYetBuilt("#3521", "OpenCode's Windows install is pinned (runtime.install), but its Update button is not wired and audited for a computer yet; until then the dashboard shows the installed and the audited versions."),
     signIn: notApplicable("AgEnD has no sign-in flow for OpenCode."),
     namedAccounts: toVerify("Whether `opencode` on Windows can keep more than one set of credentials side by side has not been checked."),
     accountRows: none("OpenCode has no card on Settings → Accounts."),

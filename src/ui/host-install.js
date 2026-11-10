@@ -28,6 +28,8 @@ register("hostinstall", {
     err_install_needs_a_local_admin: "Only a fleet admin signed in on this machine or its network can install a CLI.",
     err_install_not_over_public_link: "Installing is not available over the public link. Open the dashboard on the machine running AgEnD.",
     err_failed: "The install could not start.", err_other: "That did not work.",
+    cardLabelUpdate: "Update {0} on this AgEnD computer", err_expired: "The install was not confirmed in time.", err_rejected: "The install was turned down.", err_stale: "Settings changed before the install could start. Try again.",
+    err_install_confirmation_required: "The install must be confirmed first.",
   },
   "zh-TW": {
     install: "安裝", installing: "安裝中…", cancel: "取消安裝", dismiss: "關閉",
@@ -46,6 +48,40 @@ register("hostinstall", {
     err_install_needs_a_local_admin: "只有在這台機器或它的網路上登入的 fleet 管理員，才能安裝 CLI。",
     err_install_not_over_public_link: "公開連結上不能安裝。請在執行 AgEnD 的機器上開啟儀表板。",
     err_failed: "安裝無法開始。", err_other: "沒有成功。",
+    cardLabelUpdate: "在這台 AgEnD 電腦上更新 {0}", err_expired: "安裝沒有在時限內確認。", err_rejected: "安裝已被拒絕。", err_stale: "安裝開始前設定已經改變。請再試一次。",
+    err_install_confirmation_required: "安裝必須先經過確認。",
+  },
+});
+// AGEND-136 (#3521): the Update button beside Install. The page names the CLI and nothing else (POST /ui/host-update { backend }); the server picks the command and the
+// AUDITED release it goes to (cli-audited.ts), so the button always says which version it installs. A CLI that updates itself shows the versions and no button.
+register("hostinstall", {
+  en: {
+    update: "Update to {0}", updating: "Updating…", cancelUpdate: "Cancel update",
+    verCurrent: "{0} is installed — up to date. The newest version AgEnD has audited: {1}.",
+    verBehind: "{0} is installed. The newest version AgEnD has audited is {1}: Update installs exactly that, not the newest release.",
+    verSelf: "{0} is installed. The newest version AgEnD has audited is {1}. This CLI updates itself in the background, so there is no Update button.",
+    verNewer: "{0} is installed. That is newer than {1}, the newest version AgEnD has audited: not verified by AgEnD yet.",
+    verUnknown: "The installed version could not be read. The newest version AgEnD has audited: {0}.",
+    runningUpdate: "Updating {0} to {1} (started on {2}).",
+    updated: "{0} was updated from {1} to {2}.", updatedNoFrom: "{0} was updated to {1}.", updatedWarn: "Warning: the {0} installer finished (exit code 0), but the installed version is {1} and the audited version is {2}. It did not reach the audited version: read the installer's last lines below.",
+    updatedNoVersion: "The {0} installer finished (exit code 0), but the installed version could not be read afterwards, so it is not known whether it reached the audited version, {1}.",
+    failedUpdate: "The {0} update did not finish.", failedUpdateCode: "The {0} update exited with code {1}.",
+    cancelledUpdate: "The {0} update was cancelled.", timeoutUpdate: "The {0} update took too long and was stopped.",
+    err_not_installed: "{0} is not installed on this host.", err_version_unreadable: "AgEnD could not read the installed version of {0} just now, so it did not update it. Try again in a moment.", err_up_to_date: "{0} is already at the version AgEnD has audited (or newer): there is nothing to update.",
+  },
+  "zh-TW": {
+    update: "更新到 {0}", updating: "更新中…", cancelUpdate: "取消更新",
+    verCurrent: "已安裝 {0}，是最新的。AgEnD 稽核過的最新版本：{1}。",
+    verBehind: "已安裝 {0}。AgEnD 稽核過的最新版本是 {1}：按「更新」會裝這個版本，不是最新釋出版。",
+    verSelf: "已安裝 {0}。AgEnD 稽核過的最新版本是 {1}。這個 CLI 會在背景自己更新，所以這裡沒有「更新」按鈕。",
+    verNewer: "已安裝 {0}，比 AgEnD 稽核過的最新版本 {1} 還新：尚未經 AgEnD 驗證。",
+    verUnknown: "讀不到已安裝的版本。AgEnD 稽核過的最新版本：{0}。",
+    runningUpdate: "正在把 {0} 更新到 {1}（從 {2} 啟動）。",
+    updated: "{0} 已從 {1} 更新到 {2}。", updatedNoFrom: "{0} 已更新到 {1}。", updatedWarn: "警告：{0} 的安裝程式已結束（結束碼 0），但已安裝的版本是 {1}，AgEnD 稽核過的版本是 {2}，沒有更新到稽核版本。請看下方安裝程式的最後幾行。",
+    updatedNoVersion: "{0} 的安裝程式已結束（結束碼 0），但之後讀不到已安裝的版本，不確定有沒有更新到稽核版本 {1}。",
+    failedUpdate: "{0} 沒有更新完成。", failedUpdateCode: "{0} 的更新以結束碼 {1} 結束。",
+    cancelledUpdate: "已取消 {0} 的更新。", timeoutUpdate: "{0} 的更新花太久，已停止。",
+    err_not_installed: "這台主機沒有安裝 {0}。", err_version_unreadable: "AgEnD 剛才讀不到 {0} 目前安裝的版本，所以沒有更新。請稍後再試。", err_up_to_date: "{0} 已經是 AgEnD 稽核過的版本（或更新）：不需要更新。",
   },
 });
 const th = (k, ...v) => t(`hostinstall.${k}`, ...v);
@@ -88,20 +124,36 @@ const errorText = (code, backend) => {
   return text === `hostinstall.${key}` ? th("err_other") : text;
 };
 
-/** Install `backend` on the host. Resolves true when the server started it. The page sends the CLI's id and nothing else. */
-export async function startHostInstall(backend) {
+/** Why a confirmed install did not start, as the Settings gate reports it (`apply_rejected: busy`), else what the write itself answered. */
+const refusalOf = (r) => {
+  const outcome = r.confirmed && r.confirmed.outcome;
+  const m = outcome && typeof outcome.detail === "string" ? /apply_rejected: ([a-z_]+)/.exec(outcome.detail) : null;
+  if (m) return m[1];
+  if (r.confirmed && ["expired", "rejected", "stale"].includes(r.confirmed.state)) return r.confirmed.state;
+  return r.body && r.body.error;
+};
+
+/**
+ * Install (or update) `backend` on the host. Resolves true when the server started it. The page sends the CLI's id and nothing else — and through the Settings gate (AGEND-144):
+ * both are held changes like any other that acts on the host. Where the lenient default applies the change is applied at once; for an administrator who asked for their own code the
+ * card asks for it, bound to the digest of this change. Whatever the gate answers, the run shown is the server's. (Which release an update goes to and which command runs are the server's.)
+ */
+async function startHostCli(path, backend, labelKey) {
   installStyles();
   if (hostInstallStore.get().starting) return false;
   hostInstallStore.set({ starting: backend });
   let r;
-  try { r = await confirmedWrite("/ui/host-install", { body: { backend }, label: th("confirm", backend), displaySummary: () => [th("confirm", backend)], onPending: revealPending }); }
+  try { r = await confirmedWrite(path, { body: { backend }, label: th(labelKey, backend), displaySummary: () => [th(labelKey, backend)], onPending: revealPending }); }
   catch { r = { ok: false, body: null }; }
   finally { hostInstallStore.set({ starting: null }); }
   if (r.ok && r.body && r.body.install) { hostInstallStore.set({ loaded: true, run: r.body.install }); return true; }
-  toast(errorText(r.body && r.body.error, backend));
+  toast(errorText(refusalOf(r), backend));
   void refreshHostInstall();
   return false;
 }
+export const startHostInstall = (backend) => startHostCli("/ui/host-install", backend, "confirm");
+/** Update `backend` on the host to the audited release (AGEND-136). */
+export const startHostUpdate = (backend) => startHostCli("/ui/host-update", backend, "cardLabelUpdate");
 
 export async function cancelHostInstall() {
   const r = await post("/ui/host-install/cancel", {});
@@ -137,6 +189,28 @@ export function InstallButton({ backend, blocked = false }) {
   return html`<button type="button" class="btn btn-sm btn-primary s-account-install" disabled=${blocked || installRunning(state)} onClick=${() => { void startHostInstall(backend); }}>${th("install")}</button>`;
 }
 
+/**
+ * The version line of an installed CLI and its Update button (AGEND-136). `row.cliUpdate` is the server's reading: the audited release, where the installed version stands
+ * against it (`current`, `behind`, `newer`, `unknown`), whether the dashboard offers an update (`button`) and who updates it (`via`: "dashboard" or "self").
+ */
+export function VersionLine({ row, label, blocked = false }) {
+  const state = useStore(hostInstallStore);
+  const u = row.cliUpdate;
+  if (!u || !hostInstallOffered()) return null;
+  const installed = u.installed || row.version || "?";
+  const text = u.state === "current" ? th("verCurrent", installed, u.audited)
+    : u.state === "newer" ? th("verNewer", installed, u.audited)
+    : u.state === "unknown" ? th("verUnknown", u.audited)
+    : u.via === "self" ? th("verSelf", installed, u.audited)
+    : th("verBehind", installed, u.audited);
+  const run = runFor(state, row.backend);
+  const updating = !!run && run.phase === "running" && run.mode === "update";
+  return html`<div class="s-account-version" data-cli-update=${u.state} data-via=${u.via}>
+    <p class="note s-account-why">${text}</p>
+    ${u.button ? html`<span class="s-actions"><button type="button" class="btn btn-sm btn-primary s-account-update" aria-label=${`${label} — ${th("update", u.audited)}`} disabled=${blocked || installRunning(state)} onClick=${() => { void startHostUpdate(row.backend); }}>${updating ? th("updating") : th("update", u.audited)}</button></span>` : null}
+  </div>`;
+}
+
 /** The progress and the verdict of this CLI's install, under its row; nothing when there is none (or it was dismissed). */
 export function HostInstallRun({ backend, label }) {
   const state = useStore(hostInstallStore);
@@ -152,11 +226,21 @@ export function HostInstallRun({ backend, label }) {
   if (!run) return null;
   const lines = Array.isArray(run.lines) ? run.lines : [];
   let text, cls = "";
-  if (run.phase === "running") text = th("running", label, run.startedOn);
+  const update = run.mode === "update";
+  if (run.phase === "running") text = update ? th("runningUpdate", label, run.targetVersion || "?", run.startedOn) : th("running", label, run.startedOn);
+  else if (run.phase === "ok" && update) {
+    // An update says the version before and after (the binary probe's own readings). Exit code 0 is not enough: when the version read afterwards is not the audited release (`reached`
+    // false), or could not be read (null), it is a warning that names the installed and the audited version, not a success.
+    const target = run.targetVersion || "?";
+    if (!run.verified) { cls = "signin-message"; text = th("okUnverified", label); }
+    else if (run.reached === false) { cls = "signin-warn"; text = th("updatedWarn", label, run.version || "?", target); }
+    else if (run.reached === null || !run.version) { cls = "signin-warn"; text = th("updatedNoVersion", label, target); }
+    else { cls = "signin-ok"; text = run.fromVersion ? th("updated", label, run.fromVersion, run.version) : th("updatedNoFrom", label, run.version); }
+  }
   else if (run.phase === "ok") { cls = run.verified ? "signin-ok" : "signin-message"; text = !run.verified ? th("okUnverified", label) : run.version ? th("okVersion", label, run.version) : th("ok", label); }
-  else if (run.phase === "cancelled") text = th("cancelled", label);
-  else if (run.phase === "timeout") text = th("timeout", label);
-  else text = run.exitCode !== null && run.exitCode !== undefined ? th("failedCode", label, run.exitCode) : th("failed", label);
+  else if (run.phase === "cancelled") text = th(update ? "cancelledUpdate" : "cancelled", label);
+  else if (run.phase === "timeout") text = th(update ? "timeoutUpdate" : "timeout", label);
+  else text = run.exitCode !== null && run.exitCode !== undefined ? th(update ? "failedUpdateCode" : "failedCode", label, run.exitCode) : th(update ? "failedUpdate" : "failed", label);
   const cancel = async () => { setBusy(true); await cancelHostInstall(); setBusy(false); };
   return html`<div class="s-account-install-run" data-phase=${run.phase} role="status">
     <p class=${`s-account-why ${cls}`}>${text}</p>
@@ -164,7 +248,7 @@ export function HostInstallRun({ backend, label }) {
       : run.phase === "running" ? html`<small class="note">${th("runningNoOutput")}</small>` : null}
     ${run.cleanupFailed ? html`<p class="note">${th("cleanup")}</p>` : null}
     <div class="s-actions">${run.phase === "running"
-      ? html`<button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${cancel}>${th("cancel")}</button>`
+      ? html`<button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${cancel}>${th(update ? "cancelUpdate" : "cancel")}</button>`
       : html`<button type="button" class="btn btn-sm btn-ghost" onClick=${() => dismissHostInstall(run.id)}>${th("dismiss")}</button>`}</div>
   </div>`;
 }

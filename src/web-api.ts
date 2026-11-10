@@ -32,6 +32,7 @@ import { gatewayRequestContext } from "./web-request-context.js";
 import type { WebUpdateHost } from "./web-update.js";
 import { crossInstanceVisibility } from "./cross-instance-notice.js";
 import { permitWebContinuation } from "./web-continuation.js";
+import { HOST_CLI_PATHS, isRuntimeCliInstallPath } from "./settings-effect.js";
 /**
  * Web UI HTTP API handler.
  * All /ui/* routes are handled here, extracted from fleet-manager.ts.
@@ -1364,7 +1365,7 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
  * after it). `GET` reads the current install; `POST` `{ backend }` starts one — the browser names a CLI, the server looks up the registry's command, nothing it sends
  * is ever run; `POST …/cancel` `{}` stops the running one. Every answer is no-store.
  */
-const HOST_INSTALL_STATUS: Readonly<Record<string, number>> = { not_allowed: 403, unsupported: 400, already: 409, busy: 409, shutting_down: 503, failed: 500 };
+const HOST_INSTALL_STATUS: Readonly<Record<string, number>> = { not_allowed: 403, unsupported: 400, already: 409, not_installed: 409, up_to_date: 409, version_unreadable: 409, busy: 409, shutting_down: 503, failed: 500 };
 function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -1388,7 +1389,8 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
     try { json(res, 200, { install: installs.view() }); } catch { json(res, 503, { error: "install_unavailable" }); }
     return true;
   }
-  if (method !== "POST") { json(res, 404, { error: "not_found" }); return true; }
+  // Cancel only takes something away (any local admin may stop it, as `/login cancel`): it is not a held change. Install and Update (AGEND-136) are, and run only as the gate's confirmed replay.
+  if (method !== "POST" || (path !== "/ui/host-install/cancel" && !HOST_CLI_PATHS.has(path))) { json(res, 404, { error: "not_found" }); return true; }
   (async () => {
     let bytes: Buffer;
     try { bytes = await readBoundedWebBody(req, 1024); } catch { json(res, 413, { error: "install_body_bound" }); return; }
@@ -1404,7 +1406,8 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
     const parsed = z.strictObject({ backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/) }).safeParse(body);
     if (!parsed.success) { json(res, 400, { error: "install_args" }); return; }
     if (!isSettingsReplay(req) || !settingsRequestExecution(req)) { json(res, 403, { error: "install_confirmation_required" }); return; }
-    const result = await installs.begin(now, parsed.data.backend, settingsRequestExecution(req));
+    // AGEND-136: `POST /ui/host-update { backend }` is the same request for an update: the server picks the command and the audited release; the page sends only the CLI's id.
+    const result = await installs.begin(now, parsed.data.backend, settingsRequestExecution(req), path === "/ui/host-update" ? "update" : "install");
     if ("error" in result) json(res, HOST_INSTALL_STATUS[result.error] ?? 409, { error: result.error, ...(result.message ? { message: result.message } : {}) });
     else json(res, 200, result);
   })().catch(() => { try { json(res, 500, { error: "install_request_failed" }); } catch { /* response ended */ } });
@@ -1996,7 +1999,7 @@ export function handleWebRequest(
   // the panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
     const approved = isSettingsReplay(req) && method === "POST"
-      && (path === "/ui/config" || path === "/ui/instances" || path === "/ui/host-install" || /^\/ui\/instances\/[^/]+\/delete$/.test(path))
+      && (path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path) || HOST_CLI_PATHS.has(path) || isRuntimeCliInstallPath(path))
       ? settingsRequestExecution(req) : undefined;
     if (approved) {
       try { approved.assert(); } catch { json(res, 409, { error: "settings_execution_stale" }); return true; }
@@ -2913,7 +2916,7 @@ export function handleWebRequest(
   // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
   if (path === "/ui/browser-backend-signins") return handleBrowserBackendSignIns(req, res, url, ctx);
   if (path === "/ui/backend-login" || path.startsWith("/ui/backend-login/")) return handleBackendLogin(req, res, url, ctx, path, method);
-  if (path === "/ui/host-install" || path === "/ui/host-install/cancel") return handleHostInstall(req, res, url, ctx, path, method);
+  if (path === "/ui/host-install" || path === "/ui/host-install/cancel" || path === "/ui/host-update") return handleHostInstall(req, res, url, ctx, path, method);
   // #3292: before the accounts prefix — its Add pattern (`POST /ui/accounts/<backend>`) would read "keep-alive" as a backend.
   if (path === "/ui/accounts/keep-alive") return handleAccountKeepAlive(req, res, url, ctx, method);
   if (path.startsWith("/ui/accounts/")) return handleAccountWrite(req, res, url, ctx, path, method);

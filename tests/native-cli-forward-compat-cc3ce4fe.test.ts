@@ -22,7 +22,7 @@ describe("the version rule", () => {
   it("audited → verified; any other readable version → unverified; a denylisted one → denied with its reason; anything unreadable → invalid", () => {
     expect(nativeCliVersionState("codex", "codex-cli 0.165.0")).toEqual({ state: "verified", version: "0.165.0" });
     expect(nativeCliVersionState("claude-code", "2.1.316 (Claude Code)")).toEqual({ state: "verified", version: "2.1.316" });
-    for (const line of ["codex-cli 0.167.0", "codex-cli 1.0.0", "codex-cli 0.165.1-beta.2", "codex-cli 0.165.0+build", "codex-cli 0.165.0+build.5", "codex-cli 1.0.0-rc.1+sha.abc", "(0.166.1)"]) expect(nativeCliVersionState("codex", line).state, line).toBe("unverified");
+    for (const line of ["codex-cli 0.168.0", "codex-cli 1.0.0", "codex-cli 0.165.1-beta.2", "codex-cli 0.165.0+build", "codex-cli 0.165.0+build.5", "codex-cli 1.0.0-rc.1+sha.abc", "(0.166.1)"]) expect(nativeCliVersionState("codex", line).state, line).toBe("unverified");
     const denied = { codex: { "0.170.0": "its composer never paints" }, "claude-code": {} };
     expect(nativeCliVersionState("codex", "codex-cli 0.170.0", denied)).toEqual({ state: "denied", version: "0.170.0", reason: "its composer never paints" });
     for (const line of [null, undefined, "", "unknown", "codex-cli 0.165", "0.165.0 0.166.0", "codex-cli 1.2.1.316", "v0.165.0.1", "x".repeat(4097) + " 0.165.0",
@@ -34,7 +34,7 @@ describe("the version rule", () => {
     expect(nativeCliVersionState("codex", "codex-cli 0.165.0", { codex: Object.create({ "0.165.0": "inherited" }), "claude-code": {} }).state).toBe("verified");
   });
   it("the audited set holds exactly the releases that passed an audit", () => {
-    expect(NATIVE_CLI_AUDITED).toEqual({ codex: ["0.165.0", "0.166.0"], "claude-code": ["2.1.316", "2.1.318"] });
+    expect(NATIVE_CLI_AUDITED).toEqual({ codex: ["0.165.0", "0.166.0", "0.167.0"], "claude-code": ["2.1.316", "2.1.318", "2.1.319"] });
   });
   it("labelling an inventory copies it, labels only the two pane CLIs and replaces any label it carried", () => {
     const inventory = { clis: [{ id: "codex", version: "codex-cli 0.199.0", paneVerification: "verified" as const }, { id: "claude-code", version: "2.1.316" }, { id: "grok", version: "1.0.0", paneVerification: "verified" as const }] };
@@ -85,7 +85,7 @@ async function fixture(provider: "codex" | "claude-code", version: string, scree
 }
 
 describe("a newer, unaudited CLI with an unchanged screen runs and is labelled", () => {
-  it.each([["codex", "codex-cli 0.167.0"], ["claude-code", "2.1.399 (Claude Code)"]] as const)("%s %s starts, takes ordinary delivery and shows Not yet verified", async (provider, version) => {
+  it.each([["codex", "codex-cli 0.168.0"], ["claude-code", "2.1.399 (Claude Code)"]] as const)("%s %s starts, takes ordinary delivery and shows Not yet verified", async (provider, version) => {
     const f = await fixture(provider, version);
     await f.fleet.startInstance("native", f.config, true);
     expect(f.spawn).toHaveBeenCalledOnce(); expect(f.fleet.getInstanceStatus("native")).toBe("running");
@@ -102,8 +102,8 @@ describe("a newer, unaudited CLI with an unchanged screen runs and is labelled",
 });
 
 describe("an unaudited CLI whose screen AgEnD does not recognise keeps failing closed", () => {
-  it("Codex 0.167.0 with an unknown layout: no input of any kind, start is never released, and it ends held, not running", async () => {
-    const f = await fixture("codex", "codex-cli 0.167.0", UNKNOWN);
+  it("Codex 0.168.0 with an unknown layout: no input of any kind, start is never released, and it ends held, not running", async () => {
+    const f = await fixture("codex", "codex-cli 0.168.0", UNKNOWN);
     let settled: unknown = "pending"; const start = f.fleet.startInstance("native", f.config, true).then(() => { settled = "started"; }, (error: Error) => { settled = error; });
     await vi.waitFor(() => expect(f.spawn).toHaveBeenCalledOnce());
     await new Promise(resolve => setTimeout(resolve, 600));

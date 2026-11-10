@@ -3,7 +3,7 @@ import { ServerResponse as Response } from "node:http";
 import { readBoundedWebBody } from "./web-body.js";
 import { requestSessionBinding } from "./connection-secrets.js";
 import { cacheSettingsBody, createSettingsReplay, settingsRequestExecution } from "./settings-request-capability.js";
-import { prepareSettingsEffect, isSettingsMutation, type SettingsEffectContext } from "./settings-effect.js";
+import { prepareSettingsEffect, isSettingsMutation, isCliInstallPath, type SettingsEffectContext } from "./settings-effect.js";
 import { SettingsConfirmationStore, SettingsConfirmationError, type SettingsPendingView } from "./settings-confirmation.js";
 import { SettingsExecution, settingsFingerprint } from "./settings-transaction.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -120,9 +120,9 @@ export class SettingsHttpConfirmation {
       return true;
     }
     if (!isSettingsMutation(method, path)) return false;
-    if (path === "/ui/host-install" && gatewayRequestContext(req)) { json(res, 403, { error: "install_not_over_public_link" }); return true; }
-    const installPrincipal = path === "/ui/host-install" ? this.options.principal(req) : undefined;
-    if (path === "/ui/host-install" && !installPrincipal?.current()) { json(res, 401, { error: "session_required" }); return true; }
+    if (isCliInstallPath(path) && gatewayRequestContext(req)) { json(res, 403, { error: "install_not_over_public_link" }); return true; }
+    const installPrincipal = isCliInstallPath(path) ? this.options.principal(req) : undefined;
+    if (isCliInstallPath(path) && !installPrincipal?.current()) { json(res, 401, { error: "session_required" }); return true; }
     // #1620: the web settings (sessions, the browser terminal, the public link itself) are never changed over the
     // temporary public link — the same rule as tokens and secrets: refused before anything is proposed.
     if ((path === "/api/settings/fleet/web" || path.startsWith("/api/settings/public-tunnel-token/")) && gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }); return true; }
@@ -131,6 +131,7 @@ export class SettingsHttpConfirmation {
     // M-2255: Settings → Runtime's switches and limit (who may run agents where) — refused before anything is proposed.
     if (path === "/api/settings/fleet/runtimes" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
     if (path.startsWith("/api/settings/hub/") && gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    // AGEND-144: an install on the AgEnD computer is never asked for over the public link (refused before anything is proposed, as before it was a held change).
     if (path.startsWith("/api/hub/member/") && gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
     if (path === "/api/hub/member/exposures" && gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
     if (path === "/api/settings/general-location" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
@@ -139,7 +140,7 @@ export class SettingsHttpConfirmation {
     return true;
   }
   private async prepare(req: IncomingMessage, res: ServerResponse, url: URL, next: SettingsRequestHandler, installPrincipal?: SettingsPrincipal | null): Promise<void> {
-    const method = req.method ?? "POST", raw = method === "DELETE" ? Buffer.from("{}") : await readBoundedWebBody(req, url.pathname === "/ui/host-install" ? 1024 : 512 * 1024);
+    const method = req.method ?? "POST", raw = method === "DELETE" ? Buffer.from("{}") : await readBoundedWebBody(req, isCliInstallPath(url.pathname) ? 1024 : 512 * 1024);
     if (res.destroyed || req.aborted) return;
     let body: unknown; try { body = JSON.parse(raw.toString("utf8") || "{}"); } catch { throw new SettingsConfirmationError(400, "invalid_json"); }
     const principal = this.options.principal(req);
@@ -147,7 +148,8 @@ export class SettingsHttpConfirmation {
     if (installPrincipal && (principal!.id !== installPrincipal.id || principal!.requester?.handle !== installPrincipal.requester?.handle))
       throw new SettingsConfirmationError(409, "install_session_changed");
     const localAdmin = principal?.localAdmin ? () => principal.current() && principal.localAdmin?.() === true : undefined;
-    if (url.pathname === "/ui/host-install" && (!principal?.requester || principal.source !== "web_session" || localAdmin?.() !== true))
+    // AGEND-144 / #3542: only a signed-in local administrator proposes a host CLI install (a guest, a read session or a header token never even holds one for another admin to confirm).
+    if (isCliInstallPath(url.pathname) && (!principal?.requester || principal.source !== "web_session" || localAdmin?.() !== true))
       throw new SettingsConfirmationError(403, "install_needs_a_local_admin");
     const key = typeof req.headers["idempotency-key"] === "string" ? req.headers["idempotency-key"]
       : body && typeof body === "object" && typeof (body as any).idempotency_key === "string" ? (body as any).idempotency_key : undefined;
@@ -214,8 +216,11 @@ export class SettingsHttpConfirmation {
       && (createBody.runtime==="windows"||sanitizeInstanceName(typeof createBody.topic_name==="string"?createBody.topic_name:basename(typeof createBody.directory==="string"?createBody.directory:""))!=="general");
     // AGEND-122 (Prism P2): this shortcut is a confirmation like any other — it follows the same policy (Only this computer can
     // authorize; the admin's own code switch), asked here and again at execution. Refused: the creation waits as a held change.
+    // #3542 / AGEND-144 / AGEND-148: so is Install (and Update) of an AI CLI — on the AgEnD computer, and on a paired Windows computer — an administrator's ordinary dashboard operation,
+    // whose request is exactly `{ backend }` / `{ cli }` (the effect refused anything else before it was proposed). The same policy; a strict admin off this computer takes their own
+    // digest-bound code instead.
     const policy = (): boolean => this.options.directCreationPolicy?.(req) !== false;
-    const ordinaryInstall = this.options.directHostInstall === true && method === "POST" && url.pathname === "/ui/host-install";
+    const ordinaryInstall = this.options.directHostInstall === true && method === "POST" && isCliInstallPath(url.pathname);
     const direct = (this.options.directAgentCreation === true && ordinaryCreate || ordinaryInstall) && principal.source === "web_session"
       && !gatewayRequestContext(req) && localAdmin?.() === true && policy();
     const companyDirect = this.options.directCompanyJoin === true && method === "POST"

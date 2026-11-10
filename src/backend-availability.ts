@@ -61,6 +61,17 @@ export function parseVersion(text: string | null | undefined): string | null {
   return m ? `${m[1]}.${m[2]}.${m[3] ?? "0"}` : null;
 }
 
+/**
+ * AGEND-144: the full release a launcher's own version file names — x.y.z WITH the build a CLI ships after it (Muse's `1.4.14-R7309.1`), so the page can tell an installed
+ * `1.4.14-R7012.1` from the audited `1.4.14-R7309.1` (cli-audited.ts `versionOf`). Without a build it is `parseVersion`.
+ */
+export function parseRelease(text: string | null | undefined): string | null {
+  const v = parseVersion(text);
+  if (!v) return null;
+  const build = /\d+\.\d+(?:\.\d+)?-R(\d{1,9}(?:\.\d{1,6})*)(?!\d)/.exec(text ?? "")?.[1];
+  return build ? `${v}-R${build}` : v;
+}
+
 /** a < b, for dotted numeric versions. */
 export function versionBelow(a: string, b: string): boolean {
   const pa = a.split(".").map(Number), pb = b.split(".").map(Number);
@@ -143,6 +154,25 @@ export class BackendAvailabilityStore {
       }
     });
     this.queue = run.catch(() => {});
+    return run;
+  }
+
+  /**
+   * AGEND-144 (Prism on #3539, P2-3): ONE fresh, successful version reading of the executable that resolves NOW — for the one decision that must not rest on a retained value: an
+   * update's admission. It is not the published row: `probeOne` keeps the version it knew for the same path when a probe fails (right for the pickers, which fail open), so a
+   * binary replaced in place whose version cannot be read would still show the old number. Here a missing executable, no answer or an unreadable version is null — never a retained
+   * value. Nothing is published or cached; it takes its place in the same one-probe-at-a-time queue.
+   */
+  freshVersion(backend: string): Promise<{ path: string; version: string } | null> {
+    if (!this.rows.has(backend)) return Promise.resolve(null);
+    const run = this.queue.then(async () => {
+      let path: string | null | undefined;
+      try { path = await this.probes.resolve(backend); } catch { path = undefined; }
+      if (!path) return null;
+      const version = await this.probes.version(backend, path).catch(() => null);
+      return version ? { path, version } : null;
+    });
+    this.queue = run.then(() => {}, () => {});
     return run;
   }
 
@@ -257,7 +287,7 @@ export const STATIC_VERSION_FILES: Readonly<Record<string, (path: string) => str
  */
 export async function staticBackendVersion(backend: string, path: string): Promise<string | null> {
   const file = STATIC_VERSION_FILES[backend];
-  if (file) { try { return parseVersion(await readFile(file(path), "utf8")); } catch { return null; } }
+  if (file) { try { return parseRelease(await readFile(file(path), "utf8")); } catch { return null; } }
   let real: string;
   try { real = await realpath(path); } catch { return null; }
   const parts = real.split("/");

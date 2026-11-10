@@ -33,6 +33,8 @@ import { parseHubBrowserCertificateApply, type HubBrowserCertificateProposal } f
 import { parseHubRetention } from "./hub-retention-policy.js";
 import { parseHubMembership } from "./hub-membership-settings.js";
 import { t } from "./locale.js";
+import { hostUpdatePlan } from "./web-host-install.js";
+import { INSTALLABLE_CLIS, isInstallableCli } from "./runtime-cli-install.js";
 import { parseCompanyAddress } from "./hub/join/descriptor.js";
 
 export interface SettingsSecretProof {
@@ -51,8 +53,17 @@ export interface SettingsEffectContext {
   /** S3c PR B: a Hub pairing step's summary (connect, confirm the fingerprint, disconnect). Throws on a refused input. */
   hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[] };
 }
+/** The dashboard's host CLI installs (web-host-install.ts): the change this gate holds is "install <CLI>" — only its id is ever in the request. */
+export const HOST_CLI_PATHS: ReadonlySet<string> = new Set(["/ui/host-install", "/ui/host-update"]);
+/**
+ * AGEND-148 (Prism R3 on #3539): installing — and so Updating — an AI CLI on a paired Windows computer from the dashboard (runtime-api.ts). The Update button reuses this route, and Install
+ * had inherited it unguarded; both are held changes like the host's. Only the CLI's id is ever in the request; which version, folder and checks are the Runtime's (the pinned table).
+ */
+const RUNTIME_CLI_INSTALL_PATH = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})\/cli-install$/;
+export const isRuntimeCliInstallPath = (path: string): boolean => RUNTIME_CLI_INSTALL_PATH.test(path);
+/** Any dashboard route that installs or updates an AI CLI somewhere (the AgEnD computer, or a paired one): only a signed-in local administrator proposes it, never over the public link. */
+export const isCliInstallPath = (path: string): boolean => HOST_CLI_PATHS.has(path) || isRuntimeCliInstallPath(path);
 export function isSettingsMutation(method: string, path: string): boolean {
-  if (method === "POST" && path === "/ui/host-install") return true;
   if (method === "POST" && /^\/api\/hub\/member\/company-join\/(start|resume|repair-trust)$/.test(path)) return true;
   if (method === "PUT" && path === "/api/settings/hub/membership") return true;
   if (method === "POST" && path === "/api/settings/hub/browser-certificate/apply") return true;
@@ -62,6 +73,10 @@ export function isSettingsMutation(method: string, path: string): boolean {
   if (method === "POST" && path === "/api/hub/member/exposures") return true;      // S3c: an owner's publish/revise
   if (method === "POST" && /^\/api\/hub\/member\/pairing\/(?:connect|confirm|disconnect)$/.test(path)) return true;   // S3c PR B
   if (method === "POST" && path === "/api/settings/public-tunnel-token/apply") return true;
+  // AGEND-144 (Prism on #3536/#3539): installing an AI CLI on the AgEnD computer from the dashboard is a held change like any other that acts on the host.
+  if (method === "POST" && HOST_CLI_PATHS.has(path)) return true;
+  // AGEND-148: and on a paired Windows computer (Install, and the Runtime's Update which is that install over an older copy). The computer's owner's own switch is asked there, separately.
+  if (method === "POST" && isRuntimeCliInstallPath(path)) return true;
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
   return /^\/api\/settings\/(?:fleet\/(?:defaults|channels|web|appearance|runtimes|instances(?:\/[^/]+)?)|classic\/(?:defaults|channels\/[^/]+)|(?:provider-secrets|secrets)\/[^/]+\/apply|connections\/[^/]+\/(?:secret|binding)\/apply|quickstart\/commit)$/.test(path)
     || path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path);
@@ -107,6 +122,29 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
         t("hub.browserCertificate.expires", proposal.certificate.validTo),
         ...(proposal.certificate.selfSigned ? [t("hub.browserCertificate.selfSigned")] : [])],
       affectedConnections: [], authority: HUB_AUTHORITY } };
+  }
+  // AGEND-136: the Update button beside Install (#3542's held install is `/ui/host-install` above; an update is that change with the audited release in it).
+  if (path === "/ui/host-update") {
+    if (method !== "POST") throw new SettingsConfirmationError(404, "unavailable");
+    const b = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+    // The request is exactly `{ backend }` naming a CLI that has an update and an audited release to go to (the release is the server's, never the page's; the change shows it):
+    // refused before it is proposed, so a held change is never one that cannot run.
+    if (!b || Object.keys(b).length !== 1 || typeof b.backend !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(b.backend)) throw new SettingsConfirmationError(400, "install_args");
+    const plan = hostUpdatePlan(b.backend);
+    if (!plan) throw new SettingsConfirmationError(400, "unsupported");
+    const input = { backend: b.backend, target: plan.target }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
+      summary: [t("host_cli.update", input.backend, plan.target)], affectedConnections: [], authority: HUB_AUTHORITY } };
+  }
+  if (isRuntimeCliInstallPath(path)) {
+    if (method !== "POST") throw new SettingsConfirmationError(404, "unavailable");
+    const b = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+    // The request is exactly `{ cli }` naming a CLI the Runtime installs from its pinned table: refused before it is proposed, so a held change is never one that cannot run.
+    if (!b || Object.keys(b).length !== 1 || typeof b.cli !== "string") throw new SettingsConfirmationError(400, "install_args");
+    if (!isInstallableCli(b.cli)) throw new SettingsConfirmationError(400, "unsupported");
+    const machine = RUNTIME_CLI_INSTALL_PATH.exec(path)![1], input = { cli: b.cli, machine }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
+      summary: [t("runtime_cli.install", input.cli, INSTALLABLE_CLIS[b.cli].version, machine.slice(0, 8))], affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (path === "/api/settings/hub/retention") {
     if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
