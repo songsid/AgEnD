@@ -42,8 +42,8 @@
       hint_outside: "Lost your phone? On the AgEnD computer, choose \u201cSet up again\u201d.",
       refused_outside: "That code didn't work. Check that your phone's clock is right and try the newest code.",
       paused_outside: "Too many wrong codes. Try again in {duration}.",
-      totp_refused: "Could not sign in. Use the code currently shown in your authenticator app and check the clock on your authenticator device.",
-      totp_help: "If the code is correct but you still cannot sign in, paste an 8-character device sign-in code, or use a device you have signed in from before.",
+      totp_refused: "Code not accepted. Try the next code.",
+      totp_help: "Sign-in may be limited. If the code is right, use an 8-character code or a signed-in device.",
       unavailable: "Authenticator sign-in is not available here. Paste an 8-character device sign-in code, or use a device you have signed in from before.",
       invalid: "Enter a 6-digit authenticator code or an 8-character device sign-in code.",
       pause_for: "Sign-in is paused. Please wait {duration}, then try again.", pause_button: "Sign-in paused", ready_again: "You can try signing in again.",
@@ -88,8 +88,8 @@
       hint_outside: "手機遺失？請在 AgEnD 電腦上選「重新設定」。",
       refused_outside: "驗證碼不對。請確認手機時間正確，並輸入最新的驗證碼。",
       paused_outside: "錯誤次數太多，請 {duration} 後再試。",
-      totp_refused: "無法登入。請使用驗證器 App 目前顯示的驗證碼，並確認驗證器所在裝置的時間正確。",
-      totp_help: "若驗證碼正確仍無法登入，請貼上 8 字元裝置登入碼，或使用先前登入過的裝置。",
+      totp_refused: "驗證碼未通過；若剛換碼，請等下一組再試。",
+      totp_help: "驗證碼正確也可能暫時受限。請改貼 8 字元裝置登入碼，或使用先前登入過的裝置。",
       unavailable: "這裡無法使用驗證器 App 登入。請貼上 8 字元裝置登入碼，或使用先前登入過的裝置。",
       invalid: "請輸入 6 位數驗證碼或 8 字元裝置登入碼。",
       pause_for: "登入已暫停，請等 {duration}後再試。", pause_button: "暫時無法登入", ready_again: "可以再次嘗試登入。",
@@ -133,8 +133,8 @@
   const t = (k) => ["lead", "label", "hint"].includes(k) ? T[lang][k] : (outside && (T[lang][`${k}_outside`] || T.en[`${k}_outside`])) || deviceText(k);
   function paint(node, text) {
     if (!node) return;
-    if (lang !== "zh-TW" || typeof node.replaceChildren !== "function") { node.textContent = text; return; }
-    const terms = /(8 字元裝置登入碼|使用先前登入過的裝置|驗證器 App|驗證器|驗證碼|同一個網路|自動登入|每組|立即|直接|核准)/g;
+    if (typeof node.replaceChildren !== "function") { node.textContent = text; return; }
+    const terms = lang === "zh-TW" ? /(8 字元裝置登入碼|使用先前登入過的裝置|驗證器 App|驗證器|驗證碼|同一個網路|自動登入|每組|立即|直接|核准)/g : /(8-character)/g;
     const parts = text.split(terms);
     if (parts.length === 1) { node.textContent = text; return; }
     node.replaceChildren(...parts.map((part, i) => {

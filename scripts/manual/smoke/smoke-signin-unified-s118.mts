@@ -1,5 +1,5 @@
 /** UI-only S-118 acceptance on the real scratch FleetManager listener. Never starts a fleet, CLI, public link or model.
- * The current core supports account-omitted sign-in only on web-only fleets. Chat/double-match acceptance MUST follow the core merge.
+ * The current core supports account-omitted sign-in only on web-only fleets. Chat/uniform-collision acceptance MUST follow the core merge.
  * Baseline/SKEW use exact base HTML/JS/token bytes routed into the owned listener; never claim a separately running base daemon.
  * REPO=$PWD PW_DIR=$PWD/node_modules/playwright-core CHROME=<chrome> OUT=<dir> npx tsx scripts/manual/smoke/smoke-signin-unified-s118.mts
  */
@@ -35,6 +35,8 @@ async function record(page: any, name: string, geometry = true) {
       input: document.querySelectorAll('#form input:not([hidden])').length, account: !!document.querySelector('#account'),
       controls: [...document.querySelectorAll("#form button,input,#reachHelp summary")].filter(visible).map(n => ({ name: n.id, h: n.getBoundingClientRect().height })),
       hint: style("#codeHint"), help: style("#reachTitle"), button: style("#go"), card: style("main"),
+      messageLines: document.querySelector("#msg")!.getBoundingClientRect().height / parseFloat(getComputedStyle(document.querySelector("#msg")!).lineHeight),
+      authHintLines: document.querySelector("#authHint")!.getBoundingClientRect().height / parseFloat(getComputedStyle(document.querySelector("#authHint")!).lineHeight),
       hintLines: document.querySelector("#codeHint")!.getBoundingClientRect().height / parseFloat(getComputedStyle(document.querySelector("#codeHint")!).lineHeight) };
   });
   check(`${name}:no-overflow`, g.scroll <= g.width, g);
@@ -71,11 +73,12 @@ try {
       } else if (mode === "after") {
         const g = await record(page, `${cn}-after-primary`);
         check(`${cn}:hint-and-help-contrast`, contrast(g.hint.color, g.card.background) >= 4.5 && contrast(g.help.color, g.card.background) >= 4.5, g);
-        if (c.lang === "zh-TW") check(`${cn}:one-line-fallback`, g.hintLines <= 1.1, g);
+        check(`${cn}:one-line-fallback`, g.hintLines <= 1.1, g);
         // Real server wrong-code response, followed by its real browser-local five-attempt pause. Manual retry is deliberate.
         await page.fill("#code", bad()); await page.waitForFunction(() => !!document.querySelector("#authHint")?.textContent);
         check(`${cn}:code-only-body`, posts.length === 1 && posts[0]!.path === "/auth/totp" && Object.keys(posts[0]!.data).join() === "code", posts);
-        await record(page, `${cn}-after-wrong`);
+        const wrong = await record(page, `${cn}-after-wrong`);
+        if (c.device === "phone") check(`${cn}:two-line-401-copy`, wrong.messageLines <= 2.1 && wrong.authHintLines <= 2.1, wrong);
         for (let i = 0; i < 4; i++) { const response = page.waitForResponse((r: any) => r.url().endsWith("/auth/totp") && r.request().method() === "POST"); await page.click("#go"); await response; await page.waitForTimeout(60); }
         await page.waitForFunction(() => (document.querySelector("#go") as HTMLButtonElement).disabled && !document.querySelector("#authHint")?.textContent);
         const paused = await record(page, `${cn}-after-paused`);
@@ -102,7 +105,7 @@ try {
 } finally {
   mkdirSync(OUT, { recursive: true });
   const files = ["src/auth-api.ts", "src/ui/signin.html", "src/ui/shared/signin.js", "src/ui/settings-devices.js", "src/ui/settings-access-strings.js"];
-  writeFileSync(join(OUT, "s118-result.json"), JSON.stringify({ base: BASE, chrome: fx.browser.version(), scope: "Owned scratch real web-only core; before/SKEW routed exact base UI assets; no chat/double-match proof", checks, images,
+  writeFileSync(join(OUT, "s118-result.json"), JSON.stringify({ base: BASE, chrome: fx.browser.version(), scope: "Owned scratch real web-only core; before/SKEW routed exact base UI assets; no chat/uniform-collision proof", checks, images,
     sourceFiles: files, sourceManifest: "PRODUCTION_SHA256SUMS" }, null, 2));
   writeFileSync(join(OUT, "PRODUCTION_SHA256SUMS"), files.map(p => createHash("sha256").update(readFileSync(join(REPO, p))).digest("hex") + "  " + p).join("\n") + "\n");
   await fx.close();

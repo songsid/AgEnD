@@ -1,6 +1,6 @@
 # S-118: one sign-in box
 
-繁中：使用者已核准單一輸入框、800 毫秒規則與文案／對比修正。本 PR 只消費既有登入核心；合併前須等 Junsion 的 code-only 核心，平常 merge 同步後，以真實聊天艦隊路由驗收包含雙重符合的「下一組驗證碼」回應。暫時只完成 web-only 真實路由與 UI 證據，不代表聊天艦隊或雙重符合已通過。
+繁中：使用者已核准單一輸入框、800 毫秒規則與文案／對比修正。本 PR 只消費既有登入核心；合併前須等 Junsion 的 code-only 核心，平常 merge 同步後，以真實聊天艦隊路由驗收包含雙重符合與一般錯誤完全相同的 401 回應。暫時只完成 web-only 真實路由與 UI 證據，不代表聊天艦隊或雙重符合已通過。
 
 ## Input contract
 
@@ -16,7 +16,7 @@ One empty text input; no account field or Settings name row, no mode switch. Aut
 
 The code alphabet is the existing one-time-code.ts alphabet; neither it nor either POST route changes. A pause longer than 800 ms while typing a digit-only device prefix can spend one wrong TOTP attempt. This accepted trade-off cannot be undone by aborting. Completing the device code remains eligible even if that prefix request is held or fails.
 
-Auto-submit is once per distinct canonical route+value for the page, including A→B→A. Manual retry is explicit and cannot duplicate an in-flight attempt. Editing, leaving the form or page retires old requests; stale results after fetch or response-body awaits cannot navigate or repaint. A 429 blocks submissions for the server’s retryAfterMs (Retry-After fallback), then enables manual entry without replaying a value. The code-only core owns the neutral double-match answer shape; consume it after its merge, never infer accounts or counts.
+Auto-submit is once per distinct canonical route+value for the page, including A→B→A. Manual retry is explicit and cannot duplicate an in-flight attempt. Editing, leaving the form or page retires old requests; stale results after fetch or response-body awaits cannot navigate or repaint. A 429 blocks submissions for the server’s retryAfterMs (Retry-After fallback), then enables manual entry without replaying a value. The public #3563 contract makes collisions indistinguishable: the same 401 {error:"wrong_code"} as any wrong code, with no separate shape or waiting state. Every TOTP401 shows the same concise next-code and fallback guidance, and leaves the normal Sign in button available. 429 is the unchanged uniform pause response from the browser or whole-sign-in ceiling (20); never infer its source or an account. Consume the merged core and verify actual chat/collision refusal before review.
 
 ## Presentation and compatibility
 
@@ -27,3 +27,5 @@ New JS tolerates cached HTML without the optional help/hint ids and repairs its 
 ## Acceptance boundary
 
 The PR remains HOLD until the core dependency merges, plain merge sync completes, and real code-only chat/double-match acceptance passes. See the committed screenshot receipt for exact source hashes and current web-only proof. Before/SKEW render exact base UI assets routed to an owned scratch listener, rather than claiming a separately running base daemon. No real account, live fleet, CLI, vendor, tunnel or native operation.
+
+Core contract preparation at #3563 @701c6dcf (OPEN, not merge acceptance): do not add a next-code enum, timer or disabled state. Wrong/colliding responses must be presented identically. The phone error and recovery paragraphs each fit at most two lines; real Chrome checks this at390px in both languages/themes. No server/core changes.

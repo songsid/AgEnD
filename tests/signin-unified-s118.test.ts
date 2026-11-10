@@ -135,6 +135,20 @@ for (const lang of ["en", "zh-TW"]) describe(`S-118 unified code entry (${lang})
     body.resolve({ error: "paused", retryAfterMs: 120000 }); await micro();
     expect(p.element("msg").textContent).toBe(currentError); expect(p.element("go").disabled).toBe(false);
   });
+  it("all uniform 401 answers offer the next code and fallback without a separate waiting state", async () => {
+    const p = await page({ lang }); p.responses.push(reply(401), reply(401));
+    await p.input("123456", true);
+    const view = [p.element("msg").textContent, p.element("authHint").textContent];
+    expect(view[0]).toMatch(lang === "en" ? /next (?:one|code)/i : /下一組/);
+    expect(view[1]).toMatch(lang === "en" ? /8-character/ : /8 字元裝置登入碼/);
+    expect(view[1]).toMatch(lang === "en" ? /signed-in|known device/ : /先前登入過的裝置/);
+    expect(view[1]).toMatch(lang === "en" ? /may be limited/ : /可能暫時受限/);
+    expect(p.element("go").disabled).toBe(false);
+    await p.input("654321", true);
+    expect([p.element("msg").textContent, p.element("authHint").textContent]).toEqual(view);
+    expect(p.element("go").disabled).toBe(false);
+    await p.advance(60_000); expect(p.posts).toHaveLength(2);
+  });
   it("blocks all submission during a server pause and does not replay on expiry", async () => {
     const p = await page({ lang }); p.responses.push(reply(429, { error: "paused", retryAfterMs: 120000 }));
     await p.input("123456", true); expect(p.element("go").disabled).toBe(true);

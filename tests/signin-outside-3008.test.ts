@@ -61,9 +61,9 @@ async function page(language: string, opts: { outside?: boolean; webOnly?: boole
 
 const WORDS = {
   en: { label: "Authenticator or device sign-in code", lead: "Enter your authenticator app’s 6-digit code to sign in automatically.", hint: "Paste an 8-character device sign-in code",
-    wrong: "Could not sign in. Use the code currently shown in your authenticator app and check the clock on your authenticator device.", wait: "Sign-in is paused. Please wait 15 minutes, then try again.", wait2h: "Sign-in is paused. Please wait 2 hours, then try again." },
+    wrong: "Code not accepted. Try the next code.", wait: "Sign-in is paused. Please wait 15 minutes, then try again.", wait2h: "Sign-in is paused. Please wait 2 hours, then try again." },
   "zh-TW": { label: "驗證碼或裝置登入碼", lead: "填入驗證器 App 的 6 位數驗證碼，即可自動登入。", hint: "也可以貼上 8 字元裝置登入碼",
-    wrong: "無法登入。請使用驗證器 App 目前顯示的驗證碼，並確認驗證器所在裝置的時間正確。", wait: "登入已暫停，請等 15 分鐘後再試。", wait2h: "登入已暫停，請等 2 小時後再試。" },
+    wrong: "驗證碼未通過；若剛換碼，請等下一組再試。", wait: "登入已暫停，請等 15 分鐘後再試。", wait2h: "登入已暫停，請等 2 小時後再試。" },
 } as const;
 
 describe("#3008 ② the sign-in page from outside", () => {
