@@ -1,16 +1,26 @@
 {
-  "base": "b394feedc1ce7619a607b0fd114604c8bdd7ebdf",
+  "base": "b481c67b26cf08127d6ffad6da228664cdcdc94a",
+  "contract": "#3548 d5e2a3c873da04a72de4def25c2e53db2889a381",
+  "settingsBuildVersion": "2.3.5-alpha.10+s118",
   "browser": "156.0.8078.4",
-  "scope": "Presentation-only proposal in actual sign-in shell; auth POSTs refused. Per-admin LAN/chat sign-in is not supplied by #3503. No production source/auth core changed.",
+  "scope": "Design-only DOM projections in actual signin.html and dashboard Settings shell; no production source or authenticator POST. Settings own-name read is synthetic. No core/SKEW/live-auth acceptance.",
   "captures": [
     {
       "file": "desk-light-zh-TW-primary.png",
-      "sha256": "fe297c02ca96f0163ad51fef97aab30e56ed662cd8618fbc24a1ff46da77bc4a",
+      "kind": "signin",
       "geometry": {
         "scroll": 1366,
         "width": 1366,
-        "top": 212,
+        "top": 136,
         "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
           {
             "text": "登入",
             "height": 45
@@ -23,17 +33,26 @@
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
-        ]
+        ],
+        "nameVisible": null
       }
     },
     {
       "file": "desk-light-zh-TW-reach.png",
-      "sha256": "dd52c1c1543210e33af46e55167f5948870b706fec8dcace46362c44bb86b9c1",
+      "kind": "signin",
       "geometry": {
         "scroll": 1366,
         "width": 1366,
-        "top": 112,
+        "top": 36,
         "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
           {
             "text": "登入",
             "height": 45
@@ -46,18 +65,23 @@
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
-        ]
+        ],
+        "nameVisible": null
       }
     },
     {
       "file": "desk-light-zh-TW-fallback.png",
-      "sha256": "762614de869ffdb28adc02a3861bbfef61e8f1ebc7263974e96bc4b870202d8c",
+      "kind": "signin",
       "geometry": {
         "scroll": 1366,
         "width": 1366,
         "top": 200,
         "buttons": [
           {
+            "text": "code",
+            "height": 51
+          },
+          {
             "text": "登入",
             "height": 45
           },
@@ -69,17 +93,26 @@
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
-        ]
+        ],
+        "nameVisible": null
       }
     },
     {
       "file": "desk-light-zh-TW-wrong.png",
-      "sha256": "78a752db7ed3e9bb6dd7bbd3d581b12d231b8f0f6485565374178ab201d6c89d",
+      "kind": "signin",
       "geometry": {
         "scroll": 1366,
         "width": 1366,
-        "top": 180,
+        "top": 76,
         "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
           {
             "text": "登入",
             "height": 45
@@ -92,17 +125,58 @@
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
-        ]
+        ],
+        "nameVisible": null
+      }
+    },
+    {
+      "file": "desk-light-zh-TW-paused.png",
+      "kind": "signin",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366,
+        "top": 88,
+        "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
+          {
+            "text": "5 分鐘後再試",
+            "height": 45
+          },
+          {
+            "text": "改用裝置登入碼",
+            "height": 47
+          },
+          {
+            "text": "如何在手機開啟 AgEnD？",
+            "height": 44
+          }
+        ],
+        "nameVisible": null
       }
     },
     {
       "file": "phone-dark-zh-TW-primary.png",
-      "sha256": "71da06fab3198809f3ba11a5dbd46e1c3ed37e1bdbaaf96a7e415640592c47b9",
+      "kind": "signin",
       "geometry": {
         "scroll": 390,
         "width": 390,
-        "top": 184,
+        "top": 96,
         "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
           {
             "text": "登入",
             "height": 45
@@ -115,17 +189,26 @@
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
-        ]
+        ],
+        "nameVisible": null
       }
     },
     {
       "file": "phone-dark-zh-TW-reach.png",
-      "sha256": "04c5fff79f5094f9559545cab54429a9c60a0829495e8aa449ad48a6d34851f8",
+      "kind": "signin",
       "geometry": {
         "scroll": 390,
         "width": 390,
-        "top": 84,
+        "top": 16,
         "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
           {
             "text": "登入",
             "height": 45
@@ -138,18 +221,23 @@
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
-        ]
+        ],
+        "nameVisible": null
       }
     },
     {
       "file": "phone-dark-zh-TW-fallback.png",
-      "sha256": "612ee7c7eb84b23511900a85589e8f8effddf263272b5ea40be4e84bd04bc1c9",
+      "kind": "signin",
       "geometry": {
         "scroll": 390,
         "width": 390,
         "top": 172,
         "buttons": [
           {
+            "text": "code",
+            "height": 51
+          },
+          {
             "text": "登入",
             "height": 45
           },
@@ -161,17 +249,26 @@
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
-        ]
+        ],
+        "nameVisible": null
       }
     },
     {
       "file": "phone-dark-zh-TW-wrong.png",
-      "sha256": "4f8182d9071db5178db0b317c447b23dd878f83080b8c5f5c4c2b0712710c738",
+      "kind": "signin",
       "geometry": {
         "scroll": 390,
         "width": 390,
-        "top": 152,
+        "top": 36,
         "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
           {
             "text": "登入",
             "height": 45
@@ -184,17 +281,58 @@
             "text": "如何在手機開啟 AgEnD？",
             "height": 44
           }
-        ]
+        ],
+        "nameVisible": null
+      }
+    },
+    {
+      "file": "phone-dark-zh-TW-paused.png",
+      "kind": "signin",
+      "geometry": {
+        "scroll": 390,
+        "width": 390,
+        "top": 48,
+        "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
+          {
+            "text": "5 分鐘後再試",
+            "height": 45
+          },
+          {
+            "text": "改用裝置登入碼",
+            "height": 47
+          },
+          {
+            "text": "如何在手機開啟 AgEnD？",
+            "height": 44
+          }
+        ],
+        "nameVisible": null
       }
     },
     {
       "file": "desk-light-en-primary.png",
-      "sha256": "2c55a606b536ae7af9422258a51d3e823a3ff543be0a4643e1e430ffddf03708",
+      "kind": "signin",
       "geometry": {
         "scroll": 1366,
         "width": 1366,
-        "top": 188,
+        "top": 112,
         "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
           {
             "text": "Sign in",
             "height": 45
@@ -207,17 +345,150 @@
             "text": "How does my phone reach AgEnD?",
             "height": 44
           }
-        ]
+        ],
+        "nameVisible": null
+      }
+    },
+    {
+      "file": "desk-light-en-reach.png",
+      "kind": "signin",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366,
+        "top": 16,
+        "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
+          {
+            "text": "Sign in",
+            "height": 45
+          },
+          {
+            "text": "Use a device sign-in code",
+            "height": 47
+          },
+          {
+            "text": "How does my phone reach AgEnD?",
+            "height": 44
+          }
+        ],
+        "nameVisible": null
+      }
+    },
+    {
+      "file": "desk-light-en-fallback.png",
+      "kind": "signin",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366,
+        "top": 200,
+        "buttons": [
+          {
+            "text": "code",
+            "height": 51
+          },
+          {
+            "text": "Sign in",
+            "height": 45
+          },
+          {
+            "text": "Use my authenticator",
+            "height": 47
+          },
+          {
+            "text": "How does my phone reach AgEnD?",
+            "height": 44
+          }
+        ],
+        "nameVisible": null
+      }
+    },
+    {
+      "file": "desk-light-en-wrong.png",
+      "kind": "signin",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366,
+        "top": 40,
+        "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
+          {
+            "text": "Sign in",
+            "height": 45
+          },
+          {
+            "text": "Use a device sign-in code",
+            "height": 47
+          },
+          {
+            "text": "How does my phone reach AgEnD?",
+            "height": 44
+          }
+        ],
+        "nameVisible": null
+      }
+    },
+    {
+      "file": "desk-light-en-paused.png",
+      "kind": "signin",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366,
+        "top": 52,
+        "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
+          {
+            "text": "Try again in 5 minutes",
+            "height": 45
+          },
+          {
+            "text": "Use a device sign-in code",
+            "height": 47
+          },
+          {
+            "text": "How does my phone reach AgEnD?",
+            "height": 44
+          }
+        ],
+        "nameVisible": null
       }
     },
     {
       "file": "phone-dark-en-primary.png",
-      "sha256": "a27ec946cc7e4652319a8f3c55357ac62bf889c4deb4e00ec1fa3f2b159f17c9",
+      "kind": "signin",
       "geometry": {
         "scroll": 390,
         "width": 390,
-        "top": 160,
+        "top": 84,
         "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
           {
             "text": "Sign in",
             "height": 45
@@ -230,7 +501,180 @@
             "text": "How does my phone reach AgEnD?",
             "height": 44
           }
-        ]
+        ],
+        "nameVisible": null
+      }
+    },
+    {
+      "file": "phone-dark-en-reach.png",
+      "kind": "signin",
+      "geometry": {
+        "scroll": 390,
+        "width": 390,
+        "top": 16,
+        "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
+          {
+            "text": "Sign in",
+            "height": 45
+          },
+          {
+            "text": "Use a device sign-in code",
+            "height": 47
+          },
+          {
+            "text": "How does my phone reach AgEnD?",
+            "height": 44
+          }
+        ],
+        "nameVisible": null
+      }
+    },
+    {
+      "file": "phone-dark-en-fallback.png",
+      "kind": "signin",
+      "geometry": {
+        "scroll": 390,
+        "width": 390,
+        "top": 172,
+        "buttons": [
+          {
+            "text": "code",
+            "height": 51
+          },
+          {
+            "text": "Sign in",
+            "height": 45
+          },
+          {
+            "text": "Use my authenticator",
+            "height": 47
+          },
+          {
+            "text": "How does my phone reach AgEnD?",
+            "height": 44
+          }
+        ],
+        "nameVisible": null
+      }
+    },
+    {
+      "file": "phone-dark-en-wrong.png",
+      "kind": "signin",
+      "geometry": {
+        "scroll": 390,
+        "width": 390,
+        "top": 16,
+        "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
+          {
+            "text": "Sign in",
+            "height": 45
+          },
+          {
+            "text": "Use a device sign-in code",
+            "height": 47
+          },
+          {
+            "text": "How does my phone reach AgEnD?",
+            "height": 44
+          }
+        ],
+        "nameVisible": null
+      }
+    },
+    {
+      "file": "phone-dark-en-paused.png",
+      "kind": "signin",
+      "geometry": {
+        "scroll": 390,
+        "width": 390,
+        "top": 16,
+        "buttons": [
+          {
+            "text": "account",
+            "height": 50
+          },
+          {
+            "text": "code",
+            "height": 51
+          },
+          {
+            "text": "Try again in 5 minutes",
+            "height": 45
+          },
+          {
+            "text": "Use a device sign-in code",
+            "height": 47
+          },
+          {
+            "text": "How does my phone reach AgEnD?",
+            "height": 44
+          }
+        ],
+        "nameVisible": null
+      }
+    },
+    {
+      "file": "desk-light-zh-TW-settings-name.png",
+      "kind": "settings",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366,
+        "top": null,
+        "buttons": [],
+        "nameVisible": true,
+        "versionDetail": "2.3.5-alpha · d5e2a3c873da (變更狀態不明); 套件 2.3.5-alpha.10+s118；原始碼 d5e2a3c873da04a72de4def25c2e53db2889a381"
+      }
+    },
+    {
+      "file": "phone-dark-zh-TW-settings-name.png",
+      "kind": "settings",
+      "geometry": {
+        "scroll": 390,
+        "width": 390,
+        "top": null,
+        "buttons": [],
+        "nameVisible": true,
+        "versionDetail": "2.3.5-alpha · d5e2a3c873da (變更狀態不明); 套件 2.3.5-alpha.10+s118；原始碼 d5e2a3c873da04a72de4def25c2e53db2889a381"
+      }
+    },
+    {
+      "file": "desk-light-en-settings-name.png",
+      "kind": "settings",
+      "geometry": {
+        "scroll": 1366,
+        "width": 1366,
+        "top": null,
+        "buttons": [],
+        "nameVisible": true,
+        "versionDetail": "2.3.5-alpha · d5e2a3c873da (changes unknown); Package 2.3.5-alpha.10+s118; source d5e2a3c873da04a72de4def25c2e53db2889a381"
+      }
+    },
+    {
+      "file": "phone-dark-en-settings-name.png",
+      "kind": "settings",
+      "geometry": {
+        "scroll": 390,
+        "width": 390,
+        "top": null,
+        "buttons": [],
+        "nameVisible": true,
+        "versionDetail": "2.3.5-alpha · d5e2a3c873da (changes unknown); Package 2.3.5-alpha.10+s118; source d5e2a3c873da04a72de4def25c2e53db2889a381"
       }
     }
   ]

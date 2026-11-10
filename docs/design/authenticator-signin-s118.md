@@ -1,58 +1,46 @@
-# S-118: authenticator sign-in presentation proposal
+# S-118: authenticator-first sign-in proposal on #3548
 
-繁中摘要：以實際 AgEnD 登入頁呈現「6 位數驗證碼（驗證器 App）」為主要入口，保留「改用裝置登入碼」。
-「如何在手機開啟 AgEnD？」說明同 Wi-Fi、tailnet、管理員已開啟的外部入口；不開啟任何公開連結。
-這批 PNG 是畫面提案，尚未實作登入功能。#3503 提供每位管理員的驗證器與變更確認，但沒有提供 LAN／聊天 Fleet
-的新裝置「每位管理員驗證器登入」介面；必須先由其核心擁有者補上可接用的介面，或由 leader 縮小本卡範圍。
+繁中摘要：在真實登入頁加入「登入名稱」與「6 位數驗證碼（驗證器 App）」，以驗證器為主要入口，保留「改用裝置登入碼」。本版包含完整401提示、429白話等候、手機連線說明，以及真實 Settings → 存取與安全 → 擁有者驗證卡中的「你的登入名稱」。僅更新 PNG 提案；使用者核准前不實作產品 UI。#3548 已補齊先前缺少的核心介面，這次不改核心，也不納入尚未 upstream 的 Devices overview。
 
-## Scope and visual proposal
+## Contract and authority
 
-- Based on alpha `b394feedc1ce7619a607b0fd114604c8bdd7ebdf` (#3503).
-- Actual `src/ui/signin.html`, `shared/signin.js`, theme, loading stylesheet and tokens, rendered in Chromium.
-- Primary: open the AgEnD address, enter the six-digit authenticator code, press Sign in.
-- Secondary: **Use a device sign-in code / 改用裝置登入碼**. The existing eight-character code is a fallback, not another authentication mechanism.
-- A closed help disclosure explains reaching the same fleet from a phone. Opening it never opens a tunnel or navigates to another service.
-- Wrong-code copy asks for the newest code and a correct phone clock. Existing core expiry, replay and pause semantics must remain authoritative.
-- No QR enrollment, device approval replacement, new administrator selector, or new authenticator storage/enforcement is proposed here.
+Base: alpha d5e2a3c873da04a72de4def25c2e53db2889a381, merged #3548. The previous proposal's missing-contract finding is resolved by that PR.
 
-The primary, reachability help, device-code fallback and wrong-code states are shown at 1366×900 light and 390×844 dark in zh-TW.
-The primary is also shown in English at both sizes. The fallback shown is the existing chat-issued device-code entry; a future
-consumer must preserve server capability gating for the web-only device-approval alternative and public-entry rules.
+- POST /auth/totp sends same-origin JSON `{ account?, code }` with credentials same-origin and the browser's real Origin. Account is typed, not selected from an admin list. It uses autocomplete=username; code uses autocomplete=one-time-code and keeps the core's 32-character input bound so pasted spaces can reach its normalizer. The existing fallback keeps its 12-character display/input allowance for the eight-character code. Never enumerate names or try a code against several admins.
+- Account is required on chat fleets, optional only on a web-only fleet. The existing sign-in shell's web-only bootstrap flag lets the consumer omit/hide the name there. These primary mockups show the chat-fleet case.
+- Signed-in Settings reads only its own GET /ui/outside → signinName. Display it as “Your sign-in name / 你的登入名稱” in the existing Owner verification card, with a static selectable value; no list of other admins. A web-only fleet needs no name; null without an enrolled app shows setup guidance rather than inventing one.
+- Keep #3548's cookies, limits, exact-admin session, notices, replay and final authority checks unchanged. The page does not read HttpOnly cookies, supply authority or change enrollment.
 
-## Consumer seam missing from the landed core
+## Proposed states
 
-The landed code deliberately retains the old sign-in boundary:
+| State | UI |
+| --- | --- |
+| Primary | Sign-in name, six-digit code, one Sign in action; secondary device-code fallback. Name hint points to the admin's own Settings card. |
+| 200 | Navigate to /ui after the server sets the session. |
+| 401 wrong_code | Same neutral failure for every reason: check name, latest app code and phone clock. Full additional hint: if the code is right, sign-in may be limited temporarily; use the 8-character device sign-in code or a previously signed-in device. Never infer unknown account, enrollment or admin status. |
+| 429 paused | Plain words, e.g. “Please wait 5 minutes, then try again.” The Sign in button waits for retryAfterMs; fallback remains available. No automatic resubmit. Client countdown is presentation only; the server remains authoritative. |
+| 404 | Plain unavailable-here note and the existing sign-in-code fallback; do not claim a policy reason or disclose which rule refused. |
+| 503 / network | Could not sign in / cannot reach AgEnD, retry in place. No implied successful session. |
+| Fallback | Existing 8-character device sign-in code form, returning to authenticator via one secondary action. Preserve existing chat versus web-only instructions and capability gates; no new Devices flow. |
+| Reachability | Closed help disclosure: same Wi-Fi LAN address (localhost is only that computer), same tailnet, or an already enabled outside entry. No link creation, tunnel opening, URL discovery, or automatic navigation. |
 
-| Existing contract | Evidence at the base |
-|---|---|
-| Only a web-only fleet's designated outside entry renders the six-digit form | `src/auth-api.ts`, `serveSigninPage`; `src/ui/shared/signin.js`, `outside = webOnly && …` |
-| `/auth/totp` requires gateway provenance; a direct LAN/tailnet request cannot use it | `src/auth-api.ts`, POST `/auth/totp` |
-| The sign-in callback accepts only exposure ID and code, and verifies the host operator's authenticator | `src/fleet-manager.ts`, `outsideSignIn`; `src/web-remote-access.ts`, `verify(code, who = HOST_ADMIN_KEY)` |
-| The resulting authorization is the host operator, not the owner of an arbitrary admin authenticator | `src/fleet-manager.ts`, `authorizeOutsideSession` |
-| A chat fleet explicitly has per-change authenticator codes but no authenticator sign-in | `tests/settings-remote-confirm-122.test.ts`, “a chat fleet's authenticator is for per-change codes only” |
+The 401 hint is deliberately fuller than a generic “wrong code”: #3548 can answer401 even for a correct code while the admin ceiling is in force. The 429 illustration uses a synthetic 5-minute retryAfterMs; implementation must use the actual server duration/Retry-After fallback, not this fixed example.
 
-Changing only the form cannot complete the requested per-admin sign-in on a direct LAN/tailnet address or a chat fleet.
-Calling the existing host-operator path for another admin would change authority. S-118 does not do that, and does not scan
-or try all administrators' secrets. Its production source is unchanged.
+## Real-shell PNGs
 
-**Decision needed before implementation:** have the #3503 owner expose the new-device per-admin sign-in consumer contract,
-including how the new browser identifies the admin whose code it submits; or narrow S-118 to presentation of the existing
-web-only outside-entry flow. The recommended path is to keep the requested UI and obtain the core-owned consumer contract.
+24 frames: zh-TW and EN  × 1366×900 desktop light  / 390×844 phone dark × primary, wrong, paused, reach, fallback, Settings name. Files: docs/screenshots/authenticator-signin-s118/. PNG hashes are in digest-first SHA256SUMS; receipt.json records the base, browser and geometry.
 
-## Evidence and reproduction
+Sign-in frames render actual signin.html, signin.js, theme/tokens/loading assets plus presentation-only DOM projection and a proposal-only self stylesheet. Settings frames use an owned local 2.3.5-alpha.10+s118 build of the exact #3548 source archive (source-serving fixture, generated archive provenance d5e2a3c8), with the actual app.html/sidebar/second-level Settings navigation and existing Owner verification card; only a synthetic GET/ui/outside own-name projection and the proposed row are added. No Devices overview is added. Synthetic name alice_tg is an example, not a real account.
 
-PNG files and `receipt.json`: `docs/screenshots/authenticator-signin-s118/`.
-
-`scripts/manual/mockup-authenticator-signin-s118.mjs` serves the real static sign-in shell, then projects proposed presentation
-into the DOM. It refuses every POST, never starts a fleet or CLI, and has no auth store or real accounts. Browser requests are
-restricted to its owned loopback server. These are UI mockups, not successful sign-in, core security or SKEW acceptance.
+`scripts/manual/mockup-authenticator-signin-s118.mjs` refuses all sign-in POSTs. The Settings fixture uses a scratch HOME and its synthetic sign-in code only, with authenticator POST blocked. It never starts a fleet, CLI, tunnel, actual authenticator enrollment or live account operation. These images are proposal evidence, not production sign-in, security, SKEW or release acceptance.
 
 ```sh
-PW_DIR="$PWD" CHROME=/path/to/owned/chrome FONTCONFIG_FILE=/path/to/owned/fonts.conf \
+SETTINGS_REPO=/path/to/owned/2.3.x-build-root PW_DIR="$PWD/node_modules" \
+  CHROME=/path/to/owned/chrome FONTCONFIG_FILE=/path/to/owned/fonts.conf \
   systemd-run --user --scope -q -p MemoryMax=3G -- \
-  node scripts/manual/mockup-authenticator-signin-s118.mjs
+  npx tsx scripts/manual/mockup-authenticator-signin-s118.mjs
 ```
 
-The capture checks horizontal overflow, the card's reachable top edge and visible button/disclosure height (44px minimum).
-It uses the actual sign-in page rather than loading `app.css`, which has unrelated composer and full-height rules.
-No production implementation or authentication changes are included in this design branch.
+For the Settings fixture, archive #3548 source/scripts/templates/launcher/package/tsconfigs into an owned scratch build root, set only that copy's package version to 2.3.5-alpha.10+s118, reuse owned dependencies, and run the normal build. Copy its generated dist/build-provenance.json alongside the source-serving fixture module. The version is explicitly a local design build, not a published release. Source code is unchanged. SETTINGS_ONLY=1 can refresh only the four Settings images while retaining the20 already inspected sign-in images.
+
+No authored production src delta. Build begins only after the user's approval of these PNGs. Consume #3548 as supplied; raise any newly discovered contract gap on #3548/#3486 instead of widening the core.
