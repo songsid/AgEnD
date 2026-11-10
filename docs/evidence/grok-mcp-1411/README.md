@@ -2,7 +2,7 @@
 
 The old project `.mcp.json` contained one identity-bearing wrapper entry per instance. Grok's additive project discovery loaded all of them. The offline baseline in `before.json` uses production `GrokBackend.writeConfig/buildCommand` and owned fake Grok/MCP child processes: the single-agent control passes; both same-cwd agents see both identities and tool sets.
 
-The fix keeps one identity-free project shim per managed server. Launch environment selects a private instance directory and a generation binding. The wrapper checks both before exporting its private MCP settings. A private configuration fingerprint prevents a changed or unwritten config from inheriting an old binding. Missing or conflicting bindings print a clear error and expose no AgEnD tools. The manifest is published only after the project transition succeeds. Stopping one agent removes its own generated private state, leaving the shared shim available to peers.
+The fix keeps one identity-free project shim per managed server. Launch environment selects a private instance directory and a generation binding. The wrapper checks both before exporting its private MCP settings. A private configuration fingerprint prevents a changed or unwritten config from inheriting an old binding. Missing or conflicting bindings print a clear error and expose no AgEnD tools. The manifest is published only after the project transition succeeds. The existing shared `ensureInstanceDir` helper creates or tightens the private directory to 0700. Stopping one agent removes its own generated private state, leaving the shared shim available to peers.
 
 ## Upstream source boundary (read-only; no real Grok execution)
 
@@ -14,7 +14,7 @@ Source checked 2026-11-10 UTC:
 
 ## Migration and limits
 
-Only old generated wrappers at canonical regular paths in this fleet's instance root, with matching entry key, directory/instance export and complete generated shell grammar, are migrated. Foreign or ambiguous identity-bearing legacy entries refuse preparation without editing the project. Untouched user JSON members retain their original key/value source bytes; unrelated root bytes are retained. Malformed/duplicate objects, reserved-name conflicts and observed concurrent edits refuse rather than overwrite.
+Only old generated wrappers at canonical regular paths in this fleet's instance root, with matching entry key, directory/instance export and complete generated shell grammar (including properly quoted multiline values), are migrated. Foreign or ambiguous identity-bearing legacy entries refuse preparation without editing the project. Untouched user JSON members retain their original key/value source bytes; unrelated root bytes are retained. Malformed/duplicate objects, reserved-name conflicts and observed concurrent edits refuse rather than overwrite.
 
 Known limit accepted for this fix: Grok has no supported exclusive primary MCP configuration switch. The identity-free shim therefore remains in the project; user-defined MCP servers remain subject to Grok's normal project discovery. This is identity/config isolation, not an OS security boundary between same-UID agents. Existing Grok processes keep their cached catalog until restarted. Do not run older AgEnD writers alongside the migrated project: they can reintroduce old identity-bearing entries. Rollback requires stopping these agents before downgrading; the older version can recreate its own entries but restores the original same-cwd limitation. No Grok home, credentials or session files move.
 

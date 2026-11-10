@@ -1,8 +1,9 @@
 /** #1411: Grok has additive MCP discovery, not an exclusive config flag. The project holds only an identity-free
  * shell shim; this launch's directory and binding select a private, guarded wrapper. No Grok auth/home relocation. */
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, unlinkSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { ensureInstanceDir } from "../private-dir.js";
 import { atomicWriteFileSync } from "../atomic-write.js";
 import { shellQuote, type CliBackendConfig } from "./types.js";
 
@@ -51,7 +52,7 @@ function legacyOwner(key:string,value:unknown,instanceDir:string,cwd:string): "o
   // An unproven path/key to an old identity-bearing wrapper must not be left discoverable either: refuse it.
   if(!body.startsWith("#!/bin/bash\nexport ")||!body.includes("export AGEND_INSTANCE_NAME='")||!body.includes("export AGEND_SOCKET_PATH='")||!body.includes(WAIT)||!body.endsWith("\n"))return null;
   // Prove the whole generated grammar, not just a convenient path and a few matching substrings.
-  const quoted = String.raw`'[^'\n]*(?:'\\''[^'\n]*)*'`;
+  const quoted = String.raw`'[^']*(?:'\\''[^']*)*'`;
   const generated = new RegExp("^#!/bin/bash\\n(?:export [A-Za-z_][A-Za-z0-9_]*=" + quoted + "\\n)+" + WAIT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "exec " + quoted + "(?: " + quoted + ")*\\n$");
   if(!generated.test(body))return "foreign";
   if(!Array.isArray(value.args)||value.args.length||Object.keys(value).some(k=>k!=="command"&&k!=="args")
@@ -85,7 +86,7 @@ export function writeGrokMcp(config:CliBackendConfig,instanceDir:string):void {
   const path=join(config.workingDirectory,".mcp.json"),old=read(path);
   if(existsSync(path)&&!lstatSync(path).isFile())throw Error("Grok MCP: project config must be a regular file");
   const next=projectText(config,instanceDir,old); // Validate conflicts/provenance before writing any private launch state.
-  mkdirSync(instanceDir,{recursive:true,mode:0o700});const binding=randomBytes(32).toString("hex");
+  ensureInstanceDir(instanceDir);const binding=randomBytes(32).toString("hex");
   for(const[name,entry]of Object.entries(config.mcpServers)){
     const env={...entry.env,AGEND_INSTANCE_NAME:config.instanceName};
     if(Object.keys(env).some(k=>!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)||k.startsWith("AGEND_GROK_MCP_")))throw Error("Grok MCP: invalid or reserved server environment");
