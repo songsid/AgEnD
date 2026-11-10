@@ -223,13 +223,13 @@ docker compose exec agend tmux list-windows -t agend
 docker compose logs --tail 50 agend
 ```
 
-每個 instance 有一個 tmux 視窗。接著給使用者儀表板的登入代碼：
+每個 instance 有一個 tmux 視窗。接著給使用者儀表板的裝置登入碼：
 
 ```sh
 docker compose exec agend agend web --code
 ```
 
-它會印出一次性代碼（約 5 分鐘有效）和 `http://localhost:19280/signin`。若 `AGEND_PORT` 不是 19280，請替換網址裡的連接埠。使用者打開網址、輸入代碼，在網頁聊天傳訊息給某個 instance；收到回覆就代表整條路徑正常。若 CLI 還沒登入，instance 會說明：請先做步驟 7。
+它會印出一次性的裝置登入碼（約 5 分鐘有效）和 `http://localhost:19280/signin`。若 `AGEND_PORT` 不是 19280，請替換網址裡的連接埠。使用者打開網址、輸入裝置登入碼，在網頁聊天傳訊息給某個 instance；收到回覆就代表整條路徑正常。若 CLI 還沒登入，instance 會說明：請先做步驟 7。
 
 ## 7. 登入 CLI
 
@@ -251,7 +251,7 @@ API key：
 - grok：`XAI_API_KEY`；
 - opencode：各 provider 自己的 key。
 
-- **`/login`：** 在 General，或在儀表板替後端登入。瀏覽器與 device code 流程都和一般安裝一樣。
+- **`/login`：** 在 General，或在儀表板替後端登入。瀏覽器與授權碼流程都和一般安裝一樣。
 - **API key：** 加到 `.env`，然後執行 `docker compose up -d`（會重新讀取 `.env`）。
 - **shell：** `docker compose exec -it agend claude`（或 `codex`、`kiro-cli`、`grok` 等），使用者依該 CLI 自己的流程登入。
 
@@ -356,5 +356,5 @@ Docker 為 ❌ 的項目，請改用上面的 compose 指令。容器以一般�
   `docker compose run --rm --user root --entrypoint chown agend -R 1000:1000 /home/agend /work`。
 - **在 WSL 上，Windows 重新開機後 bind mount 的資料夾變成 root 所有。** 改用 `compose.yaml` 的具名 volume，不要用 bind mount。
 - **更新映像檔後 CLI 顯示「not installed」：** 只有 volume 保存 CLI。確認 compose 專案沒變：volume 以 `compose.yaml` 的 `name:` 命名（`agend_agend-home`）。或再做一次步驟 4。
-- **instance 一直要求登入：** 做步驟 7。device code 登入需要使用者在瀏覽器打開連結。
+- **instance 一直要求登入：** 做步驟 7。授權碼登入需要使用者在瀏覽器打開連結。
 - **WSL 上的 Docker Desktop 建置時出現 `docker-credential-desktop.exe: exec format error`：** 從 Windows 端建置，或把 `DOCKER_CONFIG` 指向一個 `config.json` 內容為 `{}` 的資料夾。

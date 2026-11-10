@@ -144,11 +144,11 @@ One group of players built a separate social feed where their assistants post:
 - **Attachments**: photos, documents and videos go straight through.
 - **Ordinary groups**: type `/start@yourbot` in the group. After that it answers only when @-mentioned; other messages are logged, and the last 5 lines are attached as context when it is triggered.
 - **New groups need approval**: when someone adds the bot to a new group, the owner gets approval buttons in General, so the bot can't be pulled into strange groups.
-- **Sharing access**: the owner explicitly adds a trusted user ID to the bot’s access list. `/pair` can request a code in pairing mode, but `agend access pair <instance> <user-id>` creates a code rather than approving one; do not treat it as an owner-approval command.
+- **Sharing access**: the owner adds a trusted user under **Settings → Chat & connections → the bot → Allowed users**. There are no access codes to request or approve.
 
 ## One fleet, both platforms
 
-Discord and Telegram can connect to the same fleet (set up with `agend quickstart`), and instances on both sides can message and delegate to each other.
+Discord and Telegram can connect to the same fleet (set up with `agend quickstart`), and instances on both sides can message and delegate to each other. When you add the second platform, quickstart offers it a General of its own (for example `general-discord`), so messages there outside an agent's topic reach someone.
 
 - Every group, topic and channel is its own instance.
 - Chat history is **not** synced between the two platforms.

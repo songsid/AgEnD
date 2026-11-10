@@ -266,11 +266,10 @@ Control who may talk to an instance:
 agend access list <name>
 agend access lock <name>
 agend access unlock <name>
-agend access pair <name> <user-id>
 agend access remove <name> <user-id>
 ```
 
-`lock` means whitelist only; `unlock` re-enables pairing.
+`lock` means whitelist only. `unlock` sets the older `pairing` mode name, which still admits only the allow list. Access codes are no longer issued: add people under **Settings → Chat & connections → the bot → Allowed users**.
 
 ## Setup and migration
 

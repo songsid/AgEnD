@@ -23,7 +23,7 @@ agend web          # prints the code and opens the sign-in page
 agend web --code   # only prints them
 ```
 
-If the browser does not open (a server, or WSL without one), use the page and code it printed.
+If the browser does not open (a server, or WSL without one), use the page and code it printed. On Windows, the **AgEnD 儀表板** shortcut on the desktop opens the sign-in page with a new code. The sign-in page, opened on the AgEnD computer, says the same.
 
 ## From a phone
 

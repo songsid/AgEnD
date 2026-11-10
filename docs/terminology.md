@@ -25,6 +25,8 @@ This guide keeps user-facing text, documentation, and configuration references c
 - Keep `Backend`, `Context`, `Fleet`, and `General` in English in zh-TW text. On first use for beginners, add a short plain-language definition instead of translating the term.
 - Keep literal filenames, commands, and configuration keys unchanged, such as `fleet.yaml`, `working_directory`, `backend`, and `context_guardian`.
 - Write 「管理員」 for admin in every zh-TW string, doc and site page (M-2820); do not use 「管理者」.
+- Do not write 「實例」 or 「代理」 for an Agent, or 「艦隊」 for the Fleet (#3478, #3497). 「代理」 is only for a proxy (反向代理).
+- Name every code (#3515). In zh-TW, never a bare 「代碼」: the dashboard's one-time code is 「裝置登入碼」 (EN: device sign-in code), a provider's code is 「授權碼」 (authorization code), the setup page's is 「設定碼」, and an exit status is 「結束碼」. An AI provider account is *connected* (「連接」), not "signed in with a device code".
 - Do not alternate between translated and untranslated forms. Avoid using「AI 助手」for Agent,「後端」or「AI 引擎」for Backend, and「上下文」「前後文」「對話空間」for model Context.
 
 ## Important distinctions

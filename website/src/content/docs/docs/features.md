@@ -80,7 +80,7 @@ If the tmux server itself dies, every instance loses its window at once. The fle
 
 - `/model` and `/effort` change an instance's model and reasoning effort from a menu.
 - `/backend` moves an instance to another CLI backend installed on the host: backend → model → effort → confirm. The instance restarts once, in a fresh session — a conversation does not carry across backends.
-- `/login` signs a backend CLI in (and installs it if missing) without SSH: a device code in the chat for Codex and Grok, a one-time browser terminal for Claude Code and Kiro CLI.
+- `/login` signs a backend CLI in (and installs it if missing) without SSH: the provider's authorization code in the chat for Codex and Grok, a one-time browser terminal for Claude Code and Kiro CLI.
 - **Credential profiles** give an instance its own login — a second subscription — for Kiro CLI, Codex and Claude Code (`backend_options.<backend>.credential_profile`). `/usage` and the dashboard show one row per subscription.
 
 Details: [commands.md](https://github.com/songsid/AgEnD/blob/main/docs/commands.md), [credential profiles](https://github.com/songsid/AgEnD/blob/main/docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend).
@@ -196,7 +196,7 @@ A **template** deploys several instances in one command, optionally registering 
 
 ## Updating
 
-`agend update` (or `/update` in chat) installs the newest version on the channel you are on — stable, `--beta` or `--alpha` — and restarts the fleet. See [Beta and alpha update channels](https://github.com/songsid/AgEnD/blob/main/docs/features.md#beta-and-alpha-update-channels).
+`agend update` (or `/update` in chat, or **Update now** on the dashboard) installs the newest version on the channel you are on — stable, `--beta` or `--alpha` — and restarts the fleet. See [Beta and alpha update channels](https://github.com/songsid/AgEnD/blob/main/docs/features.md#beta-and-alpha-update-channels).
 
 ## Backends
 

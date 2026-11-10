@@ -222,8 +222,8 @@ idle — a setup form left open is a surface nobody is watching.
 **Web only (no bot)** (#2233) is the third choice next to Telegram and Discord: no
 bot token, no admin ID, nothing to verify. It writes the first agent and no chat
 connection, so AgEnD is used from its web dashboard (sign in with
-`agend web --code` on the machine), and backend CLIs are signed in there too
-(Settings → Agents → Sign-ins). Discord or Telegram can be added later from
+`agend web --code` on the machine), and AI accounts are connected there too
+(Settings → Agents → AI accounts). Discord or Telegram can be added later from
 Settings. The host confirmation (`agend settings confirm <id>`) is the same.
 
 **Working directory** is optional (#2726). If you leave it empty, the agent gets its own folder,
@@ -417,6 +417,8 @@ agend shortcuts                 # WSL: create or update the Windows desktop shor
 
 `agend quickstart` first asks how you will use AgEnD (#2910): **1. Web only (no Discord or Telegram)**, the default, or **2. With a Discord or Telegram bot**. Web only asks no bot token. Its three steps are the backend, your first agent (a name, and a project folder or its own workspace under `~/.agend/workspaces/<name>`), and project roots. It writes a fleet.yaml with that agent and no chat connection (no `.env`), offers the service as usual, and ends with the sign-in: the `agend web --code` code once the service runs, or the dashboard URL and that command. Choosing 2 continues exactly as before.
 
+**Add another platform** (#3202) asks whether to create a General for the new platform (for example `general-discord`); Enter means yes. AgEnD makes a General by itself only for the first platform, so without one, messages there outside an agent's topic reach no one. It isn't asked for a Discord persona bot sharing an existing server, or when a General already answers on that platform. `agend doctor` names a connection that has its own group but no General.
+
 `agend quickstart` detects a Discord admin from a new message in the selected server or a DM to the bot, then asks you to confirm the displayed username and ID. Follow the send-message prompt after it connects. After at most 30 seconds, or if you decline, it requires a manual user ID (17–20 digits, no leading zero) and re-asks invalid input. Settings → Setup wizard and New connection also require a valid admin ID; Discord detection in the web form is not included yet. Telegram keeps its message detection, with a required positive user ID for manual web setup. Existing access lists are not migrated.
 
 On Linux the systemd unit uses `KillMode=mixed`, so stopping or updating the service stops the fleet first and lets it quit each CLI in turn (#908). `agend restart`, which `agend update` runs, adds the line to an older unit and reloads systemd. If it cannot, the restart is refused with instructions. A `KillMode` you set yourself is left alone.
@@ -541,6 +543,22 @@ you to run `agend update` from a host shell; it never falls back into the fleet'
 cgroup. Detached Linux fleets outside service cgroups and macOS keep the
 existing launch path. The scope isolates the updater from the fleet stop, not
 from host shutdown or logout that stops the user manager.
+
+**Which npm (#3440).** Chat `/update` asks the npm beside the running AgEnD first
+(run by that prefix's own Node), then the npm beside the Node running AgEnD, then
+PATH's, so an nvm install works even when the service's PATH lists a system npm
+first. An npm counts only when its global root holds the running AgEnD. When no
+npm on the host manages the running install, `/update` says so, naming the global
+root it expected and what each npm answered. The updater puts that install's `bin`
+directory first on PATH, so `agend update` checks and installs with the same npm.
+
+**No network (#3332).** Chat `/update`, the dashboard's **Update now** and
+`agend update` first check that the registry answers; npm gives up on a
+connection that sends nothing for 30 seconds and tries once more. The update then
+stops within about a minute with **Could not reach the update source**, changes
+nothing, and the current version keeps running. A slow network that keeps
+delivering still finishes. Your own npm timeout settings (`.npmrc`,
+`npm_config_*`) are kept.
 
 ## Environment variables
 

@@ -2,7 +2,7 @@
 
 草稿。每個詞條描述 main 上程式碼今天的行為，皆已對照所列檔案驗證。推論之處會標明。這些定義經專案擁有者批准；與定義不合的行為是 bug，或需要一個決議。程式碼與決議不一致之處，見文末「不一致之處」。Fleet decision 只存在於 leader 的專案範圍，讀者打不開，所以每次引用都把使用者看得懂的摘要寫在內文。
 
-## fleet（艦隊）
+## fleet
 
 一台主機上的整個多 agent 系統：instance、排程、team、決議與任務板，由同一個 daemon 依同一份 `fleet.yaml`、在同一個 AgEnD 家目錄（`~/.agend`）下驅動。
 
@@ -22,7 +22,7 @@
 
 ## General
 
-使用者的定義（fleet decision 9e3bea6c，「General is the AgEnD administrator」，使用者 2026-11-04）：從 beta.8 起，`general` 工具組拿到完整的 ORCHESTRATION——instance 的新增、刪除、取代、啟動、停止、暫停、喚醒、重啟；template；team；`update_fleet_defaults`；`update_instance_config`；kiro 遷移與對帳工具；`update_decision`；網頁設定——不另加確認。原有的敏感設定（token、存取權與管理員名單）仍由 fleet admin 確認。依使用者 2026-11-09 的決議 36525f1b，General 另有 `get_instance_logs`、`get_fleet_config`、`validate_config`、`list_deployments`，並可經 `update_instance_config` 或 `create_instance` 直接設定其他 agent 的 `tool_set`，不需確認。其他呼叫者（含 coordinator）仍受 #804/#814 拒絕；這兩個工具對所有人都拒絕 `skipPermissions`。它取代 2026-09-21 的「dispatcher」說法，隨 beta.8 落地（agy 的 PR）。General 是艦隊的管理 instance——新艦隊的第一個 agent——擁有 General topic。`general_topic: true` 或名字就叫 `general` 的 instance，跑的是 `general` 工具組。
+使用者的定義（fleet decision 9e3bea6c，「General is the AgEnD administrator」，使用者 2026-11-04）：從 beta.8 起，`general` 工具組拿到完整的 ORCHESTRATION——instance 的新增、刪除、取代、啟動、停止、暫停、喚醒、重啟；template；team；`update_fleet_defaults`；`update_instance_config`；kiro 遷移與對帳工具；`update_decision`；網頁設定——不另加確認。原有的敏感設定（token、存取權與管理員名單）仍由 fleet admin 確認。依使用者 2026-11-09 的決議 36525f1b，General 另有 `get_instance_logs`、`get_fleet_config`、`validate_config`、`list_deployments`，並可經 `update_instance_config` 或 `create_instance` 直接設定其他 agent 的 `tool_set`，不需確認。其他呼叫者（含 coordinator）仍受 #804/#814 拒絕；這兩個工具對所有人都拒絕 `skipPermissions`。它取代 2026-09-21 的「dispatcher」說法，隨 beta.8 落地（agy 的 PR）。General 是 fleet 的管理 instance——新 fleet 的第一個 agent——擁有 General topic。`general_topic: true` 或名字就叫 `general` 的 instance，跑的是 `general` 工具組。
 
 - 能做什麼：使用 coordinator 除了儲存庫租約以外的工具（含唯讀除錯工具），並直接將其他 agent 的 `tool_set` 設為可寫入的工具組：`full`、`standard`、`worker`、`coordinator` 或 `minimal`。
 - 不能做什麼：預設 General 工具組不含 `checkout_repo`、`release_repo`；不能指定由角色決定的 `general` 工具組，也不能經這兩個設定工具傳入 `skipPermissions`。General 不得透過工具修改自己的 `tool_set`（建立操作最後指向自己時也一樣）；人員仍可在設定頁或 fleet.yaml 修改。若管理員明確縮限 General 的工具組，縮限仍生效。
@@ -31,7 +31,7 @@
 
 ## `coordinator` 工具組
 
-`TOOL_PROFILES.coordinator = WORKER + ORCHESTRATION`：全部 worker 能力，加上所有「經營艦隊而非做事」的動詞——給經營艦隊其中一部分的 agent 用的。
+`TOOL_PROFILES.coordinator = WORKER + ORCHESTRATION`：全部 worker 能力，加上所有「經營 fleet 而非做事」的動詞——給經營 fleet 其中一部分的 agent 用的。
 
 - 能做什麼：新增／刪除／取代／啟動／停止／暫停／喚醒／重啟 instance、管理 team 與 template、改 fleet 預設值與 instance 設定、跑 kiro 遷移與對帳、改別人的決議與網頁設定（`src/tool-permissions.ts:80-93`）。
 - 不能做什麼：不能超出這張表——沒列的就是拒絕，並說明這個 instance 拿的是哪個 profile。
@@ -42,7 +42,7 @@
 
 做事的 instance 用的 `worker` profile——沒寫 `tool_set` 時的預設值（`resolveToolSet`，`src/tool-permissions.ts:201-208`）。
 
-- 能做什麼：跟人說話、向同伴回報（`send_to_instance`、`report_result`、`request_information`、`broadcast`、`delegate_task`、`delivery_status`）、讀艦隊狀態、跑自己的任務卡與排程、維護自己的主題與辦公室角色。
+- 能做什麼：跟人說話、向同伴回報（`send_to_instance`、`report_result`、`request_information`、`broadcast`、`delegate_task`、`delivery_status`）、讀 fleet 狀態、跑自己的任務卡與排程、維護自己的主題與辦公室角色。
 - 不能做什麼：任何 orchestration 動詞。被拒絕時會指名 coordinator，並建議用回報代替（`src/tool-permissions.ts:357-374`）。
 - 程式碼：`src/tool-permissions.ts:33-72`（`WORKER`）、`:185-208`。
 - 相關決議與議題：#804、#895（只能排自己的排程）。
@@ -70,24 +70,24 @@ topic 是一個 instance 的聊天歸屬：綁定到它的 Telegram 論壇主題
 ClassicBot 跑單一 agent 的私聊或群組，由 `classicBot.yaml` 管理——與 fleet topic 分開，有自己的管理員（`defaults.admin_users`）與聊天白名單。
 
 - 能做什麼：在房間裡 `/start` 一個 agent 並跟它聊天。
-- 不能做什麼：不能用 fleet topic 的指令；看不到艦隊；未註冊的聊天除非允許 `/start`，否則保持靜默。
+- 不能做什麼：不能用 fleet topic 的指令；看不到 fleet；未註冊的聊天除非允許 `/start`，否則保持靜默。
 代房間裡的人委派工作時，會保留請求人、承接 Agent 與 correlation 的對應；收到匹配的結果後，在綁定頻道摘要回報並提及原請求人。不相關的同儕報告、閒聊與 FYI 維持靜默。
 
 - 程式碼：`src/classic-channel-manager.ts`。
 - 相關決議與議題：`docs/permissions.md`。
 
-## web-only fleet（純網頁艦隊）
+## web-only fleet（只用網頁的 fleet）
 
-完全沒有 Discord 或 Telegram 連線的艦隊，從網頁儀表板使用（使用者決議，2026-11-01/02）。它的 agent 跑在 topic 模式，所以仍能從儀表板互傳訊息。
+完全沒有 Discord 或 Telegram 連線的 fleet，從網頁儀表板使用（使用者決議，2026-11-01/02）。它的 agent 跑在 topic 模式，所以仍能從儀表板互傳訊息。
 
-- 能做什麼：聊天艦隊能做的事都能做，只是入口是 `/ui` 而不是聊天。
+- 能做什麼：聊天 fleet 能做的事都能做，只是入口是 `/ui` 而不是聊天。
 - 不能做什麼：沒有聊天輸入；沒有 `/web revoke`（根本沒有 `/web`）——它的 Notice 會寫主機上的做法：把每個瀏覽器都登出。
 - 程式碼：`src/web-only-fleet.ts:10-22`；`src/fleet-manager.ts:7807-7808`。
 - 相關決議與議題：28c2d3a3。
 
 ## host owner / operator（主機擁有者／操作者）
 
-AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上跑 `agend web --code` 的那個 session（`HOST_OPERATOR`）：它確認自己的授權、回答自己的提問。
+AgEnD 電腦上的那個人。在只用網頁的 fleet 裡，就是在這台電腦上跑 `agend web --code` 的那個 session（`HOST_OPERATOR`）：它確認自己的授權、回答自己的提問。
 
 - 能做什麼：確認網頁授權、登入、批准指名要主機操作者的事。
 - 不能做什麼：不能從別台電腦冒充操作者；session 被撤銷或過期後也不行。
@@ -96,7 +96,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## fleet admin（`admin_users`）
 
-列在某連線 `access.allowed_users`（艦隊）或 `defaults.admin_users`／`allowed_users`（ClassicBot）裡的平台使用者 id。管理員是按人授予的，不是按 instance：fleet admin 是指人，General 是指替能在 General topic 跟它說話的人辦事的管理員 agent（使用者 2026-11-04 批准）。
+列在某連線 `access.allowed_users`（fleet）或 `defaults.admin_users`／`allowed_users`（ClassicBot）裡的平台使用者 id。管理員是按人授予的，不是按 instance：fleet admin 是指人，General 是指替能在 General topic 跟它說話的人辦事的管理員 agent（使用者 2026-11-04 批准）。
 
 - 能做什麼：管理員限定的指令、確認敏感變更、管理存取權。
 - 不能做什麼：沒列名就什麼都不行——空名單等於誰都不給；開放存取或持久化聊天授權本身不授予這個角色（`docs/SECURITY.md:13`）。
@@ -105,11 +105,11 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## guest（網頁訪客）
 
-不是艦隊管理員、拿訪客碼登入儀表板的人（`web.guests`，#1920）。訪客只能看到被授權的 agent，且限於它在聊天裡本來就能用的。
+不是 fleet 管理員、拿訪客碼登入儀表板的人（`web.guests`，#1920）。訪客只能看到被授權的 agent，且限於它在聊天裡本來就能用的。
 
 - 能做什麼：跟被授權的 agent 聊天；用 `/web revoke` 只登出自己的 session。
   「信任」等級的訪客（#2855）還能唯讀檢視這些 agent——Claude Code 會連同先前的對話（含工具結果）一起顯示，和任何能打開檢視頁的人一樣（#3069）。
-- 不能做什麼：管理員路由、Notice、用量報告，以及艦隊對訪客關閉的一切。
+- 不能做什麼：管理員路由、Notice、用量報告，以及 fleet 對訪客關閉的一切。
 - 程式碼：`src/config-validator.ts:738-740`。
 - 相關決議與議題：#1920。
 
@@ -118,7 +118,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 伺服器端的對照表，決定一個 instance 能呼叫哪些 MCP 工具（`TOOL_PROFILES`，`src/tool-permissions.ts:103-155`）。`defaults.tool_set` 對沒有自己寫值的每個 instance 生效，General 也一樣；明示的 `tool_set` 永遠優先，否則 General instance 拿 `general`，其他一律預設 `worker`（`resolveToolSet`，`:201-208`）。
 
 - `full`：全部工具。只能明示指定；預設不會拿到（環境變數 fallback 除外，`:212-222`）。
-- `coordinator`：worker 能力加全部 orchestration 動詞——經營艦隊用的 profile。
+- `coordinator`：worker 能力加全部 orchestration 動詞——經營 fleet 用的 profile。
 - `general`：General 的管理員 profile——beta.8 起是 worker 加全部 orchestration 動詞（fleet decision 9e3bea6c）；beta.8 之前只有 `create/start/restart/wake_instance`——以及使用者的網頁設定。
 - `worker`：預設值。負責做事，有 `standard` 沒有的回報能力（`report_result`）。
 - `standard`：讀取範圍廣，也有自己的排程與主題，但沒有 `report_result`、`delegate_task`、`request_information`——走不完「委派→做事→回報」。
@@ -137,10 +137,10 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## Notices（通知）
 
-純網頁艦隊的 Notices 動態（`/ui/notices`）——General 本來會在聊天裡說的話，留存、推送、列出。只有管理員看得到，訪客不行。
+只用網頁的 fleet 的 Notices 動態（`/ui/notices`）——General 本來會在聊天裡說的話，留存、推送、列出。只有管理員看得到，訪客不行。
 
 - 能做什麼：列出、標為已讀。
-- 不能做什麼：訪客不能讀；有聊天的艦隊這裡是空的，因為 General 會直接說。
+- 不能做什麼：訪客不能讀；有聊天的 fleet 這裡是空的，因為 General 會直接說。
 - 程式碼：`src/web-api.ts:2346-2349`；`src/fleet-manager.ts:7807-7808`。
 - 相關決議與議題：#2910 D2。
 
@@ -155,7 +155,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## schedule（排程）
 
-艦隊的計時器：cron 式或一次性時間，到點就往某個 instance 塞一則訊息（`create_schedule`、`list_schedules`、`update_schedule`、`delete_schedule`）。非 coordinator 的排程只能排自己、且必須是自己建的；要動別人的排程，得是 `full`、`coordinator` 或 `general`。
+fleet 的計時器：cron 式或一次性時間，到點就往某個 instance 塞一則訊息（`create_schedule`、`list_schedules`、`update_schedule`、`delete_schedule`）。非 coordinator 的排程只能排自己、且必須是自己建的；要動別人的排程，得是 `full`、`coordinator` 或 `general`。
 
 - 能做什麼：按表把 instance 叫醒並塞訊息給它。
 - 不能做什麼：不能超出自己的範圍——卡的是對象，不是工具有沒有。
@@ -173,7 +173,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## decision（決議）
 
-記錄下來的共識（`post_decision`、`list_decisions`），範圍是某個專案目錄或整個艦隊。決議是艦隊記住「為什麼」的地方，用 `list_decisions` 讀。
+記錄下來的共識（`post_decision`、`list_decisions`），範圍是一個團隊、某個專案目錄或整個 fleet。決議是 fleet 記住「為什麼」的地方，用 `list_decisions` 讀。
 
 - 能做什麼：把 agent 與人之後會參考的共識記下來。
 - 不能做什麼：不能自己執行——從來不讀它的程式碼，不受它約束（見「不一致之處」）。
@@ -182,7 +182,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## credential profile（憑證設定檔）
 
-某個 backend 的具名憑證組（`CREDENTIAL_HOMES`），讓一個艦隊能用多個帳號做事。`/login <backend> <profile>` 登入某個設定檔；能從聊天裡登入的 backend 只有一部分。
+某個 backend 的具名憑證組（`CREDENTIAL_HOMES`），讓一個 fleet 能用多個帳號做事。`/login <backend> <profile>` 登入某個設定檔；能從聊天裡登入的 backend 只有一部分。
 
 - 能做什麼：按 instance 或 backend 分開帳號。
 - 不能做什麼：不能跨 backend 共用——設定檔屬於它 backend 的家。
@@ -193,8 +193,8 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面捷徑用 `agend shortcuts` 建）。以下皆為 alpha（`origin/release/2.3.5-alpha`，改寫外部 #2934 而來——決議 72353fdf）。
 
-- 原生 Windows agent 用的是這台 PC 的 Windows 側 CLI：跑在 WSL 的 AgEnD 會找到原生 Windows CLI，在同一個艦隊名冊裡跑 Windows agent，跟 Linux agent 並列（`runtimes.windows_cli`，預設關）。
-- 已配對 PC 是另一台用 HTTPS 連上來的 Windows 電腦：它跑小小的 `agend-runtime` runner（從設定頁下載的 ZIP，永遠不是艦隊本體），用一次性配對碼對外連線，在設定頁比對配對指紋並批准後才加入（#2936）。釘在它身上的 agent，工作目錄就在那台 PC 上。
+- 原生 Windows agent 用的是這台 PC 的 Windows 側 CLI：跑在 WSL 的 AgEnD 會找到原生 Windows CLI，在同一個 fleet 名冊裡跑 Windows agent，跟 Linux agent 並列（`runtimes.windows_cli`，預設關）。
+- 已配對 PC 是另一台用 HTTPS 連上來的 Windows 電腦：它跑小小的 `agend-runtime` runner（從設定頁下載的 ZIP，永遠不是 fleet 本體），用一次性配對碼對外連線，在設定頁比對配對指紋並批准後才加入（#2936）。釘在它身上的 agent，工作目錄就在那台 PC 上。
 - General 可以跑在 Windows 窗格：「Run General on」把 General 搬到一台已批准、上線的配對 PC，coordinator——以及聊天與管理員權限——留在主機（#3007）。
 - 人的存取權由「設定 → 聊天與連線 → 該 bot → 允許使用者（主 bot）」管理，跟 Runtime 配對不同。舊的使用者存取碼已移除，既有持久化授權仍保留；它不會授予 fleet 管理員權限。
 - 程式碼（alpha 分支）：`docs/remote-runtime.md`、`docs/windows-cli-preview.md`、`docs/windows-general.md`；`src/runtime-bundle.ts`。
@@ -211,7 +211,7 @@ AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面�
 
 ## connections from outside（開放外部連線，僅 alpha）
 
-`origin/release/2.3.5-alpha`：純網頁艦隊可以對網際網路打開自己——「Allow connections from outside」——外面瀏覽器用驗證器 App 的 TOTP 碼登入（#3008；fleet decision 0471da59）。
+`origin/release/2.3.5-alpha`：只用網頁的 fleet 可以對網際網路打開自己——「Allow connections from outside」——外面瀏覽器用驗證器 App 的 TOTP 碼登入（#3008；fleet decision 0471da59）。
 
 - 能做什麼（alpha）：不用操作者自己架通道，也能從外面打開儀表板；用驗證器 App 的碼登入。
 - 不能做什麼：main 上今天不能用——僅 alpha。

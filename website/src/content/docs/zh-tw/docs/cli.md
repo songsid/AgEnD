@@ -266,11 +266,10 @@ agend topic list
 agend access list <name>
 agend access lock <name>
 agend access unlock <name>
-agend access pair <name> <user-id>
 agend access remove <name> <user-id>
 ```
 
-`lock` 是只認白名單；`unlock` 重新開放配對。
+`lock` 是只認白名單。`unlock` 會改用舊的 `pairing` 模式名稱，但仍只認白名單。現在不再發放存取碼：請到「設定 → 聊天與連線 → 該 bot → **允許使用者**」新增。
 
 ## 設定與搬移
 

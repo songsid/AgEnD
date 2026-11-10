@@ -76,17 +76,17 @@ Token 本身永遠不會寫進檔案。`bot_token_env` 指的是要去 `~/.agend
 
 #### access
 
-**整個 `access` 區塊不寫，就是所有人都能進來**（`open`）。`agend quickstart` 會寫成 `mode: locked` 加上你的 user ID。你自己寫的 `access` 區塊不會逐欄補上預設值，所以 `mode` 和 `allowed_users` 請自己寫。
+**整個 `access` 區塊不寫，就是所有人都能進來**（`open`）。`agend quickstart` 會寫成 `mode: locked` 加上你的 user ID。你自己寫的 `access` 區塊不會逐欄補上預設值，所以 `mode` 和 `allowed_users` 請自己寫。要讓別人使用，請到「設定 → 聊天與連線 → 該 bot → **允許使用者**」新增。
 
 | 欄位 | 型別 | 整個區塊不寫時 | 作用 |
 |---|---|---|---|
-| `mode` | `locked` \| `pairing` \| `open` | `open` | `locked` = 只認白名單。`pairing` = 白名單，加上用 `/pair` 自助註冊。`open` = 所有人 |
+| `mode` | `locked` \| `pairing` \| `open` | `open` | `locked` = 只認白名單。`pairing` = 舊的名稱，現在等同 `locked`（不再發放存取碼）。`open` = 所有人 |
 | `allowed_users` | (number\|string)[] | `[]` | 允許的 user ID |
-| `max_pending_codes` | number | `0` | 有待處理配對碼的不同使用者上限（每人最多兩碼）。用 `pairing` 時請設正數 |
-| `code_expiry_minutes` | number | `0` | 配對碼有效時間。用 `pairing` 時請設正數 |
+| `max_pending_codes` | number | `0` | 為舊設定保留；已不使用 |
+| `code_expiry_minutes` | number | `0` | 為舊設定保留；已不使用 |
 
-- **儲存的狀態優先於 `fleet.yaml`。** 配對、確認配對碼、或 `agend access lock`/`unlock` 都會把 mode 寫進 `~/.agend/access/access.json`（其他 bot 是 `access-<id>.json`）。從那之後用的是存下來的 mode，存下來的使用者也會併進 `allowed_users`。要移除某人，兩邊都要刪。
-- **Fleet 管理員是另一回事。** 管理指令（`/update`、`/login`、`/web`…）要求使用者在該 bot 於 `fleet.yaml` 的 `allowed_users` 裡。`open` 存取或配對都不會讓人變成管理員。
+- **儲存的狀態優先於 `fleet.yaml`。** `agend access lock`/`unlock` 會把 mode 寫進 `~/.agend/access/access.json`（其他 bot 是 `access-<id>.json`）。從那之後用的是存下來的 mode，存下來的使用者也會併進 `allowed_users`。要移除某人，兩邊都要刪。
+- **Fleet 管理員是另一回事。** 管理指令（`/update`、`/login`、`/web`…）要求使用者在該 bot 於 `fleet.yaml` 的 `allowed_users` 裡。`open` 存取或已儲存的聊天授權都不會讓人變成管理員。
 
 #### options
 
