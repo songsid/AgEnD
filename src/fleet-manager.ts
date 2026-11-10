@@ -21396,13 +21396,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #3292: Needs you's lines for kept sign-ins, in the fleet's language (posted in General's world, like config issues). */
   private keepAliveAttention(): import("./needs-you.js").SignInKeepAliveInput[] {
     const ka = this.signInKeepAlive; if (!ka) return [];
-    const day = (ms: number | undefined) => ms === undefined ? "?" : new Date(ms).toISOString().slice(0, 10);
+    // M-2825: in the host's own time (the people reading it are where the fleet runs; a UTC day was a day off near midnight
+    // in Taipei), with the hour for an end date — a day's notice needs to say when that day ends.
+    const p2 = (n: number) => String(n).padStart(2, "0");
+    const day = (ms: number | undefined, at = false) => {
+      if (ms === undefined) return "?";
+      const d = new Date(ms);
+      return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}${at ? ` ${p2(d.getHours())}:${p2(d.getMinutes())}` : ""}`;
+    };
     const owner = this.worlds.keys().next().value;
-    return ka.attention().map(a => ({
+    return ka.attention(this.signInsInUse()).map(a => ({
       backend: a.backend, profile: a.profile, kind: a.kind, since: a.since, signIn: dashboardSignInSupported(a.backend, a.profile),
       ...(owner ? { owner } : {}),
-      detail: t(`keepalive.${a.kind}`, BACKEND_LABELS[a.backend] ?? a.backend, a.profile ?? t("keepalive.default_name"), day(a.kind === "transient" ? a.failedSince ?? a.since : a.endsAt)),
+      detail: t(`keepalive.${a.kind}`, BACKEND_LABELS[a.backend] ?? a.backend, a.profile ?? t("keepalive.default_name"), a.kind === "transient" ? day(a.failedSince ?? a.since) : day(a.endsAt, a.kind === "ending" || a.kind === "ended")),
     }));
+  }
+
+  /**
+   * M-2825: the host sign-ins in use — each agent's (its effective profile; a paired computer's agents use that computer's
+   * own accounts) and each ClassicBot room's — once each. Whose end date is warned about even when it is not kept alive.
+   */
+  private signInsInUse(): Array<{ backend: string; profile: string | null }> {
+    let uses: ReturnType<FleetManager["accountUses"]>;
+    try { uses = this.accountUses(); } catch { return []; }
+    const seen = new Set<string>(), out: Array<{ backend: string; profile: string | null }> = [];
+    for (const u of [...uses.agents, ...uses.classic]) {
+      const key = `${u.backend}\0${u.profile ?? ""}`;
+      if (!seen.has(key)) { seen.add(key); out.push({ backend: u.backend, profile: u.profile }); }
+    }
+    return out;
   }
 
   /** #3292: Settings → Accounts → Keep sign-in alive (POST /ui/accounts/keep-alive). `by`: the session's label, for the fleet log. */
