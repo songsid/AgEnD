@@ -4,6 +4,11 @@
   "pngCount": 40,
   "files": [
     {
+      "file": "README.md",
+      "bytes": 4893,
+      "sha256": "c758d6d9a3b9f7f08be215a6396e5ab82b272f964139b77ca909238645054e5b"
+    },
+    {
       "file": "cleanup.json",
       "bytes": 7157,
       "sha256": "606164e0489bb5e0ddfee8e81ed86aa1ced41edb3d32231c51fda452c22075d3"
@@ -17,6 +22,11 @@
       "file": "focused-tests.json",
       "bytes": 1228,
       "sha256": "500c5bc0b218b4a02cafccd44e61348b3acadbdb72a4f3166687da5757bcaf3e"
+    },
+    {
+      "file": "gitleaks.json",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
     },
     {
       "file": "harness/focused.mts",
@@ -347,6 +357,11 @@
       "file": "usage-empty/skew-phone-dark-zh-TW-updating.png",
       "bytes": 23925,
       "sha256": "17966d08c934c520ef9d4f4bb5591fef8b3b325ab2d74e6fe0ec98d0e47506d7"
+    },
+    {
+      "file": "visual-review.json",
+      "bytes": 525,
+      "sha256": "378ac585de409e989d2b08036967310412079ab87421e22cc4f92e1532cfe820"
     },
     {
       "file": "weekly/2815-card/desk-light-zh-TW-rail-compact.png",
