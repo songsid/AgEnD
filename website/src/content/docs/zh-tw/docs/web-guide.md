@@ -79,13 +79,13 @@ curl --noproxy '*' --max-time 5 -sS -o /dev/null -w '%{http_code}\n' http://127.
 curl.exe --noproxy "*" --max-time 5 -sS -o NUL -w "%{http_code}\n" http://127.0.0.1:19280/health
 ```
 
-WSL 內 **200**、Windows **000**（完全沒有回應），指向 Windows 與 WSL 之間的轉送或連線問題，而不是儀表板登入的問題。一再重啟 fleet 不一定能修好。請保存兩邊的結果，以及 Windows 和 WSL 的版本，交給管理者。這段期間可以：
+WSL 內 **200**、Windows **000**（完全沒有回應），指向 Windows 與 WSL 之間的轉送或連線問題，而不是儀表板登入的問題。一再重啟 fleet 不一定能修好。請保存兩邊的結果，以及 Windows 和 WSL 的版本，交給管理員。這段期間可以：
 
 - 繼續用聊天；
 - 或用 **🌐 其他裝置登入（臨時公開）** 從別的裝置登入；
 - 或用你已經有的 SSH 連線進 WSL。
 
-不要為了繞過它而把儀表板開放到網路上，或關掉登入。原因和管理者的處理選項見[完整說明](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md#windowswsllinux-有回應windows-卻連不到-dashboard)。
+不要為了繞過它而把儀表板開放到網路上，或關掉登入。原因和管理員的處理選項見[完整說明](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md#windowswsllinux-有回應windows-卻連不到-dashboard)。
 
 ## 更多
 

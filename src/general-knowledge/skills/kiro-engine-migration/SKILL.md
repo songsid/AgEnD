@@ -24,7 +24,7 @@ bypass it. Keep the original pin, history and receipts; never resume a frozen Cl
 The guided **admin-confirmed migration on 2.x followed by a safe upgrade to 3.0 (plan C, #3047)** is coming separately.
 It is not implemented by this refusal/Needs-you change. Do not promise an automatic conversion or an upgrade date.
 
-繁體中文：Kiro CLI 3.0 已移除 Classic。請由主機管理者改用相容的 2.x；這個拒絕啟動的保護不會更動已存對話。
+繁體中文：Kiro CLI 3.0 已移除 Classic。請由主機管理員改用相容的 2.x；這個拒絕啟動的保護不會更動已存對話。
 既有管理員確認的 Classic→TUI 遷移只接受 2.34 以上的 **2.x**。先在 2.x 經管理員確認遷移、再安全升級到 3.0
 的引導流程（計畫 C，#3047）會另外提供，並未包含在這次保護裡。不要直接改 `kiro_ui` 或刪除版本檢查來繞過。
 
