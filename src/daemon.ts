@@ -11258,7 +11258,28 @@ export class Daemon extends EventEmitter {
         await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
       }
       if (proof !== "stranded" || !allowRecoveryEnter) return false;
-      if (!(await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS)) || !current()) return false;
+      // A retained post-Enter frame can still hold the paste while Codex is already
+      // submitting it. Readiness may stay false for the whole new turn (#3578):
+      // keep asking the same positive judge rather than waiting out its 30s cap.
+      // A strand, output alone or an unreadable frame never stops this wait, and
+      // only actual readiness can authorize the existing recovery Enter below.
+      let waiting = true;
+      const observed = { proof: proof as SubmitProof };
+      let ready: boolean | "stopped";
+      try {
+        ready = await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS, async () => {
+          if (!current()) return true;
+          observed.proof = await this.confirmSubmitted(signature, baseline, () => waiting && current());
+          return !current() || observed.proof === "submitted";
+        });
+      } finally {
+        // An in-flight read can outlive the wait deadline. It must not settle a
+        // receipt or retire an input guard after this observation was abandoned.
+        waiting = false;
+      }
+      if (!current()) return false;
+      if (observed.proof === "submitted") return true;
+      if (ready !== true) return false;
       proof = await proofNow();
       if (!current()) return false;
       if (proof === "submitted") return true;

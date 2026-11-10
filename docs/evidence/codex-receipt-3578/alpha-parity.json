@@ -1,0 +1,12 @@
+{
+  "mainHead": "18ab6142b019b17ce8289398804fcbab1e644438",
+  "confirmationMethodSha256": "afc983f0c0aedaf108eab0bf6268d41613f2d6cc1fa6ee128720e80a055f76ad",
+  "sameConfirmationMethod": true,
+  "pendingForwardBlockSha256": "e804d0b78b6131f370d3ebb9d25a28c691e9bcfd83771c28e1504060ba652537",
+  "samePendingForwardBlock": true,
+  "alphaTests": 262,
+  "sourceTypes": "PASS",
+  "testTypes": "PASS",
+  "preservedAlphaOnlyFixtureBinding": "generalLocationDeliveryHold",
+  "scope": "Main live six-state receipt is carried by exact shared method equality, not a separate native Windows run. Alpha native runtime surfaces unchanged."
+}

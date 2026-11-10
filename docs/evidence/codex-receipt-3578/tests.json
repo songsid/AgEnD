@@ -1,0 +1,62 @@
+{
+  "passed": 262,
+  "files": [
+    {
+      "file": "codex-native-queue-strand.test.ts",
+      "passed": 33,
+      "failed": 0
+    },
+    {
+      "file": "codex-receipt-latency-3578.test.ts",
+      "passed": 8,
+      "failed": 0
+    },
+    {
+      "file": "delivery-forwards-1756.test.ts",
+      "passed": 46,
+      "failed": 0
+    },
+    {
+      "file": "human-receipts-1756.test.ts",
+      "passed": 42,
+      "failed": 0
+    },
+    {
+      "file": "agent-cli-forwards-1756.test.ts",
+      "passed": 3,
+      "failed": 0
+    },
+    {
+      "file": "claude-input-box-1200.test.ts",
+      "passed": 39,
+      "failed": 0
+    },
+    {
+      "file": "claude-queued-input-1169.test.ts",
+      "passed": 17,
+      "failed": 0
+    },
+    {
+      "file": "codex-input-baseline-1359.test.ts",
+      "passed": 26,
+      "failed": 0
+    },
+    {
+      "file": "delivery-wait-handoff-cancel-2770.test.ts",
+      "passed": 17,
+      "failed": 0
+    },
+    {
+      "file": "human-origin-ingress-1756.test.ts",
+      "passed": 11,
+      "failed": 0
+    },
+    {
+      "file": "recovery-enter-fence-1490.test.ts",
+      "passed": 20,
+      "failed": 0
+    }
+  ],
+  "nativeTypeChecks": "source and test tsconfig PASS",
+  "changelogFragments": 133
+}

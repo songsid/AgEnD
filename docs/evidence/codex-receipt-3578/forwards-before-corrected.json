@@ -1,0 +1,13 @@
+{
+  "passed": 37,
+  "failed": [
+    "pending forwarded receipts (#3578) send_to_instance refuses an owned queued human reference with pending guidance, then admits the same forward only after positive delivery",
+    "pending forwarded receipts (#3578) delegate_task refuses an owned queued human reference with pending guidance, then admits the same forward only after positive delivery",
+    "pending forwarded receipts (#3578) an owned queued delivery is pending, never forwardable",
+    "pending forwarded receipts (#3578) an owned delivering delivery is pending, never forwardable",
+    "pending forwarded receipts (#3578) an owned submission_started delivery is pending, never forwardable",
+    "pending forwarded receipts (#3578) an owned retry_wait delivery is pending, never forwardable",
+    "pending forwarded receipts (#3578) an owned reconciliation_pending delivery is pending, never forwardable",
+    "pending forwarded receipts (#3578) a mixed delivered/pending list admits no delivery or partial grant"
+  ]
+}

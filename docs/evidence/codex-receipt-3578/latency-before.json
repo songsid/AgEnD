@@ -1,0 +1,8 @@
+{
+  "passed": 4,
+  "failed": [
+    "Codex confirmation during the stranded-readiness wait (#3578) confirms a retained post-Enter frame once the real busy capture proves the receipt, without waiting for idle or sending Enter again",
+    "Codex confirmation during the stranded-readiness wait (#3578) a replacement generation retires the wait without crediting its pane or pressing Enter",
+    "Codex confirmation during the stranded-readiness wait (#3578) a replacement window retires the wait without crediting its pane or pressing Enter"
+  ]
+}
