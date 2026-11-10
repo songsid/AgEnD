@@ -27,7 +27,7 @@ function tmuxStub(frame: { pane: string }) {
   };
 }
 
-async function scan(between: (d: any, frame: { pane: string }) => void, opts: { pane?: string; onKey?: (d: any, key: string) => void; underLockCapture?: (d: any) => Promise<string> } = {}) {
+async function scan(between: (d: any, frame: { pane: string }) => void, opts: { pane?: string; onKey?: (d: any, key: string, frame: { pane: string }) => void; underLockCapture?: (d: any) => Promise<string> } = {}) {
   const root = mkdtempSync(join(tmpdir(), "agend-1435-")); roots.push(root);
   const backend = new ClaudeCodeBackend(join(root, "inst"));
   const daemon: any = new Daemon("worker", {
@@ -37,7 +37,7 @@ async function scan(between: (d: any, frame: { pane: string }) => void, opts: { 
   } as any, join(root, "inst"), false, backend as any, undefined, logger);
   const frame = { pane: opts.pane ?? DIALOG };
   const tmux = tmuxStub(frame);
-  if (opts.onKey) tmux.sendSpecialKey.mockImplementation(async (key: string) => { opts.onKey!(daemon, key); return true; });
+  if (opts.onKey) tmux.sendSpecialKey.mockImplementation(async (key: string) => { opts.onKey!(daemon, key, frame); return true; });
   // the scan's first read is outside the lock; its second is the fresh capture under it
   if (opts.underLockCapture) tmux.capturePane.mockImplementationOnce(async () => frame.pane).mockImplementationOnce(() => opts.underLockCapture!(daemon));
   daemon.tmux = tmux;
@@ -57,7 +57,10 @@ async function scan(between: (d: any, frame: { pane: string }) => void, opts: { 
 
 describe("the startup scan's Escape for the cold-resume prompt", () => {
   it("control: the dialog still exact under the lock — one Escape", async () => {
-    const { tmux } = await scan(() => {});
+    // The Escape takes, as on a real Claude: the prompt goes and the conversation is back. (A prompt that stays up gets
+    // the retrySafe re-sends instead — pinned under fake timers in claude-cold-resume-retry-2322.test.ts; with real
+    // timers here a stub that never cleared raced the budget against the 1 s retry gap, main run 42830490312.)
+    const { tmux } = await scan(() => {}, { onKey: (_d, key, frame) => { if (key === "Escape") frame.pane = READY; } });
     expect(tmux.sendSpecialKey.mock.calls).toEqual([["Escape"]]);
   });
 
