@@ -104,7 +104,8 @@ function harness(o: { enrolled?: boolean; strict?: boolean } = {}) {
       queueMicrotask(() => { req.emit("data", Buffer.from(typeof body === "string" ? body : JSON.stringify(body))); req.emit("end"); });
     } catch (e) { reject(e); }
   });
-  const install = (s: { req: any; gateway?: boolean; host?: string }, cli = "codex") => send(s, "POST", INSTALL, { cli });
+  // AGEND-154: `latest` — the page that knows the named exception says so in the request (`acceptLatestUnaudited`).
+  const install = (s: { req: any; gateway?: boolean; host?: string }, cli = "codex", latest = false) => send(s, "POST", INSTALL, latest ? { cli, acceptLatestUnaudited: true } : { cli });
   const stateOf = (r: { body: any }, s: { record: SessionRecord }) => store.get(r.body.pending_change.id, s.record.idHash)?.state;
   const settle = () => new Promise(r => setTimeout(r, 30));
   const installs = () => calls.filter(c => c.operation === "cli.install");
@@ -131,7 +132,7 @@ describe("AGEND-153: Antigravity's update to the vendor's latest goes through th
   it("the held change says it goes to the LATEST release, not audited — alongside the pinned install it would be on a computer without it", async () => {
     const h = harness({ enrolled: true }), s = h.session("code", "lan");
     h.has("antigravity", "1.5.3");
-    const r = await h.install(s, "antigravity");
+    const r = await h.install(s, "antigravity", true);
     await vi.waitFor(() => expect(h.stateOf(r, s)).toBe("applied"));
     const text = h.store.get(r.body.pending_change.id, s.record.idHash)!.summary.join(" ");
     expect(text).toMatch(/Install antigravity 1\.5\.3 on the paired Windows computer/);
@@ -144,7 +145,7 @@ describe("AGEND-153: Antigravity's update to the vendor's latest goes through th
   it("a strict admin off this computer: nothing is sent until their own digest-bound code; then exactly one `cli.update` with the CLI id and the opaque admin name", async () => {
     const h = harness({ enrolled: true, strict: true }), s = h.session("code", "lan");
     h.has("antigravity", "1.5.3");
-    const r = await h.install(s, "antigravity");
+    const r = await h.install(s, "antigravity", true);
     expect([r.status, r.body.pending_change.state, r.body.pending_change.totp]).toEqual([202, "pending", "ready"]);
     await h.settle();
     expect([h.calls.filter(c => c.operation.startsWith("cli.")).length, h.stateOf(r, s)]).toEqual([0, "pending"]);
@@ -154,6 +155,20 @@ describe("AGEND-153: Antigravity's update to the vendor's latest goes through th
     expect(h.installs()).toHaveLength(0);
     expect(h.updates()).toHaveLength(1);
     expect(h.updates()[0]!.payload).toEqual({ cli: "antigravity", actor: expect.stringMatching(/^admin:[a-f0-9]{16}$/) });
+  });
+  // AGEND-154 (Prism P2-1 on #3552): the older page module sends `{ cli }` for this very button. It is held like any install (the held change cannot tell an install from an update — only the route can see
+  // the computer's inventory), but when it is confirmed the route refuses it: it is never run as the latest exception, and the one-shot admission is not spent.
+  it("AGEND-154 fail-first: an older page's `{ cli }` for an Antigravity the computer already has is not run as the latest exception — nothing is sent to the computer; the same click from the current page (`acceptLatestUnaudited`) is", async () => {
+    const h = harness({ enrolled: true }), s = h.session("code", "lan");
+    h.has("antigravity", "1.5.3");
+    const old = await h.install(s, "antigravity");
+    await h.settle();
+    expect(h.calls.filter(c => c.operation.startsWith("cli."))).toEqual([]);
+    expect(h.stateOf(old, s)).toBe("failed");
+    const current = await h.install(s, "antigravity", true);
+    await vi.waitFor(() => expect(h.stateOf(current, s)).toBe("applied"));
+    expect(h.updates()).toHaveLength(1);
+    expect(h.installs()).toHaveLength(0);
   });
   it("the public link and a guest start nothing; a hand-built POST is refused", async () => {
     const h = harness({ enrolled: true });

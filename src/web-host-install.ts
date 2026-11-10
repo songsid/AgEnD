@@ -140,6 +140,20 @@ export function hostUpdatePlan(backend: string): { command: string; target: stri
   return { command: facts.command.replace("{version}", target), target };
 }
 
+/**
+ * AGEND-154 (Prism P2-1 on #3552): the one named exception (`release: "latest-unaudited"`) is only ever started by a request that SAYS so — `acceptLatestUnaudited: true` beside the CLI's id — which is
+ * what a page that knows the exception ("Update to latest (not audited by AgEnD)") sends and a page that does not (a retained older module that labels the same button "Update to 1.5.3" and sends
+ * `{ backend }`) cannot. The shared confirmation core is unchanged; this only decides, before anything is proposed or run, whether the request and the registry agree. Null: they agree.
+ * `latest_ack_required`: the CLI's update is the exception and the page did not say it knew (refuse; the page must be refreshed). `latest_ack_mismatch`: the page claims the exception for a CLI whose update is pinned.
+ */
+export function hostUpdateAckError(backend: string, ack: unknown): "latest_ack_required" | "latest_ack_mismatch" | null {
+  const exception = hostFacts(backend, "update")?.release === "latest-unaudited";
+  if (ack !== undefined && ack !== true) return "latest_ack_mismatch";
+  if (exception && ack !== true) return "latest_ack_required";
+  if (!exception && ack === true) return "latest_ack_mismatch";
+  return null;
+}
+
 /** "CLI exited with code 3 — …" (login-manager.ts) → 3. */
 export function exitCodeOf(detail: string): number | null {
   const m = /exited with code (\d{1,3})\b/.exec(detail);

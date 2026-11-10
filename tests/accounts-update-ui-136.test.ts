@@ -212,13 +212,19 @@ describe("AGEND-153: the named exception (Antigravity — update to the latest, 
     expect(line("grok").getAttribute("data-latest")).toBe("0");
     expect(text(line("grok"))).not.toContain("NOT audited");
   });
-  it("pressing it posts the CLI's id to /ui/host-update and nothing else — no 'latest', no version, no command", async () => {
+  it("pressing it posts the CLI's id and the explicit `acceptLatestUnaudited` to /ui/host-update, nothing else — no version, no command (AGEND-154: the server refuses the request without it)", async () => {
     view = { clis: [AGY("current", "1.5.3")] };
     postAnswer = () => ({ body: { install: AGY_RUN() } });
     await mount();
     fire(updateBtn("antigravity"), "click"); await settle(8);
-    expect(post()).toEqual([{ method: "POST", url: "/ui/host-update", body: { backend: "antigravity" } }]);
-    expect(JSON.stringify(post())).not.toMatch(/latest|agy|1\.5/);
+    expect(post()).toEqual([{ method: "POST", url: "/ui/host-update", body: { backend: "antigravity", acceptLatestUnaudited: true } }]);
+    expect(JSON.stringify(post())).not.toMatch(/agy|1\.5|\.exe/);
+  });
+  it("AGEND-154: an audited (pinned) update — Grok — posts `{ backend }` alone, never the acknowledgement", async () => {
+    postAnswer = () => ({ body: { install: RUN() } });
+    await mount();
+    fire(updateBtn("grok"), "click"); await settle(8);
+    expect(post()).toEqual([{ method: "POST", url: "/ui/host-update", body: { backend: "grok" } }]);
   });
   it("while it runs: it says 'the latest release, not audited by AgEnD' (and no audited target)", async () => {
     view = { clis: [AGY("current", "1.5.3")] };

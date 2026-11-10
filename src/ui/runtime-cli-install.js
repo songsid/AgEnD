@@ -184,7 +184,7 @@ export function CliInstall({ machine, lease, onChanged }) {
         // AGEND-148 (Prism R3 on #3539): through the Settings gate like any change that acts on a computer — held, and (for an administrator who asked for their own code) confirmed with it on
         // the card — and the page sends the CLI's id and nothing else. The computer's own owner-switch is asked on that computer afterwards, as before.
         const label = toLatest ? text("cardLabelUpdateLatest", cli.label, machine.name) : text(behind ? "cardLabelUpdate" : "cardLabel", cli.label, machine.name);
-        const response = await confirmedWrite(`/ui/runtimes/machines/${encodeURIComponent(machine.id)}/cli-install`, { method: "POST", body: { cli: cli.id }, label, displaySummary: () => label });
+        const response = await confirmedWrite(`/ui/runtimes/machines/${encodeURIComponent(machine.id)}/cli-install`, { method: "POST", body: toLatest ? { cli: cli.id, acceptLatestUnaudited: true } : { cli: cli.id }, label, displaySummary: () => label });
         if (!lease.current()) return;
         if (!response.ok) throw new Error(refusalOf(response));
         await load();

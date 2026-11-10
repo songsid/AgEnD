@@ -13,6 +13,7 @@ import type { WindowsCliProbe } from "./windows-cli.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
 import { runtimeServerOrigin } from "./runtime-connection.js";
 import type { RuntimeInstallService } from "./runtime-install.js";
+import { LATEST_ACK_FIELD } from "./cli-audited.js";
 import { cachedSettingsBody, isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestRequester } from "./settings-request-capability.js";
 
 export interface RuntimeApiContext extends WindowsCliApiContext { runtimeCoordinator?(): RuntimeCoordinator; runtimeInstaller?(): RuntimeInstallService }
@@ -178,12 +179,16 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
         const actor = actorNow();
         if (!actor) { json(res, 403, { error: "Authorization expired" }); return; }
         const input: unknown = JSON.parse(raw.toString("utf8"));
-        if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length !== 1 || !("cli" in input) || !isInstallableCli(input.cli)) throw Error("Choose a CLI this Runtime installs");
-        const cli = input.cli;
+        if (!input || typeof input !== "object" || Array.isArray(input) || !("cli" in input) || !isInstallableCli(input.cli) || Object.keys(input).some(k => k !== "cli" && k !== LATEST_ACK_FIELD)) throw Error("Choose a CLI this Runtime installs");
+        const cli = input.cli, acked = (input as Record<string, unknown>)[LATEST_ACK_FIELD];
         // AGEND-153: a CLI whose Update is the registry's named exception (the vendor's newest release, not audited) and that the computer already has is UPDATED (`cli.update`); the same route, the same
         // body (the CLI's id and nothing else), the same gate. One the computer does not have yet is installed to the pinned release, as for every other CLI.
         const present = (machine.inventory?.clis ?? []).some(item => item.id === cli && item.path);
         const toLatest = runtimeFacts(cli, "update")?.kind === "latest-unaudited" && present;
+        // AGEND-154 (Prism P2-1 on #3552): the vendor's latest, not audited, is started only by a request that says it knows so (`acceptLatestUnaudited: true`, which the page that labels the button
+        // "not audited" sends). An older page module — "Update to 1.5.3", `{ cli }` — is refused here, before the job, the call and the one-shot admission; so is a claim of it for a CLI that is not
+        // being updated to the latest (a page that read an older inventory). Either way the page is to be refreshed; nothing runs.
+        if (toLatest ? acked !== true : acked !== undefined) { json(res, 409, { error: toLatest ? "latest_ack_required" : "latest_ack_mismatch", message: "This page is out of date for this action. Refresh the page and try again." }); return; }
         // AGEND-152 (Prism R4 on #3539): this one route is Install and Update (the page sends the CLI's id and nothing else), so it is told apart by what the computer already has. A CLI the computer
         // already has, whose `runtime.update` is not "yes" (a CLI whose registry says it is not updated from here), is refused here — before the job, the call and the one-shot admission —
         // whatever the page showed. A computer whose inventory has not been read has nothing to refuse on, and is installed to as before.

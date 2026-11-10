@@ -127,8 +127,15 @@ describe("AGEND-152 / AGEND-153: Update is offered where the registry's runtime.
     fire(installButton("antigravity"), "click"); await settle(14);
     expect(asked).toHaveLength(1);
     expect(asked[0]).toContain("LATEST"); expect(asked[0]).toContain("NOT audited"); expect(asked[0]).toContain("the vendor's update program is not run");
+    // AGEND-154 (Prism P2-1 on #3552): the id and the one explicit sentence that this is the latest exception (the server refuses the request without it) — no version, no address, no command.
+    expect(posts).toEqual([{ path: `/ui/runtimes/machines/${idA}/cli-install`, body: { cli: "antigravity", acceptLatestUnaudited: true } }]);
+    expect(JSON.stringify(posts)).not.toMatch(/1\.5|http|\.exe/);
+  });
+  it("AGEND-154: Antigravity NOT installed yet is the pinned install — the body is the CLI's id alone, no acknowledgement of the latest exception", async () => {
+    await p.mount(h(Panel, { navKey: "r4-agy-install" })); await settle(14);
+    expect(installButton("antigravity").textContent).toBe("Install 1.5.3");
+    fire(installButton("antigravity"), "click"); await settle(14);
     expect(posts).toEqual([{ path: `/ui/runtimes/machines/${idA}/cli-install`, body: { cli: "antigravity" } }]);
-    expect(JSON.stringify(posts)).not.toMatch(/latest|1\.5/);
   });
   it("AGEND-153 Antigravity waits for the owner's switch like any update", async () => {
     setup = { ...setup, switches: { accounts: { on: false }, install: { on: false } } };

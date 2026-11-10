@@ -208,7 +208,8 @@ describe("who may not, and what never becomes a held change", () => {
 });
 
 describe("Update takes the same path (the audited release is the server's, shown in the held change)", () => {
-  const update = (h: ReturnType<typeof harness>, s: { req: any; gateway?: boolean; host?: string }, backend = "grok") => h.send(s, "POST", "/ui/host-update", { backend });
+  // AGEND-154: `acknowledged` — the page that knows the named exception says so in the request (`acceptLatestUnaudited`).
+  const update = (h: ReturnType<typeof harness>, s: { req: any; gateway?: boolean; host?: string }, backend = "grok", acknowledged = backend === "antigravity") => h.send(s, "POST", "/ui/host-update", acknowledged ? { backend, acceptLatestUnaudited: true } : { backend });
   it("an admin: applied at once in update mode; the held change names the audited release; the page's body carried only the CLI's id", async () => {
     const h = harness({ enrolled: true }), s = h.session("code", "lan");
     const r = await update(h, s);
@@ -237,6 +238,16 @@ describe("Update takes the same path (the audited release is the server's, shown
     const text = h.store.get(r.body.pending_change.id, s.record.idHash)!.summary.join(" ");
     expect(text).toMatch(/Update antigravity .*LATEST release \(not audited by AgEnD\)/);
     expect(text).not.toMatch(/to \d+\.\d+\.\d+/);
+  });
+  it("AGEND-154 fail-first: an older page's `{ backend: \"antigravity\" }` (the button it labels 'Update to 1.5.3') is refused 409 latest_ack_required BEFORE it is proposed — nothing is held, nothing starts; a pinned CLI that claims the exception is refused too", async () => {
+    const h = harness({ enrolled: true }), s = h.session("code", "lan");
+    const old = await update(h, s, "antigravity", false);
+    expect([old.status, old.body.error]).toEqual([409, "latest_ack_required"]);
+    const claimed = await update(h, s, "grok", true);
+    expect([claimed.status, claimed.body.error]).toEqual([409, "latest_ack_mismatch"]);
+    await h.settle();
+    expect(h.store.list(s.record.idHash)).toEqual([]);
+    expect(h.starts.length).toBe(0);
   });
   it("AGEND-153 Antigravity: a strict admin takes their own digest-bound code first; the public link, a guest and a hand-built POST start nothing", async () => {
     const strict = harness({ enrolled: true, strict: true }), s = strict.session("code", "lan");

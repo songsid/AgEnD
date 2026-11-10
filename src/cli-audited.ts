@@ -63,6 +63,9 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/** AGEND-154 (Prism P2-1 on #3552): the field of an Update request that says "I know this goes to the vendor's latest, which AgEnD has not audited" (web-host-install.ts, runtime-api.ts, the pages). */
+export const LATEST_ACK_FIELD = "acceptLatestUnaudited";
+
 /** The newest audited release of a CLI, or null for an id with none. */
 export function auditedVersion(id: string): string | null {
   const list = Object.hasOwn(AUDITED_CLI_VERSIONS, id) ? AUDITED_CLI_VERSIONS[id as CliId] : undefined;

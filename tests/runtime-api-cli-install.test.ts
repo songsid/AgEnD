@@ -126,9 +126,26 @@ describe("AGEND-152 / AGEND-153: one POST for Install and Update — told apart 
   });
   it("AGEND-153 Antigravity already installed: the named exception is asked for as `cli.update`, with the CLI id and the asker's handle and nothing else", async () => {
     has("antigravity", "1.5.3");
-    expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity" })).status).toBe(202);
+    expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", acceptLatestUnaudited: true })).status).toBe(202);
     expect(sent()).toEqual([["cli.update", "antigravity"]]);
+    // the acknowledgement is the route's: what the Runtime is sent is still the id and the asker's handle
     expect(calls.find(call => call.operation === "cli.update")!.payload).toEqual({ cli: "antigravity", actor: expect.stringMatching(/^admin:[a-f0-9]{16}$/) });
+  });
+  // AGEND-154 (Prism P2-1 on #3552): the retained older page module labels this button "Update to 1.5.3" and sends `{ cli }`. That used to be taken as the latest exception; now it is refused.
+  it("AGEND-154 fail-first: Antigravity already installed + a request WITHOUT `acceptLatestUnaudited` (what an older page module sends) is refused 409 before any job or call — it is not run as the latest exception", async () => {
+    has("antigravity", "1.5.3");
+    const refused = await ask(INSTALL, "POST", "replay", { cli: "antigravity" });
+    expect([refused.status, refused.json.error]).toEqual([409, "latest_ack_required"]);
+    expect(sent()).toEqual([]);
+    expect((await ask(SETUP, "GET", "admin")).json.job).toBeNull();
+  });
+  it("AGEND-154: the acknowledgement is only for the exception — claimed for a CLI that is not being updated to the latest (Codex; OpenCode; Antigravity not installed yet) it is refused, nothing is sent", async () => {
+    has("codex", "0.161.0");
+    expect((await ask(INSTALL, "POST", "replay", { cli: "codex", acceptLatestUnaudited: true })).status).toBe(409);
+    machine.inventory = { home: "C:\\D", clis: [] };
+    expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", acceptLatestUnaudited: true })).json.error).toBe("latest_ack_mismatch");
+    for (const bad of [false, "true", 1, null]) expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", acceptLatestUnaudited: bad })).status, String(bad)).toBeGreaterThanOrEqual(400);
+    expect(sent()).toEqual([]);
   });
   it("AGEND-153 Antigravity not installed on that computer: the pinned, audited install (`cli.install`), as before", async () => {
     machine.inventory = { home: "C:\\D", clis: [] };
