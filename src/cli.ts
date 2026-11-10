@@ -1307,6 +1307,14 @@ program
       if (detectPlatform() === "macos" && !getSystemServicePath() && getServicePath() && await handOffLaunchdActivation("update")) return;
     }
     const { spawnSync } = await import("node:child_process");
+    // M-2797: from here on, every npm this update starts (the version lookup, the preflight, the release's own installer
+    // and its `npm install -g`) gives up on a silent connection instead of waiting minutes per try — set once, in this
+    // process's environment, where npm's own default is still in force (a person's .npmrc or variable is kept).
+    {
+      const { applyUpdateNpmBounds, npmBoundsQuery, parseNpmConfigGet } = await import("./update-npm-env.js");
+      const asked = spawnSync("npm", npmBoundsQuery(), { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "ignore"] });
+      applyUpdateNpmBounds(process.env, asked.status === 0 ? parseNpmConfigGet(asked.stdout ?? "") : null);
+    }
     // The channel follows the version being replaced — this CLI's own package — so an alpha or beta stays on its channel.
     const tag = getUpdateSelector(opts, pkgVersion);
     const looked = lookupTargetVersion(tag);
