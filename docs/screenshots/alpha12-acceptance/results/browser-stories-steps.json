@@ -1,0 +1,183 @@
+{
+  "candidate": "22b1432edc179e8989e542c4d87928bed2b2f41a",
+  "checks": [
+    {
+      "name": "desk-light-zh-TW:signed-out-disabled",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:unsupported-hides-account",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:backend-change-clears",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:create-server-profile",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:ended-needs-reconnect",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:needs-end-date-lines",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:accounts-needs:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:accounts-needs:no-csp",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:signed-out-disabled",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:unsupported-hides-account",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:backend-change-clears",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:create-server-profile",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:ended-needs-reconnect",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:needs-end-date-lines",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:accounts-needs:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:accounts-needs:no-csp",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:fixture-link-open",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:overview-three-cards",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:current-device-no-revoke",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:real-route-closed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:access:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:access:no-csp",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:fixture-link-open",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:overview-three-cards",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:current-device-no-revoke",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:real-route-closed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:access:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:access:no-csp",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:loose-one-list",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:paragraph-splits-start4",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:nested-kept",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:chat:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:chat:no-csp",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:loose-one-list",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:paragraph-splits-start4",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:nested-kept",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:chat:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:chat:no-csp",
+      "ok": true
+    },
+    {
+      "name": "all:no-page-errors",
+      "ok": true
+    }
+  ],
+  "errors": [],
+  "creates": [
+    {
+      "topic_name": "owned-created-agent",
+      "backend": "claude-code",
+      "backend_options": {
+        "claude-code": {
+          "credential_profile": "work"
+        }
+      }
+    },
+    {
+      "topic_name": "owned-created-agent",
+      "backend": "claude-code",
+      "backend_options": {
+        "claude-code": {
+          "credential_profile": "work"
+        }
+      }
+    }
+  ],
+  "scope": "real browser/server/disk/SSE; synthetic credentials; inert create/probe/cloudflared; no actual CLI/model/tunnel"
+}

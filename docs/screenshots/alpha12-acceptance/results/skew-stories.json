@@ -1,0 +1,142 @@
+{
+  "candidate": "22b1432edc179e8989e542c4d87928bed2b2f41a",
+  "baseline": "636328df",
+  "checks": [
+    {
+      "name": "desk-light-zh-TW-old-settings-new-modules:rendered",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-old-settings-new-modules:no-page-errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-old-settings-new-modules:no-csp",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-old-settings-new-modules:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-new-access-old-store:rendered",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-new-access-old-store:no-page-errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-new-access-old-store:no-csp",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-new-access-old-store:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-new-create-old-strings:rendered",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-new-create-old-strings:no-page-errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-new-create-old-strings:no-csp",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-new-create-old-strings:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-old-chat-new-thread:new-renderer",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-old-chat-new-thread:rendered",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-old-chat-new-thread:no-page-errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-old-chat-new-thread:no-csp",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-old-chat-new-thread:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-settings-new-modules:rendered",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-settings-new-modules:no-page-errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-settings-new-modules:no-csp",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-settings-new-modules:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-new-access-old-store:rendered",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-new-access-old-store:no-page-errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-new-access-old-store:no-csp",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-new-access-old-store:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-new-create-old-strings:rendered",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-new-create-old-strings:no-page-errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-new-create-old-strings:no-csp",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-new-create-old-strings:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-chat-new-thread:new-renderer",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-chat-new-thread:rendered",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-chat-new-thread:no-page-errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-chat-new-thread:no-csp",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-chat-new-thread:no-overflow",
+      "ok": true
+    }
+  ]
+}

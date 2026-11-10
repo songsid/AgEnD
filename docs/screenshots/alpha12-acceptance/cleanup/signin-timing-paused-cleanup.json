@@ -1,0 +1,14 @@
+{
+  "case": "signin-timing-paused",
+  "head": "22b1432edc179e8989e542c4d87928bed2b2f41a",
+  "commandScript": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a12-acceptance/signin-timing.mts",
+  "extras": {},
+  "exitCode": 0,
+  "trackedPids": 29,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a12qa-iffy20_w",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794326664.6572423,
+  "guardViolations": [],
+  "ownedTempRemoved": true
+}

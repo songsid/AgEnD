@@ -1,0 +1,16 @@
+{
+  "case": "wake-sandbox",
+  "head": "22b1432edc179e8989e542c4d87928bed2b2f41a",
+  "commandScript": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a12-acceptance/wake.mts",
+  "extras": {
+    "IS_SANDBOX": "1"
+  },
+  "exitCode": 0,
+  "trackedPids": 4,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a12qa-9aq1l8os",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794326134.9937594,
+  "guardViolations": [],
+  "ownedTempRemoved": true
+}

@@ -1,0 +1,14 @@
+{
+  "case": "signin-chat",
+  "head": "22b1432edc179e8989e542c4d87928bed2b2f41a",
+  "commandScript": "scripts/manual/smoke/smoke-signin-chat-s118.mts",
+  "extras": {},
+  "exitCode": 0,
+  "trackedPids": 20,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a12qa-2z1kf52x",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794325758.351684,
+  "guardViolations": [],
+  "ownedTempRemoved": true
+}

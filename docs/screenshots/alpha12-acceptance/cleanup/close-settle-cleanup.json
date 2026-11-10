@@ -1,0 +1,16 @@
+{
+  "case": "close-settle",
+  "head": "22b1432edc179e8989e542c4d87928bed2b2f41a",
+  "commandScript": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a12-acceptance/close-settle.mts",
+  "extras": {
+    "TZ": "Asia/Taipei"
+  },
+  "exitCode": 0,
+  "trackedPids": 17,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a12qa-h2s6k4pi",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794326570.7884145,
+  "guardViolations": [],
+  "ownedTempRemoved": true
+}

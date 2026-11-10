@@ -1,0 +1,14 @@
+{
+  "case": "focused",
+  "head": "22b1432edc179e8989e542c4d87928bed2b2f41a",
+  "commandScript": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a12-acceptance/focused.mts",
+  "extras": {},
+  "exitCode": 1,
+  "trackedPids": 24,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a12qa-f69s6kw_",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794325875.7886908,
+  "guardViolations": [],
+  "ownedTempRemoved": true
+}

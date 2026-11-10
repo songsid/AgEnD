@@ -1,0 +1,48 @@
+{
+  "chrome": "156.0.8078.4",
+  "checks": {
+    "fixture-is-chat-not-web-only": "PASS",
+    "two-distinct-secrets-really-match": "PASS",
+    "desk-light-zh-TW-chat-wrong:geometry": "PASS",
+    "desk-light-zh-TW-chat-collision:geometry": "PASS",
+    "desk-light-zh-TW:collision-is-ordinary-401": "PASS",
+    "desk-light-zh-TW:collision-no-session-step-or-notice": "PASS",
+    "desk-light-zh-TW:no-special-wait-or-retry-loop": "PASS",
+    "desk-light-zh-TW:next-code-correct-admin-session": "PASS",
+    "desk-light-zh-TW:only-code-sent": "PASS",
+    "desk-light-zh-TW:no-script-or-csp-error": "PASS",
+    "phone-dark-zh-TW-chat-wrong:geometry": "PASS",
+    "phone-dark-zh-TW-chat-collision:geometry": "PASS",
+    "phone-dark-zh-TW:collision-is-ordinary-401": "PASS",
+    "phone-dark-zh-TW:collision-no-session-step-or-notice": "PASS",
+    "phone-dark-zh-TW:no-special-wait-or-retry-loop": "PASS",
+    "phone-dark-zh-TW:next-code-correct-admin-session": "PASS",
+    "phone-dark-zh-TW:only-code-sent": "PASS",
+    "phone-dark-zh-TW:no-script-or-csp-error": "PASS",
+    "real-http-collision-body-equals-wrong": "PASS",
+    "gateway-bound-real-route-chat-200": "PASS",
+    "gateway-loopback-only-404": "PASS",
+    "gateway-retired-403-before-body": "PASS",
+    "demoted-owner-refused": "PASS",
+    "cross-origin-refused": "PASS",
+    "chat-browser-429-with-wait": "PASS",
+    "chat-en-browser-paused:geometry": "PASS"
+  },
+  "images": [
+    "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a12-acceptance/signin-chat/signin-s118-chat/desk-light-zh-TW-chat-wrong-view.png",
+    "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a12-acceptance/signin-chat/signin-s118-chat/desk-light-zh-TW-chat-collision-view.png",
+    "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a12-acceptance/signin-chat/signin-s118-chat/phone-dark-zh-TW-chat-wrong-view.png",
+    "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a12-acceptance/signin-chat/signin-s118-chat/phone-dark-zh-TW-chat-collision-view.png",
+    "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a12-acceptance/signin-chat/signin-s118-chat/chat-en-browser-paused-view.png"
+  ],
+  "scope": "Real Chrome and production HTTP/core with synthetic chat admins and searched HMAC collisions; real clocks and current-step collision search; gateway context injected on owned ingress, no tunnel or platform adapter. No real accounts/CLI/fleet start.",
+  "sourceFiles": [
+    "src/auth-api.ts",
+    "src/fleet-manager.ts",
+    "src/web-remote-access.ts",
+    "src/ui/signin.html",
+    "src/ui/shared/signin.js",
+    "scripts/manual/smoke/smoke-signin-chat-s118.mts"
+  ],
+  "sourceManifest": "CHAT_PRODUCTION_SHA256SUMS"
+}

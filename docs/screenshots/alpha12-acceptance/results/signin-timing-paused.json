@@ -1,0 +1,45 @@
+{
+  "checks": [
+    {
+      "name": "desk-light-zh-TW-typed6:nothing-at799",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-typed6:totp-at800",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-extend8:nothing-at799",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-extend8:8-cancels6",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-paste6:immediate-totp",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-typed6:nothing-at799",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-typed6:totp-at800",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-extend8:nothing-at799",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-extend8:8-cancels6",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-paste6:immediate-totp",
+      "ok": true
+    }
+  ],
+  "scope": "real browser clock injected; actual HTTP wrong-code routes; no API response stub; all credentials synthetic"
+}

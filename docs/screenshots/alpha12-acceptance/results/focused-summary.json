@@ -1,0 +1,135 @@
+[
+  {
+    "run": "focused",
+    "numTotalTests": 733,
+    "numPassedTests": 714,
+    "numFailedTests": 19,
+    "success": false,
+    "files": [
+      {
+        "file": "claude-cold-resume-retry-2322.test.ts",
+        "status": "passed",
+        "cases": 12
+      },
+      {
+        "file": "claude-cold-resume-startup-1435.test.ts",
+        "status": "passed",
+        "cases": 7
+      },
+      {
+        "file": "claude-file-send-card-2317.test.ts",
+        "status": "passed",
+        "cases": 21
+      },
+      {
+        "file": "claude-file-send-card-2322.test.ts",
+        "status": "passed",
+        "cases": 8
+      },
+      {
+        "file": "cli-upstream-precheck.test.ts",
+        "status": "passed",
+        "cases": 87
+      },
+      {
+        "file": "codex-receipt-latency-3578.test.ts",
+        "status": "passed",
+        "cases": 10
+      },
+      {
+        "file": "create-host-account-132.test.ts",
+        "status": "passed",
+        "cases": 13
+      },
+      {
+        "file": "delivery-forwards-1756.test.ts",
+        "status": "passed",
+        "cases": 46
+      },
+      {
+        "file": "muse-1.4.15-audit.test.ts",
+        "status": "passed",
+        "cases": 80
+      },
+      {
+        "file": "native-pane-file-send-2317.test.ts",
+        "status": "passed",
+        "cases": 8
+      },
+      {
+        "file": "native-pane-instance-lifecycle-2950.test.ts",
+        "status": "passed",
+        "cases": 9
+      },
+      {
+        "file": "public-link-close-s120.test.ts",
+        "status": "passed",
+        "cases": 8
+      },
+      {
+        "file": "settings-access-overview-s120.test.ts",
+        "status": "passed",
+        "cases": 11
+      },
+      {
+        "file": "signin-end-notice-2825.test.ts",
+        "status": "passed",
+        "cases": 9
+      },
+      {
+        "file": "signin-entry-s118.test.ts",
+        "status": "passed",
+        "cases": 4
+      },
+      {
+        "file": "signin-per-admin-totp-3486.test.ts",
+        "status": "passed",
+        "cases": 110
+      },
+      {
+        "file": "signin-unified-s118.test.ts",
+        "status": "passed",
+        "cases": 56
+      },
+      {
+        "file": "usage-fable-card-2815.test.ts",
+        "status": "passed",
+        "cases": 7
+      },
+      {
+        "file": "wake-saved-config.test.ts",
+        "status": "failed",
+        "cases": 19
+      },
+      {
+        "file": "web-chat-c1.test.ts",
+        "status": "passed",
+        "cases": 191
+      },
+      {
+        "file": "web-chat-quote-2789.test.ts",
+        "status": "passed",
+        "cases": 14
+      },
+      {
+        "file": "zh-admin-word-2820.test.ts",
+        "status": "passed",
+        "cases": 3
+      }
+    ]
+  },
+  {
+    "run": "wake-sandbox",
+    "numTotalTests": 19,
+    "numPassedTests": 19,
+    "numFailedTests": 0,
+    "success": true,
+    "files": [
+      {
+        "file": "wake-saved-config.test.ts",
+        "status": "passed",
+        "cases": 19
+      }
+    ]
+  }
+]

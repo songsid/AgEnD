@@ -1,0 +1,16 @@
+{
+  "case": "signin",
+  "head": "22b1432edc179e8989e542c4d87928bed2b2f41a",
+  "commandScript": "scripts/manual/smoke/smoke-signin-unified-s118.mts",
+  "extras": {
+    "S118_BASE": "636328df913c8a01081f3a35d1d14f408635977b"
+  },
+  "exitCode": 0,
+  "trackedPids": 38,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a12qa-pkn22bw6",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794325761.45825,
+  "guardViolations": [],
+  "ownedTempRemoved": true
+}

@@ -1,0 +1,17 @@
+{
+  "case": "weekly-complete",
+  "head": "22b1432edc179e8989e542c4d87928bed2b2f41a",
+  "commandScript": "scripts/manual/smoke/smoke-2815-usage-card.mts",
+  "extras": {
+    "SKEW_OLD_DIALOG": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a12-acceptance/skew-alpha11/usage-dialog.js",
+    "SKEW_OLD_CSS": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a12-acceptance/skew-alpha11/app.css"
+  },
+  "exitCode": 0,
+  "trackedPids": 23,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a12qa-98vo_44i",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794325822.5134847,
+  "guardViolations": [],
+  "ownedTempRemoved": true
+}

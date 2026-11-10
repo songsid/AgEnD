@@ -1,0 +1,14 @@
+{
+  "case": "build",
+  "head": "22b1432edc179e8989e542c4d87928bed2b2f41a",
+  "commandScript": "BUILD",
+  "extras": {},
+  "exitCode": 0,
+  "trackedPids": 6,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a12qa-_03yvi0j",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794325658.6583393,
+  "guardViolations": [],
+  "ownedTempRemoved": true
+}

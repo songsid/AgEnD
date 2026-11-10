@@ -1,0 +1,31 @@
+{
+  "candidate": "22b1432edc179e8989e542c4d87928bed2b2f41a",
+  "runs": 17,
+  "allRunsNoLiveTrackedOwnedPids": true,
+  "allOwnedTempsRemoved": true,
+  "remainingProcessesWithOwnedTempArgs": [],
+  "scratchHomesRemoved": [
+    "weekly-complete",
+    "browser-stories-steps",
+    "wake-sandbox",
+    "signin-timing-events",
+    "signin-timing-paused",
+    "receipt-replay-private",
+    "focused",
+    "signin",
+    "browser-stories",
+    "skew-stories",
+    "weekly",
+    "browser-stories-confirm",
+    "signin-timing",
+    "build",
+    "close-settle",
+    "receipt-replay",
+    "signin-chat"
+  ],
+  "homesRootRemoved": true,
+  "realVendorOrCliExecution": false,
+  "productFilesChanged": false,
+  "evidenceOnlyBranch": "qa/alpha12-acceptance",
+  "atUnix": 1794326746.1263647
+}

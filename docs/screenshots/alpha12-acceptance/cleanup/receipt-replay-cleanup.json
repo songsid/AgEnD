@@ -1,0 +1,20 @@
+{
+  "case": "receipt-replay",
+  "head": "22b1432edc179e8989e542c4d87928bed2b2f41a",
+  "commandScript": "scripts/manual/codex-receipt-3578/replay.mts",
+  "extras": {
+    "MODE": "after",
+    "OUT": "/home/han/Projects/AgEnD-agend-dev-sol/.artifacts/a12-acceptance/receipt-replay/result.json"
+  },
+  "exitCode": 1,
+  "trackedPids": 2,
+  "liveOwnedPids": [],
+  "ownedTemp": "/tmp/a12qa-hl85ze8l",
+  "noExternalRoutes": "unshare-Urn;only-loopback-enabled",
+  "at": 1794325846.351529,
+  "guardViolations": [
+    "[test process guard] tmux requires a private test socket (-L/-S)",
+    "[test process guard] tmux requires a private test socket (-L/-S)"
+  ],
+  "ownedTempRemoved": true
+}

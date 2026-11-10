@@ -1,0 +1,60 @@
+{
+  "checks": [
+    {
+      "name": "desk-light-zh-TW:fixture-link-open",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:overview-three-cards",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:current-device-no-revoke",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:real-route-closed",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:closed-display-settles",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:access:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW:access:no-csp",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:fixture-link-open",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:overview-three-cards",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:current-device-no-revoke",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:real-route-closed",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:closed-display-settles",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:access:no-overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW:access:no-csp",
+      "ok": true
+    }
+  ]
+}
