@@ -1,0 +1,41 @@
+{
+  "root-focused": {
+    "passed": 65,
+    "failed": 0,
+    "skipped": 0,
+    "files": 5
+  },
+  "consumers-focused": {
+    "passed": 207,
+    "failed": 0,
+    "skipped": 0,
+    "files": 12
+  },
+  "save-callers-focused": {
+    "passed": 392,
+    "failed": 0,
+    "skipped": 0,
+    "files": 18
+  },
+  "other-workers-focused": {
+    "passed": 46,
+    "failed": 0,
+    "skipped": 0,
+    "files": 5
+  },
+  "integration-focused": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "files": 1
+  },
+  "final-focused": {
+    "passed": 162,
+    "failed": 0,
+    "skipped": 0,
+    "files": 8
+  },
+  "scope": "Initial focused groups ran against the candidate modified tree. Final core/config/changelog recheck ran at committed source 69fba95774606e2491462619d4276c1d69ebd066. Results overlap; not a full-suite run.",
+  "testTypesExit": 0,
+  "guardAndProduct": "Product src tree and process guard/config files byte-identical to main base."
+}

@@ -1,0 +1,9 @@
+{
+  "passed": 1,
+  "failed": 2,
+  "scope": "Only the compiled and TS default-selection cases existed before the shared setup; both assertion-failed, unrelated native Worker control passed. All native bodies were private inert fixtures; no real backend CLI ran.",
+  "failedCases": [
+    "shared model-probe Worker default fakes compiled probe workers without a suite-local mock",
+    "shared model-probe Worker default fakes tsx probe workers without a suite-local mock"
+  ]
+}
