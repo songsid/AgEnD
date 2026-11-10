@@ -56,7 +56,7 @@ An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) i
 - When a session ends, the page says so once ("Your session has ended. Sign in again") and keeps what you were doing on screen.
 - **The Session menu** (at the bottom of the sidebar) shows:
   - which browser you are signed in as, and when the session ends (a time of day: "Ends by … at the latest, or after … unused");
-  - when more than one browser is signed in: every signed-in device (this one marked **This device**, the others with **Sign out**), and **Sign out everywhere**.
+  - your role (**Owner ✓**, **Admin · not verified**, **Guest** or **Read-only**) and, for an admin, a **Manage devices** link to **Settings → Access & security → Devices & sign-in**. That card lists every signed-in device (this one marked **This device**) with its role, and has **Sign out** per device and **Sign out everywhere**. On a fleet with a chat connection you can sign out your own devices and any guest's or read-only one; another admin's devices only that admin can sign out. A guest or read-only session, which has no Settings, keeps **Sign out everywhere** in the menu.
 - At most 8 sessions are kept; signing in a ninth drops the one used least recently.
 
 ### Signing every browser out (revoke)
@@ -68,7 +68,7 @@ Use any of these if you see a sign-in you did not make, or a device you no longe
 | Telegram | `/web revoke` |
 | Discord | the `/web` slash command, with **`action: revoke`** |
 | On the host | `agend web-token rotate`. This also rotates the token the CLI uses; a running fleet picks it up with no restart. |
-| In the browser | Session menu → **Sign out everywhere** |
+| In the browser | Settings → Access & security → Devices & sign-in → **Sign out everywhere** |
 
 If the server cannot save the change (a disk problem), the reply says so: everyone is signed out **for now**, but a restart could bring the sessions back, so fix the disk and revoke again.
 

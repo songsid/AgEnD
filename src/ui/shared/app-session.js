@@ -1,10 +1,13 @@
-// The Session menu (#1018; once in the retired shell.js): who is signed in on this device, the other signed-in devices, and signing
-// out. Device labels come from other browsers' User-Agents, so they are only ever rendered as text.
+// The Session menu (#1018; once in the retired shell.js): who is signed in on this device, its role, and signing out.
+// AGEND-138 (#3486): the other signed-in devices are not listed here any more — Settings → Devices has the full list (and
+// "Sign out everywhere"), so an admin gets a "Manage devices" link to it. A guest or read-only session has no Settings, so
+// its own "Sign out everywhere" (its account's devices) stays here.
 // It reads /auth/session when the page starts and each time the menu is opened — a person's action, not a timer.
 import { html, useEffect, useRef, useState } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { t, lang } from "./app-i18n.js";
-import { AuthorizeChip } from "./web-authorize.js";
+import { AuthorizeChip, useWebAuthorization } from "./web-authorize.js";
+import { roleName } from "./device-roles.js";             // its own file: a retained older web-authorize.js has no roleName (PR #3553 review)
 
 async function getJson(url) {
   try {
@@ -14,23 +17,19 @@ async function getJson(url) {
 }
 const clock = (ms) => new Date(ms).toLocaleTimeString(lang() === "zh-TW" ? "zh-TW" : undefined, { hour: "2-digit", minute: "2-digit" });
 const span = (ms) => { const m = Math.max(1, Math.round(ms / 60000)); return m >= 90 ? `${Math.round(m / 60)} h` : `${m} min`; };
-const ago = (ms) => { const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? t("app.justNow") : m < 90 ? t("app.minAgo", m) : t("app.hrAgo", Math.round(m / 60)); };
 
 export function SessionMenu() {
   const [me, setMe] = useState(undefined);         // undefined: not read yet; null: signed out
-  const [sessions, setSessions] = useState(null);
-  // #3061 (P2b): on a web-only fleet only the verified owner ends the OTHER devices (the server says so with the list and
-  // refuses anyone else regardless); a session that is not one still sees them and can sign itself out.
-  const [mayEndOthers, setMayEndOthers] = useState(true);
+  const [others, setOthers] = useState(0);           // a non-admin session's other devices (its account's): all it can end here
   const [open, setOpen] = useState(false);
   const [error, setError] = useState(false);
+  const auth = useWebAuthorization();                // AGEND-138: the role line below (the chip shares this one read)
   const btn = useRef(null), pop = useRef(null);
   async function refresh() {
     const m = await getJson("/auth/session");
     setMe(m);
-    const s = m ? await getJson("/auth/sessions") : null;
-    setSessions(s && s.sessions ? s.sessions : null);
-    setMayEndOthers(!(s && s.canEndOthers === false));
+    const s = m && m.tier !== "admin" ? await getJson("/auth/sessions") : null;
+    setOthers(s && Array.isArray(s.sessions) ? s.sessions.filter((x) => !x.current).length : 0);
   }
   useEffect(() => { refresh(); }, []);
   useEffect(() => {
@@ -49,7 +48,6 @@ export function SessionMenu() {
   }
   const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); btn.current && btn.current.focus(); } };
   const label = me ? t("app.session") : t("app.signIn");
-  const rows = sessions || [];
   return html`<div class="session">
     <button ref=${btn} type="button" class="side-row" aria-haspopup="dialog" aria-expanded=${open ? "true" : "false"}
       onClick=${() => { const next = !open; setOpen(next); if (next) refresh(); }}>
@@ -58,13 +56,12 @@ export function SessionMenu() {
       ${!me ? html`<h3>${t("app.signedOut")}</h3><a class="btn" href=${`/signin?next=${encodeURIComponent(location.pathname)}`}>${t("app.signIn")}</a>` : html`
         <h3>${t("app.signedIn")} · ${me.label}</h3>
         <p class="sub">${t("app.expires", clock(me.expiresAt), span(me.idleMs))}</p>
+        ${me.tier === "guest" || me.tier === "read" || (me.tier === "admin" && auth.st) ? html`<p class="role" data-role=${me.tier === "admin" ? (auth.st.state === "verified" ? "owner" : "admin") : me.tier}><span class="sub">${t("webauth.role")}</span> <strong>${roleName(me.tier, !!auth.st && auth.st.state === "verified")}</strong></p>` : null}
         <${AuthorizeChip} />
-        ${rows.length > 1 ? html`<h3>${t("app.devices")}</h3><ul class="devices">${rows.map(s => html`<li key=${s.handle}>
-          <span class="grow"><span class="name">${s.label}${s.current ? ` · ${t("app.thisDevice")}` : ""}</span><span class="when">${t("app.lastActive", ago(s.lastSeen))}</span></span>
-          ${s.current || !mayEndOthers ? null : html`<button type="button" class="btn btn-sm danger" onClick=${() => act("DELETE", `/auth/sessions/${encodeURIComponent(s.handle)}`, refresh)}>${t("app.signOut")}</button>`}</li>`)}</ul>` : null}
         <div class="row">
           <button type="button" class="btn" onClick=${() => act("POST", "/auth/logout", () => { location.href = "/signin"; })}><${Icon} name="user" size=${16} />${t("app.signOut")}</button>
-          ${rows.length > 1 && mayEndOthers ? html`<button type="button" class="btn danger" onClick=${() => act("DELETE", "/auth/sessions", () => { location.href = "/signin"; })}>${t("app.signOutAll")}</button>` : null}
+          ${me.tier === "admin" ? html`<a class="btn" id="manageDevices" href="/settings/access">${t("app.manageDevices")}</a>`
+            : others > 0 ? html`<button type="button" class="btn danger" onClick=${() => act("DELETE", "/auth/sessions", () => { location.href = "/signin"; })}>${t("app.signOutAll")}</button>` : null}
         </div>`}
       ${error ? html`<p class="err" role="alert">${t("app.failed")}</p>` : null}
     </div>` : null}

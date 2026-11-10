@@ -83,8 +83,7 @@ describe("#3061 P2a: the helpers", () => {
 });
 
 describe("#3061 P2a: Settings → Devices & sign-in", () => {
-  it("a fleet with a chat connection (webOnly: false): no card; a failed read: no card", async () => {
-    expect((await open({ webOnly: false, owner: false })).$("#devicesCard")).toBeNull();
+  it("a failed read: no card (a fleet with a chat connection has one now: the describe at the end)", async () => {
     answers["GET /ui/devices"] = { status: 503, body: { error: "down" } };
     expect((await open()).$("#devicesCard")).toBeNull();
   });
@@ -224,56 +223,59 @@ function pinClock() {
   afterEach(() => { vi.useRealTimers(); });
 }
 const ROWS = [
-  { handle: "aaaaaaaaaaaaaaaa", label: "Firefox on Linux", via: "host", ownerVerified: true, current: true, surface: "local", created: NOW - 3_600_000, lastSeen: NOW, expiresAt: NOW + 3_600_000 },
-  { handle: "bbbbbbbbbbbbbbbb", label: "Chrome on Android", via: "device", ownerVerified: false, current: false, surface: "local", created: NOW - 900_000, lastSeen: NOW - 5 * 60_000, expiresAt: NOW + 3_600_000 },
-  { handle: "cccccccccccccccc", label: "Safari on iPhone", via: "totp", ownerVerified: true, current: false, surface: "gateway", created: NOW - 7_200_000, lastSeen: NOW - 3 * 3_600_000, expiresAt: NOW + 3_600_000 },
-  { handle: "dddddddddddddddd", label: "Edge on Windows", via: "code", ownerVerified: false, current: false, surface: "local", created: NOW - 7_200_000, lastSeen: NOW - 20_000, expiresAt: NOW + 3_600_000 },
+  { handle: "aaaaaaaaaaaaaaaa", label: "Firefox on Linux", via: "host", tier: "admin", verified: true, current: true, surface: "local", created: NOW - 3_600_000, lastSeen: NOW, expiresAt: NOW + 3_600_000 },
+  { handle: "bbbbbbbbbbbbbbbb", label: "Chrome on Android", via: "device", tier: "admin", verified: false, current: false, surface: "local", created: NOW - 900_000, lastSeen: NOW - 5 * 60_000, expiresAt: NOW + 3_600_000 },
+  { handle: "cccccccccccccccc", label: "Safari on iPhone", via: "totp", tier: "admin", verified: true, current: false, surface: "gateway", created: NOW - 7_200_000, lastSeen: NOW - 3 * 3_600_000, expiresAt: NOW + 3_600_000 },
+  { handle: "dddddddddddddddd", label: "Edge on Windows", via: "code", tier: "admin", verified: false, current: false, surface: "local", created: NOW - 7_200_000, lastSeen: NOW - 20_000, expiresAt: NOW + 3_600_000 },
 ];
+/** What the server says per row for a reader who is / is not the verified owner (the others' canSignOut, and why not). */
+const forReader = (owner: boolean) => ROWS.map(r => ({ ...r, canSignOut: !r.current && owner, ...(!r.current && !owner ? { signOutBlocked: "owner_required" } : {}) }));
+const ROWS_OWNER = forReader(true), ROWS_NONOWNER = forReader(false);
 /** A row as [its name (and mark), its details, its button]. */
 const rowText = (w: any, handle: string) => [w.text(w.$(`[data-handle="${handle}"] .s-dev-name`)), w.text(w.$(`[data-handle="${handle}"] .s-dev-meta`)), w.text(w.$(`[data-handle="${handle}"] [data-signout]`))];
 
 describe("#3061 P2b: the signed-in devices", () => {
   pinClock();
   it("every device, this one marked: how it was approved, whether its owner is verified, when it was last active", async () => {
-    const w = await open({ webOnly: true, owner: true, devices: ROWS });
+    const w = await open({ webOnly: true, owner: true, canEndOthers: true, devices: ROWS_OWNER });
     expect(w.text(w.$("#devicesListTitle"))).toBe("Signed-in devices");
     expect([...p.root.querySelectorAll(".s-dev-row")].length).toBe(4);
-    expect(rowText(w, "aaaaaaaaaaaaaaaa")).toEqual(["Firefox on Linux This device", "Approved by this computer · Owner verified · active just now", ""]);
-    expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "Approved by device code · Signed in, owner not verified yet · active 5 min ago", "Sign out"]);
-    expect(rowText(w, "cccccccccccccccc")).toEqual(["Safari on iPhone", "Approved by authenticator app · Owner verified · active 3 h ago", "Sign out"]);
-    expect(rowText(w, "dddddddddddddddd")).toEqual(["Edge on Windows", "Approved by sign-in code · Signed in, owner not verified yet · active just now", "Sign out"]);
+    expect(rowText(w, "aaaaaaaaaaaaaaaa")).toEqual(["Firefox on Linux This device", "Approved by this computer · Owner ✓ · active just now", ""]);
+    expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "Approved by device code · Admin · not verified · active 5 min ago", "Sign out"]);
+    expect(rowText(w, "cccccccccccccccc")).toEqual(["Safari on iPhone", "Approved by authenticator app · Owner ✓ · active 3 h ago", "Sign out"]);
+    expect(rowText(w, "dddddddddddddddd")).toEqual(["Edge on Windows", "Approved by sign-in code · Admin · not verified · active just now", "Sign out"]);
     // Only the others have a Sign out — never the device being used.
     expect(w.$('[data-handle="aaaaaaaaaaaaaaaa"] [data-signout]')).toBeNull();
     expect([...p.root.querySelectorAll("[data-signout]")].map((b: any) => b.disabled)).toEqual([false, false, false]);
     expect([w.$('[data-handle="bbbbbbbbbbbbbbbb"] [data-owner]').getAttribute("data-owner"), w.$('[data-handle="cccccccccccccccc"] [data-owner]').getAttribute("data-owner")]).toEqual(["no", "yes"]);
     // Labels are other browsers' User-Agents: text, never markup.
-    const hostile = [{ ...ROWS[0], label: "<img src=x onerror=alert(1)>" }];
+    const hostile = [{ ...ROWS_OWNER[0], label: "<img src=x onerror=alert(1)>" }];
     const x = await open({ webOnly: true, owner: true, devices: hostile });
     expect(x.$(".s-dev-row img")).toBeNull();
     expect(x.text(x.$(".s-dev-name"))).toContain("<img src=x onerror=alert(1)>");
   });
 
   it("not the owner: the list is shown, every Sign out is disabled, and the line says who can — nothing is posted", async () => {
-    const w = await open({ webOnly: true, owner: false, devices: ROWS });
+    const w = await open({ webOnly: true, owner: false, canEndOthers: false, devices: ROWS_NONOWNER });
     expect([...p.root.querySelectorAll("[data-signout]")].map((b: any) => b.disabled)).toEqual([true, true, true]);
     expect(w.text(w.$("#devicesSignOutOwnerOnly"))).toBe("Only a device whose owner is verified can sign out another device.");
     await w.click(w.$('[data-signout="bbbbbbbbbbbbbbbb"]'));
     expect(w.$("#devSignOutLead")).toBeNull();
     expect(sent.filter(s => s.path === "/ui/devices/signout")).toEqual([]);
     // Alone (no other device) there is nothing to sign out and no line about it.
-    const alone = await open({ webOnly: true, owner: false, devices: [ROWS[0]] });
+    const alone = await open({ webOnly: true, owner: false, canEndOthers: false, devices: [ROWS_NONOWNER[0]] });
     expect(alone.$("#devicesSignOutOwnerOnly")).toBeNull();
   });
 
   it("the owner: Sign out asks first, then posts that device's handle; the list is read again and the line says it", async () => {
-    const w = await open({ webOnly: true, owner: true, devices: ROWS });
+    const w = await open({ webOnly: true, owner: true, canEndOthers: true, devices: ROWS_OWNER });
     await w.click(w.$('[data-signout="bbbbbbbbbbbbbbbb"]'));
     expect(w.text(w.$("#devSignOutLead"))).toBe("Chrome on Android will have to sign in again.");
     expect(sent.filter(s => s.path === "/ui/devices/signout")).toEqual([]);              // nothing yet
     await w.click(w.$("#devSignOutCancel"));
     expect([w.$("#devSignOutLead"), sent.filter(s => s.path === "/ui/devices/signout").length]).toEqual([null, 0]);
     await w.click(w.$('[data-signout="bbbbbbbbbbbbbbbb"]'));
-    devices = { webOnly: true, owner: true, devices: ROWS.filter(r => r.handle !== "bbbbbbbbbbbbbbbb") };
+    devices = { webOnly: true, owner: true, canEndOthers: true, devices: ROWS_OWNER.filter(r => r.handle !== "bbbbbbbbbbbbbbbb") };
     const before = sent.filter(s => s.method === "GET" && s.path === "/ui/devices").length;
     await w.click(w.$("#devSignOutGo"));
     expect(sent.filter(s => s.path === "/ui/devices/signout").map(s => s.body)).toEqual([{ handle: "bbbbbbbbbbbbbbbb" }]);
@@ -284,7 +286,7 @@ describe("#3061 P2b: the signed-in devices", () => {
   });
 
   it("the server's answers, in words: the owner's authority gone (403: the card reads again), already gone (404), not saved (500), anything else", async () => {
-    const w = await open({ webOnly: true, owner: true, devices: ROWS });
+    const w = await open({ webOnly: true, owner: true, canEndOthers: true, devices: ROWS_OWNER });
     const attempt = async () => { await w.click(w.$('[data-signout="cccccccccccccccc"]')); await w.click(w.$("#devSignOutGo")); return w.text(w.$("#devicesNote")); };
     answers["POST /ui/devices/signout"] = { status: 404, body: { error: "not_found" } };
     expect(await attempt()).toBe("That device is already signed out.");
@@ -292,7 +294,7 @@ describe("#3061 P2b: the signed-in devices", () => {
     expect(await attempt()).toMatch(/^Signed out for now, but the change could not be saved: a restart may bring the session back\./);
     answers["POST /ui/devices/signout"] = { status: 502, body: {} };
     expect(await attempt()).toBe("That did not work — try again.");
-    devices = { webOnly: true, owner: false, devices: ROWS };
+    devices = { webOnly: true, owner: false, canEndOthers: false, devices: ROWS_NONOWNER };
     answers["POST /ui/devices/signout"] = { status: 403, body: { error: "owner_required" } };
     expect(await attempt()).toBe("This device can no longer approve sign-ins: its owner verification has ended.");
     await settle(10);
@@ -301,7 +303,7 @@ describe("#3061 P2b: the signed-in devices", () => {
 
   it("the QR link: ?approve=<code> opens the dialog with the code filled in for the owner — Continue is still pressed, nothing is looked up — and leaves the address", async () => {
     history.replaceState(null, "", "/settings/access?approve=ABCD-EFGH&keep=1");
-    const w = await open({ webOnly: true, owner: true, devices: ROWS });
+    const w = await open({ webOnly: true, owner: true, canEndOthers: true, devices: ROWS_OWNER });
     expect(w.text(w.$(".dlg-title"))).toBe("Add device");
     expect(w.$("#devCodeInput").value).toBe("ABCD-EFGH");
     expect(w.$("#devFind").disabled).toBe(false);
@@ -314,16 +316,16 @@ describe("#3061 P2b: the signed-in devices", () => {
 
   it("the QR link for anyone but the owner opens nothing (and is still taken out of the address); a value that is not a code is ignored", async () => {
     history.replaceState(null, "", "/settings/access?approve=ABCD-EFGH");
-    const w = await open({ webOnly: true, owner: false, devices: ROWS });
+    const w = await open({ webOnly: true, owner: false, canEndOthers: false, devices: ROWS_NONOWNER });
     expect([w.$(".dlg-title"), w.$("#devCodeInput"), location.search]).toEqual([null, null, ""]);
     for (const bad of ["x", "ABCD-EFGH-IJKL-MNOP", "<script>", "ABCD%20EFGH", "ABCD_EFGH"]) {
       history.replaceState(null, "", `/settings/access?approve=${bad}`);
-      const o = await open({ webOnly: true, owner: true, devices: ROWS });
+      const o = await open({ webOnly: true, owner: true, canEndOthers: true, devices: ROWS_OWNER });
       expect([o.$(".dlg-title"), o.$("#devCodeInput")], bad).toEqual([null, null]);
     }
     // Read once per page: opened, closed, it does not come back with the next read of the list.
     history.replaceState(null, "", "/settings/access?approve=WXYZ-2345");
-    const once = await open({ webOnly: true, owner: true, devices: ROWS });
+    const once = await open({ webOnly: true, owner: true, canEndOthers: true, devices: ROWS_OWNER });
     await once.click(once.$("#devCancel"));
     await once.click(once.$("#devicesRefresh"));
     expect(once.$("#devCodeInput")).toBeNull();
@@ -340,17 +342,17 @@ describe("#3061 P2b: the signed-in devices", () => {
     const i18n = await import("/assets/app-i18n.js");
     i18n.setLang("zh-TW");
     try {
-      const w = await open({ webOnly: true, owner: true, devices: ROWS });
+      const w = await open({ webOnly: true, owner: true, canEndOthers: true, devices: ROWS_OWNER });
       expect(w.text(w.$("#devicesListTitle"))).toBe("已登入的裝置");
-      expect(rowText(w, "aaaaaaaaaaaaaaaa")).toEqual(["Firefox on Linux 這台裝置", "核准方式：主機 · 已驗證擁有者 · 剛剛活動", ""]);
-      expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "核准方式：其他裝置核准 · 已登入，尚未驗證擁有者 · 5 分鐘前活動", "登出"]);
+      expect(rowText(w, "aaaaaaaaaaaaaaaa")).toEqual(["Firefox on Linux 這台裝置", "核准方式：主機 · 擁有者 ✓ · 剛剛活動", ""]);
+      expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "核准方式：其他裝置核准 · 管理者 · 未驗證 · 5 分鐘前活動", "登出"]);
       expect(rowText(w, "cccccccccccccccc")[1]).toContain("核准方式：驗證器 App");
       expect(rowText(w, "dddddddddddddddd")[1]).toContain("核准方式：一次性裝置登入碼");
       await w.click(w.$('[data-signout="bbbbbbbbbbbbbbbb"]'));
       expect([w.text(w.$(".dlg-title")), w.text(w.$("#devSignOutLead")), w.text(w.$("#devSignOutGo"))]).toEqual(["登出這台裝置？", "Chrome on Android 需要重新登入。", "登出"]);
       await w.click(w.$("#devSignOutGo"));
       expect(w.text(w.$("#devicesNote"))).toBe("已登出 Chrome on Android。");
-      const n = await open({ webOnly: true, owner: false, devices: ROWS });
+      const n = await open({ webOnly: true, owner: false, canEndOthers: false, devices: ROWS_NONOWNER });
       expect(n.text(n.$("#devicesSignOutOwnerOnly"))).toBe("只有已驗證擁有者的裝置才能登出其他裝置。");
     } finally { i18n.setLang("en"); }
   });
@@ -359,7 +361,7 @@ describe("#3061 P2b: the signed-in devices", () => {
 // ── P2b security review: three small things ──
 describe("#3061 P2b review: web authorization off — the card says why nobody can add or sign out a device, and what to do", () => {
   pinClock();
-  const OFF = { webOnly: true, owner: false, authority: false, devices: ROWS };
+  const OFF = { webOnly: true, owner: false, canEndOthers: false, authority: false, devices: ROWS_NONOWNER };
 
   it("authority off: one line replaces the two 'owner not verified' lines — nobody is the owner (web-only: no General, no ask-the-owner)", async () => {
     const w = await open(OFF);
@@ -379,17 +381,17 @@ describe("#3061 P2b review: web authorization off — the card says why nobody c
   });
 
   it("authority off with no other device signed in: the line is still there (Add device is off too)", async () => {
-    const w = await open({ webOnly: true, owner: false, authority: false, devices: [ROWS[0]] });
+    const w = await open({ webOnly: true, owner: false, canEndOthers: false, authority: false, devices: [ROWS_NONOWNER[0]] });
     expect(w.$("#devicesAuthorityOff")).not.toBeNull();
     expect(w.$("#devicesAdd").disabled).toBe(true);
   });
 
   it("authority ON but this device is not the owner, or an older server that says nothing: the old lines, not the rotate advice", async () => {
-    const on = await open({ webOnly: true, owner: false, authority: true, devices: ROWS });
+    const on = await open({ webOnly: true, owner: false, canEndOthers: false, authority: true, devices: ROWS_NONOWNER });
     expect([on.$("#devicesAuthorityOff"), on.$("#devicesOwnerOnly") !== null, on.$("#devicesSignOutOwnerOnly") !== null]).toEqual([null, true, true]);
-    const old = await open({ webOnly: true, owner: false, devices: ROWS });
+    const old = await open({ webOnly: true, owner: false, canEndOthers: false, devices: ROWS_NONOWNER });
     expect([old.$("#devicesAuthorityOff"), old.$("#devicesOwnerOnly") !== null, old.$("#devicesSignOutOwnerOnly") !== null]).toEqual([null, true, true]);
-    const owner = await open({ webOnly: true, owner: true, authority: true, devices: ROWS });
+    const owner = await open({ webOnly: true, owner: true, canEndOthers: true, authority: true, devices: ROWS_OWNER });
     expect([owner.$("#devicesAuthorityOff"), owner.$("#devicesOwnerOnly"), owner.$("#devicesSignOutOwnerOnly")]).toEqual([null, null, null]);
   });
 
@@ -423,7 +425,7 @@ describe("#3061 P2b review: the confirm screen — where the request is from and
   it("opened from the QR link (?approve=): the same confirm screen, the same reminder — and a device name that claims to be something else is only text", async () => {
     history.replaceState(null, "", "/settings/access?approve=ABCD-EFGH");
     answers["POST /ui/devices/lookup"] = { status: 200, body: { request: { ...REQUEST, label: "<b>This computer</b>", peer: "network", address: "203.0.113.9", expiresAt: Date.now() + 200_000 } } };
-    const w = await open({ webOnly: true, owner: true, devices: ROWS });
+    const w = await open({ webOnly: true, owner: true, canEndOthers: true, devices: ROWS_OWNER });
     await w.click(w.$("#devFind"));
     expect(w.text(w.$("#devSameCode"))).toContain("Only allow this if the new device's screen shows this same code.");
     expect([w.text(w.$("#devFrom")), w.text(w.$("#devAddress"))]).toEqual(["The network (LAN or tailnet)", "203.0.113.9"]);
@@ -439,5 +441,84 @@ describe("#3061 P2b review: the confirm screen — where the request is from and
       expect(w.text(w.$("#devSameCode"))).toBe("只有新裝置的畫面上顯示的是同一組裝置登入碼時才允許。裝置名稱來自瀏覽器、可能被偽造，請以來源和位址為準。");
       expect([...w.$("#devFacts").querySelectorAll("dt")].map((e: any) => w.text(e))).toEqual(["來源", "位址", "裝置登入碼", "裝置", "剩餘時間"]);
     } finally { i18n.setLang("en"); }
+  });
+});
+
+// ── AGEND-138 (#3486): the same list on a fleet with a chat connection, every tier, and "Sign out everywhere" ──
+const CHAT_ROWS = [
+  { handle: "aaaaaaaaaaaaaaaa", label: "Admin A laptop", tier: "admin", via: "code", verified: true, current: true, surface: "local", created: NOW - 3_600_000, lastSeen: NOW, expiresAt: NOW + 3_600_000, canSignOut: false },
+  { handle: "bbbbbbbbbbbbbbbb", label: "Admin A phone", tier: "admin", via: "code", verified: false, current: false, surface: "local", created: NOW - 900_000, lastSeen: NOW - 5 * 60_000, expiresAt: NOW + 3_600_000, canSignOut: true },
+  { handle: "cccccccccccccccc", label: "Admin B laptop", tier: "admin", via: "code", verified: true, current: false, surface: "local", created: NOW - 900_000, lastSeen: NOW - 60_000, expiresAt: NOW + 3_600_000, canSignOut: false, signOutBlocked: "other_admin" },
+  { handle: "dddddddddddddddd", label: "A guest", tier: "guest", via: "code", verified: false, current: false, surface: "gateway", created: NOW - 900_000, lastSeen: NOW - 120_000, expiresAt: NOW + 3_600_000, canSignOut: true },
+  { handle: "eeeeeeeeeeeeeeee", label: "A reader", tier: "read", via: "code", verified: false, current: false, surface: "local", created: NOW - 900_000, lastSeen: NOW - 180_000, expiresAt: NOW + 3_600_000, canSignOut: true },
+];
+const CHAT = { webOnly: false, owner: true, canEndOthers: true, authority: true, devices: CHAT_ROWS };
+describe("AGEND-138 (#3486): Settings → Devices on a fleet with a chat connection", () => {
+  it("the card is there, its own lead, no Add device, and every row names its role (Owner ✓ / Admin · not verified / Guest / Read-only)", async () => {
+    const w = await open(CHAT);
+    expect(w.text(w.$("#devicesLead"))).toContain("Every device signed in to this dashboard.");
+    expect([w.$("#devicesAdd"), w.$("#devicesNoCopy"), w.$("#devicesOwnerOnly")]).toEqual([null, null, null]);
+    const role = (h: string) => w.text(w.$(`[data-handle="${h}"] [data-role]`));
+    expect(["a", "b", "c", "d", "e"].map(c => role(c.repeat(16)))).toEqual(["Owner ✓", "Admin · not verified", "Owner ✓", "Guest", "Read-only"]);
+    expect(["a", "b", "c", "d", "e"].map(c => w.$(`[data-handle="${c.repeat(16)}"] [data-role]`).getAttribute("data-role"))).toEqual(["owner", "admin", "owner", "guest", "read"]);
+  });
+
+  it("another admin's device: Sign out is disabled with the reason; own, a guest's and a reader's are enabled — and posting names the handle", async () => {
+    const w = await open(CHAT);
+    const btn = (h: string) => w.$(`[data-signout="${h.repeat(16)}"]`);
+    expect(["b", "c", "d", "e"].map(h => btn(h).disabled)).toEqual([false, true, false, false]);
+    expect(btn("c").getAttribute("title")).toBe("Only the admin who owns a device can sign it out.");
+    expect(w.text(w.$("#devicesSignOutOtherAdmin"))).toBe("Only the admin who owns a device can sign it out.");
+    expect(w.$('[data-handle="' + "a".repeat(16) + '"] [data-signout]')).toBeNull();     // this device: Sign out is the menu's
+    await w.click(btn("c"));
+    expect(w.$("#devSignOutLead")).toBeNull();                                           // a disabled button asks nothing…
+    expect(w.posts()).toEqual([]);                                                       // …and posts nothing
+    await w.click(btn("d"));
+    expect(w.text(w.$("#devSignOutLead"))).toBe("A guest will have to sign in again.");
+    await w.click(w.$("#devSignOutGo"));
+    expect(w.posts()).toEqual([["/ui/devices/signout", { handle: "d".repeat(16) }]]);
+  });
+
+  it("the server refusing another admin's device (403 other_admin) is said in its own words", async () => {
+    const w = await open(CHAT);
+    answers["POST /ui/devices/signout"] = { status: 403, body: { error: "other_admin" } };
+    await w.click(w.$(`[data-signout="${"b".repeat(16)}"]`));
+    await w.click(w.$("#devSignOutGo"));
+    expect(w.text(w.$("#devicesNote"))).toBe("That device belongs to another admin: only they can sign it out.");
+  });
+
+  it("zh-TW: the roles, the reason and the lead", async () => {
+    const i18n = await import("/assets/app-i18n.js");
+    i18n.setLang("zh-TW");
+    try {
+      const w = await open(CHAT);
+      expect(["a", "b", "d", "e"].map(h => w.text(w.$(`[data-handle="${h.repeat(16)}"] [data-role]`)))).toEqual(["擁有者 ✓", "管理者 · 未驗證", "訪客", "唯讀"]);
+      expect(w.text(w.$("#devicesSignOutOtherAdmin"))).toBe("只有這台裝置所屬的管理者本人能登出它。");
+      expect(w.text(w.$("#devicesLead"))).toContain("別的管理者的裝置只有那位管理者本人能登出");
+    } finally { i18n.setLang("en"); }
+  });
+});
+
+describe("AGEND-138 (#3486): Sign out everywhere moved here from the session menu", () => {
+  it("asks first (and says what it ends), then DELETEs /auth/sessions and goes to the sign-in page", async () => {
+    const w = await open(CHAT);
+    expect(w.$("#devicesSignOutAll").disabled).toBe(false);
+    await w.click(w.$("#devicesSignOutAll"));
+    expect(w.text(w.$("#devSignOutAllLead"))).toBe("This device, your other devices and every guest and read-only session are signed out. Other admins' devices stay signed in. You will have to sign in again.");
+    await w.click(w.$("#devSignOutAllCancel"));
+    expect(sent.filter(s => s.method === "DELETE")).toEqual([]);
+    await w.click(w.$("#devicesSignOutAll"));
+    await w.click(w.$("#devSignOutAllGo"));
+    expect(sent.filter(s => s.method === "DELETE").map(s => s.path)).toEqual(["/auth/sessions"]);
+    expect((globalThis as any).location.assigned).toBe("/signin");
+  });
+  it("web-only: the owner has it (the whole fleet's lead); a non-owner sees it disabled; alone, there is none", async () => {
+    const owner = await open({ webOnly: true, owner: true, canEndOthers: true, devices: ROWS_OWNER });
+    await owner.click(owner.$("#devicesSignOutAll"));
+    expect(owner.text(owner.$("#devSignOutAllLead"))).toBe("Every device is signed out, this one too. You will have to sign in again.");
+    const non = await open({ webOnly: true, owner: false, canEndOthers: false, devices: ROWS_NONOWNER });
+    expect(non.$("#devicesSignOutAll").disabled).toBe(true);
+    const alone = await open({ webOnly: true, owner: true, canEndOthers: true, devices: [ROWS_OWNER[0]] });
+    expect(alone.$("#devicesSignOutAll")).toBeNull();
   });
 });

@@ -115,7 +115,7 @@ export interface FleetContext {
   getDashboardAccess?(): { ready: boolean; token: string | null };
   /** A fresh single-use dashboard login code (`/dashboard`); null while the panel is closed. */
   dashboardMenu?(msg: InboundMessage): Promise<void>;
-  issueDashboardLogin?(): { display: string; expiresAt: number; ttlMinutes: number } | null;
+  issueDashboardLogin?(recipient?: { adapterId: string; userId: string; username?: string }): { display: string; expiresAt: number; ttlMinutes: number } | null;
   /**
    * Sign every web session out and withdraw any unused login code (`/dashboard revoke`): how many sessions
    * ended, and whether that is durable (false: the session file could not be updated or removed, so a

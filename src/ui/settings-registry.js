@@ -7,6 +7,7 @@ import { sectionPath } from "/assets/app-route.js";
 import { navigate } from "/assets/app-nav.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // search shows these labels from outside Settings (dailyTips, hangEnabled, crossInstanceVisibility)
+import "./settings-revoke-strings.js";   // settings.vaRevokeOthers, the revoke button's label (a file of its own: PR #3553 review)
 import "./settings-access-strings.js";   // …and this one (webLoginQr), added by Access & security (#3061)
 import "/assets/chat-strings.js";
 import { GUESTS_SETTINGS } from "./settings-guests.js";
@@ -105,7 +106,7 @@ const ROWS = [
   ["access.authority-named-link", "access", "#vaNamedLink", null, "web.verified_authority.named_link", ["named link", "my named link", "authorize", "fixed hostname"], ["固定網域", "授權", "named link"], L("Also over my named link", "也允許透過我的固定網域")],
   ["access.authority-quick-link", "access", "#vaQuickLink", null, "web.verified_authority.quick_link", ["temporary public link", "quick link", "quick tunnel", "authorize", "trycloudflare"], ["臨時公開連結", "授權", "quick tunnel"], L("Also over the temporary public link", "也允許透過臨時公開連結")],
   ["access.authority-hours", "access", "#vaHours", null, "web.verified_authority.max_session_hours", ["authorization hours", "how long", "authority"], ["授權時數", "多久"], L("How long a web authorization lasts", "網頁授權持續多久")],
-  ["access.authority-revoke", "access", "#vaRevoke", "settings.vaRevoke", null, ["revoke", "sign out", "authority"], ["撤銷", "登出", "授權"]],
+  ["access.authority-revoke", "access", "#vaRevoke", "settings.vaRevokeOthers", null, ["revoke", "sign out", "authority"], ["撤銷", "登出", "授權"]],
   // Fleet · Advanced
   // M-2738 (D4): the running version and Update — #3332's search for "update" found nothing.
   ["advanced.update", "advanced", ".s-update", null, null, ["update", "upgrade", "version", "new version", "check for updates", "release"], ["更新", "版本", "新版", "檢查更新", "升級"], L("Version and update", "版本與更新")],

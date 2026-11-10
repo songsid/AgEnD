@@ -102,13 +102,16 @@ function harness(fleet: Record<string, unknown> = {}) {
   let revision = 0;
   const save = vi.fn(() => { noteSettingsWrite(path, yaml.load(readFileSync(path, "utf8")), config); writeFileSync(path, yaml.dump(config)); revision++; });
   const overview = vi.fn(() => ({ state: { enabled: false, loopbackOnly: false, epoch: 0 } }));
-  const revoke = vi.fn(() => ({ epoch: 3, durable: true }));
+  const revoke = vi.fn(() => ({ epoch: 3, durable: true, kept: true }));
+  const revokerOwner = { current: true };
   const TOKEN = "c".repeat(48), sessions = new WebSessionStore();
   const sid = sessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
   const guestSid = sessions.create({ tier: "guest", surface: "local", label: "guest", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "dc", userId: "999" } }).sessionId as string;
   const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
-    webAuthorityOverview: overview, revokeWebAuthority: revoke } as unknown as SettingsApiContext;
+    webAuthorityOverview: overview, revokeWebAuthority: revoke,
+    // AGEND-138: the owner's own revoke (the real rule is FleetManager.webAuthorityRevoker, tested below and in web-authority-revoke-owner-138).
+    webAuthorityRevoker: vi.fn((req: any) => (revokerOwner.current ? { handle: "0123456789abcdef", current: () => revokerOwner.current, revoke: () => revoke() } : null)) } as unknown as SettingsApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
   const baselines = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => config, current: () => revision });
   const gate = new SettingsHttpConfirmation(store, {
@@ -132,7 +135,7 @@ function harness(fleet: Record<string, unknown> = {}) {
     });
   }
   const raw = () => yaml.load(readFileSync(path, "utf8")) as any;
-  return { config, save, store, request, raw, overview, revoke };
+  return { config, save, store, request, raw, overview, revoke, revokerOwner };
 }
 
 describe("through the gate and the real handler", () => {
@@ -155,12 +158,25 @@ describe("through the gate and the real handler", () => {
   it("GET /api/settings/web-authority and POST …/revoke (at once); neither for a non-admin nor over the public link", async () => {
     const h = harness();
     expect(await h.request("GET", "/api/settings/web-authority")).toEqual({ status: 200, body: { state: { enabled: false, loopbackOnly: false, epoch: 0 } } });
-    expect(await h.request("POST", "/api/settings/web-authority/revoke", {})).toEqual({ status: 200, body: { ok: true, epoch: 3, durable: true } });
+    expect(await h.request("POST", "/api/settings/web-authority/revoke", {})).toEqual({ status: 200, body: { ok: true, epoch: 3, durable: true, kept: true } });
     expect((await h.request("POST", "/api/settings/web-authority/revoke", {}, { as: "guest" })).status).toBe(401);
     expect((await h.request("POST", "/api/settings/web-authority/revoke", {}, { as: "none" })).status).toBe(401);
     expect((await h.request("GET", "/api/settings/web-authority", undefined, { publicLink: true })).status).toBe(403);
     expect((await h.request("POST", "/api/settings/web-authority/revoke", {}, { publicLink: true })).status).toBe(403);
     expect(h.revoke).toHaveBeenCalledTimes(1);
+  });
+  it("AGEND-138: an admin who is not the verified owner is refused (403 owner_required) and nothing is revoked", async () => {
+    const h = harness();
+    h.revokerOwner.current = false;
+    expect(await h.request("POST", "/api/settings/web-authority/revoke", {})).toEqual({ status: 403, body: { error: "owner_required" } });
+    expect(h.revoke).not.toHaveBeenCalled();
+  });
+  it("AGEND-138: an owner whose verification ends while the body comes is refused, nothing revoked", async () => {
+    const h = harness();
+    const pending = h.request("POST", "/api/settings/web-authority/revoke", {});
+    h.revokerOwner.current = false;
+    expect((await pending).status).toBe(403);
+    expect(h.revoke).not.toHaveBeenCalled();
   });
 });
 
@@ -265,7 +281,9 @@ describe("POST …/revoke through the real local server, its body held (the call
     await vi.waitFor(() => expect(s.getDashboardAccess().ready).toBe(true));
     s.initializeWebSessions();
     const port = s.healthServer.address().port as number;
-    const admin = s.webSessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: tokenEpoch(s.getDashboardAccess().token) });
+    // AGEND-138: only the verified owner may revoke — this computer's admin, signed in with the host's code.
+    const admin = s.webSessions.create({ tier: "admin", surface: "local", label: "admin", host: true, tokenEpoch: tokenEpoch(s.getDashboardAccess().token) });
+    s.authorizeHostSession(admin.record, "loopback");
     const revoke = (between: () => unknown) => new Promise<number>((resolve, reject) => {
       const body = "{}";
       const r = httpRequest({ host: "127.0.0.1", port, method: "POST", path: "/api/settings/web-authority/revoke", headers: { host: `127.0.0.1:${port}`, origin: `http://127.0.0.1:${port}`,

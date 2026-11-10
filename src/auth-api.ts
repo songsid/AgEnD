@@ -139,6 +139,13 @@ export interface AuthApiContext {
    * Absent: yes, as it always was (a fleet with a chat connection, and any caller that does not set it).
    */
   mayEndOtherSessions?(req: IncomingMessage): boolean;
+  /**
+   * AGEND-138 (#3486): on a fleet with a chat connection an admin session ends the sessions this says it may (its own
+   * account's devices, any guest's or read-only one) — not another admin's: that is refused 403 `other_admin`, and
+   * `DELETE /auth/sessions` ends only what it allows. `undefined` (or absent): deliberately no narrowing, as it was. `null`: the
+   * caller failed the fleet's own live re-check (expired or signed out since this handler's first one) — a DENIAL, never "no limit".
+   */
+  endableSessions?(req: IncomingMessage): ((r: SessionRecord) => boolean) | undefined | null;
 }
 
 export const CODE_REQUEST_REFUSED_MESSAGE = "A new code could not be sent. Ask for one with /web.";
@@ -168,7 +175,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   // need a session stay behind the gate under /ui/js/ and are reached only by a dynamic import.
   ...Object.fromEntries([
     "app.js", "app-html.js", "app-i18n.js", "app-route.js", "app-nav.js", "app-ctx.js", "app-stream.js", "app-store.js",
-    "app-shell.js", "app-session.js", "web-authorize.js", "app-needs.js", "app-swipe.js", "text-undo.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
+    "app-shell.js", "app-session.js", "web-authorize.js", "device-roles.js", "app-needs.js", "app-swipe.js", "text-undo.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
     // #1408 step 2: View is public (an anonymous reader opens it under web.view_access: open), loaded on demand.
     "panel-view.js", "view-strings.js",
     // Claude history in the View: its renderer, loaded by View when a Claude agent's View is scrolled up (static code; the
@@ -762,15 +769,25 @@ export function handleAuthRequest(
     // Refs #3061 (P2b): an admin session's right to end the others — told with the list so the menu can hide its buttons, and
     // asked again by each write below (the page's idea of it is never the check). A non-admin only ever ends its own.
     const mayEndOthers = (): boolean => own !== undefined || ctx.mayEndOtherSessions?.(req) !== false;
+    const endable = (): ((r: SessionRecord) => boolean) | undefined | null => (own === undefined ? ctx.endableSessions?.(req) : undefined);
 
     if (path === "/auth/sessions" && method === "GET") {
-      json(res, 200, { sessions: sessions.list(sessionIdHash(sessionId), own), ...(own === undefined && !mayEndOthers() ? { canEndOthers: false } : {}) });
+      // AGEND-138: on a chat fleet an admin's rows say which it may sign out (the same rule as DELETE and /ui/devices/signout);
+      // `canEndOthers` stays "may end any other at all". No narrowing (a web-only fleet, a non-admin): rows as they were.
+      const scope = endable() ?? undefined;                       // (a failed re-check just shows no verdicts: nothing is deleted here)
+      const rows = sessions.list(sessionIdHash(sessionId), own).map(r => {
+        const record = scope && !r.current ? sessions.findByHandle(r.handle) : null;
+        return record ? { ...r, canSignOut: scope!(record) } : r;
+      });
+      json(res, 200, { sessions: rows, ...(own === undefined && !mayEndOthers() ? { canEndOthers: false } : {}) });
       return true;
     }
 
     if (path === "/auth/sessions" && method === "DELETE") {
       if (!mayEndOthers()) { json(res, 403, { error: "owner_required" }); return true; }
-      const { count, durable } = sessions.revokeAll(own);
+      const scope = endable();
+      if (scope === null) { json(res, 401, { error: "no longer authorized" }); return true; }   // a failed live check is a denial, not "no limit"
+      const { count, durable } = sessions.revokeAll(own ?? scope);
       if (!durable) return notDurable(res, ctx, { count }, "Web sessions revoked in memory only", cookiesToClear);
       ctx.logger.info({ count, ...(own ? { own: true } : {}) }, own ? "Web sessions revoked (the caller's own)" : "Web sessions revoked (all)");
       json(res, 200, { ok: true, revoked: count }, { "Set-Cookie": cookiesToClear });
@@ -783,7 +800,12 @@ export function handleAuthRequest(
       // Someone else's session: the owner's to end on a web-only fleet (checked before the handle is looked up, so a
       // non-owner learns nothing about which handles exist). One's own is a sign-out, as ever.
       if (!wasCurrent && !mayEndOthers()) { json(res, 403, { error: "owner_required" }); return true; }
-      const { found, durable } = sessions.revokeByHandle(handle, own);
+      // AGEND-138: on a chat fleet another admin's device is only that admin's to end.
+      const scope = wasCurrent ? undefined : endable();
+      if (scope === null) { json(res, 401, { error: "no longer authorized" }); return true; }   // before any handle is looked up
+      if (scope) { const target = sessions.findByHandle(handle); if (target && !scope(target)) { json(res, 403, { error: "other_admin" }); return true; } }
+      // …and the same predicate again AT the deletion: findByHandle hides a pending record, revokeByHandle does not.
+      const { found, durable } = sessions.revokeByHandle(handle, own ?? scope);
       if (!found) { json(res, 404, { error: "no such session" }); return true; }
       if (!durable) return notDurable(res, ctx, { handle }, "Web session revoked in memory only", wasCurrent ? cookiesToClear : false);
       ctx.logger.info({ handle }, "Web session revoked");
