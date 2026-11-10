@@ -37,6 +37,16 @@ function expiryText(iso) {
   if (!(ms > 0)) return "";
   return usageText("", { key: "usage.ticket_expiry", args: [`${at.getMonth() + 1}/${at.getDate()}`, usageDuration(ms)] });
 }
+/**
+ * #3066 §1: a server line ({ text, i18n }) in this page's language — or, when this tab's strings predate the key (a
+ * stale tab), the server's own English text, never the bare key. M-2815: the card no longer draws capacity; kept
+ * exported so a module from another release that imports it still links (settings-stale-module-link-3321).
+ */
+export function capacityLine(x) {
+  if (!x || typeof x.text !== "string") return "";
+  const key = x.i18n && typeof x.i18n.key === "string" ? `view.${x.i18n.key}` : null;
+  return key && t(key) !== key ? usageText(x.text, x.i18n) : x.text;
+}
 // M-2815 (the user): the card shows no measured capacity ("100% ≈ …" and its fleet-only note) — get_usage and the usage
 // report keep it (#3066 §1); a weekly metric's `capacity` is left unread here.
 export function UsageMetric({ m }) {
