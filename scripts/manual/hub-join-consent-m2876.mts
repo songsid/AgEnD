@@ -43,7 +43,7 @@ if (git("status", "--porcelain", "--untracked-files=no")) throw Error("capture r
 const hash = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const inputPaths = ["src/settings-http-confirmation.ts", "src/settings-confirmation.ts", "src/fleet-manager.ts", "src/ui/settings-hub-company-join.js", "src/ui/settings-confirm.js", "src/ui/hub-company-join.js", "src/ui/hub-company-join-strings.js", "scripts/manual/hub-join-consent-m2876.mts", "tests/support/hub-company-join-rig.ts", "scripts/manual/smoke-fixture/index.mts"];
 const inputs = inputPaths.map(path => ({ path, digest: hash(readFileSync(join(repo, path))) }));
-const result: any = { source: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"), inputs, checks: [], cases: [], errors: [], scope: "Real Fleet cookie/CSRF/claim/replay + Hub HTTPS/SQLite/TLS/WSS/production AD over owned fake LDAPS. Inert lifecycle; dummy account, owned CA/host mapping. Forwarded peer models remote admin; no live operation." };
+const result: any = { source: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"), inputs, messageAuthorityOff: process.env.MESSAGE_AUTHORITY_OFF === "1", checks: [], cases: [], errors: [], scope: "Real Fleet cookie/CSRF/claim/replay + Hub HTTPS/SQLite/TLS/WSS/production AD over owned fake LDAPS. Inert lifecycle; dummy account, owned CA/host mapping. Forwarded peer models remote admin; no live operation." };
 const check = (name: string, ok: unknown, detail?: unknown) => { result.checks.push({ name, ok: !!ok, ...(!ok ? { detail } : {}) }); if (!ok) throw Error(name + ": " + JSON.stringify(detail)); };
 const baseline = process.env.BASELINE_REF ?? "3dd72e50a888d3e639219f66c7301e1e812d87aa";
 let fx: any = null;
@@ -54,7 +54,8 @@ try {
   setLocale(c.lang); const tag = caseName(c) + (strict ? "-code" : ""), login = "consent-person-" + index;
   r.people.push({ id: randomUUID(), login, dn: `CN=${login},DC=example,DC=test`, password: "Dummy-" + login, groups: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] });
   console.log(JSON.stringify({ tag, phase: "boot" }));
-  fx = await bootFixture({ port: Number(process.env.HP ?? 54960), instances: 1, classic: false }); const fm = fx.fm;
+  fx = await bootFixture({ port: Number(process.env.HP ?? 54960), instances: 1, classic: false,
+    ...(process.env.MESSAGE_AUTHORITY_OFF === "1" ? { webYaml: "  verified_authority:\n    enabled: false" } : {}) }); const fm = fx.fm;
   for (const name of ["startInstance", "startInstanceUnattended", "restartInstance", "restartFleet", "stopInstance"]) fm[name] = async () => { throw Error("Inert fixture refuses " + name); };
   let notifications = 0; fm.promptSettingsChange = async () => { notifications++; throw Error("Unexpected held General card"); };
   fm.hubEffectsReady = true; const controller: any = await fm.hubCompanyJoin();

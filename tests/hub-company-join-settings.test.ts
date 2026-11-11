@@ -94,7 +94,7 @@ describe("company Start Settings authority", () => {
     const body = { address: "https://hub.example.test", label: "My Fleet" };
     expect(prepareSettingsEffect("POST", "/api/hub/member/company-join/start", body, context).diff).toMatchObject({ authority: { primaryGeneral: true, connections: [] } });   // AGEND-122: still the Hub's authority scope, no longer host-only
     expect(prepareSettingsEffect("POST", "/api/hub/member/company-join/start", body, context).diff).not.toHaveProperty("noSelfConfirm");
-    for (const extra of [{ fleetOrigin: "https://victim.test" }, { hostHere: true }, { return_to: "https://evil.test" }]) {
+    for (const extra of [{ fleetOrigin: "https://victim.test" }, { hostHere: true }, { return_to: "https://evil.test" }, { codePolicy: { kind: "company-start" } }, { presentation: "hub-join" }]) {
       expect(() => prepareSettingsEffect("POST", "/api/hub/member/company-join/start", { ...body, ...extra }, context)).toThrow();
     }
     expect(settingsRequestJoinAuthority({ headers: { cookie: "private", hostHere: true } })).toBeUndefined();

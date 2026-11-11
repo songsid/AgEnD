@@ -84,6 +84,8 @@ export interface SettingsChangeProposal {
   /** Display-only dedicated inline flow; no General confirmation is posted. */
   presentation?: "hub-join";
   hubJoin?: { handoffId: string | null; target: string };
+  /** Server-only code authority, never copied into a display view or accepted from a request body. */
+  codePolicy?: { readonly kind: "company-start"; current(session: string): boolean };
   bytes: number;
   remainingMs?: number;
   requestFingerprint?: string;
@@ -220,6 +222,12 @@ export class SettingsConfirmationStore {
   affectedConnections(id: string): readonly string[] { return this.records.get(id)?.proposal?.affectedConnections ?? []; }
   /** AGEND-122: the change turns the named or quick link option on (a Notice for every confirmation from another device). */
   opensLink(id: string): boolean { return this.records.get(id)?.proposal?.opensLink === true; }
+  /** Capture the private policy while pending; its live session fence remains usable after successful replay. */
+  codePolicy(id: string): SettingsChangeProposal["codePolicy"] | null {
+    this.prune(); const entry = this.records.get(id), proof = entry?.proposal?.codePolicy;
+    return entry && proof && !this.closed ? Object.freeze({ kind: proof.kind,
+      current: (session: string) => !this.closed && session === entry.session && proof.current(session) }) : null;
+  }
   /** B2b (#3352 security review, point 2): what an authenticator code confirms — this change as the page showed it. */
   confirmDigest(id: string): string | null { const e = this.records.get(id); return e ? settingsFingerprint([id, e.fingerprint]).slice(0, 32) : null; }
   authorityOf(id: string): SettingsChangeAuthority | null {
