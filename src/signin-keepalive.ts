@@ -508,7 +508,8 @@ export class SignInKeepAlive {
       changed = true;
       this.deps.log(record.outcome === "transient" || record.outcome === "needs_sign_in" || record.outcome === "not_renewed" ? "warn" : "info", "Sign-in keep-alive", {
         backend: e.backend, profile: e.profile ?? "(default)", outcome: record.outcome,
-        ...(record.expiresAt ? { expiresAt: iso(record.expiresAt) } : {}), ...(record.endsAt ? { endsAt: iso(record.endsAt) } : {}),
+        // M-2932: no endsAt — the stored end date is not a deadline, and a log line naming it reads like one.
+        ...(record.expiresAt ? { expiresAt: iso(record.expiresAt) } : {}),
         ...(record.lastRefresh ? { lastRefresh: iso(record.lastRefresh) } : {}), ...(record.planType ? { planType: record.planType } : {}),
       });
     }

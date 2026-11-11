@@ -130,7 +130,7 @@ describe("Claude Code runs", () => {
     expect(readEntries(f.data)[0]!.record).toMatchObject({ outcome: "refreshed" });
     const text = JSON.stringify(f.logs) + readFileSync(join(f.data, SETTINGS_FILE), "utf8");
     expect(text).not.toMatch(/ccccc|ddddd/);
-    expect(f.logs.at(-1)![2]).toEqual({ backend: "claude-code", profile: "work", outcome: "refreshed", expiresAt: new Date(NOW + 8 * 3600e3).toISOString(), endsAt: new Date(NOW + 11 * DAY).toISOString() });
+    expect(f.logs.at(-1)![2]).toEqual({ backend: "claude-code", profile: "work", outcome: "refreshed", expiresAt: new Date(NOW + 8 * 3600e3).toISOString() });   // M-2932: no endsAt in the log
   });
   it("not due: nothing runs", async () => {
     const f = fixture("claude-code");

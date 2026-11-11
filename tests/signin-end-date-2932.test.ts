@@ -43,6 +43,9 @@ describe("the stored end date is not proof a login is over (the owner's alpha.14
     expect(claudeStoreEnded(d({ end: NOW - 7 * DAY, expiresAt: NOW - HOUR }), NOW)).toBe(false);        // not refreshed lately: still unknown
     expect(claudeStoreEnded(d({ end: NOW }), NOW)).toBe(false);
     expect(claudeStoreEnded(d({ blank: true, end: NOW + 5 * DAY }), NOW)).toBe(true);                   // what claude leaves after invalid_grant
+    const tokensGone = scratch(); creds(tokensGone, {}); writeFileSync(join(tokensGone, ".credentials.json"),
+      JSON.stringify({ claudeAiOauth: { accessToken: "", refreshToken: "", expiresAt: NOW + HOUR, refreshTokenExpiresAt: NOW + 5 * DAY } }));
+    expect(claudeStoreEnded(tokensGone, NOW)).toBe(true);                                               // both tokens empty, a date still set
     const zero = scratch(); creds(zero, { end: NOW + 5 * DAY }); writeFileSync(join(zero, ".credentials.json"),
       JSON.stringify({ claudeAiOauth: { accessToken: SECRET_AT, refreshToken: SECRET_RT, expiresAt: 0 } }));
     expect(claudeStoreEnded(zero, NOW)).toBe(true);
