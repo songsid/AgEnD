@@ -18,7 +18,7 @@ import { html, render, useEffect, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { createStore } from "/assets/app-store.js";
 import { Icon } from "/assets/ui-icons.js";
-import { CAT_ICON, KIND_ICON, LogRow, collapse, mergeSteps, stepLine } from "./log-row.js";
+import { CAT_ICON, KIND_ICON, LogRow, collapse, mergeSteps, stepLine, tl } from "./log-row.js";
 import { composeRows, groupSteps } from "./chat-activity-groups.js";
 
 register("act", {
@@ -26,14 +26,14 @@ register("act", {
     working: "Working…", history: "Tool history", activity: "Activity", usedTools: "used {0} tools", usedTool: "used 1 tool",
     tools: "{0} tools", tool: "1 tool", stepsN: "{0} steps", stepN: "1 step", noteInferred: "This group is placed by inference: {0}",
     lvl_text: "Matched by the reply's text", lvl_time: "Matched by time", lvl_turn: "Shown above the last reply of this turn", lvl_none: "Not tied to a reply",
-    partial: "Earlier steps of this turn are not loaded.", earlier: "Show {0} earlier steps",
+    partial: "Earlier steps of this turn are not loaded.", earlier: "Show {0} earlier steps", calls: "{0} calls",
     menuActivity: "Show activity", menuThinking: "Show thinking",
   },
   "zh-TW": {
     working: "處理中…", history: "工具歷程", activity: "活動歷程", usedTools: "用了 {0} 個工具", usedTool: "用了 1 個工具",
     tools: "{0} 個工具", tool: "1 個工具", stepsN: "{0} 個步驟", stepN: "1 個步驟", noteInferred: "這一組是推論對應的：{0}",
     lvl_text: "依回覆的文字對應", lvl_time: "依時間對應", lvl_turn: "顯示在這一輪最後一則回覆上方", lvl_none: "沒有對應到回覆",
-    partial: "這一輪較早的步驟尚未載入。", earlier: "顯示更早的 {0} 個步驟",
+    partial: "這一輪較早的步驟尚未載入。", earlier: "顯示更早的 {0} 個步驟", calls: "{0} 次呼叫",
     menuActivity: "顯示活動", menuThinking: "顯示思考",
   },
 });
@@ -41,6 +41,39 @@ const ta = (key, ...a) => t(`act.${key}`, ...a);
 
 /** A group shows this many rows, the newest; "Show N earlier steps" adds EARLIER_STEP more each time. */
 export const SHOWN_MAX = 30;
+/** This many consecutive calls of one tool (Read, Grep…) are folded into one line that opens to them (Multica's rule: two are worth two lines, five are one act). */
+export const GROUP_MIN = 3;
+/** A call that is a step on its own: a command, a message, a sub-agent, a plan, and anything that went wrong or is still going. */
+const foldable = (x) => x.kind === "tool" && !!x.tool && x.status === "done" && !(typeof x.exitCode === "number" && x.exitCode !== 0)
+  && !["run", "message", "agent", "plan"].includes(x.cat || "other");
+/** `items` with each run of GROUP_MIN+ foldable calls of one tool as { group, items }; `keep(item)` keeps a step out of a run (the newest of a live block). */
+export function foldRuns(items, keep = () => false) {
+  const out = [];
+  let run = [];
+  const flush = () => {
+    if (run.length >= GROUP_MIN) out.push({ group: true, tool: run[0].tool, cat: run[0].cat || "other", items: run });
+    else out.push(...run);
+    run = [];
+  };
+  for (const x of items) {
+    if (foldable(x) && !keep(x) && (!run.length || run[0].tool === x.tool)) { run.push(x); continue; }
+    flush();
+    if (foldable(x) && !keep(x)) run.push(x); else out.push(x);
+  }
+  flush();
+  return out;
+}
+
+/** A folded run: one line "Read · 5 calls" that opens to its calls (each a line of its own). */
+function StepGroup({ g, paths }) {
+  const [open, setOpen] = useState(false);
+  const n = countOf(g.items);
+  return html`<li class="log-item k-group compact"><button type="button" class="log-head log-fold log-toggle" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>
+    <span class="log-icon" aria-hidden="true"><${Icon} name=${CAT_ICON[g.cat] || CAT_ICON.other} size=${14} /></span>
+    <span class="log-sum"><span class="log-subject">${tl(`cat_${g.cat}`)} · ${ta("calls", n)}</span></span><span class="grow"></span>
+    <span class="log-cat">${g.tool}</span><span class="log-chev" aria-hidden="true"><${Icon} name="chevron" size=${12} /></span></button>
+    ${open ? html`<ol class="log-list log-sub" role="list">${g.items.map((x) => html`<${LogRow} key=${`${x.kind}:${x.id}`} x=${x} paths=${paths} chat=${true} compact=${true} />`)}</ol>` : null}</li>`;
+}
 export const EARLIER_STEP = 12;
 /** The steps this page keeps for an instance (the oldest are let go; the group of a reply they led to stays unfolded). */
 export const STEPS_MAX = 800;
@@ -116,7 +149,13 @@ export function ActivityBlock({ group, ctx, now: clock }) {
   const summary = live
     ? { icon: null, title: last ? stepLine(last, ctx.paths) : ta("working"), meta: [tools ? ta(tools === 1 ? "tool" : "tools", tools) : "", dur].filter(Boolean).join(" · ") }
     : { icon: "tasks", title: tools ? `${ta("history")} · ${tools === 1 ? ta("usedTool") : ta("usedTools", tools)}` : `${ta("activity")} · ${rows.length === 1 ? ta("stepN") : ta("stepsN", countOf(rows))}`, meta: dur };
-  const list = (items) => html`<ol class="log-list" role="list">${items.map((x, i) => html`<${LogRow} key=${`${x.kind}:${x.id}`} x=${x} prev=${items[i - 1]} paths=${ctx.paths} chat=${true} compact=${true} latest=${live && skipped + i === all - 1} />`)}</ol>`;
+  const list = (items) => {
+    const newest = live ? rows[all - 1] : null;
+    const folded = foldRuns(items, (x) => x === newest);
+    return html`<ol class="log-list" role="list">${folded.map((x, i) => (x.group
+      ? html`<${StepGroup} key=${`g:${x.items[0].id}`} g=${x} paths=${ctx.paths} />`
+      : html`<${LogRow} key=${`${x.kind}:${x.id}`} x=${x} prev=${folded[i - 1]} paths=${ctx.paths} chat=${true} compact=${true} latest=${x === newest} />`))}</ol>`;
+  };
   const icon = live && last ? (last.kind === "tool" ? CAT_ICON[last.cat || "other"] : KIND_ICON[last.kind]) : null;
   return html`<details class=${`card act-block${live ? " live" : " done"}`} open=${open}>
     <summary class="act-sum" onClick=${(e) => { e.preventDefault(); setUser(!open); }} aria-expanded=${open ? "true" : "false"}>

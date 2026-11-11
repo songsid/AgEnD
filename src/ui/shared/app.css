@@ -130,10 +130,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
    A short box that clips to its corners (.msg-quote) moves the bar in (--lbar-left) and shortens it (--lbar-inset) so
    the corner never cuts its ends round.
    tests/web-left-bar-2330.test.ts keeps a coloured border-left off rounded boxes. */
-.lbar, .reply-bar, .msg-quote, .p-log .log-item.k-error, .p-log .log-item.s-failed, .act-block .log-item.k-error, .act-block .log-item.s-failed, .org-node, .us-basis, .us-partial, .cmd-card.bad, .tb-tile, .s-dirty,
+.lbar, .reply-bar, .msg-quote, .p-log .log-item.k-error, .p-log .log-item.s-failed, .org-node, .us-basis, .us-partial, .cmd-card.bad, .tb-tile, .s-dirty,
 .search-row.on, .search-recent-item:hover, .search-recent-item:focus-visible, .search-ctx-line.here, .tw-line:hover, .tw-line:focus-visible,
 .u-crow:focus-visible, .p-settings .s-nav .seg-item.active, .s-find-item.on { position: relative; }
-.lbar::before, .reply-bar::before, .msg-quote::before, .p-log .log-item.k-error::before, .p-log .log-item.s-failed::before, .act-block .log-item.k-error::before, .act-block .log-item.s-failed::before, .org-node::before,
+.lbar::before, .reply-bar::before, .msg-quote::before, .p-log .log-item.k-error::before, .p-log .log-item.s-failed::before, .org-node::before,
 .us-basis::before, .us-partial::before, .cmd-card.bad::before, .tb-tile::before, .s-dirty::before,
 /* #2478 item 7 (the user's fixed template): a selected, hovered or keyboard-focused row is the straight bar and a flat
    background at most — never a rounded fill, a curved inset edge or a rounded ring. */
@@ -394,7 +394,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 :is(.p-log, .act-block) .log-item.turn-start { margin-top: var(--s-4); }
 :is(.p-log, .act-block) .log-item.k-user { background: var(--user-bubble); }
 :is(.p-log, .act-block) .log-item.k-turn_end, .p-log .log-item.k-state, .p-log .log-item.k-event { background: transparent; color: var(--text-3); padding-block: 2px; font-size: var(--fs-sm); }
-:is(.p-log, .act-block) .log-item.k-error, .p-log .log-item.s-failed { --lbar-color: var(--danger); padding-left: calc(var(--s-3) + 3px); }
+:is(.p-log) .log-item.k-error, .p-log .log-item.s-failed { --lbar-color: var(--danger); padding-left: calc(var(--s-3) + 3px); }
 :is(.p-log, .act-block) .log-head { display: flex; align-items: baseline; gap: var(--s-2); min-width: 0; }
 :is(.p-log, .act-block) .log-icon { flex: none; }
 :is(.p-log, .act-block) .log-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -434,17 +434,61 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .act-block .act-title.act-now { color: var(--text); }
 .act-block .act-meta { flex: none; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .act-block .act-spin { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
-.act-block .act-body { max-height: min(60vh, 28rem); overflow-y: auto; padding: var(--s-1) 0 var(--s-2); display: flex; flex-direction: column; gap: var(--s-2); border-top: 1px solid var(--border); }
-.act-block .act-earlier { align-self: center; }
+/* AGEND-200 (the preview feedback; the look is Multica's run list): nothing in the opened block scrolls, and a step is ONE small,
+   quiet line — its icon sits on a thin timeline, then what it did (one line, cut), its kind in a quiet word, its status, and a
+   chevron when there is more. The whole line opens it, so every "show / hide" is in the same place. Thinking and what the agent
+   said show two lines until opened. A long output is cut per step (the `folded` mask and "Show all"), never scrolled. Failure and
+   running are the icon's colour and one small word; a step that went well says nothing. */
+.act-block .act-body { padding: var(--s-1) 0 var(--s-2); display: flex; flex-direction: column; gap: var(--s-1); border-top: 1px solid var(--border); }
+.act-block .act-earlier { align-self: flex-start; margin-left: calc(14px + var(--s-2)); }
 .act-block .act-lvl, .act-block .act-partial { margin: 0; }
-.act-block .log-item { background: transparent; padding: 3px var(--s-1); }
-.act-block .log-item.compact { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--s-2); }
-.act-block .log-item.compact .log-head { flex: 1 1 0; min-width: 0; }
-.act-block .log-item.compact .log-detail, .act-block .log-item.compact .log-text, .act-block .log-item.compact .note, .act-block .log-item.compact .log-more { flex: 1 1 100%; }
-.act-block .log-item.compact .log-cat { font-weight: var(--fw-regular); color: var(--text-2); }
-.act-block .log-item.latest .log-cat, .act-block .log-item.latest .log-subject { font-weight: var(--fw-semibold); color: var(--text); }
-.act-block .log-think { font-style: italic; color: var(--text-2); }
-.act-block .log-think.open { max-height: 10rem; overflow-y: auto; }
+.act-block .log-list { gap: 0; }
+.act-block .log-item { --row-h: 24px; position: relative; background: transparent; border-radius: 0; padding: 0 0 0 calc(14px + var(--s-2)); font-size: var(--fs-xs); line-height: var(--lh-xs); color: var(--text-2); }
+@media (pointer: coarse) { .act-block .log-item { --row-h: 32px; } }
+.act-block .log-item::before { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 1px; background: var(--border-strong); opacity: .55; }
+.act-block .log-item:first-child::before { top: calc(var(--row-h) / 2); }
+.act-block .log-item:last-child::before { bottom: auto; height: calc(var(--row-h) / 2); }
+.act-block .log-item:only-child::before { display: none; }
+.act-block .log-item.compact { display: block; }
+.act-block .log-head { display: flex; align-items: flex-start; gap: var(--s-2); width: 100%; min-width: 0; min-height: var(--row-h); padding: calc((var(--row-h) - var(--lh-xs)) / 2) 0; font: inherit; color: inherit; text-align: left; background: none; border: 0; }
+.act-block button.log-head { cursor: pointer; border-radius: var(--r-sm); }
+.act-block button.log-head:hover .log-sum, .act-block button.log-head:focus-visible .log-sum { color: var(--text); }
+.act-block .log-icon { position: absolute; left: 0; top: calc((var(--row-h) - 14px) / 2); display: inline-flex; background: var(--surface); color: var(--text-3); }
+.act-block .log-sum { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-block .log-subject { font-size: var(--fs-xs); }
+.act-block .log-head .grow { flex: 1 1 0; min-width: 0; }
+.act-block .log-head .log-cat { flex: none; font-weight: var(--fw-regular); color: var(--text-3); }
+.act-block .log-chev { flex: none; width: 12px; display: inline-flex; align-self: center; color: var(--text-3); transform: rotate(-90deg); transition: transform .15s ease; }
+.act-block .log-chev.none { visibility: hidden; }
+.act-block [aria-expanded="true"] > .log-chev { transform: none; }
+.act-block .log-item.latest .log-subject { font-weight: var(--fw-semibold); color: var(--text); }
+.act-block .log-item.s-failed .log-icon, .act-block .log-item.k-error .log-icon { color: var(--danger); }
+.act-block .log-item.s-running .log-icon { color: var(--accent); }
+.act-block .log-status { flex: none; align-self: center; display: inline-flex; align-items: center; font-size: var(--fs-xs); white-space: nowrap; }
+.act-block .log-status.failed { color: var(--danger); }
+.act-block .log-status.interrupted { color: var(--warn, var(--text-3)); }
+.act-block .log-status.running { color: var(--accent); }
+.act-block .log-status .spinner { margin-right: 4px; }
+.act-block .log-repeat { font-size: var(--fs-xs); }
+/* thinking and what the agent said: two lines of it until opened; opened, all of it (wrapped, never scrolled) */
+.act-block .log-sum.log-think, .act-block .log-sum.log-said { flex: 1 1 0; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; color: var(--text-3); }
+.act-block .log-sum.log-think { font-style: italic; }
+.act-block .log-sum.log-said { color: var(--text-2); }
+.act-block .log-sum.open { display: block; -webkit-line-clamp: unset; line-clamp: unset; white-space: pre-wrap; overflow: visible; }
+.act-block .log-head.log-more .grow { display: none; }
+/* what a step opens to: the command once as code, an edit as removed / added text, the arguments only for a tool we do not read, the output cut */
+.act-block .log-detail { margin: 0 0 var(--s-2); gap: var(--s-2); }
+.act-block .log-code { margin: 0; padding: var(--s-1) var(--s-2); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: var(--lh-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+.act-block .log-code.rm { color: var(--danger); }
+.act-block .log-code.add { color: var(--ok); }
+.act-block .log-code.rm::before { content: "− "; }
+.act-block .log-code.add::before { content: "+ "; }
+.act-block .log-prompt { color: var(--text-3); user-select: none; }
+.act-block .log-diff { display: flex; flex-direction: column; gap: 2px; }
+.act-block .log-text { margin-top: 0; padding: var(--s-1) var(--s-2); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-2); }
+.act-block .log-item.k-error .log-text { color: var(--danger); }
+.act-block .log-sub { margin: 0 0 var(--s-1); }
+.act-block .log-sub .log-item { --row-h: 22px; }
 /* The header's controls are one height, the icon buttons' (36 px): its small buttons, and the instance tabs when they share
    its row (a phone puts them on a row of their own, under it). */
 .panel-head .btn-sm { min-height: 36px; }
