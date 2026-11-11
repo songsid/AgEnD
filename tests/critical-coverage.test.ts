@@ -1,3 +1,4 @@
+import * as daemonModule from "../src/daemon.js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -94,7 +95,7 @@ describe("Backend ready patterns", () => {
 
   it("Grok distinguishes idle prompts from active and approval states", async () => {
     const { GrokBackend } = await import("../src/backend/grok.js");
-    const { PaneStateMachine } = await import("../src/daemon.js");
+    const { PaneStateMachine } = daemonModule;
     const backend = new GrokBackend("/tmp/test");
     const pattern = backend.getReadyPattern();
     expect(backend.getCompactCommand()).toBe("/compact ");

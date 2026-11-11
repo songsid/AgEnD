@@ -7,6 +7,7 @@
  * - The impact badges: defaults.locale needs AgEnD restarted (read once at startup); the spawn settings apply to the
  *   next start; guests and web authority come from the schema; a new connection starts at once while another runs.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { describe, expect, it } from "vitest";
 import { prepareSettingsEffect } from "../src/settings-effect.js";
 import { SettingsConfirmationError } from "../src/settings-confirmation.js";
@@ -151,7 +152,7 @@ describe("the impact badges", () => {
       newConnectionImpact(undefined), impactOf(DEFAULT_SCHEMA, "fleet.channels")]).toEqual(["now", impacts["fleet.channels"], "instance", "instance"]);
   });
   it("the fleet answers as a live add would (review P2-2): a connection running and nothing else waiting for a restart", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const P = FleetManager.prototype as any;
     const fleet = (over: Record<string, unknown> = {}) => ({ ...config(), ...over }) as any;
     const fm = (startup: any, current: any, adapters: number) => ({

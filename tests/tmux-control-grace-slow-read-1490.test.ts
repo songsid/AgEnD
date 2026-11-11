@@ -1,3 +1,4 @@
+import * as daemonModule from "../src/daemon.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 
@@ -211,7 +212,7 @@ describe("a drain is a gap in observation (#1517 review)", () => {
   });
 
   it("an Enter confirmation does not run out its 'no reaction' budget while the client is blind", async () => {
-    const { Daemon } = await import("../src/daemon.js");
+    const { Daemon } = daemonModule;
     const { mkdtempSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");

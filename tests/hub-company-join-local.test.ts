@@ -4,7 +4,10 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
-import { CompanyJoinController } from "../src/hub/join/local.js";
+import { signCompanyInvitation } from "../src/hub/join/invitation.js";
+import { parseCompanyAddress } from "../src/hub/join/descriptor.js";
+import { createPrivateKey } from "node:crypto";
+import { ENROLMENT_CODE, normalEnrolmentCode, CompanyJoinController } from "../src/hub/join/local.js";
 import { currentLocalJoinId, readLocalJoin } from "../src/hub/join/local-journal.js";
 import { currentBinding, createHubMemberPairingApi } from "../src/hub/member/pairing-api.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
@@ -20,13 +23,13 @@ async function world() {
   const { hubId, spkiSha256, issuerPublicKey } = identity;
   const hub = { hubId, spkiSha256, issuerPublicKey, memberOrigin: "https://hub.example.test:9443", webOrigin: "https://hub.example.test" };
   const metadata = { v: 1 as const, hub, identityDigest: companyIdentityDigest(hub), certificatePem: readFileSync(join(hubHome, "hub/keys/tls-cert.pem"), "utf8"), features: ["company-join-v1"] };
-  let alive = true, confirmed = true, stamp = "initial", enabled = false, remote = "pending", now = Date.now(), settleFailure = false;
+  let alive = true, confirmed = true, stamp = "initial", enabled = false, remote = "pending", now = Date.now(), settleFailure = false, obstruction: string | null = null;
   const owner = { realm: "corp", objectId: randomUUID() }, credential = "a".repeat(64), calls: string[] = [];
   const session = { ownerKey: {}, sessionId: "b".repeat(64), authorityEpoch: 1, hostHere: true, current: () => alive };
   const authority = { session, confirmedCurrent: () => confirmed };
   const client = { discover: vi.fn(async () => metadata), command: vi.fn(async (binding: any, purpose: string) => {
     calls.push(purpose);
-    const status = { state: remote, reason: null, issued: ["issued", "acknowledged"].includes(remote), fleetId: remote === "pending" ? null : binding.fleetId,
+    const status = { state: remote, reason: remote === "pending" ? obstruction : null, issued: ["issued", "acknowledged"].includes(remote), fleetId: remote === "pending" ? null : binding.fleetId,
       generation: remote === "pending" ? null : 1, outerDeadline: now + 600_000, redeemDeadline: now + 60_000, deliveryDeadline: now + 120_000 };
     if (purpose === "push") return { requestId: binding.requestId, expiresAt: now + 600_000, browserAction: hub.webOrigin + "/hub/join/open" };
     if (purpose === "redeem") { remote = "issued"; return { ...status, state: "issued", issued: true, fleetId: binding.fleetId, generation: 1, owner, credential, hub, certificatePem: metadata.certificatePem }; }
@@ -40,9 +43,9 @@ async function world() {
     enableMembership: (current: () => boolean, accept: () => void) => { if (!current()) throw Error("lost"); if (settleFailure) throw Error("disk"); enabled = true; stamp = "enabled"; accept(); } };
   const controller = new CompanyJoinController(options);
   const start = () => controller.start({ address: hub.webOrigin, label: "My Fleet", fleetOrigin: "http://127.0.0.1:4444" }, authority);
-  return { directory, metadata, calls, client, session, authority, controller, options, activate, start,
+  return { directory, hubHome, metadata, calls, client, session, authority, controller, options, activate, start,
     ready: () => { remote = "identity-approved"; }, lose: () => { alive = false; }, deny: () => { confirmed = false; }, replace: () => { stamp = "replacement"; },
-    diskFailure: (value: boolean) => { settleFailure = value; }, advance: (ms: number) => { now += ms; }, enabled: () => enabled };
+    diskFailure: (value: boolean) => { settleFailure = value; }, obstruct: (r: string | null) => { obstruction = r; }, advance: (ms: number) => { now += ms; }, enabled: () => enabled };
 }
 describe("Fleet local company join", () => {
   it.each([false, true])("an expired unissued abandonment allows a new session to Start without cleanup (restart %s)", async restart => {
@@ -247,3 +250,147 @@ describe("Fleet local company join", () => {
     expect(w.calls).not.toContain("ack"); expect(currentBinding(w.directory)).toBeNull();
   });
 });
+
+describe("M-2921 (Hub UX U1): an enrolment code, and what the connected card shows", () => {
+  it("a code goes in the push (without its dash) only when the Hub takes one; otherwise refused before any pin or journal", async () => {
+    const w = await world();
+    const pushes: any[] = []; const original = w.client.command.getMockImplementation()!;
+    w.client.command.mockImplementation(async (...args: any[]) => { if (args[1] === "push") pushes.push(args[2]); return (original as any)(...args); });
+    const refuse = w.controller.start({ address: w.metadata.hub.webOrigin, label: "Coded", fleetOrigin: "http://127.0.0.1:4444", code: "ABCD-EF23" }, w.authority);
+    await expect(refuse).rejects.toMatchObject({ code: "incompatible" });
+    expect(existsSync(join(w.directory, "hub-member/company-trust"))).toBe(false);
+    expect(currentLocalJoinId(w.directory)).toBeNull();
+    w.metadata.features.push("enrolment-code-v1");
+    await w.controller.start({ address: w.metadata.hub.webOrigin, label: "Coded", fleetOrigin: "http://127.0.0.1:4444", code: "ABCD-EF23" }, w.authority);
+    expect(pushes.at(-1)).toMatchObject({ label: "Coded", code: "ABCDEF23" });
+    w.controller.close();
+  });
+  it("B1 alphabet: Crockford base32 in any case, 0 and 1 allowed, I/L/O/U refused (no aliases); pushed as 8 uppercase characters", () => {
+    for (const ok of ["ABCD-EF01", "abcdef01", "0000-1111", "VWXY-Z789"]) expect(ENROLMENT_CODE.test(ok)).toBe(true);
+    for (const bad of ["ABCI-EF23", "ABCL-EF23", "ABCO-EF23", "ABCU-EF23", "ABCD-EF2", "ABCD--EF23", "ABCD EF23"]) expect(ENROLMENT_CODE.test(bad)).toBe(false);
+    expect(normalEnrolmentCode("abcd-ef01")).toBe("ABCDEF01");
+  });
+  it("a code with a letter outside the alphabet is invalid; a code together with an invitation is invalid; neither leaves a pin or a journal", async () => {
+    const w = await world(); w.metadata.features.push("enrolment-code-v1");
+    await expect(w.controller.start({ address: w.metadata.hub.webOrigin, label: "Coded", fleetOrigin: "http://127.0.0.1:4444", code: "ABCO-EF23" }, w.authority)).rejects.toMatchObject({ code: "invalid" });
+    const at = Date.now(), claims = { v: 2 as const, id: randomUUID(), hub: w.metadata.hub, owner: { realm: "corp", objectId: randomUUID() },
+      approvedBy: { realm: "corp", objectId: randomUUID() }, nonce: "c".repeat(64), createdAt: at, expiresAt: at + 600_000 };
+    const signed = signCompanyInvitation(claims, createPrivateKey(readFileSync(join(w.hubHome, "hub/keys/issuer-key.pem"))));
+    const invited = `${w.metadata.hub.webOrigin}/join-info#invite=${signed}`;
+    expect(parseCompanyAddress(invited).invitation).toBe(signed);                     // a real invitation: the refusal is the code's
+    await expect(w.controller.start({ address: invited, label: "Coded", fleetOrigin: "http://127.0.0.1:4444", code: "ABCD-EF23" }, w.authority)).rejects.toMatchObject({ code: "invalid" });
+    expect(existsSync(join(w.directory, "hub-member/company-trust"))).toBe(false);
+    expect(currentLocalJoinId(w.directory)).toBeNull();
+    w.controller.close();
+  });
+  it("redeem asks for the display fields; the card's record holds the label, the address, the Hub's name and the owner's label", async () => {
+    const w = await world();
+    const original = w.client.command.getMockImplementation()!;
+    w.client.command.mockImplementation(async (...args: any[]) => {
+      const result = await (original as any)(...args);
+      return args[1] === "redeem" && args[5]?.display ? { ...result, hubName: "Acme Hub", ownerLabel: "王小明" } : result;
+    });
+    const first = await w.start(); w.ready();
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "saved", issued: true });
+    expect((w.client.command.mock.calls as any[][]).find(c => c[1] === "redeem")?.[5]).toEqual({ display: true });
+    expect(w.controller.display()).toEqual({ v: 1, webOrigin: w.metadata.hub.webOrigin, label: "My Fleet", hubName: "Acme Hub", ownerLabel: "王小明" });
+    w.controller.close();
+  });
+  it("an older Hub (no display fields in its answer): the record keeps the label and the address, the rest null", async () => {
+    const w = await world();
+    const first = await w.start(); w.ready();
+    await w.controller.status(first.operationId, w.session);
+    expect(w.controller.display()).toEqual({ v: 1, webOrigin: w.metadata.hub.webOrigin, label: "My Fleet", hubName: null, ownerLabel: null });
+    w.controller.close();
+  });
+});
+
+describe("M-2921 (spec 1.3, O1): the connected card's reconnect and 「移除這個連接」", () => {
+  async function joined(features: string[] = [], during?: (w: any) => void) {
+    const w = await world(); w.metadata.features.push(...features);
+    const first = await w.start(); w.ready();
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "saved", issued: true });
+    const order: string[] = [];
+    const pairing = createHubMemberPairingApi({ home: w.directory, fence: () => order.push("fence"), withdrawAll: () => { order.push("withdraw"); },
+      leave: async () => { order.push("leave"); during?.(w); return true; }, link: () => "online" });
+    const shown = pairing.boundHub()!;
+    expect(shown.binding).toMatch(/^[a-f0-9]{64}$/);
+    const pushes: any[] = [], original = w.client.command.getMockImplementation()!;
+    w.client.command.mockImplementation(async (...args: any[]) => { if (args[1] === "push") pushes.push(args[2]); return (original as any)(...args); });
+    return { ...w, pairing, shown: shown as { hubId: string; binding: string }, order, pushes };
+  }
+  it("reconnect: leave, fence, tombstone, start over, then one start for the saved address and label — asking the Hub to retire the old Fleet", async () => {
+    const w = await joined(["join-supersedes-v1", "member-leave-v1"]);
+    const profile = JSON.parse(readFileSync(join(w.directory, "hub-member", w.shown.hubId, "pairing.json"), "utf8"));
+    const handoffId = randomUUID();
+    const op = await w.controller.reconnect({ ...w.shown, address: w.metadata.hub.webOrigin, fleetOrigin: "http://127.0.0.1:4444", handoffId }, w.authority, w.pairing);
+    expect(op).toMatchObject({ operationId: expect.any(String), handoffId });
+    expect(w.order).toEqual(["leave", "fence", "withdraw"]);
+    expect(w.pushes.at(-1)).toMatchObject({ label: "My Fleet", supersedes: { fleetId: profile.fleetId, credential: profile.credential } });
+    w.controller.close();
+  });
+  it("an older Hub (no join-supersedes-v1): the push carries no supersedes (its push schema is strict)", async () => {
+    const w = await joined();
+    await w.controller.reconnect({ ...w.shown, address: w.metadata.hub.webOrigin, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing);
+    expect(w.pushes.at(-1)).not.toHaveProperty("supersedes");
+    w.controller.close();
+  });
+  it("only for exactly the pairing and the address the card showed; nothing is done otherwise", async () => {
+    const w = await joined(["join-supersedes-v1"]);
+    const tries = [{ ...w.shown, binding: "0".repeat(64), address: w.metadata.hub.webOrigin }, { ...w.shown, hubId: randomUUID(), address: w.metadata.hub.webOrigin },
+      { ...w.shown, address: "https://other.example.test" }];
+    for (const t of tries) {
+      await expect(w.controller.reconnect({ ...t, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing)).rejects.toMatchObject({ code: "conflict" });
+      await expect(w.controller.remove(t, w.authority, w.pairing)).rejects.toMatchObject({ code: "conflict" });
+    }
+    expect(w.order).toEqual([]);
+    expect(w.pairing.view().state).not.toBe("unpaired");
+    w.deny();
+    await expect(w.controller.remove({ ...w.shown, address: w.metadata.hub.webOrigin }, w.authority, w.pairing)).rejects.toMatchObject({ code: "denied" });
+    expect(w.order).toEqual([]);
+    w.controller.close();
+  });
+  it.each(["reconnect", "remove"] as const)("#3675 r1 P2: %s — the confirmation withdrawn during the leave wait: no fence, tombstone, start over or start", async step => {
+    const w = await joined(["join-supersedes-v1", "member-leave-v1"], world => world.deny());
+    const calls = w.calls.length;
+    const run = step === "reconnect" ? w.controller.reconnect({ ...w.shown, address: w.metadata.hub.webOrigin, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing)
+      : w.controller.remove({ ...w.shown, address: w.metadata.hub.webOrigin }, w.authority, w.pairing);
+    await expect(run).rejects.toMatchObject({ code: "denied" });
+    expect(w.order).toEqual(["leave"]);
+    expect(w.pairing.view().state).not.toBe("unpaired");
+    expect(w.pairing.disconnected(w.shown.hubId)).toBe(false);
+    expect(w.calls.length).toBe(calls);
+    w.controller.close();
+  });
+  it("remove: leave, fence, tombstone, start over — unpaired, the old binding retired; no start", async () => {
+    const w = await joined(["member-leave-v1"]);
+    const calls = w.calls.length;
+    expect(await w.controller.remove({ ...w.shown, address: w.metadata.hub.webOrigin }, w.authority, w.pairing)).toEqual({ left: true });
+    expect(w.order).toEqual(["leave", "fence", "withdraw"]);
+    expect(w.pairing.view()).toEqual({ state: "unpaired" });
+    expect(w.pairing.disconnected(w.shown.hubId)).toBe(true);
+    expect(w.calls.length).toBe(calls);
+    w.controller.close();
+  });
+});
+
+describe("M-2921: the Hub's refusals of a pending request show on the Fleet card", () => {
+  it.each(["offer-pending", "limit-reached", "denied", "backpressure"])("%s: shown while the Hub says so, cleared when it is approved; the same request goes on", async (why) => {
+    const w = await world(), first = await w.start();
+    w.obstruct(why); w.advance(2_000);
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "awaiting-sign-in", waiting: why });
+    w.obstruct(null); w.advance(2_000);
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "awaiting-sign-in", waiting: null });
+    w.obstruct(why); w.advance(2_000); await w.controller.status(first.operationId, w.session);
+    w.obstruct(null); w.ready(); w.advance(2_000);
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "saved", issued: true, waiting: null });
+    w.controller.close();
+  });
+  it("an unknown reason on a pending request is not shown (only the four S1 names)", async () => {
+    const w = await world(), first = await w.start();
+    w.obstruct("something-new"); w.advance(2_000);
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "awaiting-sign-in", waiting: null });
+    w.controller.close();
+  });
+});
+

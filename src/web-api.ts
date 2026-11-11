@@ -91,6 +91,7 @@ import {handleAgentRuntimeChange} from "./agent-runtime-api.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance } from "./native-instance-registry.js";
 import { handleNativeModelCatalog, refreshNativeModelCatalog } from "./native-model-catalog.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
+import { shapeDocumentedClaudeModels, shapeWebModelCatalog } from "./web-model-groups.js";
 import { handleRuntimeRequest } from "./runtime-api.js";
 import type { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { taskBoardOffNames } from "./dashboard-permissions.js";
@@ -387,6 +388,8 @@ export interface WebApiContext {
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
   /** #2072: a backend's cached model catalog, for an instance's own account when one is named; never a probe. */
   modelCatalogFor?(backend: string, instance: string | null, selection?:{profile?:string}): Array<{ id: string; label: string; description?: string }>;
+  /** The same cache, shaped for Web Settings (grouped; `[1m]` only where offered; antigravity's effort levels merged). */
+  modelCatalogForWeb?(backend: string, instance: string | null, selection?:{profile?:string}): import("./web-model-groups.js").WebModelOption[];
   /** Async, account-safe fallback from existing CLI metadata; never launch a CLI or refresh a vendor catalog. */
   cliModelCatalogFor?(backend: string, instance: string | null): Promise<Array<{ id: string; label: string; description?: string }>>;
   refreshModelCatalogFor?(backend: string, instance: string | null, selection?:{profile?:string}): Promise<{ models: Array<{ id: string; label: string; description?: string }>; refreshed: boolean }>;
@@ -663,6 +666,22 @@ function jsonText(res: ServerResponse, status: number, body: string): void {
 const boardBodies = new WeakMap<object, { key: string; body: string }>();
 /** #2316 review: the same for who works on what (GET /ui/tasks/work), per (revision, names asked for). */
 const workBodies = new WeakMap<object, { key: string; body: string }>();
+
+/**
+ * The catalog Web Settings lists for a backend and instance (and credential profile): the fleet's shaped cache
+ * (web-model-groups.ts), else — a hand-built context — the plain list, shaped the same way.
+ */
+function webCatalog(ctx: WebApiContext, backend: string, instance: string | null, profile: string | null, plain?: Array<{ id: string; label: string; description?: string }>): Array<{ id: string; label: string; description?: string }> {
+  if (ctx.modelCatalogForWeb) return profile !== null ? ctx.modelCatalogForWeb(backend, instance, { profile }) : ctx.modelCatalogForWeb(backend, instance);
+  const flat = plain ?? (profile !== null ? ctx.modelCatalogFor?.(backend, instance, { profile }) : ctx.modelCatalogFor?.(backend, instance)) ?? [];
+  return shapeWebModelCatalog(backend, flat);
+}
+
+/** claude's fallback when no account list is readable: the documentation's `claude-*` ids for the host's CLI version, unverified. */
+function documentedClaudeCatalog(ctx: WebApiContext) {
+  const version = ctx.backendAvailabilityRows?.().find(row => row.backend === "claude-code")?.version;
+  return shapeDocumentedClaudeModels(claudeDocumentedModels(version));
+}
 
 /**
  * #1630 (#1635 review): an answer that waited on something (a list, a download) is sent only if the request is still
@@ -949,6 +968,50 @@ function handlePageShare(req: IncomingMessage, res: ServerResponse, url: URL, ct
   })().catch(err => {
     ctx.logger.error({ err: (err as Error).message }, "Page share failed");
     try { json(res, 500, { error: "Page share failed" }); } catch { /* already answered */ }
+  });
+  return true;
+}
+
+/**
+ * #2716/#3679: an Office-wide setting kept in web-offices.json beside the offices (PUT { <key>: value }): who may save
+ * the offices may set it — an admin session, never the CLI token or the public link; asked again once the body is in;
+ * counted with the offices' saves (OfficeWriteLimiter); every page hears `offices` and reads again.
+ */
+function officeSettingPut(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, o: {
+  key: string; invalid: string; shape: string; failed: string;
+  apply(store: OfficeStore, value: unknown): { ok: true; rev: number; answer: Record<string, unknown> } | { ok: false; status: number; error: string; detail?: string };
+}): boolean {
+  const store = ctx.officeStore;
+  if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
+  if (gatewayRequestContext(req)) { json(res, 403, { error: "offices_not_over_public_link" }); return true; }
+  const who = (): { person: string } | { status: number } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401 };
+    return verdict.via === "session" && verdict.session?.tier === "admin" ? { person: verdict.session.owner ? webPersonKey(verdict.session.owner) : "admin-session" } : { status: 403 };
+  };
+  const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "offices_need_an_admin_session" });
+  const first = who();
+  if ("status" in first) { refuse(first.status); return true; }
+  (async () => {
+    let body: Record<string, unknown>;
+    try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who();
+    if ("status" in now) { refuse(now.status); return; }
+    if (!body || typeof body !== "object" || Array.isArray(body) || !(o.key in body) || Object.keys(body).some(k => k !== o.key)) {
+      json(res, 400, { error: o.invalid, detail: o.shape });
+      return;
+    }
+    const limiter = ctx.officeWrites, allowed = limiter ? limiter.check(now.person) : { ok: true as const };
+    if (!allowed.ok) { res.setHeader("Retry-After", String(allowed.retry_after_s)); json(res, 429, { error: "offices_rate_limited", retry_after_s: allowed.retry_after_s }); return; }
+    const r = o.apply(store, body[o.key]);
+    if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
+    limiter?.record(now.person);
+    ctx.emitSseEvent("offices", { rev: r.rev });
+    json(res, 200, { rev: r.rev, ...r.answer });
+  })().catch(err => {
+    ctx.logger.error({ err: (err as Error).message }, o.failed);
+    try { json(res, 500, { error: o.failed }); } catch { /* already answered */ }
   });
   return true;
 }
@@ -2101,7 +2164,7 @@ export function handleWebRequest(
       const runtime=body.runtime, machineId=body.machineId, profile=body.profile;
       if(runtime!==undefined && runtime!=="windows" && runtime!=="wsl" || machineId!==undefined && (typeof machineId!=="string" || !/^[a-f0-9-]{36}$/i.test(machineId)) || profile!==undefined && (typeof profile!=="string" || profile!=="" && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile))) {json(res,400,{error:"invalid model target"});return;}
       const target={backend,instance,...(runtime?{runtime:runtime as "windows"|"wsl"}:{}),...(machineId?{machineId:machineId as string}:{}),...(profile!==undefined?{profile:profile as string}:{})};
-      let result;
+      let result, fleetAnswered=false;
       try {
         result=await refreshNativeModelCatalog(req,url,ctx,target);
         // Recheck after runtime selection, before any portable probe is admitted.
@@ -2110,11 +2173,23 @@ export function handleWebRequest(
         if(!result){
           if(machineId || !ctx.refreshModelCatalogFor){json(res,503,{error:"model_refresh_unavailable"});return;}
           result=await (profile!==undefined ? ctx.refreshModelCatalogFor(backend,instance,{profile:profile as string}) : ctx.refreshModelCatalogFor(backend,instance));
+          fleetAnswered=true;
         }
       } catch {if(!permitWebContinuation(req,res,ctx))return;json(res,503,{error:"model_refresh_unavailable"});return;}
       if (!permitWebContinuation(req, res, ctx)) return;
       if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
-      json(res, 200, { backend, ...result });
+      // The refreshed list is shaped as the passive read is (a refresh answered by a computer's own runtime is its own).
+      // When the fleet answered, `webCatalog` re-reads the cache the refresh has just written, through the same shaping
+      // as GET /ui/models, rather than shaping `result.models`: that list is the flat one (it has lost which tier each
+      // model came from, and claude's aliases / [1m] variants are in it), so only the cache read can be grouped right.
+      const models = fleetAnswered && Array.isArray(result.models) ? webCatalog(ctx, backend, instance as string | null, typeof profile === "string" ? profile : null, result.models) : result.models;
+      // claude with no account list (the refresh could not read it, or the account has none) is answered as GET /ui/models
+      // answers it: the documentation's ids, marked unverified — never an empty list that shows nothing to pick.
+      if (fleetAnswered && backend === "claude-code" && Array.isArray(models) && models.length === 0) {
+        json(res, 200, { backend, ...result, models: documentedClaudeCatalog(ctx), source: "official-catalog" });
+        return;
+      }
+      json(res, 200, { backend, ...result, models });
     })().catch(() => { if (!res.headersSent) json(res, 500, { error: "model_refresh_failed" }); });
     return true;
   }
@@ -2156,12 +2231,11 @@ export function handleWebRequest(
     const profile=url.searchParams.get("profile");
     if(profile!==null && profile!=="" && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile)){json(res,400,{error:"Invalid model account"});return true;}
     if (handleNativeModelCatalog(req, res, url, ctx)) return true;
-    const models = (profile!==null ? ctx.modelCatalogFor?.(backend,instance,{profile}) : ctx.modelCatalogFor?.(backend,instance)) ?? [];
+    const models = webCatalog(ctx, backend, instance, profile);
+    // claude with no account list — with or without a credential profile — is answered with the documentation's ids.
     const answerCatalog = (): void => {
-      if (backend === "claude-code" && !models.length && !profile) {
-        const version = ctx.backendAvailabilityRows?.().find(row => row.backend === backend)?.version;
-        json(res, 200, { backend, models: claudeDocumentedModels(version), source: "official-catalog" });
-      } else json(res, 200, { backend, models });
+      if (backend === "claude-code" && !models.length) json(res, 200, { backend, models: documentedClaudeCatalog(ctx), source: "official-catalog" });
+      else json(res, 200, { backend, models });
     };
     // The existing catalog belongs to this instance/account and always wins.
     if (models.length || !ctx.cliModelCatalogFor || profile!==null) { answerCatalog(); return true; }
@@ -2169,7 +2243,8 @@ export function handleWebRequest(
     void (async () => {
       const cliModels = await ctx.cliModelCatalogFor?.(backend, instance) ?? [];
       if (!canAnswer()) return;
-      if (cliModels.length) json(res, 200, { backend, models: cliModels, source: "cli-cache" });
+      const shaped = shapeWebModelCatalog(backend, cliModels);
+      if (shaped.length) json(res, 200, { backend, models: shaped, source: "cli-cache" });
       else answerCatalog();
     })().catch(() => {
       if (canAnswer()) json(res, 503, { error: "CLI model cache unavailable" });
@@ -2688,39 +2763,15 @@ export function handleWebRequest(
   // would: an admin session, never the CLI token or the public link; asked again once the body is in; counted with the
   // offices' saves. Every page hears `offices` and reads again.
   if (method === "PUT" && path === "/ui/office-style") {
-    const store = ctx.officeStore;
-    if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "offices_not_over_public_link" }); return true; }
-    const who = (): { person: string } | { status: number } => {
-      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      if (verdict.kind !== "allow") return { status: 401 };
-      return verdict.via === "session" && verdict.session?.tier === "admin" ? { person: verdict.session.owner ? webPersonKey(verdict.session.owner) : "admin-session" } : { status: 403 };
-    };
-    const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "offices_need_an_admin_session" });
-    const first = who();
-    if ("status" in first) { refuse(first.status); return true; }
-    (async () => {
-      let body: Record<string, unknown>;
-      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
-      if (!permitWebContinuation(req, res, ctx)) return;
-      const now = who();
-      if ("status" in now) { refuse(now.status); return; }
-      if (!body || typeof body !== "object" || Array.isArray(body) || !("skin" in body) || Object.keys(body).some(k => k !== "skin")) {
-        json(res, 400, { error: "office_style_invalid", detail: "{ skin: a skin id, or null }" });
-        return;
-      }
-      const limiter = ctx.officeWrites, allowed = limiter ? limiter.check(now.person) : { ok: true as const };
-      if (!allowed.ok) { res.setHeader("Retry-After", String(allowed.retry_after_s)); json(res, 429, { error: "offices_rate_limited", retry_after_s: allowed.retry_after_s }); return; }
-      const r = store.setAutoSkin(body.skin);
-      if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
-      limiter?.record(now.person);
-      ctx.emitSseEvent("offices", { rev: r.rev });
-      json(res, 200, { rev: r.rev, autoSkin: r.autoSkin });
-    })().catch(err => {
-      ctx.logger.error({ err: (err as Error).message }, "Saving the office style failed");
-      try { json(res, 500, { error: "Saving the office style failed" }); } catch { /* already answered */ }
-    });
-    return true;
+    return officeSettingPut(req, res, url, ctx, { key: "skin", invalid: "office_style_invalid", shape: "{ skin: a skin id, or null }", failed: "Saving the office style failed",
+      apply: (store, v) => { const r = store.setAutoSkin(v); return r.ok ? { ok: true, rev: r.rev, answer: { autoSkin: r.autoSkin } } : r; } });
+  }
+  // #3679: PUT /ui/office-level-titles { levels }: the fleet's own Office level titles for every office (`{ titles?,
+  // fixed? }`, a pack's rules; null: none — read back as GET /ui/offices's levels). A pack's own `levels` still win for
+  // the offices drawn in it (on the page). Who may set the style may set these, the same way.
+  if (method === "PUT" && path === "/ui/office-level-titles") {
+    return officeSettingPut(req, res, url, ctx, { key: "levels", invalid: "office_levels_invalid", shape: "{ levels: { titles?, fixed? }, or null }", failed: "Saving the level titles failed",
+      apply: (store, v) => { const r = store.setLevels(v); return r.ok ? { ok: true, rev: r.rev, answer: { levels: r.levels } } : r; } });
   }
 
   // #2578: GET /ui/office-acts { acts }: the agents' live acts (office_set), read as the offices are (the public link

@@ -19,7 +19,7 @@ function CreateCode({ client, busy, enabled, onCreate, onClose }) {
   useEffect(() => {
     live.current = true;
     // An older U2 has no search module. The existing exact-DN resolver remains a safe fallback.
-    void import("./hub-group-search.js").then(m => { if (live.current && m.groupSearchV1 === true && typeof m.GroupSearch === "function") setPicker({ component: m.GroupSearch }); }, () => {});
+    void import("./hub-group-search.js").then(m => { if (live.current && m.groupSearchV1 === true && m.groupSearchIdV1 === true && typeof m.GroupSearch === "function") setPicker({ component: m.GroupSearch }); }, () => {});
     return () => { live.current = false; epoch.current++; };
   }, []);
   const resolve = async hit => {
@@ -49,7 +49,7 @@ function CreateCode({ client, busy, enabled, onCreate, onClose }) {
       <label class="field" for="hubCodeScope"><span>${he("scope")}</span><select id="hubCodeScope" value=${scope} disabled=${busy || resolving} onChange=${e => chooseScope(e.target.value)}>
         <option value="directory">${he("directory")}</option><option value="group">${he("group")}</option></select></label>
       ${scope === "group" ? group ? html`<p class="note hub-fp-full">${he("resolved", group.dn)}</p><div class="n-actions"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => setGroup(null)}>${he("remove")}</button></div>`
-        : html`${picker ? html`<${picker.component} client=${client} disabled=${busy || resolving || !enabled} label=${he("groupLabel")} onPick=${resolve} onUnsupported=${() => setPicker(null)} />`
+        : html`${picker ? html`<${picker.component} id="hubEnrolmentScopeSearch" client=${client} disabled=${busy || resolving || !enabled} label=${he("groupLabel")} onPick=${resolve} onUnsupported=${() => setPicker(null)} />`
           : html`<label class="field" for="hubCodeGroupDn"><span>${he("dn")}</span><input id="hubCodeGroupDn" maxLength="4096" value=${dn} disabled=${busy || resolving} onInput=${e => setDn(e.target.value)} /></label>
             <div class="n-actions"><button type="button" class="btn btn-sm" disabled=${busy || resolving || !dn.trim() || !enabled} onClick=${() => resolve(null)}>${he("resolve")}</button></div>`}
           <p class="note" role="status">${he("choose")}</p>` : null}

@@ -6,6 +6,7 @@
  * Real live captures (tests/fixtures/muse-1.4.6/, 1.4.6 + 1.4.4 pairs);
  * stubbed backend/tmux for the daemon flows; no CLI, tmux or fleet.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import pino from "pino";
@@ -511,7 +512,7 @@ describe("#1716: the stop reply and topic notice name the ended background work"
   afterEach(() => { rmSync(fdir, { recursive: true, force: true }); });
 
   async function fleetWithMarker(name: string, fresh: boolean) {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { writeBackgroundWorkEndedMarker } = await import("../src/background-work-ended.js");
     const fleet = new FleetManager(fdir) as any;
     const instDir = join(fdir, "instances", name);
@@ -540,7 +541,7 @@ describe("#1716: the stop reply and topic notice name the ended background work"
     const stale = await fleetWithMarker("muse-1", false);
     expect(await stale.stopInstance("muse-1")).toEqual({ backgroundWorkEnded: false });
     expect(stale.notifyInstanceTopic).not.toHaveBeenCalled();
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const clean = new FleetManager(fdir) as any;
     const instDir = join(fdir, "instances", "muse-2");
     mkdirSync(instDir, { recursive: true });
@@ -591,7 +592,7 @@ describe("#1716: the stop reply and topic notice name the ended background work"
   });
 
   it("collectBackgroundWorkEndedNames scopes to the operation (#1730 P2-3)", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { writeBackgroundWorkEndedMarker } = await import("../src/background-work-ended.js");
     const collect = (FleetManager.prototype as any).collectBackgroundWorkEndedNames;
     const cdir = mkdtempSync(join(tmpdir(), "agend-1716-collect-"));
@@ -618,7 +619,7 @@ describe("#1716: the stop reply and topic notice name the ended background work"
     // proves the region stays compatible with their fixed vm context.
     const ts = (await import("typescript")).default;
     const { createContext, runInContext } = await import("node:vm");
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { RestartProgress, formatRestartProgressCompletion } = await import("../src/restart-progress.js");
     const marker = await import("../src/update-marker.js");
     const { writeBackgroundWorkEndedMarker } = await import("../src/background-work-ended.js");

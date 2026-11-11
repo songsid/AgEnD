@@ -18,7 +18,7 @@ afterEach(async () => {
   for (const p of pages.splice(0)) { await p.unmount(); p.restore(); }
   confirmations.resetConfirmations(); clientModule.setHubClient(null); vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
-async function fixture(options: { enabled?: boolean; pairing?: any; language?: string; legacy?: boolean; public?: boolean; bad?: any; heldRead?: Promise<any>; write?: Promise<any>; pending?: boolean; operation?: any; failedAfterWrite?: number } = {}) {
+async function fixture(options: { enabled?: boolean; pairing?: any; language?: string; legacy?: boolean; public?: boolean; bad?: any; heldRead?: Promise<any>; write?: Promise<any>; pending?: boolean; operation?: any; failedAfterWrite?: number; display?: any } = {}) {
   const p = page({ url: "http://127.0.0.1:19290/settings/hub", storage: { agend_lang: options.language ?? "en" } }); pages.push(p);
   vi.stubGlobal("crypto", webcrypto); if (options.public) p.document.body.dataset.publicLink = "1";
   words.setLang(options.language ?? "en");
@@ -42,7 +42,8 @@ async function fixture(options: { enabled?: boolean; pairing?: any; language?: s
       if (options.heldRead) return options.heldRead;
       return response(options.bad ?? { ok: true, enabled, ...(!options.legacy && path.includes("?v=2") ? { connectionCardV1: true, pairing } : {}) });
     }
-    if (path === "/api/hub/member/company-join") return response({ ok: true, bound: pairing.state !== "unpaired", operation: options.operation ?? null });
+    if (path === "/api/hub/member/company-join") return response({ ok: true, bound: pairing.state !== "unpaired", operation: options.operation ?? null, display: options.display ?? null });
+    if (path.endsWith("/company-join/reconnect") || path.endsWith("/company-join/remove")) { pairing = { state: "unpaired" }; return response({ ok: true, operation: { operationId: id, state: "awaiting-sign-in" } }); }
     if (path.endsWith("/confirm")) { enabled = true; return response({ result: "pending_confirmation", pending_change: { id: pendingId, state: "applied", outcome: { result: { ok: true } } } }, 202); }
     return response({ ok: true });
   }));
@@ -135,3 +136,49 @@ describe("one Hub connection card", () => {
     expect(f.calls.filter(c => c.init.method === "POST").map(c => c.path)).toEqual(["/api/settings/pending/"+pendingId+"/confirm"]); expect(f.c.setExposed).not.toHaveBeenCalled();
   });
 });
+
+describe("M-2921: the connected and held card (spec 1.1 / 1.3)", () => {
+  const display = { v: 1, webOrigin: "https://hub.example.test", label: "build-box", hubName: "Acme Hub", ownerLabel: "王小明" };
+  const held = (hold: string) => ({ state: "held", hold, memberOrigin: "https://member.example.test", hubId: id, binding: "b".repeat(64) });
+  it("connected: titled by the Hub's name, with the owner line and this Fleet's name; 「移除這個連接」 asks once, then removes exactly this pairing", async () => {
+    const f = await fixture({ enabled: true, pairing: paired(), display }); await until(() => f.p.root.querySelector(".hub-owner-line"));
+    expect(f.p.root.querySelector(".hub-connection-summary").textContent).toContain("Acme Hub");
+    expect(f.p.root.querySelector(".hub-owner-line").textContent).toBe("Connected with 王小明's company account \u00b7 This Fleet is called \u201cbuild-box\u201d");
+    await click(f.p, "Remove this connection");
+    expect(f.p.root.textContent).toContain("Remove the connection to \u201cAcme Hub\u201d? Agents you share will stop answering.");
+    expect(f.calls.filter(c => c.path.endsWith("/remove"))).toEqual([]);
+    await click(f.p, "Keep"); expect(f.p.root.textContent).not.toContain("Remove the connection to");
+    await click(f.p, "Remove this connection"); await click(f.p, "Remove");
+    const sent = f.calls.filter(c => c.path.endsWith("/company-join/remove"));
+    expect(sent.map(c => JSON.parse(c.init.body))).toEqual([{ hubId: id, binding: "b".repeat(64), address: "https://hub.example.test" }]);
+  });
+  it("an older Hub (no owner or Hub name saved): no owner line; the address stands for the name", async () => {
+    const f = await fixture({ enabled: true, pairing: paired(), display: { ...display, hubName: null, ownerLabel: null } }); await until(() => f.p.root.querySelector(".hub-connection-summary"));
+    await settle(10);
+    expect(f.p.root.querySelector(".hub-owner-line")).toBeNull();
+  });
+  it.each(["revoked", "rejected", "refused", "expired", "disconnected"])("held (%s): one primary 「重新連接」 for exactly this pairing and its saved address", async hold => {
+    const f = await fixture({ enabled: true, pairing: held(hold), display }); await until(() => button(f.p, "Reconnect"));
+    expect(button(f.p, "Reconnect").className).toContain("btn-primary");
+    expect(f.p.root.querySelector(".hub-held").textContent).toContain("Acme Hub");
+    expect(f.p.root.querySelector("#hub-connection").textContent).not.toContain("member.example.test");    // the held card names the Hub, never the member address
+    expect(f.p.root.querySelector("#hub-connection h3").textContent).toBe("Acme Hub");
+    const open = vi.fn(); vi.stubGlobal("open", open);
+    await click(f.p, "Reconnect");
+    const sent = f.calls.filter(c => c.path.endsWith("/company-join/reconnect")).map(c => JSON.parse(c.init.body));
+    expect(sent).toEqual([{ hubId: id, binding: "b".repeat(64), address: "https://hub.example.test", handoffId: expect.stringMatching(/^[a-f0-9-]{36}$/) }]);
+    // the Fleet's own waiting tab, opened in the press, follows exactly that handoff to the Hub's sign-in
+    expect(open).toHaveBeenCalledWith("/settings/hub?joinWait=" + sent[0].handoffId + "&joinConsent=1#target=" + encodeURIComponent("https://hub.example.test"), "_blank", "noopener");
+  });
+  it.each(["unsaved", "unknown_outcome"])("held (%s): no reconnect — that hold keeps its own recovery", async hold => {
+    const f = await fixture({ enabled: true, pairing: held(hold), display }); await until(() => f.p.root.querySelector(".hub-held")); await settle(10);
+    expect(button(f.p, "Reconnect")).toBeUndefined();
+  });
+  it("a pairing-code connection (no company-join record): 「重新連接」 opens 其他方式 instead of a request", async () => {
+    const f = await fixture({ enabled: true, pairing: held("revoked") }); await until(() => button(f.p, "Reconnect"));
+    await click(f.p, "Reconnect");
+    expect(f.p.root.querySelector(".hub-connection-manual").open).toBe(true);
+    expect(f.calls.filter(c => c.path.endsWith("/reconnect"))).toEqual([]);
+  });
+});
+

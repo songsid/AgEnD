@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import {afterEach,expect,it,vi} from 'vitest';
 import {effectSummaryCases} from './helpers/settings-summary-effects-3416.js';
 import {getLocale,setLocale} from '../src/locale.js';
@@ -33,7 +34,7 @@ it('sharing metadata retains the chosen agent and next revision through effect d
 });
 
 it.each(["host","windows"])("General's %s preview retains display descriptors through effect dispatch",async location=>{
- const {FleetManager}=await import("../src/fleet-manager.js"),{generalBindingRevision}=await import("../src/general-binding.js"),{prepareSettingsEffect}=await import("../src/settings-effect.js");
+ const {FleetManager}=fleetManagerModule,{generalBindingRevision}=await import("../src/general-binding.js"),{prepareSettingsEffect}=await import("../src/settings-effect.js");
  vi.stubEnv("AGEND_REMOTE_RUNTIME","1");
  const cfg={general_topic:true},record={active:"host",windows:[]};
  const fm:any=Object.create(FleetManager.prototype);fm.fleetConfig={instances:{general:cfg},defaults:{}};fm.generalBindings=()=>({read:()=>record});

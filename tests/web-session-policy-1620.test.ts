@@ -6,6 +6,7 @@
  * revives or raises an existing session's absolute limit. The real WebSessionStore on a fake clock; the real
  * validator; the fleet's wiring.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -150,7 +151,7 @@ describe("the fleet reads fleet.yaml's setting at every check", () => {
   it("initializeWebSessions wires web.session.local; a change to the config applies at once; the gateway stays fixed", async () => {
     const h = home();
     vi.stubEnv("AGEND_HOME", h);
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(h) as any;
     clearInterval(fm.sessionPruneTimer);
     fm.fleetConfig = { defaults: {}, instances: {}, web: { session: { local: { absolute_hours: 72, idle_hours: 24 } } } };

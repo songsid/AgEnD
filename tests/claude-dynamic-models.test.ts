@@ -70,21 +70,25 @@ describe("claude error patterns", () => {
 });
 
 describe("listApiModels", () => {
-  it("maps /v1/models and appends a [1m] variant per model", async () => {
+  it("maps /v1/models and appends a [1m] variant only to a model that reports 1M+ and does not have it by default", async () => {
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "FAKE-OAUTH-FOR-TEST";
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({ data: [
-        { id: "claude-opus-5", display_name: "Claude Opus 5" },
-        { id: "claude-sonnet-5", display_name: "Claude Sonnet 5" },
+        { id: "claude-opus-4-6", display_name: "Claude Opus 4.6", max_input_tokens: 1_000_000 },   // opt-in 1M: offered
+        { id: "claude-opus-5", display_name: "Claude Opus 5", max_input_tokens: 1_000_000 },       // 1M by default: no suffix
+        { id: "claude-opus-4-5-20251101", display_name: "Claude Opus 4.5", max_input_tokens: 200_000 },   // 200K: the API refuses [1m]
+        { id: "claude-legacy-x", display_name: "Reports no window" },                                // unknown: not offered
       ] }),
     }));
     vi.stubGlobal("fetch", fetchMock);
 
     const models = await new ClaudeCodeBackend("/tmp/test").listApiModels();
     expect(models.map(m => m.id)).toEqual([
-      "claude-opus-5", "claude-opus-5[1m]",
-      "claude-sonnet-5", "claude-sonnet-5[1m]",
+      "claude-opus-4-6", "claude-opus-4-6[1m]",
+      "claude-opus-5",
+      "claude-opus-4-5-20251101",
+      "claude-legacy-x",
     ]);
     expect(models[1].description).toContain("1M");
 
@@ -113,12 +117,12 @@ describe("listApiModels", () => {
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "FAKE-OAUTH-FOR-TEST";
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: true,
-      json: async () => ({ data: [{ id: "claude-opus-5" }] }),
+      json: async () => ({ data: [{ id: "claude-opus-4-6", max_input_tokens: 1_000_000 }] }),
     })));
     const env = await new ClaudeCodeBackend("/tmp/test").probeCLIEnv!();
     expect(env.models!.map(m => m.id)).toContain("opus");        // quick-pick aliases
-    expect(env.models!.map(m => m.id)).not.toContain("claude-opus-5");
-    expect((env as any).apiModels.map((m: any) => m.id)).toEqual(["claude-opus-5", "claude-opus-5[1m]"]);
+    expect(env.models!.map(m => m.id)).not.toContain("claude-opus-4-6");
+    expect((env as any).apiModels.map((m: any) => m.id)).toEqual(["claude-opus-4-6", "claude-opus-4-6[1m]"]);
     version.mockRestore();
   });
 });

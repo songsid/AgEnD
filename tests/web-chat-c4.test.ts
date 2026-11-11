@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { request, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -23,7 +24,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); rmSync(dir, { recurs
 // ── the fleet ───────────────────────────────────────────────────────────────────────────────────────────────
 
 async function fleet() {
-  const { FleetManager } = await import("../src/fleet-manager.js");
+  const { FleetManager } = fleetManagerModule;
   const fm = new FleetManager(dir);
   const any = fm as unknown as Record<string, any>;
   const events: Array<{ event: string; data: any }> = [];
@@ -388,7 +389,7 @@ function raw(port: number, method: string, path: string, headers: Record<string,
 
 describe("POST /ui/prompt through the real gate", () => {
   it("a session alone is not enough: same origin and the session's CSRF token, or nothing is answered", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir);
     const quiet = () => {};
     fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger } as unknown as typeof fm.logger;

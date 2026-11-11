@@ -266,13 +266,16 @@ export function claudeStoreHasLogin(storeHome: string): boolean | null {
 }
 
 /**
- * M-2825 (the user, 11-10: an ended sign-in showed 「已連接」): the Claude login in this config dir's `.credentials.json`
- * is over — its fixed end date (`refreshTokenExpiresAt`, which refreshing never moves) has passed, or the CLI blanked it
- * after a refused refresh (`invalid_grant`: `expiresAt` 0, both tokens empty — while `claude auth status` still says
- * loggedIn). Read from the file only: dates and emptiness, never a token's value. No file, or no login in it (macOS keeps
- * the token in the Keychain): false — nothing is known to be over.
+ * M-2825: the Claude login in this config dir's `.credentials.json` is shown to be over — the CLI blanked it after a refused
+ * refresh (`invalid_grant`: `expiresAt` 0, both tokens empty — while `claude auth status` still says loggedIn). Read from
+ * the file only: emptiness, never a token's value. No file, or no login in it (macOS keeps the token in the Keychain): false.
+ *
+ * M-2932 (the owner, alpha.14: a working login was flagged 「需要重新連接」): the stored `refreshTokenExpiresAt` is NOT
+ * evidence. Claude Code merges a refresh as min(old, new), so the date stays the first sign-in's end while the server keeps
+ * accepting the rotated refresh token, and Claude Code itself ignores it once a refresh landed past it. A past date with a
+ * login in the file says nothing; a login that really stopped shows up when its refresh is refused (the blank above).
  */
-export function claudeStoreEnded(storeHome: string, now: number = Date.now()): boolean {
+export function claudeStoreEnded(storeHome: string, _now: number = Date.now()): boolean {
   let o: Record<string, unknown> | null = null;
   try {
     const v: unknown = JSON.parse(readFileSync(join(storeHome, ".credentials.json"), "utf8"));
@@ -280,8 +283,6 @@ export function claudeStoreEnded(storeHome: string, now: number = Date.now()): b
     o = c && typeof c === "object" ? c as Record<string, unknown> : null;
   } catch { return false; }
   if (!o) return false;
-  const end = o.refreshTokenExpiresAt;
-  if (typeof end === "number" && Number.isFinite(end) && end > 0 && end <= now) return true;
   if (o.expiresAt === 0) return true;
   const empty = (x: unknown) => typeof x !== "string" || x.length === 0;
   return empty(o.accessToken) && empty(o.refreshToken);

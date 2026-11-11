@@ -5,6 +5,7 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { api, confirmedWrite, confirmWithCode } from "./settings-confirm.js";
 import { hj, joinError, joinResponseCode } from "./hub-company-join-strings.js";
+import { j1, classifyHubInput, probeMessage, waitingMessage, reasonMessage, leftOf } from "./hub-join-one-strings.js";
 // Own words: a new panel must also work with a cached older company-join dictionary.
 register("companyJoinWait", {
   "en": {
@@ -44,7 +45,7 @@ const jw = (key, ...args) => t(`companyJoinWait.${key}`, ...args);
 const root = "/api/hub/member/company-join";
 const LOCAL_WAIT_MS = 5 * 60_000; // matches the Settings confirmation ceiling; never renew on a status read
 export const companyJoinEmbedV1 = true;
-export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded = false } = {}) {
+export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded = false, onPairingCode } = {}) {
   const notified = useRef(null), submittedTarget = useRef(""), submittedHandoff = useRef(null);
   const { hubJoinChanges = [] } = useStore(appStore);
   const waiting = (() => { try { return new URLSearchParams(location.search).get("joinWait"); } catch { return null; } })();
@@ -55,8 +56,41 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   const waitDeadline = useRef(Date.now() + LOCAL_WAIT_MS), reading = useRef(null);
   const [form, setForm] = useState(() => {
     let address = ""; try { const candidate = new URLSearchParams(location.hash.slice(1)).get("join"); if (candidate && candidate.length <= 8192) address = candidate; } catch {}
-    return { address, label: hj("defaultFleet") };
+    return { address, label: "" };
   }), live = useRef(true), token = useRef(0);
+  // M-2921 (spec 1.1): the one input — classified here, probed (read only) 600 ms after typing stops and on blur.
+  const [probe, setProbe] = useState(null), [probing, setProbing] = useState(false), [renaming, setRenaming] = useState(false), [now, setNow] = useState(Date.now());
+  // #3675 r1 P2: an answer is kept per address only to show it; it never stops another look. Blur asks again (spec 1.1),
+  // a failed or limited answer is asked again on the next blur, and a replaced identity is looked up again at once.
+  // The ref only keeps two looks at the same address from running at the same time.
+  // #3675 r2: every look is bound to the address it was asked for and to its generation; only the newest answer for the
+  // address in the input counts. A forced look (after a replaced identity) retires any look still running.
+  const probeSeq = useRef(0), inflight = useRef(""), current = useRef("");
+  const kind = classifyHubInput(form.address);
+  current.current = kind.kind === "address" ? kind.address : "";
+  const host = (() => { try { return new URL(kind.address).host; } catch { return ""; } })();
+  const runProbe = async (target = current.current, force = false) => {
+    if (!target || target !== current.current || !force && inflight.current === target) return;
+    const seq = ++probeSeq.current, address = target; inflight.current = address; setProbing(true);
+    try { const r = await api(root + "/probe", { method: "POST", body: JSON.stringify({ address }) });
+      if (!live.current || seq !== probeSeq.current || address !== current.current) return;
+      // No answer at all (a network error, an older server): recorded as answered-without-a-word, which never blocks Start.
+      setProbe(r.ok ? { ...r.body, address } : r.body && r.body.ok === false && typeof r.body.reason === "string" ? { ...r.body, address } : { address, none: true });
+    } catch { if (live.current && seq === probeSeq.current) setProbe({ address, none: true }); }
+    finally { if (inflight.current === address) inflight.current = ""; if (live.current && seq === probeSeq.current) setProbing(false); }
+  };
+  useEffect(() => {
+    if (kind.kind !== "address") { probeSeq.current++; inflight.current = ""; setProbe(null); setProbing(false); return; }
+    setProbe(p => p && p.address === kind.address ? p : null);
+    const timer = setTimeout(() => runProbe(kind.address), 600);
+    return () => clearTimeout(timer);
+  }, [kind.kind, kind.address]);
+  useEffect(() => {
+    if (view?.state !== "awaiting-sign-in" || !Number.isFinite(view.expiresAt)) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [view?.state, view?.expiresAt]);
+  useEffect(() => { if (kind.kind === "pairing") onPairingCode?.({ address: kind.address || "", code: kind.code }); }, [kind.kind, kind.code, kind.address]);
   const read = () => {
     if (reading.current) return reading.current; // one physical status read, including Retry and slow networks
     const gen = token.current;
@@ -125,15 +159,16 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   };
   useEffect(() => { if ((!embedded || bound) && view?.state === "saved" && view.link === "online" && notified.current !== view.operationId) { notified.current = view.operationId; onSaved?.(); } }, [view, onSaved, embedded, bound]);
   const start = async e => {
-    e.preventDefault(); if (busy) return;
+    e.preventDefault(); if (busy || !ready) return;
     const gen = ++token.current; setBusy(true); setError(null); setNotice(null); setPending(null); setIdentityChanged(false); setCode(""); setCodeError(null);
     const handoffId = crypto.randomUUID(); submittedHandoff.current = handoffId;
     // Open the Fleet-owned waiting page during the user gesture, with no opener or cross-origin messaging.
-    let target = ""; try { target = new URL(form.address).origin; } catch {}
+    let target = ""; try { target = new URL(kind.address).origin; } catch {}
     submittedTarget.current = target;
     globalThis.open("/settings/hub?joinWait=" + encodeURIComponent(handoffId) + "&joinConsent=1#target=" + encodeURIComponent(target), "_blank", "noopener");
     try {
-      const result = await confirmedWrite(root + "/start", { body: { ...form, handoffId }, label: hj("title"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
+      const body = { address: kind.address, label: fleetLabel, handoffId, ...(kind.code ? { code: kind.code } : {}) };
+      const result = await confirmedWrite(root + "/start", { body, label: hj("title"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
       if (!live.current || gen !== token.current) return;
       if (!result.ok || !result.body?.operation) { await read();
         if (result.confirmed?.state === "rejected" && result.confirmed.outcome?.reason_code === "withdrawn") { setError(null); setNotice(jw("localWithdrawn")); return; }
@@ -146,9 +181,11 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   const repair = async () => {
     if (busy) return; const gen = ++token.current; setBusy(true); setError(null);
     try {
-      const result = await confirmedWrite(root + "/repair-trust", { body: { address: form.address }, label: hj("repair"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
+      const repaired = kind.address || form.address;
+      const result = await confirmedWrite(root + "/repair-trust", { body: { address: repaired }, label: hj("repair"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
       if (!live.current || gen !== token.current) return;
-      if (result.ok) { setIdentityChanged(false); setError(null); } else setError(joinError(joinResponseCode(result)));
+      // Look the repaired address up again — only while it is still the one in the input (moved on: that address's own look stands).
+      if (result.ok) { setIdentityChanged(false); setError(null); if (current.current === repaired) { setProbe(null); void runProbe(repaired, true); } } else setError(joinError(joinResponseCode(result)));
     } catch { if (live.current && gen === token.current) setError(hj("unknown")); }
     finally { if (live.current && gen === token.current) { setBusy(false); setPending(null); } }
   };
@@ -173,7 +210,12 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     } catch { if (live.current && gen === token.current) setCodeError(jw("codeUnavailable")); }
     finally { if (live.current && gen === token.current) setCodeBusy(false); }
   };
-  const target = (() => { try { return pending?.target || (view && (!waiting || view.handoffId === waiting) ? view.hubOrigin : "") || (waiting ? new URLSearchParams(location.hash.slice(1)).get("target") || "" : new URL(form.address).origin); } catch { return ""; } })();
+  const fleetLabel = (form.label.trim() || probe?.suggestedLabel || hj("defaultFleet")).slice(0, 120);
+  const problem = kind.kind === "error" ? j1(kind.error) : probe && !probe.none && probe.address === kind.address ? probeMessage(probe, host) : null;
+  // Start once the probe for exactly this address has answered without a problem. A probe that could not answer at all
+  // (no reason: a network error, an older server) does not block Start: Start makes the same checks itself.
+  const ready = kind.kind === "address" && !problem && !probing && probe?.address === kind.address;
+  const target = (() => { try { return pending?.target || (view && (!waiting || view.handoffId === waiting) ? view.hubOrigin : "") || (waiting ? new URLSearchParams(location.hash.slice(1)).get("target") || "" : new URL(kind.address).origin); } catch { return ""; } })();
   const inlineWait = consentWait || pending?.inline;
   const retired = embedded && !bound && view?.state === "saved" && view.outcomeKnown;
   const canStart = !pending?.inline && !waiting && (retired || view === null || view && ["ended", "cancelled"].includes(view.state) && !view.issued && view.outcomeKnown);
@@ -203,17 +245,25 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
         ${waiting ? html`<a class="btn btn-sm" href="/settings/hub">${hj("return")}</a>` : null}</div>
       ${waiting ? html`<p class="note">${jw("leaveWait")}</p>` : null}
     </div>` : null}
-    ${canStart ? html`<form class="form" onSubmit=${start}>
-      <label class="field" for="hubCompanyAddress"><span>${hj("address")}</span><input id="hubCompanyAddress" type="text" value=${form.address} autocomplete="off" spellcheck=${false} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))} /><small class="note">${jw("getLink")}</small></label>
-      <label class="field" for="hubCompanyFleetName"><span>${hj("fleetName")}</span><input id="hubCompanyFleetName" value=${form.label} maxlength="120" onInput=${e => setForm(f => ({ ...f, label: e.target.value }))} /></label>
-      <p class="note">${hj("firstUse")}</p>${!form.address.trim() || !form.label.trim() ? html`<p class="note" id="hubCompanyStartHint">${jw(!form.address.trim() ? "startHint" : "nameHint")}</p>` : null}<div class="field-row"><button class="btn btn-primary" type="submit" aria-describedby=${!form.address.trim() || !form.label.trim() ? "hubCompanyStartHint" : undefined} disabled=${busy || !form.address.trim() || !form.label.trim()}>${hj("start")}</button></div>
-      ${identityChanged ? html`<p class="note">${hj("repairLead")}</p><button class="btn btn-sm" type="button" disabled=${busy || !form.address.trim()} onClick=${repair}>${hj("repair")}</button>` : null}
+    ${canStart ? html`<form class="form hub-join-one" onSubmit=${start}>
+      <label class="field" for="hubCompanyAddress"><span>${j1("input")}</span><input id="hubCompanyAddress" type="text" value=${form.address} placeholder=${j1("placeholder")} autocomplete="off" spellcheck=${false} autocapitalize="off"
+        aria-describedby="hubCompanyLine" aria-invalid=${problem ? "true" : undefined} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))} onBlur=${() => runProbe()} /></label>
+      <p class="note hub-join-line" id="hubCompanyLine" role=${problem ? "alert" : "status"}>${problem ? problem
+        : kind.kind === "pairing" ? j1("otherPairing")
+        : probing ? j1("probing")
+        : probe?.ok && probe.address === kind.address ? html`${j1("found", probe.hubName || host, fleetLabel)} ${!renaming ? html`<button type="button" class="btn btn-ghost btn-sm hub-join-rename" onClick=${() => setRenaming(true)}>${j1("rename")}</button>` : null}`
+        : !form.address.trim() ? jw("getLink") : null}</p>
+      ${renaming ? html`<label class="field" for="hubCompanyFleetName"><span>${j1("label")}</span><input id="hubCompanyFleetName" value=${form.label} maxlength="120" placeholder=${probe?.suggestedLabel || hj("defaultFleet")} onInput=${e => setForm(f => ({ ...f, label: e.target.value }))} /></label>` : null}
+      <div class="field-row"><button class="btn btn-primary" type="submit" disabled=${busy || !ready}>${j1("go")}</button></div>
+      ${identityChanged || probe?.identity === "changed" && probe.address === kind.address ? html`<p class="note">${hj("repairLead")}</p><button class="btn btn-sm" type="button" disabled=${busy || kind.kind !== "address"} onClick=${repair}>${hj("repair")}</button>` : null}
     </form>` : null}
     ${view && !retired && (!waiting || view.handoffId === waiting) ? html`<div role="status"><strong>${hj(view.state === "saved" ? view.link === "online" ? "saved" : "joining" : view.state === "awaiting-sign-in" ? "awaiting" : view.state === "cancelled" ? "cancelled" : view.state === "held" || view.state === "ended" ? "held" : "joining")}</strong>
-      ${view.state === "saved" ? html`<p class="note">${hj(view.link === "online" ? "fleetDone" : "offline")}</p>` : view.reason && view.reason !== "cancelled" ? html`<p class="note">${joinError(view.reason)}</p>` : null}
+      ${view.state === "awaiting-sign-in" ? html`<p class="note hub-join-opened">${j1("opened", probe?.ok && probe.hubName || (() => { try { return new URL(view.hubOrigin).host; } catch { return view.hubOrigin || ""; } })())}${Number.isFinite(view.expiresAt) ? html` <span class="hub-join-left">${j1("left", leftOf(view.expiresAt, now))}</span>` : null}</p>` : null}
+      ${view.state === "awaiting-sign-in" && waitingMessage(view.waiting) ? html`<p class="note" role="alert">${waitingMessage(view.waiting)}</p>` : null}
+      ${view.state === "saved" ? html`<p class="note">${hj(view.link === "online" ? "fleetDone" : "offline")}</p>` : view.reason && view.reason !== "cancelled" ? html`<p class="note">${reasonMessage(view) || joinError(view.reason)}</p>` : null}
       ${view.issued && view.state !== "saved" ? html`<p class="note">${hj("issued")}</p>` : null}
-      <div class="field-row">${view.state === "awaiting-sign-in" ? html`<a class="btn btn-sm" href=${root + "/bridge?operationId=" + encodeURIComponent(view.operationId)} target="_blank" rel="noopener">${hj("start")}</a>` : null}${view.state === "held" && !["authority", "expired"].includes(view.reason) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("resume")}>${hj("resume")}</button>` : null}
-        ${!["saved", "cancelled", "ended"].includes(view.state) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("cancel")}>${hj("stop")}</button>` : null}
+      <div class="field-row">${view.state === "awaiting-sign-in" ? html`<a class="btn btn-sm" href=${root + "/bridge?operationId=" + encodeURIComponent(view.operationId)} target="_blank" rel="noopener">${j1("reopen")}</a>` : null}${view.state === "held" && !["authority", "expired"].includes(view.reason) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("resume")}>${hj("resume")}</button>` : null}
+        ${!["saved", "cancelled", "ended"].includes(view.state) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("cancel")}>${view.state === "awaiting-sign-in" ? j1("cancel") : hj("stop")}</button>` : null}
         ${view.hubOrigin ? html`<a class="btn btn-sm" href=${view.hubOrigin + "/ui/hub"} target="_blank" rel="noopener noreferrer">${hj("inspect")}</a>` : null}</div>
     </div>` : null}
   </${Frame}>`;

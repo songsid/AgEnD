@@ -301,6 +301,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     // signed-in person (display only — every action still asks the server).
     groupPolicy() { return call("GET", "/hub/v1/admin/group-policy"); },
     resolveGroup(dn) { return call("POST", "/hub/v1/admin/group-policy/resolve", { dn }); },
+    /** M-2932 (Hub UX U2, S2): a prefix search of the directory's groups — input feedback only; choosing one still resolves its DN. */
+    searchGroups(q) { return call("POST", "/hub/v1/admin/group-policy/search", { q }); },
     previewGroupPolicy(policy) { return call("POST", "/hub/v1/admin/group-policy/preview", { policy }); },
     /** The policy that was previewed and that preview's digest: the server applies only its own sealed candidate for them. */
     saveGroupPolicy(policy, previewDigest) { return call("PUT", "/hub/v1/admin/group-policy", { policy, previewDigest }); },

@@ -47,6 +47,14 @@ export interface HubMemberPairingDeps {
   fence?(): void;
   /** S3c: withdraw every exposure locally (saved before it returns). */
   withdrawAll?(): Promise<void> | void;
+  /**
+   * M-2921 (spec 1.3, S1 member.leave): tell the Hub this Fleet is leaving, over the live member link, before the fence
+   * closes it — only when the Hub takes it (member-leave-v1 + welcome-caps-v1; the member client decides). No ack: true
+   * once sent. Waited on at most LEAVE_WAIT_MS; offline, refused, slow or a throw: the disconnect goes on without it
+   * (the Hub then lists the Fleet as offline until it is removed there). Given the exact pairing being disconnected
+   * (boundHub()): S1's HubRuntime.memberLeave(expected) sends only for that saved profile on its current link.
+   */
+  leave?(expected: { hubId: string; binding: string }): Promise<boolean> | boolean;
   /** Whether hub_member is still on (S5; absent: on). The claim loop stops the moment it is off. */
   enabled?(): boolean;
   /**
@@ -66,7 +74,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
   const now = () => (deps.now ?? Date.now)();
   const begin = deps.begin ?? realBegin, claim = deps.claim ?? realClaim;
   const profiles = deps.profiles ?? ((home: string, hubId: string) => new HubMemberProfileStore(home, hubId));
-  let generation = 0;
+  let generation = 0, leaving = false;
   // #3115 r1 P4: an unknown claim outcome is held in memory too — a failed save of the hold must not reopen a retry.
   let unknown: { hubId: string } | null = null;
   const read = (): MemberState => {
@@ -237,19 +245,29 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
       return view();
     },
     /** Leave the Hub (a confirmed Settings replay): fence, tombstone, withdraw every exposure; the Hub revokes later. */
-    async disconnect(expected: { hubId?: unknown; binding?: unknown } = {}): Promise<{ ok: true; remote: "pending" } | { ok: false; error: "unsaved" | "conflict" }> {
+    async disconnect(expected: { hubId?: unknown; binding?: unknown } = {}, current: () => boolean = () => true): Promise<{ ok: true; remote: "pending"; left?: boolean } | { ok: false; error: "unsaved" | "conflict" }> {
       // #3115 r1 P2 / r2: only the exact pairing the owner confirmed — its hub AND its saved profile (bindingId); a
       // replacement Hub, or a re-pair of the same Hub since, is another pairing.
       const b = boundHub();
       if (!b || expected.hubId !== b.hubId || !b.binding || expected.binding !== b.binding) return { ok: false, error: "conflict" };
       const v = view();
       if (v.state !== "paired" && !(v.state === "held" && v.hold !== "disconnected" && v.memberOrigin)) return { ok: false, error: "conflict" };
-      generation++;
+      // The leave is the one wait in a disconnect: a second disconnect meanwhile is refused, and the pairing is checked
+      // again after it (a cancel, a connect or a re-pair during the wait: nothing more is done to the pairing), and so is the
+      // caller's own authority (#3675 r1 P2: a confirmation revoked during the wait fences and tombstones nothing).
+      if (leaving) return { ok: false, error: "conflict" };
+      const gen = ++generation;
+      leaving = true;
+      let left: boolean;
+      try { left = await sendLeave(deps.leave, { hubId: b.hubId, binding: b.binding }); } finally { leaving = false; }
+      const after = boundHub();
+      let still = false; try { still = current(); } catch { still = false; }
+      if (!still || gen !== generation || !after || after.hubId !== b.hubId || after.binding !== b.binding) return { ok: false, error: "conflict" };
       try { deps.fence?.(); } catch { /* fenced on the tombstone below either way */ }
       try { write({ ...read(), disconnected: { at: now() } }); } catch { return { ok: false, error: "unsaved" }; }
       changed();
       try { await deps.withdrawAll?.(); } catch { return { ok: false, error: "unsaved" }; }
-      return { ok: true, remote: "pending" };
+      return { ok: true, remote: "pending", ...(deps.leave ? { left } : {}) };
     },
     /**
      * Whether S5 must refuse to connect with `hubId`'s profile (#3115 r1 P5: fails closed). It may connect only while
@@ -290,4 +308,15 @@ export function currentBinding(home: string, profiles: (home: string, hubId: str
     if (r && store.profileDigest() === r.profile) return null;
     return { hubId: st.hubId };
   } catch { return null; }
+}
+
+/** M-2921: how long a disconnect waits for member.leave to go out before it fences the link anyway. */
+export const LEAVE_WAIT_MS = 2_000;
+async function sendLeave(leave: HubMemberPairingDeps["leave"], expected: { hubId: string; binding: string }): Promise<boolean> {
+  if (!leave) return false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([Promise.resolve().then(() => leave(expected)).then(r => r === true, () => false),
+      new Promise<boolean>(yes => { timer = setTimeout(() => yes(false), LEAVE_WAIT_MS); timer.unref?.(); })]);
+  } finally { if (timer) clearTimeout(timer); }
 }
