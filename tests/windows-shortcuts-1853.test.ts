@@ -48,7 +48,7 @@ describe("shortcuts and the fast path (static)", () => {
     expect(at).toBeLessThan(code.indexOf("if (-not (Test-WindowsNetwork))"));          // … before the network check, so before anything is installed
     expect(at).toBeLessThan(code.indexOf("Write-Step 1 $TOTAL"));
     const block = code.slice(at, code.indexOf("if (-not (Test-WindowsNetwork))"));
-    expect(block).toMatch(/\$made = @\(Install-AgendShortcuts \$existing\.Distro \$existing\.User\)\n\s*\$null = Write-ShortcutResult \$made/);
+    expect(block).toMatch(/\$made = @\(Install-AgendShortcuts \$existing\.Distro \$existing\.User \$AGEND_ICONS\)\n\s*\$null = Write-ShortcutResult \$made/);
     expect(block).toMatch(/Read-Host "按 Enter 結束"; exit 0/);
     expect(block).not.toMatch(/Invoke-WslStep|wsl --install|agend setup|Mark-Stage/);
   });
@@ -60,7 +60,7 @@ describe("shortcuts and the fast path (static)", () => {
     for (const command of sent) expect(command).not.toContain('"');
   });
   it("the end of the install makes both shortcuts with the recorded user; the restart never shuts WSL down", () => {
-    expect(code).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)\n\$null = Write-ShortcutResult \$shortcuts/);
+    expect(code).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER \$AGEND_ICONS\)\n\$null = Write-ShortcutResult \$shortcuts/);
     expect(restartFn).not.toMatch(/--shutdown/);
     expect(restartFn).not.toMatch(/-u root/);
     const openerFn = text.slice(text.indexOf("$DASHBOARD_OPENER_FN = @'"), text.indexOf("\n'@", text.indexOf("$DASHBOARD_OPENER_FN = @'")));
@@ -194,7 +194,7 @@ Write-Output 'PARSED_OK'`, bin);
     writeFileSync(join(dir, "run-restart.ps1"), `function Start-Sleep { param($Seconds, $Milliseconds) }\n. (Join-Path $env:TMPDIR 'restart-agend.ps1')\n`);
     const r = spawnSync("pwsh", ["-NoProfile", "-File", join(dir, "run-restart.ps1")], { encoding: "utf8", timeout: 10000, input: "y\n\n", env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: dir } });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)");
+    expect(r.stdout).toContain("確定要重啟 AgEnD 嗎？所有 Agent 會重新啟動，正在進行的工作會中斷。(y/N)");
     expect(calls(bin)).toBe(`-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 355 bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}agend status\n`);
   });
 });
