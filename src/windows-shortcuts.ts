@@ -127,9 +127,9 @@ export function encodePowershell(script: string): string {
  * M-2885: what -EncodedCommand carries — only this loader. The script itself (the shared code, then the icons) arrives on
  * standard input, read WHOLE and run at the top level as ONE script block (never line by line). Windows' command line
  * holds 32,767 characters; the script with its icons is far longer.
- * Standard input carries base64 of the script's UTF-8 bytes — ASCII only: Windows PowerShell 5.1 passes redirected input
- * through the console code page, which turned 「AgEnD 儀表板」 into "AgEnD ???" (a name Windows cannot save) on a real
- * Windows; ASCII passes through every code page unchanged.
+ * Standard input carries base64 of the script's UTF-8 bytes — ASCII only, which no console code page can alter, whatever
+ * Windows PowerShell 5.1 does with redirected input. (The "AgEnD ???" first seen on a real Windows was not this: it was
+ * WScript.Shell saving through the ANSI code page — see New-AgendShortcut.)
  */
 export const STDIN_LOADER = "$ErrorActionPreference = 'Stop'; $r = New-Object IO.StreamReader([Console]::OpenStandardInput(), [Text.Encoding]::ASCII); $b = $r.ReadToEnd(); $r.Dispose(); $s = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b.Trim())); . ([ScriptBlock]::Create($s))";
 

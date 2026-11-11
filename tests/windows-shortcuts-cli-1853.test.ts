@@ -67,7 +67,7 @@ describe("one copy of the shortcut code", () => {
     const args = powershellArgs();
     expect(decode(args)).toBe(STDIN_LOADER);
     expect(PS.length + args.join(" ").length).toBeLessThan(1_000);
-    // Base64 of the UTF-8 script, so standard input is ASCII: 5.1 passes it through the console code page (a real Windows turned 儀表板 into ???).
+    // Base64 of the UTF-8 script, so standard input is ASCII: no console code page can alter it.
     expect(STDIN_LOADER).toMatch(/\[Text\.Encoding\]::UTF8\.GetString\(\[Convert\]::FromBase64String\(\$b\.Trim\(\)\)\)/);
     expect(stdinPayload("中文")).toMatch(/^[A-Za-z0-9+/=]+$/);
     expect(Buffer.from(stdinPayload("Write-Output '儀表板'"), "base64").toString("utf8")).toBe("Write-Output '儀表板'");
