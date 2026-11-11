@@ -208,8 +208,20 @@ export function wanderTarget(name, seat, graph, t, seats = []) {
  * when the page was opened.
  */
 export const VISIT = { STROLL: 100, EPOCH: 45 };
-/** The walk from `a` to the middle of `area` along `graph` (as createWalkers routes it), in ms. */
+/**
+ * The walk from `a` to the middle of `area` along `graph` (as createWalkers routes it), in ms. Kept per graph (the
+ * layout object, the same one tick after tick) by seat and area: walkTargets asks for every idle person every second,
+ * and a route over the pack's graph each time is work thrown away.
+ */
+const WALKS = new WeakMap();
 function walkMs(graph, a, area) {
+  let memo = WALKS.get(graph);
+  if (!memo) WALKS.set(graph, (memo = new Map()));
+  const key = `${a.x},${a.y}\u0000${area.rect.x},${area.rect.y},${area.rect.w},${area.rect.h}`;
+  if (!memo.has(key)) memo.set(key, routeMs(graph, a, area));
+  return memo.get(key);
+}
+function routeMs(graph, a, area) {
   const z = { x: area.rect.x + area.rect.w / 2, y: area.rect.y + area.rect.h / 2 };
   const via = routeVia({ waypoints: graph.waypoints || [], edges: graph.edges || [] }, a, z);
   return Math.ceil(pathLength(graph.straight ? straighten(via) : via) / WALK.SPEED);
@@ -225,7 +237,7 @@ export function visitAt(name, home, graph, t, from = null) {
   if (!opts.length) return null;
   const sum = opts.reduce((n, v) => n + v.weight, 0), P = WANDER.PERIOD, phase = nameHash(name) % P;
   const turn = Math.floor((t + phase) / P), first = Math.floor(turn / VISIT.EPOCH) * VISIT.EPOCH, edge = (first + VISIT.EPOCH) * P;
-  const walks = new Map(), walk = (a) => { if (!walks.has(a)) walks.set(a, walkMs(graph, home, own(areas, a))); return walks.get(a); };
+  const walk = (a) => walkMs(graph, home, own(areas, a));
   let busy = -Infinity, on = null;                                 // in turn time (t + phase)
   for (let j = first; j <= turn; j++) {
     const at = j * P;
