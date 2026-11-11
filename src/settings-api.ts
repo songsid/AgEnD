@@ -1711,15 +1711,18 @@ export function handleSettingsRequest(
       if (body.quota_notice === null) delete merged.quota_notice;
       if (body.backend_options === null) delete merged.backend_options;
       // M-2909 (as for an agent, #3212): moving a room onto a signed-out profile would leave its agent at a sign-in prompt.
-      if (body.backend_options !== undefined) {
+      // Prism on #3691: the binding before (its current backend and options) against after (the merged ones), whenever
+      // either can change — a backend change can land the room on a saved or inherited profile of the other CLI.
+      if (body.backend_options !== undefined || body.backend !== undefined) {
         const cd = (classic.defaults && typeof classic.defaults === "object" ? classic.defaults : {}) as Record<string, unknown>;
-        const backend = String(merged.backend ?? cd.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code");
+        const backendOf = (room: Record<string, unknown>) => String(room.backend ?? cd.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code");
         const fleetOptions = ctx.fleetConfig?.defaults?.backend_options as Record<string, Record<string, unknown>> | undefined;
-        const before = classicProfile(normalizeBackendOptions((current as Record<string, unknown>).backend_options).options, fleetOptions, backend);
-        const after = classicProfile(normalizeBackendOptions(merged.backend_options).options, fleetOptions, backend);
-        if (after.state === "profile" && !(before.state === "profile" && before.name === after.name)) {
-          const login = signedOutCredentialProfile(ctx.dataDir, backend, after.name);
-          if (login) return json(res, 409, { error: "credential_profile_signed_out", backend, profile: after.name, loginCommand: login.loginCommand });
+        const beforeBackend = backendOf(current as Record<string, unknown>), afterBackend = backendOf(merged);
+        const before = classicProfile(normalizeBackendOptions((current as Record<string, unknown>).backend_options).options, fleetOptions, beforeBackend);
+        const after = classicProfile(normalizeBackendOptions(merged.backend_options).options, fleetOptions, afterBackend);
+        if (after.state === "profile" && !(before.state === "profile" && before.name === after.name && beforeBackend === afterBackend)) {
+          const login = signedOutCredentialProfile(ctx.dataDir, afterBackend, after.name);
+          if (login) return json(res, 409, { error: "credential_profile_signed_out", backend: afterBackend, profile: after.name, loginCommand: login.loginCommand });
         }
       }
       (channels as Record<string, unknown>)[key] = merged;

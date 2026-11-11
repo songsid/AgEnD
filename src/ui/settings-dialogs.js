@@ -861,11 +861,17 @@ export function useClassicForm({ room, ctx }) {
   // into the room's backend_options like any other room field (PATCH, the confirmation, a restart of its agent).
   const acctBackend = f.backend || inherited.backend;
   const ownOptions = c.backend_options && typeof c.backend_options === "object" && !Array.isArray(c.backend_options) ? c.backend_options : {};
-  const ownAccount = (ownOptions[acctBackend] && ownOptions[acctBackend].credential_profile) || "";
-  const [acct, setAcct] = useState(ownAccount);
+  const savedAccount = (b) => (ownOptions[b] && ownOptions[b].credential_profile) || "";
+  // Prism on #3691: one draft per CLI — the shown choice is the selected CLI's (its draft, else what is saved), and each
+  // explicit choice goes only into its own CLI's options (a backend change alone moves no account between CLIs).
+  const [acctDraft, setAcctDraft] = useState({});
+  const acct = Object.hasOwn(acctDraft, acctBackend) ? acctDraft[acctBackend] : savedAccount(acctBackend);
+  const setAcct = (value) => setAcctDraft((d) => ({ ...d, [acctBackend]: value }));
   const accountPatch = () => {
-    if (acct === ownAccount) return {};
-    const next = { ...ownOptions, [acctBackend]: { ...(ownOptions[acctBackend] || {}), credential_profile: acct || null } };
+    const edits = Object.entries(acctDraft).filter(([b, v]) => v !== savedAccount(b));
+    if (!edits.length) return {};
+    const next = { ...ownOptions };
+    for (const [b, v] of edits) next[b] = { ...(ownOptions[b] || {}), credential_profile: v || null };
     return { backend_options: next };
   };
   const pending = () => changedFields({

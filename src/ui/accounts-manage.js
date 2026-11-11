@@ -162,7 +162,7 @@ export function AddAccountDialog({ cli, label, machine = null, onClose, onAdded 
  * `row`: the named account's row (its `usedBy` from the view); `onMove(user)`: open where that user's account is set
  * ({ kind: "agent", name } | { kind: "default" }); `onRemoved()`: after the server removed it.
  */
-export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemoved }) {
+export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemoved, canMoveRooms = false }) {
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -203,7 +203,7 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
     ${inUse ? html`<div class="s-account-inuse" role="status"><p><strong>${tm("inUse")}</strong></p><ul>
       ${users.agents.map((name) => html`<li><span>${tm("inUseAgent", name)}</span>${moveBtn({ kind: "agent", name })}</li>`)}
       ${users.fleetDefault ? html`<li><span>${machine ? tm("inUseMachineDefault") : tm("inUseDefault", label)}</span>${machine ? null : moveBtn({ kind: "default" })}</li>` : null}
-      ${users.classic.map((key) => html`<li><span>${tm("inUseRoom", key)}</span><small class="note">${tm("roomHow")}</small>${machine ? null : moveBtn({ kind: "room", key })}</li>`)}
+      ${users.classic.map((key) => html`<li><span>${tm("inUseRoom", key)}</span><small class="note">${tm("roomHow")}</small>${machine || !canMoveRooms ? null : moveBtn({ kind: "room", key })}</li>`)}
     </ul></div>` : html`<div class="field"><label for="acctRemoveName">${tm("typeLabel", row.profile)}</label>
       <input id="acctRemoveName" value=${typed} autocomplete="off" spellcheck=${false} onInput=${(e) => { setTyped(e.target.value); setErr(""); setErrCode(""); }}
         onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); void go(); } }} /></div>`}

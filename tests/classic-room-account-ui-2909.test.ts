@@ -18,7 +18,7 @@ const CLAUDE = { backend: "claude-code", profiles: true, installed: true, fleetD
   ] };
 let view: any = { clis: [CLAUDE] };
 const fetchFake = async (url: string) => ({ ok: true, status: 200, json: async () => (String(url).startsWith("/ui/accounts") ? view : { login: null, targets: [] }) });
-let p: AppPage, A: any, S: any, i18n: any, shell: any, D: any;
+let p: AppPage, A: any, S: any, i18n: any, shell: any, D: any, M: any;
 beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19281/settings/agents", storage: { agend_tour_done: "1" } });
   (globalThis as any).fetch = fetchFake;
@@ -26,6 +26,7 @@ beforeAll(async () => {
   S = await import("/ui/js/backend-signin.js");
   A = await import("/ui/js/accounts-view.js");
   D = await import("/ui/js/settings-dialogs.js");
+  M = await import("/ui/js/accounts-manage.js");
 });
 afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
@@ -87,5 +88,39 @@ describe("the room's settings: Runtime & model → Account (M-2909)", () => {
     sel.value = "work"; fire(sel, "change"); await settle(4);
     expect(m.pending()).toEqual({ backend_options: { codex: { speed: "fast" }, "claude-code": { credential_profile: "work" } } });
     expect(buildSettingsImpactSchema().impacts["classic.backend_options"]).toBe("instance");   // the dialog says: on restart (of this room's agent)
+  });
+});
+
+describe("Prism on #3691", () => {
+  const roomCtx = (room: any) => ({ fleet: { defaults: {}, instances: {} }, classic: { defaults: {}, channels: { [room.key]: room } }, schema: buildSettingsImpactSchema(),
+    classicRuntime: () => ({ status: "running", backend: "claude-code", execution: "running" }), stageClassic: () => {}, staged: new Map(), drafts: new Map() });
+  async function form(room: any) {
+    A.accountsStore.set({ loaded: true, failed: false, view: { clis: [CLAUDE] } });
+    let m: any;
+    function Room() { m = D.useClassicForm({ room, ctx: roomCtx(room) }); return h("div", null, h(D.ClassicFields, { m, cat: "runtime" })); }
+    await p.mount(h(Room, null)); await settle(6);
+    return () => m;
+  }
+  it("P2-1: changing only the backend keeps each CLI's saved account (no overwrite)", async () => {
+    const m = await form({ key: "r", instanceName: "classic-r", backend: "claude-code", backend_options: { "claude-code": { credential_profile: "personal" }, codex: { credential_profile: "work" } } });
+    expect(m().acct).toBe("personal");
+    m().set("backend")("codex"); await settle(4);
+    expect([m().acct, m().pending()]).toEqual(["work", { backend: "codex" }]);
+  });
+  it("P2-1: two unsaved choices, one per backend, stay apart when switching back and forth", async () => {
+    const m = await form({ key: "r", instanceName: "classic-r", backend: "claude-code" });
+    m().setAcct("new-claude"); await settle(4);
+    m().set("backend")("codex"); await settle(4);
+    expect(m().acct).toBe("");
+    m().setAcct("new-codex"); await settle(4);
+    m().set("backend")("claude-code"); await settle(4);
+    expect([m().acct, m().pending()]).toEqual(["new-claude", { backend_options: { "claude-code": { credential_profile: "new-claude" }, codex: { credential_profile: "new-codex" } } }]);
+  });
+  it("P3: a Remove dialog from a view that can't open rooms (an older accounts-view.js) shows no room Move… — only where to change it", async () => {
+    const row = { scope: { kind: "host" }, backend: "claude-code", profile: "work", state: "usable", usedBy: { agents: [], classic: ["123#discord"], fleetDefault: false } };
+    await p.mount(h(M.RemoveAccountDialog, { cli: CLAUDE, row, label: "Claude Code", onClose: () => {}, onMove: () => {}, onRemoved: () => {} }));
+    await settle(6);
+    const li = p.document.querySelector(".s-account-inuse li") ?? p.root.querySelector(".s-account-inuse li");
+    expect([li.querySelector("button"), text(li.querySelector("small"))]).toEqual([null, "In that room's settings: Runtime & model → Account."]);
   });
 });

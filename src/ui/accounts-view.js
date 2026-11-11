@@ -251,7 +251,7 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent, r
       onClose=${() => setSigningOut(null)} onMove=${(user) => moveUser(signingOut.cli.backend, user, openAgent, openRoom)}
       onDone=${() => { const s = signingOut, mine = ++interaction.current; void signedOut(s, () => mounted.current && interaction.current === mine); }} />` : null}
     ${removing ? html`<${RemoveAccountDialog} cli=${removing.cli} row=${removing.row} label=${cliLabel(removing.cli.backend)} onClose=${() => setRemoving(null)}
-      onRemoved=${() => void refreshAccounts({ fresh: true })} onMove=${(user) => moveUser(removing.cli.backend, user, openAgent, openRoom)} />` : null}
+      onRemoved=${() => void refreshAccounts({ fresh: true })} onMove=${(user) => moveUser(removing.cli.backend, user, openAgent, openRoom)} canMoveRooms=${typeof openRoom === "function"} />` : null}
   </section>`;
 }
 
