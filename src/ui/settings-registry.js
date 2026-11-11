@@ -85,6 +85,7 @@ const ROWS = [
   ["chat.classic-guilds", "chat", "#g-guilds", "settings.allowedGuilds", "classic.allowed_guilds", ["discord server", "guild", "allowed servers"], ["Discord 伺服器", "伺服器"]],
   // Fleet · Web dashboard
   ["dash.log-tab", "web-dashboard", "#webLogTab", "settings.webLogTab", "web.log_tab", ["log tab", "steps", "log"], ["Log 分頁", "紀錄", "步驟"]],
+  ["dash.log-thinking", "web-dashboard", "#webLogThinking", "settings.webLogThinking", "web.log_thinking", ["thinking", "activity", "chat timeline", "reasoning"], ["思考", "活動", "聊天時間軸"]],
   ["dash.usage-public", "web-dashboard", "#webUsagePublic", "settings.webUsagePublic", "web.usage_report_on_public_link", ["usage", "public link", "cost", "tokens"], ["用量", "公開連結", "費用"]],
   ["dash.preview-cdn", "web-dashboard", "#webPreviewCdn", "settings.webPreviewCdn", "web.preview_cdn", ["cdn", "libraries", "html preview", "chart", "jsdelivr", "cdnjs"], ["CDN", "函式庫", "HTML 預覽", "圖表"]],
   ["dash.office-levels", "web-dashboard", "#webOfficeLevels", "settings.webOfficeLevels", "web.office_levels", ["office", "level", "badge", "profile card"], ["辦公室", "等級", "徽章", "名片"]],
