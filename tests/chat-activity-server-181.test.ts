@@ -142,6 +142,8 @@ describe("the ledger keeps each row's transcript anchor across a restart", () =>
     const guest = { owner: { adapterId: "discord", userId: "1" } } as never;
     const row = { boot: "aa", id: 1, instance: "w", role: "user", sender: "x", text: "t", ts: "t", anchor: "web-9", from: "discord:2", channel: true } as never;
     expect(guestMessage(row, guest)).not.toHaveProperty("anchor");
+    const own = { ...(row as object), from: "discord:1" } as never;                       // the guest's own message keeps its anchor
+    expect(guestMessage(own, guest)).toHaveProperty("anchor", "web-9");
   });
 });
 

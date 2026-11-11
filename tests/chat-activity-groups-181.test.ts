@@ -145,6 +145,22 @@ describe("grouping: when the exact anchor is not there", () => {
     expect(shape(g.groups[0].items)).toEqual([]);
     expect(shape(g.groups[1].items)).toEqual(["tool:Bash"]);
   });
+  it("the cursor never goes back: a later reply's text is not given to an older row that says the same (an earlier turn whose steps are not loaded)", () => {
+    const s = [
+      { id: "u", turn: "t", ts: 100, kind: "user" } as LogStep,
+      { id: "r1", turn: "t", ts: 110, kind: "tool", tool: "mcp__agend__reply", status: "done", anchor: { messageId: "web-new-1", replyText: "Working on it." } } as LogStep,
+      { id: "r2", turn: "t", ts: 120, kind: "tool", tool: "mcp__agend__reply", status: "done", anchor: { replyText: "ok" } } as LogStep,
+      { id: "e", turn: "t", ts: 130, kind: "turn_end" } as LogStep,
+    ];
+    const rows = [
+      { boot: "b", id: 1, role: "agent", text: "ok", ts: new Date(10).toISOString() },                                  // an older turn's, same words
+      { boot: "b", id: 2, role: "user", text: "q", ts: new Date(99).toISOString() },
+      { boot: "b", id: 3, role: "agent", text: "Working on it.", ts: new Date(111).toISOString(), anchor: "web-new-1" },
+      { boot: "b", id: 4, role: "agent", text: "ok", ts: new Date(121).toISOString() },
+    ];
+    const g = groupSteps(rows, s, { now: 1e12 });
+    expect(g.groups.map((x: any) => [x.rowKey, x.level])).toEqual([["b-3", "id"], ["b-4", "text"]]);
+  });
   it("no id, no text match (the reply was edited): by time, within the slack", () => {
     const edited = noAnchor.map((r) => (r.role === "agent" ? { ...r, text: "(edited) " + r.text } : r));
     const g = groupSteps(edited, steps, { now });
