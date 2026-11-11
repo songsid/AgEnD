@@ -96,6 +96,8 @@ try {
           await page.getByRole("button", { name: c.lang === "zh-TW" ? "重新開始" : "Start over", exact: true }).waitFor();
           check(tag + " existing exact disconnect", writes.length === 1 && writes[0].body.hubId === hubId && writes[0].body.binding === binding, writes);
           await page.getByRole("button", { name: c.lang === "zh-TW" ? "重新開始" : "Start over", exact: true }).click();
+          await page.locator('#hub-connection[data-state="unconnected"]').waitFor();
+          await page.locator(".hub-connection-manual > summary").click();
           await page.locator("form.hub-connect").waitFor();
           check(tag + " existing cancel", writes.length === 2 && writes[1].path.endsWith("/cancel"), writes);
           await page.screenshot({ path: join(out, tag + "-ready-to-pair.png"), fullPage: true });
