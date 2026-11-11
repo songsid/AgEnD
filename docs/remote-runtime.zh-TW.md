@@ -207,3 +207,10 @@ Runtime 連上之後（第一次，或已儲存的配對資料重新連線），
 Runtime 會在那台電腦上讀取 `claude auth status`，對每個 credential profile 與電腦自己的預設登入，回報**完整的 email 與方案**，顯示成 `work · alice@example.com · Team`（設定 → Runtime 的電腦卡片，以及 Agent 的「Claude 帳號」選單）。同一個人的多個帳號前綴通常相同，縮短成 `al***@example.com` 會讓兩個帳號看起來一樣，所以顯示完整地址。email 只會經由 Runtime 與所配對 AgEnD 之間已驗證的連線傳送；不會被記錄，也不會出現在錯誤訊息、audit、通知或聊天回覆裡，Runtime 只把它存在該 profile 自己資料夾內的狀態快取中（Windows 上受該使用者資料夾的 ACL 保護，POSIX 為 `0600`）。沒有 email、含非 ASCII 字元、含空白或第二個 `@`、或超過 254 字元時不會回報（絕不截短後送出）；API key 登入顯示為「沒有帳號 email（API key）」。方案是 `free`、`pro`、`max`、`team`、`enterprise` 或 `unknown` 其中之一；AgEnD 只接受這個格式（舊版 Runtime 已快取的 `ab***@example.com` 仍可接受），其他一律視為通訊協定錯誤，錯誤訊息只指出欄位，不會附上內容。只有按「重新偵測」或 `agend-runtime login` 之後才會更新；不認得這個欄位的舊版 Runtime 就只是不顯示。
 
 **只有直接連到 dashboard 的 fleet 管理員看得到這些詳細資訊**（email 與方案；「直接連到」是指這台電腦、區網、tailnet 或自己的 proxy，見[三種連線方式比較](web-dashboard.zh-TW.md#三種連線方式比較)），在 Runtime 頁、Claude 帳號選單、設定 → Agents 與設定 → Accounts 看到。其他人看到的是同一個頁面但沒有這兩項，profile 名稱與是否已登入照舊：經由臨時公開連結或固定位址（named tunnel）登入的 session 看不到，即使是 fleet 管理員也一樣；guest、唯讀 session，以及用 CLI header token 呼叫的 Agent 也看不到。Agent 工具與 Agent 能讀到的內容裡也沒有。
+
+
+## Profile 資料夾的 Windows 權限
+
+Runtime 在讀取 profile 狀態前會檢查 Windows ACL，`--profile`／`AGEND_RUNTIME_HOME` 指定的自訂路徑也一樣。新目錄在建立時就只允許目前 Windows 使用者與 SYSTEM 存取。現有目錄不會被自動更改權限：擁有者及檔案、子目錄的存取權都只可屬於目前使用者、SYSTEM 或本機 Administrators。提高權限的 Windows 程序可能以 Administrators 作為新檔案的預設擁有者；它沿用同一組受信任身分，不會因此允許其他一般使用者或服務帳號。遇到 reparse point、共用子檔案、無法讀取的 ACL，或其他一般帳號可替換的父目錄，就會在讀取狀態前拒絕。父目錄的 ACL 與無關檔案都不會被改寫。
+
+每次最多檢查 20,000 個項目、25 秒（PowerShell 程序最多 30 秒），因此很大或很慢的 profile 也可能被拒絕。請選擇新的專用目錄，或由目錄擁有者檢查並限制既有權限；不要把整個家目錄或共用工作目錄當成 profile。舊的共用 profile 會被拒絕，不會自動改權限或搬移內容。這不能隔離同一個 Windows 使用者、SYSTEM 或本機管理員；機器憑證也尚未加密，請勿共用或同步 profile。CLI 既有登入檔、profile 擁有權與移除標記維持原樣。
