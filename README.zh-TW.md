@@ -108,6 +108,16 @@ AgEnD 是住在 Discord、Telegram 和你的瀏覽器裡的 AI 個人助理，�
 
 ## 開始用
 
+**用 AI 安裝。** 在要安裝 AgEnD 的電腦上，把這一行貼給 Claude Code（或其他程式代理）：
+
+```text
+請閱讀 https://songsid.github.io/AgEnD/agent-install.md ，照著幫我在這台電腦安裝並設定 AgEnD。
+```
+
+代理會照一份寫給它的[安裝步驟](https://songsid.github.io/AgEnD/agent-install.md)進行：先檢查已經裝了什麼，執行適合你系統的安裝程式，問你要怎麼使用 AgEnD（只用網頁、Telegram 或 Discord），並在只有你能做的地方停下來請你操作：Windows 的系統管理員核准、重新開機、建立 bot、登入帳號。bot token 由你自己輸入到 AgEnD 的設定頁，不會經過你和代理的對話。
+
+不用 AI：
+
 一行安裝（macOS / Linux — 自動裝 Node.js（經 nvm）+ tmux + agend，完成後跑 quickstart）：
 
 ```bash
