@@ -9,7 +9,7 @@
  *   desktop item unasked.
  * The real shortcuts are the user's Windows checklist; here the script runs in pwsh with COM and wsl.exe faked.
  */
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createServer, type ServerResponse } from "node:http";
@@ -244,7 +244,7 @@ if ($ComObject) {
   $shell = [pscustomobject]@{}
   $shell | Add-Member ScriptMethod CreateShortcut { param($p)
     $sc = [pscustomobject]@{ Path = $p; TargetPath = ''; Arguments = ''; Description = ''; IconLocation = '' }
-    $sc | Add-Member ScriptMethod Save { Add-Content (Join-Path $env:LOCALAPPDATA 'lnk.txt') ($this.Path + ' | ' + $this.TargetPath + ' | ' + $this.Arguments + ' | icon=' + $this.IconLocation) }
+    $sc | Add-Member ScriptMethod Save { if ($env:FAKE_SAVE_FAIL) { throw 'Unable to save shortcut' }; [IO.File]::WriteAllText($this.Path, ($this.TargetPath + ' | ' + $this.Arguments + ' | icon=' + $this.IconLocation)); Add-Content (Join-Path $env:LOCALAPPDATA 'lnk.txt') ($this.Path + ' | ' + $this.TargetPath + ' | ' + $this.Arguments + ' | icon=' + $this.IconLocation) }
     return $sc }
   return $shell
 }
@@ -352,9 +352,11 @@ Write-Output $text
       const q = user.replace(/'/g, "''");
       expect(restart.toString("utf8")).toContain(`Invoke-RestartAgend '${distro}' '${q}' -Wait | Out-Null`);
       expect(readFileSync(join(w.local, "AgEnD", "open-dashboard.ps1"), "utf8")).toContain(`Invoke-OpenDashboard '${distro}' '${q}' -Wait | Out-Null`);
-      const lnk = readFileSync(join(w.local, "lnk.txt"), "utf8");
-      expect(lnk).toMatch(/AgEnD 儀表板\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*open-dashboard\.ps1"/);
-      expect(lnk).toMatch(/AgEnD 重新啟動\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*restart-agend\.ps1"/);
+      // The shortcuts on the desktop under their Chinese names (saved under an ASCII name, then moved there), nothing else.
+      expect(readFileSync(join(w.dir, "Desktop", "AgEnD 儀表板.lnk"), "utf8")).toMatch(/^.*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*open-dashboard\.ps1" \| icon=$/);
+      expect(readFileSync(join(w.dir, "Desktop", "AgEnD 重新啟動.lnk"), "utf8")).toMatch(/^.*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*restart-agend\.ps1" \| icon=$/);
+      expect(readdirSync(join(w.dir, "Desktop")).sort()).toEqual(["AgEnD 儀表板.lnk", "AgEnD 重新啟動.lnk"]);
+      expect(readdirSync(join(w.local, "AgEnD")).filter(f => f.endsWith(".lnk"))).toEqual([]);
     } finally { rmSync(w.dir, { recursive: true, force: true }); }
   });
 
@@ -375,9 +377,37 @@ Write-Output 'CASE=icons'
       const lines = readFileSync(join(w.local, "lnk.txt"), "utf8").trim().split("\n");
       expect(lines).toHaveLength(4);
       expect(lines.slice(0, 2).every(l => l.endsWith(" | icon="))).toBe(true);                        // no icons: none set
-      expect(lines[2]).toMatch(/AgEnD 儀表板\.lnk \| .* \| icon=.*[\\/]AgEnD[\\/]agend\.ico,0$/);         // the same .lnk, now with its icon
-      expect(lines[3]).toMatch(/AgEnD 重新啟動\.lnk \| .* \| icon=.*[\\/]AgEnD[\\/]agend-restart\.ico,0$/);
-      expect(lines[2]!.split(" | ")[0]).toBe(lines[0]!.split(" | ")[0]);
+      expect(lines.every(l => /[\\/]AgEnD[\\/]shortcut-[0-9a-f]{32}\.tmp\.lnk \| /.test(l))).toBe(true);   // saved under an ASCII name
+      // The same desktop shortcuts, replaced in place, now with their icons.
+      expect(readFileSync(join(w.dir, "Desktop", "AgEnD 儀表板.lnk"), "utf8")).toMatch(/ \| icon=.*[\\/]AgEnD[\\/]agend\.ico,0$/);
+      expect(readFileSync(join(w.dir, "Desktop", "AgEnD 重新啟動.lnk"), "utf8")).toMatch(/ \| icon=.*[\\/]AgEnD[\\/]agend-restart\.ico,0$/);
+      expect(readdirSync(join(w.dir, "Desktop")).sort()).toEqual(["AgEnD 儀表板.lnk", "AgEnD 重新啟動.lnk"]);
+    } finally { rmSync(w.dir, { recursive: true, force: true }); }
+  });
+
+  it("M-2885 fix: a run that died midway left its temporaries — the next run removes them, and only them", async () => {
+    const w = scratchWindows();
+    try {
+      mkdirSync(join(w.local, "AgEnD"), { recursive: true });
+      for (const f of ["shortcut-0123456789abcdef0123456789abcdef.tmp.lnk", "shortcut-notes.txt", "mine.lnk"]) writeFileSync(join(w.local, "AgEnD", f), "x");
+      for (const f of ["AgEnD 儀表板.lnk.agend-new", "AgEnD 重新啟動.lnk.agend-new", "Other.lnk.agend-new", "Other.lnk"]) writeFileSync(join(w.dir, "Desktop", f), "x");
+      writeTail(w, "AgEnD", "root");
+      const out = await pwshFile(`(Invoke-Tail $env:CASE_ROOT (Join-Path $env:CASE_ROOT 'tail.ps1')) | Out-String | Write-Output`, { CASE_ROOT: w.dir });
+      expect(out).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
+      expect(readdirSync(join(w.local, "AgEnD")).filter(f => /shortcut-|\.lnk$/.test(f)).sort()).toEqual(["mine.lnk", "shortcut-notes.txt"]);
+      expect(readdirSync(join(w.dir, "Desktop")).sort()).toEqual(["AgEnD 儀表板.lnk", "AgEnD 重新啟動.lnk", "Other.lnk", "Other.lnk.agend-new"]);
+    } finally { rmSync(w.dir, { recursive: true, force: true }); }
+  });
+  it("M-2885 fix: when a shortcut cannot be made, the one already there stays as it was, and no temporary is left", async () => {
+    const w = scratchWindows();
+    try {
+      writeFileSync(join(w.dir, "Desktop", "AgEnD 儀表板.lnk"), "OLD");
+      writeTail(w, "AgEnD", "root");
+      const out = await pwshFile(`$env:FAKE_SAVE_FAIL = '1'; try { (Invoke-Tail $env:CASE_ROOT (Join-Path $env:CASE_ROOT 'tail.ps1')) | Out-String | Write-Output } finally { $env:FAKE_SAVE_FAIL = $null }`, { CASE_ROOT: w.dir });
+      expect(out).toMatch(/^AGEND_SHORTCUTS_MADE=0$/m);
+      expect(readFileSync(join(w.dir, "Desktop", "AgEnD 儀表板.lnk"), "utf8")).toBe("OLD");
+      expect(readdirSync(join(w.dir, "Desktop"))).toEqual(["AgEnD 儀表板.lnk"]);
+      expect(readdirSync(join(w.local, "AgEnD")).filter(f => f.endsWith(".lnk"))).toEqual([]);
     } finally { rmSync(w.dir, { recursive: true, force: true }); }
   });
 
@@ -488,7 +518,7 @@ describe.skipIf(!pwsh)("M-2885 with pwsh: the real process — loader on the com
       expect(r.status).toBe(0);
       expect(readFileSync(join(w.local, "AgEnD", "restart-agend.ps1"), "utf8")).toContain("確定要重啟 AgEnD 嗎");
       expect(readFileSync(join(w.local, "AgEnD", "agend-restart.ico")).equals(ICONS["agend-restart.ico"])).toBe(true);
-      expect(readFileSync(join(w.local, "lnk.txt"), "utf8")).toMatch(/AgEnD 重新啟動\.lnk \| .* \| icon=.*agend-restart\.ico,0/);
+      expect(readFileSync(join(w.dir, "Desktop", "AgEnD 重新啟動.lnk"), "utf8")).toMatch(/ \| icon=.*agend-restart\.ico,0$/);
       const failing = spawnSync("pwsh", powershellArgs(), { input: stdinPayload("Write-Output '中文 ok'\nexit 7\n"), encoding: "utf8", env, timeout: 60_000 });
       // The loader reads standard input WHOLE and runs it as one script block — never line by line: a here-string, a
       // function and an if/else that each span several lines only work that way (the leader's review of M-2885).

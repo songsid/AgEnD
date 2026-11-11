@@ -182,14 +182,28 @@ function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptTe
   $file = Join-Path $dir $scriptName
   [IO.File]::WriteAllText($file, $scriptText, (New-Object System.Text.UTF8Encoding $true))
   $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) ($name + '.lnk')
-  $shell = New-Object -ComObject WScript.Shell
-  $sc = $shell.CreateShortcut($lnk)
-  $cmd = Get-ShortcutCommand $file
-  $sc.TargetPath = $cmd.Target
-  $sc.Arguments = $cmd.Arguments
-  $sc.Description = $description
-  if ($icon) { $sc.IconLocation = $icon + ',0' }
-  $sc.Save()
+  $staged = $lnk + '.agend-new'
+  # WScript.Shell saves a shortcut through the system ANSI code page: on a Windows whose system language has no 儀表板
+  # (English, Japanese...) Save() on the Chinese name fails. So it is saved under an ASCII name here, then put in place
+  # by .NET (Unicode). Leftovers of a run that died midway are ours by name, and only those are removed.
+  Get-ChildItem -LiteralPath $dir -Filter 'shortcut-*.tmp.lnk' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+  if ([IO.File]::Exists($staged)) { [IO.File]::Delete($staged) }
+  $tmp = Join-Path $dir ('shortcut-' + [guid]::NewGuid().ToString('N') + '.tmp.lnk')
+  try {
+      $shell = New-Object -ComObject WScript.Shell
+      $sc = $shell.CreateShortcut($tmp)
+      $cmd = Get-ShortcutCommand $file
+      $sc.TargetPath = $cmd.Target
+      $sc.Arguments = $cmd.Arguments
+      $sc.Description = $description
+      if ($icon) { $sc.IconLocation = $icon + ',0' }
+      $sc.Save()
+      # Beside the old one first (same folder, same volume), then swapped in: if that fails, the old shortcut stays.
+      [IO.File]::Copy($tmp, $staged, $true)
+      if ([IO.File]::Exists($lnk)) { [IO.File]::Replace($staged, $lnk, [NullString]::Value) } else { [IO.File]::Move($staged, $lnk) }
+  } finally {
+      foreach ($left in @($tmp, $staged)) { try { if ([IO.File]::Exists($left)) { [IO.File]::Delete($left) } } catch { } }
+  }
   return $lnk
 }
 function Install-AgendShortcuts([string]$distro, [string]$user, $icons = $null) {
