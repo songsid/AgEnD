@@ -87,6 +87,8 @@ it("checks the opened descriptor, not only the path before and after a replaceme
   );
   expect(await reader.look()).toBe("unavailable");
   expect(await cp.validateFile()).toBe(true);
+  appendFileSync(f.path, user("ours"));
+  expect(await reader.look()).toBe("unavailable");
 });
 it("a timed-out validation permanently retires admission while its one physical open drains", async () => {
   const f = fixture(),

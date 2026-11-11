@@ -31,6 +31,12 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     realpath: tracked(real.realpath),
     lstat: tracked(real.lstat),
     stat: tracked(real.stat),
+    opendir: tracked(async (...args: any[]) => {
+      const dir = await (real.opendir as any)(...args);
+      for (const name of ["read", "close"] as const)
+        (dir as any)[name] = tracked((dir as any)[name].bind(dir));
+      return dir;
+    }),
     open: tracked(async (...args: any[]) => {
       const fh = await (real.open as any)(...args);
       for (const name of ["read", "stat", "close"] as const)
@@ -520,4 +526,59 @@ describe("#2301 post-paste fallback keeps the session lease", () => {
       expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
     },
   );
+});
+
+
+describe("#2301 reader-observed replacement is permanent", () => {
+  it.each(["normal confirmation", "transcript fallback"] as const)(
+    "%s never revives after the original inode returns with late text",
+    async (phase) => {
+      const h = harness();
+      if (phase === "transcript fallback")
+        vi.spyOn(h.d, "confirmSubmitted").mockResolvedValue("unproven");
+      h.tmux.pasteBuffer.mockResolvedValue(true);
+      h.tmux.capturePane.mockImplementation(async () => ownedFrame(
+        h.tmux.pasteBuffer.mock.calls.length ? "after-fast.pane.txt" : "after-ready-120.pane.txt",
+      ));
+      const originalLook = TranscriptDeltaReader.prototype.look;
+      const seen: string[] = [];
+      const look = vi.spyOn(TranscriptDeltaReader.prototype, "look")
+        .mockImplementation(async function (this: TranscriptDeltaReader) {
+          if (seen.length) return originalLook.call(this);
+          const original = h.path + ".retained";
+          renameSync(h.path, original);
+          writeFileSync(h.path, readFileSync(original));
+          const result = await originalLook.call(this);
+          seen.push(result);
+          rmSync(h.path);
+          renameSync(original, h.path);
+          appendFileSync(h.path, h.rows.slice(1).join("\n") + "\n");
+          return result;
+        });
+      h.run();
+      await h.pump();
+      expect(seen).toEqual(["unavailable"]);
+      expect(h.state()).toBe("uncertain");
+      expect((h.box as any).db.prepare(
+        "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+      ).get(h.row.deliveryId)?.evidence).toBe(
+        "raw-paste-submit-proof:codex-session-binding-lost; not re-pasted",
+      );
+      expect(look).toHaveBeenCalledOnce();
+      expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
+      expect(h.tmux.sendSpecialKey).toHaveBeenCalledOnce();
+    },
+  );
+});
+
+it("local raw Codex skips the unbounded diagnostic checkpoint; ordinary deliveries retain it", async () => {
+  const h = harness();
+  const diagnostic = vi.fn(async () => ({ path: h.path, offset: 0, sessionId: "diagnostic-only" }));
+  h.d.transcriptMonitor.reconciliationCheckpoint = diagnostic;
+  h.run(); await h.pump();
+  expect(h.state()).toBe("delivered");
+  expect(diagnostic).not.toHaveBeenCalled();
+  const ordinary = await h.d.durableAttemptEvidence("@worker", false, false, false);
+  expect(diagnostic).toHaveBeenCalledOnce();
+  expect(ordinary.transcriptSessionId).toBe("diagnostic-only");
 });

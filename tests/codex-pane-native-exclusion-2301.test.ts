@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,4 +19,19 @@ it("native lifecycle cannot mint a coordinator-local Codex paste lease", async (
     });
     expect(await d.bindCodexRawPaste("@owned", () => true)).toBeNull();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("native raw Codex retains the Runtime-owned checkpoint", async () => {
+  const reference = { cursor: { offset: 42, sessionId: "runtime-session" } };
+  const local = vi.fn(async () => null), runtime = vi.fn(async () => reference);
+  const d: any = Object.assign(Object.create(Daemon.prototype), {
+    config: { backend: "codex" },
+    nativePaneLifecycle: { current: (candidate: unknown) => candidate === reference },
+    transcriptMonitor: { reconciliationCheckpoint: local, reconciliationRuntimeCheckpoint: runtime },
+  });
+  const evidence = await d.durableAttemptEvidence("@native", false, false, true);
+  expect(runtime).toHaveBeenCalledOnce();
+  expect(local).not.toHaveBeenCalled();
+  expect(evidence.runtimeTranscript).toBe(reference);
+  expect(evidence.transcriptSessionId).toBe("runtime-session");
 });

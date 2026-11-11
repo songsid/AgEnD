@@ -873,7 +873,7 @@ type DurableDeliveryAttempt = {
   contentSha256?: string;
 };
 type DeliveryTranscriptCheckpoint = { backend: string; path: string; offset: number; ownedCodex?: {
-  identity: { dev: number; ino: number }; current(): boolean; validate(): Promise<boolean>;
+  identity: { dev: number; ino: number }; current(): boolean; validate(): Promise<boolean>; retire(): void;
 } };
 type DurableTranscriptCheckpoint =
   | (DeliveryTranscriptCheckpoint & { runtime?: never })
@@ -2604,18 +2604,19 @@ export class Daemon extends EventEmitter {
     steer: boolean,
     rawPaste = false,
   ): Promise<DeliveryAttemptEvidence> {
+    const backend = this.config.backend ?? this.backend?.binaryName ?? "unknown";
     let checkpoint = null, runtimeTranscript: RuntimeTranscriptReference | null = null;
     if (this.nativePaneLifecycle) {
       runtimeTranscript = await this.transcriptMonitor?.reconciliationRuntimeCheckpoint() ?? null;
       if (!runtimeTranscript || !this.nativePaneLifecycle.current(runtimeTranscript)) throw Error("Native transcript checkpoint is not current; no delivery was written");
-    } else {
+    } else if (!(rawPaste && backend === "codex")) {
+      // Local raw Codex uses only the bounded exact-UUID checkpoint acquired below.
       try { checkpoint = await this.transcriptMonitor?.reconciliationCheckpoint() ?? null; }
       catch (err) { this.logger.debug({ err }, "Could not checkpoint transcript before durable delivery"); }
     }
     const submissionMode: DurableSubmissionMode = rawPaste ? "raw_paste" : steer
       ? "steer"
       : handingOffToNativeQueue ? "native_queue_handoff" : "idle_submit";
-    const backend = this.config.backend ?? this.backend?.binaryName ?? "unknown";
     // The daemon does not synchronously probe CLI versions on the delivery
     // path. Until lifecycle supplies a version tied to this exact process,
     // queue handoffs persist an unknown resume contract and reconciliation
@@ -2977,7 +2978,7 @@ export class Daemon extends EventEmitter {
     // in the transcript it stays uncertain (with the pane's reason), never the output-edge outcome.
     const needle: TranscriptNeedle = rawPaste ? { rawText: rawPaste.text } : delivery.deliveryId;
     const bound = checkpoint.ownedCodex;
-    const reader = !checkpoint.runtime && bound ? new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, needle, bound.identity) : null;
+    const reader = !checkpoint.runtime && bound ? new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, needle, bound.identity, bound.retire) : null;
     let found = false;
     try {
       if (this.nativePaneLifecycle && !checkpoint.runtime) throw Error("Native proof cannot read a coordinator-local transcript path");
@@ -11435,7 +11436,7 @@ export class Daemon extends EventEmitter {
     const launchAtWrite = this.launchFenceEpoch;
     return {
       reader: checkpoint.runtime ? this.nativeTranscriptReader(checkpoint.runtime, needle)
-        : new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, needle, checkpoint.ownedCodex?.identity),
+        : new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, needle, checkpoint.ownedCodex?.identity, checkpoint.ownedCodex?.retire),
       current: () => !this.deliveryWritesStopping && this.spawnGeneration === spawnAtWrite
         && this.launchFenceEpoch === launchAtWrite && (stillCurrent?.() ?? true)
         && (!checkpoint.runtime || this.nativePaneLifecycle?.current(checkpoint.runtime) === true)
@@ -11485,7 +11486,7 @@ export class Daemon extends EventEmitter {
     };
     if (!await validate()) return null;
     return { backend: "codex", path: file.path, offset: file.offset, sessionId: file.sessionId,
-      ownedCodex: { identity: file.identity, current, validate } };
+      ownedCodex: { identity: file.identity, current, validate, retire: () => { retired = true; } } };
   }
 
   /** The CLI this daemon drives, for log lines shared by every backend ("claude-code", "codex", …). */
