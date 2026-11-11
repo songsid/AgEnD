@@ -342,7 +342,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (!Object.hasOwn(after.classic.channels, key) || !after.classic.channels[key] || typeof after.classic.channels[key] !== "object" || Array.isArray(after.classic.channels[key]))
       throw new SettingsConfirmationError(404, "classic_channel_not_found");
     after.classic.channels = { ...after.classic.channels, [key]: { ...after.classic.channels[key], ...record(body) } };
-    for (const key2 of ["model", "auto_pause_after", "tool_progress", "reply_completion_guard"]) if (after.classic.channels[key][key2] === null) delete after.classic.channels[key][key2];
+    for (const key2 of ["model", "auto_pause_after", "tool_progress", "reply_completion_guard", "backend_options"]) if (after.classic.channels[key][key2] === null) delete after.classic.channels[key][key2];
   } else if (path === "/ui/config") {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
     const patch = record(body);

@@ -44,9 +44,10 @@ register("accounts", {
     fleetDefaultTag: "fleet default",
     usageLabel: "Usage", winHours: "{0}h", winDays: "{0}d", winWeek: "7d", winStale: "(stale)",
     signIn: "Connect", signInAgain: "Reconnect", hostCommand: "Connect from chat", hostCommandHint: "This row cannot be connected from the dashboard. Send /login in chat, or ask General.",
-    moveHere: "Move agents here", moveTitle: "Move agents to {0}", moveLead: "Choose the {0} agents that should use {1}. Each restarts on it when you Save:",
+    moveHere: "Move agents here", moveTitle: "Move to {0}", moveLead: "Choose the {0} agents and ClassicBot rooms that should use {1}. Each restarts on it when you Save:",
+    moveRooms: "ClassicBot rooms",
     carry_claude: "Claude Code carries its conversation over.", carry_codex: "Codex keeps its conversation.", carry_kiro: "Kiro starts a new conversation, with a handover.",
-    moveNone: "Every {0} agent already uses this account.", moveStage: "Stage", cancel: "Cancel", current: "now: {0}",
+    moveNone: "Every {0} agent and ClassicBot room already uses this account.", moveStage: "Stage", cancel: "Cancel", current: "now: {0}",
     fleetDefault: "Fleet default for {0} agents", fleetDefaultHint: "Agents that don't choose an account use this one.",
     machine: "On {0}", machineReadOnly: "Read-only here", machineOnline: "online", machineOffline: "offline", machineDefaultTag: "this computer's default",
     machineNoUsage: "—", machineNoUsageHint: "That computer does not report usage.",
@@ -73,9 +74,10 @@ register("accounts", {
     fleetDefaultTag: "Fleet 預設",
     usageLabel: "用量", winHours: "{0}h", winDays: "{0}天", winWeek: "本週", winStale: "（未更新）",
     signIn: "連接", signInAgain: "重新連接", hostCommand: "從聊天連接", hostCommandHint: "這一列無法從儀表板連接。請在聊天傳 /login，或請 General。",
-    moveHere: "移入 Agent", moveTitle: "把 Agent 移到 {0}", moveLead: "選擇要改用 {1} 的 {0} Agent。按「儲存」後，各自會以它重新啟動：",
+    moveHere: "移入 Agent", moveTitle: "移到 {0}", moveLead: "選擇要改用 {1} 的 {0} Agent 與 ClassicBot 房間。按「儲存」後，各自會以它重新啟動：",
+    moveRooms: "ClassicBot 房間",
     carry_claude: "Claude Code 會帶著對話過去。", carry_codex: "Codex 保留原本的對話。", carry_kiro: "Kiro 會開新對話並附上交接。",
-    moveNone: "所有 {0} Agent 都已經使用這個帳號。", moveStage: "加入待儲存", cancel: "取消", current: "目前：{0}",
+    moveNone: "所有 {0} Agent 與 ClassicBot 房間都已經使用這個帳號。", moveStage: "加入待儲存", cancel: "取消", current: "目前：{0}",
     fleetDefault: "{0} Agent 的 Fleet 預設帳號", fleetDefaultHint: "沒有指定帳號的 Agent 會使用這個。",
     machine: "在 {0}", machineReadOnly: "這裡只能檢視", machineOnline: "在線", machineOffline: "離線", machineDefaultTag: "這台電腦的預設",
     machineNoUsage: "—", machineNoUsageHint: "那台電腦不回報用量。",
@@ -202,7 +204,7 @@ register("accounts", {
   "zh-TW": { onHost: "在這台 AgEnD 主機上" },
 });
 
-export function AccountsView({ instances, stageAgent, stageDefault, openAgent }) {
+export function AccountsView({ instances, stageAgent, stageDefault, openAgent, rooms, stageClassic, openRoom }) {
   const { loaded, failed, view } = useStore(accountsStore);
   // Settings read its data again (after a Save): so does this view.
   useEffect(() => { if (loaded) void refreshAccounts(); }, [instances]);
@@ -242,14 +244,14 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent })
     ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running} openAgent=${openAgent} onMove=${begin((row) => setMove({ cli, row }))} stageDefault=${stageDefault}
       onAdd=${begin((machine) => setAdding(machine ? { cli, machine } : cli))} onRemove=${begin((row) => setRemoving({ cli, row }))} onSignIn=${begin((target) => (target.machine ? openMachineSignIn(target) : openSignIn(target)))}
       onSignOut=${begin((row, mode) => setSigningOut({ cli, row, mode }))} />`)}
-    ${move ? html`<${MoveDialog} cli=${move.cli} row=${move.row} instances=${instances} stageAgent=${stageAgent} onClose=${() => setMove(null)} />` : null}
+    ${move ? html`<${MoveDialog} cli=${move.cli} row=${move.row} instances=${instances} stageAgent=${stageAgent} rooms=${rooms} stageClassic=${stageClassic} onClose=${() => setMove(null)} />` : null}
     ${adding ? html`<${AddAccountDialog} cli=${adding.machine ? adding.cli : adding} machine=${adding.machine || null} label=${cliLabel((adding.machine ? adding.cli : adding).backend)} onClose=${() => setAdding(null)}
       onAdded=${(name) => { const mine = ++interaction.current, a = adding; void (a.machine ? machineAdded(a.machine, name, () => mounted.current && interaction.current === mine) : accountAdded(a.backend, name, () => mounted.current && interaction.current === mine)); }} />` : null}
     ${signingOut ? html`<${SignOutDialog} cli=${signingOut.cli} row=${signingOut.row} mode=${signingOut.mode} label=${cliLabel(signingOut.cli.backend)}
-      onClose=${() => setSigningOut(null)} onMove=${(user) => moveUser(signingOut.cli.backend, user, openAgent)}
+      onClose=${() => setSigningOut(null)} onMove=${(user) => moveUser(signingOut.cli.backend, user, openAgent, openRoom)}
       onDone=${() => { const s = signingOut, mine = ++interaction.current; void signedOut(s, () => mounted.current && interaction.current === mine); }} />` : null}
     ${removing ? html`<${RemoveAccountDialog} cli=${removing.cli} row=${removing.row} label=${cliLabel(removing.cli.backend)} onClose=${() => setRemoving(null)}
-      onRemoved=${() => void refreshAccounts({ fresh: true })} onMove=${(user) => moveUser(removing.cli.backend, user, openAgent)} />` : null}
+      onRemoved=${() => void refreshAccounts({ fresh: true })} onMove=${(user) => moveUser(removing.cli.backend, user, openAgent, openRoom)} />` : null}
   </section>`;
 }
 
@@ -286,8 +288,10 @@ async function signedOut({ cli, row, mode }, current) {
   openSignIn({ backend: cli.backend, ...(row.profile ? { profile: row.profile } : {}) });
 }
 /** Remove's Move…: an agent's own dialog (its Account field), or the card's fleet-default selector. */
-function moveUser(backend, user, openAgent) {
+function moveUser(backend, user, openAgent, openRoom) {
   if (user.kind === "agent" && typeof openAgent === "function") { openAgent(user.name); return; }
+  // M-2909: a ClassicBot room's account is chosen in its own settings (Runtime & model → Account).
+  if (user.kind === "room" && typeof openRoom === "function") { openRoom(user.key); return; }
   if (user.kind === "default" && typeof document !== "undefined") {
     const sel = document.querySelector(`.s-account-card[data-backend="${backend}"] .s-account-default select`);
     if (sel) { sel.scrollIntoView?.({ block: "center" }); sel.focus(); }
@@ -419,10 +423,15 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
   </div>`;
 }
 
-/** The CLI's agents not on this account; the chosen ones are staged onto it (Settings' Save applies them). */
-function MoveDialog({ cli, row, instances, stageAgent, onClose }) {
+/**
+ * The CLI's agents and (M-2909) ClassicBot rooms not on this account; the chosen ones are staged onto it (Settings' Save
+ * applies them — a room through its own PATCH, as its settings would). An older server sends no `rooms`: agents only.
+ */
+function MoveDialog({ cli, row, instances, stageAgent, rooms, stageClassic, onClose }) {
   const others = cli.agents.filter((a) => a.profile !== row.profile && instances && Object.hasOwn(instances, a.name));
+  const roomList = typeof stageClassic === "function" && rooms ? (cli.rooms || []).filter((r) => r.profile !== row.profile && Object.hasOwn(rooms, r.key) && rooms[r.key]) : [];
   const [chosen, setChosen] = useState(() => new Set());
+  const [chosenRooms, setChosenRooms] = useState(() => new Set());
   const label = rowName(row);
   const stage = () => {
     for (const name of chosen) {
@@ -431,15 +440,25 @@ function MoveDialog({ cli, row, instances, stageAgent, onClose }) {
       opts[cli.backend] = { ...(opts[cli.backend] || {}), credential_profile: row.profile };
       stageAgent(name, inst, { backend_options: opts });
     }
+    for (const key of chosenRooms) {
+      const room = rooms[key];
+      const own = room.backend_options && typeof room.backend_options === "object" && !Array.isArray(room.backend_options) ? room.backend_options : {};
+      stageClassic({ key, ...room }, { backend_options: { ...own, [cli.backend]: { ...(own[cli.backend] || {}), credential_profile: row.profile } } });
+    }
     onClose();
   };
+  const toggle = (set) => (id, on) => set((s) => { const n = new Set(s); if (on) n.add(id); else n.delete(id); return n; });
+  const roomName = (key) => (rooms && rooms[key] && (rooms[key].name || rooms[key].display_name)) || key;
   return html`<${Dialog} title=${tx("moveTitle", label)} onClose=${onClose} actions=${html`<button type="button" class="btn" onClick=${onClose}>${tx("cancel")}</button>
-    <button type="button" class="btn btn-primary" disabled=${!chosen.size} onClick=${stage}>${tx("moveStage")}</button>`}>
-    ${!others.length ? html`<p class="note">${tx("moveNone", cliLabel(cli.backend))}</p>` : html`<p>${tx("moveLead", cliLabel(cli.backend), label)}</p>
+    <button type="button" class="btn btn-primary" disabled=${!chosen.size && !chosenRooms.size} onClick=${stage}>${tx("moveStage")}</button>`}>
+    ${!others.length && !roomList.length ? html`<p class="note">${tx("moveNone", cliLabel(cli.backend))}</p>` : html`<p>${tx("moveLead", cliLabel(cli.backend), label)}</p>
       <p class="note">${tx(CARRY_WORDS[capsOf(cli.backend)?.carry] || "carry_claude")}</p>
-      <ul class="s-account-move">${others.map((a) => html`<li><label class="check"><input type="checkbox" checked=${chosen.has(a.name)}
-        onChange=${(e) => setChosen((s) => { const n = new Set(s); if (e.target.checked) n.add(a.name); else n.delete(a.name); return n; })} />
-        <span>${a.name}</span><small class="note">${tx("current", a.profile || tx("def"))}</small></label></li>`)}</ul>`}
+      ${others.length ? html`<ul class="s-account-move">${others.map((a) => html`<li><label class="check"><input type="checkbox" checked=${chosen.has(a.name)}
+        onChange=${(e) => toggle(setChosen)(a.name, e.target.checked)} />
+        <span>${a.name}</span><small class="note">${tx("current", a.profile || tx("def"))}</small></label></li>`)}</ul>` : null}
+      ${roomList.length ? html`<p class="s-account-move-head"><strong>${tx("moveRooms")}</strong></p><ul class="s-account-move s-account-move-rooms">${roomList.map((r) => html`<li><label class="check"><input type="checkbox" checked=${chosenRooms.has(r.key)}
+        onChange=${(e) => toggle(setChosenRooms)(r.key, e.target.checked)} />
+        <span>${roomName(r.key)}</span><small class="note">${tx("current", r.profile || tx("def"))}</small></label></li>`)}</ul>` : null}`}
   </${Dialog}>`;
 }
 

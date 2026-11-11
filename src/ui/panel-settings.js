@@ -415,7 +415,9 @@ export function SettingsPanel({ route, navKey }) {
     : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} clearSearch=${() => setSearch("")} openDialog=${toDialog} /></${YamlLock}><details class="s-ui-disclosure s-ai-accounts"><summary><span>${layoutText("aiAccounts")}</span><small>${layoutText("aiAccountsSummary")}</small></summary><div class="s-disclosure-body s-auth-body">
         <div class="s-auth-scope"><${Icon} name="view" size=${18} /><div><strong>${layoutText("aiHostScope")}</strong><p>${layoutText("aiAccountsHint")}</p><a href=${settingsPath("runtimes")}>${layoutText("aiWindowsLink")}<span aria-hidden="true">→</span></a></div></div>
         <${AccountsView} instances=${ctx.fleet.instances || {}} stageAgent=${ctx.stageAgent}
+          rooms=${(ctx.classic && ctx.classic.channels) || {}} stageClassic=${ctx.stageClassic}
           openAgent=${(name) => { const insts = ctx.fleet.instances || {}; if (Object.hasOwn(insts, name)) toDialog({ kind: "agent", name, inst: insts[name] }); }}
+          openRoom=${(key) => { const rooms = (ctx.classic && ctx.classic.channels) || {}; if (Object.hasOwn(rooms, key) && rooms[key]) toDialog({ kind: "classic", room: { key, ...rooms[key] } }); }}
           stageDefault=${(backend, profile) => {
             // One change for every CLI's fleet default, carrying the whole map (the write replaces it whole).
             const opts = defaultsBackendOptions((ctx.fleet.defaults || {}).backend_options, stagedRef.current.get("defaults:account")?.request?.body?.backend_options, backend, profile);
@@ -799,7 +801,7 @@ export function makeCtx(data, setData, stage, unstage, reload, reloadLive, alive
     stageClassic(c, patch) {
       edit((d) => {
         const room = { ...d.classic.channels[c.key], ...patch };
-        for (const k of ["model", "auto_pause_after", "tool_progress", "reply_completion_guard"]) if (patch[k] === null) delete room[k];
+        for (const k of ["model", "auto_pause_after", "tool_progress", "reply_completion_guard", "backend_options"]) if (patch[k] === null) delete room[k];
         d.classic.channels[c.key] = room;
       });
       const hotOnly = Object.keys(patch).every((k) => impactOf(schema, `classic.${k}`) === "now");

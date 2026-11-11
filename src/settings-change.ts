@@ -282,8 +282,11 @@ function codexSpeedPath(path: readonly string[], old: unknown, next: unknown): b
  * additional confirmation (721ca0c3). Only this schema-owned leaf is immediate, never arbitrary credential fields.
  */
 function accountProfilePath(path: readonly string[], old: unknown, next: unknown): boolean {
-  if (path[0] !== "fleet" || path.at(-1) !== "credential_profile" || path.at(-3) !== "backend_options") return false;
-  if (!(path.length === 5 && path[1] === "defaults") && !(path.length === 6 && path[1] === "instances")) return false;
+  if (path.at(-1) !== "credential_profile" || path.at(-3) !== "backend_options") return false;
+  // An agent's, the fleet default's, or (M-2909) a ClassicBot room's own: classic.channels.<key>.backend_options.<cli>.credential_profile.
+  const fleetLeaf = path[0] === "fleet" && ((path.length === 5 && path[1] === "defaults") || (path.length === 6 && path[1] === "instances"));
+  const roomLeaf = path[0] === "classic" && path.length === 6 && path[1] === "channels";
+  if (!fleetLeaf && !roomLeaf) return false;
   if (!Object.hasOwn(CREDENTIAL_HOMES, path.at(-2)!)) return false;
   const allowed = (v: unknown) => v === undefined || v === null || typeof v === "string" && isCredentialProfileName(v);
   return allowed(old) && allowed(next);
