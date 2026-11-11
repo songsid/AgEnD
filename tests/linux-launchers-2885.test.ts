@@ -167,8 +167,8 @@ describe("M-2885: the desktop entry text", () => {
   });
   it("the agend that ran `agend shortcuts` goes first on the launchers' PATH (a menu does not read the shell's profile)", () => {
     expect(agendDirOnPath({ env: { PATH: "relative:/usr/bin:/opt/agend/bin" }, isExecutable: p => p === "/opt/agend/bin/agend" })).toBe("/opt/agend/bin");
-    expect(dashboardScript("/opt/a'b/bin")).toContain(`PATH='/opt/a'\\''b/bin':"$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; export PATH`);
-    expect(restartScript(null)).toContain(`PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; export PATH`);
+    expect(dashboardScript("/opt/a'b/bin", "/srv/agend-home")).toContain(`PATH='/opt/a'\\''b/bin':"$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; export PATH`);
+    expect(restartScript(null, "/srv/agend-home")).toContain(`PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; export PATH`);
   });
 });
 
@@ -192,7 +192,7 @@ describe("M-2885: the dashboard launcher's script (real sh)", () => {
   it("asks the fleet for a code, opens the sign-in page, copies the code (Wayland), shows it spaced, waits for Enter", () => {
     setLocale("zh-TW");
     const bin = fakeBin({ agend: AGEND_WEB, "xdg-open": "", "wl-copy": `cat >> "\${0%/*}/wl-copy.in"` });
-    const r = runScript(dashboardScript(null), bin, "\n", { WAYLAND_DISPLAY: "wayland-0" });
+    const r = runScript(dashboardScript(null, "/srv/agend-home"), bin, "\n", { WAYLAND_DISPLAY: "wayland-0" });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("儀表板登入碼： A B C D - E F 2 3");
     expect(r.stdout).toContain("[OK] 登入頁已在瀏覽器打開。");
@@ -206,15 +206,15 @@ describe("M-2885: the dashboard launcher's script (real sh)", () => {
   it("X11 with xclip: copied there; no clipboard tool: says to type it", () => {
     setLocale("en");
     const x = fakeBin({ agend: AGEND_WEB, "xdg-open": "", xclip: `cat > "\${0%/*}/xclip.in"` });
-    expect(runScript(dashboardScript(null), x, "\n", { DISPLAY: ":0" }).stdout).toContain("[OK] The code is copied");
+    expect(runScript(dashboardScript(null, "/srv/agend-home"), x, "\n", { DISPLAY: ":0" }).stdout).toContain("[OK] The code is copied");
     expect(readFileSync(join(x, "xclip.log"), "utf8")).toBe("-selection clipboard\n");
     const none = fakeBin({ agend: AGEND_WEB, "xdg-open": "" });
-    expect(runScript(dashboardScript(null), none, "\n", { DISPLAY: ":0" }).stdout).toContain("Type the code above on the sign-in page.");
+    expect(runScript(dashboardScript(null, "/srv/agend-home"), none, "\n", { DISPLAY: ":0" }).stdout).toContain("Type the code above on the sign-in page.");
   });
   it("the fleet does not answer: says AgEnD may not be running and how to start it; nothing opened; exit 1", () => {
     setLocale("en");
     const bin = fakeBin({ agend: "echo 'Web token not found. Is the fleet running?' >&2; exit 1", "xdg-open": "" });
-    const r = runScript(dashboardScript(null), bin, "\n");
+    const r = runScript(dashboardScript(null, "/srv/agend-home"), bin, "\n");
     expect(r.status).toBe(1);
     expect(r.stdout).toContain("[!!] The AgEnD dashboard can't be opened right now: AgEnD may not be running yet.");
     expect(r.stdout).toContain("agend start");
@@ -227,7 +227,7 @@ describe("M-2885: the restart launcher's script (real sh)", () => {
   it.each(["", "n", "no", "yes", " Y x"])("answer %j: no restart (only y or Y), says so", (answer) => {
     setLocale("en");
     const bin = fakeBin({ agend: AGEND });
-    const r = runScript(restartScript(null), bin, `${answer}\n\n`);
+    const r = runScript(restartScript(null, "/srv/agend-home"), bin, `${answer}\n\n`);
     expect(r.stdout).toContain("Restart AgEnD? Every agent restarts, and work in progress is interrupted. (y/N)");
     expect(r.stdout).toContain("Not restarted.");
     expect(existsSync(join(bin, "agend.log"))).toBe(false);
@@ -235,7 +235,7 @@ describe("M-2885: the restart launcher's script (real sh)", () => {
   it.each(["y", " Y "])("answer %j: restarts, then shows the status, waits for Enter", (answer) => {
     setLocale("zh-TW");
     const bin = fakeBin({ agend: AGEND });
-    const r = runScript(restartScript(null), bin, `${answer}\n\n`);
+    const r = runScript(restartScript(null, "/srv/agend-home"), bin, `${answer}\n\n`);
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("[OK] AgEnD 正在重新啟動。");
     expect(r.stdout).toContain("  Fleet: running (4 instances)");
@@ -244,15 +244,15 @@ describe("M-2885: the restart launcher's script (real sh)", () => {
   it("not running: says so with how to start it; another error: says it failed and shows AgEnD's words", () => {
     setLocale("en");
     const down = fakeBin({ agend: "echo 'Fleet not running'; exit 1" });
-    expect(runScript(restartScript(null), down, "y\n\n").stdout).toContain("[!!] AgEnD is not running, so there is nothing to restart. To start it: agend start");
+    expect(runScript(restartScript(null, "/srv/agend-home"), down, "y\n\n").stdout).toContain("[!!] AgEnD is not running, so there is nothing to restart. To start it: agend start");
     const broken = fakeBin({ agend: "echo 'database is locked'; exit 2" });
-    const r = runScript(restartScript(null), broken, "y\n\n");
+    const r = runScript(restartScript(null, "/srv/agend-home"), broken, "y\n\n");
     expect(r.stdout).toContain("[!!] The restart did not succeed: AgEnD reported an error.");
     expect(r.stdout).toContain("  database is locked");
   });
   it("no agend anywhere: says so; nothing runs", () => {
     setLocale("en");
-    const r = spawnSync("/bin/sh", ["-c", restartScript(null)], { input: "y\n\n", encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: scratch() } });
+    const r = spawnSync("/bin/sh", ["-c", restartScript(null, "/srv/agend-home")], { input: "y\n\n", encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: scratch() } });
     expect(r.stdout).toContain("[!!] AgEnD (the agend command) was not found, so nothing was restarted.");
     expect(r.status).toBe(1);
   });
@@ -283,5 +283,39 @@ describe("M-2885: the one-time line after an install or update", () => {
     ["the launchers exist", { exists: (p: string) => p === `/d/${LINUX_LAUNCHERS_MARKER}` }],
   ])("%s: nothing", (_n, over) => {
     expect(launchersHintOnce(base(over).o)).toBeNull();
+  });
+});
+
+describe("M-2885 (Prism #3635 P2): the launchers serve the fleet they were made for, in the data base the desktop reads", () => {
+  const AGEND_LOG = `printf '%s|%s\\n' "$1" "\${AGEND_HOME-<unset>}" >> "\${0%/*}/agend.env"; case "$1" in restart) exit 0;; status) echo ok;; web) printf 'Sign-in page: http://localhost:1/signin\\nCode:         ABCD-EF23   (x)\\n';; esac`;
+  it.each([
+    ["the click's environment has no AGEND_HOME", {}],
+    ["the click's environment names another fleet", { AGEND_HOME: "/elsewhere/.agend" }],
+  ])("a custom AGEND_HOME is bound into both scripts — %s", async (_n, env) => {
+    const r = rig();
+    const custom = join(r.home, "fleets", "it's mine");
+    expect(await runLinuxLaunchers({ ...r.deps, dataDir: custom })).toBe(0);
+    const bin = fakeBin({ agend: AGEND_LOG, "xdg-open": "" });
+    runScript(readFileSync(join(r.paths.scripts, "restart-agend.sh"), "utf8"), bin, "y\n\n", env);
+    runScript(readFileSync(join(r.paths.scripts, "open-dashboard.sh"), "utf8"), bin, "\n", env);
+    expect(readFileSync(join(bin, "agend.env"), "utf8")).toBe(`restart|${custom}\nstatus|${custom}\nweb|${custom}\n`);
+  }, 30_000);
+  it("control: the default data dir is bound the same way (it is what the CLI resolved)", async () => {
+    const r = rig();
+    expect(await runLinuxLaunchers(r.deps)).toBe(0);
+    expect(readFileSync(join(r.paths.scripts, "restart-agend.sh"), "utf8")).toContain(`AGEND_HOME='${r.data}'; export AGEND_HOME`);
+  });
+  it("an absolute XDG_DATA_HOME holds the entries, icons and scripts; a relative one is invalid (basedir spec) and ~/.local/share is used", async () => {
+    const r = rig();
+    const data = join(r.home, "xdg data");
+    r.deps.host.env = { ...r.deps.host.env, XDG_DATA_HOME: data };
+    expect(await runLinuxLaunchers(r.deps)).toBe(0);
+    expect(existsSync(join(data, "applications", "agend-dashboard.desktop"))).toBe(true);
+    expect(existsSync(join(data, "icons", "hicolor", "48x48", "apps", "agend.png"))).toBe(true);
+    expect(readFileSync(join(data, "applications", "agend-restart.desktop"), "utf8")).toContain(`Exec=/bin/sh "${join(data, "agend", "launchers", "restart-agend.sh")}"`);
+    expect(existsSync(join(r.home, ".local", "share", "applications"))).toBe(false);
+    expect(launcherPaths("/h", { XDG_DATA_HOME: "relative/data" }).applications).toBe("/h/.local/share/applications");
+    expect(launcherPaths("/h", { XDG_DATA_HOME: "  " }).applications).toBe("/h/.local/share/applications");
+    expect(launcherPaths("/h", {}).hicolor).toBe("/h/.local/share/icons/hicolor");
   });
 });

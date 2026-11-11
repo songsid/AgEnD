@@ -79,9 +79,14 @@ export function desktopEntry(e: LauncherEntry): string {
   ].join("\n");
 }
 
-/** The launchers' PATH: the agend that made them first, then where npm/nvm installs usually put it. */
-function pathPrelude(agendDir: string | null): string {
+/**
+ * The launchers' environment: the fleet they were made for (AGEND_HOME, bound — a click from the desktop session need not
+ * carry the shell's AGEND_HOME, Prism #3635 P2), then PATH: the agend that made them first, then where npm/nvm installs
+ * usually put it.
+ */
+function pathPrelude(agendDir: string | null, agendHome: string): string {
   return [
+    `AGEND_HOME=${shQuote(agendHome)}; export AGEND_HOME`,
     `PATH=${agendDir ? `${shQuote(agendDir)}:` : ""}"$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; export PATH`,
     `if ! command -v agend >/dev/null 2>&1 && [ -s "$HOME/.nvm/nvm.sh" ]; then . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1; fi`,
   ].join("\n");
@@ -91,11 +96,11 @@ const say = (key: string) => `printf '%s\\n' ${shQuote(t(key))}`;
 const WAIT = (key = "launchers.close") => `printf '%s' ${shQuote(t(key) + " ")}; read _ || true`;
 
 /** The dashboard launcher's script (the Windows opener's behaviour, in sh). */
-export function dashboardScript(agendDir: string | null): string {
+export function dashboardScript(agendDir: string | null, agendHome: string): string {
   return [
     "#!/bin/sh",
     "# AgEnD 儀表板 — written by `agend shortcuts` (M-2885); `agend shortcuts` writes it again.",
-    pathPrelude(agendDir),
+    pathPrelude(agendDir, agendHome),
     `out=$(agend web --code 2>&1); rc=$?`,
     `url=$(printf '%s\\n' "$out" | sed -n 's/^Sign-in page: *\\(https\\{0,1\\}:\\/\\/[^ ]*\\).*/\\1/p' | head -n 1)`,
     `code=$(printf '%s\\n' "$out" | sed -n 's/^Code: *\\([A-Z2-7]\\{4\\}-\\{0,1\\}[A-Z2-7]\\{4\\}\\)\\( .*\\)\\{0,1\\}$/\\1/p' | head -n 1)`,
@@ -127,11 +132,11 @@ export function dashboardScript(agendDir: string | null): string {
 }
 
 /** The restart launcher's script: asks first (no by default), then restarts and shows the status. */
-export function restartScript(agendDir: string | null): string {
+export function restartScript(agendDir: string | null, agendHome: string): string {
   return [
     "#!/bin/sh",
     "# AgEnD 重新啟動 — written by `agend shortcuts` (M-2885); `agend shortcuts` writes it again.",
-    pathPrelude(agendDir),
+    pathPrelude(agendDir, agendHome),
     `printf '\\n%s ' ${shQuote(t("launchers.restart_ask"))}`,
     `read answer || answer=`,
     `case "$(printf '%s' "$answer" | tr -d ' \\t')" in`,
@@ -184,12 +189,17 @@ export interface LinuxLaunchersDeps {
 const DASHBOARD = { file: "agend-dashboard.desktop", script: "open-dashboard.sh", icon: "agend", ico: "agend.ico" as const };
 const RESTART = { file: "agend-restart.desktop", script: "restart-agend.sh", icon: "agend-restart", ico: "agend-restart.ico" as const };
 
-/** Where each piece goes, under this home. */
-export function launcherPaths(home: string) {
+/**
+ * Where each piece goes: under $XDG_DATA_HOME when it is an absolute path, else ~/.local/share (XDG Base Directory
+ * Specification: a relative value is invalid and ignored). Menus and icon themes look there (Prism #3635 P2).
+ */
+export function launcherPaths(home: string, env: NodeJS.ProcessEnv = {}) {
+  const xdg = env.XDG_DATA_HOME?.trim();
+  const data = xdg && xdg.startsWith("/") ? xdg : join(home, ".local", "share");
   return {
-    applications: join(home, ".local", "share", "applications"),
-    scripts: join(home, ".local", "share", "agend", "launchers"),
-    hicolor: join(home, ".local", "share", "icons", "hicolor"),
+    applications: join(data, "applications"),
+    scripts: join(data, "agend", "launchers"),
+    hicolor: join(data, "icons", "hicolor"),
   };
 }
 
@@ -206,13 +216,13 @@ export async function runLinuxLaunchers(deps: LinuxLaunchersDeps): Promise<numbe
   const { host } = deps;
   if (!linuxDesktopSession(host.env)) { deps.log(t("launchers.no_desktop")); return 1; }
   deps.log(t("launchers.making"));
-  const paths = launcherPaths(host.home);
+  const paths = launcherPaths(host.home, host.env);
   const agendDir = agendDirOnPath(host);
   const icons = deps.icons();
   const made: string[] = [];
   try {
     for (const dir of [paths.applications, paths.scripts]) mkdirSync(dir, { recursive: true });
-    for (const [which, text] of [[DASHBOARD, dashboardScript(agendDir)], [RESTART, restartScript(agendDir)]] as const) {
+    for (const [which, text] of [[DASHBOARD, dashboardScript(agendDir, deps.dataDir)], [RESTART, restartScript(agendDir, deps.dataDir)]] as const) {
       const script = join(paths.scripts, which.script);
       writeFileSync(script, text, { mode: 0o755 });
       chmodSync(script, 0o755);

@@ -557,6 +557,15 @@ describe("#2264 review (Prism r1 P1): the service stays under the manager it has
   });
 });
 
+describe("M-2885 (Prism #3635 P3): the one-time shortcuts line ends every successful install, the first unconfigured one too", () => {
+  it("a fresh install with no fleet yet: says to run quickstart, then the line — nothing else of agend runs", () => {
+    const r = unitRig();
+    expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], r.deps)).toBe(0);
+    expect(r.log.join("\n")).toContain("Next: run `agend quickstart` to set up AgEnD.");
+    expect(r.calls.filter(c => c.startsWith("agend"))).toEqual(["agend shortcuts --hint"]);
+  });
+});
+
 describe("#2264 review (Prism r1 P2): the update marker is written only by the installer that owns it", () => {
   const marker = (pid: number, stage = "downloading") => JSON.stringify({ startedAt: 1_000, pid, progress: { operation: "update", stage, target: { adapterId: "t", chatId: "1", messageId: "2" } } });
   it("refused by a live installer's lock: another update's marker is left byte for byte", () => {

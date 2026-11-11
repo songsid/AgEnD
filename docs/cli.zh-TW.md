@@ -278,10 +278,12 @@ agend export --full [path]      # 匯出配置＋所有實例資料
                                 # （2.3.4）檔案只有自己能讀（0600）；預設檔名含時間，
                                 # 指定的路徑已存在時拒絕，不會覆蓋
 agend import <file>             # 從匯出檔案匯入配置
-agend shortcuts                 # WSL：建立或更新 Windows 桌面捷徑
+agend shortcuts                 # WSL：Windows 桌面捷徑；Linux 桌面：啟動器
 ```
 
-**從 WSL 建立 Windows 桌面捷徑（#1853）。** `agend shortcuts` 會在 Windows 桌面建立（或更新）**AgEnD 儀表板**和 **AgEnD 重新啟動**，給安裝時還沒有這兩個捷徑、或平常只用 `agend update` 更新的人使用。它透過 WSL interop，在 Windows PowerShell 裡執行 Windows 安裝程式自己的捷徑程式碼，對象是目前這個 Linux（`WSL_DISTRO_NAME`）和執行它的使用者，並記到 `%LOCALAPPDATA%\AgEnD\install.json`（和安裝程式寫的是同一個檔案）。每個捷徑的第一行會顯示它打開的 Linux 和使用者（「AgEnD（Linux：AgEnD，使用者：root）」）。如果 install.json 已經指向另一個 Linux 或使用者（例如 AgEnD 專用的 Linux 和你原本的 Ubuntu），會先說明並詢問才切換；沒有終端機可以詢問時就不做任何變更。不在 WSL 裡時不做任何變更。interop 關閉時（沒有 `WSLInterop` 的 binfmt 項目，或找不到 `powershell.exe`），它會直接說明，並指出另一個方法：再貼一次 Windows 一行安裝指令，已經裝好 AgEnD 的電腦上它只會問要不要更新捷徑。在還沒有捷徑的 WSL 終端機裡執行 `agend update` 之後，會出現一行提示建議執行 `agend shortcuts`，只出現一次（聊天裡的 `/update` 沒有終端機，所以不會出現）。更新本身絕不會在桌面上建立任何東西。
+**從 WSL 建立 Windows 桌面捷徑（#1853）。** `agend shortcuts` 會在 Windows 桌面建立（或更新）**AgEnD 儀表板**和 **AgEnD 重新啟動**，給安裝時還沒有這兩個捷徑、或平常只用 `agend update` 更新的人使用。它透過 WSL interop，在 Windows PowerShell 裡執行 Windows 安裝程式自己的捷徑程式碼，對象是目前這個 Linux（`WSL_DISTRO_NAME`）和執行它的使用者，並記到 `%LOCALAPPDATA%\AgEnD\install.json`（和安裝程式寫的是同一個檔案）。每個捷徑的第一行會顯示它打開的 Linux 和使用者（「AgEnD（Linux：AgEnD，使用者：root）」）。如果 install.json 已經指向另一個 Linux 或使用者（例如 AgEnD 專用的 Linux 和你原本的 Ubuntu），會先說明並詢問才切換；沒有終端機可以詢問時就不做任何變更。在 Linux 桌面（不是 WSL）上會改為建立啟動器，見下方；其他地方不做任何變更。interop 關閉時（沒有 `WSLInterop` 的 binfmt 項目，或找不到 `powershell.exe`），它會直接說明，並指出另一個方法：再貼一次 Windows 一行安裝指令，已經裝好 AgEnD 的電腦上它只會問要不要更新捷徑。在還沒有捷徑的 WSL 終端機裡執行 `agend update` 之後，會出現一行提示建議執行 `agend shortcuts`，只出現一次（聊天裡的 `/update` 沒有終端機，所以不會出現）。更新本身絕不會在桌面上建立任何東西。
+
+**Linux 桌面啟動器（M-2885）。** 在 Linux 桌面工作階段（不是 WSL；有設定 `XDG_CURRENT_DESKTOP`、`DISPLAY` 或 `WAYLAND_DISPLAY`）上，`agend shortcuts` 會建立 **AgEnD 儀表板**和 **AgEnD 重新啟動**兩個 XDG 桌面項目，放在應用程式選單（`$XDG_DATA_HOME/applications`，預設 `~/.local/share/applications`），並複製一份到桌面（`xdg-user-dir DESKTOP`；GNOME 上會用 `gio` 標示為可信任，否則會提示你按右鍵選「允許啟動」一次），AgEnD 圖示放進你的 hicolor 佈景。儀表板那個會開一個終端機，向執行中的 Fleet 取得一次性登入碼、打開登入頁，有 `wl-copy`、`xclip` 或 `xsel` 時把登入碼複製起來並顯示；重新啟動那個會先詢問（y/N），再執行 `agend restart` 和 `agend status`。兩個都綁定建立它們時的那個 Fleet（`AGEND_HOME`）。沒有桌面工作階段時（伺服器、SSH 登入）不會建立任何東西，並會說明。在還沒有啟動器的 Linux 桌面上安裝或執行 `agend update` 之後，會出現一行提示建議執行 `agend shortcuts`，只出現一次。
 
 `agend quickstart` 會先問你要怎麼使用 AgEnD（#2910）：**1. 只用網頁（不需要 Discord/Telegram）**（預設），或 **2. 搭配 Discord 或 Telegram bot**。只用網頁不會要 bot token，共三步：backend、第一個 agent（名稱，以及專案資料夾或它自己在 `~/.agend/workspaces/<名稱>` 的工作區）、專案根目錄。它寫入只有這個 agent、沒有聊天連線的 fleet.yaml（不寫 `.env`），照常詢問是否安裝服務，最後顯示登入方式：服務啟動後直接印出 `agend web --code` 的登入碼，否則印出儀表板網址和這個指令。選 2 則和以前完全一樣。
 
