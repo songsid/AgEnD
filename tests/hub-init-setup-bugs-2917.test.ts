@@ -42,7 +42,7 @@ function rig(answers: Parameters<typeof scriptedIO>[0], options: { secretFile?: 
     ...(options.generate ? { createBrowserCertificate: (origin: string) => {
       expect(io.text()).toContain(ht("tls_intro", web));
       expect(io.text()).toContain("Fleet");
-      expect(io.text()).toMatch(/company-account connection|公司帳號連接/);
+      expect(io.text()).toMatch(/company accounts|公司帳號連接/);
       expect(io.text()).toMatch(/different hostnames|不同的主機名稱/);
       return createBrowserCertificate(home, origin);
     } } : {}),
@@ -71,6 +71,19 @@ describe("CA refusal keeps earlier wizard answers", () => {
     const t = rig([...start(), "corp", url, "fetch", pin, "y", ...people(), { hidden: bindPassword }, ...finish()]);
     expect(await t.run()).toBe("initialized");
     expect(t.fetch).toHaveBeenCalledExactlyOnceWith(await t.inspect.mock.results[0]!.value, pin);
+  });
+
+  it.each(["file", "fetch"])("returns to CA choices when the %s CA is not approved", async source => {
+    const pin = new X509Certificate(readFileSync(certs.cert)).fingerprint256;
+    const choice = source === "file" ? [certs.caCert] : ["fetch", pin];
+    const t = rig([...start(), "corp", url, ...choice, "", certs.caCert, "y", ...people(), { hidden: bindPassword }, ...finish()]);
+    expect(await t.run()).toBe("initialized");
+    expect(t.io.remaining()).toBe(0);
+    expect(t.io.prompts.filter(q => q === ht("dir_ca_q"))).toHaveLength(2);
+    expect(t.io.prompts.filter(q => q === ht("dir_url_q"))).toHaveLength(1);
+    expect(t.fetch).toHaveBeenCalledTimes(source === "fetch" ? 1 : 0);
+    expect(t.directory.calls).toEqual([{ bindPassword, login: "alice" }]);
+    expect(t.io.text()).toContain(ht("dir_ca_not_approved"));
   });
 });
 

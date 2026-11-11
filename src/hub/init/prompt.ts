@@ -42,7 +42,6 @@ export function readHidden(input: HiddenInput, output: PromptOutput, question: s
     // Never fall back to an echoing read for a secret.
     return Promise.reject(new Error("a password can only be typed in an interactive terminal"));
   }
-  output.write(question);
   return new Promise<string>((resolve, reject) => {
     const wasRaw = input.isRaw === true;
     let chars: string[] = [];
@@ -96,6 +95,8 @@ export function readHidden(input: HiddenInput, output: PromptOutput, question: s
     input.setRawMode!(true);
     input.setEncoding("utf8");
     input.on("data", onData);
+    // Disable kernel echo before the prompt is visible: even a fast paste must remain private.
+    output.write(question);
     input.resume();
   });
 }
