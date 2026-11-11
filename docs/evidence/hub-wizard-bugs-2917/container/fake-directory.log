@@ -1,0 +1,7 @@
+AD READY
+bind CN=Reader,DC=example,DC=test ok
+bind CN=Reader,DC=example,DC=test ok
+bind CN=Reader,DC=example,DC=test ok
+bind CN=Reader,DC=example,DC=test ok
+bind CN=Reader,DC=example,DC=test ok
+bind CN=Reader,DC=example,DC=test ok

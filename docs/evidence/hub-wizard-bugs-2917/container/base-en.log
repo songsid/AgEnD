@@ -1,0 +1,28 @@
+[
+  {
+    "case": "empty-address",
+    "bugReproduced": true,
+    "advancedPastEmptyAddress": true
+  },
+  {
+    "case": "fingerprint-enter",
+    "bugReproduced": true,
+    "exitAfterEnter": 0
+  },
+  {
+    "case": "secret-method",
+    "misplacedSecretEchoed": true,
+    "completedAfterCorrection": false,
+    "noSecretInHandoff": false,
+    "privateSecretOnly": false
+  },
+  {
+    "case": "handoff",
+    "companyJoinLeads": false,
+    "passwordNotEchoed": true
+  },
+  {
+    "case": "certificate-guidance",
+    "requirementsBeforeCertificateChoice": false
+  }
+]
