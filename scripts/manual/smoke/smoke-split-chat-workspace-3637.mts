@@ -215,13 +215,15 @@ try {
     await page.locator(".ws-agent-tabs .seg-item").nth(1).click();
     await page.waitForFunction(() => (document.querySelector("#pane-b-ag-desc") as HTMLInputElement)?.value === "保留 B 的設定草稿");
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await page.locator("#pane-a-ag-desc").waitFor();
+    await page.locator("#pane-a-ag-desc").waitFor({ state: "attached" });
     assert.equal(await page.locator("#pane-a-ag-desc").inputValue(), "保留 A 的設定草稿");
     assert.equal(await page.locator("#pane-b-ag-desc").inputValue(), "保留 B 的設定草稿");
     await shot("restored-settings", 2);
     if (process.env.REVIEW_R1 === "1") {
       assert.equal(await page.locator("#pane-a-se-received").inputValue(), "🎉");
       await shot("restored-emojis", 2); await page.locator("#pane-a-se-received").fill(emojiOriginal);
+      await page.locator('[data-pane="a"] .s-nav a[href$="cat=basic"]').click();
+      await page.locator("#pane-a-ag-desc").waitFor();
       receipt.emojiSuspension = { editedValueRetained: true, originalRestoredWithoutApply: true };
     }
     // Restore both fields rather than applying or discarding a write; the remaining journey is unchanged.
