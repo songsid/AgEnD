@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import pino from "pino";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import * as schemas from "../src/outbound-schemas.js";
 import { pictureFileName, PREVIEW_BANNER, resolvedAvatar, resolvedRing, type FrameEntry } from "../src/web-appearance-view.js";
 import { AppearanceTools, PREVIEW_IDLE_MS } from "../src/web-appearance-tools.js";
@@ -102,8 +102,11 @@ describe("get_web_appearance", () => {
 });
 
 describe("through the fleet (its own resolvers)", () => {
+  let fleetModule: typeof import("../src/fleet-manager.js");
+  // Keep cold transformation outside the assertions, after the earlier UI cache resets.
+  beforeAll(async () => { fleetModule = await import("../src/fleet-manager.js"); }, 120_000);
   it("the frame's face and ring, the person's card over the agent's, this instance only; a preview of its own pictures", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetModule;
     const dir = tmp("agend-app-fm-");
     const fm = new FleetManager(dir) as any;
     const quiet = () => {};

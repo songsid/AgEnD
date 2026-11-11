@@ -1,3 +1,5 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
+import * as webApiModule from "../src/web-api.js";
 import { EventEmitter } from "node:events";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -29,7 +31,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 const { BinaryProbe, binaryProbe, spawnWhich, spawnProbeCommand, BINARY_PROBE_TTL_MS, PROBE_DEADLINE_MS } =
   await import("../src/binary-probe.js");
-const { handleWebRequest } = await import("../src/web-api.js");
+const { handleWebRequest } = webApiModule;
 type ProbeChild = import("../src/binary-probe.js").ProbeChild;
 
 const dirs: string[] = [];
@@ -465,7 +467,7 @@ describe("/login's installed-backend probe (#1490)", () => {
     binaryProbe.invalidate();
   });
   const fleet = async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     return new FleetManager(tempDir()) as unknown as { probeInstalledBackends(): Promise<Set<string>> };
   };
 

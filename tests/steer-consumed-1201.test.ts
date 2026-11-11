@@ -9,6 +9,7 @@
  *
  * Nothing here starts a CLI, a fleet or a tmux server; transcripts are scratch files.
  */
+import * as daemonModule from "../src/daemon.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -499,7 +500,7 @@ describe("the fleet-wide registry", () => {
 
 describe("the daemon", () => {
   async function settle(verdict: Record<string, unknown>, outcome: "delivered" | "uncertain" | "failed") {
-    const { Daemon } = await import("../src/daemon.js");
+    const { Daemon } = daemonModule;
     const { consumedWatches } = await import("../src/delivery-consumed-watch.js");
     const root = scratch("agend-1201-daemon-");
     const instanceDir = join(root, "instances", "worker");
@@ -558,7 +559,7 @@ describe("the daemon", () => {
     // Real Daemon, real DeliveryOutbox; only deliverMessage is stubbed: it begins the durable submission, records the
     // pane write, the hand-off mode and the transcript checkpoint — then throws, or returns false (the control).
     async function deliverThrough(entry: "steer" | "push", mode: "steer" | "native_queue_handoff", end: "throw" | "false") {
-      const { Daemon } = await import("../src/daemon.js");
+      const { Daemon } = daemonModule;
       const { consumedWatches } = await import("../src/delivery-consumed-watch.js");
       const root = scratch("agend-1201-catch-");
       const instanceDir = join(root, "instances", "worker");

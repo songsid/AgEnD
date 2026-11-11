@@ -4,6 +4,7 @@
  * before any adapter (MCP and HTTP paths, a web-only fleet, the channel copy), what a guest sees, and the reply guard
  * counting it as the turn's answer.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -96,7 +97,7 @@ describe("what a guest sees", () => {
 async function fleet() {
   const home = mkdtempSync(join(tmpdir(), "agend-test-react-")); homes.push(home);
   vi.stubEnv("AGEND_HOME", home);
-  const { FleetManager } = await import("../src/fleet-manager.js");
+  const { FleetManager } = fleetManagerModule;
   const fm = new FleetManager(home) as any;
   clearInterval(fm.sessionPruneTimer);
   fm.fleetConfig = { defaults: {}, instances: { dev: { working_directory: home } } };   // no channel: a web-only fleet

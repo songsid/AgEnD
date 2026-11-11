@@ -4,6 +4,7 @@
  * retry_after, finish() sent the terminal edit straight into that window, and a window longer than the 30 s budget
  * ended it with the fresh-message fallback refused too. Stubbed adapters only — no update, restart or network.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GrammyError } from "grammy";
 import {
@@ -487,7 +488,7 @@ describe("#2175: the final update step lands on Telegram", () => {
       marker.beginUpdateProgress(home, target);
       const receipt = marker.markCleanupPending(home)!;
       expect(marker.writeCleanupOutcome(home, receipt, { warning: "old copy left" })).toBe(true);
-      const { FleetManager } = await import("../src/fleet-manager.js");
+      const { FleetManager } = fleetManagerModule;
       const fm = new FleetManager(home) as any;
       fm.adapters.set("telegram", tg.adapter);
       fm.startupProgress = progress;
@@ -574,7 +575,7 @@ describe("#2175: the final update step lands on Telegram", () => {
       marker.beginUpdateProgress(home, target, 0);
       const receipt = marker.markCleanupPending(home)!;
       marker.writeCleanupOutcome(home, receipt, { warning: "old copy left" });
-      const { FleetManager } = await import("../src/fleet-manager.js");
+      const { FleetManager } = fleetManagerModule;
       const fm = new FleetManager(home) as any;
       fm.adapters.set("telegram", adapter);
       fm.startupProgress = progress;
@@ -601,7 +602,7 @@ describe("#2175: the final update step lands on Telegram", () => {
   });
 
   it("r3 P2-2: a different outcome (another warning) is a new text, not the frozen one", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { mkdtempSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -643,7 +644,7 @@ describe("#2175: the final update step lands on Telegram", () => {
       marker.beginUpdateProgress(home, target);
       const receipt = marker.markCleanupPending(home)!;
       marker.writeCleanupOutcome(home, receipt, { warning: "old copy left" });
-      const { FleetManager } = await import("../src/fleet-manager.js");
+      const { FleetManager } = fleetManagerModule;
       const fm = new FleetManager(home) as any;
       fm.adapters.set("telegram", adapter);
       fm.startupProgress = progress;
@@ -671,7 +672,7 @@ describe("#2175: the final update step lands on Telegram", () => {
     const saved = process.env.AGEND_HOME;
     process.env.AGEND_HOME = home;
     try {
-      const { FleetManager } = await import("../src/fleet-manager.js");
+      const { FleetManager } = fleetManagerModule;
       const fm = new FleetManager(home) as any;
       const editMessage = vi.fn().mockResolvedValue(undefined);
       fm.adapters.set("telegram", { id: "telegram", type: "telegram", editMessage });

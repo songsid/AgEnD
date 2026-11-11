@@ -2,6 +2,7 @@
  * #2293 PR 1: where FleetManager feeds the search index — every chat message it records (a person's or an agent's;
  * never a status line), every cross-instance message outbound-handlers reports — and web.search.enabled at start.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,7 +20,7 @@ afterEach(() => { vi.unstubAllEnvs(); for (const h of homes.splice(0)) rmSync(h,
 async function fleet() {
   const h = mkdtempSync(join(tmpdir(), "agend-test-search-")); homes.push(h);
   vi.stubEnv("AGEND_HOME", h);
-  const { FleetManager } = await import("../src/fleet-manager.js");
+  const { FleetManager } = fleetManagerModule;
   const fm = new FleetManager(h) as any;
   clearInterval(fm.sessionPruneTimer);
   return { fm, h };

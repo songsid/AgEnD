@@ -10,6 +10,7 @@
  *
  * The identity files are real (a scratch AGEND_HOME); kiro is never run.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -262,7 +263,7 @@ it("the state file is the real one (sanity: the floor reads what the resolver wr
 
 describe("FleetManager glue: the request posts a Confirm in General; only the click moves", () => {
   async function fm() {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const f = Object.create(FleetManager.prototype) as Record<string, any>;
     const fleet = { defaults: {}, instances: { wiki: { backend: "kiro-cli", working_directory: cwd }, general: { general_topic: true, topic_id: 7 } } };
     const posted: any[] = [];

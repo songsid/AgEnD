@@ -9,6 +9,8 @@
  *   that holder; replacing a version needs a confirmation.
  * - The routes: sessions only (never the CLI token), admin for writes, never over the public link (both layers).
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
+import * as webApiModule from "../src/web-api.js";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -465,7 +467,7 @@ describe("the routes", () => {
     r.on("error", reject); if (body !== undefined) r.write(body); r.end();
   });
   async function fleet() {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { csrfTokenFor, tokenEpoch } = await import("../src/web-session.js");
     const dir = tmp();
     const fm = new FleetManager(dir) as any;
@@ -570,7 +572,7 @@ describe("the routes", () => {
   }, 30_000);
   it("the public link: no mod route on its manifest, and the handler refuses on its own", async () => {
     const { isPublicWebRoute } = await import("../src/public-web-gateway.js");
-    const { handleWebRequest } = await import("../src/web-api.js");
+    const { handleWebRequest } = webApiModule;
     const { bindGatewayRequest } = await import("../src/web-request-context.js");
     for (const [m, p] of [["GET", "/ui/mods"], ["POST", "/ui/mods/stage"], ["POST", "/ui/mods/commit"], ["POST", "/ui/mods/uninstall"], ["POST", "/ui/mods/export"], ["GET", `/ui/mods/file/${"a".repeat(32)}`]] as const) {
       expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(false);

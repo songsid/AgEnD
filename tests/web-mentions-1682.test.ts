@@ -4,6 +4,7 @@
  * unknown id as @user / @role / #channel, a Telegram @username styled the same, nothing inside code, names escaped.
  * The real renderer, store pieces, route handler, FleetManager sources and the Discord adapter's cache read.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -117,7 +118,7 @@ describe("FleetManager's sources", () => {
   const dirs: string[] = [];
   afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
   async function fleet() {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = Object.create(FleetManager.prototype) as InstanceType<typeof FleetManager> & Record<string, any>;
     const dir = mkdtempSync(join(tmpdir(), "mentions-1682-")); dirs.push(dir);
     const cache = { mentionNames: (q: { u: string[]; r: string[]; c: string[] }) => ({ u: Object.fromEntries(q.u.filter((id) => id === NOBODY).map((id) => [id, "Cached member"])), r: { [ROLE]: "Ops" }, c: { [CHANNEL]: "general" } }) };
