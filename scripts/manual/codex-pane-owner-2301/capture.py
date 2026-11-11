@@ -61,12 +61,25 @@ finally:
  try:tmux('kill-server')
  except:pass
  mock.terminate();mock.wait(timeout=5)
+ stopped=[]
  for f in sorted((RUN/'codex/app-server-daemon').glob('*.pid'),key=lambda p:0 if 'updater' in p.name else 1):
   pid=json.loads(f.read_text()).get('pid');p=pathlib.Path(f'/proc/{pid}')
   try:
-   if b'CODEX_HOME='+str(RUN/'codex').encode() in (p/'environ').read_bytes().split(b'\0') and (p/'exe').resolve().is_relative_to(RUN/'codex/packages'):os.kill(pid,signal.SIGTERM)
+   if b'CODEX_HOME='+str(RUN/'codex').encode() in (p/'environ').read_bytes().split(b'\0') and (p/'exe').resolve().is_relative_to(RUN/'codex/packages'):
+    started=(p/'stat').read_text().split(') ',1)[1].split()[19];os.kill(pid,signal.SIGTERM);stopped.append((pid,started))
   except FileNotFoundError:pass
+ for pid,started in stopped:
+  end=time.monotonic()+5;forced=False
+  while True:
+   try:
+    fields=pathlib.Path(f'/proc/{pid}/stat').read_text().split(') ',1)[1].split()
+    if fields[0]=='Z' or fields[19]!=started:break
+   except FileNotFoundError:break
+   if time.monotonic()>=end:
+    if forced:raise RuntimeError('owned daemon did not exit; scratch retained')
+    os.kill(pid,signal.SIGKILL);forced=True;end=time.monotonic()+2
+   time.sleep(.02)
 
  shutil.rmtree(RUN)
  if (OUT/'receipt.json').exists():
-  receipt=json.loads((OUT/'receipt.json').read_text());receipt['cleanup']={'ownedTmuxStopped':True,'ownedDaemonsSignalled':True,'scratchHomeRemoved':not RUN.exists()};(OUT/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+  receipt=json.loads((OUT/'receipt.json').read_text());receipt['cleanup']={'ownedTmuxStopped':True,'ownedDaemonsExited':True,'scratchHomeRemoved':not RUN.exists()};(OUT/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
