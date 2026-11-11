@@ -1,0 +1,13 @@
+# Piped installer rehearsal (#3633)
+
+`bash scripts/manual/install-pipe-3633/run.sh` builds an ordinary Ubuntu 24.04 Docker image and runs both the unmodified main baseline and this checkout's installer as real `curl http://127.0.0.1:18863/install.sh | bash` streams. `OUT=/absolute/owned/directory` and `BASE=<commit>` are optional. No privileged mode, systemd, host networking, account, model CLI, or fleet is used. The local HTTP server runs inside each container; no host port is published. Containers are removed on exit; logs and the owned image remain.
+
+The clean image has curl, CA certificates and Node/npm copied from the official Node 22 image, **no tzdata, tmux or build tools**, and no inherited `DEBIAN_FRONTEND`. Thus it exercises real apt/dpkg/debconf and the real npm install of pinned AgEnD 2.3.4, without also testing Node's download service. Source tests separately exercise the nvm download/source/install path, every supported package manager, both npm installer paths, and missing/broken/empty PATH commands.
+
+In this minimal image, tmux itself did not pull tzdata; the subsequent `build-essential python3` stage did. Both stages inherited the script pipe, so both must be fixed. The baseline reports 197 `Geographic area:` prompts, consumes the remaining script, and exits **0** with `agend` absent (**127**). The fixed script configures `Etc/UTC` without a question, completes npm installation, and a separate `agend --version` lookup on the container user's PATH exits **0**. The final command does not source the installer or add a private npm bin directory.
+
+The installer redirects package managers, nvm and completion children to `/dev/null`; apt receives `DEBIAN_FRONTEND=noninteractive` through sudo's environment, and Homebrew receives `NONINTERACTIVE=1`. sudo still uses its controlling terminal if authentication is needed; without a terminal it fails rather than taking input from the script. Interactive quickstart remains gated by a terminal on stdin/stdout.
+
+Validation at author review includes the six install-sh suites, fail-first against the baseline, native test typecheck, `bash -n`, and the CI-equivalent pack/global-install smoke in a separate disposable Node 22 container. An initial local runtime-guard assertion incorrectly passed `process.version` (with `v`); corrected to the production signature `process.versions.node`, the installed guard passes. The package install and PATH version had already succeeded. No timeout or guard is relaxed.
+
+**Deployment HOLD:** `website/public/install.sh` deploys when merged. Only the coordinator merges, after the Leader reviews this rehearsal and gives GO. Reverting the two synchronized shell files rolls back the bootstrap change; this fix changes no fleet format or data.

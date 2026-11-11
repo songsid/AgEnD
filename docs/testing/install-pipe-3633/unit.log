@@ -1,0 +1,7 @@
+RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/install-3633-main
+
+
+ Test Files  6 passed (6)
+      Tests  51 passed (51)
+   Start at  17:29:08
+   Duration  22.44s (transform 971ms, setup 2.01s, import 759ms, tests 36.20s, environment 1ms)
