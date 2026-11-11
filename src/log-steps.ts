@@ -260,10 +260,19 @@ function replyAnchor(input: unknown): StepAnchor | undefined {
   const text = v && typeof v === "object" ? (v as Record<string, unknown>).text : undefined;
   return typeof text === "string" && text ? { replyText: bounded(text, ANCHOR_TEXT).text } : undefined;
 }
-/** `step` is a `reply` call whose result `text` has been seen: its anchor gains the delivered messageId. */
+/** A reply's own result, whole: `{"chatId":"web","messageId":"web-…"}` — the shape that tells it from another tool's result. */
+const REPLY_RESULT_SHAPE = /\{\s*"chatId"\s*:\s*"[^"\\]{1,80}"\s*,\s*"messageId"\s*:\s*"([^"\\]{1,80})"\s*\}/;
+/**
+ * `step` is a `reply` call whose result `text` has been seen: its anchor gains the delivered messageId. A result read
+ * without its call (the Log's live read started after it: `step.tool` is "") is anchored by the result alone only when
+ * it is a reply's complete result (`REPLY_RESULT_SHAPE`) — another tool's result that merely mentions a `chatId` is not —
+ * and the page merges it into the call it already shows, by id.
+ */
 function replyResult(step: LogStep, text: string): void {
-  if (step.kind !== "tool" || !step.tool || !isReplyTool(step.tool)) return;
-  const id = replyResultId(text);
+  if (step.kind !== "tool") return;
+  let id: string | undefined;
+  if (step.tool) { if (!isReplyTool(step.tool)) return; id = replyResultId(text); }
+  else id = REPLY_RESULT_SHAPE.exec(text)?.[1];
   if (id) step.anchor = { ...step.anchor, messageId: id };
 }
 
@@ -367,6 +376,11 @@ abstract class StepParser {
     return s;
   }
   protected openTool(id: string): LogStep | undefined { return this.open.get(id); }
+  /**
+   * The running call `id`, now answered (undefined: its call lay before the range parsed). A result with no call makes its
+   * own step — `this.close(id) ?? this.add({ …, status: "done" })` — which is born done, so it is never in `open`:
+   * a step left there was re-emitted as `interrupted` at the turn's end, undoing the result.
+   */
   protected close(id: string): LogStep | undefined { const s = this.open.get(id); this.open.delete(id); return s; }
   /** A new turn (`key`: the transcript's id for it): every tool still running in the last one is interrupted. */
   protected newTurn(key: string): Emission {
@@ -477,7 +491,7 @@ export class ClaudeStepParser extends StepParser {
   }
 
   private result(id: string, text: string, isError: boolean, ts: number, bytes?: number): LogStep {
-    const s = this.close(id) ?? this.add({ id, kind: "tool", ts, tool: "", cat: "other", status: "running" });
+    const s = this.close(id) ?? this.add({ id, kind: "tool", ts, tool: "", cat: "other", status: "done" });
     s.status = isError ? "failed" : "done";
     const t0 = this.started.get(id); this.started.delete(id);
     if (t0 && ts >= t0) s.durationMs = ts - t0;
@@ -563,7 +577,7 @@ export class CodexStepParser extends StepParser {
       }
       case "function_call_output": case "custom_tool_call_output": {
         const id = String(p.call_id ?? "");
-        const s = this.close(id) ?? this.add({ id: id || undefined, kind: "tool", ts, tool: "", cat: "other", status: "running" });
+        const s = this.close(id) ?? this.add({ id: id || undefined, kind: "tool", ts, tool: "", cat: "other", status: "done" });
         const text = resultText(p.output);
         const exit = CODEX_EXIT.exec(text), wall = CODEX_WALL.exec(text);
         s.status = (exit && exit[1] !== "0") || /^failed to /.test(text) ? "failed" : "done";
@@ -629,7 +643,7 @@ export class CodexStepParser extends StepParser {
     if (!type || !id) return [];
     const ts = tsOf(/"timestamp":"([^"]{10,40})"/.exec(head)?.[1]);
     if (type.endsWith("_output")) {
-      const s = this.close(id) ?? this.add({ id, kind: "tool", ts, tool: "", cat: "other", status: "running" });
+      const s = this.close(id) ?? this.add({ id, kind: "tool", ts, tool: "", cat: "other", status: "done" });
       s.status = "done"; s.bodyBytes = bytes;
       const text = headString(head, "text") ?? headString(head, "output");
       if (text) bodyOf(s, text, RESULT_MAX);
@@ -709,7 +723,7 @@ export class KiroV2StepParser extends StepParser {
         const r = b.data as Record<string, unknown>;
         const id = String(r.toolUseId ?? "");
         if (this.skipped.has(id)) continue;                                   // a thinking "tool": its result is thinking too
-        const s = this.close(id) ?? this.add({ id: id || undefined, kind: "tool", ts: 0, tool: "", cat: "other", status: "running" });
+        const s = this.close(id) ?? this.add({ id: id || undefined, kind: "tool", ts: 0, tool: "", cat: "other", status: "done" });
         const { text, exit } = kiroResultText(r.content);
         s.status = r.status === "error" || (exit !== undefined && exit !== 0) ? "failed" : "done";
         if (exit !== undefined) s.exitCode = exit;
@@ -728,7 +742,7 @@ export class KiroV2StepParser extends StepParser {
     if (!/^\{"version":"[^"]{1,20}","kind":"ToolResults"/.test(head)) return [];
     const id = /"toolUseId":"([^"]{1,200})"/.exec(head)?.[1];
     if (!id || this.skipped.has(id)) return [];
-    const s = this.close(id) ?? this.add({ id, kind: "tool", ts: 0, tool: "", cat: "other", status: "running" });
+    const s = this.close(id) ?? this.add({ id, kind: "tool", ts: 0, tool: "", cat: "other", status: "done" });
     // The result's own status comes after its content (past the head): the exit code, near the start, decides. A long
     // result without one is an output, not an error message (those are short).
     const exit = /"exit_status":(?:"[^"\d-]{0,20})?(-?\d+)/.exec(head)?.[1];
@@ -772,7 +786,7 @@ class KiroClassicParser extends StepParser {
     for (const r of Array.isArray(results) ? results as Array<Record<string, unknown>> : []) {
       const id = String(r.tool_use_id ?? "");
       if (this.skipped.has(id)) continue;
-      const s = this.close(id) ?? this.add({ id: id || `h${i}.r`, kind: "tool", ts, tool: "", cat: "other", status: "running" });
+      const s = this.close(id) ?? this.add({ id: id || `h${i}.r`, kind: "tool", ts, tool: "", cat: "other", status: "done" });
       const { text, exit } = kiroResultText(r.content);
       s.status = cancelled ? "interrupted" : r.status === "Error" || r.status === "error" || (exit !== undefined && exit !== 0) ? "failed" : "done";
       if (exit !== undefined) s.exitCode = exit;
