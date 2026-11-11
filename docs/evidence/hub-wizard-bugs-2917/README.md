@@ -21,7 +21,7 @@ The leader approved the EN/zh-TW wording, including the shorter certificate warn
 - `source-types.log`, `test-types.log`: both native TypeScript checks pass. Changelog assembly validation and shell/Python/JS syntax checks pass.
 - `mutations.json`: **10/10** independent regressions fail assertion tests (not loader/transform failures): whole-wizard cancellation on fingerprint refusal; missing fingerprint match; skipped early URL validation; echoing method/path; cancellation on imported/fetched CA non-approval; prompt painted before raw mode; old certificate copy; old pairing-only handoff. Exact source bytes restored; final focused run passes again.
 
-Product, final tests and harness were pinned at clean `eeae77d272f5301717d54704d75b73d792be685e` before the final container run. `container/inputs.json` binds that commit/tree, individual inputs and every compiled file through deterministic full-tree digests; `container/container-artifacts.json` independently matches both container copies (**2734 files each**). Later evidence-only commits do not claim a new product execution. Earlier modified-tree/harness-debug runs remain private and are not used as final capture provenance.
+Product, final tests and harness were pinned at clean `eeae77d272f5301717d54704d75b73d792be685e` before the final container run. `container/inputs.json` binds that commit/tree, individual inputs and every compiled file through deterministic full-tree digests; `container/container-artifacts.json` independently matches both container copies (**2734 files each**). Later evidence-only commits do not claim a new product execution. R1 below adds only an existing environment-gated test-fixture correction and its evidence; product and PTY harness remain unchanged. Earlier modified-tree/harness-debug runs remain private and are not used as final capture provenance.
 
 ## Real terminal, disposable container
 
@@ -38,3 +38,11 @@ The owned container has `--network none`, no published ports, host mounts or pri
 The repeated CA step adds no approval and preserves the exact fingerprint/CA trust gates. Directory lookup, credential binding, final owner confirmation, signed state and interrupted post-confirmation initialization resume remain unchanged. Pre-confirmation answers are retained **in memory while retrying**. Explicit quit, Ctrl-C or a process crash before confirmation still discards those answers; no new persistent draft containing secrets is introduced.
 
 Revert this source patch to return to the previous prompts and wording; there is no schema/data migration. Existing successfully initialized Hubs are unaffected. The PR is alpha-only and remains held for the alpha.14 release freeze; author does not merge or upgrade the pilot.
+
+## R1 — environment-gated CI fixture
+
+Exact-head CI `43010855874`, Hub directory job `130490351662`, caught an obsolete answer queue in `hub-init-rig.test.ts`: its plaintext LDAP case expected the old later rejection and continued with CA/DN answers. Early URL validation correctly re-asks the address, exhausting that queue. This was a real PR-introduced test failure, not a flake or product assertion regression.
+
+The fixture now cancels explicitly at the corrected address retry and asserts the localized endpoint error, no CA question, no directory client construction and no Hub state write. The successful immutable-admin and wrong-CA controls retain their production-directory path and assertions. Product/harness files are byte-identical to the pinned capture commit; no PTY rerun is claimed.
+
+A separate owned OpenLDAP container (`scripts/manual/hub-directory`, private tmpfs, unprivileged, read-only root, all capabilities dropped, loopback-only published ephemeral ports) runs the four exact CI suites: **44/44, zero skipped**. Native test types pass. The container and its generated credential files are removed; no real directory/account/pilot/service is used. `r1/receipt.json` honestly binds the modified test tree before its commit, and the manifest binds that same final test blob and logs.

@@ -1,5 +1,5 @@
 {
-  "2ca31212c276627a7a4e6d72187f5da7a18b9b56940fa6248d4c5cee8f13f321": [
+  "6624707bf3ce28287abafe608e759a2ceeaf0e833ac9d7c65bbeb0db8ddd8dbe": [
     "docs/evidence/hub-wizard-bugs-2917/README.md"
   ],
   "5bb99a8cad0e32ab545b55a1e9f90148e29ba0c83f1abdcda253516a2d314c8b": [
@@ -141,7 +141,8 @@
     "docs/evidence/hub-wizard-bugs-2917/source-types.log"
   ],
   "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748": [
-    "docs/evidence/hub-wizard-bugs-2917/test-types.log"
+    "docs/evidence/hub-wizard-bugs-2917/test-types.log",
+    "docs/evidence/hub-wizard-bugs-2917/r1/test-types.log"
   ],
   "599c5c29e2cfa1ac32088f71c110df311d049d388c6777910c40bd90afd92b61": [
     "src/hub/init/prompt.ts"
@@ -190,5 +191,14 @@
   ],
   "2c13913e92a1806a1afd71cbf9862ae9eea487ae099f9199180d2b0c42eb8fa6": [
     "scripts/manual/hub-wizard-bugs-2917/setup.sh"
+  ],
+  "494540de849cf5025020696c84c82682044df69fa8675bd7412071de3f899a82": [
+    "docs/evidence/hub-wizard-bugs-2917/r1/directory-rig.log"
+  ],
+  "cbbfaaddd5dfd7b4caaf8f2876417559805cb7f1a547b42d29d72b51de4d93dc": [
+    "docs/evidence/hub-wizard-bugs-2917/r1/receipt.json"
+  ],
+  "af9b0b26cfdcb8b30a73334452f13322a58a6e2d39e9a7c6182c3fbd7db0ef81": [
+    "tests/hub-init-rig.test.ts"
   ]
 }
