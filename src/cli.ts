@@ -144,6 +144,18 @@ setLocale(detectLocale(configForLocale));
 
 const program = new Command();
 
+// These read-only entry points need an existing fleet. Check once before any
+// token lookup, YAML read or status probe; setup/help/version remain available.
+program.hook("preAction", (_hooked, action) => {
+  if (action.parent !== program || !["ls", "status", "web"].includes(action.name())) return;
+  try { statSync(FLEET_CONFIG_PATH); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    console.error(t("cli.setup_required"));
+    process.exit(1);
+  }
+});
+
 /**
  * #2481: an installed version whose fleet keeps failing to start is said on every command, with what to run to go back.
  * Not for the fleet process itself (its own `fleet start`/`stop`, whose output is the service's log), completion, or
