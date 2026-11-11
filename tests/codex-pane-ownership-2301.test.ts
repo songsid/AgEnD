@@ -42,6 +42,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 import { CodexBackend } from "../src/backend/codex.js";
 import { Daemon } from "../src/daemon.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
+import { TranscriptDeltaReader } from "../src/transcript-delta-reader.js";
 const roots: string[] = [];
 const daemons: any[] = [];
 const boxes: DeliveryOutbox[] = [];
@@ -49,6 +50,7 @@ const immediate = setImmediate;
 afterEach(async () => {
   for (const d of daemons.splice(0)) d.fenceDeliveryWritesForStop?.();
   await drainIO();
+  vi.restoreAllMocks();
   vi.useRealTimers();
   for (const box of boxes.splice(0)) box.close();
   for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true });
@@ -435,4 +437,87 @@ describe("#2301 proof continuations", () => {
         ?.sessionId,
     ).toBe(ID);
   });
+});
+
+
+describe("#2301 post-paste fallback keeps the session lease", () => {
+  it.each(["before read", "during empty read", "before settlement"] as const)(
+    "binding loss %s retires the fallback without another paste or poll",
+    async (phase) => {
+      const h = harness();
+      // Force the real post-paste path: pane submission proof failed, so only the
+      // bounded transcript fallback can settle this already-written delivery.
+      vi.spyOn(h.d, "confirmSubmitted").mockResolvedValue("unproven");
+      h.tmux.pasteBuffer.mockResolvedValue(true);
+      h.tmux.capturePane.mockImplementation(async () =>
+        ownedFrame(h.tmux.pasteBuffer.mock.calls.length
+          ? "after-fast.pane.txt" : "after-ready-120.pane.txt"),
+      );
+      const lose = () => h.tmux.capturePane.mockResolvedValue(
+        ownedFrame("after-fast.pane.txt").replace(ID, ID.replace(/^01/, "02")),
+      );
+      const append = () => appendFileSync(h.path, h.rows.slice(1).join("\n") + "\n");
+      const realLook = TranscriptDeltaReader.prototype.look;
+      const looks: string[] = [];
+      const look = vi.spyOn(TranscriptDeltaReader.prototype, "look")
+        .mockImplementation(async function (this: TranscriptDeltaReader) {
+          const result = await realLook.call(this);
+          looks.push(result);
+          if (phase === "during empty read") {
+            // The read observed no marker. Before its continuation, the pane
+            // switches, then the old rollout receives the exact pasted text.
+            lose();
+            append();
+          }
+          return result;
+        });
+      const realProve = h.d.proveDeliveryFromTranscript.bind(h.d);
+      let entered = false;
+      vi.spyOn(h.d, "proveDeliveryFromTranscript").mockImplementation(
+        async (...args: any[]) => {
+          const bound = args[1].ownedCodex;
+          expect(bound).toBeDefined();
+          if (phase === "before read") { lose(); append(); }
+          if (phase === "before settlement") {
+            append();
+            const validate = bound.validate.bind(bound);
+            let checks = 0;
+            bound.validate = async () => {
+              // Pre-read and post-read checks are still valid. The footer
+              // changes only at the final settlement continuation.
+              if (++checks === 3) lose();
+              return validate();
+            };
+          }
+          entered = true;
+          return realProve(...args);
+        },
+      );
+      h.run();
+      for (let i = 0; i < 1000 && !entered; i++) {
+        await drainIO();
+        await vi.advanceTimersByTimeAsync(50);
+      }
+      expect(entered).toBe(true);
+      // Let filesystem continuations finish while holding the fake clock. A
+      // retired post-read lease must not sleep until the next transcript poll.
+      await drainIO();
+      expect(h.state()).toBe("uncertain");
+      const evidence = (h.box as any).db.prepare(
+        "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+      ).get(h.row.deliveryId)?.evidence;
+      expect(evidence).toBe(
+        "raw-paste-submit-proof:codex-session-binding-lost; not re-pasted",
+      );
+      expect(readFileSync(h.path, "utf8")).toContain(TEXT);
+      expect(look).toHaveBeenCalledTimes(phase === "before read" ? 0 : 1);
+      expect(looks).toEqual(phase === "before read" ? [] :
+        [phase === "during empty read" ? "no-match" : "user"]);
+      expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
+      expect(h.tmux.sendSpecialKey).toHaveBeenCalledOnce();
+      await h.pump();
+      expect(h.state()).toBe("uncertain");
+      expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
+    },
+  );
 });

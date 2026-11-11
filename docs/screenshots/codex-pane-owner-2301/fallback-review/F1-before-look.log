@@ -1,0 +1,43 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-ownership-2301.test.ts (24 tests | 2 failed) 1435ms
+     × binding loss before read retires the fallback without another paste or poll 49ms
+     × binding loss before settlement retires the fallback without another paste or poll 49ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 post-paste fallback keeps the session lease > binding loss before read retires the fallback without another paste or poll
+AssertionError: expected "look" to be called +0 times, but got 1 times
+ ❯ tests/codex-pane-ownership-2301.test.ts:513:20
+    511|       );
+    512|       expect(readFileSync(h.path, "utf8")).toContain(TEXT);
+    513|       expect(look).toHaveBeenCalledTimes(phase === "before read" ? 0 :…
+       |                    ^
+    514|       expect(looks).toEqual(phase === "before read" ? [] :
+    515|         [phase === "during empty read" ? "no-match" : "user"]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 post-paste fallback keeps the session lease > binding loss before settlement retires the fallback without another paste or poll
+AssertionError: expected 'delivered' to be 'uncertain' // Object.is equality
+
+Expected: "uncertain"
+Received: "delivered"
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:505:25
+    503|       // retired post-read lease must not sleep until the next transcr…
+    504|       await drainIO();
+    505|       expect(h.state()).toBe("uncertain");
+       |                         ^
+    506|       const evidence = (h.box as any).db.prepare(
+    507|         "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 22 passed (24)
+   Start at  09:37:06
+   Duration  3.78s (transform 1.58s, setup 117ms, import 2.06s, tests 1.43s, environment 1ms)
+

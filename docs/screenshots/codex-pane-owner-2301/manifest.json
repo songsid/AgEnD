@@ -17,5 +17,8 @@
     "desk-zh-TW-after.png": "3c1817942b0e68fbdf039e841a6405ad5c13168c8596b1d73dceab3c9a4450c8",
     "desk-zh-TW-before.png": "ffe58435fc72a91a6ad8f89a9fcdd3917075719df312b4b3989631de18ebe96a",
     "desk-zh-TW-narrow.png": "2d5bcafbacc162d034eea954780bb0901b3b3c322e3fd62d88f043fc0a323dc6"
+  },
+  "reviewRegressionHashes": {
+    "tests/codex-pane-ownership-2301.test.ts": "e3a89564e7e9b786bfe75d9af3dc2187c38cccde699964f1d584c8d156369239"
   }
 }

@@ -1,0 +1,47 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-ownership-2301.test.ts (24 tests | 2 failed) 1648ms
+     × binding loss during empty read retires the fallback without another paste or poll 57ms
+     × binding loss before settlement retires the fallback without another paste or poll 77ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 post-paste fallback keeps the session lease > binding loss during empty read retires the fallback without another paste or poll
+AssertionError: expected 'submission_started' to be 'uncertain' // Object.is equality
+
+Expected: "uncertain"
+Received: "submission_started"
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:505:25
+    503|       // retired post-read lease must not sleep until the next transcr…
+    504|       await drainIO();
+    505|       expect(h.state()).toBe("uncertain");
+       |                         ^
+    506|       const evidence = (h.box as any).db.prepare(
+    507|         "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 post-paste fallback keeps the session lease > binding loss before settlement retires the fallback without another paste or poll
+AssertionError: expected 'delivered' to be 'uncertain' // Object.is equality
+
+Expected: "uncertain"
+Received: "delivered"
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:505:25
+    503|       // retired post-read lease must not sleep until the next transcr…
+    504|       await drainIO();
+    505|       expect(h.state()).toBe("uncertain");
+       |                         ^
+    506|       const evidence = (h.box as any).db.prepare(
+    507|         "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 22 passed (24)
+   Start at  09:37:14
+   Duration  4.02s (transform 1.64s, setup 101ms, import 2.11s, tests 1.65s, environment 0ms)
+

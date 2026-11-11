@@ -28,3 +28,9 @@ Desktop uses the normal120-column pane and View Fit. The complete UUID, Context 
 | Phone | ![Before](phone-zh-TW-before.png) | ![After](phone-zh-TW-after.png) | ![Narrow](phone-zh-TW-narrow.png) |
 
 Known limits: an unwritten/missing session, unsupported metadata or incomplete footer supplies no new transcript authority. Current cwd progress selection, resume policy and Codex `getSessionId() === null` stay unchanged. A lease is runtime-only, cannot be reconstructed after restart, and loss never revives. No native-Windows or real-account claim.
+
+## Review: fallback ownership loss
+
+The replacement test-only delta adds three real lease/recorded-stream cases after pane proof has failed: loss before the first transcript read, loss while an empty read completes (then the exact text arrives in the old rollout), and loss immediately before settlement after a positive read. Each preserves exactly one paste/Enter, records `codex-session-binding-lost`, and cannot settle delivered. The empty-read case holds the fake clock while filesystem work drains, proving retirement does not wait for another poll.
+
+`fallback-review/` records 134/134 across eight focused files, source/test type checks, and three independent compiling semantic reversals: removing the pre-read fence admits a forbidden read; removing the post-read fence leaves the receipt pending until another poll; removing the final fence loses the binding-lost reason or falsely delivers. All three fail assertions; restored control passes. Product bytes and the six View PNGs are unchanged.
