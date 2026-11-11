@@ -5,6 +5,11 @@ const stopPreview = vi.fn();
 beforeAll(async () => { p = page({ url: "http://127.0.0.1/ui/chat/alpha" }); nav = await import("/assets/app-nav.js"); nav.startRouter(p.window); controller = (await import("/ui/js/chat-workspace-navigation.js")).installWorkspaceNavigation(nav, { geometry: true, beforeLayout: stopPreview }); });
 beforeEach(() => { nav.navigate("/ui/chat/alpha", { workspace: true, force: true }); controller.open("beta"); stopPreview.mockClear(); });
 afterAll(() => { controller.close(); p.restore(); });
+it("stops the old preview on first split and final collapse, before the next host can render", () => {
+  nav.navigate("/ui/chat/alpha", { workspace: true, force: true }); stopPreview.mockClear();
+  controller.open("beta"); expect(stopPreview).toHaveBeenCalledTimes(1);
+  controller.closePane("b"); expect(stopPreview).toHaveBeenCalledTimes(2);
+});
 it("floats the requested pane and stops the old live preview before changing its DOM position", () => {
   const w = controller.current(); controller.layout("float", "a");
   expect(controller.current().layout).toBe("float"); expect(controller.current().floating).toBe("a");

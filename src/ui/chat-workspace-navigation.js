@@ -34,7 +34,7 @@ export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWor
         if (!route || route.panel !== record.route.panel || route.instance !== record.route.instance) { dispose(record); retained.delete(key); }
       }
       if (b) onWorkspace();
-      if (a && b && (a.layout !== b.layout || a.flipped !== b.flipped || a.floating !== b.floating)) beforeLayout();
+      if (!!a !== !!b || (a && b && (a.layout !== b.layout || a.flipped !== b.flipped || a.floating !== b.floating))) beforeLayout();
     },
     resolve(url, before, { mode, opts }) {
       let w = null;
