@@ -123,14 +123,37 @@ export const OTHER_MODEL = "\u0000other";
 
 /**
  * The model select's options: the inherited choice (empty value), the current model first when the catalog does not
- * list it (marked), the catalog, and "Other…" for a name the CLI does not list.
+ * list it (marked), the catalog, and "Other…" for a name the CLI does not list. An entry that stands for several
+ * catalog names (`aliases`: antigravity's effort levels of one model) is selected by any of them, so a saved value is
+ * shown as that entry and is only rewritten when another entry is chosen. An entry's `group` (a newer daemon's, e.g.
+ * "common" / "more") is carried on its option; a catalog without any is the flat list it always was.
  */
 export function modelChoices(catalog, value, words, inherit) {
   const list = [];
   if (inherit) list.push({ value: "", label: inherit });
-  const ids = new Set((catalog || []).map((m) => m.id));
-  if (value && !ids.has(value)) list.push({ value, label: `${value} — ${words.notListed}` });
-  for (const m of catalog || []) list.push({ value: m.id, label: m.description ? `${m.label || m.id} — ${m.description}` : (m.label || m.id) });
+  const entries = catalog || [];
+  const stands = (m) => m.id === value || (Array.isArray(m.aliases) && m.aliases.includes(value));
+  if (value && !entries.some(stands)) list.push({ value, label: `${value} — ${words.notListed}` });
+  for (const m of entries) {
+    list.push({ value: value && stands(m) ? value : m.id, label: m.description ? `${m.label || m.id} — ${m.description}` : (m.label || m.id), ...(m.group ? { group: m.group } : {}) });
+  }
   list.push({ value: OTHER_MODEL, label: words.other });
   return list;
+}
+
+/**
+ * The options as `<optgroup>`s: `[{ group, options }]` in order, `group` null for the ones outside any (inherit, the
+ * current-but-unlisted value, "Other…"). Groups are headings that tell two sets apart, so with fewer than two groups
+ * there is one ungrouped run — the flat list — except for a lone "unverified" one: that heading is itself the
+ * information (these ids were not seen in this account), so it stays.
+ */
+export function groupModelOptions(options) {
+  const groups = new Set(options.map((o) => o.group).filter(Boolean));
+  if (groups.size < 2 && !groups.has("unverified")) return [{ group: null, options }];
+  const runs = [];
+  for (const o of options) {
+    const g = o.group || null, last = runs[runs.length - 1];
+    if (last && last.group === g) last.options.push(o); else runs.push({ group: g, options: [o] });
+  }
+  return runs;
 }

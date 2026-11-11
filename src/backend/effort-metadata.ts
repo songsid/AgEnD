@@ -94,6 +94,12 @@ export function agyEffortLevels(agendHome: string = getAgendHome()): string[] {
   return levels.length > 0 ? levels : [...AGY_FALLBACK_EFFORT_LEVELS];
 }
 
+/** A catalog slug split into its base model and effort level (`gemini-3.8-flash-high` → base `gemini-3.8-flash`, `high`); null when it has no level suffix. */
+export function agyVariantOf(id: string): { base: string; level: string } | null {
+  const at = id.lastIndexOf("-");
+  return at > 0 && CANONICAL_EFFORT.includes(id.slice(at + 1)) ? { base: id.slice(0, at), level: id.slice(at + 1) } : null;
+}
+
 /**
  * #1825: agy's catalog (`agy models`) has one model per effort level — `gemini-3.8-flash-high` "Gemini 3.8 Flash
  * (High)", `…-medium`, `…-low` — and its /model picker shows them as one base with an Effort gauge. A model's family:
@@ -104,12 +110,8 @@ export function agyEffortLevels(agendHome: string = getAgendHome()): string[] {
 export function agyModelFamily(
   name: string, catalog: readonly { id: string; label: string }[],
 ): { base: string; variants: Map<string, string> } | null {
-  const variant = (id: string) => {
-    const at = id.lastIndexOf("-");
-    return at > 0 && CANONICAL_EFFORT.includes(id.slice(at + 1)) ? { base: id.slice(0, at), level: id.slice(at + 1) } : null;
-  };
   const entry = catalog.find(m => m.id === name) ?? catalog.find(m => m.label === name);
-  const base = entry ? variant(entry.id)?.base : name;
+  const base = entry ? agyVariantOf(entry.id)?.base : name;
   if (!base) return null;
   const variants = new Map<string, string>();
   for (const level of CANONICAL_EFFORT) {

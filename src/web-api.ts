@@ -91,6 +91,7 @@ import {handleAgentRuntimeChange} from "./agent-runtime-api.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance } from "./native-instance-registry.js";
 import { handleNativeModelCatalog, refreshNativeModelCatalog } from "./native-model-catalog.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
+import { shapeDocumentedClaudeModels, shapeWebModelCatalog } from "./web-model-groups.js";
 import { handleRuntimeRequest } from "./runtime-api.js";
 import type { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { taskBoardOffNames } from "./dashboard-permissions.js";
@@ -387,6 +388,8 @@ export interface WebApiContext {
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
   /** #2072: a backend's cached model catalog, for an instance's own account when one is named; never a probe. */
   modelCatalogFor?(backend: string, instance: string | null, selection?:{profile?:string}): Array<{ id: string; label: string; description?: string }>;
+  /** The same cache, shaped for Web Settings (grouped; `[1m]` only where offered; antigravity's effort levels merged). */
+  modelCatalogForWeb?(backend: string, instance: string | null, selection?:{profile?:string}): import("./web-model-groups.js").WebModelOption[];
   /** Async, account-safe fallback from existing CLI metadata; never launch a CLI or refresh a vendor catalog. */
   cliModelCatalogFor?(backend: string, instance: string | null): Promise<Array<{ id: string; label: string; description?: string }>>;
   refreshModelCatalogFor?(backend: string, instance: string | null, selection?:{profile?:string}): Promise<{ models: Array<{ id: string; label: string; description?: string }>; refreshed: boolean }>;
@@ -668,6 +671,16 @@ const workBodies = new WeakMap<object, { key: string; body: string }>();
  * #1630 (#1635 review): an answer that waited on something (a list, a download) is sent only if the request is still
  * allowed — the session not revoked meanwhile, a public link's exposure still current. Otherwise 401, and nothing.
  */
+/**
+ * The catalog Web Settings lists for a backend and instance (and credential profile): the fleet's shaped cache
+ * (web-model-groups.ts), else — a hand-built context — the plain list, shaped the same way.
+ */
+function webCatalog(ctx: WebApiContext, backend: string, instance: string | null, profile: string | null, plain?: Array<{ id: string; label: string; description?: string }>): Array<{ id: string; label: string; description?: string }> {
+  if (ctx.modelCatalogForWeb) return profile !== null ? ctx.modelCatalogForWeb(backend, instance, { profile }) : ctx.modelCatalogForWeb(backend, instance);
+  const flat = plain ?? (profile !== null ? ctx.modelCatalogFor?.(backend, instance, { profile }) : ctx.modelCatalogFor?.(backend, instance)) ?? [];
+  return shapeWebModelCatalog(backend, flat);
+}
+
 function stillAuthorized(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): boolean {
   if (!permitWebContinuation(req, res, ctx)) return false;
   if (isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) return true;
@@ -2101,7 +2114,7 @@ export function handleWebRequest(
       const runtime=body.runtime, machineId=body.machineId, profile=body.profile;
       if(runtime!==undefined && runtime!=="windows" && runtime!=="wsl" || machineId!==undefined && (typeof machineId!=="string" || !/^[a-f0-9-]{36}$/i.test(machineId)) || profile!==undefined && (typeof profile!=="string" || profile!=="" && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile))) {json(res,400,{error:"invalid model target"});return;}
       const target={backend,instance,...(runtime?{runtime:runtime as "windows"|"wsl"}:{}),...(machineId?{machineId:machineId as string}:{}),...(profile!==undefined?{profile:profile as string}:{})};
-      let result;
+      let result, fleetAnswered=false;
       try {
         result=await refreshNativeModelCatalog(req,url,ctx,target);
         // Recheck after runtime selection, before any portable probe is admitted.
@@ -2110,11 +2123,17 @@ export function handleWebRequest(
         if(!result){
           if(machineId || !ctx.refreshModelCatalogFor){json(res,503,{error:"model_refresh_unavailable"});return;}
           result=await (profile!==undefined ? ctx.refreshModelCatalogFor(backend,instance,{profile:profile as string}) : ctx.refreshModelCatalogFor(backend,instance));
+          fleetAnswered=true;
         }
       } catch {if(!permitWebContinuation(req,res,ctx))return;json(res,503,{error:"model_refresh_unavailable"});return;}
       if (!permitWebContinuation(req, res, ctx)) return;
       if (adminAdmissionOf(req, url, ctx) !== admission) { json(res, 403, { error: "admin_required" }); return; }
-      json(res, 200, { backend, ...result });
+      // The refreshed list is shaped as the passive read is (a refresh answered by a computer's own runtime is its own).
+      // When the fleet answered, `webCatalog` re-reads the cache the refresh has just written, through the same shaping
+      // as GET /ui/models, rather than shaping `result.models`: that list is the flat one (it has lost which tier each
+      // model came from, and claude's aliases / [1m] variants are in it), so only the cache read can be grouped right.
+      const models = fleetAnswered && Array.isArray(result.models) ? webCatalog(ctx, backend, instance as string | null, typeof profile === "string" ? profile : null, result.models) : result.models;
+      json(res, 200, { backend, ...result, models });
     })().catch(() => { if (!res.headersSent) json(res, 500, { error: "model_refresh_failed" }); });
     return true;
   }
@@ -2156,11 +2175,11 @@ export function handleWebRequest(
     const profile=url.searchParams.get("profile");
     if(profile!==null && profile!=="" && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile)){json(res,400,{error:"Invalid model account"});return true;}
     if (handleNativeModelCatalog(req, res, url, ctx)) return true;
-    const models = (profile!==null ? ctx.modelCatalogFor?.(backend,instance,{profile}) : ctx.modelCatalogFor?.(backend,instance)) ?? [];
+    const models = webCatalog(ctx, backend, instance, profile);
     const answerCatalog = (): void => {
       if (backend === "claude-code" && !models.length && !profile) {
         const version = ctx.backendAvailabilityRows?.().find(row => row.backend === backend)?.version;
-        json(res, 200, { backend, models: claudeDocumentedModels(version), source: "official-catalog" });
+        json(res, 200, { backend, models: shapeDocumentedClaudeModels(claudeDocumentedModels(version)), source: "official-catalog" });
       } else json(res, 200, { backend, models });
     };
     // The existing catalog belongs to this instance/account and always wins.
@@ -2169,7 +2188,7 @@ export function handleWebRequest(
     void (async () => {
       const cliModels = await ctx.cliModelCatalogFor?.(backend, instance) ?? [];
       if (!canAnswer()) return;
-      if (cliModels.length) json(res, 200, { backend, models: cliModels, source: "cli-cache" });
+      if (cliModels.length) json(res, 200, { backend, models: shapeWebModelCatalog(backend, cliModels), source: "cli-cache" });
       else answerCatalog();
     })().catch(() => {
       if (canAnswer()) json(res, 503, { error: "CLI model cache unavailable" });

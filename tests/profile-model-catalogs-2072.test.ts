@@ -195,7 +195,7 @@ describe("claude's account catalog uses the profile's token", () => {
   it("listApiModels(storeHome) asks for that store's token", async () => {
     const providers = await import("../src/usage/providers.js");
     const token = vi.spyOn(providers, "getClaudeOAuthToken").mockResolvedValue("tok-" + "c".repeat(8));
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ data: [{ id: "claude-x" }] }) })));
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ data: [{ id: "claude-x", max_input_tokens: 1_000_000 }] }) })));
     const { ClaudeCodeBackend } = await import("../src/backend/claude-code.js");
     const be = Object.create(ClaudeCodeBackend.prototype);
     expect((await be.listApiModels("/store/work")).map((m: any) => m.id)).toEqual(["claude-x", "claude-x[1m]"]);
@@ -207,7 +207,7 @@ describe("claude's account catalog uses the profile's token", () => {
   it("probeCLIEnv(config) carries config.credentialStoreHome to the token (Fable R1 P2: the feature's core)", async () => {
     const providers = await import("../src/usage/providers.js");
     const token = vi.spyOn(providers, "getClaudeOAuthToken").mockResolvedValue("tok-" + "c".repeat(8));
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ data: [{ id: "claude-x" }] }) })));
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ data: [{ id: "claude-x", max_input_tokens: 1_000_000 }] }) })));
     const { ClaudeCodeBackend } = await import("../src/backend/claude-code.js");
     const be = Object.create(ClaudeCodeBackend.prototype);
     be.binaryPath = "/nonexistent/claude-2072";            // probeCliVersion answers undefined: no CLI runs

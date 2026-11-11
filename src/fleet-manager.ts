@@ -279,6 +279,7 @@ import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResul
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import { cachedNativeModelCatalog } from "./native-model-catalog.js";
+import { shapeWebModelCatalog } from "./web-model-groups.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED, nativeCredentialProfile } from "./native-instance-registry.js";
 import { createNativeWindowsInstance, updateNativeWindowsInstance } from "./native-instance-api.js";
 import { NativeInstanceConfigEdit, parseNativeInstanceCreate, type NativeInstanceCreateInput } from "./native-instance-input.js";
@@ -24952,13 +24953,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * What Settings → Runtime & model offers as the agent's effort: the levels `model` (null: the one it runs now) takes on
    * this agent's backend and the effort in force with its source. The chat chip's own list (`effortLevelsFor`), only for
-   * the model named: a pure file read, never a CLI. `levels: []` — nothing to offer: a Windows agent, antigravity (its
-   * effort is not shown anywhere), or a backend / model without an effort setting.
+   * the model named: a pure file read, never a CLI. `levels: []` — nothing to offer: a Windows agent, or a backend / model
+   * without an effort setting. antigravity's levels are the model's own (its catalog has one slug per level, merged into
+   * one model in Settings' list), so this dropdown is where its effort is chosen.
    */
   effortOptionsFor(instanceName: string, model: string | null = null): { levels: string[]; effort: string | null; source: "instance" | "fleet-default" | "unset" } {
     const { effort, source } = this.resolveInstanceEffort(instanceName);
     const none = { levels: [] as string[], effort, source };
-    if (!this.fleetConfig?.instances[instanceName] || this.backendNameForInstance(instanceName) === "antigravity") return none;
+    if (!this.fleetConfig?.instances[instanceName]) return none;
     try {
       const { strategy, levels } = this.instanceEffortMetadata(instanceName, model?.trim() || null);
       return { levels: strategy === "unsupported" ? [] : levels, effort, source };
@@ -25315,6 +25317,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const env = this.webModelEnv(backend, instance, selection);
     const seen = new Set<string>();
     return [...(env?.models ?? []), ...(env?.apiModels ?? [])].filter(m => !seen.has(m.id) && !!seen.add(m.id));
+  }
+
+  /** The catalog Web Settings shows: the same cached lists, shaped and grouped (web-model-groups.ts); never a probe. */
+  modelCatalogForWeb(backend: string, instance: string | null, selection?: {profile?:string}): import("./web-model-groups.js").WebModelOption[] {
+    const env = this.webModelEnv(backend, instance, selection);
+    return shapeWebModelCatalog(backend, env?.models ?? [], env?.apiModels ?? []);
   }
 
   /** Explicit, bounded vendor rediscovery. Never publish an answer under a different account/config/instance. */
