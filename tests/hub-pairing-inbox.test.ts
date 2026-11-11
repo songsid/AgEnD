@@ -27,6 +27,15 @@ describe("member security notice retention before acknowledgement", () => {
     expect(w.send).toHaveBeenCalledTimes(101);expect(w.inbox.list()).toHaveLength(101);
     expect(w.inbox.list().at(-1)?.label).toBe("History 0");
   });
+  it("code provenance needs v3, retains before ACK, and a replay cannot substitute its code id", async () => {
+    const w = setup(), notice = { ...w.notice, source: "code" as const, codeId: randomUUID() };
+    const v2 = { ...w.link, features: new Set([...w.link.features, "pairing-notices-v2"]) };
+    await expect(w.inbox.receive(notice, v2)).rejects.toThrow("incompatible"); expect(w.send).not.toHaveBeenCalled();
+    const v3 = { ...v2, features: new Set([...v2.features, "pairing-notices-v3"]) };
+    await w.inbox.receive(notice, v3); await w.inbox.receive(notice, v3); expect(w.audit).toHaveBeenCalledOnce(); expect(w.send).toHaveBeenCalledTimes(2);
+    expect(w.inbox.list()).toEqual([notice]);
+    await expect(w.inbox.receive({ ...notice, codeId: randomUUID() }, v3)).rejects.toThrow("conflict");
+  });
   it("retains once before ACK, safely replays a lost ACK and persists across reader reconstruction", async () => {
     const w = setup(); await w.inbox.receive(w.notice, w.link); await w.inbox.receive(w.notice, w.link);
     expect(w.send).toHaveBeenCalledTimes(2); expect(w.audit).toHaveBeenCalledOnce(); expect(w.changed).toHaveBeenCalledTimes(2);

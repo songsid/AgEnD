@@ -12,8 +12,8 @@ describe("company join cleanup format upgrade", () => {
       applyHubMigrations(db, [HUB_COMPANY_JOIN_MIGRATION]);
       applyHubMigrations(db, [HUB_COMPANY_JOIN_MIGRATION]);
       expect(db.prepare("SELECT enabled,revision FROM hub_company_join_control").get()).toEqual({ enabled: 1, revision: 9 });
-      expect(db.prepare("SELECT version FROM hub_schema WHERE component='company-join'").get()).toEqual({ version: 2 });
-      expect(() => applyHubMigrations(db, [previous])).toThrow("company-join v2");
+      expect(db.prepare("SELECT version FROM hub_schema WHERE component='company-join'").get()).toEqual({ version: 3 });
+      expect(() => applyHubMigrations(db, [previous])).toThrow("company-join v3");
     } finally { db.close(); }
   });
 });

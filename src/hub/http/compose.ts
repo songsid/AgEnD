@@ -37,7 +37,7 @@ import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { serveHubWorkspaceShell } from "../../web-api.js";
 import { servePublicAsset } from "../../auth-api.js";
 import { handleCompanyJoin, companyFlowCookie } from "../join/http.js";
-import { CompanyJoinLimit, CompanyJoinOfferPending } from "../join/service.js";
+import { CompanyJoinCodeRefusal, CompanyJoinLimit, CompanyJoinOfferPending } from "../join/service.js";
 
 export { HUB_HTTP_MIGRATIONS };
 /** S5's lazy entry (HubHttpEntry): this module itself — `createHubHttp` and `migrations`. */
@@ -158,6 +158,14 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       const requestId = uuid(b.requestId);
       return send(res, 200, await deps.companyJoin.approve(ctx, companyFlowCookie(req, deps.config.hubId, requestId), requestId));
     }
+    if (deps.companyJoin && (path === "/hub/v1/admin/enrolment-codes" || /^\/hub\/v1\/admin\/enrolment-codes\/[0-9a-f-]+\/revoke$/.test(path))) {
+      if (path === "/hub/v1/admin/enrolment-codes" && method === "GET") { signedIn(); return send(res, 200, await deps.companyJoin.listCodes(ctx)); }
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const b = await body();
+      if (path === "/hub/v1/admin/enrolment-codes") return send(res, 201, await deps.companyJoin.createCode(ctx, b));
+      if (Object.keys(b).length) throw new HubProtocolError("invalid");
+      return send(res, 200, await deps.companyJoin.revokeCode(ctx, uuid(path.split("/")[5])));
+    }
     if (deps.companyJoin && path === "/hub/v1/admin/company-join/invitations") {
       if (method !== "POST") throw new HttpError(405, "method");
       csrf(); const b = await body(); if (Object.keys(b).length !== 1) throw new HubProtocolError("invalid");
@@ -240,7 +248,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       }
       if (path === "/hub/v1/notices") {
         if (method !== "GET") throw new HttpError(405, "method");
-        signedIn(); return send(res, 200, { notices: await guard(() => notices.forSession(ctx, query.get("v") === "2" ? 2 : 1)) });
+        signedIn(); return send(res, 200, { notices: await guard(() => notices.forSession(ctx, query.get("v") === "3" ? 3 : query.get("v") === "2" ? 2 : 1)) });
       }
       if ((r = m(/^\/hub\/v1\/notices\/([^/]+)\/ack$/))) {
         if (method !== "POST") throw new HttpError(405, "method");
@@ -249,7 +257,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (path === "/hub/v1/notices/events") {
         if (method !== "GET") throw new HttpError(405, "method");
         signedIn(); if (streams.size >= 64) throw new HubProtocolError("backpressure");
-        const initial = await guard(() => notices.forSession(ctx, query.get("v") === "2" ? 2 : 1));
+        const initial = await guard(() => notices.forSession(ctx, query.get("v") === "3" ? 3 : query.get("v") === "2" ? 2 : 1));
         if (streams.size >= 64 || !live() || ctx.isCurrent?.() !== true) throw new HubProtocolError("backpressure");
         res.writeHead(200, { ...API_HEADERS, "Content-Type": "text/event-stream; charset=utf-8", Connection: "keep-alive", "X-Accel-Buffering": "no" });
         let ended = false, running = false, dirty = false;
@@ -260,7 +268,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           running = true;
           try {
             do {
-              dirty = false; const rows = await notices.forSession(ctx, query.get("v") === "2" ? 2 : 1);
+              dirty = false; const rows = await notices.forSession(ctx, query.get("v") === "3" ? 3 : query.get("v") === "2" ? 2 : 1);
               if (ended || !ctx.isCurrent?.()) return close();
               res.write(`event: notices\ndata: ${JSON.stringify({ notices: rows })}\n\n`);
             } while (dirty);
@@ -455,6 +463,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   }
 
   function fail(res: ServerResponse, e: unknown): void {
+    if (e instanceof CompanyJoinCodeRefusal) return send(res, 403, { code: "denied", reason: e.reason });
     if (e instanceof CompanyJoinOfferPending) return send(res, 409, { code: "offer-pending" });
     if (e instanceof CompanyJoinLimit) return send(res, 429, { code: "limit-reached" });
     if (e instanceof SignedOut) return send(res, 401, { code: "signed-out" });

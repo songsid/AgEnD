@@ -69,7 +69,7 @@ export function buildHubGroupImpact(input: {
   for (const row of resources) {
     const r = row.resource, firstEnable = before.state === "never-enabled" && next.state === "enabled" && r.kind !== "asker";
     if (firstEnable && row.lifecycle?.source === "group") throw new HubGroupPolicyError("conflict");
-    const manual = row.lifecycle?.source === "manual" || firstEnable, active = row.lifecycle?.state !== "suspended";
+    const manual = row.lifecycle?.source === "manual" || row.lifecycle?.source === "code" || firstEnable, active = row.lifecycle?.state !== "suspended";
     if (firstEnable && !row.lifecycle) capture.push(r);
     const after = decision(next, r.owner, capability(r), input.facts.get(personKeyString(r.owner)) ?? { kind: "unknown" });
     const narrowing = manual ? denied(next, r.owner, capability(r)) : row.lifecycle?.source === "group" && after.outcome === "deny" && after.authoritative;
