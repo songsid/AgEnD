@@ -1,3 +1,4 @@
+import { settingsSummary, translatedSummary, type SettingsSummaryPresentation } from "./settings-summary.js";
 import { readInstalledBuild } from "./build-provenance.js";
 import { buildNativeFleetInstructions } from "./instructions.js";
 import { GENERAL_ROLE_INSTRUCTIONS } from "./general-role.js";
@@ -1883,7 +1884,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     })) };
   }
   /** Pure preflight for the confirmation diff and stale-tab refusal; never prepares files or starts a CLI. */
-  previewGeneralLocation(raw: unknown): { input: GeneralSwitchInput; summary: string[]; connections: string[] } {
+  previewGeneralLocation(raw: unknown): { input: GeneralSwitchInput; summary: string[]; summary_i18n?: SettingsSummaryPresentation; connections: string[] } {
     const input = parseGeneralSwitchInput(raw), cfg = this.fleetConfig?.instances[input.name];
     if (!cfg?.general_topic || this.shuttingDown) throw Error("General is unavailable");
     const record = this.generalBindings().read(input.name);
@@ -1893,7 +1894,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (channels.length && (connections.length !== 1 || channels.filter(row => (row.id ?? row.type) === connections[0]).length !== 1)) throw Error("General's connection cannot be resolved");
     if (input.target.location === "host") {
       if (!record) throw Error("General's saved host location is unavailable");
-      return { input, connections, summary: [t("general_location.confirm_host"), t("general_location.history")] };
+      return { input, connections, ...settingsSummary([translatedSummary("general_location.confirm_host"), translatedSummary("general_location.history")]) };
     }
     const active = record?.windows.find(row => row.id === record.active);
     if (!record?.pending && record?.hold !== "start" && active?.machineId === input.target.machineId && active.cli === input.target.cli) throw Error("General already runs at this location");
@@ -1901,7 +1902,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!remoteRuntimeEnabled() || machine?.status !== "online" || !this.runtimeHub?.paneTransportEpoch(machine.id)) throw Error(t("general_location.offline"));
     const provider = input.target.cli;
     if (!machine.inventory?.clis.some(cli => cli.id === provider && cli.runnable)) throw Error("The chosen Windows CLI is unavailable");
-    return { input, connections, summary: [t("general_location.confirm_windows", settingsDisplay(machine.name)), t("general_location.history")] };
+    return { input, connections, ...settingsSummary([translatedSummary("general_location.confirm_windows", settingsDisplay(machine.name)), translatedSummary("general_location.history")]) };
   }
   /** All entry points, including automatic native recovery, must respect an interrupted binding switch. */
   assertGeneralBindingStart(name: string, config: InstanceConfig): void {

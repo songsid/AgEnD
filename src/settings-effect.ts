@@ -32,7 +32,7 @@ import { settingsFingerprint } from "./settings-transaction.js";
 import { parseHubBrowserCertificateApply, type HubBrowserCertificateProposal } from "./hub-browser-certificate-policy.js";
 import { parseHubRetention } from "./hub-retention-policy.js";
 import { parseHubMembership } from "./hub-membership-settings.js";
-import { t } from "./locale.js";
+import { settingsSummary, translatedSummary, type SettingsSummaryPresentation } from "./settings-summary.js";
 import { hostUpdateAckError, hostUpdatePlan } from "./web-host-install.js";
 import { LATEST_ACK_FIELD } from "./cli-audited.js";
 import { runtimeFacts } from "./cli-registry.js";
@@ -47,13 +47,13 @@ export interface SettingsSecretProof {
 export interface SettingsEffectContext {
   config: FleetConfig | null; classic: Record<string, any>;
   proof?(kind: "provider" | "secret" | "binding", target: string, verification: string, binding?: string, key?: string): SettingsSecretProof | null;
-  generalLocation?(input: unknown): { summary: string[]; connections: string[] };
+  generalLocation?(input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation; connections: string[] };
   /** S3c (S-55): a Hub exposure publish's summary (absent: no Hub member here). Throws on a refused input. */
   hubBrowserCertificate?(input: unknown, binding: string): HubBrowserCertificateProposal;
   hubMembership?(): { enabled: boolean };
-  hubExposure?(input: unknown): { summary: string[] };
+  hubExposure?(input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
   /** S3c PR B: a Hub pairing step's summary (connect, confirm the fingerprint, disconnect). Throws on a refused input. */
-  hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[] };
+  hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
 }
 /** The dashboard's host CLI installs (web-host-install.ts): the change this gate holds is "install <CLI>" — only its id is ever in the request. */
 export const HOST_CLI_PATHS: ReadonlySet<string> = new Set(["/ui/host-install", "/ui/host-update"]);
@@ -111,7 +111,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       throw new SettingsConfirmationError(400, "install_args");
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input.backend]),
-      summary: [t("host_cli.install_confirm", input.backend)], affectedConnections: [], authority: HUB_AUTHORITY } };
+      ...settingsSummary([translatedSummary("host_cli.install_confirm", input.backend)]), affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (path === "/api/settings/hub/browser-certificate/apply") {
     if (method !== "POST" || !cfg || !binding || !context.hubBrowserCertificate) throw new SettingsConfirmationError(404, "unavailable");
@@ -120,9 +120,9 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     catch { throw new SettingsConfirmationError(409, "conflict"); }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input, proposal.certificate]),
-      summary: [t("hub.browserCertificate.replace"), t("hub.browserCertificate.fingerprint", proposal.certificate.fingerprint256),
-        t("hub.browserCertificate.expires", proposal.certificate.validTo),
-        ...(proposal.certificate.selfSigned ? [t("hub.browserCertificate.selfSigned")] : [])],
+      ...settingsSummary([translatedSummary("hub.browserCertificate.replace"), translatedSummary("hub.browserCertificate.fingerprint", proposal.certificate.fingerprint256),
+        translatedSummary("hub.browserCertificate.expires", proposal.certificate.validTo),
+        ...(proposal.certificate.selfSigned ? [translatedSummary("hub.browserCertificate.selfSigned")] : [])]),
       affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   // AGEND-136: the Update button beside Install (#3542's held install is `/ui/host-install` above; an update is that change with the audited release in it).
@@ -139,7 +139,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (ackError) throw new SettingsConfirmationError(409, ackError);
     const input = { backend: b.backend, target: plan.target }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
-      summary: [plan.target === null ? t("host_cli.update_latest", input.backend) : t("host_cli.update", input.backend, plan.target)], affectedConnections: [], authority: HUB_AUTHORITY } };
+      ...settingsSummary([plan.target === null ? translatedSummary("host_cli.update_latest", input.backend) : translatedSummary("host_cli.update", input.backend, plan.target)]), affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (isRuntimeCliInstallPath(path)) {
     if (method !== "POST") throw new SettingsConfirmationError(404, "unavailable");
@@ -153,7 +153,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const machine = RUNTIME_CLI_INSTALL_PATH.exec(path)![1], input = { cli: b.cli, machine, ...(b[LATEST_ACK_FIELD] === true ? { [LATEST_ACK_FIELD]: true } : {}) }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
       // AGEND-153: a CLI whose update is the named exception is, when it is already on that computer, taken to the vendor's newest release — the held change says so in its own words.
-      summary: [t("runtime_cli.install", input.cli, INSTALLABLE_CLIS[b.cli].version, machine.slice(0, 8)), ...(runtimeFacts(b.cli, "update")?.kind === "latest-unaudited" ? [t("runtime_cli.update_latest", input.cli, machine.slice(0, 8))] : [])], affectedConnections: [], authority: HUB_AUTHORITY } };
+      ...settingsSummary([translatedSummary("runtime_cli.install", input.cli, INSTALLABLE_CLIS[b.cli].version, machine.slice(0, 8)), ...(runtimeFacts(b.cli, "update")?.kind === "latest-unaudited" ? [translatedSummary("runtime_cli.update_latest", input.cli, machine.slice(0, 8))] : [])]), affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (path === "/api/settings/hub/retention") {
     if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
@@ -161,7 +161,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     try { policy = parseHubRetention(body); } catch { throw new SettingsConfirmationError(400, "invalid_retention"); }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, policy]),
-      summary: [t("hub.retention.content", policy.contentDays), t("hub.retention.events", policy.eventDays), t("hub.retention.purge")],
+      ...settingsSummary([translatedSummary("hub.retention.content", policy.contentDays), translatedSummary("hub.retention.events", policy.eventDays), translatedSummary("hub.retention.purge")]),
       affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   // #3451 (M-2682): the host owner's Hub switches — "Run this Hub" (hub.enabled) and "HTML previews on this Hub"
@@ -179,7 +179,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const input = run ? { enabled: b.enabled } : b.enabled ? { enabled: true, port } : { enabled: false };
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
-      summary: [run ? t(b.enabled ? "hub.run.start" : "hub.run.stop") : b.enabled ? t("hub.preview.on", String(port)) : t("hub.preview.off")],
+      ...settingsSummary([run ? translatedSummary(b.enabled ? "hub.run.start" : "hub.run.stop") : b.enabled ? translatedSummary("hub.preview.on", String(port)) : translatedSummary("hub.preview.off")]),
       affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (path === "/api/settings/hub/membership") {
@@ -188,7 +188,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     try { next = parseHubMembership(body); previous = context.hubMembership(); }
     catch { throw new SettingsConfirmationError(400, "invalid_hub_membership"); }
     const diff = settingsChangeDiff({ fleet: { hub_member: previous } }, { fleet: { hub_member: next } }, { operation });
-    return { diff: diff ? { ...diff, section: "access", summary: [t(next.enabled ? "hub.membership.enable" : "hub.membership.disable")],
+    return { diff: diff ? { ...diff, section: "access", ...settingsSummary([translatedSummary(next.enabled ? "hub.membership.enable" : "hub.membership.disable")]),
       affectedConnections: [], authority: HUB_AUTHORITY } : null };
   }
   // #2453 (§0.2): the trusted effect — the named-link option off before, on after — marks the change as one that opens a
@@ -204,20 +204,20 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (method !== "POST" || !cfg || !context.generalLocation) throw new SettingsConfirmationError(400, "general_location_unavailable");
     const input = parseGeneralSwitchInput(body), preview = context.generalLocation(input);
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
-    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, input]), summary: preview.summary,
+    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, input]), summary: preview.summary, summary_i18n: preview.summary_i18n,
       affectedConnections: [], authority: { connections: preview.connections, primaryGeneral: true, unknown: false } } };
   }
   // S3c (S-55): publishing (or revising) an exposure to the Hub widens what the Hub may ask — the owner confirms it as
   // any other Settings change; nothing in the fleet config changes, so the effect is the request itself.
   if (path === "/api/hub/member/exposures") {
     if (method !== "POST" || !context.hubExposure) throw new SettingsConfirmationError(404, "hub_member_unavailable");
-    let preview: { summary: string[] };
+    let preview: { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
     try { preview = context.hubExposure(body); } catch (err) {
       const code = String((err as { code?: string }).code ?? "conflict");
       throw new SettingsConfirmationError(code === "hub_member_unavailable" ? 404 : 409, code);
     }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
-    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
+    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, summary_i18n: preview.summary_i18n, affectedConnections: [],
       authority: HUB_AUTHORITY } };
   }
   if (/^\/api\/hub\/member\/company-join\/(start|resume|repair-trust)$/.test(path)) {
@@ -238,19 +238,19 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       }
     } catch { throw new SettingsConfirmationError(400, "invalid_company_join"); }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
-    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: [t(repair ? "hub.companyJoin.repair" : "hub.companyJoin.confirm", target)], affectedConnections: [],
+    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), ...settingsSummary([translatedSummary(repair ? "hub.companyJoin.repair" : "hub.companyJoin.confirm", target)]), affectedConnections: [],
       authority: HUB_AUTHORITY } };
   }
   const pairingStep = path.match(/^\/api\/hub\/member\/pairing\/(connect|confirm|disconnect)$/);
   if (pairingStep) {
     if (method !== "POST" || !context.hubPairing) throw new SettingsConfirmationError(404, "hub_member_unavailable");
-    let preview: { summary: string[] };
+    let preview: { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
     try { preview = context.hubPairing(pairingStep[1] as "connect" | "confirm" | "disconnect", body); } catch (err) {
       const code = String((err as { code?: string }).code ?? "conflict");
       throw new SettingsConfirmationError(code === "hub_member_unavailable" ? 404 : 409, code);
     }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
-    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
+    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, summary_i18n: preview.summary_i18n, affectedConnections: [],
       authority: HUB_AUTHORITY } };
   }
   if (secret || connection) {

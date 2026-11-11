@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/settings-summary-page-language-3416-alpha
+
+
+ Test Files  1 passed (1)
+      Tests  75 passed (75)
+   Start at  12:19:53
+   Duration  9.36s (transform 74ms, setup 152ms, import 48ms, tests 9.04s, environment 0ms)
+
