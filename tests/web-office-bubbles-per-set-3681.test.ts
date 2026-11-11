@@ -119,6 +119,11 @@ describe("linesFor: theirs → their set's → the pack's → the page's", () =>
     expect(say("working", "sage")).toEqual(["Pack work."]);
     expect(say("working")).toEqual(["Pack work."]);                     // no name: the pack's, as before
   });
+  it("their own lines win over their set's when both have the state", () => {
+    const c = PK.checkSkinPack({ ...voiced(), bubblesByInstance: { atlas: { en: { needs: ["Atlas needs you."] } } } }).pack;
+    expect(Z.linesFor("needs", "en", c, defaults, "atlas")).toEqual(["Atlas needs you."]);    // atlas wears fox, whose set says "Fox needs you."
+    expect(Z.linesFor("working", "en", c, defaults, "atlas")).toEqual(Z.linesFor("working", "en", PK.checkSkinPack(voiced()).pack, defaults, "atlas"));   // other states: as before
+  });
   it("\"default\"'s lines are everyone's not in byInstance; a byInstance set naming nothing is never looked up", () => {
     const m = voiced(); m.characters.default = { ...m.characters.default, bubbles: { en: { idle: ["Default idle."] } } };
     const c = PK.checkSkinPack(m).pack;
