@@ -452,7 +452,15 @@ describe("an unexpired retry does not spin the claim loop (#1079 review P1-2)", 
 
 describe("a transient claim error does not leak the budget (#1079 review P2-3)", () => {
   it("claimNext throws SQLITE_BUSY once: the budget is returned and delivery recovers", async () => {
-    const { fm, outbox, admit } = await fleet("on");
+    const { fm, outbox, admit, scripts, gateHandoff, handoffs } = await fleet("on");
+    // Drive real pump passes explicitly: automatic kicks can retry before the
+    // old test's 30 ms sample. Keep worker creation/SQLite/budget/dispatch real.
+    const timer = (fm as any).deliveryPumpTimer;
+    if (timer) clearTimeout(timer);
+    (fm as any).deliveryPumpTimer = null;
+    vi.spyOn(fm as any, "scheduleDeliveryOutboxPump").mockImplementation(() => {});
+    fm.wakeCoordinator?.stop();
+    const drains = vi.spyOn(TargetQueueWorker.prototype, "drain");
     const real = outbox.claimNext.bind(outbox);
     let fail = true;
     vi.spyOn(outbox, "claimNext").mockImplementation((...args: any[]) => {
@@ -460,10 +468,34 @@ describe("a transient claim error does not leak the budget (#1079 review P2-3)",
       return real(...args);
     });
     const id = admit("a");
-    await sleep(30);
+    await (fm as any).runDeliveryOutboxPump();
+    await drains.mock.results[0].value; // failed drain settled, before the retry
+    const worker = fm.queueWorkers.get("a")!;
+    expect(fail).toBe(false);
+    expect(outbox.get(id)).toMatchObject({ state: "queued", attemptNo: 0 });
+    expect(handoffs).toHaveLength(0);
     expect((fm as any).activeDurableTargets.has("a")).toBe(false);
-    (fm as any).scheduleDeliveryOutboxPump();
-    await vi.waitFor(() => expect(outbox.get(id).state).toBe("delivered"));
+
+    scripts.set("a", ["gated"]);
+    const gate = gateHandoff();
+    await (fm as any).runDeliveryOutboxPump();
+    const recovered = drains.mock.results[1].value;
+    try {
+      expect(outbox.get(id)).toMatchObject({ state: "submission_started", attemptNo: 1 });
+      expect(handoffs.map(h => h.deliveryId)).toEqual([id]);
+      expect(worker.inFlight).toBe(true);
+      // A retried hand-off legitimately owns its budget until completion.
+      expect((fm as any).activeDurableTargets.has("a")).toBe(true);
+    } finally {
+      const row = outbox.get(id);
+      outbox.complete(id, row.targetDaemonBootId, row.attemptNo, "delivered");
+      gate.release();
+      await recovered; // drain all owned work before storage teardown
+    }
+    expect(outbox.get(id).state).toBe("delivered");
+    expect((fm as any).activeDurableTargets.has("a")).toBe(false);
+    expect(worker.inFlight).toBe(false);
+    expect(worker.busy).toBe(false);
   });
 });
 
