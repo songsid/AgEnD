@@ -1,0 +1,68 @@
+[
+  {
+    "name": "M1-meta-id",
+    "compiled": true,
+    "caughtByAssertion": true,
+    "exit": 1
+  },
+  {
+    "name": "M2-meta-cwd",
+    "compiled": true,
+    "caughtByAssertion": true,
+    "exit": 1
+  },
+  {
+    "name": "M3-child-parent",
+    "compiled": true,
+    "caughtByAssertion": true,
+    "exit": 1
+  },
+  {
+    "name": "M4-file-no-revival",
+    "compiled": true,
+    "caughtByAssertion": true,
+    "exit": 1
+  },
+  {
+    "name": "M5-opened-descriptor",
+    "compiled": true,
+    "caughtByAssertion": true,
+    "exit": 1
+  },
+  {
+    "name": "M6-current-session",
+    "compiled": true,
+    "caughtByAssertion": true,
+    "exit": 1
+  },
+  {
+    "name": "M7-attempt-owner",
+    "compiled": true,
+    "caughtByAssertion": true,
+    "exit": 1
+  },
+  {
+    "name": "M8-prewrite-offset",
+    "compiled": true,
+    "caughtByAssertion": true,
+    "exit": 1
+  },
+  {
+    "name": "M9-partial-prewrite",
+    "compiled": true,
+    "caughtByAssertion": true,
+    "exit": 1
+  },
+  {
+    "name": "M10-proof-wiring",
+    "compiled": true,
+    "caughtByAssertion": true,
+    "exit": 1
+  },
+  {
+    "name": "M11-owner-no-revival",
+    "compiled": true,
+    "caughtByAssertion": true,
+    "exit": 1
+  }
+]
