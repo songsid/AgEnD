@@ -1,3 +1,4 @@
+import * as fixturePrivacyFs from "node:fs";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
@@ -396,3 +397,9 @@ describe("how the commands are typed in the messages", () => {
     const zipShim = join(sep, "zip", "agend-runtime.cmd"); expect(runtimeCommandName(join(sep, "zip", "dist", "runtime-cli.js"), {}, exists(zipShim))).toBe(`"${zipShim}"`);
   });
 });
+
+// This suite models an admitted NTFS boundary; dedicated privacy tests retain the real gate and refusal ordering.
+vi.mock("../src/runtime-pane-private.js", async original => ({ ...await original<typeof import("../src/runtime-pane-private.js")>(), protectRuntimeProfileDirectorySync(directory: string) {
+  const fs = fixturePrivacyFs;
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 }); const stat = fs.lstatSync(directory); if (!stat.isDirectory() || stat.isSymbolicLink()) throw Error("Unsafe profile fixture");
+} }));

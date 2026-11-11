@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +13,10 @@ vi.mock("../src/runtime-client.js", () => ({
 }));
 vi.mock("node:readline/promises", () => ({ createInterface: () => ({ question: async () => "ABCD-EFGH", close() {} }) }));
 
+// Profile-selection tests model an already-authorized NTFS boundary; actual gate ordering/refusal is tested in runtime-profile-privacy-2965.
+vi.mock("../src/runtime-pane-private.js", async original => ({ ...await original<typeof import("../src/runtime-pane-private.js")>(), protectRuntimeProfileDirectorySync(directory: string) {
+  mkdirSync(directory, { recursive: true, mode: 0o700 }); const stat = lstatSync(directory); if (!stat.isDirectory() || stat.isSymbolicLink()) throw Error("Unsafe profile fixture");
+} }));
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { chooseRuntimeProfile, runtimeProfileName, runtimeServerProfile, RUNTIME_SERVER_FILE } from "../src/runtime-connection.js";
 import { runtimeMain } from "../src/runtime-cli.js";

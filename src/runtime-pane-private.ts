@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { execFile } from "./child-process.js";
+import { execFileSync } from "node:child_process";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
 export interface PaneHostDescriptor { version: 1; scope: string; hostBootId: string; pid: number; port: number; token: string; systemBootId?: string }
@@ -15,6 +16,19 @@ export async function protectPaneDirectory(directory: string): Promise<void> {
     "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", fileURLToPath(new URL("./runtime-pane-private.ps1", import.meta.url)), "-Directory", directory,
   ], { env: nativeCliEnvironment(), windowsHide: true, timeout: 30_000, maxBuffer: 4096 });
   else chmodSync(directory, 0o700);
+}
+/** Verify existing profiles without rewriting their ACLs; Windows creates new directories private from the outset. */
+export function protectRuntimeProfileDirectorySync(directory: string): void {
+  let before: ReturnType<typeof lstatSync> | undefined;
+  try { before = lstatSync(directory); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  if (before && (!before.isDirectory() || before.isSymbolicLink())) throw Error("Runtime profile privacy requires a real directory");
+  try {
+    execFileSync(join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), [
+      "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", fileURLToPath(new URL("./runtime-pane-private.ps1", import.meta.url)), "-Directory", directory, "-RuntimeProfile",
+    ], { env: nativeCliEnvironment(), windowsHide: true, timeout: 30_000, maxBuffer: 4096, stdio: ["ignore", "ignore", "pipe"] });
+  } catch { throw Error("Runtime profile privacy could not be confirmed within the bounded check. Choose a new dedicated directory with --profile, or have the owner review the existing profile's size and Windows permissions before trying again. No existing ACL was changed."); }
+  const after = lstatSync(directory);
+  if (!after.isDirectory() || after.isSymbolicLink() || before && (before.dev !== after.dev || before.ino !== after.ino || before.ctimeMs !== after.ctimeMs)) throw Error("Runtime profile directory changed during the privacy check; no state was read");
 }
 export function readPaneHostDescriptor(directory: string, scope: string): PaneHostDescriptor | null {
   const path = join(directory, "host.json");

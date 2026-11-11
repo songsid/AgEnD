@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { WindowsCliTask } from "./windows-cli.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
+import { protectRuntimeProfileDirectorySync } from "./runtime-pane-private.js";
 import { assertCredentialProfileName, validCredentialProfileName } from "./runtime-credential-profiles.js";
 
 const MAX_JOBS = 128;
@@ -40,6 +41,7 @@ function canonical(value: unknown): string {
 }
 export function runtimeJobDigest(value: unknown): string { return createHash("sha256").update(canonical(value)).digest("hex"); }
 function privateDirectory(directory: string): void {
+  if (process.platform === "win32") { protectRuntimeProfileDirectorySync(directory); return; }
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   if (!lstatSync(directory).isDirectory() || lstatSync(directory).isSymbolicLink()) throw new Error("Runtime state must be a private real directory");
 }

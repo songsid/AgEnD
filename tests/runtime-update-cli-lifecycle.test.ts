@@ -1,3 +1,4 @@
+import * as fixturePrivacyFs from "node:fs";
 import { afterEach, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,3 +27,9 @@ it("owns its stop handler before asynchronous client startup and removes it on c
     expect(process.listeners("SIGTERM").filter(handler => !before.has(handler))).toEqual([]);
   } finally { release(); try { await running; } finally { Object.defineProperty(process, "platform", platform); rmSync(home, { recursive: true, force: true }); } }
 });
+
+// This suite models an admitted NTFS boundary; dedicated privacy tests retain the real gate and refusal ordering.
+vi.mock("../src/runtime-pane-private.js", async original => ({ ...await original<typeof import("../src/runtime-pane-private.js")>(), protectRuntimeProfileDirectorySync(directory: string) {
+  const fs = fixturePrivacyFs;
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 }); const stat = fs.lstatSync(directory); if (!stat.isDirectory() || stat.isSymbolicLink()) throw Error("Unsafe profile fixture");
+} }));
