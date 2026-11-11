@@ -70,6 +70,7 @@ describe("workspace shares the existing router and guarded history", () => {
     expect(memory.state.size).toBe(0); memory.set("draft", "late"); expect(memory.state.size).toBe(0);
   });
   it("retires preview before a layout is published, including a restored history entry", () => {
+    retirePreview.mockClear(); // entry/exit are now preview transitions too; this case measures layout/focus/history.
     const before = nav.navStore.get().workspace;
     retirePreview.mockImplementationOnce(() => expect(nav.navStore.get().workspace).toBe(before));
     controller.layout("stack"); expect(retirePreview).toHaveBeenCalledTimes(1);
