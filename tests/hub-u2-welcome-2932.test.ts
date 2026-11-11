@@ -15,7 +15,7 @@ beforeAll(async () => {
 afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); vi.unstubAllGlobals(); });
 afterAll(() => { client.setHubClient(null); });
 const MANUAL = /pairs fleets for you|Ask them for a pairing code/;
-function fake(o: { admin?: boolean; fleets?: any[]; connect?: any; quick?: boolean } = {}) {
+function fake(o: { admin?: boolean; fleets?: any[]; connect?: any; quick?: boolean; on?: boolean } = {}) {
   return {
     stub: false, web: true, groupPolicyV1: true, quickPairingV1: o.quick ?? false, onSignedOut: () => () => {},
     session: vi.fn(async () => ({ ok: true, signedIn: true, displayName: "Ada", login: "ada", admin: o.admin ?? true, csrf: "x", features: ["group-policy-v1", "company-join-v1"] })),
@@ -25,6 +25,8 @@ function fake(o: { admin?: boolean; fleets?: any[]; connect?: any; quick?: boole
     groupPolicy: vi.fn(async () => ({ ok: true, groupPolicyV1: true, supported: true, binding: "ready", policy: { realm: "example", generation: "g", revision: 1, state: "never-enabled", groups: [], denies: [] }, paused: [] })),
     searchGroups: vi.fn(async () => ({ ok: true, groups: [], truncated: false })),
     quickPairing: vi.fn(async () => ({ ok: true, state: "none" })),
+    // The public metadata a Fleet reads: company-join-v1 only while joining is switched on.
+    joinMetadata: vi.fn(async () => ({ ok: true, v: 1, features: o.on === false ? [] : ["company-join-v1", "join-supersedes-v1", "member-leave-v1"] })),
   };
 }
 async function mount(c: any, props: any) {
@@ -52,6 +54,20 @@ describe("the welcome after U2", () => {
     const pg = await mount(fake({ admin: false, quick: true }), { admin: false, quick: true, features: ["group-policy-v1", "company-join-v1", "quick-pairing-v1"] });
     const d = pg.root.querySelector("details.hub-welcome-other"); expect(d).toBeTruthy(); expect(d.open).toBeFalsy();
     expect(d.querySelector("summary").textContent).toBe("Other ways");
+  });
+  it("#3698 r1: joining switched off (composed, not on) — a person keeps the earlier pairing-code line, never the sentence", async () => {
+    const c = fake({ admin: false, on: false }); const pg = await mount(c, { admin: false, features: ["group-policy-v1", "company-join-v1"] });
+    expect(c.joinMetadata).toHaveBeenCalled();
+    expect(pg.root.querySelector("[data-welcome='sentence']")).toBeNull(); expect(pg.root.textContent).toMatch(MANUAL);
+  });
+  it("#3698 r1: an administrator never reads the pairing-code line — with joining off too (no sentence either)", async () => {
+    const pg = await mount(fake({ admin: true, on: false, fleets: [{ id: "f1", status: "active" }] }), { admin: true, features: ["group-policy-v1", "company-join-v1"] });
+    expect(pg.root.querySelector("[data-welcome='sentence']")).toBeNull(); expect(pg.root.textContent).not.toMatch(MANUAL);
+  });
+  it("an older client without the metadata read: no sentence (joining cannot be confirmed on) — the earlier line", async () => {
+    const c: any = fake({ admin: false }); delete c.joinMetadata;
+    const pg = await mount(c, { admin: false, features: ["group-policy-v1", "company-join-v1"] });
+    expect(pg.root.querySelector("[data-welcome='sentence']")).toBeNull(); expect(pg.root.textContent).toMatch(MANUAL);
   });
   it("an older panel (no admin, no features): the person view as before — the pairing-code line, no card", async () => {
     const pg = await mount(fake({ admin: false }), {});

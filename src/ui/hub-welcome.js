@@ -63,6 +63,13 @@ export function HubWelcome({ name, quick = false, onChats = () => navigate("/ui/
   // "your Hub admin pairs fleets for you" line. An older panel passes no `admin`: the person view, as before.
   const companyJoin = Array.isArray(features) && features.includes("company-join-v1");
   const [hubEmpty, setHubEmpty] = useState(false);
+  // #3698 r1 (Fable): the session's company-join-v1 says joining is composed, not that it is switched on. The sentence follows the
+  // switch as a Fleet sees it — the public metadata's features — and until that says on (or on an older client), the earlier line.
+  const [joinOn, setJoinOn] = useState(false);
+  useEffect(() => {
+    if (!companyJoin || typeof c.joinMetadata !== "function") return;
+    c.joinMetadata().then((r) => { if (live.current) setJoinOn(!!r && r.ok === true && Array.isArray(r.features) && r.features.includes("company-join-v1")); }, () => {});
+  }, [companyJoin]);
   useEffect(() => {
     if (!admin || !companyJoin || typeof c.adminOverview !== "function") return;
     c.adminOverview().then((r) => { if (live.current && r && r.ok) setHubEmpty(!(r.fleets || []).some((f) => f.status === "active")); }, () => {});
@@ -104,7 +111,7 @@ export function HubWelcome({ name, quick = false, onChats = () => navigate("/ui/
           : atLimit ? html`<p class="note" data-welcome="limit">${hg("connectLimit")}</p>`
           // Spec 1.2: the primary text is step 3's sentence (company join on this Hub); without it, the pairing-code line as before —
           // never to an administrator.
-          : companyJoin && joinSentence(location.origin) ? html`<p class="note hub-join-sentence" data-welcome="sentence">${joinSentence(location.origin)}</p>`
+          : companyJoin && joinOn && joinSentence(location.origin) ? html`<p class="note hub-join-sentence" data-welcome="sentence">${joinSentence(location.origin)}</p>`
           : !admin && (legacy || !quickOn) ? html`<p class="note">${hg("connectManual")}</p>` : null}
         ${quickOn ? html`<details class="s-ui-disclosure hub-welcome-other"><summary>${otherWaysLabel()}</summary><div class="s-disclosure-body">
           <${QuickPairingGuide} allowed=${connectOk && !atLimit} publishAllowed=${w.publish?.state === "allow"} onConnected=${refresh} /></div></details>` : null}
