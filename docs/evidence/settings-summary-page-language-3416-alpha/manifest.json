@@ -1,5 +1,5 @@
 {
-  "55ed9954d6ddab717c6449f367a7917be5fb8457d1e7d828752209fca8395e7f": [
+  "a9062a651afe6dd4d5a372da1871282c1fd9fcf2b5b76cad4918772f0b2eabf1": [
     "docs/evidence/settings-summary-page-language-3416-alpha/README.md"
   ],
   "6d7d9e1e686b0561effae768a2c05c519b9b490ec7ad559a63359d196742f458": [
@@ -59,7 +59,10 @@
   "558733e2babdd0f25138026116b093b627e87370b505476c7d9f40676bbdf49f": [
     "docs/evidence/settings-summary-page-language-3416-alpha/browser/receipt.json"
   ],
-  "aa99516871d8861a9ec7fc42a28ad5bc89d1ef938608f4749c738b70e73eda5b": [
+  "0396cd3341d0dca514d7e6ffd1b9e963634fc404ae462a57709e4b9266d51702": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/changelog.log"
+  ],
+  "63194f8d1d5e418261ab39f67218ccf8ac1336b9f460d9ea782f7de9919e4ce3": [
     "docs/evidence/settings-summary-page-language-3416-alpha/checks.json"
   ],
   "5279bc1608188e59342228b64308d2ec85cb1a7f2d3a588e0b9bfec2bcccf638": [
@@ -98,5 +101,8 @@
   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
     "docs/evidence/settings-summary-page-language-3416-alpha/source-types.log",
     "docs/evidence/settings-summary-page-language-3416-alpha/test-types.log"
+  ],
+  "61bf346637e57147196b7886c4ed7c505ca130511f44234cfb7f8ed1e6634dbd": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/visual-review.json"
   ]
 }

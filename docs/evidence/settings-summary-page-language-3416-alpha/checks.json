@@ -231,5 +231,9 @@
     "Synthetic combined gallery is never one executable operation.",
     "Recorded pending reads; no Settings write, remote chat delivery or authority/effect browser E2E.",
     "Existing phone Withdraw30px is unchanged on baseline and candidate."
-  ]
+  ],
+  "changelog": {
+    "passed": 75,
+    "log": "changelog.log"
+  }
 }
