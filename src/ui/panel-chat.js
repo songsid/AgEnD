@@ -691,7 +691,10 @@ function WorkBar({ name, lease, exec, awaiting, workingLabel }) {
   const since = s.workingSince[name];
   return html`<div class=${`work-bar ${kind}`}><span class="pulse" aria-hidden="true"></span><span class="lbl">${label}</span>
     ${kind === "awaiting" ? html`<span class="note" title=${t("chat.approxNote")}>${awaiting || t("chat.approxNote")}</span>`
-      : html`<span class="elapsed" title=${t("chat.elapsedTitle")} aria-hidden="true">${since == null ? "" : R().formatElapsed(performance.now() - since)}</span>`}</div>`;
+      : html`<span class="elapsed" title=${t("chat.elapsedTitle")} aria-hidden="true">${since == null ? "" : R().formatElapsed(performance.now() - since)}</span>`}
+    ${/* Stop sits with what it stops (card "composer width": in the composer it took the box's width away). */ ""}
+    ${busy ? html`<button id="stopBtn" type="button" class="btn btn-sm btn-stop" title=${t("chat.stopReplyTitle")} aria-label=${t("chat.stopReply")}
+      disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>` : null}</div>`;
 }
 
 /** #2272: the reply bar's quote — the first ~80 characters, or what it had instead of text. */
@@ -814,9 +817,10 @@ function Composer({ name, inst, label = name, lease, busy }) {
         aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}
         oncompositionstart=${onCompositionStart} oncompositionend=${onCompositionEnd} onBlur=${onCompositionEnd}
         placeholder=" "></textarea><span class="composer-ph" aria-hidden="true">${t("chat.composerPlaceholder", label)}</span></span>
-      <button id="stopBtn" type="button" class="btn btn-stop" hidden=${!busy} title=${t("chat.stopReplyTitle")}
-        disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>
-      <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content}
+      ${/* Card "composer width": Stop lives in the working bar above (WorkBar), and Send is always here (disabled while
+          there is nothing to send) — so nothing in this row comes or goes when the agent starts or stops working, and the
+          box keeps one width: a draft never re-wraps under the person's fingers. */ ""}
+      <button id="sendBtn" type="button" class="btn btn-primary btn-send" disabled=${!content}
         onMouseDown=${(e) => e.preventDefault()}
         aria-label=${t("chat.send")} title=${t("chat.send")} onClick=${submit}><${Icon} name="send" size=${16} /><span class="send-label">${t("chat.send")}</span></button>
     </div></div>`;

@@ -188,17 +188,19 @@ describe("the chat's states", () => {
     expect(await items("beta")).toEqual(["Instance details", "Start instance", "Colour…", "Lock theme", "Reset theme…", "Full width", "Delete instance…"]);
   });
 
-  it("the composer's control is 'Stop reply', shown only while the agent works; Send hides then unless there is something to send", async () => {
+  it("'Stop reply' is in the working bar only while the agent works; Send never leaves the composer (M-2904: one input width)", async () => {
     await mountChat("alpha");
     const stop = () => p.root.querySelector("#stopBtn"), send = () => p.root.querySelector("#sendBtn");
-    expect(stop().hidden).toBe(true);
-    expect(send().hidden).toBe(false);
+    expect(stop()).toBeNull();
+    expect([send().hidden, send().disabled]).toEqual([false, true]);
     const s = STATUS({ alpha: { state: "working", execution_state: "working" } }); app.applyStatus(s); emit("status", s); await settle();
     expect(stop().hidden).toBe(false);
     expect(stop().textContent).toContain("Stop reply");
-    expect(send().hidden).toBe(true);
+    expect(stop().closest(".work-bar")).toBeTruthy();
+    expect(p.root.querySelector(".composer #stopBtn")).toBeNull();
+    expect([send().hidden, send().disabled]).toEqual([false, true]);
     const box = p.root.querySelector("#msgIn"); box.value = "more"; fire(box, "input"); await settle();
-    expect(send().hidden).toBe(false);
+    expect([send().hidden, send().disabled]).toEqual([false, false]);
   });
 });
 

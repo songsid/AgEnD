@@ -963,6 +963,9 @@ img.amb-p { object-fit: contain; }
 .work-bar.awaiting { color: var(--text); }
 .work-bar .elapsed { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-3); }
 .work-bar .note { color: var(--text-3); font-size: var(--fs-xs); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Card "composer width": Stop lives here, beside what it stops — in the composer it took the input's width away. */
+.work-bar .btn-stop { flex: none; margin-left: auto; }
+@media (max-width: 899px), (pointer: coarse) { .work-bar .btn-stop { min-height: var(--tap); min-width: var(--tap); } }
 .failed-send { padding: var(--s-2) var(--s-3); border-radius: var(--r-md); font-size: var(--fs-xs); background: var(--danger-bg); border: 1px solid var(--danger-line); display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; }
 .failed-send .txt { flex: 1; min-width: 120px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 4.5em; overflow: hidden; }
 .composer-box { background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--shadow-1); }
