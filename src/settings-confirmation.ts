@@ -46,6 +46,9 @@ export interface SettingsPendingView {
   source: "web_session" | "public_link" | "setup_session" | "agent_request";
   execution?: { phase: "queued" | "running" | "cleanup"; job_id?: string; reason_code?: string };
   summary: readonly string[];
+  /** Display-only dedicated inline flow; no General confirmation is posted. */
+  presentation?: "hub-join";
+  hubJoin?: { handoffId: string | null; target: string };
   /**
    * How it is confirmed. #2868: "posting" while the General card is being sent (what the save itself answers), then
    * "chat" with `where` the card was posted (a platform and its connection), or "host_cli" when no General could take
@@ -78,6 +81,11 @@ export interface SettingsChangeProposal {
   requestedBy: string;
   source: SettingsPendingView["source"];
   summary: readonly string[];
+  /** Display-only dedicated inline flow; no General confirmation is posted. */
+  presentation?: "hub-join";
+  hubJoin?: { handoffId: string | null; target: string };
+  /** Server-only code authority, never copied into a display view or accepted from a request body. */
+  codePolicy?: { readonly kind: "company-start"; current(session: string): boolean };
   bytes: number;
   remainingMs?: number;
   requestFingerprint?: string;
@@ -196,12 +204,12 @@ export class SettingsConfirmationStore {
       snapshotFingerprint: settingsFingerprint(proposal.snapshot?.() ?? null),
       deadline: this.now() + ttl, requestFingerprint: proposal.requestFingerprint, proposal, view: { id, state: "pending", section: proposal.section,
         requested_at: requested, requested_by: this.display(proposal.requestedBy), expires_at: requested + ttl,
-        source: proposal.source, summary: [...proposal.summary], confirmation: { kind: this.options.notify ? "posting" : "host_cli", code: id }, outcome: null } };
+        source: proposal.source, summary: [...proposal.summary], ...(proposal.presentation ? { presentation: proposal.presentation, hubJoin: proposal.hubJoin ? { ...proposal.hubJoin } : undefined } : {}), confirmation: { kind: this.options.notify && !proposal.presentation ? "posting" : "host_cli", code: id }, outcome: null } };
     this.records.set(id, entry); this.keys.set(index, id); this.arm(entry); this.audit("requested", entry); this.changed(entry);
     // Notification may fail or arrive late. Neither admits a configuration write. Once it is over, a request no General
     // card attached to says so: the host's command is then the way (still pending: a decided one keeps its own kind).
     let reason: SettingsNoCardReason | undefined;
-    void Promise.resolve().then(() => this.options.notify?.(this.snapshot(entry))).then(r => { if (typeof r === "string") reason = r; }, () => { reason = "post_failed"; this.audit("notification_failed", entry); })
+    void Promise.resolve().then(() => proposal.presentation ? undefined : this.options.notify?.(this.snapshot(entry))).then(r => { if (typeof r === "string") reason = r; }, () => { reason = "post_failed"; this.audit("notification_failed", entry); })
       .finally(() => { if (entry.view.state === "pending" && entry.view.confirmation.kind === "posting") entry.view.confirmation = { kind: "host_cli", code: id, ...(reason ? { reason } : {}) }; });
     return { view: this.snapshot(entry), reused: false };
   }
@@ -214,6 +222,12 @@ export class SettingsConfirmationStore {
   affectedConnections(id: string): readonly string[] { return this.records.get(id)?.proposal?.affectedConnections ?? []; }
   /** AGEND-122: the change turns the named or quick link option on (a Notice for every confirmation from another device). */
   opensLink(id: string): boolean { return this.records.get(id)?.proposal?.opensLink === true; }
+  /** Capture the private policy while pending; its live session fence remains usable after successful replay. */
+  codePolicy(id: string): SettingsChangeProposal["codePolicy"] | null {
+    this.prune(); const entry = this.records.get(id), proof = entry?.proposal?.codePolicy;
+    return entry && proof && !this.closed ? Object.freeze({ kind: proof.kind,
+      current: (session: string) => !this.closed && session === entry.session && proof.current(session) }) : null;
+  }
   /** B2b (#3352 security review, point 2): what an authenticator code confirms — this change as the page showed it. */
   confirmDigest(id: string): string | null { const e = this.records.get(id); return e ? settingsFingerprint([id, e.fingerprint]).slice(0, 32) : null; }
   authorityOf(id: string): SettingsChangeAuthority | null {

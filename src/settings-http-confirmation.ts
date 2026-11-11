@@ -62,8 +62,10 @@ export class SettingsHttpConfirmation {
     directAgentCreation?: boolean;
     /** Host CLI installation consumes the same per-admin policy as ordinary creation. */
     directHostInstall?: boolean;
-    /** Only Fleet company Start: the original host operator folds consent into Start even with General present. */
+    /** Only Fleet company Start: a signed-in Fleet administrator folds consent into Start, subject to their code policy. */
     directCompanyJoin?: boolean;
+    /** Fresh Fleet role and this admin’s own enforced-code policy, independent of message authority. */
+    companyJoinPolicy?(req: IncomingMessage): boolean;
   }) {}
   handle(req: IncomingMessage, res: ServerResponse, url: URL, next: SettingsRequestHandler): boolean {
     if (settingsRequestExecution(req) || this.passed.has(req)) return false;
@@ -143,6 +145,7 @@ export class SettingsHttpConfirmation {
     const method = req.method ?? "POST", raw = method === "DELETE" ? Buffer.from("{}") : await readBoundedWebBody(req, isCliInstallPath(url.pathname) ? 1024 : 512 * 1024);
     if (res.destroyed || req.aborted) return;
     let body: unknown; try { body = JSON.parse(raw.toString("utf8") || "{}"); } catch { throw new SettingsConfirmationError(400, "invalid_json"); }
+    const companyStart = this.options.directCompanyJoin === true && method === "POST" && url.pathname === "/api/hub/member/company-join/start";
     const principal = this.options.principal(req);
     if (installPrincipal && (!installPrincipal.current() || !principal?.current())) throw new SettingsConfirmationError(401, "session_required");
     if (installPrincipal && (principal!.id !== installPrincipal.id || principal!.requester?.handle !== installPrincipal.requester?.handle))
@@ -151,12 +154,14 @@ export class SettingsHttpConfirmation {
     // AGEND-144 / #3542: only a signed-in local administrator proposes a host CLI install (a guest, a read session or a header token never even holds one for another admin to confirm).
     if (isCliInstallPath(url.pathname) && (!principal?.requester || principal.source !== "web_session" || localAdmin?.() !== true))
       throw new SettingsConfirmationError(403, "install_needs_a_local_admin");
+    if (companyStart && (principal?.source !== "web_session" || localAdmin?.() !== true || !principal.localSession?.current()))
+      throw new SettingsConfirmationError(403, "private_session_required");
     const key = typeof req.headers["idempotency-key"] === "string" ? req.headers["idempotency-key"]
       : body && typeof body === "object" && typeof (body as any).idempotency_key === "string" ? (body as any).idempotency_key : undefined;
     const requestFingerprint = settingsFingerprint([method, url.pathname, body]);
     if (principal?.current() && key) {
       const prior = this.store.findRequest(principal.id, key, requestFingerprint);
-      if (prior) { json(res, 202, { ok: true, result: "pending_confirmation", pending_change: prior }); return; }
+      if (prior) { json(res, 202, { ok: true, result: "pending_confirmation", pending_change: companyStart ? this.forPage(req, prior, false) : prior }); return; }
     }
     const baseline = await this.options.baseline();
     if (res.destroyed || req.aborted) return;
@@ -173,7 +178,9 @@ export class SettingsHttpConfirmation {
     const payload = { method, url: url.pathname + url.search, key, body: Buffer.from(raw), binding, localAdmin, requester: principal.requester, localSession: principal.localSession };
     const result = this.store.propose({ session: principal.id, key: key ?? `operation:${requestFingerprint}`,
       requestFingerprint, fingerprint: effect.diff.fingerprint, section: effect.diff.section, requestedBy: principal.label,
-      source: principal.source, summary: effect.diff.summary, affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,
+      source: principal.source, summary: effect.diff.summary, ...(companyStart ? { presentation: "hub-join" as const, hubJoin: { handoffId: typeof (body as any).handoffId === "string" ? (body as any).handoffId : null, target: new URL((body as any).address).origin } } : {}), affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,
+      ...(companyStart ? { codePolicy: { kind: "company-start" as const, current: (session: string) => session === principal.id
+        && principal.current() && localAdmin?.() === true && principal.localSession?.current() === true } } : {}),
       ...(effect.diff.opensLink ? { opensLink: true as const } : {}),
       bytes: raw.length, remainingMs: effect.proof?.remainingMs,
       current: () => principal.current(), snapshot: () => this.options.snapshot(),
@@ -223,12 +230,12 @@ export class SettingsHttpConfirmation {
     const ordinaryInstall = this.options.directHostInstall === true && method === "POST" && isCliInstallPath(url.pathname);
     const direct = (this.options.directAgentCreation === true && ordinaryCreate || ordinaryInstall) && principal.source === "web_session"
       && !gatewayRequestContext(req) && localAdmin?.() === true && policy();
-    const companyDirect = this.options.directCompanyJoin === true && method === "POST"
-      && url.pathname === "/api/hub/member/company-join/start" && principal.source === "web_session"
-      && !gatewayRequestContext(req) && principal.localSession?.hostHere === true && principal.localSession.current();
+    const companyPolicy = (): boolean => this.options.companyJoinPolicy?.(req) === true;
+    const companyDirect = companyStart && principal.source === "web_session" && !gatewayRequestContext(req)
+      && localAdmin?.() === true && principal.localSession?.current() === true && companyPolicy();
     const self = result.reused ? null : direct || companyDirect
-      ? { label: principal.label, current: () => localAdmin?.() === true && (!direct || policy()) && (!companyDirect || principal.localSession?.current() === true) }
-      : this.options.selfConfirm?.(req, result.view.id) ?? null;
+      ? { label: principal.label, current: () => localAdmin?.() === true && (!direct || policy()) && (!companyDirect || companyPolicy() && principal.localSession?.current() === true) }
+      : companyStart ? null : this.options.selfConfirm?.(req, result.view.id) ?? null;
     if (self) {
       const decided = this.store.decide(result.view.id, "confirm", { ...self, via: "web" });
       void decided.then(view => self.done?.(view)).catch(() => {});

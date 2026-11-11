@@ -24,7 +24,7 @@ const btn = (p: AppPage, text: string) => [...p.root.querySelectorAll("button")]
 function clock() {
  const timers = new Map<number, {fn:()=>any;ms:number}>();let seq=100000;const real = globalThis.setTimeout;
  vi.spyOn(globalThis,"setTimeout").mockImplementation(((fn:any,ms:any,...args:any[]) => {
-  if(ms===1500 || ms>=290000 && ms<=300000){const id=++seq;timers.set(id,{fn,ms:ms>=290000?300000:ms});return id as any;}return real(fn,ms,...args);
+  if(ms===1500 || ms===2000 || ms>=290000 && ms<=300000){const id=++seq;timers.set(id,{fn,ms:ms>=290000?300000:ms});return id as any;}return real(fn,ms,...args);
  }) as any);
  const clear=globalThis.clearTimeout;vi.spyOn(globalThis,"clearTimeout").mockImplementation(((id:any)=>{timers.delete(id);return clear(id);}) as any);
  return { fire(ms:number){const e=[...timers].find(([,v])=>v.ms===ms);expect(e).toBeTruthy();timers.delete(e![0]);return e![1].fn();},async next(ms:number){const e=[...timers].find(([,v])=>v.ms===ms);expect(e,`no timer ${ms}`).toBeTruthy();timers.delete(e![0]);await e![1].fn();await settle(10);},count(ms:number){return [...timers.values()].filter(t=>t.ms===ms).length;} };
@@ -43,6 +43,56 @@ function heldFetch(deleteResult = true) {
  });
 }
 describe("company join local wait",()=>{
+ it("new waiting tabs show the target and continue automatically, without an approval detour",async()=>{
+  const c=clock(),replace=vi.fn();let ready=false;fetcher(()=>response({ok:true,operation:ready?{operationId:handoff,handoffId:handoff,state:"awaiting-sign-in"}:null}));
+  const p=page({url:"http://127.0.0.1:19290/settings/hub?joinWait="+handoff+"&joinConsent=1#target=https%3A%2F%2Fhub.example.test",storage:{agend_lang:"en"}});mounted.push(p);
+  await p.mount(h(panel.CompanyJoinSettings));await settle(10);(globalThis.location as any).replace=replace;
+  expect(p.root.textContent).toContain("Opening Hub sign-in");expect(p.root.textContent).toContain("https://hub.example.test");
+  expect(btn(p,"Review local confirmation")).toBeUndefined();expect(p.root.textContent).not.toContain("Local confirmation is required");
+  ready=true;await c.next(1500);expect(replace).toHaveBeenCalledWith("/api/hub/member/company-join/bridge?operationId="+handoff);
+  expect(calls.every(x=>!x.init.method||x.init.method==="GET")).toBe(true);
+ });
+ it.each([false,true])("Start keeps its server claim inline and asks only the enforced code (%s)",async enforced=>{
+  const c=clock();let applied=false,codePosts=0;
+  const view=()=>({id:pendingId,state:applied?"applied":enforced?"pending":"applying",presentation:"hub-join",remaining_ms:300000,totp:enforced?"ready":undefined,confirm_digest:"bound-digest",can_withdraw:!applied,outcome:applied?{state:"applied",reason_code:"applied",result:{ok:true,operation:{operationId:handoff,handoffId:handoff,state:"awaiting-sign-in"}}}:null});
+  fetcher((path,init)=>{
+   if(path.endsWith("/start"))return response({result:"pending_confirmation",pending_change:view()},202);
+   if(path.endsWith("/confirm-totp")){codePosts++;expect(JSON.parse(init.body)).toEqual({code:"123456",digest:"bound-digest"});applied=true;return response({result:"pending_confirmation",pending_change:view()},202);}
+   if(path.includes("/settings/pending/"))return response(view());return response({ok:true,operation:null});
+  });
+  const p=await mount(false);await start(p);
+  expect((globalThis.open as any).mock.calls[0][0]).toContain("&joinConsent=1#target=https%3A%2F%2Fhub.example.test");
+  expect(p.root.querySelector(".pending-card")).toBeNull();expect(btn(p,"Review local confirmation")).toBeUndefined();
+  expect(!!p.root.querySelector(".hub-join-code")).toBe(enforced);expect(p.root.textContent).toContain("https://hub.example.test");
+  if(enforced){const input=p.root.querySelector(".hub-join-code input");input.value="123456";fire(input,"input");await settle(5);fire(p.root.querySelector(".hub-join-code"),"submit");await settle(12);}
+  else{applied=true;await c.next(2000);}
+  expect(codePosts).toBe(enforced?1:0);expect(calls.filter(x=>x.path.endsWith("/start"))).toHaveLength(1);
+  expect(p.root.querySelector(".pending-card")).toBeNull();expect(p.root.querySelector(".hub-join-code")).toBeNull();
+ });
+ it("the inline target stays bound to the submitted address while Start is held",async()=>{
+  clock();let release:any;fetcher((path)=>path.endsWith("/start")?new Promise(resolve=>release=resolve):response({ok:true,operation:null}));
+  const p=await mount(false);await start(p);const input=p.root.querySelector("#hubCompanyAddress");input.value="https://changed.example.test";fire(input,"input");await settle(5);
+  release(response({result:"pending_confirmation",pending_change:{id:pendingId,state:"applying",presentation:"hub-join",remaining_ms:300000}},202));await settle(12);
+  expect(p.root.textContent).toContain("Hub: https://hub.example.test");expect(p.root.textContent).not.toContain("changed.example.test");
+  expect(JSON.parse(calls.find(x=>x.path.endsWith("/start")).init.body).address).toBe("https://hub.example.test");
+ });
+ it("a missing legacy confirmation card returns to Settings, never an empty Needs-you page",async()=>{
+  fetcher(()=>response({ok:true,operation:null}));const p=await mount();const assign=vi.fn();(globalThis.location as any).assign=assign;
+  fire(btn(p,"Review local confirmation"),"click");expect(assign).toHaveBeenCalledWith("/settings/hub");expect(calls.every(x=>!x.init.method||x.init.method==="GET")).toBe(true);
+ });
+ it("reload reattaches its sole code challenge with the server target and without another Start",async()=>{
+  clock();const claim={id:pendingId,state:"pending",presentation:"hub-join",remaining_ms:120000,totp:"ready",confirm_digest:"exact",hubJoin:{handoffId:handoff,target:"https://hub.example.test"}};
+  fetcher(path=>path==="/api/settings/pending"?response([claim]):path.includes("/settings/pending/")?response(claim):response({ok:true,operation:null}));
+  await confirmations.attach();const p=await mount(false);
+  expect(p.root.querySelector(".hub-join-code")).toBeTruthy();expect(p.root.querySelector(".pending-card")).toBeNull();expect(p.root.textContent).toContain("Hub: https://hub.example.test");
+  expect(calls.every(x=>!x.init.method||x.init.method==="GET")).toBe(true);
+ });
+ it("a new waiting tab never adopts a different handoff’s code challenge",async()=>{
+  clock();const claim={id:pendingId,state:"pending",presentation:"hub-join",remaining_ms:120000,totp:"ready",hubJoin:{handoffId:"other",target:"https://other.example.test"}};
+  fetcher(path=>path==="/api/settings/pending"?response([claim]):path.includes("/settings/pending/")?response(claim):response({ok:true,operation:null}));await confirmations.attach();
+  const p=page({url:"http://127.0.0.1:19290/settings/hub?joinWait="+handoff+"&joinConsent=1#target=https%3A%2F%2Fhub.example.test",storage:{agend_lang:"en"}});mounted.push(p);await p.mount(h(panel.CompanyJoinSettings));await settle(12);
+  expect(p.root.querySelector(".hub-join-code")).toBeNull();expect(p.root.textContent).not.toContain("other.example.test");expect(p.root.textContent).toContain("https://hub.example.test");
+ });
  it("a loaded empty handoff is a confirmation wait, not an endless loading skeleton; it has a direct action and an exit",async()=>{
   fetcher(()=>response({ok:true,operation:null}));const p=await mount();
   expect(p.root.querySelector(".skeleton")).toBeNull();

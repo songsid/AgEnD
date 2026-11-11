@@ -1,0 +1,1438 @@
+{
+  "source": "a0cbc2bf98cace93eeb54de14799533182805c35",
+  "previousHead": "149f31396f4da494fda1e74c7c551d235d660a6f",
+  "cause": "Replay decoration called the generic selfConfirm a second time. Only company Start now receives code metadata, with selfConfirm explicitly skipped; all other replay bodies retain their prior path.",
+  "failFirstScope": "Production149f3139 with the added test/harness in a modified tree; before the final nonempty-digest assertion. Reconstruct from a0cbc2bf test by omitting that single assertion. Not a clean-source capture.",
+  "failFirstTestDigest": "ce5b434a8aa8c8410816ea8a218577e52f0c665c70dea2555fd643ab8343799a",
+  "failFirst": {
+    "passed": 0,
+    "failed": 2,
+    "startTime": 1794367581527,
+    "files": [
+      {
+        "file": "tests/hub-company-join-settings.test.ts",
+        "assertions": [
+          {
+            "name": "company Start Settings authority only an actual local cookie session creates the private capability; loopback/header/forwarding never grant host authority",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority a signed-in Fleet admin Start is consent, with no held card or General wait (host=true)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority a signed-in Fleet admin Start is consent, with no held card or General wait (host=false)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority a composition without the scoped feature keeps its previous confirmation path",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=true)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=false)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority replaying the same code-protected Start keeps its digest without asking for consent again",
+            "status": "failed",
+            "failures": [
+              "AssertionError: expected \"vi.fn()\" to not be called at all, but actually been called 1 times\n\nReceived:\n\n  1st vi.fn() call:\n\n    Array [\n      EventEmitter {\n        \"_events\": Object {},\n        \"_eventsCount\": 0,\n        \"_maxListeners\": undefined,\n        \"destroy\": [Function anonymous],\n        \"headers\": Object {\n          \"cookie\": \"private\",\n          \"idempotency-key\": \"start-once\",\n        },\n        \"method\": \"POST\",\n        \"url\": \"/api/hub/member/company-join/start\",\n        Symbol(shapeMode): false,\n        Symbol(kCapture): false,\n      },\n      \"191ed46f2e6fcb5ad12d89bf39ca7e12\",\n    ]\n\n\nNumber of calls: 1\n\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1467:10)\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/chai/index.js:1737:25)\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-company-join-consent-m2876-alpha/tests/hub-company-join-settings.test.ts:81:25\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+            ]
+          },
+          {
+            "name": "company Start Settings authority company consent retains this admin’s enforced code even with message authority disabled (false)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority company consent retains this admin’s enforced code even with message authority disabled (true)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority company Start stays outward-Hub sensitive and rejects browser-supplied authority/origin/redirect fields",
+            "status": "skipped",
+            "failures": []
+          }
+        ]
+      },
+      {
+        "file": "tests/settings-web-apply-2170.test.ts",
+        "assertions": [
+          {
+            "name": "the gate: the request's own confirmation confirmed by the request itself: applying at once (confirmation web), applied exactly once, no chat prompt, the outcome heard",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation none: the change waits for a confirmation, as before",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation execution still checks it: a confirmation no longer current when it runs leaves the change applied by nobody",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation not current at Apply: nothing claimed — the change waits for chat or the host, as before",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation the same request again (its key): the held change it is, never confirmed a second time",
+            "status": "failed",
+            "failures": [
+              "AssertionError: expected [ …(2) ] to deeply equal [ …(2) ]\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-company-join-consent-m2876-alpha/tests/settings-web-apply-2170.test.ts:134:71\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+            ]
+          },
+          {
+            "name": "the gate: the request's own confirmation …and two sent at once with that key (both past the replay check, the second joins the first at propose): asked once",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a signed-in admin on this computer turning the named_link option on — alone or with other keys — gets Apply now: opensLink is its only mark, and on this computer no Notice",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a signed-in admin on this computer turning the quick_link option on — alone or with other keys — gets Apply now: opensLink is its only mark, and on this computer no Notice",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …from another device (a LAN name) the same admin gets Apply now too, and the named_link change is announced: one Notice, not throttled, naming who and the outcome",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …from another device (a LAN name) the same admin gets Apply now too, and the quick_link change is announced: one Notice, not throttled, naming who and the outcome",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …who still must not: a guest, a header token, the web authorization switch off, \"Only this computer can authorize\" from another device, an admin of nothing here",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a named_link session over the public link (option on) is a role-ok admin there: Apply now — never DM-authorized — and its change that opens a link is announced",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a quick_link session over the public link (option on) is a role-ok admin there: Apply now — never DM-authorized — and its change that opens a link is announced",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …with the named_link option off: none (link_off); the owner's switches hold over the link too",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …with the quick_link option off: none (link_off); the owner's switches hold over the link too",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a request over the public link carrying a local cookie is never the self-confirming authority — named link or not (a session is bound to its surface)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying web-verified, an admin of the change's connection: confirmed — applied, no chat card, General told on the other connection",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying an admin of another connection only: none — the chat card, as before",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying the account's DM authorization of this browser (#1939) is not asked: authorized or not, an admin's Apply now is the same",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying zh-TW: the chat card's title, source and Confirm / Reject read in Chinese, and so does the outcome it is retired with",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying an admin of one of the change's two connections only: none",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying no General a chat card could be posted in (the change's own, or one disconnected): still Apply now — the notice has nowhere to go, the change is applied",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying no account: on a chat fleet only the host's own session (agend web) is the fleet's admin — \"This fleet's admin\", even from another device; any other owner-less session and a guest's: none",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying a whole-fleet change (primaryGeneral: the Hub, the connection list, sensitive fleet settings) needs the PRIMARY connection's admin too: a secondary connection's admin is refused at entry and at execution; the primary's passes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying a connection id configured twice (the account's own, or one the change touches) is never confirmed by a chat account",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying signed in on another connection, an admin of the change's connection: qualifies (the account's own connection and the change's are both asked)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying General's model offline still allows a server-owned chat card and verified self-confirmation",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying the only connected General is on another platform: still Apply now — no card could go there and no notice does (a notice is posted on the change's own platform only)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying two Generals a card could go to: the notice is posted once",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying an unknown scope fails closed for a chat account — even an admin of its own connection (the classifier cannot say whom the change touches); a host session is judged by its own rule",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying over the public link: none (a public-link session is never web-verified)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: signed out (its session revoked) after Apply — stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: every browser signed out (/dashboard revoke) after Apply — stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: the web token rotated after Apply — stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: the web authorization switch turned off after Apply — stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: \"Only this computer can authorize\" turned on, for a browser on another device after Apply — stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying expired after Apply (max_session_hours past): stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying no longer the connection's admin when it executes: stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying verified on another connection, no longer the changed connection's admin when it executes: stale",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, General's model disappears: applied; the notice (sent per General) [\"a\",\"b\"]",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, General's route lifetime ends (a fresh route is read when the notice is posted): applied; the notice (sent per General) [\"a\",\"b\"]",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, General's connection drops (retrying): applied; the notice (sent per General) [\"a\",\"b\"]",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, one General's agent stops, another is still there: applied; the notice (sent per General) [\"a\",\"b\",\"c\"]",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, every General's connection drops: applied; the notice (sent per General) [\"a\",\"b\",\"c\"]",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying General's route lifetime ended since Apply: the route captured with it is refused (its followStop throws, nothing begins) — the change itself still applies",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying expired (max_session_hours past): none",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying an account on another platform whose user id is the same as an admin's here: none (ids are per platform)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying discord too: the same rule",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now the save answers \"posting\"; a General card attached makes it \"chat\" with where it went; none attached: \"host_cli\"",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now a store with no General notifier says host_cli from the start",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now its reads say whether this browser could confirm it itself now (can_self_confirm), asked at each read",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now Apply now: refused (403) while this browser may not, the change still waiting; allowed: applying at once (web), applied once, General told",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now Apply now: only this session's own request, and only signed in",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other pairing connect: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other pairing confirm: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other publish an agent: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other browser certificate: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other membership: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other retention: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other pairing disconnect: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other …and the ones who still must not: a guest, a header token, an account no longer an admin of its own connection",
+            "status": "skipped",
+            "failures": []
+          }
+        ]
+      }
+    ]
+  },
+  "fixedFocused": {
+    "passed": 129,
+    "failed": 0,
+    "startTime": 1794367597693,
+    "files": [
+      {
+        "file": "tests/hub-company-join-settings.test.ts",
+        "assertions": [
+          {
+            "name": "company Start Settings authority only an actual local cookie session creates the private capability; loopback/header/forwarding never grant host authority",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority a signed-in Fleet admin Start is consent, with no held card or General wait (host=true)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority a signed-in Fleet admin Start is consent, with no held card or General wait (host=false)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority a composition without the scoped feature keeps its previous confirmation path",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=true)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=false)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority replaying the same code-protected Start keeps its digest without asking for consent again",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority company consent retains this admin’s enforced code even with message authority disabled (false)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority company consent retains this admin’s enforced code even with message authority disabled (true)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority company Start stays outward-Hub sensitive and rejects browser-supplied authority/origin/redirect fields",
+            "status": "passed",
+            "failures": []
+          }
+        ]
+      },
+      {
+        "file": "tests/hub-company-join-wait.test.ts",
+        "assertions": [
+          {
+            "name": "company join local wait new waiting tabs show the target and continue automatically, without an approval detour",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait Start keeps its server claim inline and asks only the enforced code (false)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait Start keeps its server claim inline and asks only the enforced code (true)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait the inline target stays bound to the submitted address while Start is held",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait a missing legacy confirmation card returns to Settings, never an empty Needs-you page",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait reload reattaches its sole code challenge with the server target and without another Start",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait a new waiting tab never adopts a different handoff’s code challenge",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait a loaded empty handoff is a confirmation wait, not an endless loading skeleton; it has a direct action and an exit",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait re-arms reads after repeated null frames and eventually observes this exact handoff without a reload",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait discovers matching B after older cancelled A, then pins only B",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait discovers matching B after older ended A, then pins only B",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait Check again discovers B after the local wait for unmatched A has expired, without a new Start",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait a different handoff never redirects this waiting tab",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait one slow status read retains physical ownership across polling and Retry; unmount retires its continuation",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait the five-minute pre-operation wait ends visibly, stops automatic reads and can inspect the same result without submitting Start",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait the original Start reveals the exact shared card and uses its sole Withdraw control",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait a lost withdrawal keeps the original Start held rather than inventing cancellation or permitting another Start",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company join local wait a local pending timeout does not apply, silently withdraw or retry the held change",
+            "status": "passed",
+            "failures": []
+          }
+        ]
+      },
+      {
+        "file": "tests/settings-confirmation-store-1423.test.ts",
+        "assertions": [
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) never executes on proposal or notification; one admin confirm runs the original effect",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) S-35: Save pressed again on the same change (a fresh idempotency key) returns the request already pending, not another",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) #2972 review: the repeated-Save dedupe joins only a request still pending, never one already applying",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) #2972 review: a removed request takes every idempotency key that named it",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) S-35: a failed apply keeps its localized message and says why — bounded, control characters removed, audited",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) an unauthorised click leaves the pending operation available for the real admin",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) reject and requester withdrawal never execute, release the payload and retire buttons",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) an exact monotonic deadline rejects even when the expiry timer has not run",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) wall clock jumps never change the pending admission budget",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) a shorter verification lifetime is not extended by the pending operation",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) same-session idempotent retry keeps the id and prompt; changed bytes get a conflict",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) claims synchronously: a host/chat race cannot start two effects",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) drops a stale session after the fingerprint await",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) drops a stale admin after the fingerprint await",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) drops a stale deadline after the fingerprint await",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) drops a stale configuration after the fingerprint await",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) shutdown fences pending and claimed operations before a held await returns",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) late prompt ACK cannot rearm an expired, withdrawn or stopped proposal",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) limits pending count/bytes and never evicts live approvals to make room",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 pending confirmation owner (no fleet or adapter) views are copied and audit fields contain no secret or operation body",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the final CAS await cannot adopt a newer snapshot as its admission baseline",
+            "status": "passed",
+            "failures": []
+          }
+        ]
+      },
+      {
+        "file": "tests/settings-http-confirmation-1423.test.ts",
+        "assertions": [
+          {
+            "name": "#1423 actual Settings handler behind confirmation does not write a sensitive access edit until its actual confirmed replay, exactly once",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 actual Settings handler behind confirmation requires a browser session for sensitive writes, while a model-only edit remains immediate",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 actual Settings handler behind confirmation rejects non-admin, revoked session and a changed actual baseline without writing",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 actual Settings handler behind confirmation returns the same pending on a retry and does not reveal another session's pending",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#1423 actual Settings handler behind confirmation withdraws without running the handler and never returns secret material in the view",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "an immediate full replacement is fenced if an approved ACL changes before handler admission",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "unsupported instance nulls cannot hide a credential/permission change in projection",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the real HTTP gate rejects inherited Classic targets without mutating their process prototypes",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "an own Classic channel remains writable and an inherited instance name becomes an explicit pending creation",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "a Classic projection preserves an own __proto__ request field as visible data, never an inherited effect",
+            "status": "passed",
+            "failures": []
+          }
+        ]
+      },
+      {
+        "file": "tests/settings-totp-route-b2b.test.ts",
+        "assertions": [
+          {
+            "name": "POST /api/settings/pending/:id/confirm-totp over a link: not refused up front — the fleet is asked (with the link's request) and its refusal is the answer; the change stays pending",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "POST /api/settings/pending/:id/confirm-totp over a link, when the fleet allows it (an ordinary change, the owner signed in from outside): a correct code decides the change once",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "POST /api/settings/pending/:id/confirm-totp a body without the code or the digest: 400, nothing checked",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "POST /api/settings/pending/:id/confirm-totp {\"error\":\"wrong\"} → 401 wrong_code, still pending",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "POST /api/settings/pending/:id/confirm-totp {\"error\":\"changed\"} → 409 confirmation_changed, still pending",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "POST /api/settings/pending/:id/confirm-totp {\"error\":\"not_here\"} → 403 totp_confirm_unavailable, still pending",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "POST /api/settings/pending/:id/confirm-totp {\"error\":\"unavailable\"} → 503 unavailable, still pending",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "POST /api/settings/pending/:id/confirm-totp paused: 429 with Retry-After, as the sign-in path shows it",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "POST /api/settings/pending/:id/confirm-totp a correct code: the change is decided (applied once), the code and digest passed through",
+            "status": "passed",
+            "failures": []
+          }
+        ]
+      },
+      {
+        "file": "tests/settings-web-apply-2170.test.ts",
+        "assertions": [
+          {
+            "name": "the gate: the request's own confirmation confirmed by the request itself: applying at once (confirmation web), applied exactly once, no chat prompt, the outcome heard",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation none: the change waits for a confirmation, as before",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation execution still checks it: a confirmation no longer current when it runs leaves the change applied by nobody",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation not current at Apply: nothing claimed — the change waits for chat or the host, as before",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation the same request again (its key): the held change it is, never confirmed a second time",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation …and two sent at once with that key (both past the replay check, the second joins the first at propose): asked once",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a signed-in admin on this computer turning the named_link option on — alone or with other keys — gets Apply now: opensLink is its only mark, and on this computer no Notice",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a signed-in admin on this computer turning the quick_link option on — alone or with other keys — gets Apply now: opensLink is its only mark, and on this computer no Notice",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …from another device (a LAN name) the same admin gets Apply now too, and the named_link change is announced: one Notice, not throttled, naming who and the outcome",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …from another device (a LAN name) the same admin gets Apply now too, and the quick_link change is announced: one Notice, not throttled, naming who and the outcome",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …who still must not: a guest, a header token, the web authorization switch off, \"Only this computer can authorize\" from another device, an admin of nothing here",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a named_link session over the public link (option on) is a role-ok admin there: Apply now — never DM-authorized — and its change that opens a link is announced",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a quick_link session over the public link (option on) is a role-ok admin there: Apply now — never DM-authorized — and its change that opens a link is announced",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …with the named_link option off: none (link_off); the owner's switches hold over the link too",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …with the quick_link option off: none (link_off); the owner's switches hold over the link too",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a request over the public link carrying a local cookie is never the self-confirming authority — named link or not (a session is bound to its surface)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying web-verified, an admin of the change's connection: confirmed — applied, no chat card, General told on the other connection",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying an admin of another connection only: none — the chat card, as before",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying the account's DM authorization of this browser (#1939) is not asked: authorized or not, an admin's Apply now is the same",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying zh-TW: the chat card's title, source and Confirm / Reject read in Chinese, and so does the outcome it is retired with",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying an admin of one of the change's two connections only: none",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying no General a chat card could be posted in (the change's own, or one disconnected): still Apply now — the notice has nowhere to go, the change is applied",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying no account: on a chat fleet only the host's own session (agend web) is the fleet's admin — \"This fleet's admin\", even from another device; any other owner-less session and a guest's: none",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying a whole-fleet change (primaryGeneral: the Hub, the connection list, sensitive fleet settings) needs the PRIMARY connection's admin too: a secondary connection's admin is refused at entry and at execution; the primary's passes",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying a connection id configured twice (the account's own, or one the change touches) is never confirmed by a chat account",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying signed in on another connection, an admin of the change's connection: qualifies (the account's own connection and the change's are both asked)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying General's model offline still allows a server-owned chat card and verified self-confirmation",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying the only connected General is on another platform: still Apply now — no card could go there and no notice does (a notice is posted on the change's own platform only)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying two Generals a card could go to: the notice is posted once",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying an unknown scope fails closed for a chat account — even an admin of its own connection (the classifier cannot say whom the change touches); a host session is judged by its own rule",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying over the public link: none (a public-link session is never web-verified)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: signed out (its session revoked) after Apply — stale, nothing written",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: every browser signed out (/dashboard revoke) after Apply — stale, nothing written",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: the web token rotated after Apply — stale, nothing written",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: the web authorization switch turned off after Apply — stale, nothing written",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: \"Only this computer can authorize\" turned on, for a browser on another device after Apply — stale, nothing written",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying expired after Apply (max_session_hours past): stale, nothing written",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying no longer the connection's admin when it executes: stale, nothing written",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying verified on another connection, no longer the changed connection's admin when it executes: stale",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, General's model disappears: applied; the notice (sent per General) [\"a\",\"b\"]",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, General's route lifetime ends (a fresh route is read when the notice is posted): applied; the notice (sent per General) [\"a\",\"b\"]",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, General's connection drops (retrying): applied; the notice (sent per General) [\"a\",\"b\"]",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, one General's agent stops, another is still there: applied; the notice (sent per General) [\"a\",\"b\",\"c\"]",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, every General's connection drops: applied; the notice (sent per General) [\"a\",\"b\",\"c\"]",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying General's route lifetime ended since Apply: the route captured with it is refused (its followStop throws, nothing begins) — the change itself still applies",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying expired (max_session_hours past): none",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying an account on another platform whose user id is the same as an admin's here: none (ids are per platform)",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying discord too: the same rule",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now the save answers \"posting\"; a General card attached makes it \"chat\" with where it went; none attached: \"host_cli\"",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now a store with no General notifier says host_cli from the start",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now its reads say whether this browser could confirm it itself now (can_self_confirm), asked at each read",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now Apply now: refused (403) while this browser may not, the change still waiting; allowed: applying at once (web), applied once, General told",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now Apply now: only this session's own request, and only signed in",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other pairing connect: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other pairing confirm: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other publish an agent: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other browser certificate: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other membership: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other retention: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other pairing disconnect: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other …and the ones who still must not: a guest, a header token, an account no longer an admin of its own connection",
+            "status": "passed",
+            "failures": []
+          }
+        ]
+      }
+    ]
+  },
+  "finalControls": {
+    "passed": 2,
+    "failed": 0,
+    "startTime": 1794367676066,
+    "files": [
+      {
+        "file": "tests/hub-company-join-settings.test.ts",
+        "assertions": [
+          {
+            "name": "company Start Settings authority only an actual local cookie session creates the private capability; loopback/header/forwarding never grant host authority",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority a signed-in Fleet admin Start is consent, with no held card or General wait (host=true)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority a signed-in Fleet admin Start is consent, with no held card or General wait (host=false)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority a composition without the scoped feature keeps its previous confirmation path",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=true)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=false)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority replaying the same code-protected Start keeps its digest without asking for consent again",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority company consent retains this admin’s enforced code even with message authority disabled (false)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority company consent retains this admin’s enforced code even with message authority disabled (true)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "company Start Settings authority company Start stays outward-Hub sensitive and rejects browser-supplied authority/origin/redirect fields",
+            "status": "skipped",
+            "failures": []
+          }
+        ]
+      },
+      {
+        "file": "tests/settings-web-apply-2170.test.ts",
+        "assertions": [
+          {
+            "name": "the gate: the request's own confirmation confirmed by the request itself: applying at once (confirmation web), applied exactly once, no chat prompt, the outcome heard",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation none: the change waits for a confirmation, as before",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation execution still checks it: a confirmation no longer current when it runs leaves the change applied by nobody",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation not current at Apply: nothing claimed — the change waits for chat or the host, as before",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation the same request again (its key): the held change it is, never confirmed a second time",
+            "status": "passed",
+            "failures": []
+          },
+          {
+            "name": "the gate: the request's own confirmation …and two sent at once with that key (both past the replay check, the second joins the first at propose): asked once",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a signed-in admin on this computer turning the named_link option on — alone or with other keys — gets Apply now: opensLink is its only mark, and on this computer no Notice",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a signed-in admin on this computer turning the quick_link option on — alone or with other keys — gets Apply now: opensLink is its only mark, and on this computer no Notice",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …from another device (a LAN name) the same admin gets Apply now too, and the named_link change is announced: one Notice, not throttled, naming who and the outcome",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …from another device (a LAN name) the same admin gets Apply now too, and the quick_link change is announced: one Notice, not throttled, naming who and the outcome",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …who still must not: a guest, a header token, the web authorization switch off, \"Only this computer can authorize\" from another device, an admin of nothing here",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a named_link session over the public link (option on) is a role-ok admin there: Apply now — never DM-authorized — and its change that opens a link is announced",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a quick_link session over the public link (option on) is a role-ok admin there: Apply now — never DM-authorized — and its change that opens a link is announced",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …with the named_link option off: none (link_off); the owner's switches hold over the link too",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device …with the quick_link option off: none (link_off); the owner's switches hold over the link too",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2453 / AGEND-122: turning a link option on is confirmed like any other change — its Apply now, announced when it is from another device a request over the public link carrying a local cookie is never the self-confirming authority — named link or not (a session is bound to its surface)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying web-verified, an admin of the change's connection: confirmed — applied, no chat card, General told on the other connection",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying an admin of another connection only: none — the chat card, as before",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying the account's DM authorization of this browser (#1939) is not asked: authorized or not, an admin's Apply now is the same",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying zh-TW: the chat card's title, source and Confirm / Reject read in Chinese, and so does the outcome it is retired with",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying an admin of one of the change's two connections only: none",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying no General a chat card could be posted in (the change's own, or one disconnected): still Apply now — the notice has nowhere to go, the change is applied",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying no account: on a chat fleet only the host's own session (agend web) is the fleet's admin — \"This fleet's admin\", even from another device; any other owner-less session and a guest's: none",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying a whole-fleet change (primaryGeneral: the Hub, the connection list, sensitive fleet settings) needs the PRIMARY connection's admin too: a secondary connection's admin is refused at entry and at execution; the primary's passes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying a connection id configured twice (the account's own, or one the change touches) is never confirmed by a chat account",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying signed in on another connection, an admin of the change's connection: qualifies (the account's own connection and the change's are both asked)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying General's model offline still allows a server-owned chat card and verified self-confirmation",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying the only connected General is on another platform: still Apply now — no card could go there and no notice does (a notice is posted on the change's own platform only)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying two Generals a card could go to: the notice is posted once",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying an unknown scope fails closed for a chat account — even an admin of its own connection (the classifier cannot say whom the change touches); a host session is judged by its own rule",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying over the public link: none (a public-link session is never web-verified)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: signed out (its session revoked) after Apply — stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: every browser signed out (/dashboard revoke) after Apply — stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: the web token rotated after Apply — stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: the web authorization switch turned off after Apply — stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying its role asked again when it executes: \"Only this computer can authorize\" turned on, for a browser on another device after Apply — stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying expired after Apply (max_session_hours past): stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying no longer the connection's admin when it executes: stale, nothing written",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying verified on another connection, no longer the changed connection's admin when it executes: stale",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, General's model disappears: applied; the notice (sent per General) [\"a\",\"b\"]",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, General's route lifetime ends (a fresh route is read when the notice is posted): applied; the notice (sent per General) [\"a\",\"b\"]",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, General's connection drops (retrying): applied; the notice (sent per General) [\"a\",\"b\"]",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, one General's agent stops, another is still there: applied; the notice (sent per General) [\"a\",\"b\",\"c\"]",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying between Apply and execution, every General's connection drops: applied; the notice (sent per General) [\"a\",\"b\",\"c\"]",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying General's route lifetime ended since Apply: the route captured with it is refused (its followStop throws, nothing begins) — the change itself still applies",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying expired (max_session_hours past): none",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying an account on another platform whose user id is the same as an admin's here: none (ids are per platform)",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "the fleet: who may confirm by applying discord too: the same rule",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now the save answers \"posting\"; a General card attached makes it \"chat\" with where it went; none attached: \"host_cli\"",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now a store with no General notifier says host_cli from the start",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now its reads say whether this browser could confirm it itself now (can_self_confirm), asked at each read",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now Apply now: refused (403) while this browser may not, the change still waiting; allowed: applying at once (web), applied once, General told",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#2868: where it is confirmed, and Apply now Apply now: only this session's own request, and only signed in",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other pairing connect: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other pairing confirm: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other publish an agent: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other browser certificate: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other membership: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other retention: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other pairing disconnect: Apply now for the primary General's signed-in admin, here or from another device; the General's card still goes",
+            "status": "skipped",
+            "failures": []
+          },
+          {
+            "name": "#3352 F1 / AGEND-122: Hub changes that open the fleet outward are confirmed by a signed-in admin's Apply now, like any other …and the ones who still must not: a guest, a header token, an account no longer an admin of its own connection",
+            "status": "skipped",
+            "failures": []
+          }
+        ]
+      }
+    ]
+  },
+  "visualScope": "No UI/CSS/initial Start effect change; historical browser/Argon scopes retain their recorded SHAs. No new full browser claim."
+}

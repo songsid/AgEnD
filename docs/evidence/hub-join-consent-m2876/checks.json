@@ -1,0 +1,23 @@
+{
+  "source": "0af23deb43cbf8d178a27c5e9462299e8081c695",
+  "focused": "296/296 in13 files; JSON retains each named assertion",
+  "nativeTypes": {
+    "source": "0af23deb43cbf8d178a27c5e9462299e8081c695",
+    "commands": [
+      "node node_modules/@typescript/native/bin/tsc --noEmit",
+      "node node_modules/@typescript/native/bin/tsc --noEmit -p tsconfig.test.json"
+    ],
+    "exit": [
+      0,
+      0
+    ],
+    "scope": "historical pre-R1 source; current replay correction recorded in replay-r1.json"
+  },
+  "mutations": {
+    "total": 10,
+    "assertionCaught": 9,
+    "equivalent": 1,
+    "restored": "38/38"
+  },
+  "baselineCssIdentical": true
+}

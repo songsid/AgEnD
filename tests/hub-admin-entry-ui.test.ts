@@ -24,6 +24,7 @@ describe("Administration leads with existing group and individual connection con
   const f=await fixture({lang});await until(()=>f.p.root.querySelector(".hub-admin-access"));
   const first=f.p.root.querySelector(".hub-admin .s-section-layout").firstElementChild;expect(first.getAttribute("data-entry")).toBe("allowed-groups-people");
   expect(first.textContent).toContain(lang==="en"?"Allowed groups and people":"允許的群組與人員");expect(first.querySelector('a[href="/ui/hub/admin?view=groups"]')).toBeTruthy();
+  expect(first.querySelectorAll(".hub-company-guide li")).toHaveLength(3); expect(first.textContent).toContain(lang === "en" ? "Allowed groups need no further approval" : "允許的群組不需要另外核准");
   expect(first.querySelector(".hub-admin-individual")).toBeTruthy();expect(first.textContent).toContain(lang==="en"?"does not grant permission":"不會授予");
   const advanced=f.p.root.querySelector("details.hub-admin-manual");expect(advanced).toBeTruthy();expect(advanced.open).toBe(false);expect(advanced.querySelector("#hubOwnerLogin")).toBeTruthy();
   expect(f.calls.every(x=>x.init.method==="GET")).toBe(true);expect(f.copy).not.toHaveBeenCalled();expect(f.c.createPairing).not.toHaveBeenCalled();
