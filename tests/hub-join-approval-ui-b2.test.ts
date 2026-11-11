@@ -74,6 +74,21 @@ describe("B2 actual Hub approval page", () => {
   });
 });
 describe("B2 mounted approval lease", () => {
+  it("a temporary projection failure or changed deadline does not retire or extend the same approval", async () => {
+    let api: any, release!: (value: any) => void;
+    const approve = vi.fn((..._args: any[]) => new Promise(resolve => { release = resolve; })), p = page(); mounted.push(p);
+    const timers: number[] = [], original = globalThis.setTimeout;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => ms > 10_000 ? (timers.push(ms), 123 as any) : original(fn, ms, ...args));
+    function Harness(props: any) { api = hook.useJoinApproval({ ...props, approve }); return h("p", {}, api.busy ? "approving" : "idle"); }
+    const deadline = Date.now() + 60_000;
+    await p.mount(h(Harness, { requestId: ID, deadline, sessionKey: "session" })); await settle(5);
+    const pending = api.run("csrf"); await settle(3); const signal = approve.mock.calls[0]![2];
+    await p.mount(h(Harness, { requestId: ID, deadline: undefined, sessionKey: "session" })); await settle(5);
+    expect(p.root.textContent).toBe("approving"); expect(signal.aborted).toBe(false);
+    await p.mount(h(Harness, { requestId: ID, deadline: deadline + 600_000, sessionKey: "session" })); await settle(5);
+    expect(timers).toHaveLength(1); expect(signal.aborted).toBe(false);
+    release({ ok: true }); expect(await pending).toEqual({ ok: true });
+  });
   it("request/session changes retire held results without AbortController, then allow the new binding", async () => {
     vi.stubGlobal("AbortController", undefined);
     let api: any, release!: (value: any) => void, n = 0;

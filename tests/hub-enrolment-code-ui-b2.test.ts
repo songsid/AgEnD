@@ -24,6 +24,13 @@ const buttons = (p: AppPage, name: string) => [...p.root.querySelectorAll("butto
 async function open(p: AppPage) { fire(buttons(p, "Create join code")[0], "click"); await settle(10); }
 async function submit(p: AppPage) { fire(p.root.querySelector("#hubEnrolmentCreate"), "submit"); await settle(15); }
 function input(p: AppPage, id: string, value: string, event = "input") { const el = p.root.querySelector(id); el.value = value; fire(el, event); }
+async function groupDn(p: AppPage, value: string) {
+  // Actual U2 picker, unsupported on this fixture client: it hands over to the existing exact-DN resolver.
+  if (!p.root.querySelector("#hubCodeGroupDn")) {
+    input(p, "#hubEnrolmentScopeSearch", "De"); await new Promise(resolve => setTimeout(resolve, 330)); await settle(5);
+  }
+  input(p, "#hubCodeGroupDn", value); await settle(3);
+}
 
 describe("B2 code management: explicit configured-admin actions", () => {
   it("is a named opt-in slot and stays inert with a cached client", async () => {
@@ -51,13 +58,13 @@ describe("B2 code management: explicit configured-admin actions", () => {
   it("resolves the selected DN before sending its exact group identity", async () => {
     const c = fake(), p = await mount(c); await open(p); input(p, "#hubCodeScope", "group", "change"); await settle(5); await submit(p);
     expect(c.createEnrolmentCode).not.toHaveBeenCalled(); const dn = "CN=Developers,DC=example,DC=test";
-    input(p, "#hubCodeGroupDn", dn); await settle(3); fire(buttons(p, "Find group")[0], "click"); await settle(10); await submit(p);
+    await groupDn(p, dn); fire(buttons(p, "Find group")[0], "click"); await settle(10); await submit(p);
     expect(c.resolveGroup).toHaveBeenCalledExactlyOnceWith(dn);
     expect(c.createEnrolmentCode.mock.calls[0][0].scope).toEqual({ kind: "group", realm: "corp", objectId: GROUP, dn });
   });
   it("an unknown group does not enable creation", async () => {
     const c = fake({ resolveGroup: vi.fn(async () => ({ ok: true, reason: "unknown" })) }), p = await mount(c);
-    await open(p); input(p, "#hubCodeScope", "group", "change"); await settle(5); input(p, "#hubCodeGroupDn", "CN=Unknown"); await settle(3);
+    await open(p); input(p, "#hubCodeScope", "group", "change"); await settle(5); await groupDn(p, "CN=Unknown");
     fire(buttons(p, "Find group")[0], "click"); await settle(10); await submit(p);
     expect(c.createEnrolmentCode).not.toHaveBeenCalled(); expect(text(p)).toContain("could not be verified");
   });

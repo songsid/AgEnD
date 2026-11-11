@@ -339,7 +339,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
  * `confirm` is settings-confirm.js (loaded with the card): { api, isPendingResponse, track, newKey }.
  */
 export function createMemberClient({ confirm, pollMs = 5000, doc = typeof document !== "undefined" ? document : null, timers = globalThis }) {
-  let pairingNotices = [];
+  let pairingNotices = [], noticeEpoch = 0;
+  const noticeReaders = new Set();
   const listed = async () => {
     const r = await confirm.api("/api/hub/member/exposures");
     return r.ok && r.body && Array.isArray(r.body.exposures) ? r.body.exposures : r.status === 404 ? null : [];
@@ -348,9 +349,14 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
   // Pairing (S3c PR B): GET the projection; connect / confirm / disconnect go through the Settings confirmation (a 202:
   // "sent for confirmation", followed in the background; the poll shows the result); cancel at once.
   const pairingNow = async () => {
-    const r = await confirm.api("/api/hub/member/pairing?v=2");
-    if (r.ok && r.body && r.body.pairing) { pairingNotices = Array.isArray(r.body.notices) ? r.body.notices : []; return r.body.pairing; }
-    pairingNotices = [];
+    const mine = noticeEpoch, version = noticeReaders.size ? 3 : 2;
+    const r = await confirm.api(`/api/hub/member/pairing?v=2${version === 3 ? "&notices=3" : ""}`);
+    if (r.ok && r.body && r.body.pairing) {
+      if (mine === noticeEpoch) pairingNotices = Array.isArray(r.body.notices) ? r.body.notices.filter(n => n && typeof n === "object"
+        && (n.source === undefined || n.source === "group" || n.source === "manual" || n.source === "code" && version === 3)) : [];
+      return r.body.pairing;
+    }
+    if (mine === noticeEpoch) pairingNotices = [];
     return { state: "held", hold: r.status === 404 ? "unavailable" : "unsaved" };
   };
   const step = async (name, body) => {
@@ -379,6 +385,12 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
     stub: false, member: true,
     pairing: pairingNow,
     pairingNotices: () => pairingNotices,
+    /** Presentation lease only. Cached renderers never call this and continue to receive v2. */
+    usePairingNoticeVersion(version) {
+      if (version !== 3) return () => {};
+      const reader = {}; if (!noticeReaders.size) noticeEpoch++; noticeReaders.add(reader);
+      return () => { if (noticeReaders.delete(reader) && !noticeReaders.size) { noticeEpoch++; pairingNotices = pairingNotices.filter(n => n.source !== "code"); } };
+    },
     async connect({ address, code }) {
       const a = String(address || "").trim(), c = String(code || "").trim();
       if (!ADDRESS_HINT.test(a)) return { ok: false, error: "address" };

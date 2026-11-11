@@ -1,4 +1,8 @@
-# B2 preparation evidence — not final acceptance
+# Historical B2 preparation at 603777d20 — not final acceptance
+
+This packet describes the original preparation snapshot. Later U2 groundwork
+composition is recorded in `../u2-composition/`; its receipt supersedes these
+source hashes for the composed branch.
 
 Dependency: draft B1 #3673 at fb3d858755af7f55a5d8226679c8a00f33604749.
 U2 has not been composed into this branch. No parity review is requested yet.

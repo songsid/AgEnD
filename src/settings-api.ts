@@ -1053,7 +1053,8 @@ export function handleSettingsRequest(
     const step = pairingRoute[1];
     if (!step && method === "GET") {
       if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
-      const version = url.searchParams.get("v") === "3" ? 3 : url.searchParams.get("v") === "2" ? 2 : 1;
+      // Keep v=2 on the wire for an older host; only a current code-aware renderer asks for the additive v3 notice DTO.
+      const version = url.searchParams.get("v") === "3" || url.searchParams.get("v") === "2" && url.searchParams.get("notices") === "3" ? 3 : url.searchParams.get("v") === "2" ? 2 : 1;
       const notices = (api.notices?.() ?? []).filter(n => n.source === "group" || n.source === "manual" && version >= 2 || n.source === "code" && version >= 3);
       json(res, 200, { ok: true, pairing: api.view(), notices }); return true;
     }

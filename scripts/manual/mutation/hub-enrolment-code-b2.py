@@ -27,6 +27,17 @@ cases = [
     ('page-queue', 'src/ui/hub-company-join.js', 'const r = await approval.run(session.csrf);', 'const r = await approveCompanyJoin(requestId, session.csrf);', 'tests/hub-join-approval-ui-b2.test.ts', 'shows the queue'),
     ('signin-queue', 'src/ui/panel-hub.js', 'const joined = await approval.run(r.csrf);', 'const joined = await approveCompanyJoin(company.requestId, r.csrf);', 'tests/hub-join-approval-ui-b2.test.ts', 'approval after company sign-in'),
     ('lease-retirement', 'src/ui/hub-join-approval.js', 'epoch.current++; holder.current?.queue.cancel(); holder.current = null;', 'epoch.current++; holder.current = null;', 'tests/hub-join-approval-ui-b2.test.ts', 'retiring the page'),
+    ('picker-id-capability', ui, 'm.groupSearchIdV1 === true && ', '', 'tests/hub-enrolment-code-picker-b2.test.ts', 'held older picker'),
+    ('picker-resolved-identity', ui, '|| hit?.objectId && hit.objectId.toLowerCase() !== r.objectId.toLowerCase()', '', 'tests/hub-enrolment-code-picker-b2.test.ts', 'GUID changed'),
+    ('member-renderer-capability', 'src/ui/settings-hub.js', 'noticeViews.pairingNoticesV3 === true && ', '', 'tests/hub-enrolment-code-member-ui-b2.test.ts', 'held renderer'),
+    ('member-read-epoch', 'src/ui/hub-client.js', 'if (mine === noticeEpoch) pairingNotices = Array.isArray', 'pairingNotices = Array.isArray', 'tests/hub-enrolment-code-client-b2.test.ts', 'outstanding v3 read'),
+    ('member-retired-cache', 'src/ui/hub-client.js', 'pairingNotices = pairingNotices.filter(n => n.source !== "code");', '', 'tests/hub-enrolment-code-client-b2.test.ts', 'default callers stay'),
+    ('member-default-code-filter', 'src/ui/hub-client.js', 'n.source === "code" && version === 3', 'n.source === "code"', 'tests/hub-enrolment-code-client-b2.test.ts', 'unexpected code row'),
+    ('member-compatible-query', 'src/ui/hub-client.js', '/api/hub/member/pairing?v=2${version === 3 ? "&notices=3" : ""}', '/api/hub/member/pairing?v=${version}', 'tests/hub-enrolment-code-client-b2.test.ts', 'default callers stay'),
+    ('member-api-optin', 'src/settings-api.ts', ' || url.searchParams.get("v") === "2" && url.searchParams.get("notices") === "3"', '', 'tests/hub-pairing-api-s3c.test.ts', 'member Settings retains'),
+    ('slot-capability', ui, 'export const enrolmentCodeV1 = true;', 'export const enrolmentCodeV1 = false;', 'tests/hub-enrolment-code-slot-b2.test.ts', 'first live code'),
+    ('code-step-refresh', ui, 'try { onChanged(); }', 'try { /* mutation */ }', 'tests/hub-enrolment-code-slot-b2.test.ts', 'first live code'),
+    ('projection-deadline-binding', 'src/ui/hub-join-approval.js', 'deadline: binding.current.deadline', 'deadline: options.deadline', 'tests/hub-join-approval-ui-b2.test.ts', 'temporary projection'),
 ]
 results = []
 for name, relative, old, new, test, pattern in cases:
@@ -38,7 +49,8 @@ for name, relative, old, new, test, pattern in cases:
     assert source.count(old) == 1, (name, source.count(old))
     try:
         path.write_text(source.replace(old, new))
-        syntax = subprocess.run(['node', '--check', relative], capture_output=True, text=True)
+        syntax_command = ['node', 'node_modules/@typescript/native/bin/tsc', '--noEmit'] if relative.endswith('.ts') else ['node', '--check', relative]
+        syntax = subprocess.run(syntax_command, capture_output=True, text=True)
         assert syntax.returncode == 0, syntax.stderr
         run = subprocess.run(['node_modules/.bin/vitest', 'run', test, '-t', pattern, '--maxWorkers=1'], capture_output=True, text=True, timeout=45)
         log = run.stdout + run.stderr

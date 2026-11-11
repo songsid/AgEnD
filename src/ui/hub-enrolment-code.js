@@ -49,7 +49,8 @@ function CreateCode({ client, busy, enabled, onCreate, onClose }) {
       <label class="field" for="hubCodeScope"><span>${he("scope")}</span><select id="hubCodeScope" value=${scope} disabled=${busy || resolving} onChange=${e => chooseScope(e.target.value)}>
         <option value="directory">${he("directory")}</option><option value="group">${he("group")}</option></select></label>
       ${scope === "group" ? group ? html`<p class="note hub-fp-full">${he("resolved", group.dn)}</p><div class="n-actions"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => setGroup(null)}>${he("remove")}</button></div>`
-        : html`${picker ? html`<${picker.component} id="hubEnrolmentScopeSearch" client=${client} disabled=${busy || resolving || !enabled} label=${he("groupLabel")} onPick=${resolve} onUnsupported=${() => setPicker(null)} />`
+        : html`${picker ? html`<${picker.component} id="hubEnrolmentScopeSearch" client=${client} disabled=${busy || resolving || !enabled} label=${he("groupLabel")} onPick=${resolve} onUnsupported=${() => setPicker(null)} />
+          <div class="n-actions"><button type="button" class="btn btn-sm" disabled=${busy || resolving || !enabled} onClick=${() => setPicker(null)}>${he("useDn")}</button></div>`
           : html`<label class="field" for="hubCodeGroupDn"><span>${he("dn")}</span><input id="hubCodeGroupDn" maxLength="4096" value=${dn} disabled=${busy || resolving} onInput=${e => setDn(e.target.value)} /></label>
             <div class="n-actions"><button type="button" class="btn btn-sm" disabled=${busy || resolving || !dn.trim() || !enabled} onClick=${() => resolve(null)}>${he("resolve")}</button></div>`}
           <p class="note" role="status">${he("choose")}</p>` : null}

@@ -1,8 +1,8 @@
 /** Inert fetch at the production Hub client boundary; no network, accounts or credentials. */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { page } from "./helpers/app-harness.js";
-let create: any;
-beforeAll(async () => { const p = page(); create = (await import("/ui/js/hub-client.js")).createHubWebClient; p.restore(); });
+let create: any, member: any;
+beforeAll(async () => { const p = page(); const module = await import("/ui/js/hub-client.js"); create = module.createHubWebClient; member = module.createMemberClient; p.restore(); });
 describe("B2 code management through the Hub's same-origin client", () => {
   it("uses the current session's CSRF and exact CRUD routes without a code in the URL", async () => {
     const calls: any[] = [], fetchImpl = vi.fn(async (url: string, init: any) => {
@@ -49,5 +49,47 @@ describe("B2 code management through the Hub's same-origin client", () => {
       c.subscribePairingNotices(() => {})(); c.subscribePairingNotices(() => {}, () => {}, 3)();
       expect(streams).toEqual(["/hub/v1/notices/events?v=2", "/hub/v1/notices/events?v=3"]);
     } finally { vi.unstubAllGlobals(); }
+  });
+});
+
+describe("B2 member notice version is leased by the current renderer", () => {
+  const rows = [{ id: "legacy" }, { source: "group" }, { source: "manual" }, { source: "code" }];
+  function rig(old = false) {
+    const urls: string[] = [], confirm = { api: vi.fn(async (url: string) => {
+      urls.push(url); return { ok: true, body: { pairing: { state: "unpaired" }, notices: !old && url.endsWith("notices=3") ? rows : rows.slice(0, 3) } };
+    }) };
+    return { client: member({ confirm }), confirm, urls };
+  }
+  it("default callers stay v2; an explicit renderer lease opts in, with v2 preserved for an older host", async () => {
+    for (const old of [false, true]) {
+      const r = rig(old); await r.client.pairing(); expect(r.urls).toEqual(["/api/hub/member/pairing?v=2"]);
+      const release = r.client.usePairingNoticeVersion(3); await r.client.pairing();
+      expect(r.urls.at(-1)).toBe("/api/hub/member/pairing?v=2&notices=3"); expect(r.client.pairingNotices()).toHaveLength(old ? 3 : 4);
+      release(); expect(r.client.pairingNotices().some((n: any) => n.source === "code")).toBe(false);
+      await r.client.pairing(); expect(r.urls.at(-1)).toBe("/api/hub/member/pairing?v=2");
+    }
+  });
+  it("two renderer leases remain v3 until the last one retires; release is idempotent", async () => {
+    const r = rig(), a = r.client.usePairingNoticeVersion(3), b = r.client.usePairingNoticeVersion(3);
+    a(); a(); await r.client.pairing(); expect(r.urls.at(-1)).toContain("notices=3");
+    b(); await r.client.pairing(); expect(r.urls.at(-1)).not.toContain("notices=3");
+  });
+  it("an outstanding v3 read cannot restore code rows after its renderer retires", async () => {
+    const r = rig(), release = r.client.usePairingNoticeVersion(3); let done!: (value: any) => void;
+    r.confirm.api.mockImplementationOnce(() => new Promise(resolve => { done = resolve; }));
+    const pending = r.client.pairing(); release();
+    done({ ok: true, body: { pairing: { state: "unpaired" }, notices: rows } }); await pending;
+    expect(r.client.pairingNotices()).toEqual([]);
+  });
+  it("an older v2 read cannot overwrite a newer code-aware snapshot", async () => {
+    const r = rig(); let done!: (value: any) => void;
+    r.confirm.api.mockImplementationOnce(() => new Promise(resolve => { done = resolve; }));
+    const older = r.client.pairing(), release = r.client.usePairingNoticeVersion(3); await r.client.pairing();
+    done({ ok: true, body: { pairing: { state: "unpaired" }, notices: rows.slice(0, 3) } }); await older;
+    expect(r.client.pairingNotices()).toHaveLength(4); release();
+  });
+  it("a default reader does not publish an unexpected code row from its response", async () => {
+    const r = rig(); r.confirm.api.mockResolvedValueOnce({ ok: true, body: { pairing: { state: "unpaired" }, notices: rows } });
+    await r.client.pairing(); expect(r.client.pairingNotices()).toEqual(rows.slice(0, 3));
   });
 });

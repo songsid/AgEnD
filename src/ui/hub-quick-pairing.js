@@ -8,6 +8,8 @@ import { compareGroups, hubClient, safeWebOrigin } from "./hub-client.js";
 import { hq } from "./hub-quick-strings.js";
 import { hr } from "./hub-read-strings.js";
 import { linkHubOwnerCss } from "./hub-owner-strings.js";
+/** A member Settings reader opts into code rows only alongside this renderer. */
+export const pairingNoticesV3 = true;
 
 const reason = (r) => hq(r.code === "expired" ? "expired" : r.code === "conflict" ? "conflict" : r.code === "backpressure" ? "limit"
   : r.code === "denied" || r.code === "revoked" ? "denied" : r.code === "unavailable" || r.code === "unreachable" ? "unavailable" : "failed");
