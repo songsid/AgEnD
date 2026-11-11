@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-ownership-2301.test.ts (27 tests | 1 failed) 1467ms
+   × local raw Codex skips the unbounded diagnostic checkpoint; ordinary deliveries retain it 40ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > local raw Codex skips the unbounded diagnostic checkpoint; ordinary deliveries retain it
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array []
+
+
+Number of calls: 1
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:580:26
+    578|   h.run(); await h.pump();
+    579|   expect(h.state()).toBe("delivered");
+    580|   expect(diagnostic).not.toHaveBeenCalled();
+       |                          ^
+    581|   const ordinary = await h.d.durableAttemptEvidence("@worker", false, …
+    582|   expect(diagnostic).toHaveBeenCalledOnce();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 34 passed (35)
+   Start at  10:05:33
+   Duration  4.11s (transform 2.28s, setup 341ms, import 2.86s, tests 1.61s, environment 0ms)
+

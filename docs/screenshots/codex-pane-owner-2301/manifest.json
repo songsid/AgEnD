@@ -1,0 +1,30 @@
+{
+  "sourceCommit": "795f00e212d7e22471a1247a34f4b834d18c33b2",
+  "productHashes": {
+    "src/backend/codex.ts": "f6a99832c0ac9f339f08abe98475bdd49b5ade16a9c8ebfc7dca5853254d7f26",
+    "src/backend/types.ts": "f62a68b5e8a473e60f95fa9b54c6ac32fcee7704d277c0fb8e2364351ec087bc",
+    "src/daemon.ts": "918e12f70e70b972a343141f0b9d1a16ee2181d73a8bfbf635ba241815759866",
+    "src/codex-pane-ownership.ts": "b54f09a4ee307282f839e9009d60df5cb1c33cca1f4cd670196a62a3973d18ac",
+    "src/transcript-delta-reader.ts": "e215aad609be34129620510f1aa08e8dc2a2b5059b0e4409c3a896c94b4aa69e",
+    "src/locale.ts": "b0a639ec4c5335f7ff66aaa3af99d6136b54b35f565c444dffb70b63f7f311f8",
+    "src/ui/shared/panel-view.js": "fd17f77271254137b09c7c382ac8e3f379a7cc91b0819cb3b23e4e699c8cfac2",
+    "src/ui/shared/app.css": "a773ab515fa124efd90e34d581ddfe72d86de6d97a0efce8f035d27969ab8f0c"
+  },
+  "pngs": {
+    "phone-zh-TW-before.png": "53b16235f35a3142f1c858bc3c5d1b33069ab640f57dea52741ea3b76eba01c2",
+    "phone-zh-TW-narrow.png": "274da64ea34d086ae7c88087a7067d4ef6ab868d22e752506f87a77520442382",
+    "phone-zh-TW-after.png": "33a79956444a73bd12254461a09f7493b7eff2af67e236e64c720d6eb2001b87",
+    "desk-zh-TW-after.png": "3c1817942b0e68fbdf039e841a6405ad5c13168c8596b1d73dceab3c9a4450c8",
+    "desk-zh-TW-before.png": "ffe58435fc72a91a6ad8f89a9fcdd3917075719df312b4b3989631de18ebe96a",
+    "desk-zh-TW-narrow.png": "2d5bcafbacc162d034eea954780bb0901b3b3c322e3fd62d88f043fc0a323dc6"
+  },
+  "reviewRegressionHashes": {
+    "tests/codex-pane-ownership-2301.test.ts": "ef3c21610b76e88297d1a604ce7b9c99addb64ca056df63d7b3ba31f093f6d44"
+  },
+  "viewSourceCommit": "fe05648f0ce81986d4550a986fc57def80bd25f2",
+  "r2RegressionHashes": {
+    "tests/codex-pane-ownership-2301.test.ts": "ef3c21610b76e88297d1a604ce7b9c99addb64ca056df63d7b3ba31f093f6d44",
+    "tests/codex-pane-read-race-2301.test.ts": "5677156aaf9c38060a179bf0444f4f1bf3b797c1c3bfebcac0441c0597b97c29",
+    "tests/codex-pane-discovery-2301.test.ts": "f4330343c17c6318af53dc0790236e579a680906efb64256ef6919108c2fc965"
+  }
+}

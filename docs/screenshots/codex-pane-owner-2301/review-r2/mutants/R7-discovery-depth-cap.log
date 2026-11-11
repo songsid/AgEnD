@@ -1,0 +1,42 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-discovery-2301.test.ts (6 tests | 1 failed) 108ms
+   × a directory at the depth limit refuses incomplete uniqueness proof 16ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-discovery-2301.test.ts > a directory at the depth limit refuses incomplete uniqueness proof
+AssertionError: expected { …(5) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "identity": {
+    "dev": 2128,
+    "ino": 15946872,
+  },
+  "offset": 135,
+  "path": "/tmp/codex-discovery2301-7L0KvN/sessions/rollout-01a1c81a-35be-7fc0-9a6d-f53f7d6c4c07.jsonl",
+  "sessionId": "01a1c81a-35be-7fc0-9a6d-f53f7d6c4c07",
+  "validateFile": [Function validateFile],
+}
+
+ ❯ tests/codex-pane-discovery-2301.test.ts:97:26
+     95|   const f = fixture(); let path = f.sessions;
+     96|   for (let i = 0; i < 9; i++) { path = join(path, "nested"); mkdirSync…
+     97|   expect(await f.bind()).toBeNull();
+       |                          ^
+     98| });
+     99|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 34 passed (35)
+   Start at  10:05:09
+   Duration  4.32s (transform 2.53s, setup 295ms, import 3.16s, tests 1.52s, environment 0ms)
+

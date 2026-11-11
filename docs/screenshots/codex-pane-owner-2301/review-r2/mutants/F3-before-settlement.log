@@ -1,0 +1,68 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-ownership-2301.test.ts (27 tests | 5 failed) 1859ms
+     × binding loss before read retires the fallback without another paste or poll 48ms
+     × binding loss during empty read retires the fallback without another paste or poll 54ms
+     × binding loss before settlement retires the fallback without another paste or poll 59ms
+     × normal confirmation never revives after the original inode returns with late text 61ms
+     × transcript fallback never revives after the original inode returns with late text 56ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 post-paste fallback keeps the session lease > binding loss before read retires the fallback without another paste or poll
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 post-paste fallback keeps the session lease > binding loss during empty read retires the fallback without another paste or poll
+AssertionError: expected 'post-submit-proof:unproven; no-transc…' to be 'raw-paste-submit-proof:codex-session-…' // Object.is equality
+
+Expected: "raw-paste-submit-proof:codex-session-binding-lost; not re-pasted"
+Received: "post-submit-proof:unproven; no-transcript-turn (unavailable)"
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:515:24
+    513|         "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+    514|       ).get(h.row.deliveryId)?.evidence;
+    515|       expect(evidence).toBe(
+       |                        ^
+    516|         "raw-paste-submit-proof:codex-session-binding-lost; not re-pas…
+    517|       );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 post-paste fallback keeps the session lease > binding loss before settlement retires the fallback without another paste or poll
+AssertionError: expected 'delivered' to be 'uncertain' // Object.is equality
+
+Expected: "uncertain"
+Received: "delivered"
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:511:25
+    509|       // retired post-read lease must not sleep until the next transcr…
+    510|       await drainIO();
+    511|       expect(h.state()).toBe("uncertain");
+       |                         ^
+    512|       const evidence = (h.box as any).db.prepare(
+    513|         "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 reader-observed replacement is permanent > normal confirmation never revives after the original inode returns with late text
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 reader-observed replacement is permanent > transcript fallback never revives after the original inode returns with late text
+AssertionError: expected 'post-submit-proof:unproven; no-transc…' to be 'raw-paste-submit-proof:codex-session-…' // Object.is equality
+
+Expected: "raw-paste-submit-proof:codex-session-binding-lost; not re-pasted"
+Received: "post-submit-proof:unproven; no-transcript-turn (unavailable)"
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:564:42
+    562|       expect((h.box as any).db.prepare(
+    563|         "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+    564|       ).get(h.row.deliveryId)?.evidence).toBe(
+       |                                          ^
+    565|         "raw-paste-submit-proof:codex-session-binding-lost; not re-pas…
+    566|       );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  5 failed | 30 passed (35)
+   Start at  10:05:55
+   Duration  4.08s (transform 1.92s, setup 327ms, import 2.41s, tests 1.99s, environment 0ms)
+

@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-ownership-2301.test.ts (27 tests | 1 failed) 1552ms
+     × normal confirmation never revives after the original inode returns with late text 108ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 reader-observed replacement is permanent > normal confirmation never revives after the original inode returns with late text
+AssertionError: expected 'delivered' to be 'uncertain' // Object.is equality
+
+Expected: "uncertain"
+Received: "delivered"
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:561:25
+    559|       await h.pump();
+    560|       expect(seen).toEqual(["unavailable"]);
+    561|       expect(h.state()).toBe("uncertain");
+       |                         ^
+    562|       expect((h.box as any).db.prepare(
+    563|         "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 34 passed (35)
+   Start at  10:04:23
+   Duration  4.87s (transform 3.41s, setup 343ms, import 4.16s, tests 1.70s, environment 0ms)
+
