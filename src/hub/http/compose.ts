@@ -392,7 +392,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       await guard(() => deps.pairing.confirmOwner(ctx, uuid(r![1]), fp)); return send(res, 200, { ok: true });
     }
     // #3298 S-89: the group routes (404 until S-88's control is composed), ahead of the other admin routes.
-    if (await handleGroupHttp(deps.groupHttp, { path, method, signedIn, csrf, body, send: (status, value) => send(res, status, value),
+    if (await handleGroupHttp(deps.groupHttp, { path, method, signedIn, csrf, body, send: (status, value, headers) => send(res, status, value, headers),
       // The synchronous fence is this server's lifetime and the session row; who is asking is only ever the session's own require*.
       ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin(), requirePerson: () => ctx.requirePerson() } })) return;
     // M-2682: Administration → This Hub (what it is; its rename through the host's writer for sealed settings).

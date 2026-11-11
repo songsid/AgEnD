@@ -12,6 +12,7 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
   // "continuation" (M-2724): as AD does for every subtree search at a domain root, each one also returns continuation
   // references to the DNS-zone and Configuration partitions, whether or not it found the entry.
   const state = { mode: "ok" as "ok" | "unsupported" | "outage" | "referral" | "plain" | "missing" | "ranged" | "continuation", memberships: [GROUP_A],
+    holdGroupSearch: false,
     labels: new Map([[GROUP_A, GROUP_DN], [GROUP_B, "CN=Other,DC=example,DC=test"]]), beforeMembership: undefined as (() => void) | undefined };
   const server = createServer(material, socket => {
     sockets.add(socket); socket.on("error", () => {}); socket.on("close", () => sockets.delete(socket)); let buffer = Buffer.alloc(0), bound = false;
@@ -32,6 +33,17 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
       const tag = r.peek();
       if (tag === 0xa0 || tag === 0xa1 || tag === 0xa2) { r.readSequence(tag); const end = r.offset + r.length, children: any[] = []; while (r.offset < end) children.push(filter(r)); return { tag, children }; }
       if (tag === 0xa3) { r.readSequence(tag); return { attribute: r.readString(), value: r.readString(0x04, true) }; }
+      if (tag === 0xa4) {
+        r.readSequence(tag); const substring = r.readString(); r.readSequence(); const end = r.offset + r.length;
+        const result: any = { substring };
+        while (r.offset < end) { const part = r.peek()!; const text = r.readString(part); result[part === 0x80 ? "initial" : part === 0x82 ? "final" : "any"] = text; }
+        return result;
+      }
+      if (tag === 0xa9) {
+        r.readSequence(tag); const end = r.offset + r.length, result: any = {};
+        while (r.offset < end) { const part = r.peek()!; result[part === 0x81 ? "rule" : part === 0x82 ? "attribute" : "value"] = r.readString(part); }
+        return { extensible: result };
+      }
       if (tag === 0x87) return { present: r.readString(tag) };
       throw Error(`Unexpected inert-filter tag ${tag}`);
     };
@@ -51,14 +63,14 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
         }
         else if (tag === 0x42) socket.end();
         else if (tag === 0x63) {
-          const base = r.readString(), scope = r.readEnumeration(), deref = r.readEnumeration(), sizeLimit = r.readInt(); r.readInt(); r.readBoolean();
+          const base = r.readString(), scope = r.readEnumeration(), deref = r.readEnumeration(), sizeLimit = r.readInt(), timeLimit = r.readInt(); r.readBoolean();
           const parsed = filter(r); r.readSequence(); const end = r.offset + r.length, attributes: string[] = []; while (r.offset < end) attributes.push(r.readString()!);
           const controls: any[] = [];
           if (r.offset < frameLength && r.peek() === 0xa0) {
             r.readSequence(0xa0); const controlsEnd = r.offset + r.length;
             while (r.offset < controlsEnd) { r.readSequence(); const controlEnd = r.offset + r.length, oid = r.readString(), critical = r.readBoolean(), value = r.readString(0x04, true); controls.push({ oid, critical, hex: value?.toString("hex") }); if (r.offset !== controlEnd) throw Error("Invalid control boundary"); }
           }
-          searches.push({ base, scope, deref, sizeLimit, attributes, controls, filter: parsed });
+          searches.push({ base, scope, deref, sizeLimit, timeLimit, attributes, controls, filter: parsed });
           const continuation = () => { if (state.mode === "continuation" && scope === 2) for (const part of ["DC=DomainDnsZones", "DC=ForestDnsZones", "CN=Configuration"]) reply(id, 0x73, w => w.writeString(`ldaps://example.test/${part},DC=example,DC=test`)); };
           const personGuid = equality(parsed, "objectGUID"), login = equality(parsed, "sAMAccountName")?.toString();
           const user = users?.find(u => personGuid ? personGuid.equals(guidStringToBytes(u.id)!) : u.login.toLowerCase() === login?.toLowerCase());
@@ -69,6 +81,24 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
           if (ca && base?.toLowerCase() === ca.dn.toLowerCase()) {
             if (ca.requireBind && !bound) result(id, 0x65, 50);
             else { entry(id, ca.dn, { "cACertificate;binary": [new X509Certificate(ca.pem).raw] }); result(id, 0x65); }
+          } else if (attributes.includes("distinguishedName") && attributes.includes("cn")) {
+            if (state.holdGroupSearch) { buffer = buffer.subarray(frameLength); continue; }
+            const matches = (f: any, cn: string): boolean => {
+              if (f.tag === 0xa0) return f.children.every((c: any) => matches(c, cn));
+              if (f.tag === 0xa1) return f.children.some((c: any) => matches(c, cn));
+              if (f.tag === 0xa2) return !matches(f.children[0], cn);
+              if (f.substring) {
+                const value = ["cn", "sAMAccountName"].includes(f.substring) ? cn.toLowerCase() : "";
+                return !!value && (!f.initial || value.startsWith(f.initial.toLowerCase())) && (!f.final || value.endsWith(f.final.toLowerCase()))
+                  && (!f.any || value.includes(f.any.toLowerCase()));
+              }
+              if (f.extensible) return f.extensible.attribute === "groupType" && f.extensible.rule === "1.2.840.113556.1.4.803" && f.extensible.value === "2147483648";
+              if (f.present) return ["cn", "sAMAccountName", "objectCategory", "groupType"].includes(f.present);
+              return f.attribute === "objectCategory" && f.value.toString().toLowerCase() === "group";
+            };
+            const matching = [...state.labels].map(([id, dn]) => ({ id, dn, cn: /^CN=([^,]+)/i.exec(dn)?.[1] ?? "" })).filter(g => matches(parsed, g.cn));
+            for (const g of matching.slice(0, sizeLimit!)) entry(id, g.dn, { objectGUID: [guidStringToBytes(g.id)!], cn: [g.cn], distinguishedName: [g.dn] });
+            continuation(); result(id, 0x65, matching.length > sizeLimit! ? 4 : 0);
           } else if (controls.length) {
             state.beforeMembership?.();
             if (state.mode === "outage") socket.destroy();
@@ -93,6 +123,6 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
     });
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
-  return { state, searches, binds, bindRecords, port: (server.address() as { port: number }).port,
+  return { state, searches, binds, bindRecords, port: (server.address() as { port: number }).port, openSockets: () => sockets.size,
     close: async () => { for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); } };
 }

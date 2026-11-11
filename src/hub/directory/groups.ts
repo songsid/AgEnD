@@ -15,6 +15,9 @@ export const DIRECTORY_FAILURES: readonly DirectoryFailure[] = ["unreachable", "
 export type PolicyGroupLookup = { readonly ok: true; readonly group: DirectoryPolicyGroup }
   | { readonly ok: false; readonly reason: "unsupported" | "invalid" | "not-found" | "not-security-group" }
   | { readonly ok: false; readonly reason: "unknown"; readonly failure?: DirectoryFailure };
+/** Suggestions only. A selected DN still needs resolve/preview/apply's immutable-GUID recheck. */
+export type PolicyGroupSearch = { readonly ok: true; readonly groups: readonly { readonly objectId: string; readonly cn: string; readonly dn: string }[]; readonly truncated: boolean }
+  | { readonly ok: false; readonly reason: "unsupported" | "unknown"; readonly failure?: DirectoryFailure };
 export type PolicyGroupFacts =
   | { readonly kind: "complete"; readonly person: PersonKey; readonly groups: readonly string[]; readonly observedAt: number }
   | { readonly kind: "ineligible"; readonly person: PersonKey; readonly reason: "gone" | "disabled"; readonly observedAt: number }
