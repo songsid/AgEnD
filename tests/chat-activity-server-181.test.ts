@@ -6,7 +6,7 @@
  */
 import { EventEmitter } from "node:events";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleWebRequest } from "../src/web-api.js";
@@ -95,10 +95,42 @@ describe("the service: no parser is asked for thinking unless the request is all
     expect(kinds(a)).not.toContain("thinking");
     expect(a.thinking).toBe(false);
   });
-  it("the page learns the instance's cwd and the server's home, for display only", async () => {
-    const a: any = await svc({ cwd: () => "/work/proj" }).steps("w", {});
+  it("an allowed request learns the instance's cwd and the server's home, for display only", async () => {
+    const a: any = await svc({ cwd: () => "/work/proj" }).steps("w", { thinking: true });
     expect(a.cwd).toBe("/work/proj");
     expect(typeof a.home).toBe("string");
+  });
+  it("a request that is not allowed (public link, guest, read-only, not asked) never learns the OS user's home or the working directory", async () => {
+    const s = svc({ cwd: () => "/work/proj" });
+    const home = homedir();
+    for (const q of [{}, { thinking: false }, { after: 0 }, { before: 10 }]) {
+      const a: any = await s.steps("w", q as never);
+      expect(a, JSON.stringify(q)).not.toHaveProperty("cwd");
+      expect(a, JSON.stringify(q)).not.toHaveProperty("home");
+      expect(JSON.stringify(a)).not.toContain("/work/proj");
+      expect(JSON.stringify(a)).not.toContain(home);
+    }
+    // no transcript at all: the early answers carry the same base
+    const none: any = await svc({ cwd: () => "/work/proj", source: () => ({ backend: "claude-code", path: null, format: "claude", reason: "no_transcript" }) }).steps("w", {});
+    expect(none).not.toHaveProperty("cwd");
+    expect(none).not.toHaveProperty("home");
+  });
+  it("web.log_thinking off: not even an allowed request gets them", async () => {
+    const a: any = await svc({ cwd: () => "/work/proj", thinking: () => false }).steps("w", { thinking: true });
+    expect(a).not.toHaveProperty("cwd");
+    expect(a).not.toHaveProperty("home");
+  });
+  it("through the real route: the public link, a guest and a read-only session get no cwd/home; the admin on the local dashboard does", async () => {
+    const s = svc({ cwd: () => "/work/proj" });
+    for (const opts of [{ gateway: true }, { tier: "guest" as const }, { tier: "read" as const }]) {
+      const r = await ask(opts);
+      const a: any = await s.steps("w", (r.q ?? {}) as never);
+      expect(a, JSON.stringify(opts)).not.toHaveProperty("cwd");
+      expect(a, JSON.stringify(opts)).not.toHaveProperty("home");
+    }
+    const admin: any = await s.steps("w", (await ask()).q as never);
+    expect(admin).toMatchObject({ cwd: "/work/proj", thinking: true });
+    expect(typeof admin.home).toBe("string");
   });
 });
 

@@ -86,7 +86,8 @@ export type LogAnswer =
     enabled: true; instance: string; backend: string; supported: boolean; reason?: string;
     /** AGEND-181: whether this answer may hold `thinking` steps (the request asked and was allowed). */
     thinking: boolean;
-    /** AGEND-181: where paths are shortened from — the instance's working directory and the server's home (display only). */
+    /** AGEND-181: where paths are shortened from — the instance's working directory and the server's home (display only).
+     *  Present only when `thinking` is (an admin session on the local dashboard): they name the OS user. */
     cwd?: string; home?: string;
     /** The transcript's identity (device-inode): a cursor of another one is reset. */
     key?: string;
@@ -129,9 +130,11 @@ export class LogService {
     const src = this.deps.source(name);
     const evs = this.eventsFor(name, q.ev);
     const thinking = q.thinking === true && this.deps.thinking?.() !== false;
-    const cwd = this.deps.cwd?.(name);
+    // The OS user name (home) and the working directory are for the viewer the route let thinking through (an admin
+    // session on the local dashboard) — never the public link or a guest: the page only uses them to shorten paths.
+    const cwd = thinking ? this.deps.cwd?.(name) : undefined;
     const base = { enabled: true as const, instance: name, backend: src.backend, events: evs.events, ev: evs.ev, thinking,
-      ...(cwd ? { cwd } : {}), home: homedir() };
+      ...(cwd ? { cwd } : {}), ...(thinking ? { home: homedir() } : {}) };
     if (!src.format || !src.path) {
       return { ...base, supported: !!src.format, reason: src.reason ?? (src.format ? "no_transcript" : "unsupported"), steps: [], before: null, after: null };
     }

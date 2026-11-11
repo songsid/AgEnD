@@ -13,15 +13,20 @@
 //   id    the reply call's result `messageId` equals the row's `anchor` (what afterReplyRouted records);
 //   text  the start of the call's text equals the start of an agent row's text — rows taken in order, never back (a
 //         monotonic cursor: two replies that say the same short thing each get their own row);
-//   time  an unclaimed agent row written within TIME_SLACK_MS of the call;
+//   time  an unclaimed agent row written within TIME_SLACK_MS of the call, and inside the call's own turn (from its user
+//         row to the next user row; with no user row to tell, from the turn's first step to the next turn's);
 //   turn  the turn has no `reply` at all (a backend that has none): its steps go above the last agent row between its
 //         user row and the next user row;
 //   none  nothing matched: an "activity" group of its own, between the rows by time. Never attached to a guess.
+// A `reply` call that failed or was interrupted sent nothing: it claims no row (a retry that worked would lose its row to
+// it); its steps join the next segment, and the failed call shows there as an ordinary tool step.
 // A page labels `text`, `time`, `turn` and `none` as inferred. A reply call seen a moment before its row arrives is
 // `live` (placed at the end) so the group does not jump when the row comes.
 //
 // Keys: `act:<turn>:<n>` (n: the segment's number in its turn) — the same key while a segment is live and after its
-// reply arrives, so the page keeps the node (no remount, no scroll jump).
+// reply arrives, so the page keeps the node (no remount, no scroll jump). A turn the transcript gave no id for is named
+// by its first user step (else its first step): an id of the transcript, not a position in the window, which moves when
+// older steps load or the window is cut.
 
 export const TIME_SLACK_MS = 5000;
 /** A reply call this recent, with no row yet, is assumed to be about to get one. */
@@ -33,6 +38,8 @@ const REPLY_TEXT = 200;
 
 export const rowKeyOf = (x) => `${x.boot}-${x.id}`;
 export const isReplyStep = (s) => s.kind === "tool" && typeof s.tool === "string" && REPLY_TOOL.test(s.tool);
+/** A reply call that sent nothing (its result was an error, or the turn was interrupted before it finished). */
+const isLostReply = (s) => s.status === "failed" || s.status === "interrupted";
 
 const rowTs = (x) => { const t = Date.parse(x.ts); return Number.isFinite(t) ? t : 0; };
 const head = (text) => String(text == null ? "" : text).slice(0, REPLY_TEXT);
@@ -70,7 +77,7 @@ export function groupSteps(rows, steps, opts = {}) {
 
   const claim = (r, level) => { taken.add(r.i); if (r.i + 1 > cursor) cursor = r.i + 1; return { rowKey: rowKeyOf(r.x), level }; };
   /** The agent row a `reply` call produced, by the most exact match that holds. */
-  const place = (replyStep) => {
+  const place = (replyStep, inTurn) => {
     const a = replyStep.anchor || {};
     if (a.messageId) {
       const r = agents.find((c) => !taken.has(c.i) && c.x.anchor === a.messageId);
@@ -83,7 +90,7 @@ export function groupSteps(rows, steps, opts = {}) {
     if (replyStep.ts) {
       let best = null, bestD = TIME_SLACK_MS + 1;
       for (const c of agents) {
-        if (taken.has(c.i)) continue;
+        if (taken.has(c.i) || !inTurn(c)) continue;
         const d = Math.abs(rowTs(c.x) - replyStep.ts);
         if (d < bestD) { best = c; bestD = d; }
       }
@@ -98,21 +105,28 @@ export function groupSteps(rows, steps, opts = {}) {
     const lastTurn = ti === turns.length - 1;
     const userRow = first && first.anchor && first.anchor.messageId
       ? users.find((r) => r.x.anchor === first.anchor.messageId) || null : null;
-    const tkey = turn.turn || `~${ti}`;
+    const tkey = turn.turn || `~${(first || turn.steps[0]).id}`;
+    // Which agent rows can belong to this turn's replies by time: between its user row and the next user row; with no
+    // user row to go by, between the turn's first step and the next turn's first (rows keep their own clock).
+    const next = userRow ? users.find((r) => r.i > userRow.i) : null;
+    const t0 = ((turn.steps[0] && turn.steps[0].ts) || 0) - TIME_SLACK_MS;
+    const t1 = (turns[ti + 1] && turns[ti + 1].steps[0] && turns[ti + 1].steps[0].ts) || Infinity;
+    const inTurn = userRow
+      ? (c) => c.i > userRow.i && (!next || c.i < next.i)
+      : (c) => { const t = rowTs(c.x); return t >= t0 && t < t1; };
     let seg = [], n = 0, replied = 0;
     const segs = [];
     const flush = (replyStep) => { segs.push({ n: n++, items: seg, reply: replyStep }); seg = []; };
     for (const s of turn.steps) {
       if (s.kind === "user" || s.kind === "turn_end" || s.kind === "state") continue;
-      if (isReplyStep(s)) { replied++; flush(s); continue; }
+      if (isReplyStep(s) && !isLostReply(s)) { replied++; flush(s); continue; }
       if (SHOWN.has(s.kind)) seg.push(s);
     }
     const tail = seg;                                      // after the last reply (or the whole turn when it had none)
     const partial = ti === 0 && opts.complete === false && !first;
     // A turn with no reply at all that has ended: its steps go above the last agent row after its user row (`turn`).
     if (!replied && ended && tail.length && userRow) {
-      const next = users.find((r) => r.i > userRow.i);
-      const cand = agents.filter((r) => r.i > userRow.i && (!next || r.i < next.i) && !taken.has(r.i));
+      const cand = agents.filter((r) => inTurn(r) && !taken.has(r.i));
       const last = cand[cand.length - 1];
       if (last) {
         taken.add(last.i);
@@ -121,7 +135,7 @@ export function groupSteps(rows, steps, opts = {}) {
       }
     }
     segs.forEach((sg) => {
-      const where = place(sg.reply);
+      const where = place(sg.reply, inTurn);
       const ts = (sg.items[0] && sg.items[0].ts) || sg.reply.ts || 0;
       const base = { key: `act:${tkey}:${sg.n}`, turn: turn.turn, n: sg.n, items: sg.items, trailing: [], ts, ended: true, turnEnded: ended, ...(partial && sg.n === 0 ? { partial: true } : {}) };
       if (where) { groups.push({ ...base, ...where }); return; }

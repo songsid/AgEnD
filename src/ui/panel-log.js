@@ -1,6 +1,8 @@
-// #1218 phase 1: one instance's Log (紀錄) — its work step by step: what it was asked, what it answered (never its
-// thinking), each tool call with its arguments and result, errors, where each turn ended, and fleet events (a crash, a
-// restart, a prompt waiting). Between View and Details (/ui/log/<name>). Behind the session gate (/ui/js/); offered on
+// #1218 phase 1: one instance's Log (紀錄) — its work step by step: what it was asked, what it answered, each tool call with its
+// arguments and result, errors, where each turn ended, and fleet events (a crash, a restart, a prompt waiting). This page never asks
+// for thinking (GET /ui/steps without `thinking`); the chat's activity timeline does, for an admin session on the local dashboard
+// (AGEND-181, chat-activity.js) — the step row is the one they share (log-row.js), so the row can draw thinking, this page just never
+// receives any. Between View and Details (/ui/log/<name>). Behind the session gate (/ui/js/); offered on
 // the public link too (the user's decision), read-only, with the same masking.
 //
 // On demand only (the user's decision on load): off by default (web.log_tab) — the tab says so, and offers to turn it

@@ -193,3 +193,73 @@ describe("grouping: when the exact anchor is not there", () => {
     expect(keys(composeRows(ledger, { groups: [], live: null }))).toEqual(keys(ledger));
   });
 });
+
+describe("grouping: a failed reply, the turn's bounds for time, a turn with no id (review of PR1)", () => {
+  const reply = (id: string, turn: string, ts: number, status: string, anchor: Record<string, string> = {}): LogStep =>
+    ({ id, turn, ts, kind: "tool", tool: "mcp__agend__reply", status, anchor } as LogStep);
+  const user = (id: string, turn: string, ts: number, messageId?: string): LogStep => ({ id, turn, ts, kind: "user", ...(messageId ? { anchor: { messageId } } : {}) } as LogStep);
+  const bash = (id: string, turn: string, ts: number): LogStep => ({ id, turn, ts, kind: "tool", tool: "Bash", status: "done" } as LogStep);
+  const end = (id: string, turn: string, ts: number): LogStep => ({ id, turn, ts, kind: "turn_end" } as LogStep);
+  const row = (id: number, role: string, ts: number, extra: Record<string, unknown> = {}) => ({ boot: "b", id, role, text: `t${id}`, ts: new Date(ts).toISOString(), ...extra });
+
+  it("a failed reply call claims no row: the retry that worked keeps its row, and the failed call's steps join the next segment", () => {
+    // No id, no text to match — only the time: the failed call (ts 100) is the nearest to the row at 101, the retry (ts 110) is 9 ms away.
+    const s = [user("u", "t", 1), bash("x", "t", 50), reply("f", "t", 100, "failed"), bash("y", "t", 105), reply("ok", "t", 110, "done"), end("e", "t", 120)];
+    const rows = [row(1, "user", 0), row(2, "agent", 101)];
+    const g = groupSteps(rows, s, { now: 1e12 });
+    expect(g.groups).toHaveLength(1);
+    expect(g.groups[0].rowKey).toBe("b-2");
+    expect(g.groups[0].n).toBe(0);
+    // everything since the turn's start rides on the reply that went through; the failed call shows as an ordinary tool step
+    expect(shape(g.groups[0].items)).toEqual(["tool:Bash", "tool:mcp__agend__reply", "tool:Bash"]);
+    expect(g.groups[0].items[1].status).toBe("failed");
+  });
+  it("an interrupted reply call is the same, and the exact id still places the retry", () => {
+    const s = [user("u", "t", 1), reply("i", "t", 100, "interrupted"), reply("ok", "t", 110, "done", { messageId: "web-9" }), end("e", "t", 120)];
+    const rows = [row(1, "user", 0), row(2, "agent", 111, { anchor: "web-9" })];
+    const g = groupSteps(rows, s, { now: 1e12 });
+    expect(g.groups.map((x: any) => [x.rowKey, x.level])).toEqual([["b-2", "id"]]);
+    expect(g.groups[0].items.map((x: LogStep) => x.status)).toEqual(["interrupted"]);
+  });
+  it("a turn whose only reply call failed sends nothing: its steps are not attached to a reply by time", () => {
+    const s = [user("u", "t", 1), bash("x", "t", 50), reply("f", "t", 100, "failed"), end("e", "t", 120)];
+    const g = groupSteps([row(1, "user", 0), row(2, "agent", 101)], s, { now: 1e12 });
+    expect(g.groups.every((x: any) => x.level !== "time")).toBe(true);
+  });
+
+  it("time never reaches into another turn: a row of the next turn, written within the slack, is not this turn's reply's", () => {
+    // Turn A's reply call (ts 1000) has no row of its own (never delivered); turn B's reply row is 2 s away and B's user row sits between.
+    const s = [user("ua", "A", 100, "web-a"), reply("ra", "A", 1000, "done"), end("ea", "A", 1001),
+      user("ub", "B", 1500, "web-b"), reply("rb", "B", 2000, "done", { messageId: "web-rb" }), end("eb", "B", 2001)];
+    const rows = [row(1, "user", 90, { anchor: "web-a" }), row(2, "user", 1400, { anchor: "web-b" }), row(3, "agent", 2002, { anchor: "web-rb" }), row(4, "agent", 3000)];
+    const g = groupSteps(rows, s, { now: 1e12 });
+    const a = g.groups.find((x: any) => x.turn === "A");
+    expect(a.level).toBe("none");
+    expect(g.groups.find((x: any) => x.turn === "B").rowKey).toBe("b-3");
+    // and a row of the previous turn cannot be taken by the later turn
+    const s2 = [user("ua", "A", 100, "web-a"), end("ea", "A", 110), user("ub", "B", 120, "web-b"), reply("rb", "B", 130, "done"), end("eb", "B", 140)];
+    const rows2 = [row(1, "user", 90, { anchor: "web-a" }), row(2, "agent", 125), row(3, "user", 128, { anchor: "web-b" })];   // the agent row is turn A's: it sits before B's user row
+    expect(groupSteps(rows2, s2, { now: 1e12 }).groups.find((x: any) => x.turn === "B").level).toBe("none");
+  });
+  it("without the user row to tell (an old ledger), the turn's time window bounds the match", () => {
+    const s = [user("ua", "A", 10_000), reply("ra", "A", 10_500, "done"), end("ea", "A", 10_600), user("ub", "B", 20_000), reply("rb", "B", 20_500, "done"), end("eb", "B", 20_600)];
+    // an agent row 300 ms after A's reply, plus one after B's: each turn gets its own, and A (nothing near) gets none of B's
+    const rows = [row(1, "agent", 10_800), row(2, "agent", 20_800)];
+    const g = groupSteps(rows, s, { now: 1e12 });
+    expect(g.groups.map((x: any) => [x.turn, x.rowKey, x.level])).toEqual([["A", "b-1", "time"], ["B", "b-2", "time"]]);
+    const lone = groupSteps([row(2, "agent", 20_800)], [s[0], s[1], s[2]], { now: 1e12 });
+    expect(lone.groups[0].level).toBe("none");   // turn A's window ends where B starts: the row is B's
+    const lone2 = groupSteps([row(2, "agent", 20_100)], s.slice(0, 3).concat(s.slice(3)), { now: 1e12 });
+    expect(lone2.groups.find((x: any) => x.turn === "A").level).toBe("none");
+  });
+
+  it("a turn the transcript gave no id for is keyed by its first user step, not its position: the key survives older steps loading", () => {
+    const later = [user("o200.0", "", 200), bash("o200.1", "", 210), reply("o200.2", "", 220, "done"), end("o200.3", "", 230)];
+    const older = [user("o100.0", "x", 100), reply("o100.1", "x", 110, "done"), end("o100.2", "x", 120)];
+    const rows = [row(1, "user", 190), row(2, "agent", 221)];
+    const before = groupSteps(rows, later, { now: 1e12 }).groups[0];
+    const after = groupSteps(rows, [...older, ...later], { now: 1e12 }).groups.find((x: any) => x.items.some((i: LogStep) => i.id === "o200.1"));
+    expect(before.key).toBe(after.key);
+    expect(before.key).toBe("act:~o200.0:0");
+  });
+});
