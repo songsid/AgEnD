@@ -56,6 +56,22 @@ export function createChatStore(deps) {
     commands: {},
   };
   const subs = new Set();
+  const historyRequests = new Map();
+  const visible = new Map();              // mount token → agent; cleanup never clears a successor's focus
+  let focused = null;
+  const shown = () => new Set([...visible.values(), ...(s.current ? [s.current] : [])]);
+  function show(name) {
+    const owner = {};
+    visible.set(owner, name);
+    return {
+      focus(value) {
+        if (!visible.has(owner)) return;
+        if (value) { focused = owner; s.current = name; }
+        else if (focused === owner) { focused = null; s.current = null; }
+      },
+      close() { visible.delete(owner); if (focused === owner) { focused = null; s.current = null; } },
+    };
+  }
   const pastedTexts = new WeakMap();
   const now = deps.now || (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
   const t = deps.t, tf = deps.t;
@@ -170,11 +186,14 @@ export function createChatStore(deps) {
   async function openHistory(name, lease, signal) {
     if (s.historyRead.has(name) || signal?.aborted) return false;
     s.historyRead.add(name);
+    const request = {}; historyRequests.set(name, request);
+    const current = () => historyRequests.get(name) === request;
     // M-2260: after a gap, what this chat held when the read began may sit across a hole: the answer replaces it, and
     // only what arrived while the read was out (the live stream) is kept beside it — exactly what a reload would show.
     const stale = s.gapped.has(name) ? new Set((s.msgs[name] || []).map(msgKeyOf)) : null;
     try {
       const r = await api("GET", `/ui/history?instance=${encodeURIComponent(name)}&limit=200`, undefined, signal);
+      if (!current()) return false;
       if (signal?.aborted) { s.historyRead.delete(name); return false; }
       if (!r || !Array.isArray(r.messages)) { s.historyRead.delete(name); return true; }
       // Kept even when the person has moved on: the store is page-lived, and the answer belongs to `name`.
@@ -187,7 +206,8 @@ export function createChatStore(deps) {
       } else s.msgs[name] = R().mergeMessages(s.msgs[name], r.messages, 500);
       settleOutgoing(name);
       changed(name, "msgs");
-    } catch { s.historyRead.delete(name); /* the live stream still works; the next visit tries again */ }
+    } catch { if (current()) s.historyRead.delete(name); /* the live stream still works; the next visit tries again */ }
+    finally { if (current()) historyRequests.delete(name); }
     void lease;
     return true;
   }
@@ -201,7 +221,7 @@ export function createChatStore(deps) {
     // only refreshes its text and buttons (#1463 review).
     if (!had) s.prompts[p.nonce] = { ...p, resolved: false, busy: false };
     else if (!had.resolved) Object.assign(had, { text: p.text, links: p.links, actions: p.actions, expiresAt: p.expiresAt });
-    if (p.instance === s.current) changed(p.instance);
+    if (shown().has(p.instance)) changed(p.instance);
     else if (fresh) deps.toast(tf("chat.promptFor", p.instance, p.text), false);
   }
   /** The open prompts, on every stream (re)connect and with every poll: a prompt answered or expired while this page
@@ -587,7 +607,7 @@ export function createChatStore(deps) {
    */
   function onGap() {
     for (const name of new Set([...Object.keys(s.msgs), ...s.historyRead])) { s.historyRead.delete(name); s.gapped.add(name); }
-    if (s.current) void openHistory(s.current);
+    for (const name of shown()) void openHistory(name);
   }
   /** Wire the store to the app's stream, for the life of the page. */
   function attach(stream) {
@@ -609,7 +629,8 @@ export function createChatStore(deps) {
   return {
     state: s,
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
-    setCurrent(name) { s.current = name; },
+    setCurrent(name) { focused = null; s.current = name; },
+    show,
     onAgentReply: liveReplies.subscribe,
     attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory, onGap,
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,

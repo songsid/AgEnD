@@ -20,7 +20,7 @@ export const touchScreen = () => typeof matchMedia === "function" && matchMedia(
  * `send`: { hidden, disabled, label, onClick }. `controls` / `expanded` / `activeDescendant`: the box's palette ARIA.
  */
 export function ComposerInput({ inputRef, value, placeholder, onValue, onKeyDown, onPaste, attach = null, stop, send,
-  controls, expanded = false, activeDescendant }) {
+  controls, expanded = false, activeDescendant, ids = {} }) {
   const own = useRef(null), input = inputRef || own, fileIn = useRef(null);
   const composing = useRef(false);
   // A render while composing (another part of the page changed) gives the box what it holds, so it never writes it.
@@ -37,21 +37,21 @@ export function ComposerInput({ inputRef, value, placeholder, onValue, onKeyDown
   // Lower-case props below: an element has no oncomposition… property, so Preact would listen for "CompositionStart".
   const onCompositionEnd = (e) => { if (!composing.current) return; composing.current = false; onValue(e.target.value); };
   return html`<div class="composer">
-      ${attach ? html`<button id="attachBtn" type="button" class="icon-btn" title=${attach.title} aria-label=${attach.title} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
+      ${attach ? html`<button id=${ids.attachBtn || "attachBtn"} type="button" class="icon-btn" title=${attach.title} aria-label=${attach.title} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
       <input ref=${fileIn} type="file" multiple hidden
         onChange=${(e) => { attach.onFiles(e.target.files); e.target.value = ""; }} />` : null}
       ${/* #2478: the placeholder is drawn beside the box, one line ending in "…" — a textarea's own placeholder is clipped,
           never ellipsized, and a long name wrapped it to two lines. The box keeps the words as its accessible name. Its own
           placeholder is one space: :placeholder-shown hides the drawn one (app.css) the moment the box holds text, an
           IME's composing text included, with no change to the page. */ ""}
-      <span class="composer-field"><textarea id="msgIn" ref=${input} rows="1" value=${boxValue} aria-label=${placeholder}
+      <span class="composer-field"><textarea id=${ids.msgIn || "msgIn"} ref=${input} rows="1" value=${boxValue} aria-label=${placeholder}
         enterkeyhint=${touchScreen() ? "enter" : undefined} autocomplete="off" aria-controls=${controls} aria-expanded=${expanded ? "true" : "false"}
         aria-activedescendant=${activeDescendant} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}
         oncompositionstart=${onCompositionStart} oncompositionend=${onCompositionEnd} onBlur=${onCompositionEnd}
         placeholder=" "></textarea><span class="composer-ph" aria-hidden="true">${placeholder}</span></span>
-      <button id="stopBtn" type="button" class="btn btn-stop" hidden=${stop.hidden} title=${stop.title}
+      <button id=${ids.stopBtn || "stopBtn"} type="button" class="btn btn-stop" hidden=${stop.hidden} title=${stop.title}
         disabled=${stop.disabled} onClick=${stop.onClick}><${Icon} name="stop" size=${14} /><span class="stop-label">${stop.label}</span></button>
-      <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${send.hidden} disabled=${send.disabled}
+      <button id=${ids.sendBtn || "sendBtn"} type="button" class="btn btn-primary btn-send" hidden=${send.hidden} disabled=${send.disabled}
         onMouseDown=${(e) => e.preventDefault()}
         aria-label=${send.label} title=${send.label} onClick=${send.onClick}><${Icon} name="send" size=${16} /><span class="send-label">${send.label}</span></button>
     </div>`;
@@ -66,3 +66,6 @@ export function WorkBarView({ kind, label, note, noteTitle, elapsed, elapsedTitl
     ${kind === "awaiting" ? html`<span class="note" title=${noteTitle}>${note}</span>`
       : html`<span class="elapsed" title=${elapsedTitle} aria-hidden="true">${elapsed}</span>`}</div>`;
 }
+
+// Namespace/capability checks let an old cached composer keep the legacy single-pane path.
+ComposerInput.paneIds = true;
