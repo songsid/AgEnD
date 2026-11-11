@@ -1,5 +1,5 @@
 {
-  "6624707bf3ce28287abafe608e759a2ceeaf0e833ac9d7c65bbeb0db8ddd8dbe": [
+  "563de8d79ade5ccc5248a1a64e2cd9493af6ea8694e286fef4c952f2ce77f62e": [
     "docs/evidence/hub-wizard-bugs-2917/README.md"
   ],
   "5bb99a8cad0e32ab545b55a1e9f90148e29ba0c83f1abdcda253516a2d314c8b": [
@@ -142,7 +142,8 @@
   ],
   "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748": [
     "docs/evidence/hub-wizard-bugs-2917/test-types.log",
-    "docs/evidence/hub-wizard-bugs-2917/r1/test-types.log"
+    "docs/evidence/hub-wizard-bugs-2917/r1/test-types.log",
+    "docs/evidence/hub-wizard-bugs-2917/r2/test-types.log"
   ],
   "599c5c29e2cfa1ac32088f71c110df311d049d388c6777910c40bd90afd92b61": [
     "src/hub/init/prompt.ts"
@@ -200,5 +201,23 @@
   ],
   "af9b0b26cfdcb8b30a73334452f13322a58a6e2d39e9a7c6182c3fbd7db0ef81": [
     "tests/hub-init-rig.test.ts"
+  ],
+  "acbe2d413635370a4541ce0adff6297955ae20f77fbd821c4af1ddb518da307e": [
+    "docs/evidence/hub-wizard-bugs-2917/r2/all-callers.log"
+  ],
+  "e1d703a24b14066f32c9a829c82d6e688791c04e1761fd7822ec3a0886778240": [
+    "docs/evidence/hub-wizard-bugs-2917/r2/receipt.json"
+  ],
+  "a641c902b5a52534fa59052590842c4cf8a6dee99b5a0a1daed549a0695f2c60": [
+    "docs/evidence/hub-wizard-bugs-2917/r2/restored.log"
+  ],
+  "ce1ed305c69261ab09aab158630b328f075f0140f00dd7ef6bf89e7aca185d10": [
+    "docs/evidence/hub-wizard-bugs-2917/r2/reversals.json"
+  ],
+  "4f12fd8cdffa0599a82c8c53487a9b0b87e7597757f7dd5f2f9cbbc863a7f9ab": [
+    "tests/hub-service-init-cli.test.ts"
+  ],
+  "451b1497d7caff085433a0cb7a730795f8eb175f35c477ffba158141a8cd80c9": [
+    "tests/hub-directory-ca-wizard.test.ts"
   ]
 }
