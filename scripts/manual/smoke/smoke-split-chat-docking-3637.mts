@@ -111,7 +111,7 @@ try {
     assert.ok(f.width >= 420 && f.height >= 360); return f;
   };
   if (["css", "css-old-app", "model", "navigation", "server"].includes(retained)) {
-    if (!["css", "server"].includes(retained)) {
+    if (!["css", "server", "model"].includes(retained)) {
       await page.evaluate(async (name: string) => { const { appStore } = await import("/assets/app-store.js"); await appStore.get().chatWorkspace?.open(name); }, b);
       await page.getByText("未能載入分割對話。目前對話不變；請重新整理頁面再試。", { exact: true }).waitFor();
     }
@@ -160,6 +160,10 @@ try {
       await draftCheck(); await shot("stacked", 2);
       await menu("b", "自訂移動"); await page.locator('.ws-floating[data-pane="b"]').waitFor();
       const initialFloat = await within(); assert.equal(Math.round(initialFloat.width), 560); assert.equal(Math.round(initialFloat.height), 460); await draftCheck(); await shot("float", 2);
+      await page.locator('[data-pane="b"] .ws-pane-head .menu > button').click();
+      const layoutMenu = page.locator('[data-pane="b"] .ws-pane-head > .panel-actions > .menu > .menu-list');
+      const menuBox = await layoutMenu.boundingBox(); assert.ok(menuBox && menuBox.y + menuBox.height <= initialFloat.y + initialFloat.height, 'the floating menu must stay inside its pane');
+      await layoutMenu.locator('button').last().scrollIntoViewIfNeeded(); await shot("float-menu", 2); await page.keyboard.press("Escape");
       let fh = await box('.ws-floating .ws-pane-head'); await page.mouse.move(fh.x + 30, fh.y + 18); await page.mouse.down(); await page.mouse.move(fh.x - 120, fh.y - 50, { steps: 8 }); await page.mouse.up(); await settle();
       const moved = await within(); assert.ok(moved.x < initialFloat.x - 100); await draftCheck(); await shot("float-moved", 2);
       const corner = await box(".ws-float-resize"); await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2); await page.mouse.down(); await page.mouse.move(corner.x + 80, corner.y + 70, { steps: 8 }); await page.mouse.up(); await settle();
