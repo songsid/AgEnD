@@ -63,8 +63,7 @@ const finals = new Map();                        // id → its decided view
 let timer = null, polling = false;
 
 function publish() {
-  appStore.set({
-    pendingChanges: [...tracked.values()].filter(({ view }) => view.presentation !== "hub-join").map(({ view, at, label, retry, displaySummary }) => ({
+  const views = [...tracked.values()].map(({ view, at, label, retry, displaySummary }) => ({
       ...view,
       label: label || null,
       // Display only: the server owns the diff, confirmation digest and execution.
@@ -84,8 +83,9 @@ function publish() {
       dismiss: TERMINAL.has(view.state) ? () => forget(view.id) : null,
       // AGEND-118: a request that ended without applying can be sent again (the same write, a new confirmation).
       retry: retry && resendable(view) ? () => resend(view.id) : null,
-    })),
-  });
+    }));
+  appStore.set({ pendingChanges: views.filter(view => view.presentation !== "hub-join"),
+    hubJoinChanges: views.filter(view => view.presentation === "hub-join") });
 }
 
 function forget(id) {
@@ -303,5 +303,5 @@ export function resetConfirmations() {
   for (const e of tracked.values()) if (e.doneTimer) clearTimeout(e.doneTimer);
   tracked.clear(); finals.clear();
   if (timer) { clearTimeout(timer); timer = null; }
-  appStore.set({ pendingChanges: [] });
+  appStore.set({ pendingChanges: [], hubJoinChanges: [] });
 }

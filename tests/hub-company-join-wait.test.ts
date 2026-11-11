@@ -80,6 +80,19 @@ describe("company join local wait",()=>{
   fetcher(()=>response({ok:true,operation:null}));const p=await mount();const assign=vi.fn();(globalThis.location as any).assign=assign;
   fire(btn(p,"Review local confirmation"),"click");expect(assign).toHaveBeenCalledWith("/settings/hub");expect(calls.every(x=>!x.init.method||x.init.method==="GET")).toBe(true);
  });
+ it("reload reattaches its sole code challenge with the server target and without another Start",async()=>{
+  clock();const claim={id:pendingId,state:"pending",presentation:"hub-join",remaining_ms:120000,totp:"ready",confirm_digest:"exact",hubJoin:{handoffId:handoff,target:"https://hub.example.test"}};
+  fetcher(path=>path==="/api/settings/pending"?response([claim]):path.includes("/settings/pending/")?response(claim):response({ok:true,operation:null}));
+  await confirmations.attach();const p=await mount(false);
+  expect(p.root.querySelector(".hub-join-code")).toBeTruthy();expect(p.root.querySelector(".pending-card")).toBeNull();expect(p.root.textContent).toContain("Hub: https://hub.example.test");
+  expect(calls.every(x=>!x.init.method||x.init.method==="GET")).toBe(true);
+ });
+ it("a new waiting tab never adopts a different handoff’s code challenge",async()=>{
+  clock();const claim={id:pendingId,state:"pending",presentation:"hub-join",remaining_ms:120000,totp:"ready",hubJoin:{handoffId:"other",target:"https://other.example.test"}};
+  fetcher(path=>path==="/api/settings/pending"?response([claim]):path.includes("/settings/pending/")?response(claim):response({ok:true,operation:null}));await confirmations.attach();
+  const p=page({url:"http://127.0.0.1:19290/settings/hub?joinWait="+handoff+"&joinConsent=1#target=https%3A%2F%2Fhub.example.test",storage:{agend_lang:"en"}});mounted.push(p);await p.mount(h(panel.CompanyJoinSettings));await settle(12);
+  expect(p.root.querySelector(".hub-join-code")).toBeNull();expect(p.root.textContent).not.toContain("other.example.test");expect(p.root.textContent).toContain("https://hub.example.test");
+ });
  it("a loaded empty handoff is a confirmation wait, not an endless loading skeleton; it has a direct action and an exit",async()=>{
   fetcher(()=>response({ok:true,operation:null}));const p=await mount();
   expect(p.root.querySelector(".skeleton")).toBeNull();

@@ -78,7 +78,7 @@ try {
   const page = await ctx.newPage();
   const shot = async (name: string, p = page) => { await p.evaluate(async () => { await document.fonts.ready; await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r()))); }); await p.screenshot({ path: join(out, tag + "-" + name + ".png"), fullPage: c.device === "phone" }); };
   try {
-   await page.goto(fx.base + "/signin"); await page.fill("#code", issued.display); await page.click("#go"); await page.waitForURL(fx.base + "/ui"); await page.goto(fx.base + "/settings/hub"); await page.locator("#hubCompanyAddress").waitFor();
+   await page.goto(fx.base + "/signin"); await page.fill("#code", issued.display); await page.waitForURL(fx.base + "/ui"); await page.goto(fx.base + "/settings/hub"); await page.locator("#hubCompanyAddress").waitFor();
    if (!process.env.BEFORE && !process.env.SKEW?.includes("settings-hub-company-join.js")) { check(tag + " empty link source", (await page.locator(".s-company-join").innerText()).includes(c.lang === "en" ? "Copy colleague connection link" : "複製同仁連線連結")); check(tag + " disabled reason", (await page.locator("#hubCompanyStartHint").innerText()).includes(c.lang === "en" ? "Paste the Hub link first" : "請先貼上 Hub 連結")); }
    await shot("empty"); await page.fill("#hubCompanyAddress", companyLink); await page.fill("#hubCompanyFleetName", "Owned Fleet " + index);
    const opened = ctx.waitForEvent("page"); await page.getByRole("button", { name: c.lang === "en" ? "Sign in with company account" : "以公司帳號登入", exact: true }).click(); const hub = await opened;

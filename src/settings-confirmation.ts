@@ -48,6 +48,7 @@ export interface SettingsPendingView {
   summary: readonly string[];
   /** Display-only dedicated inline flow; no General confirmation is posted. */
   presentation?: "hub-join";
+  hubJoin?: { handoffId: string | null; target: string };
   /**
    * How it is confirmed. #2868: "posting" while the General card is being sent (what the save itself answers), then
    * "chat" with `where` the card was posted (a platform and its connection), or "host_cli" when no General could take
@@ -82,6 +83,7 @@ export interface SettingsChangeProposal {
   summary: readonly string[];
   /** Display-only dedicated inline flow; no General confirmation is posted. */
   presentation?: "hub-join";
+  hubJoin?: { handoffId: string | null; target: string };
   bytes: number;
   remainingMs?: number;
   requestFingerprint?: string;
@@ -200,7 +202,7 @@ export class SettingsConfirmationStore {
       snapshotFingerprint: settingsFingerprint(proposal.snapshot?.() ?? null),
       deadline: this.now() + ttl, requestFingerprint: proposal.requestFingerprint, proposal, view: { id, state: "pending", section: proposal.section,
         requested_at: requested, requested_by: this.display(proposal.requestedBy), expires_at: requested + ttl,
-        source: proposal.source, summary: [...proposal.summary], ...(proposal.presentation ? { presentation: proposal.presentation } : {}), confirmation: { kind: this.options.notify && !proposal.presentation ? "posting" : "host_cli", code: id }, outcome: null } };
+        source: proposal.source, summary: [...proposal.summary], ...(proposal.presentation ? { presentation: proposal.presentation, hubJoin: proposal.hubJoin ? { ...proposal.hubJoin } : undefined } : {}), confirmation: { kind: this.options.notify && !proposal.presentation ? "posting" : "host_cli", code: id }, outcome: null } };
     this.records.set(id, entry); this.keys.set(index, id); this.arm(entry); this.audit("requested", entry); this.changed(entry);
     // Notification may fail or arrive late. Neither admits a configuration write. Once it is over, a request no General
     // card attached to says so: the host's command is then the way (still pending: a decided one keeps its own kind).

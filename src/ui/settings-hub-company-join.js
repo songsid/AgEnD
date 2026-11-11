@@ -1,6 +1,7 @@
 /** Fleet-only company handoff; all fields live in the actual Settings section and use its shared confirmation card. */
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
+import { appStore, useStore } from "/assets/app-store.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { api, confirmedWrite, confirmWithCode } from "./settings-confirm.js";
 import { hj, joinError, joinResponseCode } from "./hub-company-join-strings.js";
@@ -13,7 +14,7 @@ register("companyJoinWait", {
     codeLead: "You enabled authenticator codes for remote changes. Enter your own 6-digit code here to continue to Hub sign-in.",
     codeLabel: "Your 6-digit authenticator code", codeGo: "Continue", codeWrong: "That code was not accepted. Try a current code.",
     codeBusy: "Too many attempts. Wait and try again.", codeUnavailable: "This request cannot be verified now. Check the same connection again.",
-    codeInOriginal: "If your account asks for an authenticator code, enter it on the original Fleet Settings tab. This tab continues automatically.",
+    codeInOriginal: "Enter your authenticator code here if requested. This tab continues automatically.",
     checking: "Checking this connection’s status. Review any local confirmation before continuing.",
     pending: "Local confirmation is required. Hub sign-in has not started.",
     pendingNext: "Choose Review local confirmation and complete the next step shown on that card. This connection then continues here.",
@@ -29,7 +30,7 @@ register("companyJoinWait", {
     codeLead: "你已啟用遠端變更的驗證碼保護。請在這裡輸入你自己的 6 位數驗證碼，繼續前往 Hub 登入。",
     codeLabel: "你的 6 位數驗證碼", codeGo: "繼續", codeWrong: "驗證碼未通過，請輸入目前的驗證碼。",
     codeBusy: "嘗試次數過多，請稍候再試。", codeUnavailable: "目前無法驗證這次請求，請再次檢查同一個連接。",
-    codeInOriginal: "若你的帳號要求驗證碼，請在原本的 Fleet 設定分頁輸入。這個分頁會自動繼續。",
+    codeInOriginal: "若你的帳號要求驗證碼，請在這裡輸入。這個分頁會自動繼續。",
     checking: "正在確認這次連接的狀態；請先檢視待完成的本機確認。",
     pending: "需要先完成本機確認，Hub 登入尚未開始。",
     pendingNext: "請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。",
@@ -44,7 +45,8 @@ const root = "/api/hub/member/company-join";
 const LOCAL_WAIT_MS = 5 * 60_000; // matches the Settings confirmation ceiling; never renew on a status read
 export const companyJoinEmbedV1 = true;
 export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded = false } = {}) {
-  const notified = useRef(null), submittedTarget = useRef("");
+  const notified = useRef(null), submittedTarget = useRef(""), submittedHandoff = useRef(null);
+  const { hubJoinChanges = [] } = useStore(appStore);
   const waiting = (() => { try { return new URLSearchParams(location.search).get("joinWait"); } catch { return null; } })();
   const consentWait = (() => { try { return new URLSearchParams(location.search).get("joinConsent") === "1"; } catch { return false; } })();
   const [code, setCode] = useState(""), [codeBusy, setCodeBusy] = useState(false), [codeError, setCodeError] = useState(null);
@@ -99,6 +101,20 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     const remaining = Number(change?.remaining_ms);
     setPending({ id, target: submittedTarget.current, inline: change?.presentation === "hub-join", state: change?.state, totp: change?.totp, deadline: Date.now() + Math.min(LOCAL_WAIT_MS, Number.isFinite(remaining) ? Math.max(0, remaining) : LOCAL_WAIT_MS) });
   };
+  // PanelSettings attaches this cookie session’s claims on reload. Only the exact handoff, or a sole
+  // active claim when no handoff is selected, can be adopted. No new Start or deadline is created.
+  useEffect(() => {
+    const handoff = waiting || submittedHandoff.current;
+    const matching = hubJoinChanges.filter(v => handoff ? v.hubJoin?.handoffId === handoff : v.id === pending?.id);
+    const active = hubJoinChanges.filter(v => v.state === "pending" || v.state === "applying");
+    const claim = matching[0] || (!handoff && !pending && active.length === 1 ? active[0] : null);
+    if (!claim) return;
+    if (claim.state === "applied") { if (claim.outcome?.result?.operation) setView(claim.outcome.result.operation); setPending(null); return; }
+    if (claim.state !== "pending" && claim.state !== "applying") { setPending(null); setError(jw("localExpired")); return; }
+    setPending(old => ({ id: claim.id, inline: true, state: claim.state, totp: claim.totp,
+      target: claim.hubJoin?.target || old?.target || submittedTarget.current,
+      deadline: old?.id === claim.id ? old.deadline : Date.now() + Math.min(LOCAL_WAIT_MS, Math.max(0, Number(claim.remaining_ms) || 0)) }));
+  }, [hubJoinChanges, pending?.id, waiting]);
   const reviewConfirmation = () => {
     const cards = [...document.querySelectorAll(".pending-card[data-pending]")];
     const card = pending ? cards.find(el => el.getAttribute("data-pending") === pending.id) : document.querySelector(".pending-stack");
@@ -110,8 +126,8 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   useEffect(() => { if ((!embedded || bound) && view?.state === "saved" && view.link === "online" && notified.current !== view.operationId) { notified.current = view.operationId; onSaved?.(); } }, [view, onSaved, embedded, bound]);
   const start = async e => {
     e.preventDefault(); if (busy) return;
-    const gen = ++token.current; setBusy(true); setError(null); setNotice(null); setPending(null); setIdentityChanged(false);
-    const handoffId = crypto.randomUUID();
+    const gen = ++token.current; setBusy(true); setError(null); setNotice(null); setPending(null); setIdentityChanged(false); setCode(""); setCodeError(null);
+    const handoffId = crypto.randomUUID(); submittedHandoff.current = handoffId;
     // Open the Fleet-owned waiting page during the user gesture, with no opener or cross-origin messaging.
     let target = ""; try { target = new URL(form.address).origin; } catch {}
     submittedTarget.current = target;
@@ -157,7 +173,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     } catch { if (live.current && gen === token.current) setCodeError(jw("codeUnavailable")); }
     finally { if (live.current && gen === token.current) setCodeBusy(false); }
   };
-  const target = (() => { try { return waiting ? new URLSearchParams(location.hash.slice(1)).get("target") || "" : pending?.target || new URL(form.address).origin; } catch { return ""; } })();
+  const target = (() => { try { return pending?.target || (view && (!waiting || view.handoffId === waiting) ? view.hubOrigin : "") || (waiting ? new URLSearchParams(location.hash.slice(1)).get("target") || "" : new URL(form.address).origin); } catch { return ""; } })();
   const inlineWait = consentWait || pending?.inline;
   const retired = embedded && !bound && view?.state === "saved" && view.outcomeKnown;
   const canStart = !pending?.inline && !waiting && (retired || view === null || view && ["ended", "cancelled"].includes(view.state) && !view.issued && view.outcomeKnown);
