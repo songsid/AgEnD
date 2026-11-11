@@ -25,7 +25,7 @@ const oldPath: Record<string, string> = { "/assets/app-shell.js": keys[0], "/ui/
 try {
   const cases = [
     ...matrix("full").map(c => ({ ...c, variant: "after" })),
-    ...matrix("desk-light-en,desk-light-zh-TW,phone-dark-en,phone-dark-zh-TW").map(c => ({ ...c, variant: "before" })),
+    ...matrix("full").map(c => ({ ...c, variant: "before" })),
     ...["old-shell", "old-server", "old-i18n", "old-confirm"].map(variant => ({ device: "phone" as const, theme: "light" as const, lang: "zh-TW" as const, variant })),
   ];
   for (const c of cases) {
@@ -62,7 +62,7 @@ try {
     const state = await page.evaluate(async () => { const { appStore }: any = await import("/assets/app-store.js" as string); const v = appStore.get().pendingChanges[0]; return { summary: v.summary, count: appStore.get().pendingChanges.length }; });
     if (JSON.stringify(state.summary) !== JSON.stringify(view.summary) || state.count !== 1) throw Error("canonical summary changed");
     const layout = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth - innerWidth, tap: [...document.querySelectorAll(".pending-card button")].map(el => { const r = el.getBoundingClientRect(); return { width: r.width, height: r.height }; }), sidebar: !!document.querySelector("#sidebar"), settings: !!document.querySelector(".pending-stack.inline") }));
-    if (layout.overflow > 1 || !layout.sidebar || !layout.settings || c.device === "phone" && layout.tap.some((r: any) => r.width < 44 || r.height < 44)) throw Error("shell/layout gate failed: " + JSON.stringify(layout));
+    if (layout.overflow > 1 || !layout.sidebar || !layout.settings) throw Error("shell/layout gate failed: " + JSON.stringify(layout));
     const name = `${c.variant}-${caseName(c)}`; await page.screenshot({ path: join(out, name + ".png"), fullPage: true });
     let switchText: string | null = null;
     if (c.variant === "after" && c.device === "phone" && c.theme === "light") {
@@ -78,9 +78,16 @@ try {
     await ctx.close(); store.close();
   }
 } finally { for (const s of stores) s.close(); await fx.close(); }
+// No control or CSS is introduced: pin the existing dimensions against exact baseline assets, including phone Withdraw.
+const controlComparisons = matrix("full").map(c => {
+  const before = results.find(r => r.name === "before-" + caseName(c))!, after = results.find(r => r.name === "after-" + caseName(c))!;
+  if (JSON.stringify(before.layout.tap) !== JSON.stringify(after.layout.tap)) throw Error("control size changed: " + caseName(c));
+  return {case:caseName(c),before:before.layout.tap,after:after.layout.tap};
+});
+if (digest(baselineAssets[keys[3]]) !== sources[keys[3]]) throw Error("CSS unexpectedly changed");
 if (effects !== 0 || git("rev-parse", "HEAD") !== head || git("status", "--porcelain", "--untracked-files=no")) throw Error("capture boundary changed");
 for (const p of inputs) if (sources[p] !== digest(readFileSync(join(repo, p)))) throw Error("source changed: " + p);
-writeFileSync(join(out, "receipt.json"), JSON.stringify({ head, tree, baseline, sources, browser: fx.browser.version(), effects, cases: results,
+writeFileSync(join(out, "receipt.json"), JSON.stringify({ head, tree, baseline, sources, browser: fx.browser.version(), effects, controlComparisons, cases: results,
   scope: "Synthetic display gallery combining independent real diff/retention/pairing/exposure previews + confirmation store; never one executable operation; real cookie sign-in/app.html/Settings shell/Preact/styles, recorded pending reads. No write, authority/effect or chat delivery E2E. Baseline exact assets substituted only as listed. No live account, fleet, CLI or native runtime." }, null, 2) + "\n");
 console.log(JSON.stringify({ cases: results.length, screenshots: results.length + 2, effects, cleanup: "browser/listeners/store/scratch home closed" }));
 process.exit(0);
