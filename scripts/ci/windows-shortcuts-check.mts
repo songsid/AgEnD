@@ -43,6 +43,9 @@ for (const [label, withIcons] of [["without icons", false], ["with icons", true]
       "Show-Scope",
       "try { New-AgendShortcut 'AgEnD probe' 'probe.ps1' '# probe' 'probe' | Out-Null; Write-Output 'PROBE|ascii|ok' } catch { Write-Output ('PROBE|ascii|' + $_) }",
       "try { New-AgendShortcut 'AgEnD 儀表板' 'open-dashboard.ps1' (Get-DashboardOpenerScript 'AgEnD-CI' 'runner') 'AgEnD 網頁儀表板（自動帶入登入碼）' | Out-Null; Write-Output 'PROBE|chinese|ok' } catch { Write-Output ('PROBE|chinese|' + $_) }",
+      "Write-Output ('PROBE|codepage|ansi=' + [Text.Encoding]::Default.CodePage + '|oem=' + [Console]::OutputEncoding.CodePage + '|culture=' + [Globalization.CultureInfo]::CurrentCulture.Name)",
+      // Save under an ASCII name, then rename with .NET (Unicode): does the shortcut survive the move with its settings?
+      "try { $d = [Environment]::GetFolderPath('Desktop'); $tmp = Join-Path $d 'agend-tmp.lnk'; $sh = New-Object -ComObject WScript.Shell; $sc = $sh.CreateShortcut($tmp); $sc.TargetPath = (Join-Path $env:SystemRoot 'System32\\notepad.exe'); $sc.Save(); $final = Join-Path $d ([string][char]0x5100 + [char]0x8868 + [char]0x677F + '.lnk'); if ([IO.File]::Exists($final)) { [IO.File]::Delete($final) }; [IO.File]::Move($tmp, $final); $app = New-Object -ComObject Shell.Application; $link = $app.Namespace($d).ParseName([IO.Path]::GetFileName($final)).GetLink; Write-Output ('PROBE|move|ok|exists=' + [IO.File]::Exists($final) + '|target=' + $link.Path) } catch { Write-Output ('PROBE|move|' + $_) }",
       "Write-Output ('PROBE|install|' + (@(Install-AgendShortcuts 'AgEnD-CI' 'runner') -join ';'))",
       "",
     ].join("\n"));
