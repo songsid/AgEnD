@@ -58,6 +58,7 @@ import "/assets/chat-strings.js";
 import { AppearanceSection } from "./settings-appearance.js";
 import { GuestsCard } from "./settings-guests.js";
 import { OfficeSharesCard } from "./office-share-dialog.js";
+import { LevelTitlesCard } from "./settings-level-titles.js";
 import { PageSharesCard } from "./page-share-dialog.js";
 import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
@@ -1497,6 +1498,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       ${toggleRow("levels", "webOfficeLevels", "webOfficeLevels", "webOfficeLevelsHint", "web.office_levels")}
       ${toggleRow("cdn", "webPreviewCdn", "webPreviewCdn", "webPreviewCdnHint", "web.preview_cdn")}
     </section>`) : null}
+    ${has("dashboard") && !overPublicLink ? html`<${LevelTitlesCard} />` : null}
     ${has("readonly") ? html`<div class="s-effective-view"><p class="s-effective-notice"><${Icon} name="info" size=${18} />${layoutText("revEffectiveHint")}</p>
       <section class="card s-web-readonly"><h3 class="sr-only">${tn("webReadOnlyTitle")}</h3>
         <div class="s-ro-columns" aria-hidden="true"><span>${layoutText("effectiveKey")}</span><span>${layoutText("effectiveValue")}</span><span>${layoutText("effectiveSource")}</span></div>
