@@ -35,6 +35,8 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - name: main's shortcut code, for the check's control run
+        run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
       - name: Install (no native builds needed for this check)
         run: npm ci --ignore-scripts
       - name: Make the shortcuts with the icons, read them back

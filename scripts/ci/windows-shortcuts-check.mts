@@ -31,6 +31,15 @@ console.log(desk.stdout.trim());
 check(/^DESKTOP\|[^|]*\|.+\\Desktop\r?$/m.test(desk.stdout), "the runner account has a Desktop folder");
 
 const shared = sharedShortcutsPs();
+
+// Control (informational, never a check): main's shared code on this same runner — before M-2885 on an en-US Windows its
+// WScript.Shell Save() of the Chinese names fails and it makes none (MADE=0).
+const mainTemplate = spawnSync("git", ["show", "origin/main:templates/windows-shortcuts.ps1"], { encoding: "utf8" });
+if (mainTemplate.status === 0) {
+  const ctl = ps(buildShortcutsScript(sharedShortcutsPs(mainTemplate.stdout), "AgEnD-CI", "runner"));
+  console.log(`CONTROL main's shortcut code on this runner: ${(/^AGEND_SHORTCUTS_MADE=\d+/m.exec(ctl.stdout) ?? ["(no answer)"])[0]}`);
+  ps("$d = [Environment]::GetFolderPath('Desktop'); Get-ChildItem -LiteralPath $d -Filter 'AgEnD*' | Remove-Item -Force; Write-Output cleared");
+} else console.log("CONTROL main's template not available (git show origin/main failed)");
 for (const [label, withIcons] of [["without icons", false], ["with icons", true]] as const) {
   const r = ps(buildShortcutsScript(shared, "AgEnD-CI", "runner", undefined, withIcons ? icons : {}));
   console.log(r.stdout.trim()); if (r.stderr.trim()) console.log(r.stderr.trim());
@@ -55,18 +64,22 @@ for (const [label, withIcons] of [["without icons", false], ["with icons", true]
 
 const read = ps(`
 $ErrorActionPreference = 'Stop'
-$shell = New-Object -ComObject WScript.Shell
 $desk = [Environment]::GetFolderPath('Desktop')
+$app = New-Object -ComObject Shell.Application
 Add-Type -AssemblyName System.Drawing
 $out = $env:OUT
 foreach ($pair in @(@('AgEnD 儀表板', 'dashboard'), @('AgEnD 重新啟動', 'restart'))) {
   $lnk = Join-Path $desk ($pair[0] + '.lnk')
-  $sc = $shell.CreateShortcut($lnk)
-  Write-Output ('LNK|' + $pair[1] + '|' + $sc.IconLocation + '|' + $sc.TargetPath)
+  # Shell.Application reads it by its Unicode name (WScript.Shell cannot even open a Chinese path on an en-US Windows).
+  $link = $app.Namespace($desk).ParseName($pair[0] + '.lnk').GetLink
+  $iconPath = ''; $iconIndex = $link.GetIconLocation([ref]$iconPath)
+  Write-Output ('LNK|' + $pair[1] + '|' + $iconPath + ',' + $iconIndex + '|' + $link.Path + '|' + $link.Arguments)
   $assoc = [System.Drawing.Icon]::ExtractAssociatedIcon($lnk)
   $assoc.ToBitmap().Save((Join-Path $out ('shell-' + $pair[1] + '.png')), [System.Drawing.Imaging.ImageFormat]::Png)
 }
+Write-Output ('DESKTOP-FILES|' + ((Get-ChildItem -LiteralPath $desk -Filter 'AgEnD*' | ForEach-Object { $_.Name }) -join ';'))
 $dir = Join-Path $env:LOCALAPPDATA 'AgEnD'
+Write-Output ('TEMPS|' + ((Get-ChildItem -LiteralPath $dir -Filter 'shortcut-*.tmp.lnk' -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) -join ';'))
 foreach ($name in @('agend.ico', 'agend-restart.ico')) {
   $file = Join-Path $dir $name
   Write-Output ('ICO|' + $name + '|' + (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLower())
@@ -84,10 +97,15 @@ const lines = read.stdout.split(/\r?\n/);
 for (const [kind, name] of [["dashboard", "agend.ico"], ["restart", "agend-restart.ico"]]) {
   const lnk = lines.find(l => l.startsWith(`LNK|${kind}|`))?.split("|") ?? [];
   check(new RegExp(`\\\\AgEnD\\\\${name.replace(".", "\\.")},0$`, "i").test(lnk[2] ?? ""), `${kind}.lnk IconLocation is its own ${name} (${lnk[2]})`);
+  check(/powershell\.exe$|wt\.exe$/i.test(lnk[3] ?? ""), `${kind}.lnk target is PowerShell or Windows Terminal (${lnk[3]})`);
+  check(new RegExp(`-File "[^"]*\\\\AgEnD\\\\${kind === "dashboard" ? "open-dashboard" : "restart-agend"}\\.ps1"`).test(lnk[4] ?? ""), `${kind}.lnk runs its own script (${lnk[4]})`);
   const ico = lines.find(l => l.startsWith(`ICO|${name}|`))?.split("|")[2];
   check(ico === sha(icons[name as "agend.ico"]!), `${name} on disk is the package's bytes`);
   for (const px of [256, 48, 32, 16]) check(lines.includes(`DECODED|${name}|${px}|${px}x${px}`), `Windows decodes ${name} at ${px} px`);
 }
+
+check(lines.includes("DESKTOP-FILES|AgEnD 儀表板.lnk;AgEnD 重新啟動.lnk") || lines.includes("DESKTOP-FILES|AgEnD 重新啟動.lnk;AgEnD 儀表板.lnk"), "only the two shortcuts on the desktop (no staged leftovers)");
+check(lines.includes("TEMPS|"), "no temporary shortcut left in the AgEnD folder");
 
 // The installer's own copy, as Windows PowerShell 5.1 parses it.
 const installer = readFileSync(join(import.meta.dirname, "..", "..", "website", "public", "install-agend.ps1"), "utf8");
