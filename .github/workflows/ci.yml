@@ -376,7 +376,10 @@ jobs:
         shell: powershell
         run: |
           git rev-parse HEAD
-          & ./scripts/manual/runtime-profile-privacy/check.ps1 -PrivacyScript ./templates/runtime-assets/runtime-pane-private.ps1 -ScratchParent $env:RUNNER_TEMP
+          $personalTemp = [IO.Path]::GetFullPath($env:TEMP)
+          $userHome = [IO.Path]::GetFullPath($env:USERPROFILE).TrimEnd('\') + '\'
+          if (-not $personalTemp.StartsWith($userHome,[StringComparison]::OrdinalIgnoreCase)) { throw 'NTFS positive proof requires the runner user local Temp' }
+          & ./scripts/manual/runtime-profile-privacy/check.ps1 -PrivacyScript ./templates/runtime-assets/runtime-pane-private.ps1 -ScratchParent $env:TEMP -SharedScratchParent $env:RUNNER_TEMP
 
   # ── aggregate ────────────────────────────────────────────────────────────────
   # The gate requires a check named exactly "build". This job aggregates every

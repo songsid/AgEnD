@@ -1,6 +1,7 @@
 param(
  [Parameter(Mandatory=$true)][string]$PrivacyScript,
- [Parameter(Mandatory=$true)][string]$ScratchParent
+ [Parameter(Mandatory=$true)][string]$ScratchParent,
+ [string]$SharedScratchParent
 )
 # Run only in an owned Windows scratch directory. No CLI, account, connection or live Runtime is used.
 $ErrorActionPreference = 'Stop'
@@ -12,12 +13,12 @@ for ($ancestor = Get-Item -LiteralPath $ScratchParent -Force; $ancestor; $ancest
  $security = $ancestor.GetAccessControl()
  Write-Host ("Scratch ancestor " + $ancestor.FullName + " owner=" + $security.GetOwner([Security.Principal.SecurityIdentifier]).Value)
  foreach ($rule in $security.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
-  Write-Host ("  " + $rule.IdentityReference.Value + " " + $rule.AccessControlType + " " + $rule.FileSystemRights + " " + $rule.PropagationFlags)
+  Write-Host ("  " + $rule.IdentityReference.Value + " " + $rule.AccessControlType + " " + $rule.FileSystemRights + " " + $rule.InheritanceFlags + " " + $rule.PropagationFlags)
  }
 }
 $work = Join-Path $ScratchParent ('agend-n7-' + [Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($work) | Out-Null
-$cases = 0
+$cases = 0; $negative = $null
 function Assert($value,[string]$reason) { if (-not $value) { throw $reason } }
 function Sddl($path) { return (Get-Item -LiteralPath $path).GetAccessControl().GetSecurityDescriptorSddlForm('Access,Owner,Group') }
 function Refused($path) {
@@ -43,6 +44,10 @@ try {
  Assert ((Sddl $parent) -ceq $parentBefore) 'A parent ACL was changed'; $cases++
  # Reusing the private directory is read-only.
  [IO.File]::WriteAllText((Join-Path $fresh 'connection.json'),'synthetic fixture, not a credential')
+ $fileOwner = (Get-Item -LiteralPath (Join-Path $fresh 'connection.json')).GetAccessControl().GetOwner([Security.Principal.SecurityIdentifier]).Value
+ Assert ($fileOwner -in @($user.Value,'S-1-5-18','S-1-5-32-544')) 'Synthetic state has an untrusted owner'
+ Write-Host ("Private synthetic state owner=" + $fileOwner)
+ Assert ([IO.File]::ReadAllText((Join-Path $fresh 'connection.json')) -ceq 'synthetic fixture, not a credential') 'The current user cannot read the private result'
  $before = Sddl $fresh; & $script -Directory $fresh -RuntimeProfile
  Assert ((Sddl $fresh) -ceq $before) 'An existing private ACL was rewritten'; $cases++
  # An existing shared directory, even empty, refuses instead of silently changing its ACL.
@@ -64,9 +69,17 @@ try {
  Refused (Join-Path $unsafe 'new-profile')
  Assert (-not (Test-Path -LiteralPath (Join-Path $unsafe 'new-profile'))) 'A profile was created under a replaceable parent'
  Assert ((Sddl $unsafe) -ceq $before) 'An unsafe ancestor ACL was rewritten'; $cases++
+ if ($SharedScratchParent) {
+  # Hosted RUNNER_TEMP is genuinely shared; refusal here is a separate negative, not the positive fixture's precondition.
+  $negative = Join-Path $SharedScratchParent ('agend-n7-shared-' + [Guid]::NewGuid().ToString('N'))
+  $before = Sddl $SharedScratchParent; Refused $negative
+  Assert (-not (Test-Path -LiteralPath $negative)) 'A profile was created under the shared hosted namespace'
+  Assert ((Sddl $SharedScratchParent) -ceq $before) 'The hosted shared parent ACL changed'; $cases++
+ }
  Assert ((Sddl $parent) -ceq $parentBefore) 'Parent ACL changed after a refusal'
  @{cases=$cases;result='pass';scope='owned NTFS ACL only; no provider or Runtime'} | ConvertTo-Json -Compress
 } finally {
  # Only the GUID directory created above is removed.
  if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+ if ($negative -and (Test-Path -LiteralPath $negative)) { Remove-Item -LiteralPath $negative -Recurse -Force }
 }

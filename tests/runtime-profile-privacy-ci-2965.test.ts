@@ -16,7 +16,8 @@ it("runs exact-head NTFS proof only on release PRs and branch pushes, with a sho
   expect(job["runs-on"]).toBe("windows-latest"); expect(job["timeout-minutes"]).toBeLessThanOrEqual(5);
   expect(job.if).toBe("(github.event_name == 'pull_request' && startsWith(github.base_ref, 'release/')) || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/'))");
   expect(job.steps).toHaveLength(2); expect(job.steps[0]!.with?.ref).toBe("${{ github.event.pull_request.head.sha || github.sha }}");
-  expect(job.steps[1]!.shell).toBe("powershell"); expect(job.steps[1]!.run).toContain("-PrivacyScript ./templates/runtime-assets/runtime-pane-private.ps1 -ScratchParent $env:RUNNER_TEMP");
+  expect(job.steps[1]!.shell).toBe("powershell"); expect(job.steps[1]!.run).toContain("-PrivacyScript ./templates/runtime-assets/runtime-pane-private.ps1 -ScratchParent $env:TEMP -SharedScratchParent $env:RUNNER_TEMP");
+  expect(job.steps[1]!.run).toContain("$personalTemp.StartsWith($userHome");
   expect(ci.jobs.build.needs).toContain("runtime-profile-privacy");
 });
 it.each(["failure", "cancelled", "skipped", "", "unknown"])("a required NTFS result of %s cannot make build green", result => {
