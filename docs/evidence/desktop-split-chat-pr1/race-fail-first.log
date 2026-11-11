@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-ownership-3637
+
+ ❯ tests/web-chat-pane-ownership-3637.test.ts (10 tests | 1 failed) 1258ms
+     × an old aborted read cannot clear the newer gap recovery's read marker or publish its body 11ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > visible chats are distinct from page focus > an old aborted read cannot clear the newer gap recovery's read marker or publish its body
+AssertionError: expected "vi.fn()" to be called 2 times, but got 3 times
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:71:19
+     69|     ac.abort(); answer[0]({ json: async () => ({ messages: [] }) }); a…
+     70|     const third = st.openHistory("alpha");
+     71|     expect(fetch).toHaveBeenCalledTimes(2);
+       |                   ^
+     72|     expect(await third).toBe(false);
+     73|     answer[1]({ json: async () => ({ messages: [] }) }); await settle(…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  20:19:15
+   Duration  1.64s (transform 926ms, setup 94ms, import 129ms, tests 1.26s, environment 0ms)
+

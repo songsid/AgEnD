@@ -5,7 +5,7 @@
 // focus or action it publishes; once the lease is superseded or disposed the answer is false and the continuation
 // does nothing. An AbortController cannot do this alone: a fetch that already has its body, or an import, still
 // resumes. Timers, listeners, fetches and stream subscriptions taken through the lease are released by dispose().
-import { useEffect, useMemo, useRef } from "./app-html.js";
+import { html, createContext, useContext, useEffect, useMemo, useRef } from "./app-html.js";
 
 let leases = 0;
 const live = new Set();            // leases not yet disposed (the leak tests read leaseCount())
@@ -78,3 +78,9 @@ export function useLease(key) {
   useEffect(() => () => lease.dispose(), [lease]);
   return lease;
 }
+
+// #3637: a DOM-free ownership boundary. A legacy single panel has no scope and keeps its original defaults.
+// The page owns transport/services; a host supplies only its local navigation, search and focus state here.
+const paneContext = createContext(null);
+export function PaneScope({ value, children }) { return html`<${paneContext.Provider} value=${value}>${children}</${paneContext.Provider}>`; }
+export function usePane() { return useContext(paneContext); }

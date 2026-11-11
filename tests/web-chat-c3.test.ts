@@ -450,9 +450,12 @@ describe("the chat panel (the real page modules)", () => {
     expect(bar().className).toBe("work-bar working");
     expect(bar().querySelector(".lbl").textContent).toBe("w is working…");
     expect(bar().querySelector(".elapsed").getAttribute("aria-hidden"), "the ticking time is not read out every second").toBe("true");
-    expect([stop().hidden, send().hidden], "an empty composer: Send becomes Stop").toEqual([false, true]);
+    // M-2904: Stop is in the working bar, beside what it stops; the composer row keeps its buttons (one input width).
+    expect(stop().closest(".work-bar"), "Stop is in the working bar").toBe(bar());
+    expect(c.p.root.querySelector(".composer #stopBtn"), "never in the composer row").toBeNull();
+    expect([stop().hidden, send().hidden, send().disabled], "an empty composer: Send stays, disabled").toEqual([false, false, true]);
     await typeIn("next, please");
-    expect([stop().hidden, send().hidden], "something typed: it can be sent to wait its turn, and Stop stays").toEqual([false, false]);
+    expect([stop().hidden, send().hidden, send().disabled], "something typed: it can be sent to wait its turn, and Stop stays").toEqual([false, false, false]);
     await typeIn("");
     c.stream.emit("activity", { instance: "w", state: "stuck" });
     await settle();
@@ -462,7 +465,7 @@ describe("the chat panel (the real page modules)", () => {
     c.stream.emit("activity", { instance: "w", state: "idle" });
     await settle();
     expect(bar()).toBeNull();
-    expect([stop().hidden, send().hidden]).toEqual([true, false]);
+    expect([stop(), send().hidden]).toEqual([null, false]);                          // idle: no Stop at all, Send as always
   });
 
   it("another instance working does not show here; the status frames carry the state too", async () => {
@@ -472,7 +475,7 @@ describe("the chat panel (the real page modules)", () => {
     c.stream.emit("activity", { instance: "other", state: "working" });
     await settle();
     expect(c.p.root.querySelector(".work-bar")).toBeNull();
-    expect(c.p.root.querySelector("#stopBtn").hidden).toBe(true);
+    expect(c.p.root.querySelector("#stopBtn")).toBeNull();
     c.stream.emit("status", frame(inst("w", { state: "working" }), inst("other", { state: null })));
     await settle();
     expect(c.p.root.querySelector(".work-bar").className).toBe("work-bar working");
@@ -489,7 +492,7 @@ describe("the chat panel (the real page modules)", () => {
     const bar = c.p.root.querySelector(".work-bar");
     expect(bar.className).toBe("work-bar awaiting");
     expect([bar.querySelector(".lbl").textContent, bar.querySelector(".note").textContent]).toEqual(["w is waiting for your input", "Permission prompt for 12s"]);
-    expect(c.p.root.querySelector("#stopBtn").hidden, "Stop stays").toBe(false);
+    expect(c.p.root.querySelector(".work-bar #stopBtn").hidden, "Stop stays (in the working bar)").toBe(false);
     expect(c.store().state.exec.w).toBe("working");
     // Answered: back to working.
     c.stream.emit("status", frame(inst("w", { state: "working", execution_state: "working" })));

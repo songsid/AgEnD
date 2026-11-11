@@ -1,0 +1,55 @@
+{
+  "baselineCommit": "9c98307c938b77d8eaaebf5bcd3f20c5c27dce6f",
+  "candidateCommit": "eeae77d272f5301717d54704d75b73d792be685e",
+  "candidateTree": "2b6e1c90a35a65ed2c88f4709dd236045f07e3fb",
+  "trackedDirty": false,
+  "inputs": {
+    "0c3b337a332bcff4b36e2f451727c6e50ef57f02b63eb27af8d90f07c9a0c34c": [
+      "src/hub/init/wizard.ts"
+    ],
+    "599c5c29e2cfa1ac32088f71c110df311d049d388c6777910c40bd90afd92b61": [
+      "src/hub/init/prompt.ts"
+    ],
+    "9ec1312fadd9d151dd07f393986a71e2454b16562b4a25886ccf24a529cabdcf": [
+      "src/hub/init/text.ts"
+    ],
+    "7adb45a7f25070f35ce3e4719e1b747ead9ec02b5262130b9658f23093fe12a5": [
+      "tests/hub-init-setup-bugs-2917.test.ts"
+    ],
+    "f917c994ebe8c5cd2cd6908d17785b7c503df85976c1776247b8fd00d2fcef2f": [
+      "scripts/manual/hub-wizard-bugs-2917/README.md"
+    ],
+    "8884f3284f795e8c4836e647439fff7529b8ab5578fe24f2c49d3c39b05ea559": [
+      "scripts/manual/hub-wizard-bugs-2917/fake-directory.mjs"
+    ],
+    "a23df1d0f34a0c5527037dea03ac65e18aea3d9055fe7376d94cd5bc43627219": [
+      "scripts/manual/hub-wizard-bugs-2917/mutations.py"
+    ],
+    "3a5b8c7175d16d039f3109c532e4368a5fe1dbe9f217a826dc2673863e4d33ac": [
+      "scripts/manual/hub-wizard-bugs-2917/pty-wizard.py"
+    ],
+    "3e9f6886a253a9bf508b4c1279062e036aac5647713fec24caba899ef8fdadbe": [
+      "scripts/manual/hub-wizard-bugs-2917/rehearse.sh"
+    ],
+    "2c13913e92a1806a1afd71cbf9862ae9eea487ae099f9199180d2b0c42eb8fa6": [
+      "scripts/manual/hub-wizard-bugs-2917/setup.sh"
+    ]
+  },
+  "baselineArtifacts": {
+    "files": 2734,
+    "bindings": {
+      "f2bf3ececf9e21bc90d863db782d56919537851c239a44b6ff31367b370297c3": [
+        "dist/"
+      ]
+    }
+  },
+  "candidateArtifacts": {
+    "files": 2734,
+    "bindings": {
+      "96913a181c71e4e859e8567ab1d40c009b8f9c9517f06240f7da86df8f9f640d": [
+        "dist/"
+      ]
+    }
+  },
+  "imageId": "sha256:ea7d395a8b695b526015ae22a46832a5b7cf9ea6bcceb4e379832d7c7e92dfe8"
+}

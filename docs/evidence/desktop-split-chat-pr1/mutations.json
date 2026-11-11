@@ -1,0 +1,124 @@
+{
+  "inputs": {
+    "4c0d5ad51f2044a7161094d86f494170a65e0459088d839648211f7bcfed9a5c": [
+      "src/ui/chat-store.js",
+      "src/ui/chat-store.js",
+      "src/ui/chat-store.js",
+      "src/ui/chat-store.js"
+    ],
+    "29817d4bfcad335816e21867478e0cfad873809d5614c8485d787aa464b867f0": [
+      "src/ui/panel-chat.js",
+      "src/ui/panel-chat.js",
+      "src/ui/panel-chat.js",
+      "src/ui/panel-chat.js"
+    ],
+    "a8ee7306fb6da28cab35700f61a1d6736c0bfbde9450b85fe31183e23187263a": [
+      "src/ui/shared/preview-panel.js"
+    ],
+    "9c6f589ef34599a977d3a3f0876948b7ad363735d0432b668e4008bb858107f3": [
+      "src/ui/image-lightbox.js"
+    ],
+    "f6c0143bb80480793c7505b5eb0df98f950bfcef8b54b7fce625fbaf13a78db9": [
+      "src/ui/agent-details-settings.js"
+    ],
+    "81ed31ba2ef3b0094d25d2934bc6a416e27ffd453ea15500db1c71cd311a1448": [
+      "src/ui/shared/app-shell.js"
+    ],
+    "20b0ec2db04b564054aee01c3b013b45eb318314ea1e9e38826f36efe11d4227": [
+      "src/ui/shared/chat-composer.js"
+    ]
+  },
+  "results": [
+    {
+      "name": "gap-visible",
+      "file": "src/ui/chat-store.js",
+      "pattern": "recovers both visible",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "name": "prompt-visible",
+      "file": "src/ui/chat-store.js",
+      "pattern": "publishes a prompt",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "name": "focus-owner",
+      "file": "src/ui/chat-store.js",
+      "pattern": "recovers both visible",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "name": "cache-visible",
+      "file": "src/ui/panel-chat.js",
+      "pattern": "never evicts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "name": "title-focus",
+      "file": "src/ui/panel-chat.js",
+      "pattern": "binds each composer",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "name": "escape-focus",
+      "file": "src/ui/panel-chat.js",
+      "pattern": "routes Escape",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "name": "composer-owner",
+      "file": "src/ui/panel-chat.js",
+      "pattern": "binds each composer",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "name": "preview-owner",
+      "file": "src/ui/shared/preview-panel.js",
+      "pattern": "leaving A cannot close",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "name": "image-host",
+      "file": "src/ui/image-lightbox.js",
+      "pattern": "has one image host",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "name": "details-guards",
+      "file": "src/ui/agent-details-settings.js",
+      "pattern": "keeps two staged Details",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "name": "history-generation",
+      "file": "src/ui/chat-store.js",
+      "pattern": "an old aborted read",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "name": "lazy-hosts",
+      "file": "src/ui/shared/app-shell.js",
+      "pattern": "notifies every outlet",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "name": "composer-ids",
+      "file": "src/ui/shared/chat-composer.js",
+      "pattern": "binds each composer",
+      "exit": 1,
+      "assertionCaught": true
+    }
+  ]
+}

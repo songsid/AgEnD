@@ -1,0 +1,27 @@
+[
+  {
+    "case": "empty-address",
+    "invalidAddressBlocked": true
+  },
+  {
+    "case": "fingerprint-enter",
+    "returnedToCaChoices": true,
+    "previousAnswersKept": true
+  },
+  {
+    "case": "secret-method",
+    "misplacedSecretEchoed": false,
+    "completedAfterCorrection": true,
+    "noSecretInHandoff": true,
+    "privateSecretOnly": true
+  },
+  {
+    "case": "handoff",
+    "companyJoinLeads": true,
+    "passwordNotEchoed": true
+  },
+  {
+    "case": "certificate-guidance",
+    "requirementsBeforeCertificateChoice": true
+  }
+]

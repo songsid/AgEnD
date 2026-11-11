@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-ownership-3637
+
+(node:3322885) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  1 passed (1)
+      Tests  52 passed (52)
+   Start at  20:40:59
+   Duration  14.51s (transform 7.85s, setup 156ms, import 4.95s, tests 9.24s, environment 0ms)
+
