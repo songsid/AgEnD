@@ -12,6 +12,8 @@ import { fire, installDom } from "./helpers/mini-dom.js";
 const mounted: AppPage[] = [];
 let calls: string[] = [];
 let detail: Record<string, unknown> = {};
+let failWrites = false;       // a settings write the server refuses
+let webDevExtra: Record<string, unknown> = {};   // keys web-dev has in fleet.yaml besides its directory and description
 const live = (name: string, o: Record<string, unknown> = {}) => ({ name, status: "running", backend: "claude-code", model: "opus", context_pct: 10, tags: [], execution_state: "idle", ...o });
 const INSTANCES = [live("web-dev", { tags: ["Platform"] }), live("api-server", { status: "stopped" }), live("qa-bot", { status: "paused" }), live("classic-ops-1", { tags: ["classic"] }), live("loner", { card_v: "v1" })];
 /** #1629 r4 §1: loner's identity card, as GET /api/card/loner answers it (a person's tagline over the agent's bio). */
@@ -33,7 +35,7 @@ async function fakeFetch(url: string, init: { method?: string } = {}) {
   calls.push(`${m} ${url}`);
   const SETTINGS: Record<string, unknown> = {
     "/api/settings/schema": { impacts: {}, order: ["now", "instance", "fleet"] },
-    "/api/settings/fleet/raw": { defaults: {}, channels: [], instances: { "web-dev": { working_directory: "/w/web", description: "Builds the site" } } },
+    "/api/settings/fleet/raw": { defaults: {}, channels: [], instances: { "web-dev": { working_directory: "/w/web", description: "Builds the site", ...webDevExtra } } },
     "/api/settings/classic": { defaults: {}, channels: { "555:discord": { instanceName: "classic-ops-1", name: "ops", adapterId: "discord", channelId: "555", backend: "codex" } } }, "/api/settings/connections": [],
     "/api/settings/status-emojis": { keys: [], builtins: { discord: {}, telegram: {} }, telegram_allowed: [], suggestions: [] }, "/api/fleet": { version: "2.2.0", instances: [{ name: "web-dev", status: "running" }] },
     "/api/profiles": [{ instance_name: "web-dev", status: "running", backend: "claude-code", tags: [] }], "/api/settings/pending": [],
@@ -47,6 +49,7 @@ async function fakeFetch(url: string, init: { method?: string } = {}) {
     const a = await held.get(decodeURIComponent(url.slice("/ui/instance/".length)))!.shift()!;
     return { ok: a.status < 300, status: a.status, json: async () => a.body, text: async () => JSON.stringify(a.body) };
   }
+  if (failWrites && m === "PATCH") return { ok: false, status: 500, json: async () => ({ error: "boom" }), text: async () => "{\"error\":\"boom\"}" };
   const body: unknown = url.startsWith("/ui/instance/") ? detail[decodeURIComponent(url.slice("/ui/instance/".length))] ?? { error: "Instance not found" }
     : m === "POST" ? { ok: true } : {};
   const status = url.startsWith("/ui/instance/") && !detail[decodeURIComponent(url.slice("/ui/instance/".length))] ? 404 : 200;
@@ -75,6 +78,9 @@ afterEach(async () => {
   (await import("/assets/app-store.js")).appStore.set({ viewOnly: false });
   req.takeAgentRequest();
   held.clear();
+  failWrites = false;
+  webDevExtra = {};
+  (globalThis as any).confirm = undefined;
   calls = [];
 });
 
@@ -100,6 +106,8 @@ async function app(path: string, opts: { matchNarrow?: boolean } = {}) {
 }
 /** A page load of `path`: the page before it gone first (unmounted, its globals restored). */
 async function reload(prev: AppPage, path: string) { await prev.unmount(); prev.restore(); mounted.splice(mounted.indexOf(prev), 1); return app(path); }
+/** The settings module is loaded when a category first opens (a dynamic import: real time in this harness). */
+const untilRead = async () => { for (let i = 0; i < 80 && !calls.includes("GET /api/settings/fleet/raw"); i++) await new Promise(r => setTimeout(r, 100)); };
 const go = async (path: string) => { const { navigate } = await import("/assets/app-nav.js"); navigate(path); await settle(6); };
 const route = async () => (await import("/assets/app-nav.js")).navStore.get().route;
 const sideLinks = (pg: AppPage) => pg.root.querySelectorAll(".side-nav a.side-row").map((a: any) => a.getAttribute("href"));
@@ -137,9 +145,9 @@ describe("the switch keeps the instance", () => {
   it("Chat and Details of web-dev: Chat | View | Details of web-dev, the current one marked; a reload of the URL keeps the view", async () => {
     const pg = await app("/ui/chat/web-dev");
     const want = (cur: string) => [["Chat", "/ui/chat/web-dev", cur === "chat" ? "page" : null], ["View", "/view/web-dev", cur === "view" ? "page" : null],
-      ["Log", "/ui/log/web-dev", cur === "log" ? "page" : null], ["Details", "/ui/fleet/agent/web-dev", cur === "details" ? "page" : null]];   // #1218: Log
+      ["Log", "/ui/log/web-dev", cur === "log" ? "page" : null], ["Settings", "/ui/fleet/agent/web-dev", cur === "details" ? "page" : null]];   // #1218: Log
     expect(sw(pg)).toEqual(want("chat"));
-    const d = pg.root.querySelectorAll(".inst-switch a.seg-item").find((a: any) => a.textContent === "Details");
+    const d = pg.root.querySelectorAll(".inst-switch a.seg-item").find((a: any) => a.textContent === "Settings");
     fire(d, "click", { button: 0 }); await settle(6);
     expect([await route(), sw(pg)]).toEqual([{ panel: "details", instance: "web-dev" }, want("details")]);
     const again = await reload(pg, "/ui/fleet/agent/web-dev");
@@ -202,21 +210,28 @@ describe("Details (Q1 = B)", () => {
     // Carried over, none new (leader 2026-10-10): no Delete on Details — it stays in Chat's ⋯ and Settings.
     // #1629: then a person's Lock and Reset of the agent's web theme.
     const THEME = ["Colour…", "Lock theme", "Reset theme…"];   // #1958: its colour, before the theme's Lock and Reset
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Restart instance", "Stop instance", "Pause", ...THEME]);
+    expect(await menuItems(pg)).toEqual(["Restart instance", "Stop instance", "Pause", ...THEME]);
     await choose(pg, "Stop instance");
     await choose(pg, "Pause");
     expect(calls.filter(c => c.startsWith("POST"))).toEqual(["POST /ui/stop/web-dev", "POST /api/settings/instances/web-dev/pause"]);
     await go("/ui/fleet/agent/api-server");
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Start instance", ...THEME]);
+    expect(await menuItems(pg)).toEqual(["Start instance", ...THEME]);
     await go("/ui/fleet/agent/qa-bot");
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Wake", ...THEME]);
+    expect(await menuItems(pg)).toEqual(["Wake", ...THEME]);
     await choose(pg, "Wake");
     expect(calls.filter(c => c.startsWith("POST")).at(-1)).toBe("POST /api/settings/instances/qa-bot/wake");
   });
-  it("Edit in Settings goes to Settings and asks it for that agent's dialog", async () => {
+  it("the agent's settings are on this page (Settings tab, ?cat=basic) — no Edit in Settings menu item or button, and nothing asks Settings for a dialog", async () => {
     const pg = await app("/ui/fleet/agent/web-dev");
-    pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(4);
-    expect([await route(), req.takeAgentRequest()]).toEqual([{ panel: "settings", section: "agents" }, { name: "web-dev", kind: "agent" }]);
+    expect(calls.filter(c => c.includes("/api/settings/") && !c.includes("restart-pending"))).toEqual([]);   // the Overview alone reads no configuration (the shell's own restart check is not it)
+    expect(pg.root.querySelector(".p-details .d-edit-settings")).toBeNull();
+    expect(pg.root.querySelector(".p-details .d-config")?.textContent).not.toContain("Settings");              // no "Read only — change it in Settings" line either
+    await go("/ui/fleet/agent/web-dev?cat=basic"); await untilRead(); await settle(10);
+    expect([await route(), pg.window.location.search, req.takeAgentRequest()]).toEqual([{ panel: "details", instance: "web-dev" }, "?cat=basic", null]);
+    expect(calls).toContain("GET /api/settings/fleet/raw");                         // read once, when a settings category first opens
+    expect(pg.root.querySelector(".p-details #ap-panel-basic #ag-dn")).not.toBeNull();
+    expect(pg.root.querySelector(".p-details #ap-panel-basic")?.hasAttribute("hidden")).toBe(false);
+    expect(pg.root.querySelector(".p-details #ap-panel-runtime")?.hasAttribute("hidden")).toBe(true);
   });
   it("an unknown instance: not found, with no actions", async () => {
     const pg = await app("/ui/fleet/agent/nobody");
@@ -237,9 +252,113 @@ describe("View: the switch for a signed-in person, none for the anonymous reader
       viewStore.set({ loaded: true, error: null, roster: [{ instance_name: "web-dev", status: "running", backend: "claude-code", tags: [] }] });
       await pg.mount(h(ViewPanel, { route: { panel: "view", instance: "web-dev" }, navKey: `view:web-dev|${viewOnly}` }));
       await settle(3);
-      expect([viewOnly, sw(pg)]).toEqual(viewOnly ? [true, []] : [false, [["Chat", "/ui/chat/web-dev", null], ["View", "/view/web-dev", "page"], ["Log", "/ui/log/web-dev", null], ["Details", "/ui/fleet/agent/web-dev", null]]]);
+      expect([viewOnly, sw(pg)]).toEqual(viewOnly ? [true, []] : [false, [["Chat", "/ui/chat/web-dev", null], ["View", "/view/web-dev", "page"], ["Log", "/ui/log/web-dev", null], ["Settings", "/ui/fleet/agent/web-dev", null]]]);
       await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
     }
+  });
+});
+
+describe("the Settings tab of an agent (Details & settings)", () => {
+  const navItems = (pg: AppPage) => pg.root.querySelectorAll(".p-details > .s-nav .seg-item").map((a: any) => [a.textContent.replace("●", "").trim(), a.getAttribute("href"), a.getAttribute("aria-current") ?? null]);
+  it("the categories are the shared Settings nav (Status / Settings groups, an icon before each item); no category is the phone's list", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev");
+    expect(pg.root.querySelector(".p-details")?.getAttribute("data-view")).toBe("index");
+    expect(pg.root.querySelectorAll(".p-details > .s-nav .s-nav-head").map((x: any) => x.textContent)).toEqual(["Status", "Settings"]);
+    expect(navItems(pg)).toEqual([["Overview", "/ui/fleet/agent/web-dev?cat=overview", "page"], ["Basic info", "/ui/fleet/agent/web-dev?cat=basic", null],
+      ["Runtime & model", "/ui/fleet/agent/web-dev?cat=runtime", null], ["Workspace", "/ui/fleet/agent/web-dev?cat=work", null],
+      ["Channels", "/ui/fleet/agent/web-dev?cat=channel", null], ["Advanced", "/ui/fleet/agent/web-dev?cat=adv", null]]);
+    expect(pg.root.querySelectorAll(".p-details > .s-nav .seg-item svg.icon").length).toBe(6);       // an icon in front of every item you can open
+    expect(pg.root.querySelector(".p-details .s-back")?.getAttribute("href")).toBe("/ui/fleet/agent/web-dev");
+    // The Overview keeps everything Details showed (read-only), and the ⋯ menu's actions.
+    expect(pg.root.querySelector("#ap-panel-overview")?.hasAttribute("hidden")).toBe(false);
+    expect(pg.root.querySelector(".p-details .d-config")).not.toBeNull();
+    expect(pg.root.querySelectorAll(".p-details .d-actions button").map((b: any) => b.textContent.trim())).toEqual(["Restart instance", "Stop instance", "Pause"]);
+  });
+  it("an edit is staged at once (the Settings bar, a dot on its category), the draft stays when another category opens, and Discard puts it back", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev?cat=basic");
+    await untilRead(); await settle(12);
+    expect(pg.root.querySelector(".p-details")?.getAttribute("data-view")).toBe("section");
+    expect(pg.root.querySelector(".p-details > .s-pending")).toBeNull();
+    const desc = pg.root.querySelector("#ag-desc"); desc.value = "Builds the site, faster"; fire(desc, "input"); await settle(8);
+    expect(pg.root.querySelector(".p-details > .s-pending")?.textContent).toContain("1 unsaved change");
+    expect(pg.root.querySelectorAll(".p-details > .s-nav .count").length).toBe(1);
+    expect(navItems(pg).filter((i: any) => i[0] === "Basic info")).toHaveLength(1);
+    await go("/ui/fleet/agent/web-dev?cat=work"); await settle(8);
+    expect(pg.root.querySelector("#ap-panel-work")?.hasAttribute("hidden")).toBe(false);
+    expect(pg.root.querySelector("#ap-panel-basic")?.hasAttribute("hidden")).toBe(true);
+    expect(pg.root.querySelector("#ag-desc").value).toBe("Builds the site, faster");              // kept, not drawn again from what is saved
+    expect(pg.root.querySelector(".p-details > .s-pending")).not.toBeNull();
+    // Discard: the forms start again from what is saved, nothing staged.
+    pg.root.querySelectorAll(".p-details > .s-pending .btn").find((b: any) => b.textContent.trim() === "Discard").click(); await settle(8);
+    await untilRead(); await settle(12);
+    expect(pg.root.querySelector(".p-details > .s-pending")).toBeNull();
+    expect(pg.root.querySelector("#ag-desc").value).toBe("Builds the site");
+    expect(pg.root.querySelectorAll(".p-details > .s-nav .count").length).toBe(0);
+  });
+  it("putting an edit back leaves nothing staged; a value that is not valid is staged as invalid (Save waits)", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev?cat=adv");
+    await untilRead(); await settle(12);
+    const cards = pg.root.querySelector("#ag-cards"); cards.value = "0"; fire(cards, "input"); await settle(8);
+    const bar = pg.root.querySelector(".p-details > .s-pending");
+    expect(bar).not.toBeNull();
+    expect(bar.querySelector(".btn-primary").disabled).toBe(true);
+    cards.value = "1"; fire(cards, "input"); await settle(8);
+    expect(pg.root.querySelector(".p-details > .s-pending")).toBeNull();
+  });
+  it("a Save that fails keeps the draft and the Settings bar, and it can be saved again (the page is not drawn again from what is saved)", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev?cat=basic");
+    await untilRead(); await settle(12);
+    const desc = pg.root.querySelector("#ag-desc"); desc.value = "Builds the site, twice"; fire(desc, "input"); await settle(8);
+    failWrites = true;
+    const save = () => pg.root.querySelector(".p-details > .s-pending .btn-primary").click();
+    const patches = () => calls.filter(c => c === "PATCH /api/settings/fleet/instances/web-dev").length;
+    save();
+    for (let i = 0; i < 40 && !patches(); i++) await new Promise(r => setTimeout(r, 50));
+    await settle(20); await untilRead(); await new Promise(r => setTimeout(r, 300)); await settle(20);
+    expect(patches()).toBe(1);
+    expect(pg.root.querySelector("#ag-desc").value).toBe("Builds the site, twice");             // the draft is still in the form
+    expect(pg.root.querySelector(".p-details > .s-pending")?.textContent).toContain("1 unsaved change");   // and the change is staged again
+    expect(pg.root.querySelectorAll(".p-details > .s-nav .count").length).toBe(1);
+    save();                                                                                     // …so it can be saved again
+    for (let i = 0; i < 40 && patches() < 2; i++) await new Promise(r => setTimeout(r, 50));
+    expect(patches()).toBe(2);
+  });
+  it("turning the MCP proxy reply on asks first (it can post raw screen text); a no writes nothing, a yes writes", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev?cat=adv");
+    await untilRead(); await settle(12);
+    const box = pg.root.querySelector("#ag-mcp-proxy"); box.checked = true; fire(box, "change"); await settle(8);
+    const asked: string[] = []; let answer = false;
+    (globalThis as any).confirm = (msg: string) => { asked.push(msg); return answer; };
+    const save = async () => { pg.root.querySelector(".p-details > .s-pending .btn-primary").click(); await settle(20); await new Promise(r => setTimeout(r, 200)); await settle(10); };
+    const patches = () => calls.filter(c => c === "PATCH /api/settings/fleet/instances/web-dev").length;
+    await save();
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain("MCP proxy reply");
+    expect(patches()).toBe(0);
+    expect(pg.root.querySelector(".p-details > .s-pending")).not.toBeNull();                      // still staged
+    answer = true;
+    await save();
+    expect(asked).toHaveLength(2);
+    for (let i = 0; i < 40 && !patches(); i++) await new Promise(r => setTimeout(r, 50));
+    expect(patches()).toBe(1);
+  });
+  it("the page's root has its own class (p-agent-page), so the shared menu rules can later be scoped to it", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev");
+    expect(pg.root.querySelector(".p-details")?.className).toContain("p-agent-page");
+  });
+  it("a ClassicBot room: Overview, Runtime & model and Channels & replies only", async () => {
+    const pg = await app("/ui/fleet/agent/classic-ops-1?cat=channel");
+    await untilRead(); await settle(12);
+    expect(navItems(pg).map((i: any) => i[0])).toEqual(["Overview", "Runtime & model", "Channels & replies"]);
+    expect(pg.root.querySelector("#ap-panel-channel #cl-tp")).not.toBeNull();
+    expect(pg.root.querySelector("#ap-panel-runtime #cl-be")).not.toBeNull();
+  });
+  it("the sidebar's ⚙ goes to Basic info in one step, and the row itself still opens the chat", async () => {
+    const pg = await app("/ui/chat/web-dev");
+    const row = pg.root.querySelectorAll(".inst-nav .v-li").find((li: any) => li.querySelector(".inst-name")?.textContent === "web-dev");
+    expect(row.querySelector("a.inst").getAttribute("href")).toBe("/ui/chat/web-dev");
+    expect(row.querySelector("a.inst-gear").getAttribute("href")).toBe("/ui/fleet/agent/web-dev?cat=basic");
+    expect(row.querySelector("a.inst-gear").getAttribute("aria-label")).toBe("Settings of web-dev");
   });
 });
 
@@ -269,14 +388,63 @@ describe("Edit in Settings: that agent's dialog — only an agent Settings knows
   });
 });
 
+describe("the MCP proxy reply's confirmation on the Settings path (makeCtx: confirms agentPage.confirmMcpProxy)", () => {
+  /** Settings → Agents, web-dev's dialog open (requested as "Edit in Settings" was): tick or untick the box, press Done, then Settings' own Save. */
+  async function run(extra: Record<string, unknown>, on: boolean, answers: boolean[]) {
+    webDevExtra = extra;
+    // @ts-expect-error — a JS module of the app, with no types
+    const S = await import("../src/ui/panel-settings.js");
+    const pg = page({ url: "http://127.0.0.1:19280/settings", storage: { agend_tour_done: "1" } });
+    mounted.push(pg);
+    (globalThis as any).fetch = fakeFetch;
+    req.requestAgentSettings("web-dev");
+    await pg.mount(h(S.SettingsPanel, { route: { panel: "settings", section: "agents" }, navKey: `settings:agents|mcp|${on}` }));
+    await settle(8);
+    const box = pg.root.querySelector("dialog #ag-mcp-proxy");
+    expect(box, "the dialog has the MCP proxy reply box").not.toBeNull();
+    box.checked = on; fire(box, "change"); await settle(6);
+    const done = pg.root.querySelectorAll("dialog .btn-primary").find((b: any) => b.textContent.trim() === "Done");
+    done.click(); await settle(8);
+    const asked: string[] = [];
+    (globalThis as any).confirm = (msg: string) => { asked.push(msg); return answers.shift() ?? true; };
+    const save = async () => { pg.root.querySelector(".s-pending .btn-primary").click(); await settle(20); await new Promise(r => setTimeout(r, 200)); await settle(10); };
+    const patches = () => calls.filter(c => c === "PATCH /api/settings/fleet/instances/web-dev").length;
+    return { pg, asked, save, patches };
+  }
+  it("turning it on asks first; declining applies nothing and keeps it staged; accepting applies it", async () => {
+    const { pg, asked, save, patches } = await run({}, true, [false, true]);
+    expect(pg.root.querySelector(".s-pending"), "staged by Done").not.toBeNull();
+    await save();
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain("MCP proxy reply");
+    expect(asked[0]).toContain("secrets");                                  // the named threat: raw screen text posted to a channel
+    expect(patches(), "declined: nothing written").toBe(0);
+    expect(pg.root.querySelector(".s-pending"), "declined: still staged").not.toBeNull();
+    await save();
+    expect(asked).toHaveLength(2);
+    for (let i = 0; i < 40 && !patches(); i++) await new Promise(r => setTimeout(r, 50));
+    expect(patches()).toBe(1);
+  });
+  it("turning it off does not ask", async () => {
+    const { asked, save, patches } = await run({ mcp_proxy_reply: true }, false, []);
+    await save();
+    for (let i = 0; i < 40 && !patches(); i++) await new Promise(r => setTimeout(r, 50));
+    expect(asked, "no question").toEqual([]);
+    expect(patches()).toBe(1);
+  });
+});
+
 describe("#1561 review", () => {
   const rowsOf = (pg: AppPage) => Object.fromEntries(pg.root.querySelectorAll(".p-details .d-config .kv").map((r: any) => [r.querySelector(".k").textContent, r.querySelector(".v").textContent]));
-  it("a ClassicBot room: its own summary (no directory), Classic's actions only (pause), and Edit in Settings → its ClassicBot dialog", async () => {
+  it("a ClassicBot room: its own summary (no directory), Classic's actions only (pause), and its settings on this page (Runtime & model first)", async () => {
     const pg = await app("/ui/fleet/agent/classic-ops-1");
     expect(rowsOf(pg)).toEqual({ "Display name": "Ops", Description: "the ops room", "Bound to": "ClassicBot room #ops (discord)", Tags: "classic" });
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Pause", "Colour…", "Lock theme", "Reset theme…"]);   // #1629: a Classic room's agent has a theme too; #1958 a colour
-    pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(4);
-    expect([await route(), req.takeAgentRequest()]).toEqual([{ panel: "settings", section: "chat" }, { name: "classic-ops-1", kind: "classic" }]);   // #2347: ClassicBot is in Chat & connections
+    expect(await menuItems(pg)).toEqual(["Pause", "Colour…", "Lock theme", "Reset theme…"]);   // #1629: a Classic room's agent has a theme too; #1958 a colour
+    expect(pg.root.querySelector(".p-details .d-edit-settings")).toBeNull();
+    await go("/ui/fleet/agent/classic-ops-1?cat=runtime"); await untilRead(); await settle(10);
+    // its settings are on this page too (a room has no basic info: it starts at Runtime & model).
+    expect([await route(), pg.window.location.search, req.takeAgentRequest()]).toEqual([{ panel: "details", instance: "classic-ops-1" }, "?cat=runtime", null]);
+    expect(pg.root.querySelector(".p-details #ap-panel-runtime #cl-be")).not.toBeNull();
   });
   it("bound by default to the first connection says so; web only only when the fleet has no connection", async () => {
     const pg = await app("/ui/fleet/agent/api-server");

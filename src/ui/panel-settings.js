@@ -27,6 +27,7 @@ import { toast } from "/assets/ui-toast.js";
 import { GroupMark, groupLabel, groupOf as navGroupOf, modelText } from "/assets/instance-nav.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // see settings-shared.js: the words Shared agent settings added, which an older settings-strings.js in an open tab lacks
+import "./agent-page-strings.js";   // the confirmation text of the MCP proxy reply
 import "./settings-restart-strings.js";   // S-92: the restart words for a fleet with no chat connection (a file of its own: an open tab may hold an old settings-strings.js)
 import "./settings-access-strings.js";   // the words Access & security added (settings.webLoginQr…): an older settings-strings.js from a tab that visited Fleet first lacks them (#3061)
 import { UpdatePillMark, UpdateSection } from "./settings-update.js";
@@ -102,7 +103,7 @@ async function read(lease, path) {
 
 let loads = 0;
 /** Everything the panel shows, in the order the old page read it. Returns null if the lease ended meanwhile. */
-async function loadAll(lease) {
+export async function loadAll(lease) {
   const out = { schema: DEFAULT_SCHEMA };
   const schema = await read(lease, "/api/settings/schema");
   if (!lease.current()) return null;
@@ -345,7 +346,7 @@ export function SettingsPanel({ route, navKey }) {
       // A panel that went while a question was open asks nothing more, and says nothing.
       for (const c of [...stagedRef.current.values()]) {
         for (const k of c.confirms || []) {
-          const yes = await ask(tn(k));
+          const yes = await ask(k.includes(".") ? t(k) : tn(k));
           if (!mount.current()) return;
           if (!yes) { toast(tn("accessChangeCancelled"), false); return; }
         }
@@ -517,7 +518,7 @@ export function SettingsPanel({ route, navKey }) {
     </${PanelHeader}>
     <nav data-trust="panel-navigation" class="seg s-nav" aria-label=${tn("title")}><${SettingsSearch} /><div class="s-nav-groups">${SETTINGS_GROUPS.map((g) => html`<div key=${g.id} class="s-nav-group" role="group" aria-labelledby=${`s-grp-${g.id}`}>
       <span class="s-nav-head" id=${`s-grp-${g.id}`}>${tn(`grp_${g.id}`)}</span>
-      ${g.sections.map((k) => html`<a key=${k} href=${sectionPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
+      ${g.sections.map((k) => html`<a key=${k} href=${sectionPath(k)} class=${`seg-item${k === section ? " active" : ""}`} title=${tn(`sec_${k}`)}
         aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</div></nav>
     <div data-trust="panel-content" class="panel-body"><div class="col" data-settings-section=${section}>
       <a class="s-back" href=${settingsPath()}><${Icon} name="back" size=${16} /><span>${tn("title")}</span><span class="s-back-here">${tn(`sec_${section}`)}</span></a>
@@ -739,7 +740,7 @@ export function ProfileCard({ embedded = false } = {}) {
 }
 
 /** The operation in hand still owns Apply: its writes and job, or a restart of AgEnD from the press to its end. */
-const opBusy = (op) => !!op && (["writing", "posting", "watching"].includes(op.phase) || op.restart === "busy");
+export const opBusy = (op) => !!op && (["writing", "posting", "watching"].includes(op.phase) || op.restart === "busy");
 function dropSecrets(staged) { for (const c of staged.values()) if (c.connectionSecret) c.connectionSecret.secret = ""; }
 
 function renderDialog(d, ctx, close) {
@@ -753,7 +754,7 @@ function renderDialog(d, ctx, close) {
 }
 
 /** What the sections and dialogs work with: the data, and the ways to change it (staging, or a direct write). */
-function makeCtx(data, setData, stage, unstage, reload, reloadLive, alive, extra = {}) {
+export function makeCtx(data, setData, stage, unstage, reload, reloadLive, alive, extra = {}) {
   const { fleet, classic, schema } = data;
   const chs = channelsOf(fleet);
   const edit = (fn) => setData((d) => { const next = structuredClone(d); fn(next); return next; });
@@ -777,6 +778,8 @@ function makeCtx(data, setData, stage, unstage, reload, reloadLive, alive, extra
       });
       stage(`agent:${name}`, {
         label: tn("updateAgent", shortName(name, { ...inst, ...patch })),
+        // turning the MCP proxy reply on is asked about first (agent-page-strings.js).
+        ...(patch.mcp_proxy_reply === true ? { confirms: ["agentPage.confirmMcpProxy"] } : {}),
         impact: inst.runtime === "windows" ? "now" : batchImpact(schema, Object.keys(patch), (k) => impactOf(schema, `instance.${k}`)),
         request: { method: "PATCH", url: inst.runtime === "windows" ? `/ui/instances/${encodeURIComponent(name)}` : `/api/settings/fleet/instances/${encodeURIComponent(name)}`, body: patch },
       });
@@ -1553,7 +1556,7 @@ function Developer({ ctx }) {
  * #2347: the section's Save. Shown while anything is unsaved: how many changes, what they will cost, Discard and Save —
  * Save waits while a field is invalid ("Fix 1 field to save").
  */
-function PendingBar({ staged, busy, onApply, onDiscard, section }) {
+export function PendingBar({ staged, busy, onApply, onDiscard, section }) {
   const changes = [...staged.values()];
   // What Save will cost, one line each: a change that knows its own words (the shared agent settings: how many agents
   // restart) says them; any other says its impact label.
@@ -1580,7 +1583,7 @@ function PendingBar({ staged, busy, onApply, onDiscard, section }) {
 }
 
 /** The Apply in hand (the app's, settings-apply.js): its writes, its job, and a restart when one is needed. */
-function OperationCard({ op, schema }) {
+export function OperationCard({ op, schema }) {
   const [restarting, setRestarting] = useState(false);
   const busy = opBusy(op);                                 // nothing to dismiss while it, or its restart, runs
   const phaseBusy = ["writing", "posting", "watching"].includes(op.phase);
