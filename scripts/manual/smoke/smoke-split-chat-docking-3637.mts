@@ -146,6 +146,9 @@ try {
       assert.ok(Math.abs((await box('[data-pane="a"]')).width - equal) <= 1); await draftCheck(); await shot("sash-cancel", 2);
       sr = await box(".ws-sash"); await page.mouse.move(sr.x + sr.width / 2, sr.y + sr.height / 2); await page.mouse.down(); await page.mouse.move(sr.x + 104, sr.y + sr.height / 2, { steps: 6 }); await page.mouse.up(); await settle();
       assert.ok((await box('[data-pane="a"]')).width > equal + 90); await shot("sash-drag", 2); await sash.dblclick();
+      await page.setViewportSize({ width: 5120, height: 1000 }); await settle(); await sash.focus(); await page.keyboard.press("Home"); await settle();
+      assert.equal(Math.round((await box('[data-pane="a"]')).width), 360); await shot("ultrawide-minimum", 2);
+      await page.setViewportSize({ width: 1600, height: 1000 }); await settle(); await sash.dblclick();
       // Header native drag pauses over a real target so its blue preview can be measured before release.
       const root = await box(".chat-workspace"), bh = await box('[data-pane="b"] .ws-pane-head'), ar = await box('[data-pane="a"]');
       await page.mouse.move(bh.x + 30, bh.y + 18); await page.mouse.down(); await page.mouse.move(ar.x + ar.width / 2, ar.y + 12, { steps: 12 }); await page.mouse.move(ar.x + ar.width / 2 + 1, ar.y + 12);

@@ -27,6 +27,13 @@ describe("one physical geometry for split, dock and float", () => {
 });
 
 describe("float URLs and preferences stay topology-only", () => {
+  it("retains a physical minimum on an ultra-wide screen rather than imposing a second percentage minimum", () => {
+    const w: any = { ...model.openBeside(null, { panel: "chat", instance: "alpha" }, "beta"), ratio: 360 / 4992 };
+    const restored: any = model.readWorkspace(new URL(model.workspacePath(w), "https://fleet.example"));
+    expect(geometry.splitSize(5000, 900, restored.layout, restored.ratio).first).toBe(360);
+    expect(geometry.splitSize(5000, 900, "right", 0).first).toBe(360);
+    expect(geometry.splitSize(5000, 900, "right", 1).second).toBe(360);
+  });
   it("roundtrips a bounded float without persisting drafts or arbitrary fields", () => {
     const w: any = { ...model.openBeside(null, { panel: "chat", instance: "alpha" }, "beta"), layout: "float", floating: "a", rect: { x: 10, y: 20, width: 560, height: 460, token: "discard" } };
     const saved = model.saveWorkspace(w), next: any = model.restoreWorkspace(saved);

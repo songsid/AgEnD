@@ -9,7 +9,8 @@ const category = (route, search) => route.panel === "details" && categories.has(
   ? new URLSearchParams(search).get("cat") : "";
 const cleanSearch = (route, search) => { const cat = category(route, search); return cat ? `?cat=${cat}` : ""; };
 const cleanHash = hash => /^#m=[0-9a-f]{1,32}-\d{1,15}$/.test(hash || "") ? hash : "";
-const boundedRatio = value => Number.isFinite(Number(value)) ? Math.max(.1, Math.min(.9, Number(value))) : .5;
+// Physical pane minimums live in pane-geometry; a second percentage minimum breaks ultra-wide displays.
+const boundedRatio = value => Number.isFinite(Number(value)) ? Math.max(0, Math.min(1, Number(value))) : .5;
 const layouts = ["right", "stack", "float"];
 const cleanRect = value => value && ["x", "y", "width", "height"].every(key => typeof value[key] === "number" && Number.isFinite(value[key]) && value[key] >= 0 && value[key] <= 100000)
   && value.width >= 420 && value.height >= 360 ? { x: value.x, y: value.y, width: value.width, height: value.height } : null;
