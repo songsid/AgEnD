@@ -1,0 +1,27 @@
+max_body_size: 100mb
+storage: /verdaccio/storage/data
+auth:
+  htpasswd:
+    file: /verdaccio/storage/htpasswd
+    max_users: 10
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+packages:
+  # The package under test: LOCAL ONLY (no uplink), so its versions and dist-tags are this rig's.
+  '@songsid/agend':
+    access: $all
+    publish: $authenticated
+  '@songsid/agend-node-*':
+    access: $all
+    publish: $authenticated
+    proxy: npmjs
+  '@*/*':
+    access: $all
+    publish: $authenticated
+    proxy: npmjs
+  '**':
+    access: $all
+    publish: $authenticated
+    proxy: npmjs
+log: { type: stdout, format: pretty, level: warn }

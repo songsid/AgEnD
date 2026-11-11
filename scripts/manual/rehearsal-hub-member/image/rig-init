@@ -1,0 +1,4 @@
+#!/bin/sh
+# Non-privileged systemd PID 1: the container's own (private-namespace) cgroup2 is made writable; /proc/sys stays read-only.
+mount -o remount,rw /sys/fs/cgroup || exit 1
+exec /lib/systemd/systemd "$@"
