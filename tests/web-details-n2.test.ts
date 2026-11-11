@@ -261,8 +261,8 @@ describe("AGEND-161: Details & settings", () => {
     expect(pg.root.querySelector(".p-details")?.getAttribute("data-view")).toBe("index");
     expect(pg.root.querySelectorAll(".p-details > .s-nav .s-nav-head").map((x: any) => x.textContent)).toEqual(["Status", "Settings"]);
     expect(navItems(pg)).toEqual([["Overview", "/ui/fleet/agent/web-dev?cat=overview", "page"], ["Basic info", "/ui/fleet/agent/web-dev?cat=basic", null],
-      ["Runtime & model", "/ui/fleet/agent/web-dev?cat=runtime", null], ["Workspace & running", "/ui/fleet/agent/web-dev?cat=work", null],
-      ["Channels & status emojis", "/ui/fleet/agent/web-dev?cat=channel", null], ["Advanced", "/ui/fleet/agent/web-dev?cat=adv", null]]);
+      ["Runtime & model", "/ui/fleet/agent/web-dev?cat=runtime", null], ["Workspace", "/ui/fleet/agent/web-dev?cat=work", null],
+      ["Channels", "/ui/fleet/agent/web-dev?cat=channel", null], ["Advanced", "/ui/fleet/agent/web-dev?cat=adv", null]]);
     expect(pg.root.querySelectorAll(".p-details > .s-nav .seg-item svg.icon").length).toBe(6);       // an icon in front of every item you can open
     expect(pg.root.querySelector(".p-details .s-back")?.getAttribute("href")).toBe("/ui/fleet/agent/web-dev");
     // The Overview keeps everything Details showed (read-only), and the ⋯ menu's actions.

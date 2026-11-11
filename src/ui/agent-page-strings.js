@@ -14,7 +14,7 @@ register("agentPage", {
     classicNote: "A ClassicBot room: its settings live in classicBot.yaml, not fleet.yaml.",
     actions: "Actions", actionsNote: "The same actions as the ⋯ menu in the header (which also has the identity colour and the web theme lock).",
     // Categories
-    cat_overview: "Overview", cat_basic: "Basic info", cat_runtime: "Runtime & model", cat_work: "Workspace & running", cat_channel: "Channels & status emojis", cat_adv: "Advanced",
+    cat_overview: "Overview", cat_basic: "Basic info", cat_runtime: "Runtime & model", cat_work: "Workspace", cat_channel: "Channels", cat_adv: "Advanced",
     cat_classicChannel: "Channels & replies", openSettings: "Settings",
     // Cards
     cardName: "Name & description", cardRuntime: "Runtime & CLI", cardModel: "Model", cardWorkdir: "Working directory", cardIdle: "Idle & protection", cardTools: "Tools & modes",
@@ -74,7 +74,7 @@ register("agentPage", {
     unsavedDot: "有尚未套用的變更", nativeLimits: "Windows 原生 Agent 沒有自動暫停、卡住偵測、工具組與頻道綁定（原本就沒有）；這一頁只顯示它支援的設定。",
     classicNote: "ClassicBot 房間：設定存在 classicBot.yaml，不是 fleet.yaml。",
     actions: "動作", actionsNote: "與標題列「⋯」選單同一組動作（那裡另有識別顏色、鎖定／重設網頁主題）。",
-    cat_overview: "概覽", cat_basic: "基本資料", cat_runtime: "Runtime 與模型", cat_work: "工作目錄與執行", cat_channel: "頻道與 Status emojis", cat_adv: "進階",
+    cat_overview: "概覽", cat_basic: "基本資料", cat_runtime: "Runtime 與模型", cat_work: "工作目錄", cat_channel: "頻道", cat_adv: "進階",
     cat_classicChannel: "頻道與回覆", openSettings: "設定",
     cardName: "名稱與描述", cardRuntime: "Runtime 與 CLI", cardModel: "模型", cardWorkdir: "工作目錄", cardIdle: "閒置與保護", cardTools: "工具與模式",
     cardChannel: "頻道與可見度", cardEmojis: "Status emojis", cardSystemPrompt: "System prompt（原有欄位）", cardLogging: "記錄與恢復", cardBoard: "任務看板",

@@ -184,7 +184,7 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
 /** The categories in the shared Settings `.s-nav`: "Status" (Overview) and "Settings" (the rest), an icon in front of every item. */
 export function AgentCategoryNav({ name, kind, cat, dirty }) {
   const cats = categoriesOf(kind);
-  const item = (id) => html`<a key=${id} href=${categoryPath(name, id)} class=${`seg-item${cat === id ? " active" : ""}`} aria-current=${cat === id ? "page" : undefined}>
+  const item = (id) => html`<a key=${id} href=${categoryPath(name, id)} class=${`seg-item${cat === id ? " active" : ""}`} aria-current=${cat === id ? "page" : undefined} title=${categoryLabel(kind, id)}>
     <${Icon} name=${CATEGORY_ICONS[id]} size=${16} /><span>${categoryLabel(kind, id)}</span>${dirty && dirty.has(id) ? html`<span class="count" role="img" aria-label=${pt("unsavedDot")} title=${pt("unsavedDot")}>●</span>` : null}</a>`;
   return html`<nav data-trust="panel-navigation" class="seg s-nav" aria-label=${pt("title")}><div class="s-nav-groups">
     <div class="s-nav-group" role="group" aria-labelledby="ap-grp-status"><span class="s-nav-head" id="ap-grp-status">${pt("groupStatus")}</span>${item("overview")}</div>

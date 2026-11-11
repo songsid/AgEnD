@@ -4235,6 +4235,12 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-nav .seg-item .icon { color: var(--text-3); }
 .p-settings .s-nav .seg-item.active .icon { color: inherit; }
 .p-settings .s-nav .seg-item .count { color: var(--warn); font-size: var(--fs-xs); }
+/* S2b. A label too long for the column is cut with an ellipsis (its `title` has the whole word), never drawn past the column;
+   the current item is bold, so it is the one that grew. The row of tabs (S4) scrolls instead, and the phone's list wraps. */
+.p-settings > .s-nav .seg-item { min-width: 0; max-width: 100%; }
+.p-settings > .s-nav .seg-item > span:not(.count) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (min-width: 900px) and (max-width: 1099px) { .p-settings > .s-nav .seg-item > span:not(.count) { overflow: visible; text-overflow: clip; } }
+@media (max-width: 899px) { .p-settings > .s-nav .seg-item > span:not(.count) { overflow: visible; text-overflow: clip; white-space: normal; } }
 /* S3. Wide (≥1100px): the category column is its own panel — the sidebar's tone and a divider on its right edge. */
 @media (min-width: 1100px) {
   .p-settings > .s-nav { background: var(--bg-sidebar); border-right: 1px solid var(--border); padding: var(--s-4) var(--s-3) var(--s-4) var(--s-3); }

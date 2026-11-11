@@ -518,7 +518,7 @@ export function SettingsPanel({ route, navKey }) {
     </${PanelHeader}>
     <nav data-trust="panel-navigation" class="seg s-nav" aria-label=${tn("title")}><${SettingsSearch} /><div class="s-nav-groups">${SETTINGS_GROUPS.map((g) => html`<div key=${g.id} class="s-nav-group" role="group" aria-labelledby=${`s-grp-${g.id}`}>
       <span class="s-nav-head" id=${`s-grp-${g.id}`}>${tn(`grp_${g.id}`)}</span>
-      ${g.sections.map((k) => html`<a key=${k} href=${sectionPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
+      ${g.sections.map((k) => html`<a key=${k} href=${sectionPath(k)} class=${`seg-item${k === section ? " active" : ""}`} title=${tn(`sec_${k}`)}
         aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</div></nav>
     <div data-trust="panel-content" class="panel-body"><div class="col" data-settings-section=${section}>
       <a class="s-back" href=${settingsPath()}><${Icon} name="back" size=${16} /><span>${tn("title")}</span><span class="s-back-here">${tn(`sec_${section}`)}</span></a>

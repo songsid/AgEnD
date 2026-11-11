@@ -112,7 +112,7 @@ describe("the patch is what the dialog always wrote", () => {
     expect((await form({ backend: "claude-code", working_directory: "/w", board_cards_at_once: 3, resume_interrupted_work: false, mcp_proxy_reply: true })).patch()).toEqual({});
     expect((await form({ backend: "claude-code", working_directory: "/w" }, { resume_interrupted_work: false, mcp_proxy_reply: true })).patch()).toEqual({});
   });
-  it("an edit of a moved field writes exactly that key (Basic info, Workspace & running, Channels, Advanced)", async () => {
+  it("an edit of a moved field writes exactly that key (Basic info, Workspace, Channels, Advanced)", async () => {
     const f = await form({ backend: "claude-code", working_directory: "/w" });
     await f.edit("#ag-desc", "reviews the UI");
     expect(f.patch()).toEqual({ description: "reviews the UI" });
