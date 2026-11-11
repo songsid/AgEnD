@@ -1,0 +1,22 @@
+en-hub-signin: clean
+en-alice-welcome: clean
+en-alice-mine: clean
+en-alice-notices: clean
+en-alice-admin: clean
+en-alice-groups: clean
+en-carol-welcome: clean
+en-carol-mine: clean
+en-carol-notices: clean
+en-hub-join-info: clean
+en-fleet-settings-hub: clean
+zh-hub-signin: clean
+zh-alice-welcome: clean
+zh-alice-mine: clean
+zh-alice-notices: clean
+zh-alice-admin: clean
+zh-alice-groups: clean
+zh-carol-welcome: clean
+zh-carol-mine: clean
+zh-carol-notices: clean
+zh-hub-join-info: clean
+zh-fleet-settings-hub: BANNED ["連線"]

@@ -1,0 +1,4 @@
+     × src/ui/hub-strings.js: every value is read, more than zero keys, no banned term outside the pairing-code path 60ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
++   "hub.exposuresTitle [en] \"exposures\": My exposures",
+      Tests  1 failed | 17 passed (18)
