@@ -91,6 +91,9 @@ try {
    await page.locator('.s-hub-connection[data-state="connected"]').waitFor({ timeout: 30000 }); check(tag + " link online", fm.hubMemberLink === "online"); check(tag + " one connection", !!currentBinding(fm.dataDir)); check(tag + " no General approval", notifications === 0); await shot("connected");
    for (const p of [page, hub]) check(tag + " no overflow", await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
    if (c.device === "phone") { const small = await page.locator(".s-hub-connection").evaluate((el: any) => [...el.querySelectorAll("button,input,a.btn")].filter((n: any) => !n.disabled && n.getClientRects().length && n.offsetParent !== null).map((n: any) => { const target = n.type === "checkbox" ? n.closest("label") || n : n, b = target.getBoundingClientRect(); return { tag: n.tagName, id: n.id, width: b.width, height: b.height }; }).filter((b: any) => Math.min(b.width,b.height) < 43.5)); check(tag + " phone controls", small.length === 0, small); }
+   // A navigation can leave Chromium's body() pending until context closure. Finish the
+   // journey first, then drain response capture after physically closing its context.
+   await ctx.close();
    console.log(JSON.stringify({ tag, phase: "asset-receipts" }));
    await Promise.all(responses); result.cases.push({ tag, strict, hostHere: false, completed: true, substitutions, assets: Object.entries(assets).map(([digest,paths]) => ({ digest, paths: [...paths] })) });
   } finally { console.log(JSON.stringify({ tag, phase: "context-close" })); await ctx.close(); controller.close(); fm.hubRuntime?.fence(); console.log(JSON.stringify({ tag, phase: "runtime-close" })); await fm.hubRuntime?.close(); fm.hubEffectsReady = false; console.log(JSON.stringify({ tag, phase: "fixture-close" })); await fx.close(); fx = null; console.log(JSON.stringify({ tag, phase: "closed" })); }
