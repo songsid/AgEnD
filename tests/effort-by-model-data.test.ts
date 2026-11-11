@@ -17,6 +17,7 @@ import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { GROK_FALLBACK_MODELS, GrokBackend } from "../src/backend/grok.js";
 import { parseClaudeEffortCapability, readClaudeEffortLevels, readEffortMetadata, readGrokEffortLevels } from "../src/backend/effort-metadata.js";
 import { flagEffort } from "../src/backend/launch-effort.js";
+// @ts-expect-error — a JS module of the app, with no types
 import { EFFORT_BACKENDS, effectiveSummary } from "../src/ui/settings-model.js";
 import { registerExecutableFixture } from "./support/process-guard.js";
 
