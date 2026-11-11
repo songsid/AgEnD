@@ -134,17 +134,19 @@ try {
       const draftCheck = async () => {
         assert.equal(await page.locator("#pane-a-msgIn").inputValue(), "尚未送出的草稿"); assert.equal(await page.locator("#pane-b-msgIn").inputValue(), "另一格的草稿");
         assert.equal(await page.evaluate(() => (window as any).__originalComposers.every((el: Element) => el.isConnected)), true);
+        assert.equal(await page.locator('[data-pane="a"] .file-chip').count(), 1); assert.equal(await page.locator('[data-pane="b"] .file-chip').count(), 0);
       };
+      await page.locator('[data-pane="a"] input[type=file]').setInputFiles({ name: 'owned-a.txt', mimeType: 'text/plain', buffer: Buffer.from('owned fixture only') });
       const sash = page.locator(".ws-sash"), equal = (await box('[data-pane="a"]')).width;
       await sash.focus(); await page.keyboard.press("ArrowRight"); await settle(); assert.equal(Math.round((await box('[data-pane="a"]')).width - equal), 16);
       await page.keyboard.press("Shift+ArrowRight"); await settle(); assert.equal(Math.round((await box('[data-pane="a"]')).width - equal), 80);
       await shot("sash-keyboard", 2);
       await page.keyboard.press("Home"); await settle(); assert.equal(Math.round((await box('[data-pane="a"]')).width), 360); await shot("minimum-pane", 2);
       await sash.dblclick(); await settle(); assert.ok(Math.abs((await box('[data-pane="a"]')).width - (await box('[data-pane="b"]')).width) <= 1);
-      let sr = await box(".ws-sash"); await page.mouse.move(sr.x + sr.width / 2, sr.y + sr.height / 2); await page.mouse.down(); await page.mouse.move(sr.x + 110, sr.y + sr.height / 2, { steps: 6 });
+      let sr = await box(".ws-sash"); await page.mouse.move(sr.x + sr.width / 2, sr.y + sr.height / 2); await page.mouse.down(); await page.mouse.move(sr.x + sr.width / 2 + 110, sr.y + sr.height / 2, { steps: 6 });
       assert.ok((await box('[data-pane="a"]')).width > equal + 90); await page.keyboard.press("Escape"); await page.mouse.up(); await settle();
       assert.ok(Math.abs((await box('[data-pane="a"]')).width - equal) <= 1); await draftCheck(); await shot("sash-cancel", 2);
-      sr = await box(".ws-sash"); await page.mouse.move(sr.x + sr.width / 2, sr.y + sr.height / 2); await page.mouse.down(); await page.mouse.move(sr.x + 104, sr.y + sr.height / 2, { steps: 6 }); await page.mouse.up(); await settle();
+      sr = await box(".ws-sash"); await page.mouse.move(sr.x + sr.width / 2, sr.y + sr.height / 2); await page.mouse.down(); await page.mouse.move(sr.x + sr.width / 2 + 104, sr.y + sr.height / 2, { steps: 6 }); await page.mouse.up(); await settle();
       assert.ok((await box('[data-pane="a"]')).width > equal + 90); await shot("sash-drag", 2); await sash.dblclick();
       await page.setViewportSize({ width: 5120, height: 1000 }); await settle(); await sash.focus(); await page.keyboard.press("Home"); await settle();
       assert.equal(Math.round((await box('[data-pane="a"]')).width), 360); await shot("ultrawide-minimum", 2);
@@ -166,6 +168,7 @@ try {
       await shot("float-keyboard-preview", 2); await page.keyboard.press("Escape"); await settle(); assert.deepEqual(await within(), resized);
       await menu("b", "調整浮窗大小"); await page.keyboard.press("ArrowDown"); await page.keyboard.press("Enter"); await settle(); assert.ok((await within()).height > resized.height); await draftCheck();
       await shot("float-keyboard-applied", 2);
+      await page.evaluate(async (name: string) => { const { store } = await import('/ui/js/panel-chat.js'); store.removeFile(name, 0); }, a);
       const saved = page.url(); await page.reload(); await page.locator(".ws-floating").waitFor(); await within(); await shot("float-reload", 2);
       assert.match(saved, /layout=float/); assert.doesNotMatch(saved, /token|draft|password/);
       fh = await box('.ws-floating .ws-pane-head'); const bounds = await box('.chat-workspace');
