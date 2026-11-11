@@ -1,5 +1,5 @@
 {
-  "54ed4ece149ecfa933b34f972d741e972f7323859df397ef2edbe6344f695a3f": [
+  "ec7f0a6d74f8b7ef797dfd4d69df56dfa21395f6e70cb2f99029c9a560ea07ec": [
     "docs/evidence/settings-summary-page-language-3416/README.md"
   ],
   "d9450d60ca8ac2e37ba4006a32f583c2e16e254331e60eac4b75b1c74142d162": [
@@ -56,7 +56,7 @@
   "bd99ff505819422cc42a0f790fd3f1f8e4f4d16efd666a24dc76849ccbeab98f": [
     "docs/evidence/settings-summary-page-language-3416/browser/old-shell-phone-light-zh-TW.png"
   ],
-  "f8bf2a191ffbf0d6546f884fbfa8a6e6537e23c4ceeb0954a746e1fdfd1ea164": [
+  "8f768c2f42ad2c259a198a3bb5135fb1da5436fe1bbabd2020c33166dd5f5fdb": [
     "docs/evidence/settings-summary-page-language-3416/browser/receipt.json"
   ],
   "0e7d3318dfd859dba4e7edd6b60ab0fc32948a1e028c5a7e6345e2eaed65374b": [
@@ -76,6 +76,9 @@
   ],
   "2136cb3443e0e60fc98a9743a8cc4a0a57c411ff536b264d1f1c4ed5726a9631": [
     "docs/evidence/settings-summary-page-language-3416/mutations.json"
+  ],
+  "2f429475f47f45750c602e5edc37c8ab9fa3beb25fff74076ed07dbce87b5ee4": [
+    "docs/evidence/settings-summary-page-language-3416/receipt-normalization.json"
   ],
   "b0a51ef1f400962ab4e324b7b30610a1c274716337df29031162c5455931cdc0": [
     "docs/evidence/settings-summary-page-language-3416/restored.json"

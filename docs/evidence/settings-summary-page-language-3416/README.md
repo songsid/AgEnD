@@ -12,6 +12,10 @@ The server copies bounded display metadata before notification awaits; the brows
 - `mutations.json`: eight single reversals each cause assertion failures: HTTP propagation, proposal copy, fallback equality, version, argument shape, UI/store budgets and parallel container. Sources restored byte-exact; `restored.json` is 39/39.
 - `browser/receipt.json`: clean pinned capture at `aa4dc3baedf2e45094d126ac284657454c1f1eda`, with git tree, source/harness and served-asset digests. Eight current desktop/phone × EN/zh-TW × light/dark cases, four exact-baseline asset controls, four retained controls (old shell/server/i18n/confirmation module), plus two in-page language switches: 16 cases / 18 PNGs. All cases deliberately use the opposite fleet locale. Original strings/fingerprints remain unchanged; zero effects, CSP violations or horizontal overflow. Browser, listeners, stores and scratch home were closed.
 
+## Receipt representation repair
+
+The initial required scan flagged digest values under token-like served-asset path keys. Only the receipt representation now uses ordered digest-first rows; the manual capture script emits that shape for future runs. All 2000 original path/digest bindings across 16 cases, metadata and 18 PNG bytes are retained. `receipt-normalization.json` records the original 764ca008 Git blob and both receipt digests; decoding the new rows reconstructs the original receipt byte-for-byte. This is not a new browser execution, and its original aa4dc3ba source/tree/input hashes are unchanged. No scan exclusion or product change.
+
 ## Browser scope and limitations
 
 These are display fixtures made by the actual diff producer and confirmation store, then followed by the real Settings confirmation module in the authenticated app.html/Settings shell. Pending GETs are recorded projections. They prove display, retained assets, page language, layout and original record preservation; they do not claim a real Settings effect, remote chat delivery or end-to-end authority test. Production HTTP/store tests cover those unchanged boundaries separately.

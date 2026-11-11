@@ -68,7 +68,8 @@ try {
     if (canonical !== JSON.stringify({ summary: store.get(view.id, "owned-display-fixture")!.summary, fingerprint: diff.fingerprint })) throw Error("server record changed");
     const violations = await csp(); if (violations.length) throw Error("CSP: " + JSON.stringify(violations));
     await Promise.all(responses);
-    results.push({ name, fleetLocale: c.lang === "en" ? "zh-TW" : "en", pageLanguage: c.lang, text, switchText, canonical, layout, substitutions, served, csp: violations });
+    results.push({ name, fleetLocale: c.lang === "en" ? "zh-TW" : "en", pageLanguage: c.lang, text, switchText, canonical, layout, substitutions,
+      served: Object.entries(served).map(([path, digest]) => ({ digest, paths: [path] })), csp: violations });
     await ctx.close(); store.close();
   }
 } finally { for (const s of stores) s.close(); await fx.close(); }
