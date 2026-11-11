@@ -159,6 +159,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "theme.js": { file: join("shared", "theme.js"), type: "text/javascript; charset=utf-8" },
   // #1408: the design tokens every panel shares, and the font they name (Inter, SIL OFL 1.1: shared/fonts/OFL.txt).
   "model-picker.css": { file: join("shared", "model-picker.css"), type: "text/css; charset=utf-8" },
+  // M-2904: Stop in the chat's working bar (linked by panel-chat.js; an older app.css lacks it).
+  "chat-work-bar.css": { file: join("shared", "chat-work-bar.css"), type: "text/css; charset=utf-8" },
   "host-install.css": { file: join("shared", "host-install.css"), type: "text/css; charset=utf-8" },
   "subagent-row.css": { file: join("shared", "subagent-row.css"), type: "text/css; charset=utf-8" },
   "tokens.css": { file: join("shared", "tokens.css"), type: "text/css; charset=utf-8" },

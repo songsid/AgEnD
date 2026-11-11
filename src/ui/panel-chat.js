@@ -98,6 +98,26 @@ import { isUpdateLine, needsArgument, paletteFor, parseCommandLine, UPDATE_COMMA
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
+/**
+ * M-2904: the working bar's Stop has its own stylesheet, linked once when this module loads (before the chat draws): a tab
+ * opened before the change keeps its older app.css, which has no rule for it (Prism #3651: a 40×30 Stop on a phone).
+ */
+/**
+ * Fable #3653: ComposerInput still gets a (hidden) stop. A tab that loaded the Hub's panel before the upgrade keeps the OLD
+ * chat-composer.js in its module map, which reads stop.* with no default; the new one ignores it.
+ */
+const HIDDEN_STOP = Object.freeze({ hidden: true, disabled: true, title: "", label: "", onClick: () => {} });
+
+export function linkWorkBarCss(doc = typeof document !== "undefined" ? document : null) {
+  try {
+    if (!doc || !doc.head || doc.querySelector('link[data-chat-work-bar-css="1"]')) return;
+    const link = doc.createElement("link");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/chat-work-bar.css"); link.setAttribute("data-chat-work-bar-css", "1");
+    doc.head.appendChild(link);
+  } catch { /* Stop still works without it */ }
+}
+linkWorkBarCss();
+
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composerField = () => (typeof document !== "undefined" ? document.getElementById("msgIn") : null);
 
@@ -728,8 +748,10 @@ function WorkBar({ name, lease, exec, awaiting, workingLabel }) {
   const label = kind === "working" && workingLabel ? workingLabel
     : t(kind === "stuck" ? "chat.stuck" : kind === "stopping" ? "chat.stopping" : kind === "awaiting" ? "chat.awaiting" : "chat.working", name);
   const since = s.workingSince[name];
+  // M-2904: Stop is the bar's, while the agent is busy — in the composer row it took the box's width away.
   return html`<${WorkBarView} kind=${kind} label=${label} note=${awaiting || t("chat.approxNote")} noteTitle=${t("chat.approxNote")}
-    elapsed=${kind === "awaiting" || since == null ? "" : R().formatElapsed(performance.now() - since)} elapsedTitle=${t("chat.elapsedTitle")} />`;
+    elapsed=${kind === "awaiting" || since == null ? "" : R().formatElapsed(performance.now() - since)} elapsedTitle=${t("chat.elapsedTitle")}
+    stop=${busy ? { disabled: !!s.cancelling[name], title: t("chat.stopReplyTitle"), label: t("chat.stopReply"), onClick: () => store.cancelReply(name) } : null} />`;
 }
 
 /** #2272: the reply bar's quote — the first ~80 characters, or what it had instead of text. */
@@ -834,8 +856,8 @@ function Composer({ name, inst, label = name, lease, busy }) {
     <${ComposerInput} inputRef=${input} value=${value} placeholder=${t("chat.composerPlaceholder", label)} onValue=${setValue}
       onKeyDown=${onKeyDown} onPaste=${onPaste} controls=${palette ? "cmdPalette" : undefined} expanded=${!!palette} activeDescendant=${pick ? optId(pick) : undefined}
       attach=${attachmentsSupported ? { title: t("chat.attachTitle"), onFiles: (list) => store.addFiles(name, list) } : null}
-      stop=${{ hidden: !busy, disabled: !!s.cancelling[name], title: t("chat.stopReplyTitle"), label: t("chat.stopReply"), onClick: () => store.cancelReply(name) }}
-      send=${{ hidden: busy && !content, disabled: !content || sendingBlocked, label: t("chat.send"), onClick: submit }} />
+      stop=${HIDDEN_STOP}
+      send=${{ hidden: false, disabled: !content || sendingBlocked, label: t("chat.send"), onClick: submit }} />
     </div>`;
 }
 
