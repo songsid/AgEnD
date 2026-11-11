@@ -5,6 +5,15 @@ import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { hubClient } from "./hub-client.js";
 import { hj, joinError } from "./hub-company-join-strings.js";
 import * as entryWords from "./hub-company-join-strings.js";
+// M-2921 (spec 1.1): the Hub tab's own words for closing itself and for E13 (its own namespace: a cached older
+// company-join dictionary must not leave a key showing).
+register("hubJoinOne", {
+  en: { closing: "Connected. You can close this tab.",
+    offerPending: "Another connection with a pairing code is still in progress for you. Finish or stop it on the Hub first." },
+  "zh-TW": { closing: "已連接。可以關閉這個分頁。", offerPending: "你有另一個用配對碼的連接還沒完成。請先在 Hub 完成或停止它。" },
+});
+const hj1 = key => t(`hubJoinOne.${key}`);
+const approveError = code => code === "offer-pending" ? hj1("offerPending") : joinError(code);
 export function joinRequest() {
   try { const id = new URLSearchParams(location.search).get("join"); return /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id || "") ? id : null; }
   catch { return null; }
@@ -68,9 +77,21 @@ export function HubCompanyJoinPage({ session }) {
     const token = ++gen.current; setBusy(true); setError(null);
     const r = await approveCompanyJoin(requestId, session.csrf);
     if (gen.current !== token) return;
-    setBusy(false); if (!r.ok) setError(joinError(r.code)); retry();
+    setBusy(false); if (!r.ok) setError(approveError(r.code)); retry();
   };
   const terminal = view?.ok && !["pending", "identity-approved", "issued"].includes(view.state);
+  // Connected: say so, close this tab; a tab the browser keeps open (one it did not open by script) offers the way back after 300 ms.
+  const done = view?.ok && view.state === "acknowledged" && view.connected === true, [stayed, setStayed] = useState(false);
+  useEffect(() => {
+    if (!done) return;
+    try { globalThis.close?.(); } catch { /* the browser decides */ }
+    const timer = setTimeout(() => setStayed(true), 300);
+    return () => clearTimeout(timer);
+  }, [done]);
+  if (done) return html`<div class="col hub-owner"><div class="s-section-layout"><section class="card hub-company-join hub-join-closing">
+    <p role="status">${hj1("closing")}</p>
+    ${stayed && view.returnPath ? html`<div class="field-row"><a class="btn btn-sm" href=${view.returnPath} rel="noreferrer">${hj("return")}</a></div>` : null}
+  </section></div></div>`;
   return html`<div class="col hub-owner"><div class="s-section-layout"><section class="card hub-company-join">
     ${view === undefined ? html`<${Skeleton} variant="form" lines=${3} label=${hj("loading")} />` : null}
     ${view?.ok ? html`<${CompanyJoinLead} context=${view} />

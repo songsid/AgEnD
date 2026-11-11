@@ -149,6 +149,19 @@ fleet 管理員在直接連線的 dashboard 上（不是透過公開連結）使
 
 **泡泡。** `bubbles: { "en": { "working": ["On it."] }, "zh-TW": { … } }` 取代頁面內建的某個狀態的句子：最多 12 句，每句 1–40 字。
 
+每個人也可以有自己的聲音。一組角色可以在姿勢旁邊帶自己的 `bubbles`（格式與上限相同）；`bubblesByInstance` 則讓某個 instance 不必有自己的角色組也能有自己的句子：
+
+```text
+"characters": {
+  "default": { "idle": STRIP },
+  "fox": { "idle": STRIP, "bubbles": { "zh-TW": { "working": ["正在嗅線索。"] } } }
+},
+"byInstance": { "atlas": "fox" },
+"bubblesByInstance": { "quill": { "zh-TW": { "idle": ["墨水乾了。"] } } }
+```
+
+某人在某個狀態說的句子，取下面第一個在頁面語言下有該狀態句子的：他自己的（`bubblesByInstance`）、他的角色組的（`byInstance` 指定的組，否則 `default`）、外觀包的 `bubbles`、最後是頁面內建的。所以只寫了 `working` 句子的角色組，閒著時仍說外觀包的句子。agent 用 `office_set` 說的話仍然蓋過這些。
+
 **辦公桌式外觀包。** 沒有 `stateZones` 的外觀包沿用辦公桌配置，可以提供自己的 `room`（`floor`、`wall`）與 `desk`（`back`、`front`、`lit`）圖片。
 
 **尺寸與錨點。** 影格條顯示的大小是 `w·scale × h·scale`，除非它用邏輯單位指定 `dw` 或 `dh`；只給其中一個時，另一個依比例算出。`(ax, ay)` 是圖片上要放在位置點的那一點（預設底部中央，所以人站在座位上）。scale 2 時的建議尺寸：角色 32×48，道具 12×12。
@@ -350,12 +363,22 @@ agent 可以自己檢查、上傳、取代、刪除與還原外觀包，例如�
 - `fixed`：最多 500 筆。鍵是 instance 名稱，或以家具 `id` 指定的 NPC；不論等級都顯示該頭銜。設定 `hideLevel: true` 時，徽章變成小菱形記號，名片只顯示頭銜，沒有「Lv n」與 XP 條。NPC 的名牌會顯示它的標籤與頭銜，加上記號；NPC 沒有名片。
 - 分享連結只會拿到它顯示的人與 NPC 的固定頭銜。
 
+### 所有辦公室的頭銜
+
+想讓每間辦公室都用同一套頭銜、又不想逐一修改外觀包，可以在 **設定 → 網頁儀表板 → 所有辦公室的等級頭銜** 為整個 fleet 設定一次（#3679）。它接受和外觀包 `levels` 相同的 `{ "titles": […], "fixed": {…} }` JSON，並以相同規則檢查。留空則使用預設頭銜。
+
+- 每間辦公室都使用 fleet 的頭銜，不論它是什麼風格。
+- 用自帶 `levels` 的外觀包畫的辦公室，若外觀包有 `titles`，就改用外觀包的。固定頭銜會合併：fleet 的 `fixed` 與外觀包的都會套用，同一個名字兩邊都有時以外觀包的為準。
+- 只有直接連線的管理員 session 可以變更（`PUT /ui/office-level-titles`，與辦公室的儲存一起計次）。它存在 `web-offices.json` 的辦公室旁邊，並隨辦公室一起提供（`GET /ui/offices` 的 `levels`），所以每個頁面與分享連結都會立即套用變更。
+- 分享連結會拿到所有頭銜，但固定頭銜只給它顯示的人，以及不是 instance 的名字（NPC）。
+
 ## 誰能做什麼
 
 | | fleet 管理員，直接連線 | fleet 管理員，公開連結 | 唯讀 session | 訪客 | 分享連結的觀看者 |
 |---|---|---|---|---|---|
 | 看辦公室 | ✅ | ✅ | ✅ | ❌ | ✅ 一間或全部，唯讀 |
 | 編輯辦公室、上傳或刪除外觀包、編輯配置 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 所有辦公室的等級頭銜 | ✅ | ❌ | ❌ | ❌ | ❌ |
 | 核准 agent 的外觀包變更 | ✅ | ❌ | ❌ | ❌ | ❌ |
 | 分享… 與撤銷 | ✅ | ✅ | ❌ | ❌ | ❌ |
 
@@ -382,10 +405,11 @@ fleet 管理員也可以在 General 的通知上按 **核准**，核准等待中
 | `straight` | ❌ | `true`：每次走動都先橫走再上下走 |
 | `idleVisits` | ❌ | 需搭配 `stateZones`：`[{ "area", "weight", "minSeconds", "maxSeconds" }, …]`，最多 8 項，同一區域只能出現一次：閒著的人偶爾會去坐一陣子的區域（見[辦公室裡的日常](#辦公室裡的日常)）。`weight` 1–100，與散步的 100 一起抽；`minSeconds` 5–600；`maxSeconds` `minSeconds`–600 |
 | `furniture` | ❌ | 家具，最多 128 件（見[家具](#家具)） |
-| `characters` | ✅ | `{ 角色組: { 姿勢: STRIP, … } }`，最多 64 組；必須有含 `idle` 的 `default`。欄位：`working`、`idle`、`paused`、`needs`、`walk`、`walkDown`、`walkUp`、`walkSide`、`prop` |
+| `characters` | ✅ | `{ 角色組: { 姿勢: STRIP, … } }`，最多 64 組；必須有含 `idle` 的 `default`。欄位：`working`、`idle`、`paused`、`needs`、`walk`、`walkDown`、`walkUp`、`walkSide`、`prop`，以及 `bubbles`（這組自己的句子，格式同外觀包的 `bubbles`） |
 | `byInstance` | ❌ | instance 名稱 → 角色組，最多 500 個 |
 | `props` | ❌ | `task`、`send`、`report`、`broadcast`：飛行物的 STRIP |
 | `bubbles` | ❌ | `{ "en" \| "zh-TW": { 狀態: [句子, …] } }`，最多 12 句，每句 1–40 字 |
+| `bubblesByInstance` | ❌ | instance 名稱 → 他自己的句子，格式同 `bubbles`，最多 500 個（見[製作外觀包](#製作外觀包)的「泡泡」） |
 | `room`、`desk` | ❌ | 辦公桌配置的圖：`room.floor`、`room.wall`、`desk.back`、`desk.front`、`desk.lit` |
 | `levels` | ❌ | `{ titles, fixed }`：等級的頭銜與固定頭銜（見[外觀包的頭銜](#外觀包的頭銜)） |
 | `portraits`、`dialogBox` | ❌ | 對話框的臉孔與樣式（見[製作外觀包](#製作外觀包)） |
@@ -465,6 +489,7 @@ STRIP 是 `{ "src", "frames", "w", "h", "fps", "ax", "ay", "dw", "dh" }`：
 | agent 的開關 | fleet.yaml 的 `office_access`、`office_pack_access`（每個 instance，或 `defaults.*`）；見 [configuration.zh-TW.md](configuration.zh-TW.md) |
 | 分享連結 | `web.office_share.enabled`（預設 `true`）、`web.office_share.max_hours`（1–24，預設 24） |
 | 等級 | `web.office_levels`（預設 `true`）；累計的終身總量在 `instances/<name>/usage-lifetime.json`，用量紀錄旁邊 |
+| 所有辦公室的等級頭銜 | `web-offices.json` 裡辦公室旁邊的 `levels`（#3679） |
 | 每台裝置的選擇 | 畫面、風格、篩選、就寢與大廳格（瀏覽器儲存空間） |
 
 ## 升級與降版
@@ -472,6 +497,7 @@ STRIP 是 `{ "src", "frames", "w", "h", "fps", "ax", "ay", "dw", "dh" }`：
 - **升級** 會保留你的辦公室、外觀包與配置，不需要手動搬移。
 - **有 `portraits` 或 `dialogBox` 的外觀包與降版**（#2861）。和 `levels` 一樣，較舊的版本會拒絕這種外觀包並以辦公桌顯示、附註。降版前請移除這兩個鍵，或重新上傳不含它們的外觀包。對話框的其他設定都不存在主機上。
 - **有 `levels` 的外觀包與降版。** 等級之前的版本會拒絕含 `levels` 鍵的外觀包，所以在那裡會以辦公桌顯示並附註。需要降版時，請移除這個鍵，或重新上傳不含它的外觀包。
+- **所有辦公室的等級頭銜與降版。** 舊版會忽略 fleet 的頭銜（`web-offices.json` 的 `levels`），它下一次儲存辦公室時會把它丟掉。升級後請重新設定。
 - **等級與降版。** 等級之前的版本不會開啟 `usage-lifetime.json`，所以降版會保留它。不過舊版執行期間，會把超過 400 天的日子直接清除、不累計，重新升級後等級就少了那幾天。其他都不會遺失。
 - **在 2.3.2 之內降版。** agent 以 `keep_previous` 刪除的外觀包，上一版存在它自己的 `.kept-<id>` 資料夾，所以降回 2.3.2-beta.10 時仍然可以上傳與刪除那個 id。#2706 的修正（2.3.2-beta.12）之後，辦公室的配置存在辦公室清單旁邊；降回這個修正之前的 2.3.2 beta 時，每間辦公室都還在，但沒有配置，在那裡儲存會丟掉配置。
 - **降回 2.3.1 或 2.2.6。** `office_access` 與 `office_pack_access` 存在 fleet.yaml 的 `dashboard` 之外，所以舊版會接受這個檔案並忽略它們。2.2.6 沒有辦公室畫面。2.3.1 沒有外觀包：用外觀包或溫馨的辦公室會以辦公桌顯示並附上說明。每間辦公室的配置（編輯配置、夜間位置、保留座位）都存在辦公室清單旁邊，2.3.1 不會讀那裡：所以每間辦公室都會顯示，只是沒有配置；在 2.3.1 上儲存會永久丟掉配置。這需要 #2706 的修正：2.3.2-beta.11 以前，配置存在辦公室的項目裡，2.3.1 會完全不顯示那間辦公室，在那裡儲存會把它刪掉。不論哪種情況，若配置很重要，降版前請先備份 `web-offices.json`。
