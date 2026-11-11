@@ -25,16 +25,17 @@ const receipt: any = { head: git("rev-parse", "HEAD"), tree: git("rev-parse", "H
   scope: "Owned scratch FleetManager; actual browser/server/session/stream; fixture terminal and step reads; no CLI or live fleet", inputs, assets, cases: [] };
 const errors: string[] = [], blocked: string[] = [], jobs: Promise<unknown>[] = [];
 const theme = process.env.THEME || "light";
+const language = process.env.LANGUAGE || "zh-TW";
 const retained = process.env.RETAIN || "", oldRef = process.env.OLD_REF || "834fb036f249f9d52acc9837bcc4c3480bd20994";
 const oldFiles: Record<string, string> = { css: "src/ui/shared/app.css", shell: "src/ui/shared/app-shell.js", chat: "src/ui/panel-chat.js", fields: "src/ui/settings-dialogs.js", session: "src/ui/shared/app-session.js", context: "src/ui/shared/app-ctx.js", model: "src/ui/shared/chat-workspace-model.js", navigation: "src/ui/chat-workspace-navigation.js", sidebar: "src/ui/shared/instance-nav.js", host: "src/ui/chat-workspace.js" };
 const substitutions: Record<string, string[]> = {};
 const sourcePath = (path: string) => path.startsWith("/assets/") ? "src/ui/shared/" + path.slice(8) : path.startsWith("/ui/js/") ? "src/ui/" + path.slice(7) : "";
 receipt.retained = retained; receipt.oldRef = oldRef; receipt.substitutions = substitutions;
-const ctx = await fx.browser.newContext({ viewport: { width: 1600, height: 1000 }, colorScheme: theme, locale: "zh-TW", hasTouch: process.env.COARSE === "1" });
+const ctx = await fx.browser.newContext({ viewport: { width: 1600, height: 1000 }, colorScheme: theme, locale: language, hasTouch: process.env.COARSE === "1" });
 const page = await ctx.newPage();
 page.setDefaultTimeout(10000);
 try {
-  fx.fm.webPrefs.write("operator", new Map([["theme", theme], ["lang", "zh-TW"]]));
+  fx.fm.webPrefs.write("operator", new Map([["theme", theme], ["lang", language]]));
   await ctx.addInitScript(() => {
     localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1"); localStorage.setItem("agend_usage_rail", "0");
     const Native = window.EventSource; (window as any).__streams = { active: 0, max: 0 };
@@ -92,7 +93,7 @@ try {
     assert.equal(geometry.headers, panes); assert.equal(geometry.textTools, 1); assert.equal(geometry.overflow, false);
     assert.equal(geometry.streams.active, 1); assert.equal(geometry.streams.max, 1); assert.equal(fx.fm.sseClients.size, 1);
     for (const pane of geometry.panes) { assert.equal(pane.headerOverflow, false, JSON.stringify(pane)); assert.equal(pane.actionsInside, true, JSON.stringify(pane)); assert.equal(pane.statusInside, true, JSON.stringify(pane)); }
-    const file = `${theme}-zh-TW-${label}.png`; await page.screenshot({ path: join(out, file) }); receipt.cases.push({ label, file, geometry });
+    const file = `${theme}-${language}-${label}.png`; await page.screenshot({ path: join(out, file) }); receipt.cases.push({ label, file, geometry });
   }
   await shot("single", 1);
   await page.locator("#msgIn").fill("尚未送出的草稿");
@@ -100,7 +101,8 @@ try {
   const topology = () => page.evaluate(async () => { const { navStore } = await import("/assets/app-nav.js"); return navStore.get().workspace; });
   const menu = async (id: string, label: string) => {
     await page.locator(`[data-pane="${id}"] .ws-pane-head .menu > button`).click();
-    await page.getByRole(["自訂移動", "左右排列", "上下排列"].includes(label) ? "menuitemradio" : "menuitem", { name: label, exact: true }).click(); await settle();
+    const words: Record<string, string> = { "自訂移動": "Free floating pane", "左右排列": "Side by side", "上下排列": "Top and bottom", "移動浮窗": "Move floating pane", "調整浮窗大小": "Resize floating pane" };
+    await page.getByRole(["自訂移動", "左右排列", "上下排列"].includes(label) ? "menuitemradio" : "menuitem", { name: language === "en" ? words[label] : label, exact: true }).click(); await settle();
   };
   const box = async (selector: string) => { const r = await page.locator(selector).boundingBox(); assert.ok(r, selector); return r; };
   const within = async () => {
@@ -108,8 +110,8 @@ try {
     assert.ok(f.x >= r.x - 1 && f.y >= r.y - 1 && f.x + f.width <= r.x + r.width + 1 && f.y + f.height <= r.y + r.height + 1, JSON.stringify({ r, f }));
     assert.ok(f.width >= 420 && f.height >= 360); return f;
   };
-  if (["css", "css-old-app", "model", "navigation"].includes(retained)) {
-    if (retained !== "css") {
+  if (["css", "css-old-app", "model", "navigation", "server"].includes(retained)) {
+    if (!["css", "server"].includes(retained)) {
       await page.evaluate(async (name: string) => { const { appStore } = await import("/assets/app-store.js"); await appStore.get().chatWorkspace?.open(name); }, b);
       await page.getByText("未能載入分割對話。目前對話不變；請重新整理頁面再試。", { exact: true }).waitFor();
     }
@@ -137,6 +139,7 @@ try {
       await sash.focus(); await page.keyboard.press("ArrowRight"); await settle(); assert.equal(Math.round((await box('[data-pane="a"]')).width - equal), 16);
       await page.keyboard.press("Shift+ArrowRight"); await settle(); assert.equal(Math.round((await box('[data-pane="a"]')).width - equal), 80);
       await shot("sash-keyboard", 2);
+      await page.keyboard.press("Home"); await settle(); assert.equal(Math.round((await box('[data-pane="a"]')).width), 360); await shot("minimum-pane", 2);
       await sash.dblclick(); await settle(); assert.ok(Math.abs((await box('[data-pane="a"]')).width - (await box('[data-pane="b"]')).width) <= 1);
       let sr = await box(".ws-sash"); await page.mouse.move(sr.x + sr.width / 2, sr.y + sr.height / 2); await page.mouse.down(); await page.mouse.move(sr.x + 110, sr.y + sr.height / 2, { steps: 6 });
       assert.ok((await box('[data-pane="a"]')).width > equal + 90); await page.keyboard.press("Escape"); await page.mouse.up(); await settle();
