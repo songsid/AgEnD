@@ -108,6 +108,16 @@ See [Use Cases](docs/use-cases.md) for real examples, everyday tips and who it's
 
 ## Quick Start
 
+**Install with AI.** Paste this one line into Claude Code (or another coding agent) on the computer you want AgEnD on:
+
+```text
+Read https://songsid.github.io/AgEnD/agent-install.en.md and follow it to install and set up AgEnD on this computer for me.
+```
+
+The agent follows an [install runbook](https://songsid.github.io/AgEnD/agent-install.en.md) written for it: it checks what is already installed, runs the installer for your system, asks how you want to use AgEnD (web only, Telegram or Discord), and stops whenever only you can act: the Windows Administrator prompt, a restart, creating a bot, or signing in. Your bot token goes into AgEnD's own setup page, never into the chat with the agent.
+
+Without AI:
+
 One-liner (macOS / Linux — installs Node.js via nvm + tmux + agend, then runs quickstart):
 
 ```bash
