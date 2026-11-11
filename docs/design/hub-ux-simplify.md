@@ -372,6 +372,8 @@ When U1–U3, S1, S2, B1 and B2 are in an alpha build, I repeat the review befor
 
 ## 6. Open items
 
+**Decided 2026-11-11 (leader, for the owner):** O1 yes; O2 keep the long link under 進階; O3 the recommended defaults, which the administrator can narrow; O4 Ridge builds S2 and Cairn co-reviews. The table records the questions as they were asked.
+
 | # | Question | Recommendation |
 |---|---|---|
 | O1 | Reconnect chains a disconnect and a new join behind one press. The disconnect is a confirmed Settings change today. May the signed-in admin's press count as the consent for both, as a9ccee59 does for joining? | Yes. Same actor, same page, and the action only narrows before it re-joins. Without it a chat Fleet gets a General card in the middle of a reconnect. |
