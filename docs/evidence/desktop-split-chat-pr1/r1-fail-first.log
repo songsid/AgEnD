@@ -1,0 +1,53 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-ownership-3637
+
+ ❯ tests/web-chat-pane-ownership-3637.test.ts (16 tests | 2 failed | 14 skipped) 1423ms
+     × keeps A discarded across a rerender while B accepts its question 91ms
+     × keeps A discarded across a rerender while B cancels its question 44ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > pane scope adds no DOM and retains legacy defaults > keeps A discarded across a rerender while B accepts its question
+AssertionError: expected [ { id: 3, …(5) } ] to have a length of +0 but got 1
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:207:48
+    205|       await p.mount(make(1)); // status/parent rerender while B's ques…
+    206|       confirm.answerConfirm(confirm.confirmStore.get().queue[0].id, ac…
+    207|       expect(confirm.confirmStore.get().queue).toHaveLength(0);
+       |                                                ^
+    208|       expect(routing.navStore.get().route.instance).toBe(acceptSecond …
+    209|       expect(sessions.alpha.staged.size).toBe(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > pane scope adds no DOM and retains legacy defaults > keeps A discarded across a rerender while B cancels its question
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:209:42
+    207|       expect(confirm.confirmStore.get().queue).toHaveLength(0);
+    208|       expect(routing.navStore.get().route.instance).toBe(acceptSecond …
+    209|       expect(sessions.alpha.staged.size).toBe(0);
+       |                                          ^
+    210|       expect(sessions.beta.staged.size).toBe(acceptSecond ? 0 : 1);
+    211|       if (!acceptSecond) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 14 skipped (16)
+   Start at  20:55:35
+   Duration  1.94s (transform 1.22s, setup 135ms, import 161ms, tests 1.42s, environment 0ms)
+

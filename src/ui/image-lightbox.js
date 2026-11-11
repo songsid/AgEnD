@@ -48,10 +48,16 @@ export function closeLightbox(seq) {
 }
 
 /** Rendered by the chat; gone with it (another instance, another panel). */
-export function LightboxHost() {
+export function LightboxHost({ owner } = {}) {
   const { open } = useStore(lightboxStore);
-  useEffect(() => () => closeLightbox(), []);
-  return open ? html`<${ImageLightbox} key=${open.seq} items=${open.items} index=${open.index} opener=${open.opener} onClose=${() => closeLightbox(open.seq)} />` : null;
+  const owned = useRef(null);
+  const mine = !owner || owner.current?.contains(open?.opener);
+  if (open && mine) owned.current = open.seq;
+  useEffect(() => () => {
+    if (!owner) closeLightbox();
+    else if (owned.current !== null) closeLightbox(owned.current);
+  }, []);
+  return open && mine ? html`<${ImageLightbox} key=${open.seq} items=${open.items} index=${open.index} opener=${open.opener} onClose=${() => closeLightbox(open.seq)} />` : null;
 }
 
 function ImageLightbox({ items, index, opener, onClose }) {
@@ -146,3 +152,5 @@ function ImageLightbox({ items, index, opener, onClose }) {
       <button type="button" class="icon-btn lb-nav lb-next" aria-label=${t("chat.lbNext")} title=${t("chat.lbNext")} onClick=${() => step(1)}><${Icon} name="forward" /></button>` : null}
   </dialog>`;
 }
+
+LightboxHost.paneOwner = true;

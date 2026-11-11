@@ -364,7 +364,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       teardown.add("pairing security notices", () => pairingNotices.close());
       const companyIdentity = { hubId: identity.hubId, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey,
         webOrigin: settings.webOrigin, memberOrigin: settings.memberOrigin };
-      const companyJoin = new HubCompanyJoin({ home: options.home, db, store, audit, groups, notices: pairingNotices,
+      const companyJoin = new HubCompanyJoin({ home: options.home, db, store, audit, groups, notices: pairingNotices, name: settings.name,
+        refreshAuthorization: () => memberServer?.refreshAuthorization(),
         identity: companyIdentity, connected: fleetId => memberServer?.features(fleetId) !== null && memberServer?.features(fleetId) !== undefined, signInvitation: claims => signCompanyInvitation(claims, issuerKey), descriptor: signCompanyDescriptor(companyIdentity, issuerKey),
         certificatePem: readPrivateFile(options.home, "hub/keys/tls-cert.pem"), administrator: settings.administrator,
         eventDays: settings.retention.eventDays, current: live, now });

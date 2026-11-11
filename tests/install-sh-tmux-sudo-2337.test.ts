@@ -36,6 +36,8 @@ function host() {
   dirs.push(d);
   const bin = join(d, "bin");
   mkdirSync(bin);
+  writeFileSync(join(bin, "env"), readFileSync("/usr/bin/env"));
+  chmodSync(join(bin, "env"), 0o755);
   const pkgLog = join(d, "pkg.log");
   const sudoLog = join(d, "sudo.log");
   writeFileSync(join(bin, "id"), `#!/bin/sh
@@ -140,8 +142,8 @@ describe("#2337 install.sh: tmux install uses $SUDO, not a hardcoded sudo", () =
     const h = host();
     const r = runBlock(h, { uid: "1000", pkg: "apt", withSudo: true });
     expect(r.status, r.stdout + r.stderr).toBe(0);
-    expect(sudoLog(h)).toMatch(/sudo apt-get update/);
-    expect(sudoLog(h)).toMatch(/sudo apt-get install .*tmux/);
+    expect(sudoLog(h)).toMatch(/sudo env DEBIAN_FRONTEND=noninteractive apt-get update/);
+    expect(sudoLog(h)).toMatch(/sudo env DEBIAN_FRONTEND=noninteractive apt-get install .*tmux/);
     expect(r.stdout).toMatch(/tmux 3\.3a installed/);
   });
 
@@ -166,7 +168,7 @@ describe("#2337 install.sh: tmux install uses $SUDO, not a hardcoded sudo", () =
   describe("mutation: the hardcoded sudo apt-get line", () => {
     it("still fails as root when sudo is not on PATH (the defect)", () => {
       const mutant = step.replace(
-        /\$SUDO apt-get update -qq && \$SUDO apt-get install -y -qq tmux/,
+        /\$SUDO env DEBIAN_FRONTEND=noninteractive apt-get update -qq <\/dev\/null && \$SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tmux <\/dev\/null/,
         OLD_APT,
       );
       expect(mutant).not.toBe(step);
@@ -178,8 +180,8 @@ describe("#2337 install.sh: tmux install uses $SUDO, not a hardcoded sudo", () =
     });
 
     it("the live apt/dnf/pacman lines use $SUDO, not a bare sudo", () => {
-      expect(step).toMatch(/\$SUDO apt-get update/);
-      expect(step).toMatch(/\$SUDO apt-get install/);
+      expect(step).toMatch(/\$SUDO env DEBIAN_FRONTEND=noninteractive apt-get update/);
+      expect(step).toMatch(/\$SUDO env DEBIAN_FRONTEND=noninteractive apt-get install/);
       expect(step).toMatch(/\$SUDO dnf install/);
       expect(step).toMatch(/\$SUDO pacman /);
       expect(step).not.toMatch(/(?:^|[^\w$])sudo apt-get/m);

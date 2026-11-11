@@ -121,6 +121,8 @@ export function hubDirectoryDiagnostics(log: HubRuntimeOptions["log"]): (d: HubD
 }
 
 export class HubRuntime {
+  /** The mounted member, if current, can narrow only its exact confirmed local binding. */
+  memberLeave(expected: import("./types.js").HubMemberLeaveBinding): Promise<boolean> { return this.mount.memberLeave(expected); }
   private readonly directoryResponses: HubDirectoryResponseOwner;
   private mountedDirectory: HubMountedDirectory | null = null;
   private coldDirectory: Awaited<ReturnType<typeof createHubDirectoryColdSettings>> | null = null;

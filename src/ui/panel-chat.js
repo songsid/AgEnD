@@ -13,6 +13,7 @@ import { lang, register, t } from "/assets/app-i18n.js";
 import { appStore, createStore, guestPage, guestTrusted, useStore } from "/assets/app-store.js";
 import { ComposerAuth } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
+import * as paneContext from "/assets/app-ctx.js";
 import { backendLabel, modelText, namesOf, namesStore, navStore as instanceNavStore, supportsInstanceFeature } from "/assets/instance-nav.js";
 import { machineName } from "/assets/machine-name.js";
 import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
@@ -98,8 +99,29 @@ import { isUpdateLine, needsArgument, paletteFor, parseCommandLine, UPDATE_COMMA
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
+/**
+ * M-2904: the working bar's Stop has its own stylesheet, linked once when this module loads (before the chat draws): a tab
+ * opened before the change keeps its older app.css, which has no rule for it (Prism #3651: a 40×30 Stop on a phone).
+ */
+/**
+ * Fable #3653: ComposerInput still gets a (hidden) stop. A tab that loaded the Hub's panel before the upgrade keeps the OLD
+ * chat-composer.js in its module map, which reads stop.* with no default; the new one ignores it.
+ */
+const HIDDEN_STOP = Object.freeze({ hidden: true, disabled: true, title: "", label: "", onClick: () => {} });
+
+export function linkWorkBarCss(doc = typeof document !== "undefined" ? document : null) {
+  try {
+    if (!doc || !doc.head || doc.querySelector('link[data-chat-work-bar-css="1"]')) return;
+    const link = doc.createElement("link");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/chat-work-bar.css"); link.setAttribute("data-chat-work-bar-css", "1");
+    doc.head.appendChild(link);
+  } catch { /* Stop still works without it */ }
+}
+linkWorkBarCss();
+
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
-const composerField = () => (typeof document !== "undefined" ? document.getElementById("msgIn") : null);
+const composers = new Map(); // agent → current mounted refs, never a retained thread's stale closure
+const composerField = (name) => composers.get(name)?.input.current || null;
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -160,16 +182,17 @@ export function boot({ stream, boot: bootData, deps = {} }) {
     else P().setBannerScope(null);
   }
   // #2911: the preview panel's "Reply about this page" reaches the composer through these (an undoable edit, as typing).
+  let feedbackInstance = null; // an older actions module calls focus() without its instance
   setPanelFeedback({
     findMsg: (instance, key) => (store.state.msgs[instance] || []).find((x) => msgKey(x) === key) || null,
     startReply: (instance, x) => store.startReply(instance, x),
     clearReply: (instance) => store.clearReply(instance),
-    addToDraft: (instance, line) => { recordEdit(composerField()); store.addToDraft(instance, line); },
-    focus: () => {
-      const el = composerField(); if (!el) return;
+    addToDraft: (instance, line) => { feedbackInstance = instance; recordEdit(composerField(instance)); store.addToDraft(instance, line); },
+    focus: (instance = feedbackInstance) => {
+      const el = composerField(instance); if (!el) return;
       el.focus();
       // After the render that shows the line: the caret at its end.
-      setTimeout(() => { try { const n = el.value.length; el.setSelectionRange(n, n); } catch { /* not a text field */ } }, 0);
+      setTimeout(() => { if (composerField(instance) !== el) return; try { const n = el.value.length; el.setSelectionRange(n, n); } catch { /* not a text field */ } }, 0);
     },
   });
   // #1604: the preview opt-in and Tour live in Settings → This device now (and on each preview card's menu).
@@ -221,15 +244,23 @@ const composerLabel = (inst, name) => (inst && typeof inst.display_name === "str
 /** #2478: a touch screen (a coarse pointer) — Return is a new line there and only the Send button sends. Asked each time. */
 
 export function ChatPanel({ route, navKey }) {
+  const pane = paneContext.usePane?.();
+  const shown = useRef(null);
   const lease = useLease(navKey);
   const app = useStore(appStore);
   const name = route.instance;
   const inst = name ? app.instances.find(i => i.name === name) : null;
   useEffect(() => {
+    if (store.show) {
+      if (!name || !inst) return;
+      const owner = store.show(name); shown.current = owner;
+      return () => { owner.close(); if (shown.current === owner) shown.current = null; };
+    }
     store.setCurrent(name && inst ? name : null);
-    return () => store.setCurrent(null);
+    return () => store.setCurrent(null); // old cached store: the legacy single-panel path
   }, [name, !!inst]);
-  useEffect(() => { setTitle(inst?.runtime === "windows" ? inst.display_name || name : name || t("app.chat")); }, [name, navKey, inst?.runtime, inst?.display_name]);
+  useEffect(() => { shown.current?.focus(pane?.focused !== false); }, [name, !!inst, pane?.focused]);
+  useEffect(() => { if (pane?.focused !== false) setTitle(inst?.runtime === "windows" ? inst.display_name || name : name || t("app.chat")); }, [name, navKey, inst?.runtime, inst?.display_name, pane?.focused]);
   if (!name) {
     // #1854 (rank 7): one instruction — pick an agent, or with none at all, the one way to make one. Connecting a chat
     // app (the first-run card, #1519 P7) is offered in Settings, not here: it competed with the first agent.
@@ -274,6 +305,13 @@ function useResolvedMode(lease) {
 }
 
 function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
+  const pane = paneContext.usePane?.(), paneNow = useRef(pane); paneNow.current = pane;
+  const bindings = useRef({ input: { current: null }, box: { current: null } }).current;
+  const ids = pane ? Object.fromEntries(["msgIn", "attachBtn", "stopBtn", "sendBtn", "cmdPalette"].map(key => [key, `pane-${pane.id}-${key}`])) : {};
+  useLayoutEffect(() => {
+    composers.set(name, bindings);
+    return () => { if (composers.get(name) === bindings) composers.delete(name); };
+  }, [name]);
   const attachmentsSupported = supportsInstanceFeature(inst,"attachments");
   const names = useStore(namesStore);   // #1722: which name leads (the title)
   // #1629: this agent's theme, on this surface only; redrawn when the themes, the viewer's switch or the mode move.
@@ -310,7 +348,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     store.openHistory(name, lease, ac?.signal);
     return () => ac?.abort();
   }, [name]);
-  useEffect(() => { try { localStorage.setItem("agend_last_instance", name); } catch { /* none */ } }, [name]);
+  useEffect(() => { try { if (pane?.focused !== false) localStorage.setItem("agend_last_instance", name); } catch { /* none */ } }, [name, pane?.focused]);
   // Files dragged over the chat show where they go; a drop attaches them (counted, so moving over messages does not flicker).
   useEffect(() => {
     const el = view.current; if (!el) return undefined;
@@ -327,7 +365,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   // Esc stops the agent's reply (as Esc in its terminal would): from the chat, while it works, and only when nothing
   // else that Esc would close is open (a dialog, a menu, the Session menu).
   useEffect(() => lease.hold(onPanelKey((e) => {
-    if (e.key !== "Escape" || e.isComposing || e.defaultPrevented) return;
+    if (paneNow.current?.focused === false || e.key !== "Escape" || e.isComposing || e.defaultPrevented) return;
     if (!R().isBusy(store.state.exec[name]) || store.state.stopping[name] || store.state.cancelling[name]) return;
     if (document.querySelector("dialog[open], .menu-list, .pop")) return;
     const active = document.activeElement;
@@ -390,14 +428,14 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
         ${inst.general_topic ? html`<${GeneralLocation} name=${name} attentionOnly=${true} />` : null}
         <${NativePaneRecovery} name=${name} inst=${inst} lease=${lease} />
         ${inst.native_blocked ? html`<div class="windows-agent-blocked" role="alert"><p>${t("chat.nativeBlocked")}</p><button type="button" class="btn" disabled=${recovering} onClick=${recoverNative}>${t("chat.nativeRecover")}</button></div>` : null}
-        <${Thread} name=${name} label=${inst.runtime === "windows" ? inst.display_name || name : name} th=${thread} />
-        <${Dock} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${theme ? theme.workingLabel : undefined} />
+        <${Thread} name=${name} bindings=${bindings} label=${inst.runtime === "windows" ? inst.display_name || name : name} th=${thread} />
+        <${Dock} name=${name} inst=${inst} bindings=${bindings} ids=${ids} focused=${pane?.focused !== false} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${theme ? theme.workingLabel : undefined} />
         <${ChatAmbient} name=${name} surface=${effectSurface} part="front" />
       </div>
       <${PreviewPanel} name=${name} split=${split} msgs=${() => store.state.msgs[name] || []} subscribe=${(fn) => store.subscribe(fn)}
         keyOf=${msgKey} reveal=${(k) => thread.current && thread.current.reveal(k)} download=${downloadHtml} allow=${(commit) => setPreviewOptIn(true, commit)} />
     </div>
-    <${LightboxHost} />
+    <${LightboxHost} owner=${view} />
     ${attachmentsSupported ? html`<div data-trust="drop" class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>` : null}
     ${dialog === "delete" ? html`<${DeleteDialog} name=${name} inst=${inst} onClose=${() => setDialog(null)} />` : null}
   </div>`;
@@ -431,10 +469,10 @@ export function setThreadClock(fn) { now = typeof fn === "function" ? fn : monot
  * The kept threads to let go, in order. `kept`: [name, drawn messages], least recently shown first; `current`: the
  * one on screen (never let go).
  */
-export function threadsToLetGo(kept, current, { keep, maxNodes, favorites }) {
+export function threadsToLetGo(kept, current, { keep, maxNodes, favorites, protected: protectedNames = new Set() }) {
   let count = kept.length, nodes = kept.reduce((n, [, d]) => n + d, 0);
   const out = [];
-  const order = [...kept.filter(([n]) => n !== current && !favorites.has(n)), ...kept.filter(([n]) => n !== current && favorites.has(n))];
+  const order = [...kept.filter(([n]) => n !== current && !protectedNames.has(n) && !favorites.has(n)), ...kept.filter(([n]) => n !== current && !protectedNames.has(n) && favorites.has(n))];
   for (const [n, d] of order) {
     if (count <= keep && nodes <= maxNodes) break;
     out.push(n); count--; nodes -= d;
@@ -446,10 +484,11 @@ const narrowScreen = () => typeof matchMedia === "function" && matchMedia("(max-
 function trimKept(current) {
   const kept = [...keptThreads].map(([n, e]) => [n, e.thread.nodes.size]);
   const favorites = new Set(instanceNavStore.get().favorites);
-  for (const n of threadsToLetGo(kept, current, { keep: narrowScreen() ? THREAD_KEEP_NARROW : THREAD_KEEP, maxNodes: THREAD_KEEP_NODES, favorites })) {
+  for (const n of threadsToLetGo(kept, current, { keep: narrowScreen() ? THREAD_KEEP_NARROW : THREAD_KEEP, maxNodes: THREAD_KEEP_NODES, favorites, protected: new Set(mountedThreads.keys()) })) {
     letGo(keptThreads.get(n), true); keptThreads.delete(n);
   }
 }
+const mountedThreads = new Map();
 const keptThreads = new Map();                 // name → { thread, list, sink, lang }
 /** Tests only: let every kept thread go. */
 export function forgetKeptThreads() { for (const e of keptThreads.values()) letGo(e, true); keptThreads.clear(); }
@@ -472,9 +511,9 @@ function threadEntry(name, doc) {
     clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
     retryOutgoing: (clientId) => store.retryOutgoing(name, clientId),              // a failed send's Retry and Delete
     deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId),
-    putBackOutgoing: (clientId) => { recordEdit(composerField()); store.putBackOutgoing(name, clientId); },   // undoable, as typing
+    putBackOutgoing: (clientId) => { recordEdit(composerField(name)); store.putBackOutgoing(name, clientId); },   // undoable, as typing
     // #2272: reply to a message (the bar above the composer), and show the one a reply quotes.
-    startReply: (x) => { store.startReply(name, x); doc.getElementById("msgIn")?.focus(); },
+    startReply: (x) => { store.startReply(name, x); composerField(name)?.focus(); },
     findQuoted: (key) => store.findQuoted(name, key),
     notice: (text) => toast(text, false),
     replyButtonBusy: (id) => store.state.rbBusy.has(id),
@@ -510,7 +549,7 @@ function follow(name, thread) {
 }
 
 /** The thread's view: Preact owns the scroller and the jump pill; the kept list (chat-thread.js) is put inside it. */
-function Thread({ name, label = name, th }) {
+function Thread({ name, label = name, th, bindings }) {
   const scroller = useRef(null), host = useRef(null);
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
@@ -520,6 +559,7 @@ function Thread({ name, label = name, th }) {
     let e = keptThreads.get(name);
     // Kept only while it can be shown as it is: the same language, and this page's own document.
     if (e && (e.lang !== lang() || e.list.ownerDocument !== doc)) { letGo(e, true); keptThreads.delete(name); e = undefined; }
+    const owner = {}; mountedThreads.set(name, owner);
     const kept = !!e;
     if (e) keptThreads.delete(name);
     else e = threadEntry(name, doc);
@@ -542,19 +582,19 @@ function Thread({ name, label = name, th }) {
     ls.addEventListener("click", thread.onClick);
     // #2272: the message menu, swipe left / long-press on a phone, R on a focused message.
     const offActions = installMessageActions(ls, {
-      t, messageOf: thread.messageOf, rove: thread.rove, reply: (x) => { store.startReply(name, x); document.getElementById("msgIn")?.focus(); },
+      t, messageOf: thread.messageOf, rove: thread.rove, reply: (x) => { store.startReply(name, x); bindings.input.current?.focus(); },
       copyText, notice: (text, ok = true) => toast(text, ok),
       linkOf: (x) => `${location.origin}/ui/chat/${encodeURIComponent(name)}#m=${msgKey(x)}`,
     });
     // M-2789: select a passage in a message → 「引用」 → it goes into the composer as a quote at the caret, repeatable.
     const offQuote = installQuoteSelection(ls, {
-      field: () => document.getElementById("msgIn"),
-      canQuote: () => !!document.getElementById("msgIn"),
+      field: () => bindings.input.current,
+      canQuote: () => !!bindings.input.current,
       phone: () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches,
-      composerBox: () => document.querySelector(".composer-box"),
+      composerBox: () => bindings.box.current,
       threadBox: () => sc,
       insert: (text) => {
-        const field = document.getElementById("msgIn");
+        const field = bindings.input.current;
         const value = store.state.drafts[name] || "";
         // The caret where the person left it in the composer (kept when it lost the focus); never touched: the end.
         const caret = field && field.dataset.touched === "1" ? composerCaret(field, value) : value.length;
@@ -570,7 +610,7 @@ function Thread({ name, label = name, th }) {
         const phone = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
         // After the box redraws with the new text: the caret after the quote, in view. A phone keeps its keyboard down.
         setTimeout(() => {
-          const el = document.getElementById("msgIn"); if (!el) return;
+          const el = bindings.input.current; if (!el || composers.get(name) !== bindings || el !== field) return;
           el.dataset.touched = "1";
           try { el.setSelectionRange(r.caret, r.caret); } catch { /* not a text field */ }
           if (!phone) el.focus();
@@ -594,6 +634,7 @@ function Thread({ name, label = name, th }) {
       offActions(); offQuote();
       sc.removeEventListener("scroll", onScroll);
       ls.removeEventListener("click", thread.onClick);
+      if (mountedThreads.get(name) === owner) mountedThreads.delete(name);
       e.sink = null;
       th.current = null;
       // Passed through (new, and shown under THREAD_PASS_MS): let go. Otherwise kept for a later visit, within the budget.
@@ -625,17 +666,17 @@ function SubagentProgress({ name }) {
 }
 
 /** Everything under the thread: prompts, the working line, a failed send, files waiting, and the composer. */
-function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
+function Dock({ name, inst, lease, exec, awaiting, workingLabel, bindings, ids, focused }) {
   useChatTick(name, ["state"]);
   const s = store.state;
   return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
     <${SubagentProgress} name=${name} />
-    <${WorkBar} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />
+    <${WorkBar} ids=${ids} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
     ${s.waking[name] ? html`<p class="send-waking" role="status">${t("chat.waking", name)}</p>` : null}
-    <${Composer} name=${name} inst=${inst} label=${composerLabel(inst, name)} lease=${lease} busy=${R().isBusy(exec)} />
+    <${Composer} name=${name} inst=${inst} bindings=${bindings} ids=${ids} focused=${focused} label=${composerLabel(inst, name)} lease=${lease} busy=${R().isBusy(exec)} />
     <div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
       class="hint" title=${t(guestPage() || !supportsInstanceFeature(inst,"commands") ? "chat.guestMore" : "chat.composerMore")}>${t(supportsInstanceFeature(inst,"commands") ? touchScreen() ? "chat.composerHintTouch" : "chat.composerHint" : touchScreen() ? "chat.nativeComposerHintTouch" : "chat.nativeComposerHint")}</span></div>
   </div></div>`;
@@ -713,7 +754,7 @@ function PromptText({ p, action }) {
 }
 
 /** "<name> is working… 0:42", "looks stuck", "Stopping…", or what it waits on at its terminal. Text only. */
-function WorkBar({ name, lease, exec, awaiting, workingLabel }) {
+function WorkBar({ name, lease, exec, awaiting, workingLabel, ids }) {
   const s = store.state;
   const busy = R().isBusy(exec) ? exec : "";
   const kind = awaiting != null ? "awaiting" : s.stopping[name] && busy ? "stopping" : busy;
@@ -728,8 +769,10 @@ function WorkBar({ name, lease, exec, awaiting, workingLabel }) {
   const label = kind === "working" && workingLabel ? workingLabel
     : t(kind === "stuck" ? "chat.stuck" : kind === "stopping" ? "chat.stopping" : kind === "awaiting" ? "chat.awaiting" : "chat.working", name);
   const since = s.workingSince[name];
-  return html`<${WorkBarView} kind=${kind} label=${label} note=${awaiting || t("chat.approxNote")} noteTitle=${t("chat.approxNote")}
-    elapsed=${kind === "awaiting" || since == null ? "" : R().formatElapsed(performance.now() - since)} elapsedTitle=${t("chat.elapsedTitle")} />`;
+  // M-2904: Stop is the bar's, while the agent is busy — in the composer row it took the box's width away.
+  return html`<${WorkBarView} ids=${ids} kind=${kind} label=${label} note=${awaiting || t("chat.approxNote")} noteTitle=${t("chat.approxNote")}
+    elapsed=${kind === "awaiting" || since == null ? "" : R().formatElapsed(performance.now() - since)} elapsedTitle=${t("chat.elapsedTitle")}
+    stop=${busy ? { disabled: !!s.cancelling[name], title: t("chat.stopReplyTitle"), label: t("chat.stopReply"), onClick: () => store.cancelReply(name) } : null} />`;
 }
 
 /** #2272: the reply bar's quote — the first ~80 characters, or what it had instead of text. */
@@ -738,9 +781,9 @@ function replySnippet(r) {
   return text || (r.media === "photo" ? t("chat.replyPhoto") : r.media === "document" ? t("chat.replyFile") : "");
 }
 
-function Composer({ name, inst, label = name, lease, busy }) {
+function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, focused = true }) {
   const s = store.state;
-  const input = useRef(null);
+  const input = bindings.input;
   const [, tick] = useState(0);
   const [sel, setSel] = useState(0);
   const [closedFor, setClosedFor] = useState(null);    // the draft the palette was closed on (Esc); it opens again on change
@@ -761,7 +804,7 @@ function Composer({ name, inst, label = name, lease, busy }) {
   // M-2738 (D3): /update is the fleet's, not the agent's: offered (never to a guest) and it opens the app's Update dialog.
   const palette = palette0 && !guest && UPDATE_COMMAND.name.startsWith(value.slice(1)) ? [...palette0, UPDATE_COMMAND] : palette0;
   const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
-  useEffect(() => { if (input.current) input.current.focus(); }, [name]);
+  useEffect(() => { if (focused && input.current) input.current.focus(); }, [name]);
   useEffect(() => { refreshTourSpot(); });
   const setValue = (v) => { store.setDraft(name, v); setSel(0); tick(n => n + 1); };
   // #1269: a command line runs the command (POST /ui/command); anything else — "/" included — is sent as before.
@@ -812,14 +855,15 @@ function Composer({ name, inst, label = name, lease, busy }) {
     if (list && list.length) { if (!attachmentsSupported) { if (!text) e.preventDefault(); toast(t("chat.runtimeNoAttachments"),false); return; } store.addFiles(name, list); if (!text) e.preventDefault(); return; }
     if (attachmentsSupported && R().isLongPaste(text) && store.attachPastedText(name, text)) e.preventDefault();
   };
-  const optId = (c) => `cmd-${c.name}`;
-  return html`<div class="composer-box">
+  const paletteId = ids.cmdPalette || "cmdPalette";
+  const optId = (c) => ids.cmdPalette ? `${ids.cmdPalette}-${c.name}` : `cmd-${c.name}`;
+  return html`<div class="composer-box" ref=${bindings.box}>
     ${machineUnavailable ? html`<p class="note runtime-machine-unavailable" role="status">${t(inst.machine_status === "revoked" ? "chat.machineRevokedHint" : "chat.machineUnavailable",machineName(inst.machine_id,inst.machine_name))}</p>` : null}
     ${inst?.native_busy && !busy && !inst?.native_blocked ? html`<p class="note" role="status">${t("chat.nativeBusy")}</p>` : null}
     ${!guestPage() && supportsInstanceFeature(inst,"commands") ? html`<div class="model-entry-row" role="group" aria-label=${mw("model")}>
       <button type="button" class="btn btn-sm" onClick=${() => inst?.runtime === "windows" ? navigate(sectionPath("agents")) : store.runCommand(name, "backend", "", { alive: () => lease.current() })}>${backendLabel(inst?.backend)} ▾</button>
       <button type="button" class="btn btn-sm" onClick=${() => store.runCommand(name, "model", "", { alive: () => lease.current() })}>${modelLabel(inst?.model || modelText(inst || {}))} ▾</button></div>` : null}
-    ${palette ? html`<ul data-trust="palette" class="cmd-palette" id="cmdPalette" role="listbox" aria-label=${t("chat.cmdCommands")}>
+    ${palette ? html`<ul data-trust="palette" class="cmd-palette" id=${paletteId} role="listbox" aria-label=${t("chat.cmdCommands")}>
       ${palette.length ? palette.map((c) => html`<li key=${c.name} id=${optId(c)} role="option" aria-selected=${c === pick ? "true" : "false"}
           class=${c === pick ? "on" : ""} onMouseDown=${(e) => { e.preventDefault(); complete(c); }}>
           <span class="cmd-name mono">/${c.name}${c.arg ? html` <span class="cmd-arg">${c.arg}</span>` : null}</span><span class="cmd-desc">${t(`chat.cmd_${c.name}`)}</span></li>`)
@@ -830,16 +874,16 @@ function Composer({ name, inst, label = name, lease, busy }) {
       <span class="reply-text">${replySnippet(reply)}</span>
       <button type="button" class="icon-btn reply-cancel" title=${t("chat.replyCancel")} aria-label=${t("chat.replyCancel")} onClick=${() => { store.clearReply(name); input.current?.focus(); }}><${Icon} name="close" size=${14} /></button>
     </div>` : null}
-    ${files.length ? html`<div class="pending-files">${files.map((f, i) => html`<${FileChip} key=${`${f.name}-${i}`} f=${f} i=${i} name=${name} />`)}</div>` : null}
-    <${ComposerInput} inputRef=${input} value=${value} placeholder=${t("chat.composerPlaceholder", label)} onValue=${setValue}
-      onKeyDown=${onKeyDown} onPaste=${onPaste} controls=${palette ? "cmdPalette" : undefined} expanded=${!!palette} activeDescendant=${pick ? optId(pick) : undefined}
+    ${files.length ? html`<div class="pending-files">${files.map((f, i) => html`<${FileChip} bindings=${bindings} key=${`${f.name}-${i}`} f=${f} i=${i} name=${name} />`)}</div>` : null}
+    <${ComposerInput} inputRef=${input} ids=${ids} value=${value} placeholder=${t("chat.composerPlaceholder", label)} onValue=${setValue}
+      onKeyDown=${onKeyDown} onPaste=${onPaste} controls=${palette ? paletteId : undefined} expanded=${!!palette} activeDescendant=${pick ? optId(pick) : undefined}
       attach=${attachmentsSupported ? { title: t("chat.attachTitle"), onFiles: (list) => store.addFiles(name, list) } : null}
-      stop=${{ hidden: !busy, disabled: !!s.cancelling[name], title: t("chat.stopReplyTitle"), label: t("chat.stopReply"), onClick: () => store.cancelReply(name) }}
-      send=${{ hidden: busy && !content, disabled: !content || sendingBlocked, label: t("chat.send"), onClick: submit }} />
+      stop=${HIDDEN_STOP}
+      send=${{ hidden: false, disabled: !content || sendingBlocked, label: t("chat.send"), onClick: submit }} />
     </div>`;
 }
 
-function FileChip({ f, i, name }) {
+function FileChip({ f, i, name, bindings }) {
   const img = useRef(null);
   const isImage = /^image\//.test(f.type) && typeof URL.createObjectURL === "function";
   useEffect(() => {
@@ -851,7 +895,7 @@ function FileChip({ f, i, name }) {
   return html`<span class="file-chip">
     ${isImage ? html`<img ref=${img} alt="" />` : html`<span class="ic"><${Icon} name="file" size=${16} /></span>`}
     <span class="nm">${f.name}</span><span class="sz">${R().formatSize(f.size)}</span>
-    ${store.isPasted(f) ? html`<button type="button" class="as-text" onClick=${() => { recordEdit(composerField()); store.fileBackAsText(name, i); }}>${t("chat.asText")}</button>` : null}
+    ${store.isPasted(f) ? html`<button type="button" class="as-text" onClick=${() => { recordEdit(bindings.input.current); store.fileBackAsText(name, i); }}>${t("chat.asText")}</button>` : null}
     <button type="button" class="chip-x" title=${t("chat.removeFile")} aria-label=${`${t("chat.removeFile")} ${f.name}`} onClick=${() => store.removeFile(name, i)}><${Icon} name="close" size=${14} /></button></span>`;
 }
 

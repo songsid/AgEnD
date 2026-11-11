@@ -45,7 +45,7 @@ function rig() {
                 publicKey: pem, fleetOrigin: "http://127.0.0.1:8080", requestId: randomUUID(), operationId: randomUUID(), fleetId: randomUUID(), verifierS256: randomBytes(32).toString("base64url") },
             version: 1, label: "Owned fixture", stateHash: "b".repeat(64), stage, createdAt: clock.now, outerDeadline: clock.now + 600000, retainUntil: clock.now + 1200000,
             browserHash: "c".repeat(64), browserOrigin: "http://127.0.0.1:8080", owner: null, sessionId: null, approvedAt: null, redeemDeadline: null, deliveryDeadline: 121000,
-            issuedHash: issued ? "d".repeat(64) : null, reason: null, delivery: null, receipt: null, invitationId: null, approvedBy: null };
+            issuedHash: issued ? "d".repeat(64) : null, reason: null, delivery: null, receipt: null, invitationId: null, approvedBy: null, supersedesFleetId: null };
         db.transaction(() => records.insert(record)).immediate();
         return record;
     };
@@ -57,6 +57,18 @@ function rig() {
     return { db, home, decision, audit, request, clock, records, addJoin, addOffer };
 }
 describe("#3428 authoritative web-address SQL", () => {
+    it.each(["legacy", "s1"] as const)("retires %s pending records without replaying a reconnect", format => {
+        const r = rig(), pending = r.addJoin("pending"), supersedesFleetId = format === "s1" ? randomUUID() : null;
+        const raw: Partial<JoinRecord> = { ...pending, reason: format === "s1" ? "offer-pending" : null, supersedesFleetId };
+        if (format === "legacy") delete raw.supersedesFleetId;
+        r.db.prepare("UPDATE hub_company_join_requests SET body=? WHERE id=?").run(JSON.stringify(raw), pending.binding.requestId);
+        r.decision.commit(r.request(), () => true);
+        expect(r.records.get(pending.binding.requestId)).toMatchObject({ version: 2, stage: "ended", reason: "authority",
+            browserHash: null, browserOrigin: null, supersedesFleetId, outerDeadline: pending.outerDeadline, retainUntil: pending.retainUntil });
+        expect(r.db.prepare("SELECT value FROM member_pin").get()).toEqual({ value: "unchanged" });
+        expect(r.decision.head().revision).toBe(1);
+        expect(r.audit.appendInTransaction).toHaveBeenCalledOnce();
+    });
     it.each([false, true])("expired invitation survives ordinary request pruning (consumed=%s) without blocking address changes", consumed => {
         const r = rig(), old = r.addJoin(consumed ? "acknowledged" : "pending");
         const offer = r.addOffer(old.binding.requestId, consumed);

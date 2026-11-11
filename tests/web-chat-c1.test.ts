@@ -648,7 +648,7 @@ describe("chat page: the composer and the history", () => {
     // Hub PR A (#3226): the box itself is drawn by the shared composer row, which panel-chat renders.
     const composer = readFileSync(join(process.cwd(), "src", "ui", "shared", "chat-composer.js"), "utf8");
     expect(panel).toContain("<${ComposerInput} inputRef=${input}");
-    expect(composer).toMatch(/<textarea id="msgIn"/);
+    expect(composer).toMatch(/<textarea id=\$\{ids\.msgIn \|\| "msgIn"\}/);
     expect(composer).not.toMatch(/<input id="msgIn"/);
     expect(panel).toContain("R().composerKey(e, { touch: touchScreen() })");
     expect(panel).toContain("store.openHistory(name, lease, ac?.signal)");   // #2188: aborted when the chat is left before it answers
@@ -680,7 +680,7 @@ describe("chat page: the composer and the history", () => {
     expect(panel).not.toMatch(/store\.state\.msgs\[name\] \|\| \[\]\)\)?;?\s*$|thread\.render\(store\.state\.msgs/m);
     expect(panel).toContain("retryOutgoing: (clientId) => store.retryOutgoing(name, clientId)");
     expect(panel).toContain("deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId)");
-    expect(panel).toContain("putBackOutgoing: (clientId) => { recordEdit(composerField()); store.putBackOutgoing(name, clientId); }");
+    expect(panel).toContain("putBackOutgoing: (clientId) => { recordEdit(composerField(name)); store.putBackOutgoing(name, clientId); }");
   });
 });
 
@@ -887,7 +887,8 @@ describe("the composer (panel-chat.js, mounted)", () => {
   afterAll(async () => { await a.p.unmount(); a.p.restore(); });
   const $ = (id: string) => a.p.document.getElementById(id)!;
   const buttonNamed = (text: string) => a.p.document.querySelectorAll("button").find(b => b.textContent === text)!;
-  const shown = () => ({ stop: !$("stopBtn").hidden, send: !$("sendBtn").hidden });
+  // M-2904: Stop is in the working bar (never in the composer row), and Send never leaves it (disabled with nothing to send).
+  const shown = () => { const stop = a.p.document.getElementById("stopBtn"); return { stop: !!stop && !stop.hidden, send: !$("sendBtn").hidden }; };
   const type = async (text: string) => { const ta = $("msgIn"); ta.value = text; fire(ta, "input"); await settle(); };
 
   const bubble = () => a.p.document.querySelector(".thread .msg.out");
@@ -905,14 +906,15 @@ describe("the composer (panel-chat.js, mounted)", () => {
     a.net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
     $("sendBtn").click();
     await settle();
-    expect($("stopBtn").textContent, "the composer's Stop is named Stop reply").toBe("Stop reply");
-    expect(shown(), "sent: the composer is empty, only Stop").toEqual({ stop: true, send: false });
+    expect($("stopBtn").textContent, "the working bar's Stop is named Stop reply").toBe("Stop reply");
+    expect(shown(), "sent: the composer is empty — Stop in the working bar, Send stays (disabled)").toEqual({ stop: true, send: true });
+    expect(($("sendBtn") as any).disabled).toBe(true);
     expect([bubbleText(), bubble()!.className, bubble()!.querySelector(".out-state")?.textContent]).toEqual(["hello", "msg user out out-sending", "Sending…"]);
     reply.open({ body: { error: "instance is busy" } });
     await settle(6);
     expect([bubbleText(), bubble()!.className, bubble()!.querySelector(".out-error")!.textContent, act("retryOut").textContent, act("deleteOut").textContent])
       .toEqual(["hello", "msg user out out-failed", "Not sent: instance is busy", "Retry send", "Delete"]);
-    expect([$("msgIn").value, shown()]).toEqual(["", { stop: true, send: false }]);
+    expect([$("msgIn").value, shown(), ($("sendBtn") as any).disabled]).toEqual(["", { stop: true, send: true }, true]);
     a.net.route = async (path) => (path === "/ui/send" ? { body: { sent: true, messageId: "m-again" } } : { body: {} });
     act("retryOut").click();
     await settle(6);

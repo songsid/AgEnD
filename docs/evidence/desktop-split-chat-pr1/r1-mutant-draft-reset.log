@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-ownership-3637
+
+ ❯ tests/web-details-n2.test.ts (34 tests | 1 failed | 33 skipped) 2481ms
+     × an edit is staged at once (the Settings bar, a dot on its category), the draft stays when another category opens, and Discard puts it back 1158ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-details-n2.test.ts > the Settings tab of an agent (Details & settings) > an edit is staged at once (the Settings bar, a dot on its category), the draft stays when another category opens, and Discard puts it back
+AssertionError: expected 'Builds the site, faster' to be 'Builds the site' // Object.is equality
+
+Expected: "Builds the site"
+Received: "Builds the site, faster"
+
+ ❯ tests/web-details-n2.test.ts:295:53
+    293|     await untilRead(); await settle(12);
+    294|     expect(pg.root.querySelector(".p-details > .s-pending")).toBeNull(…
+    295|     expect(pg.root.querySelector("#ag-desc").value).toBe("Builds the s…
+       |                                                     ^
+    296|     expect(pg.root.querySelectorAll(".p-details > .s-nav .count").leng…
+    297|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 33 skipped (34)
+   Start at  20:57:16
+   Duration  2.91s (transform 1.89s, setup 105ms, import 166ms, tests 2.48s, environment 0ms)
+

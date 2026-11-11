@@ -248,10 +248,10 @@ describe("directory: LDAPS only, and administrator lookup", () => {
   });
   it("refuses an ldap:// address and asks again", async () => {
     const t = setup();
-    const plaintext = ["corp", "ldap://directory.example.test", "", "2", "dc=example,dc=test", "cn=reader,dc=example,dc=test", "r"];
-    const { outcome, io } = await t.run([...addresses, ...tls(), ...plaintext, ...directoryAnswers(), ...selectAdmin(), ...tail]);
+    const plaintext = ["corp", "ldap://directory.example.test"];
+    const { outcome, io } = await t.run([...addresses, ...tls(), ...plaintext, ...directoryAnswers().slice(1), ...selectAdmin(), ...tail]);
     expect(outcome).toBe("initialized");
-    expect(io.text()).toMatch(/ldap:\/\/ is plaintext/);
+    expect(io.text()).toContain("non-empty LDAPS address");
   });
 
   it("shows why administrator lookup failed (unknown, disabled, unreachable or bad certificate) and lets the operator retry", async () => {
@@ -318,7 +318,7 @@ describe("browser HTTPS certificate", () => {
     const t = setup();
     const { outcome, io } = await t.run([...addresses, certs.selfSigned, certs.selfSignedKey, "n", ...tls(), ...directoryAnswers(), ...selectAdmin(), ...tail]);
     expect(outcome).toBe("initialized");
-    expect(io.text()).toContain("This certificate is self-signed");
+    expect(io.text()).toContain("self-signed test certificate");
   });
 });
 

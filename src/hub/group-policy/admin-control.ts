@@ -9,6 +9,7 @@ import { personKeyString } from "../identity.js";
 import { person, validated } from "../validation.js";
 import { createHubGroupAdminBoundary } from "./admin-context.js";
 import { createHubGroupAdminReads } from "./admin-read.js";
+import { createHubGroupAdminSearch } from "./admin-search.js";
 import { createHubGroupImpactInventory } from "./impact-inventory.js";
 import { readHubGroupImpactFacts } from "./admin-facts.js";
 import { buildHubGroupImpact } from "./admin-impact.js";
@@ -52,6 +53,7 @@ export function createHubGroupAdminControl(options: {
   const alive = () => { try { return !closed && current() === true; } catch { return false; } };
   const boundary = createHubGroupAdminBoundary({ administrator, current: alive });
   const reads = createHubGroupAdminReads({ ...options, administrator, current: alive });
+  const suggestions = createHubGroupAdminSearch({ ...options, administrator, current: alive });
   const inventoryOf = createHubGroupImpactInventory({ ...options, administrator, current: alive, now: clock });
   const candidates = new Map<string, Candidate>();
   const now = () => {
@@ -188,6 +190,6 @@ export function createHubGroupAdminControl(options: {
       const code = failure(error); if (code) return { ok: false, code: code === "invalid" ? "stale-preview" : code }; throw error; }
     finally { working--; }
   };
-  return { read: reads.read, resolve: reads.resolve, resume: reads.resume, preview, apply,
-    close(): void { closed = true; candidates.clear(); boundary.close(); reads.close(); } };
+  return { read: reads.read, resolve: reads.resolve, search: suggestions.search, resume: reads.resume, preview, apply,
+    close(): void { closed = true; candidates.clear(); boundary.close(); reads.close(); suggestions.close(); } };
 }

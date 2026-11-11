@@ -1,0 +1,23 @@
+{
+  "inputs": {
+    "cf4535eef1955cbb1a1ff362153803dff15c3a5be4f22a6a0ab84a638cb41dd5": [
+      "src/ui/agent-details-settings.js"
+    ]
+  },
+  "results": [
+    {
+      "name": "coherent-state",
+      "assertionCaught": true,
+      "exit": 1,
+      "file": "tests/web-chat-pane-ownership-3637.test.ts",
+      "pattern": "keeps A discarded"
+    },
+    {
+      "name": "draft-reset",
+      "assertionCaught": true,
+      "exit": 1,
+      "file": "tests/web-details-n2.test.ts",
+      "pattern": "an edit is staged at once"
+    }
+  ]
+}
