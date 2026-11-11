@@ -728,8 +728,10 @@ function WorkBar({ name, lease, exec, awaiting, workingLabel }) {
   const label = kind === "working" && workingLabel ? workingLabel
     : t(kind === "stuck" ? "chat.stuck" : kind === "stopping" ? "chat.stopping" : kind === "awaiting" ? "chat.awaiting" : "chat.working", name);
   const since = s.workingSince[name];
+  // M-2904: Stop is the bar's, while the agent is busy — in the composer row it took the box's width away.
   return html`<${WorkBarView} kind=${kind} label=${label} note=${awaiting || t("chat.approxNote")} noteTitle=${t("chat.approxNote")}
-    elapsed=${kind === "awaiting" || since == null ? "" : R().formatElapsed(performance.now() - since)} elapsedTitle=${t("chat.elapsedTitle")} />`;
+    elapsed=${kind === "awaiting" || since == null ? "" : R().formatElapsed(performance.now() - since)} elapsedTitle=${t("chat.elapsedTitle")}
+    stop=${busy ? { disabled: !!s.cancelling[name], title: t("chat.stopReplyTitle"), label: t("chat.stopReply"), onClick: () => store.cancelReply(name) } : null} />`;
 }
 
 /** #2272: the reply bar's quote — the first ~80 characters, or what it had instead of text. */
@@ -834,8 +836,7 @@ function Composer({ name, inst, label = name, lease, busy }) {
     <${ComposerInput} inputRef=${input} value=${value} placeholder=${t("chat.composerPlaceholder", label)} onValue=${setValue}
       onKeyDown=${onKeyDown} onPaste=${onPaste} controls=${palette ? "cmdPalette" : undefined} expanded=${!!palette} activeDescendant=${pick ? optId(pick) : undefined}
       attach=${attachmentsSupported ? { title: t("chat.attachTitle"), onFiles: (list) => store.addFiles(name, list) } : null}
-      stop=${{ hidden: !busy, disabled: !!s.cancelling[name], title: t("chat.stopReplyTitle"), label: t("chat.stopReply"), onClick: () => store.cancelReply(name) }}
-      send=${{ hidden: busy && !content, disabled: !content || sendingBlocked, label: t("chat.send"), onClick: submit }} />
+      send=${{ hidden: false, disabled: !content || sendingBlocked, label: t("chat.send"), onClick: submit }} />
     </div>`;
 }
 

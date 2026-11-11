@@ -107,7 +107,20 @@ describe("ComposerInput, RailFrame and PageHead", () => {
     expect(p.root.querySelector("#attachBtn").getAttribute("aria-label")).toBe("Attach a file");
     const input = p.root.querySelector('input[type="file"]'); (input as any).files = ["f1"]; fire(input, "change", {});
     expect(files).toEqual([["f1"]]);
-    expect([p.root.querySelector("#sendBtn").disabled, p.root.querySelector("#stopBtn").hidden]).toEqual([true, true]);
+    // M-2904: the composer row has no Stop (it is WorkBarView's), so its width never changes with the agent's state.
+    expect([p.root.querySelector("#sendBtn").disabled, p.root.querySelector("#stopBtn")]).toEqual([true, null]);
+    await p.unmount();
+  });
+  it("M-2904: WorkBarView draws Stop only when given one, beside what it stops", async () => {
+    let stopped = 0;
+    await p.mount(h(C.WorkBarView, { kind: "working", label: "Alpha is working…", elapsed: "3s", elapsedTitle: "t" })); await settle(2);
+    expect(p.root.querySelector("#stopBtn")).toBeNull();
+    await p.unmount();
+    await p.mount(h(C.WorkBarView, { kind: "working", label: "Alpha is working…", elapsed: "3s", elapsedTitle: "t", stop: { disabled: false, title: "Stop the reply", label: "停止回覆", onClick: () => { stopped++; } } })); await settle(2);
+    const stop = p.root.querySelector(".work-bar #stopBtn");
+    expect([stop.getAttribute("aria-label"), stop.textContent]).toEqual(["停止回覆", "停止回覆"]);
+    fire(stop, "click", {});
+    expect(stopped).toBe(1);
     await p.unmount();
   });
   it("RailFrame: the usage rail's frame; × is the caller's", async () => {
