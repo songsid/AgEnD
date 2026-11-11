@@ -1,6 +1,8 @@
 // #3637: an optional adapter to app-nav, never a second router, popstate listener or history owner.
 import { parseRoute, routePath } from "/assets/app-route.js";
-import { agentRoute, navigatePane, openBeside, readWorkspace, workspacePath } from "/assets/chat-workspace-model.js";
+import { agentRoute, dockWorkspace, navigatePane, openBeside, readWorkspace, workspacePath } from "/assets/chat-workspace-model.js";
+
+export const workspaceGeometryVersion = 1;
 
 export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWorkspace = () => {} } = {}) {
   const guards = new Map(), panes = new Map(), retained = new Map();
@@ -32,7 +34,7 @@ export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWor
         if (!route || route.panel !== record.route.panel || route.instance !== record.route.instance) { dispose(record); retained.delete(key); }
       }
       if (b) onWorkspace();
-      if (a && b && (a.layout !== b.layout || a.flipped !== b.flipped)) beforeLayout();
+      if (a && b && (a.layout !== b.layout || a.flipped !== b.flipped || a.floating !== b.floating)) beforeLayout();
     },
     resolve(url, before, { mode, opts }) {
       let w = null;
@@ -85,6 +87,27 @@ export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWor
   }
   return {
     current, pane,
+    stamp: () => nav.navStore.get(),
+    subscribe: fn => nav.navStore.subscribe(fn),
+    dock(name, target, zone) {
+      if (!["left", "right", "top", "bottom", "center"].includes(zone)) return;
+      const w = current();
+      if (w) { const next = dockWorkspace(w, target, zone, name); if (next !== w) go(next); return; }
+      const route = nav.navStore.get().route;
+      if (!agentRoute(route) || name === route.instance) return;
+      const next = openBeside(null, route, name, ["top", "bottom"].includes(zone) ? "stack" : "right");
+      if (!next) return;
+      if (zone === "center") { nav.navigate(routePath({ panel: "chat", instance: name })); return; }
+      const url = address(); next.a = { ...next.a, search: url.search, hash: url.hash };
+      next.flipped = ["left", "top"].includes(zone); go(next);
+    },
+    geometry(change) {
+      const w = current(); if (!w || !change) return;
+      const next = { ...w };
+      if (typeof change.ratio === "number" && Number.isFinite(change.ratio)) next.ratio = change.ratio;
+      if (w.layout === "float" && change.rect) { const { x, y, width, height } = change.rect; next.rect = { x, y, width, height }; }
+      go(next, { replace: true });
+    },
     focusedName: () => nav.navStore.get().route?.instance,
     open(name, layout = "right") {
       const before = current(), w = openBeside(before, nav.navStore.get().route, name, layout);
@@ -105,11 +128,11 @@ export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWor
         });
       }
     },
-    layout(layout) {
-      const w = current(); if (!w || !["right", "stack"].includes(layout) || w.layout === layout) return;
-      go({ ...w, layout });
+    layout(layout, floating = "b") {
+      const w = current(); if (!w || !["right", "stack", "float"].includes(layout) || (w.layout === layout && (layout !== "float" || w.floating === floating))) return;
+      go({ ...w, layout, ...(layout === "float" ? { floating: floating === "a" ? "a" : "b", rect: w.rect || null } : {}) });
     },
-    swap() { const w = current(); if (w) go({ ...w, flipped: !w.flipped }); },
+    swap() { const w = current(); if (w) go({ ...w, ...(w.layout === "float" ? { floating: w.floating === "a" ? "b" : "a" } : { flipped: !w.flipped }) }); },
     closePane(id) {
       const w = current(); if (!w) return;
       const kept = w[id === "a" ? "b" : "a"];

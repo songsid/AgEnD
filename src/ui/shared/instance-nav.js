@@ -565,10 +565,19 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const flip = (key, value) => { const cur = new Set(navStore.get().filter[key]); if (cur.has(value)) cur.delete(value); else cur.add(value); setNavFilter({ [key]: [...cur] }); };
   // Drag to reorder: only the full list (a filtered subset would be ambiguous), groups among groups, instances within
   // their group.
-  const dragProps = (item) => shown.active || guest || recent ? {} : {     // #2179: not while sorted by reply
+  const dragProps = (item, allowOrder = true) => {
+    const reorder = allowOrder && !shown.active && !guest && !recent; // #2179: not while sorted by reply
+    const dock = item.type === "instance" && !guest && workspace?.dragStart;
+    if (!reorder && !dock) return {};
+    return {
     draggable: true,
-    onDragStart: (e) => { drag.current = item; e.currentTarget.classList.add("dragging"); try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", item.name); } catch { /* Firefox needs data */ } },
-    onDragEnd: (e) => { e.currentTarget.classList.remove("dragging"); drag.current = null; },
+    onDragStart: (e) => {
+      const docking = dock && workspace.dragStart(item.name, e);
+      if (!reorder && !docking) { e.preventDefault(); return; }
+      drag.current = reorder ? item : null; e.currentTarget.classList.add("dragging");
+      try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", item.name); } catch { /* Firefox needs data */ }
+    },
+    onDragEnd: (e) => { workspace?.dragEnd?.(); e.currentTarget.classList.remove("dragging"); drag.current = null; },
     onDragOver: (e) => {
       const d = drag.current;
       if (!d || d.type !== item.type || d.name === item.name || (item.type === "instance" && d.group !== item.group)) return;
@@ -591,6 +600,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       else return;
       persistOrder(names, insts);
     },
+    };
   };
   // #1700: a facet group (Status, CLI) folds under a real header button. Folded with a filter set, the header says so:
   // one or two choices by name, more as "N selected" — a filter is never out of sight.
@@ -628,7 +638,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     const two = !!secondary || mins != null;
     return html`<li key=${name} class=${`v-li${two ? " two-line" : ""}`}><a class=${`inst v-inst${on ? " active" : ""}${fade > 0 ? " replied" : ""}${mins != null && mins < 1 ? " just" : ""} ${identityClasses(id)}`}
         ref=${(el) => { paintIdentity(el, id); paintReply(el, fade); }} href=${rowPath(name)} title=${instanceTooltip(it)}
-        aria-current=${on ? "page" : undefined} onClick=${onPick} ...${fav ? {} : dragProps({ type: "instance", name, group: g })}>
+        aria-current=${on ? "page" : undefined} onClick=${onPick} ...${dragProps({ type: "instance", name, group: g }, !fav)}>
       <${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} cli=${true} />
       <span class="inst-text"><span class="inst-line"><span class="inst-name" title=${label}>${label}</span>
           <span class="v-meta">${it.runtime === "windows" ? "Windows" : it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span></span>

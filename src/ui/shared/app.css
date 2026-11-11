@@ -319,7 +319,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 }
 .panel-actions { display: flex; align-items: center; gap: var(--s-1); }
 /* #3637: versioned optional host. Retained app.css never offers the entry, even with newer JS. */
-:root { --chat-workspace-version: 1; }
+:root { --chat-workspace-version: 1; --chat-workspace-geometry-version: 1; }
 .chat-workspace { position: relative; flex: 1; min-height: 0; min-width: 0; display: grid; overflow: hidden; gap: 8px; background: var(--border); }
 .chat-workspace.ws-right { grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr); }
 .chat-workspace.ws-stack { grid-template-rows: minmax(320px, 1fr) minmax(320px, 1fr); }
@@ -356,12 +356,39 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 }
 .ws-pane .pv-panel { position: absolute; inset: 0; width: auto; min-width: 0; max-width: none; z-index: 5; }
 .ws-pane .pv-divider { display: none; }
+/* Geometry is opt-in: retained PR2 hosts keep their original two-cell grid with this CSS. */
+.chat-workspace.ws-geometry { gap: 0; }
+.ws-geometry.ws-right { grid-template-columns: var(--ws-first, minmax(360px, 1fr)) 8px minmax(360px, 1fr); }
+.ws-geometry.ws-stack { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--ws-first, minmax(320px, 1fr)) 8px minmax(320px, 1fr); }
+.ws-sash-slot { position: relative; z-index: 6; min-width: 0; min-height: 0; }
+.ws-sash { position: absolute; inset: 0; cursor: col-resize; touch-action: none; }
+.ws-sash::after { content: ""; position: absolute; left: 50%; top: 50%; width: 3px; height: 32px; transform: translate(-50%, -50%); border-radius: 2px; background: var(--border-strong); }
+.ws-stack .ws-sash { cursor: row-resize; }
+.ws-stack .ws-sash::after { width: 32px; height: 3px; }
+.ws-sash:is(:hover, :focus-visible)::after, .ws-resizing .ws-sash::after { background: var(--accent); }
+.ws-sash:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ws-geometry.ws-float { display: block; background: var(--bg); }
+.ws-float > .ws-pane { width: 100%; height: 100%; }
+.ws-float > .ws-floating { position: absolute; left: var(--ws-float-x); top: var(--ws-float-y); width: var(--ws-float-width); height: var(--ws-float-height); z-index: 4; padding-bottom: 20px; border: 1px solid var(--border-strong); border-radius: var(--r-md); box-shadow: var(--shadow-2); }
+.ws-floating .ws-pane-head { cursor: move; touch-action: none; }
+.ws-float-resize { position: absolute; right: 0; bottom: 0; width: 20px; height: 20px; padding: 0; background: transparent; border: 0; cursor: nwse-resize; touch-action: none; color: var(--text-3); }
+.ws-float-resize::after { content: ""; position: absolute; right: 4px; bottom: 4px; width: 10px; height: 10px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; }
+.ws-resizing { user-select: none; }
+.ws-resizing iframe { pointer-events: none; }
+.ws-drop-overlay { position: fixed; z-index: 40; cursor: move; }
+.ws-drop-target { position: absolute; display: grid; place-items: center; border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.ws-drop-target > span { max-width: calc(100% - 32px); padding: var(--s-2) var(--s-3); border-radius: var(--r-md); color: var(--text); background: var(--bg); box-shadow: var(--shadow-1); }
+.ws-geometry-hint { position: absolute; top: 8px; left: 8px; z-index: 7; max-width: calc(100% - 16px); margin: 0; padding: var(--s-2); border: 1px solid var(--accent); border-radius: var(--r-md); background: var(--bg); box-shadow: var(--shadow-1); pointer-events: none; }
 .v-li:has(> .inst-workspace) { position: relative; }
 .v-li > .inst-workspace { position: absolute; right: 0; top: 6px; visibility: hidden; }
 .inst-workspace > .icon-btn { width: 28px; height: 28px; padding: 0; }
 .v-li:hover > .inst-workspace, .v-li:focus-within > .inst-workspace { visibility: visible; }
 .v-li:has(> .inst-workspace):is(:hover, :focus-within) > .inst-gear { visibility: hidden; }
 @media (pointer: coarse) {
+  .ws-right .ws-sash { left: -18px; right: -18px; }
+  .ws-stack .ws-sash { top: -18px; bottom: -18px; }
+  .ws-float > .ws-floating { padding-bottom: var(--tap); }
+  .ws-float-resize { width: var(--tap); height: var(--tap); }
   .ws-pane-head :is(.icon-btn, .btn, .seg-item) { min-width: var(--tap); min-height: var(--tap); }
   .ws-agent-tabs :is(.icon-btn, .seg-item) { min-width: var(--tap); min-height: var(--tap); }
   .inst-workspace > .icon-btn { min-width: var(--tap); min-height: var(--tap); }
