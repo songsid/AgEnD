@@ -185,6 +185,7 @@ try {
   assert.ok(formIds.count > 4); assert.equal(formIds.count, formIds.unique, JSON.stringify(formIds)); assert.equal(formIds.ownLabels, true, JSON.stringify(formIds));
   await shot("two-settings", 2); receipt.forms = formIds;
   if (process.env.SETTINGS_SUSPEND === "1") {
+    const originals = await Promise.all([page.locator("#pane-a-ag-desc").inputValue(), page.locator("#pane-b-ag-desc").inputValue()]);
     await page.locator("#pane-a-ag-desc").fill("保留 A 的設定草稿");
     await page.locator("#pane-b-ag-desc").fill("保留 B 的設定草稿");
     await page.setViewportSize({ width: 1100, height: 900 });
@@ -200,7 +201,8 @@ try {
     assert.equal(await page.locator("#pane-b-ag-desc").inputValue(), "保留 B 的設定草稿");
     await shot("restored-settings", 2);
     // Restore both fields rather than applying or discarding a write; the remaining journey is unchanged.
-    await page.locator("#pane-a-ag-desc").fill(""); await page.locator("#pane-b-ag-desc").fill("");
+    await page.locator("#pane-a-ag-desc").fill(originals[0]); await page.locator("#pane-b-ag-desc").fill(originals[1]);
+    await page.waitForFunction(() => !document.querySelector(".ws-pane .s-pending"));
     receipt.settingsSuspension = { bothDraftsRestored: true, hiddenReadersUnmounted: true, applied: false };
   }
   // Restore the second pane to Chat through its own visible tab/menu, without a page navigation.
