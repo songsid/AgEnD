@@ -299,6 +299,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   .p-chat .panel-sub > :not(.status) { display: none; }
 }
 .status { display: inline-flex; align-items: center; gap: 6px; }
+/* An agent's page, on a phone: the status is its dot only (the word is the status's title and accessible name), so the name keeps the room. */
+@media (max-width: 479px) {
+  .p-agent-page .panel-sub .status-text { display: none; }
+}
 /* #2015: the largest processes, after the host memory chip's text. */
 .host-mem-top { margin-left: var(--s-2); opacity: 0.8; overflow-wrap: anywhere; }
 /* M-2556: bound Fleet's warning independently of tab placement. Cached panels without a tooltip keep wrapping. */

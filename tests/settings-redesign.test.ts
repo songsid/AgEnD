@@ -283,7 +283,7 @@ describe("Settings P0 redesign shell", () => {
     expect(p.root.textContent).toContain("change in Shared agent settings");
     await mountSettings("classic"); await click(button("Settings"));
     const dlg = p.root.querySelector("dialog");
-    const box = dlg.querySelectorAll("label.check").find((l: any) => l.textContent.includes("Native replies trigger ClassicBot"))?.querySelector("input");
+    const box = dlg.querySelectorAll("label.check input").find((i: any) => (i.getAttribute("aria-label") || "").includes("Native replies trigger ClassicBot"));
     expect(box.checked).toBe(false); expect(box.disabled).toBe(false);
     await check(box, true); await click(button("Done")); await applyStaged();
     expect(writes().find(s => s.method === "PATCH")?.body).toEqual({ reply_triggers: true });

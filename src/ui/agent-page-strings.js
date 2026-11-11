@@ -10,7 +10,7 @@ register("agentPage", {
     leadOverview: "This agent's status, usage and recent activity. To change a setting, pick a category.",
     leadSection: "Changes are staged first and written when you press Save. Each setting says when it takes effect.",
     loading: "Reading this agent's settings…", loadFailed: "Could not read this agent's settings.", notConfigured: "This agent is not in fleet.yaml, so it has no settings to edit here.",
-    unsavedDot: "Has unapplied changes", nativeLimits: "Windows native agents have no auto-pause, hang detection, tool sets or channel binding (they never did); this page shows only what the agent supports.",
+    checkEnable: "Enable", unsavedDot: "Has unapplied changes", nativeLimits: "Windows native agents have no auto-pause, hang detection, tool sets or channel binding (they never did); this page shows only what the agent supports.",
     classicNote: "A ClassicBot room: its settings live in classicBot.yaml, not fleet.yaml.",
     actions: "Actions", actionsNote: "The same actions as the ⋯ menu in the header (which also has the identity colour and the web theme lock).",
     // Categories
@@ -71,7 +71,7 @@ register("agentPage", {
     leadOverview: "這個 Agent 目前的狀態、用量與最近活動。要改設定請從分類選擇。",
     leadSection: "改動會先暫存，按「儲存」才寫入；每個欄位旁標明生效時機。",
     loading: "正在讀取這個 Agent 的設定…", loadFailed: "讀不到這個 Agent 的設定。", notConfigured: "這個 Agent 不在 fleet.yaml 裡，沒有可在這裡編輯的設定。",
-    unsavedDot: "有尚未套用的變更", nativeLimits: "Windows 原生 Agent 沒有自動暫停、卡住偵測、工具組與頻道綁定（原本就沒有）；這一頁只顯示它支援的設定。",
+    checkEnable: "啟用", unsavedDot: "有尚未套用的變更", nativeLimits: "Windows 原生 Agent 沒有自動暫停、卡住偵測、工具組與頻道綁定（原本就沒有）；這一頁只顯示它支援的設定。",
     classicNote: "ClassicBot 房間：設定存在 classicBot.yaml，不是 fleet.yaml。",
     actions: "動作", actionsNote: "與標題列「⋯」選單同一組動作（那裡另有識別顏色、鎖定／重設網頁主題）。",
     cat_overview: "概覽", cat_basic: "基本資料", cat_runtime: "Runtime 與模型", cat_work: "工作目錄", cat_channel: "頻道", cat_adv: "進階",

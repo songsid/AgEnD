@@ -416,13 +416,13 @@ export function AgentFields({ m, cat, onDelete }) {
             options=${opts.includes(shown(k, f[k], dflt)) ? opts : [shown(k, f[k], dflt), ...opts]} /></${Override}></div>`)}
       <div class="field">${L(tn("replyCompletionGuard"), "instance.reply_completion_guard", undefined, pt("tip_replyGuard"))}
         <${Override} inherit=${f.inherit.reply_completion_guard} onInherit=${setInherit("reply_completion_guard")} inherited=${inh("reply_completion_guard", defaults.reply_completion_guard ?? true, "#g-reply")}>
-          <label class="check"><input type="checkbox" disabled=${f.inherit.reply_completion_guard} checked=${shown("reply_completion_guard", f.reply_completion_guard, defaults.reply_completion_guard ?? true)}
-            onChange=${(e) => set("reply_completion_guard")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span></label></${Override}>
+          <label class="check"><input aria-label=${tn("replyCompletionGuard")} type="checkbox" disabled=${f.inherit.reply_completion_guard} checked=${shown("reply_completion_guard", f.reply_completion_guard, defaults.reply_completion_guard ?? true)}
+            onChange=${(e) => set("reply_completion_guard")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></${Override}>
         <p class="note">${replyHint(f.backend, f.inherit.agent_mode ? defaults.agent_mode || "mcp" : f.agent_mode, kiroUi)}</p></div>
       <div class="field">${L(tn("lightweight"), "instance.lightweight", undefined, pt("tip_lightweight"))}
         <${Override} inherit=${f.inherit.lightweight} onInherit=${setInherit("lightweight")} inherited=${inh("lightweight", defaults.lightweight ?? false, null)}>
-          <label class="check"><input type="checkbox" disabled=${f.inherit.lightweight} checked=${shown("lightweight", f.lightweight, defaults.lightweight ?? false)}
-            onChange=${(e) => set("lightweight")(e.target.checked)} /><span>${tn("lightweight")}</span></label></${Override}></div>
+          <label class="check"><input aria-label=${tn("lightweight")} type="checkbox" disabled=${f.inherit.lightweight} checked=${shown("lightweight", f.lightweight, defaults.lightweight ?? false)}
+            onChange=${(e) => set("lightweight")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></${Override}></div>
     </div></${Card}></div>`;
   if (cat === "channel") {
     const channel = f.channel_id || ids[0] || null;
@@ -430,7 +430,7 @@ export function AgentFields({ m, cat, onDelete }) {
     <${Card} title=${pt("cardChannel")}>
       <div class="field">${L(tn("channelBinding"), "instance.topic_id", "ag-ch", pt("tip_channel"))}<${Select} id="ag-ch" value=${f.channel_id} onChange=${set("channel_id")} options=${["", ...ids]} /></div>
       <div class="field">${L(tn("generalTopicField"), "instance.general_topic", undefined, pt("tip_general"))}
-        <label class="check"><input id="ag-general" type="checkbox" checked=${f.general_topic} onChange=${(e) => set("general_topic")(e.target.checked)} /><span>${tn("generalTopicField")}</span></label></div>
+        <label class="check"><input aria-label=${tn("generalTopicField")} id="ag-general" type="checkbox" checked=${f.general_topic} onChange=${(e) => set("general_topic")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></div>
       ${generalError ? html`<p class="feedback error" role="alert" id="ag-general-one">${generalError}</p>` : null}
       ${[["tool_progress", "toolProgress", TOOL_PROGRESS, defaults.tool_progress ?? "off", "#g-tp", "tip_toolProgress"], ["cross_instance_visibility", "crossInstanceVisibility", VISIBILITY_MODES, visibilityDefault(defaults), "#g-vis", "tip_visibility"]].map(([k, label, opts, dflt, target, tip]) => html`<div key=${k} class="field">
         ${L(tn(label), `instance.${k}`, `ag-${k}`, pt(tip))}
@@ -458,9 +458,9 @@ export function AgentFields({ m, cat, onDelete }) {
           <${Select} id="ag-log_level" value=${shown("log_level", f.log_level, defaults.log_level || "info")} disabled=${f.inherit.log_level} onChange=${set("log_level")}
             options=${LOG_LEVELS.includes(shown("log_level", f.log_level, defaults.log_level || "info")) ? LOG_LEVELS : [shown("log_level", f.log_level, defaults.log_level || "info"), ...LOG_LEVELS]} /></${Override}></div>
       <div class="field">${L(pt("lbl_resumeWork"), "instance.resume_interrupted_work", undefined, pt("tip_resumeWork"))}
-        <label class="check"><input id="ag-resume" type="checkbox" checked=${f.resume_interrupted_work} onChange=${(e) => set("resume_interrupted_work")(e.target.checked)} /><span>${pt("lbl_resumeWork")}</span></label></div>
+        <label class="check"><input aria-label=${pt("lbl_resumeWork")} id="ag-resume" type="checkbox" checked=${f.resume_interrupted_work} onChange=${(e) => set("resume_interrupted_work")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></div>
       <div class="field">${L(pt("lbl_mcpProxy"), "instance.mcp_proxy_reply", undefined, pt("tip_mcpProxy"))}
-        <label class="check"><input id="ag-mcp-proxy" type="checkbox" checked=${f.mcp_proxy_reply} onChange=${(e) => set("mcp_proxy_reply")(e.target.checked)} /><span>${pt("lbl_mcpProxy")}</span></label></div></${Card}>
+        <label class="check"><input aria-label=${pt("lbl_mcpProxy")} id="ag-mcp-proxy" type="checkbox" checked=${f.mcp_proxy_reply} onChange=${(e) => set("mcp_proxy_reply")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></div></${Card}>
     <${Card} title=${pt("cardBoard")}>
       <div class="field">${L(pt("lbl_boardCards"), "instance.board_cards_at_once", "ag-cards", pt("tip_boardCards"))}
         <input id="ag-cards" type="number" min="1" step="1" class=${errors.cards ? "invalid" : ""} value=${f.board_cards_at_once} onInput=${(e) => set("board_cards_at_once")(e.target.value)} />
@@ -850,18 +850,18 @@ export function ClassicFields({ m, cat }) {
           <${Select} id="cl-tp" disabled=${f.inherit.tool_progress} value=${f.inherit.tool_progress ? inherited.tool_progress : f.tool_progress} onChange=${set("tool_progress")} options=${choiceOptions("tool_progress", TOOL_PROGRESS)} /></${Override}></div>
       <div class="field">${L(tn("replyCompletionGuard"), "classic.reply_completion_guard", undefined, pt("tip_classicReplyGuard"))}
         <${Override} inherit=${f.inherit.reply_completion_guard} onInherit=${setInherit("reply_completion_guard")} inherited=${roomInh("reply_completion_guard", "", "#g-creply", "#g-reply")}>
-          <label class="check"><input type="checkbox" disabled=${f.inherit.reply_completion_guard} checked=${f.inherit.reply_completion_guard ? inherited.reply_completion_guard : f.reply_completion_guard}
-            onChange=${(e) => set("reply_completion_guard")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span></label></${Override}>
+          <label class="check"><input aria-label=${tn("replyCompletionGuard")} type="checkbox" disabled=${f.inherit.reply_completion_guard} checked=${f.inherit.reply_completion_guard ? inherited.reply_completion_guard : f.reply_completion_guard}
+            onChange=${(e) => set("reply_completion_guard")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></${Override}>
         <p class="note">${replyHint(f.backend, classicMode, fd.kiro_ui)}</p></div>
       <div class="field">${L(tn("replyTriggers"), "classic.reply_triggers", undefined, pt("tip_classicReplyTriggers"))}
         <${Override} inherit=${f.inherit.reply_triggers} onInherit=${setInherit("reply_triggers")} inherited=${roomInh("reply_triggers", "", "#g-creply-triggers", "#g-reply-triggers")}>
-          <label class="check"><input type="checkbox" disabled=${f.inherit.reply_triggers} checked=${f.inherit.reply_triggers ? inherited.reply_triggers : f.reply_triggers} onChange=${(e) => set("reply_triggers")(e.target.checked)} /><span>${tn("replyTriggers")}</span></label></${Override}><p class="note">${tn("replyTriggersHint")}</p></div>
+          <label class="check"><input aria-label=${tn("replyTriggers")} type="checkbox" disabled=${f.inherit.reply_triggers} checked=${f.inherit.reply_triggers ? inherited.reply_triggers : f.reply_triggers} onChange=${(e) => set("reply_triggers")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></${Override}><p class="note">${tn("replyTriggersHint")}</p></div>
     </${Card}>
     <${Card} title=${pt("cardCollab")}>
       <div class="field">${L(tn("collabMode"), "classic.collab", undefined, pt("tip_classicCollab"))}
-        <label class="check"><input type="checkbox" checked=${f.collab} onChange=${(e) => set("collab")(e.target.checked)} /><span>${tn("collabMode")}</span></label></div>
+        <label class="check"><input aria-label=${tn("collabMode")} type="checkbox" checked=${f.collab} onChange=${(e) => set("collab")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></div>
       <div class="field">${L(tn("webEcho"), "classic.web_echo", undefined, pt("tip_classicWebEcho"))}
-        <label class="check"><input type="checkbox" checked=${f.web_echo} onChange=${(e) => set("web_echo")(e.target.checked)} /><span>${tn("webEcho")}</span></label></div>
+        <label class="check"><input aria-label=${tn("webEcho")} type="checkbox" checked=${f.web_echo} onChange=${(e) => set("web_echo")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></div>
       <div class="field">${L(tn("contextLines"), "classic.context_lines", "cl-ctx", pt("tip_classicContext"))}
         <input id="cl-ctx" type="number" min="0" step="1" class=${errors.context ? "invalid" : ""} value=${f.context_lines} onInput=${(e) => set("context_lines")(e.target.value)} />
         <${Feedback} error=${errors.context} /></div>

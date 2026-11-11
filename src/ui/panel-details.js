@@ -127,7 +127,9 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   ];
 
   const cls = statusClass(inst, exec, awaiting);
-  const sub = html`<span class="status"><span class=${`dot ${cls}`} aria-hidden="true"></span>${statusLabel(inst, exec, awaiting)}</span>`;
+  // On a phone the header shows only the dot (the name needs the room): the word is in `title` and the accessible name.
+  const statusText = statusLabel(inst, exec, awaiting);
+  const sub = html`<span class="status" role="img" title=${statusText} aria-label=${statusText}><span class=${`dot ${cls}`} aria-hidden="true"></span><span class="status-text">${statusText}</span></span>`;
   const src = (s) => (s === "instance" ? ` ${t("chat.configured")}` : s === "fleet-default" ? ` ${t("chat.fleetDefault")}` : "");
   const bar = (pct, level) => html`<span class="progress-bar"><span class=${`progress-fill${level ? ` ${level}` : ""}`} data-pct=${Math.max(0, Math.min(Number(pct) || 0, 100))}></span></span>`;
   const row = (k, v) => html`<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
