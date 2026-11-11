@@ -1,0 +1,234 @@
+{
+  "format": "digest-first-v1",
+  "files": {
+    "4eac7148cd622a7c621d02a694615e98a7ad0b249e5bc4e8764751afc83dbd48": [
+      "docs/evidence/desktop-split-chat-pr1/README.md"
+    ],
+    "0ab80666ee2cd62a3c3ac731772177033dab42a2a24fb75fe25fda6ada28211c": [
+      "docs/evidence/desktop-split-chat-pr1/browser-control.log"
+    ],
+    "4a6f5c6fa7970c1d814a16be8e5c15b101e41936b7fe2e44b23fd0c2a33819ec": [
+      "docs/evidence/desktop-split-chat-pr1/browser-current.log"
+    ],
+    "483ae45932201b892c2322a244fa763f650649293b246550df783bcbca2b0627": [
+      "docs/evidence/desktop-split-chat-pr1/browser-old-chat.log"
+    ],
+    "948bc669a8fb72a94cdf7b2f2fbfd1b38b2c9a957aa42fe8fc1d8754aec5955b": [
+      "docs/evidence/desktop-split-chat-pr1/browser-old-shell.log"
+    ],
+    "e80897717eb55736fcb2cab511111aea5748655a16f413666f738de7c25951b5": [
+      "docs/evidence/desktop-split-chat-pr1/c3-isolated.log"
+    ],
+    "6de83ce7348ed5dc1ad335c446591054e23aff3219ee450473681f6d00e12c2b": [
+      "docs/evidence/desktop-split-chat-pr1/c3-post-sync-isolated.log"
+    ],
+    "87ff08bc4ab30bd2af44395bb9c0228be247c641a9aeffc6fc44d8687bacadc2": [
+      "docs/evidence/desktop-split-chat-pr1/changelog.log"
+    ],
+    "e8d9891aa783bf2ce629bc2b3341640e666b4f841c6584b9f3467cf766820d9c": [
+      "docs/evidence/desktop-split-chat-pr1/checks.json"
+    ],
+    "b631a2734b8b9a0fdc331d8c2a823b1b30a19d2ea07861716d6535dae7f95982": [
+      "docs/evidence/desktop-split-chat-pr1/control/desk-dark-zh-TW-chat-working.png"
+    ],
+    "4c89003684165861f92b2177df61227e0b3859eb08f2dba4e2a284266948435e": [
+      "docs/evidence/desktop-split-chat-pr1/control/desk-dark-zh-TW-chat.png",
+      "docs/evidence/desktop-split-chat-pr1/current/desk-dark-zh-TW-chat.png",
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-dark-zh-TW-chat.png",
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-dark-zh-TW-chat.png"
+    ],
+    "5e39116a874f227d041cf398a4038bb7d2c0dfc3fb3c673c51eb1a2664f7d945": [
+      "docs/evidence/desktop-split-chat-pr1/control/desk-dark-zh-TW-details.png"
+    ],
+    "6e1b6085e01e6080814f9e02545e09eae43185f44cb0150853d152a1778c7ca7": [
+      "docs/evidence/desktop-split-chat-pr1/control/desk-dark-zh-TW-log.png"
+    ],
+    "2f8c2b4d37ec72ea48119322c48e99775bbea6697f9fcc42e95a27830ae2e75e": [
+      "docs/evidence/desktop-split-chat-pr1/control/desk-dark-zh-TW-view.png"
+    ],
+    "a2172f56a1b99865ebd20ce3a9f371187c0ec6910b0c6e9282e33c4f3e5bd6d1": [
+      "docs/evidence/desktop-split-chat-pr1/control/desk-light-zh-TW-chat-working.png"
+    ],
+    "99b473a8df87c88172108501361c5dde5191368e0055b743a5637f3cfeb149b8": [
+      "docs/evidence/desktop-split-chat-pr1/control/desk-light-zh-TW-chat.png",
+      "docs/evidence/desktop-split-chat-pr1/current/desk-light-zh-TW-chat.png",
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-light-zh-TW-chat.png",
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-light-zh-TW-chat.png"
+    ],
+    "2e39e94fac7fab506de9e0011e18f74a0488d31a46a12c934ed0a2b57f650776": [
+      "docs/evidence/desktop-split-chat-pr1/control/desk-light-zh-TW-details.png"
+    ],
+    "5fb41a97cedfb9d66a53e18057cef51d93305722e01d1b0f640a119fe30a8e06": [
+      "docs/evidence/desktop-split-chat-pr1/control/desk-light-zh-TW-log.png"
+    ],
+    "84a7b14c33e73297dc7740087c3b0fc1540f0ae319e570dc217827ac2ab53a83": [
+      "docs/evidence/desktop-split-chat-pr1/control/desk-light-zh-TW-view.png"
+    ],
+    "f61c8a21d2b7037b2c03c51680154105de2221fdf7a4e9fb394aa516d13b4e40": [
+      "docs/evidence/desktop-split-chat-pr1/control/phone-dark-zh-TW-chat-working.png"
+    ],
+    "abfa030fa22f28179550184ebd94354bdf903d31e399fd49c5dac265ff4506f7": [
+      "docs/evidence/desktop-split-chat-pr1/control/phone-dark-zh-TW-chat.png",
+      "docs/evidence/desktop-split-chat-pr1/current/phone-dark-zh-TW-chat.png"
+    ],
+    "c15e6f0175ac188af378a5d64444444bab44c4992016259b2efd2a2ed64e5892": [
+      "docs/evidence/desktop-split-chat-pr1/control/phone-dark-zh-TW-details.png"
+    ],
+    "69a3045cedba354ff427b15fe4aadecdffd2e145577644b5c7dbe033ef76c7d3": [
+      "docs/evidence/desktop-split-chat-pr1/control/phone-dark-zh-TW-log.png"
+    ],
+    "005563f62ce83dbde64a00f17031ce3ab528a8ed913da62a0f02b755b7457ed2": [
+      "docs/evidence/desktop-split-chat-pr1/control/phone-dark-zh-TW-view.png",
+      "docs/evidence/desktop-split-chat-pr1/current/phone-dark-zh-TW-view.png"
+    ],
+    "4a4093f5c89b560dbd69a9e7a918705cceeb2b30836c1103bf3587dc06a6c386": [
+      "docs/evidence/desktop-split-chat-pr1/control/phone-light-zh-TW-chat-working.png"
+    ],
+    "7f68cd1ecdb85a55225cd726c20e8ffad3e2dabb81f84ab8b4f9ae6277e4153b": [
+      "docs/evidence/desktop-split-chat-pr1/control/phone-light-zh-TW-chat.png",
+      "docs/evidence/desktop-split-chat-pr1/current/phone-light-zh-TW-chat.png"
+    ],
+    "ecc42be1de47d89c734f8536040f7c6854493886fc6318a26d57f8c134f97f55": [
+      "docs/evidence/desktop-split-chat-pr1/control/phone-light-zh-TW-details.png"
+    ],
+    "ef3fa8ef1428b17e47b5aa7034d6876c4e899b0b705834d49aaa2307903ee812": [
+      "docs/evidence/desktop-split-chat-pr1/control/phone-light-zh-TW-log.png"
+    ],
+    "e4e4a4796ad2b31a319e6c5a963c73396e1bbc9ec89e43112f0ff32e91b27557": [
+      "docs/evidence/desktop-split-chat-pr1/control/phone-light-zh-TW-view.png",
+      "docs/evidence/desktop-split-chat-pr1/current/phone-light-zh-TW-view.png"
+    ],
+    "9b0cdefc1011a4b609910335cd6b3855879ef5f425f4b5c66c5f13e585092376": [
+      "docs/evidence/desktop-split-chat-pr1/control/receipt.json"
+    ],
+    "864ea838b5e9a0cff3dccbbb653bf93865f9e1db31256e5a87bacb6f53eb6fca": [
+      "docs/evidence/desktop-split-chat-pr1/current/desk-dark-zh-TW-chat-working.png"
+    ],
+    "b378989beca4ed5ce5be60d509211c472439f7863b3c75a5c9f4aa569e2276e9": [
+      "docs/evidence/desktop-split-chat-pr1/current/desk-dark-zh-TW-details.png"
+    ],
+    "177913839ee86fdba06a85f498b17aa336ffcfa3a63022b011a72fd9340e92db": [
+      "docs/evidence/desktop-split-chat-pr1/current/desk-dark-zh-TW-log.png"
+    ],
+    "4bdb19c671269296bade32f7a5dd488e66a1a3e3b9c021059c82d958680eed98": [
+      "docs/evidence/desktop-split-chat-pr1/current/desk-dark-zh-TW-view.png"
+    ],
+    "85868664b625e25b26e036c44d213c6750793f578de1700a8937f3d1cf868119": [
+      "docs/evidence/desktop-split-chat-pr1/current/desk-light-zh-TW-chat-working.png"
+    ],
+    "7312777ecf022b03cacc680ced4e7bef3432c6e8ea0ab76351c49154426483f2": [
+      "docs/evidence/desktop-split-chat-pr1/current/desk-light-zh-TW-details.png"
+    ],
+    "881a379e17de64a7b161f8948111b01f9e54a365db18efebeb8d1b3e7191eab1": [
+      "docs/evidence/desktop-split-chat-pr1/current/desk-light-zh-TW-log.png"
+    ],
+    "aed55ff14f813d1b061225975abc78ee84f9934efcf48ff46cd88b9181d5dc16": [
+      "docs/evidence/desktop-split-chat-pr1/current/desk-light-zh-TW-view.png"
+    ],
+    "58ddf8fd0e31f43c94049f1e73f20df14184a9a200b3ecd56942b5abe67f8b35": [
+      "docs/evidence/desktop-split-chat-pr1/current/phone-dark-zh-TW-chat-working.png"
+    ],
+    "6351b8d10138cabed15cb9bdda9a9d45cb9273b7c5c5621b2fd9e9677e02fe6b": [
+      "docs/evidence/desktop-split-chat-pr1/current/phone-dark-zh-TW-details.png"
+    ],
+    "943951a8f8cdb033c339fe5af5a6dd9c0606f11140bdfc8ae2613604351c6079": [
+      "docs/evidence/desktop-split-chat-pr1/current/phone-dark-zh-TW-log.png"
+    ],
+    "d0da7b4c806812bac02527817f0cb3438c37f82f19e399df0be5247a26910e22": [
+      "docs/evidence/desktop-split-chat-pr1/current/phone-light-zh-TW-chat-working.png"
+    ],
+    "ae0e57433560d68a198cb52f66507ba562cf2b9d2ec092bca5d16489eb6d1029": [
+      "docs/evidence/desktop-split-chat-pr1/current/phone-light-zh-TW-details.png"
+    ],
+    "b3e7b04efd645205a9b18506393c52b2c76c91a75f63446175445e57b404926b": [
+      "docs/evidence/desktop-split-chat-pr1/current/phone-light-zh-TW-log.png"
+    ],
+    "f62dcfe5529550dd15a6ad65400e0fe78f8f6d5d3c31ed5330b1830076bbf389": [
+      "docs/evidence/desktop-split-chat-pr1/current/receipt.json"
+    ],
+    "9e2beaff272dccbcabc90fb3491eaf6fd0a75f47b21afafb97a7f4c90663c579": [
+      "docs/evidence/desktop-split-chat-pr1/fail-first.log"
+    ],
+    "7246e8f112d1ae04de8415bbc613d7bbacdc73dc271b7b045205b2f3625e1680": [
+      "docs/evidence/desktop-split-chat-pr1/final-checks.log"
+    ],
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
+      "docs/evidence/desktop-split-chat-pr1/final-source-types.log",
+      "docs/evidence/desktop-split-chat-pr1/final-test-types.log"
+    ],
+    "9710bfa2e80374ff3092f18411ca32c8165305c4d5015b30ac43dd4a9343324b": [
+      "docs/evidence/desktop-split-chat-pr1/geometry-diff.json"
+    ],
+    "2a1ba247a2f09f731c4fd83dd88f88cf77e337098807fbdb4ec7d6071797c0f3": [
+      "docs/evidence/desktop-split-chat-pr1/mutate.py"
+    ],
+    "55a38557aefa61c68af64dab62c3a695cd0c01aa88c15e1ce7ed6e1e55875a09": [
+      "docs/evidence/desktop-split-chat-pr1/mutations-final.log"
+    ],
+    "29d1d677385da502aea8b17866e0314deaf2b4401d8a4b691d0b8b5fa10b02a5": [
+      "docs/evidence/desktop-split-chat-pr1/mutations.json"
+    ],
+    "ca9a2decdee0e281c237e8544cf14f50580959c345939626ed97baca4b70fd74": [
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-dark-zh-TW-chat-working.png",
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-dark-zh-TW-chat-working.png"
+    ],
+    "2d8668b35f7c8c323262f41c68f70e28146e6c4af3cdd0a9a61516b30f69e636": [
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-dark-zh-TW-details.png"
+    ],
+    "cd4c5ebfaa49a38bb8ac55d18838074dc3a744b5c7c7271272ec3352975d56c5": [
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-dark-zh-TW-log.png"
+    ],
+    "dce082ff5307805b9796586a22687016b81135398e9b02362ce24e4b4dfd8542": [
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-dark-zh-TW-view.png",
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-dark-zh-TW-view.png"
+    ],
+    "71694f7bf65179f411d6e711f6697593205189aa642f10fab85c9433fbaad3f7": [
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-light-zh-TW-chat-working.png"
+    ],
+    "50bc690a1906fe4698210f9854c7fb1f96257084008be6043f37c50a48612c4e": [
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-light-zh-TW-details.png"
+    ],
+    "dc2bf5938a2d4e87a725ec7ff138b4e62f68ad319ff8de46cdf4ce2d4343f2e8": [
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-light-zh-TW-log.png"
+    ],
+    "9261833737c8ee7ef188a40bf1807bbf9a34cd5cf19477b8f8efff7d3ecb8c68": [
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-light-zh-TW-view.png"
+    ],
+    "7ff34c6725a7d3e64f20263d4dda0acce74ead95bf95743148b3b345b4a297ca": [
+      "docs/evidence/desktop-split-chat-pr1/old-chat/receipt.json"
+    ],
+    "d50d1b908ec5e04ac7928a836366cc789e53e2b960ff39d1bf6207b65d816766": [
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-dark-zh-TW-details.png"
+    ],
+    "0d94eddbec647b9633ea9df814bfcc0487732adaa189a8460c38475e1a70dd0b": [
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-dark-zh-TW-log.png"
+    ],
+    "84ed33c1bb97c15747db332a002feb05c179c806e6ca45e101c6da044019b56d": [
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-light-zh-TW-chat-working.png"
+    ],
+    "5135ac87fc0615c862d58e3dd640bf9f1ca9b67f9c38a030bdaf5ef9c3b549e1": [
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-light-zh-TW-details.png"
+    ],
+    "e11b09096938403d9e3a0c1d7152857ec9eb4a427566b6144745b9e82c6b5b9d": [
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-light-zh-TW-log.png"
+    ],
+    "0ab70ab62bbc6e1072f2f19931b15f3042e5069526d09e77e0a6fcbd26d551d1": [
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-light-zh-TW-view.png"
+    ],
+    "80771f9b6d9106f0b3f5ae92a39bfa5f4c7e11b5e674749b3964077f488ff3a6": [
+      "docs/evidence/desktop-split-chat-pr1/old-shell/receipt.json"
+    ],
+    "f877da0aec0af306d52022ab40a5aa3f35a1c32f8bcc25d5c7cf92a635d9496b": [
+      "docs/evidence/desktop-split-chat-pr1/ownership-final.log"
+    ],
+    "e795b8158976b8b3cc6f5c25687118dd2960ba2071d7da66eae33a44666213b0": [
+      "docs/evidence/desktop-split-chat-pr1/post-sync-focused.log"
+    ],
+    "97232b0b2c564a3966e19d18f4ffcecef2ca9180d5f04edd26754eeb5232e1d9": [
+      "docs/evidence/desktop-split-chat-pr1/race-fail-first.log"
+    ],
+    "6be2bcb05fdff773d799d61e13a3397689823f276dc837082c9a1c638b9f67f3": [
+      "docs/evidence/desktop-split-chat-pr1/restored.log"
+    ]
+  }
+}
