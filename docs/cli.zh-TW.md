@@ -20,9 +20,9 @@ Telegram fleet 選單列出 23 個指令，ClassicBot 選單列出 11 個；Disc
 | `/clear` | 完整重置對話（破壞性——會先問 Confirm/Cancel） | — | 🔒 管理員 |
 | `/model` | 切換 backend 模型 | 直接打名稱或用選單選 | 🔒 管理員 |
 | `/effort` | 調整 AI 推理強度 | `low\|medium\|high\|xhigh\|max`，不帶參數則彈選單 | 🔒 管理員 |
-| `/pause` | 手動暫停閒置的實例 | `[instance]`——在 General 需指名 | 🔒 管理員 |
-| `/wake` | 喚醒暫停的實例 | `[instance]`——在 General 需指名 | 🔒 管理員 |
-| `/restart` | 在進程內重啟所有實例（不結束進程） | `[full]`／`mode: full` 會重載整個 Fleet 進程與 adapter | 🔒 管理員 |
+| `/pause` | 手動暫停閒置的 instance | `[instance]`——在 General 需指名 | 🔒 管理員 |
+| `/wake` | 喚醒暫停的 instance | `[instance]`——在 General 需指名 | 🔒 管理員 |
+| `/restart` | 在進程內重啟所有 instance（不結束進程） | `[full]`／`mode: full` 會重載整個 Fleet 進程與 adapter | 🔒 管理員 |
 | `/collab` | 切換 bot／webhook 訊息接收 | — | 🔒 管理員（Telegram ClassicBot 不處理） |
 | `/update` | 依已安裝的頻道更新到最新版 | — | 🔒 管理員 |
 | `/doctor` | 執行 fleet 健康診斷 | — | 🔒 管理員 |
@@ -30,7 +30,7 @@ Telegram fleet 選單列出 23 個指令，ClassicBot 選單列出 11 個；Disc
 | `/usage` | 顯示 AI 訂閱用量 | — | 所有人 |
 | `/tips` | 在你執行處抽一則使用小提示 | `[mode]`——`on\|off` 開關每日自動推送，`advanced on` 解鎖進階層（皆需管理員） | 抽提示所有人 |
 
-所有其他操作（建立/刪除/啟動實例、委派任務）均由 General 實例透過自然語言處理。
+所有其他操作（建立/刪除/啟動 instance、委派任務）均由 General instance 透過自然語言處理。
 
 ## 服務管理 (Service Management)
 
@@ -38,14 +38,14 @@ Telegram fleet 選單列出 23 個指令，ClassicBot 選單列出 11 個；Disc
 agend start                     # 啟動已安裝的服務；沒有服務時啟動背景 fleet
 agend stop                      # 停止 AgEnD 服務
 agend restart                   # 透過服務管理器重啟 AgEnD（systemd unit、launchd job，或 detached）
-agend restart <name>            # 立即重啟單一實例；fleet 照常運作
+agend restart <name>            # 立即重啟單一 instance；fleet 照常運作
 agend update                    # 依已安裝的頻道更新（alpha 留在 alpha、beta 留在 beta）並重啟服務
 agend update --alpha            # 從 alpha 頻道安裝（下一個次版本的預覽）
 agend update --beta             # 從 beta 頻道安裝
 agend update --stable           # 從穩定頻道安裝，即使目前是 beta（可能回到較舊的版本）
 agend update --version 2.1.9    # 安裝指定版本
 agend update --force            # 即使已是最新也強制重裝並重啟
-agend reload                    # 熱讀取配置（重新讀取 fleet.yaml，啟動新實例）
+agend reload                    # 熱讀取配置（重新讀取 fleet.yaml，啟動新 instance）
 ```
 
 更新後若新版本的服務起不來（重啟或啟動失敗，或在 macOS 上 launchd 下的 fleet 沒有真正跑起來），更新會回滾：之前的套件、它的 systemd unit 或 launchd plist 與之前的服務都會回來，更新會說明並以 1 結束（#2420）。
@@ -58,25 +58,25 @@ agend reload                    # 熱讀取配置（重新讀取 fleet.yaml，�
 
 清出空間後再執行一次即可。更新結束時會移除這份副本；被中斷的更新留下的副本，會由下一次更新移除。無法完成的回滾會刻意保留副本，在訊息中指出位置並在其中放一個 `kept.txt`；不再需要時請自行刪除該目錄。
 
-`agend reload` 會重讀 `fleet.yaml` 並協調實例：新增的啟動、刪除的停掉、改過的套用——fleet 進程本身不重啟。
+`agend reload` 會重讀 `fleet.yaml` 並協調 instance：新增的啟動、刪除的停掉、改過的套用——fleet 進程本身不重啟。
 
 ### 誰停了 fleet
 
-`agend stop`、`agend restart`、`agend update`、`agend fleet stop`（不指定實例時）會影響所有實例，所以每一個在動作**之前**都會在 AgEnD home 的 `restart-audit.log` 寫一行：時間、指令、父行程鏈與各自的指令列、工作目錄、stdin 是否為終端機，以及在 fleet agent session 內執行時的 `AGEND_INSTANCE_NAME`。指定實例的 `fleet stop <name>` / `restart <name>` 也會記錄。fleet 收到隨後的訊號時，會在自己的 log 裡寫出這筆請求，所以即使 `fleet.log` 被重啟覆蓋，也查得到意外重啟的來源。
+`agend stop`、`agend restart`、`agend update`、`agend fleet stop`（不指定 instance 時）會影響所有 instance，所以每一個在動作**之前**都會在 AgEnD home 的 `restart-audit.log` 寫一行：時間、指令、父行程鏈與各自的指令列、工作目錄、stdin 是否為終端機，以及在 fleet agent session 內執行時的 `AGEND_INSTANCE_NAME`。指定 instance 的 `fleet stop <name>` / `restart <name>` 也會記錄。fleet 收到隨後的訊號時，會在自己的 log 裡寫出這筆請求，所以即使 `fleet.log` 被重啟覆蓋，也查得到意外重啟的來源。
 
 從 fleet agent 的 session 內執行時（`AGEND_INSTANCE_NAME` 有值，且會被 agent 執行的所有東西繼承——包括被引號包住的參數裡的 `$(...)` 或反引號），這些指令會被拒絕，除非加上 `--yes`；拒絕本身也會記錄。從測試執行器（`VITEST` / `NODE_ENV=test`）執行則一律拒絕；真的要對測試用 fleet 執行的測試可設 `AGEND_ALLOW_TEST_FLEET_CONTROL=1`。fleet 管理員送出的 `/update`、`/restart` 會連同發送者一起記錄。
 
 ## Fleet 管理 (Fleet Management)
 
 ```bash
-agend fleet start               # 啟動所有實例（手動模式）；已安裝服務時改執行 `agend start`
-agend fleet start <name>        # 啟動指定實例
-agend fleet stop                # 停止所有實例；已安裝服務時改執行 `agend stop`
-agend fleet stop <name>         # 停止指定實例
+agend fleet start               # 啟動所有 instance（手動模式）；已安裝服務時改執行 `agend start`
+agend fleet start <name>        # 啟動指定 instance
+agend fleet stop                # 停止所有 instance；已安裝服務時改執行 `agend stop`
+agend fleet stop <name>         # 停止指定 instance
 agend fleet restart [<name>]    # 已淘汰，2.4 移除：改執行 `agend restart [<name>]`（--reload 會被忽略）
 ```
 
-在已安裝 AgEnD 服務的主機上（systemd 使用者或系統 unit，或 launchd job），手動執行 `agend fleet start`、`agend fleet stop` 會改交給 `agend start` / `agend stop` 並提示一行，讓服務管理器繼續管理 fleet：不會在服務旁邊多出一個沒人管的 fleet，也不會出現被 systemd 復原的停止（#2356）。服務管理器自己的 `fleet start`（unit 的 `ExecStart`、launchd job）以及沒有安裝服務的主機（Docker、手動設定）照舊直接啟動。指定實例名稱（`fleet start <name>`、`fleet stop <name>`）的用法不變。`agend stop` 也會停止系統 unit（`agend.service`）。若已安裝的服務在這台主機上無法執行（檔案寫好了但從未啟用，或 launchd 沒有可用的 session），`agend start` 會拒絕在它旁邊啟動 fleet 並說明原因；從你自己的 shell（不是 agent session）執行 `agend fleet start --direct`，就會不經服務直接啟動 fleet。fleet 自己的鎖仍會拒絕同一個 AgEnD home 上的第二個 fleet。**有自己 `AGEND_HOME` 的第二個 fleet（#2741）** 不會交給執行另一個 home 的服務：已安裝的 unit 或 plist 的 `AGEND_HOME`（沒寫則為預設 home）必須就是這個程序的 home；其他 home 的 fleet 會直接啟動或停止。任何名稱的 unit，只要 `ExecStart` 是 `agend fleet start` 且 `Type=notify`（systemd 設定了 `NOTIFY_SOCKET`，程序也在該服務的 cgroup 裡），都算服務管理器自己的啟動，會執行它自己的 fleet，而不是交給 `com.agend.fleet`。如果在設定了 `NOTIFY_SOCKET` 時仍然交出，會再多一行說明，並建議在 unit 的 `ExecStart` 使用 `agend fleet start --direct`。
+在已安裝 AgEnD 服務的主機上（systemd 使用者或系統 unit，或 launchd job），手動執行 `agend fleet start`、`agend fleet stop` 會改交給 `agend start` / `agend stop` 並提示一行，讓服務管理器繼續管理 fleet：不會在服務旁邊多出一個沒人管的 fleet，也不會出現被 systemd 復原的停止（#2356）。服務管理器自己的 `fleet start`（unit 的 `ExecStart`、launchd job）以及沒有安裝服務的主機（Docker、手動設定）照舊直接啟動。指定 instance 名稱（`fleet start <name>`、`fleet stop <name>`）的用法不變。`agend stop` 也會停止系統 unit（`agend.service`）。若已安裝的服務在這台主機上無法執行（檔案寫好了但從未啟用，或 launchd 沒有可用的 session），`agend start` 會拒絕在它旁邊啟動 fleet 並說明原因；從你自己的 shell（不是 agent session）執行 `agend fleet start --direct`，就會不經服務直接啟動 fleet。fleet 自己的鎖仍會拒絕同一個 AgEnD home 上的第二個 fleet。**有自己 `AGEND_HOME` 的第二個 fleet（#2741）** 不會交給執行另一個 home 的服務：已安裝的 unit 或 plist 的 `AGEND_HOME`（沒寫則為預設 home）必須就是這個程序的 home；其他 home 的 fleet 會直接啟動或停止。任何名稱的 unit，只要 `ExecStart` 是 `agend fleet start` 且 `Type=notify`（systemd 設定了 `NOTIFY_SOCKET`，程序也在該服務的 cgroup 裡），都算服務管理器自己的啟動，會執行它自己的 fleet，而不是交給 `com.agend.fleet`。如果在設定了 `NOTIFY_SOCKET` 時仍然交出，會再多一行說明，並建議在 unit 的 `ExecStart` 使用 `agend fleet start --direct`。
 
 ```bash
 agend fleet history             # 顯示事件歷史（成本、輪轉、懸掛）
@@ -84,28 +84,28 @@ agend fleet history --instance <name> --type <type> --since <date> --limit <n> -
 agend fleet activity            # 顯示活動日誌（協作、工具呼叫、訊息）
 agend fleet activity --since 2h --limit 200 --format text
 agend fleet activity --format mermaid  # 以 Mermaid 序列圖輸出活動
-agend fleet cleanup             # 移除孤兒實例目錄
+agend fleet cleanup             # 移除孤兒 instance 目錄
 agend fleet cleanup --dry-run   # 只預覽，不刪除
 ```
 
 `agend fleet status` 是 `agend ls --resources` 的隱藏別名。`agend fleet logs` 已移除，請用 `agend logs`。
 
-## 實例工具 (Instance Tools)
+## instance 工具 (Instance Tools)
 
 ```bash
-agend ls                        # 列出實例（狀態、backend、team、context、活動）
+agend ls                        # 列出 instance（狀態、backend、team、context、活動）
 agend ls --json                 # JSON 輸出
 agend ls --names-only           # 每行一個名稱（shell 補全用）
 agend ls --resources            # 一併回報工作區磁碟、未列名目錄、主機記憶體／swap
-agend ls --running              # 只列出執行中的實例
+agend ls --running              # 只列出執行中的 instance
 agend ls --team <name>          # 依 team 篩選
 agend ls --backend <name>       # 依 backend 篩選
 agend ls --display              # 在最後一欄顯示 display name（預設隱藏）
-agend attach [name]             # 接入實例的 tmux 視窗（接受真名、display name、列號或子字串）
+agend attach [name]             # 接入 instance 的 tmux 視窗（接受真名、display name、列號或子字串）
 agend logs                      # 顯示 fleet 日誌（daemon.log；還沒有時改讀 fleet.log）
 agend logs -n 100               # 顯示最後 100 行（預設 50）
 agend logs -f                   # 追蹤模式（tail -f）
-agend logs --instance <name>    # 只看指定實例
+agend logs --instance <name>    # 只看指定 instance
 agend export-chat               # 把 fleet 活動匯出成 HTML 聊天記錄
 agend export-chat --from <date> --to <date> -o <path>
 agend profile [seconds]         # 錄製執行中 fleet 的 CPU profile（僅本機操作者；預設 60 秒，上限 1800）
@@ -118,7 +118,7 @@ agend delivery show             # 讀取一筆耐久 delivery 狀態（操作者
 
 ## Shell 補全 (Shell Completion)
 
-幫 `agend attach` 與 `agend fleet start|stop|restart` 補實例名，其他位置補子指令名。
+幫 `agend attach` 與 `agend fleet start|stop|restart` 補 instance 名，其他位置補子指令名。
 
 ```bash
 agend completion install        # 建議：自動裝好
@@ -148,7 +148,7 @@ echo 'eval "$(agend completion zsh)"' >> ~/.zshrc
 
 zsh 需要先初始化補全系統。若還沒做，`autoload -Uz compinit && compinit` 必須寫在 `~/.zshrc` 的 `eval` 行**上面**。
 
-名稱來自 `agend ls --names-only`，所以補全給的正是 `attach` 吃的實例——包括只存在於 `classicBot.yaml` 的 ClassicBot 實例。每按一次 TAB 就跑一次那個指令（約 90ms）。
+名稱來自 `agend ls --names-only`，所以補全給的正是 `attach` 吃的 instance——包括只存在於 `classicBot.yaml` 的 ClassicBot instance。每按一次 TAB 就跑一次那個指令（約 90ms）。
 
 ## 診斷與驗證 (Diagnostics & Validation)
 
@@ -178,7 +178,7 @@ agend setup --tunnel            # ……並公開出去，讓手機也能開
 
 頁面在完成、15 分鐘到、或閒置 10 分鐘後自己關掉——沒人看著的設定表單就是暴露面。
 
-**Web only (no bot)**（#2233）是 Telegram、Discord 之外的第三個選項：不用 bot token、不用管理員 ID、也沒有要驗證的東西。它只寫入第一個 agent、不建立聊天連線，所以 AgEnD 從網頁儀表板使用（在機器上用 `agend web --code` 取得登入碼），後端 CLI 也在那裡登入（設定 → Agent → 登入）。之後可以在設定加上 Discord 或 Telegram。主機確認（`agend settings confirm <id>`）一樣要做。
+**Web only (no bot)**（#2233）是 Telegram、Discord 之外的第三個選項：不用 bot token、不用管理員 ID、也沒有要驗證的東西。它只寫入第一個 agent、不建立聊天連線，所以 AgEnD 從網頁儀表板使用（在機器上用 `agend web --code` 取得登入碼），AI 帳號也在那裡連接（設定 → Agent → AI 帳號）。之後可以在設定加上 Discord 或 Telegram。主機確認（`agend settings confirm <id>`）一樣要做。
 
 **工作目錄**可以不填（#2726）。留空的話，agent 會有自己的資料夾 `~/.agend/workspaces/<agent 名稱>`（有設 `AGEND_HOME` 時在它底下）。這就是 `create_instance` 在建立沒有指定目錄的 agent 時用的資料夾，頁面會在欄位下方顯示這個路徑。你確認之後，資料夾會以私有權限（mode 700）建立，並有自己的 git repository；fleet.yaml 會寫入完整路徑。要自己填的話，必須是絕對路徑。連接既有的 agent 時，不會更動它的目錄。
 
@@ -214,7 +214,7 @@ Job 存在磁碟，fleet 自己重啟後由新行程接手，將重啟時仍在�
 
 `/ui/events` 的 `apply_progress` SSE 只用來加速更新，沒有 event ID；重連不能要求補發，所以收到後仍應重新查 job。
 
-**連結一直回到「No session」時**，請檢查代理的 HTTPS header：標成 Secure 的 cookie 無法在純 HTTP 儲存。
+**連結一直回到「No session」時**，請檢查反向代理的 HTTPS header：標成 Secure 的 cookie 無法在純 HTTP 儲存。
 
 ## 排程 (Schedules)
 
@@ -223,7 +223,7 @@ agend schedule list             # 列出所有排程
 agend schedule list --target <name> --json
 agend schedule add              # 從 CLI 新增排程
   --cron <expr>                 # Cron 運算式（必填）
-  --target <instance>           # 目標實例（必填）
+  --target <instance>           # 目標 instance（必填）
   --message <text>              # 要注入的訊息（必填）
   --label <text>                # 人看的標籤
   --timezone <tz>               # IANA 時區（預設 Asia/Taipei）
@@ -240,7 +240,7 @@ agend schedule history <id>     # 顯示排程執行紀錄（--limit <n>）
 樣板部署走 MCP 工具（給 agent 用），不是 CLI 指令：
 
 - `deploy_template`——把 `fleet.yaml` 的樣板部署到目錄
-- `teardown_deployment`——停掉並刪除一次部署的所有實例
+- `teardown_deployment`——停掉並刪除一次部署的所有 instance
 - `list_deployments`——列出使用中的部署與狀態
 
 樣板定義語法見 [configuration.md](configuration.md#templates)。
@@ -249,8 +249,8 @@ agend schedule history <id>     # 顯示排程執行紀錄（--limit <n>）
 
 ```bash
 agend topic list                # 列出主題綁定
-agend topic bind <name> <tid>   # 把實例綁到主題
-agend topic unbind <name>       # 解除實例的主題綁定
+agend topic bind <name> <tid>   # 把 instance 綁到主題
+agend topic unbind <name>       # 解除 instance 的主題綁定
 ```
 
 ## 存取控制 (Access Control)
@@ -258,7 +258,7 @@ agend topic unbind <name>       # 解除實例的主題綁定
 ```bash
 agend access list <name>        # 列出允許的使用者
 agend access remove <name> <uid> # 移除使用者
-agend access lock <name>        # 鎖定實例存取（僅限白名單）
+agend access lock <name>        # 鎖定 instance 存取（僅限白名單）
 agend access unlock <name>      # 使用持久化允許名單（舊 pairing 模式）
 ```
 
@@ -274,7 +274,7 @@ agend install                   # 安裝、啟用並啟動系統服務 (launchd/
 agend install --no-activate     # 只寫入/更新 service 檔案
 agend uninstall                 # 移除系統服務
 agend export [path]             # 匯出配置以用於遷移
-agend export --full [path]      # 匯出配置＋所有實例資料
+agend export --full [path]      # 匯出配置＋所有 instance 資料
                                 # （2.3.4）檔案只有自己能讀（0600）；預設檔名含時間，
                                 # 指定的路徑已存在時拒絕，不會覆蓋
 agend import <file>             # 從匯出檔案匯入配置
@@ -286,6 +286,8 @@ agend shortcuts                 # WSL：Windows 桌面捷徑；Linux 桌面：�
 **Linux 桌面啟動器（M-2885）。** 在 Linux 桌面工作階段（不是 WSL；有設定 `XDG_CURRENT_DESKTOP`、`DISPLAY` 或 `WAYLAND_DISPLAY`）上，`agend shortcuts` 會建立 **AgEnD 儀表板**和 **AgEnD 重新啟動**兩個 XDG 桌面項目，放在應用程式選單（`$XDG_DATA_HOME/applications`，預設 `~/.local/share/applications`），並複製一份到桌面（`xdg-user-dir DESKTOP`；GNOME 上會用 `gio` 標示為可信任，否則會提示你按右鍵選「允許啟動」一次），AgEnD 圖示放進你的 hicolor 佈景。儀表板那個會開一個終端機，向執行中的 Fleet 取得一次性登入碼、打開登入頁，有 `wl-copy`、`xclip` 或 `xsel` 時把登入碼複製起來並顯示；重新啟動那個會先詢問（y/N），再執行 `agend restart` 和 `agend status`。兩個都綁定建立它們時的那個 Fleet（`AGEND_HOME`）。沒有桌面工作階段時（伺服器、SSH 登入）不會建立任何東西，並會說明。在還沒有啟動器的 Linux 桌面上安裝或執行 `agend update` 之後，會出現一行提示建議執行 `agend shortcuts`，只出現一次。
 
 `agend quickstart` 會先問你要怎麼使用 AgEnD（#2910）：**1. 只用網頁（不需要 Discord/Telegram）**（預設），或 **2. 搭配 Discord 或 Telegram bot**。只用網頁不會要 bot token，共三步：backend、第一個 agent（名稱，以及專案資料夾或它自己在 `~/.agend/workspaces/<名稱>` 的工作區）、專案根目錄。它寫入只有這個 agent、沒有聊天連線的 fleet.yaml（不寫 `.env`），照常詢問是否安裝服務，最後顯示登入方式：服務啟動後直接印出 `agend web --code` 的登入碼，否則印出儀表板網址和這個指令。選 2 則和以前完全一樣。
+
+**Add another platform**（#3202）會問要不要替新平台建立 General（例如 `general-discord`），直接按 Enter 就是要。AgEnD 只會自動替第一個平台建立 General，沒有的話，那裡不在任何 agent 主題裡的訊息不會有人接收。和既有伺服器共用的 Discord 分身 bot 不會被問，該平台已經有 General 時也不會。`agend doctor` 會指出哪個有自己群組的連線還沒有 General。
 
 `agend quickstart` 會從所選伺服器的新訊息或 bot 私訊偵測 Discord 管理員，再請你確認顯示的使用者名稱與 ID。連線後看到提示再發訊息。最多等待 30 秒；如果未偵測到或你不確認，就必須手動輸入使用者 ID（17–20 位數字，開頭不能是 0），格式錯誤會重新詢問。設定 → 設定精靈與新增連線也必須填入有效管理員 ID；網頁表單這次尚未加入 Discord 自動偵測。Telegram 保留訊息偵測，手動網頁設定時也必須填入正整數使用者 ID。既有存取名單不會遷移。
 
@@ -317,7 +319,7 @@ OOM 判定採保守原則：Linux 必須取得啟動期間的核心紀錄，且�
 - **`agend doctor`** 會顯示 systemd 實際載入的 unit（有 system unit 執行 fleet 時就看它）（`Type`、`NotifyAccess`、`TimeoutStartSec`）、它來自哪些檔案（unit 檔和每個 drop-in），以及每一項殘留設定。`Type=notify` 卻不是 `NotifyAccess=all` 的 unit 會列為錯誤。
 - **第一次更新就會修好：**`agend update` 會執行新版本自己的 refresh 和 restart，所以更新到含此修正的版本時，就會在那一次更新裡修好 unit。
 
-**記憶體壓力下的啟動等待（#2461）。** 啟動佇列因記憶體保護而等待時，會立即向 systemd 延長啟動期限 15 分鐘，並每 30 秒續期，避免把已啟動一半的團隊反覆重啟。仍然等到啟動完成才送出就緒訊號；網頁與 systemd 狀態會顯示正在等待。一般並行限制、故障退避或其他啟動卡住的情況不會續期。事件迴圈監測在 General 啟動前開始，但仍須主迴圈能正常執行。記憶體壓力偏高或嚴重時，整批停止與重啟會每批最多停止五個實例；停止本身不等待記憶體恢復。詳見[記憶體壓力說明](memory-pressure.md)。
+**記憶體壓力下的啟動等待（#2461）。** 啟動佇列因記憶體保護而等待時，會立即向 systemd 延長啟動期限 15 分鐘，並每 30 秒續期，避免把已啟動一半的團隊反覆重啟。仍然等到啟動完成才送出就緒訊號；網頁與 systemd 狀態會顯示正在等待。一般並行限制、故障退避或其他啟動卡住的情況不會續期。事件迴圈監測在 General 啟動前開始，但仍須主迴圈能正常執行。記憶體壓力偏高或嚴重時，整批停止與重啟會每批最多停止五個 instance；停止本身不等待記憶體恢復。詳見[記憶體壓力說明](memory-pressure.md)。
 
 **服務用哪個 Node 執行，以及 `agend restart` 何時會拒絕（#1450）。**
 - 有 AgEnD 自帶的 Node（或驗證過的 `AGEND_NODE`）時，unit（`ExecStart=`）和 plist（`ProgramArguments`）會先寫那個 Node，接著是套件的 `dist/cli.js`，最後是 `fleet start`。自帶 Node 的路徑只會在 npm 更新 AgEnD 時改變，而 `agend update` 屆時會重寫服務。runtime 的目錄不會出現在任何服務的 PATH 上，各 coding CLI 照舊使用原本的 Node。
@@ -336,7 +338,7 @@ OOM 判定採保守原則：Linux 必須取得啟動期間的核心紀錄，且�
 - 在動任何東西之前先取得安裝鎖。另一個安裝程式正在執行時，它會停下、不做任何改動（也不碰那次更新的聊天訊息）；一行指令會說明無法取得安裝鎖（安裝程式會印出原因：讓正在進行的安裝完成，或該如何處理留下的東西），並以代碼 75 結束，而不是回報安裝失敗（#2284）。已結束的安裝程式留下的鎖會被移到一旁；讀不懂的鎖在沒有任何程序開著它時也會被移到一旁（較舊的更新程式還在寫它時則保留）。較舊版本的 AgEnD 更新程式看得到安裝程式的鎖，會等它完成。它會一直持有這個鎖直到完成；
 - 把 npm 移到旁邊的那份 AgEnD（`@songsid/.agend-…`）在它是唯一完整的一份時放回去，讓 `agend` 恢復可用。只有在主機上沒有 npm 正在安裝、移除或更新套件時才會這麼做；否則不碰 npm 留下的東西，並說明原因。不會刪除任何東西：移到一旁的都放在 `<npm prefix>/.agend-quarantine/`；
 - 安裝該版本，並確認 `agend --version` 回報的是它。npm 失敗但前一版仍能執行時，不再做其他事，並如實說明。沒有任何能執行的 `agend` 時，才重新裝回前一版；
-- 用新版本的 `agend install --no-activate` 更新服務設定，沿用原本的服務管理方式（系統層的 `/etc/systemd/system/agend.service` 仍是系統層）。接著艦隊正在執行就重新啟動；服務已安裝但停著，就啟動它。手動啟動的艦隊不會被建立服務，只有更新時才會重新啟動它。在 Linux 上，`agend install`、`start`、`restart` 會為使用者開啟 systemd linger，並從任何 shell（包括 WSL 上的 root）找到使用者的 systemd。`status` 和 `stop` 只補上 `XDG_RUNTIME_DIR` 與 bus 位址，不改動主機設定。
+- 用新版本的 `agend install --no-activate` 更新服務設定，沿用原本的服務管理方式（系統層的 `/etc/systemd/system/agend.service` 仍是系統層）。接著 fleet 正在執行就重新啟動；服務已安裝但停著，就啟動它。手動啟動的 fleet 不會被建立服務，只有更新時才會重新啟動它。在 Linux 上，`agend install`、`start`、`restart` 會為使用者開啟 systemd linger，並從任何 shell（包括 WSL 上的 root）找到使用者的 systemd。`status` 和 `stop` 只補上 `XDG_RUNTIME_DIR` 與 bus 位址，不改動主機設定。
 
 **更新中途機器停止（#2854）。** npm 寫入新版本時遇到斷電或作業系統強制重新開機，服務可能就起不來：systemd 回報
 `status=203/EXEC`，或 npm 全域目錄下 `@songsid/agend` 的檔案都是 0 bytes。fleet 的設定與資料不受影響。復原方式：
@@ -361,6 +363,18 @@ Cgroup 不明、helper 不支援或啟動失敗時，聊天更新會拒絕並提
 `agend update`，不會退回 fleet 的 cgroup。Linux 上不在服務 cgroup 內的 detached
 fleet 與 macOS 維持原有啟動路徑。Scope 隔離的是 fleet 停止，無法抵抗主機關機，
 或登出時一併停止 user manager。
+
+**用哪個 npm（#3440）。** 聊天 `/update` 會先問執行中 AgEnD 旁邊的 npm（用那個 prefix
+自己的 Node 執行），再問執行 AgEnD 的 Node 旁邊的 npm，最後才是 PATH 上的；所以即使
+服務的 PATH 先列出系統的 npm，用 nvm 安裝的 AgEnD 也能更新。只有全域目錄裡就是執行中
+AgEnD 的 npm 才算數。主機上沒有任何 npm 管理這個安裝時，`/update` 會直接說明，列出預期的
+全域目錄與每個 npm 的回答。啟動的 updater 會把那個安裝的 `bin` 目錄放在 PATH 最前面，
+讓 `agend update` 用同一個 npm 檢查與安裝。
+
+**沒有網路時（#3332）。** 聊天 `/update`、儀表板的 **立即更新** 與 `agend update` 會先確認
+registry 有回應；npm 對 30 秒沒有傳任何資料的連線會放棄並再試一次。之後更新會在約一分鐘內
+停下，顯示 **連不上更新來源**，不做任何變更，目前版本繼續執行。慢但持續有資料的網路仍會
+完成。你自己的 npm 逾時設定（`.npmrc`、`npm_config_*`）會保留。
 
 ## 環境變數 (Environment Variables)
 

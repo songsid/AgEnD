@@ -144,11 +144,11 @@ AgEnD 把每個工作變成聊天室裡的一個頻道。在手機上就找得�
 - **附件**：照片、文件、影片都能直接傳。
 - **一般群組**：在群組裡打 `/start@你的bot`，之後要 @它才會回應；其他對話只做紀錄，觸發時附上最近 5 行當上下文。
 - **加入新群組要核准**：要把 bot 加進新群組時，主人會在 General 收到核准按鈕，避免 bot 被拉進陌生的群組。
-- **分享存取權**：主人將可信任的 user ID 明確加入該 bot 的存取名單。Pairing 模式的 `/pair` 可申請配對碼，但 `agend access pair <instance> <user-id>` 是產生碼，不是主人核准碼的指令。
+- **分享存取權**：主人到「設定 → 聊天與連線 → 該 bot → **允許使用者**」加入可信任的使用者。沒有需要申請或核准的存取碼。
 
 ## 同一個 fleet，同時接兩個平台
 
-Discord 和 Telegram 可以接到同一個 fleet（用 `agend quickstart` 設定），兩邊的 instance 可以互相傳訊、委派。
+Discord 和 Telegram 可以接到同一個 fleet（用 `agend quickstart` 設定），兩邊的 instance 可以互相傳訊、委派。加入第二個平台時，quickstart 會替它提供它自己的 General（例如 `general-discord`），讓那裡不在任何 agent 主題裡的訊息也有人接收。
 
 - 每個群組、topic、頻道都是各自獨立的 instance。
 - 兩邊的聊天紀錄**不會**自動同步。

@@ -110,7 +110,7 @@ web_terminal:
   tunnel 會在聊天裡連同 pid 公告，並在處理之前封鎖後續 tunnel。
 - **流量會經過 Cloudflare。** Quick Tunnel 在 Cloudflare 邊緣終止 TLS，所以 Cloudflare 看得到頁面、存取 token，以及終端裡輸入或顯示的一切。同意文字有寫明；若這對某次登入不可接受，請選**我了解（內網）**。
 - tunnel 的公開名稱不會寫進 log 或稽核紀錄。把連結當成 token 的另一半：請勿轉傳或加書籤。
-- 只有需要終端才能完成的登入可以用——`kiro-cli` 與 `claude-code`（`src/login-flows.ts` 的 `tunnelOk`）。裝置代碼登入（codex、grok）會把網址和代碼貼在聊天室，不需要它。
+- 只有需要終端才能完成的登入可以用——`kiro-cli` 與 `claude-code`（`src/login-flows.ts` 的 `tunnelOk`）。授權碼登入（codex、grok）會把網址和授權碼貼在聊天室，不需要它。
 
 `protocol`：cloudflared 預設走 QUIC（UDP 7844），很多公司網路與 VM 會擋，之後要花很久才 failover 或根本連不上。所以 AgEnD 預設傳
 `--protocol http2`（連到 Cloudflare 邊緣的 TCP 7844 —— 與 QUIC 的 UDP 同一個埠號，擋 UDP 的網路通常仍放行 TCP，但嚴格的防火牆也可能關掉它），除非你設 `quic` 或 `auto`（交給 cloudflared 決定）。`agend setup --tunnel` 同樣使用這個預設。就緒檢查也會先用

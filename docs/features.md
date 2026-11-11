@@ -316,6 +316,10 @@ A fleet-wide task list, kept in the fleet's SQLite database, through one `task` 
 
 `id` takes a task id, an 8-hex prefix, or a card number from the dashboard (`M-3`); list rows carry the card number as `code`.
 
+A field the action does not take (such as `project` on an `update`) is refused by name and nothing is changed: `update does not take "project" … Nothing was changed.`, followed by the fields the action does take (#3195). A plain `update` answers with the saved value of each field it set.
+
+**An agent with the task board off gets no cards (#2246).** It has no `task` tool, so the board refuses it as a new assignee of a card or a `task`-tool task, from the dashboard and from other agents, with the reason, and sends it no `[Task board]` notices. The dashboard's assignee pickers grey it out (**name (task board off)**). Cards it already had stay assigned to it; turning its task board on tells it to start with `task mine`.
+
 The board's own actions answer in plain text, a line per card — what an agent needs after a context reset, without JSON:
 
 - `task(action: "mine")` — your work: sent back to you, in progress, blocked, waiting for the person, ready to start (your open cards, and the unassigned sub tasks of main tasks you coordinate), waiting on dependencies, cards with comments you have not seen, and the main tasks you coordinate with their progress.
@@ -353,7 +357,7 @@ Tasks from before the board keep their ids and become main tasks under No projec
 
 ## Decisions
 
-Decisions are rules and conventions that outlive a conversation. `post_decision` records one with a `title` and `content`, optional `tags`, a `ttl_days` after which it is archived (default: permanent), and `supersedes` to replace an older one. `scope: "project"` (the default) makes it visible to instances working in the same directory; `scope: "fleet"` to every instance. `list_decisions` lists the active ones by title (id, title, scope, date, tags; `include_archived` and `tags` filter): pass `id` for one decision's full text or `full: true` for all of it (2.2.5, #2152 — the full list had grown to over 100 KB), and `update_decision` changes or archives one — a coordinator verb, since it edits what somebody else recorded.
+Decisions are rules and conventions that outlive a conversation. `post_decision` records one with a `title` and `content`, optional `tags`, a `ttl_days` after which it is archived (default: permanent), and `supersedes` to replace an older one. `scope: "team"` (#3420) makes it visible to every member of one team (`teams` in fleet.yaml), wherever they work: in another directory, worktree or workspace; other teams don't see it. It is the default for an agent in a team; an agent in several teams names one with `team`. `scope: "project"` makes it visible to instances working in the same directory, and is the default for an agent in no team; `scope: "fleet"` to every instance, for rules every team follows. Team membership is read when listing and at each launch, so joining or leaving a team takes effect without posting again. `list_decisions` lists the active ones by title (id, title, scope, date, tags; `include_archived` and `tags` filter): pass `id` for one decision's full text or `full: true` for all of it (2.2.5, #2152 — the full list had grown to over 100 KB), and `update_decision` changes or archives one — a coordinator verb, since it edits what somebody else recorded.
 
 Active decisions are injected into each instance's instructions at spawn. A fleet-scoped decision still has to be relevant: global (no project), or from the same project or one of its worktrees/checkouts. General instances get every fleet-scoped decision, since they route work across projects.
 
@@ -428,10 +432,14 @@ AgEnD's administrator, the `general` profile includes every orchestration tool
 waking and restarting instances; deploying and tearing down templates; team
 CRUD; `update_instance_config` and `update_fleet_defaults`;
 `migrate_kiro_instance` and `reconcile_kiro_instance`; `update_decision`; and
-`get_web_settings` / `set_web_settings`), while leaving repository leases and
-raw host-config/log inspection (`checkout_repo`, `release_repo`,
-`get_fleet_config`, `get_instance_logs`, `list_deployments`, `validate_config`)
-out of its default tool list.
+`get_web_settings` / `set_web_settings`) and, since #3485, the inspection tools
+(`get_fleet_config`, `get_instance_logs`, `list_deployments`, `validate_config`).
+Only the repository leases (`checkout_repo`, `release_repo`) stay out of its
+default tool list. General sets another agent's `tool_set` directly with
+`update_instance_config` or `create_instance`, without a confirmation card; it
+cannot change its own that way, and neither tool takes `skipPermissions`, even
+from General. Other callers, coordinators included, are still refused.
+Sensitive Settings confirmations are unchanged.
 
 `delegate_task` is deliberately a worker tool. It creates nothing, destroys
 nothing, and needs a target that already exists, so an ordinary agent can hand
@@ -514,7 +522,7 @@ Besides `/status`, these work from chat (on Discord as slash commands; on Telegr
 
 - **`/usage`** (anyone) — AI subscription usage for the CLIs logged in on this machine: Claude, Codex, Muse, Grok, Kiro and Antigravity. A backend with [credential profiles](#credential-profiles-and-a-second-subscription) gets one row per subscription. Agents read the same data with `get_usage`.
 
-  **Full or Compact (2.3).** The usage panel's title has a **Full / Compact** switch. Compact groups the rows by provider and gives each account a few lines: its name, plan and reset time, then a bar and a percentage for its shorter and its longer window where it has them (under two days, such as 5 hours, and two days or more, such as a week or a month). An Antigravity account gets a line per quota pool. Your choice is synced to all your devices (`usage.compact`). Each Claude sign-in, the default account and every credential profile, has its own row: a used-up quota reads 100% with its reset time, and a rate limit reads "Rate limited". Antigravity shows its plan name, the Gemini quota of a paid plan, and a row for Gemini 4 Argon.
+  **Full or Compact (2.3).** The usage panel's title has a **Full / Compact** switch. Compact groups the rows by provider and gives each account a few lines: its name, plan and reset time, then a bar and a percentage for its shorter and its longer window where it has them (under two days, such as 5 hours, and two days or more, such as a week or a month). An Antigravity account gets a line per quota pool. Your choice is synced to all your devices (`usage.compact`). Each Claude sign-in, the default account and every credential profile, has its own row: a used-up quota reads 100% with its reset time, and a rate limit reads "Rate limited". A Claude login's per-model weekly limit (such as **Fable (weekly)**) is one more bar under those two, tagged with the model's name, even at 0% (#2815); another vendor's unused per-model limit stays hidden. Antigravity shows its plan name, the Gemini quota of a paid plan, and a row for Gemini 4 Argon.
 
   **A failed read keeps the last known numbers (#2236, 2.3).** When a read fails — an expired token, a rate limit, a network blip or any other error — the row stays visible with the numbers from the last successful read (up to a week old). The numbers are greyed and a line explains: **expired · cached at 14:05**, **not updated** or **couldn't read**; for an expiry or error, what to do (for example "run `agy` once") is on a second line. A window whose reset time has already passed shows **reset since …** instead of a stale percentage. A provider that has never been read successfully still shows its error; a good read clears the mark. After a restart the last-good numbers come from `usage-last-good.json` in `AGEND_HOME`. `get_usage` rows carry `stale`, `cachedAt` and `staleCause` on a stale row; a metric whose window reset carries `resetPassed`.
 - **`/doctor`** (fleet admin) — health diagnostics in six sections: Prerequisites, Service, Fleet, Channel gateways, MCP IPC and Resources, each check `ok`, `warn` or `error`.
@@ -639,7 +647,7 @@ Connect your fleet to Discord instead of (or alongside) Telegram.
 ### What it supports
 
 - **Topic mode**: one text channel per instance under an "AgEnD Agents" category (rename with `options.category_name`), plus a General channel.
-- **ClassicBot**: `/start` in any text channel turns it into an agent channel; `/stop` removes it. Collab mode triggers the agent only when the bot is @-mentioned. On Discord, `/start` turns it on; on Telegram a normal `/start` leaves it off (see [command surface](command-surface.md)).
+- **ClassicBot**: `/start` in any text channel turns it into an agent channel; `/stop` removes it. Collab mode triggers the agent only when the bot is @-mentioned. Replying to a message with only the bot's mention asks about that message: the agent gets the replied-to message as context, as on Telegram (#3340). On Discord, `/start` turns it on; on Telegram a normal `/start` leaves it off (see [command surface](command-surface.md)).
 - **Several bots in one server**: each bot is its own `channels[]` entry; a bot answers only messages that mention it and never answers for another bot.
 - **Slash commands**: 28, including `/chat`, `/steer`, `/btw`, `/cancel`, `/ctx`, `/compact`, `/model`, `/backend`, `/effort`, `/web`, `/usage`, `/login`; the ones that need an admin are marked 🔒 (the mark is generated from the same table that enforces it).
 - **Buttons and menus**: permission approval (Allow / Always / Deny), backend picker, cancel, and hang / model / backend / effort pickers.
@@ -789,6 +797,8 @@ If a TUI instance ends up with its original carried conversation and a newer one
 
 The recommended setup wizard detects installed backends and generates a minimal `fleet.yaml`. Telegram discovers the group and user from a `/start` message. Discord detects the account from a guild message or DM, asks for explicit confirmation, and falls back to required snowflake-validated manual entry. The web wizard also requires a valid admin ID.
 
+**Adding a second platform (#3202).** `agend quickstart` → **Add another platform** asks whether to create a General for the new platform (for example `general-discord`); Enter means yes. Without one, messages there outside an agent's topic reach no one: AgEnD makes a General by itself only for the first platform. The question says what it costs, a second agent that is always running. It isn't asked for a Discord persona bot sharing an existing server, or when a General already answers on that platform. `agend doctor` names any connection that has its own group but no General.
+
 ## Setup page and wizard: optional working directory, 繁體中文 (#2726)
 
 On the `agend setup` page (the one the Windows installer opens) and in the dashboard's **Settings → Setup wizard**, a new agent's working directory may be left empty, for Web only and bot setups alike. The agent then gets its own folder, `~/.agend/workspaces/<name>`. The page shows that path under the field and creates the folder once the host confirms, and fleet.yaml records the full path. A directory you do enter must be absolute, and an existing agent keeps its own.
@@ -817,7 +827,7 @@ Sign in with a one-time code: send `/web` (fleet admin) or run `agend web` on th
 
 `/login [backend]` (fleet admin; Telegram General topic, or Discord) signs a backend CLI in — and installs it first when it is missing — without SSH. With no argument it shows a picker of every installed or installable backend. Each login runs in a temporary tmux window of its own (instance panes are untouched), times out after 10 minutes, and can be stopped with `/login cancel`.
 
-- **Device code** — `codex` and `grok`: the URL and code are posted in the chat.
+- **Authorization code** — `codex` and `grok`: the provider's URL and code are posted in the chat; you finish on the provider's official website.
 - **Browser terminal** — `claude-code` and `kiro-cli`: AgEnD opens a one-time web terminal on the login command where you finish the sign-in (and paste a code back). The link works on this machine by default (SSH forwarding, tailscale, your own proxy).
 - **Install only** — `opencode` and `muse` have no sign-in flow here. Remote sign-in for `antigravity` is declined, because `agy` has no separate login command.
 
@@ -825,7 +835,7 @@ Sign in with a one-time code: send `/web` (fleet admin) or run `agend web` on th
 
 **Public link.** For a phone that cannot reach the machine, a `claude-code` or `kiro-cli` login offers a temporary public https link through a Cloudflare Quick Tunnel: the confirmation has **I understand (temporary public link)**, **I understand (local network)** and **Cancel**, and the first button is the consent, once per login. A `cloudflared` on `PATH` is used if there is one; otherwise AgEnD downloads Cloudflare's build into `~/.agend/bin/` once, pinned and checked against a SHA256 it ships with. The link and the access token are sent to you as two private messages, never in the channel, and the tunnel is stopped when the login ends in any way. Cloudflare terminates TLS, so it can see that terminal. `web_terminal.tunnel.allow_public: false` turns the option off for the host. Details: [configuration](configuration.md#finishing-a-login-away-from-the-machine-public-link).
 
-**From the web dashboard (2.3, #2233).** A fleet admin signed in to the dashboard on this machine or its network (not over the public link, and never as a guest) can do the same without any chat connection: **Settings → Agents → Sign-ins** lists each backend's login and each credential profile an agent uses, with **Sign in**; the web `/backend` picker offers **Sign in to <backend>** for one that is not signed in; and **Needs you** offers **Sign in** on an agent paused for sign-in. The dialog runs the same flow: a device code is shown in the dialog; a browser-terminal login shows **Open the sign-in terminal** and its one-time access code, to that browser session only (no DM is involved, so a web-only fleet needs no bot). The same checks, limits and 10-minute window apply, a public link is still opt-in per sign-in, and while it runs every admin page says so, with **Open** (the browser that started it sees the link and code, the others only who and where, and may cancel it). A sign-in whose browser session ends is cancelled. A CLI that is not installed is not installed from here: the dialog gives its install command. Default Kiro, Claude Code and Codex accounts sign in with named browser controls instead (#2599; [details](configuration.md#browser-backend-sign-in-during-first-setup)), and a backend skipped at first setup shows in **Needs you** even before an agent uses it.
+**From the web dashboard (2.3, #2233).** A fleet admin signed in to the dashboard on this machine or its network (not over the public link, and never as a guest) can do the same without any chat connection: **Settings → Agents → AI accounts** lists each AI account connected on this machine and each credential profile an agent uses, as **connected** or **not connected**, with **Connect account** (or **Reconnect**); the web `/backend` picker offers to connect a backend whose account isn't connected; and **Needs you** offers it on an agent paused for sign-in ("Waiting to connect its AI account" for a CLI sitting at its own login screen). The dialog runs the same flow: the provider's authorization code is shown in the dialog; a browser-terminal login shows **Open the sign-in terminal** and its one-time access code, to that browser session only (no DM is involved, so a web-only fleet needs no bot). The same checks, limits and 10-minute window apply, a public link is still opt-in per sign-in, and while it runs every admin page says so, with **Open** (the browser that started it sees the link and code, the others only who and where, and may cancel it). A sign-in whose browser session ends is cancelled. A CLI that is not installed is not installed from here: the dialog gives its install command. Default Kiro, Claude Code and Codex accounts sign in with named browser controls instead (#2599; [details](configuration.md#browser-backend-sign-in-during-first-setup)), and a backend skipped at first setup shows in **Needs you** even before an agent uses it.
 
 **A web-only fleet runs whole (#2910).** A fleet with no Discord or Telegram connection, such as one made with `agend quickstart` → Web only or the setup page's Web only, has the rest of AgEnD too. Schedules, the task board and fleet decisions run. Agents message each other with `send_to_instance`, `delegate_task`, `report_result` and `broadcast`, and the receiving agent sees `[from:<name>]` as in a chat fleet. **New agent** in the dashboard creates an agent with no chat topic. It is named as you typed it, or `<name>-2`, `-3` … when that name is taken, and it is reached from the dashboard's chat. The chat-only tools `edit_message` and `download_attachment` answer "not available on a web-only fleet" instead of asking the agent to retry, and `reply` answers in the web chat.
 
@@ -863,6 +873,7 @@ AgEnD keeps a snapshot of what this host can run (#2072). Each backend is **usab
 - **Read without starting a CLI that could update itself or reach the network.** The version comes from disk: muse's `.muse-version`, an npm install's own `package.json`, claude's `…/versions/<v>`, codex's `…/releases/<v>-<target>/`. Failing that, on Linux only, `<cli> --version` runs with no network (`unshare -rn`) and a 5 s deadline. A version it cannot read is unknown, never "too old".
 - **Sign-in** is read from credential files and API-key variables, never by asking the account. Claude on macOS keeps its login in the Keychain, so it reads as unknown there. An instance with a credential profile is judged by that profile's login.
 - **When:** at start, every 10 minutes and after a `/login`; requests only read the snapshot. A probe that fails keeps the last definite answer, and only a definite answer disables anything: unknown stays selectable and is checked again when applied.
+- **A model that needs a newer Claude Code (#3441).** When Claude Code says the chosen model requires a newer CLI, AgEnD checks the installed version. If it is already new enough, the instance restarts once in the same conversation; if not, a plain notice asks for a Claude Code update. It never restarts in a loop.
 
 Where it shows:
 
@@ -873,7 +884,7 @@ Where it shows:
 Model lists:
 
 - **`/model`** and the web chat's model choices list what the instance's account can run. On Claude Code a credential profile has its own catalog, read with that profile's login; Codex and Kiro profiles share one catalog per backend. The model the instance runs is always a choice; one its CLI does not list comes first, marked "current — not in this CLI's list".
-- **Every Settings model field** (an agent's model and failover, the fleet default, a ClassicBot room, the Create agent dialog) is a list of that backend's cached catalog for that account; opening it never probes. The current model is always listed. **Other…** opens a text box holding the current name: type another name the CLI accepts, or empty it to inherit. In the Create agent dialog, **Fleet default** lists the fleet default backend's models.
+- **Every Settings model field** (an agent's model and failover, the fleet default, a ClassicBot room, the Create agent dialog) is a list of that backend's cached catalog for that account; opening it never probes. **Refresh models** below the field reads the list again for the selected backend and account: it never picks a model, saves or restarts anything, and a failure keeps the previous choices (#3500). The current model is always listed. **Other…** opens a text box holding the current name: type another name the CLI accepts, or empty it to inherit. In the Create agent dialog, **Fleet default** lists the fleet default backend's models.
 
 ## Built-in workflow template
 
@@ -1239,6 +1250,7 @@ Idle instances can be automatically paused to save resources, and automatically 
 
 - **Auto-pause**: when an instance has no activity for `auto_pause_after` minutes, it's paused (tmux window kept, CLI suspended)
 - **Auto-wake**: when a user sends a message to a paused instance, it wakes automatically (~30 seconds to resume)
+- **Settings changed while paused**: saving a paused agent's account (credential profile), model or other launch settings leaves it paused; **Wake** then starts it with the saved settings, and a failed start can be retried by waking it again (#3567)
 - **Working protection**: instances actively generating responses are never paused
 
 ### Configuration
@@ -1349,7 +1361,7 @@ agend update --beta     # Install from the @beta npm dist-tag
 agend update --stable   # Install from @latest, even from a beta or alpha install
 ```
 
-`/update` in chat does the same as `agend update`: an install stays on its channel. An update that would go
+`/update` in chat does the same as `agend update`, and so does **Update now** on the dashboard (2.3.5, #3332; see [Updating AgEnD from the web](web-dashboard.md#updating-agend-from-the-web)): an install stays on its channel. An update that would go
 back to an older version (say an alpha asking for @beta) is refused; `--stable`, `--version` or `--force` say
 that is what you want. The "update available" notice follows the same channel. A beta install is told only about
 a newer beta: beta users stay on the beta line after a stable ships. An alpha install is told about a newer alpha
@@ -1441,7 +1453,7 @@ Since then:
   - **`get_cache_report`:** agents read the same report. General, coordinators and full-profile instances see every instance; any other instance sees its own row.
 - **Fleet → Usage** (`/ui/fleet/usage`, 2.2.5, #2122): each agent's tokens, requests, delivered messages and API-equivalent at list price (not money spent), by agent, backend, model, credential profile or team, over today / 7 days / this month / all / custom days, with a daily trend, a calendar heatmap that tells idle days from days not collected, and a CSV of the same rows. Claude Code, Codex, Grok, Muse, OpenCode and Antigravity are measured (Codex's and Muse's cache writes read "not reported"; Muse is not priced); Kiro, which records no token counts, is estimated from text size and marked "estimated"; the other CLIs are listed with the reason. Collected from fleet start and kept 400 days; agents read it with `get_usage_report`. The ◔ usage dialog links to it.
   - **Speed** (#3066): each model's output tokens per second of its own generation, tool time excluded, as a Speed column and a "Speed by model" card with how many requests were timed and, from 30 timed responses, the p10–p90 spread; `get_usage_report` gives it as `speed`. Claude Code responses are timed from their first token (inferred from a leading thinking block's timestamp and duration) to their last block. Codex responses are timed over their response window, from the item clocks codex 0.147 and later writes: the first model item's start to the last one's end, minus hosted web-search time; the rollout does not mark the first token, so this window may include some of the wait for it. The earlier reader stopped timing a Claude response at its first block, so it timed the thinking alone against the whole response's tokens and read too high; it now waits for the whole response (#3157). The first start of 2.3.4 clears the Claude speeds recorded by the earlier reader once (token counts are not touched).
-  - **Weekly capacity (2.3.4, #3073):** under each weekly (or longer) quota bar, "100% ≈ …": how much a full week of that account holds, measured from its own quota readings against the tokens the fleet recorded in the same window. It shows only once the percent has moved at least 10 points within one window, and says that use of the same account outside the fleet makes it read low. `get_usage` carries it too.
+  - **Weekly capacity (2.3.4, #3073):** how much a full week of an account holds ("100% ≈ …"), measured from its own quota readings against the tokens the fleet recorded in the same window, once the percent has moved at least 10 points within one window. Use of the same account outside the fleet makes it read low. Since 2.3.5 (#2815) only `get_usage` reports it; the usage card no longer shows it.
   - **Quota history (2.3.4, #3070):** each successful usage read of a weekly or longer window is kept in `usage-quota-history.jsonl` in `AGEND_HOME` (12 weeks, at most 2 MB), recorded only when the percent or the reset time moved. Without a Discord bot reading usage, it is read every 30 minutes while an account has a running agent. Codex turns are counted under the credential profile in effect at the time (`profile not recorded` before that). The method follows [tokdash](https://github.com/JingbiaoMei/tokdash) (MIT, Jingbiao Mei; see `THIRD_PARTY_NOTICES.md`).
 - **New agent** (2.2.5, #2074): a button at the end of the sidebar's list opens the Create agent dialog. With the sidebar collapsed, a **+** beside ☰ does the same; on a phone it is in the menu drawer. Only a session that may create agents sees it.
 - **Filtering the sidebar** (2.2.5, #1936): the instance you have open stays on top under **Current**, matching or not.
@@ -1504,7 +1516,7 @@ web:
 - **In `fleet.yaml`:** `web.guests.grants: { "<connection id>:<user id>": { name?, instances: [agent, …], level? } }`. Once `grants` exists it is the whole scope — default deny: connection access, rooms, `open_instances` and `narrow` give nothing then. **Start from today's guests** stages each current guest's reach as a grant.
 
 **What a guest reaches.** It is worked out on every request and never stored. With `grants`, only the agents granted to that account (of those that still exist). Without them (#1920's derived access):
-- **Its connection's agents:** the fleet topics and General, when that connection's access lets the account in (allowed or paired). On an `open` connection, only the agents named in `open_instances`.
+- **Its connection's agents:** the fleet topics and General, when that connection's access lets the account in (its allowed users). On an `open` connection, only the agents named in `open_instances`.
 - **Its own Telegram private ClassicBot room.**
 - **A ClassicBot group room on its connection, while membership is verified:**
   - Telegram asks `getChatMember`.

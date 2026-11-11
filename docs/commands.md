@@ -136,7 +136,7 @@ On every platform, only the topic/entry owner ever answers, so a `/cmd` typed in
 - **Not the bot the command arrived on:** in a fleet channel owned by another bot of the same fleet, a slash command is refused ("This channel belongs to another bot…"), just as typed commands there are left to the owning bot.
 - **An empty list means nobody:** admin commands are off for that bot.
 - **A bot id that matches no configured channel means nobody:** it never falls back to the first channel's list.
-- **Paired or open-mode users are not fleet admins.**
+- **Allowed or open-mode users are not fleet admins.**
 
 **One table for both platforms:** Telegram typed commands and Discord slash commands are decided by the same command table (`src/command-table.ts`), so a command needs the same level on both. On Telegram the table judges only the forms a command actually runs in (for example `/status` or `/status@yourbot`, `/restart` in any case, `/pause <instance>`); any other text that starts with a slash, such as `/status report` or `/STATUS`, is a message to the agent, as before.
 

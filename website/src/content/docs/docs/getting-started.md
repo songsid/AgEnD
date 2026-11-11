@@ -87,7 +87,7 @@ It writes `~/.agend/fleet.yaml`, with access locked to your user ID, and the bot
 
 Step-by-step bot guides: [Telegram](/AgEnD/setup-telegram/), [Discord](/AgEnD/setup-discord/).
 
-Run `agend quickstart` again later to add users, a second platform, or a Discord persona bot to an existing config.
+Run `agend quickstart` again later to add a second platform or a Discord persona bot to an existing config; for a second platform it also offers that platform its own General. To let more people use a bot, add them in the dashboard under Settings → Chat & connections → the bot → **Allowed users**.
 
 To set up from your phone instead of the terminal, see [`agend setup --tunnel`](/AgEnD/docs/cli/#web-dashboard). The setup page (`agend setup`) also offers **Web only (no bot)**: no token, the first agent only, and the web dashboard for everything else. On a Telegram or Discord bot, the first agent you set up with its working directory left empty is the fleet's General, answering in the chat's General topic or channel; with a directory, it is a worker in that project and the fleet adds its General itself.
 
@@ -136,13 +136,13 @@ agend health
 
 ## Updating
 
-Send `/update` in General (fleet admins), or run this on the host:
+Fleet admins can press **Update now** on the dashboard when a new version is out (or **Check for updates** in Settings → Advanced → **Version and update**), send `/update` in General, or run this on the host:
 
 ```bash
 agend update
 ```
 
-It stays on the channel you installed from (a beta stays on beta), installs the new version, checks it, and restarts the fleet. Coming from 2.2.x, read [Upgrading from 2.2 to 2.3](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.3.md) and [What's new in 2.3](/AgEnD/docs/whats-new/) first: it has a note for root and WSL-style hosts, where `agend update` needs `XDG_RUNTIME_DIR` set. Coming from 2.1, read [Upgrading from 2.1 to 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.md) first. From 2.1.0–2.1.11, or on a host without AgEnD's built-in Node, follow its manual steps instead.
+It stays on the channel you installed from (a beta stays on beta), installs the new version, checks it, and restarts the fleet. With no network it gives up within about a minute and changes nothing. Coming from 2.2.x, read [Upgrading from 2.2 to 2.3](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.3.md) and [What's new in 2.3](/AgEnD/docs/whats-new/) first: it has a note for root and WSL-style hosts, where `agend update` needs `XDG_RUNTIME_DIR` set. Coming from 2.1, read [Upgrading from 2.1 to 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.md) first. From 2.1.0–2.1.11, or on a host without AgEnD's built-in Node, follow its manual steps instead.
 
 On Windows, the desktop shortcuts **AgEnD 儀表板** (the dashboard, its sign-in code filled in) and **AgEnD 重新啟動** (restart, after asking) come with the Windows installer. If you installed earlier, paste the [Windows one-liner](/AgEnD/install-windows/) again: it finds AgEnD already installed and only offers to add or update the shortcuts. Or, inside WSL, run `agend shortcuts`. After `agend update` in a WSL terminal without the shortcuts, one line says so, once; nothing is put on your desktop unless you run one of these. If `agend` itself stopped working (an update cut off half way: `agend: command not found`), the same one-liner repairs it in place, keeping your fleet's settings and data, and asks nothing about setup again.
 

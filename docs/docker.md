@@ -264,7 +264,7 @@ The API keys:
 - grok: `XAI_API_KEY`;
 - opencode: its providers' own keys.
 
-- **`/login`:** in General, or the dashboard's sign-in for a backend. Browser and device-code flows work as on any
+- **`/login`:** in General, or the dashboard's sign-in for a backend. Browser and authorization-code flows work as on any
   install.
 - **An API key:** add it to `.env`, then run `docker compose up -d` (it re-reads `.env`).
 - **A shell:** `docker compose exec -it agend claude` (or `codex`, `kiro-cli`, `grok`, …). The person follows that CLI's

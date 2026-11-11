@@ -76,17 +76,17 @@ The token itself never goes in the file. `bot_token_env` names the variable in `
 
 #### access
 
-**Leaving out the whole `access` block lets everyone in** (`open`). `agend quickstart` writes `mode: locked` with your user ID. An `access` block you write is not filled in field by field, so set `mode` and `allowed_users` yourself.
+**Leaving out the whole `access` block lets everyone in** (`open`). `agend quickstart` writes `mode: locked` with your user ID. An `access` block you write is not filled in field by field, so set `mode` and `allowed_users` yourself. To let someone in, add them under **Settings → Chat & connections → the bot → Allowed users**.
 
 | Field | Type | When the block is left out | What it does |
 |---|---|---|---|
-| `mode` | `locked` \| `pairing` \| `open` | `open` | `locked` = the allow list only. `pairing` = the allow list, plus self-registration with `/pair`. `open` = anyone |
+| `mode` | `locked` \| `pairing` \| `open` | `open` | `locked` = the allow list only. `pairing` = an older name that now means the same as `locked` (access codes are no longer issued). `open` = anyone |
 | `allowed_users` | (number\|string)[] | `[]` | User IDs allowed in |
-| `max_pending_codes` | number | `0` | Distinct users with pending pairing codes (up to two codes per user). Set a positive number for `pairing` |
-| `code_expiry_minutes` | number | `0` | Pairing code lifetime. Set a positive number for `pairing` |
+| `max_pending_codes` | number | `0` | Kept for older configs; unused |
+| `code_expiry_minutes` | number | `0` | Kept for older configs; unused |
 
-- **The saved state wins over `fleet.yaml`.** Pairing, confirming a code, or `agend access lock`/`unlock` writes the mode to `~/.agend/access/access.json` (`access-<id>.json` for other bots). From then on the saved mode is used, and the saved users are added to `allowed_users`. To take someone out, remove them from both.
-- **Fleet admin is separate.** Admin commands (`/update`, `/login`, `/web`, …) need the user in that bot's `allowed_users` in `fleet.yaml`. `open` access or a pairing does not make anyone an admin.
+- **The saved state wins over `fleet.yaml`.** `agend access lock`/`unlock` writes the mode to `~/.agend/access/access.json` (`access-<id>.json` for other bots). From then on the saved mode is used, and the saved users are added to `allowed_users`. To take someone out, remove them from both.
+- **Fleet admin is separate.** Admin commands (`/update`, `/login`, `/web`, …) need the user in that bot's `allowed_users` in `fleet.yaml`. `open` access or a saved chat grant does not make anyone an admin.
 
 #### options
 

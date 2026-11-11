@@ -32,9 +32,9 @@ Fleet 在 `127.0.0.1` 的 `health_port`（預設 19280）上提供一個儀表�
 
 冷啟動或完整重啟時，儀表板會在所有 agent 啟動完成前就打開，並顯示每個 agent 的啟動進度。
 
-**登入。** 在 General 送 `/web`（fleet 管理員），或在主機上執行 `agend web`，然後在登入頁輸入一次性代碼。代碼只能用一次、5 分鐘後失效。直接連到儀表板時，session 預設維持 48 小時（可設定）；透過公開連結開的 session 最多 4 小時、閒置 30 分鐘就結束，連結關閉時也會結束。用 `/web` 的代碼登入時，agent 看到的你就是你的 Discord 或 Telegram 帳號 — 只用來認人，不給任何權限。
+**登入。** 在 General 送 `/web`（fleet 管理員），或在主機上執行 `agend web`，然後在登入頁輸入一次性的裝置登入碼。它只能用一次、5 分鐘後失效。直接連到儀表板時，session 預設維持 48 小時（可設定）；透過公開連結開的 session 最多 4 小時、閒置 30 分鐘就結束，連結關閉時也會結束。用 `/web` 的裝置登入碼登入時，agent 看到的你就是你的 Discord 或 Telegram 帳號 — 只用來認人，不給任何權限。
 
-**從手機連。** `/web` 也能透過 Cloudflare Quick Tunnel 開一個**臨時公開連結**：你選它之前什麼都不會公開，連結和代碼私下傳給你，預設兩小時後關閉（或用 `/web revoke` 關掉）。用自己的網域（具名 Cloudflare tunnel，用 `web.public_link.hostname` 設定）時，網址每次都相同，最長可以開到七天，或直到你關掉為止。拿到它的人可以用你的聊天、終端機、檔案和大部分的儀表板 — 公開連結只擋下少數變更（排程、team、Web 設定、密鑰）— 所以不要轉傳。
+**從手機連。** `/web` 也能透過 Cloudflare Quick Tunnel 開一個**臨時公開連結**：你選它之前什麼都不會公開，連結和裝置登入碼私下傳給你，預設兩小時後關閉（或用 `/web revoke` 關掉）。用自己的網域（具名 Cloudflare tunnel，用 `web.public_link.hostname` 設定）時，網址每次都相同，最長可以開到七天，或直到你關掉為止。拿到它的人可以用你的聊天、終端機、檔案和大部分的儀表板 — 公開連結只擋下少數變更（排程、team、Web 設定、密鑰）— 所以不要轉傳。
 
 完整說明：[web-dashboard.zh-TW.md](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md)。
 
@@ -80,7 +80,7 @@ Fleet 在 `127.0.0.1` 的 `health_port`（預設 19280）上提供一個儀表�
 
 - `/model` 和 `/effort` 用選單切換 instance 的模型和推理強度。
 - `/backend` 把 instance 換到主機上已安裝的另一個 CLI 後端：後端 → 模型 → 推理強度 → 確認。Instance 只重啟一次，而且是新的 session — 對話不會跨後端延續。
-- `/login` 不用 SSH 就能登入後端 CLI（沒裝的話先安裝）：Codex 和 Grok 會在聊天裡給 device code，Claude Code 和 Kiro CLI 會開一個一次性的瀏覽器終端機。
+- `/login` 不用 SSH 就能登入後端 CLI（沒裝的話先安裝）：Codex 和 Grok 會在聊天裡給供應商的授權碼，Claude Code 和 Kiro CLI 會開一個一次性的瀏覽器終端機。
 - **Credential profile** 讓 instance 有自己的登入 — 也就是第二個訂閱 — 支援 Kiro CLI、Codex 和 Claude Code（`backend_options.<backend>.credential_profile`）。`/usage` 和儀表板每個訂閱各一列。
 
 詳細：[commands.md](https://github.com/songsid/AgEnD/blob/main/docs/commands.md)、[Credential profiles](https://github.com/songsid/AgEnD/blob/main/docs/configuration.zh-TW.md#credential-profiles同一-backend-的多個帳號)。
@@ -196,7 +196,7 @@ teams:
 
 ## 更新
 
-`agend update`（或在聊天裡 `/update`）會安裝你目前頻道上的最新版 — stable、`--beta` 或 `--alpha` — 然後重啟 fleet。見 [Beta 與 Alpha 更新頻道](https://github.com/songsid/AgEnD/blob/main/docs/features.zh-TW.md#beta-與-alpha-更新頻道-beta-and-alpha-update-channels)。
+`agend update`（或在聊天裡 `/update`、在儀表板按 **立即更新**）會安裝你目前頻道上的最新版 — stable、`--beta` 或 `--alpha` — 然後重啟 fleet。見 [Beta 與 Alpha 更新頻道](https://github.com/songsid/AgEnD/blob/main/docs/features.zh-TW.md#beta-與-alpha-更新頻道-beta-and-alpha-update-channels)。
 
 ## 後端
 

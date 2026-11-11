@@ -89,7 +89,7 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram、Discord 或瀏覽器
 
 🔑 **多組登入（credential profile）** — 用 `backend_options.<backend>.credential_profile`，讓 instance 或 ClassicBot 頻道改用同一個 backend 的第二個訂閱（目前支援 kiro-cli、Codex 和 Claude Code）。詳見[英文版設定參考](docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend)。
 
-🌐 **用手機完成登入** — `/login`（僅限 fleet 管理員）不必 SSH 就能讓 CLI 登入：Codex、Grok 這類裝置碼登入會把網址和代碼貼在聊天室；需要終端機的登入，則會在主機上開一個有時限、要權杖才能進入的瀏覽器終端機。kiro-cli 和 Claude Code 在你確認後，還能透過 Cloudflare Quick Tunnel 開一個暫時的公開連結；主機上沒有 `cloudflared` 時，AgEnD 會自動下載。要關掉這個功能，設定 `web_terminal.tunnel.allow_public: false`。詳見 [Configuration](docs/configuration.zh-TW.md#人不在機器旁完成-login公開連結)。
+🌐 **用手機完成登入** — `/login`（僅限 fleet 管理員）不必 SSH 就能讓 CLI 登入：Codex、Grok 會把供應商的網址和授權碼貼在聊天室；需要終端機的登入，則會在主機上開一個有時限、要權杖才能進入的瀏覽器終端機。kiro-cli 和 Claude Code 在你確認後，還能透過 Cloudflare Quick Tunnel 開一個暫時的公開連結；主機上沒有 `cloudflared` 時，AgEnD 會自動下載。要關掉這個功能，設定 `web_terminal.tunnel.allow_public: false`。詳見 [Configuration](docs/configuration.zh-TW.md#人不在機器旁完成-login公開連結)。
 
 💤 **自動暫停與喚醒** — 設定 `auto_pause_after`（分鐘，預設關閉）後，閒置的 instance 會被暫停，有新訊息進來時自動喚醒。也可以用 `/pause`、`/wake` 手動操作。
 

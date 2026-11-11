@@ -316,6 +316,10 @@ Instance 可看到自己送出、收到，或經 `forwards` 明確授權的紀�
 
 `id` 可以是任務 id、8 位 hex 前綴，或網頁上的卡號（`M-3`）；清單的每一列會帶卡號 `code`。
 
+動作不接受的欄位（例如 `update` 帶 `project`）會被指名拒絕，而且什麼都不改：`update does not take "project" … Nothing was changed.`，後面列出這個動作接受的欄位（#3195）。一般的 `update` 回覆會帶出它設定的每個欄位實際存下的值。
+
+**關閉任務看板的 agent 不會被派卡（#2246）。** 它沒有 `task` 工具，所以不論從 dashboard 還是由其他 agent 指派，看板都會拒絕讓它成為卡片或 `task` 工具任務的新負責人並說明原因，也不送它 `[Task board]` 通知。dashboard 的負責人選單會把它反灰（**名稱（看板已關閉）**）。它原本的卡片仍保留在它名下；替它打開任務看板時，會通知它先用 `task mine` 看自己的工作。
+
 看板自己的動作會回純文字，一張卡一行，讓 agent 在 context 重置後不用讀 JSON 就能接手：
 
 - `task(action: "mine")` — 你的工作：被退回的、進行中、卡住、等使用者確認、可以開始（你自己的待辦卡，以及你統籌的主任務底下沒人負責的子任務）、在等前置卡的、有你還沒看過留言的卡，以及你統籌的主任務和進度。
@@ -353,7 +357,7 @@ Tasks 分頁就是看板本身（設計：[task-board](design/task-board.md)，�
 
 ## 決策 (Decisions)
 
-決策是比一段對話活得更久的規則和慣例。`post_decision` 用 `title` 和 `content` 記錄一條決策，可選填 `tags`、`ttl_days`（多少天後封存，預設永久保留），以及用 `supersedes` 取代較舊的決策。`scope: "project"`（預設）只讓同一個目錄下工作的 instance 看到；`scope: "fleet"` 則讓所有 instance 看到。`list_decisions` 依標題列出仍有效的決策（id、標題、範圍、日期、tags；可用 `include_archived`、`tags` 篩選）；要看某一條的全文就傳 `id`，要看全部就傳 `full: true`（2.2.5，#2152：完整清單已超過 100 KB），`update_decision` 則用來修改或封存決策。後者是 coordinator 動詞，因為它會改到別人記下的東西。
+決策是比一段對話活得更久的規則和慣例。`post_decision` 用 `title` 和 `content` 記錄一條決策，可選填 `tags`、`ttl_days`（多少天後封存，預設永久保留），以及用 `supersedes` 取代較舊的決策。`scope: "team"`（#3420）讓某個團隊（fleet.yaml 的 `teams`）的每位成員看到，不論他們在哪裡工作：其他目錄、worktree 或工作區都一樣；其他團隊看不到。agent 屬於團隊時這是預設；屬於多個團隊時要用 `team` 指定一個。`scope: "project"` 只讓同一個目錄下工作的 instance 看到，是不屬於任何團隊的 agent 的預設；`scope: "fleet"` 則讓所有 instance 看到，用於每個團隊都要遵守的規則。團隊成員資格在列出決策時和每次啟動時讀取，所以加入或離開團隊會立即生效，不必重新發布。`list_decisions` 依標題列出仍有效的決策（id、標題、範圍、日期、tags；可用 `include_archived`、`tags` 篩選）；要看某一條的全文就傳 `id`，要看全部就傳 `full: true`（2.2.5，#2152：完整清單已超過 100 KB），`update_decision` 則用來修改或封存決策。後者是 coordinator 動詞，因為它會改到別人記下的東西。
 
 有效的決策會在 instance 啟動時注入它的指示。fleet 範圍的決策也必須相關才會注入：沒有綁定專案的全域決策，或來自同一個專案、或其 worktree/checkout 的決策。General instance 會拿到所有 fleet 範圍的決策，因為它負責在專案之間分派工作。
 
@@ -413,7 +417,7 @@ agent 能做什麼，由每個 instance 的 `tool_set` 決定，而且是由 fle
 
 **`coordinator` 和 `full` 目前是同樣的 55 個工具**，差別在於意義，而不是內容。`coordinator` 表示「這個 agent 負責管理 fleet」，日後若發現某個動詞不屬於這裡，就會把它收窄；`full` 表示「不管怎樣都給它全部」，也是舊版預設值的名字。想讓 agent 擔任協調者，就寫 `coordinator`；為了拿到*更多*而選 `full`，什麼也不會多，反而會錯過之後所有的調整。
 
-`standard`（30 個工具）和 `minimal`（9 個）仍然存在。`minimal` 在 2.1.9 加入了 `list_emojis` 和 `preview_emojis`，在 2.1.12 加入了 `list_stickers` 和 `preview_stickers`。**`general` 是一種身分，不是可以自己挑的權限組合**：它會指派給設定了 `general_topic: true` 的 instance，手動寫上會通不過驗證，因為兩種成為 General 的途徑遲早會互相矛盾。General 是 AgEnD 的管理入口，因此 `general` 權限組合包含所有編排工具（`ORCHESTRATION`：建立、刪除、替換、啟動、停止、暫停、喚醒與重啟 instance；部署與拆除模板；team 增刪改；`update_instance_config` 與 `update_fleet_defaults`；`migrate_kiro_instance` 與 `reconcile_kiro_instance`；`update_decision`；以及 `get_web_settings`／`set_web_settings`），同時預設不納入工作倉租用與主機原始設定／紀錄檢視工具（`checkout_repo`、`release_repo`、`get_fleet_config`、`get_instance_logs`、`list_deployments`、`validate_config`）。
+`standard`（30 個工具）和 `minimal`（9 個）仍然存在。`minimal` 在 2.1.9 加入了 `list_emojis` 和 `preview_emojis`，在 2.1.12 加入了 `list_stickers` 和 `preview_stickers`。**`general` 是一種身分，不是可以自己挑的權限組合**：它會指派給設定了 `general_topic: true` 的 instance，手動寫上會通不過驗證，因為兩種成為 General 的途徑遲早會互相矛盾。General 是 AgEnD 的管理入口，因此 `general` 權限組合包含所有編排工具（`ORCHESTRATION`：建立、刪除、替換、啟動、停止、暫停、喚醒與重啟 instance；部署與拆除模板；team 增刪改；`update_instance_config` 與 `update_fleet_defaults`；`migrate_kiro_instance` 與 `reconcile_kiro_instance`；`update_decision`；以及 `get_web_settings`／`set_web_settings`），以及自 #3485 起的檢視工具（`get_fleet_config`、`get_instance_logs`、`list_deployments`、`validate_config`）。預設只不納入工作倉租用（`checkout_repo`、`release_repo`）。General 可以用 `update_instance_config` 或 `create_instance` 直接設定其他 agent 的 `tool_set`，不需確認卡片；但不能這樣改自己的，而且這兩個工具即使是 General 也不接受 `skipPermissions`。其他呼叫者（包括 coordinator）仍會被拒絕。敏感設定的確認流程不變。
 
 `delegate_task` 刻意設計成 worker 工具。它不建立任何東西、不刪除任何東西，而且目標必須已經存在，所以一般 agent 可以把工作交給同伴，卻不能自己生出一個同伴。
 
@@ -480,7 +484,7 @@ State 欄把暫停、停止或當機和執行狀態合併顯示（見 [Instance 
 
 - **`/usage`**（所有人）— 這台機器上已登入之 CLI 的 AI 訂閱用量：Claude、Codex、Muse、Grok、Kiro 和 Antigravity。設定了[憑證 profile](#憑證-profile-與第二份訂閱-credential-profiles-and-a-second-subscription) 的後端，每份訂閱各佔一列。agent 可以用 `get_usage` 讀取同樣的資料。
 
-  **完整或精簡（2.3）。** 用量面板的標題有 **完整／精簡** 切換。精簡檢視依供應商分組，每個帳號幾行：帳號名稱、方案和重置時間，再加上較短和較長的時間窗（有的話）各一條長條和百分比（不到兩天的，例如 5 小時；兩天以上的，例如一週或一個月）。Antigravity 帳號則是每個額度池一行。選擇會同步到你所有的裝置（`usage.compact`）。每個 Claude 登入（預設帳號和每個 credential profile）各有一列：額度用完時顯示 100% 和重置時間，被限流時顯示「Rate limited」。Antigravity 會顯示方案名稱、付費方案的 Gemini 額度，以及 Gemini 4 Argon 的一列。
+  **完整或精簡（2.3）。** 用量面板的標題有 **完整／精簡** 切換。精簡檢視依供應商分組，每個帳號幾行：帳號名稱、方案和重置時間，再加上較短和較長的時間窗（有的話）各一條長條和百分比（不到兩天的，例如 5 小時；兩天以上的，例如一週或一個月）。Antigravity 帳號則是每個額度池一行。選擇會同步到你所有的裝置（`usage.compact`）。每個 Claude 登入（預設帳號和每個 credential profile）各有一列：額度用完時顯示 100% 和重置時間，被限流時顯示「Rate limited」。Claude 登入的各模型每週額度（例如 **Fable（週）**）即使是 0% 也會在那兩條下面多一條、以模型名稱標示（#2815）；其他廠商沒用到的模型額度仍然隱藏。Antigravity 會顯示方案名稱、付費方案的 Gemini 額度，以及 Gemini 4 Argon 的一列。
 
   **讀取失敗時保留上次的數字（#2236，2.3）。** 讀取失敗時（token 過期、rate limit、網路問題等），該列仍會顯示，並保留上次成功讀取的數字（最多保留一週）。數字會變灰，並附上說明：**已過期 · 快取於 14:05**、**暫時無法更新** 或 **讀取失敗**；如果是 token 過期或其他錯誤，第二行會告訴你怎麼做（例如「執行 `agy` 一次」）。已過了重置時間的視窗，會顯示**已於 … 重置** 而不是舊的百分比。從未成功讀取過的 provider，仍然顯示錯誤；讀取成功後就會清除標示。重新啟動後，上次的數字從 `AGEND_HOME` 的 `usage-last-good.json` 讀取。`get_usage` 標為 stale 的列會帶有 `stale`、`cachedAt`、`staleCause`；已過重置時間的指標帶有 `resetPassed`。
 - **`/doctor`**（fleet 管理員）— 健康診斷，分成六個區塊：Prerequisites、Service、Fleet、Channel gateways、MCP IPC 和 Resources，每項檢查的結果是 `ok`、`warn` 或 `error`。
@@ -603,7 +607,7 @@ defaults:
 ### 支援的功能
 
 - **Topic 模式**：每個 instance 對應「AgEnD Agents」分類（可用 `options.category_name` 改名）底下的一個文字頻道，另有一個 General 頻道。
-- **ClassicBot**：在任何文字頻道打 `/start`，它就變成 agent 頻道；`/stop` 則移除。collab 模式下只有 @ 這個 bot 才會觸發 agent。Discord 的 `/start` 會開啟它；Telegram 一般的 `/start` 不會（見[指令一覽](command-surface.zh-TW.md)）。
+- **ClassicBot**：在任何文字頻道打 `/start`，它就變成 agent 頻道；`/stop` 則移除。collab 模式下只有 @ 這個 bot 才會觸發 agent。回覆一則訊息、只寫這個 bot 的提及時，會詢問那則訊息：agent 會連同被回覆的訊息一起收到，和 Telegram 一樣（#3340）。Discord 的 `/start` 會開啟它；Telegram 一般的 `/start` 不會（見[指令一覽](command-surface.zh-TW.md)）。
 - **同一個伺服器放多個 bot**：每個 bot 是 `channels[]` 裡獨立的一項；bot 只回應提到自己的訊息，絕不替別的 bot 回答。
 - **斜線指令**：共 29 個名稱（28 個命令加上 `/web` 別名），包括 `/chat`、`/steer`、`/btw`、`/cancel`、`/ctx`、`/compact`、`/model`、`/backend`、`/effort`、`/web`、`/usage`、`/login`；需要管理員權限的會標上 🔒（這個標記和實際執行權限檢查的是同一張表產生的）。
 - **按鈕與選單**：權限核准（Allow / Always / Deny）、後端選單、取消，以及 hang / model / effort 選擇器。
@@ -690,7 +694,7 @@ kiro 把終端機交給其他程式時，AgEnD 會暫停投遞，不會往裡面
 - `!` 指令；
 - 取得焦點的 `/kvim` 面板。
 
-實例會顯示「Kiro's terminal is in use by another program (an editor, a pager or a ! command) — finish or close it in the instance pane」。kiro 自己的輸入列回來後，暫停的訊息才會送進去。
+instance 會顯示「Kiro's terminal is in use by another program (an editor, a pager or a ! command) — finish or close it in the instance pane」。kiro 自己的輸入列回來後，暫停的訊息才會送進去。
 
 **怎麼辨認。** 先看 kiro 自己畫的列：
 - 取得焦點的 `Neovim` 面板標題；
@@ -753,6 +757,8 @@ kiro-cli 的 V3 引擎在 TUI 啟動前會問 **Trust this workspace?**：在尚
 
 建議的入門精靈會偵測已安裝的 backend，並產生精簡的 `fleet.yaml`。Telegram 從 `/start` 訊息找出群組與使用者；Discord 從伺服器訊息或私訊偵測帳號，請你明確確認，失敗時改為必填且驗證 snowflake 的手動輸入。網頁精靈也必須填有效的管理員 ID。
 
+**加入第二個平台（#3202）。** `agend quickstart` →「Add another platform」會問要不要替新平台建立 General（例如 `general-discord`），直接按 Enter 就是要。沒有的話，那裡不在任何 agent 主題裡的訊息不會有人接收：AgEnD 只會自動替第一個平台建立 General。問題裡會說明代價：多一個一直在執行的 agent。和既有伺服器共用的 Discord 分身 bot 不會被問，該平台已經有 General 時也不會。`agend doctor` 會指出哪個有自己群組的連線還沒有 General。
+
 ## 設定頁與設定精靈：工作目錄可留空、繁體中文（#2726）
 
 在 `agend setup` 頁面（Windows 安裝程式開啟的那一頁）與儀表板的 **設定 → 設定精靈** 裡，新 agent 的工作目錄可以留空，「只用網頁」和接 bot 的設定都一樣。這時 agent 會有自己的資料夾 `~/.agend/workspaces/<名稱>`。頁面會在欄位下方顯示這個路徑，主機確認後建立資料夾，fleet.yaml 也會寫入完整路徑。若自己填寫，必須是絕對路徑；既有的 agent 保留它自己的目錄。
@@ -781,7 +787,7 @@ Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板�
 
 `/login [backend]`（fleet 管理員；Telegram 的 General topic 或 Discord）不必 SSH 就能讓後端 CLI 登入；如果 CLI 還沒安裝，會先幫你裝好。不帶參數時，會顯示所有已安裝或可安裝之後端的選單。每次登入都在專屬的暫時 tmux 視窗裡進行（不會動到 instance 的 pane），10 分鐘後逾時，也可以用 `/login cancel` 中止。
 
-- **裝置碼** — `codex` 和 `grok`：網址和代碼會貼在聊天室。
+- **授權碼** — `codex` 和 `grok`：供應商的網址和授權碼會貼在聊天室，到供應商官方網站完成授權。
 - **瀏覽器終端機** — `claude-code` 和 `kiro-cli`：AgEnD 會開一個一次性的網頁終端機，執行登入指令，你在那裡完成登入（必要時把代碼貼回去）。這個連結預設只在這台機器上有效（可透過 SSH 轉發、tailscale 或你自己的 proxy 連過去）。
 - **只安裝** — `opencode` 和 `muse` 在這裡沒有登入流程。`antigravity` 不支援遠端登入，因為 `agy` 沒有獨立的登入指令。
 
@@ -789,7 +795,7 @@ Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板�
 
 **公開連結。** 如果手機連不到這台機器，`claude-code` 或 `kiro-cli` 的登入可以透過 Cloudflare Quick Tunnel 提供一個暫時的公開 https 連結：確認訊息上有 **I understand (temporary public link)**、**I understand (local network)** 和 **Cancel** 三個按鈕，按下第一個就代表同意，每次登入問一次。`PATH` 上有 `cloudflared` 就用它；沒有的話，AgEnD 會把 Cloudflare 的版本下載到 `~/.agend/bin/`，只下載一次，版本固定，並以隨附的 SHA256 驗證。連結和存取權杖會分成兩則私訊傳給你，絕不貼在頻道裡；登入不論以何種方式結束，tunnel 都會關閉。TLS 在 Cloudflare 端解開，所以 Cloudflare 看得到那個終端機。設定 `web_terminal.tunnel.allow_public: false` 可以在這台主機上關閉這個選項。詳見 [configuration](configuration.zh-TW.md#人不在機器旁完成-login公開連結)。
 
-**從網頁 dashboard 登入（2.3，#2233）。** 在這台機器或它的網路上登入 dashboard 的 fleet 管理員（不是透過公開連結，也不是訪客）不需要任何聊天連線也能做同樣的事：**設定 → Agent → 登入** 列出每個 backend 的登入，以及代理使用的每個憑證設定檔，附 **登入** 按鈕；網頁的 `/backend` 選單在未登入的 backend 旁提供 **登入 <backend>**；**需要你** 在因登入而暫停的代理上提供 **登入**。對話框跑的是同一個流程：裝置碼直接顯示在對話框；瀏覽器終端機登入會顯示 **開啟登入終端機** 和一次性存取碼，只給這個瀏覽器工作階段（不經過私訊，所以只用網頁的 fleet 不需要 bot）。檢查、次數限制和 10 分鐘的時限都相同，公開連結仍是每次登入自行選擇；進行中時每個管理員頁面都會顯示，附 **開啟**（啟動它的瀏覽器看得到連結和代碼，其他人只看得到是誰、在哪裡，並可取消）。啟動它的瀏覽器工作階段結束時，登入會被取消。這裡不會安裝尚未安裝的 CLI：對話框會給出安裝指令。預設的 Kiro、Claude Code 與 Codex 帳號則改用具名的瀏覽器登入控制項（#2599；[詳細說明](configuration.zh-TW.md#首次設定時從瀏覽器登入後端)），首次設定時略過的後端，即使還沒有 agent 使用，也會列在 **Needs you**。
+**從網頁 dashboard 登入（2.3，#2233）。** 在這台機器或它的網路上登入 dashboard 的 fleet 管理員（不是透過公開連結，也不是訪客）不需要任何聊天連線也能做同樣的事：**設定 → Agent → AI 帳號** 列出這台機器上連接的每個 AI 帳號，以及 agent 使用的每個憑證設定檔，標示 **已連接** 或 **未連接**，附 **連接帳號**（或 **重新連接**）；網頁的 `/backend` 選單會替帳號未連接的 backend 提供連接；**等你處理** 也會在因登入而暫停的 agent 上提供（停在自己登入畫面的 CLI 會顯示「等待連接 AI 帳號」）。對話框跑的是同一個流程：供應商的授權碼直接顯示在對話框；瀏覽器終端機登入會顯示 **開啟登入終端機** 和一次性存取碼，只給這個瀏覽器工作階段（不經過私訊，所以只用網頁的 fleet 不需要 bot）。檢查、次數限制和 10 分鐘的時限都相同，公開連結仍是每次登入自行選擇；進行中時每個管理員頁面都會顯示，附 **開啟**（啟動它的瀏覽器看得到連結和存取碼，其他人只看得到是誰、在哪裡，並可取消）。啟動它的瀏覽器工作階段結束時，登入會被取消。這裡不會安裝尚未安裝的 CLI：對話框會給出安裝指令。預設的 Kiro、Claude Code 與 Codex 帳號則改用具名的瀏覽器登入控制項（#2599；[詳細說明](configuration.zh-TW.md#首次設定時從瀏覽器登入後端)），首次設定時略過的後端，即使還沒有 agent 使用，也會列在 **Needs you**。
 
 **只用網頁的 fleet 也能完整運作（#2910）。**沒有 Discord 或 Telegram 連線的 fleet（例如用 `agend quickstart` → 只用網頁，或設定頁的「只用網頁」建立的）也擁有 AgEnD 其他的功能：排程、任務板和 fleet 決策都會運作；agent 之間可以用 `send_to_instance`、`delegate_task`、`report_result`、`broadcast` 互傳訊息，接收的 agent 會看到 `[from:<名稱>]`，和聊天 fleet 一樣。在儀表板按 **新增 agent** 會建立一個沒有聊天 topic 的 agent：名稱就是你輸入的（已被使用時依序加上 `-2`、`-3`…），透過儀表板的聊天和它對話。只有聊天平台才有的 `edit_message` 和 `download_attachment` 會回覆「純網頁的 fleet 無法使用」，而不是叫 agent 重試；`reply` 則回到網頁聊天。
 
@@ -824,6 +830,8 @@ profile 存放在 fleet 底下的 `~/.agend/credential-profiles/<backend>/<profi
 
 AgEnD 會保存一份「這台主機能跑什麼」的快照（#2072），每個 backend 的狀態是**可用**、**未安裝**、**未登入**、**版本太舊**（只有 kiro-cli 有最低版本 2.21.0），或**未知**（還沒檢查，或無法判斷）。讀取時不會啟動任何可能自我更新或連網的 CLI：版本從磁碟讀取（muse 的 `.muse-version`、npm 安裝的套件自己的 `package.json`、claude 的 `…/versions/<v>`、codex 的 `…/releases/<v>-<target>/`），讀不到時只在 Linux 上以無網路的方式（`unshare -rn`）執行 `<cli> --version`，期限 5 秒；讀不到版本就是未知，絕不會判為「太舊」。登入狀態從憑證檔與 API key 環境變數判斷，絕不向帳號查詢；macOS 上的 Claude 把登入存在鑰匙圈裡，因此在那裡是未知。有憑證 profile 的 instance，看的是那個 profile 的登入。快照在啟動時、每 10 分鐘、以及每次 `/login` 之後更新，請求只讀取它。探測失敗會保留上一次的明確結果，而且只有明確的結果才會停用：未知的仍可選，套用時會再檢查一次。
 
+**模型需要較新的 Claude Code 時（#3441）。** Claude Code 回報所選模型需要較新的 CLI 時，AgEnD 會檢查目前安裝的版本：已經夠新就保留原對話重啟一次；不夠新就顯示清楚的提示，請你更新 Claude Code。不會反覆重啟。
+
 會用到它的地方：
 - 聊天裡的 **`/backend`**（見[上方](#診斷與各-agent-的聊天指令-diagnostics-and-per-agent-chat-commands)）：不能用的 backend 會停用並寫出原因，直接打出來也會被拒絕。
 - **網頁的新增 agent 對話框，以及設定頁的每個 backend 欄位**（agent、fleet 預設、ClassicBot 預設與聊天室）：「未安裝」、「未登入（請用 /login）」與「需要 X 以上版本」會停用並寫出原因；「尚未檢查」仍可選；目前的值永遠可選，已經移除的 backend 會排在最前面並標示已移除。
@@ -831,7 +839,7 @@ AgEnD 會保存一份「這台主機能跑什麼」的快照（#2072），每個
 
 模型清單：
 - **`/model`** 與網頁聊天的模型選項，列的是 instance 所用帳號能跑的模型。Claude Code 的憑證 profile 各有自己的清單，用那個 profile 的登入讀取；Codex 與 Kiro 的 profile 則每個 backend 共用一份。instance 正在用的模型一定在選項裡；CLI 清單裡沒有的會排在最前面，標示「目前使用中 — 不在這個 CLI 的清單裡」。
-- **設定頁的每個模型欄位**（agent 的模型與備援模型、fleet 預設、ClassicBot 聊天室、新增 agent 對話框）都是下拉選單，列出那個 backend 對那個帳號的快取清單，打開時絕不探測。目前的模型一定列出；**其他…** 會打開一個文字框，裡面預先填好目前的名稱，可以改成 CLI 接受的其他名稱，清空則改為沿用。新增 agent 對話框選 **Fleet 預設**時，列的是 fleet 預設 backend 的模型。
+- **設定頁的每個模型欄位**（agent 的模型與備援模型、fleet 預設、ClassicBot 聊天室、新增 agent 對話框）都是下拉選單，列出那個 backend 對那個帳號的快取清單，打開時絕不探測。欄位下方的 **重新整理模型** 會依所選的 backend 與帳號重新讀取清單：它不會選模型、不會儲存或重啟任何東西，失敗時保留原本的選項（#3500）。目前的模型一定列出；**其他…** 會打開一個文字框，裡面預先填好目前的名稱，可以改成 CLI 接受的其他名稱，清空則改為沿用。新增 agent 對話框選 **Fleet 預設**時，列的是 fleet 預設 backend 的模型。
 
 ## 內建工作流程模板 (Built-in workflow template)
 
@@ -1197,6 +1205,7 @@ instances:
 
 - **自動暫停**：instance 連續 `auto_pause_after` 分鐘沒有活動就會暫停（保留 tmux 視窗，CLI 暫停執行）
 - **自動喚醒**：使用者傳訊息給暫停中的 instance 時，它會自動醒來（大約 30 秒恢復）
+- **暫停期間改了設定**：儲存暫停中 agent 的帳號（憑證設定檔）、模型或其他啟動設定時，它仍保持暫停；之後 **喚醒** 會用已儲存的設定啟動，啟動失敗也能再次喚醒重試（#3567）
 - **工作中保護**：正在產生回應的 instance 絕不會被暫停
 
 ### 設定
@@ -1306,7 +1315,7 @@ agend update --beta     # 從 @beta npm dist-tag 安裝
 agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 alpha
 ```
 
-聊天裡的 `/update` 和 `agend update` 相同：安裝會留在它原本的頻道。會退回較舊版本的更新（例如 alpha 要求 @beta）會被拒絕；要這麼做，請加上 `--stable`、`--version` 或 `--force` 表明意圖。「有新版本」的通知也依循同一個頻道：beta 安裝只會被告知較新的 beta（穩定版推出後，beta 使用者仍留在 beta 線）；alpha 安裝只會被告知較新的 alpha 或更新次版本的穩定版，絕不會被告知 beta。
+聊天裡的 `/update` 和 `agend update` 相同，儀表板的 **立即更新** 也一樣（2.3.5，#3332；見[從網頁更新 AgEnD](web-dashboard.zh-TW.md#從網頁更新-agend)）：安裝會留在它原本的頻道。會退回較舊版本的更新（例如 alpha 要求 @beta）會被拒絕；要這麼做，請加上 `--stable`、`--version` 或 `--force` 表明意圖。「有新版本」的通知也依循同一個頻道：beta 安裝只會被告知較新的 beta（穩定版推出後，beta 使用者仍留在 beta 線）；alpha 安裝只會被告知較新的 alpha 或更新次版本的穩定版，絕不會被告知 beta。
 
 要求更新的聊天會收到一則訊息，一路跟著更新與重啟。套件裝好時會寫「正在重啟 fleet」（沒有 ✅）。Agent 起來時顯示「啟動中… N/M」。只有新 fleet 已 READY 才會改成「✅ 更新完成 — vX · N/M 個 Agent 已就緒」（#2476）。在 Telegram 上這則訊息至多每 6 秒編輯一次（一個群組每分鐘大約只允許 bot 發 20 則訊息，所有 topic 也與 fleet 啟動時的其他訊息共用這個額度）。最後一步若在啟動期間無法送達（遇到限流時段、連線尚未就緒，或網路中斷），啟動會繼續進行，最後一步則在 30 分鐘內持續重試：就地編輯，舊訊息無法編輯時改發一則新訊息（#2175、#2213）。任何啟動或重啟的「Fleet ready」訊息也一樣，小型 fleet 的也包括在內。在 AgEnD 這端逾時的送出可能其實已經送達，所以在它有結果之前不會再送任何東西：你不會收到兩次。
 
@@ -1345,7 +1354,7 @@ fleet 在單一事件迴圈上運作，迴圈上任何慢的事都會拖住其�
 
 ## 「需要你處理」收件匣（#1386 / #1398）
 
-每個世界的 General topic 都有一則持續更新的**「需要你處理」**訊息，彙整該世界的 instance 所有等待操作者處理的事項——投遞確認、掛起警告、權限請求，以及（設定 `needs_you.task_board: true` 時）等你確認或卡住的看板卡片（#2246 第 3 步）。每個 General 只顯示自己世界的 instance（owner-scoped）；`/ui` 的網頁動態消息則是全艦隊可見。訊息中的每個項目都能一鍵前往對應的地方操作：instance 的獨立 topic 或訊息本身的現有按鈕。唯一新增的互動是對目前沒有按鈕的投遞項目加上**確認（Acknowledge）**功能。任何介面上解決的項目都會在所有介面上消失。在 `/ui` 中，**等你處理**（`/ui/needs`）是一個附側欄標記與可選桌面通知的面板（#1408 第 4 步）。設計文件：[docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md)。
+每個世界的 General topic 都有一則持續更新的**「需要你處理」**訊息，彙整該世界的 instance 所有等待操作者處理的事項——投遞確認、掛起警告、權限請求，以及（設定 `needs_you.task_board: true` 時）等你確認或卡住的看板卡片（#2246 第 3 步）。每個 General 只顯示自己世界的 instance（owner-scoped）；`/ui` 的網頁動態消息則是整個 fleet 可見。訊息中的每個項目都能一鍵前往對應的地方操作：instance 的獨立 topic 或訊息本身的現有按鈕。唯一新增的互動是對目前沒有按鈕的投遞項目加上**確認（Acknowledge）**功能。任何介面上解決的項目都會在所有介面上消失。在 `/ui` 中，**等你處理**（`/ui/needs`）是一個附側欄標記與可選桌面通知的面板（#1408 第 4 步）。設計文件：[docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md)。
 
 ## 全域搜尋（#2293）
 
@@ -1366,7 +1375,7 @@ fleet 在單一事件迴圈上運作，迴圈上任何慢的事都會拖住其�
 - **Fleet → 快取**（`/ui/fleet/cache`，#1468）：每個 instance 的提示快取過期分析與保溫建議。資料來自本機 transcript，以牌價計算，並顯示查證日期。2.2.5 起（#2010）會顯示 5 分鐘與 1 小時快取寫入的比例，並實際量測 5 分鐘快取能撐多久：計算每個 instance 過去 7 天內 5 到 60 分鐘的間隔，至少有 10 個時，若最多 10% 重寫了快取，就當作 1 小時來模擬；若至少一半重寫了，卡片會建議改用 `backend_options.claude-code.prompt_cache_ttl: "1h"` 而不是保溫（這個自選設定會在 instance 下次啟動時帶入 `CLAUDE_CODE_PROMPT_CACHE_TTL`；不設定時由 CLI 自己決定）。agent 可以用 `get_cache_report` 讀取同一份報告：General、coordinator 與 full 權限組合看得到所有 instance，其他 instance 只看得到自己那一列。
 - **Fleet → 用量**（`/ui/fleet/usage`，2.2.5，#2122）：每個 agent 的 token、請求數、已送達訊息數與依牌價換算的 API 等值（不是實際花費），可依 agent、backend、模型、憑證 profile 或 team 分組，期間可選今天、7 天、本月、全部或自訂日期；附每日趨勢、能分辨「沒有用量」與「未收集」的日曆熱度圖，以及同一份資料的 CSV。可量測 Claude Code、Codex、Grok、Muse、OpenCode 與 Antigravity（Codex 與 Muse 的快取寫入顯示為「未回報」；Muse 未定價）；Kiro 不記錄 token 數，依文字長度估算並標示「估算」；其他 CLI 會列出原因。自 fleet 啟動起收集並保留 400 天；agent 以 `get_usage_report` 讀取。◔ 用量對話框有連到這裡的連結。
   - **速度**（#3066）：每個模型本身生成時的每秒輸出 token 數（不含工具執行時間），以「速度」欄與「各模型速度」卡片呈現，並列出可計時的請求數；累積 30 個可計時的回應後，另顯示 p10–p90 範圍。`get_usage_report` 以 `speed` 回傳。Claude Code 的回應從第一個 token（由開頭思考區塊的時間戳記與思考時間推得）計到最後一個區塊。Codex 的回應以回應時窗計時，依 codex 0.147 之後寫入的項目時間：從第一個模型項目開始到最後一個結束，扣除伺服器端網頁搜尋的時間；rollout 不標記第一個 token，所以這個時窗可能含有一部分等待第一個 token 的時間。先前的讀取方式在 Claude 回應的第一個區塊就停止計時，等於只用思考時間去除整段回應的 token，數字偏高；現在會等整段回應結束（#3157）。2.3.4 第一次啟動時，會清掉舊方式記錄的 Claude 速度一次（token 數不受影響）。
-  - **整週容量（2.3.4，#3073）：** 每條週（或更長）額度下方顯示「100% ≈ …」：依這個帳號自己的額度讀數，對照同一時段 fleet 記錄的 token，推算整週能用多少。要等同一個重置區間內百分比至少移動 10 點才會顯示，並註明同一帳號在 fleet 以外的用量會讓數字偏低。`get_usage` 也會帶這個值。
+  - **整週容量（2.3.4，#3073）：** 一個帳號整週能用多少（「100% ≈ …」），依這個帳號自己的額度讀數，對照同一時段 fleet 記錄的 token 推算，要等同一個重置區間內百分比至少移動 10 點才有。同一帳號在 fleet 以外的用量會讓數字偏低。自 2.3.5（#2815）起只有 `get_usage` 會回報，用量卡片不再顯示。
   - **額度歷史（2.3.4，#3070）：** 每次成功讀到週（或更長）額度時，記進 `AGEND_HOME` 的 `usage-quota-history.jsonl`（保留 12 週，最多 2 MB），只有百分比或重置時間變了才記。沒有 Discord bot 在讀用量時，只要帳號有 agent 在跑，每 30 分鐘讀一次。Codex 每一輪記在當時的 credential profile 下（之前的顯示「未記錄 profile」）。方法參考 [tokdash](https://github.com/JingbiaoMei/tokdash)（MIT，Jingbiao Mei；見 `THIRD_PARTY_NOTICES.md`）。
 - **新增 agent**（2.2.5，#2074）：側欄清單最後的按鈕會打開新增 agent 對話框。側欄收合時，☰ 旁邊的 **+** 有同樣的作用；手機上它在選單抽屜裡。只有能新增 agent 的 session 看得到它。
 - **篩選側欄時**（2.2.5，#1936）：你正在看的 instance 會留在最上面的**目前**底下，不論是否符合篩選。
@@ -1414,7 +1423,7 @@ web:
 - **在 `fleet.yaml`：** `web.guests.grants: { "<connection id>:<user id>": { name?, instances: [agent, …], level? } }`。一旦有 `grants`，它就是全部範圍（預設拒絕）：連線權限、房間、`open_instances` 和 `narrow` 都不再給任何東西。**以目前的訪客為起點** 會把每位現有訪客目前的範圍暫存成授權。
 
 **訪客能接觸什麼**（每次請求時重新計算，絕不儲存）。有 `grants` 時，只有授權給該帳號且仍存在的 agent。沒有時（#1920 的推導權限）：
-- 它所在連線的 fleet topic 與 General，前提是那個連線的存取設定讓這個帳號進來（允許名單或已配對）；`open` 連線則只有 `open_instances` 裡列出的 agent。
+- 它所在連線的 fleet topic 與 General，前提是那個連線的存取設定讓這個帳號進來（允許名單）；`open` 連線則只有 `open_instances` 裡列出的 agent。
 - 它自己的 Telegram 私人 ClassicBot 聊天室。
 - 同一連線上的 ClassicBot 群組聊天室，前提是成員身分已經確認：Telegram 用 `getChatMember`；Discord 要求這個人在伺服器裡，並在那裡擁有「檢視頻道」與「讀取訊息歷史」，私人討論串還要是討論串成員（或擁有「管理討論串」）。答案在背景讀取（登入時、訪客頁面連線時，以及之後每 10 分鐘），只有在 15 分鐘內確認是成員，聊天室才會顯示；聊天室還在檢查時，頁面會等待，而不是把訪客登出。
 - 最後套用 `narrow`，它只會縮小範圍。
@@ -1532,14 +1541,14 @@ agent 前景效果維持暫停（人類放入的效果保留原有例外）。
 安全模式、關閉顯示與未知 stock 層級會隱藏封面；手動暫停、等待空位與即時讀取失敗不會改用 fallback。
 個人的頁面／頁首／側邊欄／區塊效果沿用同一個 pool；個人游標使用受限的主機靜態圖片。
 
-Canvas Worker 的版面拒絕原因會在聊天與效果對話框保留本機診斷代碼；失敗的試播邀請也會保留停止代碼，瀏覽器主控台同樣會列出。長對話不會只因含有畫面外控制項就耗盡 128 個繪製洞位；所有標記仍會核對，繪製檢查仍有上限。代理摘要仍只含封閉的回報原因。
+Canvas Worker 的版面拒絕原因會在聊天與效果對話框保留本機診斷代碼；失敗的試播邀請也會保留停止代碼，瀏覽器主控台同樣會列出。長對話不會只因含有畫面外控制項就耗盡 128 個繪製洞位；所有標記仍會核對，繪製檢查仍有上限。agent 摘要仍只含封閉的回報原因。
 
 `preview_web_effect({id})` 依 Agent 目前自有或共享的讀取權限，在自己的網頁聊天提供暫存卡片，不會寫入外觀。Try 是在主機面板或 sheet 內、經實體裁切的管理員試用區。只有在非公開 dashboard 已登入的管理員明確點擊才可開始（不限 localhost），
-並由主機顯示 Trial 標籤及停止控制；公開連結、代理與 header token 都不能啟動。關閉面板、換頁、視窗失焦或開啟其他
+並由主機顯示 Trial 標籤及停止控制；公開連結、agent 與 header token 都不能啟動。關閉面板、換頁、視窗失焦或開啟其他
 選單／對話框就會停止。這次點擊只同意本次試播，不需另開全域 HTML 預覽，也不會改動該設定。主機控制與裁切舞台
 位於封閉的 Shadow DOM，使用固定樣式並重設繼承的字型與顏色；其他區域的自訂 CSS 照常啟用。
 原有名額、效能監看及安全停止仍適用，一般前景效果仍保持抑制。
-提議最多十分鐘到期，試用綁定 session／epoch，每次讀取重新檢查來源代理目前的持有／共享權限。不建立保存的放置、
+提議最多十分鐘到期，試用綁定 session／epoch，每次讀取重新檢查來源 agent 目前的持有／共享權限。不建立保存的放置、
 持有權、共享或匯出。暫存的伺服器授權、本機管理員介面、主機面板與共用 app pool 一起執行此邊界。卡片只保留在記憶體，會原地過期，不會從磁碟還原；晚到的有效開始回應只會被停止，不會掛載。Try 使用 manifest 預設參數，不寫入保存的量測紀錄，但仍沿用必要的安全紀錄。詳見
 [Try 邊界](design/1629-effect-trial-authority.md)。
 

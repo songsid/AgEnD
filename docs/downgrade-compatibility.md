@@ -46,6 +46,10 @@ Returning can't rebuild a layout that an older version's save dropped. Keep a co
 
 From #2726 the setup page may leave an agent's working directory empty. The agent then gets its own workspace, and fleet.yaml is written with that path spelled out: `working_directory: <AGEND_HOME>/workspaces/<name>`. Every release writes that same shape for an agent created without a directory. `scripts/check-setup-workdir-downgrade.mjs` (in `data-downgrade.yml`) writes it the way the setup page does, for Web only and with a bot. It then checks that the published **2.3.1** and **2.2.6** validators accept the file and that their loaders read the same folder.
 
+## Team decisions (2.3.5)
+
+2.3.5 adds decisions with `scope: "team"` (#3420). Going back to 2.3.4 or older hides them: the older version doesn't list them to anyone, and doesn't show them to the whole fleet either. They are kept, and come back when you return to 2.3.5.
+
 ## Findings
 
 | Area | Observed result | Limit / evidence |

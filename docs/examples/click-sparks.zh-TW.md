@@ -2,7 +2,7 @@
 
 [English](click-sparks.md)
 
-把 [effect.json](click-sparks/effect.json) 與 [worker.js](click-sparks/worker.js) 複製到實例工作目錄內的一個資料夾，再呼叫
+把 [effect.json](click-sparks/effect.json) 與 [worker.js](click-sparks/worker.js) 複製到 agent 工作目錄內的一個資料夾，再呼叫
 `upload_web_effect { "dir": "<資料夾>" }`，接著用 `apply_web_effect { "id": "<回傳的 id>" }`。
 使用者也能在「外觀」選擇此效果供 page 或 box 槽使用。不需素材或參數。點陣圖每邊最多 512 px，繪製最多每秒 30 次，粒子消失後即停止；指標取樣另有下述限制。
 
@@ -13,7 +13,7 @@
 - 輸入框、連結、按鈕、選單與對話框：不提供指標輸入。焦點留在可編輯欄位時也不提供輸入。
   粒子不會蓋住受保護的控制項。
 - page 涵蓋視窗；box 只在宣告的矩形內回應。既有的前景安全、同意與效能限制仍然適用。
-  代理放置的前景效果仍要求自訂 CSS 關閉，使用者自己的選擇保留原本的豁免。
+  agent 放置的前景效果仍要求自訂 CSS 關閉，使用者自己的選擇保留原本的豁免。
 
 指標輸入是取樣，並非可靠的滑鼠事件佇列：每個畫格只保留一個合格樣本，每秒最多 60 次，
 品質降低時最多 30 次。新的移動可取代移動，但不會覆蓋待送的點擊或其他離散樣本；幾乎同時的

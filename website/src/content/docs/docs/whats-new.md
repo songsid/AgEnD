@@ -8,7 +8,28 @@ description: "What changes for people coming from AgEnD 2.2.x: how to update and
   <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-dark.webp" width="880" alt="The AgEnD web dashboard, with made-up demo data: a sidebar of six agents with their status, a chat with the agent Pixel that shows a table of bundle sizes, a code block, a chosen “Ship it” reply button, an attached report and a usage panel with five AI providers. Beside it, an illustration of a phone showing the same conversation, with the Discord and Telegram logos.">
 </p>
 
-AgEnD 2.3 is the stable line, and 2.3.4 is its current release. This page is for people coming from 2.2.x (2.2.5 and 2.2.6 in particular). It starts with what to do when you upgrade, then lists the command changes, then the new features grouped by area. Already on 2.3.3 or a 2.3.4 beta? Start with [New in 2.3.4](#new-in-234). On 2.3.1 or 2.3.2? Read [New in 2.3.2](#new-in-232) too; 2.3.3's changes are in the [CHANGELOG](https://github.com/songsid/AgEnD/blob/main/docs/CHANGELOG.md). For what 2.2 added, see [What's new in 2.2](/AgEnD/docs/whats-new-2-2/).
+AgEnD 2.3 is the stable line, and 2.3.5 is its current release. This page is for people coming from 2.2.x (2.2.5 and 2.2.6 in particular). It starts with what to do when you upgrade, then lists the command changes, then the new features grouped by area. Already on 2.3.4 or a 2.3.5 beta? Start with [New in 2.3.5](#new-in-235). On 2.3.3? Read [New in 2.3.4](#new-in-234) too. On 2.3.1 or 2.3.2? Read [New in 2.3.2](#new-in-232) as well; 2.3.3's changes are in the [CHANGELOG](https://github.com/songsid/AgEnD/blob/main/docs/CHANGELOG.md). For what 2.2 added, see [What's new in 2.2](/AgEnD/docs/whats-new-2-2/).
+
+## New in 2.3.5
+
+2.3.5 gathers everything from 2.3.5-beta.1 to beta.5. The full list is in the [release notes](https://github.com/songsid/AgEnD/releases).
+
+**Upgrading from 2.3.4:**
+
+- Send `/update` in General, run `agend update` on the host, or press **Update now** on the dashboard (new in this release). Reload (F5) dashboard tabs that were already open.
+- **`/pair` is gone** (`/pair` and `agend access pair`). Add people under Settings → Chat & connections → the bot → **Allowed users**. People already allowed stay allowed; a config still on the old `pairing` mode keeps following the allowlist and is shown as the same as `locked`. Hub and Runtime pairing are unchanged.
+- **No network:** an update gives up within about a minute, says it can't reach the update source and changes nothing.
+- **Installed with nvm:** chat `/update` no longer refuses because the service finds the system npm first.
+- **Back from a 2.4 alpha with a plain npm install?** If 2.4's own tmux server is still running, 2.3 starts no agents beside it and explains the way back (`agend rollback` from 2.4, or stop that server first).
+
+**What's new:**
+
+- **Update from the web:** fleet admins see a line at the top of every page when a new version is out, with **Update now** and **Later**; every open tab follows the steps and the elapsed time, and closing the page doesn't stop it. Settings → Advanced → **Version and update** has **Check for updates**, and `/update` in the web chat opens the same dialog. A web update stays on the install's own line.
+- **Low-quota reminders:** Settings → Notifications sets a fleet default, per-backend rules and per-agent overrides. By default General gets one reminder per shared account at 10% of the weekly quota left.
+- **Web chat:** select text in a message and press **Quote** to answer it passage by passage (on phones the keyboard stays down while you pick); **Refresh models** in the model menu, and backend and model entries in the chat header (desktop) and composer (phone); a **Subagents** row in an admin's progress area; numbered lists with blank lines between items count properly.
+- **Teams and General:** `post_decision` takes `scope: "team"` to reach every member of a team wherever they work; General reads agents' logs, the fleet config, config validation and deployments, and sets other agents' tool sets without a confirmation card; `agend quickstart` → **Add another platform** offers that platform its own General, and `agend doctor` points out a platform without one.
+- **Interface:** the Fleet page's tabs sit in the title row on desktop; loading shows grey skeletons instead of "nothing"; Claude usage cards show per-model weekly quotas again; 繁體中文 wording is unified (Agent, Fleet, one word for admin) and sign-in wording says **connect** throughout; no screen or notice tells you to type commands on the host when the same place can do it.
+- **Fixes:** Claude Code's "Resume this conversation?" is answered again (2.1.319 included); a connector sending an ordinary file is no longer refused as dangerous; a model that needs a newer Claude Code restarts once or says to update; Codex 0.167's trust prompt, Grok 1.0.77's weekly-quota prompt and Muse 1.4.15's third approval option are handled; **Wake** uses the settings saved while paused; ClassicBot answers a reply that only says @bot; polls close on time; agents with the task board off aren't assigned cards; a schedule doesn't miss its first run after a clock jump; `daemon.log` is never written through a symlink.
 
 ## New in 2.3.4
 
