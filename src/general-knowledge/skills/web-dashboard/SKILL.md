@@ -365,6 +365,11 @@ changes); `"hides": true` (needs `activeFor`) stops drawing those people while i
 puts their name tags (one row at the item's tag point) and bubbles on it, and makes hovering or clicking it hit them.
 A pack may set `"straight": true` (#2634): each diagonal leg of a walk becomes an L (across, then up or down), so the
 three walking strips always fit; lay its graph out with horizontal and vertical edges and the corners land on the aisles.
+A pack may list `idleVisits` (#3685, with `stateZones`): `[{ "area", "weight" 1–100, "minSeconds" 5–600, "maxSeconds"
+minSeconds–600 }]`, up to 8 — now and then an idle person walks to a free seat in one of those areas (not their own;
+not one someone sits on, another visitor's, or reserved for someone else unless lent), stays minSeconds–maxSeconds and
+walks back. At each turn they could stroll, the weights are weighed against 100 for the usual stroll (weight 20: 20 of
+every 120 turns); no free seat: a stroll. Same switches as strolls (one office, no reduced motion, not in Edit layout).
 
 **Live traffic** (**Live** switch, on by default; **Key** in the toolbar explains it, as a strip above the canvas): a line for each message between instances.
 Colour by kind — task (delegate_task) purple, send/query/update teal, report pink, broadcast orange; between teams

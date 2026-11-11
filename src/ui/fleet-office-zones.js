@@ -104,7 +104,7 @@ export function assignSeats(pack, wants, prev = new Map()) {
 /**
  * The zones layout for `nodes` (buildOrgView's) on a pack: everyone but the missing at their seat. The same shape as
  * the desks layout (rooms → desks with a seat), in logical units, plus `mode: "zones"`, the pack's areas and graph (and
- * its `straight`, #2634), the seats given (`seats`, the next call's `prev`), `crowd` and `over` (the areas over capacity).
+ * its `straight`, #2634, and `idleVisits`, #3685), the seats given (`seats`, the next call's `prev`), `crowd` and `over` (the areas over capacity).
  */
 export function zonesLayout(pack, nodes, prev = new Map(), { night = false } = {}) {
   // At night (#2568) the idle go to bed: the area asleep people go to while it has a free seat; the rest doze where they are.
@@ -140,7 +140,8 @@ export function zonesLayout(pack, nodes, prev = new Map(), { night = false } = {
     return { key: `zone/${n.name}`, node: n, x: s.x - 24, y: s.y - 52, w: 48, h: 66, seat: { x: s.x, y: s.y }, wp: null, area: s.area, slot: s.slot, night: sleepers.has(n.name) };
   });
   return { mode: "zones", rooms: [{ key: "\u0000zones", name: null, lobby: false, x: 0, y: 0, w: LOGICAL.w, h: LOGICAL.h, desks }], areas: pack.areas,
-    waypoints: pack.waypoints || [], edges: pack.edges || [], straight: pack.straight === true, door: pack.door, mailDrop: pack.mailDrop || null, width: LOGICAL.w, height: LOGICAL.h, seats, crowd, over };
+    waypoints: pack.waypoints || [], edges: pack.edges || [], straight: pack.straight === true, door: pack.door, mailDrop: pack.mailDrop || null,
+    idleVisits: pack.idleVisits || [], width: LOGICAL.w, height: LOGICAL.h, seats, crowd, over };   // #3685: idleVisits for walkTargets
 }
 
 // ── Walking ──
@@ -193,11 +194,62 @@ export function wanderTarget(name, seat, graph, t, seats = []) {
   const w = near[nameHash(`${name}\u0000${turn}`) % near.length];
   return { x: w.x, y: w.y };
 }
+
+// ── Idle visits (#3685) ──
+
+/**
+ * A pack's `idleVisits` (#3685): now and then an idle person goes and sits somewhere else for a while. At each of their
+ * wander turns (WANDER.PERIOD, their own phase) the entries' weights are rolled against STROLL, the weight of today's
+ * stroll near the seat (wanderTarget): one entry of weight 20 is a visit at 20 / 120 of the turns. A visit lasts the
+ * walk there (estimated along the graph to the area's middle) plus a stay of minSeconds–maxSeconds (whole seconds,
+ * picked by name and turn); turns that start during it roll nothing, and the person walks home when it ends.
+ * Turns are chained within an EPOCH of turns (from the first turn of it, nobody away): a visit that would run past
+ * its epoch's end is a stroll instead — so where anyone is follows from their name and the time alone, never from
+ * when the page was opened.
+ */
+export const VISIT = { STROLL: 100, EPOCH: 45 };
+/** The walk from `a` to the middle of `area` along `graph` (as createWalkers routes it), in ms. */
+function walkMs(graph, a, area) {
+  const z = { x: area.rect.x + area.rect.w / 2, y: area.rect.y + area.rect.h / 2 };
+  const via = routeVia({ waypoints: graph.waypoints || [], edges: graph.edges || [] }, a, z);
+  return Math.ceil(pathLength(graph.straight ? straighten(via) : via) / WALK.SPEED);
+}
+/**
+ * #3685: the visit `name` (seated at `home`, in area `from`) is on at `t` (ms), or null: { area, start, end, pick } —
+ * `start`/`end` in the same ms as `t`, `pick` where in the area's seats to start looking for a free one. Only the
+ * graph's `idleVisits` to areas it has other than `from`; none: always null (strolls as before). Pure: which seat is
+ * free is walkTargets' to say.
+ */
+export function visitAt(name, home, graph, t, from = null) {
+  const areas = graph.areas || {}, opts = (graph.idleVisits || []).filter((v) => v.area !== from && own(areas, v.area));
+  if (!opts.length) return null;
+  const sum = opts.reduce((n, v) => n + v.weight, 0), P = WANDER.PERIOD, phase = nameHash(name) % P;
+  const turn = Math.floor((t + phase) / P), first = Math.floor(turn / VISIT.EPOCH) * VISIT.EPOCH, edge = (first + VISIT.EPOCH) * P;
+  const walks = new Map(), walk = (a) => { if (!walks.has(a)) walks.set(a, walkMs(graph, home, own(areas, a))); return walks.get(a); };
+  let busy = -Infinity, on = null;                                 // in turn time (t + phase)
+  for (let j = first; j <= turn; j++) {
+    const at = j * P;
+    if (at < busy) continue;                                        // still away on the last visit
+    let r = nameHash(`${name}\u0000visit\u0000${j}`) % (sum + VISIT.STROLL);
+    if (r >= sum) continue;                                         // a stroll this turn
+    const v = opts.find((o) => (r -= o.weight) < 0);
+    const stay = (v.minSeconds + (nameHash(`${name}\u0000stay\u0000${j}`) % (v.maxSeconds - v.minSeconds + 1))) * 1000;
+    const end = at + walk(v.area) + stay;
+    if (end > edge) continue;                                       // past the epoch: a stroll instead
+    busy = end;
+    on = { area: v.area, start: at - phase, end: end - phase, pick: nameHash(`${name}\u0000seat\u0000${j}`) };
+  }
+  return on && t < on.end ? on : null;
+}
+
 /** An NPC drawn as furniture (#2596: an item with `walk`): its walker's name — never a person's, and its own phase. */
 export const npcKey = (f) => `furniture/${f.id}`;
 /** Everyone's walk target: their seat, or — idle and `wander` on — wanderTarget's spot (one person a spot: whoever
  * would share it stays seated this time). And, `wander` on, each item of `furniture` with a `walk` (#2596): its spot
- * (x, y), or a stroll near it as an idle person's (by npcKey) — none at `night` for one with a night place (asleep there). */
+ * (x, y), or a stroll near it as an idle person's (by npcKey) — none at `night` for one with a night place (asleep there).
+ * #3685: an idle person on a visit (visitAt) goes to a free seat of its area instead — the earliest visit first, then
+ * by name: one not reserved for someone else (unless lent), nobody's seat now and no other visitor's; none free: their
+ * stroll. A pack without `idleVisits`: exactly as before. */
 export function walkTargets(desks, graph, t, wander = true, furniture = [], night = false) {
   // Every seat of the office (anyone's, taken or not: someone may sit down on it any moment), not only the ones in use.
   // And each walking NPC's spot (#2596 review): its home, where it stands outside its stroll and goes back to whenever
@@ -211,7 +263,22 @@ export function walkTargets(desks, graph, t, wander = true, furniture = [], nigh
     used.add(k);
     return p;
   };
-  const out = new Map(desks.map((d) => [d.node.name, !wander || d.node.state !== "idle" || d.night ? d.seat : stroll(d.node.name, d.seat)]));
+  const idle = (d) => wander && d.node.state === "idle" && !d.night;
+  // #3685: visits claim their seats first (strolls never end on a seat, so nobody's stroll changes for them).
+  const away = new Map(), taken = desks.map((d) => d.seat);
+  const visits = (graph.idleVisits || []).length ? desks.filter(idle).map((d) => ({ d, v: visitAt(d.node.name, d.seat, graph, t, d.area) })).filter((x) => x.v)
+    .sort((a, b) => (a.v.start - b.v.start) || (a.d.node.name < b.d.node.name ? -1 : a.d.node.name > b.d.node.name ? 1 : 0)) : [];
+  for (const { d, v } of visits) {
+    const list = own(graph.areas, v.area)?.seats || [], name = d.node.name;
+    for (let i = 0; i < list.length; i++) {
+      const s = list[(v.pick + i) % list.length], k = `${s.x},${s.y}`;
+      if ((s.for && s.lend !== true && !s.for.includes(name)) || used.has(k) || taken.some((q) => Math.hypot(q.x - s.x, q.y - s.y) < 4)) continue;
+      used.add(k);
+      away.set(name, { x: s.x, y: s.y });
+      break;
+    }
+  }
+  const out = new Map(desks.map((d) => [d.node.name, !idle(d) ? d.seat : away.get(d.node.name) || stroll(d.node.name, d.seat)]));
   if (wander) for (const f of furniture) if (f.walk && !(night && f.night)) out.set(npcKey(f), stroll(npcKey(f), { x: f.x, y: f.y }));
   return out;
 }

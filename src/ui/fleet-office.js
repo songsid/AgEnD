@@ -980,7 +980,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   useEffect(() => { flights.sync(traffic || [], now(), still); if (zones && !overview && mail.sync(traffic || [], now(), L, still)) loop.current?.wake(); }, [traffic, mail]);
   // Zones: everyone's seat is where they walk to — an idle person now and then strolls near it and back (#2560; not
   // with reduced motion, nor while Edit layout is open: the seats are being placed); someone with mail from another
-  // office walks to it first (#2564). An NPC drawn as furniture with a `walk` strolls near its spot alike (#2596).
+  // office walks to it first (#2564). An NPC drawn as furniture with a `walk` strolls near its spot alike (#2596). A
+  // pack's `idleVisits` (#3685) now and then sends an idle person to a free seat in another area instead, for a while.
   const wander = zones && !overview && !still && !layout;
   useEffect(() => {
     if (!zones || overview) return undefined;
