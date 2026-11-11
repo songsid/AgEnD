@@ -2258,6 +2258,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       link: digest => (digest === this.hubMemberLinkBinding && this.hubMemberLink === "online" ? "online" : "offline"),
       hold: digest => digest === this.hubMemberLinkBinding
         ? this.hubMemberLink === "revoked" ? "revoked" : this.hubMemberLink === "rejected" ? "rejected" : null : null,
+      // M-2921: tell the Hub before leaving (S1 HubRuntime.memberLeave: false when the Hub or the link cannot take it;
+      // feature-detected, so a runtime without it leaves silently as before). pairing-api bounds the wait.
+      leave: expected => {
+        const runtime = this.hubRuntime as { memberLeave?: (e: { hubId: string; binding: string }) => Promise<boolean> } | null | undefined;
+        return typeof runtime?.memberLeave === "function" ? runtime.memberLeave(expected) : false;
+      },
       // Disconnect: stop the member client now (the runtime re-composes from the saved binding, fencing first).
       fence: () => { void this.hubRuntime?.refresh(); },
       // A claim saved, a disconnect tombstone or a cancel: re-compose the member side for the new binding.

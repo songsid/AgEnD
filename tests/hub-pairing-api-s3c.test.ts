@@ -395,3 +395,64 @@ describe("currentBinding: each unfinished marker on its own", () => {
       expect(currentBinding(home, prof as any)).toEqual(o.pending || o.receipt ? null : { hubId });
     });
 });
+
+describe("M-2921: member.leave before a disconnect fences the link", () => {
+  async function paired(over: Record<string, unknown> = {}) {
+    const r = rig(over);
+    await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    r.answers.push("paired"); await r.api.confirmFingerprint(r.digest, yes); await r.flush();
+    expect(r.api.view().state).toBe("paired");
+    return r;
+  }
+  it("sent for exactly the pairing shown, before the fence and the tombstone; its answer is reported", async () => {
+    const order: string[] = [];
+    const leave = vi.fn(async () => { order.push("leave"); return true; });
+    const r = await paired({ leave, fence: () => order.push("fence") });
+    const shown = shownOf(r.api);
+    expect(await r.api.disconnect(shown)).toEqual({ ok: true, remote: "pending", left: true });
+    expect(leave).toHaveBeenCalledWith(shown);
+    expect(order).toEqual(["leave", "fence"]);
+  });
+  it("not sent, refused or throwing: the disconnect goes on all the same", async () => {
+    for (const leave of [vi.fn(async () => false), vi.fn(async () => { throw Error("socket"); }), vi.fn(() => { throw Error("sync"); })]) {
+      const r = await paired({ leave });
+      expect(await r.api.disconnect(shownOf(r.api))).toEqual({ ok: true, remote: "pending", left: false });
+      expect(r.api.view()).toMatchObject({ state: "held", hold: "disconnected" });
+    }
+  });
+  it("waited on at most 2 s: a leave that never settles does not hold the disconnect", async () => {
+    vi.useFakeTimers();
+    try {
+      const r = await paired({ leave: () => new Promise<boolean>(() => {}) });
+      const done = r.api.disconnect(shownOf(r.api));
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(r.fence).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await done).toEqual({ ok: true, remote: "pending", left: false });
+      expect(r.fence).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+  it("a second disconnect during the wait is refused; a Start over during the wait means the old disconnect tombstones nothing", async () => {
+    let release!: (v: boolean) => void;
+    const r = await paired({ leave: () => new Promise<boolean>(y => { release = y; }) });
+    const shown = shownOf(r.api), first = r.api.disconnect(shown);
+    expect(await r.api.disconnect(shown)).toEqual({ ok: false, error: "conflict" });
+    r.api.cancel();                                                                     // the pairing changes under the wait
+    release(true);
+    expect(await first).toEqual({ ok: false, error: "conflict" });
+    expect(r.fence).not.toHaveBeenCalled();
+    expect(r.withdrawAll).not.toHaveBeenCalled();
+  });
+  it("the saved profile changes during the wait (here: it is gone): the older disconnect tombstones nothing", async () => {
+    let release!: (v: boolean) => void;
+    const r = await paired({ leave: () => new Promise<boolean>(y => { release = y; }) });
+    const shown = shownOf(r.api), first = r.api.disconnect(shown);
+    await r.flush();
+    unlinkSync(join(r.home, "hub-member", r.hubId, "pairing.json"));
+    expect(shownOf(r.api).binding).not.toBe(shown.binding);
+    release(true);
+    expect(await first).toEqual({ ok: false, error: "conflict" });
+    expect(r.fence).not.toHaveBeenCalled();
+    expect(r.withdrawAll).not.toHaveBeenCalled();
+  });
+});
