@@ -204,7 +204,9 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   };
   const fleetLabel = (form.label.trim() || probe?.suggestedLabel || hj("defaultFleet")).slice(0, 120);
   const problem = kind.kind === "error" ? j1(kind.error) : probe && probe.address === kind.address ? probeMessage(probe, host) : null;
-  const ready = kind.kind === "address" && !problem && !probing;
+  // Start once the probe for exactly this address has answered without a problem. A probe that could not answer at all
+  // (no reason: a network error, an older server) does not block Start: Start makes the same checks itself.
+  const ready = kind.kind === "address" && !problem && !probing && probed.current === kind.address && (!probe || probe.address === kind.address);
   const target = (() => { try { return pending?.target || (view && (!waiting || view.handoffId === waiting) ? view.hubOrigin : "") || (waiting ? new URLSearchParams(location.hash.slice(1)).get("target") || "" : new URL(kind.address).origin); } catch { return ""; } })();
   const inlineWait = consentWait || pending?.inline;
   const retired = embedded && !bound && view?.state === "saved" && view.outcomeKnown;

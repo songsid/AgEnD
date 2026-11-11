@@ -999,9 +999,11 @@ export function handleSettingsRequest(
         const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8"));
         execution?.assert(); if (!session.current()) throw new HubProtocolError("revoked");
         if (step === "probe") {
-          // M-2921: read only (the Hub's public metadata; no pin, journal, handoff or push) — a signed-in local admin of
-          // this browser session, never a header token, a guest or the public link (refused above).
-          if (!session.fleetOrigin || !settingsRequestLocalAdmin(req) || !body || Object.keys(body).length !== 1 || typeof body.address !== "string") throw new HubProtocolError("invalid");
+          // M-2921: read only (the Hub's public metadata; no pin, journal, handoff or push) — the same private session as
+          // Start (hubCompanySession: an admin cookie session on this computer's own surface, its POST Origin checked);
+          // a header token, a guest and the public link hold none (refused above). Not a Settings replay: no local-admin
+          // continuation exists here (that is a confirmed write's), so none is asked.
+          if (!session.fleetOrigin || !body || typeof body !== "object" || Object.keys(body).length !== 1 || typeof body.address !== "string") throw new HubProtocolError("invalid");
           json(res, 200, await api.probe({ address: body.address, fleetOrigin: session.fleetOrigin }, session)); return;
         }
         if (step === "repair-trust") {

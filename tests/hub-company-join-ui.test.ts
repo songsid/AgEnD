@@ -54,6 +54,17 @@ describe("company join UI", () => {
     expect(p.root.querySelector("#hubCompanyLine").textContent).toContain("\u201cQA\u201d");
     expect(calls.every(c => !c.init.method || c.init.method === "GET" || c.path.endsWith("/probe"))).toBe(true);
   });
+  it("M-2921: Start stays off while the probe for this address has not answered; a probe that cannot answer at all does not block it", async () => {
+    let answer: (v: any) => void = () => {};
+    fetcher(path => path.endsWith("/probe") ? new Promise(r => { answer = r; }) : { ok: true, operation: null });
+    const p = await mount(fleet.CompanyJoinSettings);
+    const address = p.root.querySelector("#hubCompanyAddress"); address.value = "hub.example.test"; fire(address, "input"); await settle(4);
+    expect(button(p, "Sign in with company account").disabled).toBe(true);                // typed, not yet probed
+    fire(address, "blur"); await settle(6);
+    expect(button(p, "Sign in with company account").disabled).toBe(true);                // probing
+    answer({ ok: false }); await settle(8);                                                  // no reason: the probe could not answer
+    expect(button(p, "Sign in with company account").disabled).toBe(false);
+  });
   it.each([
     ["http://hub.example.test", "A Hub address must use https."],
     ["not a hub!", "That is not a Hub address. Enter one like hub.example.com."],
