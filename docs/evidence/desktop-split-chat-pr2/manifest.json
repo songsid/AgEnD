@@ -1,0 +1,344 @@
+{
+  "v": 1,
+  "scope": "Digest-first manifest of original captures and explicitly normalized text logs. Source bindings are inside original receipts and capture-provenance.json.",
+  "files": {
+    "66dc32201db78f8fb34c02609c3f35951981fdc87ac5d98a896b1ce906c13ee4": [
+      "README.md"
+    ],
+    "c762344870532cc89b4986bad684d0dced55fe985a46f7eea7fb49ee50442cf9": [
+      "browser/before-dark/dark-zh-TW-retained-all.png"
+    ],
+    "14422934b7f8e2534914bd210828abcce119b11c516ef5984de4a76081c73e28": [
+      "browser/before-dark/dark-zh-TW-single.png",
+      "browser/final-dark/dark-zh-TW-single.png"
+    ],
+    "69b5ba48ffafd3fc4d8492db5acc7737467051c1083c517944edca841eb519a4": [
+      "browser/before-dark/receipt.json"
+    ],
+    "e2393d2b429352179a4beb0b3d96f032f5320b35054d366058a7ca9c788e4d93": [
+      "browser/before-light/light-zh-TW-retained-all.png",
+      "browser/skew-final-css/light-zh-TW-retained-css.png",
+      "browser/skew-final-js/light-zh-TW-retained-js.png",
+      "browser/skew-final-server/light-zh-TW-retained-server.png"
+    ],
+    "dfcd482de9bbe5a08d77c443f251539a4575e877ec649c1c2c7e7fe8bec2c009": [
+      "browser/before-light/light-zh-TW-single.png",
+      "browser/final-light/light-zh-TW-single.png",
+      "browser/lifecycles/light-zh-TW-single.png",
+      "browser/skew-final-chat/light-zh-TW-single.png",
+      "browser/skew-final-context/light-zh-TW-single.png",
+      "browser/skew-final-css/light-zh-TW-single.png",
+      "browser/skew-final-fields/light-zh-TW-single.png",
+      "browser/skew-final-js/light-zh-TW-single.png",
+      "browser/skew-final-server/light-zh-TW-single.png",
+      "browser/skew-final-session/light-zh-TW-single.png",
+      "browser/skew-final-shell/light-zh-TW-single.png"
+    ],
+    "64a53c04f6f24e6bfe4ddc213ef89244c5dd420a256cda08a8d2f587230209ef": [
+      "browser/before-light/receipt.json"
+    ],
+    "32be1b742e3d45d3bb87d0ecff20aa4e977476cbe8785b43d848e0e41945de96": [
+      "browser/final-dark/dark-zh-TW-log-and-chat.png"
+    ],
+    "9ac68e32b9a08b224c8713d4b7dd70ae0723d153f21b361a408c1af8d4666c79": [
+      "browser/final-dark/dark-zh-TW-log-and-view.png"
+    ],
+    "7e5e6a8e3328fd2e1d4bfeffdf31be209c19c9760a53e03b7e280fc29f23a6fe": [
+      "browser/final-dark/dark-zh-TW-minimum-width.png"
+    ],
+    "72966b2744c68ae16e8065f979088cac8c74732dd6a8d1586626929f4c2c51f7": [
+      "browser/final-dark/dark-zh-TW-narrow.png"
+    ],
+    "5f19803c5211fcc65e9532759908a240195f08ee3a6abb322c80cbe61eb26626": [
+      "browser/final-dark/dark-zh-TW-ordinary-deep-link.png"
+    ],
+    "805d667cc3d43e247d05f9c06621b71449f28f7af999a1e6cf23fadf995175fd": [
+      "browser/final-dark/dark-zh-TW-overflow-menu.png"
+    ],
+    "1124313c49a645523db556bd808d973c362be7489dab41eca0c293fff3e60f6b": [
+      "browser/final-dark/dark-zh-TW-phone.png"
+    ],
+    "8c3941649ae44be2e8808fa4b93e73726d0cbcffd751856cbc9a91164254d096": [
+      "browser/final-dark/dark-zh-TW-quoted.png"
+    ],
+    "32ed3105d641de8a02bd17b1419c72ab34535caee1f2978a34c6c74e94f36c4b": [
+      "browser/final-dark/dark-zh-TW-reload-compare.png"
+    ],
+    "818d61d103b3c94258cf36ff7fc878fbc347ddfa423220667acc13675b5c83b9": [
+      "browser/final-dark/dark-zh-TW-restored-settings.png"
+    ],
+    "189ce612eea4b028aac65b05fe080bfebdce090d80939a0311cbc7d14d1bfa22": [
+      "browser/final-dark/dark-zh-TW-right.png"
+    ],
+    "c9ff62e081370e7da47e4aec80e2188bdde3fa299208bace36048d528b855ddf": [
+      "browser/final-dark/dark-zh-TW-stack.png"
+    ],
+    "7e85563ea6a20a2b7476b7349eef711be24cfa7f1d3853b97794cf25eb7e1389": [
+      "browser/final-dark/dark-zh-TW-suspended-settings-a.png"
+    ],
+    "8ad4c94f58709c32a6aab9bf4a3bd8492b58841136354f0cb7d7a520db79d5ce": [
+      "browser/final-dark/dark-zh-TW-two-settings.png"
+    ],
+    "dc93121e5992213c232b6340b1595a89ae5479221f9ad5269a1668c41c879da6": [
+      "browser/final-dark/receipt.json"
+    ],
+    "af6c7cbf268580f75e00804e92fec29334c6c01b56caffe11b4e704e1102d911": [
+      "browser/final-light/light-zh-TW-log-and-chat.png"
+    ],
+    "181f22ce559e7bd07e7f21f5a0661e2ced16d187eaaa206ef65b6aebe77390ce": [
+      "browser/final-light/light-zh-TW-log-and-view.png"
+    ],
+    "6b84b390accc71d37246bf061419cc31733717ec5e3843abe08699b8a92840c8": [
+      "browser/final-light/light-zh-TW-minimum-width.png",
+      "browser/lifecycles/light-zh-TW-minimum-width.png"
+    ],
+    "cd905262512cded357344b1cf59fffc9925767cf9d95b3df0e3a239ef7db7046": [
+      "browser/final-light/light-zh-TW-narrow.png",
+      "browser/lifecycles/light-zh-TW-narrow.png"
+    ],
+    "5748b0a1879e281648061b14dccc1dc358764c5ea3101a7614d260c4713b7178": [
+      "browser/final-light/light-zh-TW-ordinary-deep-link.png",
+      "browser/lifecycles/light-zh-TW-ordinary-deep-link.png"
+    ],
+    "996050bf747c01f3937cf7675de728206259591b1671234d0bfb8edeb0d42107": [
+      "browser/final-light/light-zh-TW-overflow-menu.png",
+      "browser/lifecycles/light-zh-TW-overflow-menu.png"
+    ],
+    "125f7ae63c2fd9aa9b538abd6300745ba13767fc04f5eeec03d6c2793f37b3e2": [
+      "browser/final-light/light-zh-TW-phone.png",
+      "browser/lifecycles/light-zh-TW-phone.png"
+    ],
+    "50b76cc4854e80cc87f4f0c1c25d3ba20db645e1281fe04b1b475ac07b99c4c2": [
+      "browser/final-light/light-zh-TW-quoted.png"
+    ],
+    "e0e7b0ee4ae4457d1b020dd435aae9bcf36e2deecb639a0688bf3b9c2620a212": [
+      "browser/final-light/light-zh-TW-reload-compare.png",
+      "browser/lifecycles/light-zh-TW-reload-compare.png"
+    ],
+    "1f60191dc8dd374c8a92cd5d0e0d3564aa775869cf71e4616f172b2343f48074": [
+      "browser/final-light/light-zh-TW-restored-settings.png"
+    ],
+    "871d205a0f247956fd3e2f885233c2b269d75dcf9a48e156f7b93d02a46f05ab": [
+      "browser/final-light/light-zh-TW-right.png",
+      "browser/lifecycles/light-zh-TW-right.png"
+    ],
+    "3a068ff29157d80ea75dafeb69a07b7240c8f9b66bce0f8f8872dc23b88d5ee4": [
+      "browser/final-light/light-zh-TW-stack.png",
+      "browser/lifecycles/light-zh-TW-stack.png"
+    ],
+    "8bf590385f8d17d144066364d90a36960ef43cb3745525534efd7a2bbf32c072": [
+      "browser/final-light/light-zh-TW-suspended-settings-a.png"
+    ],
+    "b292d11471d32983848445806ddd09691735995a42977c06605bd938d2cfa407": [
+      "browser/final-light/light-zh-TW-two-settings.png"
+    ],
+    "f925febc5beb432ded1ebc4af89b8119bcda7da3a7fbfc466970e5dd0ade7239": [
+      "browser/final-light/receipt.json"
+    ],
+    "b0ba4fa44bb6f0e9c2c0e63b8532c6db85d63ab5f55dce869233fd1a900d2a1f": [
+      "browser/final-touch/light-zh-TW-log-and-chat.png"
+    ],
+    "3d71fcd2be267d2ea55f9540ec643c7b35249c742923908b02639371383a4e0e": [
+      "browser/final-touch/light-zh-TW-log-and-view.png"
+    ],
+    "42b9724e54e76f1c257905c5b57a9255f316989e547670b96610c22fb5c932f0": [
+      "browser/final-touch/light-zh-TW-minimum-width.png"
+    ],
+    "6f6699c7af7026b0d2cc579ef533f0740b6130c7d7680c1c9ff764711d47287b": [
+      "browser/final-touch/light-zh-TW-narrow.png"
+    ],
+    "5a193e4b3ed1e0f51ce5836d6ddad804182317a942b638878dc1ac66320df179": [
+      "browser/final-touch/light-zh-TW-ordinary-deep-link.png"
+    ],
+    "8664a28dc00cb50cacd4c07b690761568ac4bceca58a708eaf89b1faa4612ed7": [
+      "browser/final-touch/light-zh-TW-overflow-menu.png"
+    ],
+    "69ada7c4514eaa4e616177e4031fafa5e161a736924e0beb08ac0b20b4f081f6": [
+      "browser/final-touch/light-zh-TW-phone.png"
+    ],
+    "a6045a361704fb107954954048b7f92fcf5107b37f529d56a1ae08cfbf604dd6": [
+      "browser/final-touch/light-zh-TW-quoted.png"
+    ],
+    "7c275e824b0ff75a6ae0cef14473e1658f6657fb2cd1757696f3c8488b8cdb3d": [
+      "browser/final-touch/light-zh-TW-reload-compare.png"
+    ],
+    "68e9082ddfb3f5f61a4fb37546ab687e8699247348c87b45e9b4c93ab0f59c2d": [
+      "browser/final-touch/light-zh-TW-right.png"
+    ],
+    "9d7299b9cd3aecdefd570e44d23ef419dd6297fd1e0697336c708e7ca8310586": [
+      "browser/final-touch/light-zh-TW-single.png"
+    ],
+    "30b25f86e197fcfea8d35aa649f99002373715eb4c71a6c66cddeda0aa45e33e": [
+      "browser/final-touch/light-zh-TW-stack.png"
+    ],
+    "9c400fc36c81fafe118806eaeb72a9f5124fc384ff4b6869439f789d77e4efd2": [
+      "browser/final-touch/light-zh-TW-two-settings.png"
+    ],
+    "f40579d850b50e2a72015c4c53408142e7a009cd293b0b46a86fea395e931831": [
+      "browser/final-touch/receipt.json"
+    ],
+    "7ec083ad7880bca24740452d953d3fc0cfc870a029d4968d1b1b48bd5aa661d4": [
+      "browser/lifecycles/light-zh-TW-log-and-chat.png"
+    ],
+    "140fb85b753310b0c5c0591c2ee46f9124d8e3eae4b35545d98213df8e98cc84": [
+      "browser/lifecycles/light-zh-TW-log-and-view.png"
+    ],
+    "54ccfd48fd7d5e12f549b03ac641a13640bcf69332566ec52682c2067fcafb2b": [
+      "browser/lifecycles/light-zh-TW-quoted.png"
+    ],
+    "95d2d5d75b3b5fd23c818993734d4234203ebdca5948747b743db1daeb68b5ca": [
+      "browser/lifecycles/light-zh-TW-two-settings.png"
+    ],
+    "cc06af79b5170af3ccc32cc337d531eff204b8dbffa48b924fe659f22d99b3e0": [
+      "browser/lifecycles/receipt.json"
+    ],
+    "3ea6ef635c0da2e9528f48a579dc26c11c6019262334f21d30a354cf2b32e04c": [
+      "browser/skew-final-chat/light-zh-TW-retained-chat.png",
+      "browser/skew-final-context/light-zh-TW-retained-context.png",
+      "browser/skew-final-session/light-zh-TW-retained-session.png",
+      "browser/skew-final-shell/light-zh-TW-retained-shell.png"
+    ],
+    "3df7ed1b53820035ad491e0885eb95306223a00a5db1b5c78ec84ad87fc11a8f": [
+      "browser/skew-final-chat/receipt.json"
+    ],
+    "ae16adcc9173f7b698f1a971ea2b9eea88540fea958116d50c7e1fc86c0253c1": [
+      "browser/skew-final-context/receipt.json"
+    ],
+    "c066da76775cc0b58344b4eb327441ca482e3898b2a13b3a85c8dd07a8b29852": [
+      "browser/skew-final-css/receipt.json"
+    ],
+    "bc01fe9fe42a13b403b0f366083f3bb179ef4c39cbf96f4c981af62b9fb53633": [
+      "browser/skew-final-fields/light-zh-TW-retained-fields.png"
+    ],
+    "f6069636da678a9554df69204db995d738f28212809f697761f6da43bd4a4d92": [
+      "browser/skew-final-fields/receipt.json"
+    ],
+    "35d55eebd7d12b77ab4592204a1e62ea14905d9cdd17b474f1328f3e72aa94c5": [
+      "browser/skew-final-js/receipt.json"
+    ],
+    "98e68311af44751bb9030c5e8f4e8c473a3cc01334b6c4d1b4c2b06ada230398": [
+      "browser/skew-final-server/receipt.json"
+    ],
+    "57ccce507580075a1d9b68e5740b93ef1ec6a1231bccd1cf437942092b911347": [
+      "browser/skew-final-session/receipt.json"
+    ],
+    "8a6a2e580520e9043a537c2b405988ee28901e656047313d50599edf915ff7cc": [
+      "browser/skew-final-shell/receipt.json"
+    ],
+    "faca3fae708aac379e3a310de216e1d7b5aad58ad22641b75addb01bf079642c": [
+      "checks/async-fields-fail-first-r1.log"
+    ],
+    "cd4c568a07d5d7fedda97c48eaea92925e635444e032fb9a3ba2ca2a8313ccdf": [
+      "checks/capture-provenance.json"
+    ],
+    "5f5266ed6a9444627e3d279769defd7bd579374d1f5084f25865e775b40a0a51": [
+      "checks/coarse-quote-fail-first.log"
+    ],
+    "a14ce68a1e709b2776600eae05052c8ceca91d20bb1361b16261b9afd3253b22": [
+      "checks/commands.json"
+    ],
+    "aad524e6b0f8b60517ca79d7eb84d1777e9f1d34565c798d9986932265fcd9aa": [
+      "checks/current-changelog.log"
+    ],
+    "af2edac61752186c22a3f04af327ac2a6f8c865bafec98175ae4a09ace4bc82f": [
+      "checks/current-mutations/async-emoji-prefix.log"
+    ],
+    "7b8adb5ae640e1e04d82168fc962ead5cdc595648246c35986952ec91445c674": [
+      "checks/current-mutations/distinct.log"
+    ],
+    "bb53f1036e5b6fb34a81d61c1ab1341e790b1b1b6356070d90b6fcf6de518bc3": [
+      "checks/current-mutations/form-prefix.log"
+    ],
+    "34cbcabca851c946a23e139832ea4d8b226142f934c3132c1f4d79312ebe81a9": [
+      "checks/current-mutations/gateway-mark.log"
+    ],
+    "6ce69bfbc7c57e6e79f66ca206a4089fc9bc303f1b8415d3b8c517447121d194": [
+      "checks/current-mutations/loading-fence.log"
+    ],
+    "d60d51062ad49b6a9a0bea7bb037f0fa3ebd875d04fb1e772fba8da05510fd67": [
+      "checks/current-mutations/logout-cleanup.log"
+    ],
+    "efcde42aff7058501096848e0e1e9cf2d817f77fde5d877a1391818ba08c0afc": [
+      "checks/current-mutations/own-route.log"
+    ],
+    "9eef998ef5b82f1289036eb679e917b4a7285a3c5d25029bf0524c170519ad7b": [
+      "checks/current-mutations/quote-currency-paired.log"
+    ],
+    "6f0750286763d92d321c2d77c3f2a57f4a1c53f54ad1d1bb5a8ffea004f0043a": [
+      "checks/current-mutations/quote-early.log"
+    ],
+    "ded31539675c23a6d5093db5cff48a835810e59cfe6d3382bee8cb5cd8ce72ae": [
+      "checks/current-mutations/quote-undo.log"
+    ],
+    "552db34832495fd0cc94ab5cb7f7b61739ddbf3b3a15ef672a8bfa7fb1f4a894": [
+      "checks/current-mutations/receipt.json"
+    ],
+    "b776c07b89e65dbf228908c709d9e99db6625c75defaab3b8fae8896eeecadb0": [
+      "checks/current-mutations/retired-entry.log"
+    ],
+    "863968d17cff0c6b164ce3fada3b4e7343cc055ae843fc52bc48fc309773970a": [
+      "checks/current-mutations/scope.log"
+    ],
+    "13c978c1126ef293524c6ea5974e9b65ef3d93fae3b9d216ad9003bf5d748e00": [
+      "checks/current-mutations/settings-remount.log"
+    ],
+    "79474baa3948b49c7f200ef3240f7ed95f2ce8cfb416559a02711964c0e5c1f5": [
+      "checks/current-mutations/suspended-forms.log"
+    ],
+    "4db12bef03625a3510ce96443bf15b783d4f2616f618074c72f2ba5abc8d20da": [
+      "checks/current-mutations/suspended-guard.log"
+    ],
+    "68140b7b20f0dfebac7058e95a47e46b53da7042857b81126c92503e8988a3b9": [
+      "checks/current-mutations/suspended-retirement.log"
+    ],
+    "2b6d32be97a7cd1dbcbb270cbd0907c987e4f35ddd68c5d44c714e6081571b3d": [
+      "checks/current-mutations/width.log"
+    ],
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
+      "checks/current-source-types.log",
+      "checks/current-test-types.log"
+    ],
+    "cae5bcc885bad2d93eb85c941f582b195b52617ce3b80413e7f8bf0913d05671": [
+      "checks/final-2528-core.log"
+    ],
+    "043c06d93c3ef604912faf0ba94451d8784922ca4847a340004f7930f80baf81": [
+      "checks/final-current-related.log"
+    ],
+    "d42d6a62e6bdce3de0ed0eaa34be5cb9d1a86c35aa768917654003ad6a8f453b": [
+      "checks/final-focused.log"
+    ],
+    "bc7f8fc3f8187b3aa883052b44e1e6edffdcd272fb6fb74a3a3dd9c4a922a518": [
+      "checks/log-normalization.json"
+    ],
+    "195a284dbf9a0cc77e443178d207d3f4fabe3071ffc7dd469b6edfa047ecd275": [
+      "checks/merged-effort-fields-fail-first.log"
+    ],
+    "71b996ebd4d2a44735ada6e571cfec9c24c99e986f7666025e5b7b60836cdac8": [
+      "checks/product-parity.json"
+    ],
+    "c243c4041bb2eb79f17144f604330c4edb524a6930640a31b2b87908bf2aa7cc": [
+      "checks/quote-undo-fail-first.log"
+    ],
+    "b8dee734ac7412b4bac1c7b56d889483a10d527fdf4c7e4c8c4698a741aa7442": [
+      "checks/settings-remount-fail-first.log"
+    ],
+    "fa2e0a77670f2217cbdbbf952ac183e079f43c7da15201dd24830fda8ece2cac": [
+      "checks/single-pixel-comparison.json"
+    ],
+    "eb239ad0bf8724a6515f5562dbcf15d4bbc29bd162bb4d6fe2c8860b7cd3bdfa": [
+      "checks/suspend-fail-first.log"
+    ],
+    "7f3c58401525fb753b66499a24030a7f6cd9ac7699a53032a91801eb8f798da6": [
+      "checks/suspend-mutations.log"
+    ],
+    "29c3a957614dd99b533d4ac33475123b46329a1b253b397e83a7aac4ca29523d": [
+      "checks/timeout-diagnostic-isolated.log"
+    ],
+    "570973c37c48050d9869709e2fabf2d52358bdeef63fd495e671a07a577cea11": [
+      "checks/verify.py"
+    ],
+    "0ba15563ac5fa2093f7f1af3b72429679a070aed029178a30c3a2dfe4610b0f5": [
+      "checks/visual-review.json"
+    ]
+  }
+}

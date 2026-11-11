@@ -1,0 +1,169 @@
+{
+  "scope": "Only redundant trailing CR/LF bytes removed from copied text logs. Original private logs, all test output content, capture receipts and PNG bytes are unchanged.",
+  "originals": {
+    "f3e4b3ff24c3504ca7dd7d93a775b3039449ed038bc89582322282b2f74db9ea": [
+      "checks/coarse-quote-fail-first.log"
+    ],
+    "4c3ebc4a409fdb8e74a90187d72e1b9f92b2a0e914fd52bbcd5fac75d65eff09": [
+      "checks/merged-effort-fields-fail-first.log"
+    ],
+    "83c5df0f798a490f5bbce7944c99de8333d14b723ffbe89927ceb220ce33dab8": [
+      "checks/settings-remount-fail-first.log"
+    ],
+    "8da7c3303ace821fa371e65b0fb09f3c9ac5211be5ab94f81d4321d43d089011": [
+      "checks/final-2528-core.log"
+    ],
+    "f15940f3bf757f0518b27d2d386d8cdbba27c3648b5c1c831664f71c609657c6": [
+      "checks/timeout-diagnostic-isolated.log"
+    ],
+    "5aa868649333531fdf9d7f44a487c29326cc07f02f3a2d12ac666913a5d27c70": [
+      "checks/async-fields-fail-first-r1.log"
+    ],
+    "03024f4fa04eaf0632c334a5842ec6d6136b1e9d3357253d4165569c19895b6d": [
+      "checks/suspend-fail-first.log"
+    ],
+    "0d0993d4854a70627f0fc27d4deecc59ba9fe3629980f79f714d7dfc1417e16a": [
+      "checks/quote-undo-fail-first.log"
+    ],
+    "35868f60ea75880f5c584b50add0f48a2ad18ff78d3f1140ec132aed54d6c79d": [
+      "checks/final-focused.log"
+    ],
+    "bff1061e48c452256b95479808959bdd41b464da3bed45d20e0ecb8400382da4": [
+      "checks/final-current-related.log"
+    ],
+    "4077e4893c9e0bc6d626db02694d9ebf4ec01babb689772007cd9241ba5c03bd": [
+      "checks/current-mutations/loading-fence.log"
+    ],
+    "e9287840703ab19b220e3e63926adb2899f61dde22189a0cce66b7a56c8473a3": [
+      "checks/current-mutations/suspended-guard.log"
+    ],
+    "2214ab1f9949c9c0151def10c32164833826921a8e4e199871fc90c83cd0a812": [
+      "checks/current-mutations/form-prefix.log"
+    ],
+    "41107ef2fa3a38044d708a59c12744fe0a7301f3d1b0d8f0669ac6190afca7c9": [
+      "checks/current-mutations/suspended-forms.log"
+    ],
+    "cf4680eea2743347c3b144097422dc0c0602a64c82a637abc00bf577aa6e4049": [
+      "checks/current-mutations/gateway-mark.log"
+    ],
+    "bcb5c254ee9b68cccce0d302b39f1c32228c8296936d6e7e7136a4d2b029a709": [
+      "checks/current-mutations/width.log"
+    ],
+    "39a2fe4cf2fe2a6f67b238d15c886339557c1f44088c90d14de13a53caa8a6ac": [
+      "checks/current-mutations/scope.log"
+    ],
+    "cb7edb37f6537d037dffacbd87a7b4183477d0a14be7ca25cd8b33ab96a64d3d": [
+      "checks/current-mutations/distinct.log"
+    ],
+    "19b12667939a283cafe2711fb89cd1b37d2ada8f5ca0f8d17a93c3fc8a5cfe28": [
+      "checks/current-mutations/retired-entry.log"
+    ],
+    "92718d00ab07af5a74fa8cdc1ce008305c6ab4d1c6860b213a64e745e09bdd13": [
+      "checks/current-mutations/quote-early.log"
+    ],
+    "5a0de3383dc2f1cd3f1ac7941c9a9750144ababc60ef57ff38f8cb2bc50c76f2": [
+      "checks/current-mutations/own-route.log"
+    ],
+    "4aa30315eec6bfaed529fdaf0bc4da4cc4ea1f94a143998bddee422e31c7b091": [
+      "checks/current-mutations/quote-currency-paired.log"
+    ],
+    "b5e4dc32a3f3cdeaf33c24811c5f4f1e55f4a0a89a2894056da9bc9631af561f": [
+      "checks/current-mutations/settings-remount.log"
+    ],
+    "b085435d6f7cfa986defa92fccd1ad072de4ca4ba9883fb132f0e7b256388e77": [
+      "checks/current-mutations/async-emoji-prefix.log"
+    ],
+    "f91d7266250f37c2b5a45cacfeaf2c1aa76f960d82c82b0db0142531217edf94": [
+      "checks/current-mutations/quote-undo.log"
+    ],
+    "6824ea1decdc018c03c880dd5f6d668104dbbb380a7ca13ab842adb180c20c3c": [
+      "checks/current-mutations/logout-cleanup.log"
+    ],
+    "d563a1d2c95cb3244d769e6c26769525d9a46765aa7951e1da326f56254a5db0": [
+      "checks/current-mutations/suspended-retirement.log"
+    ]
+  },
+  "normalized": {
+    "5f5266ed6a9444627e3d279769defd7bd579374d1f5084f25865e775b40a0a51": [
+      "checks/coarse-quote-fail-first.log"
+    ],
+    "195a284dbf9a0cc77e443178d207d3f4fabe3071ffc7dd469b6edfa047ecd275": [
+      "checks/merged-effort-fields-fail-first.log"
+    ],
+    "b8dee734ac7412b4bac1c7b56d889483a10d527fdf4c7e4c8c4698a741aa7442": [
+      "checks/settings-remount-fail-first.log"
+    ],
+    "cae5bcc885bad2d93eb85c941f582b195b52617ce3b80413e7f8bf0913d05671": [
+      "checks/final-2528-core.log"
+    ],
+    "29c3a957614dd99b533d4ac33475123b46329a1b253b397e83a7aac4ca29523d": [
+      "checks/timeout-diagnostic-isolated.log"
+    ],
+    "faca3fae708aac379e3a310de216e1d7b5aad58ad22641b75addb01bf079642c": [
+      "checks/async-fields-fail-first-r1.log"
+    ],
+    "eb239ad0bf8724a6515f5562dbcf15d4bbc29bd162bb4d6fe2c8860b7cd3bdfa": [
+      "checks/suspend-fail-first.log"
+    ],
+    "c243c4041bb2eb79f17144f604330c4edb524a6930640a31b2b87908bf2aa7cc": [
+      "checks/quote-undo-fail-first.log"
+    ],
+    "d42d6a62e6bdce3de0ed0eaa34be5cb9d1a86c35aa768917654003ad6a8f453b": [
+      "checks/final-focused.log"
+    ],
+    "043c06d93c3ef604912faf0ba94451d8784922ca4847a340004f7930f80baf81": [
+      "checks/final-current-related.log"
+    ],
+    "6ce69bfbc7c57e6e79f66ca206a4089fc9bc303f1b8415d3b8c517447121d194": [
+      "checks/current-mutations/loading-fence.log"
+    ],
+    "4db12bef03625a3510ce96443bf15b783d4f2616f618074c72f2ba5abc8d20da": [
+      "checks/current-mutations/suspended-guard.log"
+    ],
+    "bb53f1036e5b6fb34a81d61c1ab1341e790b1b1b6356070d90b6fcf6de518bc3": [
+      "checks/current-mutations/form-prefix.log"
+    ],
+    "79474baa3948b49c7f200ef3240f7ed95f2ce8cfb416559a02711964c0e5c1f5": [
+      "checks/current-mutations/suspended-forms.log"
+    ],
+    "34cbcabca851c946a23e139832ea4d8b226142f934c3132c1f4d79312ebe81a9": [
+      "checks/current-mutations/gateway-mark.log"
+    ],
+    "2b6d32be97a7cd1dbcbb270cbd0907c987e4f35ddd68c5d44c714e6081571b3d": [
+      "checks/current-mutations/width.log"
+    ],
+    "863968d17cff0c6b164ce3fada3b4e7343cc055ae843fc52bc48fc309773970a": [
+      "checks/current-mutations/scope.log"
+    ],
+    "7b8adb5ae640e1e04d82168fc962ead5cdc595648246c35986952ec91445c674": [
+      "checks/current-mutations/distinct.log"
+    ],
+    "b776c07b89e65dbf228908c709d9e99db6625c75defaab3b8fae8896eeecadb0": [
+      "checks/current-mutations/retired-entry.log"
+    ],
+    "6f0750286763d92d321c2d77c3f2a57f4a1c53f54ad1d1bb5a8ffea004f0043a": [
+      "checks/current-mutations/quote-early.log"
+    ],
+    "efcde42aff7058501096848e0e1e9cf2d817f77fde5d877a1391818ba08c0afc": [
+      "checks/current-mutations/own-route.log"
+    ],
+    "9eef998ef5b82f1289036eb679e917b4a7285a3c5d25029bf0524c170519ad7b": [
+      "checks/current-mutations/quote-currency-paired.log"
+    ],
+    "13c978c1126ef293524c6ea5974e9b65ef3d93fae3b9d216ad9003bf5d748e00": [
+      "checks/current-mutations/settings-remount.log"
+    ],
+    "af2edac61752186c22a3f04af327ac2a6f8c865bafec98175ae4a09ace4bc82f": [
+      "checks/current-mutations/async-emoji-prefix.log"
+    ],
+    "ded31539675c23a6d5093db5cff48a835810e59cfe6d3382bee8cb5cd8ce72ae": [
+      "checks/current-mutations/quote-undo.log"
+    ],
+    "d60d51062ad49b6a9a0bea7bb037f0fa3ebd875d04fb1e772fba8da05510fd67": [
+      "checks/current-mutations/logout-cleanup.log"
+    ],
+    "68140b7b20f0dfebac7058e95a47e46b53da7042857b81126c92503e8988a3b9": [
+      "checks/current-mutations/suspended-retirement.log"
+    ]
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "scope": "Original clean captures; each input, served asset and retained substitution compared with its recorded Git object. No historical relabelling.",
+  "totals": {
+    "inputs": 420,
+    "served": 2166,
+    "substitutions": 59,
+    "cases": 76
+  },
+  "runs": [
+    {
+      "receipt": "browser/before-dark/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 131,
+      "substitutions": 18,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/before-light/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 131,
+      "substitutions": 18,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/final-dark/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 199,
+      "substitutions": 0,
+      "cases": 15
+    },
+    {
+      "receipt": "browser/final-light/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 199,
+      "substitutions": 0,
+      "cases": 15
+    },
+    {
+      "receipt": "browser/final-touch/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 199,
+      "substitutions": 0,
+      "cases": 13
+    },
+    {
+      "receipt": "browser/lifecycles/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 199,
+      "substitutions": 0,
+      "cases": 13
+    },
+    {
+      "receipt": "browser/skew-final-chat/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 143,
+      "substitutions": 1,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/skew-final-context/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 143,
+      "substitutions": 1,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/skew-final-css/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 131,
+      "substitutions": 1,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/skew-final-fields/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 143,
+      "substitutions": 1,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/skew-final-js/receipt.json",
+      "head": "c63d0fd836121f9c3d6b1b61922a7c99b90935b0",
+      "tree": "4d735955f78d76b776ab156021e321c16646bcab",
+      "inputs": 30,
+      "served": 131,
+      "substitutions": 17,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/skew-final-server/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 131,
+      "substitutions": 0,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/skew-final-session/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 143,
+      "substitutions": 1,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/skew-final-shell/receipt.json",
+      "head": "76cf58bb4cc31c51436038515468ee064d160938",
+      "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 143,
+      "substitutions": 1,
+      "cases": 2
+    }
+  ]
+}

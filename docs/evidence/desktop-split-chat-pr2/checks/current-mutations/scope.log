@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+········x·
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  23:21:55
+   Duration  732ms (transform 367ms, setup 166ms, import 315ms, tests 36ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-3637.test.ts > two-pane navigation uses one bounded topology > isolates device layout by opaque viewer scope and tolerates blocked storage
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/web-chat-workspace-3637.test.ts:77:117
+     75|     expect(() => { denied.write(model.openBeside(null, single, "beta")…
+     76|     expect(denied.read()).toBeNull();
+     77|     workspaceMemory(storage, "a-person-or-token").write(model.openBesi…
+       |                                                                                                                     ^
+     78|   });
+     79|   it("two View panes share one roster owner until the last pane releas…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

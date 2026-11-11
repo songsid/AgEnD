@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+····x············
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 16 passed (17)
+   Start at  23:22:09
+   Duration  5.31s (transform 2.57s, setup 141ms, import 386ms, tests 4.60s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > pane scope adds no DOM and retains legacy defaults > cross-pane quote edits only B's draft, records undo and never sends or copies A's reply identity
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:91:84
+     89|     try {
+     90|     const originalReply = chat.store.state.replies.beta;
+     91|     expect(chat.insertPaneQuote("beta", "alpha", "Selected passage", (…
+       |                                                                                    ^
+     92|     expect(b.value).toBe("Before");
+     93|     expect(chat.insertPaneQuote("beta", "alpha", "Selected passage")).…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
