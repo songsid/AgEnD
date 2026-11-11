@@ -171,6 +171,39 @@
     ],
     "b5d6e832726e1c73750a2c0bc35a5f1736c0fb19c8d3c2fe9ebe6a59131a48d0": [
       "checks/review-r1/mutations/suspended-retirement.log"
+    ],
+    "bbd4625ca4094aa9d3571f927c858d0f89bc5c07209854ed1eb7c1c2d31bcbcb": [
+      "checks/review-r2/r2-pinned-fail-first.log"
+    ],
+    "5918384c419650a2f95dc0c95d703240d95672781cb0d72a8d5bb221bc78c6a5": [
+      "checks/review-r2/r2-related.log"
+    ],
+    "53b8f75f370965d91469b578fb3031c78dfc4565a73826ad9c87941a7bf1e2e8": [
+      "checks/review-r2/r2-restored.log"
+    ],
+    "0295f2b6387214584ce7b605402ab622e7fda07ea9c1444d555e7b8fadbce4cb": [
+      "checks/review-r2/mutations/operation-completion-retention.log"
+    ],
+    "aeaa21d6c7e060aa776caaf65ff4bedd9c9daa7cea09d76b5a9f213f07177833": [
+      "checks/review-r2/mutations/operation-late-owner.log"
+    ],
+    "5a79177647f7238e5decefdb66a508af2ecc0247f98792d081ebd25bd1f472d7": [
+      "checks/review-r2/mutations/operation-leftover-retention.log"
+    ],
+    "c1d5c13817708768c0ccd17d025e5da1529aa4f2910554750d991ded16a582e7": [
+      "checks/review-r2/mutations/outcome-suspension.log"
+    ],
+    "2f4afb418e72568ab1bb45486fe0e46f938e40d7f788b5f146544fafdd2fe581": [
+      "checks/review-r2/mutations/recovery-definite-refusal.log"
+    ],
+    "66a778b55adfa34afb0c8606e7a3c1ee0c0fa3254dc47e24e6cbd15ba1ac925c": [
+      "checks/review-r2/mutations/recovery-existing-key.log"
+    ],
+    "e56d6e209b4e45c55b21b05096710176a5ce6160f077507f25401501f462abce": [
+      "checks/review-r2/mutations/restage-changed-request.log"
+    ],
+    "afc9510f4198ebcd059e814c5e6499f19eda936cc9238361138c16e217ffa84d": [
+      "checks/review-r2/mutations/restage-retry-key.log"
     ]
   },
   "normalized": {
@@ -344,6 +377,39 @@
     ],
     "5f0a56f5a4e3bdb7c329e3ca3deb2a4a3d13db43c1dae21b71556642e1f69e38": [
       "checks/review-r1/mutations/suspended-retirement.log"
+    ],
+    "780fff21f696821fa267ee81b475d7da2a98973eb3ca732f04c08609d8648b98": [
+      "checks/review-r2/r2-pinned-fail-first.log"
+    ],
+    "69437f43501e1de399a96b3b9c681e448ca0e97d10a399197aa92f13fed3b528": [
+      "checks/review-r2/r2-related.log"
+    ],
+    "9990757b194d1aa842f65e027459d3f52a9074d29f34575a40724022a08cb4fe": [
+      "checks/review-r2/r2-restored.log"
+    ],
+    "18c42460b311186561b538a4b50126c1ab0936ea87405253d5b3f94542251106": [
+      "checks/review-r2/mutations/operation-completion-retention.log"
+    ],
+    "abd1303a04c50d0e3e6acff6b24a4fbc7d31eb909bfd4209f1f276f7818380f0": [
+      "checks/review-r2/mutations/operation-late-owner.log"
+    ],
+    "174f48aa191b84bd5a494eb1c2e483cbdbda10670262b6f86071a46b92433cc5": [
+      "checks/review-r2/mutations/operation-leftover-retention.log"
+    ],
+    "f56fe3c0e3373a3b0acd36f93a50eb30c6a3bb505b612613ec661077ab271389": [
+      "checks/review-r2/mutations/outcome-suspension.log"
+    ],
+    "fd106345c4127305baf49552d303356f288e158e5abbc913c992d8b610f55890": [
+      "checks/review-r2/mutations/recovery-definite-refusal.log"
+    ],
+    "7420b84610e121ac959d19a7f593c6e8a3915c515e6b8b08aec059fe5da3f928": [
+      "checks/review-r2/mutations/recovery-existing-key.log"
+    ],
+    "ff90f313f1e044b1b2050fb75e9f313150fc5bb6b1a5a88525c1aa804ef4b97c": [
+      "checks/review-r2/mutations/restage-changed-request.log"
+    ],
+    "470e4220bff08dfb6495f2dbcbc7d2ccd4149e1d8ad59acf2a0d1b14c89a30e5": [
+      "checks/review-r2/mutations/restage-retry-key.log"
     ]
   }
 }

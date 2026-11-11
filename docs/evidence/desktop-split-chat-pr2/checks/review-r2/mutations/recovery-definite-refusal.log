@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+············x·
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 passed (14)
+   Start at  00:33:51
+   Duration  4.52s (transform 2.13s, setup 132ms, import 268ms, tests 3.93s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > recovered retry metadata is not reused when its request is refused
+AssertionError: expected 'original-ambiguous-write' to be undefined
+
+- Expected:
+undefined
+
++ Received:
+"original-ambiguous-write"
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:138:56
+    136|     const input: any = p.root.querySelector("#pane-a-ag-desc"); input.…
+    137|   } else { await sessions.alpha.apply(); await settle(); failCurrent(f…
+    138|   expect(sessions.alpha.staged.get("agent:alpha").key).toBeUndefined();
+       |                                                        ^
+    139|   await sessions.alpha.apply(); expect(rig.start.mock.lastCall![0][0].…
+    140|   if (reason === "edited") expect(rig.start.mock.lastCall![0][0].reque…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

@@ -1,0 +1,44 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+·····x····x···
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 12 passed (14)
+   Start at  00:33:15
+   Duration  4.39s (transform 1.95s, setup 157ms, import 179ms, tests 3.85s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > a suspended owner recovers done after another pane's later operation finishes
+AssertionError: expected '' to be 'Draft alpha' // Object.is equality
+
+- Expected
++ Received
+
+- Draft alpha
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:104:65
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > an actual form refreshes its successful baseline after another pane replaces the global outcome
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:128:32
+    126|   app.appStore.set({ settingsOp: { ...app.appStore.get().settingsOp, p…
+    127|   await sessions.beta.apply(); await settle(); controller.focus("a"); …
+    128|   expect(sessions.alpha.epoch).toBe(epoch + 1); expect(sessions.alpha.…
+       |                                ^
+    129|   expect((p.root.querySelector("#pane-a-ag-desc") as any).value).toBe(…
+    130| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯

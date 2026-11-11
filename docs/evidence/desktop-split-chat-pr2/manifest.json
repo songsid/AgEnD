@@ -1,8 +1,8 @@
 {
   "v": 1,
-  "scope": "Digest-first manifest. Original R0/R1 capture receipts and PNGs retain their source pins; text-log EOF normalization is explicit.",
+  "scope": "Digest-first manifest. Original R0/R1 capture receipts and PNGs retain their source pins; R2 recovery checks are scoped separately. Text-log EOF normalization is explicit.",
   "files": {
-    "0347c82fc989b01e342e8efe288fba8fb4fa7c5de9cfe01e973ed29f46aafc13": [
+    "1dbed6fc2f31acea4285155421eb116db5a4340b57cae23cb7cfee833a69fd8f": [
       "README.md"
     ],
     "c762344870532cc89b4986bad684d0dced55fe985a46f7eea7fb49ee50442cf9": [
@@ -396,7 +396,9 @@
       "checks/review-r1/review-r1-post-sync-source-types.log",
       "checks/review-r1/review-r1-post-sync-test-types.log",
       "checks/review-r1/review-r1-source-types.log",
-      "checks/review-r1/review-r1-test-types.log"
+      "checks/review-r1/review-r1-test-types.log",
+      "checks/review-r2/r2-source-types.log",
+      "checks/review-r2/r2-test-types.log"
     ],
     "cae5bcc885bad2d93eb85c941f582b195b52617ce3b80413e7f8bf0913d05671": [
       "checks/final-2528-core.log"
@@ -407,7 +409,7 @@
     "d42d6a62e6bdce3de0ed0eaa34be5cb9d1a86c35aa768917654003ad6a8f453b": [
       "checks/final-focused.log"
     ],
-    "9f22ba6f4124e76473db9cb8d4c9fcc8ec846ef66e952f4d58cac96ec1b69af0": [
+    "b1fd000fac7432795a9cbca4ebd9ac35dae22b00438a1732d7470278f6c13fc0": [
       "checks/log-normalization.json"
     ],
     "195a284dbf9a0cc77e443178d207d3f4fabe3071ffc7dd469b6edfa047ecd275": [
@@ -510,7 +512,8 @@
       "checks/review-r1/prism-r1-suspended-owner-fail-first.log"
     ],
     "2f74a0701f0fc382fd4d783b6e92df814a4001cdfebc19e8f72ca355fd73e5b0": [
-      "checks/review-r1/review-r1-changelog.log"
+      "checks/review-r1/review-r1-changelog.log",
+      "checks/review-r2/r2-changelog.log"
     ],
     "e974a9188bf5bbfd946fe81d8507d4cfb28cc8364ce161a78ab30de94e2d6720": [
       "checks/review-r1/review-r1-mutations.log"
@@ -526,6 +529,51 @@
     ],
     "e55f9a7f3216d7ccf000599065dc9eeec93a41cf64b10462708c57d175ffd9e4": [
       "checks/review-r1/visual-review.json"
+    ],
+    "18c42460b311186561b538a4b50126c1ab0936ea87405253d5b3f94542251106": [
+      "checks/review-r2/mutations/operation-completion-retention.log"
+    ],
+    "abd1303a04c50d0e3e6acff6b24a4fbc7d31eb909bfd4209f1f276f7818380f0": [
+      "checks/review-r2/mutations/operation-late-owner.log"
+    ],
+    "174f48aa191b84bd5a494eb1c2e483cbdbda10670262b6f86071a46b92433cc5": [
+      "checks/review-r2/mutations/operation-leftover-retention.log"
+    ],
+    "f56fe3c0e3373a3b0acd36f93a50eb30c6a3bb505b612613ec661077ab271389": [
+      "checks/review-r2/mutations/outcome-suspension.log"
+    ],
+    "4bdb4378187c1cb29365f14c558261b800ee1479ffd67dc44cfe2f80797e83f2": [
+      "checks/review-r2/mutations/receipt.json"
+    ],
+    "fd106345c4127305baf49552d303356f288e158e5abbc913c992d8b610f55890": [
+      "checks/review-r2/mutations/recovery-definite-refusal.log"
+    ],
+    "7420b84610e121ac959d19a7f593c6e8a3915c515e6b8b08aec059fe5da3f928": [
+      "checks/review-r2/mutations/recovery-existing-key.log"
+    ],
+    "ff90f313f1e044b1b2050fb75e9f313150fc5bb6b1a5a88525c1aa804ef4b97c": [
+      "checks/review-r2/mutations/restage-changed-request.log"
+    ],
+    "470e4220bff08dfb6495f2dbcbc7d2ccd4149e1d8ad59acf2a0d1b14c89a30e5": [
+      "checks/review-r2/mutations/restage-retry-key.log"
+    ],
+    "40b5ddfe9222c275fc0bc24aec9016a3f58da0759d3f0a9bc1f0cca4a3b0b85b": [
+      "checks/review-r2/r2-mutations.log"
+    ],
+    "22cf230cadfc1ec2b075c36e08bc2803b9b39e97dad040bf648834897cc5a4ce": [
+      "checks/review-r2/r2-pinned-fail-first.json"
+    ],
+    "780fff21f696821fa267ee81b475d7da2a98973eb3ca732f04c08609d8648b98": [
+      "checks/review-r2/r2-pinned-fail-first.log"
+    ],
+    "69437f43501e1de399a96b3b9c681e448ca0e97d10a399197aa92f13fed3b528": [
+      "checks/review-r2/r2-related.log"
+    ],
+    "9990757b194d1aa842f65e027459d3f52a9074d29f34575a40724022a08cb4fe": [
+      "checks/review-r2/r2-restored.log"
+    ],
+    "6a42c66144c3343cd9420bceaee08e8f53c664819bb752075a2bcdb302a712c4": [
+      "checks/review-r2/receipt.json"
     ],
     "b8dee734ac7412b4bac1c7b56d889483a10d527fdf4c7e4c8c4698a741aa7442": [
       "checks/settings-remount-fail-first.log"
