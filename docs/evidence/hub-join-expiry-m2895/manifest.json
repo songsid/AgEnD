@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "algorithm": "SHA-256",
+  "files": {
+    "da2e25d64ef674e43599c57098875bb023427e238933edba05c17684a9a20605": [
+      "src/hub/join/local.ts"
+    ],
+    "79b1a59ed64f5348bb887ffd1e7f76a02027d380017d8d6d15173292a3942d77": [
+      "tests/hub-company-join-local.test.ts"
+    ],
+    "a683965e6c0c8b8fe4892baffbf08a36cbef348356ffaa6d448bd0d95ad35809": [
+      "tests/hub-company-join-ui.test.ts"
+    ],
+    "729f399be5b3c57241b1dc438026972fae9921c3a615f356b47e4444424d9754": [
+      "tests/hub-company-join-restart.test.ts"
+    ],
+    "024df4285eadd19bdb6ec1f48f692e4d21028c170023525f2c3ff67213eeb20e": [
+      "tests/hub-company-join-recovery.test.ts"
+    ],
+    "5c0ba4b8c33a7aee6b83f520e695030d945a1e9affe0c88ea64e346b01b4a99f": [
+      "docs/design/hub-company-join.md"
+    ],
+    "4f453a5ec3a61bcc1bfe30c617587e4fb4872041800fb00d848ea49d293643ef": [
+      "changes/3625-hub-join-expiry.md"
+    ],
+    "6739bffae7afc4651be3de4d3b7ac4d46f66e588aa39da4fa5579f7cc24fc45e": [
+      "changes/3625-hub-join-expiry.zh-TW.md"
+    ],
+    "d4d2be98acfe12e79c50512f3ee31bcf600798ace35f922f7bf5ff2deb279a77": [
+      "docs/evidence/hub-join-expiry-m2895/README.md"
+    ],
+    "2cc060d1eaafa785fac8ed356f079aa2e6b64f86cff6f76f2256e6965aa75373": [
+      "docs/evidence/hub-join-expiry-m2895/broader-initial.log"
+    ],
+    "89268d18db450f6f3cf064a20c350c9dff0cb1008d370bd2e1be165b5c91abc9": [
+      "docs/evidence/hub-join-expiry-m2895/checks.json"
+    ],
+    "60ba9119bcd63bc85acc88cf4ff9452b29f1fb238890a7160d78eb9374763817": [
+      "docs/evidence/hub-join-expiry-m2895/clean-member.log"
+    ],
+    "bf4e3eb47fe734a3a80ac07ba1a6633875e0d6e380dc6e25bad7d24f73d005af": [
+      "docs/evidence/hub-join-expiry-m2895/fail-first.log"
+    ],
+    "42b15782943dc4c771ac2c1be295b4f57ac9fdb106ca9668e1f4fdc2a0117e37": [
+      "docs/evidence/hub-join-expiry-m2895/focused.log"
+    ],
+    "4372306a93791d368acb1d38298fa92674c9498598ad314a06fb61c2af445a4b": [
+      "docs/evidence/hub-join-expiry-m2895/isolated-http-control.log"
+    ],
+    "527438787f6ec169a59ead9f0f28471c0dcb6d3edd0b1024cc4938f900922861": [
+      "docs/evidence/hub-join-expiry-m2895/mutations.json"
+    ],
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
+      "docs/evidence/hub-join-expiry-m2895/source-types.log",
+      "docs/evidence/hub-join-expiry-m2895/test-types.log"
+    ]
+  }
+}

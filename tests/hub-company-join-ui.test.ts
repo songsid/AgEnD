@@ -79,8 +79,8 @@ describe("company join UI", () => {
     expect(timers.length).toBeGreaterThan(0); online = true; timers.shift()!(); await settle(12);
     expect(p.root.textContent).toContain("Fleet connected");
   });
-  it.each([false, true])("a cancelled operation allows a fresh Start only when its unissued result is known (%s)", async unknown => {
-    fetcher(() => ({ ok: true, operation: { ...pending, state: "cancelled", outcomeKnown: !unknown } }));
+  it.each(["cancelled", "ended"].flatMap(state => [false, true].map(unknown => ({ state, unknown }))))("a $state operation allows a fresh Start only when its unissued result is known ($unknown)", async ({ state, unknown }) => {
+    fetcher(() => ({ ok: true, operation: { ...pending, state, outcomeKnown: !unknown } }));
     const p = await mount(fleet.CompanyJoinSettings); expect(!!p.root.querySelector("form")).toBe(!unknown);
     expect(p.root.textContent).not.toContain("Fleet connected");
   });

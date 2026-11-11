@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { CompanyJoinController } from "../src/hub/join/local.js";
-import { readLocalJoin } from "../src/hub/join/local-journal.js";
+import { currentLocalJoinId, readLocalJoin } from "../src/hub/join/local-journal.js";
 import { currentBinding, createHubMemberPairingApi } from "../src/hub/member/pairing-api.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
 import { sha256 } from "../src/hub/identity.js";
@@ -45,6 +45,78 @@ async function world() {
     diskFailure: (value: boolean) => { settleFailure = value; }, advance: (ms: number) => { now += ms; }, enabled: () => enabled };
 }
 describe("Fleet local company join", () => {
+  it.each([false, true])("an expired unissued abandonment allows a new session to Start without cleanup (restart %s)", async restart => {
+    const w = await world(), first = await w.start();
+    w.advance(600_000);
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ reason: "expired", issued: false, outcomeKnown: true });
+    const abandoned = readLocalJoin(w.directory, first.operationId);
+    if (restart) w.controller.close();
+    const controller = restart ? new CompanyJoinController(w.options) : w.controller;
+    const other = { ...w.session, ownerKey: {}, sessionId: "c".repeat(64) };
+    const next = await controller.start({ address: w.metadata.hub.webOrigin, label: "Retry Fleet", fleetOrigin: "http://127.0.0.1:4444" }, { ...w.authority, session: other });
+    expect(next).toMatchObject({ state: "awaiting-sign-in", issued: false }); expect(next.operationId).not.toBe(first.operationId);
+    expect(currentLocalJoinId(w.directory)).toBe(next.operationId);
+    expect(readLocalJoin(w.directory, first.operationId)).toEqual(abandoned);
+    await expect(controller.resume(first.operationId, w.authority)).rejects.toThrow();
+    expect(() => controller.bridge(first.operationId, w.session)).toThrow();
+    w.ready(); expect(await controller.status(next.operationId, other)).toMatchObject({ state: "saved" });
+    expect(w.calls.filter(c => c === "push")).toHaveLength(2); expect(w.calls.filter(c => c === "redeem")).toHaveLength(1);
+    expect(w.activate).toHaveBeenCalledOnce(); controller.close();
+  });
+  it("an expired pending journal also permits Start before any timer has recorded the expiry", async () => {
+    const w = await world(), first = await w.start(); w.advance(600_000);
+    expect(readLocalJoin(w.directory, first.operationId).stage).toBe("pending");
+    expect(await w.start()).toMatchObject({ state: "awaiting-sign-in" }); expect(w.calls).toEqual(["push", "push"]);
+  });
+  it("the original session sees an expired never-issued operation as ended, so the existing Start form is reachable", async () => {
+    const w = await world(), first = await w.start(); w.advance(600_000);
+    expect(w.controller.current(w.session)).toMatchObject({ operationId: first.operationId, state: "ended", reason: "expired", issued: false, outcomeKnown: true });
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "ended", reason: "expired" });
+  });
+  it("a live in-flight Start still blocks another session before and after its Hub push settles", async () => {
+    const w = await world(); let release!: () => void, entered!: () => void;
+    const held = new Promise<void>(r => { release = r; }), seen = new Promise<void>(r => { entered = r; });
+    const original = w.client.command.getMockImplementation()!;
+    w.client.command.mockImplementation(async (...args: any[]) => { if (args[1] === "push") { entered(); await held; } return (original as any)(...args); });
+    const first = w.start(); await seen;
+    const other = { ...w.authority, session: { ...w.session, ownerKey: {}, sessionId: "c".repeat(64) } };
+    const attempt = () => w.controller.start({ address: w.metadata.hub.webOrigin, label: "Other Fleet", fleetOrigin: "http://127.0.0.1:4444" }, other);
+    try { await expect(attempt()).rejects.toThrow(); } finally { release(); }
+    const pending = await first; await expect(attempt()).rejects.toThrow();
+    expect(w.calls).toEqual(["push"]); expect(currentLocalJoinId(w.directory)).toBe(pending.operationId);
+  });
+  it("expiry never clears an unknown issuance result after a lost credential reply", async () => {
+    const w = await world(), first = await w.start(); w.ready();
+    const original = w.client.command.getMockImplementation()!;
+    w.client.command.mockImplementation(async (...args: any[]) => { const result = await (original as any)(...args); if (args[1] === "redeem") throw Error("lost issued reply"); return result; });
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "held", issued: false, outcomeKnown: false });
+    w.advance(600_000);
+    expect(w.controller.current(w.session)).toMatchObject({ state: "held", outcomeKnown: false });
+    await expect(w.start()).rejects.toThrow(); w.controller.close();
+    const restarted = new CompanyJoinController(w.options);
+    await expect(restarted.start({ address: w.metadata.hub.webOrigin, label: "Retry Fleet", fleetOrigin: "http://127.0.0.1:4444" }, w.authority)).rejects.toThrow();
+    expect(w.calls.filter(c => c === "push")).toHaveLength(1); expect(w.calls).not.toContain("ack"); expect(w.activate).not.toHaveBeenCalled(); restarted.close();
+  });
+  it("a late status from the expired operation cannot redeem or overwrite its fresh replacement", async () => {
+    const w = await world(), first = await w.start(); let release!: () => void, entered!: () => void;
+    const held = new Promise<void>(r => { release = r; }), seen = new Promise<void>(r => { entered = r; });
+    const original = w.client.command.getMockImplementation()!;
+    w.client.command.mockImplementation(async (...args: any[]) => { const result = await (original as any)(...args); if (args[1] === "status") { entered(); await held; return { ...result, state: "identity-approved" }; } return result; });
+    const old = w.controller.status(first.operationId, w.session); await seen; w.advance(600_000);
+    const next = await w.start(); release(); await old;
+    expect(currentLocalJoinId(w.directory)).toBe(next.operationId);
+    expect(w.controller.current(w.session)).toMatchObject({ operationId: next.operationId, state: "awaiting-sign-in" });
+    expect(w.calls).not.toContain("redeem"); expect(w.calls).not.toContain("ack"); expect(w.activate).not.toHaveBeenCalled();
+  });
+  it("expiry does not relabel an issued active binding or an explicit unissued cancellation", async () => {
+    const w = await world(), first = await w.start(); w.ready();
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "saved", issued: true });
+    w.advance(600_000); expect(w.controller.current(w.session)).toMatchObject({ state: "saved", issued: true });
+    await expect(w.start()).rejects.toThrow();
+    const other = await world(), cancelled = await other.start();
+    await other.controller.cancel(cancelled.operationId, other.session); other.advance(600_000);
+    expect(other.controller.current(other.session)).toMatchObject({ state: "cancelled", reason: "cancelled", issued: false, outcomeKnown: true });
+  });
   it("a shared Hub/Fleet hostname refuses before discovery, a TOFU pin or a remote push", async () => {
     const w = await world();
     await expect(w.controller.start({ address: w.metadata.hub.webOrigin, label: "My Fleet", fleetOrigin: "https://hub.example.test:7443" }, w.authority)).rejects.toThrow();

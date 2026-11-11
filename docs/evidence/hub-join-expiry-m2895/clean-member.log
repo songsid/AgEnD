@@ -1,0 +1,21 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-abandoned-start-a13
+
+stdout | tests/hub-company-join-recovery.test.ts > a never-paired Fleet joins as Carol and its real member link becomes online before and after reconstruction
+clean member probe: Start awaits sign-in
+
+stdout | tests/hub-company-join-recovery.test.ts > a never-paired Fleet joins as Carol and its real member link becomes online before and after reconstruction
+clean member probe: Carol approved; profile, journal and ACK saved
+
+stdout | tests/hub-company-join-recovery.test.ts > a never-paired Fleet joins as Carol and its real member link becomes online before and after reconstruction
+clean member probe: member online 1
+
+stdout | tests/hub-company-join-recovery.test.ts > a never-paired Fleet joins as Carol and its real member link becomes online before and after reconstruction
+clean member probe: member online 2
+
+ ✓ tests/hub-company-join-recovery.test.ts > a never-paired Fleet joins as Carol and its real member link becomes online before and after reconstruction 3022ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  17:05:16
+   Duration  9.22s (transform 4.68s, setup 147ms, import 5.80s, tests 3.10s, environment 0ms)
