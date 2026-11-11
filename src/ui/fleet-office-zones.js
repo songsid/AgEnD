@@ -207,7 +207,7 @@ export function wanderTarget(name, seat, graph, t, seats = []) {
  * its epoch's end is a stroll instead — so where anyone is follows from their name and the time alone, never from
  * when the page was opened.
  */
-export const VISIT = { STROLL: 100, EPOCH: 45 };
+export const VISIT = { STROLL: 100, EPOCH: 45, SLACK: 2 * WANDER.TICK };
 /**
  * The walk from `a` to `z` along `graph` (as createWalkers routes it), in ms. Kept per graph (the layout object, the
  * same one tick after tick; a new layout is a new object) by both ends: walkTargets asks for every idle person every
@@ -230,8 +230,9 @@ const spotsOf = (area) => (area.seats && area.seats.length ? area.seats : [{ x: 
  * #3685: the visit `name` (seated at `home`, in area `from`) is on at `t` (ms), or null: { area, start, end, stay, pick }
  * — `start`/`end` in the same ms as `t`, `stay` the time to spend there (ms, minSeconds–maxSeconds), `pick` where in
  * the area's seats to start looking for a free one. `end` leaves room for the longest walk there (to the farthest
- * seat of the area along the graph — the seat is walkTargets' to pick) and the stay; the next visit starts only after
- * the longest walk back, so a visit always starts from home. Only the graph's `idleVisits` to areas it has other than
+ * seat of the area along the graph — the seat is walkTargets' to pick), the stay, and VISIT.SLACK (the page sees a
+ * visit at its next tick, not at its start); the next visit starts only after the longest walk back, and the walk back
+ * too ends within the epoch, so a visit always starts from home — in a new epoch too. Only the graph's `idleVisits` to areas it has other than
  * `from`; none: always null (strolls as before). Pure: which seat is free is walkTargets' to say.
  */
 export function visitAt(name, home, graph, t, from = null) {
@@ -249,8 +250,8 @@ export function visitAt(name, home, graph, t, from = null) {
     if (r >= sum) continue;                                         // a stroll this turn
     const v = opts.find((o) => (r -= o.weight) < 0);
     const stay = (v.minSeconds + (nameHash(`${name}\u0000stay\u0000${j}`) % (v.maxSeconds - v.minSeconds + 1))) * 1000;
-    const end = at + there(v.area) + stay;
-    if (end > edge) continue;                                       // past the epoch: a stroll instead
+    const end = at + there(v.area) + stay + VISIT.SLACK;
+    if (end + back(v.area) > edge) continue;                        // home again only past the epoch: a stroll instead
     busy = end + back(v.area);
     on = { area: v.area, start: at - phase, end: end - phase, stay, pick: nameHash(`${name}\u0000seat\u0000${j}`) };
   }

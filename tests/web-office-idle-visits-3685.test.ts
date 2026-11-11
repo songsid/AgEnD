@@ -102,7 +102,7 @@ describe("visitAt", () => {
       vs.forEach((v, i) => {
         expect(v.area).toBe("spring");
         expect((v.start + phase) % Z.WANDER.PERIOD).toBe(0);
-        const stay = v.end - v.start - walk;
+        const stay = v.end - v.start - walk - Z.VISIT.SLACK;
         expect(stay).toBe(v.stay);
         expect(stay % 1000).toBe(0);
         expect(stay).toBeGreaterThanOrEqual(20000);
@@ -177,7 +177,8 @@ describe("walkTargets with idleVisits", () => {
       const out = desks.filter((d) => key(m.get(d.node.name)) !== key(d.seat)).map((d) => key(m.get(d.node.name)));
       expect(new Set(out).size).toBe(out.length);
       for (const q of out) expect(q).toBe("800,500");
-      const on = desks.filter((d) => Z.visitAt(d.node.name, d.seat, g, t, "lounge"));
+      // On a visit and not yet home: the walk there from their seat plus the stay (then home, before the visit's end).
+      const on = desks.filter((d) => { const v = Z.visitAt(d.node.name, d.seat, g, t, "lounge"); return v && t < v.start + Math.ceil(Math.hypot(800 - d.seat.x, 500 - d.seat.y) / Z.WALK.SPEED) + v.stay; });
       if (on.length > 1) { crowded++; expect(out.length).toBe(1); }
       if (on.length) {                                                          // the earliest visit holds the seat
         const first = [...on].sort((x, y) => Z.visitAt(x.node.name, x.seat, g, t, "lounge").start - Z.visitAt(y.node.name, y.seat, g, t, "lounge").start || (x.node.name < y.node.name ? -1 : 1))[0];
@@ -250,6 +251,40 @@ describe("#3697 review: arrival and seats already taken", () => {
     }
     expect(early).toBeGreaterThan(0);
     expect(late).toBeGreaterThan(0);
+  });
+  it("polled as the page does (every second, between visits' starts): every visit to a one-seat area is taken", () => {
+    const g = graphOf([{ area: "garden", weight: 100, minSeconds: 5, maxSeconds: 5 }]);    // the garden has one seat
+    for (const name of ["a", "atlas", "quill"]) {
+      const memo = { claims: new Map(), idle: null }, sat = new Set<number>();
+      const vs = visitsOver(name, g, 120);
+      for (let t = 237; t < 120 * Z.WANDER.PERIOD; t += Z.WANDER.TICK) {        // ticks never on a visit's start
+        if (key(Z.walkTargets([idleAt(name, HOME)], g, t, true, [], false, memo).get(name)) === "800,500") {
+          const v = Z.visitAt(name, HOME, g, t, "lounge"); if (v) sat.add(v.start);
+        }
+      }
+      expect(vs.length).toBeGreaterThan(3);
+      expect(sat.size).toBe(vs.length);
+    }
+  });
+  it("the walk home is part of the visit's epoch: the next visit, in the next epoch too, starts once they are home", () => {
+    // A stay sized so a visit started on an epoch's last turn ends inside the epoch but its walk home does not.
+    const g0 = detour(), seat = { x: 800, y: 100 }, there = route(g0, HOME, seat), back = route(g0, seat, HOME);
+    const S = Math.floor((Z.WANDER.PERIOD - there - (Z.VISIT.SLACK ?? 0) - back / 2) / 1000);
+    expect([back > 5000, S >= 5]).toEqual([true, true]);
+    const pk = packOf({ idleVisits: [{ area: "garden", weight: 100, minSeconds: S, maxSeconds: S }],
+      areas: { ...MANIFEST().areas, garden: { rect: [700, 0, 580, 360], seats: [[800, 100]] } },
+      waypoints: g0.waypoints, edges: g0.edges });
+    const g = Z.zonesLayout(pk, []);
+    let crossed = 0;
+    for (const name of ["atlas", "quill", "sage", "orbit", "a", "b", "c", "d", "e", "f", "g", "h"]) {
+      const vs = visitsOver(name, g, 12 * Z.VISIT.EPOCH);
+      const phase = M.nameHash(name) % Z.WANDER.PERIOD, epochOf = (v: any) => Math.floor((v.start + phase) / Z.WANDER.PERIOD / Z.VISIT.EPOCH);
+      for (let i = 1; i < vs.length; i++) {
+        expect(vs[i].start).toBeGreaterThanOrEqual(vs[i - 1].end + back);
+        if (epochOf(vs[i]) !== epochOf(vs[i - 1])) crossed++;
+      }
+    }
+    expect(crossed).toBeGreaterThan(0);                                         // the case: pairs across an epoch's edge
   });
   it("someone turning idle later never moves a visitor already in the seat, even with an earlier visit by the clock", () => {
     const g = graphOf([{ area: "garden", weight: 100, minSeconds: 100, maxSeconds: 100 }]);   // the garden has one seat
