@@ -67,6 +67,7 @@ $ErrorActionPreference = 'Stop'
 $desk = [Environment]::GetFolderPath('Desktop')
 $app = New-Object -ComObject Shell.Application
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName PresentationCore
 $out = $env:OUT
 foreach ($pair in @(@('AgEnD 儀表板', 'dashboard'), @('AgEnD 重新啟動', 'restart'))) {
   $lnk = Join-Path $desk ($pair[0] + '.lnk')
@@ -85,12 +86,20 @@ foreach ($name in @('agend.ico', 'agend-restart.ico')) {
   # .NET's SHA-256: started from the workflow's pwsh 7, Windows PowerShell 5.1 inherits a module path without Get-FileHash.
   $hash = [Security.Cryptography.SHA256]::Create().ComputeHash([IO.File]::ReadAllBytes($file))
   Write-Output ('ICO|' + $name + '|' + (($hash | ForEach-Object { $_.ToString('x2') }) -join ''))
-  foreach ($px in @(256, 48, 32, 16)) {
-    $icon = New-Object System.Drawing.Icon($file, $px, $px)
-    $bmp = $icon.ToBitmap()
-    Write-Output ('DECODED|' + $name + '|' + $px + '|' + $bmp.Width + 'x' + $bmp.Height)
-    $bmp.Save((Join-Path $out ($name + '-' + $px + '.png')), [System.Drawing.Imaging.ImageFormat]::Png)
-  }
+  # Windows' imaging codec (WPF), as the shell reads it: every frame, the 256 px PNG one included (System.Drawing.Icon
+  # in .NET Framework never selects a 256 px PNG entry, so it is not the judge here).
+  $stream = [IO.File]::OpenRead($file)
+  try {
+      $decoder = New-Object System.Windows.Media.Imaging.IconBitmapDecoder($stream, [System.Windows.Media.Imaging.BitmapCreateOptions]::PreservePixelFormat, [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad)
+      foreach ($frame in $decoder.Frames) {
+        $px = $frame.PixelWidth
+        Write-Output ('DECODED|' + $name + '|' + $px + '|' + $frame.PixelWidth + 'x' + $frame.PixelHeight)
+        $enc = New-Object System.Windows.Media.Imaging.PngBitmapEncoder
+        $enc.Frames.Add([System.Windows.Media.Imaging.BitmapFrame]::Create($frame))
+        $png = [IO.File]::Create((Join-Path $out ($name + '-' + $px + '.png')))
+        try { $enc.Save($png) } finally { $png.Dispose() }
+      }
+  } finally { $stream.Dispose() }
 }
 `);
 console.log(read.stdout.trim()); if (read.stderr.trim()) console.log(read.stderr.trim());
@@ -103,7 +112,7 @@ for (const [kind, name] of [["dashboard", "agend.ico"], ["restart", "agend-resta
   check(new RegExp(`-File "[^"]*\\\\AgEnD\\\\${kind === "dashboard" ? "open-dashboard" : "restart-agend"}\\.ps1"`).test(lnk[4] ?? ""), `${kind}.lnk runs its own script (${lnk[4]})`);
   const ico = lines.find(l => l.startsWith(`ICO|${name}|`))?.split("|")[2];
   check(ico === sha(icons[name as "agend.ico"]!), `${name} on disk is the package's bytes`);
-  for (const px of [256, 48, 32, 16]) check(lines.includes(`DECODED|${name}|${px}|${px}x${px}`), `Windows decodes ${name} at ${px} px`);
+  for (const px of [16, 24, 32, 48, 64, 256]) check(lines.includes(`DECODED|${name}|${px}|${px}x${px}`), `Windows decodes ${name} at ${px} px`);
 }
 
 check(lines.includes("DESKTOP-FILES|AgEnD 儀表板.lnk;AgEnD 重新啟動.lnk") || lines.includes("DESKTOP-FILES|AgEnD 重新啟動.lnk;AgEnD 儀表板.lnk"), "only the two shortcuts on the desktop (no staged leftovers)");
