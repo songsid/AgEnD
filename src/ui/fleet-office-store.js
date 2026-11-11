@@ -3,6 +3,8 @@
 //   what comes back is checked again here (fleet-office-model.js officesOk), never trusted;
 // - #2716: the whole-fleet office's style, kept on the host for everyone (GET /ui/offices's autoSkin; PUT
 //   /ui/office-style, an admin's) — this browser's own pick (skin(): an admin's copy of it, anyone else's own choice);
+// - #3679: the fleet's own level titles for every office (GET /ui/offices's levels, checked again by a pack's rules;
+//   PUT /ui/office-level-titles, an admin's — Settings → Web dashboard);
 // - this browser's own choices (localStorage; blocked storage: this page only, as the canvas's Canvas/List): which
 //   office is shown, the auto office's member filter; #2540: the view (zoom and centre) and the
 //   fit mode (Fit or Fill) per office; #2554: whether All offices shows the lobby tile.
@@ -15,6 +17,7 @@
 import { AUTO_ID, filterOk, officesOk } from "./fleet-office-model.js";
 import { fitModeOk, savedOk } from "./fleet-office-view.js";
 import { levelsOk } from "./fleet-office-levels.js";
+import { checkLevels } from "./fleet-office-pack.js";
 
 const CHOICE_KEY = "agend_org_office", FILTER_KEY = "agend_org_office_filter", SKIN_KEY = "agend_org_office_skin", ASLEEP_KEY = "agend_org_office_hide_asleep", NIGHT_KEY = "agend_org_office_night";
 /** #2554: "0" when All offices leaves the lobby tile out (default: shown). */
@@ -72,15 +75,17 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
   const headers = { "Content-Type": "application/json" };
   return {
     /**
-     * { rev, offices, autoSkin } from the host (#2716 autoSkin: the whole-fleet office's style, or null: none kept); null
-     * when it could not be read (no offices shown but the auto one).
+     * { rev, offices, autoSkin, levels } from the host (#2716 autoSkin: the whole-fleet office's style, or null: none kept;
+     * #3679 levels: the fleet's own level titles, or null); null when it could not be read (no offices shown but the auto one).
      */
     async offices() {
       try {
         const r = await get("/ui/offices", { method: "GET", headers });
         if (!r || !r.ok) return null;
         const d = await r.json();
-        return { rev: Number.isSafeInteger(d && d.rev) ? d.rev : 0, offices: officesOk(d && d.offices), autoSkin: d && typeof d.autoSkin === "string" && PACK_ID.test(d.autoSkin) ? d.autoSkin : null };
+        const lv = d && d.levels !== undefined ? checkLevels(d.levels) : null;
+        return { rev: Number.isSafeInteger(d && d.rev) ? d.rev : 0, offices: officesOk(d && d.offices), autoSkin: d && typeof d.autoSkin === "string" && PACK_ID.test(d.autoSkin) ? d.autoSkin : null,
+          levels: lv && lv.ok ? lv.levels : null };
       } catch { return null; }
     },
     /** #2716: the whole-fleet office's style for everyone (an admin session): { ok, autoSkin } or { ok: false, status, error }. */

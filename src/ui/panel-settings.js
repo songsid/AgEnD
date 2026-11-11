@@ -50,6 +50,7 @@ import "./chat-strings.js";
 import { AppearanceSection } from "./settings-appearance.js";
 import { GuestsCard } from "./settings-guests.js";
 import { OfficeSharesCard } from "./office-share-dialog.js";
+import { LevelTitlesCard } from "./settings-level-titles.js";
 import { PageSharesCard } from "./page-share-dialog.js";
 import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
@@ -1428,6 +1429,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       <label class=${fc("check", "cdn")}><input id="webPreviewCdn" type="checkbox" checked=${f.cdn} onChange=${(e) => set("cdn")(e.target.checked)} /><span>${tn("webPreviewCdn")}</span><${Impact} schema=${schema} field="web.preview_cdn" /></label>
       <p class="note">${tn("webPreviewCdnHint")}</p>
     </section>`) : null}
+    ${has("dashboard") && !overPublicLink ? html`<${LevelTitlesCard} />` : null}
     ${has("readonly") ? html`<section class="card s-web-readonly"><h3>${tn("webReadOnlyTitle")}</h3>
       <p class="note">${tn("webReadOnlyLead")}</p>
       <dl class="s-web-ro">${WEB_READ_ONLY.map((k) => html`<div key=${k}><dt><code>${k}</code></dt><dd>${shown(k)}</dd></div>`)}</dl>

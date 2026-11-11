@@ -97,7 +97,10 @@
 //       "fixed": { "atlas": { "title": "Founder", "hideLevel": true } } }
 //                                                     a title pinned on an instance (or an NPC: a furniture item's
 //                                                     id) whatever its level (≤ 500); hideLevel: its badge is a mark,
-//                                                     its card has no "Lv n" or XP bar
+//                                                     its card has no "Lv n" or XP bar. #3679: the fleet may keep
+//                                                     its own `levels` for every office (checkLevels: these rules);
+//                                                     a pack's own titles win over it, and its fixed entries over
+//                                                     the fleet's, name by name (fleet-office-levels.js mergeLevels)
 //   }
 //
 // A STRIP is { "src": "idle.png", "frames": 4, "w": 32, "h": 48, "fps": 4, "ax": 16, "ay": 44 }: `frames` frames of
@@ -286,6 +289,20 @@ function levelsOf(v) {
     }
   }
   return out;
+}
+
+/**
+ * #3679: the fleet-wide `levels` (Settings → Web dashboard → Level titles, kept in web-offices.json) checked by the very
+ * rules a pack's are (levelsOf): { ok: true, levels } or { ok: false, error: "<where>: <why>" }. `v` must be an object.
+ */
+export function checkLevels(v) {
+  try {
+    if (v === undefined) throw new Refused("levels", "an object");
+    return { ok: true, levels: levelsOf(v) };
+  } catch (err) {
+    if (err instanceof Refused) return { ok: false, error: err.message };
+    throw err;
+  }
 }
 
 /**

@@ -279,7 +279,10 @@ desk. Hover a desk for its name, state and backend; a click or tap (or Enter in 
 person's profile card (#2661: a 320 px popover beside them, following them; Esc, a press elsewhere or the same person
 again closes it; on a phone a bottom sheet): level and XP, office and area, model, backend, today, first seen, the
 activity line, **Find in office** and **Chat**. A double-click opens the chat directly. Each name tag has a level badge
-(lifetime work, docs/office.md § Levels; **Settings → Web dashboard → Office levels**, `web.office_levels`). **Find** dims
+(lifetime work, docs/office.md § Levels; **Settings → Web dashboard → Office levels**, `web.office_levels`; #3679: the
+fleet's own titles for every office in **Settings → Web dashboard → Level titles for every office**, a pack's `levels`
+JSON shape, admin only, kept in `web-offices.json` — a pack's own titles still win in its offices, its pinned titles
+name by name). **Find** dims
 the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
 **Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`). An admin session
 (never a read-only one, a guest or the public link) gets **Edit offices**: add, rename and delete offices, pick who is
