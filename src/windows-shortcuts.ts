@@ -189,8 +189,18 @@ export function shortcutsHintOnce(o: { host: ShortcutsHost; dataDir: string; tty
   return t("shortcuts.hint");
 }
 
-/** After `agend update`: print the one-time line, if it is due (#1853). */
-export function printUpdateShortcutsHint(dataDir: string): void {
-  const line = shortcutsHintOnce({ host: realHost(), dataDir, tty: !!process.stdout.isTTY, write: (path, content) => writeFileSync(path, content, { flag: "wx" }) });
+/**
+ * After an install or `agend update`: print the one-time line, if it is due — the Windows shortcuts in WSL (#1853), the
+ * launchers on a Linux desktop (M-2885).
+ */
+export async function printUpdateShortcutsHint(dataDir: string): Promise<void> {
+  const host = realHost();
+  const write = (path: string, content: string) => writeFileSync(path, content, { flag: "wx" });
+  const tty = !!process.stdout.isTTY;
+  let line = shortcutsHintOnce({ host, dataDir, tty, write });
+  if (!line) {
+    const { launchersHintOnce } = await import("./linux-launchers.js");
+    line = launchersHintOnce({ env: host.env, platform: process.platform, wsl: detectWsl(host).wsl, dataDir, tty, exists: host.exists, write });
+  }
   if (line) console.log(`  ${line}\n`);
 }
