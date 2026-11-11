@@ -1,0 +1,140 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-discovery-2301.test.ts (5 tests | 5 failed) 449ms
+   × does not synchronously walk/stat/sort even a small sessions tree 416ms
+   × times out held discovery, refuses overlapping work, and closes without reading after release 9ms
+   × a capped enumeration cannot authorize its first matching file 4ms
+   × a directory at the depth limit refuses incomplete uniqueness proof 14ms
+   × a directory-count cap refuses even when the matching file was already seen 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-discovery-2301.test.ts > does not synchronously walk/stat/sort even a small sessions tree
+AssertionError: expected 10 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 10
+
+ ❯ tests/codex-pane-discovery-2301.test.ts:45:26
+     43|   for (let i = 0; i < 8; i++) writeFileSync(join(f.sessions, `rollout-…
+     44|   expect(await f.bind()).not.toBeNull();
+     45|   expect(hook.syncStats).toBe(0);
+       |                          ^
+     46| });
+     47| it("times out held discovery, refuses overlapping work, and closes wit…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/codex-pane-discovery-2301.test.ts > times out held discovery, refuses overlapping work, and closes without reading after release
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/codex-pane-discovery-2301.test.ts:65:17
+     63|   await new Promise<void>(r => immediate(r));
+     64|   // The old synchronous index never reaches this async boundary.
+     65|   expect(opens).toBe(1);
+       |                 ^
+     66|   const overlapping = f.bind();
+     67|   await new Promise<void>(r => immediate(r));
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/codex-pane-discovery-2301.test.ts > a capped enumeration cannot authorize its first matching file
+AssertionError: expected { …(5) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "identity": {
+    "dev": 2128,
+    "ino": 15945448,
+  },
+  "offset": 135,
+  "path": "/tmp/codex-discovery2301-SdFU7H/sessions/rollout-01a1c81a-35be-7fc0-9a6d-f53f7d6c4c07.jsonl",
+  "sessionId": "01a1c81a-35be-7fc0-9a6d-f53f7d6c4c07",
+  "validateFile": [Function validateFile],
+}
+
+ ❯ tests/codex-pane-discovery-2301.test.ts:90:26
+     88|     close: async () => { closes++; },
+     89|   });
+     90|   expect(await f.bind()).toBeNull();
+       |                          ^
+     91|   expect(reads).toBe(20_001);
+     92|   expect(closes).toBe(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  tests/codex-pane-discovery-2301.test.ts > a directory at the depth limit refuses incomplete uniqueness proof
+AssertionError: expected { …(5) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "identity": {
+    "dev": 2128,
+    "ino": 15945448,
+  },
+  "offset": 135,
+  "path": "/tmp/codex-discovery2301-vanXDf/sessions/rollout-01a1c81a-35be-7fc0-9a6d-f53f7d6c4c07.jsonl",
+  "sessionId": "01a1c81a-35be-7fc0-9a6d-f53f7d6c4c07",
+  "validateFile": [Function validateFile],
+}
+
+ ❯ tests/codex-pane-discovery-2301.test.ts:97:26
+     95|   const f = fixture(); let path = f.sessions;
+     96|   for (let i = 0; i < 9; i++) { path = join(path, "nested"); mkdirSync…
+     97|   expect(await f.bind()).toBeNull();
+       |                          ^
+     98| });
+     99|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  tests/codex-pane-discovery-2301.test.ts > a directory-count cap refuses even when the matching file was already seen
+AssertionError: expected { …(5) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "identity": {
+    "dev": 2128,
+    "ino": 15945448,
+  },
+  "offset": 135,
+  "path": "/tmp/codex-discovery2301-p2B893/sessions/rollout-01a1c81a-35be-7fc0-9a6d-f53f7d6c4c07.jsonl",
+  "sessionId": "01a1c81a-35be-7fc0-9a6d-f53f7d6c4c07",
+  "validateFile": [Function validateFile],
+}
+
+ ❯ tests/codex-pane-discovery-2301.test.ts:114:26
+    112|     };
+    113|   };
+    114|   expect(await f.bind()).toBeNull();
+       |                          ^
+    115|   expect(opens).toBe(1);
+    116| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed (5)
+   Start at  09:58:06
+   Duration  728ms (transform 81ms, setup 102ms, import 32ms, tests 449ms, environment 0ms)
+

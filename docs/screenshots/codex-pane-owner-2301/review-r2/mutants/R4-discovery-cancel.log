@@ -1,0 +1,53 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-discovery-2301.test.ts (6 tests | 2 failed) 98ms
+   × times out held discovery, refuses overlapping work, and closes without reading after release 11ms
+   × yields during a large buffered listing so the deadline can cancel it 23ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-discovery-2301.test.ts > times out held discovery, refuses overlapping work, and closes without reading after release
+AssertionError: expected 2 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 2
+
+ ❯ tests/codex-pane-discovery-2301.test.ts:75:17
+     73|   release(); await drained;
+     74|   await new Promise<void>(r => immediate(r));
+     75|   expect(reads).toBe(0);
+       |                 ^
+     76|   hook.directory = null;
+     77|   expect(await f.bind()).not.toBeNull();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/codex-pane-discovery-2301.test.ts > yields during a large buffered listing so the deadline can cancel it
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/codex-pane-discovery-2301.test.ts:135:18
+    133|   expect(await pending).toBeNull();
+    134|   await new Promise<void>(r => immediate(r));
+    135|   expect(closes).toBe(1);
+       |                  ^
+    136| });
+    137|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  2 failed | 33 passed (35)
+   Start at  10:04:47
+   Duration  3.80s (transform 1.94s, setup 329ms, import 2.34s, tests 1.74s, environment 0ms)
+

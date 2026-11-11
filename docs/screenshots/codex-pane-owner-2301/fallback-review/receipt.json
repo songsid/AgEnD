@@ -1,0 +1,17 @@
+[
+  {
+    "name": "F1-before-look",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "F2-after-look",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "F3-before-settlement",
+    "compiled": true,
+    "caughtByAssertion": true
+  }
+]

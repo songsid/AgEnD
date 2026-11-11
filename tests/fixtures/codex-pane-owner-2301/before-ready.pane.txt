@@ -1,0 +1,24 @@
+
+  >_ OpenAI Codex (v0.167.0)
+     /home/han/Projects/AgEnD-agend-dev-sol/.ca/o2301-5ad361/work
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› Ask Codex to do anything
+
+  Context 100% left · mock-model default · /home/han/Projects/AgEnD-agend-dev-sol/.ca/o2301-5ad361/work · ← for agents
+
+
+
+
+
+
+
+
+
+
+
+
+
