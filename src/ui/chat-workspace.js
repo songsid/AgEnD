@@ -124,8 +124,9 @@ export function PaneHeader({ title, sub, headingRef, nav, notice, pageControls, 
   </header>`;
 }
 
-function Pane({ id, w, focused, compact, width, controller, controls, panels, gestures }) {
-  const pointer = useRef(false);
+function Pane({ id, w, focused, compact, width, height, controller, controls, panels, gestures }) {
+  const pointer = useRef(false), ref = useRef(null);
+  useLayoutEffect(() => { ref.current?.style.setProperty("--ws-pane-height", `${height}px`); }, [height]);
   useEffect(() => {
     const reset = () => { pointer.current = false; };
     window.addEventListener("pointerup", reset); window.addEventListener("pointercancel", reset); window.addEventListener("blur", reset);
@@ -139,7 +140,7 @@ function Pane({ id, w, focused, compact, width, controller, controls, panels, ge
   for (let n = visibleTabs.length - 1; visibleTabs.length > keep && n >= 0; n--) if (visibleTabs[n] !== p.route.panel) visibleTabs.splice(n, 1);
   const value = { ...controller.pane(id), id, name: p.route.instance, route: p.route, search: p.search, hash: p.hash, focused,
     tabs, visibleTabs: compact ? tabs : visibleTabs, width, controller, controls, gestures, floating: !compact && w.layout === "float" && w.floating === id, layout: w.layout, Header: compact ? null : PaneHeader };
-  return html`<section id=${`ws-pane-${id}`} class=${`ws-pane${focused ? " ws-focused" : ""}${value.floating ? " ws-floating" : ""}`} data-pane=${id} role="region"
+  return html`<section ref=${ref} id=${`ws-pane-${id}`} class=${`ws-pane${focused ? " ws-focused" : ""}${value.floating ? " ws-floating" : ""}`} data-pane=${id} role="region"
     aria-label=${tw("pane", p.route.instance, viewLabel(p.route.panel))} aria-current=${focused ? "true" : undefined}
     onPointerDown=${event => {
       pointer.current = true;
@@ -185,6 +186,7 @@ export function createWorkspaceHost(controller, pageGestures) {
     if (!w) return html`<${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />`;
     const ids = compact ? [w.focus] : w.layout === "float" ? [w.floating === "a" ? "b" : "a", w.floating] : w.flipped ? ["b", "a"] : ["a", "b"];
     const paneWidth = id => compact || w.layout === "stack" ? size.width : w.layout === "float" ? id === w.floating ? box.width : size.width : id === ids[0] ? split.first : split.second;
+    const paneHeight = id => compact || w.layout === "right" ? size.height : w.layout === "float" ? id === w.floating ? box.height : size.height : id === ids[0] ? split.first : split.second;
     return html`<div ref=${ref} class=${`chat-workspace ws-geometry ws-${compact ? "compact" : w.layout}${movement.transient || movement.keyboard ? " ws-resizing" : ""}`} data-layout=${compact ? "single" : w.layout}>
       ${compact ? html`<nav class="ws-agent-tabs seg" aria-label=${tw("choose")}>${["a", "b"].map(id => html`<span class="ws-agent-tab">
         <button type="button" class=${`seg-item${w.focus === id ? " active" : ""}`} aria-current=${w.focus === id ? "page" : undefined}
@@ -196,7 +198,7 @@ export function createWorkspaceHost(controller, pageGestures) {
           aria-orientation=${w.layout === "stack" ? "horizontal" : "vertical"} aria-valuemin=${Math.round(split.min)} aria-valuemax=${Math.round(split.max)} aria-valuenow=${Math.round(split.first)}
           onKeyDown=${gestures.sashKey} onPointerDown=${gestures.sashDown} ondblclick=${() => controller.geometry({ ratio: .5 })}></div></div>` : null,
         html`<${Pane} key=${id} id=${id} w=${w} focused=${w.focus === id} compact=${compact}
-          width=${paneWidth(id)} controller=${controller} controls=${controls} panels=${panels} gestures=${gestures} />`])}
+          width=${paneWidth(id)} height=${paneHeight(id)} controller=${controller} controls=${controls} panels=${panels} gestures=${gestures} />`])}
       <span class="sr-only" role="status" aria-live="polite">${movement.announcement}</span>
       ${movement.keyboard ? html`<p class="ws-geometry-hint" role="status">${geometryText("help")}</p>` : null}
     </div>`;

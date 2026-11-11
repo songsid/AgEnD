@@ -83,6 +83,7 @@ try {
     const geometry = await page.evaluate(() => ({ headers: document.querySelectorAll("#main .panel-head").length,
       textTools: document.querySelectorAll("#main .hd-text").length, overflow: document.documentElement.scrollWidth > innerWidth,
       streams: (window as any).__streams, layout: document.querySelector(".chat-workspace")?.getAttribute("data-layout"),
+      geometryControls: [...document.querySelectorAll('.ws-sash, .ws-float-resize')].map(el => { const r = el.getBoundingClientRect(); return { coarse: matchMedia('(pointer: coarse)').matches, width: r.width, height: r.height }; }),
       workspace: (() => { const r = document.querySelector(".chat-workspace")?.getBoundingClientRect(); return r ? [r.x, r.y, r.width, r.height] : null; })(),
       panes: [...document.querySelectorAll(".ws-pane")].map(el => { const r = el.getBoundingClientRect(); return { id: el.getAttribute("data-pane"), box: [r.x, r.y, r.width, r.height],
         headerOverflow: (el.querySelector('.panel-head')?.scrollWidth || 0) > (el.querySelector('.panel-head')?.clientWidth || 0),
@@ -92,6 +93,7 @@ try {
         tabs: [...el.querySelectorAll(".inst-switch a")].map(a => a.textContent) }; }) }));
     assert.equal(geometry.headers, panes); assert.equal(geometry.textTools, 1); assert.equal(geometry.overflow, false);
     assert.equal(geometry.streams.active, 1); assert.equal(geometry.streams.max, 1); assert.equal(fx.fm.sseClients.size, 1);
+    for (const control of geometry.geometryControls) if (control.coarse) assert.ok(control.width >= 44 && control.height >= 44, JSON.stringify(control));
     for (const pane of geometry.panes) { assert.equal(pane.headerOverflow, false, JSON.stringify(pane)); assert.equal(pane.actionsInside, true, JSON.stringify(pane)); assert.equal(pane.statusInside, true, JSON.stringify(pane)); }
     const file = `${theme}-${language}-${label}.png`; await page.screenshot({ path: join(out, file) }); receipt.cases.push({ label, file, geometry });
   }
