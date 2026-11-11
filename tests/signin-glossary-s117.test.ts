@@ -9,7 +9,7 @@
  *   結束碼 (an exit status), 兌換碼 (bonus codes).
  * Alpha (the twin): the server's mark for a chat fleet whose chat is not connected is its own (data-no-chat), so it never
  * turns on a web-only fleet's authenticator or other-device sign-in; a used launch link (#3270's auto sign-in) says how
- * to sign in again here; 6 位數驗證碼（驗證器 App）, 裝置登入碼 for another device, 手動配對碼 for the Hub.
+ * to sign in again here; 6 位數驗證碼（驗證器 App）, 裝置登入碼 for another device, 配對碼 for the Hub (U3, spec 1.4).
  */
 import * as fleetManagerModule from "../src/fleet-manager.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -201,13 +201,14 @@ describe("S-117 alpha: the used launch link, the authenticator, another device, 
     expect(src).toContain('autofail_local_win: "自動登入沒有成功：這個連結的裝置登入碼已過期或已用過。在這台電腦重新登入：點桌面上的「AgEnD 儀表板」捷徑；或在 WSL 終端機執行 agend web。"');
     expect(src).toContain('label_outside: "6 位數驗證碼（驗證器 App）"');
   });
-  it("the authenticator is 6 位數驗證碼（驗證器 App）; another device's code is 裝置登入碼; the Hub's is 手動配對碼", async () => {
+  // Hub UX U3 (spec 1.4, decision 428768a0): the Hub's code is 配對碼 (一次性 / 手動 dropped) — still distinct from the other two.
+  it("the authenticator is 6 位數驗證碼（驗證器 App）; another device's code is 裝置登入碼; the Hub's is 配對碼", async () => {
     setLocale("zh-TW");
     try { expect(hostT("settings_confirm.totp_label")).toBe("6 位數驗證碼（驗證器 App）"); } finally { setLocale("en"); }
     const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
     expect(read("src/ui/shared/app-shell.js")).toContain('codeLabel: "6 位數驗證碼（驗證器 App）"');
     expect(read("src/ui/settings-devices.js")).toContain('codeLabel: "新裝置上的裝置登入碼"');
-    expect(read("src/ui/hub-quick-strings.js")).toContain('code: "手動配對碼"');
+    expect(read("src/ui/hub-quick-strings.js")).toContain('code: "配對碼"');
   });
 });
 
