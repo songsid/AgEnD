@@ -26,6 +26,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
+      # The files as the npm package ships them (LF): Windows runners check out with CRLF by default, and the shared
+      # template's header ends at its first blank line ("\n\n").
+      - name: Keep line endings as committed
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
