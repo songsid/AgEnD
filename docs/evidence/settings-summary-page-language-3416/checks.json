@@ -1,0 +1,34 @@
+{
+  "source": "aa4dc3baedf2e45094d126ac284657454c1f1eda",
+  "focused": {
+    "files": 13,
+    "passed": 168,
+    "failed": 0
+  },
+  "restored": {
+    "files": 4,
+    "passed": 39,
+    "failed": 0
+  },
+  "style": {
+    "i18n_named_link_search_split": 88,
+    "passed_before_changelog_metadata_fix": true,
+    "changelog_after_fix": 75
+  },
+  "types": [
+    "node_modules/.bin/tsc --noEmit",
+    "node_modules/.bin/tsc --noEmit -p tsconfig.test.json"
+  ],
+  "mutations": {
+    "independent": 8,
+    "assertion_caught": 8,
+    "restore": "byte-exact"
+  },
+  "browser": {
+    "cases": 16,
+    "screenshots": 18,
+    "pageLanguageSwitches": 2,
+    "effects": 0,
+    "visualInspection": "14 original PNGs, no new clipping or overflow; unchanged main phone Withdraw 30px on baseline and candidate"
+  }
+}

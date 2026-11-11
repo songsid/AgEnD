@@ -1,0 +1,83 @@
+{
+  "54ed4ece149ecfa933b34f972d741e972f7323859df397ef2edbe6344f695a3f": [
+    "docs/evidence/settings-summary-page-language-3416/README.md"
+  ],
+  "d9450d60ca8ac2e37ba4006a32f583c2e16e254331e60eac4b75b1c74142d162": [
+    "docs/evidence/settings-summary-page-language-3416/browser/after-desk-dark-en.png"
+  ],
+  "58a093304bf5bf401e9644817fedb32d157e4fde99433a9ac40b3957d657e6d7": [
+    "docs/evidence/settings-summary-page-language-3416/browser/after-desk-dark-zh-TW.png"
+  ],
+  "ce318222ed6fa485491cbcdc5cbc5a490706d624af10402e72adce3f85f35e7b": [
+    "docs/evidence/settings-summary-page-language-3416/browser/after-desk-light-en.png"
+  ],
+  "5776cab3b6859b0cc1d90745de5d99933135008db6320fd863be6620aea76688": [
+    "docs/evidence/settings-summary-page-language-3416/browser/after-desk-light-zh-TW.png"
+  ],
+  "db2ee8979a61819ed8c985e92674f2d295c492d986eb29db665c7351c7ac1952": [
+    "docs/evidence/settings-summary-page-language-3416/browser/after-phone-dark-en.png"
+  ],
+  "b2c6ea6e2b5a3a6a08ae09b8d2850c728d17cf2406974fdd6c73eb5c8df88d5a": [
+    "docs/evidence/settings-summary-page-language-3416/browser/after-phone-dark-zh-TW.png"
+  ],
+  "ebd4cc4dbd3a3006ee0ada91c6dbef1c3891111de2d6b3a7333a4daaf6950e15": [
+    "docs/evidence/settings-summary-page-language-3416/browser/after-phone-light-en-switched.png"
+  ],
+  "c72009c070dbcfd4678c37b08b3d116657cdc5bdc14aede5910806a47e8b6826": [
+    "docs/evidence/settings-summary-page-language-3416/browser/after-phone-light-en.png"
+  ],
+  "b4f90e34e268a19ed833eca31c7089da18f4558ee3bb9f58ab671639ce930e61": [
+    "docs/evidence/settings-summary-page-language-3416/browser/after-phone-light-zh-TW-switched.png"
+  ],
+  "237c8e1eb1cacd9fa400b305ca76267d5a3a6b48c0bc5b0b1f0aa3b6ceed3de5": [
+    "docs/evidence/settings-summary-page-language-3416/browser/after-phone-light-zh-TW.png"
+  ],
+  "a07c56a55aac1faf70d7e8f151c0a961d2991b3c03c168a6cb78a9d6b59a372d": [
+    "docs/evidence/settings-summary-page-language-3416/browser/before-desk-light-en.png"
+  ],
+  "f7e2469bd8d02940872584bd4c076d388988e846e4f24640051b1c1080cc34bf": [
+    "docs/evidence/settings-summary-page-language-3416/browser/before-desk-light-zh-TW.png"
+  ],
+  "872d634292412c71f011535ba116e17da20821fd9160f4b87980ace992611c55": [
+    "docs/evidence/settings-summary-page-language-3416/browser/before-phone-dark-en.png"
+  ],
+  "f4a36e3a8232f58bd6090b2914d9827a7421fde2bed134d0c75fdffa01c9aa72": [
+    "docs/evidence/settings-summary-page-language-3416/browser/before-phone-dark-zh-TW.png"
+  ],
+  "9a4c8d189a061dcabc70653722d11ac21920165e98ffecf1cee2f06cabde0daf": [
+    "docs/evidence/settings-summary-page-language-3416/browser/old-confirm-phone-light-zh-TW.png"
+  ],
+  "a7311b2578c34fd45cf460174f7a392c413ca40293b8b34cee7fdfb1cc9b99cd": [
+    "docs/evidence/settings-summary-page-language-3416/browser/old-i18n-phone-light-zh-TW.png"
+  ],
+  "f7bef96a98cdc347edd60b9f7a1a6fe99f0cb492443d01013f1cd6fe98c9c798": [
+    "docs/evidence/settings-summary-page-language-3416/browser/old-server-phone-light-zh-TW.png"
+  ],
+  "bd99ff505819422cc42a0f790fd3f1f8e4f4d16efd666a24dc76849ccbeab98f": [
+    "docs/evidence/settings-summary-page-language-3416/browser/old-shell-phone-light-zh-TW.png"
+  ],
+  "f8bf2a191ffbf0d6546f884fbfa8a6e6537e23c4ceeb0954a746e1fdfd1ea164": [
+    "docs/evidence/settings-summary-page-language-3416/browser/receipt.json"
+  ],
+  "0e7d3318dfd859dba4e7edd6b60ab0fc32948a1e028c5a7e6345e2eaed65374b": [
+    "docs/evidence/settings-summary-page-language-3416/canonical.json"
+  ],
+  "daaa71c5323034b82ee732bfdd952ac17183ed4f63e5ea81b3458b3b235cc2e4": [
+    "docs/evidence/settings-summary-page-language-3416/changelog.json"
+  ],
+  "51776cbae7b8f3124c50782fb865784809c3224fe6b18a1f2720e967ef0755bc": [
+    "docs/evidence/settings-summary-page-language-3416/checks.json"
+  ],
+  "c46b3d51d09d4a818f893f220834a3ccd65badda5eb085f6702b16cb5e2c6871": [
+    "docs/evidence/settings-summary-page-language-3416/fail-first.json"
+  ],
+  "f3627c667993ffb287510005a2a0b4bde9128f727093e41ccc8f883a85fc3284": [
+    "docs/evidence/settings-summary-page-language-3416/focused.json"
+  ],
+  "2136cb3443e0e60fc98a9743a8cc4a0a57c411ff536b264d1f1c4ed5726a9631": [
+    "docs/evidence/settings-summary-page-language-3416/mutations.json"
+  ],
+  "b0a51ef1f400962ab4e324b7b30610a1c274716337df29031162c5455931cdc0": [
+    "docs/evidence/settings-summary-page-language-3416/restored.json"
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "numTotalTests": 168,
+  "numPassedTests": 168,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "success": true,
+  "files": [
+    {
+      "name": "i18n-ui-literals-2390.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "named-link-test-2906.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "settings-confirmation-store-1423.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "settings-control-ui-1423.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "settings-hardening-1490.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "settings-http-confirmation-1423.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "settings-pending-card-2868.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "settings-replay-paths-1423.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "settings-summary-metadata-3416.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "settings-summary-page-language-3416.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "settings-transaction-1423.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "web-pending-hub-summary-3511.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "web-pending-page-language-3416.test.ts",
+      "status": "passed",
+      "failed": []
+    }
+  ]
+}
