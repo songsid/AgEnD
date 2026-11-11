@@ -8,7 +8,7 @@ const response = (body: unknown, status = 200) => ({ ok: status < 400, status, j
 afterEach(async () => { for (const pg of mounted.splice(0)) { await pg.unmount(); pg.restore(); } });
 const paired = { state: "paired", binding: "b".repeat(64), hub: { hubId: "11111111-2222-4333-8444-555555555555", name: null, memberOrigin: "https://member.example.test", webOrigin: "https://hub.example.test", fingerprint: { kind: "hub-key", digest: "f".repeat(64) } }, link: "online" };
 
-async function section(pairing: unknown) {
+async function section(pairing: unknown, folded = false) {
   const pg = page({ url: "http://127.0.0.1:19280/settings/hub", storage: { agend_tour_done: "1" } }); mounted.push(pg);
   pg.document.body.dataset.hubSetup = "1";
   (globalThis as any).fetch = async (path: string) => response(path.split("?")[0] === "/api/settings/hub/membership"
@@ -16,7 +16,9 @@ async function section(pairing: unknown) {
   (await import("/assets/app-i18n.js")).setLang("en", { store: false });
   const { HubSection } = await import("/ui/js/settings-hub-section.js");
   await pg.mount(h(HubSection, { hubHost: false, overPublicLink: false }));
-  await until(() => { const c = pg.root.querySelector("#hub-connection"); return c && c.getAttribute("data-state") !== "unknown" && pg.root.querySelector("#hub-setup"); });
+  // The fold follows the connection card's reported state (an effect after its read): wait for the state this case expects.
+  await until(() => { const c = pg.root.querySelector("#hub-connection"); return c && c.getAttribute("data-state") !== "unknown" && pg.root.querySelector("#hub-setup")
+    && (!folded || pg.root.querySelector(".hub-setup-folded #hub-setup")); });
   await settle(10);
   return pg;
 }
@@ -29,7 +31,7 @@ describe("M-2921: the Hub setup card's place", () => {
     expect(pg.root.querySelector(".hub-setup-folded")).toBeNull();
   });
   it("connected: 設定 Hub folds into one closed line under the connection card", async () => {
-    const pg = await section(paired);
+    const pg = await section(paired, true);
     expect(order(pg)).toEqual(["hub-connection", "hub-setup"]);
     const folded = pg.root.querySelector(".hub-setup-folded");
     expect(folded?.open).toBeFalsy(); expect(folded?.querySelector("summary")?.textContent).toBe("Set up a Hub");
