@@ -1,0 +1,54 @@
+{
+  "source": "fe05648f0ce81986d4550a986fc57def80bd25f2",
+  "scope": "recorded Codex0.167 mock-only stream; real Daemon/Outbox; private tmux replay; no backend CLI/account/network",
+  "receipts": [
+    {
+      "mode": "owned",
+      "state": "delivered",
+      "expected": "delivered",
+      "pastes": 1,
+      "keys": [
+        "Enter"
+      ],
+      "accepted": true,
+      "elapsedMs": 666
+    },
+    {
+      "mode": "switched",
+      "state": "uncertain",
+      "expected": "uncertain",
+      "pastes": 1,
+      "keys": [
+        "Enter"
+      ],
+      "accepted": true,
+      "elapsedMs": 8997
+    },
+    {
+      "mode": "replaced",
+      "state": "uncertain",
+      "expected": "uncertain",
+      "pastes": 1,
+      "keys": [
+        "Enter"
+      ],
+      "accepted": true,
+      "elapsedMs": 8977
+    },
+    {
+      "mode": "narrow",
+      "state": "uncertain",
+      "expected": "uncertain",
+      "pastes": 1,
+      "keys": [
+        "Enter"
+      ],
+      "accepted": true,
+      "elapsedMs": 8759
+    }
+  ],
+  "cleanup": {
+    "privateTmuxStopped": true,
+    "scratchRemoved": true
+  }
+}

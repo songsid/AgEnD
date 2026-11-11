@@ -1,0 +1,47 @@
+{
+  "scope": "real shell + unmodified recorded panes; no live CLI",
+  "receipts": [
+    {
+      "device": "desk",
+      "state": "before",
+      "fontSize": "14.91px",
+      "noOverflow": true,
+      "csp": []
+    },
+    {
+      "device": "desk",
+      "state": "after",
+      "fontSize": "14.91px",
+      "noOverflow": true,
+      "csp": []
+    },
+    {
+      "device": "desk",
+      "state": "narrow",
+      "fontSize": "22px",
+      "noOverflow": true,
+      "csp": []
+    },
+    {
+      "device": "phone",
+      "state": "before",
+      "fontSize": "9.6px",
+      "noOverflow": true,
+      "csp": []
+    },
+    {
+      "device": "phone",
+      "state": "after",
+      "fontSize": "9.6px",
+      "noOverflow": true,
+      "csp": []
+    },
+    {
+      "device": "phone",
+      "state": "narrow",
+      "fontSize": "11.14px",
+      "noOverflow": true,
+      "csp": []
+    }
+  ]
+}
