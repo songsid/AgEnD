@@ -373,6 +373,15 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。�
 - 預設關閉，要由 fleet admin 開啟：`web.log_tab`（**設定 → 網頁儀表板 → Log tab: each agent's steps**），或在分頁上按 **Turn on the Log**，需等 fleet admin 確認。
 - Claude Code 全部顯示，instance 停止後也看得到；Codex 在執行中時顯示；kiro 只顯示 fleet 事件。其他 CLI 會說明沒有 AgEnD 能讀的 transcript。秘密值會被遮蔽。
 
+### 聊天裡的活動（#3648）
+
+開啟紀錄分頁後，Claude Code 或 Codex instance 的聊天會在它每則回覆上方顯示它做了什麼：一個「N 個步驟」區塊，有思考、中途說的話和工具呼叫——和紀錄分頁同樣的列，可按 **Show output**——進行中的那一輪會即時長在對話最下方（進行中展開，回覆送出後收起）。有聊天開著才會讀取；沒有顯示的聊天不讀任何東西。
+
+- **步驟屬於哪一則回覆**，是依對話紀錄裡既有的 id 判斷（開啟這一輪的訊息 id，以及每次 `reply` 呼叫回傳的 id），不靠時間推測。需要靠回覆文字、時間，或只能靠回合對應的區塊，標題上會標明；完全對不上的回合會獨立顯示，不會亂猜。只保留最新 800 個步驟，較早的回覆可能沒有區塊。
+- **思考**只會顯示給在這個儀表板登入的 admin——在伺服器端過濾，公開連結和訪客一律不會收到（`web.log_thinking`，預設開啟，**設定 → 網頁儀表板**；需要先開啟紀錄）。Claude Code 只有在被要求時才會把思考文字寫進對話紀錄：紀錄與 `web.log_thinking` 都開啟時，AgEnD 會在該 instance 產生的 Claude 設定加入 `showThinkingSummaries`，該 instance 下次啟動時生效。紀錄分頁本身仍然不顯示思考。
+- Agent 工作目錄內的路徑以相對路徑顯示，家目錄顯示為 `~`（只改顯示：把游標移到列的路徑上可看完整路徑；紀錄分頁仍顯示完整路徑）。機密值的遮蔽和紀錄分頁相同。
+- 聊天的 **⋯** 選單有 **顯示活動** 與 **顯示思考**，只影響這個瀏覽器。Codex 的推理摘要有就會讀取，但尚未用真實的 Codex rollout 驗證；antigravity 與 grok 的 instance 還沒有時間軸。
+
 ## `/view`
 
 `/view` 會列出每個 agent：即時終端畫面、包含狀態與 context 的名單，以及 AI 訂閱用量。每個 agent 都有自己的網址 `/view/<name>`；只開 `/view` 會回到這個瀏覽器上次看的那一個。
@@ -708,7 +717,8 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `web.public_link.auto_open` | `false` | 僅限設定 `hostname`：AgEnD 啟動後替上次開啟的管理員重開連結；不發訊息，登入仍需登入碼 |
 | `web.public_link.protocol` | `http2` | cloudflared 的 `http2`、`quic` 或 `auto` |
 | `web.echo_to_channel` | `true` | 將 web chat 訊息複製到 instance 自己的 Telegram 或 Discord 主題 |
-| `web.log_tab` | `false` | 在 **紀錄** 分頁顯示每個 agent 的步驟 |
+| `web.log_tab` | `false` | 在 **紀錄** 分頁顯示每個 agent 的步驟，並在聊天的每則回覆上方顯示它的活動 |
+| `web.log_thinking` | `true` | 紀錄開啟時：也把 agent 的思考顯示給在這個儀表板登入的 admin（公開連結與訪客一律不會） |
 | `web.upload_max_file_mb` | `50` | web chat 訊息中單一檔案的上限，整數 MB，1–500 |
 | `web.upload_max_total_mb` | `100` | 一則訊息所有檔案合計的上限，整數 MB，1–500 |
 | `web.session.local.absolute_hours` | `48` | 從 dashboard 本身網址登入後可維持多久，1–720 小時 |
@@ -716,7 +726,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `web_terminal.enabled` | `true` | `false`：`/login` 會拒絕（沒有瀏覽器終端機） |
 | `web_terminal.ttl_minutes` | `10` | `/login` 的瀏覽器終端機開啟多久，1–20 分鐘 |
 
-**設定 → 存取與安全** 可編輯 `web.public_link.*`、`web.session.local.*` 與 `web_terminal.enabled` / `ttl_minutes`，**聊天與連線** 可編輯 `web.echo_to_channel`，**網頁儀表板** 可編輯 `web.log_tab`；其他設定（包含 `web.provider_secrets`、`web_terminal.bind`、`web_terminal.tunnel`）在 **進階** 只列出、不能修改。
+**設定 → 存取與安全** 可編輯 `web.public_link.*`、`web.session.local.*` 與 `web_terminal.enabled` / `ttl_minutes`，**聊天與連線** 可編輯 `web.echo_to_channel`，**網頁儀表板** 可編輯 `web.log_tab` 與 `web.log_thinking`；其他設定（包含 `web.provider_secrets`、`web_terminal.bind`、`web_terminal.tunnel`）在 **進階** 只列出、不能修改。
 
 完整設定說明：[configuration.zh-TW.md](configuration.zh-TW.md)；CLI 指令：[cli.zh-TW.md](cli.zh-TW.md)。
 

@@ -18,7 +18,7 @@ register("log", {
     times: "×{0}", newer: "{0} new",
     cat_read: "Read", cat_edit: "Edit", cat_search: "Search", cat_run: "Run", cat_web: "Web", cat_mcp: "MCP", cat_agent: "Sub-agent",
     cat_plan: "Plan", cat_message: "Message", cat_other: "Tool", plan_items: "{0} items",
-    thinking: "Thinking", thinkingMore: "Show all thinking", thinkingLess: "Show less",
+    said: "Said", thinking: "Thinking", thinkingMore: "Show all thinking", thinkingLess: "Show less",
   },
   "zh-TW": {
     user: "收到要求", assistant: "回覆", error: "錯誤", errorCode: "錯誤 {0}", turnEnd: "回合結束", turnEndIn: "回合結束 · {0}",
@@ -30,7 +30,7 @@ register("log", {
     times: "×{0}", newer: "{0} 則新的",
     cat_read: "讀取", cat_edit: "編輯", cat_search: "搜尋", cat_run: "執行", cat_web: "網頁", cat_mcp: "MCP", cat_agent: "子 agent",
     cat_plan: "計畫", cat_message: "訊息", cat_other: "工具", plan_items: "{0} 項",
-    thinking: "思考", thinkingMore: "顯示完整思考", thinkingLess: "收合",
+    said: "說了", thinking: "思考", thinkingMore: "顯示完整思考", thinkingLess: "收合",
   },
 });
 const tl = (key, ...a) => t(`log.${key}`, ...a);
@@ -140,7 +140,7 @@ export function collapse(items) {
 
 
 /** One line of the Log. */
-export function LogRow({ x, prev, paths }) {
+export function LogRow({ x, prev, paths, chat }) {
   const [open, setOpen] = useState(false);
   const [full, setFull] = useState(false);
   const short = (v) => shortenPaths(v, paths);
@@ -167,7 +167,8 @@ export function LogRow({ x, prev, paths }) {
       ${x.screen ? html`<button type="button" class="link-btn log-toggle log-screen-toggle" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>${open ? tl("hideScreen") : tl("showScreen")}</button>` : null}
       ${x.screen && open ? html`<div class="log-detail"><div class="log-text mono log-screen">${x.screen}</div></div>` : null}`;
   } else if (x.kind === "user" || x.kind === "assistant") {
-    row = html`${head(KIND_ICON[x.kind], tl(x.kind))}${text(x.body, x.bodyCut)}`;
+    // In the chat's timeline an assistant line is what the agent said on the way (its replies are the bubbles): "Said".
+    row = html`${head(KIND_ICON[x.kind], x.kind === "assistant" && chat ? tl("said") : tl(x.kind))}${text(x.body, x.bodyCut)}`;
   } else if (x.kind === "thinking") {
     // AGEND-181: the model's thinking (admin only; the server sends it only then): folded to its start, opened on demand.
     const body = x.body || "";

@@ -421,8 +421,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .activity-row { align-self: stretch; min-width: 0; }
 .activity-row:not(:last-child) { margin-bottom: calc(var(--s-2) - var(--s-6)); }
 .activity-row[hidden] { display: none; }
-.act-block { margin: 0; padding: var(--s-1) var(--s-3); gap: 0; font-size: var(--fs-sm); }
-.act-block .act-sum { display: flex; align-items: center; gap: var(--s-2); min-height: var(--tap); cursor: pointer; list-style: none; color: var(--text-2); }
+.card.act-block { margin: 0; padding: var(--s-1) var(--s-3); gap: 0; font-size: var(--fs-sm); }
+.act-block .act-sum { display: flex; align-items: center; gap: var(--s-2); min-height: var(--s-7); cursor: pointer; list-style: none; color: var(--text-2); }
+@media (pointer: coarse) { .act-block .act-sum { min-height: var(--tap); } }
 .act-block .act-sum::-webkit-details-marker { display: none; }
 .act-block .act-chev { flex: none; display: inline-flex; transition: transform .15s ease; transform: rotate(-90deg); }
 .act-block[open] .act-chev { transform: none; }

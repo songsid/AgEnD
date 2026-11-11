@@ -79,7 +79,7 @@ export function ActivityBlock({ group, ctx }) {
   const dur = !live && first && last && first.ts && last.ts ? elapsed(last.ts - first.ts) : "";
   const inferred = group.level !== "id" && group.level !== "live" ? ta(`lvl_${group.level}`) : "";
   const title = live ? ta("working") : n === 1 ? ta("step") : ta("steps", n);
-  const list = (items) => html`<ol class="log-list" role="list">${items.map((x, i) => html`<${LogRow} key=${`${x.kind}:${x.id}`} x=${x} prev=${items[i - 1]} paths=${ctx.paths} />`)}</ol>`;
+  const list = (items) => html`<ol class="log-list" role="list">${items.map((x, i) => html`<${LogRow} key=${`${x.kind}:${x.id}`} x=${x} prev=${items[i - 1]} paths=${ctx.paths} chat=${true} />`)}</ol>`;
   return html`<details class=${`card act-block${live ? " live" : ""}`} open=${open}>
     <summary class="act-sum" onClick=${(e) => { e.preventDefault(); setUser(!open); }} aria-expanded=${open ? "true" : "false"}>
       <span class="act-chev" aria-hidden="true"><${Icon} name="chevron" size=${14} /></span>

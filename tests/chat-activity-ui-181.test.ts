@@ -177,7 +177,7 @@ describe("what a block shows", () => {
     const en = keys.map((k) => i18n.t(`act.${k}`));
     i18n.setLang("zh-TW");
     const zh = keys.map((k) => i18n.t(`act.${k}`));
-    const thinking = ["thinking", "thinkingMore", "thinkingLess"].map((k) => [i18n.t(`log.${k}`)]);
+    const thinking = ["said", "thinking", "thinkingMore", "thinkingLess"].map((k) => [i18n.t(`log.${k}`)]);
     i18n.setLang("en");
     expect(en.every((v, i) => v && v !== `act.${keys[i]}`)).toBe(true);
     expect(zh.every((v, i) => v && v !== `act.${keys[i]}` && v !== en[i])).toBe(true);

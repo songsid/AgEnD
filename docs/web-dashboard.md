@@ -374,6 +374,15 @@ What an agent did, step by step: what it was asked, its replies (never its think
 - It is off until a fleet admin turns it on: `web.log_tab` (**Settings → Web dashboard → Log tab: each agent's steps**), or **Turn on the Log** on the tab itself, which waits for a fleet admin's confirmation.
 - Claude Code shows everything, also after the instance stopped; Codex while it runs; kiro shows the fleet events only. Other CLIs say they have no transcript AgEnD can read. Secret values are masked.
 
+### Activity in the chat (#3648)
+
+With the Log on, the chat of a Claude Code or Codex instance shows what the agent did above each of its replies: a **N steps** block with its thinking, the text it said on the way and its tool calls — the same rows as the Log, with **Show output** — and the turn in progress grows live at the end of the thread (open while it runs, shut when its reply arrives). Nothing is read until a chat is open, and a chat that is not shown reads nothing.
+
+- **Which reply a step belongs to** is read from ids the transcript already holds (the id of the message that started the turn, and the id each `reply` call returned), not from timing. A block that had to be matched by the reply's text, by time, or only by the turn says so on its header; a turn with nothing to match is shown on its own, never on a guess. Only the newest 800 steps are kept, so an older reply may have no block.
+- **Thinking** is shown only to a signed-in admin on this dashboard — it is filtered on the server, never sent over the public link or to a guest (`web.log_thinking`, on by default, **Settings → Web dashboard**; it needs the Log). Claude Code writes its thinking text to the transcript only when asked: AgEnD adds `showThinkingSummaries` to the instance's generated Claude settings while the Log and `web.log_thinking` are both on, which applies the next time that instance starts. The Log tab itself still never shows thinking.
+- Paths inside the agent's working directory are shown relative and the home directory as `~` (display only: hover a row's path for the full one; the Log tab shows paths in full). Secret values are masked as in the Log.
+- The chat's **⋯** menu has **Show activity** and **Show thinking** for this browser. Codex's reasoning summaries are read when present but have not been checked against real Codex rollouts; antigravity and grok instances have no timeline yet.
+
 ## `/view`
 
 `/view` shows every agent: the live terminal capture, the roster with each one's state and context, and AI subscription usage. Each agent has its own address, `/view/<name>`; `/view` alone opens the one this browser looked at last.
@@ -709,7 +718,8 @@ Show the live Office to people outside the fleet for a while: a link they open i
 | `web.public_link.auto_open` | `false` | With `hostname` only: reopen the link after AgEnD starts, for the admin who last opened it; nothing posted, sign-in still needs a code |
 | `web.public_link.protocol` | `http2` | cloudflared `http2`, `quic` or `auto` |
 | `web.echo_to_channel` | `true` | Copy web chat messages to the instance's own Telegram or Discord topic |
-| `web.log_tab` | `false` | Show each agent's steps in its **Log** tab |
+| `web.log_tab` | `false` | Show each agent's steps in its **Log** tab, and its activity above each reply in the chat |
+| `web.log_thinking` | `true` | With the Log on: also show the agent's thinking to a signed-in admin on this dashboard (never the public link or a guest) |
 | `web.upload_max_file_mb` | `50` | Largest file in a web chat message, whole MB 1–500 |
 | `web.upload_max_total_mb` | `100` | Largest message (all its files), whole MB 1–500 |
 | `web.session.local.absolute_hours` | `48` | How long a sign-in at the dashboard's own address lasts, 1–720 hours |
@@ -717,7 +727,7 @@ Show the live Office to people outside the fleet for a while: a link they open i
 | `web_terminal.enabled` | `true` | `false`: `/login` refuses (no browser terminal) |
 | `web_terminal.ttl_minutes` | `10` | How long a `/login` browser terminal stays open, 1–20 minutes |
 
-**Settings → Access & security** edits `web.public_link.*`, `web.session.local.*` and `web_terminal.enabled` / `ttl_minutes`, **Chat & connections** `web.echo_to_channel` and **Web dashboard** `web.log_tab`; **Advanced** lists the others read-only (with `web.provider_secrets`, `web_terminal.bind` and `web_terminal.tunnel`).
+**Settings → Access & security** edits `web.public_link.*`, `web.session.local.*` and `web_terminal.enabled` / `ttl_minutes`, **Chat & connections** `web.echo_to_channel` and **Web dashboard** `web.log_tab` and `web.log_thinking`; **Advanced** lists the others read-only (with `web.provider_secrets`, `web_terminal.bind` and `web_terminal.tunnel`).
 
 Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli.md).
 
