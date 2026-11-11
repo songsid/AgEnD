@@ -17,7 +17,7 @@ import { hq } from "./hub-quick-strings.js";
 import { hp } from "./hub-pairing-progress-strings.js";
 
 const CONNECT_ERRORS = { address: "errAddress", code: "errCode", busy: "errBusy", unreachable: "errUnreachable", refused: "errRefused" };
-const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked", "disconnected"]);
+const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked", "disconnected", "rejected"]);
 const PUBLISH_ERRORS = { conflict: "errConflict", unsaved: "errUnsaved", not_paired: "errNotPaired", not_enforceable: "agentNotShareable",
   unknown_view: "agentNotShareable", limit: "errLimit", unavailable: "notAvailable" };
 // The switcher may have cached hub-strings before this action existed. Its original Allow word is still available.
@@ -29,7 +29,8 @@ function waitingForPairing(msg, p) {
   if (!pending) return true;
   if (pending.action === "connect") return p?.state === "unpaired";
   if (pending.action === "confirm") return p?.state === "pending" && p.localConfirmed === false && p.fingerprint?.digest === pending.fingerprint;
-  return pending.action === "disconnect" && p?.state === "paired" && p.binding === pending.binding && p.hub?.hubId === pending.hubId;
+  return pending.action === "disconnect" && (p?.state === "paired" || p?.state === "held" && p.hold !== "disconnected")
+    && p.binding === pending.binding && (p.hub?.hubId || p.hubId) === pending.hubId;
 }
 
 /** A fingerprint: its first 128 bits in groups people compare, the whole digest on request. */
@@ -55,7 +56,7 @@ export function HubConnectCard({ embedded = false, onPairing, labels = {} } = {}
   const live = useRef(true);
   const generation = useRef(0), activePending = useRef(null);
   const pendingMessage = (action, shown, result, token) => {
-    const pending = { action, fingerprint: shown?.fingerprint?.digest, binding: shown?.binding, hubId: shown?.hub?.hubId };
+    const pending = { action, fingerprint: shown?.fingerprint?.digest, binding: shown?.binding, hubId: shown?.hub?.hubId || shown?.hubId };
     activePending.current = pending;
     setMsg({ error: false, text: hw("waitingConfirm"), pending });
     if (!result.settled?.then) return; // An older client still clears its hint when the projection advances.
@@ -165,6 +166,11 @@ export function HubConnectCard({ embedded = false, onPairing, labels = {} } = {}
         <button type="button" class="btn btn-danger" disabled=${busy} onClick=${() => disconnect(name)}>${hw("disconnect")}</button>
       </div>
     </div>`;
+    // An older Hub may close without an authentication status. Recovery is offered conditionally, never inferred.
+    if (p.link === "offline") body = html`${body}<div class="hub-reconnect-help" role="note">
+      <p class="note">${hw("offlineRecovery") === "hub.offlineRecovery" ? hw("offline") : hw("offlineRecovery")}</p>
+      <button type="button" class="btn hub-repair" disabled=${busy} onClick=${() => disconnect(name)}>${hw("repair")}</button>
+    </div>`;
   } else if (p.state === "key_changed") {
     const name = p.hub.name || p.hub.memberOrigin;
     body = html`<div class="hub-state hub-key-changed" role="alert">
@@ -183,9 +189,11 @@ export function HubConnectCard({ embedded = false, onPairing, labels = {} } = {}
   } else if (p.state === "held") {
     body = html`<div class="hub-state hub-held" role="alert">
       <h4><${Icon} name="pause" size=${16} /> ${hw("heldTitle")}</h4>
-      <p>${hw(HOLDS.has(p.hold) ? `hold_${p.hold}` : "hold_other")}</p>
+      <p>${p.hold === "rejected" && hw("hold_rejected") === "hub.hold_rejected" ? hw("hold_refused") : hw(HOLDS.has(p.hold) ? `hold_${p.hold}` : "hold_other")}</p>
       ${p.memberOrigin ? html`<p class="hub-origin"><code>${p.memberOrigin}</code></p>` : null}
-      <div class="field-row"><button type="button" class="btn" disabled=${busy} onClick=${cancel}>${hw(p.hold === "disconnected" ? "startOver" : "holdClear")}</button></div>
+      <div class="field-row">${p.binding && ["rejected", "revoked"].includes(p.hold)
+        ? html`<button type="button" class="btn hub-repair" disabled=${busy} onClick=${() => disconnect(p.memberOrigin)}>${hw("repair")}</button>`
+        : html`<button type="button" class="btn" disabled=${busy} onClick=${cancel}>${hw(p.hold === "disconnected" ? "startOver" : "holdClear")}</button>`}</div>
     </div>`;
   }
   const Frame = embedded ? "div" : "section";

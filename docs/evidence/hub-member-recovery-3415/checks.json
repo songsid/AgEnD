@@ -1,0 +1,43 @@
+{
+  "source": "c604ae782",
+  "vitest": {
+    "passed": 293,
+    "failed": 0,
+    "files": [
+      "changelog-fragments.test.ts",
+      "hub-compose-member.test.ts",
+      "hub-connection-card-api.test.ts",
+      "hub-connection-card-ui.test.ts",
+      "hub-member-held-ui-3415.test.ts",
+      "hub-member-reconnect-network.test.ts",
+      "hub-member-restore-3415.test.ts",
+      "hub-network.test.ts",
+      "hub-pairing-api-s3c.test.ts",
+      "hub-pairing-guidance-3386.test.ts",
+      "hub-ui-s3c.test.ts",
+      "i18n-ui-literals-2390.test.ts",
+      "named-link-test-2906.test.ts",
+      "web-settings-search-2347.test.ts"
+    ]
+  },
+  "types": {
+    "source": "tsc --noEmit: PASS",
+    "tests": "tsc --noEmit -p tsconfig.test.json: PASS"
+  },
+  "browser": {
+    "cases": 36,
+    "checks": 268,
+    "screenshots": 40,
+    "cleaned": true
+  },
+  "semanticReversals": {
+    "caught": 10,
+    "survived": 0,
+    "scope": "Each alone, successful Vitest transformation and assertion failures. Byte-exact production restoration; final unmutated 293 tests pass."
+  },
+  "visual": {
+    "inspected": 16,
+    "unresolved": 0,
+    "scope": "Eight rejected originals, both phone-light confirmations and ready-to-pair views, four phone-dark-zh retained controls. Advanced fields below viewport not visually assessed."
+  }
+}

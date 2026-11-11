@@ -40,9 +40,9 @@ export interface HubMemberPairingDeps {
   home: string;
   notices?(): import("../types.js").HubPairingNotice[];
   /** S5's client lifecycle (absent: offline). */
-  link?(): "online" | "offline";
+  link?(profileDigest?: string | null): "online" | "offline";
   /** A composition hold (S5), if any. */
-  hold?(): HubPairingHold | null;
+  hold?(profileDigest?: string | null): HubPairingHold | null;
   /** S5: stop and fence the member client now (synchronous). */
   fence?(): void;
   /** S3c: withdraw every exposure locally (saved before it returns). */
@@ -116,10 +116,10 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
         // #3115 r2: a saved profile whose claim never finished settling (the local receipt or the pending claim still
         // there) is not a pairing yet — for every reader, after a restart too: held, never paired.
         const unfinished = !!s.localConfirmed || f.pending || s.companyJoin && !companyBindingSettled(deps.home, s.companyJoin, s.hubId, store.profileDigest()) ? "unknown_outcome" as const : null;
-        const held = memHold ?? s.held ?? unfinished ?? deps.hold?.() ?? null;
+        const held = memHold ?? s.held ?? unfinished ?? deps.hold?.(store.profileDigest()) ?? null;
         if (held) return { state: "held", hold: held, memberOrigin: origin, hubId: s.hubId, binding };
         return { state: "paired", binding, hub: { hubId: p.hub.hubId, name: null, memberOrigin: p.hub.memberOrigin, webOrigin: p.hub.webOrigin, fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
-          link: deps.link?.() === "online" ? "online" : "offline" };
+          link: deps.link?.(store.profileDigest()) === "online" ? "online" : "offline" };
       }
       if (f.pending) {
         const p = store.readPending();

@@ -25,7 +25,7 @@ export interface HubClientOptions {
   /** Must durably reconcile the current revocation version and journal BEFORE returning. No input here. */
   reconcile(link: HubMemberLink): Promise<void>;
   receive(frame: Exclude<HubServerFrame, { type: "welcome" }>, link: HubMemberLink): Promise<void>;
-  hold(code: "unavailable" | "invalid" | "backpressure" | "replaced" | "revoked" | "key-changed"): void;
+  hold(code: "unavailable" | "invalid" | "backpressure" | "replaced" | "revoked" | "key-changed" | "rejected"): void;
   now?: () => number; random?: () => number;
   /** The optional features this member offers (tests use a smaller list to stand in for an older member). */
   capabilities?: readonly string[];
@@ -77,6 +77,15 @@ export class HubMemberClient implements HubMemberTransport {
       if (error instanceof HubTlsIdentityError) { this.options.hold("key-changed"); this.stopped = true; }
       if (!connected) { if (!this.stopped) this.options.hold("unavailable"); this.firstReject?.(new HubAuthorizationError("unavailable", "unavailable")); this.firstReject = this.firstResolve = null; this.reconnect(); }
     };
+    ws.once("unexpected-response", (_request, response) => {
+      // TLS pinning already succeeded. Only an explicit authentication refusal is terminal; 5xx/overload stay outages.
+      if (this.current() && (response.statusCode === 401 || response.statusCode === 403)) {
+        this.stopped = true;
+        this.options.hold("rejected");
+        this.firstReject?.(new HubAuthorizationError("denied", "rejected")); this.firstReject = this.firstResolve = null;
+      }
+      response.destroy(); ws.terminate();
+    });
     ws.once("error", failed); ws.once("close", () => failed());
     ws.once("open", () => {
       if (!this.current()) { ws.terminate(); return; } this.opening = null; connected = true; this.connecting = false;
