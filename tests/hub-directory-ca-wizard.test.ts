@@ -8,6 +8,7 @@ import { runHubInitWizard } from "../src/hub/init/wizard.js";
 import { createHubInitializer } from "../src/hub/init/initializer.js";
 import { inspectDirectoryCertificate, fetchDirectoryCa } from "../src/hub/init/directory-certificate.js";
 import { WizardCancelled } from "../src/hub/init/prompt.js";
+import { ht } from "../src/hub/init/text.js";
 import { setLocale } from "../src/locale.js";
 import { ADMIN, FakeIdentity, fakeDirectory, makeTestCerts, scriptedIO, tempDir } from "./support/hub-init-fixtures.js";
 import { directoryCaFixture, directoryCertificates } from "./support/hub-directory-ca-fixture.js";
@@ -24,20 +25,22 @@ const finish = () => ["alice", "y", "7", "30", "initialize", "no"];
 async function listener(requireBind = false) {
   const f = await directoryCaFixture(directory.leaf, directory.ca, { requireBind }); listeners.push(f); return f;
 }
-function setup(answers: Parameters<typeof scriptedIO>[0], o: { cancelled?: boolean; noFetch?: boolean } = {}) {
+function setup(answers: Parameters<typeof scriptedIO>[0], o: { cancelled?: boolean; noFetch?: boolean; cancelAtCaRetry?: boolean } = {}) {
   const home = tempDir("agend-ca-wizard-"), identity = new FakeIdentity(); roots.push(home);
   const io = scriptedIO(answers), person = fakeDirectory({ alice: { ok: true, person: ADMIN } });
-  let fetchCalls = 0, hiddenPrompts = 0;
+  let fetchCalls = 0, hiddenPrompts = 0, caChoices = 0;
   const askHidden = io.io.askHidden;
   io.io.askHidden = async question => { hiddenPrompts++; return askHidden(question); };
-  if (o.cancelled) {
-    const ask = io.io.ask;
-    io.io.ask = async question => { if (/Trust these exact CA/.test(question)) throw new WizardCancelled(); return ask(question); };
-  }
+  const ask = io.io.ask;
+  io.io.ask = async question => {
+    if (question === ht("dir_ca_q") && ++caChoices === 2 && o.cancelAtCaRetry) throw new WizardCancelled();
+    if (o.cancelled && /Trust these exact CA/.test(question)) throw new WizardCancelled();
+    return ask(question);
+  };
   const run = () => runHubInitWizard({ checkNetwork: async () => [], home, io: io.io, initializer: createHubInitializer({ home, identity, probe: { pidAlive: () => false } }),
     createDirectory: person.create, readFile: p => readFileSync(p, "utf8"), service: { installed: () => false, install: async () => { throw Error("not requested"); } },
     ...(!o.noFetch ? { directoryCertificates: { inspect: inspectDirectoryCertificate, fetch: (...args: Parameters<typeof fetchDirectoryCa>) => { fetchCalls++; return fetchDirectoryCa(...args); } } } : {}) });
-  return { run, home, io, identity, person, fetchCount: () => fetchCalls, hiddenCount: () => hiddenPrompts };
+  return { run, home, io, identity, person, fetchCount: () => fetchCalls, hiddenCount: () => hiddenPrompts, caCount: () => caChoices };
 }
 describe("directory CA consent in the initializer", () => {
   it.each(["en", "zh-TW"] as const)("fetches anonymously and confirms exact CA material before any service password in %s", async locale => {
@@ -61,17 +64,19 @@ describe("directory CA consent in the initializer", () => {
     expect(s.io.text()).not.toContain(BIND); expect(s.io.text()).not.toContain(USER);
   });
   it("refuses a mismatched leaf fingerprint without any LDAP bytes or secret prompt", async () => {
-    const f = await listener(), s = setup([...start(), "corp", f.url, "fetch", "0".repeat(64), "q"]);
+    const f = await listener(), s = setup([...start(), "corp", f.url, "fetch", "0".repeat(64), "q"], { cancelAtCaRetry: true });
     expect(await s.run()).toBe("cancelled"); expect(s.fetchCount()).toBe(0); expect(s.hiddenCount()).toBe(0);
+    expect(s.caCount()).toBe(2); // Trust refusal returns to CA choices; only this explicit cancellation exits.
     expect(s.io.remaining()).toBe(1);
     expect(f.applicationBytes()).toBe(0); expect(s.identity.provisions).toBe(0); expect(s.person.calls).toEqual([]);
     expect(existsSync(join(s.home, "fleet.yaml"))).toBe(false);
   });
-  it("declining fetched or imported CA fingerprints cancels before service login and initialization", async () => {
+  it("declining fetched or imported CA fingerprints returns to CA choices before service login and initialization", async () => {
     const f = await listener(), pin = new X509Certificate(directory.leaf.cert).fingerprint256;
     const tail = [...reader(), ...finish()];
     for (const answers of [[...start(), "corp", f.url, "fetch", pin, "n", ...tail], [...start(), "corp", f.url, web.caCert, "n", ...tail]]) {
-      const s = setup(answers); expect(await s.run()).toBe("cancelled"); expect(s.io.remaining()).toBe(tail.length);
+      const s = setup(answers, { cancelAtCaRetry: true }); expect(await s.run()).toBe("cancelled"); expect(s.io.remaining()).toBe(tail.length);
+      expect(s.caCount()).toBe(2);
       expect(s.hiddenCount()).toBe(0);
       expect(s.identity.provisions).toBe(0); expect(s.person.calls).toEqual([]); expect(existsSync(join(s.home, "fleet.yaml"))).toBe(false);
     }

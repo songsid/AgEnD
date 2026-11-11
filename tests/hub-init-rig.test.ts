@@ -3,7 +3,7 @@
  * (scripts/manual/hub-directory). Skipped unless AGEND_HUB_RIG_ENV names the rig's rig.env (CI's hub-directory job).
  * Never a real directory.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -11,6 +11,8 @@ import { Client } from "ldapts";
 import { createHubDirectory } from "../src/hub/directory/index.js";
 import { createHubInitializer } from "../src/hub/init/initializer.js";
 import { runHubInitWizard } from "../src/hub/init/wizard.js";
+import { WizardCancelled } from "../src/hub/init/prompt.js";
+import { ht } from "../src/hub/init/text.js";
 import { setLocale } from "../src/locale.js";
 import { FakeIdentity, makeTestCerts, scriptedIO, tempDir, type TestCerts } from "./support/hub-init-fixtures.js";
 
@@ -42,15 +44,17 @@ describe.skipIf(rig.AGEND_HUB_RIG !== "1")("agend hub init against the fake dire
   ];
   const start = () => ["Rig Hub", "https://hub.example.test:8443", "", "192.0.2.10:8443", "192.0.2.10:9443", certs.cert, certs.key];
 
-  async function run(answers: Parameters<typeof scriptedIO>[0]) {
+  async function run(answers: Parameters<typeof scriptedIO>[0], beforeAsk?: (question: string) => void) {
     const home = tempDir("agend-hubinit-rig-");
     const initializer = createHubInitializer({ home, identity: new FakeIdentity(), probe: { pidAlive: () => false } });
     const io = scriptedIO(answers);
+    const ask = io.io.ask, create = vi.fn(createHubDirectory);
+    io.io.ask = question => { beforeAsk?.(question); return ask(question); };
     const outcome = await runHubInitWizard({ checkNetwork: async () => [],
-      io: io.io, home, initializer, createDirectory: createHubDirectory, readFile: (p) => readFileSync(p, "utf8"),
+      io: io.io, home, initializer, createDirectory: create, readFile: (p) => readFileSync(p, "utf8"),
       service: { installed: () => false, install: async () => "unused" },
     });
-    return { home, outcome, io };
+    return { home, outcome, io, create };
   }
 
   it("designates the administrator's immutable id through read-only LDAPS; disabled and unknown accounts refuse first", async () => {
@@ -82,8 +86,16 @@ describe.skipIf(rig.AGEND_HUB_RIG !== "1")("agend hub init against the fake dire
   });
 
   it("the rig's plaintext ldap:// port is refused before any connection", async () => {
-    const { outcome, io } = await run([...start(), "rig", rig.AGEND_HUB_RIG_LDAP_URL!, rig.AGEND_HUB_RIG_CA!, "y", "2", rig.AGEND_HUB_RIG_BASE_DN!, rig.AGEND_HUB_RIG_BIND_DN!, "q"]);
+    let addresses = 0;
+    const { home, outcome, io, create } = await run([...start(), "rig", rig.AGEND_HUB_RIG_LDAP_URL!], question => {
+      // The endpoint now refuses before CA/profile/credential questions. Cancel only at its corrected retry.
+      if (question === ht("dir_url_q") && ++addresses === 2) throw new WizardCancelled();
+    });
     expect(outcome).toBe("cancelled");
-    expect(io.text()).toMatch(/ldap:\/\/ is plaintext/);
+    expect(addresses).toBe(2);
+    expect(io.text()).toContain(ht("dir_url_invalid"));
+    expect(io.prompts).not.toContain(ht("dir_ca_q"));
+    expect(create).not.toHaveBeenCalled();
+    expect(existsSync(join(home, "hub"))).toBe(false);
   });
 });

@@ -89,7 +89,7 @@ export async function companyJoinRig(directoryListening: (port: number) => void,
       createDirectory: (cfg, secrets) => directory = createHubDirectory({ ...cfg, caPem: dcCerts.ca }, secrets, { now: () => Date.now() }),
       report: () => {}, log: () => {}, now: () => Date.now(),
     });
-    const service = await create(config, () => !closed); cleanups.push(() => service.close());
+    let service = await create(config, () => !closed); cleanups.push(() => service.close());
     await service.start();
     const db = new Database(join(home, "hub/hub.sqlite")); cleanups.push(() => { db.close(); });
     const call = (browser: JoinBrowser | null, method: string, path: string, body?: unknown,
@@ -132,6 +132,10 @@ export async function companyJoinRig(directoryListening: (port: number) => void,
       const saved = await call(admin, "PUT", policyPath, { policy, previewDigest: preview.body.previewDigest });
       if (saved.status !== 200) throw Error("Fixture policy save refused");
     };
-    return { home, config, webOrigin, memberOrigin, certs, dcCerts, wire, people, deps, directory, db, call, signIn, enable, stopService: () => service.close(), close };
+    return { home, config, webOrigin, memberOrigin, certs, dcCerts, wire, people, get deps() { return deps; }, get directory() { return directory; }, db, call, signIn, enable,
+      stopService: () => service.close(), async restartService() {
+        if (closed) throw Error("Owned fixture is closed");
+        await service.close(); service = await create(config, () => !closed); await service.start();
+      }, close };
   } catch (error) { await close(); throw error; }
 }

@@ -37,7 +37,7 @@ import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { serveHubWorkspaceShell } from "../../web-api.js";
 import { servePublicAsset } from "../../auth-api.js";
 import { handleCompanyJoin, companyFlowCookie } from "../join/http.js";
-import { CompanyJoinLimit } from "../join/service.js";
+import { CompanyJoinLimit, CompanyJoinOfferPending } from "../join/service.js";
 
 export { HUB_HTTP_MIGRATIONS };
 /** S5's lazy entry (HubHttpEntry): this module itself — `createHubHttp` and `migrations`. */
@@ -392,7 +392,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       await guard(() => deps.pairing.confirmOwner(ctx, uuid(r![1]), fp)); return send(res, 200, { ok: true });
     }
     // #3298 S-89: the group routes (404 until S-88's control is composed), ahead of the other admin routes.
-    if (await handleGroupHttp(deps.groupHttp, { path, method, signedIn, csrf, body, send: (status, value) => send(res, status, value),
+    if (await handleGroupHttp(deps.groupHttp, { path, method, signedIn, csrf, body, send: (status, value, headers) => send(res, status, value, headers),
       // The synchronous fence is this server's lifetime and the session row; who is asking is only ever the session's own require*.
       ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin(), requirePerson: () => ctx.requirePerson() } })) return;
     // M-2682: Administration → This Hub (what it is; its rename through the host's writer for sealed settings).
@@ -422,7 +422,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         return row ? { name: row.display_name, login: row.login_label } : null;
       };
       return send(res, 200, {
-        fleets: state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner) })),
+        fleets: state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null,
+          ...(deps.companyJoin?.fleetDisplay(f.id) ?? { source: null, createdAt: null }) })),
         pairings: state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
           .map((p) => ({ id: p.id, state: p.state, expiresAt: p.expiresAt, fingerprint: p.fingerprint, ownerConfirmed: p.ownerConfirmed, adminApproved: p.adminApproved, owner: name(p.owner) })),
       });
@@ -454,6 +455,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   }
 
   function fail(res: ServerResponse, e: unknown): void {
+    if (e instanceof CompanyJoinOfferPending) return send(res, 409, { code: "offer-pending" });
     if (e instanceof CompanyJoinLimit) return send(res, 429, { code: "limit-reached" });
     if (e instanceof SignedOut) return send(res, 401, { code: "signed-out" });
     if (e instanceof HttpError) return send(res, e.status, { code: e.code });

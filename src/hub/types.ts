@@ -97,6 +97,7 @@ export interface HubRevocation {
 
 export type HubMemberFrame =
   | HubFrame<"hello", HubHello>
+  | HubFrame<"member.leave", Record<string, never>>
   | HubFrame<"exposure.snapshot", HubExposureSnapshot>
   | HubFrame<"receipt", HubReceipt>
   | HubFrame<"answer", HubAnswer>
@@ -134,6 +135,8 @@ export interface HubMemberTransport {
   authorize(request: HubAuthorizationRequest): Promise<HubAuthorizationLease>;
   close(): Promise<void>;
 }
+/** Exact local pairing selected by a confirmed disconnect, never a caller-selected remote Fleet ID. */
+export interface HubMemberLeaveBinding { hubId: string; binding: string }
 
 export interface HubAskerEnvelope {
   v: 1; issuer: HubId; issuerKeyId: string; messageId: MessageId;

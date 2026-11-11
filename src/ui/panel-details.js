@@ -12,6 +12,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-
 import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
+import * as paneContext from "/assets/app-ctx.js";
 import { PanelHeader, setTitle, statusClass, statusLabel, openDrawer } from "/assets/app-shell.js";
 import { navigate } from "/assets/app-nav.js";
 import { detailsPath } from "/assets/app-route.js";
@@ -34,10 +35,11 @@ import "./agent-page-strings.js";
 import { pt } from "./agent-page-strings.js";
 
 export function DetailsPanel({ route, navKey }) {
+  const pane = paneContext.usePane?.();
   const app = useStore(appStore);
   const name = route.instance;
   const inst = app.instances.find((i) => i.name === name) || null;
-  useEffect(() => { setTitle(`${name} · ${t("app.details")}`); }, [name, navKey]);
+  useEffect(() => { if (pane?.focused !== false) setTitle(`${name} · ${t("app.details")}`); }, [name, navKey, pane?.focused]);
   if (!app.ready) return html`<div data-effect-panel="details" class="panel p-details"><${PanelHeader} title=${name} /><div data-trust="panel-content" class="panel-body"><${Skeleton} lines=${6} /></div></div>`;
   if (!inst) {
     return html`<div data-effect-panel="details" class="panel p-details"><${PanelHeader} title=${name} />
@@ -49,6 +51,7 @@ export function DetailsPanel({ route, navKey }) {
 }
 
 function DetailsView({ name, inst, navKey, exec, awaiting }) {
+  const pane = paneContext.usePane?.();
   useStore(themesStore);   // #1629: Lock / Unlock follows the themes as read
   const lease = useLease(`details:${name}`);
   // #1629 r4 §1: the identity card at the top, read when the status frame's card_v moves.
@@ -61,7 +64,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   const [opened, setOpened] = useState(false);
   const [dirty, setDirty] = useState(() => new Set());
   const kind = agentKind(d, inst);
-  const cat = categoryFromSearch(kind);
+  const cat = categoryFromSearch(kind, pane?.search);
   const shownCat = cat || "overview";
   useEffect(() => { if (d && cat && cat !== "overview") setOpened(true); }, [!!d, cat]);
   const sess = useAgentSettings({ name, lease, enabled: opened, navKey });
@@ -181,7 +184,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
       <${AgentPageHead} name=${name} kind=${kind} cat=${shownCat} inst=${null} />
       ${OpCard && sess.op ? html`<${OpCard} op=${sess.op} schema=${sess.data && sess.data.schema} />` : null}
       <div class="s-section-layout" data-agent-category=${shownCat}>
-        <div class="ap-panel" id="ap-panel-overview" hidden=${shownCat !== "overview"}>${overview}</div>
+        <div class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-overview` : "ap-panel-overview"} hidden=${shownCat !== "overview"}>${overview}</div>
         ${opened ? html`<${AgentSettingsPanels} name=${name} kind=${kind} cat=${shownCat} sess=${sess} onDirty=${onDirty} />` : null}
       </div></div></div>
     ${sess.staged.size && Pending ? html`<${Pending} staged=${sess.staged} busy=${!!sess.op && ["writing", "posting", "watching"].includes(sess.op.phase)} onApply=${sess.apply} onDiscard=${sess.discard} section="agents" />` : null}

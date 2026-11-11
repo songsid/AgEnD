@@ -4,7 +4,7 @@
  * control itself calls `requireAdmin`; the welcome calls `requirePerson`) and maps answers to statuses. It decides nothing.
  * Mounted only when both the control and the welcome are composed (until then: 404, and the session carries no mark).
  */
-import { applyRequest, previewRequest, resolveRequest, resumeRequest, type GroupAdminContext, type GroupWelcomeContext, type GroupWelcomeResponse, type HubGroupAdminControl } from "./admin-dto.js";
+import { applyRequest, previewRequest, resolveRequest, resumeRequest, searchRequest, type GroupAdminContext, type GroupWelcomeContext, type GroupWelcomeResponse, type HubGroupAdminControl } from "./admin-dto.js";
 import type { HubActor, PersonKey } from "../types.js";
 
 export const GROUP_POLICY_FEATURE = "group-policy-v1";
@@ -14,7 +14,7 @@ export interface GroupHttpRequest {
   readonly path: string; readonly method: string;
   readonly ctx: { readonly requestId: string; current(): boolean; requireAdmin(): Promise<HubActor>; requirePerson(): Promise<PersonKey> };
   signedIn(): unknown; csrf(): unknown; body(): Promise<Record<string, unknown>>;
-  send(status: number, body: unknown): void;
+  send(status: number, body: unknown, headers?: Record<string, string>): void;
 }
 const STATUS: Record<string, number> = { conflict: 409, "stale-preview": 409, expired: 409, "group-mismatch": 409, "repair-required": 409, unsupported: 422, invalid: 400, denied: 403, unknown: 503 };
 
@@ -43,6 +43,12 @@ export async function handleGroupHttp(deps: GroupHttpDeps | undefined, q: GroupH
   if (method !== "POST") { q.send(405, { code: "method" }); return true; }
   q.csrf();
   const raw = await q.body();
+  if (path === "/hub/v1/admin/group-policy/search") {
+    const input = parsed(searchRequest, raw); if (!input) return bad(), true;
+    const result = deps.control.search ? await deps.control.search(input, adminCtx) : { ok: false as const, reason: "unsupported" as const };
+    const limited = !result.ok && result.reason === "limited";
+    q.send(limited ? 429 : 200, result, limited ? { "Retry-After": "60" } : {}); return true;
+  }
   if (path === "/hub/v1/admin/group-policy/resolve") {
     const input = parsed(resolveRequest, raw); if (!input) return bad(), true;
     // A refusal is input feedback (200 with its reason), never authority.

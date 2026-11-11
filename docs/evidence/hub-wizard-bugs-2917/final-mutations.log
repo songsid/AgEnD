@@ -1,0 +1,10 @@
+M1-fingerprint-cancels 2
+M2-fingerprint-ignored 2
+M3-url-unvalidated 5
+M4-method-echoes 1
+M5-path-echoes 5
+M9-file-ca-refusal-cancels 1
+M10-fetched-ca-refusal-cancels 1
+M6-paints-before-raw 1
+M7-old-certificate-copy 2
+M8-old-handoff-copy 2

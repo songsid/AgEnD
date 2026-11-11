@@ -1,0 +1,13 @@
+gap-visible ASSERTION-CAUGHT
+prompt-visible ASSERTION-CAUGHT
+focus-owner ASSERTION-CAUGHT
+cache-visible ASSERTION-CAUGHT
+title-focus ASSERTION-CAUGHT
+escape-focus ASSERTION-CAUGHT
+composer-owner ASSERTION-CAUGHT
+preview-owner ASSERTION-CAUGHT
+image-host ASSERTION-CAUGHT
+details-guards ASSERTION-CAUGHT
+history-generation ASSERTION-CAUGHT
+lazy-hosts ASSERTION-CAUGHT
+composer-ids ASSERTION-CAUGHT

@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { revokeHubFleet } from "./fleet-revocation.js";
 import { z } from "zod";
 import { HubProtocolError, hash, person, token, uuid, plain, identifier, validated } from "./validation.js";
 import { personKeyString, sha256 } from "./identity.js";
@@ -340,10 +341,23 @@ export class HubPairingService {
     validated(uuid, fleetId); const admin = await ctx.requireAdmin(); this.check(); this.options.fenceFleet(fleetId, "revoked");
     this.options.store.mutate({ ...this.audit(admin, "member.revoked", ctx.requestId), fleetId }, state => {
       const f = state.fleets.find(f => f.id === fleetId); if (!f) throw new HubProtocolError("not-found");
-      f.status = "revoked"; f.credentialHash = null; f.generation++; state.revocationVersion++;
+      revokeHubFleet(state, f);
     });
     // The version is global. Other members keep their credentials and reconnect immediately,
     // rather than keeping a stale socket until its next heartbeat. Never refresh before commit.
+    this.options.refreshAuthorization?.();
+  }
+  /** Only the exact authenticated current link can remove itself; payloads carry no target. */
+  leave(link: { fleetId: string; owner: PersonKey; current(): boolean }, requestId: string): void {
+    validated(uuid, requestId); this.check();
+    if (!link.current()) throw new HubProtocolError("stale");
+    this.options.store.mutate({ ...this.audit({ kind: "member", fleetId: link.fleetId }, "member.left", requestId), fleetId: link.fleetId }, state => {
+      const f = state.fleets.find(f => f.id === link.fleetId);
+      if (!link.current() || !f || f.status !== "active" || !f.credentialHash
+        || personKeyString(f.owner) !== personKeyString(link.owner)) throw new HubProtocolError("denied");
+      revokeHubFleet(state, f);
+    }, () => { if (!link.current()) throw new HubProtocolError("stale"); });
+    this.options.fenceFleet(link.fleetId, "revoked");
     this.options.refreshAuthorization?.();
   }
   /** Narrowing only: neither a group allowance nor knowledge of another fleet's ID confers ownership. */
@@ -362,7 +376,7 @@ export class HubPairingService {
       this.options.store.mutate(event, state => {
         const f = state.fleets.find(f => f.id === fleetId);
         if (!current?.() || !same(f)) throw new HubProtocolError("not-found");
-        f!.status = "revoked"; f!.credentialHash = null; f!.generation++; state.revocationVersion++;
+        revokeHubFleet(state, f!);
       });
       const f = this.options.store.read().fleets.find(f => f.id === fleetId);
       if (!current?.() || f?.status !== "revoked" || f.generation !== generation + 1 || f.credentialHash !== null
