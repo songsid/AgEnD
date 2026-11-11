@@ -32,6 +32,7 @@
   {
     "digest": "06f76d689f45227cbc0e083f208a6828f35ec4bbfaac344f9b7b40c3539543be",
     "paths": [
+      "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/skew-confirm/phone-dark-zh-TW-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/skew-panel/phone-dark-zh-TW-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/skew-strings/phone-dark-zh-TW-hub-signin.png"
@@ -90,6 +91,7 @@
     "paths": [
       "docs/evidence/hub-join-consent-m2876/before/desk-light-en-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/browser-pass/desk-light-en-hub-signin.png",
+      "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/skew-confirm/desk-light-en-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/skew-panel/desk-light-en-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/skew-strings/desk-light-en-hub-signin.png"
@@ -98,7 +100,14 @@
   {
     "digest": "27324c3069a462c5a711dccdb9be71f47f710a5f7455b61338a44afb9deb7e4f",
     "paths": [
-      "docs/evidence/hub-join-consent-m2876/browser-pass/desk-light-en-empty.png"
+      "docs/evidence/hub-join-consent-m2876/browser-pass/desk-light-en-empty.png",
+      "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-empty.png"
+    ]
+  },
+  {
+    "digest": "294aded1840d08cdf3b27c742bb3afd21c1abdc8d6ffb0720b1e64bf60ceab8a",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-code-code.png"
     ]
   },
   {
@@ -130,6 +139,19 @@
     "digest": "380ff0553b227517dcd4dd829b6a59d34b9ac8788aaab9b3ae36bd842836d409",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/before/desk-light-en-connected.png"
+    ]
+  },
+  {
+    "digest": "3b08d4d805c0afe05ede21023a0edbb7d1f661860b8cb1610f513e5bb69a3c63",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-admin.png"
+    ]
+  },
+  {
+    "digest": "3b7109167288feeca32503bca27f2fb319b384f11b31dba5d03d251de1ee42c1",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-code-connected.png",
+      "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-connected.png"
     ]
   },
   {
@@ -200,6 +222,12 @@
     ]
   },
   {
+    "digest": "61b88104c9a9af5a603b8968165b9b1dc1b3b73aded25fcdc8a9e20a609ba1e6",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-code-code.png"
+    ]
+  },
+  {
     "digest": "658e9d16948ec31bdfaf2f17999b993ba77d7375042961bf1799b8091e650364",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/settled/desk-light-en-code-hub-signin.png"
@@ -208,7 +236,8 @@
   {
     "digest": "67fbb12c6b2b8b7cc87f6fed6443556a0105f472e8e1ff216454d5f3f43a5f94",
     "paths": [
-      "docs/evidence/hub-join-consent-m2876/before/phone-dark-zh-TW-hub-signin.png"
+      "docs/evidence/hub-join-consent-m2876/before/phone-dark-zh-TW-hub-signin.png",
+      "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-code-hub-signin.png"
     ]
   },
   {
@@ -216,12 +245,6 @@
     "paths": [
       "docs/evidence/hub-join-consent-m2876/before/desk-light-en-empty.png",
       "docs/evidence/hub-join-consent-m2876/skew-panel/desk-light-en-empty.png"
-    ]
-  },
-  {
-    "digest": "6bef32cd812015e3b0e4d1be3057d42dfb0f9f17531fd1c4f5f4bafea3d4696e",
-    "paths": [
-      "docs/evidence/hub-join-consent-m2876/README.md"
     ]
   },
   {
@@ -240,6 +263,7 @@
     "digest": "6d4aae5e595967469a883be03d27fe4f268365038791408d913a5ff88e495532",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/desk-light-en-code-empty.png",
+      "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-code-empty.png",
       "docs/evidence/hub-join-consent-m2876/settled/desk-light-en-code-empty.png",
       "docs/evidence/hub-join-consent-m2876/skew-confirm/desk-light-en-empty.png",
       "docs/evidence/hub-join-consent-m2876/skew-strings/desk-light-en-empty.png"
@@ -284,6 +308,12 @@
     ]
   },
   {
+    "digest": "82fffc28882178db9baed19d1e9115f49bb29b3fc37553a7c12dd052a40137a9",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/post-sync/receipt.json"
+    ]
+  },
+  {
     "digest": "84031cc7617251d9ce0d7b8d17801f5ac51936a9de9cbd64acdd55126c5c8659",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/before/phone-dark-zh-TW-admin.png"
@@ -293,6 +323,12 @@
     "digest": "85e1c54a313779296acca5ba369cec76c9c1866ff64fc0cc2facea62454ecb36",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/settled/desk-light-en-code-connected.png"
+    ]
+  },
+  {
+    "digest": "8a65e1e0bbdb4383bcab52948d5ba32ee9531af63c3caddb2b3b0c6186d967d4",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-code-connected.png"
     ]
   },
   {
@@ -353,6 +389,7 @@
     "digest": "a8e468babdac0f25edbf0b9a9947cde19021349b2f7efd50297b89934e3b480c",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/phone-dark-zh-TW-admin.png",
+      "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-admin.png",
       "docs/evidence/hub-join-consent-m2876/skew-confirm/phone-dark-zh-TW-admin.png",
       "docs/evidence/hub-join-consent-m2876/skew-panel/phone-dark-zh-TW-admin.png",
       "docs/evidence/hub-join-consent-m2876/skew-strings/phone-dark-zh-TW-admin.png"
@@ -405,6 +442,8 @@
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/phone-dark-zh-TW-code-empty.png",
       "docs/evidence/hub-join-consent-m2876/browser-pass/phone-dark-zh-TW-empty.png",
+      "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-code-empty.png",
+      "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-empty.png",
       "docs/evidence/hub-join-consent-m2876/settled/phone-dark-zh-TW-code-empty.png",
       "docs/evidence/hub-join-consent-m2876/skew-confirm/phone-dark-zh-TW-empty.png",
       "docs/evidence/hub-join-consent-m2876/skew-strings/phone-dark-zh-TW-empty.png"
@@ -420,6 +459,12 @@
     "digest": "be635333bb4a36b29e5069e02c8f342ec75240d1395effb156e458bafd4256bb",
     "paths": [
       "src/fleet-manager.ts"
+    ]
+  },
+  {
+    "digest": "befc0364f7f28c9e473b44319b7be602eb78ef5ed3f0bc785de51ef89560da6e",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-connected.png"
     ]
   },
   {
@@ -483,6 +528,12 @@
     ]
   },
   {
+    "digest": "d3d64b31cb186329cb20a62e0fcd49bd2c2f9a2abc1637ad4c2cd4f8b836405f",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-code-hub-signin.png"
+    ]
+  },
+  {
     "digest": "d3fb3035ef075699f960c45321df6d3686e2ae25b48c172507f490832c0951d3",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/settled/desk-light-en-code-code.png"
@@ -492,6 +543,12 @@
     "digest": "d76eb5b98eb135bd8ff26d54c945ea78690bcc08dbb2e1a2c2a9702cbba6d8de",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/desk-light-en-admin.png"
+    ]
+  },
+  {
+    "digest": "d7c182479f1222cd77c51570e65a0827f1804318d593dba14347937968b81252",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/README.md"
     ]
   },
   {
