@@ -1,0 +1,125 @@
+{
+  "scope": "Single guard reversals; Vitest transformation plus assertion failures, no product mutation retained.",
+  "results": [
+    {
+      "mutation": "server-refusal",
+      "exit": 1,
+      "failed": 1,
+      "assertions": [
+        "a stopped old Hub backup rejects a later member, explains the hold and recovers through existing re-pairing"
+      ],
+      "failureMessages": [
+        "AssertionError: expected { state: 'paired', …(3) } to match object { state: 'held', …(3) }\n(7 matching properties omitted from actual)"
+      ]
+    },
+    {
+      "mutation": "auth-refusal",
+      "exit": 1,
+      "failed": 2,
+      "assertions": [
+        "only pinned authentication refusals become actionable (401)",
+        "only pinned authentication refusals become actionable (403)"
+      ],
+      "failureMessages": [
+        "AssertionError: expected [ 'unavailable' ] to deeply equal [ 'rejected' ]",
+        "AssertionError: expected [ 'unavailable' ] to deeply equal [ 'rejected' ]"
+      ]
+    },
+    {
+      "mutation": "overload-is-outage",
+      "exit": 1,
+      "failed": 2,
+      "assertions": [
+        "only pinned authentication refusals become actionable (429)",
+        "only pinned authentication refusals become actionable (503)"
+      ],
+      "failureMessages": [
+        "AssertionError: expected [ 'rejected' ] to deeply equal [ 'unavailable' ]",
+        "AssertionError: expected [ 'rejected' ] to deeply equal [ 'unavailable' ]"
+      ]
+    },
+    {
+      "mutation": "late-refusal",
+      "exit": 1,
+      "failed": 1,
+      "assertions": [
+        "a cancelled opening cannot publish a late authentication refusal"
+      ],
+      "failureMessages": [
+        "AssertionError: expected [ 'rejected' ] to deeply equal []"
+      ]
+    },
+    {
+      "mutation": "invalid-recovery",
+      "exit": 1,
+      "failed": 1,
+      "assertions": [
+        "an invalid restored-protocol exchange becomes an actionable generic hold, without claiming revocation"
+      ],
+      "failureMessages": [
+        "AssertionError: expected 'online' to be 'rejected' // Object.is equality"
+      ]
+    },
+    {
+      "mutation": "preserved-hold",
+      "exit": 1,
+      "failed": 1,
+      "assertions": [
+        "a stopped old Hub backup rejects a later member, explains the hold and recovers through existing re-pairing"
+      ],
+      "failureMessages": [
+        "AssertionError: expected { state: 'paired', …(3) } to match object { state: 'held', hold: 'rejected' }\n(8 matching properties omitted from actual)"
+      ]
+    },
+    {
+      "mutation": "binding",
+      "exit": 1,
+      "failed": 1,
+      "assertions": [
+        "the fleet projection ignores a diagnostic belonging to a different saved pairing"
+      ],
+      "failureMessages": [
+        "AssertionError: expected { state: 'held', …(4) } to match object { state: 'paired', link: 'offline' }\n(4 matching properties omitted from actual)"
+      ]
+    },
+    {
+      "mutation": "repair-action",
+      "exit": 1,
+      "failed": 2,
+      "assertions": [
+        "a rejected member explains recovery in en and uses only existing disconnect/cancel",
+        "a rejected member explains recovery in zh-TW and uses only existing disconnect/cancel"
+      ],
+      "failureMessages": [
+        "AssertionError: expected 'Start over' to be 'Pair again' // Object.is equality",
+        "AssertionError: expected '重新開始' to be '重新配對' // Object.is equality"
+      ]
+    },
+    {
+      "mutation": "held-confirmation",
+      "exit": 1,
+      "failed": 2,
+      "assertions": [
+        "a rejected member explains recovery in en and uses only existing disconnect/cancel",
+        "a rejected member explains recovery in zh-TW and uses only existing disconnect/cancel"
+      ],
+      "failureMessages": [
+        "AssertionError: the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string",
+        "AssertionError: the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string"
+      ]
+    },
+    {
+      "mutation": "old-strings",
+      "exit": 1,
+      "failed": 1,
+      "assertions": [
+        "new recovery controls tolerate cached strings and the original client interface"
+      ],
+      "failureMessages": [
+        "AssertionError: expected 'hub.hold_rejected' to be 'The Hub refused the pairing.' // Object.is equality"
+      ]
+    }
+  ],
+  "productSource": "c604ae782",
+  "testSource": "1f09ad59f (later cached-string spy typing is annotation-only)"
+}

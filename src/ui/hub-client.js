@@ -43,7 +43,7 @@ export function hubName(doc = typeof document !== "undefined" ? document : null)
  * - { state: "key_changed", hub: {…approved, fingerprint (hub-key)}, offered (hub-key) }
  *     nothing connects; the offered value is never accepted automatically — re-pair or disconnect
  * - { state: "held", hold, memberOrigin? }
- *     a safety hold, visible: hold ∈ "unknown_outcome" | "expired" | "unsaved" | "refused" | "revoked" | "disconnected"
+ *     a safety hold, visible: hold ∈ "unknown_outcome" | "expired" | "unsaved" | "refused" | "revoked" | "rejected" | "disconnected"
  *     — never shown as paired, never as a successful unpair ("unavailable": an older host, shown as one line, not a hold)
  * @typedef {object} HubPairingView
  */

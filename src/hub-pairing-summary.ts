@@ -2,7 +2,7 @@
  * S3c PR B: the pairing projection's types and the confirmation summary — no I/O and no S1 import, so the fleet can
  * name a pairing step's summary without loading the Hub's pairing client (which loads only with hub_member on).
  */
-export type HubPairingHold = "unknown_outcome" | "expired" | "unsaved" | "refused" | "revoked" | "disconnected";
+export type HubPairingHold = "unknown_outcome" | "expired" | "unsaved" | "refused" | "revoked" | "disconnected" | "rejected";
 export type HubPairingView =
   | { state: "unpaired" }
   | { state: "pending"; memberOrigin: string; fingerprint: { kind: "pairing"; digest: string }; expiresAt: number; ownerConfirmed: null; adminApproved: null; localConfirmed: boolean }

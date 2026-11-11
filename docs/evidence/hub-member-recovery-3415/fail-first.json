@@ -1,0 +1,22 @@
+{
+  "productSource": "9a351611bea1363ce7248c5954876b9c2e6685de",
+  "productTree": "9e72e52fd9456ff48c795a412370c922a48a321a",
+  "testsFrom": "c604ae782",
+  "passed": 0,
+  "failed": 3,
+  "failures": [
+    {
+      "name": "a rejected member explains recovery in en and uses only existing disconnect/cancel",
+      "message": "AssertionError: expected 'Pairing is on hold.' to contain 'restored'"
+    },
+    {
+      "name": "a rejected member explains recovery in zh-TW and uses only existing disconnect/cancel",
+      "message": "AssertionError: expected '配對已暫停。' to contain '還原'"
+    },
+    {
+      "name": "a stopped old Hub backup rejects a later member, explains the hold and recovers through existing re-pairing",
+      "message": "AssertionError: expected { state: 'paired', …(3) } to match object { state: 'held', …(3) }"
+    }
+  ],
+  "scope": "Detached baseline product worktree; only the two candidate regression test files copied from the named commit. Real owned SQLite backup restore and pinned HTTPS; UI assertions use app harness. No product edits on baseline."
+}

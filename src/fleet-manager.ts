@@ -2229,7 +2229,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           attachAttention: read => this.attachHubExecutionAttention(read),
           attachPairingNotices: read => { this.hubPairingNotices = read; },
           pokeAttention: () => this.needsYou?.poke(),
-          linkState: state => { this.hubMemberLink = state; },
+          linkState: (state, digest) => { this.hubMemberLink = state; this.hubMemberLinkBinding = digest ?? null; },
         },
       });
       // Stop began during the import: it holds this promise and closes the runtime; do not hand it out again.
@@ -2254,8 +2254,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       home: this.dataDir,
       notices: () => this.hubPairingNotices?.() ?? [],
       enabled: () => (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true,
-      link: () => (this.hubMemberLink === "online" ? "online" : "offline"),
-      hold: () => (this.hubMemberLink === "revoked" ? "revoked" : null),
+      link: digest => (digest === this.hubMemberLinkBinding && this.hubMemberLink === "online" ? "online" : "offline"),
+      hold: digest => digest === this.hubMemberLinkBinding
+        ? this.hubMemberLink === "revoked" ? "revoked" : this.hubMemberLink === "rejected" ? "rejected" : null : null,
       // Disconnect: stop the member client now (the runtime re-composes from the saved binding, fencing first).
       fence: () => { void this.hubRuntime?.refresh(); },
       // A claim saved, a disconnect tombstone or a cancel: re-compose the member side for the new binding.
@@ -2544,7 +2545,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** S3c's currentBinding reader, loaded with the pairing API (only while the member switch is on). */
   private hubMemberBinding: ((home: string) => { hubId: string } | null) | null = null;
   /** The member link as the "Connect to a Hub" view shows it (S5's client lifecycle). */
-  private hubMemberLink: "online" | "offline" | "revoked" = "offline";
+  private hubMemberLink: "online" | "offline" | "revoked" | "rejected" = "offline";
+  private hubMemberLinkBinding: string | null = null;
   /** OutboundContext: the Hub representative's answer hook (null: no member service running, or not a Hub answer). */
   hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
     return this.hubReports?.(input) ?? null;

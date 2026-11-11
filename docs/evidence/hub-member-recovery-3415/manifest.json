@@ -1,0 +1,169 @@
+{
+  "6b452bdd4b43357654bafe5a462335d3a21d63cdc327f577b379d715df34e7b1": [
+    "docs/evidence/hub-member-recovery-3415/checks.json"
+  ],
+  "15409d517c4770ee87779439135c4b668c64358ddc2226f923613a903d2f714c": [
+    "docs/evidence/hub-member-recovery-3415/browser-receipt.json"
+  ],
+  "7caedc7821e0b314ba91bd0df6c064aec1cb8a6cc6074c1b0fa6fc1083654b8c": [
+    "docs/evidence/hub-member-recovery-3415/README.md"
+  ],
+  "244a69d58a4cdc00ad71f662e2e3e8aeca98b4aef1e39a874d247cd16854dbb2": [
+    "docs/evidence/hub-member-recovery-3415/fail-first.json"
+  ],
+  "834b53251be9dfcdd11fb44e3e35fc875346fc4119358cf44a1a0f0efe8a7e15": [
+    "docs/evidence/hub-member-recovery-3415/mutations.json"
+  ],
+  "9ea99eae8a3c8b17e662ab17d267c99a0bcb4dd660ef33f7d7272a4f0ec9c48c": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-dark-zh-TW-revoked.png"
+  ],
+  "73b82a05c84a3f12c33cf65d6ec6f8f809ac225faa3eddb9bcb3c8c7a4501e83": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-dark-en-rejected.png"
+  ],
+  "3368ddaa544e68f0e737fd9b864ad78892cbc7872f4d4358e7ba5d98b4b44a30": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-light-zh-TW-offline.png"
+  ],
+  "967ec445a215f8654448cb22c890672a383ba0f2028a7a8dd9fd9b8a3403a18c": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-dark-zh-TW-revoked.png"
+  ],
+  "f3b159f9225ee0cc743b01950a02ce5ef699e0d893a249d3a079684ffffb9478": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-light-zh-TW-rejected-confirm.png"
+  ],
+  "2a5907f837115e38ed619fdaa6861dad5fa9702b3d2d1deaa10f4075ab9cd61f": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-light-zh-TW-before.png"
+  ],
+  "de2d70565682766bf6ec78349047f84691eac5e9f909e51c467162b06079c71e": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-light-en-before.png"
+  ],
+  "dced41c1e01397a804ffca279cd7d8f2172b5b6739a172d02e22d0b0661babc8": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-light-en-offline.png"
+  ],
+  "fd300eb498577a3f1275346167ac6c04410b0f6c131ec522123abd9dfddcf569": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-dark-zh-TW-old-client.png",
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-dark-zh-TW-rejected.png",
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-dark-zh-TW-old-css.png"
+  ],
+  "3fde21ff8972f926a135e9c47c1d05305d898476ab75e16fcd0d0f57b60b87cb": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-dark-en-before.png"
+  ],
+  "4c1b46ff9de257fa62d91661c06a277d59eeca80b2ac12068054710f7883ab48": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-dark-en-before.png"
+  ],
+  "85c746fb617434498abbed6964a366a7ba85b95f40c21dd49639561bb54b53cd": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-light-zh-TW-before.png"
+  ],
+  "b9eaa68d108afe59d591156af9ec0c1b2dfe36fec65dd267b4e0d0e03eebb19a": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-dark-zh-TW-old-ui.png"
+  ],
+  "f5b05efd791db5be681d7a78ecc638ee7de053668794e92de0dfae2798c9b13f": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-dark-en-rejected.png"
+  ],
+  "15827df6de6a61b1591bf71bb779bc772f30e1e1732067c2cfea66622247bd0e": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-light-zh-TW-revoked.png"
+  ],
+  "3b0cd3b123dcb3d1e362d182f5bab2a7e018e50ff3046b6c240603b48bf0d77e": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-light-zh-TW-rejected-ready-to-pair.png"
+  ],
+  "7aff5571b81942e9c391d5ee818f198c1736c682b87d22aeb3063b464297374a": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-dark-en-revoked.png"
+  ],
+  "fb5c606ba6621688650582d27e5362f0669f95cfb47e8b776bac407405c8c70d": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-light-en-rejected-confirm.png"
+  ],
+  "0773cbff9e422455702d3e6bbc18986f0048f92e8f82845d592ceb8717ebe8db": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-light-en-rejected.png"
+  ],
+  "1e11818be18d22c7e9876e815fc26bdda3e29dc2186fca1eaa2d09e9d3c0ddd6": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-light-zh-TW-rejected.png"
+  ],
+  "587d5caefa8d41c3cb4ab86e49e4547695d08126ea6c759d9d7281fec44e7d03": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-light-zh-TW-offline.png"
+  ],
+  "1aad795ecf1e8d5dbd1e1583aca6b1dd956ba5034089da1215688607795c59a5": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-light-en-revoked.png"
+  ],
+  "0b301d9365838e4c2d5ee8a20f2cae3d4e3966fc94cd06a967177f1fbcce5196": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-light-zh-TW-revoked.png"
+  ],
+  "ae678a06a6a60ca1ae2aa483da8236e933900dfc126ef62a3f2b8247f0fdae4d": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-dark-en-offline.png"
+  ],
+  "c34f75d476d8a32c4587392e36cbefeec2a721251efb4ba6d82557999d2803be": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-dark-en-offline.png"
+  ],
+  "7219d6592ef9d46e1c49608b17d6f6dea2568877daf642160cc6cee2fe7b5bcc": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-light-en-revoked.png"
+  ],
+  "ad07f327d7dfc83fddecc112202781efd5c26ec69de46462fbb0d9f0b3b74cd4": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-dark-en-revoked.png"
+  ],
+  "0fee8e105027b76ec5dd07a071dceb61385d07c0cf380ab9bee03c642e5e37b4": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-light-en-rejected-ready-to-pair.png"
+  ],
+  "62580133a2ce661dbee80f52601ef75f47c78a0444bf20f427da8c53ecd8f0e3": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-dark-zh-TW-old-strings.png"
+  ],
+  "8859120a2d6d6b798c89c2b1a9cdaa2e97db34ed99b84a0c7b1755fc26d95de2": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-dark-zh-TW-rejected.png"
+  ],
+  "e6413735e7e8496042d70723a3f6c52b80e61a5dff47ca54f05c9768d087be73": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-dark-zh-TW-offline.png"
+  ],
+  "abaf678941a7baa4bc5743ea401c83a0ba3598c64f4795a8b1cb0e9a3191db73": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-light-en-offline.png"
+  ],
+  "84c36ac7d572c93cedbed9a8992f158f0dee04ff55c3233c5730ada975129085": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-dark-zh-TW-offline.png"
+  ],
+  "1759a85c26952f44381fd730ef80664cd2fa88e134a82e6dca745a1cbd1f4b14": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-dark-zh-TW-before.png"
+  ],
+  "339e0c92fe7203396b2d81241bec6794fec160887345d6b9b8fbe0c000407c53": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-light-en-rejected.png"
+  ],
+  "14146d805abde6b8ef8cf5cb8d06ee8f22b7b2a9d7fec4287d723026e7c29c8e": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-light-en-before.png"
+  ],
+  "651893c33b9d4685e7f958f7a5390e20cbd8dac3de2a4a1a5df964353d9305ff": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/desk-light-zh-TW-rejected.png"
+  ],
+  "31d151e0302f0af57ddd1d0b5e5ea652db2499298505ed1fee360936d0762e7e": [
+    "docs/evidence/hub-member-recovery-3415/screenshots/phone-dark-zh-TW-before.png"
+  ],
+  "e9d63ec9311a58319f657e719ce45fd2d307203b7e9aacc4eb1a1234a565b3b3": [
+    "src/fleet-manager.ts"
+  ],
+  "b129569f14c474d6daa47fb5e43b05374a711bcea361ab206393c04659cd23ad": [
+    "src/hub-pairing-summary.ts"
+  ],
+  "7d9f88a6f0dd116730d91bd47cdff851d742201c1e976fe07e4f1ffae49e60da": [
+    "src/hub/client.ts"
+  ],
+  "3708246bd553eff7524ffc1bb31e57c1fe232834d427e86650cf2cbd70cafc20": [
+    "src/hub/compose/member.ts"
+  ],
+  "4e22071e25f7da3d12785d22db115dc1ceb207adf0695c7029ed69a42aa3b9fb": [
+    "src/hub/member/pairing-api.ts"
+  ],
+  "e0a3598658f7aa47c24866a9bc061e1ebbdff9706f110b3e7429529cfa76a7dd": [
+    "src/hub/server.ts"
+  ],
+  "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6": [
+    "src/ui/hub-client.js"
+  ],
+  "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b": [
+    "src/ui/hub-strings.js"
+  ],
+  "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a": [
+    "src/ui/settings-hub.js"
+  ],
+  "a874ce6882d4b0be87793e2b88a8159650a0fa941a8fde390ee5a7dc121be988": [
+    "tests/hub-member-restore-3415.test.ts"
+  ],
+  "7ce28dfdbe1dbd7bd8533bc35c2762a59cf94e09f80fb5f80bdfdbaa6704e5ed": [
+    "tests/hub-member-held-ui-3415.test.ts"
+  ],
+  "408d0be0edb9a9463aaff3e2dde04ea750e3d4a28e4493e61734e18cf0b4e188": [
+    "scripts/manual/hub-member-recovery-3415.mts"
+  ]
+}
