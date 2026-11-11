@@ -30,17 +30,28 @@ export class TranscriptDeltaReader {
   private carry: Buffer = Buffer.alloc(0);
   private skippingLine = false;
   private inFlight = false;
+  private lostIdentity = false;
 
   constructor(private readonly path: string, offset: number, private readonly backend: string, private readonly needle: TranscriptNeedle,
-    private readonly identity?: { dev: number; ino: number }) {
+    private readonly identity?: { dev: number; ino: number }, private readonly onIdentityLost?: () => void) {
     this.position = offset;
   }
 
   /** Where the next look reads from (tests). */
   get readPosition(): number { return this.position; }
 
+  /** An observed bound-file loss is permanent, even if the original inode returns. */
+  private unavailable(): "unavailable" {
+    if (this.identity && !this.lostIdentity) {
+      this.lostIdentity = true;
+      this.onIdentityLost?.();
+    }
+    return "unavailable";
+  }
+
   /** One bounded look. Never throws. */
   async look(): Promise<TranscriptLook> {
+    if (this.lostIdentity) return "unavailable";
     if (this.inFlight) return "pending";
     this.inFlight = true;
     let abandoned = false;
@@ -71,18 +82,18 @@ export class TranscriptDeltaReader {
     let size: number;
     try {
       const st = await (this.identity ? lstat(this.path) : stat(this.path));
-      if (this.identity && (!st.isFile() || st.dev !== this.identity.dev || st.ino !== this.identity.ino)) return "unavailable";
+      if (this.identity && (!st.isFile() || st.dev !== this.identity.dev || st.ino !== this.identity.ino)) return this.unavailable();
       size = st.size;
-    } catch { return "unavailable"; }
-    if (size < this.position) return "unavailable"; // truncated or replaced below the checkpoint
+    } catch { return this.unavailable(); }
+    if (size < this.position) return this.unavailable(); // truncated or replaced below the checkpoint
     if (size === this.position) return null;
     const length = Math.min(TRANSCRIPT_PROOF_READ.chunkBytes, size - this.position);
     let fh;
-    try { fh = await open(this.path, this.identity ? constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK : "r"); } catch { return "unavailable"; }
+    try { fh = await open(this.path, this.identity ? constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK : "r"); } catch { return this.unavailable(); }
     try {
       if (this.identity) {
         const opened = await fh.stat();
-        if (!opened.isFile() || opened.dev !== this.identity.dev || opened.ino !== this.identity.ino || opened.size < this.position) return "unavailable";
+        if (!opened.isFile() || opened.dev !== this.identity.dev || opened.ino !== this.identity.ino || opened.size < this.position) return this.unavailable();
       }
       const buffer = Buffer.alloc(length);
       let read = 0;
@@ -93,11 +104,11 @@ export class TranscriptDeltaReader {
       }
       if (this.identity) {
         const after = await lstat(this.path);
-        if (!after.isFile() || after.dev !== this.identity.dev || after.ino !== this.identity.ino) return "unavailable";
+        if (!after.isFile() || after.dev !== this.identity.dev || after.ino !== this.identity.ino) return this.unavailable();
       }
       return buffer.subarray(0, read);
     } catch {
-      return "unavailable";
+      return this.unavailable();
     } finally {
       await fh.close().catch(() => {});
     }
