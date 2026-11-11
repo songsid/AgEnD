@@ -50,15 +50,22 @@
  * #2716: the whole-fleet office (the page's own, never stored as an office) has its style kept here too, for every
  * viewer and device and the share links alike — `autoSkin` beside the list (a skin id: a built-in style's or a pack's;
  * none: the page's default). An older host reads past it; its save drops it (the style falls back to the default).
+ *
+ * #3679: the fleet's own Office level titles, for every office — `levels` beside the list ({ titles, fixed }, checked by
+ * a pack's rules: fleet-office-pack.js checkLevels; none: the page's). A pack's own `levels` win for offices drawn in it
+ * (fleet-office-levels.js mergeLevels). Kept and dropped by an older host as autoSkin is; one that no longer checks is
+ * read back as none, the offices kept.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
-import { applyOverrides, checkLayoutOverrides, type CheckedPack, type LayoutOverrides } from "./ui/fleet-office-pack.js";
+import { applyOverrides, checkLayoutOverrides, checkLevels, type CheckedPack, type LayoutOverrides, type LevelWords } from "./ui/fleet-office-pack.js";
 
 export const OFFICE_LIMITS = {
   offices: 20, members: 500, seats: 500, waypoints: 2000, edges: 8000,
   coord: 20000, name: 60, member: 200, pointId: 64, fileBytes: 256 * 1024,
+  /** #3679: the fleet-wide level titles, as JSON. */
+  levelsBytes: 64 * 1024,
 } as const;
 /** The page's own office (fleet-office-model.js AUTO_ID): never a stored one's id. */
 export const AUTO_OFFICE_ID = "auto";
@@ -179,7 +186,18 @@ export function checkOffices(raw: unknown, packOf?: OverridePack): OfficeCheck {
   }
 }
 
-type State = { rev: number; offices: Office[]; autoSkin: string | null } | "unreadable";
+type Kept = { rev: number; offices: Office[]; autoSkin: string | null; levels: LevelWords | null };
+type State = Kept | "unreadable";
+/** #3679: what a fleet-wide `levels` holds — none when it has no titles and pins nothing. */
+const levelsKept = (l: LevelWords): LevelWords | null => (l.titles?.length || (l.fixed && Object.keys(l.fixed).length) ? l : null);
+/** #3679: a fleet-wide `levels` checked, or why not (a pack's rules, and a size cap). Null: none (the page's titles). */
+export function checkFleetLevels(raw: unknown): { ok: true; levels: LevelWords | null } | { ok: false; status: 400 | 413; error: string; detail?: string } {
+  if (raw === null) return { ok: true, levels: null };
+  const r = checkLevels(raw);
+  if (!r.ok) return { ok: false, status: 400, error: "office_levels_invalid", detail: r.error };
+  if (Buffer.byteLength(JSON.stringify(r.levels)) > OFFICE_LIMITS.levelsBytes) return { ok: false, status: 413, error: "office_levels_too_large", detail: `at most ${OFFICE_LIMITS.levelsBytes / 1024} KiB` };
+  return { ok: true, levels: levelsKept(r.levels) };
+}
 /** The overrides parts kept beside the offices on disk, apart from the rest (#2665 night places, #2691 seat reservations, #2736 the mail drop). */
 const BESIDE = ["furnitureNight", "seatFor", "mailDrop"] as const;
 type Beside = (typeof BESIDE)[number];
@@ -222,9 +240,9 @@ export class OfficeStore {
     if (this.state) return this.state;
     let body: string;
     try { body = readFileSync(this.path, "utf8"); }
-    catch (err) { return (this.state = (err as NodeJS.ErrnoException).code === "ENOENT" ? { rev: 0, offices: [], autoSkin: null } : "unreadable"); }
+    catch (err) { return (this.state = (err as NodeJS.ErrnoException).code === "ENOENT" ? { rev: 0, offices: [], autoSkin: null, levels: null } : "unreadable"); }
     try {
-      const doc = JSON.parse(body) as { version?: unknown; rev?: unknown; offices?: unknown; overrides?: unknown; autoSkin?: unknown } & { [K in Beside]?: unknown };
+      const doc = JSON.parse(body) as { version?: unknown; rev?: unknown; offices?: unknown; overrides?: unknown; autoSkin?: unknown; levels?: unknown } & { [K in Beside]?: unknown };
       if (doc.version !== 1 || !Number.isSafeInteger(doc.rev) || !Array.isArray(doc.offices)) return (this.state = "unreadable");
       const offices: Office[] = [], ids = new Set<string>();
       const read = (raw: unknown): Office | null => {
@@ -249,17 +267,40 @@ export class OfficeStore {
       }
       // #2716: one that does not check is the default's (none), the offices kept.
       const autoSkin = typeof doc.autoSkin === "string" && ID.test(doc.autoSkin) ? doc.autoSkin : null;
-      return (this.state = { rev: doc.rev as number, offices, autoSkin });
+      // #3679: likewise, titles that no longer check are none (the page's), the offices kept.
+      const lv = doc.levels === undefined ? null : checkFleetLevels(doc.levels), levels = lv && lv.ok ? lv.levels : null;
+      return (this.state = { rev: doc.rev as number, offices, autoSkin, levels });
     } catch { return (this.state = "unreadable"); }
   }
 
   readable(): boolean { return this.load() !== "unreadable"; }
   rev(): number { const s = this.load(); return s === "unreadable" ? 0 : s.rev; }
-  /** What the page reads (GET /ui/offices): a copy; none when the file is unreadable. #2716: `autoSkin` when one is kept. */
-  list(): { rev: number; offices: Office[]; readable: boolean; autoSkin?: string } {
+  /**
+   * What the page reads (GET /ui/offices): a copy; none when the file is unreadable. #2716: `autoSkin` when one is kept;
+   * #3679: `levels` when the fleet keeps its own titles.
+   */
+  list(): { rev: number; offices: Office[]; readable: boolean; autoSkin?: string; levels?: LevelWords } {
     const s = this.load();
     return s === "unreadable" ? { rev: 0, offices: [], readable: false }
-      : { rev: s.rev, offices: clone(s.offices), readable: true, ...(s.autoSkin ? { autoSkin: s.autoSkin } : {}) };
+      : { rev: s.rev, offices: clone(s.offices), readable: true, ...(s.autoSkin ? { autoSkin: s.autoSkin } : {}), ...(s.levels ? { levels: clone(s.levels) } : {}) };
+  }
+  /** #3679: the fleet-wide level titles, or null (the page's own). A copy. */
+  levels(): LevelWords | null { const s = this.load(); return s === "unreadable" || !s.levels ? null : clone(s.levels); }
+  /**
+   * #3679: set the fleet-wide level titles (PUT /ui/office-level-titles): `{ titles?, fixed? }` by a pack's rules, or
+   * null for none. As setAutoSkin: one value, the last save wins (no rev), the offices written unchanged with it, the
+   * rev moved (every page reads again); on disk first, then in memory.
+   */
+  setLevels(raw: unknown): { ok: true; rev: number; levels: LevelWords | null } | { ok: false; status: 400 | 413 | 503; error: string; detail?: string } {
+    const s = this.load();
+    if (s === "unreadable") return { ok: false, status: 503, error: "offices_unreadable" };
+    const checked = checkFleetLevels(raw);
+    if (!checked.ok) return checked;
+    const next: Kept = { ...s, rev: s.rev + 1, levels: checked.levels };
+    try { this.write(next); }
+    catch (err) { return { ok: false, status: 503, error: "offices_write_failed", detail: (err as Error).message }; }
+    this.state = next;
+    return { ok: true, rev: next.rev, levels: next.levels ? clone(next.levels) : null };
   }
   /** #2716: the whole-fleet office's style kept for everyone, or null (the page's default). */
   autoSkin(): string | null { const s = this.load(); return s === "unreadable" ? null : s.autoSkin; }
@@ -272,14 +313,14 @@ export class OfficeStore {
     const s = this.load();
     if (s === "unreadable") return { ok: false, status: 503, error: "offices_unreadable" };
     if (skin !== null && (typeof skin !== "string" || !ID.test(skin))) return { ok: false, status: 400, error: "office_style_invalid", detail: "skin: 1–40 letters, digits, _ or -, or null" };
-    const autoSkin = skin as string | null, rev = s.rev + 1;
-    try { this.write(rev, s.offices, autoSkin); }
+    const autoSkin = skin as string | null, next: Kept = { ...s, rev: s.rev + 1, autoSkin };
+    try { this.write(next); }
     catch (err) { return { ok: false, status: 503, error: "offices_write_failed", detail: (err as Error).message }; }
-    this.state = { rev, offices: s.offices, autoSkin };
-    return { ok: true, rev, autoSkin };
+    this.state = next;
+    return { ok: true, rev: next.rev, autoSkin };
   }
-  private write(rev: number, offices: Office[], autoSkin: string | null): void {
-    atomicWriteFileSync(this.path, JSON.stringify({ version: 1, rev, ...officesOnDisk(offices), ...(autoSkin ? { autoSkin } : {}) }, null, 2) + "\n", { mode: 0o600 });
+  private write({ rev, offices, autoSkin, levels }: Kept): void {
+    atomicWriteFileSync(this.path, JSON.stringify({ version: 1, rev, ...officesOnDisk(offices), ...(autoSkin ? { autoSkin } : {}), ...(levels ? { levels } : {}) }, null, 2) + "\n", { mode: 0o600 });
   }
   /**
    * Replace every stored office (PUT /ui/offices). `expectedRev`: the rev the page last read — another change since is a
@@ -292,11 +333,11 @@ export class OfficeStore {
     if (expectedRev !== undefined && expectedRev !== s.rev) return { ok: false, status: 409, error: "offices_changed", detail: `now at rev ${s.rev}` };
     const checked = checkOffices(raw, opts.packOf ?? this.packOf);
     if (!checked.ok) return checked;
-    const rev = s.rev + 1;
-    try { this.write(rev, checked.offices, s.autoSkin); }
+    const next: Kept = { ...s, rev: s.rev + 1, offices: checked.offices };
+    try { this.write(next); }
     catch (err) { return { ok: false, status: 503, error: "offices_write_failed", detail: (err as Error).message }; }
-    this.state = { rev, offices: checked.offices, autoSkin: s.autoSkin };
-    return { ok: true, rev, offices: clone(checked.offices) };
+    this.state = next;
+    return { ok: true, rev: next.rev, offices: clone(checked.offices) };
   }
 }
 
