@@ -645,10 +645,148 @@ register("pendingHub", {
   en: { connect: "Connect this Fleet to Hub {0} using your company account. Agent sharing stays separate." },
   "zh-TW": { connect: "以公司帳號將這個 Fleet 連接到 Hub {0}。分享 Agent 需另外選擇。" },
 });
-function pendingSummaryLine(line) {
-  if (typeof line !== "string") return line;
+// Optional presentation only. Own namespace works with a retained app-i18n.js; no new import is required.
+register("pendingSummary", {
+  en: {
+    "host_cli.install_confirm": "Install {0} on the AgEnD host",
+    "host_cli.update": "Update {0} on the AgEnD computer to {1}, the release AgEnD has audited (the registry's update command, run unattended). Only this CLI changes; nothing the page sent is run.",
+    "host_cli.update_latest": "Update {0} on the AgEnD computer to the LATEST release (not audited by AgEnD): the registry's update command for this CLI, run unattended; the CLI's own updater cannot choose a release. Only this CLI changes; nothing the page sent is run.",
+    "runtime_cli.install": "Install {0} {1} on the paired Windows computer {2}: the version AgEnD pins, checked on that computer (its pinned hashes, the registry's signatures, the publisher's signature). Only this CLI is installed; nothing the page sent is run. That computer's owner's own switch still has to allow it.",
+    "runtime_cli.update_latest": "If {0} is already on the paired Windows computer {1}, this updates it to the vendor's LATEST release (not audited by AgEnD): the Runtime downloads the release the vendor's own manifest names and checks its checksum and the publisher's signature on that computer before switching to it.",
+    "hub.browserCertificate.replace": "Replace the Hub browser certificate. The member transport identity stays the same.",
+    "hub.browserCertificate.fingerprint": "SHA-256 fingerprint: {0}",
+    "hub.browserCertificate.expires": "Expires: {0}",
+    "hub.browserCertificate.selfSigned": "This certificate is self-signed. Browsers will warn unless you trust it separately.",
+    "hub.retention.content": "Hub question and answer content: keep {0} days",
+    "hub.retention.events": "Hub event records: keep {0} days",
+    "hub.retention.purge": "Shorter periods can permanently remove older records at the next daily cleanup.",
+    "hub.run.start": "Start this fleet's Hub. People can sign in to it again and chats with shared agents resume.",
+    "hub.run.stop": "Stop this fleet's Hub and pause chats with shared agents. Valid sign-ins can resume when it runs again. Nothing is deleted.",
+    "hub.preview.on": "Serve HTML previews on this Hub at port {0}.",
+    "hub.preview.off": "Stop serving HTML previews on this Hub.",
+    "hub.membership.enable": "Enable this fleet's Hub membership. Pairing and sharing an agent are separate choices.",
+    "hub.membership.disable": "Disable this fleet's Hub membership. New Hub work and answer disclosure stop; existing agent conversations remain.",
+    "hub.companyJoin.confirm": "Connect this Fleet to Hub {0} using your company account. Agent sharing stays separate.",
+    "hub.companyJoin.repair": "Replace the saved identity of Hub {0} using the new company link. This does not connect a Fleet.",
+    "general_location.confirm_host": "Run General on this host again? The Windows process must stop first. Its conversation is kept. General resumes this host’s saved conversation, or starts one if this host has none.",
+    "general_location.confirm_windows": "Run General on {0}? Its current process must stop first. The chat stays here. The host conversation is kept; Windows uses its own conversation. Pending or uncertain input will not be sent to the other conversation.",
+    "general_location.history": "Host and Windows conversations stay separate. Switching does not copy or merge their history.",
+    "hub.exposure.summary.share": "Share \"{0}\" with the Hub",
+    "hub.exposure.summary.context": "Hub questions go to this agent's own conversation, with its folder and Settings tools",
+    "hub.exposure.summary.revision": "Revision: {0}",
+    "hub.pairing.summary.connect": "Connect this fleet to the Hub at {0}",
+    "hub.pairing.summary.approval": "It asks the Hub's owner and administrator to approve it",
+    "hub.pairing.summary.confirm": "Confirm the pairing fingerprint for {0}",
+    "hub.pairing.summary.disconnect": "Disconnect this fleet from the Hub at {0} ({1}, pairing {2})",
+    "hub.pairing.summary.withdraw": "Every agent shared there is withdrawn; the Hub's administrator revokes the fleet there",
+    "settings_confirm.summary.default": "default", "settings_confirm.summary.absent": "absent", "settings_confirm.summary.fingerprint": "fingerprint",
+    "settings_confirm.summary.in_effect": "{0} (in effect)", "settings_confirm.summary.inherit": " — {0} agent(s) inherit it: {1}", "settings_confirm.summary.more": " +{0} more",
+    "settings_confirm.summary.deleted": "deleted", "settings_confirm.summary.add": "add", "settings_confirm.summary.remove": "remove", "settings_confirm.summary.order": "order",
+    "settings_confirm.summary.removed": "field removed (inherit/omitted policy)", "settings_confirm.summary.connections": "ordered connections / primary",
+    "settings_confirm.summary.connection": "connection", "settings_confirm.summary.confirmed": "confirmed operation",
+    "settings_confirm.summary.role.classicAdmin": "Classic admin (C)", "settings_confirm.summary.role.fleetAdmin": "fleet admin (F)",
+    "settings_confirm.summary.role.user": "user", "settings_confirm.summary.role.group": "group", "settings_confirm.summary.role.guild": "guild",
+  },
+  "zh-TW": {
+    "host_cli.install_confirm": "在 AgEnD 主機上安裝 {0}",
+    "host_cli.update": "在 AgEnD 這台電腦上把 {0} 更新到 {1}（AgEnD 稽核過的版本），使用登錄表裡的更新指令（無人值守執行）。只會更新這個 CLI；頁面送來的內容不會被執行。",
+    "host_cli.update_latest": "在 AgEnD 這台電腦上把 {0} 更新到「最新版」（未經 AgEnD 稽核）：使用登錄表裡這個 CLI 的更新指令（無人值守執行）；這個 CLI 自己的更新器無法指定版本。只會更新這個 CLI；頁面送來的內容不會被執行。",
+    "runtime_cli.install": "在已配對的 Windows 電腦 {2} 上安裝 {0} {1}：AgEnD 固定的版本，並在那台電腦上檢查（固定的雜湊、registry 簽章、發行者簽章）。只會安裝這個 CLI；頁面送來的內容不會被執行。仍需要那台電腦主人自己的開關允許。",
+    "runtime_cli.update_latest": "如果已配對的 Windows 電腦 {1} 上已經有 {0}，這會把它更新到廠商的「最新版」（未經 AgEnD 稽核）：Runtime 會下載廠商自己的 manifest 指定的版本，並在那台電腦上檢查它的雜湊與發行者簽章，才會切換過去。",
+    "hub.browserCertificate.replace": "更換 Hub 瀏覽器憑證；成員傳輸身分保持不變。",
+    "hub.browserCertificate.fingerprint": "SHA-256 指紋：{0}",
+    "hub.browserCertificate.expires": "到期時間：{0}",
+    "hub.browserCertificate.selfSigned": "這是自簽憑證。除非另外設定信任，否則瀏覽器會顯示警告。",
+    "hub.retention.content": "Hub 提問與回答內容：保留 {0} 天",
+    "hub.retention.events": "Hub 事件紀錄：保留 {0} 天",
+    "hub.retention.purge": "縮短保留天數後，下次每日清理可能永久刪除較早的紀錄。",
+    "hub.run.start": "啟動這個 Fleet 的 Hub。大家可以再次登入，與分享的 Agent 的對話會恢復。",
+    "hub.run.stop": "停止這個 Fleet 的 Hub，暫停與分享的 Agent 的對話。再次執行後，仍有效的登入狀態可以恢復。不會刪除任何資料。",
+    "hub.preview.on": "在這個 Hub 的連接埠 {0} 提供 HTML 預覽。",
+    "hub.preview.off": "停止在這個 Hub 提供 HTML 預覽。",
+    "hub.membership.enable": "啟用這個 Fleet 的 Hub 成員功能。配對與分享 Agent 需另外選擇。",
+    "hub.membership.disable": "停用這個 Fleet 的 Hub 成員功能。停止新的 Hub 工作與回答傳送；既有 Agent 對話會保留。",
+    "hub.companyJoin.confirm": "以公司帳號將這個 Fleet 連接到 Hub {0}。分享 Agent 需另外選擇。",
+    "hub.companyJoin.repair": "使用新的公司連結，更換 Hub {0} 已儲存的身分。這項操作不會連接 Fleet。",
+    "general_location.confirm_host": "要讓 General 回到這台主機執行嗎？必須先停止 Windows 程序，其對話會保留。General 會繼續這台主機儲存的對話；若主機沒有既有對話，才開啟新對話。",
+    "general_location.confirm_windows": "要讓 General 在 {0} 執行嗎？必須先停止目前的程序。聊天位置不變。主機上的對話會保留，Windows 使用自己的對話。待處理或結果不明的輸入不會送到另一段對話。",
+    "general_location.history": "主機與 Windows 各自保留對話，切換時不會複製或合併對話紀錄。",
+    "hub.exposure.summary.share": "將「{0}」分享給 Hub",
+    "hub.exposure.summary.context": "Hub 提問會送到這個 Agent 自己的對話，使用其資料夾與設定的工具",
+    "hub.exposure.summary.revision": "修訂版本：{0}",
+    "hub.pairing.summary.connect": "將這個 Fleet 連接到 {0} 的 Hub",
+    "hub.pairing.summary.approval": "需要 Hub 的擁有者與管理員核准",
+    "hub.pairing.summary.confirm": "確認 {0} 的配對指紋",
+    "hub.pairing.summary.disconnect": "中斷這個 Fleet 與 {0} 的 Hub 連接（{1}，配對 {2}）",
+    "hub.pairing.summary.withdraw": "撤下所有分享到該 Hub 的 Agent；由 Hub 管理員在該處撤銷這個 Fleet",
+    "settings_confirm.summary.default": "預設", "settings_confirm.summary.absent": "未設定", "settings_confirm.summary.fingerprint": "指紋",
+    "settings_confirm.summary.in_effect": "{0}（實際生效）", "settings_confirm.summary.inherit": " — {0} 個 agent 繼承此設定：{1}", "settings_confirm.summary.more": " 等另外 {0} 個",
+    "settings_confirm.summary.deleted": "已刪除", "settings_confirm.summary.add": "新增", "settings_confirm.summary.remove": "移除", "settings_confirm.summary.order": "順序",
+    "settings_confirm.summary.removed": "已移除欄位（繼承／未指定的政策）", "settings_confirm.summary.connections": "連接順序／主要連接",
+    "settings_confirm.summary.connection": "連接", "settings_confirm.summary.confirmed": "需確認的操作",
+    "settings_confirm.summary.role.classicAdmin": "Classic 管理員（C）", "settings_confirm.summary.role.fleetAdmin": "Fleet 管理員（F）",
+    "settings_confirm.summary.role.user": "使用者", "settings_confirm.summary.role.group": "群組", "settings_confirm.summary.role.guild": "伺服器",
+  },
+});
+const pendingSummaryArguments = Object.fromEntries([
+  ["host_cli.install_confirm", "s"],
+  ["host_cli.update", "ss"],
+  ["host_cli.update_latest", "s"],
+  ["runtime_cli.install", "sss"],
+  ["runtime_cli.update_latest", "ss"],
+  ["hub.browserCertificate.replace", ""],
+  ["hub.browserCertificate.fingerprint", "s"],
+  ["hub.browserCertificate.expires", "s"],
+  ["hub.browserCertificate.selfSigned", ""],
+  ["hub.retention.content", "n"],
+  ["hub.retention.events", "n"],
+  ["hub.retention.purge", ""],
+  ["hub.run.start", ""],
+  ["hub.run.stop", ""],
+  ["hub.preview.on", "s"],
+  ["hub.preview.off", ""],
+  ["hub.membership.enable", ""],
+  ["hub.membership.disable", ""],
+  ["hub.companyJoin.confirm", "s"],
+  ["hub.companyJoin.repair", "s"],
+  ["general_location.confirm_host", ""],
+  ["general_location.confirm_windows", "s"],
+  ["general_location.history", ""],
+  ["hub.exposure.summary.share", "s"],
+  ["hub.exposure.summary.context", ""],
+  ["hub.exposure.summary.revision", "n"],
+  ["hub.pairing.summary.connect", "s"],
+  ["hub.pairing.summary.approval", ""],
+  ["hub.pairing.summary.confirm", "s"],
+  ["hub.pairing.summary.disconnect", "sss"],
+  ["hub.pairing.summary.withdraw", ""],
+  ...["default", "absent", "fingerprint", "deleted", "add", "remove", "order", "removed", "connections", "connection", "confirmed", "role.classicAdmin", "role.fleetAdmin", "role.user", "role.group", "role.guild"].map(key => [`settings_confirm.summary.${key}`, ""]),
+  ["settings_confirm.summary.in_effect", "s"], ["settings_confirm.summary.inherit", "ns"], ["settings_confirm.summary.more", "n"],
+]);
+function legacyPendingSummaryLine(line) {
   const known = /^(?:Connect this Fleet to Hub (.+) using your company account\. Agent sharing stays separate\.|以公司帳號將這個 Fleet 連接到 Hub (.+)。分享 Agent 需另外選擇。)$/.exec(line);
   return known ? t("pendingHub.connect", known[1] ?? known[2]) : line;
+}
+function pendingSummaryLine(line, descriptor) {
+  if (typeof line !== "string") return line;
+  if (descriptor != null) {
+    if (descriptor.v !== 1 || descriptor.fallback !== line || !Array.isArray(descriptor.parts) || !descriptor.parts.length || descriptor.parts.length > 64) return legacyPendingSummaryLine(line);
+    let units = 0;
+    const rendered = [];
+    for (const part of descriptor.parts) {
+      if (typeof part === "string") { units += part.length; rendered.push(part); }
+      else {
+        if (!part || typeof part.key !== "string" || !Object.prototype.hasOwnProperty.call(pendingSummaryArguments, part.key) || !Array.isArray(part.args)) return legacyPendingSummaryLine(line);
+        const shape = pendingSummaryArguments[part.key];
+        if (part.args.length !== shape.length || !part.args.every((arg, i) => shape[i] === "s" ? typeof arg === "string" : typeof arg === "number" && Number.isFinite(arg))) return legacyPendingSummaryLine(line);
+        units += part.args.reduce((sum, arg) => sum + String(arg).length, 0);
+        rendered.push(t(`pendingSummary.${part.key}`, ...part.args));
+      }
+      if (units > 8192) return legacyPendingSummaryLine(line);
+    }
+    return rendered.join("");
+  }
+  return legacyPendingSummaryLine(line);
 }
 export function PendingChanges({ inline = false } = {}) {
   const { pendingChanges } = useStore(appStore);
@@ -674,7 +812,7 @@ export function PendingChanges({ inline = false } = {}) {
       ${p.state === "pending" ? html`<span class="pending-left">${t("app.pendingLeft", mmss(p.deadline - NOW()))}</span>` : null}
       ${p.dismiss ? html`<button type="button" class="icon-btn" aria-label=${t("app.close")} title=${t("app.close")} onClick=${p.dismiss}><${Icon} name="close" size=${14} /></button>` : null}</div>
     ${p.label ? html`<div class="pending-label">${p.label}</div>` : null}
-    ${Array.isArray(p.summary) && p.summary.length ? html`<details class="pending-details"><summary>${t("pendingHost.details")}</summary><ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${String(pendingSummaryLine(line)).replace(/\\([\\`*_~[\]()<>|])/g, "$1")}</li>`)}</ul></details>` : null}
+    ${Array.isArray(p.summary) && p.summary.length ? html`<details class="pending-details"><summary>${t("pendingHost.details")}</summary><ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${String(pendingSummaryLine(line, Array.isArray(p.summary_i18n) && p.summary_i18n.length === p.summary.length ? p.summary_i18n[i] : null)).replace(/\\([\\`*_~[\]()<>|])/g, "$1")}</li>`)}</ul></details>` : null}
     ${p.state === "pending" ? html`<${PendingHow} p=${p} />` : null}
     ${(p.state === "applying" || p.state === "applied") && p.confirmation && p.confirmation.kind === "web" ? html`<p class="note">${t("app.pendingWeb")}</p>` : null}
     ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" ? html`<${PendingEnded} p=${p} />` : null}

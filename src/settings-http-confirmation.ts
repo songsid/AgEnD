@@ -178,7 +178,7 @@ export class SettingsHttpConfirmation {
     const payload = { method, url: url.pathname + url.search, key, body: Buffer.from(raw), binding, localAdmin, requester: principal.requester, localSession: principal.localSession };
     const result = this.store.propose({ session: principal.id, key: key ?? `operation:${requestFingerprint}`,
       requestFingerprint, fingerprint: effect.diff.fingerprint, section: effect.diff.section, requestedBy: principal.label,
-      source: principal.source, summary: effect.diff.summary, ...(companyStart ? { presentation: "hub-join" as const, hubJoin: { handoffId: typeof (body as any).handoffId === "string" ? (body as any).handoffId : null, target: new URL((body as any).address).origin } } : {}), affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,
+      source: principal.source, summary: effect.diff.summary, summary_i18n: effect.diff.summary_i18n, ...(companyStart ? { presentation: "hub-join" as const, hubJoin: { handoffId: typeof (body as any).handoffId === "string" ? (body as any).handoffId : null, target: new URL((body as any).address).origin } } : {}), affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,
       ...(companyStart ? { codePolicy: { kind: "company-start" as const, current: (session: string) => session === principal.id
         && principal.current() && localAdmin?.() === true && principal.localSession?.current() === true } } : {}),
       ...(effect.diff.opensLink ? { opensLink: true as const } : {}),

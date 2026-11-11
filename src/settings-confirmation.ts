@@ -3,6 +3,7 @@ import { SettingsExecution, settingsFingerprint } from "./settings-transaction.j
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { performance } from "node:perf_hooks";
 import { t } from "./locale.js";
+import { copySettingsSummary, type SettingsSummaryPresentation } from "./settings-summary.js";
 
 export const SETTINGS_CONFIRMATION_TTL_MS = 5 * 60_000;
 const RETAIN_TERMINAL_MS = 10 * 60_000;
@@ -46,6 +47,8 @@ export interface SettingsPendingView {
   source: "web_session" | "public_link" | "setup_session" | "agent_request";
   execution?: { phase: "queued" | "running" | "cleanup"; job_id?: string; reason_code?: string };
   summary: readonly string[];
+  /** Optional display hints; never an approval, ticket or audit input. */
+  summary_i18n?: SettingsSummaryPresentation;
   /** Display-only dedicated inline flow; no General confirmation is posted. */
   presentation?: "hub-join";
   hubJoin?: { handoffId: string | null; target: string };
@@ -81,6 +84,7 @@ export interface SettingsChangeProposal {
   requestedBy: string;
   source: SettingsPendingView["source"];
   summary: readonly string[];
+  summary_i18n?: SettingsSummaryPresentation;
   /** Display-only dedicated inline flow; no General confirmation is posted. */
   presentation?: "hub-join";
   hubJoin?: { handoffId: string | null; target: string };
@@ -199,12 +203,15 @@ export class SettingsConfirmationStore {
     if (!(ttl > 0) || !Number.isFinite(ttl)) throw new SettingsConfirmationError(409, "verification_expired");
     const id = randomBytes(16).toString("hex");
     const requested = this.wall();
+    const summaryI18n = copySettingsSummary(proposal.summary, proposal.summary_i18n);
     const entry: RecordEntry = { session: proposal.session, key: proposal.key, fingerprint: proposal.fingerprint,
       authority: structuredClone(proposal.authority ?? { connections: [], primaryGeneral: false, unknown: true }),
       snapshotFingerprint: settingsFingerprint(proposal.snapshot?.() ?? null),
       deadline: this.now() + ttl, requestFingerprint: proposal.requestFingerprint, proposal, view: { id, state: "pending", section: proposal.section,
         requested_at: requested, requested_by: this.display(proposal.requestedBy), expires_at: requested + ttl,
-        source: proposal.source, summary: [...proposal.summary], ...(proposal.presentation ? { presentation: proposal.presentation, hubJoin: proposal.hubJoin ? { ...proposal.hubJoin } : undefined } : {}), confirmation: { kind: this.options.notify && !proposal.presentation ? "posting" : "host_cli", code: id }, outcome: null } };
+        source: proposal.source, summary: [...proposal.summary],
+        ...(summaryI18n ? { summary_i18n: summaryI18n } : {}),
+        ...(proposal.presentation ? { presentation: proposal.presentation, hubJoin: proposal.hubJoin ? { ...proposal.hubJoin } : undefined } : {}), confirmation: { kind: this.options.notify && !proposal.presentation ? "posting" : "host_cli", code: id }, outcome: null } };
     this.records.set(id, entry); this.keys.set(index, id); this.arm(entry); this.audit("requested", entry); this.changed(entry);
     // Notification may fail or arrive late. Neither admits a configuration write. Once it is over, a request no General
     // card attached to says so: the host's command is then the way (still pending: a decided one keeps its own kind).

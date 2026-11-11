@@ -1,0 +1,28 @@
+{
+  "originalSource": "a08a3029079e230d74ff61c972112e5dcb7eb807",
+  "captureSource": "da40e468f880e2c312932b47abf1d1d60a9fa54c",
+  "tree": "0ee4ffe457567642b568ef38b7d842cb31530bc5",
+  "representationOnly": true,
+  "roundTripByteEqual": true,
+  "captureReexecuted": false,
+  "pngsChanged": false,
+  "sourceBindings": 14,
+  "servedBindings": 3640,
+  "receipts": [
+    {
+      "digest": "558733e2babdd0f25138026116b093b627e87370b505476c7d9f40676bbdf49f",
+      "revision": "original",
+      "paths": [
+        "docs/evidence/settings-summary-page-language-3416-alpha/browser/receipt.json"
+      ]
+    },
+    {
+      "digest": "118da0cbffa31daf41ca1bfb6f7730396f8c78a9bb679598267eb0072be20456",
+      "revision": "digest-first",
+      "paths": [
+        "docs/evidence/settings-summary-page-language-3416-alpha/browser/receipt.json"
+      ]
+    }
+  ],
+  "scope": "Only source map becomes ordered digest-first rows; all original14 source hashes,3640 served bindings,20 cases and22 PNGs retained. Original receipt reconstructs byte-for-byte."
+}

@@ -1,3 +1,4 @@
+import { settingsSummary, summaryLine, summaryMessage, type SettingsSummaryPresentation } from "../../settings-summary.js";
 /**
  * S3c (S-55): what the member's Settings card reads and does with its exposures — the projection S3a's client expects
  * (docs/design/hub-ui-client.md "HubExposureView", widened with web-claude: `choices` and `pending`) and the owner's
@@ -30,7 +31,7 @@ export interface HubPublishInput { agent: string; dataViewId: string; tools: str
 export interface HubMemberExposureApi {
   list(): HubExposureView[];
   /** The confirmation's summary for a publish (checked: a refusal throws HubExposureRefusal). */
-  preview(input: unknown): { summary: string[] };
+  preview(input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
   /** Publish or revise (run only after the owner confirmed). */
   publish(input: unknown): HubExposureView;
   /** Withdraw at once: ok once the restrictive state is saved; the Hub learns it with the next snapshot ("pending"). */
@@ -90,8 +91,9 @@ export function createHubMemberExposureApi(deps: {
     list: () => deps.agents().map(viewOf),
     preview(raw) {
       const { input, a } = checked(raw);
-      return { summary: [`Share "${a.display}" with the Hub`, "Hub questions go to this agent's own conversation, with its folder and Settings tools",
-        `Revision: ${input.expectedRevision + 1}`] };
+      return settingsSummary([summaryLine(`Share "${a.display}" with the Hub`, summaryMessage("hub.exposure.summary.share", a.display)),
+        summaryLine("Hub questions go to this agent's own conversation, with its folder and Settings tools", summaryMessage("hub.exposure.summary.context")),
+        summaryLine(`Revision: ${input.expectedRevision + 1}`, summaryMessage("hub.exposure.summary.revision", input.expectedRevision + 1))]);
     },
     publish(raw) {
       const { input, a } = checked(raw);

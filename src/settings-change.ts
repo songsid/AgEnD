@@ -12,6 +12,7 @@ import { DASHBOARD_FEATURES, SEPARATE_FEATURE_KEYS, dashboardFeatureDefault, fea
 import { isCodexSpeed } from "./backend/codex-speed.js";
 import { validCredentialProfileName } from "./runtime-credential-profiles.js";
 import { CREDENTIAL_HOMES, isCredentialProfileName } from "./backend/credential-profile.js";
+import { settingsSummary, summaryLine, summaryMessage as message, type SettingsSummaryLine, type SettingsSummaryPart, type SettingsSummaryPresentation } from "./settings-summary.js";
 
 export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
@@ -41,10 +42,18 @@ export function settingsDisplay(value: unknown): string {
     .replace(/[\p{Cc}\p{Cf}]/gu, char => `\\u{${char.codePointAt(0)!.toString(16)}}`)
     .replace(/@/g, "[at]").replace(/[\\`*_~[\]()<>|]/g, char => `\\${char}`);
 }
+const word = (key: string, ...args: (string | number)[]): SettingsSummaryPart => message(`settings_confirm.summary.${key}`, ...args);
+function displayParts(value: unknown, defaulted = false): SettingsSummaryPart[] {
+  return value === undefined || defaulted && value === null ? [word(defaulted ? "default" : "absent")] : [settingsDisplay(value)];
+}
+function changeLine(text: string, label: SettingsSummaryPart[], old: unknown, next: unknown, defaulted = false): SettingsSummaryLine {
+  return summaryLine(text, ...label, ": ", ...displayParts(old, defaulted), " → ", ...displayParts(next, defaulted));
+}
 function fingerprint(value: unknown): string {
   if (value === undefined || value === null || value === "") return "absent";
   return createHash("sha256").update(String(value)).digest("hex").slice(0, 12);
 }
+function fingerprintParts(value: unknown): SettingsSummaryPart[] { const valueHash = fingerprint(value); return valueHash === "absent" ? [word("absent")] : [valueHash]; }
 function same(a: unknown, b: unknown): boolean { return settingsFingerprint(a) === settingsFingerprint(b); }
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 /**
@@ -281,14 +290,14 @@ function fleetIn(root: unknown): Record<string, any> | null {
   return object(root.fleet) ? root.fleet : root;
 }
 /** What a change to bot-to-bot visibility widens, as summary lines (none: it only narrows, or leaves it). */
-function visibilityWidening(before: unknown, after: unknown): string[] {
-  const b = fleetIn(before), a = fleetIn(after), out: string[] = [];
+function visibilityWidening(before: unknown, after: unknown): SettingsSummaryLine[] {
+  const b = fleetIn(before), a = fleetIn(after), out: SettingsSummaryLine[] = [];
   if (!a) return out;
   const valid = (v: unknown): v is string => typeof v === "string" && Object.hasOwn(VISIBILITY_RANK, v);
   const fallback = (f: Record<string, any> | null): string => (valid(f?.defaults?.[VISIBILITY]) ? f!.defaults[VISIBILITY] : "full");
   const own = (f: Record<string, any> | null, name: string): unknown => (object(f?.instances) && object(f!.instances[name]) ? f!.instances[name][VISIBILITY] : undefined);
   const effective = (f: Record<string, any> | null, name: string): string => { const v = own(f, name); return valid(v) ? v : fallback(f); };
-  const line = (label: string, from: string, to: string) => out.push(`${settingsDisplay(label)}: ${settingsDisplay(from)} → ${settingsDisplay(to)}`);
+  const line = (label: string, from: string, to: string, labelParts: SettingsSummaryPart[] = [settingsDisplay(label)], fromParts: SettingsSummaryPart[] = [settingsDisplay(from)]) => out.push(summaryLine(`${settingsDisplay(label)}: ${settingsDisplay(from)} → ${settingsDisplay(to)}`, ...labelParts, ": ", ...fromParts, " → ", settingsDisplay(to)));
   // A value the validator would refuse is never applied quietly (the resolver would read it as unset).
   // An agent whose own setting changed is named on its own line; the agents a wider default opens up only through
   // inheritance are counted on the default's line (#2346 review: one line each would pass SETTINGS_DIFF_RECORDS).
@@ -296,17 +305,18 @@ function visibilityWidening(before: unknown, after: unknown): string[] {
   for (const name of Object.keys(object(a.instances) ? a.instances : {})) {
     if (!b || !object(b.instances) || !object(b.instances[name])) continue;          // a new agent is confirmed whole
     const raw = own(a, name), ownChanged = !same(raw, own(b, name));
-    if (raw !== undefined && raw !== null && !valid(raw) && ownChanged) { line(`instances.${name}.${VISIBILITY}`, String(own(b, name) ?? t("settings_confirm.summary.default")), String(raw)); continue; }
+    if (raw !== undefined && raw !== null && !valid(raw) && ownChanged) { line(`instances.${name}.${VISIBILITY}`, String(own(b, name) ?? t("settings_confirm.summary.default")), String(raw), undefined, own(b, name) == null ? [word("default")] : [settingsDisplay(String(own(b, name)))]); continue; }
     if (VISIBILITY_RANK[effective(a, name)]! <= VISIBILITY_RANK[effective(b, name)]!) continue;
-    if (ownChanged) line(t("settings_confirm.summary.in_effect", `instances.${name}.${VISIBILITY}`), effective(b, name), effective(a, name));
+    if (ownChanged) line(t("settings_confirm.summary.in_effect", `instances.${name}.${VISIBILITY}`), effective(b, name), effective(a, name), [word("in_effect", settingsDisplay(`instances.${name}.${VISIBILITY}`))]);
     else inheritors.push(name);
   }
   const rawDefault = object(a.defaults) ? a.defaults[VISIBILITY] : undefined, wasDefault = object(b?.defaults) ? b!.defaults[VISIBILITY] : undefined;
   const shown = 5, more = inheritors.length > shown ? t("settings_confirm.summary.more", inheritors.length - shown) : "";
   const who = inheritors.length ? `${t("settings_confirm.summary.inherit", inheritors.length, settingsDisplay(inheritors.slice(0, shown).join(", ")))}${more}` : "";
-  if (rawDefault !== undefined && rawDefault !== null && !valid(rawDefault) && !same(rawDefault, wasDefault)) out.unshift(`${settingsDisplay(`defaults.${VISIBILITY}`)}: ${settingsDisplay(String(wasDefault ?? t("settings_confirm.summary.default")))} → ${settingsDisplay(String(rawDefault))}${who}`);
+  const whoParts: SettingsSummaryPart[] = inheritors.length ? [word("inherit", inheritors.length, settingsDisplay(inheritors.slice(0, shown).join(", "))), ...(inheritors.length > shown ? [word("more", inheritors.length - shown)] : [])] : [];
+  if (rawDefault !== undefined && rawDefault !== null && !valid(rawDefault) && !same(rawDefault, wasDefault)) out.unshift(summaryLine(`${settingsDisplay(`defaults.${VISIBILITY}`)}: ${settingsDisplay(String(wasDefault ?? t("settings_confirm.summary.default")))} → ${settingsDisplay(String(rawDefault))}${who}`, settingsDisplay(`defaults.${VISIBILITY}`), ": ", ...(wasDefault == null ? [word("default")] : [settingsDisplay(String(wasDefault))]), " → ", settingsDisplay(String(rawDefault)), ...whoParts));
   else if (VISIBILITY_RANK[fallback(a)]! > VISIBILITY_RANK[fallback(b)]! || inheritors.length) {
-    out.unshift(`${settingsDisplay(t("settings_confirm.summary.in_effect", `defaults.${VISIBILITY}`))}: ${settingsDisplay(fallback(b))} → ${settingsDisplay(fallback(a))}${who}`);
+    out.unshift(summaryLine(`${settingsDisplay(t("settings_confirm.summary.in_effect", `defaults.${VISIBILITY}`))}: ${settingsDisplay(fallback(b))} → ${settingsDisplay(fallback(a))}${who}`, word("in_effect", settingsDisplay(`defaults.${VISIBILITY}`)), ": ", settingsDisplay(fallback(b)), " → ", settingsDisplay(fallback(a)), ...whoParts));
   }
   return out;
 }
@@ -324,8 +334,8 @@ const dashboardPath = (path: readonly string[]): boolean =>
  * allowed (off for an OFF_UNLESS_ON feature, #2578) — as bot-to-bot visibility is: switching off applies
  * directly; switching on (or a value the validator would refuse) waits for the confirmation.
  */
-function dashboardWidening(before: unknown, after: unknown): string[] {
-  const b = fleetIn(before), a = fleetIn(after), out: string[] = [];
+function dashboardWidening(before: unknown, after: unknown): SettingsSummaryLine[] {
+  const b = fleetIn(before), a = fleetIn(after), out: SettingsSummaryLine[] = [];
   if (!a) return out;
   const switches = (v: unknown): Record<string, unknown> => (object(v) ? v : {});
   const features = new Set<string>(DASHBOARD_FEATURES);
@@ -337,7 +347,7 @@ function dashboardWidening(before: unknown, after: unknown): string[] {
   const fallback = (f: Record<string, any> | null, feature: string): unknown => separate(feature) ? separateAccessValue(f?.defaults, feature) : switches(f?.defaults?.[DASHBOARD])[feature];
   const own = (f: Record<string, any> | null, name: string, feature: string): unknown => (object(f?.instances) && object(f!.instances[name]) ? (separate(feature) ? separateAccessValue(f!.instances[name], feature) : switches(f!.instances[name][DASHBOARD])[feature]) : undefined);
   const on = (v: unknown, inherited: boolean): boolean => (typeof v === "boolean" ? v : inherited);
-  const line = (label: string, from: unknown, to: unknown) => out.push(`${settingsDisplay(label)}: ${settingsDisplay(from)} → ${settingsDisplay(to)}`);
+  const line = (label: string, from: unknown, to: unknown, labelParts: SettingsSummaryPart[] = [settingsDisplay(label)], fromParts: SettingsSummaryPart[] = displayParts(from)) => out.push(summaryLine(`${settingsDisplay(label)}: ${settingsDisplay(from)} → ${settingsDisplay(to)}`, ...labelParts, ": ", ...fromParts, " → ", ...displayParts(to)));
   // A value the validator would refuse (not a boolean, or no such feature) is never applied quietly.
   const odd = (v: unknown, feature: string) => v !== undefined && v !== null && (typeof v !== "boolean" || !(DASHBOARD_FEATURES as readonly string[]).includes(feature));
   for (const feature of features) {
@@ -347,16 +357,17 @@ function dashboardWidening(before: unknown, after: unknown): string[] {
     for (const name of Object.keys(object(a.instances) ? a.instances : {})) {
       if (!b || !object(b.instances) || !object(b.instances[name])) continue;          // a new agent is confirmed whole
       const raw = own(a, name, feature), ownChanged = !same(raw, own(b, name, feature));
-      if (ownChanged && odd(raw, feature)) { line(`instances.${name}.${key}`, own(b, name, feature) ?? "default", raw); continue; }
+      if (ownChanged && odd(raw, feature)) { line(`instances.${name}.${key}`, own(b, name, feature) ?? "default", raw, undefined, displayParts(own(b, name, feature), true)); continue; }
       const was = on(own(b, name, feature), on(defB, unset)), now = on(raw, on(defA, unset));
       if (was || !now) continue;
-      if (ownChanged) line(`instances.${name}.${key} (in effect)`, false, true);
+      if (ownChanged) line(`instances.${name}.${key} (in effect)`, false, true, [word("in_effect", settingsDisplay(`instances.${name}.${key}`))]);
       else inheritors.push(name);
     }
     const shown = 5, more = inheritors.length > shown ? ` +${inheritors.length - shown} more` : "";
     const who = inheritors.length ? ` — ${inheritors.length} agent(s) inherit it: ${settingsDisplay(inheritors.slice(0, shown).join(", "))}${more}` : "";
-    if (odd(defA, feature) && !same(defA, defB)) out.unshift(`${settingsDisplay(`defaults.${key}`)}: ${settingsDisplay(defB ?? "default")} → ${settingsDisplay(defA)}${who}`);
-    else if ((on(defA, unset) && !on(defB, unset)) || inheritors.length) out.unshift(`${settingsDisplay(`defaults.${key} (in effect)`)}: ${settingsDisplay(on(defB, unset))} → ${settingsDisplay(on(defA, unset))}${who}`);
+    const whoParts: SettingsSummaryPart[] = inheritors.length ? [word("inherit", inheritors.length, settingsDisplay(inheritors.slice(0, shown).join(", "))), ...(inheritors.length > shown ? [word("more", inheritors.length - shown)] : [])] : [];
+    if (odd(defA, feature) && !same(defA, defB)) out.unshift(summaryLine(`${settingsDisplay(`defaults.${key}`)}: ${settingsDisplay(defB ?? "default")} → ${settingsDisplay(defA)}${who}`, settingsDisplay(`defaults.${key}`), ": ", ...displayParts(defB, true), " → ", settingsDisplay(defA), ...whoParts));
+    else if ((on(defA, unset) && !on(defB, unset)) || inheritors.length) out.unshift(summaryLine(`${settingsDisplay(`defaults.${key} (in effect)`)}: ${settingsDisplay(on(defB, unset))} → ${settingsDisplay(on(defA, unset))}${who}`, word("in_effect", settingsDisplay(`defaults.${key}`)), ": ", settingsDisplay(on(defB, unset)), " → ", settingsDisplay(on(defA, unset)), ...whoParts));
   }
   return out;
 }
@@ -369,6 +380,7 @@ function unknownImmediateChild(path: readonly string[]): boolean {
 export interface SettingsChangeDiff {
   section: SettingsChangeSection;
   summary: readonly string[];
+  summary_i18n?: SettingsSummaryPresentation;
   fingerprint: string;
   affectedConnections: readonly string[];
   /** Private normalized effect scope, populated by prepareSettingsEffect. */
@@ -385,10 +397,10 @@ export interface SettingsChangeDiff {
 export function settingsChangeDiff(before: unknown, after: unknown, options: {
   operation: string; force?: boolean; secret?: { key: string; before?: string; after: string };
 }): SettingsChangeDiff | null {
-  const summary: string[] = []; const affected = new Set<string>();
+  const summary: string[] = [], display: Array<string | SettingsSummaryLine> = []; const affected = new Set<string>();
   let section: SettingsChangeSection = options.secret ? "secret" : "channel";
-  const add = (line: string): void => {
-    summary.push(line);
+  const add = (line: string | SettingsSummaryLine): void => {
+    summary.push(typeof line === "string" ? line : line.text); display.push(line);
     if (summary.length > SETTINGS_DIFF_RECORDS || summary.join("\n").length > SETTINGS_DIFF_UNITS)
       throw new SettingsConfirmationError(413, "confirmation_diff_too_large");
   };
@@ -397,12 +409,12 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     // An agent deleted whole is one line: its fields go with it — nothing in it is set or shown — so none of them is
     // classified. Walking them refused every agent with a free-text or unknown field (a description, a display name),
     // and an agent could not be deleted from Settings at all.
-    if (path.at(-2) === "instances" && old !== undefined && next === undefined) { add(`${settingsDisplay(path.join("."))}: deleted`); return; }
+    if (path.at(-2) === "instances" && old !== undefined && next === undefined) { add(summaryLine(`${settingsDisplay(path.join("."))}: deleted`, settingsDisplay(path.join(".")), ": ", word("deleted"))); return; }
     if (path.length === SESSION_LOCAL.length && SESSION_LOCAL.every((k, i) => path[i] === k)) {
       const looser = sessionChange(old, next);
       if (looser) {
         if (looser.length && section !== "secret") section = "access";
-        for (const [key, a, b] of looser) add(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`);
+        for (const [key, a, b] of looser) add(changeLine(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`, [settingsDisplay([...path, key].join("."))], a, b, true));
         return;
       }
     }
@@ -410,7 +422,7 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
       const looser = verifiedAuthorityChange(old, next);
       if (looser) {
         if (looser.length && section !== "secret") section = "access";
-        for (const [key, a, b] of looser) add(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`);
+        for (const [key, a, b] of looser) add(changeLine(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`, [settingsDisplay([...path, key].join("."))], a, b, true));
         return;
       }
     }
@@ -418,20 +430,20 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
       const looser = guestsChange(old, next);
       if (looser) {
         if (looser.length && section !== "secret") section = "access";
-        for (const [key, a, b] of looser) add(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`);
+        for (const [key, a, b] of looser) add(changeLine(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`, [settingsDisplay([...path, key].join("."))], a, b, true));
         return;
       }
     }
     const direction = loosens(path, old, next);
     if (direction === false) return;                             // #1620: tightening applies directly
-    if (direction === true) { section = section === "secret" ? section : "access"; add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "default")} → ${settingsDisplay(next ?? "default")}`); return; }
+    if (direction === true) { section = section === "secret" ? section : "access"; add(changeLine(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "default")} → ${settingsDisplay(next ?? "default")}`, [settingsDisplay(path.join("."))], old, next, true)); return; }
     if (visibilityPath(path)) return;                                // judged as a whole, by direction (below)
     if (dashboardPath(path)) return;                                 // likewise: the dashboard switches, by direction
     // S-35: a new Windows agent's CLI and model are what will run on that PC with the person's sign-in; the confirmer sees
     // them (they were "ordinary" keys and silently left out of the card).
     if (path.length === 2 && path[0] === "new_instance" && (path[1] === "backend" || path[1] === "model")
       && (next === undefined || (typeof next === "string" && next.length <= 128 && !/[\p{Cc}\p{Cf}]/u.test(next)))) {
-      if (next !== undefined && next !== "") add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "absent")} → ${settingsDisplay(next)}`);
+      if (next !== undefined && next !== "") add(changeLine(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "absent")} → ${settingsDisplay(next)}`, [settingsDisplay(path.join("."))], old, next));
       return;
     }
     // Exactly this validated preference subtree. No credential/access field can hide inside it.
@@ -453,35 +465,36 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
         : key === "tags" ? Array.isArray(value) && value.length <= 32 && value.every(tag => typeof tag === "string" && tag.length > 0 && tag.length <= 64)
         : typeof value === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value));
       if (!valid(old) || !valid(next)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
-      add(`${label}: ${settingsDisplay(old)} → ${settingsDisplay(next)}`); return;
+      add(changeLine(`${label}: ${settingsDisplay(old)} → ${settingsDisplay(next)}`, [label], old, next)); return;
     }
     // Under an immediate key, only its known children are settings; a secret or an id list is still confirmed below.
     if (unknownImmediateChild(path) && !SETTINGS_SECRET_KEY.test(key) && !idLists.has(key)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
-    if (SETTINGS_SECRET_KEY.test(key)) { section = "secret"; add(`${label}: ${t("settings_confirm.summary.fingerprint")} ${fingerprint(old)} → ${fingerprint(next)}`); return; }
+    if (SETTINGS_SECRET_KEY.test(key)) { section = "secret"; add(summaryLine(`${label}: ${t("settings_confirm.summary.fingerprint")} ${fingerprint(old)} → ${fingerprint(next)}`, label, ": ", word("fingerprint"), " ", ...fingerprintParts(old), " → ", ...fingerprintParts(next))); return; }
     if (idLists.has(key)) {
       section = "access";
       if ((old !== undefined && !Array.isArray(old)) || (next !== undefined && !Array.isArray(next))) {
-        add(`${label}: ${settingsDisplay(old)} → ${settingsDisplay(next)}`); return;
+        add(changeLine(`${label}: ${settingsDisplay(old)} → ${settingsDisplay(next)}`, [label], old, next)); return;
       }
       const a = (old ?? []) as unknown[], b = (next ?? []) as unknown[];
       if ([...a, ...b].some(id => typeof id !== "string" && (typeof id !== "number" || !Number.isSafeInteger(id))))
         throw new SettingsConfirmationError(400, "unsupported_sensitive_identity");
       const role = key === "admin_users" ? path.includes("classic") ? "Classic admin (C)" : "fleet admin (F)" : key === "allowed_users" ? path.includes("access") && !path.includes("classic") ? "fleet admin (F)" : "user" : key === "allowed_groups" ? "group" : "guild";
-      for (const id of a) if (!b.some(candidate => same(candidate, id))) add(`${label}: remove ${role} ID ${settingsDisplay(id)}`);
-      for (const id of b) if (!a.some(candidate => same(candidate, id))) add(`${label}: add ${role} ID ${settingsDisplay(id)}`);
-      if (!same(a, b) && a.length === b.length && a.every(id => b.some(candidate => same(candidate, id)))) add(`${label}: order ${settingsDisplay(a)} → ${settingsDisplay(b)}`);
-      if (next === undefined) add(`${label}: field removed (inherit/omitted policy)`);
+      const roleKey = key === "admin_users" ? path.includes("classic") ? "classicAdmin" : "fleetAdmin" : key === "allowed_users" ? path.includes("access") && !path.includes("classic") ? "fleetAdmin" : "user" : key === "allowed_groups" ? "group" : "guild";
+      for (const id of a) if (!b.some(candidate => same(candidate, id))) add(summaryLine(`${label}: remove ${role} ID ${settingsDisplay(id)}`, label, ": ", word("remove"), " ", word(`role.${roleKey}`), ` ID ${settingsDisplay(id)}`));
+      for (const id of b) if (!a.some(candidate => same(candidate, id))) add(summaryLine(`${label}: add ${role} ID ${settingsDisplay(id)}`, label, ": ", word("add"), " ", word(`role.${roleKey}`), ` ID ${settingsDisplay(id)}`));
+      if (!same(a, b) && a.length === b.length && a.every(id => b.some(candidate => same(candidate, id)))) add(summaryLine(`${label}: order ${settingsDisplay(a)} → ${settingsDisplay(b)}`, label, ": ", word("order"), ` ${settingsDisplay(a)} → ${settingsDisplay(b)}`));
+      if (next === undefined) add(summaryLine(`${label}: field removed (inherit/omitted policy)`, label, ": ", word("removed")));
       return;
     }
     if (path.at(-1) === "channels" && (Array.isArray(old) || Array.isArray(next))) {
       const a = Array.isArray(old) ? old : [], b = Array.isArray(next) ? next : [];
       const identity = (item: any, index: number): string => String(item?.id ?? item?.type ?? `channel-${index}`);
       const aIds = a.map(identity), bIds = b.map(identity);
-      if (!same(aIds, bIds)) add(`${label}: ordered connections / primary ${settingsDisplay(aIds)} → ${settingsDisplay(bIds)}`);
+      if (!same(aIds, bIds)) add(summaryLine(`${label}: ordered connections / primary ${settingsDisplay(aIds)} → ${settingsDisplay(bIds)}`, label, ": ", word("connections"), ` ${settingsDisplay(aIds)} → ${settingsDisplay(bIds)}`));
       for (const id of new Set([...aIds, ...bIds])) {
         const previous = a[aIds.indexOf(id)], candidate = b[bIds.indexOf(id)];
         const start = summary.length;
-        if (!previous || !candidate) add(`${label}: ${candidate ? "add" : "remove"} connection ${settingsDisplay(id)}`);
+        if (!previous || !candidate) add(summaryLine(`${label}: ${candidate ? "add" : "remove"} connection ${settingsDisplay(id)}`, label, ": ", word(candidate ? "add" : "remove"), " ", word("connection"), ` ${settingsDisplay(id)}`));
         walk(previous, candidate, [...path, id]);
         if (summary.length !== start) affected.add(id);
       }
@@ -505,9 +518,9 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     }
     if ((typeof old === "string" || typeof next === "string") && !publicKeys.has(key))
       throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
-    add(`${label}: ${settingsDisplay(old)} → ${settingsDisplay(next)}`);
+    add(changeLine(`${label}: ${settingsDisplay(old)} → ${settingsDisplay(next)}`, [label], old, next));
   };
-  if (options.secret) add(`${settingsDisplay(options.secret.key)}: ${t("settings_confirm.summary.fingerprint")} ${fingerprint(options.secret.before)} → ${fingerprint(options.secret.after)}`);
+  if (options.secret) add(summaryLine(`${settingsDisplay(options.secret.key)}: ${t("settings_confirm.summary.fingerprint")} ${fingerprint(options.secret.before)} → ${fingerprint(options.secret.after)}`, settingsDisplay(options.secret.key), ": ", word("fingerprint"), " ", ...fingerprintParts(options.secret.before), " → ", ...fingerprintParts(options.secret.after)));
   walk(before, after, []);
   // #2346 review: bot-to-bot visibility decides what an agent's topic, the dashboard's search and the public link's board
   // show of it. Judged as the mode each agent gets (its own, else the default, else full) and the default's own (it covers
@@ -519,9 +532,9 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
   const opened = dashboardWidening(before, after);
   if (opened.length && section !== "secret") section = "access";
   for (const line of opened) add(line);
-  if (!summary.length && options.force) add(`${settingsDisplay(options.operation)}: confirmed operation`);
+  if (!summary.length && options.force) add(summaryLine(`${settingsDisplay(options.operation)}: confirmed operation`, settingsDisplay(options.operation), ": ", word("confirmed")));
   if (!summary.length) return null;
-  summary.unshift(settingsDisplay(options.operation));
+  summary.unshift(settingsDisplay(options.operation)); display.unshift(settingsDisplay(options.operation));
   if (summary.length > SETTINGS_DIFF_RECORDS || summary.join("\n").length > SETTINGS_DIFF_UNITS) throw new SettingsConfirmationError(413, "confirmation_diff_too_large");
-  return { section, summary, fingerprint: settingsFingerprint([options.operation, before, after, options.secret]), affectedConnections: [...affected] };
+  return { section, ...settingsSummary(display), fingerprint: settingsFingerprint([options.operation, before, after, options.secret]), affectedConnections: [...affected] };
 }
