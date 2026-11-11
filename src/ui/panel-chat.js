@@ -85,6 +85,20 @@ import { isUpdateLine, needsArgument, paletteFor, parseCommandLine, UPDATE_COMMA
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
+/**
+ * M-2904: the working bar's Stop has its own stylesheet, linked once when this module loads (before the chat draws): a tab
+ * opened before the change keeps its older app.css, which has no rule for it (Prism #3651: a 40×30 Stop on a phone).
+ */
+export function linkWorkBarCss(doc = typeof document !== "undefined" ? document : null) {
+  try {
+    if (!doc || !doc.head || doc.querySelector('link[data-chat-work-bar-css="1"]')) return;
+    const link = doc.createElement("link");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/chat-work-bar.css"); link.setAttribute("data-chat-work-bar-css", "1");
+    doc.head.appendChild(link);
+  } catch { /* Stop still works without it */ }
+}
+linkWorkBarCss();
+
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composerField = () => (typeof document !== "undefined" ? document.getElementById("msgIn") : null);
 
@@ -691,7 +705,10 @@ function WorkBar({ name, lease, exec, awaiting, workingLabel }) {
   const since = s.workingSince[name];
   return html`<div class=${`work-bar ${kind}`}><span class="pulse" aria-hidden="true"></span><span class="lbl">${label}</span>
     ${kind === "awaiting" ? html`<span class="note" title=${t("chat.approxNote")}>${awaiting || t("chat.approxNote")}</span>`
-      : html`<span class="elapsed" title=${t("chat.elapsedTitle")} aria-hidden="true">${since == null ? "" : R().formatElapsed(performance.now() - since)}</span>`}</div>`;
+      : html`<span class="elapsed" title=${t("chat.elapsedTitle")} aria-hidden="true">${since == null ? "" : R().formatElapsed(performance.now() - since)}</span>`}
+    ${/* Stop sits with what it stops (card "composer width": in the composer it took the box's width away). */ ""}
+    ${busy ? html`<button id="stopBtn" type="button" class="btn btn-sm btn-stop" title=${t("chat.stopReplyTitle")} aria-label=${t("chat.stopReply")}
+      disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>` : null}</div>`;
 }
 
 /** #2272: the reply bar's quote — the first ~80 characters, or what it had instead of text. */
@@ -814,9 +831,10 @@ function Composer({ name, inst, label = name, lease, busy }) {
         aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}
         oncompositionstart=${onCompositionStart} oncompositionend=${onCompositionEnd} onBlur=${onCompositionEnd}
         placeholder=" "></textarea><span class="composer-ph" aria-hidden="true">${t("chat.composerPlaceholder", label)}</span></span>
-      <button id="stopBtn" type="button" class="btn btn-stop" hidden=${!busy} title=${t("chat.stopReplyTitle")}
-        disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>
-      <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content}
+      ${/* Card "composer width": Stop lives in the working bar above (WorkBar), and Send is always here (disabled while
+          there is nothing to send) — so nothing in this row comes or goes when the agent starts or stops working, and the
+          box keeps one width: a draft never re-wraps under the person's fingers. */ ""}
+      <button id="sendBtn" type="button" class="btn btn-primary btn-send" disabled=${!content}
         onMouseDown=${(e) => e.preventDefault()}
         aria-label=${t("chat.send")} title=${t("chat.send")} onClick=${submit}><${Icon} name="send" size=${16} /><span class="send-label">${t("chat.send")}</span></button>
     </div></div>`;

@@ -60,7 +60,7 @@ describe("#1854 rank 7: the first Chat page says one thing", () => {
 describe("#1854 rank 7: an agent's first chat", () => {
   for (const [lang, task, keys, more] of [
     ["en", "Type a task below.", "Enter to send · Shift+Enter for a new line", "/ for commands · Esc stops the reply"],
-    ["zh-TW", "直接在下方輸入任務。", "Enter 送出 · Shift+Enter 換行", "/ 叫出指令 · Esc 中止回覆"],
+    ["zh-TW", "直接在下方輸入任務。", "Enter 送出 · Shift+Enter 換行", "/ 叫出指令 · Esc 停止回覆"],
   ] as const) {
     it(`${lang}: empty history → "${task}" alone; the composer hint keeps two cues, the rest is its tooltip`, async () => {
       i18n.setLang(lang);
