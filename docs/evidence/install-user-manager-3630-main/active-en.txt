@@ -1,0 +1,12 @@
+Service installed at: <FIXTURE>/home/.config/systemd/user/com.agend.fleet.service
+❌ Fleet service was installed but could not be started: user@1000.service is still running, but both communication sockets are missing: <FIXTURE>/missing-runtime/bus, <FIXTURE>/missing-runtime/systemd/private.
+Environment variables cannot recreate missing sockets.
+Restarting user@1000.service stops Fleet and every agent, along with all other services under this user. Make sure no Agent is working before running it manually.
+This is a known issue in WSL versions before 2.6.0. For a lasting fix, run wsl --update from Windows, then reopen WSL (see microsoft/WSL#13143). You can also use the commands below for temporary recovery:
+Manual recovery (AgEnD does not restart the user manager automatically):
+sudo systemctl restart user@1000.service
+export XDG_RUNTIME_DIR=/run/user/1000
+unset DBUS_SESSION_BUS_ADDRESS
+systemctl --user start dbus.socket
+systemctl --user daemon-reload
+systemctl --user enable --now --no-block com.agend.fleet.service

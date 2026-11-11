@@ -1,0 +1,10 @@
+系統服務已安裝於：<FIXTURE>/home/.config/systemd/user/com.agend.fleet.service
+❌ Fleet 系統服務已安裝，但無法啟動：user@1000.service 目前未執行，無法連線至 systemd 使用者管理員。
+這是 WSL 2.6.0 以前的已知問題。長久解法：在 Windows 執行 wsl --update，再重新開啟 WSL（參考 microsoft/WSL#13143）。 也可以先用下面的指令暫時復原：
+手動復原（AgEnD 不會自動重新啟動使用者管理員）：
+sudo systemctl start user@1000.service
+export XDG_RUNTIME_DIR=/run/user/1000
+unset DBUS_SESSION_BUS_ADDRESS
+systemctl --user start dbus.socket
+systemctl --user daemon-reload
+systemctl --user enable --now --no-block com.agend.fleet.service
