@@ -4,6 +4,7 @@
  * exited), write rollback.json, and only then install the older version and start it. A failed or unknown close stops
  * before npm runs. Isolation: temp dirs, fake probes and steps (nothing is stopped, installed or started).
  */
+import { noNpmReason } from "../src/update-dispatch.js";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -70,6 +71,27 @@ describe("agend rollback", () => {
     expect((r as { message: string }).message).toMatch(/Still on 2\.4\.0/);
     expect(w.steps.some(s => s.startsWith("npm") || s === "start")).toBe(false);
     expect(existsSync(join(w.home, "rollback.json"))).toBe(false);
+  });
+
+  it("M-2897: no npm that manages this install — refused BEFORE the fleet is stopped, with the plain reason; nothing else happens", async () => {
+    const w = world();
+    const r = await rollback({ ...w.deps, async npm() { w.steps.push("npm?"); return { ok: false, reason: noNpmReason("/home/u/.npm-global") }; } });
+    expect(r).toMatchObject({ ok: false, stage: "npm" });
+    expect((r as { message: string }).message).toBe(`Rollback not started: ${noNpmReason("/home/u/.npm-global")}`);
+    expect(w.steps).toEqual(["npm?"]);                                                     // no stop, no tmux, no install, no start
+    expect(existsSync(join(w.home, "rollback.json"))).toBe(false);
+  });
+  it("M-2897: the npm is found first, then the usual order", async () => {
+    const w = world();
+    expect(await rollback({ ...w.deps, async npm() { w.steps.push("npm?"); return { ok: true }; } })).toEqual({ ok: true });
+    expect(w.steps[0]).toBe("npm?");
+    expect(w.steps.slice(1, 3)).toEqual(["stop", "gone?"]);
+  });
+  it("M-2897: the CLI hands rollback the managing-npm resolver, and puts that npm first on PATH for the install and the start", () => {
+    const cli = readFileSync(join(import.meta.dirname, "..", "src", "cli.ts"), "utf8");
+    const action = cli.slice(cli.indexOf('.command("rollback")'), cli.indexOf("\nprogram\n", cli.indexOf('.command("rollback")')));
+    expect(action).toMatch(/const \{ npmForUpdate \} = await import\("\.\/update-dispatch\.js"\);/);
+    expect(action).toMatch(/async npm\(\) \{ const r = await npmForUpdate\(\); if \(!r\.ok\) return r; if \(r\.path !== null\) process\.env\.PATH = r\.path; return \{ ok: true \}; \}/);
   });
 
   it("a fleet that does not stop (or stays running): nothing else happens", async () => {
