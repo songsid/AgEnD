@@ -1,0 +1,116 @@
+{
+  "inputBindings": {
+    "a89107805b39f9595e49524ad41a0917eb2cda9a8a09e3592c05e8b7b5aa9c88": [
+      "src/install-user-systemd.ts"
+    ],
+    "55c1146a37846e4443ecdca4267f689c72bebb739b5ff4f7648b454f43330275": [
+      "src/service-installer.ts"
+    ],
+    "c20a98162c2fb6ce30298b0cc4cc3165ec72a9cc6f9fc71931bba8c824908f06": [
+      "src/cli.ts"
+    ],
+    "9ab88429b3922fa190ef727e6db22cfa4900cde941ef51c004fb3e4d0e1e300b": [
+      "src/locale.ts"
+    ],
+    "ae41fa11ec36587976b31009b880ce8c202c14de85b95a3d669cb90f004d912a": [
+      "tests/install-user-manager-3630.test.ts"
+    ],
+    "0efa442cbf8f33d082c4c4525f791d87a3c358a32ecf4ba720288ef50f9736c0": [
+      "scripts/manual/install-user-manager-3630/mutations.mjs"
+    ]
+  },
+  "results": [
+    {
+      "id": "preflight",
+      "file": "src/service-installer.ts",
+      "pattern": "names an active manager|names a stopped manager",
+      "assertionFailures": 4,
+      "caught": true
+    },
+    {
+      "id": "manager-paths",
+      "file": "src/install-user-systemd.ts",
+      "pattern": "unverified runtime directory|stale environment",
+      "assertionFailures": 4,
+      "caught": true
+    },
+    {
+      "id": "stopped-state",
+      "file": "src/install-user-systemd.ts",
+      "pattern": "names a stopped manager",
+      "assertionFailures": 2,
+      "caught": true
+    },
+    {
+      "id": "both-sockets",
+      "file": "src/install-user-systemd.ts",
+      "pattern": "unknown manager",
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "id": "unknown-state",
+      "file": "src/install-user-systemd.ts",
+      "pattern": "unknown manager",
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "id": "non-root-sudo",
+      "file": "src/install-user-systemd.ts",
+      "pattern": "prints a manual restart",
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "id": "root-no-sudo",
+      "file": "src/install-user-systemd.ts",
+      "pattern": "prints a manual restart",
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "id": "interruption-warning",
+      "file": "src/install-user-systemd.ts",
+      "pattern": "names an active manager",
+      "assertionFailures": 2,
+      "caught": true
+    },
+    {
+      "id": "stopped-start",
+      "file": "src/install-user-systemd.ts",
+      "pattern": "names a stopped manager",
+      "assertionFailures": 2,
+      "caught": true
+    },
+    {
+      "id": "wsl-env",
+      "file": "src/install-user-systemd.ts",
+      "pattern": "detects WSL",
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "id": "wsl-kernel",
+      "file": "src/install-user-systemd.ts",
+      "pattern": "detects WSL",
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "id": "off-wsl",
+      "file": "src/install-user-systemd.ts",
+      "pattern": "prints WSL lasting recovery",
+      "assertionFailures": 1,
+      "caught": true
+    },
+    {
+      "id": "wsl-order",
+      "file": "src/install-user-systemd.ts",
+      "pattern": "prints WSL lasting recovery",
+      "assertionFailures": 1,
+      "caught": true
+    }
+  ],
+  "restored": true
+}

@@ -1,0 +1,74 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-abandoned-start-a13
+
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > an expired unissued abandonment allows a new session to Start without cleanup (restart false) 204ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > an expired unissued abandonment allows a new session to Start without cleanup (restart true) 128ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > an expired pending journal also permits Start before any timer has recorded the expiry 68ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > the original session sees an expired never-issued operation as ended, so the existing Start form is reachable 69ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a live in-flight Start still blocks another session before and after its Hub push settles 49ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > expiry never clears an unknown issuance result after a lost credential reply 75ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a late status from the expired operation cannot redeem or overwrite its fresh replacement 104ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > expiry does not relabel an issued active binding or an explicit unissued cancellation 212ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a shared Hub/Fleet hostname refuses before discovery, a TOFU pin or a remote push 28ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a pending journal from an older build cannot revive a same-hostname browser handoff 60ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > an existing or unfinished legacy binding refuses before discovery or a new Hub reservation 33ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > an orphan pending profile also refuses before any new reservation 35ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > the existing exact disconnect and Start over allow a new explicitly requested join, never automatic reuse 258ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > saves the exact profile and journal before proof ACK, then activates once without exposing any secret 140ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > UI status reads share the bounded backend polling window instead of multiplying directory/status work 108ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a changed requester fences the original operation before credential persistence 52ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a changed confirmer fences the original operation before credential persistence 63ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a changed binding fences the original operation before credential persistence 58ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a different cookie session cannot read, bridge or cancel an owned operation 54ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > profile saved but membership/journal failure remains held and unconnectable; exact recovery never enrolls twice 191ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > cancel wins while an issued credential response is held and never ACKs or activates a late result 71ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a restarted controller reopens only the same host-owned operation and key; no fresh enrollment 98ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > recovers the exact owned marker crash window without another enrollment 133ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > recovers the exact owned profile crash window without another enrollment 192ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > recovers the exact owned membership crash window without another enrollment 185ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > recovers the exact owned ack crash window without another enrollment 123ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a nonhost restart read asks for fresh local confirmation without permanently revoking the same operation 115ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a lost issuance reply and lost cancellation retain an unknown outcome until the exact tombstone is read 69ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > the join page keeps its title and single heading ahead of other query views () 42ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > the join page keeps its title and single heading ahead of other query views (&view=notices) 27ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > the join page keeps its title and single heading ahead of other query views (&room=0f1e2d3c-4b5a-4968-8776-655443322110) 31ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > keeps the specific changed-pin refusal through the shared Settings confirmation outcome 1ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > opening Settings or a prefilled link never starts a join 28ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > explains why company sign-in is disabled until address and Fleet name are present 32ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > the distributed public link provides in-surface navigation, without sign-in or an enrollment action 34ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > the public link refuses same-hostname navigation before any request (https://hub.example.test) 31ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > the public link refuses same-hostname navigation before any request (https://hub.example.test:4444) 31ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > an already-bound Fleet does not offer another enrollment from a different local session 23ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > a saved profile with an offline link stays Connecting, polls and only reports Connected when ready 39ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > a 'cancelled' operation allows a fresh Start only when its unissued result is known (false) 25ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > a 'cancelled' operation allows a fresh Start only when its unissued result is known (true) 24ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > a 'ended' operation allows a fresh Start only when its unissued result is known (false) 24ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > a 'ended' operation allows a fresh Start only when its unissued result is known (true) 24ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > a Fleet-owned waiting tab keeps a same-surface return path when Start is refused or awaits confirmation 27ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > an existing Hub session requires the explicit shown identity action and sends only that exact request 39ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > a Hub limit refusal uses plain limit copy, with no success or silent retry 39ms
+ ✓ tests/hub-company-join-private.test.ts > strict ancestor durability > a pin flushes every ancestor through home before returning (existing parents false) 14ms
+ ✓ tests/hub-company-join-private.test.ts > strict ancestor durability > a pin flushes every ancestor through home before returning (existing parents true) 7ms
+ ✓ tests/hub-company-join-private.test.ts > strict ancestor durability > a pin left behind by a failed ancestor flush cannot bypass the failure on Retry 14ms
+ ✓ tests/hub-company-join-private.test.ts > strict ancestor durability > a cold journal/current pointer is ancestor-durable before any push; flush failure holds (false) 29ms
+ ✓ tests/hub-company-join-private.test.ts > strict ancestor durability > a cold journal/current pointer is ancestor-durable before any push; flush failure holds (true) 25ms
+(node:2716326) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > only an actual local cookie session creates the private capability; loopback/header/forwarding never grant host authority 7ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > a signed-in Fleet admin Start is consent, with no held card or General wait (host=true) 65ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > a signed-in Fleet admin Start is consent, with no held card or General wait (host=false) 55ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > a composition without the scoped feature keeps its previous confirmation path 4ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > an enforced admin code stays inline and never posts a General card (host=true) 2ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > an enforced admin code stays inline and never posts a General card (host=false) 3ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > replaying the same code-protected Start keeps its digest without asking for consent again 4ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > company consent retains this admin’s enforced code even with message authority disabled (false) 1ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > company consent retains this admin’s enforced code even with message authority disabled (true) 1ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > company Start stays outward-Hub sensitive and rejects browser-supplied authority/origin/redirect fields 3ms
+(node:2716554) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ tests/hub-company-join-restart.test.ts > a new FleetManager reconstructs the expired journal and starts again from the same private state 93ms
+
+ Test Files  5 passed (5)
+      Tests  62 passed (62)
+   Start at  17:01:53
+   Duration  15.42s (transform 6.82s, setup 315ms, import 9.95s, tests 4.48s, environment 0ms)

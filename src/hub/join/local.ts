@@ -55,9 +55,14 @@ export class CompanyJoinController {
   private persist(op: Operation, patch: Partial<LocalJoinJournal>, current: () => boolean = () => this.live(op)): void {
     const next = { ...op.record, ...patch }; saveLocalJoin(this.options.home, next, current); op.record = next;
   }
+  private expiredUnissued(r: LocalJoinJournal): boolean {
+    // A lost redeem reply may have issued a credential. Its exact recovery remains required after expiry.
+    return !r.issued && r.outcomeKnown && this.now() >= r.deadline;
+  }
   private view(r: LocalJoinJournal) {
-    return { operationId: r.operationId, handoffId: r.handoffId, state: r.stage === "active" ? "saved" : r.stage === "pending" ? "awaiting-sign-in" : r.stage === "preparing" ? "joining" : r.stage,
-      reason: r.reason, hubOrigin: r.binding.hub.webOrigin, expiresAt: r.deadline, issued: r.issued, outcomeKnown: r.outcomeKnown,
+    const expired = this.expiredUnissued(r) && !["cancelled", "ended"].includes(r.stage);
+    return { operationId: r.operationId, handoffId: r.handoffId, state: expired ? "ended" : r.stage === "active" ? "saved" : r.stage === "pending" ? "awaiting-sign-in" : r.stage === "preparing" ? "joining" : r.stage,
+      reason: expired ? "expired" : r.reason, hubOrigin: r.binding.hub.webOrigin, expiresAt: r.deadline, issued: r.issued, outcomeKnown: r.outcomeKnown,
       fleetId: r.issued ? r.binding.fleetId : null, ...(r.stage === "active" ? { link: this.options.link() } : {}) };
   }
   private assertUnbound(): void {
@@ -87,7 +92,7 @@ export class CompanyJoinController {
   }
   private priorBlocks(prior: LocalJoinJournal): boolean {
     if (prior.issued) return !(prior.outcomeKnown && prior.stage === "active" && prior.profileDigest && this.retiredProfile(prior.binding.hub.hubId) === prior.profileDigest);
-    return !prior.outcomeKnown || !["cancelled", "ended"].includes(prior.stage);
+    return !this.expiredUnissued(prior) && (!prior.outcomeKnown || !["cancelled", "ended"].includes(prior.stage));
   }
   current(session: JoinLocalSession) {
     if (this.closed || !session.current()) throw new HubProtocolError("denied");

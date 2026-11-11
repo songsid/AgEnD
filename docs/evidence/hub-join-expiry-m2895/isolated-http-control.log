@@ -1,0 +1,28 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-abandoned-start-a13
+
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > a genuinely unissued cancellation releases its reservation without creating a Fleet
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > Hub admission independently refuses a key binding that shares the Fleet browser hostname
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > issued cancel keeps mixed legacy/company admission headroom until its original outer deadline 7135ms
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > issued expiry keeps mixed legacy/company admission headroom until its original outer deadline
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > a directory epoch change fences the held browser authority and pinned redemption before any new credential
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > is off by default and only the exact configured admin can enable it with Origin/CSRF and current revision
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > refuses an attacker key advertising another Fleet origin before cookie/state/AD, without broadening Hub session CSRF
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > issues once after one identity-submit, recovers exactly the same result, and refuses replay/wrong verifier
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > outsider and unknown membership cannot borrow manual fallback or create a Fleet
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > an exact retained manual Fleet consumes the later automatic quota with a limit-specific refusal
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > legacy quick pairing and a company browser wait share the same one-person reservation
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > first redemption expires at60s without issuance and never restarts the operation clock
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > same-result retrieval outlives the old60s redeem window but stops at exactly2min delivery
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > the10min outer deadline truncates both a late first redemption and its delivery window
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > post-commit cancellation erases delivery, keeps the exact retained result and cannot issue again
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > revocation and group suspension refuse recovery even while a transport row still looks active
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > fresh AD membership loss closes delivery despite an unchanged active transport row
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > sign-out of the exact identity-submit session fences a later key-authenticated redemption
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > an outbox failure rolls back credentials, provenance and receipt rather than publishing a partial grant
+ ↓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > two browser tabs cannot approve a different request than the Fleet shown in that tab
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 19 skipped (20)
+   Start at  17:02:28
+   Duration  15.95s (transform 6.41s, setup 295ms, import 8.12s, tests 7.14s, environment 0ms)

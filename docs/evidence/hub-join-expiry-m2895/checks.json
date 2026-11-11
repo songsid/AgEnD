@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "target": "alpha.14",
+  "base": "b64106bb7cc7f6e5493c83649f44cd47ac5bc0e9",
+  "baseline": "1066a85a2c48cae18e700b207adba1cdb450cf5a",
+  "alpha13Tag": "v2.3.5-alpha.13",
+  "failFirst": {
+    "tests": 27,
+    "failed": 5,
+    "passed": 22,
+    "scope": "pre-commit controller suite before FleetManager test extraction"
+  },
+  "focused": {
+    "command": "vitest run tests/hub-company-join-{local,settings,private,ui,restart}.test.ts --maxWorkers=1 --reporter=verbose",
+    "files": 5,
+    "passed": 62,
+    "failed": 0
+  },
+  "cleanMember": {
+    "command": "vitest run tests/hub-company-join-recovery.test.ts --reporter=verbose",
+    "passed": 1,
+    "memberIncarnationsOnline": 2,
+    "scope": "never-paired scratch Fleet, production HTTPS/LDAPS/WSS; no prior revoke or Hub restore"
+  },
+  "broaderInitial": {
+    "command": "vitest run tests/hub-company-join-{local,settings,private,ui,http}.test.ts --maxWorkers=1 --reporter=verbose",
+    "passed": 78,
+    "failed": 1,
+    "failure": "unchanged HTTP quota control exceeded 10s deadline",
+    "notClaimedAsGreen": true
+  },
+  "isolatedHttpControl": {
+    "command": "vitest run tests/hub-company-join-http.test.ts -t 'issued cancel keeps' --maxWorkers=1 --reporter=verbose",
+    "passed": 1,
+    "unselected": 19,
+    "failed": 0,
+    "retryLoop": false,
+    "deadlineChanged": false
+  },
+  "mutations": {
+    "caught": 7,
+    "compileOnlyFailuresCounted": false,
+    "restored": true
+  },
+  "typechecks": [
+    {
+      "command": "tsc --noEmit",
+      "exit": 0
+    },
+    {
+      "command": "tsc --noEmit -p tsconfig.test.json",
+      "exit": 0
+    }
+  ],
+  "changelog": {
+    "fragments": 362,
+    "errors": 0,
+    "orphans": 0
+  },
+  "scope": "No pilot/live Fleet/real account/AD write/native CLI/model. No schema, authority or UI module changes."
+}

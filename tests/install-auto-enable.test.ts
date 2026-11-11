@@ -86,8 +86,9 @@ describe("agend install service activation", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("✅ Fleet service installed and running.");
-    // #2331: reload, ask systemd what it loaded, then enable.
+    // #3630 checks reachability first; #2331 reloads, inspects the loaded unit, then enables.
     expect(readFileSync(log, "utf8").trim().split("\n")).toEqual([
+      "--user is-active com.agend.fleet.service",
       "--user daemon-reload",
       "--user show -p Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths,OOMPolicy com.agend.fleet",
       "--user enable --now com.agend.fleet",
@@ -102,6 +103,7 @@ describe("agend install service activation", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("zz-agend-notify.conf: NotifyAccess=all — systemd had NotifyAccess=main loaded");
     expect(readFileSync(log, "utf8").trim().split("\n")).toEqual([
+      "--user is-active com.agend.fleet.service",
       "--user daemon-reload",
       "--user show -p Type,NotifyAccess,TimeoutStartUSec,FragmentPath,DropInPaths,OOMPolicy com.agend.fleet",
       "--user daemon-reload",

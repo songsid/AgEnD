@@ -1905,12 +1905,8 @@ program
         else console.log(t("install.running"));
       } catch (err) {
         console.error(t("install.start_failed", (err as Error).message));
-        const plat = detectPlatform();
-        if (plat === "macos") {
-          console.error(`Run manually: launchctl load ${svcPath}`);
-        } else {
-          console.error("Run manually: systemctl --user daemon-reload && systemctl --user enable --now com.agend.fleet");
-        }
+        const { installActivationHints } = await import("./install-user-systemd.js");
+        for (const line of installActivationHints(err, detectPlatform(), svcPath)) console.error(line);
         process.exitCode = 1;
       }
     } else {
@@ -1941,8 +1937,9 @@ program
       return;
     }
     const { userInfo } = await import("node:os");
-    process.exitCode = await runShortcuts(realShortcutsDeps(DATA_DIR, userInfo().username, (command, args) => {
-      const r = spawnSync(command, args, { encoding: "utf-8", timeout: 120_000, stdio: ["ignore", "pipe", "pipe"] });
+    process.exitCode = await runShortcuts(realShortcutsDeps(DATA_DIR, userInfo().username, (command, args, input) => {
+      // M-2885: the script (with the icons) goes in on standard input; -EncodedCommand carries only the loader.
+      const r = spawnSync(command, args, { encoding: "utf-8", timeout: 120_000, input, stdio: ["pipe", "pipe", "pipe"] });
       return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "", error: r.error };
     }));
   });

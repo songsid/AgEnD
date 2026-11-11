@@ -104,7 +104,7 @@ function Invoke-AgendInWsl([string]$distro, [string]$user, [string]$command) {
 }
 function Invoke-RestartAgend([string]$distro, [string]$user, [switch]$Wait, [int]$SettleSeconds = 3) {
   Write-Host ""
-  $answer = Read-Host "  確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)"
+  $answer = Read-Host "  確定要重啟 AgEnD 嗎？所有 Agent 會重新啟動，正在進行的工作會中斷。(y/N)"
   if (([string]$answer) -notmatch '^\s*[yY]\s*$') {
       Write-Host "  沒有重啟。"
       if ($Wait) { $null = Read-Host "按 Enter 關閉" }
@@ -167,26 +167,59 @@ function Get-ShortcutCommand([string]$file) {
   if ($wt) { return @{ Target = $wt.Source; Arguments = '-w new "{0}" {1}' -f $ps, ($a -replace ';', '\;') } }
   return @{ Target = $ps; Arguments = $a }
 }
-function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptText, [string]$description) {
+function Save-AgendIcon([string]$name, $bytes) {
+  if (-not $bytes) { return $null }
+  try {
+      New-Item -ItemType Directory -Path (Get-AgendShortcutDir) -Force | Out-Null
+      $path = Join-Path (Get-AgendShortcutDir) $name
+      [IO.File]::WriteAllBytes($path, [byte[]]$bytes)
+      return $path
+  } catch { return $null }
+}
+function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptText, [string]$description, [string]$icon = '') {
   $dir = Get-AgendShortcutDir
   New-Item -ItemType Directory -Path $dir -Force | Out-Null
   $file = Join-Path $dir $scriptName
   [IO.File]::WriteAllText($file, $scriptText, (New-Object System.Text.UTF8Encoding $true))
   $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) ($name + '.lnk')
-  $shell = New-Object -ComObject WScript.Shell
-  $sc = $shell.CreateShortcut($lnk)
-  $cmd = Get-ShortcutCommand $file
-  $sc.TargetPath = $cmd.Target
-  $sc.Arguments = $cmd.Arguments
-  $sc.Description = $description
-  $sc.Save()
+  $staged = $lnk + '.agend-new'
+  # WScript.Shell saves a shortcut through the system ANSI code page: on a Windows whose system language has no 儀表板
+  # (English, Japanese...) Save() on the Chinese name fails. So it is saved under an ASCII name here, then put in place
+  # by .NET (Unicode). Leftovers of a run that died midway are ours by name, and only those are removed.
+  Get-ChildItem -LiteralPath $dir -Filter 'shortcut-*.tmp.lnk' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+  if ([IO.File]::Exists($staged)) { [IO.File]::Delete($staged) }
+  $tmp = Join-Path $dir ('shortcut-' + [guid]::NewGuid().ToString('N') + '.tmp.lnk')
+  try {
+      $shell = New-Object -ComObject WScript.Shell
+      $sc = $shell.CreateShortcut($tmp)
+      $cmd = Get-ShortcutCommand $file
+      $sc.TargetPath = $cmd.Target
+      $sc.Arguments = $cmd.Arguments
+      $sc.Description = $description
+      if ($icon) { $sc.IconLocation = $icon + ',0' }
+      $sc.Save()
+      # Beside the old one first (same folder, same volume), then swapped in: if that fails, the old shortcut stays.
+      [IO.File]::Copy($tmp, $staged, $true)
+      if (-not [IO.File]::Exists($lnk)) { [IO.File]::Move($staged, $lnk) }
+      else {
+          try { [IO.File]::Replace($staged, $lnk, [NullString]::Value) }
+          catch {
+              # ReplaceFile can fail after the old one is gone (ERROR_UNABLE_TO_MOVE_REPLACEMENT): then the new one goes in.
+              if ((-not [IO.File]::Exists($lnk)) -and [IO.File]::Exists($staged)) { [IO.File]::Move($staged, $lnk) } else { throw }
+          }
+      }
+  } finally {
+      foreach ($left in @($tmp, $staged)) { try { if ([IO.File]::Exists($left)) { [IO.File]::Delete($left) } } catch { } }
+  }
   return $lnk
 }
-function Install-AgendShortcuts([string]$distro, [string]$user) {
+function Install-AgendShortcuts([string]$distro, [string]$user, $icons = $null) {
   if (-not $script:OnWindows) { return @() }
   $made = @()
-  try { $made += New-AgendShortcut 'AgEnD 儀表板' 'open-dashboard.ps1' (Get-DashboardOpenerScript $distro $user) 'AgEnD 網頁儀表板（自動帶入登入碼）' } catch { }
-  try { $made += New-AgendShortcut 'AgEnD 重新啟動' 'restart-agend.ps1' (Get-RestartScript $distro $user) '重新啟動 AgEnD（會先詢問）' } catch { }
+  $dashIcon = ''; $restartIcon = ''
+  if ($icons) { $dashIcon = [string](Save-AgendIcon 'agend.ico' $icons['agend.ico']); $restartIcon = [string](Save-AgendIcon 'agend-restart.ico' $icons['agend-restart.ico']) }
+  try { $made += New-AgendShortcut 'AgEnD 儀表板' 'open-dashboard.ps1' (Get-DashboardOpenerScript $distro $user) 'AgEnD 網頁儀表板（自動帶入登入碼）' $dashIcon } catch { }
+  try { $made += New-AgendShortcut 'AgEnD 重新啟動' 'restart-agend.ps1' (Get-RestartScript $distro $user) '重新啟動 AgEnD（會先詢問）' $restartIcon } catch { }
   try {
       New-Item -ItemType Directory -Path (Get-AgendShortcutDir) -Force | Out-Null
       $record = @{ distro = $distro; user = $user } | ConvertTo-Json -Compress
