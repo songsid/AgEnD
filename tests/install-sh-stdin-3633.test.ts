@@ -69,8 +69,10 @@ describe("#3633 piped bootstrap keeps child stdin separate and verifies the PATH
   });
   it.each(["broken", "empty", "missing"] as const)("an installed command that is %s fails before the success banner", version => {
     const r = run({ version });
-    expect(r.status, r.stdout + r.stderr).not.toBe(0);
+    expect(r.status, r.stdout + r.stderr).toBe(1);
     expect(r.stdout).not.toContain("Installation Complete");
-    expect(r.stdout).toMatch(/PATH/);
+    expect(r.stdout).toContain(version === "missing"
+      ? "Installation finished, but `agend` is not on PATH."
+      : "Installation finished, but agend --version could not run from your PATH.");
   });
 });

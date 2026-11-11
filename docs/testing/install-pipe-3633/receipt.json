@@ -21,11 +21,12 @@
   "packSmoke": "built/packed current main; global npm install and PATH version1.22.0 pass; installed runtime guard passes after correcting fixture version-string argument",
   "logs": {
     "baseline.log": "640b3c27451d56957d9c47bfe1306d5e2a6fa11c325bbf95b64a3d9530f4c148",
-    "unit.log": "2b43ce623d52ac75f083432eb03ce9ea0944ab66abc86b13da3e2d598435fe4a",
+    "unit.log": "be196eeafeea49b9e55dcf829b2e62f774be8735d8ace49354263e1b25d81e4b",
     "install-smoke-guard.log": "3d932fe9abefa4ac2c008e16eb77bd2f197c64bb1e6e9cc1d2dfa00e3817a69e",
     "install-smoke.log": "aa356b34d4fac3c2a35f6cecc82c64c39f08f8d2106d351ca1c62850ecbd215a",
     "fail-first.log": "ec6781a826dab82f44a2bc1ac49d9f945a90a5a339edef1db80d84b0f19de4ea",
     "fixed.log": "36ead9e753c3e99d8b2d21afdfbb865874c1f52ce84ddaf9a97db8729c9c4b42"
   },
-  "logNormalization": "ANSI removed, line endings normalized and trailing whitespace trimmed; no content masking"
+  "logNormalization": "ANSI removed, line endings normalized and trailing whitespace trimmed; no content masking",
+  "missingPathRegression": "exact exit1 and explicit agend-not-on-PATH message; broken/empty version also exact exit1"
 }
