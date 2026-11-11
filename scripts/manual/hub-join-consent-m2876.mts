@@ -105,6 +105,7 @@ try {
    if (process.env.BEFORE) for (const name of ["hub-company-join.js", "hub-company-join-strings.js"]) await ctx.route("**/ui/js/" + name, (route: any) => route.fulfill({ contentType: "text/javascript", body: execFileSync("git", ["show", baseline + ":src/ui/" + name], { cwd: repo }) }));
    const page = await ctx.newPage(); await page.goto(r.webOrigin + "/ui/hub"); await page.fill("#hubLogin", "alice"); await page.fill("#hubPassword", "Dummy-alice-only"); await page.getByRole("button", { name: c.lang === "en" ? "Sign in" : "登入", exact: true }).click(); await page.locator(".p-hub-signin").waitFor({ state: "detached" }); await page.goto(r.webOrigin + "/ui/hub/admin"); await page.locator(".hub-admin-access").waitFor();
    if (!process.env.BEFORE) check(caseName(c) + " three guide steps", await page.locator(".hub-company-guide li").count() === 3);
+   await page.locator('.hub-admin-access button[aria-describedby="hubColleagueLinkHint"]:not([disabled])').waitFor();
    await page.evaluate(async () => { await document.fonts.ready; await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r()))); }); await page.screenshot({ path: join(out, caseName(c) + "-admin.png"), fullPage: c.device === "phone" }); await ctx.close();
   } finally { await browser.close(); }
  }
