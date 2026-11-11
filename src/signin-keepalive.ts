@@ -8,8 +8,9 @@
  *   access token when it is expired or within five minutes of expiry (a server feature gate may turn that off for
  *   subcommands). Whether it did is read back from `.credentials.json` (`expiresAt` moved). A failed refresh the server
  *   refuses (`invalid_grant`) blanks the stored login (`expiresAt` 0, no refresh token) while `auth status` still says
- *   signed in, so "sign in again" is read from the file too, never from the answer. The login also has an absolute end
- *   (`refreshTokenExpiresAt`) a refresh can never move: that is warned about from ten days before, whatever this does.
+ *   signed in, so "sign in again" is read from the file too, never from the answer. The stored `refreshTokenExpiresAt`
+ *   is not a deadline (M-2932): a refresh keeps min(old, new), so it stays the first sign-in's date while the server keeps
+ *   renewing, and Claude Code ignores it once a refresh landed past it. Nothing is said from it.
  * - Codex: `codex login status` never refreshes. `codex app-server` → `account/read {refreshToken:true}` forces one with
  *   no model call. It answers the same either way; what happened is read back: `last_refresh` in `auth.json` moved (it
  *   refreshed), the answer's account is null (the server refused the refresh token: sign in again), else a transient
@@ -39,13 +40,6 @@ const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 export const CLAUDE_REFRESH_WINDOW_MS = 5 * MIN;
 /** Codex refreshes by itself after eight days; this keeps a margin under that. */
 export const CODEX_REFRESH_AFTER_MS = 6 * DAY;
-/** Claude Code's own warning starts ten days before the sign-in ends. */
-export const END_WARNING_MS = 10 * DAY;
-/**
- * M-2825 (the user, 11-10: a profile's sign-in reached its fixed end with no warning — its keep-alive was off): every Claude
- * sign-in in use is warned about one day before its end date, and again once it has ended, whether or not it is kept alive.
- */
-export const END_NOTICE_MS = DAY;
 /** A transient failure becomes a Needs-you item on its second run in a row, or 48 hours after the first. */
 export const TRANSIENT_RUNS = 2;
 export const TRANSIENT_MS = 48 * HOUR;
@@ -157,7 +151,7 @@ export function nextRecord(prev: KeepAliveRecord | undefined, outcome: Outcome, 
   return rest;
 }
 
-export type AttentionKind = "needs_sign_in" | "not_renewed" | "transient" | "ending" | "ended";
+export type AttentionKind = "needs_sign_in" | "not_renewed" | "transient";
 export interface KeepAliveAttention { backend: KeepAliveBackend; profile: string | null; kind: AttentionKind; since: number; endsAt?: number; failedSince?: number }
 
 /** What wants a person now, from the switched-on sign-ins' records (pure; the end date is recomputed on each read). */
@@ -169,28 +163,12 @@ export function attentionOf(entries: readonly KeepAliveEntry[], now: number): Ke
     if ((r.outcome === "needs_sign_in" || r.outcome === "not_renewed" || r.outcome === "transient") && r.attentionSince !== undefined) {
       out.push({ backend: e.backend, profile: e.profile, kind: r.outcome, since: r.attentionSince, ...(r.outcome === "transient" && r.failSince !== undefined ? { failedSince: r.failSince } : {}) });
     }
-    // The end date: a refresh cannot move it, so it is said even when everything else is fine (not twice when a sign-in is already asked for).
-    if (r.endsAt !== undefined && r.endsAt - now <= END_WARNING_MS && r.outcome !== "needs_sign_in") {
-      out.push({ backend: e.backend, profile: e.profile, kind: r.endsAt <= now ? "ended" : "ending", since: Math.min(now, r.endsAt - END_WARNING_MS), endsAt: r.endsAt });
-    }
+    // M-2932: no line from the stored end date — it is not a deadline (see the head of this file); a login that really
+    // stopped is asked for by its refused refresh (needs_sign_in above).
   }
   return out;
 }
 
-/**
- * M-2825: the end-date lines for Claude sign-ins in use that are NOT kept alive (a kept one has its own, from ten days
- * before: attentionOf). Pure — `endsAt` comes from the sign-in's own file (readClaudeMeta: a date, never a token). Ending
- * from a day before; ended at its end date — a line of its own (another id), so it is said again then.
- */
-export function endNoticeOf(signIns: readonly { backend: KeepAliveBackend; profile: string | null; endsAt?: number }[], now: number): KeepAliveAttention[] {
-  const out: KeepAliveAttention[] = [];
-  for (const s of signIns) {
-    if (s.endsAt === undefined || !(s.endsAt > 0) || s.endsAt - now > END_NOTICE_MS) continue;
-    const ended = s.endsAt <= now;
-    out.push({ backend: s.backend, profile: s.profile, kind: ended ? "ended" : "ending", since: ended ? s.endsAt : s.endsAt - END_NOTICE_MS, endsAt: s.endsAt });
-  }
-  return out;
-}
 
 // ── Settings file ──────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -355,7 +333,7 @@ export interface KeepAliveDeps {
   claudeKeychain?: boolean;
 }
 
-export interface KeepAliveView { enabled: boolean; fallback?: boolean; endsAt?: string; expiresAt?: string; lastAt?: string; lastOutcome?: Outcome; planType?: string }
+export interface KeepAliveView { enabled: boolean; fallback?: boolean; expiresAt?: string; lastAt?: string; lastOutcome?: Outcome; planType?: string }
 export type SetResult = { ok: true } | { ok: false; error: "backend" | "profile" | "fallback" | "write" };
 
 const iso = (ms: number | undefined) => ms === undefined ? undefined : new Date(ms).toISOString();
@@ -445,51 +423,34 @@ export class SignInKeepAlive {
     const e = this.entries.find(x => x.backend === backend && x.profile === profile);
     const r = e?.enabled ? e.record : undefined;
     const home = this.deps.homeOf(backend, profile);
-    let endsAt = r?.endsAt, expiresAt = r?.expiresAt, planType = r?.planType;
+    let expiresAt = r?.expiresAt, planType = r?.planType;
     if (home) {
-      if (backend === "claude-code") { const m = readClaudeMeta(home); if (m.state === "ok") { endsAt = m.endsAt ?? endsAt; expiresAt = m.expiresAt ?? expiresAt; } }
+      // M-2932: no end date — the stored one is not a deadline (see the head of this file).
+      if (backend === "claude-code") { const m = readClaudeMeta(home); if (m.state === "ok") expiresAt = m.expiresAt ?? expiresAt; }
       else { const m = readCodexMeta(join(home, "auth.json")); if (m.state === "ok") { expiresAt = m.accessExp ?? expiresAt; planType = m.planType ?? planType; } }
     }
     const staleSignIn = this.signedInSince(backend, home, r);
     return {
       enabled: e?.enabled === true, ...(backend === "claude-code" ? { fallback: e?.fallback === true } : {}),
-      ...(endsAt !== undefined && endsAt > 0 ? { endsAt: iso(endsAt) } : {}), ...(expiresAt !== undefined && expiresAt > 0 ? { expiresAt: iso(expiresAt) } : {}),
+      ...(expiresAt !== undefined && expiresAt > 0 ? { expiresAt: iso(expiresAt) } : {}),
       ...(!staleSignIn && r?.lastAt !== undefined ? { lastAt: iso(r.lastAt) } : {}),
       ...(!staleSignIn && r?.outcome ? { lastOutcome: r.outcome } : {}),
       ...(planType ? { planType } : {}),
     };
   }
 
-  /**
-   * What wants a person now: the kept sign-ins' lines (attentionOf) and — M-2825 — the end date of every other Claude
-   * sign-in in `inUse` (the agents' and rooms' accounts, from FleetManager), read from its own file now (no CLI run, no
-   * network, no token taken out).
-   */
-  attention(inUse: readonly { backend: string; profile: string | null }[] = []): KeepAliveAttention[] {
-    const kept = this.keptAttention();
-    const seen = new Set<string>();
-    const others: { backend: KeepAliveBackend; profile: string | null; endsAt?: number }[] = [];
-    for (const u of inUse) {
-      if (u.backend !== "claude-code") continue;
-      const key = entryKey(u.backend, u.profile);
-      if (seen.has(key) || this.entries.some(e => e.enabled && entryKey(e.backend, e.profile) === key)) continue;
-      seen.add(key);
-      const home = this.deps.homeOf("claude-code", u.profile);
-      const m = home ? readClaudeMeta(home) : null;
-      if (m && m.state === "ok" && m.endsAt !== undefined) others.push({ backend: "claude-code", profile: u.profile, endsAt: m.endsAt });
-    }
-    return [...kept, ...endNoticeOf(others, this.now())];
+  /** What wants a person now: the kept sign-ins' lines (attentionOf). M-2932: nothing from a stored end date, in use or not. */
+  attention(): KeepAliveAttention[] {
+    return this.keptAttention();
   }
 
   private keptAttention(): KeepAliveAttention[] {
-    // A failure recorded before the person signed in again is not asked about any more. Its dates are the OLD sign-in's too: without the outcome, an old
-    // end date in the past would be said as "ended" right after a new sign-in, so the end date is the file's own now.
+    // A failure recorded before the person signed in again is not asked about any more.
     const entries = this.entries.map(e => {
       const home = this.deps.homeOf(e.backend, e.profile);
       if (!home || !e.enabled || !this.signedInSince(e.backend, home, e.record)) return e;
-      const { outcome: _o, attentionSince: _a, endsAt: _e, ...rest } = e.record!;
-      const live = this.datesOf(e.backend, home);
-      return { ...e, record: { ...rest, ...(live.endsAt ? { endsAt: live.endsAt } : {}) } };
+      const { outcome: _o, attentionSince: _a, ...rest } = e.record!;
+      return { ...e, record: rest };
     });
     return attentionOf(entries, this.now());
   }
