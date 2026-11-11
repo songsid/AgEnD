@@ -1,5 +1,5 @@
 /**
- * AGEND-161 (PR 1): an agent's "Details & settings" page and the categorised agent form behind it.
+ * an agent's "Details & settings" page and the categorised agent form behind it.
  * - the categories of each kind of agent (fleet / Windows native / ClassicBot room), the address that names one, and which
  *   category a change belongs to (the dot on the nav);
  * - every field of the old agent dialog is still there, in a category, with its id — and has an ⓘ;

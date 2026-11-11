@@ -3,7 +3,7 @@ import { NativePaneRecovery } from "./native-pane-recovery.js";
 // gate (/ui/js/). What it holds:
 // - runtime and recent activity (what Chat's details dialog showed, now a page);
 // - a read-only config summary — directory, binding, tags, description — in the Overview;
-// - AGEND-161: "Details & settings" — the settings of that agent beside it, by category (agent-details-settings.js), with
+// - "Details & settings" — the settings of that agent beside it, by category (agent-details-settings.js), with
 //   Settings' own staged Apply and confirmations;
 // - the instance's actions (⋯), carried over with their calls and confirmations, none new: start / restart / stop (Chat's
 //   ⋯), pause / wake (Settings' agent row). Deletion stays where it already lives (Chat's ⋯, Settings).
@@ -57,7 +57,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState("");
   const body = useRef(null);
-  // AGEND-161: the category the address names (`?cat=`); none is Overview on a wide screen, the list of categories on a phone.
+  // the category the address names (`?cat=`); none is Overview on a wide screen, the list of categories on a phone.
   const [opened, setOpened] = useState(false);
   const [dirty, setDirty] = useState(() => new Set());
   const kind = agentKind(d, inst);

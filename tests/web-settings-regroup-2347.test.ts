@@ -223,7 +223,7 @@ describe("#2347 §7: the list of sections and a section on its own (phone)", () 
     expect(css).toMatch(/\.p-settings \.dlg-head\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)/);
     expect(css).toMatch(/\.p-settings \.dlg-actions\s*\{\s*border-top:\s*1px solid var\(--border\)/);
     // The title never shrinks; the version shortens, and goes under 56 px of room.
-    // AGEND-161: these two are Settings' own header (an agent's page, p-agent-page, keeps Details' header).
+    // these two are Settings' own header (an agent's page, p-agent-page, keeps Details' header).
     expect(css).toMatch(/\.p-settings:not\(\.p-agent-page\) \.panel-title h1\s*\{\s*flex:\s*none/);
     expect(css).toMatch(/\.p-settings:not\(\.p-agent-page\) \.panel-sub\s*\{\s*flex:\s*1 1 0;\s*min-width:\s*0;\s*container:\s*settings-ver \/ inline-size/);
     expect(css).toMatch(/@container settings-ver \(max-width: 56px\)\s*\{\s*\.p-settings \.panel-sub \.pill\.ver\s*\{\s*display:\s*none/);

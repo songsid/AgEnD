@@ -12,7 +12,7 @@ import { fire, installDom } from "./helpers/mini-dom.js";
 const mounted: AppPage[] = [];
 let calls: string[] = [];
 let detail: Record<string, unknown> = {};
-let failWrites = false;       // AGEND-161: a settings write the server refuses
+let failWrites = false;       // a settings write the server refuses
 const live = (name: string, o: Record<string, unknown> = {}) => ({ name, status: "running", backend: "claude-code", model: "opus", context_pct: 10, tags: [], execution_state: "idle", ...o });
 const INSTANCES = [live("web-dev", { tags: ["Platform"] }), live("api-server", { status: "stopped" }), live("qa-bot", { status: "paused" }), live("classic-ops-1", { tags: ["classic"] }), live("loner", { card_v: "v1" })];
 /** #1629 r4 §1: loner's identity card, as GET /api/card/loner answers it (a person's tagline over the agent's bio). */
@@ -219,7 +219,7 @@ describe("Details (Q1 = B)", () => {
     await choose(pg, "Wake");
     expect(calls.filter(c => c.startsWith("POST")).at(-1)).toBe("POST /api/settings/instances/qa-bot/wake");
   });
-  it("AGEND-161: the agent's settings are on this page (Settings tab, ?cat=basic) — no Edit in Settings menu item or button, and nothing asks Settings for a dialog", async () => {
+  it("the agent's settings are on this page (Settings tab, ?cat=basic) — no Edit in Settings menu item or button, and nothing asks Settings for a dialog", async () => {
     const pg = await app("/ui/fleet/agent/web-dev");
     expect(calls.filter(c => c.includes("/api/settings/") && !c.includes("restart-pending"))).toEqual([]);   // the Overview alone reads no configuration (the shell's own restart check is not it)
     expect(pg.root.querySelector(".p-details .d-edit-settings")).toBeNull();
@@ -256,7 +256,7 @@ describe("View: the switch for a signed-in person, none for the anonymous reader
   });
 });
 
-describe("AGEND-161: the Settings tab of an agent (Details & settings)", () => {
+describe("the Settings tab of an agent (Details & settings)", () => {
   const navItems = (pg: AppPage) => pg.root.querySelectorAll(".p-details > .s-nav .seg-item").map((a: any) => [a.textContent.replace("●", "").trim(), a.getAttribute("href"), a.getAttribute("aria-current") ?? null]);
   it("the categories are the shared Settings nav (Status / Settings groups, an icon before each item); no category is the phone's list", async () => {
     const pg = await app("/ui/fleet/agent/web-dev");
@@ -394,7 +394,7 @@ describe("#1561 review", () => {
     expect(await menuItems(pg)).toEqual(["Pause", "Colour…", "Lock theme", "Reset theme…"]);   // #1629: a Classic room's agent has a theme too; #1958 a colour
     expect(pg.root.querySelector(".p-details .d-edit-settings")).toBeNull();
     await go("/ui/fleet/agent/classic-ops-1?cat=runtime"); await untilRead(); await settle(10);
-    // AGEND-161: its settings are on this page too (a room has no basic info: it starts at Runtime & model).
+    // its settings are on this page too (a room has no basic info: it starts at Runtime & model).
     expect([await route(), pg.window.location.search, req.takeAgentRequest()]).toEqual([{ panel: "details", instance: "classic-ops-1" }, "?cat=runtime", null]);
     expect(pg.root.querySelector(".p-details #ap-panel-runtime #cl-be")).not.toBeNull();
   });

@@ -642,7 +642,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       ? html`<button type="button" class=${`icon-btn inst-star${starred ? " on" : ""}`} aria-pressed=${starred ? "true" : "false"} disabled=${full}
           aria-label=${tn(starred ? "favRemove" : "favAdd", { name: label })} title=${full ? tn("favFull", { max: MAX_FAVORITES }) : tn(starred ? "favRemove" : "favAdd", { name: label })}
           onClick=${() => toggleFavorite(name, known)}><${Icon} name="star" size=${14} /></button>` : null}${canConfigure && supportsInstanceFeature(it, "details")
-      // AGEND-161: one step to this agent's settings (its Details & settings page, Basic info; a kind with no Basic info — a ClassicBot room — starts at its first category); the row itself still opens the chat.
+      // one step to this agent's settings (its Details & settings page, Basic info; a kind with no Basic info — a ClassicBot room — starts at its first category); the row itself still opens the chat.
       ? html`<a class="icon-btn inst-gear" href=${`${detailsPath(name)}?cat=basic`} aria-label=${tn("gearOpen", { name: label })} title=${tn("gearOpen", { name: label })}
           onClick=${onPick}><${Icon} name="settings" size=${14} /></a>` : null}</li>`;
   };

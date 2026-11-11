@@ -1,4 +1,4 @@
-// AGEND-161: one agent's "Details & settings" page — the Details tab with its settings beside the read-only facts.
+// one agent's "Details & settings" page — the Details tab with its settings beside the read-only facts.
 // Categories on the left (a tab row in the middle, a list on a phone), each one a group of the agent's settings, with the
 // read-only Overview first. The fields are the ones the Settings dialogs always had (settings-dialogs.js: useAgentForm /
 // AgentFields; native-instance-settings.js; useClassicForm / ClassicFields) — this file adds only where they live:

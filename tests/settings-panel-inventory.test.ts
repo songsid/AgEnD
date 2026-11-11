@@ -138,7 +138,7 @@ function functionBody(name: string): string {
 }
 
 const EDITORS = ["AgentDialog", "BotDialog", "ClassicDialog"];
-/** AGEND-161: the agent and ClassicBot dialogs are thin shells over a form hook (the draft and its staging) and a fields component. */
+/** the agent and ClassicBot dialogs are thin shells over a form hook (the draft and its staging) and a fields component. */
 const FORM_HOOK: Record<string, string> = { AgentDialog: "useAgentForm", ClassicDialog: "useClassicForm" };
 const editorBody = (name: string) => (FORM_HOOK[name] ? [functionBody(name), functionBody(FORM_HOOK[name]!)].join("\n") : functionBody(name));
 

@@ -1,5 +1,5 @@
 /**
- * AGEND-161 round 2 (PR #50): a single-checkbox setting does not say its own name twice, and on a phone the agent page's
+ * a single-checkbox setting does not say its own name twice, and on a phone the agent page's
  * header shows the status as its dot only (the name keeps the room).
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";

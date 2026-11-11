@@ -1,5 +1,5 @@
 // Windows uses the same staged instance settings flow, with its runtime's supported fields.
-// AGEND-161: the form is a hook (useNativeForm) and its fields are grouped by category (NativeFields), so the Settings dialog
+// the form is a hook (useNativeForm) and its fields are grouped by category (NativeFields), so the Settings dialog
 // and the Details & settings page (agent-details-settings.js) draw the same fields, each with its ⓘ.
 import { html, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";

@@ -1,4 +1,4 @@
-// AGEND-161: the words of the agent's "Details & settings" page (agent-details-settings.js) and the ⓘ beside each setting the
+// the words of the agent's "Details & settings" page (agent-details-settings.js) and the ⓘ beside each setting the
 // agent dialogs show. A file of its own, with its own namespace, so no tab holding an older settings-strings.js can be
 // missing them (see settings-shared-strings.js for why): every module that reads `agentPage.*` imports this file.
 import { register, t } from "/assets/app-i18n.js";

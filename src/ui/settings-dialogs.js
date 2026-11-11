@@ -106,7 +106,7 @@ export function ModelSelect({ value, onChange, disabled, id, backend, instance, 
 }
 export function Impact({ schema, field }) { return html`<span class="impact">${impactText(impactOf(schema, field))}</span>`; }
 export function Label({ text, schema, field, htmlFor, mark, tip }) {
-  // AGEND-161: with an ⓘ the label, the ⓘ and the timing sit in one header (the ⓘ is a button, never inside a label).
+  // with an ⓘ the label, the ⓘ and the timing sit in one header (the ⓘ is a button, never inside a label).
   if (tip) return html`<div class="s-lab"><label for=${htmlFor}>${text}</label>${mark ? html`${mark}` : null}<${InfoTip} text=${tip} name=${text} />${field ? html`<${Impact} schema=${schema} field=${field} />` : null}</div>`;
   return html`<label for=${htmlFor}>${text}${mark ? html` ${mark}` : null}${field ? html` <${Impact} schema=${schema} field=${field} />` : null}</label>`;
 }
@@ -294,7 +294,7 @@ function EmojiPicker({ cat, keyName, platform, channel, onPick, onClose }) {
 // ── Agent ──
 
 /**
- * AGEND-161: one agent's form — its draft, validation and patch — shared by the Settings dialog (AgentDialog) and the
+ * one agent's form — its draft, validation and patch — shared by the Settings dialog (AgentDialog) and the
  * Details & settings page (agent-details-settings.js). Nothing here writes: `stage()` hands the patch to ctx.stageAgent.
  */
 export function useAgentForm({ name, inst, ctx }) {
@@ -357,7 +357,7 @@ const Card = ({ title, span, cls = "", children }) => html`<section class=${`car
 const Info = ({ children }) => html`<p class="s-info"><span aria-hidden="true">ⓘ</span><span>${children}</span></p>`;
 
 /**
- * AGEND-161: the fields of one category of a fleet agent (the same fields, ids and patch the dialog always had, grouped by what they
+ * the fields of one category of a fleet agent (the same fields, ids and patch the dialog always had, grouped by what they
  * do and each with its ⓘ). `m`: useAgentForm's result. `onDelete`: the page's "Delete agent…" (the dialog has none).
  */
 export function AgentFields({ m, cat, onDelete }) {
@@ -767,7 +767,7 @@ export function NewBotDialog({ ctx, onClose }) {
 
 // ── ClassicBot room ──
 
-/** AGEND-161: the ClassicBot room's categories (it has no basic info, workspace or advanced settings of its own). */
+/** the ClassicBot room's categories (it has no basic info, workspace or advanced settings of its own). */
 export const CLASSIC_CATEGORIES = ["runtime", "channel"];
 
 /** One room's form — shared by the Settings dialog (ClassicDialog) and the Details & settings page. */

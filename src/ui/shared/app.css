@@ -1709,7 +1709,7 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .pill.ver { text-transform: none; letter-spacing: 0; }
 /* #2347 §7: Settings' title stays whole on a narrow phone (at 320 px it was cut to "S…"): the version beside it takes the
    room that is left — shortened, or not shown when too little is. */
-/* AGEND-161: the version pill of the Settings header; an agent's page (p-agent-page) keeps Details' own header (its status must not shrink to nothing). */
+/* the version pill of the Settings header; an agent's page (p-agent-page) keeps Details' own header (its status must not shrink to nothing). */
 .p-settings:not(.p-agent-page) .panel-title h1 { flex: none; }
 .p-settings:not(.p-agent-page) .panel-sub { flex: 1 1 0; min-width: 0; container: settings-ver / inline-size; }
 .p-settings .panel-sub .pill.ver { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
@@ -4229,7 +4229,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .s-hub-connection .hub-fp .btn { white-space: normal; }
 }
 
-/* AGEND-161 — the menu of Settings and of an agent's Details & settings page (both are `.p-settings` with a `.s-nav`):
+/* Agent page: the menu of Settings and of an agent's Details & settings page (both are `.p-settings` with a `.s-nav`):
    what is a menu and what is content has to read at a glance. These five rules change the shared Settings page too. */
 /* S1. A hairline under the page header, so the header (with the instance tabs) no longer runs into the content. */
 .p-settings > .panel-head { border-bottom: 1px solid var(--border); }
