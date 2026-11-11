@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Own source snapshot + loopback-only browser/Hub/member rehearsal. No systemd or host lifecycle.
 set -euo pipefail
+case "${B1_LEG:-accept}" in accept|rollback) ;; *) exit 2 ;; esac
 task_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 output_dir="${OUT:-$task_root/.artifacts/hub-enrolment-code-b1}"
 mkdir -p "$output_dir/docker-config" "$output_dir/container-evidence" "$output_dir/node_modules"
@@ -19,8 +20,9 @@ for n in subprocess.check_output(['git','ls-files','--modified','--others','--ex
 legacy=Path(os.environ['output_dir'])/'node_modules/legacy-source'
 if legacy.exists():shutil.rmtree(legacy)
 legacy.mkdir()
-with tarfile.open(fileobj=io.BytesIO(subprocess.check_output(['git','archive','9c98307c938b77d8eaaebf5bcd3f20c5c27dce6f','src','tests/support','tests/helpers','package.json','tsconfig.json','launcher'],cwd=root))) as a:a.extractall(legacy,filter='data')
+with tarfile.open(fileobj=io.BytesIO(subprocess.check_output(['git','archive','d2440106a2805187eb50a13c2385144192261f9a','src','tests/support','tests/helpers','package.json','tsconfig.json','launcher'],cwd=root))) as a:a.extractall(legacy,filter='data')
 (legacy/'node_modules').mkdir(exist_ok=True)
+
 PY
 cat > "$output_dir/Dockerfile" <<'DOCKERFILE'
 FROM node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d AS node22
@@ -34,9 +36,9 @@ docker --config "$output_dir/docker-config" run --rm --name ridge-hub-enrolment-
  --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges \
  --read-only --tmpfs /tmp:rw,nosuid,nodev,size=512m --shm-size 256m \
  --mount "type=bind,src=$output_dir/node_modules/container-source,dst=/work,readonly" \
- --mount "type=bind,src=$output_dir/node_modules/legacy-source,dst=/legacy,readonly" \
  --mount "type=bind,src=$(realpath "$task_root/node_modules"),dst=/work/node_modules,readonly" \
  --mount "type=bind,src=$output_dir/container-evidence,dst=/evidence" \
+ --mount "type=bind,src=$output_dir/node_modules/legacy-source,dst=/legacy,readonly" \
  --mount "type=bind,src=$(realpath "$task_root/node_modules"),dst=/legacy/node_modules,readonly" \
- -e SAFE_RUN=1 -e AGEND_OWNED_CONTAINER=hub-enrolment-code-b1 -e OUT=/evidence -e HOME=/tmp/home -e XDG_CACHE_HOME=/tmp/cache \
- ridge-hub-enrolment-code-b1-browser sh -c 'ln -s /work/node_modules /tmp/node_modules && ln -s /work/launcher /tmp/launcher && ln -s /work/package.json /tmp/package.json && node node_modules/@typescript/native/bin/tsc --outDir /tmp/b1-dist --declaration false --sourceMap false && node --import tsx scripts/manual/hub-enrolment-code-b1/accept.mts'
+ -e B1_LEG="${B1_LEG:-accept}" -e SAFE_RUN=1 -e AGEND_OWNED_CONTAINER=hub-enrolment-code-b1 -e OUT=/evidence -e HOME=/tmp/home -e XDG_CACHE_HOME=/tmp/cache \
+ ridge-hub-enrolment-code-b1-browser sh -c 'ln -s /work/node_modules /tmp/node_modules && ln -s /work/launcher /tmp/launcher && ln -s /work/package.json /tmp/package.json && node node_modules/@typescript/native/bin/tsc --outDir /tmp/b1-dist --declaration false --sourceMap false && cp -r /work/src/ui /tmp/b1-dist/ && node --import tsx scripts/manual/hub-enrolment-code-b1/${B1_LEG}.mts'

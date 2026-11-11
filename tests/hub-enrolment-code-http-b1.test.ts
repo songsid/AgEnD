@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { companyJoinRig, type JoinBrowser } from "./support/hub-company-join-rig.js";
 import { pkceChallenge, signJoinProof, type JoinPurpose } from "../src/hub/join/protocol.js";
 import { personKeyString, sha256 } from "../src/hub/identity.js";
+import { retireCompanyJoinForWebAddress } from "../src/hub/join/store.js";
 let rig: Awaited<ReturnType<typeof companyJoinRig>> | undefined;
 afterEach(async () => { await rig?.close(); rig = undefined; vi.restoreAllMocks(); });
 async function world(groups = false) {
@@ -173,5 +174,15 @@ describe("B1 enrolment-code protected routes and actual join", () => {
     expect((await a.approve("dan")).status).toBe(200); expect((await a.redeem()).status).toBe(200);
     expect((await r.call(admin, "GET", "/hub/v1/notices?v=2")).body.notices).toEqual([]);
     expect((await r.call(admin, "GET", "/hub/v1/notices?v=3")).body.notices).toEqual([expect.objectContaining({ source: "code", codeId: code.id })]);
+  });
+  it("the merged web-address writer retires code reservations and protects the original issued window", async () => {
+    const { r, admin } = await world(), code = await make(r, admin), a = await begin(r, code.code);
+    expect((await a.approve("dan")).status).toBe(200);
+    r.db.transaction(() => retireCompanyJoinForWebAddress(r.db, Date.now())).immediate();
+    expect(r.deps.companyJoin!.records.get(a.binding.requestId)).toMatchObject({ stage: "ended", reason: "authority", browserHash: null });
+    expect((await r.call(admin, "GET", "/hub/v1/admin/enrolment-codes")).body.codes[0]).toMatchObject({ uses: 0, inFlight: 0, state: "live" });
+    const b = await begin(r, code.code); expect((await b.approve("dan")).status).toBe(200); expect((await b.redeem()).status).toBe(200);
+    expect(() => r.db.transaction(() => retireCompanyJoinForWebAddress(r.db, Date.now())).immediate()).toThrow("backpressure");
+    expect(r.deps.companyJoin!.records.get(b.binding.requestId).stage).toBe("issued");
   });
 });

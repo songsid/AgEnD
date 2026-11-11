@@ -1,0 +1,86 @@
+[
+  {
+    "path": "src/hub/audit/index.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/catalog.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/client.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/compose/member.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/compose/server.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/enrolment-code.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/group-policy/admin-impact.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/group-policy/admin-inventory.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/group-policy/authorization.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/group-policy/resources.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/group-policy/store.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/http/compose.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/join/receipt.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/join/service.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/join/store.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/member/pairing-notices.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/pairing-notices.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/pairing.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/protocol.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/server.ts",
+    "sameDelta": true
+  },
+  {
+    "path": "src/hub/types.ts",
+    "sameDelta": true
+  }
+]

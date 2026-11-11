@@ -497,29 +497,29 @@
     {
       "n": 20,
       "groups": 0,
-      "startSpanMs": 19,
-      "elapsedMs": 9106,
+      "startSpanMs": 39,
+      "elapsedMs": 13670,
       "uses": 20,
       "online": 20,
-      "hubRss": 338853888,
-      "databaseBytes": 667648
+      "hubRss": 319430656,
+      "databaseBytes": 684032
     },
     {
       "n": 50,
       "groups": 3,
-      "startSpanMs": 36,
-      "elapsedMs": 39237,
+      "startSpanMs": 61,
+      "elapsedMs": 41843,
       "uses": 50,
       "online": 73,
-      "hubRss": 377782272,
-      "databaseBytes": 1486848
+      "hubRss": 349458432,
+      "databaseBytes": 1499136
     }
   ],
   "screenshots": [
-    "small1.zh-TW.png",
     "small0.en-US.png",
-    "small3.en-US.png",
+    "small1.zh-TW.png",
     "small2.en-US.png",
+    "small3.en-US.png",
     "small4.en-US.png"
   ],
   "boundary": "Read-only network-none owned container. Production source Hub/SQLite/verified fake LDAPS. Built dist/hub/join/client.js and dist/hub/client.js, real pinned WSS. Five Chromium AD handoffs; harness persists member profiles directly after real redemption. Not five full Fleet services or Settings UI, not packaged/systemd; B-L11/12 UI and queue text remain B2/U2 acceptance.",
@@ -544,7 +544,7 @@
     },
     {
       "path": "src/hub/compose/server.ts",
-      "sha256": "4f0dcd8e56f1db759e38e98b6a572cd94425df41c8ca8d4d6b1701cd2eaab6f6"
+      "sha256": "5da38a22d6d82a795e2d04ba449100190f1f7906fc9b43d4b92cead18f5d1108"
     },
     {
       "path": "src/hub/enrolment-code.ts",
@@ -580,11 +580,11 @@
     },
     {
       "path": "src/hub/join/service.ts",
-      "sha256": "a435f731f9d50aa5165be60662f312f718d73e2d35b3d624f4763d7928f096bb"
+      "sha256": "3a67e889c0ba6929bd286c9f969d8530126b1093844f3a923888b87711167e47"
     },
     {
       "path": "src/hub/join/store.ts",
-      "sha256": "ff2e098e032845fa93a83342e975ce355828c4124fdc011e6e1bb349c147bef4"
+      "sha256": "b84b57eea359c0ef4dbf8bc25d5c679618007ad16566f0c65d7ef6978e6e3b63"
     },
     {
       "path": "src/hub/member/pairing-notices.ts",
@@ -613,25 +613,24 @@
   ],
   "images": [
     {
-      "path": "small1.zh-TW.png",
-      "sha256": "24cea9441eb3192cb20f00594a59b1eca5f7dce911bd0152d3a9d813f7ad3632"
-    },
-    {
       "path": "small0.en-US.png",
       "sha256": "f31ebf12076e86850f76f2619876133df379ab658a17f277c2e509c5b79186e4"
     },
     {
-      "path": "small3.en-US.png",
-      "sha256": "a9b97e0d79ee10ee5c4a7f53f0e5c6d70f8b5d02f36fcd0bb62d0ba5ec2bbe80"
+      "path": "small1.zh-TW.png",
+      "sha256": "24cea9441eb3192cb20f00594a59b1eca5f7dce911bd0152d3a9d813f7ad3632"
     },
     {
       "path": "small2.en-US.png",
       "sha256": "f83e4ca7712065bdf7e2800986a21b6e3ff89f145d2b03de26782a9bb669bf01"
     },
     {
+      "path": "small3.en-US.png",
+      "sha256": "a9b97e0d79ee10ee5c4a7f53f0e5c6d70f8b5d02f36fcd0bb62d0ba5ec2bbe80"
+    },
+    {
       "path": "small4.en-US.png",
       "sha256": "2aa1ab274022aa4a45f5f8c3dbbc24ca37ad682c92642c614ecd97f3c4360e6d"
     }
-  ],
-  "manifestNote": "Full product manifest expanded after the run from its frozen readonly source snapshot; no product changes."
+  ]
 }
