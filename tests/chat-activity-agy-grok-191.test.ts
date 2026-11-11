@@ -96,8 +96,8 @@ describe("antigravity: grouping above the reply it produced (real ledger)", () =
     expect(shape(result.groups[1].items)).toEqual(["thinking", "tool:write_file"]);
     expect(shape(result.groups[2].items)).toEqual(["tool:run_command"]);
   });
-  it("what agy said after its last reply is the group's not-sent text", () => {
-    expect(shape(result.groups[2].trailing)).toEqual(["assistant"]);
+  it("what agy said after its last reply is the lone `.` it writes to close the turn (AGEND-197): not a step, in none of the groups", () => {
+    expect(result.groups.every((g: any) => g.trailing.length === 0)).toBe(true);
   });
   it("the turn in progress is live until its reply row arrives", () => {
     const cut = read("agy-web-chat.jsonl").slice(0, 15);                  // up to (not including) the second reply
@@ -211,7 +211,7 @@ describe("grok: grouping above the reply it produced (real ledger)", () => {
     expect(result.groups.map((g: any) => [g.rowKey, g.level])).toEqual([["a1b2-4", "id"], ["a1b2-7", "id"], ["a1b2-9", "id"]]);
     expect(shape(result.groups[1].items)).toEqual(["thinking", "assistant", "tool:search_replace", "thinking"]);
     expect(shape(result.groups[2].items)).toEqual(["thinking", "tool:run_terminal_command", "thinking"]);
-    expect(shape(result.groups[2].trailing)).toEqual(["assistant"]);
+    expect(shape(result.groups[2].trailing)).toEqual([]);      // grok's close-out is a lone `.` too (AGEND-197): not a step
   });
 });
 
@@ -319,7 +319,7 @@ describe("where each CLI's transcript is", () => {
 /* ------------------------------------------------------------------ the Log service reads them */
 
 function service(src: LogSource): LogService {
-  const deps: LogServiceDeps = { enabled: () => true, known: () => true, source: () => src, events: () => [], emit: () => {} };
+  const deps: LogServiceDeps = { enabled: () => true, thinking: () => true, known: () => true, source: () => src, events: () => [], emit: () => {} };
   return new LogService(deps);
 }
 describe("the Log service reads antigravity and grok transcripts", () => {
@@ -380,5 +380,25 @@ describe("a result whose call lay before the range read is not undone at the tur
     const outG = g.push(JSON.stringify({ timestamp: 2, method: "_x.ai/session/update", params: { sessionId: "s", update: { sessionUpdate: "turn_completed", stop_reason: "end_turn" } } }), 10);
     expect(outG.some((s) => s.id === "c9")).toBe(false);
     expect(g.steps.find((s) => s.id === "c9")!.status).toBe("done");
+  });
+});
+
+describe("AGEND-197: antigravity and grok follow the same rules as Claude Code and Codex", () => {
+  const chatSvc = (src: LogSource, over: Partial<LogServiceDeps> = {}) => new LogService({ enabled: () => false, toolProgress: () => "standard", known: () => true, source: () => src, events: () => [], emit: () => {}, ...over });
+  it.each([["antigravity", "agy-web-chat.jsonl"], ["grok", "grok-web-chat.jsonl"]] as const)("%s: the chat's block is gated by tool_progress (log_tab off), cut to standard, with no thinking unless web.log_thinking is on", async (format, file) => {
+    const src: LogSource = { backend: format, path: join(FIX, file), format };
+    const std: any = await chatSvc(src).steps("x", { chat: true, thinking: true });
+    expect(std).toMatchObject({ enabled: true, supported: true, level: "standard", thinking: false });
+    expect(std.steps.some((s: LogStep) => s.kind === "thinking")).toBe(false);          // off by default, even when asked
+    const tools = std.steps.filter((s: LogStep) => s.kind === "tool");
+    expect(tools.length).toBeGreaterThan(0);
+    expect(tools.every((s: LogStep) => s.input === undefined && s.body === undefined)).toBe(true);
+    expect(std.steps.filter((s: LogStep) => s.kind === "user").every((s: LogStep) => s.body === undefined)).toBe(true);
+    const verbose: any = await chatSvc(src, { toolProgress: () => "verbose" }).steps("x", { chat: true });
+    expect(verbose.steps.some((s: LogStep) => s.kind === "tool" && (s.input !== undefined || s.body !== undefined))).toBe(true);
+    const on: any = await chatSvc(src, { thinking: () => true }).steps("x", { chat: true, thinking: true });
+    expect(on.steps.some((s: LogStep) => s.kind === "thinking")).toBe(true);
+    const off: any = await chatSvc(src, { toolProgress: () => "off" }).steps("x", { chat: true });
+    expect(off).toMatchObject({ level: "off", steps: [] });
   });
 });
