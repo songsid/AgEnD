@@ -1,3 +1,4 @@
+import * as fixturePrivacyFs from "node:fs";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
@@ -139,3 +140,9 @@ describe("connect --enroll-stdin", () => {
     expect(existsSync(join(base, "connection.json"))).toBe(true);
   });
 });
+
+// This suite models an admitted NTFS boundary; dedicated privacy tests retain the real gate and refusal ordering.
+vi.mock("../src/runtime-pane-private.js", async original => ({ ...await original<typeof import("../src/runtime-pane-private.js")>(), protectRuntimeProfileDirectorySync(directory: string) {
+  const fs = fixturePrivacyFs;
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 }); const stat = fs.lstatSync(directory); if (!stat.isDirectory() || stat.isSymbolicLink()) throw Error("Unsafe profile fixture");
+} }));

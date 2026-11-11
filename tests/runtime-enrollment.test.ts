@@ -1,3 +1,4 @@
+import * as fixturePrivacyFs from "node:fs";
 import { createServer, IncomingMessage, ServerResponse, type Server } from "node:http";
 import { Readable } from "node:stream";
 import { once } from "node:events";
@@ -663,3 +664,9 @@ describe("the owner is told when a computer joins with a token", () => {
     expect(source).toMatch(/if\(entry\.event==="used"\)try\{[\s\S]{0,400}enrolledRuntimeNotice\(entry,[\s\S]{0,400}if\(text\)this\.deliverOwnerNotice\(text\)[\s\S]{0,200}catch\(error\)/);
   });
 });
+
+// This suite models an admitted NTFS boundary; dedicated privacy tests retain the real gate and refusal ordering.
+vi.mock("../src/runtime-pane-private.js", async original => ({ ...await original<typeof import("../src/runtime-pane-private.js")>(), protectRuntimeProfileDirectorySync(directory: string) {
+  const fs = fixturePrivacyFs;
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 }); const stat = fs.lstatSync(directory); if (!stat.isDirectory() || stat.isSymbolicLink()) throw Error("Unsafe profile fixture");
+} }));
