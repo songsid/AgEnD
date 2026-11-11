@@ -1,5 +1,5 @@
 {
-  "source": "a3aefd9e49d54794a5a0c52d0f313ae8402b4e6e",
+  "source": "fa5407a3dcc3903630c682c208e35a4c93b15e01",
   "scope": "recorded Codex0.167 mock-only stream; real Daemon/Outbox; private tmux replay; no backend CLI/account/network",
   "receipts": [
     {
@@ -11,7 +11,7 @@
         "Enter"
       ],
       "accepted": true,
-      "elapsedMs": 8841
+      "elapsedMs": 8850
     }
   ],
   "cleanup": {

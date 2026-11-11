@@ -1,0 +1,8 @@
+{
+  "nativeLocalProofExclusion": {
+    "compiled": true,
+    "caughtByAssertion": true,
+    "log": "alpha-native-mutant.log"
+  },
+  "restoredControl": "alpha-native-restored.log"
+}

@@ -1,0 +1,46 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-alpha
+
+ ❯ tests/codex-pane-native-exclusion-2301.test.ts (1 test | 1 failed) 57ms
+   × native lifecycle cannot mint a coordinator-local Codex paste lease 56ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  09:27:12
+   Duration  3.61s (transform 2.50s, setup 109ms, import 3.10s, tests 57ms, environment 1ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-native-exclusion-2301.test.ts > native lifecycle cannot mint a coordinator-local Codex paste lease
+AssertionError: expected { backend: 'codex', …(4) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "backend": "codex",
+  "offset": 349,
+  "ownedCodex": {
+    "current": [Function current],
+    "identity": {
+      "dev": 2128,
+      "ino": 15876849,
+    },
+    "validate": [Function validate],
+  },
+  "path": "/tmp/codex-native2301-3E3rM2/sessions/rollout-01a1c81a-35be-7fc0-9a6d-f53f7d6c4c07.jsonl",
+  "sessionId": "01a1c81a-35be-7fc0-9a6d-f53f7d6c4c07",
+}
+
+ ❯ tests/codex-pane-native-exclusion-2301.test.ts:20:61
+     18|       tmux: { getWindowId: () => "@owned", capturePane: async () => pa…
+     19|     });
+     20|     expect(await d.bindCodexRawPaste("@owned", () => true)).toBeNull();
+       |                                                             ^
+     21|   } finally { rmSync(root, { recursive: true, force: true }); }
+     22| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

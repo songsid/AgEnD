@@ -15,6 +15,7 @@ const home = mkdtempSync(join(tmpdir(), "codex-view2301-"));
 process.env.HOME = home;
 process.env.CODEX_HOME = join(home, "codex");
 process.env.PATH = "/usr/bin:/bin";
+process.env.AGEND_TMUX_BIN = "/usr/bin/tmux"; // explicit audited utility override in this scratch source rig
 const { bootFixture } = await import(
   repo + "/scripts/manual/smoke-fixture/index.mts"
 );
@@ -29,10 +30,8 @@ const { getTmuxSession } = await import(repo + "/src/config.ts");
 const socket = getTmuxSocketName(),
   session = getTmuxSession();
 if (!socket) throw Error("private socket required");
-const tmux = (...args: string[]) =>
-  execFileSync("/usr/bin/tmux", ["-f", "/dev/null", "-L", socket, ...args], {
-    encoding: "utf8",
-  });
+const { tmuxArgs } = await import(repo + "/src/tmux-binary.ts");
+const tmux = (...args: string[]) => execFileSync("/usr/bin/tmux", tmuxArgs(args), { encoding: "utf8" });
 const name = fx.instances.find((i: any) => i.backend === "codex")!.name;
 const frames = join(repo, "tests/fixtures/codex-pane-owner-2301"),
   selected = join(home, "selected.txt");

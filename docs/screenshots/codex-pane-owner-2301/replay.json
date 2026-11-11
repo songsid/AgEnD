@@ -1,5 +1,5 @@
 {
-  "source": "fe05648f0ce81986d4550a986fc57def80bd25f2",
+  "source": "6fd5edd59eb84dc17e05eeb5cc05888edcae82b9",
   "scope": "recorded Codex0.167 mock-only stream; real Daemon/Outbox; private tmux replay; no backend CLI/account/network",
   "receipts": [
     {
@@ -11,7 +11,7 @@
         "Enter"
       ],
       "accepted": true,
-      "elapsedMs": 666
+      "elapsedMs": 767
     },
     {
       "mode": "switched",
@@ -22,7 +22,7 @@
         "Enter"
       ],
       "accepted": true,
-      "elapsedMs": 8997
+      "elapsedMs": 9105
     },
     {
       "mode": "replaced",
@@ -33,7 +33,7 @@
         "Enter"
       ],
       "accepted": true,
-      "elapsedMs": 8977
+      "elapsedMs": 8884
     },
     {
       "mode": "narrow",
@@ -44,7 +44,7 @@
         "Enter"
       ],
       "accepted": true,
-      "elapsedMs": 8759
+      "elapsedMs": 8878
     }
   ],
   "cleanup": {

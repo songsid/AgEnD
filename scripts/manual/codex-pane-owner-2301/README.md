@@ -32,3 +32,5 @@ node --import tsx scripts/manual/codex-pane-owner-2301/view.mts
 ```
 
 Uses the existing smoke fixture, scratch HOME, private tmux and the recorded frames. The actual model-probe worker boundary returns null; no vendor CLI is launched. Desktop uses normal Fit; phone uses the existing Aa control (Fit → S) so the UUID/Context detail is readable. At S, lower-value model/cwd text is horizontally scrollable. Narrow captures replay at their actual 45-column width. This changes no UI code, CSS or persisted user preferences.
+
+Alpha source-rig note: the View script explicitly selects the local tmux3.7b utility and uses production `tmuxArgs` so its private bundled-socket flags match the application. For the source-based test suites use `AGEND_TMUX_BIN=/usr/bin/tmux` (requires tmux>=3.6). This is scratch rig configuration only.
