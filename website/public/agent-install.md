@@ -79,13 +79,11 @@ bash -lc 'for c in claude codex kiro-cli grok muse opencode agy; do command -v "
 
 ### 安裝 AgEnD
 
-安裝程式會視需要裝好 Node.js（透過 nvm）與 tmux，再從 npm 安裝 `@songsid/agend`。**先下載成檔案，再用 `</dev/null` 執行**：從管線執行時，系統套件的設定問題可能吃掉安裝程式的其餘內容。
+安裝程式會視需要裝好 Node.js（透過 nvm）與 tmux，再從 npm 安裝 `@songsid/agend`：
 
 ```bash
-curl -fsSL https://songsid.github.io/AgEnD/install.sh -o /tmp/agend-install.sh && bash /tmp/agend-install.sh </dev/null
+curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 ```
-
-不要改成 `curl … | bash`：`</dev/null` 要接在 `bash 檔案` 後面才有效。
 
 - 安裝 tmux 時可能需要 sudo。如果停在輸入密碼：⛔ **停下**，請使用者在自己的終端機執行上面那一行，完成後告訴你。
 - 它最後會說可以執行 `agend quickstart`。**不用理會**，我們用第 4 節的設定頁。
@@ -98,7 +96,7 @@ bash -lc 'agend --version'
 ```
 
 - 印出版本：到**第 4 節**。
-- `command not found`：再執行一次上面的安裝指令。仍然沒有就把安裝輸出的最後 30 行給使用者看，並停下。
+- `command not found`：見第 7 節第一列。
 
 ---
 
@@ -285,7 +283,7 @@ agend ls
 
 | 狀況 | 怎麼處理 |
 |---|---|
-| 安裝程式結束碼 0，但找不到 `agend` | 再執行一次第 3A 節的安裝指令（下載成檔案、`</dev/null`）。仍然沒有就把安裝輸出的最後 30 行給使用者。 |
+| 安裝程式結束了，但找不到 `agend` | 再執行一次安裝指令。仍然沒有，改成先下載再執行（較舊的安裝程式在管線裡可能被系統套件的問題打斷）：`curl -fsSL https://songsid.github.io/AgEnD/install.sh -o /tmp/agend-install.sh && bash /tmp/agend-install.sh </dev/null`。再不行就把安裝輸出的最後 30 行給使用者，並停下。 |
 | 安裝後找不到剛裝的指令（`agend`、`claude`…） | 用新的登入 shell：`bash -lc '…'`，或 `source ~/.profile`。 |
 | Node.js 版本不符或裝不起來 | 照安裝程式印出的訊息處理。需要 Node.js `^22.14.0 \|\| ^23.6.0 \|\| >=24`。可以再執行一次安裝程式，它會用 nvm 安裝。 |
 | tmux 裝不起來（`sudo is not available`） | ⛔ 停下，請使用者自行安裝 tmux（例如 `sudo apt install tmux`、`brew install tmux`），再執行一次安裝程式。 |

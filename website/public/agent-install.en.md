@@ -79,13 +79,11 @@ bash -lc 'for c in claude codex kiro-cli grok muse opencode agy; do command -v "
 
 ### Install AgEnD
 
-The installer adds Node.js (through nvm) and tmux if they're missing, then installs `@songsid/agend` from npm. **Download it to a file first, then run it with `</dev/null`.** Piped into bash, a system package's setup question can swallow the rest of the installer.
+The installer adds Node.js (through nvm) and tmux if they're missing, then installs `@songsid/agend` from npm:
 
 ```bash
-curl -fsSL https://songsid.github.io/AgEnD/install.sh -o /tmp/agend-install.sh && bash /tmp/agend-install.sh </dev/null
+curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 ```
-
-Don't turn it into `curl … | bash`: the `</dev/null` only works after `bash <file>`.
 
 - Installing tmux may need sudo. If it stops at a password prompt: ⛔ STOP and ask the user to run that line in their own terminal and tell you when it's done.
 - At the end it suggests `agend quickstart`. **Ignore that.** You'll use the setup page in section 4.
@@ -98,7 +96,7 @@ bash -lc 'agend --version'
 ```
 
 - A version: go to **section 4**.
-- `command not found`: run the install lines again. If it's still missing, show the user the last 30 lines of the installer's output, and stop.
+- `command not found`: see the first row of section 7.
 
 ---
 
@@ -285,7 +283,7 @@ agend ls
 
 | Symptom | What to do |
 |---|---|
-| The installer exited 0 but `agend` isn't found | Run the section 3A install lines again (download to a file, `</dev/null`). If it's still missing, give the user the last 30 lines of the installer's output. |
+| The installer finished but `agend` isn't found | Run the install line again. If it's still missing, download it first and run it with stdin closed (an older installer could be cut short by a system package's question in a pipe): `curl -fsSL https://songsid.github.io/AgEnD/install.sh -o /tmp/agend-install.sh && bash /tmp/agend-install.sh </dev/null`. If that fails too, give the user the last 30 lines of the installer's output, and stop. |
 | A command you just installed isn't found (`agend`, `claude`…) | Use a fresh login shell: `bash -lc '…'`, or `source ~/.profile`. |
 | Wrong Node.js version, or Node.js won't install | Follow what the installer prints. AgEnD needs Node.js `^22.14.0 \|\| ^23.6.0 \|\| >=24`. Running the installer again installs it through nvm. |
 | tmux won't install (`sudo is not available`) | ⛔ STOP: ask the user to install tmux themselves (for example `sudo apt install tmux` or `brew install tmux`), then run the installer again. |
