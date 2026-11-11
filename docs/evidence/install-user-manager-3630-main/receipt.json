@@ -1,0 +1,54 @@
+{
+  "base": "cf7f4b88945c7f2c70036874f907bf4da690a9fb",
+  "modifiedTree": true,
+  "inputBindings": {
+    "398ecbaaccb63e934ff99e630af832c34fd902decb2053a1ea374ed69a550685": [
+      "src/install-user-systemd.ts"
+    ],
+    "d5e8f77e2d48baa7cdb353de32eed7df2c9dd289fed947edcf6661e509e0235f": [
+      "src/cli.ts"
+    ],
+    "f47f024ff444d44135e0066011068abe746e2b15d4e782486fd95fe93c807fa2": [
+      "src/locale.ts"
+    ],
+    "aa5b1590bc88ba68f3b470a8381a99194b26089b6eecd98b33382662998a46c7": [
+      "src/service-installer.ts"
+    ],
+    "06ded3fe3c45d77789589426d378c62935c11efb9f5b61cff10d79490f879800": [
+      "tests/install-user-manager-3630.test.ts"
+    ],
+    "54629e4bb5bafb718a58d8d889887d1c38dfd69d7d4e654cadbe6beb32525b3b": [
+      "scripts/manual/install-user-manager-3630/rehearse.sh"
+    ],
+    "397c9ee379e38727abc9d995e837e50326384f113d9f78488033ad37e2022410": [
+      "scripts/manual/install-user-manager-3630/inside.sh"
+    ],
+    "1a3e0565398fb9177574889cad90b78d5dee494f6002c9bc201f6cd6fb636147": [
+      "scripts/manual/install-user-manager-3630/mutations.mjs"
+    ],
+    "ab9177c5d658c1c3ee00d28a58a7908f807c8384ff76b5de6a0834cfeb43b6be": [
+      "scripts/manual/lib/systemd-container.sh"
+    ]
+  },
+  "checks": {
+    "focusedFiles": 5,
+    "focusedPassed": 133,
+    "newSuitePassed": 14,
+    "baselineAssertionFailures": 4,
+    "guardReversalsCaught": 12,
+    "sourceTypes": "pass",
+    "testTypes": "pass",
+    "container": "pass"
+  },
+  "container": {
+    "distribution": "Ubuntu 22.04.5",
+    "node": "22.23.3",
+    "privileged": false,
+    "network": "none",
+    "cgroupNamespace": "private",
+    "netnsUnchanged": true,
+    "binfmtUnchanged": true,
+    "realFleetOrAgentStarted": false
+  },
+  "scope": "Pre-commit candidate tree with exact inputs; fake-systemctl CLI fixtures plus isolated systemd container consequence rehearsal. Not the original WSL kernel bug."
+}

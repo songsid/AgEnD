@@ -1,0 +1,108 @@
+
+ RUN  v4.1.12 <REPO>
+
+ ❯ tests/install-user-manager-3630.test.ts (14 tests | 4 failed | 10 skipped) 3343ms
+     × names an active manager with both sockets missing in en and never enables or restarts it 1264ms
+     × names an active manager with both sockets missing in zh-TW and never enables or restarts it 825ms
+     × names a stopped manager distinctly in en before activation 650ms
+     × names a stopped manager distinctly in zh-TW before activation 596ms
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 10 skipped (14)
+   Start at  15:27:04
+   Duration  4.41s (transform 833ms, setup 132ms, import 776ms, tests 3.34s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/install-user-manager-3630.test.ts > agend install: unreachable user manager diagnostics (#3630) > names an active manager with both sockets missing in en and never enables or restarts it
+AssertionError: expected 'Service installed at: /home/han/Proje…' to contain 'is still running, but both communicat…'
+
+- Expected
++ Received
+
+- is still running, but both communication sockets are missing:
++ Service installed at: <REPO>/.artifacts/install-user-manager-3630/cli-rnIDEG/home/.config/systemd/user/com.agend.fleet.service
++ Failed to connect to bus: No such file or directory
++ ❌ Fleet service was installed but could not be started: Command failed: systemctl --user daemon-reload
++ Run manually: systemctl --user daemon-reload && systemctl --user enable --now com.agend.fleet
++
+
+ ❯ tests/install-user-manager-3630.test.ts:38:18
+     36|     const { run, text, calls } = install('active', locale);
+     37|     expect(run.status, text).toBe(1);
+     38|     expect(text).toContain(locale === 'en' ? 'is still running, but bo…
+       |                  ^
+     39|     expect(text).toContain(locale === 'en' ? 'Environment variables ca…
+     40|     expect(text).toContain(locale === 'en' ? 'stops Fleet and every ag…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/install-user-manager-3630.test.ts > agend install: unreachable user manager diagnostics (#3630) > names an active manager with both sockets missing in zh-TW and never enables or restarts it
+AssertionError: expected '系統服務已安裝於：/home/han/Projects/AgEnD-age…' to contain '仍在執行，但連線用的兩個通訊端不見了：'
+
+- Expected
++ Received
+
+- 仍在執行，但連線用的兩個通訊端不見了：
++ 系統服務已安裝於：<REPO>/.artifacts/install-user-manager-3630/cli-nZ1uzf/home/.config/systemd/user/com.agend.fleet.service
++ Failed to connect to bus: No such file or directory
++ ❌ Fleet 系統服務已安裝，但無法啟動：Command failed: systemctl --user daemon-reload
++ Run manually: systemctl --user daemon-reload && systemctl --user enable --now com.agend.fleet
++
+
+ ❯ tests/install-user-manager-3630.test.ts:38:18
+     36|     const { run, text, calls } = install('active', locale);
+     37|     expect(run.status, text).toBe(1);
+     38|     expect(text).toContain(locale === 'en' ? 'is still running, but bo…
+       |                  ^
+     39|     expect(text).toContain(locale === 'en' ? 'Environment variables ca…
+     40|     expect(text).toContain(locale === 'en' ? 'stops Fleet and every ag…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/install-user-manager-3630.test.ts > agend install: unreachable user manager diagnostics (#3630) > names a stopped manager distinctly in en before activation
+AssertionError: expected 'Service installed at: /home/han/Proje…' to contain 'is not running'
+
+- Expected
++ Received
+
+- is not running
++ Service installed at: <REPO>/.artifacts/install-user-manager-3630/cli-xSsgIR/home/.config/systemd/user/com.agend.fleet.service
++ Failed to connect to bus: No such file or directory
++ ❌ Fleet service was installed but could not be started: Command failed: systemctl --user daemon-reload
++ Run manually: systemctl --user daemon-reload && systemctl --user enable --now com.agend.fleet
++
+
+ ❯ tests/install-user-manager-3630.test.ts:55:18
+     53|     const { run, text, calls } = install('inactive', locale);
+     54|     expect(run.status, text).toBe(1);
+     55|     expect(text).toContain(locale === 'en' ? 'is not running' : '目前未執行…
+       |                  ^
+     56|     expect(text).not.toContain(locale === 'en' ? 'is still running, bu…
+     57|     expect(text).toContain('systemctl start user@' + (process.getuid?.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/install-user-manager-3630.test.ts > agend install: unreachable user manager diagnostics (#3630) > names a stopped manager distinctly in zh-TW before activation
+AssertionError: expected '系統服務已安裝於：/home/han/Projects/AgEnD-age…' to contain '目前未執行'
+
+- Expected
++ Received
+
+- 目前未執行
++ 系統服務已安裝於：<REPO>/.artifacts/install-user-manager-3630/cli-j3eW0l/home/.config/systemd/user/com.agend.fleet.service
++ Failed to connect to bus: No such file or directory
++ ❌ Fleet 系統服務已安裝，但無法啟動：Command failed: systemctl --user daemon-reload
++ Run manually: systemctl --user daemon-reload && systemctl --user enable --now com.agend.fleet
++
+
+ ❯ tests/install-user-manager-3630.test.ts:55:18
+     53|     const { run, text, calls } = install('inactive', locale);
+     54|     expect(run.status, text).toBe(1);
+     55|     expect(text).toContain(locale === 'en' ? 'is not running' : '目前未執行…
+       |                  ^
+     56|     expect(text).not.toContain(locale === 'en' ? 'is still running, bu…
+     57|     expect(text).toContain('systemctl start user@' + (process.getuid?.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯

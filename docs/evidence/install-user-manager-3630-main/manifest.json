@@ -1,0 +1,77 @@
+{
+  "14c884b563a08dbaea836fd43dbae8b5c95c421a63be4039440d9a764736c836": [
+    "docs/evidence/install-user-manager-3630-main/README.md"
+  ],
+  "b793095ad805b47a34744f1314c45ace2dd3fad5c0caa5ed49f6dd0197a2b474": [
+    "docs/evidence/install-user-manager-3630-main/active-en.txt"
+  ],
+  "cefe339118de865e85b3b03cb40835123f8e5bbac0fa41d0ec3b6cfa3963088a": [
+    "docs/evidence/install-user-manager-3630-main/active-zh-TW.txt"
+  ],
+  "ed7676a6a8b925ab8e12174d4305c428127113971b39f3e1d46b61381df336f1": [
+    "docs/evidence/install-user-manager-3630-main/changelog.log"
+  ],
+  "10a9aa83194df33caad3d1bf9d477d7525cf1dbfa10e38c65fbbb36fe2ecc73e": [
+    "docs/evidence/install-user-manager-3630-main/container.log",
+    "docs/evidence/install-user-manager-3630-main/r1/container.log"
+  ],
+  "91d1c86c3446f3309f1eb922cb137d67860a1c8c0b02c92071489d606097ccac": [
+    "docs/evidence/install-user-manager-3630-main/fail-first.log"
+  ],
+  "c611f56cbafb532ece09a4aa1030fe7cbacee7df5ed640dc112c859d9ef21c90": [
+    "docs/evidence/install-user-manager-3630-main/focused.log"
+  ],
+  "eafd5b27223ea92bada7781a5df5cd4d4bd3e34ccee553343e51f69e20df98b4": [
+    "docs/evidence/install-user-manager-3630-main/inactive-en.txt"
+  ],
+  "b8e2722c4e8e754b557adb95fa6648990d648eb412d5627badedf8e2688b7279": [
+    "docs/evidence/install-user-manager-3630-main/inactive-zh-TW.txt"
+  ],
+  "42f75f79a37157ddd6f1bfaf6f2ee62758f577246910742494233086a3d86660": [
+    "docs/evidence/install-user-manager-3630-main/mutations.json"
+  ],
+  "3c7364f827b3dd324747fbafe7b6ac07653639ffa5e24e839aafe897626107d0": [
+    "docs/evidence/install-user-manager-3630-main/r1/README.md"
+  ],
+  "9f4617b67b876144d1773f18a6333633c8ffe571f2c402bb78e36a292ac5e625": [
+    "docs/evidence/install-user-manager-3630-main/r1/active-en-stale.txt"
+  ],
+  "ab2f0c523cfdbce8c8b4df461490625636d25f58f2bd1e99ebb63a1e68012c4b": [
+    "docs/evidence/install-user-manager-3630-main/r1/active-en.txt"
+  ],
+  "cbcd06f08c3682552c2c52bdae27c6fbfd71f762d372e64f5b25c08fa73b1cf0": [
+    "docs/evidence/install-user-manager-3630-main/r1/active-zh-TW-stale.txt"
+  ],
+  "ca39831579c6d861954133b042f96c8deae2d6a0ab9f10857761224b372ce4b7": [
+    "docs/evidence/install-user-manager-3630-main/r1/active-zh-TW.txt"
+  ],
+  "bdf63fce0b5a9183d83f594a58e1636adb90cc6abe0c436cab53cb18d0413c28": [
+    "docs/evidence/install-user-manager-3630-main/r1/fail-first.log"
+  ],
+  "4a20349f2bf0aed1077a82ad4b96ef83937cae286d6a8abf3928d8deadc8d89e": [
+    "docs/evidence/install-user-manager-3630-main/r1/focused.log"
+  ],
+  "14350f36dc7a29d4768965a61ad1045ed0176f30780f353665b38468230b1381": [
+    "docs/evidence/install-user-manager-3630-main/r1/mutations.json"
+  ],
+  "7ed39dd7fa2851cafbeaeaca59e71743ae0bdcecc619935e0b222fe159bcb3c4": [
+    "docs/evidence/install-user-manager-3630-main/r1/receipt.json"
+  ],
+  "98ce5898b0c4d649c42c4276f1ffdffef8f57f5f085240fd5cae9af47588dcad": [
+    "docs/evidence/install-user-manager-3630-main/r1/restored.log"
+  ],
+  "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748": [
+    "docs/evidence/install-user-manager-3630-main/r1/test-types.log",
+    "docs/evidence/install-user-manager-3630-main/test-types.log"
+  ],
+  "aa268e46f818d58516536fcec326656a48c29a59710ec60601bab337d2d47994": [
+    "docs/evidence/install-user-manager-3630-main/r1/types.log",
+    "docs/evidence/install-user-manager-3630-main/types.log"
+  ],
+  "fe110890b359b53895510eae8b50f6615cc2d3f8abdcedf746143cda09d32f36": [
+    "docs/evidence/install-user-manager-3630-main/receipt.json"
+  ],
+  "b1962607d2a0fe45650fe8405c35b9d0a4c276484dcf5415812d26ca97d3d1a0": [
+    "docs/evidence/install-user-manager-3630-main/restored.log"
+  ]
+}

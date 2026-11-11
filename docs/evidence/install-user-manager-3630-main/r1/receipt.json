@@ -1,0 +1,43 @@
+{
+  "base": "08aaf56bf8129d8241193b70a1e8db2bbbc6aa8e",
+  "modifiedTree": true,
+  "inputBindings": {
+    "a89107805b39f9595e49524ad41a0917eb2cda9a8a09e3592c05e8b7b5aa9c88": [
+      "src/install-user-systemd.ts"
+    ],
+    "d5e8f77e2d48baa7cdb353de32eed7df2c9dd289fed947edcf6661e509e0235f": [
+      "src/cli.ts"
+    ],
+    "f47f024ff444d44135e0066011068abe746e2b15d4e782486fd95fe93c807fa2": [
+      "src/locale.ts"
+    ],
+    "aa5b1590bc88ba68f3b470a8381a99194b26089b6eecd98b33382662998a46c7": [
+      "src/service-installer.ts"
+    ],
+    "ae41fa11ec36587976b31009b880ce8c202c14de85b95a3d669cb90f004d912a": [
+      "tests/install-user-manager-3630.test.ts"
+    ],
+    "3b5bd43fe6da287b4dbc2641c41c290ba9fba0336b200e07e3737da4283c94e4": [
+      "tests/install-auto-enable.test.ts"
+    ],
+    "54629e4bb5bafb718a58d8d889887d1c38dfd69d7d4e654cadbe6beb32525b3b": [
+      "scripts/manual/install-user-manager-3630/rehearse.sh"
+    ],
+    "397c9ee379e38727abc9d995e837e50326384f113d9f78488033ad37e2022410": [
+      "scripts/manual/install-user-manager-3630/inside.sh"
+    ],
+    "0efa442cbf8f33d082c4c4525f791d87a3c358a32ecf4ba720288ef50f9736c0": [
+      "scripts/manual/install-user-manager-3630/mutations.mjs"
+    ]
+  },
+  "checks": {
+    "focusedFiles": 6,
+    "focusedPassed": 142,
+    "newSuitePassed": 18,
+    "staleRuntimeFailFirst": 2,
+    "guardReversalsCaught": 13,
+    "sourceTypes": "pass",
+    "testTypes": "pass",
+    "container": "pass"
+  }
+}

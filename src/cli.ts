@@ -1905,12 +1905,8 @@ program
         else console.log(t("install.running"));
       } catch (err) {
         console.error(t("install.start_failed", (err as Error).message));
-        const plat = detectPlatform();
-        if (plat === "macos") {
-          console.error(`Run manually: launchctl load ${svcPath}`);
-        } else {
-          console.error("Run manually: systemctl --user daemon-reload && systemctl --user enable --now com.agend.fleet");
-        }
+        const { installActivationHints } = await import("./install-user-systemd.js");
+        for (const line of installActivationHints(err, detectPlatform(), svcPath)) console.error(line);
         process.exitCode = 1;
       }
     } else {
