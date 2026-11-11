@@ -10,3 +10,5 @@ The cherry-pick conflicted only at `activateService`'s signature. Alpha's existi
 - Main's EN/zh-TW output and safe real-systemd consequence/recovery rehearsal remain [main-scoped evidence](../install-user-manager-3630-main/README.md). No alpha container rerun or reproduction of the WSL kernel bug is claimed. No real Fleet, agent, account, pilot or directory operation.
 
 Same risk/rollback as main: an unverified connection refuses activation after writing the unit; recovery is manual, with an interruption warning. A revert restores old diagnostics. No schema migration, automatic restart, workflow change, retries/timeouts, unit directive change or parked #2882/M-2181 implementation.
+
+Current R1: [canonical-path correction and fresh alpha controls](r1/README.md). R0 evidence retains its original execution scope.
