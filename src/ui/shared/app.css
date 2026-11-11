@@ -1231,7 +1231,7 @@ img.amb-p { object-fit: contain; }
 
 /* ── Toasts ── */
 /* #1629 r4 §3: Settings → Appearance (owner CSS). */
-.s-css-text, .s-widget-text { font-family: var(--font-mono); font-size: var(--fs-sm); width: 100%; min-height: 12rem; resize: vertical; tab-size: 2; }
+.s-css-text, .s-widget-text, .s-level-titles-text { font-family: var(--font-mono); font-size: var(--fs-sm); width: 100%; min-height: 12rem; resize: vertical; tab-size: 2; }
 .s-widget-preview { max-width: 320px; }
 /* #1629 r4-5: Settings → Appearance → Mods — the plan is shown in full before anything is applied. */
 .s-mod-plan { display: flex; flex-direction: column; gap: var(--s-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-3); }

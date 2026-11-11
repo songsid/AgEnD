@@ -149,6 +149,19 @@ A minimal zones pack:
 
 **Bubbles.** `bubbles: { "en": { "working": ["On it."] }, "zh-TW": { … } }` replaces the page's own lines for a state: up to 12 lines, each 1–40 characters.
 
+Each resident can have their own voice too. A character set may carry its own `bubbles` (same shape and limits) beside its poses, and `bubblesByInstance` gives one instance its own lines without a set of its own:
+
+```text
+"characters": {
+  "default": { "idle": STRIP },
+  "fox": { "idle": STRIP, "bubbles": { "en": { "working": ["Sniffing it out."] } } }
+},
+"byInstance": { "atlas": "fox" },
+"bubblesByInstance": { "quill": { "en": { "idle": ["Ink's dry."] } } }
+```
+
+A person's line for a state comes from the first of these that has lines for it, in the page's language: their own (`bubblesByInstance`), their character set's (`byInstance`'s set, else `default`'s), the pack's `bubbles`, then the page's own. So a set with lines only for `working` still says the pack's lines when idle. What an agent says with `office_set` still shows over all of them.
+
 **A Desks-like pack.** A pack without `stateZones` keeps the Desks layout and may give its own `room` (`floor`, `wall`) and `desk` (`back`, `front`, `lit`) pictures.
 
 **Sizes and anchors.** A strip's displayed size is `w·scale × h·scale`, unless it gives `dw` and/or `dh` in logical units; with only one of them, the other keeps the aspect. `(ax, ay)` is the image point placed on the position (default: bottom centre, so a person stands on their seat). Suggested sizes at scale 2: a character 32×48, a prop 12×12.
@@ -349,12 +362,22 @@ A pack can give its own titles and pin a title on someone:
 - `fixed`: up to 500 entries. A key names an instance, or an NPC by its furniture `id`, and the entry's title shows whatever the level. With `hideLevel: true`, the badge becomes a small diamond mark, and the card shows the title without "Lv n" or the XP bar. An NPC's tag shows its label and its title with the mark; NPCs have no card.
 - A share link gets a pinned title only for the people it shows, and for NPCs.
 
+### Titles for every office
+
+To use the same titles in every office without editing each pack, set them once for the whole fleet in **Settings → Web dashboard → Level titles for every office** (#3679). It takes the same `{ "titles": […], "fixed": {…} }` JSON as a pack's `levels`, checked by the same rules. Leave it empty to use the default titles.
+
+- Every office uses the fleet's titles, whatever its style.
+- An office drawn in a pack that has its own `levels` uses the pack's `titles` instead, if the pack has any. Pinned titles are merged: the fleet's `fixed` and the pack's both apply, and the pack's entry wins for a name that's in both.
+- Only an admin session on the dashboard reached directly can change them (`PUT /ui/office-level-titles`, counted with the offices' saves). They're kept in `web-offices.json` beside the offices and served with them (`GET /ui/offices`'s `levels`), so every page and share link picks a change up at once.
+- A share link gets every title, but a pinned title only for the people it shows, and for names that aren't instances (NPCs).
+
 ## Who can do what
 
 | | Fleet admin, dashboard reached directly | Fleet admin, public link | Read-only session | Guest | Share-link viewer |
 |---|---|---|---|---|---|
 | See the Office | ✅ | ✅ | ✅ | ❌ | ✅ one office or all, read-only |
 | Edit offices, upload or delete packs, Edit layout | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Level titles for every office | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Approve agents' pack changes | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Share… and Revoke | ✅ | ✅ | ❌ | ❌ | ❌ |
 
@@ -380,10 +403,11 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `edges` | ❌ | `[[id, id], …]`, up to 2048 |
 | `straight` | ❌ | `true`: every walk goes across, then up or down |
 | `furniture` | ❌ | items, up to 128 (see [Furniture](#furniture)) |
-| `characters` | ✅ | `{ set: { pose: STRIP, … } }`, up to 64 sets; `default` with `idle` required. Keys: `working`, `idle`, `paused`, `needs`, `walk`, `walkDown`, `walkUp`, `walkSide`, `prop` |
+| `characters` | ✅ | `{ set: { pose: STRIP, … } }`, up to 64 sets; `default` with `idle` required. Keys: `working`, `idle`, `paused`, `needs`, `walk`, `walkDown`, `walkUp`, `walkSide`, `prop`, and `bubbles` (the set's own lines, as the pack's `bubbles`) |
 | `byInstance` | ❌ | instance name → character set, up to 500 |
 | `props` | ❌ | `task`, `send`, `report`, `broadcast`: STRIPs for what flies |
 | `bubbles` | ❌ | `{ "en" \| "zh-TW": { state: [line, …] } }`, up to 12 lines of 1–40 characters |
+| `bubblesByInstance` | ❌ | instance name → its own lines, as `bubbles`, up to 500 (see [Make a skin pack](#make-a-skin-pack), **Bubbles**) |
 | `room`, `desk` | ❌ | Desks layout pictures: `room.floor`, `room.wall`, `desk.back`, `desk.front`, `desk.lit` |
 | `levels` | ❌ | `{ titles, fixed }`: the levels' titles and pinned titles (see [Titles from a skin pack](#titles-from-a-skin-pack)) |
 | `portraits`, `dialogBox` | ❌ | the dialogue box's faces and look (see [Make a skin pack](#make-a-skin-pack)) |
@@ -463,6 +487,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 | Agent switches | `office_access`, `office_pack_access` (per instance, or `defaults.*`) in fleet.yaml; see [configuration.md](configuration.md) |
 | Share links | `web.office_share.enabled` (default `true`), `web.office_share.max_hours` (1–24, default 24) |
 | Levels | `web.office_levels` (default `true`); the carried lifetime total in `instances/<name>/usage-lifetime.json`, beside the usage history |
+| Level titles for every office | `levels` in `web-offices.json`, beside the offices (#3679) |
 | Per-device choices | the view, style, filters, bedtime and Lobby tile (browser storage) |
 
 ## Upgrading and rolling back
@@ -470,6 +495,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 - **Upgrading** keeps your offices, packs and layouts; nothing needs migrating by hand.
 - **A pack with `portraits` or `dialogBox` and rolling back** (#2861). As with `levels`, an older version refuses such a pack and draws it as Desks, with a note. Remove the keys, or re-upload without them, before rolling back. Nothing else about the dialogue box is stored on the host.
 - **A pack with `levels` and rolling back.** A version before levels refuses a pack that has a `levels` key, so such a pack is drawn as Desks there, with a note. Remove the key, or re-upload the pack without it, if you need to roll back.
+- **Level titles for every office and rolling back.** An older version ignores the fleet's titles (`levels` in `web-offices.json`), and its next save of the offices drops them. Set them again after upgrading.
 - **Levels and rolling back.** Versions before levels never open `usage-lifetime.json`, so a rollback keeps it. While an older version runs, though, it prunes days older than 400 without carrying them, and those days are missing from the level after you upgrade again. Nothing else is lost.
 - **Rolling back within 2.3.2.** A pack deleted by an agent with `keep_previous` keeps its previous version in its own `.kept-<id>` folder, so a host rolled back to 2.3.2-beta.10 can still upload and delete that id. Since the fix for #2706 (2.3.2-beta.12), offices' layouts are kept beside the office list. A 2.3.2 beta from before that fix still shows every office after a rollback, but without its layout, and a save there drops the layouts.
 - **Rolling back to 2.3.1 or 2.2.6.** `office_access` and `office_pack_access` are stored outside `dashboard` in fleet.yaml, so the older version accepts the file and ignores them. 2.2.6 has no Office. 2.3.1 has no skin packs: an office in a pack or in Cozy is drawn as Desks with a note. Every office's layout (Edit layout, night places, seat reservations) is kept beside the office list, where 2.3.1 doesn't look: there every office shows, without its layout, and a save on 2.3.1 drops the layouts for good. That needs the fix for #2706: on 2.3.2-beta.11 or earlier, the layout is inside the office's entry, so 2.3.1 doesn't show that office at all, and a save there deletes it. Either way, keep a copy of `web-offices.json` before rolling back if the layouts matter.

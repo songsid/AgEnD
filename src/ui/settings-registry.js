@@ -18,8 +18,7 @@ const ROWS = [
   ["general.location", "agent-defaults", "#general-location", null, null, ["general", "windows", "paired PC", "host", "location"], ["General", "Windows", "電腦", "主機", "執行位置"], L("Run General on", "General 執行位置")],
   // alpha.6 feedback (#2): "hub" found nothing — Settings → Hub's cards. Connect to a Hub is drawn once membership is on.
   ["hub.membership", "hub", "#hubMemberEnabled", null, "hub_member.enabled", ["hub", "team hub", "membership", "connect", "join", "pair", "share agents"], ["Hub", "團隊 Hub", "成員", "連線", "加入", "配對", "分享"], L("Allow this fleet to connect to a Hub", "允許這個 Fleet 連線至 Hub")],
-  ["hub.company-address", "hub", "#hubCompanyAddress", null, null, ["hub", "company account", "company link", "sign in", "connect", "join"], ["Hub", "公司帳號", "公司連結", "登入", "連接", "加入"], L("Hub address or company link", "Hub 位址或公司連結")],
-  ["hub.company-name", "hub", "#hubCompanyFleetName", null, null, ["fleet", "name", "hub", "company"], ["Fleet", "名稱", "Hub", "公司"], L("Fleet name", "Fleet 名稱")],
+  ["hub.company-address", "hub", "#hubCompanyAddress", null, null, ["hub", "company account", "company link", "sign in", "connect", "join"], ["Hub", "公司帳號", "公司連結", "登入", "連接", "加入"], L("Hub address", "Hub 位址")],
   ["hub.connect", "hub", "#hub-connect", null, null, ["hub", "connect to a hub", "pairing code", "hub address", "fingerprint", "pair", "unpair", "disconnect", "join"], ["Hub", "連線至 Hub", "配對碼", "Hub 位址", "指紋", "配對", "解除配對", "中斷連線", "加入"], L("Connect to a Hub", "連線至 Hub")],
   ["quota.notices", "notifications", "#quota-notices", null, "defaults.quota_notice", ["usage", "quota", "notifications", "remaining", "weekly"], ["用量", "額度", "提醒", "通知", "剩餘"], L("Quota notices", "用量提醒")],
   // You · Preferences
@@ -89,6 +88,7 @@ const ROWS = [
   ["dash.usage-public", "web-dashboard", "#webUsagePublic", "settings.webUsagePublic", "web.usage_report_on_public_link", ["usage", "public link", "cost", "tokens"], ["用量", "公開連結", "費用"]],
   ["dash.preview-cdn", "web-dashboard", "#webPreviewCdn", "settings.webPreviewCdn", "web.preview_cdn", ["cdn", "libraries", "html preview", "chart", "jsdelivr", "cdnjs"], ["CDN", "函式庫", "HTML 預覽", "圖表"]],
   ["dash.office-levels", "web-dashboard", "#webOfficeLevels", "settings.webOfficeLevels", "web.office_levels", ["office", "level", "badge", "profile card"], ["辦公室", "等級", "徽章", "名片"]],
+  ["dash.office-level-titles", "web-dashboard", ".s-level-titles", "settings.levelTitlesTitle", null, ["office", "level titles", "rank", "title", "badge"], ["辦公室", "等級頭銜", "頭銜", "稱號", "階級"]],
   ["dash.app-icon", "web-dashboard", ".s-app-icon", "settings.appIconTitle", null, ["app icon", "favicon", "home screen", "icon"], ["App 圖示", "圖示", "主畫面"]],
   ["dash.card-limits", "web-dashboard", ".s-card-limits", "settings.cardLimitsTitle", "web.appearance", ["upload limits", "portrait", "banner", "card limits"], ["上傳限制", "身分卡上傳限制"]],
   // Fleet · Access & security

@@ -31,6 +31,7 @@ import type { Socket } from "node:net";
 import { officeMembers, type OfficeAct, type OfficeChart } from "./web-office-acts.js";
 import { LEVEL, levelsFor, type OfficeLevel } from "./office-levels.js";
 import type { Office } from "./web-office-store.js";
+import type { LevelWords } from "./ui/fleet-office-pack.js";
 import { PAGE_ENDED, PAGE_SHARE_CDN_CSP, PAGE_SHARE_CSP, PAGE_SHARE_LIMITS, PAGE_SHARE_PERMISSIONS, PAGE_WRAPPER_CSP, pageWrapper, type PageShares } from "./page-share.js";
 
 export const OFFICE_SHARE_LIMITS = {
@@ -249,8 +250,11 @@ export interface OfficeShareSource {
   status(): unknown;
   /** The org chart (orgChart): `general` and `teams`. */
   org(): { general?: unknown; teams?: unknown };
-  /** The stored offices (web-office-store.ts list()); #2716: and the whole-fleet office's style, when one is kept. */
-  offices(): { rev: number; offices: Office[]; autoSkin?: string };
+  /**
+   * The stored offices (web-office-store.ts list()); #2716: and the whole-fleet office's style, when one is kept; #3679:
+   * and the fleet's own level titles, when it keeps them.
+   */
+  offices(): { rev: number; offices: Office[]; autoSkin?: string; levels?: LevelWords };
   /** The live acts (OfficeActs live()). */
   acts(): OfficeAct[];
   /** /ui/traffic's snapshot. */
@@ -279,6 +283,8 @@ export class OfficeShareView {
   readonly offices: Office[] | null;
   readonly scope: ReadonlySet<string>;
   private readonly people: Array<Record<string, unknown>>;
+  /** #3679: every instance the status frame lists, shown or not. */
+  private readonly instances: Set<string>;
   /** fleet.yaml's teams with someone shown, each with only its shown members. */
   private readonly teams: Array<{ name: string; members: string[] }>;
 
@@ -286,6 +292,7 @@ export class OfficeShareView {
     const status = src.status();
     const listed = isObj(status) && Array.isArray(status.instances) ? status.instances.filter(isObj) : [];
     const known = listed.filter(i => typeof i.name === "string" && !src.hidden(i.name as string));
+    this.instances = new Set(listed.map(i => i.name).filter((n): n is string => typeof n === "string"));
     const org = src.org();
     const teams = (Array.isArray(org.teams) ? org.teams : []).filter(isObj)
       .map(t => ({ name: typeof t.name === "string" ? t.name : "", members: strings(t.members) })).filter(t => t.name);
@@ -343,7 +350,7 @@ export class OfficeShareView {
    * its place but not the name; #2691: a seat reserved for someone not shown keeps the reservation but not the name
    * (cutOwners). The stored offices are never changed.
    */
-  officeList(): { rev: number; offices: Office[]; readable: boolean } {
+  officeList(): { rev: number; offices: Office[]; readable: boolean; autoSkin?: string; levels?: LevelWords } {
     const teams = new Set(this.teams.map(t => t.name));
     const cut = (o: Office): Office => {
       const members = o.members.filter(m => (m.startsWith("team:") ? teams.has(m.slice(5)) : this.scope.has(m)));
@@ -359,8 +366,17 @@ export class OfficeShareView {
       return out;
     };
     // #2716: the whole-fleet office's style, as every dashboard shows it (a viewer may pick that office here too).
-    const { rev, autoSkin } = this.src.offices();
-    return { rev, offices: (this.offices ?? []).map(cut), readable: true, ...(autoSkin ? { autoSkin } : {}) };
+    const { rev, autoSkin, levels } = this.src.offices();
+    return { rev, offices: (this.offices ?? []).map(cut), readable: true, ...(autoSkin ? { autoSkin } : {}), ...(levels ? { levels: this.cutLevels(levels) } : {}) };
+  }
+
+  /**
+   * #3679: the fleet's own level titles as this share gets them: every title; a pinned one (`fixed`) only for people
+   * shown, or a name that is no instance of the fleet's (an NPC's furniture id: which pack it is in is not known here).
+   */
+  private cutLevels(levels: LevelWords): LevelWords {
+    if (!levels.fixed) return levels;
+    return { ...levels, fixed: Object.fromEntries(Object.entries(levels.fixed).filter(([k]) => this.scope.has(k) || !this.instances.has(k))) };
   }
 
   /**
@@ -396,7 +412,8 @@ export class OfficeShareView {
    * missing key, which watches everyone). #2662: and only the character sets someone shown wears (theirs in `byInstance`,
    * and `default` for everyone else), with `files` only the pictures it still names: the page loads what is drawn, not
    * every set of a fleet-sized pack. #2691: a reserved seat's `for` cut as an office's (cutOwners). #2661: a title
-   * pinned (`levels.fixed`) only for people shown or an NPC. A copy: the kept pack is never changed.
+   * pinned (`levels.fixed`) only for people shown or an NPC. #3681: an instance's own lines (`bubblesByInstance`) only
+   * for people shown (a set's go with its set). A copy: the kept pack is never changed.
    */
   pack(answer: unknown): unknown {
     if (!isObj(answer) || !isObj(answer.manifest)) return answer;
@@ -413,6 +430,7 @@ export class OfficeShareView {
       const { byUser: _people, ...rest } = manifest.portraits;
       manifest.portraits = { ...rest, ...(isObj(rest.byInstance) ? { byInstance: Object.fromEntries(Object.entries(rest.byInstance).filter(([k]) => this.scope.has(k))) } : {}) };
     }
+    if (isObj(manifest.bubblesByInstance)) manifest.bubblesByInstance = Object.fromEntries(Object.entries(manifest.bubblesByInstance).filter(([k]) => this.scope.has(k)));
     if (isObj(manifest.characters)) {
       const worn = new Set(["default", ...Object.values(isObj(manifest.byInstance) ? manifest.byInstance : {}).filter((v): v is string => typeof v === "string")]);
       manifest.characters = Object.fromEntries(Object.entries(manifest.characters).filter(([k]) => worn.has(k)));

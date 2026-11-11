@@ -2273,6 +2273,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       link: digest => (digest === this.hubMemberLinkBinding && this.hubMemberLink === "online" ? "online" : "offline"),
       hold: digest => digest === this.hubMemberLinkBinding
         ? this.hubMemberLink === "revoked" ? "revoked" : this.hubMemberLink === "rejected" ? "rejected" : null : null,
+      // M-2921: tell the Hub before leaving (S1 HubRuntime.memberLeave: false when the Hub or the link cannot take it;
+      // feature-detected, so a runtime without it leaves silently as before). pairing-api bounds the wait.
+      leave: expected => {
+        const runtime = this.hubRuntime as { memberLeave?: (e: { hubId: string; binding: string }) => Promise<boolean> } | null | undefined;
+        return typeof runtime?.memberLeave === "function" ? runtime.memberLeave(expected) : false;
+      },
       // Disconnect: stop the member client now (the runtime re-composes from the saved binding, fencing first).
       fence: () => { void this.hubRuntime?.refresh(); },
       // A claim saved, a disconnect tombstone or a cancel: re-compose the member side for the new binding.
@@ -8049,12 +8055,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ instanceName, fields: changedFields }, "Classic instance hot config reloaded");
       return;
     }
+    // M-2909 (Prism on #3691): an account saved from Settings hands the conversation over like a classicBot.yaml edit
+    // (#1753) — read against what it was launched on, before the stop takes that away.
+    const launchedSnapshot = this.daemons.get(instanceName)?.getConfigSnapshot?.();
+    const launchedBackend = launchedSnapshot?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+    const profileSwitch = this.classicProfileChange(instanceName,
+      launchedBackend !== this.classicChannels.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend));
+    const launchedIn = launchedSnapshot?.working_directory;
     const stopping = this.stopInstance(instanceName, transition);
     // stop() invalidates synchronously in our transition. Keep only that exact acquisition.
     if (receipt && this.lifecycle.epochOf(instanceName) === receipt.epoch + 1 && this.daemons.get(instanceName) === receipt.daemon) receipt.epoch++;
     await stopping;
     if (receipt && this.lifecycle.epochOf(instanceName) === receipt.epoch && !this.daemons.has(instanceName)) receipt.daemon = undefined;
     check();
+    // #1753: the conversation goes along where it can; otherwise a switch that loses it starts fresh.
+    if (profileSwitch.carry) { await this.switchConversation(instanceName, { ...profileSwitch.carry, workingDirectory: launchedIn }); check(); }
+    else if (profileSwitch.startsFresh) this.writeFreshStartMarker(instanceName);
     const stoppedEpoch = this.lifecycle.epochOf(instanceName);
     await new Promise(resolve => setTimeout(resolve, 250)); check();
     if (this.lifecycle.epochOf(instanceName) !== stoppedEpoch) throw new Error("Classic restart superseded by stop");

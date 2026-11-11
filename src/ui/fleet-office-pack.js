@@ -85,10 +85,18 @@
 //                                                     A set may also have "prop": STRIP (#2562) — what its people
 //                                                     send: their messages, work and reports fly as it, in place of
 //                                                     the pack's "props" (a set without one: the pack's props)
+//                                                     And "bubbles" (#3681): its people's own lines, as the pack's
+//                                                     "bubbles" below (not a strip: kept apart, as bubblesBySet)
 //     "byInstance": { "atlas": "fox" },               optional: an instance name → its character set
 //     "props": { "task": STRIP, "send": STRIP, "report": STRIP, "broadcast": STRIP },   optional traffic items
 //     "bubbles": { "en": { "working": ["On it."] }, "zh-TW": { … } }   optional: short lines per state (≤ 12 a state,
 //                                                     ≤ 40 characters each), in place of the page's own
+//     "bubblesByInstance": { "atlas": { "en": { "idle": ["Coffee?"] } } }
+//                                                     optional (#3681): an instance's own lines, as "bubbles" (names
+//                                                     checked like byInstance's, ≤ 500). A person's line for a state
+//                                                     (linesFor): theirs here, else their character set's "bubbles"
+//                                                     (byInstance's set, else "default"), else the pack's "bubbles",
+//                                                     else the page's own — each by the page's language and the state
 //     "room": { "floor": "floor.png", "wall": "wall.png" }, "desk": { "back": …, "front": …, "lit": … }
 //                                                     optional: for the desks layout (a pack without stateZones)
 //     "portraits": { "default": FACE, "byInstance": { "atlas": FACE }, "byUser": { "discord:1": FACE }, "npc": { "<item id>": FACE } }
@@ -102,7 +110,10 @@
 //       "fixed": { "atlas": { "title": "Founder", "hideLevel": true } } }
 //                                                     a title pinned on an instance (or an NPC: a furniture item's
 //                                                     id) whatever its level (≤ 500); hideLevel: its badge is a mark,
-//                                                     its card has no "Lv n" or XP bar
+//                                                     its card has no "Lv n" or XP bar. #3679: the fleet may keep
+//                                                     its own `levels` for every office (checkLevels: these rules);
+//                                                     a pack's own titles win over it, and its fixed entries over
+//                                                     the fleet's, name by name (fleet-office-levels.js mergeLevels)
 //   }
 //
 // A STRIP is { "src": "idle.png", "frames": 4, "w": 32, "h": 48, "fps": 4, "ax": 16, "ay": 44 }: `frames` frames of
@@ -118,9 +129,10 @@
 // the frame's aspect. The anchor (ax, ay) stays in image pixels and moves with it. So art drawn at 120×120 px shows at
 // 96×96 with "dw": 96, "dh": 96 — whatever the pack's scale. What a person hovers or clicks is the box drawn (stripBox).
 //
-// A name the pack declares and refers to (an area, a character set, a furniture item, an instance in byInstance, and the
-// same in an office's overrides) is never one an object already has (Object.prototype's: "constructor", "toString",
-// "__proto__", …): such a name is refused, and every lookup is of the pack's own names only (own()).
+// A name the pack declares and refers to (an area, a character set, a furniture item, an instance in byInstance or
+// bubblesByInstance, and the same in an office's overrides) is never one an object already has (Object.prototype's:
+// "constructor", "toString", "__proto__", …): such a name is refused, and every lookup is of the pack's own names only
+// (own()).
 //
 // The host keeps an uploaded pack whole and never changes it: every PNG starts with its signature, a STRIP's image is
 // exactly frames·w × h, the background and the foreground are 16:9, and each file and the pack have a size cap (web-office-skins.ts).
@@ -261,6 +273,28 @@ function states(v, at) {
   return Array.isArray(v) ? list(v, 8, at).map((s, i) => one(s, `${at}[${i}]`)) : [one(v, at)];
 }
 
+/**
+ * A table of speech-bubble lines: { "en" | "zh-TW": { state: [line, …] } }, at most LIMIT.lines a state, each
+ * 1–LIMIT.line characters on one line (trimmed). The pack's `bubbles`, and (#3681) a character set's and an instance's.
+ */
+function bubblesOf(v, at) {
+  const out = {};
+  for (const [lang, table] of Object.entries(obj(v, at))) {
+    if (lang !== "en" && lang !== "zh-TW") throw new Refused(`${at}.${lang}`, '"en" or "zh-TW"');
+    obj(table, `${at}.${lang}`);
+    out[lang] = {};
+    for (const [s, lines] of Object.entries(table)) {
+      const here = `${at}.${lang}.${s}`;
+      if (!PACK_STATES.includes(s)) throw new Refused(here, "a state");
+      out[lang][s] = list(lines, LIMIT.lines, here).map((l, i) => {
+        if (typeof l !== "string" || !l.trim() || [...l].length > LIMIT.line || /[\u0000-\u001f\u007f]/.test(l)) throw new Refused(`${here}[${i}]`, `1–${LIMIT.line} characters`);
+        return l.trim();
+      });
+    }
+  }
+  return out;
+}
+
 /** #2661: a title's words — 1–LIMIT.title characters on one line. */
 function titleText(v, at) {
   if (typeof v !== "string" || !v.trim() || [...v.trim()].length > LIMIT.title || /[\u0000-\u001f\u007f]/.test(v)) throw new Refused(at, `1–${LIMIT.title} characters`);
@@ -352,13 +386,27 @@ function dialogBoxOf(v) {
 }
 
 /**
+ * #3679: the fleet-wide `levels` (Settings → Web dashboard → Level titles, kept in web-offices.json) checked by the very
+ * rules a pack's are (levelsOf): { ok: true, levels } or { ok: false, error: "<where>: <why>" }. `v` must be an object.
+ */
+export function checkLevels(v) {
+  try {
+    if (v === undefined) throw new Refused("levels", "an object");
+    return { ok: true, levels: levelsOf(v) };
+  } catch (err) {
+    if (err instanceof Refused) return { ok: false, error: err.message };
+    throw err;
+  }
+}
+
+/**
  * A pack's manifest, strictly: { ok: true, pack } or { ok: false, error: "<where>: <why>" }. `kept`: a pack the host
  * keeps already (read back, not uploaded), which may hold a RESERVED id.
  */
 export function checkSkinPack(x, { kept = false } = {}) {
   try {
     obj(x, "pack");
-    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "room", "desk", "levels", "portraits", "dialogBox"], "pack");
+    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "bubblesByInstance", "room", "desk", "levels", "portraits", "dialogBox"], "pack");
     if (x.format !== 1) throw new Refused("format", "1");
     if (typeof x.id !== "string" || !ID.test(x.id)) throw new Refused("id", "1–40 letters, digits, _ or -");
     if (BUILT_IN.has(x.id) || (!kept && RESERVED.has(x.id))) throw new Refused("id", "a built-in skin's id");
@@ -427,11 +475,14 @@ export function checkSkinPack(x, { kept = false } = {}) {
     }).sort((a, b) => order(a) - order(b));
     const sets = obj(x.characters, "characters");
     if (Object.keys(sets).length > LIMIT.sets) throw new Refused("characters", `at most ${LIMIT.sets} sets`);
-    const characters = {};
+    const characters = {}, bubblesBySet = {};
     for (const [k, v] of Object.entries(sets)) {
       if (!nameOk(k)) throw new Refused(`characters.${k}`, "a name of letters, digits, _ or - (not an inherited one)");
-      characters[k] = strips(v, SET_STRIPS, `characters.${k}`, scale);
+      // #3681: a set's own lines sit beside its strips; the checked set stays strips only (packStrips, packImages).
+      const { bubbles: setLines, ...poses } = obj(v, `characters.${k}`);
+      characters[k] = strips(poses, SET_STRIPS, `characters.${k}`, scale);
       if (!characters[k].idle) throw new Refused(`characters.${k}.idle`, "required");
+      if (setLines !== undefined) bubblesBySet[k] = bubblesOf(setLines, `characters.${k}.bubbles`);
     }
     if (!own(characters, "default")) throw new Refused("characters.default", "required");
     const byInstance = {};
@@ -442,19 +493,15 @@ export function checkSkinPack(x, { kept = false } = {}) {
       if (typeof v !== "string" || !own(characters, v)) throw new Refused(`byInstance.${k}`, "a character set the pack defines");
       byInstance[k] = v;
     }
-    const bubbles = {};
-    for (const [lang, table] of Object.entries(x.bubbles === undefined ? {} : obj(x.bubbles, "bubbles"))) {
-      if (lang !== "en" && lang !== "zh-TW") throw new Refused(`bubbles.${lang}`, '"en" or "zh-TW"');
-      obj(table, `bubbles.${lang}`);
-      bubbles[lang] = {};
-      for (const [s, lines] of Object.entries(table)) {
-        const at = `bubbles.${lang}.${s}`;
-        if (!PACK_STATES.includes(s)) throw new Refused(at, "a state");
-        bubbles[lang][s] = list(lines, LIMIT.lines, at).map((l, i) => {
-          if (typeof l !== "string" || !l.trim() || [...l].length > LIMIT.line || /[\u0000-\u001f\u007f]/.test(l)) throw new Refused(`${at}[${i}]`, `1–${LIMIT.line} characters`);
-          return l.trim();
-        });
-      }
+    const bubbles = x.bubbles === undefined ? {} : bubblesOf(x.bubbles, "bubbles");
+    // #3681: an instance's own lines, its name checked like byInstance's (an instance's name, never an inherited one).
+    const bubblesByInstance = {};
+    const rawVoices = x.bubblesByInstance === undefined ? {} : obj(x.bubblesByInstance, "bubblesByInstance");
+    if (Object.keys(rawVoices).length > LIMIT.byInstance) throw new Refused("bubblesByInstance", `at most ${LIMIT.byInstance}`);
+    for (const [k, v] of Object.entries(rawVoices)) {
+      if (inherited(k)) throw new Refused(`bubblesByInstance.${k}`, "an instance's name (not an inherited one)");
+      names(k, `bubblesByInstance.${k}`);
+      bubblesByInstance[k] = bubblesOf(v, `bubblesByInstance.${k}`);
     }
     const levels = levelsOf(x.levels);
     const portraits = portraitsOf(x.portraits, fids), dialogBox = dialogBoxOf(x.dialogBox);
@@ -466,6 +513,8 @@ export function checkSkinPack(x, { kept = false } = {}) {
       door: x.door === undefined ? { x: LOGICAL.w / 2, y: LOGICAL.h - 10 } : point(x.door, "door"),
       mailDrop: x.mailDrop === undefined ? null : point(x.mailDrop, "mailDrop"), waypoints, edges, straight: x.straight === true, furniture, characters, byInstance,
       props: x.props === undefined ? {} : strips(x.props, PROPS, "props", scale), bubbles,
+      // #3681: only when the pack has them, so an older pack checks to exactly what it did.
+      ...(Object.keys(bubblesBySet).length ? { bubblesBySet } : {}), ...(Object.keys(bubblesByInstance).length ? { bubblesByInstance } : {}),
       room: { floor: opt(room.floor, "room.floor"), wall: opt(room.wall, "room.wall") }, desk: { back: opt(desk.back, "desk.back"), front: opt(desk.front, "desk.front"), lit: opt(desk.lit, "desk.lit") },
       ...(levels ? { levels } : {}),
       ...(portraits ? { portraits } : {}), ...(dialogBox ? { dialogBox } : {}),

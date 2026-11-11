@@ -4,6 +4,8 @@ import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { register, t } from "/assets/app-i18n.js";
 import { api, confirmedWrite } from "./settings-confirm.js";
 import * as legacy from "./settings-hub-membership.js";
+import { j1 } from "./hub-join-one-strings.js";
+import { joinError, joinResponseCode } from "./hub-company-join-strings.js";
 register("hubConnection", {
   en: {
     title: "Hub connection", unconnected: "Not connected", connected: "Connected", paused: "Paused", connecting: "Connecting…", attention: "Connection needs attention",
@@ -37,10 +39,16 @@ const validPairing = p => !!p && states.has(p.state) && (p.state === "unpaired" 
   || p.state === "pending" && endpoint(p.memberOrigin) && /^[a-f0-9]{64}$/i.test(p.fingerprint?.digest || "") && Number.isFinite(p.expiresAt)
   || p.state === "paired" && endpoint(p.hub?.memberOrigin) && endpoint(p.hub?.webOrigin) && /^[a-f0-9]{64}$/i.test(p.hub?.fingerprint?.digest || "") && ["online", "offline"].includes(p.link));
 const safeOrigin = p => { try { const value = p?.hub?.webOrigin, u = new URL(value); return u.protocol === "https:" && u.origin === value ? u.origin + "/ui/hub" : null; } catch { return null; } };
-export function HubConnectionSettings() {
+export function HubConnectionSettings({ onMode } = {}) {
   const publicPage = globalThis.document?.body?.dataset?.publicLink === "1";
   const [view, setView] = useState(null), [error, setFailureCode] = useState(""), [busy, setBusy] = useState(false), [fallback, setFallback] = useState(typeof legacy.markMember !== "function");
   const [Company, setCompany] = useState(null), [Connect, setConnect] = useState(null), [pending, setPending] = useState(null);
+  // M-2921 (spec 1.1 / 1.3): the company-join record of this connection (its address, label, Hub name, owner), the
+  // pairing code handed over from the one input, and the held card's reconnect / remove.
+  const [display, setDisplay] = useState(null), [prefill, setPrefill] = useState(null), [manualOpen, setManualOpen] = useState(false);
+  const [asking, setAsking] = useState(false), [cardError, setCardError] = useState(""), [cardNotice, setCardNotice] = useState("");
+  // A reconnect's waiting tab: the join panel follows its handoff even while this pairing still reads held (it is started over in the same request).
+  const joinWait = (() => { try { return !!new URLSearchParams(location.search).get("joinWait"); } catch { return false; } })();
   const life = useRef({ live: true, sequence: 0, busy: false, read: null });
   const read = () => {
     if (life.current.read) return life.current.read;
@@ -62,7 +70,7 @@ export function HubConnectionSettings() {
   }, [publicPage, fallback]);
   useEffect(() => {
     let live = true;
-    if (view?.pairing?.state === "unpaired" && !fallback) import("./settings-hub-company-join.js").then(m => {
+    if ((view?.pairing?.state === "unpaired" || joinWait) && !fallback) import("./settings-hub-company-join.js").then(m => {
       if (!live) return; if (m.companyJoinEmbedV1 !== true) { setFallback(true); return; } setCompany(() => m.CompanyJoinSettings);
     }, () => { if (live) setFailureCode("unavailable"); });
     return () => { live = false; };
@@ -74,6 +82,35 @@ export function HubConnectionSettings() {
     }, () => { if (live) setFailureCode("unavailable"); });
     return () => { live = false; };
   }, [view?.enabled, fallback]);
+  useEffect(() => {
+    let live = true; const st = view?.pairing?.state;
+    if (st !== "paired" && st !== "held") { setDisplay(null); return; }
+    api("/api/hub/member/company-join").then(r => { if (live) setDisplay(r.ok && r.body?.display && typeof r.body.display.webOrigin === "string" ? r.body.display : null); }, () => { if (live) setDisplay(null); });
+    return () => { live = false; };
+  }, [view?.pairing?.state, view?.pairing?.binding]);
+  const card = async step => {
+    const p = view?.pairing;
+    if (busy || !p?.binding || !(p.hubId || p.hub?.hubId)) return;
+    const hubId = p.hubId || p.hub.hubId, address = display?.webOrigin || p.hub?.webOrigin;
+    if (!address) return;
+    // Reconnect ends at the Hub's sign-in: open the Fleet's own waiting tab now, in the press (as Start does), for this handoff.
+    let handoffId = null;
+    if (step === "reconnect") {
+      handoffId = crypto.randomUUID();
+      let target = ""; try { target = new URL(address).origin; } catch {}
+      globalThis.open("/settings/hub?joinWait=" + encodeURIComponent(handoffId) + "&joinConsent=1#target=" + encodeURIComponent(target), "_blank", "noopener");
+    }
+    setBusy(true); setCardError(""); setCardNotice(""); setAsking(false);
+    try {
+      const r = await confirmedWrite("/api/hub/member/company-join/" + step, { body: { hubId, binding: p.binding, address, ...(handoffId ? { handoffId } : {}) }, label: j1(step === "reconnect" ? "reconnect" : "remove"),
+        onPending: id => { if (life.current.live) setPending(id); } });
+      if (!life.current.live) return;
+      if (!r.ok) { setCardError(joinError(joinResponseCode(r))); return; }
+      if (step === "remove") setCardNotice(j1("removed"));
+      setView(null); await read();
+    } catch { if (life.current.live) setCardError(joinError("unknown")); }
+    finally { if (life.current.live) { setBusy(false); setPending(null); } }
+  };
   const change = async enabled => {
     if (publicPage || !view || life.current.busy || error) return;
     life.current.busy = true; life.current.sequence++; setBusy(true); setPending(null);
@@ -94,25 +131,39 @@ export function HubConnectionSettings() {
     if (!card) { location.assign("/ui/needs"); return; }
     card.scrollIntoView?.({ block: "center" }); card.querySelector("button,input,a")?.focus();
   };
+  const reported = !view ? "unknown" : view.pairing?.state === "paired" ? (!view.enabled ? "paused" : view.pairing.link === "online" ? "connected" : "connecting") : "unconnected";
+  useEffect(() => { onMode?.(reported); }, [reported]);
   if (publicPage) return null;
   if (fallback) return html`<${legacy.HubMembershipSettings} />`;
   const p = view?.pairing, paired = p?.state === "paired", paused = paired && !view.enabled;
   const online = paired && view.enabled && p.link === "online", bound = p && p.state !== "unpaired";
   const status = paused ? "paused" : online ? "connected" : paired ? "connecting" : bound ? "attention" : "unconnected";
   const mode = !view ? "unknown" : paused ? "paused" : online ? "connected" : paired ? "connecting" : "unconnected";
-  const connected = Connect ? html`<${Connect} embedded=${true} labels=${{ settings: hc("settings"), pair: hc("pair"), disconnect: hc("disconnect") }} onPairing=${pairing => setView(v => v ? { ...v, pairing } : v)} />`
+  const connected = Connect ? html`<${Connect} embedded=${true} prefill=${prefill} labels=${{ settings: hc("settings"), pair: hc("pair"), disconnect: hc("disconnect") }} onPairing=${pairing => setView(v => v ? { ...v, pairing } : v)} />`
     : html`<${Skeleton} variant="form" lines=${3} />`;
+  const hubName = display?.hubName || p?.hub?.name || p?.hub?.webOrigin || display?.webOrigin || p?.memberOrigin || "";
+  const reconnectable = p?.state === "held" && ["revoked", "rejected", "refused", "expired", "disconnected"].includes(p.hold) && !!p.binding;
+  const removable = (paired || p?.state === "held") && !!p.binding && !!(display?.webOrigin || p.hub?.webOrigin);
+  const removeAsk = asking ? html`<div class="form hub-remove-ask" role="alertdialog" aria-labelledby="hubRemoveAsk"><p class="note" id="hubRemoveAsk">${j1("removeAsk", hubName)}</p>
+    <div class="field-row"><button type="button" class="btn btn-danger btn-sm" disabled=${busy} onClick=${() => card("remove")}>${j1("removeYes")}</button><button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => setAsking(false)}>${j1("removeNo")}</button></div></div>` : null;
+  const removeLink = removable && !asking ? html`<button type="button" class="btn btn-ghost btn-sm hub-remove" disabled=${busy} onClick=${() => setAsking(true)}>${j1("remove")}</button>` : null;
+  const owner = display?.ownerLabel && display?.label ? html`<p class="note hub-owner-line">${j1("ownerLine", display.ownerLabel, display.label)}</p>` : null;
   return html`<section class="card s-group s-hub-connection" id="hub-connection" data-state=${mode}>
-    <header class="s-group-head"><h3>${hc("title")}</h3>${view ? html`<span class=${`tag ${online ? "ok" : bound ? "warn" : ""}`}><span class=${`dot ${online ? "ok" : bound ? "warn" : ""}`}></span>${hc(status)}</span>` : null}</header>
+    <header class="s-group-head"><h3>${(paired || p?.state === "held") && display?.hubName ? display.hubName : hc("title")}</h3>${view ? html`<span class=${`tag ${online ? "ok" : bound ? "warn" : ""}`}><span class=${`dot ${online ? "ok" : bound ? "warn" : ""}`}></span>${hc(status)}</span>` : null}</header>
     ${error ? html`<${ErrorState} message=${hc(error)} onRetry=${read} />` : null}
     ${!view && !error ? html`<${Skeleton} variant="form" lines=${4} />` : null}
-    ${paired ? html`<div class="grid2 hub-connection-summary"><div class="field"><span>${hc("hub")}</span><strong>${p.hub.name || p.hub.webOrigin || p.hub.memberOrigin}</strong></div><div class="field"><span>${hc("fleet")}</span><strong>${hc("thisFleet")}</strong></div></div>
+    ${cardError ? html`<p class="note" role="alert">${cardError}</p>` : null}${cardNotice ? html`<p class="note" role="status">${cardNotice}</p>` : null}
+    ${paired ? html`<div class="grid2 hub-connection-summary"><div class="field"><span>${hc("hub")}</span><strong>${hubName}</strong></div><div class="field"><span>${hc("fleet")}</span><strong>${display?.label || hc("thisFleet")}</strong></div></div>${owner}
       <p class="note">${hc(paused ? "pausedHint" : online ? "connectedHint" : "connectingHint")}</p>
       <div class="field-row">${!paused && safeOrigin(p) ? html`<a class="btn btn-primary" href=${safeOrigin(p)} target="_blank" rel="noopener noreferrer">${hc("open")}</a>` : null}
-        <button type="button" class=${`btn ${paused ? "btn-primary" : "btn-ghost"}`} disabled=${busy || !!error} onClick=${() => change(paused)}>${hc(paused ? "resume" : "pause")}</button></div>
+        <button type="button" class=${`btn ${paused ? "btn-primary" : "btn-ghost"}`} disabled=${busy || !!error} onClick=${() => change(paused)}>${hc(paused ? "resume" : "pause")}</button>${removeLink}</div>${removeAsk}
       ${paused ? html`<details class="s-ui-disclosure"><summary>${hc("settings")}</summary><p class="note">${hc("pausedSettings")}</p></details>` : connected}`
-      : view ? html`${p.state === "unpaired" ? Company ? html`<${Company} embedded=${true} memberEnabled=${view.enabled} onSaved=${read} />` : html`<${Skeleton} variant="form" lines=${3} />` : view.enabled ? connected : html`<p class="note">${hc("attention")}</p>`}
-      <details class="s-ui-disclosure hub-connection-manual"><summary>${hc("advanced")}</summary><div class="s-disclosure-body form"><p class="note">${hc("manualHint")}</p>
+      : view ? html`${p.state === "held" && !joinWait ? html`<div class="hub-held"><strong>${hubName}</strong>${owner}
+          ${reconnectable || removable ? html`<div class="field-row">${reconnectable ? display ? html`<button type="button" class="btn btn-primary" disabled=${busy} onClick=${() => card("reconnect")}>${j1("reconnect")}</button>`
+            : html`<button type="button" class="btn btn-primary" onClick=${() => setManualOpen(true)}>${j1("reconnect")}</button>` : null}${removeLink}</div>${removeAsk}` : null}</div>` : null}
+      ${p.state === "unpaired" || joinWait ? Company ? html`<${Company} embedded=${true} memberEnabled=${view.enabled} onSaved=${read} onPairingCode=${v => { setPrefill(v); setManualOpen(true); }} />` : html`<${Skeleton} variant="form" lines=${3} />`
+        : p.state === "held" && display ? null : view.enabled ? connected : html`<p class="note">${hc("attention")}</p>`}
+      <details class="s-ui-disclosure hub-connection-manual" open=${manualOpen} onToggle=${e => setManualOpen(e.target.open)}><summary>${p.state === "unpaired" ? j1("other") : hc("advanced")}</summary><div class="s-disclosure-body form"><p class="note">${hc("manualHint")}</p>
         <label class="check"><input id="hubMemberEnabled" class="s-ui-toggle" type="checkbox" role="switch" checked=${view.enabled} disabled=${busy || !!error} onChange=${e => change(e.target.checked)} /><span>${hc("enabled")}</span></label>
         ${view.enabled && p.state === "unpaired" ? connected : null}
       </div></details>` : null}

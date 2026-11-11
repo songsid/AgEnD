@@ -2,13 +2,42 @@ import { afterAll, beforeAll, afterEach, describe, expect, it, vi } from "vitest
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
-let p: AppPage, fields: any, native: any;
+let p: AppPage, fields: any, native: any, accounts: any;
 beforeAll(async () => {
   p = page();
   (globalThis as any).fetch = vi.fn(async (url: string) => ({ ok: /status-emojis|effort-options/.test(url), status: /status-emojis|effort-options/.test(url) ? 200 : 404,
     json: async () => url.endsWith("/status-emojis") ? { keys: ["received", "failed"], builtins: { discord: {}, telegram: {} } }
       : url.includes("effort-options") ? { levels: ["low", "high"], effort: null, model: "" } : { entries: [], problems: [] } }));
   fields = await import("/ui/js/settings-dialogs.js"); native = await import("/ui/js/native-instance-settings.js");
+  accounts = await import("/ui/js/accounts-view.js");
+});
+
+it("the merged Classic account picker has pane IDs and retains each CLI's choices through suspension", async () => {
+  (globalThis.fetch as any).mockClear();
+  accounts.accountsStore.set({ loaded: true, failed: false, view: { clis: ["claude-code", "codex"].map(backend => ({ backend, profiles: true, fleetDefault: null, rows: ["work", "other"].map(profile => ({ profile, scope: { kind: "host" }, state: "usable" })) })) } });
+  const memories = [0, 1].map(() => ({ state: new Map(), listeners: new Map(), set(key: string, next: any) { const value = typeof next === "function" ? next(this.state.get(key)) : next; this.state.set(key, value); this.listeners.get(key)?.(value); } }));
+  const models: any[] = [];
+  function Form({ n }: { n: number }) {
+    const room = { instanceName: `classic-${n}`, key: `room-${n}`, backend: "claude-code", backend_options: { codex: { speed: "fast" } } };
+    const ctx = { fleet: { defaults: {} }, classic: { defaults: {} }, schema: buildSettingsImpactSchema(), formMemory: memories[n], classicRuntime: () => ({ execution: "idle" }) };
+    const m = models[n] = fields.useClassicForm({ room, ctx });
+    return h("section", { "data-form": n }, h(fields.ClassicFields, { m, cat: "runtime", idPrefix: `pane-${n}-` }));
+  }
+  await p.mount(h("div", null, h(Form, { n: 0 }), h(Form, { n: 1 }))); await settle(5);
+  const input: any = p.root.querySelector("#pane-0-cl-account"); expect(input).not.toBeNull(); expect(p.root.querySelector("#pane-1-cl-account")).not.toBeNull();
+  const labels = p.root.querySelectorAll("label[for]"); expect(labels.length).toBeGreaterThan(0);
+  for (const label of labels) expect(label.closest("[data-form]")?.querySelector(`[id="${label.getAttribute("for")}"]`)).not.toBeNull();
+  input.value = "work"; fire(input, "change"); await settle(5);
+  models[0].set("backend")("codex"); await settle(4); expect(models[0].acct).toBe("");
+  models[0].setAcct("other"); await settle(4);
+  const expected = { backend: "codex", backend_options: { "claude-code": { credential_profile: "work" }, codex: { speed: "fast", credential_profile: "other" } } };
+  expect(models[0].pending()).toEqual(expected); expect(models[1].pending()).toEqual({});
+  await p.unmount(); await p.mount(h(Form, { n: 0 })); await settle(5);
+  expect(models[0].acct).toBe("other"); expect(models[0].pending()).toEqual(expected);
+  models[0].set("backend")("claude-code"); await settle(4); expect(models[0].acct).toBe("work");
+  expect((globalThis.fetch as any).mock.calls.some(([url]: any[]) => { const u = new URL(url, "http://localhost"); return u.searchParams.get("profile") === "work"; })).toBe(true);
+  await p.unmount(); memories[0].state.clear(); await p.mount(h(Form, { n: 0 })); await settle(5);
+  expect(models[0].pending()).toEqual({}); expect(models[0].acct).toBe("");
 });
 afterEach(async () => p.unmount());
 afterAll(() => { p.restore(); delete (globalThis as any).fetch; });

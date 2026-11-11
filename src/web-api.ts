@@ -973,6 +973,50 @@ function handlePageShare(req: IncomingMessage, res: ServerResponse, url: URL, ct
 }
 
 /**
+ * #2716/#3679: an Office-wide setting kept in web-offices.json beside the offices (PUT { <key>: value }): who may save
+ * the offices may set it — an admin session, never the CLI token or the public link; asked again once the body is in;
+ * counted with the offices' saves (OfficeWriteLimiter); every page hears `offices` and reads again.
+ */
+function officeSettingPut(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, o: {
+  key: string; invalid: string; shape: string; failed: string;
+  apply(store: OfficeStore, value: unknown): { ok: true; rev: number; answer: Record<string, unknown> } | { ok: false; status: number; error: string; detail?: string };
+}): boolean {
+  const store = ctx.officeStore;
+  if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
+  if (gatewayRequestContext(req)) { json(res, 403, { error: "offices_not_over_public_link" }); return true; }
+  const who = (): { person: string } | { status: number } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401 };
+    return verdict.via === "session" && verdict.session?.tier === "admin" ? { person: verdict.session.owner ? webPersonKey(verdict.session.owner) : "admin-session" } : { status: 403 };
+  };
+  const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "offices_need_an_admin_session" });
+  const first = who();
+  if ("status" in first) { refuse(first.status); return true; }
+  (async () => {
+    let body: Record<string, unknown>;
+    try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who();
+    if ("status" in now) { refuse(now.status); return; }
+    if (!body || typeof body !== "object" || Array.isArray(body) || !(o.key in body) || Object.keys(body).some(k => k !== o.key)) {
+      json(res, 400, { error: o.invalid, detail: o.shape });
+      return;
+    }
+    const limiter = ctx.officeWrites, allowed = limiter ? limiter.check(now.person) : { ok: true as const };
+    if (!allowed.ok) { res.setHeader("Retry-After", String(allowed.retry_after_s)); json(res, 429, { error: "offices_rate_limited", retry_after_s: allowed.retry_after_s }); return; }
+    const r = o.apply(store, body[o.key]);
+    if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
+    limiter?.record(now.person);
+    ctx.emitSseEvent("offices", { rev: r.rev });
+    json(res, 200, { rev: r.rev, ...r.answer });
+  })().catch(err => {
+    ctx.logger.error({ err: (err as Error).message }, o.failed);
+    try { json(res, 500, { error: o.failed }); } catch { /* already answered */ }
+  });
+  return true;
+}
+
+/**
  * #2513: the Office view's skin packs (web-office-skins.ts). The reads are the offices' (GET /ui/offices): whoever may
  * open the org chart, the public link too (its manifest lists them; a guest's routes do not): the list, a pack's
  * manifest (?v=<sha>: immutable, else no-store) and its pictures (by the sha of their bytes: immutable, image/png,
@@ -2719,39 +2763,15 @@ export function handleWebRequest(
   // would: an admin session, never the CLI token or the public link; asked again once the body is in; counted with the
   // offices' saves. Every page hears `offices` and reads again.
   if (method === "PUT" && path === "/ui/office-style") {
-    const store = ctx.officeStore;
-    if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "offices_not_over_public_link" }); return true; }
-    const who = (): { person: string } | { status: number } => {
-      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      if (verdict.kind !== "allow") return { status: 401 };
-      return verdict.via === "session" && verdict.session?.tier === "admin" ? { person: verdict.session.owner ? webPersonKey(verdict.session.owner) : "admin-session" } : { status: 403 };
-    };
-    const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "offices_need_an_admin_session" });
-    const first = who();
-    if ("status" in first) { refuse(first.status); return true; }
-    (async () => {
-      let body: Record<string, unknown>;
-      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
-      if (!permitWebContinuation(req, res, ctx)) return;
-      const now = who();
-      if ("status" in now) { refuse(now.status); return; }
-      if (!body || typeof body !== "object" || Array.isArray(body) || !("skin" in body) || Object.keys(body).some(k => k !== "skin")) {
-        json(res, 400, { error: "office_style_invalid", detail: "{ skin: a skin id, or null }" });
-        return;
-      }
-      const limiter = ctx.officeWrites, allowed = limiter ? limiter.check(now.person) : { ok: true as const };
-      if (!allowed.ok) { res.setHeader("Retry-After", String(allowed.retry_after_s)); json(res, 429, { error: "offices_rate_limited", retry_after_s: allowed.retry_after_s }); return; }
-      const r = store.setAutoSkin(body.skin);
-      if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
-      limiter?.record(now.person);
-      ctx.emitSseEvent("offices", { rev: r.rev });
-      json(res, 200, { rev: r.rev, autoSkin: r.autoSkin });
-    })().catch(err => {
-      ctx.logger.error({ err: (err as Error).message }, "Saving the office style failed");
-      try { json(res, 500, { error: "Saving the office style failed" }); } catch { /* already answered */ }
-    });
-    return true;
+    return officeSettingPut(req, res, url, ctx, { key: "skin", invalid: "office_style_invalid", shape: "{ skin: a skin id, or null }", failed: "Saving the office style failed",
+      apply: (store, v) => { const r = store.setAutoSkin(v); return r.ok ? { ok: true, rev: r.rev, answer: { autoSkin: r.autoSkin } } : r; } });
+  }
+  // #3679: PUT /ui/office-level-titles { levels }: the fleet's own Office level titles for every office (`{ titles?,
+  // fixed? }`, a pack's rules; null: none — read back as GET /ui/offices's levels). A pack's own `levels` still win for
+  // the offices drawn in it (on the page). Who may set the style may set these, the same way.
+  if (method === "PUT" && path === "/ui/office-level-titles") {
+    return officeSettingPut(req, res, url, ctx, { key: "levels", invalid: "office_levels_invalid", shape: "{ levels: { titles?, fixed? }, or null }", failed: "Saving the level titles failed",
+      apply: (store, v) => { const r = store.setLevels(v); return r.ok ? { ok: true, rev: r.rev, answer: { levels: r.levels } } : r; } });
   }
 
   // #2578: GET /ui/office-acts { acts }: the agents' live acts (office_set), read as the offices are (the public link
