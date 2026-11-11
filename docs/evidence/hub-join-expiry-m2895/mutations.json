@@ -1,0 +1,95 @@
+{
+  "source": "da2e25d64ef674e43599c57098875bb023427e238933edba05c17684a9a20605",
+  "mutants": [
+    {
+      "name": "expiry-recovery-removed",
+      "exit": 1,
+      "tests": 28,
+      "failed": 4,
+      "passed": 4,
+      "skipped": 20,
+      "failureNames": [
+        "Fleet local company join an expired unissued abandonment allows a new session to Start without cleanup (restart false)",
+        "Fleet local company join an expired unissued abandonment allows a new session to Start without cleanup (restart true)",
+        "Fleet local company join an expired pending journal also permits Start before any timer has recorded the expiry",
+        "Fleet local company join a late status from the expired operation cannot redeem or overwrite its fresh replacement"
+      ]
+    },
+    {
+      "name": "outcome-proof-removed",
+      "exit": 1,
+      "tests": 28,
+      "failed": 1,
+      "passed": 7,
+      "skipped": 20,
+      "failureNames": [
+        "Fleet local company join expiry never clears an unknown issuance result after a lost credential reply"
+      ]
+    },
+    {
+      "name": "issued-proof-removed",
+      "exit": 1,
+      "tests": 28,
+      "failed": 1,
+      "passed": 7,
+      "skipped": 20,
+      "failureNames": [
+        "Fleet local company join expiry does not relabel an issued active binding or an explicit unissued cancellation"
+      ]
+    },
+    {
+      "name": "deadline-removed",
+      "exit": 1,
+      "tests": 28,
+      "failed": 5,
+      "passed": 3,
+      "skipped": 20,
+      "failureNames": [
+        "Fleet local company join an expired unissued abandonment allows a new session to Start without cleanup (restart false)",
+        "Fleet local company join an expired unissued abandonment allows a new session to Start without cleanup (restart true)",
+        "Fleet local company join an expired pending journal also permits Start before any timer has recorded the expiry",
+        "Fleet local company join a live in-flight Start still blocks another session before and after its Hub push settles",
+        "Fleet local company join a late status from the expired operation cannot redeem or overwrite its fresh replacement"
+      ]
+    },
+    {
+      "name": "ended-projection-removed",
+      "exit": 1,
+      "tests": 28,
+      "failed": 1,
+      "passed": 7,
+      "skipped": 20,
+      "failureNames": [
+        "Fleet local company join the original session sees an expired never-issued operation as ended, so the existing Start form is reachable"
+      ]
+    },
+    {
+      "name": "deadline-exclusive",
+      "exit": 1,
+      "tests": 28,
+      "failed": 5,
+      "passed": 3,
+      "skipped": 20,
+      "failureNames": [
+        "Fleet local company join an expired unissued abandonment allows a new session to Start without cleanup (restart false)",
+        "Fleet local company join an expired unissued abandonment allows a new session to Start without cleanup (restart true)",
+        "Fleet local company join an expired pending journal also permits Start before any timer has recorded the expiry",
+        "Fleet local company join the original session sees an expired never-issued operation as ended, so the existing Start form is reachable",
+        "Fleet local company join a late status from the expired operation cannot redeem or overwrite its fresh replacement"
+      ]
+    },
+    {
+      "name": "live-prior-gate-removed",
+      "exit": 1,
+      "tests": 28,
+      "failed": 2,
+      "passed": 6,
+      "skipped": 20,
+      "failureNames": [
+        "Fleet local company join a live in-flight Start still blocks another session before and after its Hub push settles",
+        "Fleet local company join expiry never clears an unknown issuance result after a lost credential reply"
+      ]
+    }
+  ],
+  "restored": true
+}

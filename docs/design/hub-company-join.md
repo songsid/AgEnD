@@ -41,7 +41,8 @@ The Hub retains only the runtime credential hash in the Fleet row. Its bounded d
 | Crash between saves | Reconcile only the exact recorded marker digest and intended switch value, then recover the same key/result |
 | ACK | Same key/verifier/operation proof, only after durable profile and journal; success activates the exact journal marker |
 | Nonhost process restart | Require a fresh local confirmation for that same operation; status reads do not permanently revoke it |
-| Cancellation or unknown issuance | Preserve key/journal and inspect the exact tombstone; no automatic fresh Start |
+| Cancellation or unknown issuance | Preserve key/journal; an unknown issuance requires its exact tombstone before another Start, even after expiry. `issued:false` alone is not proof that nothing was issued |
+| Expired, known-unissued Start | At the original deadline, `issued:false` plus `outcomeKnown:true` is shown as ended. An explicitly authorized new Start may replace the current pointer, retaining the old journal; no manual file cleanup. A live attempt still blocks another Start |
 | Existing binding | Refuse before discovery/reservation; the existing exact Disconnect → Start over retires it before an explicitly requested new join |
 
 A visible file after a failed directory flush is not proof of durability. Re-reading an existing pin, operation journal or current-operation pointer repeats the required ancestor flushes; a continuing failure holds the same operation and cannot become a fresh trust allowance on Retry.

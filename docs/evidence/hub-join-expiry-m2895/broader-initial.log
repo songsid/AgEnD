@@ -1,0 +1,107 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-abandoned-start-a13
+
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > a genuinely unissued cancellation releases its reservation without creating a Fleet 7247ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > Hub admission independently refuses a key binding that shares the Fleet browser hostname 4163ms
+ × tests/hub-company-join-http.test.ts > company-join actual Hub boundary > issued cancel keeps mixed legacy/company admission headroom until its original outer deadline 10075ms
+   → Test timed out in 10000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > issued expiry keeps mixed legacy/company admission headroom until its original outer deadline 9906ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > a directory epoch change fences the held browser authority and pinned redemption before any new credential 3432ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > is off by default and only the exact configured admin can enable it with Origin/CSRF and current revision 3127ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > refuses an attacker key advertising another Fleet origin before cookie/state/AD, without broadening Hub session CSRF 3499ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > issues once after one identity-submit, recovers exactly the same result, and refuses replay/wrong verifier 7005ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > outsider and unknown membership cannot borrow manual fallback or create a Fleet 4499ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > an exact retained manual Fleet consumes the later automatic quota with a limit-specific refusal 5597ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > legacy quick pairing and a company browser wait share the same one-person reservation 6134ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > first redemption expires at60s without issuance and never restarts the operation clock 3770ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > same-result retrieval outlives the old60s redeem window but stops at exactly2min delivery 5633ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > the10min outer deadline truncates both a late first redemption and its delivery window 5876ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > post-commit cancellation erases delivery, keeps the exact retained result and cannot issue again 5113ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > revocation and group suspension refuse recovery even while a transport row still looks active 5961ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > fresh AD membership loss closes delivery despite an unchanged active transport row 6455ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > sign-out of the exact identity-submit session fences a later key-authenticated redemption 3294ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > an outbox failure rolls back credentials, provenance and receipt rather than publishing a partial grant 4056ms
+ ✓ tests/hub-company-join-http.test.ts > company-join actual Hub boundary > two browser tabs cannot approve a different request than the Fleet shown in that tab 3835ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > an expired unissued abandonment allows a new session to Start without cleanup (restart false) 592ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > an expired unissued abandonment allows a new session to Start without cleanup (restart true) 507ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > an expired pending journal also permits Start before any timer has recorded the expiry 420ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > the original session sees an expired never-issued operation as ended, so the existing Start form is reachable 183ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a live in-flight Start still blocks another session before and after its Hub push settles 175ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > expiry never clears an unknown issuance result after a lost credential reply 289ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a late status from the expired operation cannot redeem or overwrite its fresh replacement 287ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > expiry does not relabel an issued active binding or an explicit unissued cancellation 1038ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a shared Hub/Fleet hostname refuses before discovery, a TOFU pin or a remote push 88ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a pending journal from an older build cannot revive a same-hostname browser handoff 148ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > an existing or unfinished legacy binding refuses before discovery or a new Hub reservation 165ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > an orphan pending profile also refuses before any new reservation 135ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > the existing exact disconnect and Start over allow a new explicitly requested join, never automatic reuse 675ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > saves the exact profile and journal before proof ACK, then activates once without exposing any secret 418ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > UI status reads share the bounded backend polling window instead of multiplying directory/status work 397ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a changed requester fences the original operation before credential persistence 148ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a changed confirmer fences the original operation before credential persistence 223ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a changed binding fences the original operation before credential persistence 282ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a different cookie session cannot read, bridge or cancel an owned operation 278ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > profile saved but membership/journal failure remains held and unconnectable; exact recovery never enrolls twice 767ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > cancel wins while an issued credential response is held and never ACKs or activates a late result 334ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a restarted controller reopens only the same host-owned operation and key; no fresh enrollment 553ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > recovers the exact owned marker crash window without another enrollment 773ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > recovers the exact owned profile crash window without another enrollment 1091ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > recovers the exact owned membership crash window without another enrollment 1073ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > recovers the exact owned ack crash window without another enrollment 1326ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a nonhost restart read asks for fresh local confirmation without permanently revoking the same operation 1901ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a lost issuance reply and lost cancellation retain an unknown outcome until the exact tombstone is read 884ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > the join page keeps its title and single heading ahead of other query views () 187ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > the join page keeps its title and single heading ahead of other query views (&view=notices) 212ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > the join page keeps its title and single heading ahead of other query views (&room=0f1e2d3c-4b5a-4968-8776-655443322110) 123ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > keeps the specific changed-pin refusal through the shared Settings confirmation outcome 5ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > opening Settings or a prefilled link never starts a join 121ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > explains why company sign-in is disabled until address and Fleet name are present 85ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > the distributed public link provides in-surface navigation, without sign-in or an enrollment action 75ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > the public link refuses same-hostname navigation before any request (https://hub.example.test) 93ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > the public link refuses same-hostname navigation before any request (https://hub.example.test:4444) 51ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > an already-bound Fleet does not offer another enrollment from a different local session 58ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > a saved profile with an offline link stays Connecting, polls and only reports Connected when ready 87ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > a cancelled operation allows a fresh Start only when its unissued result is known (false) 47ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > a cancelled operation allows a fresh Start only when its unissued result is known (true) 42ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > a Fleet-owned waiting tab keeps a same-surface return path when Start is refused or awaits confirmation 50ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > an existing Hub session requires the explicit shown identity action and sends only that exact request 85ms
+ ✓ tests/hub-company-join-ui.test.ts > company join UI > a Hub limit refusal uses plain limit copy, with no success or silent retry 223ms
+(node:2707748) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > only an actual local cookie session creates the private capability; loopback/header/forwarding never grant host authority 84ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > a signed-in Fleet admin Start is consent, with no held card or General wait (host=true) 78ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > a signed-in Fleet admin Start is consent, with no held card or General wait (host=false) 82ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > a composition without the scoped feature keeps its previous confirmation path 9ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > an enforced admin code stays inline and never posts a General card (host=true) 2ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > an enforced admin code stays inline and never posts a General card (host=false) 6ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > replaying the same code-protected Start keeps its digest without asking for consent again 2ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > company consent retains this admin’s enforced code even with message authority disabled (false) 2ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > company consent retains this admin’s enforced code even with message authority disabled (true) 1ms
+ ✓ tests/hub-company-join-settings.test.ts > company Start Settings authority > company Start stays outward-Hub sensitive and rejects browser-supplied authority/origin/redirect fields 3ms
+ ✓ tests/hub-company-join-private.test.ts > strict ancestor durability > a pin flushes every ancestor through home before returning (existing parents false) 83ms
+ ✓ tests/hub-company-join-private.test.ts > strict ancestor durability > a pin flushes every ancestor through home before returning (existing parents true) 44ms
+ ✓ tests/hub-company-join-private.test.ts > strict ancestor durability > a pin left behind by a failed ancestor flush cannot bypass the failure on Retry 58ms
+ ✓ tests/hub-company-join-private.test.ts > strict ancestor durability > a cold journal/current pointer is ancestor-durable before any push; flush failure holds (false) 59ms
+ ✓ tests/hub-company-join-private.test.ts > strict ancestor durability > a cold journal/current pointer is ancestor-durable before any push; flush failure holds (true) 132ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-company-join-http.test.ts > company-join actual Hub boundary > issued cancel keeps mixed legacy/company admission headroom until its original outer deadline
+Error: Test timed out in 10000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/hub-company-join-http.test.ts:60:32
+     58|     expect(r.db.prepare("SELECT COUNT(*) n FROM hub_company_join_reque…
+     59|   });
+     60|   it.each(["cancel", "expiry"])("issued %s keeps mixed legacy/company …
+       |                                ^
+     61|     const { r, admin } = await world(); await r.enable(admin, 8); let …
+     62|     const a = await attempt(r), carol = await a.browser(); expect((awa…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 4 passed (5)
+      Tests  1 failed | 78 passed (79)
+   Start at  16:56:34
+   Duration  201.09s (transform 50.51s, setup 1.53s, import 61.45s, tests 134.94s, environment 1ms)

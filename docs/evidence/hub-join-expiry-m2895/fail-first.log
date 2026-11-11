@@ -1,0 +1,120 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-abandoned-start-a13
+
+(node:2681392) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ × tests/hub-company-join-local.test.ts > Fleet local company join > an expired unissued abandonment allows a new session to Start without cleanup (restart false) 727ms
+   → Hub protocol: conflict
+ × tests/hub-company-join-local.test.ts > Fleet local company join > an expired unissued abandonment allows a new session to Start without cleanup (restart true) 531ms
+   → Hub protocol: conflict
+ × tests/hub-company-join-local.test.ts > Fleet local company join > an expired pending journal also permits Start before any timer has recorded the expiry 523ms
+   → Hub protocol: conflict
+ × tests/hub-company-join-local.test.ts > Fleet local company join > the original session sees an expired never-issued operation as ended, so the existing Start form is reachable 624ms
+   → expected { …(9) } to match object { …(5) }
+(4 matching properties omitted from actual)
+ × tests/hub-company-join-local.test.ts > Fleet local company join > a new FleetManager reconstructs the expired journal and starts again from the same private state 496ms
+   → Hub protocol: conflict
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a live in-flight Start still blocks another session before and after its Hub push settles 363ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > expiry never clears an unknown issuance result after a lost credential reply 1443ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a shared Hub/Fleet hostname refuses before discovery, a TOFU pin or a remote push 225ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a pending journal from an older build cannot revive a same-hostname browser handoff 505ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > an existing or unfinished legacy binding refuses before discovery or a new Hub reservation 162ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > an orphan pending profile also refuses before any new reservation 157ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > the existing exact disconnect and Start over allow a new explicitly requested join, never automatic reuse 2724ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > saves the exact profile and journal before proof ACK, then activates once without exposing any secret 1434ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > UI status reads share the bounded backend polling window instead of multiplying directory/status work 1406ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a changed requester fences the original operation before credential persistence 382ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a changed confirmer fences the original operation before credential persistence 389ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a changed binding fences the original operation before credential persistence 465ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a different cookie session cannot read, bridge or cancel an owned operation 425ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > profile saved but membership/journal failure remains held and unconnectable; exact recovery never enrolls twice 2244ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > cancel wins while an issued credential response is held and never ACKs or activates a late result 552ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a restarted controller reopens only the same host-owned operation and key; no fresh enrollment 426ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > recovers the exact owned marker crash window without another enrollment 414ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > recovers the exact owned profile crash window without another enrollment 404ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > recovers the exact owned membership crash window without another enrollment 422ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > recovers the exact owned ack crash window without another enrollment 221ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a nonhost restart read asks for fresh local confirmation without permanently revoking the same operation 154ms
+ ✓ tests/hub-company-join-local.test.ts > Fleet local company join > a lost issuance reply and lost cancellation retain an unknown outcome until the exact tombstone is read 122ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-company-join-local.test.ts > Fleet local company join > an expired unissued abandonment allows a new session to Start without cleanup (restart false)
+ FAIL  tests/hub-company-join-local.test.ts > Fleet local company join > an expired unissued abandonment allows a new session to Start without cleanup (restart true)
+Error: Hub protocol: conflict
+ ❯ CompanyJoinController.start src/hub/join/local.ts:122:42
+    120|     if (priorId) {
+    121|       const prior = readLocalJoin(this.options.home, priorId);
+    122|       if (this.priorBlocks(prior)) throw new HubProtocolError("conflic…
+       |                                          ^
+    123|     }
+    124|     this.starting = true; const gen = ++this.generation, snapshot = th…
+ ❯ tests/hub-company-join-local.test.ts:58:35
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'conflict' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/hub-company-join-local.test.ts > Fleet local company join > an expired pending journal also permits Start before any timer has recorded the expiry
+Error: Hub protocol: conflict
+ ❯ CompanyJoinController.start src/hub/join/local.ts:122:42
+    120|     if (priorId) {
+    121|       const prior = readLocalJoin(this.options.home, priorId);
+    122|       if (this.priorBlocks(prior)) throw new HubProtocolError("conflic…
+       |                                          ^
+    123|     }
+    124|     this.starting = true; const gen = ++this.generation, snapshot = th…
+ ❯ Object.start tests/hub-company-join-local.test.ts:44:34
+ ❯ tests/hub-company-join-local.test.ts:71:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'conflict' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/hub-company-join-local.test.ts > Fleet local company join > the original session sees an expired never-issued operation as ended, so the existing Start form is reachable
+AssertionError: expected { …(9) } to match object { …(5) }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "issued": false,
+    "operationId": "8b3bb6d2-a38f-4215-b07f-cea4eacd290e",
+    "outcomeKnown": true,
+-   "reason": "expired",
+-   "state": "ended",
++   "reason": null,
++   "state": "awaiting-sign-in",
+  }
+
+ ❯ tests/hub-company-join-local.test.ts:75:45
+     73|   it("the original session sees an expired never-issued operation as e…
+     74|     const w = await world(), first = await w.start(); w.advance(600_00…
+     75|     expect(w.controller.current(w.session)).toMatchObject({ operationI…
+       |                                             ^
+     76|     expect(await w.controller.status(first.operationId, w.session)).to…
+     77|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  tests/hub-company-join-local.test.ts > Fleet local company join > a new FleetManager reconstructs the expired journal and starts again from the same private state
+Error: Hub protocol: conflict
+ ❯ CompanyJoinController.start src/hub/join/local.ts:122:42
+    120|     if (priorId) {
+    121|       const prior = readLocalJoin(this.options.home, priorId);
+    122|       if (this.priorBlocks(prior)) throw new HubProtocolError("conflic…
+       |                                          ^
+    123|     }
+    124|     this.starting = true; const gen = ++this.generation, snapshot = th…
+ ❯ tests/hub-company-join-local.test.ts:87:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'conflict' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 22 passed (27)
+   Start at  16:49:16
+   Duration  32.66s (transform 11.62s, setup 291ms, import 14.20s, tests 17.95s, environment 0ms)
