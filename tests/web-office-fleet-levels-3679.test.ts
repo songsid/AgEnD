@@ -255,4 +255,11 @@ describe("the page", () => {
     expect(T.levelTitlesProblem(JSON.stringify({ titles: [{ from: 1, name: "x".repeat(25) }] }))).toBe("levels.titles[0].name: 1–24 characters");
     expect(T.levelTitlesProblem(JSON.stringify(FLEET))).toBe("");
   });
+  it("Settings still links when the tab holds an older fleet-office-pack.js (no checkLevels): a namespace import", () => {
+    // Settings is loaded after the page; a tab that drew the Office before an upgrade keeps the older pack module, and a
+    // named import of a name it lacks fails to link — the whole Settings panel with it (accounts-view.js's VersionLine).
+    const src = readFileSync(join(import.meta.dirname, "../src/ui/settings-level-titles.js"), "utf8");
+    expect(src).not.toMatch(/import\s*\{[^}]*\}\s*from\s*"\.\/fleet-office-pack\.js"/);
+    expect(src).toMatch(/import \* as \w+ from "\.\/fleet-office-pack\.js"/);
+  });
 });

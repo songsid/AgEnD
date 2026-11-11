@@ -7,20 +7,25 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { recordEdit } from "/assets/text-undo.js";
 import { toast } from "/assets/ui-toast.js";
-import { checkLevels } from "./fleet-office-pack.js";
+// A namespace, not a named import: Settings loads after the page does, and a tab that drew the Office before an upgrade
+// still holds the older fleet-office-pack.js (no checkLevels) — a named import would then fail the whole Settings panel
+// to link. Without the check here the host's still applies (PUT /ui/office-level-titles answers where a rule broke).
+import * as officePack from "./fleet-office-pack.js";
 import "./settings-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const EXAMPLE = { titles: [{ from: 0, name: "Novice" }, { from: 10, name: "Adept" }, { from: 50, name: "Master" }], fixed: { atlas: { title: "Founder", hideLevel: false } } };
 const pretty = (v) => (v ? JSON.stringify(v, null, 2) : "");
+/** checkLevels when this page's fleet-office-pack.js has it; else the host's word is taken as read (it checks again). */
+const check = (v) => (typeof officePack.checkLevels === "function" ? officePack.checkLevels(v) : v && typeof v === "object" && !Array.isArray(v) ? { ok: true, levels: v } : { ok: false, error: "levels: an object" });
 
 /** The text's problem (not JSON, or where a rule broke), or "" — empty text is none (the page's own titles). */
 export function levelTitlesProblem(text) {
   if (!text.trim()) return "";
   let v;
   try { v = JSON.parse(text); } catch { return tn("levelTitlesNotJson"); }
-  const r = checkLevels(v);
+  const r = check(v);
   return r.ok ? "" : r.error;
 }
 
@@ -35,7 +40,7 @@ export function LevelTitlesCard({ get = globalThis.fetch }) {
     get("/ui/offices", { method: "GET", headers: JSON_HEADERS }).then((r) => (r && r.ok ? r.json() : null)).then((d) => {
       if (!live) return;
       if (!d || typeof d !== "object") { setSaved(false); return; }
-      const lv = d.levels !== undefined ? checkLevels(d.levels) : null, v = lv && lv.ok ? lv.levels : null;
+      const lv = d.levels !== undefined ? check(d.levels) : null, v = lv && lv.ok ? lv.levels : null;
       setSaved(v); setText(pretty(v));
     }, () => { if (live) setSaved(false); });
     return () => { live = false; };

@@ -973,14 +973,6 @@ function handlePageShare(req: IncomingMessage, res: ServerResponse, url: URL, ct
 }
 
 /**
- * #2513: the Office view's skin packs (web-office-skins.ts). The reads are the offices' (GET /ui/offices): whoever may
- * open the org chart, the public link too (its manifest lists them; a guest's routes do not): the list, a pack's
- * manifest (?v=<sha>: immutable, else no-store) and its pictures (by the sha of their bytes: immutable, image/png,
- * nosniff, sandboxed). The writes are PUT /ui/offices's: an admin session only — never the CLI token, never the public
- * link (absent from its manifest, and refused here too) — asked again once the body is in; rate limited per person.
- * Every page hears `office_skins` on the stream and reads the list again.
- */
-/**
  * #2716/#3679: an Office-wide setting kept in web-offices.json beside the offices (PUT { <key>: value }): who may save
  * the offices may set it — an admin session, never the CLI token or the public link; asked again once the body is in;
  * counted with the offices' saves (OfficeWriteLimiter); every page hears `offices` and reads again.
@@ -1024,6 +1016,14 @@ function officeSettingPut(req: IncomingMessage, res: ServerResponse, url: URL, c
   return true;
 }
 
+/**
+ * #2513: the Office view's skin packs (web-office-skins.ts). The reads are the offices' (GET /ui/offices): whoever may
+ * open the org chart, the public link too (its manifest lists them; a guest's routes do not): the list, a pack's
+ * manifest (?v=<sha>: immutable, else no-store) and its pictures (by the sha of their bytes: immutable, image/png,
+ * nosniff, sandboxed). The writes are PUT /ui/offices's: an admin session only — never the CLI token, never the public
+ * link (absent from its manifest, and refused here too) — asked again once the body is in; rate limited per person.
+ * Every page hears `office_skins` on the stream and reads the list again.
+ */
 function handleOfficeSkins(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   const store = ctx.officeSkins;
   if (!store) { json(res, 404, { error: "Skin packs are not kept on this fleet" }); return true; }
