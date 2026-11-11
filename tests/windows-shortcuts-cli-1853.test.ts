@@ -20,7 +20,7 @@ import { InstallerPsBatch, hasPwsh } from "./support/installer-ps-batch.js";
 import {
   SHORTCUTS_HINT_MARKER, SHORTCUTS_MARKER, buildShortcutsScript, detectWsl, encodePowershell, findPowershell, interopState,
   powershellArgs, runShortcuts, sharedShortcutsPs, shortcutsHintOnce, type RunResult, type ShortcutsHost,
-  STDIN_LOADER, iconsLiteral, packageShortcutIcons, stdinPayload,
+  STDIN_LOADER, iconsLiteral, packageShortcutIcons, stdinPayload, realShortcutsDeps,
 } from "../src/windows-shortcuts.js";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -118,6 +118,12 @@ describe("agend shortcuts", () => {
   });
   it("a quote in a name stays inside its PowerShell string", () => {
     expect(buildShortcutsScript("", "Ubuntu's", "o'neil")).toContain("Install-AgendShortcuts 'Ubuntu''s' 'o''neil'");
+  });
+  it("M-2885 (Fable #3632 pin): the real `agend shortcuts` deps hand the package's two icons to the script", () => {
+    const real = realShortcutsDeps("/tmp/agend-data", "han", () => ({ status: 0, stdout: "", stderr: "" }));
+    const icons = real.icons!();
+    expect(Object.keys(icons).sort()).toEqual(["agend-restart.ico", "agend.ico"]);
+    for (const name of ["agend.ico", "agend-restart.ico"] as const) expect(icons[name]!.equals(readFileSync(join(ROOT, "templates", "icons", name)))).toBe(true);
   });
   it("M-2885: the package's icons go into the script as base64 bytes, both of them, and the real CLI deps read templates/icons", async () => {
     const { d, runs } = deps(host());
@@ -396,6 +402,20 @@ Write-Output 'CASE=icons'
       expect(out).toMatch(/^AGEND_SHORTCUTS_MADE=2$/m);
       expect(readdirSync(join(w.local, "AgEnD")).filter(f => /shortcut-|\.lnk$/.test(f)).sort()).toEqual(["mine.lnk", "shortcut-notes.txt"]);
       expect(readdirSync(join(w.dir, "Desktop")).sort()).toEqual(["AgEnD 儀表板.lnk", "AgEnD 重新啟動.lnk", "Other.lnk", "Other.lnk.agend-new"]);
+    } finally { rmSync(w.dir, { recursive: true, force: true }); }
+  });
+  it("M-2885 fix (Fable #3632 pin): the swap cannot be staged beside the old shortcut — the old one stays byte for byte, it counts as not made, nothing is left", async () => {
+    const w = scratchWindows();
+    try {
+      const old = Buffer.from([0x4c, 0, 0, 0, 1, 2, 3, 0xff]);
+      writeFileSync(join(w.dir, "Desktop", "AgEnD 儀表板.lnk"), old);
+      mkdirSync(join(w.dir, "Desktop", "AgEnD 儀表板.lnk.agend-new"));                // a directory: the staging copy throws
+      writeTail(w, "AgEnD", "root");
+      const out = await pwshFile(`(Invoke-Tail $env:CASE_ROOT (Join-Path $env:CASE_ROOT 'tail.ps1')) | Out-String | Write-Output`, { CASE_ROOT: w.dir });
+      expect(out).toMatch(/^AGEND_SHORTCUTS_MADE=1$/m);                                   // the other one is made as usual
+      expect(readFileSync(join(w.dir, "Desktop", "AgEnD 儀表板.lnk")).equals(old)).toBe(true);
+      expect(readFileSync(join(w.dir, "Desktop", "AgEnD 重新啟動.lnk"), "utf8")).toMatch(/restart-agend\.ps1/);
+      expect(readdirSync(join(w.local, "AgEnD")).filter(f => f.endsWith(".lnk"))).toEqual([]);
     } finally { rmSync(w.dir, { recursive: true, force: true }); }
   });
   it("M-2885 fix: when a shortcut cannot be made, the one already there stays as it was, and no temporary is left", async () => {

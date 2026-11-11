@@ -200,7 +200,14 @@ function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptTe
       $sc.Save()
       # Beside the old one first (same folder, same volume), then swapped in: if that fails, the old shortcut stays.
       [IO.File]::Copy($tmp, $staged, $true)
-      if ([IO.File]::Exists($lnk)) { [IO.File]::Replace($staged, $lnk, [NullString]::Value) } else { [IO.File]::Move($staged, $lnk) }
+      if (-not [IO.File]::Exists($lnk)) { [IO.File]::Move($staged, $lnk) }
+      else {
+          try { [IO.File]::Replace($staged, $lnk, [NullString]::Value) }
+          catch {
+              # ReplaceFile can fail after the old one is gone (ERROR_UNABLE_TO_MOVE_REPLACEMENT): then the new one goes in.
+              if ((-not [IO.File]::Exists($lnk)) -and [IO.File]::Exists($staged)) { [IO.File]::Move($staged, $lnk) } else { throw }
+          }
+      }
   } finally {
       foreach ($left in @($tmp, $staged)) { try { if ([IO.File]::Exists($left)) { [IO.File]::Delete($left) } } catch { } }
   }
