@@ -69,6 +69,15 @@ try {
  Refused (Join-Path $unsafe 'new-profile')
  Assert (-not (Test-Path -LiteralPath (Join-Path $unsafe 'new-profile'))) 'A profile was created under a replaceable parent'
  Assert ((Sddl $unsafe) -ceq $before) 'An unsafe ancestor ACL was rewritten'; $cases++
+ foreach ($generic in @('GA','GW')) {
+  $unsafeGeneric = Join-Path $work ('generic-' + $generic); [IO.Directory]::CreateDirectory($unsafeGeneric) | Out-Null
+  $genericAcl = [Security.AccessControl.DirectorySecurity]::new()
+  $genericAcl.SetSecurityDescriptorSddlForm(('O:' + $user.Value + 'D:P(A;;FA;;;' + $user.Value + ')(A;;FA;;;SY)(A;;' + $generic + ';;;WD)'))
+  ([IO.DirectoryInfo]::new($unsafeGeneric)).SetAccessControl($genericAcl); $before = Sddl $unsafeGeneric
+  Refused (Join-Path $unsafeGeneric 'new-profile')
+  Assert (-not (Test-Path -LiteralPath (Join-Path $unsafeGeneric 'new-profile'))) 'A generic-write/all ancestor was admitted'
+  Assert ((Sddl $unsafeGeneric) -ceq $before) 'A generic ancestor ACL changed'; $cases++
+ }
  if ($SharedScratchParent) {
   # Hosted RUNNER_TEMP is genuinely shared; refusal here is a separate negative, not the positive fixture's precondition.
   $negative = Join-Path $SharedScratchParent ('agend-n7-shared-' + [Guid]::NewGuid().ToString('N'))
