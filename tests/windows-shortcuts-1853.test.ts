@@ -48,7 +48,7 @@ describe("shortcuts and the fast path (static)", () => {
     expect(at).toBeLessThan(code.indexOf("if (-not (Test-WindowsNetwork))"));          // … before the network check, so before anything is installed
     expect(at).toBeLessThan(code.indexOf("Write-Step 1 $TOTAL"));
     const block = code.slice(at, code.indexOf("if (-not (Test-WindowsNetwork))"));
-    expect(block).toMatch(/\$made = @\(Install-AgendShortcuts \$existing\.Distro \$existing\.User\)\n\s*\$null = Write-ShortcutResult \$made/);
+    expect(block).toMatch(/\$made = @\(Install-AgendShortcuts \$existing\.Distro \$existing\.User \$AGEND_ICONS\)\n\s*\$null = Write-ShortcutResult \$made/);
     expect(block).toMatch(/Read-Host "按 Enter 結束"; exit 0/);
     expect(block).not.toMatch(/Invoke-WslStep|wsl --install|agend setup|Mark-Stage/);
   });
@@ -60,7 +60,7 @@ describe("shortcuts and the fast path (static)", () => {
     for (const command of sent) expect(command).not.toContain('"');
   });
   it("the end of the install makes both shortcuts with the recorded user; the restart never shuts WSL down", () => {
-    expect(code).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)\n\$null = Write-ShortcutResult \$shortcuts/);
+    expect(code).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER \$AGEND_ICONS\)\n\$null = Write-ShortcutResult \$shortcuts/);
     expect(restartFn).not.toMatch(/--shutdown/);
     expect(restartFn).not.toMatch(/-u root/);
     const openerFn = text.slice(text.indexOf("$DASHBOARD_OPENER_FN = @'"), text.indexOf("\n'@", text.indexOf("$DASHBOARD_OPENER_FN = @'")));

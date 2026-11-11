@@ -11,6 +11,7 @@
  */
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { createServer, type ServerResponse } from "node:http";
 import { once } from "node:events";
 import { join } from "node:path";
@@ -19,6 +20,7 @@ import { InstallerPsBatch, hasPwsh } from "./support/installer-ps-batch.js";
 import {
   SHORTCUTS_HINT_MARKER, SHORTCUTS_MARKER, buildShortcutsScript, detectWsl, encodePowershell, findPowershell, interopState,
   powershellArgs, runShortcuts, sharedShortcutsPs, shortcutsHintOnce, type RunResult, type ShortcutsHost,
+  STDIN_LOADER, iconsLiteral, packageShortcutIcons,
 } from "../src/windows-shortcuts.js";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -36,14 +38,14 @@ function host(o: Partial<ShortcutsHost> & { files?: string[] } = {}): ShortcutsH
   };
 }
 function deps(h: ShortcutsHost, result: RunResult = { status: 0, stdout: "AGEND_SHORTCUTS_MADE=2\r\n", stderr: "" }, answer?: boolean | null) {
-  const runs: Array<{ command: string; args: string[] }> = [];
+  const runs: Array<{ command: string; args: string[]; input: string }> = [];
   const markers: Array<[string, string]> = [];
   const lines: string[] = [];
   return {
     runs, markers, lines,
     d: {
       host: h, user: "han", dataDir: "/home/han/.agend", shared: () => shared,
-      run: (command: string, args: string[]) => { runs.push({ command, args }); return result; },
+      run: (command: string, args: string[], input: string) => { runs.push({ command, args, input }); return result; },
       writeMarker: (path: string, content: string) => { markers.push([path, content]); },
       log: (line: string) => { lines.push(line); },
       now: () => new Date("2026-10-20T12:00:00Z"),
@@ -52,17 +54,23 @@ function deps(h: ShortcutsHost, result: RunResult = { status: 0, stdout: "AGEND_
   };
 }
 const decode = (args: string[]) => Buffer.from(args[args.indexOf("-EncodedCommand") + 1]!, "base64").toString("utf16le");
+const ICONS = { "agend.ico": Buffer.from([0, 0, 1, 0, 1]), "agend-restart.ico": Buffer.from([0, 0, 1, 0, 2]) };
 
 describe("one copy of the shortcut code", () => {
   it("the template below its header is byte-for-byte the installer's, from the WSL command builder to Install-AgendShortcuts", () => {
     expect(shared.startsWith("$WSL_COMMAND_FN = @'\n")).toBe(true);
     expect(shared.trimEnd().endsWith("    return $made\n}")).toBe(true);
     expect(installer.includes(shared)).toBe(true);
-    expect(shared).toContain("function Install-AgendShortcuts([string]$distro, [string]$user)");
+    expect(shared).toContain("function Install-AgendShortcuts([string]$distro, [string]$user, $icons = $null)");
   });
-  it("the encoded command fits Windows' 32,767-character command line with room to spare", () => {
-    const args = powershellArgs(buildShortcutsScript(shared, "Ubuntu-24.04", "a-rather-long-user-name"));
-    expect(PS.length + args.join(" ").length).toBeLessThan(30_000);
+  it("M-2885: -EncodedCommand carries only the fixed loader; the script (with the icons) goes on standard input, so its length is not bound by Windows' 32,767-character command line", () => {
+    const args = powershellArgs();
+    expect(decode(args)).toBe(STDIN_LOADER);
+    expect(PS.length + args.join(" ").length).toBeLessThan(1_000);
+    expect(STDIN_LOADER).toMatch(/\[Console\]::OpenStandardInput\(\), \(New-Object Text\.UTF8Encoding \$false\)/);   // bytes as UTF-8, never the console code page
+    expect(STDIN_LOADER).toMatch(/\. \(\[ScriptBlock\]::Create\(\$s\)\)$/);                                   // run at the top level (functions, exit)
+    const full = buildShortcutsScript(shared, "Ubuntu-24.04", "a-rather-long-user-name", undefined, packageShortcutIcons());
+    expect(full.length).toBeGreaterThan(32_767);                                                                 // the reason
   });
 });
 
@@ -96,16 +104,28 @@ describe("agend shortcuts", () => {
     expect(runs[0]!.command).toBe(PS);
     expect(runs[0]!.args.slice(0, 5)).toEqual(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand"]);
     expect(runs[0]!.args).toHaveLength(6);
-    const script = decode(runs[0]!.args);
+    expect(decode(runs[0]!.args)).toBe(STDIN_LOADER);
+    const script = runs[0]!.input;
     expect(script).toContain(shared);
     expect(script).toContain("$script:OnWindows = $true");
-    expect(script).toContain("$made = @(Install-AgendShortcuts 'Ubuntu-22.04' 'han')");
+    expect(script).toContain("$made = @(Install-AgendShortcuts 'Ubuntu-22.04' 'han' $null)");
     expect(markers).toEqual([["/home/han/.agend/" + SHORTCUTS_MARKER, "2026-10-20T12:00:00.000Z\n"]]);
     expect(lines.join("\n")).toContain('"AgEnD 儀表板"');
     expect(lines.join("\n")).toContain('"AgEnD 重新啟動"');
   });
   it("a quote in a name stays inside its PowerShell string", () => {
     expect(buildShortcutsScript("", "Ubuntu's", "o'neil")).toContain("Install-AgendShortcuts 'Ubuntu''s' 'o''neil'");
+  });
+  it("M-2885: the package's icons go into the script as base64 bytes, both of them, and the real CLI deps read templates/icons", async () => {
+    const { d, runs } = deps(host());
+    expect(await runShortcuts({ ...d, icons: () => ICONS })).toBe(0);
+    expect(runs[0]!.input).toContain("$made = @(Install-AgendShortcuts 'Ubuntu-22.04' 'han' @{ 'agend.ico' = [Convert]::FromBase64String('AAABAAE='); 'agend-restart.ico' = [Convert]::FromBase64String('AAABAAI=') })");
+    expect(iconsLiteral({ "agend.ico": ICONS["agend.ico"] })).toBe("@{ 'agend.ico' = [Convert]::FromBase64String('AAABAAE=') }");   // a missing one is left out
+    expect(iconsLiteral({})).toBe("$null");
+    const real = packageShortcutIcons();
+    expect(Object.keys(real).sort()).toEqual(["agend-restart.ico", "agend.ico"]);
+    expect(real["agend.ico"]!.equals(readFileSync(join(ROOT, "templates", "icons", "agend.ico")))).toBe(true);
+    expect(packageShortcutIcons("/nonexistent")).toEqual({});
   });
   it.each([
     ["not WSL", host({ env: {}, osRelease: "6.8.0-45-generic\n" }), "This is not WSL"],
@@ -135,7 +155,7 @@ describe("agend shortcuts", () => {
       const answers = [other, second];
       const d = {
         host: host({ env: { WSL_DISTRO_NAME: "AgEnD", PATH: "/usr/bin" } }), user: "root", dataDir: "/root/.agend", shared: () => shared,
-        run: (_c: string, args: string[]) => { runs.push(decode(args)); return answers.shift()!; },
+        run: (_c: string, _args: string[], input: string) => { runs.push(input); return answers.shift()!; },
         writeMarker: (path: string) => { markers.push(path); }, log: (l: string) => { lines.push(l); },
         now: () => new Date("2026-10-20T12:00:00Z"), confirm: async (q: string) => { asked.push(q); return answer; },
       };
@@ -148,7 +168,7 @@ describe("agend shortcuts", () => {
       expect(runs[0]).toContain("if (-not (Test-InstallRecordAsSeen $null 'AgEnD' 'root')) {");
       // #2279 review: the yes is bound to what was shown — the second run checks the record is still that one.
       expect(runs[1]).toContain("if (-not (Test-InstallRecordAsSeen @{ Distro = 'Ubuntu-24.04'; User = 'root' } 'AgEnD' 'root')) {");
-      expect(runs[1]).toContain("$made = @(Install-AgendShortcuts 'AgEnD' 'root')");
+      expect(runs[1]).toContain("$made = @(Install-AgendShortcuts 'AgEnD' 'root' $null)");
       expect(asked).toEqual(["The desktop shortcuts now open Ubuntu-24.04 (user root). Point them at AgEnD (user root) instead? (y/N)"]);
       expect(markers).toEqual(["/root/.agend/windows-shortcuts"]);
     });
@@ -220,8 +240,8 @@ param([Parameter(Position = 0)][string]$TypeName, [Parameter(Position = 1)][obje
 if ($ComObject) {
   $shell = [pscustomobject]@{}
   $shell | Add-Member ScriptMethod CreateShortcut { param($p)
-    $sc = [pscustomobject]@{ Path = $p; TargetPath = ''; Arguments = ''; Description = '' }
-    $sc | Add-Member ScriptMethod Save { Add-Content (Join-Path $env:LOCALAPPDATA 'lnk.txt') ($this.Path + ' | ' + $this.TargetPath + ' | ' + $this.Arguments) }
+    $sc = [pscustomobject]@{ Path = $p; TargetPath = ''; Arguments = ''; Description = ''; IconLocation = '' }
+    $sc | Add-Member ScriptMethod Save { Add-Content (Join-Path $env:LOCALAPPDATA 'lnk.txt') ($this.Path + ' | ' + $this.TargetPath + ' | ' + $this.Arguments + ' | icon=' + $this.IconLocation) }
     return $sc }
   return $shell
 }
@@ -241,8 +261,8 @@ function scratchWindows() {
 }
 
 /** The CLI script after the shared template. Production EncodedCommand still `exit 0`s; a batch dotsources, so that becomes `return`. */
-function writeTail(w: { dir: string }, distro: string, user: string, confirmedOver?: { distro: string; user: string }, name = "tail.ps1") {
-  const full = buildShortcutsScript(shared, distro, user, confirmedOver);
+function writeTail(w: { dir: string }, distro: string, user: string, confirmedOver?: { distro: string; user: string }, name = "tail.ps1", icons = {}) {
+  const full = buildShortcutsScript(shared, distro, user, confirmedOver, icons);
   const i = full.lastIndexOf(shared);
   if (i < 0) throw new Error("buildShortcutsScript lost the shared template");
   writeFileSync(join(w.dir, name), full.slice(i + shared.length).replace(/\bexit 0\b/g, "return"));
@@ -284,7 +304,7 @@ describe.skipIf(!pwsh)("with pwsh: the encoded script itself", () => {
     expect(full.startsWith("$ErrorActionPreference = 'Stop'")).toBe(true);
     expect(full).toContain(shared);
     expect(full).toContain("exit 0");
-    expect(powershellArgs(full)[0]).toBe("-NoProfile");
+    expect(powershellArgs()[0]).toBe("-NoProfile");
   });
 
   // Each behavior owns one batch completion signal and the unchanged 10 s case
@@ -332,6 +352,29 @@ Write-Output $text
       const lnk = readFileSync(join(w.local, "lnk.txt"), "utf8");
       expect(lnk).toMatch(/AgEnD 儀表板\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*open-dashboard\.ps1"/);
       expect(lnk).toMatch(/AgEnD 重新啟動\.lnk \| .*powershell\.exe \| -NoProfile -ExecutionPolicy Bypass -File ".*restart-agend\.ps1"/);
+    } finally { rmSync(w.dir, { recursive: true, force: true }); }
+  });
+
+  it("M-2885: the icons are written beside the scripts byte for byte, each shortcut points at its own; a run without icons sets none, and running again puts them on the existing shortcuts", async () => {
+    const w = scratchWindows();
+    try {
+      writeTail(w, "AgEnD", "root", undefined, "plain.ps1", {});
+      writeTail(w, "AgEnD", "root", undefined, "icons.ps1", ICONS);
+      const out = await pwshFile(`
+Invoke-Tail $env:CASE_ROOT (Join-Path $env:CASE_ROOT 'plain.ps1') | Out-Null
+Invoke-Tail $env:CASE_ROOT (Join-Path $env:CASE_ROOT 'icons.ps1') | Out-Null
+Write-Output 'CASE=icons'
+`, { CASE_ROOT: w.dir });
+      expect(out).toMatch(/^CASE=icons$/m);
+      const dir = join(w.local, "AgEnD");
+      expect(readFileSync(join(dir, "agend.ico")).equals(ICONS["agend.ico"])).toBe(true);
+      expect(readFileSync(join(dir, "agend-restart.ico")).equals(ICONS["agend-restart.ico"])).toBe(true);
+      const lines = readFileSync(join(w.local, "lnk.txt"), "utf8").trim().split("\n");
+      expect(lines).toHaveLength(4);
+      expect(lines.slice(0, 2).every(l => l.endsWith(" | icon="))).toBe(true);                        // no icons: none set
+      expect(lines[2]).toMatch(/AgEnD 儀表板\.lnk \| .* \| icon=.*[\\/]AgEnD[\\/]agend\.ico,0$/);         // the same .lnk, now with its icon
+      expect(lines[3]).toMatch(/AgEnD 重新啟動\.lnk \| .* \| icon=.*[\\/]AgEnD[\\/]agend-restart\.ico,0$/);
+      expect(lines[2]!.split(" | ")[0]).toBe(lines[0]!.split(" | ")[0]);
     } finally { rmSync(w.dir, { recursive: true, force: true }); }
   });
 
@@ -428,4 +471,23 @@ Write-Output ("CASE=encoded " + (Invoke-Expression $decoded))
     } finally { for (const w of [han, oneil]) rmSync(w.dir, { recursive: true, force: true }); }
   });
 
+});
+
+describe.skipIf(!pwsh)("M-2885 with pwsh: the real process — loader on the command line, script on standard input", () => {
+  it("runs the script at the top level: both shortcuts with their icons, the Chinese names intact, its exit code is the script's", () => {
+    const w = scratchWindows();
+    try {
+      const env = { ...process.env, PATH: w.bin + ":" + (process.env.PATH ?? ""), LOCALAPPDATA: w.local, HOME: w.dir, USERPROFILE: w.dir, TMPDIR: w.dir, SystemRoot: join(w.dir, "Windows") };
+      const script = fakeCom + "\n" + buildShortcutsScript(shared, "AgEnD", "root", undefined, ICONS);
+      const r = spawnSync("pwsh", powershellArgs(), { input: script, encoding: "utf8", env, timeout: 120_000 });
+      expect(r.stderr).toBe("");
+      expect(r.stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2\r?$/m);
+      expect(r.status).toBe(0);
+      expect(readFileSync(join(w.local, "AgEnD", "restart-agend.ps1"), "utf8")).toContain("確定要重啟 AgEnD 嗎");
+      expect(readFileSync(join(w.local, "AgEnD", "agend-restart.ico")).equals(ICONS["agend-restart.ico"])).toBe(true);
+      expect(readFileSync(join(w.local, "lnk.txt"), "utf8")).toMatch(/AgEnD 重新啟動\.lnk \| .* \| icon=.*agend-restart\.ico,0/);
+      const failing = spawnSync("pwsh", powershellArgs(), { input: "Write-Output '中文 ok'\nexit 7\n", encoding: "utf8", env, timeout: 60_000 });
+      expect([failing.status, failing.stdout.trim()]).toEqual([7, "中文 ok"]);
+    } finally { rmSync(w.dir, { recursive: true, force: true }); }
+  });
 });

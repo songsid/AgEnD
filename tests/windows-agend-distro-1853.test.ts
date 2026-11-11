@@ -38,7 +38,7 @@ describe("the existing-Ubuntu choice (static)", () => {
     expect(stage).not.toMatch(/wsl -d \$name -u root --exec echo/);                     // no more starting each Ubuntu to see if it is there
     // The chosen name is saved with the progress, and the end of the install records it (install.json) and makes the shortcuts.
     expect(body).toMatch(/Add-Content -Path \$ProgressFile -Value "DISTRO=\$UBUNTU_DISTRO"/);
-    expect(body).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)/);
+    expect(body).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER \$AGEND_ICONS\)/);
   });
   it("the repair fast path also looks in AgEnD's own Linux; a record for another Linux is said, and asked about (no by default)", () => {
     expect(code).toMatch(/foreach \(\$d in @\(\$AGEND_DISTRO_BASE, 'Ubuntu-26\.04', 'Ubuntu-24\.04', 'Ubuntu-22\.04', 'Ubuntu'\)\)/);

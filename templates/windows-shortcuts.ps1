@@ -167,7 +167,16 @@ function Get-ShortcutCommand([string]$file) {
   if ($wt) { return @{ Target = $wt.Source; Arguments = '-w new "{0}" {1}' -f $ps, ($a -replace ';', '\;') } }
   return @{ Target = $ps; Arguments = $a }
 }
-function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptText, [string]$description) {
+function Save-AgendIcon([string]$name, $bytes) {
+  if (-not $bytes) { return $null }
+  try {
+      New-Item -ItemType Directory -Path (Get-AgendShortcutDir) -Force | Out-Null
+      $path = Join-Path (Get-AgendShortcutDir) $name
+      [IO.File]::WriteAllBytes($path, [byte[]]$bytes)
+      return $path
+  } catch { return $null }
+}
+function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptText, [string]$description, [string]$icon = '') {
   $dir = Get-AgendShortcutDir
   New-Item -ItemType Directory -Path $dir -Force | Out-Null
   $file = Join-Path $dir $scriptName
@@ -179,14 +188,17 @@ function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptTe
   $sc.TargetPath = $cmd.Target
   $sc.Arguments = $cmd.Arguments
   $sc.Description = $description
+  if ($icon) { $sc.IconLocation = $icon + ',0' }
   $sc.Save()
   return $lnk
 }
-function Install-AgendShortcuts([string]$distro, [string]$user) {
+function Install-AgendShortcuts([string]$distro, [string]$user, $icons = $null) {
   if (-not $script:OnWindows) { return @() }
   $made = @()
-  try { $made += New-AgendShortcut 'AgEnD 儀表板' 'open-dashboard.ps1' (Get-DashboardOpenerScript $distro $user) 'AgEnD 網頁儀表板（自動帶入登入碼）' } catch { }
-  try { $made += New-AgendShortcut 'AgEnD 重新啟動' 'restart-agend.ps1' (Get-RestartScript $distro $user) '重新啟動 AgEnD（會先詢問）' } catch { }
+  $dashIcon = ''; $restartIcon = ''
+  if ($icons) { $dashIcon = [string](Save-AgendIcon 'agend.ico' $icons['agend.ico']); $restartIcon = [string](Save-AgendIcon 'agend-restart.ico' $icons['agend-restart.ico']) }
+  try { $made += New-AgendShortcut 'AgEnD 儀表板' 'open-dashboard.ps1' (Get-DashboardOpenerScript $distro $user) 'AgEnD 網頁儀表板（自動帶入登入碼）' $dashIcon } catch { }
+  try { $made += New-AgendShortcut 'AgEnD 重新啟動' 'restart-agend.ps1' (Get-RestartScript $distro $user) '重新啟動 AgEnD（會先詢問）' $restartIcon } catch { }
   try {
       New-Item -ItemType Directory -Path (Get-AgendShortcutDir) -Force | Out-Null
       $record = @{ distro = $distro; user = $user } | ConvertTo-Json -Compress
