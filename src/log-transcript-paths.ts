@@ -60,3 +60,18 @@ export function grokUpdatesPath(cwd: string, home = homedir(), now = Date.now())
   grokLookups.set(base, { at: now, path: best });
   return best;
 }
+
+/** The CLIs whose own record the Log reads, each with where to find it (the table the Log's source resolution asks). */
+const OWN_RECORD = { antigravity: antigravityTranscriptPath, grok: grokUpdatesPath };
+/** The transcript formats the Log can parse: Claude Code's and Codex's (found by their monitors) and the CLIs above. */
+export type LogFormat = "claude" | "codex" | keyof typeof OWN_RECORD;
+
+/**
+ * `backend`'s own record for an instance working in `cwd` (null: no working directory to look in): its format and
+ * path — the path null when none is known. Null: this CLI's record is not read this way.
+ */
+export function ownTranscript(backend: string, cwd: string | null): { format: keyof typeof OWN_RECORD; path: string | null } | null {
+  if (!Object.prototype.hasOwnProperty.call(OWN_RECORD, backend)) return null;
+  const format = backend as keyof typeof OWN_RECORD;
+  return { format, path: cwd ? OWN_RECORD[format](cwd) : null };
+}

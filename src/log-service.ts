@@ -17,6 +17,8 @@ import { homedir } from "node:os";
 import { ClaudeStepParser, CodexStepParser, bounded, chatStep, readTailRecords, type LogStep } from "./log-steps.js";
 import type { ToolProgressLevel } from "./tool-progress.js";
 import { AntigravityStepParser, GrokStepParser } from "./log-steps-agy-grok.js";
+import type { LogFormat } from "./log-transcript-paths.js";
+export type { LogFormat };
 import { SCREEN_MAX_BYTES } from "./dialog-screen-text.js";
 import { LOOKS_PER_POLL, isClaudeAssistantHead, readNewLines, readWholeLine, type LongLine } from "./transcript-jsonl.js";
 
@@ -44,9 +46,6 @@ export interface LogSource {
   /** Why there is nothing to read: "not_running" (its transcript is found while it runs), "no_transcript", "unsupported". */
   reason?: string;
 }
-
-/** The transcript formats the Log can parse (AGEND-181 PR2 added antigravity and grok). */
-export type LogFormat = "claude" | "codex" | "antigravity" | "grok";
 
 export interface LogEventRow { id: number; event_type: string; payload: unknown; created_at: string }
 
