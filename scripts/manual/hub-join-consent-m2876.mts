@@ -65,7 +65,7 @@ try {
    check(tag + " own enforcement on", access.setStrict(HOST_ADMIN_KEY, true) === "ok"); }
   fm.webPrefs.write("operator", new Map([["theme", c.theme], ["lang", c.lang]]));
   const ctx = await fx.browser.newContext({ viewport: VIEWPORTS[c.device], isMobile: c.device === "phone", hasTouch: c.device === "phone", colorScheme: c.theme, locale: c.lang === "en" ? "en-US" : "zh-TW", ignoreHTTPSErrors: true });
-  await ctx.addInitScript((prefs: any) => { for (const [k,v] of Object.entries(prefs)) localStorage.setItem(k, String(v)); (window as any).__csp = []; document.addEventListener("securitypolicyviolation", (e: any) => (window as any).__csp.push(e.violatedDirective)); }, { agend_lang: c.lang, agend_theme: c.theme, agend_tour_done: "1", agend_firstrun_dismissed: "1" });
+  await ctx.addInitScript((prefs: any) => { if (!/^https?:$/.test(location.protocol)) return; for (const [k,v] of Object.entries(prefs)) localStorage.setItem(k, String(v)); (window as any).__csp = []; document.addEventListener("securitypolicyviolation", (e: any) => (window as any).__csp.push(e.violatedDirective)); }, { agend_lang: c.lang, agend_theme: c.theme, agend_tour_done: "1", agend_firstrun_dismissed: "1" });
   const assets: Record<string, Set<string>> = {}, substitutions: any[] = [], responses: Promise<void>[] = [];
   const replace = process.env.BEFORE ? ["settings-hub-company-join.js", "hub-company-join.js", "hub-company-join-strings.js", "settings-confirm.js"] : process.env.SKEW ? process.env.SKEW.split(",") : [];
   await ctx.route("**/*", async (route: any) => { const u = new URL(route.request().url());
@@ -101,7 +101,7 @@ try {
  // A separate authenticated Hub admin; no invitation, policy or manual-pairing mutation for these screenshots.
  for (const c of matrix()) {
   const pw = createRequire(resolve(process.env.PW_DIR!) + "/")("playwright-core"), browser = await pw.chromium.launch({ executablePath: process.env.CHROME, args: ["--no-sandbox", "--host-resolver-rules=MAP dashboard.lan.example 127.0.0.1"] });
-  try { const ctx = await browser.newContext({ viewport: VIEWPORTS[c.device], colorScheme: c.theme, ignoreHTTPSErrors: true }); await ctx.addInitScript((l: string) => localStorage.setItem("agend_lang", l), c.lang);
+  try { const ctx = await browser.newContext({ viewport: VIEWPORTS[c.device], colorScheme: c.theme, ignoreHTTPSErrors: true }); await ctx.addInitScript((prefs: any) => { if (!/^https?:$/.test(location.protocol)) return; localStorage.setItem("agend_lang", prefs.lang); localStorage.setItem("agend_theme", prefs.theme); }, { lang: c.lang, theme: c.theme });
    if (process.env.BEFORE) for (const name of ["hub-company-join.js", "hub-company-join-strings.js"]) await ctx.route("**/ui/js/" + name, (route: any) => route.fulfill({ contentType: "text/javascript", body: execFileSync("git", ["show", baseline + ":src/ui/" + name], { cwd: repo }) }));
    const page = await ctx.newPage(); await page.goto(r.webOrigin + "/ui/hub"); await page.fill("#hubLogin", "alice"); await page.fill("#hubPassword", "Dummy-alice-only"); await page.getByRole("button", { name: c.lang === "en" ? "Sign in" : "登入", exact: true }).click(); await page.locator(".p-hub-signin").waitFor({ state: "detached" }); await page.goto(r.webOrigin + "/ui/hub/admin"); await page.locator(".hub-admin-access").waitFor();
    if (!process.env.BEFORE) check(caseName(c) + " three guide steps", await page.locator(".hub-company-guide li").count() === 3);
