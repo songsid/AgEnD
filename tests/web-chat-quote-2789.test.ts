@@ -100,7 +100,7 @@ describe("what counts as a passage", () => {
 });
 
 describe("the pill", () => {
-  async function mounted(o: { lang?: "en" | "zh-TW"; phone?: boolean; canQuote?: boolean } = {}) {
+  async function mounted(o: { lang?: "en" | "zh-TW"; phone?: boolean; canQuote?: boolean; thread?: any } = {}) {
     vi.useFakeTimers();
     const q = await load(o.lang ?? "en"); const doc = dom!.document as any;
     const { list, a } = thread(doc);
@@ -109,6 +109,8 @@ describe("the pill", () => {
     const box = doc.createElement("div"); box.getBoundingClientRect = () => ({ top: 700, left: 8, right: 382, bottom: 840, width: 374, height: 140 });
     doc.body.append(box);
     const insert = vi.fn();
+    // The thread's visible box (the chat scroller): 0..680 unless a test gives its own.
+    list.getBoundingClientRect = () => o.thread ?? { top: 0, left: 0, right: 1024, bottom: 680, width: 1024, height: 680 };
     offs.push(q.installQuoteSelection(list, { insert, canQuote: () => o.canQuote !== false, phone: () => !!o.phone, composerBox: () => box, threadBox: () => list, field: () => null }));
     const select = (text: string, rect?: any) => { sel = selection(a.text, a.text, text, rect); doc.dispatchEvent(new MiniEvent("selectionchange")); vi.advanceTimersByTime(200); };
     const pill = () => doc.querySelector(".quote-pop");
@@ -157,13 +159,36 @@ describe("the pill", () => {
     const d = await mounted({ lang: "zh-TW" });
     d.select("rehearsal", { left: 100, right: 300, top: 200, bottom: 220, width: 200, height: 20 });
     const pd = d.pill();
-    expect([pd.classList.contains("is-phone"), !!pd.querySelector(".quote-tip.down"), parseFloat(pd.style.top) < 200]).toEqual([false, true, true]);
+    // M-2872: below the passage's end by default (its pointer up) — Edge draws its own selection menu above it.
+    expect([pd.classList.contains("is-phone"), !!pd.querySelector(".quote-tip.up"), parseFloat(pd.style.top) >= 220]).toEqual([false, true, true]);
     for (const f of offs.splice(0)) f(); dom?.restore(); dom = null; vi.useRealTimers();
     const ph = await mounted({ lang: "zh-TW", phone: true });
     ph.select("rehearsal");
     const pp = ph.pill();
     expect([pp.textContent, pp.classList.contains("is-phone"), pp.querySelector(".quote-tip"), parseFloat(pp.style.top) < 700,
       parseFloat(pp.style.left) >= 16]).toEqual(["引用選取的文字", true, null, true, true]);
+  });
+  it("M-2872: desktop is below the passage's end — clear of the browser's own menu above a selection (Edge) — and flips above only when there is no room below", async () => {
+    // Edge's selection mini menu (hide / … / copy / search) sits above the selection's end; a page can't turn it off.
+    const edgeMenu = (r: any) => ({ left: r.right - 120, right: r.right + 40, top: r.top - 44, bottom: r.top - 8 });
+    const hits = (a: any, z: any) => Math.min(a.right, z.right) > Math.max(a.left, z.left) && Math.min(a.bottom, z.bottom) > Math.max(a.top, z.top);
+    const box = (p: any) => { const top = parseFloat(p.style.top), left = parseFloat(p.style.left); const r = p.getBoundingClientRect(); return { left, top, right: left + (r.width || 90), bottom: top + (r.height || 32) }; };
+    const sel = { left: 100, right: 300, top: 200, bottom: 220, width: 200, height: 20 };
+    const reset = () => { for (const f of offs.splice(0)) f(); dom?.restore(); dom = null; vi.useRealTimers(); };
+    const d = await mounted();
+    d.select("rehearsal", sel);
+    expect([parseFloat(d.pill().style.top) >= sel.bottom, !!d.pill().querySelector(".quote-tip.up"), hits(box(d.pill()), edgeMenu(sel))]).toEqual([true, true, false]);
+    reset();
+    // Its last line at the thread's visible bottom: no room below, so above (pointer down).
+    const low = { left: 100, right: 300, top: 650, bottom: 670, width: 200, height: 20 };
+    const e = await mounted();
+    e.select("rehearsal", low);
+    expect([parseFloat(e.pill().style.top) < low.top, !!e.pill().querySelector(".quote-tip.down")]).toEqual([true, true]);
+    reset();
+    // No room either side (a thread barely taller than the line): it stays below rather than off the top.
+    const g = await mounted({ thread: { top: 195, left: 0, right: 1024, bottom: 225, width: 1024, height: 30 } });
+    g.select("rehearsal", sel);
+    expect([parseFloat(g.pill().style.top) >= sel.bottom, !!g.pill().querySelector(".quote-tip.up")]).toEqual([true, true]);
   });
 });
 
