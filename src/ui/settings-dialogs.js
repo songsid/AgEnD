@@ -25,7 +25,7 @@ import { ew } from "./effort-field-strings.js";   // the effort field's words: l
 import { InfoTip } from "./settings-shared.js";
 import { INSTRUCTIONS_MAX_CHARS, InstructionsField } from "./agent-instructions-field.js";
 import { AgentTemplateTools } from "./agent-export-dialog.js";
-import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows } from "./settings-catalog.js";
+import { backendChoices, groupModelOptions, modelChoices, OTHER_MODEL, useBackendRows } from "./settings-catalog.js";
 import {
   ACCESS_MODES, AGENT_MODES, CH_TYPES, DASHBOARD_CHOICES, DASHBOARD_FEATURES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
   VISIBILITY_MODES, accessConfirmations, agentForm, agentPatch, backendOptions, changedFields, channelId, channelsOf,
@@ -89,6 +89,8 @@ export function BackendSelect({ value, onChange, disabled, id, hostOnly }) {
  * the current value in it: choosing "Other…" alone changes nothing — emptying the box is what inherits, #2098 review).
  * `inherit`: the label of the empty choice (inherit / none), or omit it when the field has none.
  */
+/** The heading of each model group the daemon names (web-model-groups.ts); an unknown one reads as "more". */
+const MODEL_GROUP_LABEL = { common: "modelGroupCommon", more: "modelGroupMore", oneMillion: "modelGroupOneMillion", unverified: "modelGroupUnverified" };
 export function ModelSelect({ value, onChange, disabled, id, backend, instance, runtime, machineId, inherit, catalogOverride, profile }) {
   const state = useRefreshableModels(catalogOverride === undefined ? backend : null, instance, { runtime, machineId, profile });
   const catalog = catalogOverride === undefined ? state.models : catalogOverride;
@@ -102,7 +104,8 @@ export function ModelSelect({ value, onChange, disabled, id, backend, instance, 
   return html`<div class="model-pick">
     <select id=${id} value=${typing ? OTHER_MODEL : value} disabled=${disabled} aria-busy=${managed && state.loading ? "true" : undefined}
       onChange=${(e) => { const v = e.target.value; if (v === OTHER_MODEL) setTyping(true); else { setTyping(false); onChange(v); } }}>
-      ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select>
+      ${groupModelOptions(opts).map((run) => run.group ? html`<optgroup key=${run.group} label=${tn(MODEL_GROUP_LABEL[run.group] || "modelGroupMore")}>${run.options.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</optgroup>`
+        : run.options.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`))}</select>
     ${typing ? html`<input type="text" aria-label=${tn("modelOtherLabel")} placeholder=${tn("modelOtherPlaceholder")} disabled=${disabled}
       value=${value} onInput=${(e) => onChange(e.target.value)} />` : null}
     ${managed ? html`${state.phase !== "load_error" ? html`<div class="model-catalog-status"><span class="note" role="status" aria-live="polite">${note}</span></div>` : null}<${ModelRefresh} state=${state} disabled=${disabled} initialFailure=${tn("modelCatalogFailed")} />` : null}</div>`;

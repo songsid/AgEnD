@@ -11,6 +11,7 @@ import { getAgendHome } from "../paths.js";
 import { t } from "../locale.js";
 import { selectedGeneralHostSession } from "../general-binding.js";
 import { ResumeBlockedError } from "./types.js";
+import { claudeOneMillionOffered } from "./claude-context.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, CLI_PROBE_LONGEST_LEAF_MS, promptCacheTtl, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
 /** Mirror Claude Code's ~/.claude/projects key for a working directory. Exported for the detection-signal seam. */
@@ -1715,9 +1716,9 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
 
   /**
    * Full account catalog from `GET /v1/models` using the same OAuth token the
-   * usage panel resolves. Each model also gets an `<id>[1m]` 1M-context
-   * variant: the API cannot say which plans may use it, so the variants are
-   * offered and a wrong pick surfaces through the model_error pattern above.
+   * usage panel resolves. A model that reports a 1M+ input window and
+   * does not have it by default also gets an `<id>[1m]` 1M-context variant: the API cannot say which plans may use it,
+   * so a wrong pick surfaces through the model_error pattern above.
    * Any failure (no token, network, non-200) degrades to [] — the static
    * aliases from listModels() always remain available.
    */
@@ -1753,7 +1754,12 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
           ...(() => { const levels = parseClaudeEffortCapability(model.capabilities); return levels ? { effortLevels: levels } : {}; })(),
         };
         options.push({ id: model.id, label: model.id, ...(model.display_name ? { description: model.display_name } : {}), ...facts });
-        options.push({ id: `${model.id}[1m]`, label: `${model.id}[1m]`, description: "1M context — plan-dependent", ...facts });
+        // The 1M variant only where the model itself reports 1M+ and does not have it by default (Opus 4.5 and Haiku 4.5
+        // report 200K and the API refuses their `[1m]`; Opus 4.7+/Sonnet 5+ need no suffix). This feeds Telegram's
+        // "/model → more models"; Web Settings lists the same ones (web-model-groups.ts).
+        if (claudeOneMillionOffered(model.id, facts.maxInputTokens)) {
+          options.push({ id: `${model.id}[1m]`, label: `${model.id}[1m]`, description: "1M context — plan-dependent", ...facts });
+        }
       }
       return options;
     } catch {
