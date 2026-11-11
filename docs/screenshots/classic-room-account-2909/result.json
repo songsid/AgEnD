@@ -1,0 +1,16 @@
+{
+ "base": "origin/release/2.3.5-alpha",
+ "room": "classic-鬥破企劃-7393",
+ "zh-TW:before:room-picker": "PASS",
+ "zh-TW:before:move-rooms": "PASS",
+ "zh-TW:before:no-errors": "PASS",
+ "zh-TW:after:room-picker": "PASS",
+ "zh-TW:after:move-rooms": "PASS",
+ "zh-TW:after:no-errors": "PASS",
+ "en:before:room-picker": "PASS",
+ "en:before:move-rooms": "PASS",
+ "en:before:no-errors": "PASS",
+ "en:after:room-picker": "PASS",
+ "en:after:move-rooms": "PASS",
+ "en:after:no-errors": "PASS"
+}
