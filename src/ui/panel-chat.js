@@ -130,6 +130,7 @@ export function linkWorkBarCss(doc = typeof document !== "undefined" ? document 
 }
 linkWorkBarCss();
 
+import { activityInfo, activityInfoStore, activityOffered, activityPrefs, composeActivity, mountActivity, observeActivity, setActivityOn, setActivityThinking } from "./chat-activity.js";
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composers = new Map(); // agent → current mounted refs, never a retained thread's stale closure
 const composerField = (name) => composers.get(name)?.input.current || null;
@@ -164,6 +165,18 @@ const P = () => globalThis.AgendPreview;
 
 /** The page's chat store (boot creates it). Exported for the tests. */
 export let store = null;
+
+/**
+ * AGEND-181: the thread's rows with the activity timeline put in — each turn's thinking and tool steps above the reply
+ * they produced, the turn in progress at the end — when the Log is on and this browser shows activity. Else the rows.
+ */
+const activityShown = () => activityOffered() && activityPrefs.get().on;
+const rowsOf = (name) => (activityShown() ? composeActivity(name, store.threadRows(name)) : store.threadRows(name));
+/** What a chat's activity blocks need to draw: its paths to shorten, and whether thinking is shown. */
+const activityCtx = (name) => () => {
+  const info = activityInfo(name);
+  return { paths: info ? { cwd: info.cwd, home: info.home } : null, thinking: activityPrefs.get().thinking && !!info && info.thinking === true };
+};
 
 // ── Announcements: one polite, visually hidden line for the coarse events only (a reply arrived, the agent started,
 // finished, or waits on you). Messages themselves are not read out as they arrive; the list is a log to browse.
@@ -370,6 +383,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   };
   const [wrap, setWrap] = useState(codeWrap);
   const wide = useStore(chatWide).on;
+  useStore(activityPrefs); useStore(activityInfoStore);          // AGEND-181: the ⋯ menu's Show activity / Show thinking
   const view = useRef(null), split = useRef(null), thread = useRef(null), bg = useRef(null), effectSurface = useRef(null);
   useLayoutEffect(() => { applyTheme(view.current, theme, mode); }, [themeKey, mode]);
   useLayoutEffect(() => {
@@ -436,6 +450,11 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ...themeMenuItems(name),
     // #2117: its ambient — why it is not showing here (with the way to change that), and a person's Clear.
     ...ambientMenuItems(name, { publicLink: document.body.dataset.publicLink === "1", clear: clearAmbient }),
+    // AGEND-181: the activity timeline above each reply (this browser's choice), when the Log is on.
+    ...(activityOffered() ? [
+      { key: "activity", checkbox: true, checked: activityPrefs.get().on, label: t("act.menuActivity"), onSelect: () => setActivityOn(!activityPrefs.get().on) },
+      ...(activityInfo(name)?.thinking ? [{ key: "thinking", checkbox: true, checked: activityPrefs.get().thinking, disabled: !activityPrefs.get().on, label: t("act.menuThinking"), onSelect: () => setActivityThinking(!activityPrefs.get().thinking) }] : []),
+    ] : []),
     narrowScreen() ? null : { key: "fullWidth", checkbox: true, checked: wide, label: t("chat.fullWidth"), onSelect: () => setChatWide(!wide) },
     { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: () => setDialog("delete") },
   ];
@@ -567,6 +586,7 @@ function threadEntry(name, doc) {
     openImage: openLightbox,                                               // an image, full size, in the page
     emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
     mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names
+    activity: { mount: (node, group) => mountActivity(node, group, activityCtx(name)) },   // AGEND-181: the timeline's blocks
   });
   e.thread = thread;
   return e;
@@ -577,12 +597,30 @@ function follow(name, thread) {
   // #1682: the same for mention names — asked for the ids the messages carry; when names arrive, drawn again.
   const wantEmojis = (msgs) => { if (emojiIndex && emojiIndex.wants(msgs)) emojiIndex.ensure(); if (mentionIndex) mentionIndex.ensure(msgs); };
   const offs = [];
-  if (emojiIndex) offs.push(emojiIndex.subscribe(() => thread.render(store.threadRows(name))));
-  if (mentionIndex) offs.push(mentionIndex.subscribe(() => thread.render(store.threadRows(name))));
+  if (emojiIndex) offs.push(emojiIndex.subscribe(() => thread.render(rowsOf(name))));
+  if (mentionIndex) offs.push(mentionIndex.subscribe(() => thread.render(rowsOf(name))));
   wantEmojis(store.state.msgs[name]);
+  // AGEND-181: the activity feed — this instance's steps while the chat is shown (the Log's own read, live by steps_tick);
+  // switched by this browser's Show activity / Show thinking. Nothing is read when the Log is off.
+  let feed = null;
+  const sync = () => {
+    if (activityShown() && !feed) {
+      feed = observeActivity(name, {
+        changed: () => thread.render(rowsOf(name)),
+        streamOn: appStore.get().streamOn,
+        polling: globalThis.document?.body?.dataset?.webTransport === "poll",
+        wantThinking: () => activityPrefs.get().thinking,
+      });
+      feed.start();
+    } else if (!activityShown() && feed) { feed.stop(); feed = null; }
+    thread.render(rowsOf(name));
+  };
+  if (activityShown()) sync();
+  offs.push(activityPrefs.subscribe(sync));
+  offs.push(() => { if (feed) { feed.stop(); feed = null; } });
   offs.push(store.subscribe((instance, kind) => {
     if (instance !== name) return;
-    if (kind === "msgs") { thread.render(store.threadRows(name)); wantEmojis(store.state.msgs[name]); }
+    if (kind === "msgs") { thread.render(rowsOf(name)); wantEmojis(store.state.msgs[name]); }
     else if (kind === "progress") thread.progress();                       // an upload moved: its bar, in place
     else if (kind === "sent") thread.jumpLatest();
   }));
@@ -618,7 +656,7 @@ function Thread({ name, label = name, th, bindings }) {
     thread.attach(sc);
     th.current = thread;
     // Up to date, at the reader's place (the bottom unless they had scrolled up); a kept one's cards say what they can do.
-    thread.render(store.threadRows(name), { restore: store.state.scrollMemo[name] ?? null });
+    thread.render(rowsOf(name), { restore: store.state.scrollMemo[name] ?? null });
     if (kept) thread.refreshCards();
     const unfollow = follow(name, thread);
     const onScroll = () => { store.state.scrollMemo[name] = thread.onScroll(); };
