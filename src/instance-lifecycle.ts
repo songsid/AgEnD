@@ -257,6 +257,8 @@ export interface LifecycleContext {
   retireRemoteCard?(name: string, identity: string | null): void;
   /** #1386: an instance's interaction observation, pause or wake changed ("Needs you" recomputes at once, not at its tick). */
   onAttentionChanged?(name: string): void;
+  /** #3647: supervision gave up on the instance (crash loop, supervision ended): it will not come back by itself. */
+  onSupervisionGone?(name: string, kind: "crash_loop" | "supervision_ended", reason: string): void;
   /**
    * Offer a one-tap re-login beside an auth alert. Optional: contexts without
    * it (tests, lightweight fleets) still get the alert's written remedy.
@@ -1068,6 +1070,7 @@ export class InstanceLifecycle {
       // is looking, and mark the topic — otherwise messages routed here just queue
       // or fail with a bare ❌ and the dashboard still looks normal.
       this.ctx.eventLog?.insert(name, "supervision_ended", { reason: data.reason });
+      this.ctx.onSupervisionGone?.(name, "supervision_ended", data.reason);
       if (data.exitCode === 0) {
         this.ctx.logger.info({ name, exitCode: data.exitCode }, "CLI exited normally and will not restart automatically");
         if (this.ctx.isPlannedRestart()) {
@@ -1105,6 +1108,7 @@ export class InstanceLifecycle {
 
     daemon.on("crash_loop", safeHandler(() => {
       this.ctx.eventLog?.insert(name, "crash_loop", {});
+      this.ctx.onSupervisionGone?.(name, "crash_loop", "respawn paused after repeated crashes");
       this.ctx.logger.error({ name }, "Instance in crash loop — respawn paused");
       this.notifyIncident(name, "crash_loop", t("inst.respawn_paused", name));
       this.ctx.setTopicIcon(name, "red");

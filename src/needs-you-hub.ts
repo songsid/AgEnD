@@ -427,7 +427,7 @@ export class NeedsYouHub {
     const choices = items.flatMap(item => {
       if (item.deliveryId) return [mint(item, "ack", this.ctx.t("needs.ack_button", item.instance))];
       if (item.missedId) return [mint(item, "ack", this.ctx.t("needs.ack_button", item.instance || item.missedId))];
-      if (item.type !== "task" || !item.card) return [];
+      if (item.type !== "task" || !item.card || item.reason === "task_stalled") return [];   // #3647: nothing to answer here
       const code = item.card.code;
       return item.reason === "task_review"
         ? [mint(item, "confirm", this.ctx.t("needs.task_confirm_button", code)), mint(item, "back", this.ctx.t("needs.task_back_button", code))]

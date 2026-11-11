@@ -96,6 +96,18 @@ function rig(opts: { pointers?: Record<string, unknown> } = {}) {
   return { hub, state, calls, posts, at, click, advance, adapter, owners, topics, pointers, tick: (ms: number) => { mono += ms; } };
 }
 
+describe("#3647: a stalled card is listed, with nothing to press in chat", () => {
+  it("its assignee went quiet on a claimed card: no Answer / Confirm / Back buttons (it waits on nobody)", async () => {
+    const r = rig();
+    r.state.tasks = [task({ uuid: "u9", code: "M-9", status: "stalled", note: "quiet with the card claimed" }), task({ uuid: "u2", code: "M-2", status: "blocked", note: "which?" })];
+    r.hub.start();
+    await r.advance(0);
+    const general = r.at("1")!;
+    expect(general.text).toContain("M-9");
+    expect(general.choices.map(c => c.label)).toEqual(["needs.task_answer_button(M-2)"]);
+  });
+});
+
 describe("lanes: a card waits in its lane's channel, not in General", () => {
   it("General lists the rest; each lane its own cards, in its topic, under a header that says here; pointers by lane", async () => {
     const r = rig();
