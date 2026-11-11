@@ -103,9 +103,9 @@ const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolea
   { path: ["fleet", "web_terminal", "ttl_minutes"], def: 10, looser: (a, b) => b > a },
   // #1218: the Log tab shows each agent's steps on the web (the public link included): turning it on is confirmed.
   { path: ["fleet", "web", "log_tab"], def: false, looser: (a, b) => b === true && a !== true },
-  // AGEND-181: thinking in the chat's timeline is on unless turned off (and shown only to an admin session, and only with
-  // the Log on). Turning it back on from off is confirmed like the Log itself; turning it off never is.
-  { path: ["fleet", "web", "log_thinking"], def: true, looser: (a, b) => b === true && a !== true },
+  // AGEND-181/197: thinking in the chat's activity block is OFF unless turned on (and shown only to an admin session, for an
+  // agent whose tool_progress is on). Turning it on is confirmed like the Log itself; turning it off never is.
+  { path: ["fleet", "web", "log_thinking"], def: false, looser: (a, b) => b === true && a !== true },
   // #2122: the usage report over the public link applies at once either way. The default (off) is the gate — a link may
   // be shared with people who should not see 400 days of usage; the switch is reached only from a signed-in session on
   // the dashboard reached directly, and it shows counts and amounts, not content: a second confirmation stops nothing more.

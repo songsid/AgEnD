@@ -284,7 +284,7 @@ import { shapeWebModelCatalog } from "./web-model-groups.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED, nativeCredentialProfile } from "./native-instance-registry.js";
 import { createNativeWindowsInstance, updateNativeWindowsInstance } from "./native-instance-api.js";
 import { NativeInstanceConfigEdit, parseNativeInstanceCreate, type NativeInstanceCreateInput } from "./native-instance-input.js";
-import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
+import { LogService, thinkingOn, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { viewHistory, type ViewHistoryAnswer, type ViewHistoryQuery } from "./view-history.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
@@ -6599,12 +6599,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.logService ??= new LogService({
       enabled: () => this.fleetConfig?.web?.log_tab === true,
       cwd: (name) => { const dir = this.fleetConfig?.instances?.[name]?.working_directory; return typeof dir === "string" && dir ? dir : undefined; },
-      thinking: () => this.fleetConfig?.web?.log_thinking !== false,   // AGEND-181: on unless turned off (only with log_tab)
+      thinking: () => thinkingOn(this.fleetConfig?.web),   // AGEND-181/197: off unless turned on
+      toolProgress: (name) => this.chatToolProgress(name),
       known: (name) => Object.prototype.hasOwnProperty.call(this.fleetConfig?.instances ?? {}, name) || this.classicRoomFor(name) !== null,
       source: (name) => this.logSource(name),
       events: (name, limit) => (this.eventLog?.query({ instance: name, limit }) ?? []) as Array<{ id: number; event_type: string; payload: unknown; created_at: string }>,
       emit: (event, data) => this.emitSseEvent(event, data),
     });
+  }
+
+  /**
+   * AGEND-197: an instance's effective `tool_progress` — what its chat's activity block is gated by: its own setting, else
+   * the fleet default, else off (a ClassicBot room: its channel's, as the daemon reads it). Junk values are off.
+   */
+  private chatToolProgress(name: string): "off" | "standard" | "verbose" {
+    const defaults = this.fleetConfig?.defaults?.tool_progress;
+    const own = Object.prototype.hasOwnProperty.call(this.fleetConfig?.instances ?? {}, name) ? this.fleetConfig?.instances?.[name]?.tool_progress : undefined;
+    const level = own ?? (this.classicRoomFor(name) ? this.classicChannels?.getToolProgressByInstance(name, defaults) : undefined) ?? defaults;
+    return level === "standard" || level === "verbose" ? level : "off";
   }
 
   /** Board 003648ac: a web /compact followed to its end, from the transcript the Log reads (none: nothing to follow). */

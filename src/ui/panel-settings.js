@@ -1273,7 +1273,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     notify: noticeMode(web.notify_login),
     echo: web.echo_to_channel ?? true,
     log: web.log_tab === true,                                                  // #1218: off by default
-    thinking: web.log_thinking !== false,                                       // AGEND-181: on by default (needs the Log)
+    thinking: web.log_thinking === true,                                        // AGEND-197: off by default
     usagePub: web.usage_report_on_public_link === true,                         // #2122: off by default
     levels: web.office_levels !== false,                                        // #2661: on by default
     cdn: web.preview_cdn === true,                                              // #2911 (7): off by default
@@ -1499,7 +1499,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     </section>`) : null}
     ${has("dashboard") ? lock(html`<section class="card s-dashboard-features"><h3>${layoutText("dashboardFeatures")}</h3>
       ${toggleRow("log", "webLogTab", "webLogTab", "webLogTabHint", "web.log_tab")}
-      ${toggleRow("thinking", "webLogThinking", "webLogThinking", "webLogThinkingHint", "web.log_thinking", !f.log)}
+      ${toggleRow("thinking", "webLogThinking", "webLogThinking", "webLogThinkingHint", "web.log_thinking")}
       ${toggleRow("usagePub", "webUsagePublic", "webUsagePublic", "webUsagePublicHint", "web.usage_report_on_public_link")}
       ${toggleRow("levels", "webOfficeLevels", "webOfficeLevels", "webOfficeLevelsHint", "web.office_levels")}
       ${toggleRow("cdn", "webPreviewCdn", "webPreviewCdn", "webPreviewCdnHint", "web.preview_cdn")}

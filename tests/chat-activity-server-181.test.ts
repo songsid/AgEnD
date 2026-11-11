@@ -1,6 +1,6 @@
 /**
  * AGEND-181 PR1, server side: thinking is read only for an admin session on the local dashboard (decided at the route,
- * enforced by the parser not being asked — never filtered by the page); `web.log_thinking` (default on) and its
+ * enforced by the parser not being asked — never filtered by the page); `web.log_thinking` (default OFF, AGEND-197) and its
  * Settings contract; the ledger keeps the transcript's anchor for each row across a restart; the launch settings ask
  * Claude Code for thinking summaries only while the Log and thinking are both on.
  */
@@ -63,7 +63,7 @@ describe("thinking is for an admin session on the local dashboard only (server s
   });
 });
 
-describe("the service: no parser is asked for thinking unless the request is allowed AND web.log_thinking is not off", () => {
+describe("the service: no parser is asked for thinking unless the request is allowed AND web.log_thinking is ON (default off)", () => {
   const rec = (o: unknown) => JSON.stringify(o) + "\n";
   const transcript = () => {
     const f = join(temp(), "t.jsonl");
@@ -72,7 +72,7 @@ describe("the service: no parser is asked for thinking unless the request is all
     return f;
   };
   const svc = (over: Partial<LogServiceDeps> = {}, path = transcript()) => new LogService({
-    enabled: () => true, known: () => true, source: () => ({ backend: "claude-code", path, format: "claude" }), events: () => [], emit() {}, ...over,
+    enabled: () => true, thinking: () => true, known: () => true, source: () => ({ backend: "claude-code", path, format: "claude" }), events: () => [], emit() {}, ...over,
   });
   const kinds = (a: any) => a.steps.map((s: any) => s.kind);
   it("allowed and on: thinking steps, and the answer says so", async () => {
@@ -90,10 +90,13 @@ describe("the service: no parser is asked for thinking unless the request is all
     expect(JSON.stringify(await s.steps("w", { after: 0, key: first.key }))).not.toContain("private reasoning");
     expect(JSON.stringify(await s.steps("w", { before: first.after, key: first.key }))).not.toContain("private reasoning");
   });
-  it("web.log_thinking off: none even for an allowed request", async () => {
-    const a: any = await svc({ thinking: () => false }).steps("w", { thinking: true });
-    expect(kinds(a)).not.toContain("thinking");
-    expect(a.thinking).toBe(false);
+  it("web.log_thinking off — or never set, the default: none even for an allowed request", async () => {
+    for (const thinking of [() => false, undefined]) {
+      const a: any = await svc({ thinking }).steps("w", { thinking: true });
+      expect(kinds(a)).not.toContain("thinking");
+      expect(a.thinking).toBe(false);
+      expect(JSON.stringify(a)).not.toContain("private reasoning");
+    }
   });
   it("an allowed request learns the instance's cwd and the server's home, for display only", async () => {
     const a: any = await svc({ cwd: () => "/work/proj" }).steps("w", { thinking: true });
@@ -134,7 +137,7 @@ describe("the service: no parser is asked for thinking unless the request is all
   });
 });
 
-describe("web.log_thinking in Settings: a boolean, default on; turning it back on is confirmed", () => {
+describe("web.log_thinking in Settings: a boolean, default off; turning it on is confirmed", () => {
   it("parsed, validated, and judged by direction", () => {
     expect(parseWebSettingsBody({ log_thinking: false })).toMatchObject({ logThinking: false });
     expect(parseWebSettingsBody({ log_thinking: "no" })).toEqual({ error: "log_thinking must be a boolean" });
@@ -142,8 +145,9 @@ describe("web.log_thinking in Settings: a boolean, default on; turning it back o
     expect(validateFleetConfig({ instances: {}, web: { log_thinking: false } } as any).errors.map(e => e.path)).not.toContain("web.log_thinking");
     const diff = (a: unknown, b: unknown) => settingsChangeDiff({ fleet: { web: a } }, { fleet: { web: b } }, { operation: "PUT /api/settings/fleet/web" });
     expect(diff({ log_thinking: false }, { log_thinking: true })?.section).toBe("access");   // off → on: looser
-    expect(diff({}, { log_thinking: true })).toBeNull();                                      // unset is already on
-    expect(diff({}, { log_thinking: false })).toBeNull();                                     // turning it off never needs a confirmation
+    expect(diff({}, { log_thinking: true })?.section).toBe("access");                         // unset is OFF: turning it on is looser
+    expect(diff({ log_thinking: true }, { log_thinking: false })).toBeNull();                 // turning it off never needs a confirmation
+    expect(diff({}, { log_thinking: false })).toBeNull();
   });
 });
 

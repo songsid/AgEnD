@@ -430,9 +430,11 @@ export interface WebConfig {
    */
   log_tab?: boolean;
   /**
-   * AGEND-181: show the model's thinking in the chat's activity timeline (and the Log) — default true, and only with
-   * `log_tab` on. Only a local dashboard's admin session is ever sent it (filtered on the server; never the public link
-   * or a guest). Off: none is read, and AgEnD stops asking Claude Code for thinking summaries at its next launch.
+   * AGEND-181/197: show the model's thinking in the chat's activity block (and the Log tab) — default OFF. Only a local
+   * dashboard's admin session is ever sent it (filtered on the server; never the public link or a guest), and only for an
+   * agent whose `tool_progress` is not off. On: AgEnD also asks Claude Code to write its thinking summaries at its next
+   * launch (`showThinkingSummaries`, which can change what a turn costs — see the PR). Off: none is read and Claude's
+   * settings are not touched.
    */
   log_thinking?: boolean;
   /**

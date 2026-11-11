@@ -99,7 +99,7 @@ function isLowSignalCommand(cmd: string): boolean {
 }
 
 /** First program name of a shell command, pipelines/chains reduced to the head. */
-function shellProgramName(cmd: string): string {
+export function shellProgramName(cmd: string): string {
   const head = cmd.trim().split(/\s*(?:&&|\|\||\||;)\s*/)[0] ?? "";
   const tokens = head.trim().split(/\s+/);
   // Skip env assignments and common wrappers

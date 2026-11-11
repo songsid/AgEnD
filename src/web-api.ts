@@ -2590,8 +2590,13 @@ export function handleWebRequest(
     if (!ctx.logSteps) { json(res, 404, { error: "not available" }); return true; }
     // AGEND-181: thinking only for an admin session on the local dashboard, decided here — never the public link, a
     // guest or a View projection, whatever the query says. The service makes none otherwise (its parser is not asked).
-    const thinking = p.get("thinking") === "1" && !!adminAdmissionOf(req, url, ctx) && !gatewayRequestContext(req) && !guestRequestOf(req);
+    // AGEND-197: the chat's activity block (chat=1) is for the same viewer and no other: a refusal here, not a hidden block.
+    const admin = !!adminAdmissionOf(req, url, ctx) && !gatewayRequestContext(req) && !guestRequestOf(req);
+    const chat = p.get("chat") === "1";
+    if (chat && !admin) { json(res, 403, { error: "admin_only" }); return true; }
+    const thinking = p.get("thinking") === "1" && admin;
     ctx.logSteps(instance, {
+      ...(chat ? { chat: true } : {}),
       ...(thinking ? { thinking: true } : {}),
       ...(after !== undefined ? { after } : {}), ...(before !== undefined ? { before } : {}), ...(ev !== undefined ? { ev } : {}),
       ...(limit !== undefined ? { limit } : {}), ...(key !== null ? { key } : {}),
@@ -4777,9 +4782,13 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}"`   // #2855: guests' too
     // #1218: whether the Log tab is on (web.log_tab; off by default): the tab says so and offers to turn it on.
     + ` data-log-tab="${ctx.fleetConfig?.web?.log_tab === true ? "1" : "0"}"`
-    // AGEND-181: whether thinking may be asked for in the chat timeline (web.log_thinking; default on, only with the Log).
-    // The page cannot tell an admin: the server answers `thinking: true` only to one (GET /ui/steps).
-    + ` data-log-thinking="${ctx.fleetConfig?.web?.log_tab === true && ctx.fleetConfig?.web?.log_thinking !== false ? "1" : "0"}"`
+    // AGEND-181: whether thinking may be asked for (web.log_thinking; OFF by default, AGEND-197). The server answers
+    // `thinking: true` only to an admin session on the local dashboard (GET /ui/steps), whatever this says.
+    + ` data-log-thinking="${ctx.fleetConfig?.web?.log_thinking === true ? "1" : "0"}"`
+    // AGEND-197: whether this page may ask for the chat's activity block at all — an admin session on the local dashboard
+    // only (a guest, the public link and a read-only session are never offered it, and the server refuses them anyway).
+    // Each agent's own tool_progress decides whether there is anything to show (the answer's `level`).
+    + ` data-chat-activity="${childMark ? "1" : "0"}"`
     // #1937: the upload limits in force for this page (the config's; the public link's own cap on it) — what the chat
     // checks before sending a file, and the numbers its words say. The server checks again on every upload.
     + ` data-upload-limits="${attr(JSON.stringify(uploadLimits(ctx.fleetConfig?.web, { publicLink: gatewayRequestContext(req) !== undefined })))}"`

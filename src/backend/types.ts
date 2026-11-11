@@ -117,7 +117,7 @@ export interface CliBackendConfig {
   effort?: string;
   /**
    * AGEND-181: ask the CLI to write its thinking summaries to its transcript (Claude Code's `showThinkingSummaries`:
-   * without it the transcript's thinking blocks are empty). Set only while the Log and `web.log_thinking` are both on;
+   * without it the transcript's thinking blocks are empty). Set only while `web.log_thinking` is on (off by default: then nothing of Claude's settings is touched);
    * read at each launch, so a running instance picks it up when it next starts.
    */
   thinkingSummaries?: boolean;

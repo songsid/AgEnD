@@ -14,7 +14,7 @@
  */
 import { open, stat } from "node:fs/promises";
 import { LINE_MAX_BYTES, LONG_HEAD_BYTES, lastLineBoundary, type LongLine } from "./transcript-jsonl.js";
-import { redactSecrets } from "./tool-progress.js";
+import { redactSecrets, shellProgramName, type ToolProgressLevel } from "./tool-progress.js";
 
 export type StepKind = "user" | "assistant" | "thinking" | "tool" | "error" | "turn_end" | "state";
 /** What a tool call does, for its icon and words on the page. */
@@ -891,4 +891,31 @@ function toRecord(piece: Buffer, bytes: number, offset: number): string | LongLi
 export function stepsOf(parser: { push(item: string | LongLine, at?: number): Emission; steps: LogStep[] }, records: readonly TailRecord[], max = 200): LogStep[] {
   for (const r of records) parser.push(r.record, r.at);
   return parser.steps.slice(-max);
+}
+
+/* ------------------------------------------------------------------ the chat's view of a step (AGEND-197) */
+
+/**
+ * AGEND-197: what the chat's activity block may show of a step, by the agent's own `tool_progress` — decided HERE, on the
+ * server, so a level below `verbose` never sends what only `verbose` shows (the page cannot "hide" what it was never given):
+ *
+ * - `standard`: the summary. A tool call keeps its kind, tool, status and time; its subject only where it is the thing
+ *   itself worth naming — a path (read / edit), `server:tool` (mcp), the program of a shell command (never its arguments).
+ *   A search's pattern, a web address, a sub-agent's task, a plan, the arguments (`input`) and the result (`body`) are dropped.
+ * - `verbose`: the same step as the Log shows it (masked and cut as ever): the command, the arguments, the output.
+ *
+ * Every level: a person's prompt text is dropped (the chat already shows it; the step only anchors the turn).
+ */
+export function chatStep(step: LogStep, level: Exclude<ToolProgressLevel, "off">): LogStep {
+  if (step.kind === "user") { const { body: _body, bodyCut: _cut, ...rest } = step; void _body; void _cut; return rest; }
+  if (step.kind !== "tool" || level === "verbose") return step;
+  const { input: _input, inputCut: _inputCut, body: _body, bodyCut: _bodyCut, bodyBytes: _bytes, subject, ...rest } = step;
+  void _input; void _inputCut; void _body; void _bodyCut; void _bytes;
+  let keep: string | undefined;
+  switch (step.cat) {
+    case "read": case "edit": case "mcp": keep = subject; break;
+    case "run": { const prog = subject && step.tool !== "exec" ? shellProgramName(subject).replace(/^.*\//, "") : ""; keep = prog || undefined; break; }
+    default: keep = undefined;                       // search, web, agent, plan, message, other: the label alone
+  }
+  return { ...rest, ...(keep ? { subject: keep } : {}) };
 }
