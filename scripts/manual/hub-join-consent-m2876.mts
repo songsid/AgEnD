@@ -53,6 +53,7 @@ try {
  for (const [index, { c, strict }] of scenarios.entries()) {
   setLocale(c.lang); const tag = caseName(c) + (strict ? "-code" : ""), login = "consent-person-" + index;
   r.people.push({ id: randomUUID(), login, dn: `CN=${login},DC=example,DC=test`, password: "Dummy-" + login, groups: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] });
+  console.log(JSON.stringify({ tag, phase: "boot" }));
   fx = await bootFixture({ port: Number(process.env.HP ?? 54960), instances: 1, classic: false }); const fm = fx.fm;
   for (const name of ["startInstance", "startInstanceUnattended", "restartInstance", "restartFleet", "stopInstance"]) fm[name] = async () => { throw Error("Inert fixture refuses " + name); };
   let notifications = 0; fm.promptSettingsChange = async () => { notifications++; throw Error("Unexpected held General card"); };
@@ -90,8 +91,9 @@ try {
    await page.locator('.s-hub-connection[data-state="connected"]').waitFor({ timeout: 30000 }); check(tag + " link online", fm.hubMemberLink === "online"); check(tag + " one connection", !!currentBinding(fm.dataDir)); check(tag + " no General approval", notifications === 0); await shot("connected");
    for (const p of [page, hub]) check(tag + " no overflow", await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
    if (c.device === "phone") { const small = await page.locator(".s-hub-connection").evaluate((el: any) => [...el.querySelectorAll("button,input,a.btn")].filter((n: any) => !n.disabled && n.getClientRects().length && n.offsetParent !== null).map((n: any) => { const target = n.type === "checkbox" ? n.closest("label") || n : n, b = target.getBoundingClientRect(); return { tag: n.tagName, id: n.id, width: b.width, height: b.height }; }).filter((b: any) => Math.min(b.width,b.height) < 43.5)); check(tag + " phone controls", small.length === 0, small); }
+   console.log(JSON.stringify({ tag, phase: "asset-receipts" }));
    await Promise.all(responses); result.cases.push({ tag, strict, hostHere: false, completed: true, substitutions, assets: Object.entries(assets).map(([digest,paths]) => ({ digest, paths: [...paths] })) });
-  } finally { await ctx.close(); controller.close(); fm.hubRuntime?.fence(); await fm.hubRuntime?.close(); fm.hubEffectsReady = false; await fx.close(); fx = null; }
+  } finally { console.log(JSON.stringify({ tag, phase: "context-close" })); await ctx.close(); controller.close(); fm.hubRuntime?.fence(); console.log(JSON.stringify({ tag, phase: "runtime-close" })); await fm.hubRuntime?.close(); fm.hubEffectsReady = false; console.log(JSON.stringify({ tag, phase: "fixture-close" })); await fx.close(); fx = null; console.log(JSON.stringify({ tag, phase: "closed" })); }
  }
  // A separate authenticated Hub admin; no invitation, policy or manual-pairing mutation for these screenshots.
  for (const c of matrix()) {
