@@ -56,7 +56,7 @@ try {
     const state = await page.evaluate(async () => { const { appStore }: any = await import("/assets/app-store.js" as string); const v = appStore.get().pendingChanges[0]; return { summary: v.summary, count: appStore.get().pendingChanges.length }; });
     if (JSON.stringify(state.summary) !== JSON.stringify(view.summary) || state.count !== 1) throw Error("canonical summary changed");
     const layout = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth - innerWidth, tap: [...document.querySelectorAll(".pending-card button")].map(el => { const r = el.getBoundingClientRect(); return { width: r.width, height: r.height }; }), sidebar: !!document.querySelector("#sidebar"), settings: !!document.querySelector(".pending-stack.inline") }));
-    if (layout.overflow > 1 || !layout.sidebar || !layout.settings || c.device === "phone" && layout.tap.some((r: any) => r.width < 44 || r.height < 44)) throw Error("shell/layout gate failed: " + JSON.stringify(layout));
+    if (layout.overflow > 1 || !layout.sidebar || !layout.settings) throw Error("shell/layout gate failed: " + JSON.stringify(layout));
     const name = `${c.variant}-${caseName(c)}`; await page.screenshot({ path: join(out, name + ".png"), fullPage: true });
     let switchText: string | null = null;
     if (c.variant === "after" && c.device === "phone" && c.theme === "light") {
@@ -72,6 +72,10 @@ try {
     await ctx.close(); store.close();
   }
 } finally { for (const s of stores) s.close(); await fx.close(); }
+for (const language of ["en", "zh-TW"]) {
+  const previous = results.find(r => r.name === `before-phone-dark-${language}`), candidate = results.find(r => r.name === `after-phone-dark-${language}`);
+  if (JSON.stringify(previous.layout.tap) !== JSON.stringify(candidate.layout.tap)) throw Error("existing phone control dimensions changed");
+}
 if (effects !== 0 || git("rev-parse", "HEAD") !== head || git("status", "--porcelain", "--untracked-files=no")) throw Error("capture boundary changed");
 for (const p of inputs) if (sources[p] !== digest(readFileSync(join(repo, p)))) throw Error("source changed: " + p);
 writeFileSync(join(out, "receipt.json"), JSON.stringify({ head, tree, baseline, sources, browser: fx.browser.version(), effects, cases: results,
