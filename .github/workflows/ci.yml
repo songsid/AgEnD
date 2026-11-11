@@ -307,7 +307,13 @@ jobs:
           OUT: ${{ runner.temp }}/ui-gate
           PORT: '19641'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
-        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-composer-width.mts
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        # SKEW: a tab opened before this PR keeps the base's app.css while the chat module is loaded fresh (Prism #3651).
+        run: |
+          if [ -n "$BASE_SHA" ] && git fetch -q --no-tags --depth=1 origin "$BASE_SHA" && git show "$BASE_SHA:src/ui/shared/app.css" > "$RUNNER_TEMP/base-app.css"; then
+            export SKEW_APP_CSS="$RUNNER_TEMP/base-app.css"
+          fi
+          PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-composer-width.mts
       - name: Save verified CJK archive (best effort, after the gate)
         if: always() && needs.detect-changes.outputs.text-only != 'true' && steps.cjk-fonts.outcome == 'success' && steps.cjk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5

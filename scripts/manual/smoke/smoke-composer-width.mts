@@ -3,9 +3,11 @@
 // under your fingers. In a real Chrome, on the shared fixture (in-process FleetManager, scratch home, loopback only): per
 // case (desk / phone) and draft (empty / a multi-line one), every state's #msgIn width and the draft's height must equal
 // the first state's. The composer is pictured in each state (OUT/<case>-<draft>-<n>-<state>.png).
+// SKEW (Prism #3651): with SKEW_APP_CSS=<an older app.css>, every case runs again with /assets/app.css served from that
+// file — a tab opened before the change keeps its app.css while panel-chat.js is loaded fresh — and must hold the same.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=desk-light-en,phone-dark-zh-TW] [CHROME=<chrome>] \
 //   npx tsx scripts/manual/smoke/smoke-composer-width.mts
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, caseName, matrix } from "../smoke-fixture/index.mts";
 
@@ -22,8 +24,14 @@ const result: Record<string, unknown> = {};
 const fx = await bootFixture({ port: Number(process.env.PORT ?? 19640), instances: 4 } as never);
 try {
   const name = (fx as unknown as { instances: Array<{ name: string }> }).instances[0]!.name;
+  const skewCss = process.env.SKEW_APP_CSS ? readFileSync(process.env.SKEW_APP_CSS, "utf8") : null;
+  for (const leg of skewCss ? ["fresh", "skew"] : ["fresh"])
   for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) {
     const { page } = await fx.page(c, { path: `/ui/chat/${encodeURIComponent(name)}` });
+    if (leg === "skew") {
+      await page.route("**/assets/app.css*", (r: { fulfill(o: unknown): unknown }) => r.fulfill({ status: 200, contentType: "text/css", body: skewCss }));
+      await page.reload();
+    }
     const errors: string[] = []; page.on("pageerror", (e: unknown) => errors.push(String(e).slice(0, 200)));
     await page.waitForSelector("#msgIn", { timeout: 20_000 });
     for (const [label, draft] of [["empty", ""], ["draft", DRAFT]] as const) {
@@ -50,17 +58,17 @@ try {
           return { inBar: !!b.closest(".work-bar"), inComposer: !!b.closest(".composer"), w: r.width, h: r.height, label: b.getAttribute("aria-label") };
         });
         const busy = exec === "working" || exec === "stuck";
-        if (busy !== !!stop || (stop && (!stop.inBar || stop.inComposer))) fail.push(`${caseName(c)}/${label}/${state}: Stop ${JSON.stringify(stop)} (busy ${busy})`);
-        if (stop && c.device === "phone" && (stop.w < 44 || stop.h < 44)) fail.push(`${caseName(c)}/${label}/${state}: phone Stop ${stop.w}×${stop.h} < 44`);
-        await page.locator(".dock").screenshot({ path: join(OUT, `${caseName(c)}-${label}-${i}-${state}.png`) });
+        if (busy !== !!stop || (stop && (!stop.inBar || stop.inComposer))) fail.push(`${leg}/${caseName(c)}/${label}/${state}: Stop ${JSON.stringify(stop)} (busy ${busy})`);
+        if (stop && c.device === "phone" && (stop.w < 44 || stop.h < 44)) fail.push(`${leg}/${caseName(c)}/${label}/${state}: phone Stop ${stop.w}×${stop.h} < 44`);
+        await page.locator(".dock").screenshot({ path: join(OUT, `${leg === "skew" ? "skew-" : ""}${caseName(c)}-${label}-${i}-${state}.png`) });
       }
-      const key = `${caseName(c)}/${label}`;
+      const key = `${leg}/${caseName(c)}/${label}`;
       result[key] = seen;
       const w0 = seen[0]!.width, h0 = seen[0]!.height;
       const bad = seen.filter(s => Math.abs(s.width - w0) > 0.5 || Math.abs(s.height - h0) > 0.5);
       if (bad.length) fail.push(`${key}: ${bad.map(b => `${b.state} ${b.width.toFixed(1)}×${b.height.toFixed(1)} (idle ${w0.toFixed(1)}×${h0.toFixed(1)})`).join("; ")}`);
     }
-    if (errors.length) fail.push(`${caseName(c)}: page errors ${errors.join(" | ")}`);
+    if (errors.length) fail.push(`${leg}/${caseName(c)}: page errors ${errors.join(" | ")}`);
     await page.context().close();
   }
 } finally { await fx.close(); }
