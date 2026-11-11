@@ -15,13 +15,12 @@ import { HubGroupPolicyError } from "../group-policy/store.js";
 import { HUB_SESSION_IDLE } from "../sessions.js";
 import { readHubSessionEpoch } from "../session-epoch.js";
 import { automaticFleetSlots, enrollmentThrottled, spendEnrollmentBudget } from "../enrollment-budget.js";
-import { CompanyJoinRecords, type JoinRecord } from "./store.js";
+import { CompanyJoinRecords, companyInvitationRecord as invitationRecord, type JoinRecord } from "./store.js";
 import { browserOriginProof, companyIdentityDigest, joinKeyThumbprint, joinPurpose, pkceChallenge, validateJoinBinding,
   verifierSchema, verifyJoinProof, type JoinBinding, type JoinIdentity, type JoinPurpose, type JoinProof } from "./protocol.js";
 import { createJoinSealer, type DeliveryBinding } from "./receipt.js";
 
-import { companyInvitationClaims, verifyCompanyInvitation, type CompanyInvitationClaims } from "./invitation.js";
-const invitationRecord = z.strictObject({ claims: companyInvitationClaims, digest: hash, requestId: uuid.nullable(), consumed: z.boolean() });
+import { verifyCompanyInvitation, type CompanyInvitationClaims } from "./invitation.js";
 
 export class CompanyJoinLimit extends HubProtocolError { constructor() { super("backpressure"); } }
 const pushPayload = z.strictObject({ label: plain(120).refine(s => s.trim().length > 0), stateHash: hash,

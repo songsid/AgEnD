@@ -38,6 +38,8 @@ export function normalizedHubSettings(hub: unknown): Record<string, unknown> {
     memberListen: listen(h.memberListen),
     webListen: listen(h.webListen),
     webTls: { certificateFile: obj(h.webTls).certificateFile, keyFile: obj(h.webTls).keyFile },
+    // Absent on older initialized Hubs. Derived by the address writer, never an editable authority field.
+    ...(h.webAddress === undefined ? {} : { webAddress: h.webAddress }),
     directory: Object.fromEntries(DIRECTORY_KEYS.map((k) => [k, d[k]])),
     administrator: { realm: admin.realm, objectId: typeof admin.objectId === "string" ? admin.objectId.toLowerCase() : admin.objectId },
     retention: { contentDays: obj(h.retention).contentDays, eventDays: obj(h.retention).eventDays },

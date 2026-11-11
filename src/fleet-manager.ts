@@ -1789,6 +1789,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return hubInitializationSession(req,{token,sessions,config:this.fleetConfig,epoch,current:()=>!this.shuttingDown
       &&token===this.webToken&&sessions===this.webSessions&&epoch===this.webAuthorityState().epoch});
   }
+  private hubWebAddressControl:import("./hub/settings-web-address-control.js").HubWebAddressControl|null=null;
+  async hubWebAddress():Promise<import("./hub/settings-web-address-control.js").HubWebAddressControl>{
+    const runtime=await this.hubRuntimeCreated();
+    if(this.shuttingDown||!this.hubSettingsWriter)throw Error("The Hub is unavailable");
+    if(!this.hubWebAddressControl){
+      const {createHubWebAddressControl}=await import("./hub/settings-web-address-control.js");
+      if(this.shuttingDown)throw Error("The Hub is stopping");
+      this.hubWebAddressControl??=createHubWebAddressControl({home:this.dataDir,readConfig:()=>this.getRawFleetConfig(),writer:this.hubSettingsWriter,
+        withDecision:(work,current)=>runtime.withWebAddressDecision(work,current),running:hub=>runtime.serverHealth(hub)==="ready",settle:()=>this.applyHubSwitches()});
+    }
+    return this.hubWebAddressControl;
+  }
   async hubSetup():Promise<import("./hub/init/web.js").HubWebInitializer>{
     this.hubSetupInit??=(async()=>{
       const {createHubWebInitializer}=await import("./hub/init/web.js");
@@ -2201,6 +2213,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.hubSettingsWriter ??= createHubSettingsWriter({ home: this.dataDir,
         readHub: () => (this.rawFleetConfig as { hub?: unknown } | undefined)?.hub,
         directoryDecision: () => this.hubRuntime?.directoryDecision() ?? null,
+        webAddressDecision: () => this.hubRuntime?.webAddressDecision() ?? null,
         saveHub: patches => this.saveFleetConfig(patches) });
       const runtime = new HubRuntime({
         home: this.dataDir,
