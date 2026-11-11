@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "algorithm": "SHA-256",
+  "historicalR2": "a5e1e9dc97fecc1c64390a8b7ab8a411e24fe6a1",
+  "files": {
+    "aec8614e29356c28901fa049974f007fc8d4ef0848af7271c7e19901189456eb": [
+      "docs/design/desktop-split-chat.md"
+    ],
+    "f972838bfafb1a67b5faf6c519d0fa4254a04d9969d5c6108e0f8029762a2145": [
+      "docs/screenshots/desktop-split-chat-m2889/README.md"
+    ],
+    "ef1f17b3eed4539902edb69b487499ea8c962cc57ecb3cce75ce988d1399abe3": [
+      "docs/screenshots/desktop-split-chat-m2889/mock-dom.mjs"
+    ],
+    "f67eda9861016f506bd3380a569cc26279c612dbf5a17846eced1034a33a3723": [
+      "docs/screenshots/desktop-split-chat-m2889/mock.css"
+    ],
+    "07092a38ee3f4807d05ef1f4dd5fb3dedfb97d183655f82d9b77080cf3a08a97": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/README.md"
+    ],
+    "1ca463ba35c06f844fc9ddf3ee17991cd4dc30748721fa91136f32dc8e3daaf0": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/README.md"
+    ],
+    "b9e5b3b3a9ebf123de907792fb72bdb0947e45deebc4f3581fe9c5a19135614e": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/checks.json"
+    ],
+    "ea35d43297f82169afc70a85627b7a8656f31f9025b2571380b0c64c26c2e957": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/image-bindings.json"
+    ],
+    "6cc217fbe219e9264d9dee52700edc03a1c8ce87f41ecaa1c356d234f2dd2f14": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/light-float.png"
+    ],
+    "f68b94ca5a4f8cff1d321c16b7cc0d313ce6c2cb460789c0814b6f2f2c21d898": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/light-log.png"
+    ],
+    "c3c4f0b82be2eacab9171e498cf4e074f1e95292806b855a3f812e2c5a1a155d": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/light-narrow360.png"
+    ],
+    "49bb63b8a1ef83ee1d449136851826ac4a53b4b3ae5c0c15bfdb64672e0b2c16": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/light-popout.png"
+    ],
+    "9ddf44a3700d247441fb8f2a3844cddacadb078e416b39df4fba3e5cf225d2c9": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/light-right.png"
+    ],
+    "3cbb2bae2bd5cb0f1b88be8874954c401e9334665a47dc2a2517b23be641dac6": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/mock-dom.mjs"
+    ],
+    "f43753b91ec4d67cae65813c9218710b9a0b7cf02c205ba3a5cf17939b08e34b": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/mock.css"
+    ],
+    "490f423ae0d9e08eba6b476bfb8054c55cc5f931f2bb1d33ded6ffe3437a0bc2": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/receipt.json"
+    ],
+    "5c6bc6d9dd1033ff9616c1be5ef44ab17672db9b89c637178290beb3aa64a774": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/render.mts"
+    ],
+    "d8932c487e26f1090159002e4f1eaba5badb8d34f958e4deba7da13c3cb517cd": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/header-row/visual-review.json"
+    ],
+    "6e921b520263aff7e29bc5ab1097a1caa8f3cc4f2efe796d7004d5a8534f7cb7": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/manifest.json"
+    ],
+    "93f58b45d4ece83cd190e6c18ec0eb674e8d3c97e204ff6692ed8ef7a6d5a536": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/mock-dom.mjs"
+    ],
+    "78cd4b2606aaa89a47e513d9b4deac01cf4e241b5ec77981c47ff97742204e65": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/mock.css"
+    ],
+    "11d1e11d6786b47e1e072bb10b3bb0580ae101bec440f2983f96f9b03451ed13": [
+      "scripts/ci/ui-gate-fonts.json"
+    ],
+    "840ce8054b28b2f52332ba68d38f681bbe30559fbcbcbc3de6f983fd302ff792": [
+      "scripts/manual/smoke-fixture/data.mts"
+    ],
+    "333248244d4651b1419a4c2ee32bae7c4d5d930019d9ffafcf94daaa7ee3ee3c": [
+      "scripts/manual/smoke-fixture/index.mts"
+    ],
+    "0722e98592188ff6871f0b77004ae765f1ddd59a86c96f6bf98a459c13b018e6": [
+      "src/ui/app.html"
+    ],
+    "9c85993b4041fd51be9b54a675bfd259561cf8ea94a90a133255cd79db3ef60c": [
+      "src/ui/panel-chat.js"
+    ],
+    "d0b86a35c1e8fdc5e532866a0320c12c8be1a6800d33e31ae6588084fef460d8": [
+      "src/ui/panel-log.js"
+    ],
+    "e1d6df23d61c44c692d65c2b48275e6e0446c6a387b2bbb6976638f8300e223d": [
+      "src/ui/shared/app-shell.js"
+    ],
+    "3b67daaa9d0d45e78ce232f58d004c702586f3baf6aac83ed7e3188a33426cc2": [
+      "src/ui/shared/app.css"
+    ],
+    "117cbe4e580fe27922c8a1f80ce78fccc8cf6c939b588aaf8362fcc306b06e72": [
+      "src/ui/shared/app.js"
+    ],
+    "23e6f5dc47f038d0470871ba96078379ab47d32a16f11486a3e4622a4ccea4a4": [
+      "src/ui/shared/chat-composer.js"
+    ],
+    "3ad9ba22116f12a9c22739542cf346cf8c2511cf915795e4945cc498f8f89c78": [
+      "src/ui/shared/instance-switch.js"
+    ],
+    "6f55664e3748e3837474f252035ba1dccac885385ae57ebea6be5e464deb3f50": [
+      "src/ui/shared/ui-icons.js"
+    ]
+  }
+}

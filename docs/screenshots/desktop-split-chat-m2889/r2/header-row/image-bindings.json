@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "6cc217fbe219e9264d9dee52700edc03a1c8ce87f41ecaa1c356d234f2dd2f14": "light-float.png"
+    },
+    {
+      "f68b94ca5a4f8cff1d321c16b7cc0d313ce6c2cb460789c0814b6f2f2c21d898": "light-log.png"
+    },
+    {
+      "c3c4f0b82be2eacab9171e498cf4e074f1e95292806b855a3f812e2c5a1a155d": "light-narrow360.png"
+    },
+    {
+      "49bb63b8a1ef83ee1d449136851826ac4a53b4b3ae5c0c15bfdb64672e0b2c16": "light-popout.png"
+    },
+    {
+      "9ddf44a3700d247441fb8f2a3844cddacadb078e416b39df4fba3e5cf225d2c9": "light-right.png"
+    }
+  ]
+}

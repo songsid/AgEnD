@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "review": "built-in image inspection",
+  "result": "visual clear",
+  "scope": "All5original zh-TW light1600x1000 stills; no behavior/tooltip/a11y/popup acceptance.",
+  "files": [
+    "light-right.png",
+    "light-log.png",
+    "light-float.png",
+    "light-popout.png",
+    "light-narrow360.png"
+  ],
+  "blockers": []
+}

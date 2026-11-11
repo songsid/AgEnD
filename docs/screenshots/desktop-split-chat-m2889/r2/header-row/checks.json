@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "scope": "Static design only. No product behavior/tooltip/a11y/popup acceptance.",
+  "cases": 5,
+  "panes": 10,
+  "geometry": "5/5 scenes,10/10 pane headers in one row; tabs/actions stay within header",
+  "wideLabels": "666px and658px text labels visible",
+  "narrowLabels": "560px,618px,360px icons only",
+  "minimum360": "exact360px; long name truncates;4tabs and3actions visible",
+  "iconNames": "title and aria-label match for all tabs",
+  "captureInputs": 20,
+  "servedBindings": 125,
+  "originalR2UnchangedPaths": 20,
+  "processGuardViolations": [],
+  "cleanup": true,
+  "renderExitCode": 0,
+  "productDiff": [],
+  "syntax": "node --check mock-dom.mjs passed",
+  "diffCheck": "git diff --check passed"
+}
