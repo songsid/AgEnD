@@ -312,6 +312,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (parsed.notifyLogin !== undefined) setNoticeMode(after.fleet, "login", parsed.notifyLogin);
     if (parsed.echo !== undefined) after.fleet.web.echo_to_channel = parsed.echo;
     if (parsed.logTab !== undefined) after.fleet.web.log_tab = parsed.logTab;
+    if (parsed.logThinking !== undefined) after.fleet.web.log_thinking = parsed.logThinking;
     if (parsed.usageOnPublicLink !== undefined) after.fleet.web.usage_report_on_public_link = parsed.usageOnPublicLink;
     if (parsed.officeLevels !== undefined) after.fleet.web.office_levels = parsed.officeLevels;
     if (parsed.previewCdn !== undefined) after.fleet.web.preview_cdn = parsed.previewCdn;

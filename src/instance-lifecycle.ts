@@ -2047,6 +2047,8 @@ export class InstanceLifecycle {
       ? this.ctx.kiroPeerWorkingDirectories ? () => this.ctx.kiroPeerWorkingDirectories!(name) : undefined
       : () => peerWorkingDirectories(this.ctx.fleetConfig, name, backendName));
     daemon.setStatusEmojiAvoidList(() => this.ctx.statusEmojiAvoidList?.(name));
+    // AGEND-181: thinking summaries in the transcript, only while the Log and its thinking switch are both on.
+    daemon.setThinkingSummaries(() => this.ctx.fleetConfig?.web?.log_tab === true && this.ctx.fleetConfig?.web?.log_thinking !== false);
     // Before start: the first spawn builds the command and emits its launch
     // warning synchronously inside Daemon.start, long before
     // attachIncidentHandlers runs (#984).

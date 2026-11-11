@@ -11,13 +11,15 @@ import type { WebConfig, WebGuestsConfig, WebVerifiedAuthorityConfig } from "./t
 
 export const WEB_TERMINAL_TTL_MINUTES = { min: 1, max: 20 } as const;
 /** What Settings → Web may write; everything else under web: / web_terminal: is fleet.yaml's. */
-export const WEB_SETTINGS_BODY_KEYS = ["notify_login", "experimental", "echo_to_channel", "log_tab", "usage_report_on_public_link", "office_levels", "preview_cdn", "login_qr", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
+export const WEB_SETTINGS_BODY_KEYS = ["notify_login", "experimental", "echo_to_channel", "log_tab", "log_thinking", "usage_report_on_public_link", "office_levels", "preview_cdn", "login_qr", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
 
 export type WebSettingsBody = {
   echo?: boolean;
   notifyLogin?: WebConfig["notify_login"];
   /** #1218: the Log tab on (true) or off (false). */
   logTab?: boolean;
+  /** AGEND-181: thinking in the chat timeline (web.log_thinking; default on). */
+  logThinking?: boolean;
   /** #2122: the usage report over the temporary public link (web.usage_report_on_public_link). */
   usageOnPublicLink?: boolean;
   /** #2661: Office levels (web.office_levels). */
@@ -42,6 +44,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   if (patch.notify_login !== undefined && typeof patch.notify_login !== "boolean" && patch.notify_login !== "dm") return { error: "notify_login must be a boolean" };
   if (patch.echo_to_channel !== undefined && typeof patch.echo_to_channel !== "boolean") return { error: "echo_to_channel must be a boolean" };
   if (patch.log_tab !== undefined && typeof patch.log_tab !== "boolean") return { error: "log_tab must be a boolean" };
+  if (patch.log_thinking !== undefined && typeof patch.log_thinking !== "boolean") return { error: "log_thinking must be a boolean" };
   if (patch.usage_report_on_public_link !== undefined && typeof patch.usage_report_on_public_link !== "boolean") return { error: "usage_report_on_public_link must be a boolean" };
   if (patch.office_levels !== undefined && typeof patch.office_levels !== "boolean") return { error: "office_levels must be a boolean" };
   if (patch.preview_cdn !== undefined && typeof patch.preview_cdn !== "boolean") return { error: "preview_cdn must be a boolean" };
@@ -63,6 +66,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
     ...(patch.notify_login !== undefined ? { notifyLogin: patch.notify_login as WebConfig["notify_login"] } : {}),
     ...(patch.echo_to_channel !== undefined ? { echo: patch.echo_to_channel as boolean } : {}),
     ...(patch.log_tab !== undefined ? { logTab: patch.log_tab as boolean } : {}),
+    ...(patch.log_thinking !== undefined ? { logThinking: patch.log_thinking as boolean } : {}),
     ...(patch.usage_report_on_public_link !== undefined ? { usageOnPublicLink: patch.usage_report_on_public_link as boolean } : {}),
     ...(patch.office_levels !== undefined ? { officeLevels: patch.office_levels as boolean } : {}),
     ...(patch.preview_cdn !== undefined ? { previewCdn: patch.preview_cdn as boolean } : {}),
