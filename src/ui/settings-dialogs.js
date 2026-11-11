@@ -857,6 +857,23 @@ export function useClassicForm({ room, ctx }) {
   const runtime = ctx.classicRuntime(c.instanceName);
   const classicMode = fd.agent_mode ?? "mcp";
   const lease = useLease("classic-dialog");
+  // M-2909: the room's own AI account for its CLI ("" = none: it follows the fleet default) — the agents' picker, saved
+  // into the room's backend_options like any other room field (PATCH, the confirmation, a restart of its agent).
+  const acctBackend = f.backend || inherited.backend;
+  const ownOptions = c.backend_options && typeof c.backend_options === "object" && !Array.isArray(c.backend_options) ? c.backend_options : {};
+  const savedAccount = (b) => (ownOptions[b] && ownOptions[b].credential_profile) || "";
+  // Prism on #3691: one draft per CLI — the shown choice is the selected CLI's (its draft, else what is saved), and each
+  // explicit choice goes only into its own CLI's options (a backend change alone moves no account between CLIs).
+  const [acctDraft, setAcctDraft] = useState({});
+  const acct = Object.hasOwn(acctDraft, acctBackend) ? acctDraft[acctBackend] : savedAccount(acctBackend);
+  const setAcct = (value) => setAcctDraft((d) => ({ ...d, [acctBackend]: value }));
+  const accountPatch = () => {
+    const edits = Object.entries(acctDraft).filter(([b, v]) => v !== savedAccount(b));
+    if (!edits.length) return {};
+    const next = { ...ownOptions };
+    for (const [b, v] of edits) next[b] = { ...(ownOptions[b] || {}), credential_profile: v || null };
+    return { backend_options: next };
+  };
   const pending = () => changedFields({
       backend: f.backend, model: f.model.trim() || null,
       auto_pause_after: f.inherit.auto_pause_after ? null : Number(f.auto_pause_after),
@@ -872,9 +889,11 @@ export function useClassicForm({ room, ctx }) {
       reply_triggers: hasOwn(c, "reply_triggers") ? c.reply_triggers : null,
       collab: !!c.collab, context_lines: c.context_lines ?? cd.context_lines ?? 5, web_echo: classicWebEchoEffective(c, fleet),
     });
+  // The room's fields and its account (M-2909): one PATCH, as before.
+  const pendingAll = () => ({ ...pending(), ...accountPatch() });
   const stage = async (done) => {
     if (!ready) return;
-    const patch = pending();
+    const patch = pendingAll();
     if (!Object.keys(patch).length) { if (done) done(); return; }
     if (!lease.current()) return;
     ctx.stageClassic(c, patch);
@@ -888,17 +907,18 @@ export function useClassicForm({ room, ctx }) {
       from: own ? { section: "chat", target: classicTarget, label: "changeInClassic" } : inAgentDefaults(agentTarget) };
   };
   const L = (text, field, id, tip) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} tip=${tip} />`;
-  return { room, ctx, c, f, set, setInherit, errors, ready, runtime, classicMode, fd, inherited, roomInh, pending, stage, schema, L };
+  return { room, ctx, c, f, set, setInherit, errors, ready, runtime, classicMode, fd, inherited, roomInh, pending: pendingAll, stage, schema, L, acct, setAcct, acctBackend };
 }
 
 /** The fields of one category of a ClassicBot room: the dialog's fields, grouped, each with its ⓘ. */
 export function ClassicFields({ m, cat }) {
-  const { c, f, set, setInherit, errors, classicMode, fd, inherited, roomInh, schema, L } = m;
+  const { c, f, set, setInherit, errors, classicMode, fd, inherited, roomInh, schema, L, acct, setAcct, acctBackend } = m;
   if (cat === "runtime") return html`<div class="ap-grid"><${Card} title=${pt("cardRuntime")} span=${true}><div class="grid2">
       <div class="field">${L(tn("backend"), "classic.backend", "cl-be", pt("tip_classicBackend"))}<${BackendSelect} id="cl-be" value=${f.backend} onChange=${set("backend")} />
-        ${!c.backend && f.backend === inherited.backend ? html`<${Inherited} ...${roomInh("backend", "backend", "#g-cbe", "#g-be")} />` : null}</div>
+        ${!c.backend && f.backend === inherited.backend ? html`<${Inherited} ...${roomInh("backend", "backend", "#g-cbe", "#g-be")} />` : null}
+        ${capsOf(acctBackend)?.namedAccounts ? html`<${AccountSelect} id="cl-account" backend=${acctBackend} value=${acct} onChange=${setAcct} />` : null}</div>
       <div class="field">${L(tn("model"), "classic.model", "cl-model", pt("tip_classicModel"))}<${ModelSelect} id="cl-model" value=${f.model} onChange=${set("model")}
-        backend=${f.backend} instance=${c.instanceName} inherit=${tn("inheritValue", inherited.model || tn("modelCliDefault"))} /></div>
+        backend=${f.backend} instance=${c.instanceName} profile=${acct} inherit=${tn("inheritValue", inherited.model || tn("modelCliDefault"))} /></div>
       <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "classic.auto_pause_after", "cl-auto", pt("tip_classicAutoPause"))}
         <${Override} inherit=${f.inherit.auto_pause_after} onInherit=${setInherit("auto_pause_after")} inherited=${roomInh("auto_pause_after", "minutes", "#classicbot", "#g-auto")}>
           <input id="cl-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} disabled=${f.inherit.auto_pause_after}

@@ -26,7 +26,7 @@ register("accountsManage", {
     removeLead: "This deletes the account's folder on this host: its connection.", removeLeadClaude: "This deletes the account's folder on this host: its connection and its own copies of conversations.",
     removeAfter: "Agents can't use it afterwards.", sep: " ",
     inUse: "Still used by — move each to another account first:", inUseAgent: "Agent {0}", inUseRoom: "ClassicBot room {0}", inUseDefault: "The fleet default for {0} agents",
-    move: "Move…", roomHow: "Change it in that room's ClassicBot settings (its credential_profile).",
+    move: "Move…", roomHow: "In that room's settings: Runtime & model → Account.",
     typeLabel: "Type {0} to confirm", removeGo: "Remove", removing: "Removing…", removed: "Account “{0}” removed.",
     cancelAndRemove: "Cancel connecting and remove",
     err_confirm: "Type the account's name exactly.", err_in_use: "Something still uses this account.", err_signing_in: "This account is being connected. Wait for that to end, or cancel it.",
@@ -68,7 +68,7 @@ register("accountsManage", {
     removeLead: "這會刪除這台主機上該帳號的資料夾：它的連接。", removeLeadClaude: "這會刪除這台主機上該帳號的資料夾：它的連接，以及它自己的對話副本。",
     removeAfter: "之後 Agent 就不能使用它。", sep: "",
     inUse: "仍在使用中，請先把每一項移到其他帳號：", inUseAgent: "Agent {0}", inUseRoom: "ClassicBot 房間 {0}", inUseDefault: "{0} Agent 的 Fleet 預設帳號",
-    move: "移動…", roomHow: "請在該房間的 ClassicBot 設定（credential_profile）中更改。",
+    move: "移動…", roomHow: "在該房間的設定裡：Runtime 與模型 → 帳號。",
     typeLabel: "輸入 {0} 以確認", removeGo: "移除", removing: "正在移除…", removed: "已移除帳號「{0}」。",
     cancelAndRemove: "取消連接並移除",
     err_confirm: "請正確輸入帳號名稱。", err_in_use: "仍有項目在使用這個帳號。", err_signing_in: "這個帳號正在連接。請等它結束，或取消它。",
@@ -162,7 +162,7 @@ export function AddAccountDialog({ cli, label, machine = null, onClose, onAdded 
  * `row`: the named account's row (its `usedBy` from the view); `onMove(user)`: open where that user's account is set
  * ({ kind: "agent", name } | { kind: "default" }); `onRemoved()`: after the server removed it.
  */
-export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemoved }) {
+export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemoved, canMoveRooms = false }) {
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -203,7 +203,7 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
     ${inUse ? html`<div class="s-account-inuse" role="status"><p><strong>${tm("inUse")}</strong></p><ul>
       ${users.agents.map((name) => html`<li><span>${tm("inUseAgent", name)}</span>${moveBtn({ kind: "agent", name })}</li>`)}
       ${users.fleetDefault ? html`<li><span>${machine ? tm("inUseMachineDefault") : tm("inUseDefault", label)}</span>${machine ? null : moveBtn({ kind: "default" })}</li>` : null}
-      ${users.classic.map((key) => html`<li><span>${tm("inUseRoom", key)}</span><small class="note">${tm("roomHow")}</small></li>`)}
+      ${users.classic.map((key) => html`<li><span>${tm("inUseRoom", key)}</span><small class="note">${tm("roomHow")}</small>${machine || !canMoveRooms ? null : moveBtn({ kind: "room", key })}</li>`)}
     </ul></div>` : html`<div class="field"><label for="acctRemoveName">${tm("typeLabel", row.profile)}</label>
       <input id="acctRemoveName" value=${typed} autocomplete="off" spellcheck=${false} onInput=${(e) => { setTyped(e.target.value); setErr(""); setErrCode(""); }}
         onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); void go(); } }} /></div>`}
