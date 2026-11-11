@@ -363,7 +363,6 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .p-log .log-sec-h { font-size: var(--fs-xs); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
 .p-log .log-older, .p-log .log-start { text-align: center; margin: var(--s-2) 0; }
 .p-log .log-off { padding: var(--s-6) var(--s-4); }
-.p-details .d-edit { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-2); }
 /* The header's controls are one height, the icon buttons' (36 px): its small buttons, and the instance tabs when they share
    its row (a phone puts them on a row of their own, under it). */
 .panel-head .btn-sm { min-height: 36px; }
@@ -1706,8 +1705,9 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .pill.ver { text-transform: none; letter-spacing: 0; }
 /* #2347 §7: Settings' title stays whole on a narrow phone (at 320 px it was cut to "S…"): the version beside it takes the
    room that is left — shortened, or not shown when too little is. */
-.p-settings .panel-title h1 { flex: none; }
-.p-settings .panel-sub { flex: 1 1 0; min-width: 0; container: settings-ver / inline-size; }
+/* AGEND-161: the version pill of the Settings header; an agent's page (p-agent-page) keeps Details' own header (its status must not shrink to nothing). */
+.p-settings:not(.p-agent-page) .panel-title h1 { flex: none; }
+.p-settings:not(.p-agent-page) .panel-sub { flex: 1 1 0; min-width: 0; container: settings-ver / inline-size; }
 .p-settings .panel-sub .pill.ver { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
 @container settings-ver (max-width: 56px) { .p-settings .panel-sub .pill.ver { display: none; } }
 .s-key { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-2) 0; border-top: 1px solid var(--border); }
@@ -4272,6 +4272,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .ap-grid > .card { margin-bottom: 0; }
 .ap-grid > .ap-span2 { grid-column: 1 / -1; }
 .ap-danger { border-color: var(--danger-line); }
+/* A category's panel takes no box of its own: its cards are stacked by .s-section-layout's gap, like Settings' cards. */
+.ap-panel { display: contents; }
 .ap-panel[hidden] { display: none; }
 .p-details .d-actions .field-row { flex-wrap: wrap; }
 /* The sidebar's ⚙: one step to an agent's settings — on hover or focus on a desktop and on the open row, always on a touch screen. */

@@ -84,7 +84,7 @@ describe("one fleet UI across runtimes",()=>{
     await p.mount(h(chat.ChatPanel,{route:{panel:"chat",instance:"linux-agent"},navKey:"chat:linux-agent"}));await settle(6);
     expect(p.root.querySelector("#attachBtn")).not.toBeNull();
     expect(p.root.querySelector(".hd-usage")).not.toBeNull();
-    expect(p.root.querySelectorAll(".inst-switch a").map((item:any)=>item.textContent)).toEqual(["Chat","View","Log","Details & settings"]);
+    expect(p.root.querySelectorAll(".inst-switch a").map((item:any)=>item.textContent)).toEqual(["Chat","View","Log","Settings"]);
   });
   it("keeps a Windows draft while the native worker is busy",async()=>{
     const status={instances:[linuxRow,{...nativeRow(),native_busy:true}],windows_cli:true};app.applyStatus(status);emit("status",status);

@@ -6,7 +6,7 @@ import { register, t } from "/assets/app-i18n.js";
 register("agentPage", {
   en: {
     // The page
-    title: "Details & settings", groupStatus: "Status", groupSettings: "Settings", onlyThis: "Only affects {0}",
+    title: "Settings", groupStatus: "Status", groupSettings: "Settings", onlyThis: "Only affects {0}",
     leadOverview: "This agent's status, usage and recent activity. To change a setting, pick a category.",
     leadSection: "Changes are staged first and written when you press Save. Each setting says when it takes effect.",
     loading: "Reading this agent's settings…", loadFailed: "Could not read this agent's settings.", notConfigured: "This agent is not in fleet.yaml, so it has no settings to edit here.",
@@ -22,7 +22,7 @@ register("agentPage", {
     cardDashboard: "Dashboard access", cardElsewhere: "Other settings live elsewhere", cardDanger: "Danger zone", cardWorkspace: "Workspace & permissions",
     cardReplies: "Reply behaviour", cardCollab: "Collaboration & web",
     // Labels of the three settings the page never showed
-    lbl_resumeWork: "Resume interrupted work", lbl_mcpProxy: "Reply for the agent when MCP is down", lbl_boardCards: "Board cards at once",
+    lbl_resumeWork: "Resume interrupted work", lbl_mcpProxy: "MCP proxy reply", lbl_boardCards: "Board cards at once",
     mustBePositiveInteger: "Enter a whole number of at least 1.",
     // Field help (the ⓘ)
     tip_displayName: "The name this agent goes by in chat, the agent list and other agents' eyes.",
@@ -67,7 +67,7 @@ register("agentPage", {
     tip_classicWebEcho: "Also post messages sent from the web chat into this room.", tip_classicContext: "How many recent chat lines are sent along with each message.",
   },
   "zh-TW": {
-    title: "詳細資料與設定", groupStatus: "狀態", groupSettings: "設定", onlyThis: "只影響 {0}",
+    title: "設定", groupStatus: "狀態", groupSettings: "設定", onlyThis: "只影響 {0}",
     leadOverview: "這個 Agent 目前的狀態、用量與最近活動。要改設定請從分類選擇。",
     leadSection: "改動會先暫存，按「儲存」才寫入；每個欄位旁標明生效時機。",
     loading: "正在讀取這個 Agent 的設定…", loadFailed: "讀不到這個 Agent 的設定。", notConfigured: "這個 Agent 不在 fleet.yaml 裡，沒有可在這裡編輯的設定。",
@@ -80,7 +80,7 @@ register("agentPage", {
     cardChannel: "頻道與可見度", cardEmojis: "Status emojis", cardSystemPrompt: "System prompt（原有欄位）", cardLogging: "記錄與恢復", cardBoard: "任務看板",
     cardDashboard: "儀表板權限", cardElsewhere: "其他設定在別處", cardDanger: "危險操作", cardWorkspace: "工作區與權限",
     cardReplies: "回覆行為", cardCollab: "協作與網頁",
-    lbl_resumeWork: "中斷後自動接續工作", lbl_mcpProxy: "MCP 失效時由 daemon 代為回覆", lbl_boardCards: "同時處理的看板卡片數",
+    lbl_resumeWork: "中斷後自動接續工作", lbl_mcpProxy: "MCP 代為回覆", lbl_boardCards: "同時處理的看板卡片數",
     mustBePositiveInteger: "請輸入至少為 1 的整數。",
     tip_displayName: "Agent 在聊天室、Agent 清單與其他 Agent 眼中的名字。",
     tip_tags: "用來在 Agent 清單分類與搜尋；AI 不會讀到。",

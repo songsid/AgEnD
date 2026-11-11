@@ -143,9 +143,9 @@ describe("the switch keeps the instance", () => {
   it("Chat and Details of web-dev: Chat | View | Details of web-dev, the current one marked; a reload of the URL keeps the view", async () => {
     const pg = await app("/ui/chat/web-dev");
     const want = (cur: string) => [["Chat", "/ui/chat/web-dev", cur === "chat" ? "page" : null], ["View", "/view/web-dev", cur === "view" ? "page" : null],
-      ["Log", "/ui/log/web-dev", cur === "log" ? "page" : null], ["Details & settings", "/ui/fleet/agent/web-dev", cur === "details" ? "page" : null]];   // #1218: Log
+      ["Log", "/ui/log/web-dev", cur === "log" ? "page" : null], ["Settings", "/ui/fleet/agent/web-dev", cur === "details" ? "page" : null]];   // #1218: Log
     expect(sw(pg)).toEqual(want("chat"));
-    const d = pg.root.querySelectorAll(".inst-switch a.seg-item").find((a: any) => a.textContent === "Details & settings");
+    const d = pg.root.querySelectorAll(".inst-switch a.seg-item").find((a: any) => a.textContent === "Settings");
     fire(d, "click", { button: 0 }); await settle(6);
     expect([await route(), sw(pg)]).toEqual([{ panel: "details", instance: "web-dev" }, want("details")]);
     const again = await reload(pg, "/ui/fleet/agent/web-dev");
@@ -208,21 +208,23 @@ describe("Details (Q1 = B)", () => {
     // Carried over, none new (leader 2026-10-10): no Delete on Details — it stays in Chat's ⋯ and Settings.
     // #1629: then a person's Lock and Reset of the agent's web theme.
     const THEME = ["Colour…", "Lock theme", "Reset theme…"];   // #1958: its colour, before the theme's Lock and Reset
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Restart instance", "Stop instance", "Pause", ...THEME]);
+    expect(await menuItems(pg)).toEqual(["Restart instance", "Stop instance", "Pause", ...THEME]);
     await choose(pg, "Stop instance");
     await choose(pg, "Pause");
     expect(calls.filter(c => c.startsWith("POST"))).toEqual(["POST /ui/stop/web-dev", "POST /api/settings/instances/web-dev/pause"]);
     await go("/ui/fleet/agent/api-server");
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Start instance", ...THEME]);
+    expect(await menuItems(pg)).toEqual(["Start instance", ...THEME]);
     await go("/ui/fleet/agent/qa-bot");
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Wake", ...THEME]);
+    expect(await menuItems(pg)).toEqual(["Wake", ...THEME]);
     await choose(pg, "Wake");
     expect(calls.filter(c => c.startsWith("POST")).at(-1)).toBe("POST /api/settings/instances/qa-bot/wake");
   });
-  it("AGEND-161: Edit in Settings opens this page's Basic info — the agent's settings are on Details & settings, nothing asks Settings for a dialog", async () => {
+  it("AGEND-161: the agent's settings are on this page (Settings tab, ?cat=basic) — no Edit in Settings menu item or button, and nothing asks Settings for a dialog", async () => {
     const pg = await app("/ui/fleet/agent/web-dev");
     expect(calls.filter(c => c.includes("/api/settings/") && !c.includes("restart-pending"))).toEqual([]);   // the Overview alone reads no configuration (the shell's own restart check is not it)
-    pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(12); await untilRead(); await settle(10);
+    expect(pg.root.querySelector(".p-details .d-edit-settings")).toBeNull();
+    expect(pg.root.querySelector(".p-details .d-config")?.textContent).not.toContain("Settings");              // no "Read only — change it in Settings" line either
+    await go("/ui/fleet/agent/web-dev?cat=basic"); await untilRead(); await settle(10);
     expect([await route(), pg.window.location.search, req.takeAgentRequest()]).toEqual([{ panel: "details", instance: "web-dev" }, "?cat=basic", null]);
     expect(calls).toContain("GET /api/settings/fleet/raw");                         // read once, when a settings category first opens
     expect(pg.root.querySelector(".p-details #ap-panel-basic #ag-dn")).not.toBeNull();
@@ -248,13 +250,13 @@ describe("View: the switch for a signed-in person, none for the anonymous reader
       viewStore.set({ loaded: true, error: null, roster: [{ instance_name: "web-dev", status: "running", backend: "claude-code", tags: [] }] });
       await pg.mount(h(ViewPanel, { route: { panel: "view", instance: "web-dev" }, navKey: `view:web-dev|${viewOnly}` }));
       await settle(3);
-      expect([viewOnly, sw(pg)]).toEqual(viewOnly ? [true, []] : [false, [["Chat", "/ui/chat/web-dev", null], ["View", "/view/web-dev", "page"], ["Log", "/ui/log/web-dev", null], ["Details & settings", "/ui/fleet/agent/web-dev", null]]]);
+      expect([viewOnly, sw(pg)]).toEqual(viewOnly ? [true, []] : [false, [["Chat", "/ui/chat/web-dev", null], ["View", "/view/web-dev", "page"], ["Log", "/ui/log/web-dev", null], ["Settings", "/ui/fleet/agent/web-dev", null]]]);
       await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
     }
   });
 });
 
-describe("AGEND-161: Details & settings", () => {
+describe("AGEND-161: the Settings tab of an agent (Details & settings)", () => {
   const navItems = (pg: AppPage) => pg.root.querySelectorAll(".p-details > .s-nav .seg-item").map((a: any) => [a.textContent.replace("●", "").trim(), a.getAttribute("href"), a.getAttribute("aria-current") ?? null]);
   it("the categories are the shared Settings nav (Status / Settings groups, an icon before each item); no category is the phone's list", async () => {
     const pg = await app("/ui/fleet/agent/web-dev");
@@ -386,11 +388,12 @@ describe("Edit in Settings: that agent's dialog — only an agent Settings knows
 
 describe("#1561 review", () => {
   const rowsOf = (pg: AppPage) => Object.fromEntries(pg.root.querySelectorAll(".p-details .d-config .kv").map((r: any) => [r.querySelector(".k").textContent, r.querySelector(".v").textContent]));
-  it("a ClassicBot room: its own summary (no directory), Classic's actions only (pause), and Edit in Settings → its ClassicBot dialog", async () => {
+  it("a ClassicBot room: its own summary (no directory), Classic's actions only (pause), and its settings on this page (Runtime & model first)", async () => {
     const pg = await app("/ui/fleet/agent/classic-ops-1");
     expect(rowsOf(pg)).toEqual({ "Display name": "Ops", Description: "the ops room", "Bound to": "ClassicBot room #ops (discord)", Tags: "classic" });
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Pause", "Colour…", "Lock theme", "Reset theme…"]);   // #1629: a Classic room's agent has a theme too; #1958 a colour
-    pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(12); await untilRead(); await settle(10);
+    expect(await menuItems(pg)).toEqual(["Pause", "Colour…", "Lock theme", "Reset theme…"]);   // #1629: a Classic room's agent has a theme too; #1958 a colour
+    expect(pg.root.querySelector(".p-details .d-edit-settings")).toBeNull();
+    await go("/ui/fleet/agent/classic-ops-1?cat=runtime"); await untilRead(); await settle(10);
     // AGEND-161: its settings are on this page too (a room has no basic info: it starts at Runtime & model).
     expect([await route(), pg.window.location.search, req.takeAgentRequest()]).toEqual([{ panel: "details", instance: "classic-ops-1" }, "?cat=runtime", null]);
     expect(pg.root.querySelector(".p-details #ap-panel-runtime #cl-be")).not.toBeNull();

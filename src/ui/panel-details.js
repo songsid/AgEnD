@@ -29,7 +29,7 @@ import "/assets/chat-strings.js";
 import { api } from "./settings-confirm.js";
 import { InstanceBoardWork } from "./fleet-task-work.js";
 import { Icon } from "/assets/ui-icons.js";
-import { AgentCategoryNav, AgentPageHead, AgentSettingsPanels, agentKind, categoryFromSearch, categoryLabel, categoryPath, useAgentSettings } from "./agent-details-settings.js";
+import { AgentCategoryNav, AgentPageHead, AgentSettingsPanels, agentKind, categoryFromSearch, categoryLabel, useAgentSettings } from "./agent-details-settings.js";
 import "./agent-page-strings.js";
 import { pt } from "./agent-page-strings.js";
 
@@ -108,18 +108,14 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   // A ClassicBot room (classicBot.yaml) keeps Classic's split: its own Settings dialog, and only the actions Settings'
   // Classic rows have (pause / wake) — never the fleet agent's (#1561 review).
   const classic = !!(d && d.kind === "classic");
-  // AGEND-161: the settings are this page's: its first category (a ClassicBot room has no basic info: its first is Runtime).
-  const editInSettings = () => navigate(categoryPath(name, classic ? "runtime" : "basic"));
   const st = inst.status;
   // Until its read is in, the page does not know which kind it is: no actions yet (only Edit is offered once known).
   const items = !d ? [] : classic ? [
-    { key: "edit", label: t("chat.dEditInSettings"), icon: "settings", onSelect: editInSettings },
     st === "running" ? { key: "pause", label: t("chat.dPause"), icon: "pause", disabled: !!busy, onSelect: () => pauseWake("pause") } : null,
     st === "paused" ? { key: "wake", label: t("chat.dWake"), icon: "play", disabled: !!busy, onSelect: () => pauseWake("wake") } : null,
     colorMenuItem(name, inst),   // #1958
     ...themeMenuItems(name),   // #1629
   ] : [
-    { key: "edit", label: t("chat.dEditInSettings"), icon: "settings", onSelect: editInSettings },
     st === "running" ? null : st === "paused" ? null : { key: "start", label: t("chat.start"), icon: "play", disabled: !!busy, onSelect: () => lifecycle("start") },
     st === "running" ? { key: "restart", label: t("chat.restart"), icon: "restart", disabled: !!busy, onSelect: () => lifecycle("restart") } : null,
     st === "running" ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", disabled: !!busy, onSelect: () => lifecycle("stop") } : null,
@@ -155,9 +151,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
         ${row(t("chat.dDescription"), d.description || "--")}
         ${d.working_directory ? row(t("chat.dDirectory"), html`<span class="mono">${d.working_directory}</span>`) : null}
         ${row(t("chat.dBinding"), binding)}
-        ${row(t("chat.dTags"), Array.isArray(d.tags) && d.tags.length ? html`<span class="d-tags">${d.tags.map((x) => html`<span key=${x} class="tag">${x}</span>`)}</span>` : "--")}
-        <div class="d-edit"><span class="note">${t("chat.dReadOnly")}</span>
-          <button type="button" class="btn btn-sm d-edit-settings" onClick=${editInSettings}>${t("chat.dEditInSettings")}</button></div></section>
+        ${row(t("chat.dTags"), Array.isArray(d.tags) && d.tags.length ? html`<span class="d-tags">${d.tags.map((x) => html`<span key=${x} class="tag">${x}</span>`)}</span>` : "--")}</section>
       <section class="card"><h3>${t("chat.dRuntime")}</h3>
         ${row(t("chat.dBackend"), d.backend || "--")}
         ${row(t("chat.dModel"), `${(d.model && modelText(d)) || sl.model?.display_name || "--"}${d.model_source === "live" ? "" : src(d.model_source)}`)}

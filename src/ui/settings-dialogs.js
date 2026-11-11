@@ -429,8 +429,8 @@ export function AgentFields({ m, cat, onDelete }) {
     return html`<div class="ap-grid">
     <${Card} title=${pt("cardChannel")}>
       <div class="field">${L(tn("channelBinding"), "instance.topic_id", "ag-ch", pt("tip_channel"))}<${Select} id="ag-ch" value=${f.channel_id} onChange=${set("channel_id")} options=${["", ...ids]} /></div>
-      <label class="check"><input id="ag-general" type="checkbox" checked=${f.general_topic} onChange=${(e) => set("general_topic")(e.target.checked)} /><span>${tn("generalTopicField")}</span>
-        <${Impact} schema=${schema} field="instance.general_topic" /><${InfoTip} text=${pt("tip_general")} name=${tn("generalTopicField")} /></label>
+      <div class="field">${L(tn("generalTopicField"), "instance.general_topic", undefined, pt("tip_general"))}
+        <label class="check"><input id="ag-general" type="checkbox" checked=${f.general_topic} onChange=${(e) => set("general_topic")(e.target.checked)} /><span>${tn("generalTopicField")}</span></label></div>
       ${generalError ? html`<p class="feedback error" role="alert" id="ag-general-one">${generalError}</p>` : null}
       ${[["tool_progress", "toolProgress", TOOL_PROGRESS, defaults.tool_progress ?? "off", "#g-tp", "tip_toolProgress"], ["cross_instance_visibility", "crossInstanceVisibility", VISIBILITY_MODES, visibilityDefault(defaults), "#g-vis", "tip_visibility"]].map(([k, label, opts, dflt, target, tip]) => html`<div key=${k} class="field">
         ${L(tn(label), `instance.${k}`, `ag-${k}`, pt(tip))}
@@ -858,8 +858,10 @@ export function ClassicFields({ m, cat }) {
           <label class="check"><input type="checkbox" disabled=${f.inherit.reply_triggers} checked=${f.inherit.reply_triggers ? inherited.reply_triggers : f.reply_triggers} onChange=${(e) => set("reply_triggers")(e.target.checked)} /><span>${tn("replyTriggers")}</span></label></${Override}><p class="note">${tn("replyTriggersHint")}</p></div>
     </${Card}>
     <${Card} title=${pt("cardCollab")}>
-      <label class="check"><input type="checkbox" checked=${f.collab} onChange=${(e) => set("collab")(e.target.checked)} /><span>${tn("collabMode")}</span><${Impact} schema=${schema} field="classic.collab" /><${InfoTip} text=${pt("tip_classicCollab")} name=${tn("collabMode")} /></label>
-      <label class="check"><input type="checkbox" checked=${f.web_echo} onChange=${(e) => set("web_echo")(e.target.checked)} /><span>${tn("webEcho")}</span><${Impact} schema=${schema} field="classic.web_echo" /><${InfoTip} text=${pt("tip_classicWebEcho")} name=${tn("webEcho")} /></label>
+      <div class="field">${L(tn("collabMode"), "classic.collab", undefined, pt("tip_classicCollab"))}
+        <label class="check"><input type="checkbox" checked=${f.collab} onChange=${(e) => set("collab")(e.target.checked)} /><span>${tn("collabMode")}</span></label></div>
+      <div class="field">${L(tn("webEcho"), "classic.web_echo", undefined, pt("tip_classicWebEcho"))}
+        <label class="check"><input type="checkbox" checked=${f.web_echo} onChange=${(e) => set("web_echo")(e.target.checked)} /><span>${tn("webEcho")}</span></label></div>
       <div class="field">${L(tn("contextLines"), "classic.context_lines", "cl-ctx", pt("tip_classicContext"))}
         <input id="cl-ctx" type="number" min="0" step="1" class=${errors.context ? "invalid" : ""} value=${f.context_lines} onInput=${(e) => set("context_lines")(e.target.value)} />
         <${Feedback} error=${errors.context} /></div>
