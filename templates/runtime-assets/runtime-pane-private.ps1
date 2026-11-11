@@ -49,7 +49,7 @@ if ($RuntimeProfile) {
   if (-not $path) { throw 'Runtime profile has no real parent' }
   $missing.Push($path)
  }
- for ($walk = Get-Item -LiteralPath $path -Force; $walk; $walk = $walk.Parent) { if (-not $walk.PSIsContainer) { throw 'Runtime profile parent is not a directory' }; Stable-Ancestor $walk }
+ for ($walk = Get-Item -LiteralPath $path -Force; $walk; $walk = $walk.Parent) { if ($walk -isnot [IO.DirectoryInfo]) { throw 'Runtime profile parent is not a directory' }; Stable-Ancestor $walk }
  while ($missing.Count -gt 0) {
   $created = [IO.DirectoryInfo]::new($missing.Pop())
   $created.Create((New-PrivateAcl))
