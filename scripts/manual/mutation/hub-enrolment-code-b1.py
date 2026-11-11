@@ -43,6 +43,20 @@ cases += [
  ('code-global-budget','src/hub/join/service.ts',[
   ('[[`code:${code.id}`, 120], ["code:all", 120]]','[[`code:${code.id}`, 120], ["code:all", 999]]')], 'tests/hub-enrolment-code-http-b1.test.ts','per-code and global 120'),
 ]
+cases += [
+ ('never-admission','src/hub/group-policy/resources.ts',[
+  ('if (p.denies.some(d => personKeyString(d.person) === personKeyString(r.owner) && d.deny.includes("pair_fleet")))','if (p.state !== "never-enabled" && p.denies.some(d => personKeyString(d.person) === personKeyString(r.owner) && d.deny.includes("pair_fleet")))')], 'tests/hub-enrolment-code-permit-b1.test.ts','never-enabled exclusion refuses'),
+ ('never-retained','src/hub/group-policy/resources.ts',[
+  ('(before.source === "code" || p.state !== "never-enabled")','(p.state !== "never-enabled")')], 'tests/hub-enrolment-code-permit-b1.test.ts','never-enabled exclusion suspends'),
+ ('impact-source','src/hub/group-policy/impact-inventory.ts',[
+  ('parseStoredHubGroupResource(parseStrictJson(row.body), row.source)','parseStoredHubGroupResource(parseStrictJson(row.body), "manual")')], 'tests/hub-enrolment-code-http-b1.test.ts','retained code provenance'),
+ ('never-impact','src/hub/group-policy/admin-impact.ts',[
+  ('const narrowing = row.lifecycle?.source === "code"','const narrowing = row.lifecycle?.source === "code" && next.state !== "never-enabled"')], 'tests/hub-enrolment-code-http-b1.test.ts','never-enabled preview names'),
+ ('never-batch','src/hub/group-policy/resources.ts',[
+  ('(before.source !== "code" || !p.denies.some','(true || !p.denies.some')], 'tests/hub-enrolment-code-http-b1.test.ts','never-enabled preview names'),
+ ('member-version','src/settings-api.ts',[
+  ('n.source === "code" && version >= 3','n.source === "code"')], 'tests/hub-pairing-api-s3c.test.ts','member Settings retains'),
+]
 if len(sys.argv)>1: cases=[c for c in cases if c[0] in sys.argv[1:]]
 results=[]
 for name,path,edits,test,title in cases:
@@ -51,9 +65,12 @@ for name,path,edits,test,title in cases:
   for old,new in edits:
    assert s.count(old)==1,(name,old,s.count(old));s=s.replace(old,new)
   p.write_text(s)
-  r=subprocess.run(['node_modules/.bin/vitest','run',test,'-t',title],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
+  compile=subprocess.run(['node_modules/.bin/tsc','--noEmit'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
+  (out/(name+'-types.log')).write_bytes(compile.stdout)
+  assert compile.returncode==0,(name,'mutation did not typecheck')
+  r=subprocess.run(['node_modules/.bin/vitest','run',test,'-t',title,'--maxWorkers=1'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
   log=r.stdout.decode(errors='replace');(out/(name+'.log')).write_text(log)
   caught=r.returncode!=0 and ('AssertionError' in log or 'expected' in log) and 'Failed Tests' in log
-  results.append(dict(guard=name,exit=r.returncode,semanticFailure=caught,restoredSha256=hashlib.sha256(raw).hexdigest()));print(json.dumps(results[-1]),flush=True)
+  results.append(dict(guard=name,nativeTypes=compile.returncode,exit=r.returncode,semanticFailure=caught,restoredSha256=hashlib.sha256(raw).hexdigest()));print(json.dumps(results[-1]),flush=True)
  finally:p.write_bytes(raw)
 (out/('receipt-'+('-'.join(sys.argv[1:]) or 'all')+'.json')).write_text(json.dumps(results,indent=2)+'\n');assert all(r['semanticFailure'] for r in results)

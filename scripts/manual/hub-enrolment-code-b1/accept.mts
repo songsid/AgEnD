@@ -49,6 +49,8 @@ try {
    const page=await context.newPage();await page.goto(rig.webOrigin+'/ui/hub?join='+binding.requestId);await page.locator('#hubLogin').fill(login);await page.locator('#hubPassword').fill('Dummy-'+login+'-only');
    await page.getByRole('button',{name:/登入並連接 Fleet|Sign in and connect Fleet/,exact:true}).click();
    await wait(()=>rig.deps.companyJoin.records.get(binding.requestId).stage==='identity-approved');
+   await page.getByText('Owned '+login,{exact:false}).first().waitFor();
+   if(!(await page.locator('body').innerText()).includes('Owned '+login))throw Error('Wrong handoff label before capture');
    const shot=login+'.'+language+'.png';await page.screenshot({path:join(out,shot)});receipt.screenshots.push(shot);await context.close();
   }else{signed=await rig.signIn(login);signed.cookie+='; '+open.cookie;}
   }finally{leaveSignin();}
@@ -100,7 +102,7 @@ try {
 }catch(error){receipt.error=String(error);console.error(error);process.exitCode=1;}
 finally{
  for(const c of clients.reverse())await c.close().catch(()=>{});await browser?.close();await rig?.close();tls.connect=original;syncBuiltinESMExports();rmSync(root,{recursive:true,force:true});receipt.cleaned=true;
- const files=["src/hub/audit/index.ts", "src/hub/catalog.ts", "src/hub/client.ts", "src/hub/compose/member.ts", "src/hub/compose/server.ts", "src/hub/enrolment-code.ts", "src/hub/group-policy/admin-impact.ts", "src/hub/group-policy/admin-inventory.ts", "src/hub/group-policy/authorization.ts", "src/hub/group-policy/resources.ts", "src/hub/group-policy/store.ts", "src/hub/http/compose.ts", "src/hub/join/receipt.ts", "src/hub/join/service.ts", "src/hub/join/store.ts", "src/hub/member/pairing-notices.ts", "src/hub/pairing-notices.ts", "src/hub/pairing.ts", "src/hub/protocol.ts", "src/hub/server.ts", "src/hub/types.ts"];
+ const files=["src/hub/audit/index.ts", "src/hub/catalog.ts", "src/hub/client.ts", "src/hub/compose/member.ts", "src/hub/compose/server.ts", "src/hub/enrolment-code.ts", "src/hub/group-policy/admin-impact.ts", "src/hub/group-policy/admin-inventory.ts", "src/hub/group-policy/authorization.ts", "src/hub/group-policy/impact-inventory.ts", "src/hub/group-policy/resources.ts", "src/hub/group-policy/store.ts", "src/hub/http/compose.ts", "src/hub/join/receipt.ts", "src/hub/join/service.ts", "src/hub/join/store.ts", "src/hub/member/pairing-notices.ts", "src/hub/pairing-notices.ts", "src/hub/pairing.ts", "src/hub/protocol.ts", "src/hub/server.ts", "src/hub/types.ts", "src/settings-api.ts"];
  receipt.production=files.map(path=>({path,sha256:createHash('sha256').update(readFileSync('/work/'+path)).digest('hex')}));
  receipt.images=receipt.screenshots.map((path:string)=>({path,sha256:createHash('sha256').update(readFileSync(join(out,path))).digest('hex')}));writeFileSync(join(out,'receipt.json'),JSON.stringify(receipt,null,2));
 }

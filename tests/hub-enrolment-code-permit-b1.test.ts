@@ -70,4 +70,22 @@ describe("B1 trusted code permit and retained lifecycle", () => {
     r.policy.replace({ ...r.policy.read(), denies: [{ person: r.owner, deny: ["pair_fleet"] }] }, r.admin, r.ctx);
     await expect(r.actions.check(r.resource, r.ctx)).rejects.toThrow(); expect(r.resources.read(r.resource)).toMatchObject({ state: "suspended", source: "code" });
   });
+  it("a never-enabled exclusion refuses new code enrollment without a group read", async () => {
+    const r = rig(); r.policy.replace({ ...r.policy.read(), denies: [{ person: r.owner, deny: ["pair_fleet"] }] }, r.admin, r.ctx);
+    expect(r.policy.read().state).toBe("never-enabled");
+    await expect(r.actions.prepareCodeEnrollment(r.resource, r.grant, r.ctx)).rejects.toMatchObject({ outcome: "denied" });
+    expect(r.resources.read(r.resource)).toBeNull(); expect(r.read).not.toHaveBeenCalled();
+    await expect(r.actions.prepareCodeEnrollment({ ...r.resource, id: randomUUID(), owner: r.admin }, r.grant, r.ctx)).resolves.toMatchObject({ source: "code" });
+  });
+  it("a never-enabled exclusion suspends a retained code Fleet instead of returning an allowance", async () => {
+    const r = rig(), permit = await r.actions.prepareCodeEnrollment(r.resource, r.grant, r.ctx); r.db.transaction(() => permit.commit(r.db)).immediate();
+    r.policy.replace({ ...r.policy.read(), denies: [{ person: r.owner, deny: ["pair_fleet"] }] }, r.admin, r.ctx);
+    await expect(r.actions.check(r.resource, r.ctx)).rejects.toThrow();
+    expect(r.resources.read(r.resource)).toMatchObject({ source: "code", state: "suspended" });
+  });
+  it("never-enabled batch suspension still refuses a code Fleet without an explicit exclusion", async () => {
+    const r = rig(), permit = await r.actions.prepareCodeEnrollment(r.resource, r.grant, r.ctx); r.db.transaction(() => permit.commit(r.db)).immediate();
+    expect(() => r.db.transaction(() => r.resources.suspend(r.resource, r.admin, r.ctx)).immediate()).toThrow("invalid");
+    expect(r.resources.read(r.resource)).toMatchObject({ source: "code", state: "active" });
+  });
 });

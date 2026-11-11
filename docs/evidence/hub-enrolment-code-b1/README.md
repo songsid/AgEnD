@@ -1,5 +1,7 @@
 # B1 backend validation
 
+This is the original packet at 5db75bb9. The [R1 packet](r1/README.md) records the later exclusion, policy-impact and member-version corrections. The original small4 image repeats small3; it does not prove a fifth distinct visible handoff. R1 adds an exact-label capture assertion and refreshed images.
+
 Precommit source-hash-bound evidence from an owned, network-none, read-only container. The receipt binds all 21 changed production modules and five technical screenshots. No pilot, real AD, backend CLI or native runtime was used.
 
 The Hub is production source with real SQLite, TLS, audit and a synthetic LDAPS wire. The Fleet harness uses compiled `dist/hub/join/client.js`, profile/journal helpers and `dist/hub/client.js`: real key proof, Origin-bound browser handoff, AD, redemption, durable profile/journal, proof-authenticated ACK and pinned WSS. Local Fleet consent is an explicit fixture boundary. Five handoffs use actual Chromium; the rest use the same production HTTP browser routes. The screenshots show accepted sign-in waiting for Fleet completion, before redemption; they are technical evidence, not B2 UI acceptance or five full Fleet services.

@@ -1028,7 +1028,12 @@ export function handleSettingsRequest(
     const api = ctx.hubMemberPairing?.() ?? null;
     if (!api) { json(res, 404, { error: "unavailable" }); return true; }
     const step = pairingRoute[1];
-    if (!step && method === "GET") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } json(res, 200, { ok: true, pairing: api.view(), notices: (api.notices?.() ?? []).filter(n => url.searchParams.get("v") === "2" || n.source === "group") }); return true; }
+    if (!step && method === "GET") {
+      if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+      const version = url.searchParams.get("v") === "3" ? 3 : url.searchParams.get("v") === "2" ? 2 : 1;
+      const notices = (api.notices?.() ?? []).filter(n => n.source === "group" || n.source === "manual" && version >= 2 || n.source === "code" && version >= 3);
+      json(res, 200, { ok: true, pairing: api.view(), notices }); return true;
+    }
     if (step === "cancel" && method === "POST") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } ctx.invalidateHubCompanyJoin?.(); json(res, 200, { ok: true, pairing: api.cancel() }); return true; }
     if (step && method === "POST") {
       const execution = settingsRequestExecution(req);

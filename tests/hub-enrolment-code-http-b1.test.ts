@@ -21,6 +21,13 @@ async function make(r: Awaited<ReturnType<typeof companyJoinRig>>, admin: JoinBr
   const response = await r.call(admin, "POST", "/hub/v1/admin/enrolment-codes", { expires: "today", maxUses: 30, perPersonFleets: 1, scope: { kind: "directory" }, ...patch });
   expect(response.status, response.text).toBe(201); return response.body;
 }
+async function exclude(r: Awaited<ReturnType<typeof companyJoinRig>>, admin: JoinBrowser, login: string) {
+  const path = "/hub/v1/admin/group-policy", current = (await r.call(admin, "GET", path)).body.policy;
+  const policy = { ...current, denies: [{ person: { realm: "corp", objectId: r.people.find(p => p.login === login)!.id }, deny: ["pair_fleet"] }] };
+  const preview = await r.call(admin, "POST", path + "/preview", { policy }); expect(preview.status, preview.text).toBe(200);
+  const saved = await r.call(admin, "PUT", path, { policy, previewDigest: preview.body.previewDigest }); expect(saved.status, saved.text).toBe(200);
+  return preview.body;
+}
 async function begin(r: Awaited<ReturnType<typeof companyJoinRig>>, code: string | null, invitation: string | null = null) {
   const meta = (await r.call(null, "GET", "/hub/v1/join/metadata")).body, keys = generateKeyPairSync("ed25519"), state = randomBytes(32).toString("hex"), verifier = randomBytes(32).toString("base64url");
   const binding = { hub: meta.hub, fleetOrigin: "http://127.0.0.1:4444", requestId: randomUUID(), operationId: randomUUID(), fleetId: randomUUID(),
@@ -193,5 +200,31 @@ describe("B1 enrolment-code protected routes and actual join", () => {
     const b = await begin(r, code.code); expect((await b.approve("dan")).status).toBe(200); expect((await b.redeem()).status).toBe(200);
     expect(() => r.db.transaction(() => retireCompanyJoinForWebAddress(r.db, Date.now())).immediate()).toThrow("backpressure");
     expect(r.deps.companyJoin!.records.get(b.binding.requestId).stage).toBe("issued");
+  });
+  it("a real admin exclusion saved before first enable blocks code admission", async () => {
+    const { r, admin } = await world(), code = await make(r, admin); await exclude(r, admin, "dan");
+    const a = await begin(r, code.code); expect((await a.approve("dan")).status).toBe(403);
+    expect(r.deps.store.read().fleets).toEqual([]);
+    const b = await begin(r, code.code); expect((await b.approve("carol")).status).toBe(200);
+    expect((await b.redeem()).status).toBe(200);
+  });
+  it.each([false, true])("real policy preview/apply accepts retained code provenance after fleet revoked=%s", async revoked => {
+    const { r, admin } = await world(), code = await make(r, admin), a = await begin(r, code.code);
+    expect((await a.approve("dan")).status).toBe(200); expect((await a.redeem()).status).toBe(200);
+    if (revoked) expect((await r.call(admin, "POST", `/hub/v1/admin/fleets/${a.binding.fleetId}/revoke`, {})).status).toBe(200);
+    const path = "/hub/v1/admin/group-policy", policy = { ...(await r.call(admin, "GET", path)).body.policy, state: "enabled", groups: [] };
+    const preview = await r.call(admin, "POST", path + "/preview", { policy }); expect(preview.status, preview.text).toBe(200);
+    expect((await r.call(admin, "PUT", path, { policy, previewDigest: preview.body.previewDigest })).status).toBe(200);
+    expect((await r.call(admin, "GET", path)).body.policy.state).toBe("enabled");
+    expect((r.db.prepare("SELECT source FROM hub_group_resources WHERE source='code'").get() as any).source).toBe("code");
+    expect(r.deps.store.read().fleets[0]!.status).toBe(revoked ? "revoked" : "active");
+  });
+  it("real never-enabled preview names and atomically suspends an excluded retained code Fleet", async () => {
+    const { r, admin } = await world(), code = await make(r, admin), a = await begin(r, code.code);
+    expect((await a.approve("dan")).status).toBe(200); expect((await a.redeem()).status).toBe(200);
+    const preview = await exclude(r, admin, "dan");
+    expect(preview.impact.suspendedOnSave).toEqual([expect.objectContaining({ kind: "fleet", id: a.binding.fleetId })]);
+    expect(r.db.prepare("SELECT state FROM hub_group_resources WHERE source='code'").get()).toEqual({ state: "suspended" });
+    expect((await r.call(admin, "GET", "/hub/v1/admin/group-policy")).body.policy.state).toBe("never-enabled");
   });
 });

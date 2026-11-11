@@ -72,7 +72,9 @@ export function buildHubGroupImpact(input: {
     const manual = row.lifecycle?.source === "manual" || row.lifecycle?.source === "code" || firstEnable, active = row.lifecycle?.state !== "suspended";
     if (firstEnable && !row.lifecycle) capture.push(r);
     const after = decision(next, r.owner, capability(r), input.facts.get(personKeyString(r.owner)) ?? { kind: "unknown" });
-    const narrowing = manual ? denied(next, r.owner, capability(r)) : row.lifecycle?.source === "group" && after.outcome === "deny" && after.authoritative;
+    const narrowing = row.lifecycle?.source === "code"
+      ? next.denies.some(d => personKeyString(d.person) === personKeyString(r.owner) && d.deny.includes(capability(r)))
+      : manual ? denied(next, r.owner, capability(r)) : row.lifecycle?.source === "group" && after.outcome === "deny" && after.authoritative;
     if (active && narrowing) { suspend.push(r); suspendedOnSave.push(row.display); }
     else if (active && manual) grandfathered.push(row.display);
   }

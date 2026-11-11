@@ -103,7 +103,8 @@ export function createHubGroupResources(options: {
     const r = capture(input), ctx = snapshotContext(incoming), actor = resumeActor === undefined ? undefined : validated(person, resumeActor);
     assert(ctx); const p = policy.read(), before = row(r);
     if (!before || r.owner.realm !== p.realm || (actor && actor.realm !== p.realm)) throw new HubGroupPolicyError("invalid");
-    const explicitlyDenied = p.state !== "never-enabled" && p.denies.some(d => d.person.objectId === r.owner.objectId && d.deny.includes(capability(r)));
+    const explicitlyDenied = (before.source === "code" || p.state !== "never-enabled")
+      && p.denies.some(d => d.person.objectId === r.owner.objectId && d.deny.includes(capability(r)));
     let eligibility: Eligibility | undefined;
     if ((before.source === "manual" || before.source === "code") && !explicitlyDenied && r.kind === "fleet" && options.directory) {
       try {
@@ -208,7 +209,7 @@ export function createHubGroupResources(options: {
       const r = capture(input), code = { codeId: validated(uuid, grant.codeId), approvedBy: validated(person, grant.approvedBy) }, ctx = snapshotContext(incoming);
       assert(ctx); const p = policy.read(), image = JSON.stringify(p);
       if (r.kind !== "fleet" || r.owner.realm !== p.realm || code.approvedBy.realm !== p.realm) throw new HubGroupPolicyError("invalid");
-      if (p.state !== "never-enabled" && p.denies.some(d => personKeyString(d.person) === personKeyString(r.owner) && d.deny.includes("pair_fleet"))) throw new HubGroupEnrollmentRefusal("denied");
+      if (p.denies.some(d => personKeyString(d.person) === personKeyString(r.owner) && d.deny.includes("pair_fleet"))) throw new HubGroupEnrollmentRefusal("denied");
       let used = false;
       return { commit(database: Database.Database): void {
         if (database !== db || !db.inTransaction || used) throw new HubGroupPolicyError("invalid");
@@ -227,7 +228,8 @@ export function createHubGroupResources(options: {
       const r = capture(input), who = validated(person, actor), ctx = snapshotContext(incoming);
       if (!db.inTransaction) throw new HubGroupPolicyError("invalid");
       assert(ctx); const p = policy.read(), before = row(r);
-      if (!before || p.state === "never-enabled" || who.realm !== p.realm || r.owner.realm !== p.realm) throw new HubGroupPolicyError("invalid");
+      if (!before || who.realm !== p.realm || r.owner.realm !== p.realm || p.state === "never-enabled"
+        && (before.source !== "code" || !p.denies.some(d => personKeyString(d.person) === personKeyString(r.owner) && d.deny.includes(capability(r))))) throw new HubGroupPolicyError("invalid");
       update(before, "suspended", who, ctx);
     },
     /** Same outer transaction as a confirmed switch-off: policy off/on never silently resumes group resources. */
