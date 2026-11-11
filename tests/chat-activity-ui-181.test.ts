@@ -63,24 +63,28 @@ describe("the timeline in the thread", () => {
     const kids = [...list.children].map((c: any) => (c.classList.contains("activity-row") ? "activity" : c.classList.contains("user") ? "user" : "agent"));
     expect(kids).toEqual(["user", "activity", "agent", "user", "activity", "agent"]);
     const second = blocks(list)[1];
-    expect(second.querySelector(".act-title").textContent).toBe(tr("act.steps").replace("{0}", "7"));      // its six steps and the line said after the reply
+    // Finished: ONE line, "Tool history · used N tools" (its three tool calls; thinking and the line said after the reply are steps, not tools).
+    expect(second.querySelector(".act-title").textContent).toBe(`${tr("act.history")} · ${i18n.t("act.usedTools", 3)}`);
+    expect(blocks(list)[0].querySelector(".act-title").textContent).toBe(`${tr("act.history")} · ${tr("act.usedTool")}`);
     expect(isOpen(second.querySelector("details"))).toBe(false);                 // finished: shut
     expect(list.querySelectorAll(".msg[data-key]")).toHaveLength(4);             // activity rows are not messages
   });
-  it("a live turn is open and has the working title; its reply arriving keeps the same node, closed, with the reader's choice kept", async () => {
+  it("a live turn is SHUT to one line naming its current step; its reply arriving keeps the same node, with the reader's choice kept", async () => {
     const { list, th } = mount();
     const upTo = records.findIndex((r) => r.includes("I looked at the fleet"));
     const going = steps(0, upTo);
     draw(th, ledger.slice(0, 3), going);
     await settle();
     const node = blocks(list)[blocks(list).length - 1];
-    expect(node.querySelector(".act-title").textContent).toBe(tr("act.working"));
-    expect(isOpen(node.querySelector("details"))).toBe(true);
+    expect(node.querySelector("details").classList.contains("live")).toBe(true);
+    expect(node.querySelector(".act-title").textContent).toBe(tr("log.thinking"));      // the newest step of the turn so far
+    expect(isOpen(node.querySelector("details"))).toBe(false);
     // the reply arrives: the group is now that reply's, above its row — the very same node
     draw(th, ledger, steps());
     await settle();
     expect(blocks(list)).toHaveLength(2);
     expect(blocks(list)[1]).toBe(node);
+    expect(node.querySelector("details").classList.contains("done")).toBe(true);
     expect(isOpen(node.querySelector("details"))).toBe(false);
     // the reader opens it; a later update (a tick) leaves it open
     fire(node.querySelector("summary"), "click");
@@ -160,20 +164,22 @@ describe("what a block shows", () => {
     expect(blocks(list)[0].querySelectorAll(".log-item")).toHaveLength(act.SHOWN_MAX + act.EARLIER_STEP);
     expect(blocks(list)[0].querySelector(".act-earlier").textContent).toBe(tr("act.earlier").replace("{0}", String(45 - act.SHOWN_MAX - act.EARLIER_STEP)));
   });
-  it("a match that is not exact says so; the exact one does not; what was never sent is labelled", async () => {
+  it("a match that is not exact says so; the exact one does not; the words said after the last reply are in the same block", async () => {
     const { list, th } = mount();
     const noAnchor = ledger.map(({ anchor: _a, ...r }) => r);
     draw(th, noAnchor, steps());
     await settle();
-    expect(blocks(list)[0].querySelector(".act-lvl").textContent).toBe(tr("act.lvl_text"));
+    expect(blocks(list)[0].querySelector(".act-lvl").textContent).toBe(i18n.t("act.noteInferred", tr("act.lvl_text")));
     draw(th, ledger, steps());
     await settle();
     expect(blocks(list)[0].querySelector(".act-lvl")).toBeNull();
-    fire(blocks(list)[1].querySelector("summary"), "click"); await settle();
-    expect(blocks(list)[1].querySelector(".act-unsent").textContent).toBe(tr("act.notSent"));
+    // What was said after the last reply is the block's last step — in the same block, with no "after the reply" label above the reply.
+    const last = blocks(list)[1].querySelectorAll(".log-item");
+    expect(last[last.length - 1].textContent).toContain("I could not create the instances");
+    expect(blocks(list)[1].querySelector(".act-unsent")).toBeNull();
   });
   it("every string has English and Traditional Chinese", () => {
-    const keys = ["steps", "step", "working", "lvl_text", "lvl_time", "lvl_turn", "lvl_none", "partial", "earlier", "notSent", "menuActivity", "menuThinking"];
+    const keys = ["working", "history", "activity", "usedTools", "usedTool", "tools", "tool", "stepsN", "stepN", "noteInferred", "lvl_text", "lvl_time", "lvl_turn", "lvl_none", "partial", "earlier", "menuActivity", "menuThinking"];
     const en = keys.map((k) => i18n.t(`act.${k}`));
     i18n.setLang("zh-TW");
     const zh = keys.map((k) => i18n.t(`act.${k}`));
@@ -204,41 +210,41 @@ describe("the feed", () => {
   const bodyAttrs = (v: Record<string, string>) => { pg = page(); for (const [k, x] of Object.entries(v)) (pg.document as any).body.dataset[k] = x; };
 
   it("opens the window with the watch (and thinking when offered), then reads after its cursor on each steps_tick, merging by id", async () => {
-    bodyAttrs({ logTab: "1", logThinking: "1" });
+    bodyAttrs({ chatActivity: "1", logThinking: "1" });
     const first = answer({ steps: [{ id: "a", turn: "t", ts: 1, kind: "tool", tool: "Bash", status: "running" }], after: 10 });
     const next = answer({ steps: [{ id: "a", turn: "t", ts: 1, kind: "tool", tool: "Bash", status: "done" }, { id: "b", turn: "t", ts: 2, kind: "assistant", body: "ok" }], after: 20 });
     const f = fakeFeed([first, next]);
     f.feed.start(); await settle();
-    expect(f.calls[0]).toBe("/ui/steps?instance=w&watch=1&thinking=1");
-    expect(f.timers.length).toBe(1);                       // the lease renewal (the stream's tick does the rest)
+    expect(f.calls[0]).toBe("/ui/steps?instance=w&chat=1&watch=1&thinking=1");
+    expect(f.timers.length).toBe(2);                       // the poll (idle while the stream is live) and the lease renewal
     for (const fn of f.ticks) fn({ instance: "other" }); await settle();
     expect(f.calls).toHaveLength(1);                       // another instance's tick reads nothing
     for (const fn of f.ticks) fn({ instance: "w" }); await settle();
-    expect(f.calls[1]).toBe("/ui/steps?instance=w&watch=1&thinking=1&ev=0&after=10&key=1-2");
+    expect(f.calls[1]).toBe("/ui/steps?instance=w&chat=1&watch=1&thinking=1&ev=0&after=10&key=1-2");
     expect(f.feed.info()).toMatchObject({ thinking: true, cwd: "/srv/w" });
     const rows = f.feed.compose([]);                       // the turn has not ended and has no reply yet: the live group, steps merged by id
     expect(rows.map((r: any) => [r.role, r.group.level, r.group.items.map((x: any) => `${x.id}:${x.status ?? x.kind}`)])).toEqual([["activity", "live", ["a:done", "b:assistant"]]]);
     expect(f.changed).toBe(2);
   });
   it("not asked for thinking when the server does not offer it or this browser hides it; switching it on reads the window again", async () => {
-    bodyAttrs({ logTab: "1", logThinking: "0" });
+    bodyAttrs({ chatActivity: "1", logThinking: "0" });
     let want = true;
     const f = fakeFeed([answer({ thinking: false })], { wantThinking: () => want });
     f.feed.start(); await settle();
     expect(f.calls[0]).toContain("thinking=0");
     f.feed.stop();
     act.forgetActivity();
-    bodyAttrs({ logTab: "1", logThinking: "1" });
+    bodyAttrs({ chatActivity: "1", logThinking: "1" });
     want = false;
     const g = fakeFeed([answer({ thinking: true })], { wantThinking: () => want });
     g.feed.start(); await settle();
     expect(g.calls[0]).toContain("thinking=0");
     want = true;
     for (const fn of g.ticks) fn({ instance: "w" }); await settle();
-    expect(g.calls[1]).toBe("/ui/steps?instance=w&watch=1&thinking=1");   // the window again, not a read after the cursor
+    expect(g.calls[1]).toBe("/ui/steps?instance=w&chat=1&watch=1&thinking=1");   // the window again, not a read after the cursor
   });
   it("a server that does not offer it (403, 404, off, a backend with no transcript) ends the feed for this page; stop() ends every timer and listener", async () => {
-    bodyAttrs({ logTab: "1" });
+    bodyAttrs({ chatActivity: "1" });
     for (const a of [403, 404, { enabled: false }, answer({ supported: false, reason: "unsupported" })]) {
       act.forgetActivity();
       const f = fakeFeed([a as never]);
@@ -250,7 +256,7 @@ describe("the feed", () => {
     }
   });
   it("a chat shown again starts from what the page knew (no empty flash), and reads what is new", async () => {
-    bodyAttrs({ logTab: "1" });
+    bodyAttrs({ chatActivity: "1" });
     const s = steps();
     const f = fakeFeed([answer({ steps: s, after: 500, before: null })]);
     f.feed.start(); await settle(); f.feed.stop();
@@ -258,12 +264,16 @@ describe("the feed", () => {
     expect(shown.filter((r: any) => r.role === "activity")).toHaveLength(2);
     const g = fakeFeed([answer({ steps: [], after: 600 })]);
     g.feed.start(); await settle();
-    expect(g.calls[0]).toBe("/ui/steps?instance=w&watch=1&thinking=0&ev=0&after=500&key=1-2");
+    expect(g.calls[0]).toBe("/ui/steps?instance=w&chat=1&watch=1&thinking=0&ev=0&after=500&key=1-2");
   });
-  it("the Log's switch: nothing is offered unless <body data-log-tab=1>", () => {
+  it("nothing is offered unless <body data-chat-activity=1> (an admin session on the local dashboard) — the Log tab's switch no longer decides", () => {
     bodyAttrs({});
     expect(act.activityOffered()).toBe(false);
     (pg!.document as any).body.dataset.logTab = "1";
+    expect(act.activityOffered()).toBe(false);
+    (pg!.document as any).body.dataset.chatActivity = "0";
+    expect(act.activityOffered()).toBe(false);
+    (pg!.document as any).body.dataset.chatActivity = "1";
     expect(act.activityOffered()).toBe(true);
   });
 });

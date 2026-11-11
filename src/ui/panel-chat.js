@@ -167,8 +167,9 @@ const P = () => globalThis.AgendPreview;
 export let store = null;
 
 /**
- * AGEND-181: the thread's rows with the activity timeline put in — each turn's thinking and tool steps above the reply
- * they produced, the turn in progress at the end — when the Log is on and this browser shows activity. Else the rows.
+ * AGEND-181/197: the thread's rows with the activity block put in — each turn's steps above the reply they produced, the
+ * turn in progress at the end — for an admin session, when this browser shows activity. Else the rows. (Which agents have
+ * anything: each one's tool_progress, the feed's answer.)
  */
 const activityShown = () => activityOffered() && activityPrefs.get().on;
 const rowsOf = (name) => (activityShown() ? composeActivity(name, store.threadRows(name)) : store.threadRows(name));
@@ -451,7 +452,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     // #2117: its ambient — why it is not showing here (with the way to change that), and a person's Clear.
     ...ambientMenuItems(name, { publicLink: document.body.dataset.publicLink === "1", clear: clearAmbient }),
     // AGEND-181: the activity timeline above each reply (this browser's choice), when the Log is on.
-    ...(activityOffered() ? [
+    ...(activityOffered() && activityInfo(name)?.level !== "off" ? [
       { key: "activity", checkbox: true, checked: activityPrefs.get().on, label: t("act.menuActivity"), onSelect: () => setActivityOn(!activityPrefs.get().on) },
       ...(activityInfo(name)?.thinking ? [{ key: "thinking", checkbox: true, checked: activityPrefs.get().thinking, disabled: !activityPrefs.get().on, label: t("act.menuThinking"), onSelect: () => setActivityThinking(!activityPrefs.get().thinking) }] : []),
     ] : []),
@@ -600,15 +601,16 @@ function follow(name, thread) {
   if (emojiIndex) offs.push(emojiIndex.subscribe(() => thread.render(rowsOf(name))));
   if (mentionIndex) offs.push(mentionIndex.subscribe(() => thread.render(rowsOf(name))));
   wantEmojis(store.state.msgs[name]);
-  // AGEND-181: the activity feed — this instance's steps while the chat is shown (the Log's own read, live by steps_tick);
-  // switched by this browser's Show activity / Show thinking. Nothing is read when the Log is off.
+  // AGEND-181/197: the activity feed — this instance's steps while the chat is shown (the Log's own read, live by steps_tick,
+  // or by a poll when the stream has fallen back to polling); switched by this browser's Show activity / Show thinking.
+  // Nothing is read for anyone but an admin session on the local dashboard.
   let feed = null;
   const sync = () => {
     if (activityShown() && !feed) {
       feed = observeActivity(name, {
         changed: () => thread.render(rowsOf(name)),
         streamOn: appStore.get().streamOn,
-        polling: globalThis.document?.body?.dataset?.webTransport === "poll",
+        polling: () => globalThis.document?.body?.dataset?.webTransport === "poll" || appStore.get().connection === "polling",
         wantThinking: () => activityPrefs.get().thinking,
       });
       feed.start();
@@ -620,7 +622,7 @@ function follow(name, thread) {
   offs.push(() => { if (feed) { feed.stop(); feed = null; } });
   offs.push(store.subscribe((instance, kind) => {
     if (instance !== name) return;
-    if (kind === "msgs") { thread.render(rowsOf(name)); wantEmojis(store.state.msgs[name]); }
+    if (kind === "msgs") { thread.render(rowsOf(name)); wantEmojis(store.state.msgs[name]); if (feed) feed.nudge(); }   // a message came or went: read the steps now
     else if (kind === "progress") thread.progress();                       // an upload moved: its bar, in place
     else if (kind === "sent") thread.jumpLatest();
   }));

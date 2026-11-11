@@ -61,8 +61,8 @@ export function shortenPaths(text, paths) {
 }
 
 // The app's own SVG icons (never emoji: a device without an emoji font shows boxes).
-const CAT_ICON = { read: "file", edit: "edit", search: "search", run: "code", web: "globe", mcp: "plug", agent: "team", plan: "tasks", message: "send", other: "sliders" };
-const KIND_ICON = { user: "user", assistant: "bot", thinking: "wand", error: "alert", turn_end: "stop", state: "info", event: "bell" };
+export const CAT_ICON = { read: "file", edit: "edit", search: "search", run: "code", web: "globe", mcp: "plug", agent: "team", plan: "tasks", message: "send", other: "sliders" };
+export const KIND_ICON = { user: "user", assistant: "bot", thinking: "wand", error: "alert", turn_end: "stop", state: "info", event: "bell" };
 
 function size(bytes) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -139,8 +139,23 @@ export function collapse(items) {
 }
 
 
-/** One line of the Log. */
-export function LogRow({ x, prev, paths, chat }) {
+/** The one-line words of a step — its kind or category and what it acts on — for a header that names the current step. */
+export function stepLine(x, paths) {
+  const short = (v) => shortenPaths(v, paths);
+  if (x.kind === "thinking") return tl("thinking");
+  if (x.kind === "assistant") return `${tl("said")}: ${short(String(x.body || "").replace(/\s+/g, " ").trim()).slice(0, 80)}`;
+  if (x.kind === "error") return x.note ? tl("errorCode", x.note) : tl("error");
+  const cat = x.cat || "other";
+  const subject = cat === "plan" && x.subject ? tl("plan_items", x.subject) : short(x.subject || x.tool || "");
+  return subject ? `${tl(`cat_${cat}`)} ${subject}` : tl(`cat_${cat}`);
+}
+
+/**
+ * One line of the Log. `chat`: in the chat's activity block (an assistant line is "Said"). `compact` (the block's rows,
+ * AGEND-197): no time column and no "done" word — a step line is its icon, its words, and only what is unusual about it
+ * (running, failed, interrupted, a non-zero exit); `latest` marks the newest step of a block still running.
+ */
+export function LogRow({ x, prev, paths, chat, compact, latest }) {
   const [open, setOpen] = useState(false);
   const [full, setFull] = useState(false);
   const short = (v) => shortenPaths(v, paths);
@@ -148,7 +163,7 @@ export function LogRow({ x, prev, paths, chat }) {
   const title = x.ts ? chatTimeFull(x.ts) : "";
   const newTurn = x.kind === "user" && prev && prev.turn !== x.turn;
   const head = (icon, label, extra) => html`<div class="log-head"><span class="log-icon" aria-hidden="true"><${Icon} name=${icon} size=${14} /></span>
-    <span class="log-label">${label}</span>${extra || null}<span class="grow"></span><span class="log-time" title=${title}>${time}</span></div>`;
+    <span class="log-label">${label}</span>${extra || null}<span class="grow"></span>${compact ? null : html`<span class="log-time" title=${title}>${time}</span>`}</div>`;
   const text = (raw, cut, bytes) => {
     if (!raw) return null;
     const body = short(raw);
@@ -187,7 +202,8 @@ export function LogRow({ x, prev, paths, chat }) {
   } else {
     const cat = x.cat || "other";
     const subject = cat === "plan" && x.subject ? tl("plan_items", x.subject) : short(x.subject || "");
-    const status = html`<span class=${`log-status ${x.status || "done"}`}>${x.status === "running" ? html`<span class="spinner" aria-hidden="true"></span>` : null}${tl(x.status || "done")}${typeof x.exitCode === "number" && x.exitCode !== 0 ? ` · ${tl("exit", x.exitCode)}` : ""}${x.durationMs ? ` · ${duration(x.durationMs)}` : ""}</span>`;
+    const quiet = compact && (x.status || "done") === "done" && !(typeof x.exitCode === "number" && x.exitCode !== 0);
+    const status = quiet ? null : html`<span class=${`log-status ${x.status || "done"}`}>${x.status === "running" ? html`<span class="spinner" aria-hidden="true"></span>` : null}${tl(x.status || "done")}${typeof x.exitCode === "number" && x.exitCode !== 0 ? ` · ${tl("exit", x.exitCode)}` : ""}${x.durationMs ? ` · ${duration(x.durationMs)}` : ""}</span>`;
     const label = html`<span class="log-cat">${tl(`cat_${cat}`)}</span>${subject ? html` <span class="log-subject mono" title=${x.subject && subject !== x.subject ? x.subject : null}>${subject}</span>` : null}${x.tool && !subject ? html` <span class="log-tool mono muted">${x.tool}</span>` : null}`;
     const has = !!(x.body || x.input || x.bodyBytes);
     row = html`${head(CAT_ICON[cat] || CAT_ICON.other, label, html`${x.repeat ? html`<span class="log-repeat">${tl("times", x.repeat)}</span>` : null}${status}`)}
@@ -196,5 +212,5 @@ export function LogRow({ x, prev, paths, chat }) {
         ${x.input ? html`<div class="log-sec"><span class="log-sec-h">${tl("args")}</span><div class="log-text mono">${short(x.input)}</div>${x.inputCut ? html`<p class="note">${tl("cut", x.inputCut.toLocaleString())}</p>` : null}</div>` : null}
         <div class="log-sec"><span class="log-sec-h">${tl("output")}</span>${x.body ? text(x.body, x.bodyCut, x.bodyBytes) : html`<p class="note">${tl("noOutput")}</p>`}</div></div>` : null}`;
   }
-  return html`<li class=${`log-item k-${x.kind}${x.status ? ` s-${x.status}` : ""}${newTurn ? " turn-start" : ""}`}>${row}</li>`;
+  return html`<li class=${`log-item k-${x.kind}${x.status ? ` s-${x.status}` : ""}${newTurn ? " turn-start" : ""}${compact ? " compact" : ""}${latest ? " latest" : ""}`}>${row}</li>`;
 }

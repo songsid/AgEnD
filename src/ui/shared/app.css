@@ -415,9 +415,11 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 :is(.p-log, .act-block) .log-sec-h { font-size: var(--fs-xs); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
 :is(.p-log, .act-block) .log-older, .p-log .log-start { text-align: center; margin: var(--s-2) 0; }
 .p-log .log-off { padding: var(--s-6) var(--s-4); }
-/* AGEND-181: the chat's activity timeline — above each agent reply a `.card` with a native <details> (what the agent did to
-   produce it: the Log's own rows, log-row.js), the turn in progress at the end of the thread. The tokens and rows are the
-   Log's; only the frame is new. It sits close to the reply it belongs to (the thread's gap would put it a message away). */
+/* AGEND-181/197: the chat's activity block, as #3648's mockups draw it — above each agent reply a `.card` with a native
+   <details>: running, shut to one live line (the current step · N tools · elapsed), opened the steps with the newest in bold;
+   finished, one line "Tool history · used N tools" above the reply. The rows are the Log's own (log-row.js, compact), the
+   tokens and the card are the app's; only the frame is new. It sits close to the reply it belongs to (the thread's gap
+   would put it a message away). */
 .activity-row { align-self: stretch; min-width: 0; }
 .activity-row:not(:last-child) { margin-bottom: calc(var(--s-2) - var(--s-6)); }
 .activity-row[hidden] { display: none; }
@@ -427,15 +429,17 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .act-block .act-sum::-webkit-details-marker { display: none; }
 .act-block .act-chev { flex: none; display: inline-flex; transition: transform .15s ease; transform: rotate(-90deg); }
 .act-block[open] .act-chev { transform: none; }
-.act-block .act-title { font-weight: var(--fw-semibold); color: var(--text-2); }
-.act-block .act-dur { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-3); }
-.act-block .act-lvl { margin-left: auto; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
-.act-block .act-spin { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
-.act-block .act-body { max-height: min(60vh, 28rem); overflow-y: auto; padding: var(--s-1) 0 var(--s-2); display: flex; flex-direction: column; gap: var(--s-2); }
+.act-block .act-ic { flex: none; display: inline-flex; color: var(--text-3); }
+.act-block .act-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.act-block .act-title.act-now { color: var(--text); }
+.act-block .act-meta { flex: none; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.act-block .act-spin { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+.act-block .act-body { max-height: min(60vh, 28rem); overflow-y: auto; padding: var(--s-1) 0 var(--s-2); display: flex; flex-direction: column; gap: var(--s-2); border-top: 1px solid var(--border); }
 .act-block .act-earlier { align-self: center; }
-.act-block .act-unsent { margin: var(--s-2) 0 0; }
-.act-block .log-item { background: var(--surface-2); }
-.act-block .log-time { display: none; }
+.act-block .act-lvl, .act-block .act-partial { margin: 0; }
+.act-block .log-item { background: transparent; padding: 3px var(--s-1); }
+.act-block .log-item.compact .log-cat { font-weight: var(--fw-regular); color: var(--text-2); }
+.act-block .log-item.latest .log-cat, .act-block .log-item.latest .log-subject { font-weight: var(--fw-semibold); color: var(--text); }
 .act-block .log-think { font-style: italic; color: var(--text-2); }
 .act-block .log-think.open { max-height: 10rem; overflow-y: auto; }
 /* The header's controls are one height, the icon buttons' (36 px): its small buttons, and the instance tabs when they share

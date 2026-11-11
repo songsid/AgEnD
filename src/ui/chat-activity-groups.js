@@ -20,6 +20,10 @@
 //   none  nothing matched: an "activity" group of its own, between the rows by time. Never attached to a guess.
 // A `reply` call that failed or was interrupted sent nothing: it claims no row (a retry that worked would lose its row to
 // it); its steps join the next segment, and the failed call shows there as an ordinary tool step.
+// What a step must be to be shown (AGEND-197): a text with nothing in it — blank, or only punctuation (the `.` Claude Code
+// writes after its `reply` call, which is the turn's close-out, not a thought) — is not a step; a turn left with no shown
+// step has no group at all. Text after the last reply with substance stays in that reply's group (the same block as the
+// turn's other steps), and only until its reply row arrives is it ever the live group.
 // A page labels `text`, `time`, `turn` and `none` as inferred. A reply call seen a moment before its row arrives is
 // `live` (placed at the end) so the group does not jump when the row comes.
 //
@@ -35,6 +39,9 @@ export const AWAIT_ROW_MS = 15000;
 const SHOWN = new Set(["thinking", "assistant", "tool", "error"]);
 const REPLY_TOOL = /^(?:mcp__agend[\w-]*__|agend[\w-]*:)?reply$/;
 const REPLY_TEXT = 200;
+
+/** A text step with words in it: not blank, not only punctuation (letters, digits and symbols such as emoji count). */
+export const hasSubstance = (s) => s.kind !== "assistant" || /[^\s\p{P}]/u.test(String(s.body == null ? "" : s.body));
 
 export const rowKeyOf = (x) => `${x.boot}-${x.id}`;
 export const isReplyStep = (s) => s.kind === "tool" && typeof s.tool === "string" && REPLY_TOOL.test(s.tool);
@@ -61,7 +68,8 @@ function turnsOf(steps) {
  * @param opts  { now?: ms, complete?: boolean — the steps reach back to the transcript's start (false: the first turn may
  *              lack its beginning), instance? }
  * @returns { groups: Group[], live: Group|null }
- *   Group = { key, turn, n, level, rowKey: string|null, items: Step[], trailing: Step[], ts: number, partial?: true,
+ *   Group = { key, turn, n, level, rowKey: string|null, items: Step[], trailing: Step[], ts: number, from, to (ms: when the
+ *   work for the reply began — the turn's start, or the previous reply's call — and when it ended; `to` 0 while live), partial?: true,
  *   ended: the segment is complete (false: live), turnEnded: the turn is over — only then are `trailing` steps "never sent" }
  *   `groups` are in thread order; `rowKey` is the row a group sits above (null: between rows by `ts`, or live at the end).
  */
@@ -99,6 +107,9 @@ export function groupSteps(rows, steps, opts = {}) {
     return null;
   };
 
+  /** The newest group already placed for this turn (a reply whose row is there), if any. */
+  const lastPlacedOf = (turnId) => [...groups].reverse().find((g) => g.turn === turnId);
+
   turns.forEach((turn, ti) => {
     const first = turn.steps.find((s) => s.kind === "user");
     const ended = turn.steps.some((s) => s.kind === "turn_end");
@@ -114,13 +125,14 @@ export function groupSteps(rows, steps, opts = {}) {
     const inTurn = userRow
       ? (c) => c.i > userRow.i && (!next || c.i < next.i)
       : (c) => { const t = rowTs(c.x); return t >= t0 && t < t1; };
-    let seg = [], n = 0, replied = 0;
+    // When the work for a reply began: the turn's start for its first reply, else the previous reply's call.
+    let seg = [], n = 0, replied = 0, from = (first && first.ts) || (turn.steps[0] && turn.steps[0].ts) || 0;
     const segs = [];
-    const flush = (replyStep) => { segs.push({ n: n++, items: seg, reply: replyStep }); seg = []; };
+    const flush = (replyStep) => { segs.push({ n: n++, items: seg, reply: replyStep, from }); from = replyStep.ts || from; seg = []; };
     for (const s of turn.steps) {
       if (s.kind === "user" || s.kind === "turn_end" || s.kind === "state") continue;
       if (isReplyStep(s) && !isLostReply(s)) { replied++; flush(s); continue; }
-      if (SHOWN.has(s.kind)) seg.push(s);
+      if (SHOWN.has(s.kind) && hasSubstance(s)) seg.push(s);
     }
     const tail = seg;                                      // after the last reply (or the whole turn when it had none)
     const partial = ti === 0 && opts.complete === false && !first;
@@ -130,14 +142,14 @@ export function groupSteps(rows, steps, opts = {}) {
       const last = cand[cand.length - 1];
       if (last) {
         taken.add(last.i);
-        groups.push({ key: `act:${tkey}:0`, turn: turn.turn, n: 0, level: "turn", rowKey: rowKeyOf(last.x), items: tail, trailing: [], ts: tail[0].ts || 0, ended: true, turnEnded: true, ...(partial ? { partial: true } : {}) });
+        groups.push({ key: `act:${tkey}:0`, turn: turn.turn, n: 0, level: "turn", rowKey: rowKeyOf(last.x), items: tail, trailing: [], ts: tail[0].ts || 0, from, to: tail[tail.length - 1].ts || 0, ended: true, turnEnded: true, ...(partial ? { partial: true } : {}) });
         return;
       }
     }
     segs.forEach((sg) => {
       const where = place(sg.reply, inTurn);
       const ts = (sg.items[0] && sg.items[0].ts) || sg.reply.ts || 0;
-      const base = { key: `act:${tkey}:${sg.n}`, turn: turn.turn, n: sg.n, items: sg.items, trailing: [], ts, ended: true, turnEnded: ended, ...(partial && sg.n === 0 ? { partial: true } : {}) };
+      const base = { key: `act:${tkey}:${sg.n}`, turn: turn.turn, n: sg.n, items: sg.items, trailing: [], ts, from: sg.from, to: sg.reply.ts || 0, ended: true, turnEnded: ended, ...(partial && sg.n === 0 ? { partial: true } : {}) };
       if (where) { groups.push({ ...base, ...where }); return; }
       const awaiting = lastTurn && (sg.reply.status === "running" || (sg.reply.ts && now - sg.reply.ts < AWAIT_ROW_MS));
       if (!awaiting) { groups.push({ ...base, level: "none", rowKey: null }); return; }
@@ -149,13 +161,19 @@ export function groupSteps(rows, steps, opts = {}) {
     if (!ended && lastTurn) {
       // Still going. A reply whose row has not arrived yet is the live group, and this is more work after it.
       if (live) live.trailing = tail;
-      else live = { key: `act:${tkey}:${n}`, turn: turn.turn, n, level: "live", rowKey: null, items: tail, trailing: [], ts: tail[0].ts || 0, ended: false, turnEnded: false, ...(partial && !segs.length ? { partial: true } : {}) };
+      else if (lastPlacedOf(turn.turn) && tail.every((x) => x.kind === "assistant")) {
+        // Only words after a reply whose row is already there: the close-out of that reply's group, not a new live block
+        // below the reply (which would then jump back up when the turn ends).
+        const g = lastPlacedOf(turn.turn);
+        g.trailing = tail; g.to = tail[tail.length - 1].ts || g.to;
+      }
+      else live = { key: `act:${tkey}:${n}`, turn: turn.turn, n, level: "live", rowKey: null, items: tail, trailing: [], ts: tail[0].ts || 0, from, to: 0, ended: false, turnEnded: false, ...(partial && !segs.length ? { partial: true } : {}) };
       return;
     }
     // Ended (or an earlier turn that never saw its end): they ride on the last reply's group, shown as never sent.
-    const lastPlaced = [...groups].reverse().find((g) => g.turn === turn.turn);
-    if (lastPlaced) { lastPlaced.trailing = tail; return; }
-    groups.push({ key: `act:${tkey}:${n}`, turn: turn.turn, n, level: "none", rowKey: null, items: tail, trailing: [], ts: tail[0].ts || 0, ended: true, turnEnded: ended, ...(partial && !segs.length ? { partial: true } : {}) });
+    const lastPlaced = lastPlacedOf(turn.turn);
+    if (lastPlaced) { lastPlaced.trailing = tail; lastPlaced.to = tail[tail.length - 1].ts || lastPlaced.to; return; }
+    groups.push({ key: `act:${tkey}:${n}`, turn: turn.turn, n, level: "none", rowKey: null, items: tail, trailing: [], ts: tail[0].ts || 0, from, to: tail[tail.length - 1].ts || 0, ended: true, turnEnded: ended, ...(partial && !segs.length ? { partial: true } : {}) });
   });
   return { groups, live };
 }

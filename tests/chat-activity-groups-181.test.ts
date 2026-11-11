@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ClaudeStepParser, CodexStepParser, promptAnchor, replyResultId, type LogStep } from "../src/log-steps.js";
 // @ts-expect-error — a JS module of the app, with no types
-import { groupSteps, composeRows, isReplyStep, TIME_SLACK_MS } from "../src/ui/chat-activity-groups.js";
+import { groupSteps, composeRows, hasSubstance, isReplyStep, TIME_SLACK_MS } from "../src/ui/chat-activity-groups.js";
 
 const FIX = join(import.meta.dirname, "fixtures", "chat-activity-3648");
 const lines = readFileSync(join(FIX, "claude-web-chat.jsonl"), "utf8").split("\n").filter(Boolean);
@@ -94,8 +94,8 @@ describe("grouping: steps above the reply they produced", () => {
     expect(shape(result.groups[0].items)).toEqual(["tool:ToolSearch"]);
     expect(shape(result.groups[1].items)).toEqual(["thinking", "tool:ToolSearch", "tool:mcp__agend__list_instances", "tool:mcp__agend__list_teams", "thinking", "thinking"]);
   });
-  it("what the CLI said after its last reply rides on that group as not-sent text, once the turn ended", () => {
-    expect(shape(result.groups[0].trailing)).toEqual(["assistant"]);
+  it("what the CLI said after its last reply rides on that group, once the turn ended — unless it is only punctuation (the real capture's first turn closes with a lone `.`)", () => {
+    expect(shape(result.groups[0].trailing)).toEqual([]);
     expect(shape(result.groups[1].trailing)).toEqual(["assistant"]);
     expect(result.groups.every((g: any) => g.turnEnded)).toBe(true);
   });
@@ -183,7 +183,7 @@ describe("grouping: when the exact anchor is not there", () => {
     expect(shape(g.groups[0].items)).toEqual(["tool:Bash", "assistant"]);
   });
   it("the window starts mid-turn (older steps not loaded): that first group says it is partial; a complete read does not", () => {
-    const mid = steps.filter((s) => s.kind !== "user" || s.anchor?.messageId !== "web-mwbq2a8v-5a701907").slice(2);
+    const mid = steps.filter((s) => s.kind !== "user" || s.anchor?.messageId !== "web-mwbq2a8v-5a701907").slice(1);
     expect(groupSteps(ledger, mid, { now, complete: false }).groups[0].partial).toBe(true);
     expect(groupSteps(ledger, mid, { now, complete: true }).groups[0].partial).toBeUndefined();
   });
@@ -261,5 +261,49 @@ describe("grouping: a failed reply, the turn's bounds for time, a turn with no i
     const after = groupSteps(rows, [...older, ...later], { now: 1e12 }).groups.find((x: any) => x.items.some((i: LogStep) => i.id === "o200.1"));
     expect(before.key).toBe(after.key);
     expect(before.key).toBe("act:~o200.0:0");
+  });
+});
+
+describe("AGEND-197: a step must have substance; a turn with none has no block", () => {
+  const user = (id: string, anchor: string): LogStep => ({ id: `u${id}`, turn: "t1", ts: 1000, kind: "user", anchor: { messageId: anchor } });
+  const say = (id: string, body: string, ts = 2000): LogStep => ({ id, turn: "t1", ts, kind: "assistant", body });
+  const reply = (id: string, ts: number, messageId: string): LogStep => ({ id, turn: "t1", ts, kind: "tool", tool: "mcp__agend__reply", cat: "message", status: "done", anchor: { messageId, replyText: "hi" } });
+  const end: LogStep = { id: "e", turn: "t1", ts: 5000, kind: "turn_end" };
+  const rows = [
+    { boot: "b", id: 1, role: "user", text: "q", anchor: "w-u1", ts: new Date(900).toISOString() },
+    { boot: "b", id: 2, role: "agent", text: "hi", anchor: "w-r1", ts: new Date(3100).toISOString() },
+  ];
+  it.each([[".", true], ["  ", true], ["…", true], ["!!!", true], [" . ", true], ["", true], ["OK", false], ["done.", false], ["👍", false], ["42", false]])(
+    "a text of %j is %s as nothing", (body, nothing) => {
+      expect(hasSubstance(say("a", body))).toBe(!nothing);
+    });
+  it("only tool and thinking steps are never judged by their text", () => {
+    expect(hasSubstance({ id: "t", turn: "t1", ts: 1, kind: "tool", tool: "Bash", body: "." } as LogStep)).toBe(true);
+  });
+  it("a turn whose only step is the lone `.` after its reply has no shown step in its group (nothing to draw)", () => {
+    const g = groupSteps(rows, [user("1", "w-u1"), reply("r", 3000, "w-r1"), say("a", "."), end], { now: 1e12, complete: true });
+    expect(g.groups).toHaveLength(1);
+    expect(g.groups[0].items).toEqual([]);
+    expect(g.groups[0].trailing).toEqual([]);
+  });
+  it("words with substance after the reply stay in the reply's group — also before the turn ends (no second, live block below the reply)", () => {
+    const going = groupSteps(rows, [user("1", "w-u1"), reply("r", 3000, "w-r1"), say("a", "I sent you the summary.", 3200)], { now: 3300, complete: true });
+    expect(going.live).toBeNull();
+    expect(going.groups).toHaveLength(1);
+    expect(shape(going.groups[0].trailing)).toEqual(["assistant"]);
+    // The same steps with the turn ended are the same group (same key, nothing moves).
+    const ended = groupSteps(rows, [user("1", "w-u1"), reply("r", 3000, "w-r1"), say("a", "I sent you the summary.", 3200), end], { now: 6000, complete: true });
+    expect(ended.groups[0].key).toBe(going.groups[0].key);
+  });
+  it("more tool work after a reply whose row is there is a new live group (the next reply's), not the close-out", () => {
+    const g = groupSteps(rows, [user("1", "w-u1"), reply("r", 3000, "w-r1"), { id: "x", turn: "t1", ts: 3300, kind: "tool", tool: "Bash", cat: "run", status: "running" }], { now: 3400, complete: true });
+    expect(g.live).not.toBeNull();
+    expect(shape(g.live.items)).toEqual(["tool:Bash"]);
+  });
+  it("from / to: the work for a reply begins at the turn's start and ends at its reply call; a live group has no end", () => {
+    const g = groupSteps(rows, [user("1", "w-u1"), { id: "x", turn: "t1", ts: 1500, kind: "tool", tool: "Read", cat: "read", status: "done", subject: "a.ts" }, reply("r", 3000, "w-r1"), end], { now: 6000, complete: true });
+    expect([g.groups[0].from, g.groups[0].to]).toEqual([1000, 3000]);
+    const live = groupSteps(rows.slice(0, 1), [user("1", "w-u1"), { id: "x", turn: "t1", ts: 1500, kind: "tool", tool: "Read", cat: "read", status: "running", subject: "a.ts" }], { now: 2000, complete: true });
+    expect([live.live.from, live.live.to]).toEqual([1000, 0]);
   });
 });

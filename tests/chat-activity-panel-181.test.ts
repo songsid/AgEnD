@@ -52,7 +52,7 @@ function steps(next: () => Record<string, unknown>) {
   }) as any;
 }
 const answer = (n: number, o: Record<string, unknown> = {}) => ({ enabled: true, instance: "w", backend: "claude-code", supported: true, thinking: true, cwd: "/srv/w", home: "/home/me", key: "1-1", steps: stepsOf(n), events: [], before: null, after: n * 1000, ev: 0, ...o });
-async function open(body: Record<string, string> = { logTab: "1", logThinking: "1" }) {
+async function open(body: Record<string, string> = { chatActivity: "1", logThinking: "1" }) {
   current = page({ url: `${ORIGIN}/ui/chat/w`, storage: { agend_tour_done: "1" } });
   for (const [k, v] of Object.entries(body)) (current.document as any).body.dataset[k] = v;
   panel.store.state.msgs.w = ledger.map((r) => ({ ...r }));
@@ -63,11 +63,11 @@ async function open(body: Record<string, string> = { logTab: "1", logThinking: "
 }
 const rowsOf = (doc: any) => [...doc.querySelector(".thread").children].map((c: any) => (c.classList.contains("activity-row") ? "activity" : c.classList.contains("user") ? "user" : "agent"));
 
-describe("the chat with the Log on", () => {
+describe("the chat for an admin session", () => {
   it("reads the instance's steps and draws each turn above its reply", async () => {
     steps(() => answer(records.length));
     const doc = await open();
-    expect(asked[0]).toBe("/ui/steps?instance=w&watch=1&thinking=1");
+    expect(asked[0]).toBe("/ui/steps?instance=w&chat=1&watch=1&thinking=1");
     expect(rowsOf(doc)).toEqual(["user", "activity", "agent", "user", "activity", "agent"]);
   });
   it("a turn in progress grows at the end on steps_tick and becomes its reply's block, in the same node", async () => {
@@ -130,12 +130,58 @@ describe("the chat with the Log on", () => {
   });
 });
 
-describe("the chat with the Log off", () => {
-  it("asks nothing and draws nothing", async () => {
+describe("the chat for anyone but an admin session on the local dashboard (AGEND-197)", () => {
+  it("asks nothing and draws nothing — a guest, the public link and a read-only session are never offered the block", async () => {
     steps(() => answer(records.length));
-    const doc = await open({ logTab: "0" });
-    expect(asked).toEqual([]);
+    for (const body of [{ chatActivity: "0" }, { logTab: "1" }, {}] as Array<Record<string, string>>) {
+      const doc = await open(body);
+      expect(asked, JSON.stringify(body)).toEqual([]);
+      expect(doc.querySelectorAll(".activity-row")).toHaveLength(0);
+      await current!.unmount(); current!.restore(); current = null;
+      panel.forgetKeptThreads(); act.forgetActivity();
+    }
+  });
+});
+
+describe("live without a stream tick (AGEND-197): the steps do not wait for the reply", () => {
+  it("a message arriving makes the chat read the steps at once (a sent message opens the watch; a reply catches the steps up)", async () => {
+    steps(() => answer(records.length));
+    await open();
+    const n = asked.length;
+    panel.store.ingest({ instance: "w", boot: "a1b2", id: 99, role: "user", sender: "web-user", text: "next", ts: new Date().toISOString() });
+    await settle(); await settle();
+    expect(asked.length).toBe(n + 1);
+    expect(asked.at(-1)).toContain("after=");
+  });
+  it("the stream fell back to polling (appStore.connection is polling: steps_tick does not travel): the chat polls the steps itself", async () => {
+    const polls: Array<() => void> = [];
+    const real = globalThis.setInterval;
+    const spy = vi.spyOn(globalThis, "setInterval").mockImplementation(((fn: () => void, ms?: number, ...rest: unknown[]) => {
+      if (ms === act.POLL_MS) { polls.push(fn); return 0 as never; }
+      return (real as any)(fn, ms, ...rest);
+    }) as never);
+    try {
+      steps(() => answer(records.length));
+      appStore.set({ connection: "live" });
+      await open();
+      expect(polls.length).toBeGreaterThan(0);
+      const live = asked.length;
+      for (const p of polls) p(); await settle();
+      expect(asked.length).toBe(live);                       // a live stream: the poll does nothing
+      appStore.set({ connection: "polling" });
+      for (const p of polls) p(); await settle(); await settle();
+      expect(asked.length).toBeGreaterThan(live);
+      expect(asked.at(-1)).toContain("after=");
+    } finally { spy.mockRestore(); appStore.set({ connection: "none" }); }
+  });
+  it("the agent's tool_progress is off: the answer says level off — nothing is drawn, and the ⋯ menu does not offer Show activity", async () => {
+    steps(() => ({ enabled: true, instance: "w", backend: "claude-code", supported: true, level: "off", thinking: false, steps: [], events: [], before: null, after: null, ev: 0 }));
+    const doc = await open();
     expect(doc.querySelectorAll(".activity-row")).toHaveLength(0);
-    expect(rowsOf(doc)).toEqual(["user", "agent", "user", "agent"]);
+    const btn = [...doc.querySelectorAll("button")].find((b: any) => b.getAttribute("aria-label") === "More actions");
+    btn.click(); await settle();
+    const text = [...doc.querySelectorAll(".menu-list button[role^='menuitem']")].map((i: any) => i.textContent.trim());
+    expect(text).not.toContain("Show activity");
+    expect(text).not.toContain("Show thinking");
   });
 });
