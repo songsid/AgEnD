@@ -247,3 +247,39 @@ describe("Fleet local company join", () => {
     expect(w.calls).not.toContain("ack"); expect(currentBinding(w.directory)).toBeNull();
   });
 });
+
+describe("M-2921 (Hub UX U1): an enrolment code, and what the connected card shows", () => {
+  it("a code goes in the push (without its dash) only when the Hub takes one; otherwise refused before any pin or journal", async () => {
+    const w = await world();
+    const pushes: any[] = []; const original = w.client.command.getMockImplementation()!;
+    w.client.command.mockImplementation(async (...args: any[]) => { if (args[1] === "push") pushes.push(args[2]); return (original as any)(...args); });
+    const refuse = w.controller.start({ address: w.metadata.hub.webOrigin, label: "Coded", fleetOrigin: "http://127.0.0.1:4444", code: "ABCD-EF23" }, w.authority);
+    await expect(refuse).rejects.toMatchObject({ code: "incompatible" });
+    expect(existsSync(join(w.directory, "hub-member/company-trust"))).toBe(false);
+    expect(currentLocalJoinId(w.directory)).toBeNull();
+    w.metadata.features.push("enrolment-code-v1");
+    await w.controller.start({ address: w.metadata.hub.webOrigin, label: "Coded", fleetOrigin: "http://127.0.0.1:4444", code: "ABCD-EF23" }, w.authority);
+    expect(pushes.at(-1)).toMatchObject({ label: "Coded", code: "ABCDEF23" });
+    w.controller.close();
+  });
+  it("redeem asks for the display fields; the card's record holds the label, the address, the Hub's name and the owner's label", async () => {
+    const w = await world();
+    const original = w.client.command.getMockImplementation()!;
+    w.client.command.mockImplementation(async (...args: any[]) => {
+      const result = await (original as any)(...args);
+      return args[1] === "redeem" && args[5]?.display ? { ...result, hubName: "Acme Hub", ownerLabel: "王小明" } : result;
+    });
+    const first = await w.start(); w.ready();
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "saved", issued: true });
+    expect((w.client.command.mock.calls as any[][]).find(c => c[1] === "redeem")?.[5]).toEqual({ display: true });
+    expect(w.controller.display()).toEqual({ v: 1, webOrigin: w.metadata.hub.webOrigin, label: "My Fleet", hubName: "Acme Hub", ownerLabel: "王小明" });
+    w.controller.close();
+  });
+  it("an older Hub (no display fields in its answer): the record keeps the label and the address, the rest null", async () => {
+    const w = await world();
+    const first = await w.start(); w.ready();
+    await w.controller.status(first.operationId, w.session);
+    expect(w.controller.display()).toEqual({ v: 1, webOrigin: w.metadata.hub.webOrigin, label: "My Fleet", hubName: null, ownerLabel: null });
+    w.controller.close();
+  });
+});

@@ -994,7 +994,7 @@ export function handleSettingsRequest(
         }
         if (!step) {
           const id = url.searchParams.get("operationId");
-          json(res, 200, { ok: true, bound: api.bound(), operation: id ? await api.status(validated(uuid, id), session) : api.current(session) }); return;
+          json(res, 200, { ok: true, bound: api.bound(), operation: id ? await api.status(validated(uuid, id), session) : api.current(session), display: api.display() }); return;
         }
         const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8"));
         execution?.assert(); if (!session.current()) throw new HubProtocolError("revoked");
@@ -1008,8 +1008,8 @@ export function handleSettingsRequest(
           if (!authority || !settingsRequestLocalAdmin(req) || !body || Object.keys(body).length !== 1 || typeof body.address !== "string") throw new HubProtocolError("invalid");
           await api.repairTrust(body.address, authority); json(res, 200, { ok: true });
         } else if (step === "start") {
-          if (!session.fleetOrigin || !authority || !settingsRequestLocalAdmin(req) || Object.keys(body).some(k => !["address", "label", "handoffId"].includes(k))) throw new HubProtocolError("invalid");
-          json(res, 200, { ok: true, operation: await api.start({ address: body.address, label: body.label, fleetOrigin: session.fleetOrigin, handoffId: body.handoffId }, authority) });
+          if (!session.fleetOrigin || !authority || !settingsRequestLocalAdmin(req) || Object.keys(body).some(k => !["address", "label", "handoffId", "code"].includes(k))) throw new HubProtocolError("invalid");
+          json(res, 200, { ok: true, operation: await api.start({ address: body.address, label: body.label, fleetOrigin: session.fleetOrigin, handoffId: body.handoffId, ...(body.code !== undefined ? { code: body.code } : {}) }, authority) });
         } else {
           if (!body || Object.keys(body).length !== 1) throw new HubProtocolError("invalid");
           const id = validated(uuid, body.operationId);

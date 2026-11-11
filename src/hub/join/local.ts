@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { CompanyJoinClient, CompanyJoinRemoteError, CompanyJoinReachError } from "./client.js";
 import { hostname } from "node:os";
+import { readDisplay, saveStartDisplay, settleDisplay, type CompanyDisplay } from "./display.js";
 import { CompanyTrustStore, CompanyIdentityChanged } from "./trust.js";
 import { parseCompanyAddress } from "./descriptor.js";
 import { canonicalFleetOrigin, companyIdentityDigest, pkceChallenge, requireSeparateJoinHosts, CompanyBrowserHostnameConflict } from "./protocol.js";
@@ -19,7 +20,9 @@ export type { JoinLocalAuthority, JoinLocalSession } from "./local-journal.js";
 const remoteSchema = z.strictObject({ state: z.enum(["pending", "identity-approved", "issued", "acknowledged", "undeliverable", "ended", "revoked"]),
   reason: z.string().max(64).nullable(), issued: z.boolean(), fleetId: uuid.nullable(), generation: epoch.nullable(),
   outerDeadline: epoch, redeemDeadline: epoch.nullable(), deliveryDeadline: epoch.nullable() });
-const deliveredSchema = remoteSchema.extend({ owner: person, credential: token, hub: profileSchema.shape.hub, certificatePem: profileSchema.shape.certificatePem });
+const deliveredSchema = remoteSchema.extend({ owner: person, credential: token, hub: profileSchema.shape.hub, certificatePem: profileSchema.shape.certificatePem,
+  // M-2921 / S1.3: display only, sent when asked for (X-AgEnD-Join-Display); a Hub that predates them sends neither.
+  ownerLabel: z.string().max(200).optional(), hubName: z.string().max(200).optional() });
 const pushedSchema = z.strictObject({ requestId: uuid, expiresAt: epoch, browserAction: z.string().max(2048) });
 interface Options {
   home: string; client?: Pick<CompanyJoinClient, "discover" | "command">; now?(): number; schedule?: false;
@@ -160,8 +163,18 @@ export class CompanyJoinController {
     return { ok: true, hubName: metadata.name ?? null, webOrigin: metadata.hub.webOrigin, companyJoin: true, identity,
       separateHosts: separateHosts(body.fleetOrigin, metadata.hub.webOrigin), suggestedLabel, features: [...metadata.features] };
   }
-  async start(input: { address: string; label: string; fleetOrigin: string; handoffId?: string }, authority: JoinLocalAuthority) {
-    const body = validated(z.strictObject({ address: z.string().max(8192), label: z.string().trim().min(1).max(120), fleetOrigin: z.string().max(2048), handoffId: uuid.optional() }), input);
+  /** M-2921: what the connected card shows about the current Hub connection (display only), or null. */
+  display(): CompanyDisplay | null {
+    try {
+      if (!existsSync(join(this.options.home, "hub-member/state.json"))) return null;
+      const s = parseStrictJson(readPrivateFile(this.options.home, "hub-member/state.json")) as { hubId?: string };
+      return s.hubId ? readDisplay(this.options.home, s.hubId) : null;
+    } catch { return null; }
+  }
+  async start(input: { address: string; label: string; fleetOrigin: string; handoffId?: string; code?: string }, authority: JoinLocalAuthority) {
+    // M-2921 / Phase B: an enrolment code typed with the address goes to the Hub only when it takes one (enrolment-code-v1).
+    const body = validated(z.strictObject({ address: z.string().max(8192), label: z.string().trim().min(1).max(120), fleetOrigin: z.string().max(2048), handoffId: uuid.optional(),
+      code: z.string().regex(/^[A-Z2-9]{4}-?[A-Z2-9]{4}$/).optional() }), input);
     canonicalFleetOrigin(body.fleetOrigin);
     if (this.closed || this.starting || !authority.session.current() || !authority.confirmedCurrent()) throw new HubProtocolError("denied");
     this.assertUnbound();
@@ -179,6 +192,7 @@ export class CompanyJoinController {
       const metadata = await this.client.discover(address.webOrigin, current);
       if (!current()) throw new HubProtocolError("stale");
       requireSeparateJoinHosts(body.fleetOrigin, metadata.hub.webOrigin);
+      if (body.code && !metadata.features.includes("enrolment-code-v1")) throw new CompanyJoinRemoteError("incompatible");   // before any pin or journal
       // An established legacy binding is an additional trust anchor, never a way to forget a mismatched pin.
       let existing = null;
       try {
@@ -200,7 +214,9 @@ export class CompanyJoinController {
       createLocalJoin(this.options.home, record, current); selectLocalJoin(this.options.home, operationId, current);
       const op: Operation = { record, authority, generation: gen }; this.active = op;
       try {
-        const pushed = validated(pushedSchema, await this.client.command(record.binding, "push", { label: body.label, stateHash: sha256(browserState), invitation: address.invitation ?? null }, key.privateKey, () => this.live(op)));
+        try { saveStartDisplay(this.options.home, operationId, metadata.hub.webOrigin, body.label); } catch { /* display only */ }
+        const pushed = validated(pushedSchema, await this.client.command(record.binding, "push", { label: body.label, stateHash: sha256(browserState), invitation: address.invitation ?? null,
+          ...(body.code ? { code: body.code.replace("-", "") } : {}) }, key.privateKey, () => this.live(op)));
         if (pushed.requestId !== record.binding.requestId || pushed.browserAction !== metadata.hub.webOrigin + "/hub/join/open" || pushed.expiresAt <= this.now()) throw new HubProtocolError("denied");
         this.persist(op, { stage: "pending", deadline: Math.min(record.deadline, pushed.expiresAt) });
       } catch (error) { this.hold(op, error); }
@@ -292,7 +308,7 @@ export class CompanyJoinController {
       return this.activate(op, current);
     }
     this.persist(op, { outcomeKnown: false }); // A dropped response may follow a completed Hub issuance.
-    const delivered = validated(deliveredSchema, await this.client.command(r.binding, "redeem", { verifier: r.verifier }, key, current));
+    const delivered = validated(deliveredSchema, await this.client.command(r.binding, "redeem", { verifier: r.verifier }, key, current, { display: true }));
     if (!current() || delivered.state !== "issued" || delivered.fleetId !== r.binding.fleetId || delivered.generation !== 1
       || companyIdentityDigest(delivered.hub) !== companyIdentityDigest(r.binding.hub)) throw new HubProtocolError("denied");
     this.persist(op, { issued: true, outcomeKnown: true, issuedHash: sha256(delivered.credential) });
@@ -314,6 +330,7 @@ export class CompanyJoinController {
     else createJoinPrivate(this.options.home, statePath, stateValue);
     op.record = { ...op.record, snapshot: this.options.snapshot() };
     store.saveProfile(profile, prior, current);
+    try { settleDisplay(this.options.home, r.operationId, profile.hub.hubId, { hubName: delivered.hubName, ownerLabel: delivered.ownerLabel }); } catch { /* display only */ }
     syncJoinPrivate(this.options.home, `hub-member/${profile.hub.hubId}/pairing.json`);
     if (store.profileDigest() !== expectedDigest || !current()) throw new HubProtocolError("stale");
     this.persist(op, { stage: "durable", issued: true, issuedHash: sha256(profile.credential), profileDigest: expectedDigest });

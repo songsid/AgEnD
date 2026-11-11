@@ -84,7 +84,8 @@ export class CompanyJoinClient {
     if (!value.features.includes("company-join-v1")) throw new CompanyJoinRemoteError("incompatible");
     return value;
   }
-  async command(binding: JoinBinding, purpose: JoinPurpose, payload: unknown, key: KeyObject, current: () => boolean): Promise<unknown> {
+  /** `display` (M-2921 / S1.3): ask the Hub for its display-only extras in this answer (redeem: ownerLabel, hubName). */
+  async command(binding: JoinBinding, purpose: JoinPurpose, payload: unknown, key: KeyObject, current: () => boolean, options: { display?: boolean } = {}): Promise<unknown> {
     validateJoinBinding(binding); if (!current()) throw new HubProtocolError("stale");
     const agent = pinnedHubAgent(binding.hub, current);
     try {
@@ -93,7 +94,7 @@ export class CompanyJoinClient {
       const now = this.options.now?.() ?? Date.now();
       if (challenge.expiresAt <= now || challenge.expiresAt - now > 30_000 || !current()) throw new HubProtocolError("stale");
       const proof = signJoinProof(binding, purpose, challenge.nonce, challenge.expiresAt, payload, key);
-      return await this.json(binding.hub.memberOrigin, `/hub/v1/join/${purpose}`, { binding, payload, proof }, current, agent);
+      return await this.json(binding.hub.memberOrigin, `/hub/v1/join/${purpose}`, { binding, payload, proof }, current, agent, options.display ? { "X-AgEnD-Join-Display": "1" } : {});
     } finally { agent.destroy(); }
   }
 }
