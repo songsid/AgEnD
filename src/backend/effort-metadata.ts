@@ -235,3 +235,16 @@ function readCachedCurrentModel(backend: string, agendHome: string = getAgendHom
     return typeof env.currentModel === "string" && env.currentModel.trim() ? env.currentModel.trim() : null;
   } catch { return null; }
 }
+
+/** Antigravity's effort is part of the model variant it runs, not a setting of its own. */
+const effortIsModelVariant = (backend: string): boolean => backend === "antigravity";
+/** Muse's effort waits for a check on a real CLI (#3636). */
+const effortAwaitsRealCli = (backend: string): boolean => backend === "muse";
+
+/**
+ * Whether the chat offers a backend's effort unasked: the always-shown effort chip (`auto` while none is set) and the
+ * phone's per-model effort list. An effort that is set still shows its chip on a backend that is not.
+ */
+export function effortOfferedUnasked(backend: string): boolean {
+  return !effortIsModelVariant(backend) && !effortAwaitsRealCli(backend);
+}

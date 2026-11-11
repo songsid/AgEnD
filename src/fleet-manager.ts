@@ -153,7 +153,7 @@ import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter, type MissedOfflineInbound } from "./channel/adapters/telegram.js";
 import { MissedOfflineStore } from "./missed-offline.js";
 import { createBackend } from "./backend/factory.js";
-import { readEffortMetadata, readGrokEffortLevels } from "./backend/effort-metadata.js";
+import { effortOfferedUnasked, readEffortMetadata, readGrokEffortLevels } from "./backend/effort-metadata.js";
 import { codexEffort, flagEffort } from "./backend/launch-effort.js";
 import { codexMetadataHomes, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./backend/codex-metadata.js";
 import { readGrokModelCache } from "./backend/grok-model-cache.js";
@@ -24070,11 +24070,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * The effort a /model option offers behind its "›" (the phone's second level): the levels `model` takes on this
    * backend and the effort the agent has set, when the model has one of them (else null: it shows "auto"). Only where
-   * an effort change is applied live (a model switch then an effort one is no second restart), and not antigravity,
-   * whose effort is part of the model it runs. A file read; never a CLI.
+   * an effort change is applied live (a model switch then an effort one is no second restart), and not where the
+   * chat does not offer effort unasked (effortOfferedUnasked: antigravity, muse). A file read; never a CLI.
    */
   private modelEffortChoice(instance: string, backend: string, model: string, set: string | null): { levels: string[]; current: string | null } | null {
-    if (backend === "antigravity") return null;
+    if (!effortOfferedUnasked(backend)) return null;
     try {
       const { strategy, levels } = readEffortMetadata(backend, this.getInstanceDir(instance), model, this.catalogProfile(backend, instance));
       return strategy === "runtime" && levels.length > 0 ? { levels, current: set && levels.includes(set) ? set : null } : null;
@@ -29334,7 +29334,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         effort_source,
         // Whether the chat header's effort chip is offered (shown as "auto" while none is set): the backend takes an
         // effort setting at all. Absent from an older daemon: a newer page then shows the chip only for a set effort.
-        effort_supported: effortStrategy !== "unsupported" && !isAgy,
+        effort_supported: effortStrategy !== "unsupported" && effortOfferedUnasked(backend),
         ...this.instancePresentation(name),
         // Board 003648ac: the last web /compact, while it runs and briefly after (the chat's card follows it).
         ...(compact ? { compact } : {}),
