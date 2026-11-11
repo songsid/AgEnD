@@ -8,6 +8,8 @@
  * Isolation: temp directories; the sinks with minimal contexts (tool-permissions.test.ts's pattern); the settings gate's
  * pure functions.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
+import * as daemonModule from "../src/daemon.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -86,7 +88,7 @@ describe("fleet.yaml: a mapping of known features to booleans; defaults and an i
 
 describe("enforced at the fleet's sinks, as configured now", () => {
   it("the outbound IPC: a switched-off feature's tool is refused with its reason; the profile still decides the rest", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const warn = vi.fn();
     const fm = { fleetConfig: { defaults: {}, instances: { dev: { working_directory: "/tmp/d", dashboard: { task_board: false } } } },
       logger: { warn, info: vi.fn(), debug: vi.fn(), error: vi.fn() } };
@@ -115,7 +117,7 @@ describe("enforced at the fleet's sinks, as configured now", () => {
 describe("the agent's side: its tool menu from its next start; the daemon keeps the setting current", () => {
   it("a hot key: applied without a restart, the daemon keeps it, and the spawn names what is off", async () => {
     expect(HOT_INSTANCE_CONFIG_KEYS.has("dashboard")).toBe(true);
-    const { Daemon } = await import("../src/daemon.js");
+    const { Daemon } = daemonModule;
     const self = { config: { dashboard: { appearance: false } } as Record<string, any>, updateToolProgress: () => {} };
     (Daemon.prototype as any).applyConfigUpdate.call(self, { dashboard: { task_board: false } });
     expect(self.config.dashboard).toEqual({ task_board: false });

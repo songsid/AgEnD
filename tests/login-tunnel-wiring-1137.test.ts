@@ -3,6 +3,7 @@
  * a cloudflared in AgEnD's data directory, and the provider it builds runs
  * exactly that binary.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { describe, expect, it, vi } from "vitest";
 
 const seen = vi.hoisted(() => ({ providers: [] as Array<Record<string, unknown>>, ensures: [] as Array<Record<string, unknown>> }));
@@ -36,7 +37,7 @@ describe("default cloudflared wiring", () => {
 
 describe("Telegram parity: the public-link confirmation fits Telegram's callback_data", () => {
   it("every action's callback id is at most 64 bytes (posted through the fleet's real prompt)", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -57,7 +58,7 @@ describe("Telegram parity: the public-link confirmation fits Telegram's callback
 
 describe("the fleet's /login cancel reaches a public-link start that is still downloading (#1141 review)", () => {
   it("cancelLoginSession → cancelled; the start opens nothing", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");

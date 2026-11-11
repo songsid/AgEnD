@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { installTmuxProcessFixture } from "./helpers/tmux-process-stub.js";
 installTmuxProcessFixture();
 import { EventEmitter } from "node:events";
@@ -124,7 +125,7 @@ describe("the daemon reports a web message's delivery even with no platform chat
 // ── the fleet ───────────────────────────────────────────────────────────────────────────────────────────────
 
 async function bareFleet() {
-  const { FleetManager } = await import("../src/fleet-manager.js");
+  const { FleetManager } = fleetManagerModule;
   const fm = new FleetManager(dir);
   const any = fm as unknown as Record<string, any>;
   const events: Array<{ event: string; data: any }> = [];
@@ -293,7 +294,7 @@ function raw(port: number, method: string, path: string, headers: Record<string,
 
 describe("POST /ui/cancel through the real gate", () => {
   it("needs a session, and the session's CSRF token — a cookie alone cannot stop an agent", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir);
     const quiet = () => {};
     fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger } as unknown as typeof fm.logger;

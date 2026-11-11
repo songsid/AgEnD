@@ -8,6 +8,7 @@
  *   height at the focus — and every narrower box shows that band too.
  * - The agent's SVG preview crops the banner exactly as the page does, at its focus.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -76,7 +77,7 @@ describe("through the page's route and General's tool", () => {
   it("POST /api/profile card_banner_focus → GET /api/card; null follows the agent's; set_web_settings writes the same", async () => {
     const dir = tmp("agend-2086-fm-");
     process.env.AGEND_HOME = dir;
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { handleViewRequest } = await import("../src/view-api.js");
     const { csrfTokenFor, tokenEpoch } = await import("../src/web-session.js");
     const fm = new FleetManager(dir) as any;

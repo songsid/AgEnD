@@ -2,6 +2,7 @@
  * #1519 P1 (docs/design/ux-onboarding-walkthrough.md §5.2): a connection's token env name is generated —
  * `AGEND_<PLATFORM>_<ID>_TOKEN`, unique, never reserved — and a new connection never takes a name another holds.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -51,7 +52,7 @@ describe("a new connection's name", () => {
 
 describe("a token stored from Settings counts as set before the restart that loads it", () => {
   it("listSecureConnections: in .env (names only) or in this process → present; in neither → missing", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const dir = mkdtempSync(join(tmpdir(), "agend-envname-")); dirs.push(dir);
     writeFileSync(join(dir, ".env"), "AGEND_DISCORD_2_TOKEN=stored-not-loaded\n");
     const fm = new FleetManager(dir) as any;

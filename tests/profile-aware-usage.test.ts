@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -214,7 +215,7 @@ describe("the active-row filter follows the profile", () => {
   it("lights up the row the instance actually runs on", async () => {
     // Filtering by the bare backend id would hide every profile row, because
     // the rows are called kiro:work and kiro:personal.
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const dir = tempDir();
     writeFileSync(join(dir, "fleet.yaml"), [
       "instances:",
@@ -239,7 +240,7 @@ describe("the active-row filter follows the profile", () => {
   });
 
   it("leaves a fleet with no profiles reporting the plain ids", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const dir = tempDir();
     writeFileSync(join(dir, "fleet.yaml"), [
       "instances:", "  one:", "    working_directory: /tmp/w", "    backend: kiro-cli", "",
@@ -252,7 +253,7 @@ describe("the active-row filter follows the profile", () => {
   });
 
   it("ignores instances that are neither running nor paused", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const dir = tempDir();
     writeFileSync(join(dir, "fleet.yaml"), [
       "instances:", "  one:", "    working_directory: /tmp/w", "    backend: kiro-cli",
