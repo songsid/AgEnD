@@ -1,0 +1,204 @@
+{
+  "alpha": "996e3e201",
+  "main": "e0aa4448",
+  "summary": {
+    "additionalFiles": 14,
+    "additionalImports": 16,
+    "coldFiles": 3,
+    "coldImports": 3,
+    "alreadyWarmFiles": 11,
+    "alphaTotalImports": 186,
+    "knownMainChange": "model-stale-refresh helper already static on alpha: 1 fewer runtime import; remaining constants imports warmed"
+  },
+  "files": [
+    {
+      "file": "tests/accounts-route-3212.test.ts",
+      "rows": [
+        {
+          "line": 23,
+          "module": "../src/fleet-manager.js",
+          "context": "TOP"
+        },
+        {
+          "line": 26,
+          "module": "../src/web-api.js",
+          "context": "TOP"
+        }
+      ],
+      "classification": "already_top_level",
+      "rationale": "Target initialized during collection, outside per-test timeout."
+    },
+    {
+      "file": "tests/hub-fleet-hooks.test.ts",
+      "rows": [
+        {
+          "line": 28,
+          "module": "../src/fleet-manager.js",
+          "context": "TOP"
+        }
+      ],
+      "classification": "already_top_level",
+      "rationale": "Target initialized during collection, outside per-test timeout."
+    },
+    {
+      "file": "tests/hub-membership-api.test.ts",
+      "rows": [
+        {
+          "line": 17,
+          "module": "../src/fleet-manager.js",
+          "context": "TOP"
+        }
+      ],
+      "classification": "already_top_level",
+      "rationale": "Target initialized during collection, outside per-test timeout."
+    },
+    {
+      "file": "tests/hub-settings-fleet-m2682.test.ts",
+      "rows": [
+        {
+          "line": 45,
+          "module": "../src/fleet-manager.js",
+          "context": "TOP"
+        }
+      ],
+      "classification": "already_top_level",
+      "rationale": "Target initialized during collection, outside per-test timeout."
+    },
+    {
+      "file": "tests/hub-ui-s3-server.test.ts",
+      "rows": [
+        {
+          "line": 22,
+          "module": "../src/fleet-manager.js",
+          "context": "TOP"
+        },
+        {
+          "line": 25,
+          "module": "../src/web-api.js",
+          "context": "TOP"
+        }
+      ],
+      "classification": "already_top_level",
+      "rationale": "Target initialized during collection, outside per-test timeout."
+    },
+    {
+      "file": "tests/native-daemon-client-2950.test.ts",
+      "rows": [
+        {
+          "line": 53,
+          "module": "../src/fleet-manager.js",
+          "context": [
+            "it"
+          ]
+        }
+      ],
+      "classification": "safe_static_cold",
+      "rationale": "No resetModules/doMock or required pre-import environment setup; static dependency graph does not reach FleetManager. Existing hoisted mocks remain compatible."
+    },
+    {
+      "file": "tests/native-pane-fleet-integration-2950.test.ts",
+      "rows": [
+        {
+          "line": 310,
+          "module": "../src/daemon.js",
+          "context": [
+            "it"
+          ]
+        }
+      ],
+      "classification": "already_static_warm",
+      "rationale": "Static FleetManager imports daemon."
+    },
+    {
+      "file": "tests/native-pane-permission-parity.test.ts",
+      "rows": [
+        {
+          "line": 199,
+          "module": "../src/fleet-manager.js",
+          "context": [
+            "it",
+            "describe"
+          ]
+        }
+      ],
+      "classification": "safe_static_cold",
+      "rationale": "No resetModules/doMock or required pre-import environment setup; static dependency graph does not reach FleetManager. Existing hoisted mocks remain compatible."
+    },
+    {
+      "file": "tests/runtime-pane-port-2950.test.ts",
+      "rows": [
+        {
+          "line": 221,
+          "module": "../src/daemon.js",
+          "context": [
+            "helper"
+          ]
+        }
+      ],
+      "classification": "already_static_warm",
+      "rationale": "Static Daemon import already warms daemon."
+    },
+    {
+      "file": "tests/settings-summary-effects-3416.test.ts",
+      "rows": [
+        {
+          "line": 36,
+          "module": "../src/fleet-manager.js",
+          "context": [
+            "it.each([\"host\",\"windows\"])"
+          ]
+        }
+      ],
+      "classification": "safe_static_cold",
+      "rationale": "No resetModules/doMock or required pre-import environment setup; static dependency graph does not reach FleetManager. Existing hoisted mocks remain compatible."
+    },
+    {
+      "file": "tests/signin-end-notice-2825.test.ts",
+      "rows": [
+        {
+          "line": 129,
+          "module": "../src/fleet-manager.js",
+          "context": "TOP"
+        }
+      ],
+      "classification": "already_top_level",
+      "rationale": "Target initialized during collection, outside per-test timeout."
+    },
+    {
+      "file": "tests/signin-keepalive-admission-3313.test.ts",
+      "rows": [
+        {
+          "line": 34,
+          "module": "../src/fleet-manager.js",
+          "context": "TOP"
+        }
+      ],
+      "classification": "already_top_level",
+      "rationale": "Target initialized during collection, outside per-test timeout."
+    },
+    {
+      "file": "tests/workspace-follow-route-3160.test.ts",
+      "rows": [
+        {
+          "line": 21,
+          "module": "../src/fleet-manager.js",
+          "context": "TOP"
+        }
+      ],
+      "classification": "already_top_level",
+      "rationale": "Target initialized during collection, outside per-test timeout."
+    },
+    {
+      "file": "tests/workspace-route-3153.test.ts",
+      "rows": [
+        {
+          "line": 20,
+          "module": "../src/fleet-manager.js",
+          "context": "TOP"
+        }
+      ],
+      "classification": "already_top_level",
+      "rationale": "Target initialized during collection, outside per-test timeout."
+    }
+  ]
+}

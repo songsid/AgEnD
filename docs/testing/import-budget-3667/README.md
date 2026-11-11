@@ -19,3 +19,9 @@ The changed `cli-env-probe-guard` and `tmux-kill-window-confirmed` files are exi
 Main validation: 57 affected unit files passed 1,830 assertions (three invocations: 1,028 + 489 + 313); the two affected serial integration files passed 11 assertions. Native test typecheck passed. No assertion or process-guard weakening, no global/per-test timeout edits and no retries.
 
 Saved CPU logs have only trailing blank lines removed; no substantive output is masked.
+
+## Alpha parity
+
+Alpha adds three cold FleetManager test imports (`native-daemon-client-2950`, `native-pane-permission-parity`, `settings-summary-effects-3416`); these also move to static imports. Its model-stale-refresh file already loads FleetManager statically, so remains unchanged. The other cherry-pick conflicts preserve alpha's own sign-in test name/mark and its private tmux `afterAll` cleanup; only import placement changes. See `alpha-inventory.json` for the baseline delta. Eleven other alpha-added files already load the target graph before tests and remain unchanged.
+
+Alpha validation: 59 affected unit files passed 1,849 assertions; the two serial integration files passed 11. Native test typecheck and diff check passed. The CPU-load before/after evidence is from main's byte-identical agy test/import change; alpha does not claim a second CPU campaign.

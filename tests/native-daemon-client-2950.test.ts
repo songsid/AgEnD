@@ -1,4 +1,5 @@
 /** Real Daemon/Fleet channel methods; no CLI, socket, service, provider file or account. */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { afterEach, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -50,7 +51,7 @@ it("a delayed wake cannot deliver through an old native channel after its owner 
  expect(f.client.send({type:"fleet_inbound",content:"old",meta:{}})).toBe(true);f.revoke();finish();await Promise.resolve();expect(push).not.toHaveBeenCalled();expect(defer).toHaveBeenCalledOnce();
 });
 it("FleetManager connects its ordinary dispatcher to the current native daemon without a socket or statusline watcher",async()=>{
- const {FleetManager}=await import("../src/fleet-manager.js"),f=await fixture();await f.client.close();const dir=mkdtempSync(join(tmpdir(),"agend-native-fleet-channel-"));clean.push(()=>rmSync(dir,{recursive:true,force:true}));
+ const {FleetManager}=fleetManagerModule,f=await fixture();await f.client.close();const dir=mkdtempSync(join(tmpdir(),"agend-native-fleet-channel-"));clean.push(()=>rmSync(dir,{recursive:true,force:true}));
  const fleet:any=new FleetManager(dir);fleet.daemons.set("native",f.daemon);const state=vi.spyOn(fleet,"cacheInstanceExecutionState").mockImplementation(()=>{}),progress=vi.spyOn(fleet,"cacheInstanceProgress").mockImplementation(()=>{}),watch=vi.spyOn(fleet.statuslineWatcher,"watch").mockImplementation(()=>{throw Error("No coordinator statusline for native CLI");});
  await fleet.connectIpcToInstance("native");const channel=fleet.instanceIpcClients.get("native");expect(channel).toBeInstanceOf(NativeDaemonClient);expect(channel.connected).toBe(true);expect(state).toHaveBeenCalledWith("native",expect.objectContaining({type:"instance_state_response"}));expect(watch).not.toHaveBeenCalled();
  f.daemon.broadcastFleetMessage({type:"instance_progress",progress:"native tool"});expect(progress).toHaveBeenCalledWith("native","native tool");
