@@ -29,6 +29,14 @@ At149f3139, the existing Settings idempotency test caught a second call to `self
 
 Two historical admin stills caught a loading state (`browser-pass/phone-light-zh-TW-admin.png` and `skew-strings/desk-light-en-admin.png`). Separate settled and post-sync captures show enabled copy controls; neither original is overwritten. Argon’s corrected check passed all three first-time-user tasks from10 bounded originals at15c6cd25; nonexistent pasted-state images and dynamic behavior were excluded from that visual scope.
 
+## Company-code policy correction (security R2)
+
+Source `f35b88d6f` fixes the remaining strict-admin/message-authority-off refusal. Only a server-created, original-cookie-bound company-Start proof selects its dedicated code policy; display metadata does not. Both state and confirmation use the existing per-admin code core, including role/scope, CSRF/session, host-only, exact digest, enrolment, rate limits and late continuation checks. The proof is captured before successful Settings completion discards its proposal, so the original handoff remains current afterward. It is never serialized to the page or accepted from a body. Other Settings changes retain their policy.
+
+Pinned pre-fix product files atfefb3495 with candidate tests atf35b88d6 produce6 assertion failures and3 positive controls. Seven focused files pass192/192 before one additional demotion control; the final nine company-code controls include that case and all pass. They use real cookies and production roles for web-only/chat admins with the switch both on and off, another cookie/header/wrong digest, display-only marker refusal and late session/host-only/demotion. Three new policy/proof/retention reversals fail assertions; restored9/9. Both native types pass. `code-policy-r2.json` records inputs and exact scopes.
+
+A targeted fresh fake-LDAPS browser run with message authority configured off passes4 journeys55checks atf35b88d6 (ordinary and personal-code, EN desktop/zh phone). All16 originals are visually clear with settled admin controls. UI/CSS is unchanged, so Argon’s bounded still-image check remains at its original pin; it is not relabelled as this security execution.
+
 ## Original screenshots
 
 - Fleet empty guidance: [EN desktop](browser-pass/desk-light-en-empty.png), [zh phone](browser-pass/phone-dark-zh-TW-empty.png).

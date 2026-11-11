@@ -32,10 +32,17 @@
   {
     "digest": "06f76d689f45227cbc0e083f208a6828f35ec4bbfaac344f9b7b40c3539543be",
     "paths": [
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/phone-dark-zh-TW-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/skew-confirm/phone-dark-zh-TW-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/skew-panel/phone-dark-zh-TW-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/skew-strings/phone-dark-zh-TW-hub-signin.png"
+    ]
+  },
+  {
+    "digest": "09606141c72df0237a36b109ff4535f04c252e5569dcad4f10b30b1860bfece0",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/desk-light-en-code-connected.png"
     ]
   },
   {
@@ -60,12 +67,6 @@
     "digest": "11f98398e3b0d6cda87761884ef715ee111a4ec323ec5a630e4a50e1d7011481",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/before/phone-dark-en-connected.png"
-    ]
-  },
-  {
-    "digest": "15c62e9407c4e5578506a8df4ae72eba0605d669c2fc1dedab3150caaecf89ef",
-    "paths": [
-      "src/settings-http-confirmation.ts"
     ]
   },
   {
@@ -97,6 +98,7 @@
     "paths": [
       "docs/evidence/hub-join-consent-m2876/before/desk-light-en-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/browser-pass/desk-light-en-hub-signin.png",
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/desk-light-en-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/skew-confirm/desk-light-en-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/skew-panel/desk-light-en-hub-signin.png",
@@ -107,6 +109,7 @@
     "digest": "27324c3069a462c5a711dccdb9be71f47f710a5f7455b61338a44afb9deb7e4f",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/desk-light-en-empty.png",
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/desk-light-en-empty.png",
       "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-empty.png"
     ]
   },
@@ -124,15 +127,15 @@
     ]
   },
   {
-    "digest": "2d8d7ec90a362c98b8ca666dfe680823a88542ed6d9b3c15fdf29ab296d3b5ec",
-    "paths": [
-      "scripts/manual/hub-join-consent-m2876.mts"
-    ]
-  },
-  {
     "digest": "2e4778fc0b42e4b9bdea0072b3b03607ef46621dc619885460279da2f29e8393",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/desk-light-en-code-code.png"
+    ]
+  },
+  {
+    "digest": "365b031c926b16ab39d587d34e9047a4190408d2439a4aaec67045362aef9d8a",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/phone-dark-zh-TW-code-code.png"
     ]
   },
   {
@@ -150,6 +153,7 @@
   {
     "digest": "3b08d4d805c0afe05ede21023a0edbb7d1f661860b8cb1610f513e5bb69a3c63",
     "paths": [
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/desk-light-en-admin.png",
       "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-admin.png"
     ]
   },
@@ -165,6 +169,12 @@
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/desk-light-en-code-connected.png",
       "docs/evidence/hub-join-consent-m2876/browser-pass/desk-light-en-connected.png"
+    ]
+  },
+  {
+    "digest": "3fb0acb603e83b0d9b7309f1a6c099c09c0e312519335709ba6e6775b2147210",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/desk-light-en-connected.png"
     ]
   },
   {
@@ -234,6 +244,12 @@
     ]
   },
   {
+    "digest": "652b38e00f65351bce2814d2a095a402a89f6a77c17869a04aabb53bb6970e76",
+    "paths": [
+      "scripts/manual/hub-join-consent-m2876.mts"
+    ]
+  },
+  {
     "digest": "658e9d16948ec31bdfaf2f17999b993ba77d7375042961bf1799b8091e650364",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/settled/desk-light-en-code-hub-signin.png"
@@ -243,7 +259,14 @@
     "digest": "67fbb12c6b2b8b7cc87f6fed6443556a0105f472e8e1ff216454d5f3f43a5f94",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/before/phone-dark-zh-TW-hub-signin.png",
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/phone-dark-zh-TW-code-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-code-hub-signin.png"
+    ]
+  },
+  {
+    "digest": "68cd68aa014f33805ad73468d66c412565ebe9760c91c8faf3941c7de9fe5562",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/desk-light-en-code-code.png"
     ]
   },
   {
@@ -251,6 +274,12 @@
     "paths": [
       "docs/evidence/hub-join-consent-m2876/before/desk-light-en-empty.png",
       "docs/evidence/hub-join-consent-m2876/skew-panel/desk-light-en-empty.png"
+    ]
+  },
+  {
+    "digest": "6b60bb157f72d2de491a1db07e4241fe7d5298816c147fd0a7ff1dfe22ea15d4",
+    "paths": [
+      "src/settings-http-confirmation.ts"
     ]
   },
   {
@@ -269,6 +298,7 @@
     "digest": "6d4aae5e595967469a883be03d27fe4f268365038791408d913a5ff88e495532",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/desk-light-en-code-empty.png",
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/desk-light-en-code-empty.png",
       "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-code-empty.png",
       "docs/evidence/hub-join-consent-m2876/settled/desk-light-en-code-empty.png",
       "docs/evidence/hub-join-consent-m2876/skew-confirm/desk-light-en-empty.png",
@@ -288,10 +318,23 @@
     ]
   },
   {
+    "digest": "74a89af5255ad10bc73a0a7619f79106d97534ee58c7d17ce12967b6d82ac853",
+    "paths": [
+      "src/settings-confirmation.ts"
+    ]
+  },
+  {
     "digest": "75873e27a56e9b1a332c37d95c2b8aada67e944ad207618ac4239c45e7931bfc",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/phone-dark-zh-TW-code-connected.png",
       "docs/evidence/hub-join-consent-m2876/browser-pass/phone-dark-zh-TW-connected.png"
+    ]
+  },
+  {
+    "digest": "7b6d5f4259666d4bfbb8a40638d33668344a7dc9bab92d078900bc5966d5d1f5",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/phone-dark-zh-TW-code-connected.png",
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/phone-dark-zh-TW-connected.png"
     ]
   },
   {
@@ -326,6 +369,12 @@
     ]
   },
   {
+    "digest": "844a9a6a8cb7f67193c27c86d64ac6b80ef5a067f40dea507bea4167833e52cb",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/receipt.json"
+    ]
+  },
+  {
     "digest": "85e1c54a313779296acca5ba369cec76c9c1866ff64fc0cc2facea62454ecb36",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/settled/desk-light-en-code-connected.png"
@@ -338,15 +387,15 @@
     ]
   },
   {
-    "digest": "9409c71c605f8bb2416b2ce4daade77d34e4216fe13b56f4c277b3413aeef6ac",
+    "digest": "8c4b6b4563815a286feaec339d094953ebb4273614d54ed136e3117560d27821",
     "paths": [
-      "src/ui/hub-company-join-strings.js"
+      "src/fleet-manager.ts"
     ]
   },
   {
-    "digest": "9da9213d8dd3f1de4acd3a53b93acc6a277870b787fd62eaa0b65e72e6008a89",
+    "digest": "9409c71c605f8bb2416b2ce4daade77d34e4216fe13b56f4c277b3413aeef6ac",
     "paths": [
-      "src/settings-confirmation.ts"
+      "src/ui/hub-company-join-strings.js"
     ]
   },
   {
@@ -389,16 +438,11 @@
     "digest": "a8e468babdac0f25edbf0b9a9947cde19021349b2f7efd50297b89934e3b480c",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/phone-dark-zh-TW-admin.png",
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/phone-dark-zh-TW-admin.png",
       "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-admin.png",
       "docs/evidence/hub-join-consent-m2876/skew-confirm/phone-dark-zh-TW-admin.png",
       "docs/evidence/hub-join-consent-m2876/skew-panel/phone-dark-zh-TW-admin.png",
       "docs/evidence/hub-join-consent-m2876/skew-strings/phone-dark-zh-TW-admin.png"
-    ]
-  },
-  {
-    "digest": "a9b3070bf40a7e2038bbaed791d924d561306c2dd3286187d255c81db80854c0",
-    "paths": [
-      "docs/evidence/hub-join-consent-m2876/README.md"
     ]
   },
   {
@@ -411,6 +455,12 @@
     "digest": "b11a97e9930ba6d6a99b6b0970ccd2d6433de0a0b623e4bef480a7f45c6523e6",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/restored.json"
+    ]
+  },
+  {
+    "digest": "b196d8ca04b489f0a548cc0af0e80514804090751d2b4b566ef8bca3b870682b",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/README.md"
     ]
   },
   {
@@ -448,6 +498,8 @@
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/phone-dark-zh-TW-code-empty.png",
       "docs/evidence/hub-join-consent-m2876/browser-pass/phone-dark-zh-TW-empty.png",
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/phone-dark-zh-TW-code-empty.png",
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/phone-dark-zh-TW-empty.png",
       "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-code-empty.png",
       "docs/evidence/hub-join-consent-m2876/post-sync/phone-dark-zh-TW-empty.png",
       "docs/evidence/hub-join-consent-m2876/settled/phone-dark-zh-TW-code-empty.png",
@@ -459,12 +511,6 @@
     "digest": "bda9a03ca06a601f97df93203b57be8695a75e375260ecd2ea11c67545286ea7",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/phone-light-zh-TW-admin.png"
-    ]
-  },
-  {
-    "digest": "be635333bb4a36b29e5069e02c8f342ec75240d1395effb156e458bafd4256bb",
-    "paths": [
-      "src/fleet-manager.ts"
     ]
   },
   {
@@ -536,6 +582,7 @@
   {
     "digest": "d3d64b31cb186329cb20a62e0fcd49bd2c2f9a2abc1637ad4c2cd4f8b836405f",
     "paths": [
+      "docs/evidence/hub-join-consent-m2876/code-off-browser/desk-light-en-code-hub-signin.png",
       "docs/evidence/hub-join-consent-m2876/post-sync/desk-light-en-code-hub-signin.png"
     ]
   },
@@ -555,6 +602,12 @@
     "digest": "d839af4ff1907187725c9523bdb8c7059ccbd1f76a6092aae36973429519a8b9",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/skew-panel/phone-dark-zh-TW-empty.png"
+    ]
+  },
+  {
+    "digest": "d942141beb54c40b59c6ae074766dedd32d2544ed7eed720f246714cdf3708e6",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/code-policy-r2.json"
     ]
   },
   {
