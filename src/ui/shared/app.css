@@ -4284,3 +4284,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .inst-gear { flex: none; width: 28px; height: 28px; padding: 0; color: var(--text-3); display: inline-grid; place-items: center; }
 @media (hover: hover) { .inst-nav .v-li:not(:hover):not(:focus-within):not(:has(> .inst.active)) > .inst-gear:not(:focus-visible) { visibility: hidden; } }
 .v-li.two-line > .inst-gear { align-self: flex-start; margin-top: 6px; }
+/* The Agent instructions field: the Edit / Preview switch, the box under it (the editor or the preview) and the notes are one column with the form's standard gap; the preview scrolls inside its own box (the chat's Markdown look, .pv-code.pv-md). */
+.instructions-field { display: flex; flex-direction: column; gap: var(--s-2); }
+.instructions-field > .seg-inline { align-self: flex-start; }
+.instructions-field .pv-code { max-height: 24rem; }

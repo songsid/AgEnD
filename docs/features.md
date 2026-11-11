@@ -1071,7 +1071,7 @@ The message is still delivered — the warning is advisory, letting the sender d
 
 ## systemPrompt file paths
 
-The `systemPrompt` field in fleet.yaml supports a `file:` prefix to load content from a file:
+The `systemPrompt` field in fleet.yaml — shown in the dashboard as **Agent instructions** (Settings › Basic info of an agent; it used to be called "System prompt", and it is the same field) — supports a `file:` prefix to load content from a file:
 
 ```yaml
 instances:

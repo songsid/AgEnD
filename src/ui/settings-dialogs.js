@@ -22,6 +22,7 @@ import "./settings-strings.js";   // its words, wherever a picker of this file i
 import "./settings-shared-strings.js";
 import { pt } from "./agent-page-strings.js";
 import { InfoTip } from "./settings-shared.js";
+import { INSTRUCTIONS_MAX_CHARS, InstructionsField } from "./agent-instructions-field.js";
 import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows } from "./settings-catalog.js";
 import {
   ACCESS_MODES, AGENT_MODES, CH_TYPES, DASHBOARD_CHOICES, DASHBOARD_FEATURES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
@@ -311,6 +312,8 @@ export function useAgentForm({ name, inst, ctx }) {
   const errors = {
     auto: f.inherit.auto_pause_after ? "" : nonNegative(f.auto_pause_after),
     hang: f.inherit.hang ? "" : positive(f.hang),
+    // Agent instructions (systemPrompt) over the editor's limit: only a text being edited — one already saved that is longer stays as it is.
+    instructions: (f.systemPrompt || "").length > INSTRUCTIONS_MAX_CHARS && f.systemPrompt !== (inst.systemPrompt || "") ? "instrTooLong" : "",
     cards: Number.isInteger(Number(f.board_cards_at_once)) && Number(f.board_cards_at_once) >= 1 && String(f.board_cards_at_once).trim() !== "" ? "" : "mustBePositiveInteger",
   };
   // #3008 G1: a fleet with no chat connection has one General at most — ticking a second says which one it is, right
@@ -319,7 +322,7 @@ export function useAgentForm({ name, inst, ctx }) {
     ? Object.entries(fleet.instances || {}).find(([other, c]) => other !== name && c && (c.general_topic === true || (other === "general" && c.general_topic !== false))) : null;
   const generalError = otherGeneral ? tn("oneGeneral", ctx.shortName(otherGeneral[0], otherGeneral[1])) : "";
   const failoverWarn = !f.inherit.model_failover && !f.model_failover.trim() ? "failoverEmpty" : "";
-  const ready = !errors.auto && !errors.hang && !errors.cards && !generalError;
+  const ready = !errors.auto && !errors.hang && !errors.cards && !errors.instructions && !generalError;
   // #3212: the agent's own credential profile for its CLI ("" = none: it follows the fleet default). Host agents only.
   const acctBackend = f.backend || defaults.backend || "claude-code";
   const ownAccount = (inst.backend_options && inst.backend_options[acctBackend] && inst.backend_options[acctBackend].credential_profile) || "";
@@ -371,7 +374,10 @@ export function AgentFields({ m, cat, onDelete }) {
         <div class="field">${L(tn("tags"), "instance.tags", undefined, pt("tip_tags"))}<${ChipList} items=${f.tags} onChange=${set("tags")} placeholder=${tn("tagPlaceholder")} label=${tn("tags")} /></div>
       </div>
       <div class="field">${L(tn("description"), "instance.description", "ag-desc", pt("tip_description"))}<input id="ag-desc" type="text" value=${f.description} onInput=${(e) => set("description")(e.target.value)} />
-        <p class="note">${pt("note_description")}</p></div></${Card}></div>`;
+        <p class="note">${pt("note_description")}</p></div></${Card}>
+    ${windows ? null : html`<${Card} title=${pt("cardInstructions")} span=${true}>
+      <div class="field">${L(pt("lbl_instructions"), "instance.systemPrompt", "ag-sys", pt("tip_instructions"))}<${InstructionsField} id="ag-sys" value=${f.systemPrompt} saved=${inst.systemPrompt || ""} onChange=${set("systemPrompt")} />
+        <p class="note">${pt("note_instructions")}</p></div></${Card}>`}</div>`;
   if (cat === "runtime") return html`<div class="ap-grid">
     <${Card} title=${pt("cardRuntime")}>
       <${AgentRuntimeSettings} name=${name} inst=${{ ...inst, backend: f.backend }} inherited=${inheritedBackend ? html`<${Inherited} ...${inh("backend", f.backend, "#g-be", "backend")} />` : null} disabled=${Object.keys(m.pending()).length > 0 || ctx.staged?.size > 0} onChanged=${() => { ctx.reload(); if (m.onChanged) m.onChanged(); }} />
@@ -449,9 +455,9 @@ export function AgentFields({ m, cat, onDelete }) {
   }
   // adv
   return html`<div class="ap-grid">
-    <${Card} title=${pt("cardSystemPrompt")} span=${true}>
+    ${windows ? html`<${Card} title=${pt("cardSystemPrompt")} span=${true}>
       <div class="field">${L(tn("systemPrompt"), "instance.systemPrompt", "ag-sys", pt("tip_systemPrompt"))}<input id="ag-sys" type="text" placeholder="e.g. file:prompts/dev.md" value=${f.systemPrompt} onInput=${(e) => set("systemPrompt")(e.target.value)} /></div>
-      <p class="note">${pt("note_systemPrompt")}</p></${Card}>
+      <p class="note">${pt("note_systemPrompt")}</p></${Card}>` : null}
     <${Card} title=${pt("cardLogging")}>
       <div class="field">${L(tn("logLevel"), "instance.log_level", "ag-log_level", pt("tip_logLevel"))}
         <${Override} inherit=${f.inherit.log_level} onInherit=${setInherit("log_level")} inherited=${inh("log_level", defaults.log_level || "info", "#g-ll", "", hasOwn(defaults, "log_level"))}>

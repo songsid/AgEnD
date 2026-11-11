@@ -1029,7 +1029,7 @@ fleet 指示以附加的方式注入，不會覆蓋 CLI 內建的系統提示。
 
 ## systemPrompt 檔案路徑 (systemPrompt file paths)
 
-fleet.yaml 的 `systemPrompt` 欄位支援 `file:` 前綴，從檔案載入內容：
+fleet.yaml 的 `systemPrompt` 欄位（儀表板上 Agent「設定 › 基本資料」裡的「Agent 指示」，以前叫「System prompt」，是同一個欄位）支援 `file:` 前綴，從檔案載入內容：
 
 ```yaml
 instances:
