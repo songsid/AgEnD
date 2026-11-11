@@ -74,8 +74,8 @@ try {
     const { execFileSync } = await import("node:child_process");
     const REPO = process.env.REPO!, OLD = process.env.OLD_REF ?? "upstream/release/2.3.5-alpha";
     const old = (f: string) => { try { return execFileSync("git", ["-C", REPO, "show", `${OLD}:src/ui/${f}`], { encoding: "utf8", maxBuffer: 64 << 20 }); } catch { return null; } };
-    for (const way of ["old-daemon", "old-shell", "old-strings"]) {
-      const c = matrix("desk-light-en")[0]!;
+    for (const [way, caseSpec] of [["old-daemon", "desk-light-en"], ["old-shell", "desk-light-en"], ["old-strings", "desk-light-en"], ["old-strings-zh", "phone-dark-zh-TW"]] as const) {
+      const c = matrix(caseSpec)[0]!, zh = c.lang === "zh-TW";
       delete inst.effort;
       const { ctx, page } = await fx.page(c, { path: `/ui/fleet/agent/${encodeURIComponent(agent)}?cat=runtime` });
       const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
@@ -83,13 +83,15 @@ try {
       if (way === "old-daemon") await page.route(/\/ui\/effort-options/, (route: any) => route.fulfill({ status: 404, contentType: "application/json", body: "{}" }));
       if (way === "old-shell") await page.route("**/assets/**", (route: any) => { const f = new URL(route.request().url()).pathname.replace(/^\/assets\//, ""); const body = old(`shared/${f}`);
         if (body === null) return route.continue(); served.add(f); return route.fulfill({ status: 200, contentType: f.endsWith(".css") ? "text/css; charset=utf-8" : "text/javascript; charset=utf-8", body }); });
-      if (way === "old-strings") await page.route(/\/ui\/js\/agent-page-strings\.js/, (route: any) => { served.add("agent-page-strings.js"); return route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body: old("agent-page-strings.js")! }); });
+      if (way.startsWith("old-strings")) await page.route(/\/ui\/js\/agent-page-strings\.js/, (route: any) => { served.add("agent-page-strings.js"); return route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body: old("agent-page-strings.js")! }); });
       await page.goto(`${fx.base}/ui/fleet/agent/${encodeURIComponent(agent)}?cat=runtime`); await page.waitForSelector("#ag-model", { timeout: 15000 }); await page.waitForTimeout(900);
       const card = page.locator("section.card", { has: page.locator("#ag-model") }); await card.scrollIntoViewIfNeeded();
       await card.screenshot({ path: shotPath(SMOKE, `skew-${way}`, `${LABEL}-card`) });
-      const field = await page.evaluate(`(() => { const s = document.querySelector("#ag-effort"); return s ? { options: [...s.options].map((o) => o.textContent.trim()), label: s.closest(".field").querySelector(".s-lab")?.innerText ?? "" } : null; })()`) as any;
-      // old-daemon: no field; old-shell: the field; old-strings: the field, its words missing (the key shows) but nothing throws.
-      check(`skew-${way}`, errs.length === 0 && (way === "old-daemon" ? field === null : field !== null && field.options.length >= 2) && (way === "old-daemon" || way === "old-strings" || served.size > 0), { field, served: [...served], errs });
+      const field = await page.evaluate(`(() => { const s = document.querySelector("#ag-effort"); return s ? { options: [...s.options].map((o) => o.textContent.trim()), label: s.closest(".field").querySelector(".s-lab")?.innerText ?? "", tip: s.closest(".field").querySelector(".s-tipwrap")?.textContent ?? "", card: document.querySelector("#ag-model").closest("section.card").innerText } : null; })()`) as any;
+      // old-daemon: no field; old-shell / old-strings: the field, its words READABLE (label, Model default, the timing / restart help) and no raw key.
+      const words = field !== null && field.label.includes(zh ? "推理強度" : "Reasoning effort") && field.options[0] === (zh ? "模型預設" : "Model default")
+        && field.tip.includes(zh ? "重啟" : "restart") && !/agentPage\.|effortField\./.test(field.card);
+      check(`skew-${way}`, errs.length === 0 && (way === "old-daemon" ? field === null : field !== null && field.options.length >= 2 && words) && (way === "old-daemon" || way.startsWith("old-strings") || served.size > 0), { field: field && { ...field, card: undefined }, served: [...served], errs });
       await ctx.close();
     }
   }

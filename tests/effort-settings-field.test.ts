@@ -146,6 +146,21 @@ describe("the effort field in Runtime & model", () => {
     expect(f.$("#ag-effort").value).toBe("max");
   });
 
+  it("its words are the field's own module's: readable in both languages, with the timing / restart help, whatever agent-page-strings holds", async () => {
+    const i18n = await import("/assets/app-i18n.js");
+    for (const [lang, label, def, restart] of [["en", "Reasoning effort", "Model default", "restart"], ["zh-TW", "推理強度", "模型預設", "重啟"]]) {
+      i18n.setLang(lang, { store: false });
+      const f = await mount({ backend: "claude-code", model: "opus-a", working_directory: "/w" });
+      const text = p.root.textContent;
+      expect(text, lang).toContain(label);
+      expect(f.labels()[0], lang).toBe(def);
+      expect(f.$(".s-tipwrap").textContent, lang).toContain(restart);
+      expect(text, lang).not.toMatch(/agentPage\.|effortField\./);
+      await p.unmount();
+    }
+    i18n.setLang("en", { store: false });
+  });
+
   it("shows nothing for a Windows agent, or from a daemon without the endpoint (an older one)", async () => {
     const win = await mount({ backend: "codex", runtime: "windows", working_directory: "C:\\w" });
     expect(win.$("#ag-effort")).toBeNull();

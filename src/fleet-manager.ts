@@ -24973,9 +24973,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // The model it runs, for the backends whose levels are the model's own: agy's catalog (#1825), claude's account
     // catalog and grok's cache. codex's levels read its own config (the caller there knows which model runs); the
     // rest ignore the model.
-    // Settings' model field, before it is saved: not for codex, whose levels are the ones its config gives to the chip
-    // and to applyEffort alike — the page must list what a choice will be applied against.
-    if (modelOverride && backend !== "codex") model = modelOverride;
+    // Settings' model field, before it is saved (effortOptionsFor only, for every backend: the field is disabled until
+    // Save, so what it lists is the selected model's levels and what /effort applies against does not change). Without
+    // it, codex reads its config's model, which is what the chip and applyEffort use.
+    if (modelOverride) model = modelOverride;
     else if (backend !== "codex") {
       const resolved = this.resolveInstanceModel(instanceName);
       model = resolved.source === "unresolved" ? null : resolved.model;

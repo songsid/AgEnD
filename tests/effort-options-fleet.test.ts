@@ -50,7 +50,7 @@ describe("FleetManager.effortOptionsFor: the levels the model in the field takes
     expect(fm.effortOptionsFor("opus", "  ").levels).toEqual(["low", "medium", "high", "max"]);
   });
 
-  it("codex: the model typed in the field is not asked about — the levels are the ones the chip and /effort apply against", async () => {
+  it("codex: the options follow the model typed in the field, while the chip and /effort keep the config's model", async () => {
     const codexHome = join(root, "codex");
     mkdirSync(codexHome, { recursive: true });
     writeFileSync(join(codexHome, "config.toml"), 'model = "gpt-a"\n');
@@ -63,10 +63,13 @@ describe("FleetManager.effortOptionsFor: the levels the model in the field takes
     process.env.CODEX_HOME = codexHome;
     try {
       const fm = await rig(["instances:", "  cx: { working_directory: /tmp, backend: codex }"].join("\n"));
+      // what the chip lists and /effort applies against: the config's model, whatever the form says
       expect(fm.effortLevelsFor("cx")).toEqual(["low", "high"]);
       expect(fm.effortOptionsFor("cx").levels).toEqual(["low", "high"]);
-      expect(fm.effortOptionsFor("cx", "gpt-b").levels).toEqual(["low", "high"]);   // the field's model is not what /effort applies against
-      expect(fm.effortOptionsFor("cx", "gpt-b").levels).toEqual(fm.effortLevelsFor("cx"));
+      // the read-only options of Settings follow the selected (unsaved) model; the field is disabled until Save
+      expect(fm.effortOptionsFor("cx", "gpt-b").levels).toEqual(["low", "medium", "high", "xhigh"]);
+      expect(fm.effortOptionsFor("cx", "gpt-a").levels).toEqual(["low", "high"]);
+      expect(fm.effortLevelsFor("cx")).toEqual(["low", "high"]);                    // asking about B changed nothing
     } finally {
       if (savedCodex === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = savedCodex;
     }

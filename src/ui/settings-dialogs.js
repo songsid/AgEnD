@@ -21,6 +21,7 @@ import {AgentRuntimeSettings} from "./agent-runtime-settings.js";
 import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
 import "./settings-shared-strings.js";
 import { pt } from "./agent-page-strings.js";
+import { ew } from "./effort-field-strings.js";   // the effort field's words: lazy and fixed (a retained old agent-page-strings lacks them)
 import { InfoTip } from "./settings-shared.js";
 import { INSTRUCTIONS_MAX_CHARS, InstructionsField } from "./agent-instructions-field.js";
 import { AgentTemplateTools } from "./agent-export-dialog.js";
@@ -141,19 +142,19 @@ export function EffortField({ m }) {
     setBusy(true);
     try {
       const r = await api("/ui/command", { method: "POST", body: JSON.stringify({ instance: name, command: "effort", args: level }) });
-      if (!r.ok) toast((r.body && r.body.error) || pt("effortFailed"), false);
+      if (!r.ok) toast((r.body && r.body.error) || ew("failed"), false);
       else if (r.body && r.body.text) toast(r.body.text);
-    } catch { toast(pt("effortFailed"), false); }
+    } catch { toast(ew("failed"), false); }
     if (!alive.current) return;
     setBusy(false); setRev((x) => x + 1);
     if (ctx.reloadLive) await ctx.reloadLive();
   };
-  const options = [{ value: "", label: pt("effortDefault"), disabled: !!effort }, ...levels.map((l) => ({ value: l, label: l })),
-    ...(effort && !levels.includes(effort) ? [{ value: effort, label: pt("effortNotOffered", effort), disabled: true }] : [])];
-  return html`<div class="field"><${Label} text=${pt("lbl_effort")} schema=${EFFORT_SCHEMA} field="instance.effort" htmlFor="ag-effort" tip=${pt("tip_effort")} />
+  const options = [{ value: "", label: ew("modelDefault"), disabled: !!effort }, ...levels.map((l) => ({ value: l, label: l })),
+    ...(effort && !levels.includes(effort) ? [{ value: effort, label: ew("notOffered", effort), disabled: true }] : [])];
+  return html`<div class="field"><${Label} text=${ew("label")} schema=${EFFORT_SCHEMA} field="instance.effort" htmlFor="ag-effort" tip=${ew("tip")} />
     <select key=${`${effort || ""}:${rev}`} id="ag-effort" value=${effort || ""} disabled=${busy || unsavedModel} aria-busy=${busy ? "true" : undefined} onChange=${pick}>
       ${options.map((o) => html`<option key=${o.value} value=${o.value} disabled=${o.disabled}>${o.label}</option>`)}</select>
-    ${unsavedModel ? html`<p class="note">${pt("note_effortSaveModel")}</p>` : null}</div>`;
+    ${unsavedModel ? html`<p class="note">${ew("saveModelFirst")}</p>` : null}</div>`;
 }
 export function Impact({ schema, field }) { return html`<span class="impact">${impactText(impactOf(schema, field))}</span>`; }
 export function Label({ text, schema, field, htmlFor, mark, tip }) {
