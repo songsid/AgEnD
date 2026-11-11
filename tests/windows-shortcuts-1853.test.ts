@@ -194,7 +194,7 @@ Write-Output 'PARSED_OK'`, bin);
     writeFileSync(join(dir, "run-restart.ps1"), `function Start-Sleep { param($Seconds, $Milliseconds) }\n. (Join-Path $env:TMPDIR 'restart-agend.ps1')\n`);
     const r = spawnSync("pwsh", ["-NoProfile", "-File", join(dir, "run-restart.ps1")], { encoding: "utf8", timeout: 10000, input: "y\n\n", env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: dir } });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)");
+    expect(r.stdout).toContain("確定要重啟 AgEnD 嗎？所有 Agent 會重新啟動，正在進行的工作會中斷。(y/N)");
     expect(calls(bin)).toBe(`-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 355 bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}agend status\n`);
   });
 });

@@ -487,6 +487,30 @@ describe.skipIf(!pwsh)("M-2885 with pwsh: the real process — loader on the com
       expect(readFileSync(join(w.local, "AgEnD", "agend-restart.ico")).equals(ICONS["agend-restart.ico"])).toBe(true);
       expect(readFileSync(join(w.local, "lnk.txt"), "utf8")).toMatch(/AgEnD 重新啟動\.lnk \| .* \| icon=.*agend-restart\.ico,0/);
       const failing = spawnSync("pwsh", powershellArgs(), { input: "Write-Output '中文 ok'\nexit 7\n", encoding: "utf8", env, timeout: 60_000 });
+      // The loader reads standard input WHOLE and runs it as one script block — never line by line: a here-string, a
+      // function and an if/else that each span several lines only work that way (the leader's review of M-2885).
+      const multi = [
+        "$text = @'",
+        "first line",
+        "  second line, with 'quotes' and a $notAVariable",
+        "'@",
+        "function Join-Twice([string]$a) {",
+        "  $b = $a +",
+        "    $a",
+        "  return $b",
+        "}",
+        "if ($text.Split(\"`n\").Count -eq 2) {",
+        "  Write-Output ('LINES=2 ' + (Join-Twice 'ab'))",
+        "}",
+        "else {",
+        "  Write-Output 'LINES=wrong'",
+        "}",
+        "Write-Output $text",
+        "",
+      ].join("\n");
+      const whole = spawnSync("pwsh", powershellArgs(), { input: multi, encoding: "utf8", env, timeout: 60_000 });
+      expect([whole.status, whole.stderr]).toEqual([0, ""]);
+      expect(whole.stdout.split(/\r?\n/).slice(0, 3)).toEqual(["LINES=2 abab", "first line", "  second line, with 'quotes' and a $notAVariable"]);
       expect([failing.status, failing.stdout.trim()]).toEqual([7, "中文 ok"]);
     } finally { rmSync(w.dir, { recursive: true, force: true }); }
   });

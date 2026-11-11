@@ -24,11 +24,22 @@ const ps = (script: string) => spawnSync("powershell.exe", powershellArgs(), { i
 const icons = packageShortcutIcons();
 check(SHORTCUT_ICON_NAMES.every(n => icons[n]?.length), "the package's two icons are readable");
 
+// A hosted runner's account may have no Desktop folder, and .NET then answers "" for it (every interactive user has
+// one). Made here, and said, so a failure below is about the shortcuts, not the runner.
+const desk = ps("$before = [Environment]::GetFolderPath('Desktop'); New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE 'Desktop') | Out-Null; Write-Output ('DESKTOP|' + $before + '|' + [Environment]::GetFolderPath('Desktop'))\n");
+console.log(desk.stdout.trim());
+check(/^DESKTOP\|[^|]*\|.+\\Desktop\r?$/m.test(desk.stdout), "the runner account has a Desktop folder");
+
 const shared = sharedShortcutsPs();
 for (const [label, withIcons] of [["without icons", false], ["with icons", true]] as const) {
   const r = ps(buildShortcutsScript(shared, "AgEnD-CI", "runner", undefined, withIcons ? icons : {}));
   console.log(r.stdout.trim()); if (r.stderr.trim()) console.log(r.stderr.trim());
   check(r.status === 0 && /^AGEND_SHORTCUTS_MADE=2\r?$/m.test(r.stdout), `run ${label}: both shortcuts made (status ${r.status})`);
+  if (!/^AGEND_SHORTCUTS_MADE=2\r?$/m.test(r.stdout)) {
+    // Install-AgendShortcuts keeps going past a shortcut it cannot make: ask the same function directly, for its reason.
+    const why = ps(`$script:OnWindows = $true\n${shared}\ntry { New-AgendShortcut 'AgEnD probe' 'probe.ps1' '# probe' 'probe' | Out-Null; Write-Output 'PROBE|ok' } catch { Write-Output ('PROBE|' + $_.Exception.GetType().FullName + '|' + $_) }\n`);
+    console.log(why.stdout.trim());
+  }
 }
 
 const read = ps(`
