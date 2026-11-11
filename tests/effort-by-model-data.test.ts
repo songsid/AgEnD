@@ -223,11 +223,11 @@ describe("grok's fallback model list", () => {
   });
 });
 
-describe("muse stays as it was until a real-CLI check (#3636)", () => {
-  it("muse is not added to the settings summary's effort backends: without a live answer the summary shows the dash, a set effort still shows", () => {
-    expect(EFFORT_BACKENDS.has("muse")).toBe(false);
-    expect(effectiveSummary({ backend: "muse" }, {}, {}, undefined).effort).toBe("—");
-    expect(effectiveSummary({ backend: "muse", effort_supported: true }, { effort: "xhigh" }, {}, undefined).effort).toBe("xhigh");
+describe("muse's effort in the settings summary", () => {
+  it("muse is an effort backend: the summary shows auto, not the dash", () => {
+    expect(EFFORT_BACKENDS.has("muse")).toBe(true);
+    expect(effectiveSummary({ backend: "muse" }, {}, {}, undefined).effort).toBe("auto");
+    expect(effectiveSummary({ backend: "muse" }, { effort: "xhigh" }, {}, undefined).effort).toBe("xhigh");
   });
 });
 
@@ -284,7 +284,7 @@ describe("FleetManager: the running model's levels, and what the chat header is 
     expect(of("oc")).toMatchObject({ effort: null, effort_supported: false });
   });
 
-  it("antigravity and muse are not offered the chip unasked (effort_supported false); a muse effort that is set still shows", async () => {
+  it("antigravity is not offered the chip unasked, set or not (effort_supported false, effort null); muse is, like the other runtime backends", async () => {
     const fm = await rig([
       "instances:",
       "  agy: { working_directory: /tmp, backend: antigravity, model: gemini-3.8-flash-high }",
@@ -296,8 +296,8 @@ describe("FleetManager: the running model's levels, and what the chat header is 
     const of = (name: string) => frame.find(i => i.name === name);
     expect(of("agy")).toMatchObject({ effort: null, effort_supported: false });
     expect(of("agy-set")).toMatchObject({ effort: null, effort_supported: false });   // agy never reports an effort here
-    expect(of("m")).toMatchObject({ effort: null, effort_supported: false });
-    expect(of("m-set")).toMatchObject({ effort: "xhigh", effort_supported: false });
+    expect(of("m")).toMatchObject({ effort: null, effort_supported: true });
+    expect(of("m-set")).toMatchObject({ effort: "xhigh", effort_supported: true });
   });
 
   it("a /model option's effort (the phone's second level): the model's levels and the set one, none for Haiku 4.5, agy or an unlisted backend", async () => {
@@ -312,7 +312,7 @@ describe("FleetManager: the running model's levels, and what the chat header is 
     expect(choice("grok", "grok-4.7", "xhigh")).toEqual({ levels: ["low", "medium", "high", "xhigh"], current: "xhigh" });
     expect(choice("antigravity", "gemini-3.8-flash-high", "high")).toBeNull();
     expect(choice("opencode", "x", "high")).toBeNull();
-    expect(choice("muse", "muse-x", "high")).toBeNull();                                            // muse: after a real-CLI check
+    expect(choice("muse", "muse-x", "high")).toEqual({ levels: ["low", "medium", "high", "xhigh", "max"], current: "high" });
     expect(choice("codex", "gpt-x", "high")).toBeNull();                                            // codex/kiro: a restart each, not offered here
   });
 });

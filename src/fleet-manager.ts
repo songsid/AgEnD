@@ -24071,7 +24071,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The effort a /model option offers behind its "›" (the phone's second level): the levels `model` takes on this
    * backend and the effort the agent has set, when the model has one of them (else null: it shows "auto"). Only where
    * an effort change is applied live (a model switch then an effort one is no second restart), and not where the
-   * chat does not offer effort unasked (effortOfferedUnasked: antigravity, muse). A file read; never a CLI.
+   * chat does not offer effort unasked (effortOfferedUnasked: antigravity). A file read; never a CLI.
    */
   private modelEffortChoice(instance: string, backend: string, model: string, set: string | null): { levels: string[]; current: string | null } | null {
     if (!effortOfferedUnasked(backend)) return null;
