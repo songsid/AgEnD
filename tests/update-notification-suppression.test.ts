@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 
@@ -229,7 +230,7 @@ describe("incident alerts during a tmux server storm", () => {
 
 describe("FleetManager.isPlannedRestart", () => {
   it("is false on a healthy fleet and true while an update marker is fresh", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir);
     expect(fm.isPlannedRestart()).toBe(false);
     markUpdateInProgress(dir);
@@ -242,7 +243,7 @@ describe("FleetManager.isPlannedRestart", () => {
     // The update command exits long before the new fleet is up, so the fleet
     // itself has to end the quiet window — otherwise the first post-upgrade
     // crash goes unreported for the rest of the marker's lifetime.
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir);
     markUpdateInProgress(dir);
     // startAll hands finishStartup the marker it adopted at boot (#1737 review fence): this one.
@@ -252,7 +253,7 @@ describe("FleetManager.isPlannedRestart", () => {
   });
 
   it("is true for the whole of a graceful stop, marker or not", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir);
     // `agend restart` / SIGTERM reaches this process directly: no marker exists,
     // but everything that dies from here on dies because we asked it to.

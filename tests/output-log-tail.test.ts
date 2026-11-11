@@ -1,4 +1,5 @@
 /** #1206: bounded async tail — correctness, byte cap, multibyte safety. Scratch files only. */
+import * as daemonModule from "../src/daemon.js";
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -278,7 +279,7 @@ describe("readTailLines regression (#1225)", () => {
 
 describe("attachPipePaneLog (d)", () => {
   const makeDaemon = async () => {
-    const { Daemon } = await import("../src/daemon.js");
+    const { Daemon } = daemonModule;
     const { default: pino } = await import("pino");
     const instanceDir = mkdtempSync(join(tmpdir(), "agend-attach-"));
     const daemon = new Daemon("attach-test", {

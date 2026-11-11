@@ -7,6 +7,7 @@
  * 3. deriveSpawnConcurrency was fed `os.cpus().length` — the host's cores, not the container's or the systemd slice's
  *    quota. effectiveCpuCount reads the cgroup quota; it is driven with a fake /proc and /sys.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { freemem } from "node:os";
@@ -166,7 +167,7 @@ describe("effectiveCpuCount reads the cgroup quota (#749 item 3)", () => {
 
 describe("the fleet's startup concurrency uses it", () => {
   it("spawnConcurrency feeds effectiveCpuCount, not the host's cpus()", async () => {
-    const { FleetManager, deriveSpawnConcurrency } = await import("../src/fleet-manager.js");
+    const { FleetManager, deriveSpawnConcurrency } = fleetManagerModule;
     const fm = Object.create(FleetManager.prototype) as { fleetConfig: unknown; spawnConcurrency(): number };
     fm.fleetConfig = { defaults: {}, instances: {} };
     // Mocked above to a 3-CPU quota; enough free memory and an unmocked cpus() would allow more.

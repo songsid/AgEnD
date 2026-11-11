@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/import-budget-3667-main
+
+ ❯ tests/agy-model-effort-1825.test.ts (33 tests | 1 failed | 32 skipped) 10053ms
+     × the instance's model, else the fleet default's, else agy's own (the probe's currentModel) 10051ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/agy-model-effort-1825.test.ts > the fleet's /effort levels for an agy instance are its model's > the instance's model, else the fleet default's, else agy's own (the probe's currentModel)
+Error: Test timed out in 10000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/agy-model-effort-1825.test.ts:134:3
+    132|
+    133| describe("the fleet's /effort levels for an agy instance are its model…
+    134|   it("the instance's model, else the fleet default's, else agy's own (…
+       |   ^
+    135|     cacheCliEnv({ effortLevels: ["low", "medium", "high", "xhigh", "ma…
+    136|     const { FleetManager } = await import("../src/fleet-manager.js");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 32 skipped (33)
+   Start at  20:21:02
+   Duration  14.83s (transform 10.06s, setup 1.03s, import 2.18s, tests 10.05s, environment 0ms)

@@ -9,6 +9,8 @@
  * - The doors: typed IPC answers for the connection's instance whatever the payload says; the agent endpoint's
  *   theme-* ops; agend-agent's forms; the daemon reads the picture and sends bytes — the fleet never sees a path.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
+import * as daemonModule from "../src/daemon.js";
 import { chmodSync, closeSync, constants as fsConstants, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -197,7 +199,7 @@ describe("no target: the tools' schemas name no instance", () => {
 describe("the doors", () => {
   async function fleet() {
     const dir = tmp("agend-th-fm-");
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir) as any;
     fm.logger = pino({ level: "silent" });
     fm.fleetConfig = { defaults: {}, instances: { worker: { working_directory: dir }, other: { working_directory: dir } } };
@@ -228,7 +230,7 @@ describe("the doors", () => {
     const home = tmp("agend-th-home-"), ws = classic ? join(home, "workspaces/worker") : tmp("agend-th-ws-");
     mkdirSync(ws, { recursive: true }); vi.stubEnv("AGEND_HOME", home);
     writeFileSync(join(ws, "me.png"), png());
-    const { Daemon } = await import("../src/daemon.js");
+    const { Daemon } = daemonModule;
     const daemon = new Daemon("worker", { working_directory: ws, log_level: "error", restart_policy: { max_retries: 1, backoff: "exponential", reset_after: 300 },
       context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 } } as never, join(ws, ".instance"), true, undefined, undefined, pino({ level: "silent" }) as never) as any;
     const broadcast = vi.fn(), send = vi.fn((_socket: unknown, _msg: unknown) => true);
@@ -246,7 +248,7 @@ describe("the doors", () => {
   });
   it("a malformed file argument (raw JSON args) is answered once, with an error — never a throw left unanswered", async () => {
     const ws = tmp("agend-th-ws-");
-    const { Daemon } = await import("../src/daemon.js");
+    const { Daemon } = daemonModule;
     const daemon = new Daemon("worker", { working_directory: ws, log_level: "error", restart_policy: { max_retries: 1, backoff: "exponential", reset_after: 300 },
       context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 } } as never, join(ws, ".instance"), true, undefined, undefined, pino({ level: "silent" }) as never) as any;
     const broadcast = vi.fn(), send = vi.fn((_socket: unknown, _msg: unknown) => true);

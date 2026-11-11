@@ -4,6 +4,7 @@
  * older ones before an offset, newer ones after the page's cursor), a watch lease is the only timer, fleet events come
  * from the event log. Plus the route, the public-link allowlist, passive reads, and `web.log_tab` in Settings.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -311,7 +312,7 @@ describe("the fleet resolves where an instance's steps are read from — only wh
   async function fleet(instances: Record<string, unknown>, extra: (h: string, fm: any) => void = () => {}) {
     const h = temp();
     vi.stubEnv("AGEND_HOME", h);
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(h) as any;
     clearInterval(fm.sessionPruneTimer);
     fm.fleetConfig = { defaults: {}, instances, web: { log_tab: true } };

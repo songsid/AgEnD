@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, mkdirSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -572,7 +573,7 @@ describe("GET /ui/file/<id>", () => {
 describe("deleting an instance stops serving its files", () => {
   it("removeInstance forgets the instance's files once the removal succeeded", async () => {
     vi.stubEnv("AGEND_HOME", dir);
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { authorizeExplicitInstanceRemoval } = await import("../src/instance-removal.js");
     const fm = new FleetManager(dir);
     const any = fm as unknown as Record<string, any>;
@@ -595,7 +596,7 @@ describe("files an agent attaches to its reply are shown in the web chat", () =>
   it("registered by id when they exist; a missing one is left out; the path never reaches the chat", async () => {
     // #1770: the reply's files are copied into <AGEND_HOME>/workspaces/<instance>/web-files — a scratch home, never the real one.
     vi.stubEnv("AGEND_HOME", join(dir, "home"));
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir);
     const any = fm as unknown as Record<string, any>;
     const events: any[] = [];

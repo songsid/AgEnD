@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { page, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
@@ -621,8 +621,11 @@ function raw(port: number, method: string, path: string, headers: Record<string,
 }
 
 describe("the fleet: the agent's door, General's, GET /ui/themes and a person's route", () => {
+  let fleetModule: typeof import("../src/fleet-manager.js");
+  // Keep cold transformation outside the assertions, after the earlier UI cache resets.
+  beforeAll(async () => { fleetModule = await import("../src/fleet-manager.js"); }, 120_000);
   it("all wired to the same service", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetModule;
     const { csrfTokenFor, tokenEpoch } = await import("../src/web-session.js");
     const fm = new FleetManager(tmp()) as any;
     const quiet = () => {};
