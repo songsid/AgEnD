@@ -25,6 +25,9 @@ export function uiDictionaries(file: string): UiDictionaries {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "register" && node.arguments.length >= 2) {
       const [nsArg, dict] = node.arguments;
       const ns = nsArg && text(nsArg as ts.Expression);
+      // #3700 r1 (Fable): a namespace or a dictionary that is not a literal is reported, never skipped.
+      if (ns === null || ns === undefined) unread.push(`${file}: register() with a namespace that is not a literal string`);
+      else if (!dict || !ts.isObjectLiteralExpression(dict)) unread.push(`${file}: ${ns}: register() with a dictionary that is not an object literal`);
       if (ns !== null && ns !== undefined && dict && ts.isObjectLiteralExpression(dict)) {
         for (const langProp of dict.properties) {
           if (!ts.isPropertyAssignment(langProp) || !ts.isObjectLiteralExpression(langProp.initializer)) { unread.push(`${file}: ${ns}: a language entry that is not an object`); continue; }

@@ -23,7 +23,7 @@ describe("pure Hub membership Settings policy", () => {
     expect(isSettingsMutation("PUT", path)).toBe(true);
     const on = effect({}, { enabled: true }).diff!;
     expect(on).toMatchObject({ section: "access", affectedConnections: [], authority: { connections: [], primaryGeneral: true, unknown: false } });
-    expect(on.summary.join(" ")).toContain("Pairing and sharing an agent are separate");
+    expect(on.summary.join(" ")).toContain("Connecting and sharing an agent are separate");
     expect(effect({ hub_member: { enabled: true } }, { enabled: false }).diff).toBeNull();
     expect(effect({ hub_member: { enabled: true } }, { enabled: true }).diff).toBeNull();
     expect(effect({}, { enabled: false }).diff).toBeNull();
@@ -32,6 +32,6 @@ describe("pure Hub membership Settings policy", () => {
   });
   it("localizes the actual confirmation summary", () => {
     setLocale("zh-TW");
-    expect(effect({}, { enabled: true }).diff!.summary.join(" ")).toContain("配對與分享 Agent 需另外選擇");
+    expect(effect({}, { enabled: true }).diff!.summary.join(" ")).toContain("連接與分享 Agent 需另外選擇");
   });
 });
