@@ -55,3 +55,75 @@ describe("step 3 and the join-code slot", () => {
     expect(p.root.querySelector("li[data-step='3'] button").disabled).toBe(true);           // the sentence still waits for step 2
   });
 });
+
+describe("step 2: who can join", () => {
+  const owners = { objectId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", cn: "Owners", dn: "CN=Owners,DC=example,DC=test" };
+  const policy = (o: any = {}) => ({ realm: "example", generation: "g1", revision: 3, state: "never-enabled", groups: [], denies: [], ...o });
+  function client(o: any = {}) {
+    let saved = policy(o.policy);
+    return {
+      saved: () => saved,
+      groupPolicy: vi.fn(async () => ({ ok: true, groupPolicyV1: true, supported: o.supported ?? true, binding: "ready", policy: saved, paused: [] })),
+      searchGroups: vi.fn(async () => o.search ?? ({ ok: true, groups: [owners], truncated: false })),
+      resolveGroup: vi.fn(async () => ({ ok: true, realm: "example", objectId: owners.objectId, dn: owners.dn })),
+      previewGroupPolicy: vi.fn(async () => ({ ok: true, previewDigest: "d".repeat(64), expiresAt: Date.now() + 60000, policyRevision: 3, authorizationVersion: 1, impact: { losingActions: [], losingPublication: [], grandfathered: [], suspendedOnSave: [], adminLosesChat: false, held: [] } })),
+      saveGroupPolicy: vi.fn(async (p: any) => { saved = { ...p, revision: p.revision + 1 }; return { ok: true, policyRevision: saved.revision, state: saved.state }; }),
+      ...(o.codes ? { enrolmentCodes: vi.fn(async () => ({ ok: true, codes: o.codes })) } : {}),
+    };
+  }
+  const typeSearch = async (p: AppPage, v: string) => { const i = p.root.querySelector("#hubGroupSearch"); i.value = v; fire(i, "input"); await settle(4); await new Promise(r => setTimeout(r, 330)); await settle(10); };
+  it("a group found by search is resolved by the server and added letting its members join (chat + connect, 1 Fleet each)", async () => {
+    const c = client(); const p = await mount(js.JoinStep2, { client: c });
+    await typeSearch(p, "own");
+    fire(p.root.querySelector(".hub-group-hits button"), "click"); await settle(10);
+    expect(c.resolveGroup).toHaveBeenCalledWith(owners.dn);
+    const row = p.root.querySelector(`li[data-group="${owners.objectId}"]`);
+    expect(row.querySelector("input[type=number]").value).toBe("1");
+    expect([...row.querySelectorAll("label.check input")].map((x: any) => x.checked)).toEqual([true, false]);   // chat on, share off
+  });
+  it("one 儲存: the check runs on the proposed policy (switched on, the group connects); Save applies exactly that check's digest", async () => {
+    const c = client(), onSaved = vi.fn(); const p = await mount(js.JoinStep2, { client: c, onSaved });
+    await typeSearch(p, "own"); fire(p.root.querySelector(".hub-group-hits button"), "click"); await settle(8);
+    await new Promise(r => setTimeout(r, 450)); await settle(10);
+    const proposed = (c.previewGroupPolicy.mock.calls as any[]).at(-1)[0];
+    expect(proposed).toMatchObject({ state: "enabled", revision: 3, groups: [{ group: { realm: "example", objectId: owners.objectId }, dn: owners.dn, allow: ["ask_agents", "pair_fleet"], maxFleets: 1 }] });
+    fire([...p.root.querySelectorAll("button")].find((b: any) => b.textContent === "Save"), "click"); await settle(12);
+    expect(c.saveGroupPolicy).toHaveBeenCalledWith(proposed, "d".repeat(64));
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(js.step2Done(c.saved(), null)).toBe(true);
+  });
+  it("each person's Fleet limit set to 0 drops connect for that group; above 0 brings it back", async () => {
+    const c = client({ policy: { state: "enabled", groups: [{ group: { realm: "example", objectId: owners.objectId }, dn: owners.dn, allow: ["ask_agents", "pair_fleet"], maxFleets: 2 }] } });
+    const p = await mount(js.JoinStep2, { client: c });
+    const n = p.root.querySelector("input[type=number]"); n.value = "0"; fire(n, "input"); await settle(4); await new Promise(r => setTimeout(r, 450)); await settle(8);
+    expect((c.previewGroupPolicy.mock.calls as any[]).at(-1)[0].groups[0]).toMatchObject({ allow: ["ask_agents"], maxFleets: 0 });
+    n.value = "3"; fire(n, "input"); await settle(4); await new Promise(r => setTimeout(r, 450)); await settle(8);
+    expect((c.previewGroupPolicy.mock.calls as any[]).at(-1)[0].groups[0]).toMatchObject({ allow: ["ask_agents", "pair_fleet"], maxFleets: 3 });
+  });
+  it("A-L13: the directory cannot search — the box goes, the distinguished-name form opens and still adds the group", async () => {
+    const c = client({ search: { ok: false, reason: "unsupported" } }); const p = await mount(js.JoinStep2, { client: c });
+    await typeSearch(p, "own");
+    expect(p.root.querySelector("#hubGroupSearch")).toBeNull();
+    const d = p.root.querySelector("details.hub-join-bydn"); expect(d.open).toBe(true);
+    const i = d.querySelector("input"); i.value = owners.dn; fire(i, "input"); await settle(4); fire(d.querySelector("form"), "submit"); await settle(10);
+    expect(c.resolveGroup).toHaveBeenCalledWith(owners.dn); expect(p.root.querySelector(`li[data-group="${owners.objectId}"]`)).toBeTruthy();
+  });
+  it("A-L11: step 2 is done only from saved state — on with a connecting group, or a live join code; off (suspended) un-ticks it", () => {
+    const joining = [{ group: { realm: "example", objectId: owners.objectId }, dn: owners.dn, allow: ["pair_fleet"], maxFleets: 1 }];
+    expect(js.step2Done(policy({ state: "enabled", groups: joining }), null)).toBe(true);
+    expect(js.step2Done(policy({ state: "suspended", groups: joining }), null)).toBe(false);
+    expect(js.step2Done(policy({ state: "enabled", groups: [{ ...joining[0], maxFleets: 0 }] }), null)).toBe(false);
+    expect(js.step2Done(policy({ state: "enabled", groups: [{ ...joining[0], allow: ["ask_agents"] }] }), null)).toBe(false);
+    expect(js.step2Done(null, [{ state: "expired" }])).toBe(false);
+    expect(js.step2Done(null, [{ state: "live" }])).toBe(true);
+  });
+  it("the card: step 3 unlocks once step 1 is on and a saved group lets members join", async () => {
+    const c = client({ policy: { state: "enabled", groups: [{ group: { realm: "example", objectId: owners.objectId }, dn: owners.dn, allow: ["pair_fleet"], maxFleets: 1 }] } });
+    const p = await mount(js.HubJoinCard, { view: { enabled: true, revision: 4, companyLink: null }, groups: true, features: [], client: c, webOrigin: "https://hub.example.com" });
+    await settle(10);
+    expect([...p.root.querySelectorAll("li[data-step] .tag.ok")].length).toBe(2);
+    expect(p.root.querySelector("li[data-step='3'] button").disabled).toBe(false);
+    expect(p.root.querySelector(".hub-join-sentence").textContent).toBe("In AgEnD, open Settings → Hub, enter hub.example.com, then sign in with the company account.");
+  });
+});
+
