@@ -22,7 +22,7 @@ export interface CheckedPack {
   bubblesByInstance?: Record<string, Record<string, Record<string, string[]>>>;
   room: { floor?: string; wall?: string }; desk: { back?: string; front?: string; lit?: string };
   /** #2661: the Office levels' words — titles from each level up, and titles pinned on instances or NPCs. */
-  levels?: { titles?: Array<{ from: number; name: string }>; fixed?: Record<string, { title: string; hideLevel: boolean }> };
+  levels?: LevelWords;
   /** #2861: the dialogue box's faces — each an expression (idle, working, needs) → file. */
   portraits?: { default?: PackPortrait; byInstance: Record<string, PackPortrait>; byUser: Record<string, PackPortrait>; npc: Record<string, PackPortrait> };
   /** #2861: the dialogue box's look — a 9-slice frame and colours (#rrggbb). */
@@ -30,6 +30,8 @@ export interface CheckedPack {
 }
 /** #2861: a portrait's files by the state it is shown in (at least one). */
 export type PackPortrait = Partial<Record<"idle" | "working" | "needs", string>>;
+/** #2661: the Office levels' words (a pack's `levels`; #3679: the fleet-wide one too). */
+export interface LevelWords { titles?: Array<{ from: number; name: string }>; fixed?: Record<string, { title: string; hideLevel: boolean }> }
 export interface LayoutOverrides {
   pack: string;
   seats?: Record<string, Array<[number, number]>>;
@@ -52,6 +54,8 @@ export function inherited(k: unknown): boolean;
 export function matteOk(v: unknown): v is string;
 export function checkStrip(v: unknown, at?: string, scale?: number): PackStrip;
 export function checkSkinPack(x: unknown, opts?: { kept?: boolean }): { ok: true; pack: CheckedPack } | { ok: false; error: string };
+/** #3679: a fleet-wide `levels`, by a pack's rules. */
+export function checkLevels(v: unknown): { ok: true; levels: LevelWords } | { ok: false; error: string };
 export function skinPackOk(x: unknown): CheckedPack | null;
 export function packImages(pack: CheckedPack): string[];
 export function packSceneImages(pack: CheckedPack): string[];
