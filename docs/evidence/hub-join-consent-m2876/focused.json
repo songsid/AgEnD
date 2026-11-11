@@ -1,0 +1,1553 @@
+{
+  "startTime": 1794366365841,
+  "passed": 296,
+  "failed": 0,
+  "success": true,
+  "files": [
+    {
+      "file": "tests/changelog-fragments.test.ts",
+      "tests": [
+        {
+          "name": "changelog-assemble: into [Unreleased] both languages; top of the subsection, by issue number then name; fragments deleted",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: into [Unreleased] a missing subsection is created in canonical order: before a later one, or at the end of the release",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: into [Unreleased] no blank line before the next release: the new subsection still gets one",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: into [Unreleased] an empty [Unreleased] at the end of the file",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: --release creates ## [X.Y.Z] - date under [Unreleased] in both files and leaves [Unreleased] as it was",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: --release an existing release section is filled, not duplicated",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: --release bad arguments → exit 2, nothing written",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: idempotence a second run finds no fragments and changes nothing",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: idempotence fragments put back after a run (an interrupted one) are not added twice",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: an entry is already there only as a whole (Prism #1333 r1) an existing entry that merely starts with the new one does not swallow it",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: an entry is already there only as a whole (Prism #1333 r1) an entry with continuation lines is not the same as its first line, and vice versa",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: an entry is already there only as a whole (Prism #1333 r1) the whole multi-line entry already present → skipped (the rerun case)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: every line the parser accepts takes part in the comparison (Prism #1333 r2) an unindented continuation (Markdown lazy continuation) is part of the entry: the new explanation is not dropped",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: every line the parser accepts takes part in the comparison (Prism #1333 r2) the CHANGELOG's own lazy-continued entry is compared whole: its first line alone is a different entry",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: every line the parser accepts takes part in the comparison (Prism #1333 r2) a line outside the list item (text after a blank line, not indented) → refused by --check and by assemble, nothing written",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: every line the parser accepts takes part in the comparison (Prism #1333 r2) a line outside the list item (a second paragraph, not indented, after an indented one) → refused by --check and by assemble, nothing written",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: every line the parser accepts takes part in the comparison (Prism #1333 r2) indented continuations and blank lines between indented paragraphs stay valid",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: an interrupted cleanup is finished by running it again (Prism #1333 r1) the zh-TW half left behind → a rerun removes it and adds nothing",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: an interrupted cleanup is finished by running it again (Prism #1333 r1) the en half left behind → a rerun removes it and adds nothing",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: an interrupted cleanup is finished by running it again (Prism #1333 r1) the same with --release: the leftover is judged against that release",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: an interrupted cleanup is finished by running it again (Prism #1333 r1) a half whose entry is not in the CHANGELOG is still an error, and nothing is written",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing no front-matter",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing unknown section",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing lower-case section",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing unknown key",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing section twice",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing no section",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing empty entry",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing not a list item",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing a heading in the entry",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing no zh-TW pair",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing no en pair",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing sections differ",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing a bad name",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: a bad fragment writes nothing --check passes valid fragments and writes nothing",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: the repository's own files changes/ in this repository passes --check",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-assemble: the repository's own files assembles into copies of the real docs/CHANGELOG*.md (their Unreleased headings are the ones it expects)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) the workflow runs it on pull requests only, with the PR's base and head, on a full-history checkout",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) P2/P1 regression: the changelog job has no docs-only skip condition — it runs for all PRs",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a PR that leaves the CHANGELOG alone (fragments only) → passes",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a direct CHANGELOG edit → fails, naming the commit",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) the assemble commit (trailer on its own line) → passes; the trailer inside a sentence does not count",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) an assemble commit plus a direct edit in the same PR → fails",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a merge-sync that brings main's CHANGELOG changes in → passes (counted from the merge-base)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a PR behind main, where main changed the CHANGELOG since → passes (the PR itself does not change it)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a CHANGELOG change made only inside a merge commit → fails",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a merge that changes the CHANGELOG itself, marked in its message (a release PR resolving a conflict) → passes",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) an assemble PR with an unmarked CHANGELOG edit slipped into a merge → fails, naming the entry",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) an edit that the PR itself reverts → passes (the PR does not change the CHANGELOG)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a long-lived line that edited the CHANGELOG all along lands once it moved its entries into fragments and put the files back to main's",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a conflict resolved --ours (main's reworded entry dropped) in an unmarked merge → fails",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a conflict resolved --theirs (the assembled entry dropped, its fragments already deleted) in an unmarked merge → fails",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a lightweight release tag does not excuse entries lost after an assemble merge",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a annotated release tag does not excuse entries lost after an assemble merge",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) the same conflict, resolved to keep both and the merge marked → passes",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) the conflict resolved --ours on purpose, the merge marked → passes (it vouches for what it dropped from main's side)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) control: an assemble PR merge-synced with a main that assembled its own entries elsewhere (clean, unmarked) → passes",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a PR that deletes someone's fragment without assembling it → fails",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a lightweight release tag does not authorize an unmarked fragment deletion",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a annotated release tag does not authorize an unmarked fragment deletion",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) removing a fragment added after the base's latest release passes (annotated=false)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) removing a fragment added after the base's latest release passes (annotated=true)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a fragment present at the latest release still needs its entry, even if edited afterwards",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a PR behind a release cannot treat that release's assembled fragment as new",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a marked withdrawal cannot remove a fragment shipped outside the base's history (assembled=false)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a marked withdrawal cannot remove a fragment shipped outside the base's history (assembled=true)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) merge-sync declarations work in PR history and in a squash push only when its body preserves them",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a declaration covers only its named paths that the declaring commit actually deletes",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) marking one half does not authorize deleting its unmarked pair",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) restoring a withdrawn fragment revokes old intent before another deletion",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a bare mention is not a per-path withdrawal trailer",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) a inline mention is not a per-path withdrawal trailer",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) an edit the PR reverted, while main moved on with CHANGELOG changes of its own → passes (counted from the merge-base)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changelog-guard (ci.yml's step, on a scratch repository) missing or malformed SHAs, or ones git does not know → exit 2",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "changes/README.md is not a fragment exists and is skipped by the assembler",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/hub-admin-entry-ui.test.ts",
+      "tests": [
+        {
+          "name": "Administration leads with existing group and individual connection controls one leading access card, copy action, individual invitations; manual pairing under Advanced (en)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls one leading access card, copy action, individual invitations; manual pairing under Advanced (zh-TW)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls copies only the exact server-supplied identity link, without creating a code or invitation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls off stays off, with a reason for the disabled copy; enabling uses the existing revision and CSRF",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls an off response with a retained public link still cannot offer copying or an invitation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls Advanced reveals a manual pairing already waiting for explicit admin approval",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls an explicit individual invitation keeps the existing endpoint and scoped login body",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls an unread settings response does not claim joining is off or offer a copy",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls missing company feature retains the earlier group/manual entry and performs no company read",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls a non-admin gets no controls or company lookup",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls old panels using the default component retain its existing company card",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/hub-company-join-http.test.ts",
+      "tests": [
+        {
+          "name": "company-join actual Hub boundary a genuinely unissued cancellation releases its reservation without creating a Fleet",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary Hub admission independently refuses a key binding that shares the Fleet browser hostname",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary issued cancel keeps mixed legacy/company admission headroom until its original outer deadline",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary issued expiry keeps mixed legacy/company admission headroom until its original outer deadline",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary a directory epoch change fences the held browser authority and pinned redemption before any new credential",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary is off by default and only the exact configured admin can enable it with Origin/CSRF and current revision",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary refuses an attacker key advertising another Fleet origin before cookie/state/AD, without broadening Hub session CSRF",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary issues once after one identity-submit, recovers exactly the same result, and refuses replay/wrong verifier",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary outsider and unknown membership cannot borrow manual fallback or create a Fleet",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary an exact retained manual Fleet consumes the later automatic quota with a limit-specific refusal",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary legacy quick pairing and a company browser wait share the same one-person reservation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary first redemption expires at60s without issuance and never restarts the operation clock",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary same-result retrieval outlives the old60s redeem window but stops at exactly2min delivery",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary the10min outer deadline truncates both a late first redemption and its delivery window",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary post-commit cancellation erases delivery, keeps the exact retained result and cannot issue again",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary revocation and group suspension refuse recovery even while a transport row still looks active",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary fresh AD membership loss closes delivery despite an unchanged active transport row",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary sign-out of the exact identity-submit session fences a later key-authenticated redemption",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary an outbox failure rolls back credentials, provenance and receipt rather than publishing a partial grant",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company-join actual Hub boundary two browser tabs cannot approve a different request than the Fleet shown in that tab",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/hub-company-join-local.test.ts",
+      "tests": [
+        {
+          "name": "Fleet local company join a shared Hub/Fleet hostname refuses before discovery, a TOFU pin or a remote push",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join a pending journal from an older build cannot revive a same-hostname browser handoff",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join an existing or unfinished legacy binding refuses before discovery or a new Hub reservation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join an orphan pending profile also refuses before any new reservation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join the existing exact disconnect and Start over allow a new explicitly requested join, never automatic reuse",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join saves the exact profile and journal before proof ACK, then activates once without exposing any secret",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join UI status reads share the bounded backend polling window instead of multiplying directory/status work",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join a changed requester fences the original operation before credential persistence",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join a changed confirmer fences the original operation before credential persistence",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join a changed binding fences the original operation before credential persistence",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join a different cookie session cannot read, bridge or cancel an owned operation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join profile saved but membership/journal failure remains held and unconnectable; exact recovery never enrolls twice",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join cancel wins while an issued credential response is held and never ACKs or activates a late result",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join a restarted controller reopens only the same host-owned operation and key; no fresh enrollment",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join recovers the exact owned marker crash window without another enrollment",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join recovers the exact owned profile crash window without another enrollment",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join recovers the exact owned membership crash window without another enrollment",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join recovers the exact owned ack crash window without another enrollment",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join a nonhost restart read asks for fresh local confirmation without permanently revoking the same operation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Fleet local company join a lost issuance reply and lost cancellation retain an unknown outcome until the exact tombstone is read",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/hub-company-join-settings.test.ts",
+      "tests": [
+        {
+          "name": "company Start Settings authority only an actual local cookie session creates the private capability; loopback/header/forwarding never grant host authority",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority a signed-in Fleet admin Start is consent, with no held card or General wait (host=true)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority a signed-in Fleet admin Start is consent, with no held card or General wait (host=false)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority a composition without the scoped feature keeps its previous confirmation path",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=true)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=false)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority company consent retains this admin’s enforced code even with message authority disabled (false)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority company consent retains this admin’s enforced code even with message authority disabled (true)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority company Start stays outward-Hub sensitive and rejects browser-supplied authority/origin/redirect fields",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/hub-company-join-ui.test.ts",
+      "tests": [
+        {
+          "name": "company join UI the join page keeps its title and single heading ahead of other query views ()",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI the join page keeps its title and single heading ahead of other query views (&view=notices)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI the join page keeps its title and single heading ahead of other query views (&room=0f1e2d3c-4b5a-4968-8776-655443322110)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI keeps the specific changed-pin refusal through the shared Settings confirmation outcome",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI opening Settings or a prefilled link never starts a join",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI explains why company sign-in is disabled until address and Fleet name are present",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI the distributed public link provides in-surface navigation, without sign-in or an enrollment action",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI the public link refuses same-hostname navigation before any request (https://hub.example.test)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI the public link refuses same-hostname navigation before any request (https://hub.example.test:4444)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI an already-bound Fleet does not offer another enrollment from a different local session",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI a saved profile with an offline link stays Connecting, polls and only reports Connected when ready",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI a cancelled operation allows a fresh Start only when its unissued result is known (false)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI a cancelled operation allows a fresh Start only when its unissued result is known (true)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI a Fleet-owned waiting tab keeps a same-surface return path when Start is refused or awaits confirmation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI an existing Hub session requires the explicit shown identity action and sends only that exact request",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join UI a Hub limit refusal uses plain limit copy, with no success or silent retry",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/hub-company-join-wait.test.ts",
+      "tests": [
+        {
+          "name": "company join local wait new waiting tabs show the target and continue automatically, without an approval detour",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait Start keeps its server claim inline and asks only the enforced code (false)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait Start keeps its server claim inline and asks only the enforced code (true)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait the inline target stays bound to the submitted address while Start is held",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait a missing legacy confirmation card returns to Settings, never an empty Needs-you page",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait reload reattaches its sole code challenge with the server target and without another Start",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait a new waiting tab never adopts a different handoff’s code challenge",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait a loaded empty handoff is a confirmation wait, not an endless loading skeleton; it has a direct action and an exit",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait re-arms reads after repeated null frames and eventually observes this exact handoff without a reload",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait discovers matching B after older cancelled A, then pins only B",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait discovers matching B after older ended A, then pins only B",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait Check again discovers B after the local wait for unmatched A has expired, without a new Start",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait a different handoff never redirects this waiting tab",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait one slow status read retains physical ownership across polling and Retry; unmount retires its continuation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait the five-minute pre-operation wait ends visibly, stops automatic reads and can inspect the same result without submitting Start",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait the original Start reveals the exact shared card and uses its sole Withdraw control",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait a lost withdrawal keeps the original Start held rather than inventing cancellation or permitting another Start",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait a local pending timeout does not apply, silently withdraw or retry the held change",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/i18n-ui-literals-2390.test.ts",
+      "tests": [
+        {
+          "name": "#2390 the web UI's words go through the locale layer no English written in place in src/ui (allowlist: names, examples, units)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2390 the web UI's words go through the locale layer the allowlist is still needed: every entry is wording the scan finds",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2390 the web UI's words go through the locale layer every register() call in src/ui has an en and a zh-TW table with the same keys",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2390 the web UI's words go through the locale layer the scan sees each shape, through code that only looks like a template (so a pass means something)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2390 the web UI's words go through the locale layer parity reads every register() call: a language missing whole is a finding, never a skip",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/named-link-test-2906.test.ts",
+      "tests": [
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ all five steps pass against a real local origin through the fake edge: the nonce proves THIS AgEnD",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ① {\"hostname\":\"https://agend.example.com/path\"} → values:✗bad-hostname, and nothing is reserved or started",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ① {\"hostname\":\"localhost\"} → values:✗bad-hostname, and nothing is reserved or started",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ① {\"port\":80} → values:✗bad-port, and nothing is reserved or started",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ① {\"port\":\"x\"} → values:✗bad-port, and nothing is reserved or started",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ① {\"token\":\"\"} → values:✗no-token, and nothing is reserved or started",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ① {\"token\":null} → values:✗no-token, and nothing is reserved or started",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ① {\"token\":\"eyJ-not-a-token\"} → values:✗bad-token, and nothing is reserved or started",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ② the dashboard's own port, a port another program holds (the lane given back unused), a link open with other values, another tunnel",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ② with the link open on exactly these values (protocol included): tested as it is — nothing reserved, its page is the proof",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ③ the managed start answers named-auth-failed → tunnel:✗auth; what was started is stopped through the lane",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ③ the managed start answers named-connection-failed → tunnel:✗network; what was started is stopped through the lane",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ③ the managed start answers timeout → tunnel:✗network; what was started is stopped through the lane",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ③ the managed start answers no-url → tunnel:✗stopped; what was started is stopped through the lane",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ③ the managed start answers spawn-failed → tunnel:✗stopped; what was started is stopped through the lane",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ③ the managed start answers binary-missing → tunnel:✗no-binary; what was started is stopped through the lane",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ③ the managed start answers lease-held → tunnel:✗tunnel-busy; what was started is stopped through the lane",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ③ a binary that cannot be prepared: nothing started, the lane given back",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ④ not in DNS (public resolver), the public resolver unreachable but the system finds it, neither can answer, only private answers",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ⑤ 502 from the edge",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ⑤ 530 (error 1033)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ⑤ 404",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ⑤ 200 without the nonce",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ⑤ a reset while the tunnel is up",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ⑤ a timeout while the tunnel is up",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ⑤ something else",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ ⑤ retries while the edge learns the new connector, then passes",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the Test connection runner: every step and every ✗ a protocol other than http2/quic/auto is http2",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2907 review: bounded, cancelled before launch, ownership kept on an unproven stop (2) a DNS lookup that never answers is ended by the hard deadline, and everything is torn down",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2907 review: bounded, cancelled before launch, ownership kept on an unproven stop (2) bounded in live mode too: a DNS lookup that never answers while checking the open link",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2907 review: bounded, cancelled before launch, ownership kept on an unproven stop (2) a deadline during preparation is never followed by a start",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2907 review: bounded, cancelled before launch, ownership kept on an unproven stop (2) a start that hangs is ended by the deadline, and still stopped through the lane",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2907 review: bounded, cancelled before launch, ownership kept on an unproven stop (1) the admin's session ended before anything starts: nothing reserved; ended while preparing: nothing started",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2907 review: bounded, cancelled before launch, ownership kept on an unproven stop #2907 r2: any step that throws is its closed failure, after the same cleanup (never a raw error)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2907 review: bounded, cancelled before launch, ownership kept on an unproven stop (3) an unproven stop is reported, and the lane is not given back",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2907 review: the production lane — the managed start (lease, proven stop) of a connector ready once registered registered → ready; the token only in the environment; stopped with proof, and the lane is free again",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2907 review: the production lane — the managed start (lease, proven stop) of a connector ready once registered a refused token is said at once (not after the registration budget); silence is a timeout",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2907 review: the production lane — the managed start (lease, proven stop) of a connector ready once registered a connector whose stop cannot be proven keeps the lane held (no /web, no second test) until resolved",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2907 review: the production lane — the managed start (lease, proven stop) of a connector ready once registered #2907 r2: a managed start that throws (the lease write refused, EACCES) still stops through the lane, frees the port and the lane",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2907 review: the production lane — the managed start (lease, proven stop) of a connector ready once registered an open link holds the lane: the test is told so",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 at launch: a registered tunnel whose self-probe cannot connect is this machine's network registered (4 connections) + the self-probe reset → named-self-unreachable, even with transient dial errors in its output",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 at launch: a registered tunnel whose self-probe cannot connect is this machine's network not registered + the same reset → named-connection-failed (the tunnel is down)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 at launch: a registered tunnel whose self-probe cannot connect is this machine's network registered + a token refusal still says the token (output evidence wins)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 at launch: a registered tunnel whose self-probe cannot connect is this machine's network the new reason reaches the progress line in both languages",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 wording (the user: never 公司 / company) checks visible copy rather than imports or interpolation variables, and still catches network marketing copy",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 wording (the user: never 公司 / company) ignores conditional CSS class strings while retaining interpolated visible attributes",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 wording (the user: never 公司 / company) keeps visible text that ends in class=: html`<p>class=${\"Company network\"}</p>`",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 wording (the user: never 公司 / company) keeps visible text that ends in class=: html`<button title=\"Network class=${\"Company network\"}\">OK</button>`",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 wording (the user: never 公司 / company) keeps visible text that ends in class=: html`<button aria-label=\"Network class=${\"Company network\"}\">OK</button>`",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 wording (the user: never 公司 / company) still inspects a non-HTML template with text that resembles a class attribute",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 wording (the user: never 公司 / company) keeps visible placeholder copy while ignoring technical HTML attributes",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 wording (the user: never 公司 / company) keeps visible title copy while ignoring technical HTML attributes",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 wording (the user: never 公司 / company) keeps visible aria-label copy while ignoring technical HTML attributes",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 wording (the user: never 公司 / company) keeps network copy free of 公司/company/corporate; #3423 explicitly permits company sign-in wording",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the route: admin only, never over the public link, closed codes only an admin's request reaches the test with the typed token; the answer never carries it",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the route: admin only, never over the public link, closed codes only refused: a read or guest session, no session, and anything over the public link (even an admin's)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the route: admin only, never over the public link, closed codes only #2907 review (1): a session revoked while its body is still arriving starts nothing (401)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the route: admin only, never over the public link, closed codes only #2907 review (1): the test is handed a check of the same admin, false once the session is revoked",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2906 the route: admin only, never over the public link, closed codes only one at a time: a second request while one runs is told so (409)",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/settings-confirmation-store-1423.test.ts",
+      "tests": [
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) never executes on proposal or notification; one admin confirm runs the original effect",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) S-35: Save pressed again on the same change (a fresh idempotency key) returns the request already pending, not another",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) #2972 review: the repeated-Save dedupe joins only a request still pending, never one already applying",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) #2972 review: a removed request takes every idempotency key that named it",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) S-35: a failed apply keeps its localized message and says why — bounded, control characters removed, audited",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) an unauthorised click leaves the pending operation available for the real admin",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) reject and requester withdrawal never execute, release the payload and retire buttons",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) an exact monotonic deadline rejects even when the expiry timer has not run",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) wall clock jumps never change the pending admission budget",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) a shorter verification lifetime is not extended by the pending operation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) same-session idempotent retry keeps the id and prompt; changed bytes get a conflict",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) claims synchronously: a host/chat race cannot start two effects",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) drops a stale session after the fingerprint await",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) drops a stale admin after the fingerprint await",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) drops a stale deadline after the fingerprint await",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) drops a stale configuration after the fingerprint await",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) shutdown fences pending and claimed operations before a held await returns",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) late prompt ACK cannot rearm an expired, withdrawn or stopped proposal",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) limits pending count/bytes and never evicts live approvals to make room",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 pending confirmation owner (no fleet or adapter) views are copied and audit fields contain no secret or operation body",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "the final CAS await cannot adopt a newer snapshot as its admission baseline",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/settings-http-confirmation-1423.test.ts",
+      "tests": [
+        {
+          "name": "#1423 actual Settings handler behind confirmation does not write a sensitive access edit until its actual confirmed replay, exactly once",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 actual Settings handler behind confirmation requires a browser session for sensitive writes, while a model-only edit remains immediate",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 actual Settings handler behind confirmation rejects non-admin, revoked session and a changed actual baseline without writing",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 actual Settings handler behind confirmation returns the same pending on a retry and does not reveal another session's pending",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#1423 actual Settings handler behind confirmation withdraws without running the handler and never returns secret material in the view",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "an immediate full replacement is fenced if an approved ACL changes before handler admission",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "unsupported instance nulls cannot hide a credential/permission change in projection",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "the real HTTP gate rejects inherited Classic targets without mutating their process prototypes",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "an own Classic channel remains writable and an inherited instance name becomes an explicit pending creation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "a Classic projection preserves an own __proto__ request field as visible data, never an inherited effect",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/settings-totp-route-b2b.test.ts",
+      "tests": [
+        {
+          "name": "POST /api/settings/pending/:id/confirm-totp over a link: not refused up front — the fleet is asked (with the link's request) and its refusal is the answer; the change stays pending",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "POST /api/settings/pending/:id/confirm-totp over a link, when the fleet allows it (an ordinary change, the owner signed in from outside): a correct code decides the change once",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "POST /api/settings/pending/:id/confirm-totp a body without the code or the digest: 400, nothing checked",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "POST /api/settings/pending/:id/confirm-totp {\"error\":\"wrong\"} → 401 wrong_code, still pending",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "POST /api/settings/pending/:id/confirm-totp {\"error\":\"changed\"} → 409 confirmation_changed, still pending",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "POST /api/settings/pending/:id/confirm-totp {\"error\":\"not_here\"} → 403 totp_confirm_unavailable, still pending",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "POST /api/settings/pending/:id/confirm-totp {\"error\":\"unavailable\"} → 503 unavailable, still pending",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "POST /api/settings/pending/:id/confirm-totp paused: 429 with Retry-After, as the sign-in path shows it",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "POST /api/settings/pending/:id/confirm-totp a correct code: the change is decided (applied once), the code and digest passed through",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/web-settings-search-2347.test.ts",
+      "tests": [
+        {
+          "name": "#2347 §6: the registry is what Settings draws every field with an id in a section has an entry, and every entry's element is drawn in its section",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: the registry is what Settings draws with a fixed hostname (a named tunnel): its own fields too — Reopen after start, Also over my named link",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: the registry is what Settings draws every entry has a name in both languages, a known section, and a unique id",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: the registry is what Settings draws the moved prefs.theme entry opens Look and reveals its field",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: the registry is what Settings draws the moved device.motion entry opens Look and reveals its field",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: the registry is what Settings draws the moved device.css-off entry opens Look and reveals its field",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: what a search finds \"token\": the Cloudflare token, a connection's bot token and the provider API keys",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: what a search finds \"語言\": the dashboard's language and the bots' reply language",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: what a search finds \"port\", \"https\", \"domain\" and \"固定網址\" find the fixed address",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: what a search finds main's newer settings are found too (the sync after #2391, #2450, #2453): by name, key and words, both languages",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: what a search finds by config key, by its name in the other language, every word of several; nothing for nonsense",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: what a search finds a name that starts with the query comes first; a name before a synonym (\"token\": the setting called a token)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: what a search finds by its name in Chinese alone (no synonym says it): \"併發\" is the startup concurrency",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: the search box results grouped by section with where they are and the config key; ↑↓ moves; Enter goes there — the field focused and flashed",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: the search box nothing found says so; Esc clears; \"/\" anywhere in Settings focuses the box",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: the best match first \"token\": the group of the best match (Access & security: the Cloudflare token) comes first, and Enter goes there",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2382 review: a field to fix elsewhere is named and reached from the bar an invalid public-link minutes in Access & security: in Agent defaults the bar says where, and goes there (the field focused)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2383 review: a setting asked for is reached however long the configuration takes the configuration read answers after 2400 ms: the field is still focused and flashed",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2383 review: a setting asked for is reached however long the configuration takes the configuration read answers after 50 ms: the field is still focused and flashed",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2383 review: a setting asked for is reached however long the configuration takes a navigation made since, with no setting to find, cancels the one asked for",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: Ctrl K has a Settings group #2383 review: the message search failing (search off: 404) leaves the settings shown, and Enter opens one",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: Ctrl K has a Settings group #2383 review: the message search failing (a dropped connection) leaves the settings shown, and Enter opens one",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "#2347 §6: Ctrl K has a Settings group the settings come first, from the registry (no request); opening one goes to it",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    }
+  ]
+}
