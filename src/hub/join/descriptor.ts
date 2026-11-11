@@ -37,3 +37,11 @@ export function parseCompanyAddress(input: string): { webOrigin: string; expecte
     return { webOrigin: u.origin, expected: d.fingerprint };
   } catch (error) { if (error instanceof HubProtocolError) throw error; throw new HubProtocolError("invalid"); }
 }
+
+/**
+ * B1 (spec 2.1): an enrolment code is 8 characters of Crockford base32 (0-9 and A-Z without I, L, O, U), typed in any
+ * case, optionally as XXXX-XXXX. No look-alike aliases (O is not 0, I is not 1): a code with them is refused, not fixed.
+ */
+export const ENROLMENT_CODE = /^[0-9A-HJKMNP-TV-Z]{4}-?[0-9A-HJKMNP-TV-Z]{4}$/i;
+/** The push field: 8 uppercase characters, no dash. */
+export function normalEnrolmentCode(code: string): string { return code.replace("-", "").toUpperCase(); }

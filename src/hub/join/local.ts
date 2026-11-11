@@ -7,7 +7,8 @@ import { CompanyJoinClient, CompanyJoinRemoteError, CompanyJoinReachError } from
 import { hostname } from "node:os";
 import { readDisplay, saveStartDisplay, settleDisplay, type CompanyDisplay } from "./display.js";
 import { CompanyTrustStore, CompanyIdentityChanged } from "./trust.js";
-import { parseCompanyAddress } from "./descriptor.js";
+import { ENROLMENT_CODE, normalEnrolmentCode, parseCompanyAddress } from "./descriptor.js";
+export { ENROLMENT_CODE, normalEnrolmentCode } from "./descriptor.js";
 import { canonicalFleetOrigin, companyIdentityDigest, pkceChallenge, requireSeparateJoinHosts, CompanyBrowserHostnameConflict } from "./protocol.js";
 import { hash, uuid, epoch, person, token, validated, HubProtocolError, parseStrictJson } from "../validation.js";
 import { sha256, issuerKeyId } from "../identity.js";
@@ -178,13 +179,14 @@ export class CompanyJoinController {
    * (`supersedes`, when the Hub takes it). The admin's press is the consent for all of it (O1). A step that fails leaves
    * what the steps before it did, and the button can be pressed again. No saved address: "invalid" (the page offers 其他方式).
    */
-  async reconnect(input: { hubId: string; binding: string; fleetOrigin: string }, authority: JoinLocalAuthority, pairing: ReconnectPairing) {
-    const body = validated(z.strictObject({ hubId: uuid, binding: hash, fleetOrigin: z.string().max(2048) }), input);
+  async reconnect(input: { hubId: string; binding: string; address: string; fleetOrigin: string }, authority: JoinLocalAuthority, pairing: ReconnectPairing) {
+    const body = validated(z.strictObject({ hubId: uuid, binding: hash, address: z.string().max(2048), fleetOrigin: z.string().max(2048) }), input);
     if (this.closed || !authority.session.current() || !authority.confirmedCurrent()) throw new HubProtocolError("denied");
     const bound = pairing.boundHub();
     if (!bound || bound.hubId !== body.hubId || bound.binding !== body.binding) throw new HubProtocolError("conflict");
     const display = readDisplay(this.options.home, body.hubId);
     if (!display) throw new HubProtocolError("invalid");
+    if (display.webOrigin !== body.address) throw new HubProtocolError("conflict");    // the address the admin confirmed is the saved one
     let profile: HubMemberProfile;
     try { profile = new HubMemberProfileStore(this.options.home, body.hubId).readProfile(); } catch { throw new HubProtocolError("uncertain"); }
     const view = pairing.view();
@@ -195,6 +197,29 @@ export class CompanyJoinController {
     pairing.cancel();
     return this.start({ address: display.webOrigin, label: display.label || probeLabel() || "Fleet", fleetOrigin: body.fleetOrigin }, authority,
       { expected: companyIdentityDigest(profile.hub), supersedes: { fleetId: profile.fleetId, credential: profile.credential } });
+  }
+  /**
+   * M-2921 (spec 1.3): 「移除這個連接」 — one confirmed press: disconnect (member.leave first, when the Hub takes it) and
+   * start over, so the Fleet is unpaired and the old binding retired. A disconnected binding only starts over.
+   */
+  async remove(input: { hubId: string; binding: string; address: string }, authority: JoinLocalAuthority, pairing: ReconnectPairing) {
+    const body = validated(z.strictObject({ hubId: uuid, binding: hash, address: z.string().max(2048) }), input);
+    if (this.closed || !authority.session.current() || !authority.confirmedCurrent()) throw new HubProtocolError("denied");
+    const bound = pairing.boundHub();
+    if (!bound || bound.hubId !== body.hubId || bound.binding !== body.binding) throw new HubProtocolError("conflict");
+    const display = readDisplay(this.options.home, body.hubId);                         // the address the admin confirmed (none saved: the Hub's own)
+    let origin: string | null = display?.webOrigin ?? null;
+    if (!origin) { try { origin = new HubMemberProfileStore(this.options.home, body.hubId).readProfile().hub.webOrigin; } catch { origin = null; } }
+    if (origin !== body.address) throw new HubProtocolError("conflict");
+    const view = pairing.view();
+    let left = false;
+    if (view.state === "paired" || view.state === "held" && view.hold !== "disconnected") {
+      const out = await pairing.disconnect({ hubId: body.hubId, binding: body.binding });
+      if (!out.ok) throw new HubProtocolError(out.error === "unsaved" ? "unavailable" : "conflict");
+      left = out.left === true;
+    }
+    pairing.cancel();
+    return { left };
   }
   async start(input: { address: string; label: string; fleetOrigin: string; handoffId?: string; code?: string }, authority: JoinLocalAuthority,
     internal: { expected?: string; supersedes?: { fleetId: string; credential: string } } = {}) {
@@ -419,14 +444,7 @@ function separateHosts(fleetOrigin: string, hubWebOrigin: string): boolean {
 export interface ReconnectPairing {
   boundHub(): { hubId: string; binding: string | null } | null;
   view(): { state: string; hold?: string };
-  disconnect(expected: { hubId?: unknown; binding?: unknown }): Promise<{ ok: true; remote: "pending" } | { ok: false; error: "unsaved" | "conflict" }>;
+  disconnect(expected: { hubId?: unknown; binding?: unknown }): Promise<{ ok: true; remote: "pending"; left?: boolean } | { ok: false; error: "unsaved" | "conflict" }>;
   cancel(): unknown;
 }
 
-/**
- * B1 (spec 2.1): an enrolment code is 8 characters of Crockford base32 (0-9 and A-Z without I, L, O, U), typed in any
- * case, optionally as XXXX-XXXX. No look-alike aliases (O is not 0, I is not 1): a code with them is refused, not fixed.
- */
-export const ENROLMENT_CODE = /^[0-9A-HJKMNP-TV-Z]{4}-?[0-9A-HJKMNP-TV-Z]{4}$/i;
-/** The push field: 8 uppercase characters, no dash. */
-export function normalEnrolmentCode(code: string): string { return code.replace("-", "").toUpperCase(); }

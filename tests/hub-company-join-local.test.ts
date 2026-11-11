@@ -304,3 +304,60 @@ describe("M-2921 (Hub UX U1): an enrolment code, and what the connected card sho
     w.controller.close();
   });
 });
+
+describe("M-2921 (spec 1.3, O1): the connected card's reconnect and 「移除這個連接」", () => {
+  async function joined(features: string[] = []) {
+    const w = await world(); w.metadata.features.push(...features);
+    const first = await w.start(); w.ready();
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "saved", issued: true });
+    const order: string[] = [];
+    const pairing = createHubMemberPairingApi({ home: w.directory, fence: () => order.push("fence"), withdrawAll: () => { order.push("withdraw"); },
+      leave: async () => { order.push("leave"); return true; }, link: () => "online" });
+    const shown = pairing.boundHub()!;
+    expect(shown.binding).toMatch(/^[a-f0-9]{64}$/);
+    const pushes: any[] = [], original = w.client.command.getMockImplementation()!;
+    w.client.command.mockImplementation(async (...args: any[]) => { if (args[1] === "push") pushes.push(args[2]); return (original as any)(...args); });
+    return { ...w, pairing, shown: shown as { hubId: string; binding: string }, order, pushes };
+  }
+  it("reconnect: leave, fence, tombstone, start over, then one start for the saved address and label — asking the Hub to retire the old Fleet", async () => {
+    const w = await joined(["join-supersedes-v1", "member-leave-v1"]);
+    const profile = JSON.parse(readFileSync(join(w.directory, "hub-member", w.shown.hubId, "pairing.json"), "utf8"));
+    const op = await w.controller.reconnect({ ...w.shown, address: w.metadata.hub.webOrigin, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing);
+    expect(op).toMatchObject({ operationId: expect.any(String) });
+    expect(w.order).toEqual(["leave", "fence", "withdraw"]);
+    expect(w.pushes.at(-1)).toMatchObject({ label: "My Fleet", supersedes: { fleetId: profile.fleetId, credential: profile.credential } });
+    w.controller.close();
+  });
+  it("an older Hub (no join-supersedes-v1): the push carries no supersedes (its push schema is strict)", async () => {
+    const w = await joined();
+    await w.controller.reconnect({ ...w.shown, address: w.metadata.hub.webOrigin, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing);
+    expect(w.pushes.at(-1)).not.toHaveProperty("supersedes");
+    w.controller.close();
+  });
+  it("only for exactly the pairing and the address the card showed; nothing is done otherwise", async () => {
+    const w = await joined(["join-supersedes-v1"]);
+    const tries = [{ ...w.shown, binding: "0".repeat(64), address: w.metadata.hub.webOrigin }, { ...w.shown, hubId: randomUUID(), address: w.metadata.hub.webOrigin },
+      { ...w.shown, address: "https://other.example.test" }];
+    for (const t of tries) {
+      await expect(w.controller.reconnect({ ...t, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing)).rejects.toMatchObject({ code: "conflict" });
+      await expect(w.controller.remove(t, w.authority, w.pairing)).rejects.toMatchObject({ code: "conflict" });
+    }
+    expect(w.order).toEqual([]);
+    expect(w.pairing.view().state).not.toBe("unpaired");
+    w.deny();
+    await expect(w.controller.remove({ ...w.shown, address: w.metadata.hub.webOrigin }, w.authority, w.pairing)).rejects.toMatchObject({ code: "denied" });
+    expect(w.order).toEqual([]);
+    w.controller.close();
+  });
+  it("remove: leave, fence, tombstone, start over — unpaired, the old binding retired; no start", async () => {
+    const w = await joined(["member-leave-v1"]);
+    const calls = w.calls.length;
+    expect(await w.controller.remove({ ...w.shown, address: w.metadata.hub.webOrigin }, w.authority, w.pairing)).toEqual({ left: true });
+    expect(w.order).toEqual(["leave", "fence", "withdraw"]);
+    expect(w.pairing.view()).toEqual({ state: "unpaired" });
+    expect(w.pairing.disconnected(w.shown.hubId)).toBe(true);
+    expect(w.calls.length).toBe(calls);
+    w.controller.close();
+  });
+});
+

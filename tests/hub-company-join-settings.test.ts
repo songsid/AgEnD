@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { settingsRequestExecution, settingsRequestJoinAuthority } from "../src/settings-request-capability.js";
-import { prepareSettingsEffect } from "../src/settings-effect.js";
+import { isSettingsMutation, prepareSettingsEffect } from "../src/settings-effect.js";
+import { randomUUID } from "node:crypto";
 import { WebSessionStore, tokenEpoch, csrfTokenFor } from "../src/web-session.js";
 import { companyJoinSession } from "../src/hub/join/fleet-authority.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
@@ -98,5 +99,22 @@ describe("company Start Settings authority", () => {
       expect(() => prepareSettingsEffect("POST", "/api/hub/member/company-join/start", { ...body, ...extra }, context)).toThrow();
     }
     expect(settingsRequestJoinAuthority({ headers: { cookie: "private", hostHere: true } })).toBeUndefined();
+  });
+  it("M-2921: Start takes an enrolment code in the B1 alphabet only; reconnect and 「移除這個連接」 are held Hub changes for exactly one pairing", () => {
+    const context = { config: { defaults: {}, instances: {} } as any, classic: {} };
+    const start = { address: "https://hub.example.test", label: "My Fleet" };
+    expect(isSettingsMutation("POST", "/api/hub/member/company-join/start")).toBe(true);
+    expect(prepareSettingsEffect("POST", "/api/hub/member/company-join/start", { ...start, code: "abcd-ef01" }, context).diff).toBeTruthy();
+    for (const code of ["ABCO-EF01", "ABCD-EF0", 12345678]) expect(() => prepareSettingsEffect("POST", "/api/hub/member/company-join/start", { ...start, code }, context)).toThrow();
+    const pairing = { hubId: randomUUID(), binding: "a".repeat(64), address: "https://hub.example.test" };
+    for (const step of ["reconnect", "remove"]) {
+      const path = `/api/hub/member/company-join/${step}`;
+      expect(isSettingsMutation("POST", path)).toBe(true);
+      const diff = prepareSettingsEffect("POST", path, pairing, context).diff!;
+      expect(diff).toMatchObject({ authority: { primaryGeneral: true, connections: [] } });
+      expect(JSON.stringify(diff.summary_i18n)).toContain(`hub.companyJoin.${step}`);
+      for (const bad of [{ ...pairing, binding: "z" }, { ...pairing, hubId: "x" }, { hubId: pairing.hubId, binding: pairing.binding }, { ...pairing, address: "http://hub.example.test" },
+        { ...pairing, label: "x" }, { ...pairing, fleetOrigin: "https://victim.test" }]) expect(() => prepareSettingsEffect("POST", path, bad, context)).toThrow();
+    }
   });
 });

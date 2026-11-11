@@ -966,13 +966,13 @@ export function handleSettingsRequest(
   }
 
   // #3423: an original private cookie session owns each company-join operation. No header token or Hub identity is Fleet authority.
-  const companyRoute = path.match(/^\/api\/hub\/member\/company-join(?:\/(start|resume|cancel|bridge|repair-trust|probe))?$/);
+  const companyRoute = path.match(/^\/api\/hub\/member\/company-join(?:\/(start|resume|cancel|bridge|repair-trust|probe|reconnect|remove))?$/);
   if (companyRoute) {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
     if (!ctx.hubCompanyJoin || !ctx.hubCompanySession) { json(res, 404, { error: "unavailable" }); return true; }
     const step = companyRoute[1], execution = settingsRequestExecution(req);
     const authority = settingsRequestJoinAuthority(req);
-    const confirmed = step === "start" || step === "resume" || step === "repair-trust";
+    const confirmed = step === "start" || step === "resume" || step === "repair-trust" || step === "reconnect" || step === "remove";
     const session = confirmed ? authority?.session : ctx.hubCompanySession(req);
     if (!session?.current()) { json(res, 403, { error: "private_session_required" }); return true; }
     if (confirmed && (!isSettingsReplay(req) || !execution || !authority?.confirmedCurrent())) {
@@ -1007,6 +1007,20 @@ export function handleSettingsRequest(
         if (step === "repair-trust") {
           if (!authority || !settingsRequestLocalAdmin(req) || !body || Object.keys(body).length !== 1 || typeof body.address !== "string") throw new HubProtocolError("invalid");
           await api.repairTrust(body.address, authority); json(res, 200, { ok: true });
+        } else if (step === "reconnect" || step === "remove") {
+          // M-2921 (spec 1.3, O1): one confirmed press of the connected card — reconnect (its consent covers the disconnect)
+          // or 「移除這個連接」 — for exactly the pairing the card showed.
+          const pairing = ctx.hubMemberPairing?.() ?? null;
+          if (!pairing || !authority || !settingsRequestLocalAdmin(req) || !body || typeof body !== "object") throw new HubProtocolError("invalid");
+          if (step === "reconnect") {
+            if (!session.fleetOrigin || Object.keys(body).some(k => !["hubId", "binding", "address"].includes(k))) throw new HubProtocolError("invalid");
+            json(res, 200, { ok: true, operation: await api.reconnect({ hubId: body.hubId, binding: body.binding, address: body.address, fleetOrigin: session.fleetOrigin }, authority, pairing) });
+          } else {
+            if (Object.keys(body).some(k => !["hubId", "binding", "address"].includes(k))) throw new HubProtocolError("invalid");
+            const removed = await api.remove({ hubId: body.hubId, binding: body.binding, address: body.address }, authority, pairing);
+            ctx.invalidateHubCompanyJoin?.();
+            json(res, 200, { ok: true, ...removed, pairing: pairing.view() });
+          }
         } else if (step === "start") {
           if (!session.fleetOrigin || !authority || !settingsRequestLocalAdmin(req) || Object.keys(body).some(k => !["address", "label", "handoffId", "code"].includes(k))) throw new HubProtocolError("invalid");
           json(res, 200, { ok: true, operation: await api.start({ address: body.address, label: body.label, fleetOrigin: session.fleetOrigin, handoffId: body.handoffId, ...(body.code !== undefined ? { code: body.code } : {}) }, authority) });
