@@ -1,6 +1,6 @@
 # Telling the dispatcher when an assignee stops
 
-Status: design proposal (no product code). Issue: see the linked GitHub issue.
+Status: design proposal (no product code). Issue: #3647.
 
 ## 1. Problem
 
