@@ -1,7 +1,7 @@
 {
   "format": "digest-first-v1",
   "files": {
-    "4eac7148cd622a7c621d02a694615e98a7ad0b249e5bc4e8764751afc83dbd48": [
+    "64880053cb960334258d0a17334541ac6696aeee99e6fbefca230d6b1bf68015": [
       "docs/evidence/desktop-split-chat-pr1/README.md"
     ],
     "0ab80666ee2cd62a3c3ac731772177033dab42a2a24fb75fe25fda6ada28211c": [
@@ -35,7 +35,8 @@
       "docs/evidence/desktop-split-chat-pr1/control/desk-dark-zh-TW-chat.png",
       "docs/evidence/desktop-split-chat-pr1/current/desk-dark-zh-TW-chat.png",
       "docs/evidence/desktop-split-chat-pr1/old-chat/desk-dark-zh-TW-chat.png",
-      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-dark-zh-TW-chat.png"
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-dark-zh-TW-chat.png",
+      "docs/evidence/desktop-split-chat-pr1/r1-current/desk-dark-zh-TW-chat.png"
     ],
     "5e39116a874f227d041cf398a4038bb7d2c0dfc3fb3c673c51eb1a2664f7d945": [
       "docs/evidence/desktop-split-chat-pr1/control/desk-dark-zh-TW-details.png"
@@ -53,7 +54,8 @@
       "docs/evidence/desktop-split-chat-pr1/control/desk-light-zh-TW-chat.png",
       "docs/evidence/desktop-split-chat-pr1/current/desk-light-zh-TW-chat.png",
       "docs/evidence/desktop-split-chat-pr1/old-chat/desk-light-zh-TW-chat.png",
-      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-light-zh-TW-chat.png"
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-light-zh-TW-chat.png",
+      "docs/evidence/desktop-split-chat-pr1/r1-current/desk-light-zh-TW-chat.png"
     ],
     "2e39e94fac7fab506de9e0011e18f74a0488d31a46a12c934ed0a2b57f650776": [
       "docs/evidence/desktop-split-chat-pr1/control/desk-light-zh-TW-details.png"
@@ -154,10 +156,15 @@
     ],
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
       "docs/evidence/desktop-split-chat-pr1/final-source-types.log",
-      "docs/evidence/desktop-split-chat-pr1/final-test-types.log"
+      "docs/evidence/desktop-split-chat-pr1/final-test-types.log",
+      "docs/evidence/desktop-split-chat-pr1/r1-source-types.log",
+      "docs/evidence/desktop-split-chat-pr1/r1-test-types.log"
     ],
     "9710bfa2e80374ff3092f18411ca32c8165305c4d5015b30ac43dd4a9343324b": [
       "docs/evidence/desktop-split-chat-pr1/geometry-diff.json"
+    ],
+    "65982a0795be2540c8823a54a310ea671fa3b030b01ca33ff11805adcf38ad97": [
+      "docs/evidence/desktop-split-chat-pr1/mutate-r1.py"
     ],
     "2a1ba247a2f09f731c4fd83dd88f88cf77e337098807fbdb4ec7d6071797c0f3": [
       "docs/evidence/desktop-split-chat-pr1/mutate.py"
@@ -170,26 +177,31 @@
     ],
     "ca9a2decdee0e281c237e8544cf14f50580959c345939626ed97baca4b70fd74": [
       "docs/evidence/desktop-split-chat-pr1/old-chat/desk-dark-zh-TW-chat-working.png",
-      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-dark-zh-TW-chat-working.png"
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-dark-zh-TW-chat-working.png",
+      "docs/evidence/desktop-split-chat-pr1/r1-current/desk-dark-zh-TW-chat-working.png"
     ],
     "2d8668b35f7c8c323262f41c68f70e28146e6c4af3cdd0a9a61516b30f69e636": [
       "docs/evidence/desktop-split-chat-pr1/old-chat/desk-dark-zh-TW-details.png"
     ],
     "cd4c5ebfaa49a38bb8ac55d18838074dc3a744b5c7c7271272ec3352975d56c5": [
-      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-dark-zh-TW-log.png"
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-dark-zh-TW-log.png",
+      "docs/evidence/desktop-split-chat-pr1/r1-current/desk-dark-zh-TW-log.png"
     ],
     "dce082ff5307805b9796586a22687016b81135398e9b02362ce24e4b4dfd8542": [
       "docs/evidence/desktop-split-chat-pr1/old-chat/desk-dark-zh-TW-view.png",
-      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-dark-zh-TW-view.png"
+      "docs/evidence/desktop-split-chat-pr1/old-shell/desk-dark-zh-TW-view.png",
+      "docs/evidence/desktop-split-chat-pr1/r1-current/desk-dark-zh-TW-view.png"
     ],
     "71694f7bf65179f411d6e711f6697593205189aa642f10fab85c9433fbaad3f7": [
-      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-light-zh-TW-chat-working.png"
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-light-zh-TW-chat-working.png",
+      "docs/evidence/desktop-split-chat-pr1/r1-current/desk-light-zh-TW-chat-working.png"
     ],
     "50bc690a1906fe4698210f9854c7fb1f96257084008be6043f37c50a48612c4e": [
       "docs/evidence/desktop-split-chat-pr1/old-chat/desk-light-zh-TW-details.png"
     ],
     "dc2bf5938a2d4e87a725ec7ff138b4e62f68ad319ff8de46cdf4ce2d4343f2e8": [
-      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-light-zh-TW-log.png"
+      "docs/evidence/desktop-split-chat-pr1/old-chat/desk-light-zh-TW-log.png",
+      "docs/evidence/desktop-split-chat-pr1/r1-current/desk-light-zh-TW-log.png"
     ],
     "9261833737c8ee7ef188a40bf1807bbf9a34cd5cf19477b8f8efff7d3ecb8c68": [
       "docs/evidence/desktop-split-chat-pr1/old-chat/desk-light-zh-TW-view.png"
@@ -223,6 +235,45 @@
     ],
     "e795b8158976b8b3cc6f5c25687118dd2960ba2071d7da66eae33a44666213b0": [
       "docs/evidence/desktop-split-chat-pr1/post-sync-focused.log"
+    ],
+    "3b126a80845d17e1ea928b85ab63be7ceed5e081d1b6656fc355014a763a95f3": [
+      "docs/evidence/desktop-split-chat-pr1/r1-browser.log"
+    ],
+    "849b0d2a5a2f5fa9c1d085da4b4b4b321ed1dc23efe6098f82654cc419ebf05c": [
+      "docs/evidence/desktop-split-chat-pr1/r1-current/desk-dark-zh-TW-details.png"
+    ],
+    "f81a1a209e9ed78c41d10fc22359f430c19e91b314e42def4470e8e410c99230": [
+      "docs/evidence/desktop-split-chat-pr1/r1-current/desk-light-zh-TW-details.png"
+    ],
+    "8eaac69d13ec87e44fcf468f4b48d8705b022f3f05ad86d2214452be2cc9f35a": [
+      "docs/evidence/desktop-split-chat-pr1/r1-current/desk-light-zh-TW-view.png"
+    ],
+    "c1dd564615d1c0bdc0772024548e4a8b31f649ff5b04fe74489cac9b6a213160": [
+      "docs/evidence/desktop-split-chat-pr1/r1-current/receipt.json"
+    ],
+    "e5511e624fc544b0f85ad08a1f3b8b36feaff6ff014d2e7a8726bb4cfd374766": [
+      "docs/evidence/desktop-split-chat-pr1/r1-fail-first.log"
+    ],
+    "d69847cab9500b4289fa2fdf4f64a4ac5881d32144095fc6d0b23ba26cb3b3f7": [
+      "docs/evidence/desktop-split-chat-pr1/r1-focused.log"
+    ],
+    "f1558ab895fbad552ee3b2739bb1810e577d8d7a113fe07e8a234b72cb096c79": [
+      "docs/evidence/desktop-split-chat-pr1/r1-geometry.json"
+    ],
+    "003a3bf1569fbdd244ccb5d1cfc8571863b6852b1d6a4458fa28d9dff5517c8a": [
+      "docs/evidence/desktop-split-chat-pr1/r1-mutant-coherent-state.log"
+    ],
+    "ac72c17b03bc350186d515b7a98245cc390c37bdc31de764cc6cb63de9791e15": [
+      "docs/evidence/desktop-split-chat-pr1/r1-mutant-draft-reset.log"
+    ],
+    "fcef9ade3b92f0b01893d3a3d82463e6d861aee7551998d9ab7c62294e751b48": [
+      "docs/evidence/desktop-split-chat-pr1/r1-mutations.json"
+    ],
+    "f1ba784bb2584aa1e6681029f056057f06a829e8137c6a3322c3dab17af5d276": [
+      "docs/evidence/desktop-split-chat-pr1/r1-mutations.log"
+    ],
+    "d5b28c34732a0b5ea107dda1f5c21abaf4d17b981e38b19bff574ec87cd34632": [
+      "docs/evidence/desktop-split-chat-pr1/r1-restored.log"
     ],
     "97232b0b2c564a3966e19d18f4ffcecef2ca9180d5f04edd26754eeb5232e1d9": [
       "docs/evidence/desktop-split-chat-pr1/race-fail-first.log"

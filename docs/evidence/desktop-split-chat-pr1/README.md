@@ -1,6 +1,6 @@
 # Desktop split chat, PR1: ownership
 
-Source/capture head: `5bf0bbb174ca409a36f1f9060a5be4a6c7ebe007`.
+Original R0 source/capture head: `5bf0bbb174ca409a36f1f9060a5be4a6c7ebe007`.
 Control: alpha `996e3e201e39d70e0d892c8420a169d9eb4e1eb6`.
 Approved design: `docs/design/desktop-split-chat.md`, copied unchanged from `d6735f99`.
 
@@ -65,3 +65,11 @@ REPO="$PWD" PW_DIR=/path/to/playwright-prefix OUT="$PWD/.artifacts/split-chat-ow
 Merge sync: a plain merge of alpha `996e3e201` resolved one conflict in the shared composer. It retains the incoming Stop-in-working-bar behavior and adds optional scoped IDs with unchanged default IDs. There was no rebase or force-push.
 
 Risk/rollback: the main risk is an ownership cleanup regression. The focused, repeated-mount, retained-asset and Hub controls cover these boundaries. Reverting this PR restores the previous client modules; it needs no data migration. Later slices remain dependent on the ownership capability checks.
+
+## R1: accepted discard survives the other pane's decision
+
+The review found that accepting A's discard cleared only its guard ref. If B's question kept the page mounted, a parent/status rerender could restore A's old staged state and queue a third confirmation. The fix clears the ref and state to the same empty map and resets A's forms. If B cancels, A stays discarded and B keeps its own edits; if B accepts, navigation completes after exactly those two decisions. The reset does not save settings or add a confirmation step.
+
+R1 source/capture pin: `fa9788aa1fcdc964322435b3dec5865deac45ff3`. Only `agent-details-settings.js` and the ownership tests changed from R0. Two new mounted-hook controls first fail semantically on R0 (both accept, and B cancels after the forced rerender). The corrected four suites pass **70/70**, then the restored ownership suite passes **16/16**. Reversing coherent state clearing or the form-reset epoch each causes a real assertion failure; both restore exactly. Native source/test types pass.
+
+`r1-current/` is a fresh clean-source desktop zh-TW light/dark capture: ten cases at the new source pin. All ten geometries match the corresponding original candidate cases. It retains one browser/server stream, no overflow and no external browser request. The original sixty PNGs/receipts and original mutation execution remain on their original pins; they are not relabelled as R1 runs. This is a state-only correction, with no new visual design or PR2 host.
