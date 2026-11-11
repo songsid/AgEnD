@@ -200,9 +200,9 @@ export function HubJoinCard({ view, busy = false, error = null, onToggle, onRetr
     <p class="note">${sw("lead")}</p>
     ${error ? html`<p class="err" role="alert">${error}${onRetry ? html` <button type="button" class="btn btn-sm btn-ghost" onClick=${onRetry}>↻</button>` : null}</p>` : null}
     <ol class="hub-steps hub-join-steps">
-      <li class=${s1 ? "done" : "now"} data-step="1"><div class="hub-step-body"><span><b>${sw("step1")}</b>${mark(s1)}</span>
+      <li class=${s1 ? "done" : "now"} data-step="1"><div class="hub-step-body"><span><b>${sw("step1")}${mark(s1)}</b></span>
         ${view ? html`<label class="check"><input type="checkbox" role="switch" class="s-ui-toggle" checked=${view.enabled} disabled=${busy || !!error} onChange=${(e) => onToggle?.(e.target.checked)} /><span>${sw("step1Switch")}</span></label>` : null}</div></li>
-      <li class=${s2 ? "done" : s1 ? "now" : ""} data-step="2"><div class="hub-step-body"><span><b>${sw("step2")}</b>${mark(s2)}<small class="note">${sw("step2Hint")} ${features.includes("enrolment-code-v1") ? sw("step2Code") : ""}</small></span>
+      <li class=${s2 ? "done" : s1 ? "now" : ""} data-step="2"><div class="hub-step-body"><span><b>${sw("step2")}${mark(s2)}</b><small class="note">${sw("step2Hint")} ${features.includes("enrolment-code-v1") ? sw("step2Code") : ""}</small></span>
         ${groups ? html`<${JoinStep2} client=${client} onSaved=${changed} />` : html`<p class="note" role="status">${sw("unsupported")}</p>`}</div></li>
       <${JoinStep3} webOrigin=${origin} step1=${s1} step2=${s2} features=${features} client=${client} onChanged=${changed} />
     </ol>
