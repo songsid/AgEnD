@@ -14,7 +14,8 @@ import { hubPlanDigest } from "./init/plan-digest.js";
 import { hubPreviewReloadKey } from "./preview.js";
 import { HubMount, type HubMountedService } from "./mount.js";
 import { createHubServerFactory, hubServerDatabasePlan, type HubHttpEntry, type HubServerComponents } from "./compose/server.js";
-import { createHubDirectoryColdSettings, HubDirectoryColdCleanupError, withHubDirectoryRecovery } from "./settings-directory-recovery.js";
+import { createHubDirectoryColdSettings, HubDirectoryColdCleanupError, withHubDirectoryRecovery, withHubWebAddressRecovery } from "./settings-directory-recovery.js";
+import type {HubWebAddressDecision} from "./settings-web-address-decision.js";
 import type { HubDirectorySettingsDecision } from "./settings-directory-decision.js";
 import type { HubMountedDirectory } from "./settings-directory-runtime.js";
 import { canonicalArguments } from "./identity.js";
@@ -193,6 +194,8 @@ export class HubRuntime {
     finally { if (this.coldDirectoryInit === pending) this.coldDirectoryInit = null; }
   }
   private recoveryDirectory: HubDirectorySettingsDecision | null = null;
+  private recoveryWebAddress: HubWebAddressDecision | null = null;
+  private mountedWebAddress: HubWebAddressDecision | null = null;
   private settingsRecoveryGeneration = 0;
   private directoryStartupAttempted = false;
   directorySettings(): HubMountedDirectory | null {
@@ -200,6 +203,28 @@ export class HubRuntime {
   }
   /** Physical completion retains its owning participant after logical epoch revocation, until the DB closes. */
   directoryDecision(): HubDirectorySettingsDecision | null { return this.recoveryDirectory ?? this.coldDirectory?.decision ?? this.mountedDirectory?.decision ?? null; }
+  webAddressDecision():HubWebAddressDecision|null{return this.recoveryWebAddress??this.mountedWebAddress;}
+  /** Borrow only existing state; cold access creates no listener, directory client, migration or session. */
+  async withWebAddressDecision<T>(work:(decision:HubWebAddressDecision)=>T,ownerCurrent:()=>boolean):Promise<T>{
+    const snapshot=structuredClone(this.options.readConfig?.()??this.lastConfig??{}),ticket=this.admissionTicket;
+    const current=()=>!this.stopped&&ownerCurrent()===true&&ticket===this.admissionTicket;
+    if(!current())throw Error("Web address authority changed");
+    if(this.running)await this.running;
+    if(!current())throw Error("Web address generation changed");
+    const mounted=this.webAddressDecision();if(mounted){
+      if(this.serverHealth(snapshot.hub)!=="ready")throw Error("Web address mount is changing");
+      return work(mounted);
+    }
+    const entry=await(this.options.components??{http:S3B_HTTP_ENTRY}).http?.();
+    if(!entry||!current())throw Error("Web address storage is unavailable");
+    const hub=obj(snapshot.hub);if(!hub)throw Error("Hub is unavailable");
+    const {settings,migrations}=hubServerDatabasePlan(hub,entry.migrations);
+    return withHubWebAddressRecovery({home:this.options.home,hubId:settings.hubId,memberOrigin:settings.memberOrigin,migrations,initial:settings.webTls},decision=>{
+      if(!current()||this.recoveryWebAddress)throw Error("Web address recovery is busy");
+      this.recoveryWebAddress=decision;
+      try{return work(decision);}finally{this.recoveryWebAddress=null;}
+    });
+  }
   /** Physical Save completion may borrow the exact existing state after its old listener has closed. Never migrate/create here. */
   async withDirectoryDecision<T>(hubId: string, work: (decision: HubDirectorySettingsDecision) => T, current: () => boolean): Promise<T> {
     const ticket = this.admissionTicket, directoryTicket = this.directoryAdmissionTicket, read = () => this.options.readConfig?.() ?? this.lastConfig ?? {};
@@ -286,6 +311,10 @@ export class HubRuntime {
             this.mountedDirectory = directory;
             return () => { if (this.mountedDirectory === directory) this.mountedDirectory = null; };
           },
+          webAddressReady: decision => {
+            this.mountedWebAddress=decision;
+            return()=>{if(this.mountedWebAddress===decision)this.mountedWebAddress=null;};
+          },
           version: options.version ?? null,
           browserCertificateReady: control => {
             this.browserCertificateControl = control;
@@ -363,13 +392,18 @@ export class HubRuntime {
     const ticket = ++this.settingsRecoveryGeneration, snapshot = structuredClone(config);
     const current = () => !this.stopped && ticket === this.settingsRecoveryGeneration;
     try {
-      if (writer.pendingDirectory()) {
+      if (writer.pendingDirectory() || writer.pendingWebAddress?.()) {
         const entry = await (this.options.components ?? { http: S3B_HTTP_ENTRY }).http?.();
         if (!current()) return false;
         const hub = obj(snapshot.hub);
         if (!entry || !hub) throw Error("The directory recovery registry is unavailable");
         const { settings, migrations } = hubServerDatabasePlan(hub, entry.migrations);
-        withHubDirectoryRecovery({ home: this.options.home, hubId: settings.hubId, memberOrigin: settings.memberOrigin, migrations }, decision => {
+        const options={home:this.options.home,hubId:settings.hubId,memberOrigin:settings.memberOrigin,migrations};
+        if(writer.pendingWebAddress?.())withHubWebAddressRecovery({...options,initial:settings.webTls},decision=>{
+          this.recoveryWebAddress=decision;
+          try{writer.recover();}finally{this.recoveryWebAddress=null;}
+        });
+        else withHubDirectoryRecovery(options, decision => {
           this.recoveryDirectory = decision;
           try { writer.recover(); } finally { this.recoveryDirectory = null; }
         });

@@ -51,11 +51,17 @@ export async function checkHubInitNetworkForHome(home: string, listeners: HubIni
 
 /** Hold both sockets together to detect alias conflicts; close every successful bind before returning. */
 export async function checkHubInitNetwork(listeners: HubInitListeners, options: HubNetworkOptions = {}): Promise<HubNetworkProblem[]> {
+  return checkHubListeners(listeners,options,["web","member"]);
+}
+
+/** Existing address changes probe only their new endpoints, never the running member listener. */
+export async function checkHubListeners(listeners: HubInitListeners, options: HubNetworkOptions,
+  selected: readonly ("web"|"member")[]): Promise<HubNetworkProblem[]> {
   const servers: Server[] = [];
   let active: "web" | "member" = "web";
   const problems: HubNetworkProblem[] = [];
   try {
-    for (const listener of ["web", "member"] as const) {
+    for (const listener of selected) {
       active = listener;
       const input = listeners[`${listener}Listen`];
       if (listenProblems("listener", input).length) { problems.push({ listener, reason: "invalid" }); break; }
