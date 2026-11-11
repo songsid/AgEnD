@@ -477,7 +477,7 @@ function HubChats() {
   return html`<${PanelHeader} title=${hc("chats")} />
   <div class=${`hub-home${groupPolicyOn(s, hubClient()) ? " has-welcome" : ""}`}>
     <div class="hub-home-list"><${HubHomeList} /></div>
-    ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true) }} /></div>`
+    ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true), admin: s.admin === true, features: s.features }} /></div>`
       : html`<div class="hub-home-pick center">${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : rs.error && !rs.rooms.length ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : !rs.rooms.length
       ? html`<${Empty} icon="chat" title=${hc("noChats")} />`
       : html`<${Empty} icon="chat" title=${hc("choose")} hint=${hc("chooseHint")} />`}</div>`}

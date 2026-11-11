@@ -32,7 +32,7 @@ register("hubJoinSteps", {
     unsupported: "This directory cannot list groups for permissions. Ask your Hub administrator.", repair: "The saved permissions need repair on the Group permissions page.",
     duplicate: "That group is already on the list.", notFound: "No such group.", notSecurity: "That is not a security group.", invalidDn: "That is not a distinguished name.", unknownGroup: "The group could not be checked. Try again.",
     groupsPage: "All group permissions", advanced: "Link with key fingerprint (Advanced)", advancedHint: "Only for a colleague who must check the key fingerprint by hand.",
-    exceptions: "Individual invitations",
+    exceptions: "Individual invitations", otherWays: "Other ways",
   },
   "zh-TW": {
     step3: "告訴同仁怎麼加入", sentence: "在 AgEnD 的「設定 → Hub」輸入 {0}，再用公司帳號登入。",
@@ -50,7 +50,7 @@ register("hubJoinSteps", {
     unsupported: "這個目錄無法列出群組來設定權限。請找 Hub 管理員。", repair: "已儲存的權限需要在「群組權限」頁修復。",
     duplicate: "這個群組已經在清單裡。", notFound: "找不到這個群組。", notSecurity: "這不是安全性群組。", invalidDn: "這不是辨別名稱。", unknownGroup: "目前無法確認這個群組，請再試一次。",
     groupsPage: "所有群組權限", advanced: "含金鑰指紋的連結（進階）", advancedHint: "只給需要自己核對金鑰指紋的同仁。",
-    exceptions: "個別邀請",
+    exceptions: "個別邀請", otherWays: "其他方式",
   },
 });
 const sw = (key, ...args) => t(`hubJoinSteps.${key}`, ...args);
@@ -58,6 +58,9 @@ const sw = (key, ...args) => t(`hubJoinSteps.${key}`, ...args);
 export function displayHost(webOrigin) {
   try { const u = new URL(String(webOrigin || "")); return u.protocol === "https:" ? u.host.replace(/:443$/, "") : ""; } catch { return ""; }
 }
+/** The one sentence colleagues need (step 3's), for this Hub. */
+export const joinSentence = (webOrigin) => { const host = displayHost(webOrigin); return host ? sw("sentence", host) : ""; };
+export const otherWaysLabel = () => sw("otherWays");
 /** B2's join-code component in its slot, or nothing (see the contract above). */
 // B2 ships the module; until then (and on a Hub that does not serve it) the import fails and the slot stays empty.
 const CODE_MODULE = "./hub-enrolment-code.js";
