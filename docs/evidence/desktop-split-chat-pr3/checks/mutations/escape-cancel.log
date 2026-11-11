@@ -1,0 +1,64 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+··x·····x·
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 8 passed (10)
+   Start at  03:39:58
+   Duration  464ms (transform 179ms, setup 101ms, import 128ms, tests 56ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-gestures-3637.test.ts > Esc consumes only the active arrangement and no late drop can act
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "beta",
+      "a",
+      "left",
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/web-chat-workspace-gestures-3637.test.ts:38:72
+     36|   manager.dragStart("beta", event({ dataTransfer: transfer() }), "b");…
+     37|   const e = fire(p.document.body, "keydown", { key: "Escape" }); expec…
+     38|   fire(root, "drop", { clientX: 110, clientY: 300 }); expect(drop).not…
+       |                                                                        ^
+     39|   expect(fire(p.document.body, "keydown", { key: "Escape" }).defaultPr…
+     40| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-chat-workspace-gestures-3637.test.ts > floating keyboard motion is bounded, reversible and committed only on Enter
+AssertionError: expected { rect: { x: 116, y: 100, …(2) } } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "rect": {
+    "height": 400,
+    "width": 500,
+    "x": 116,
+    "y": 100,
+  },
+}
+
+ ❯ tests/web-chat-workspace-gestures-3637.test.ts:83:94
+     81|   manager.keyboard("move", "b"); fire(p.document.body, "keydown", { ke…
+     82|   expect(manager.store.get().transient?.rect.x).toBe(116); expect(comm…
+     83|   fire(p.document.body, "keydown", { key: "Escape" }); expect(manager.…
+       |                                                                                              ^
+     84|   manager.keyboard("resize", "b"); fire(p.document.body, "keydown", { …
+     85|   expect(commit).toHaveBeenCalledExactlyOnceWith({ rect: { x: 100, y: …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯

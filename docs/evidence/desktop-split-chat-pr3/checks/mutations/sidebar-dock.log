@@ -1,0 +1,29 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+xxx···
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 3 passed (6)
+   Start at  03:40:04
+   Duration  589ms (transform 217ms, setup 86ms, import 101ms, tests 238ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-sidebar-3637.test.ts > docks an agent from {"filtered":true} without turning a partial list into reorder authority
+ FAIL  tests/web-chat-workspace-sidebar-3637.test.ts > docks an agent from {"favorite":true} without turning a partial list into reorder authority
+ FAIL  tests/web-chat-workspace-sidebar-3637.test.ts > docks an agent from {"recent":true} without turning a partial list into reorder authority
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'beta', Anything ]
+
+Number of calls: 0
+
+ ❯ tests/web-chat-workspace-sidebar-3637.test.ts:24:71
+     22|   const row = await mount(opts), before = JSON.stringify([...nav.navSt…
+     23|   expect(row.getAttribute("draggable")).toBe("true");
+     24|   drag(row, "dragstart", { dataTransfer: transfer() }); expect(start).…
+       |                                                                       ^
+     25|   expect(drag(row, "dragover", { clientY: 1 }).defaultPrevented).toBe(…
+     26|   drag(row, "drop"); expect(JSON.stringify([...nav.navStore.get().orde…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯

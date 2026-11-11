@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+----x---
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-geometry-3637.test.ts > float URLs and preferences stay topology-only > retains a physical minimum on an ultra-wide screen rather than imposing a second percentage minimum
+AssertionError: expected 499.20000000000005 to be 360 // Object.is equality
+
+- Expected
++ Received
+
+- 360
++ 499.20000000000005
+
+ ❯ tests/web-chat-workspace-geometry-3637.test.ts:33:82
+     31|     const w: any = { ...model.openBeside(null, { panel: "chat", instan…
+     32|     const restored: any = model.readWorkspace(new URL(model.workspaceP…
+     33|     expect(geometry.splitSize(5000, 900, restored.layout, restored.rat…
+       |                                                                                  ^
+     34|     expect(geometry.splitSize(5000, 900, "right", 0).first).toBe(360);
+     35|     expect(geometry.splitSize(5000, 900, "right", 1).second).toBe(360);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 skipped (8)
+   Start at  03:24:20
+   Duration  647ms (transform 182ms, setup 390ms, import 53ms, tests 12ms, environment 0ms)
