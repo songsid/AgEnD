@@ -8,11 +8,12 @@ export const PERSON_ID = "11111111-1111-4111-8111-111111111111", GROUP_DN = "CN=
 /** Optional recorded users also exercise production browser sign-in/eligibility; dummy passwords only. */
 export interface GroupWireUser { id: string; login: string; dn: string; password: string; eligible?: boolean; groups?: string[] }
 export async function groupWirePeer(material: { cert: string; key: string }, users?: GroupWireUser[], ca?: { dn: string; pem: string; requireBind?: boolean }) {
+  const delayed = new Set<ReturnType<typeof setTimeout>>();
   const sockets = new Set<TLSSocket>(), binds: string[] = [], bindRecords: Array<{ dn: string; password: string }> = [], searches: any[] = [];
   // "continuation" (M-2724): as AD does for every subtree search at a domain root, each one also returns continuation
   // references to the DNS-zone and Configuration partitions, whether or not it found the entry.
   const state = { mode: "ok" as "ok" | "unsupported" | "outage" | "referral" | "plain" | "missing" | "ranged" | "continuation", memberships: [GROUP_A],
-    holdGroupSearch: false,
+    holdGroupSearch: false, serviceBindDelayMs: 0, ignoreGroupSearchLimit: false, distributionGroups: new Set<string>(),
     labels: new Map([[GROUP_A, GROUP_DN], [GROUP_B, "CN=Other,DC=example,DC=test"]]), beforeMembership: undefined as (() => void) | undefined };
   const server = createServer(material, socket => {
     sockets.add(socket); socket.on("error", () => {}); socket.on("close", () => sockets.delete(socket)); let buffer = Buffer.alloc(0), bound = false;
@@ -59,7 +60,11 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
           const user = users?.find(u => u.dn.toLowerCase() === dn.toLowerCase());
           const accepted = !users || (dn === "CN=Reader,DC=example,DC=test" && password === "Dummy-service-only")
             || !!(user && user.password === password) || !!(ca && !dn && !password);
-          bound = accepted && !!dn; result(id, 0x61, accepted ? 0 : 49);
+          const finish = () => { if (!socket.destroyed) { bound = accepted && !!dn; result(id, 0x61, accepted ? 0 : 49); } };
+          if (accepted && dn === "CN=Reader,DC=example,DC=test" && state.serviceBindDelayMs > 0) {
+            const timer = setTimeout(() => { delayed.delete(timer); finish(); }, state.serviceBindDelayMs); delayed.add(timer);
+            socket.once("close", () => { clearTimeout(timer); delayed.delete(timer); });
+          } else finish();
         }
         else if (tag === 0x42) socket.end();
         else if (tag === 0x63) {
@@ -83,22 +88,22 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
             else { entry(id, ca.dn, { "cACertificate;binary": [new X509Certificate(ca.pem).raw] }); result(id, 0x65); }
           } else if (attributes.includes("distinguishedName") && attributes.includes("cn")) {
             if (state.holdGroupSearch) { buffer = buffer.subarray(frameLength); continue; }
-            const matches = (f: any, cn: string): boolean => {
-              if (f.tag === 0xa0) return f.children.every((c: any) => matches(c, cn));
-              if (f.tag === 0xa1) return f.children.some((c: any) => matches(c, cn));
-              if (f.tag === 0xa2) return !matches(f.children[0], cn);
+            const matches = (f: any, cn: string, groupId: string): boolean => {
+              if (f.tag === 0xa0) return f.children.every((c: any) => matches(c, cn, groupId));
+              if (f.tag === 0xa1) return f.children.some((c: any) => matches(c, cn, groupId));
+              if (f.tag === 0xa2) return !matches(f.children[0], cn, groupId);
               if (f.substring) {
                 const value = ["cn", "sAMAccountName"].includes(f.substring) ? cn.toLowerCase() : "";
                 return !!value && (!f.initial || value.startsWith(f.initial.toLowerCase())) && (!f.final || value.endsWith(f.final.toLowerCase()))
                   && (!f.any || value.includes(f.any.toLowerCase()));
               }
-              if (f.extensible) return f.extensible.attribute === "groupType" && f.extensible.rule === "1.2.840.113556.1.4.803" && f.extensible.value === "2147483648";
+              if (f.extensible) return f.extensible.attribute === "groupType" && f.extensible.rule === "1.2.840.113556.1.4.803" && f.extensible.value === "2147483648" && !state.distributionGroups.has(groupId);
               if (f.present) return ["cn", "sAMAccountName", "objectCategory", "groupType"].includes(f.present);
               return f.attribute === "objectCategory" && f.value.toString().toLowerCase() === "group";
             };
-            const matching = [...state.labels].map(([id, dn]) => ({ id, dn, cn: /^CN=([^,]+)/i.exec(dn)?.[1] ?? "" })).filter(g => matches(parsed, g.cn));
-            for (const g of matching.slice(0, sizeLimit!)) entry(id, g.dn, { objectGUID: [guidStringToBytes(g.id)!], cn: [g.cn], distinguishedName: [g.dn] });
-            continuation(); result(id, 0x65, matching.length > sizeLimit! ? 4 : 0);
+            const matching = [...state.labels].map(([id, dn]) => ({ id, dn, cn: /^CN=([^,]+)/i.exec(dn)?.[1] ?? "" })).filter(g => matches(parsed, g.cn, g.id));
+            for (const g of matching.slice(0, state.ignoreGroupSearchLimit ? matching.length : sizeLimit!)) entry(id, g.dn, { objectGUID: [guidStringToBytes(g.id)!], cn: [g.cn], distinguishedName: [g.dn] });
+            continuation(); result(id, 0x65, !state.ignoreGroupSearchLimit && matching.length > sizeLimit! ? 4 : 0);
           } else if (controls.length) {
             state.beforeMembership?.();
             if (state.mode === "outage") socket.destroy();
@@ -113,7 +118,7 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
           } else {
             const raw = equality(parsed, "objectGUID");
             const selected = [...state.labels].find(([guid, dn]) => scope === 0 ? dn.toLowerCase() === base?.toLowerCase() : raw?.equals(guidStringToBytes(guid)!));
-            if (selected) entry(id, selected[1], { objectGUID: [guidStringToBytes(selected[0])!], groupType: ["-2147483646"] });
+            if (selected) entry(id, selected[1], { objectGUID: [guidStringToBytes(selected[0])!], groupType: [state.distributionGroups.has(selected[0]) ? "2" : "-2147483646"] });
             else if (user) entry(id, user.dn, personAttributes(user));
             continuation(); result(id, 0x65);
           }
@@ -124,5 +129,5 @@ export async function groupWirePeer(material: { cert: string; key: string }, use
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   return { state, searches, binds, bindRecords, port: (server.address() as { port: number }).port, openSockets: () => sockets.size,
-    close: async () => { for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); } };
+    close: async () => { for (const timer of delayed) clearTimeout(timer); delayed.clear(); for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); } };
 }

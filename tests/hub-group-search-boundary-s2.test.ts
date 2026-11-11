@@ -20,13 +20,13 @@ function fixture() {
   const lookup = vi.fn(async (): Promise<PolicyGroupSearch> => answer());
   const directory = { realm: "example", groupPolicy: "ad-direct-guid", searchPolicyGroups: lookup } as unknown as HubDirectory;
   const policy = createHubGroupPolicyStore({ db, hubId: "hub-1", realm: "example", generation: "g1", directory, audit, current: () => true, now: () => 100 });
-  let session = true, generation = "g1", at = 100;
-  const binding = () => ({ kind: "ready" as const, hubId: "hub-1", realm: "example", generation });
+  let session = true, ready = true, generation = "g1", at = 100;
+  const binding = () => ready ? { kind: "ready" as const, hubId: "hub-1", realm: "example", generation } : { kind: "repair-required" as const, legacy: false as const };
   const control = createHubGroupAdminSearch({ administrator: admin, directory, current: () => true, binding, policy: () => policy, now: () => at });
   const authenticate = vi.fn(async (): Promise<HubActor> => ({ kind: "directory", person: { ...admin }, sessionId: "session-one" }));
   const ctx = { requestId: "search-request", current: () => session, requireAdmin: authenticate };
   return { db, directory, policy, control, lookup, authenticate, ctx, signOut: () => { session = false; },
-    changeGeneration: () => { generation = "g2"; }, tick: () => { at += 60_000; } };
+    changeGeneration: () => { generation = "g2"; }, notReady: () => { ready = false; }, repair: () => { ready = true; }, tick: () => { at += 60_000; } };
 }
 describe("group search authority and shared physical admission", () => {
   it("uses the existing pool until the driver read AND physical-close promise settle", async () => {
@@ -81,6 +81,12 @@ describe("group search authority and shared physical admission", () => {
   it.each([undefined, "wrong-profile"])("unsupported directory (%s) starts no search", async mode => {
     const r = fixture(); Object.assign(r.directory, mode ? { groupPolicy: mode } : { searchPolicyGroups: undefined });
     expect(await r.control.search({ q: "own" }, r.ctx)).toEqual({ ok: false, reason: "unsupported" }); expect(r.lookup).not.toHaveBeenCalled();
+  });
+  it("a non-ready binding gives unknown without a directory read, then works after repair", async () => {
+    const r = fixture(); r.notReady();
+    expect(await r.control.search({ q: "own" }, r.ctx)).toEqual({ ok: false, reason: "unknown" });
+    expect(r.lookup).not.toHaveBeenCalled(); r.repair();
+    expect(await r.control.search({ q: "own" }, r.ctx)).toEqual(answer()); expect(r.lookup).toHaveBeenCalledTimes(1);
   });
   it("keeps malformed results and raw diagnostic details out of the response", async () => {
     const r = fixture(); r.lookup.mockResolvedValueOnce({ ok: true, groups: [{ ...group, objectId: "bad" }], truncated: false });

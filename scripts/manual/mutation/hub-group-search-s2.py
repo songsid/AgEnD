@@ -11,6 +11,11 @@ cases=[
  ('generation','src/hub/group-policy/admin-search.ts','|| JSON.stringify(binding()) !== generation','', 'tests/hub-group-search-boundary-s2.test.ts','fences generation'),
  ('rate','src/hub/group-policy/admin-search.ts','bucket.count >= 30','bucket.count >= 31','tests/hub-group-search-boundary-s2.test.ts','30/session'),
  ('physical-close','src/hub/directory/directory.ts','await service?.close(true);','void service?.close(true);','tests/hub-group-search-close-s2.test.ts','does not settle'),
+ ('security-group','src/hub/directory/directory.ts','(groupType:1.2.840.113556.1.4.803:=2147483648)','','tests/hub-group-search-s2.test.ts','finds Owners'),
+ ('group-base','src/hub/directory/directory.ts','|| !withinGroupBase(dn, cfg.baseDn) || seen.has(objectId)','|| seen.has(objectId)','tests/hub-group-search-s2.test.ts','outside-base reply'),
+ ('deadline-abort','src/hub/directory/directory.ts','expired = true; service?.abort();','expired = true;','tests/hub-group-search-s2.test.ts','whole deadline aborts'),
+ ('ready-binding','src/hub/group-policy/admin-search.ts','if (binding().kind !== "ready") return { ok: false, reason: "unknown" };','/* removed ready check */','tests/hub-group-search-boundary-s2.test.ts','non-ready binding'),
+ ('reply-bound','src/hub/directory/directory.ts','|| entries.length > 20','','tests/hub-group-search-s2.test.ts','driver refuses 21'),
 ]
 for name,file,old,new,test,pattern in cases:
  if len(sys.argv)>1 and name not in sys.argv[1:]:continue
