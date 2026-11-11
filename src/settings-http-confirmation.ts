@@ -173,7 +173,7 @@ export class SettingsHttpConfirmation {
     const payload = { method, url: url.pathname + url.search, key, body: Buffer.from(raw), binding, localAdmin, requester: principal.requester, localSession: principal.localSession };
     const result = this.store.propose({ session: principal.id, key: key ?? `operation:${requestFingerprint}`,
       requestFingerprint, fingerprint: effect.diff.fingerprint, section: effect.diff.section, requestedBy: principal.label,
-      source: principal.source, summary: effect.diff.summary, affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,
+      source: principal.source, summary: effect.diff.summary, summary_i18n: effect.diff.summary_i18n, affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,
       ...(effect.diff.opensLink ? { opensLink: true as const } : {}),
       bytes: raw.length, remainingMs: effect.proof?.remainingMs,
       current: () => principal.current(), snapshot: () => this.options.snapshot(),
