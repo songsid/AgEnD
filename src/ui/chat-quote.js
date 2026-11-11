@@ -2,9 +2,9 @@
 // → a small 「引用」 pill → the passage goes into the composer as a Markdown quote ("> …") at the caret, on its own lines,
 // the caret left on the next line for the answer. Repeatable: quote, answer, quote the next passage, answer…
 //
-// - Desktop: the pill is anchored to where the selection ends (a pointer at the exact spot), above that line — or below
-//   it when that covers less of the neighbouring lines' text (the passage itself never counts). After a quote the
-//   composer takes the focus.
+// - Desktop: the pill is anchored to where the selection ends (a pointer at the exact spot), below that line — clear of
+//   the browser's own menu above a selection (Edge's mini menu sits there, and a page can't turn it off; M-2872) — and
+//   above it only when there is no room below in the thread's visible box. After a quote the composer takes the focus.
 // - Phone (a coarse pointer): the pill 「引用選取的文字」 docks above the composer's whole box inside the 16-px gutter — clear
 //   of the system's own copy toolbar (above a selection) and of the finger — or at the top of the thread when the
 //   passage sits there. The keyboard does NOT open after a quote (the user's choice): more passages can be selected;
@@ -177,21 +177,16 @@ export function installQuoteSelection(list, deps) {
     const last = rects[rects.length - 1];
     let left, top, tip = null;
     if (!phone) {
-      // The other lines of the message (the passage's own never count as covered).
-      const lines = [];
-      if (typeof doc.createTreeWalker === "function" && typeof doc.createRange === "function") {
-        const w = doc.createTreeWalker(passage.el, 4 /* text */);
-        while (w.nextNode()) {
-          const rg = doc.createRange(); rg.selectNodeContents(w.currentNode);
-          for (const z of rg.getClientRects()) if (z.width > 0 && !rects.some((q) => overlap(q, z) > 0)) lines.push(z);
-        }
-      }
+      // Room is the thread's visible box (the chat scroller, above the composer), within the window.
+      const th = deps.threadBox?.()?.getBoundingClientRect?.();
+      const vh = win?.innerHeight ?? 800;
+      const box = th && th.bottom > th.top ? th : { top: 0, bottom: vh };
+      const floor = Math.min(vh, box.bottom) - 4, ceil = Math.max(0, box.top) + 4;
       left = Math.max(8, Math.min(last.right - pr.width / 2, vw - pr.width - 8));
-      const above = { left, right: left + pr.width, top: last.top - pr.height - 10, bottom: last.top - 10 };
-      const below = { left, right: left + pr.width, top: last.bottom + 10, bottom: last.bottom + 10 + pr.height };
-      const cover = (a) => lines.reduce((n, z) => n + overlap(a, z), 0);
-      const under = cover(below) < cover(above) || above.top < 4;
-      top = under ? below.top : above.top;
+      const aboveTop = last.top - pr.height - 10, belowTop = last.bottom + 10;
+      // Below unless it would run out of the box and above fits (with no room either side, below).
+      const under = belowTop + pr.height <= floor || aboveTop < ceil;
+      top = under ? belowTop : aboveTop;
       tip = { side: under ? "up" : "down", x: Math.max(10, Math.min(last.right - left - 5, pr.width - 20)) };
     } else {
       const box = deps.composerBox?.()?.getBoundingClientRect?.();
