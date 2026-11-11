@@ -1,0 +1,12 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+(node:2079557) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+error: no such file or directory: /tmp/agend-precheck-wWogFQ/none
+
+ Test Files  8 passed (8)
+      Tests  203 passed (203)
+   Start at  10:03:04
+   Duration  15.05s (transform 11.53s, setup 815ms, import 17.35s, tests 23.40s, environment 4ms)
+

@@ -32,3 +32,5 @@ node --import tsx scripts/manual/codex-pane-owner-2301/view.mts
 ```
 
 Uses the existing smoke fixture, scratch HOME, private tmux and the recorded frames. The actual model-probe worker boundary returns null; no vendor CLI is launched. Desktop uses normal Fit; phone uses the existing Aa control (Fit → S) so the UUID/Context detail is readable. At S, lower-value model/cwd text is horizontally scrollable. Narrow captures replay at their actual 45-column width. This changes no UI code, CSS or persisted user preferences.
+
+R2 semantic reversals (no CLI): `REPO=$PWD OUT=<new owned output directory> python3 scripts/manual/codex-pane-owner-2301/review-mutations.py`. It compiles and runs each mutation independently and restores source in `finally`; optional `ONLY` selects comma-separated mutant names. Run only on an otherwise idle owned checkout.

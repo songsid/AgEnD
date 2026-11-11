@@ -1,11 +1,11 @@
 {
-  "sourceCommit": "fe05648f0ce81986d4550a986fc57def80bd25f2",
+  "sourceCommit": "795f00e212d7e22471a1247a34f4b834d18c33b2",
   "productHashes": {
     "src/backend/codex.ts": "f6a99832c0ac9f339f08abe98475bdd49b5ade16a9c8ebfc7dca5853254d7f26",
     "src/backend/types.ts": "f62a68b5e8a473e60f95fa9b54c6ac32fcee7704d277c0fb8e2364351ec087bc",
-    "src/daemon.ts": "1d77609399c3445a4f16d2d7fa177f54ddfdee235095fc103d8cfded3023ed9a",
-    "src/codex-pane-ownership.ts": "9d8fb401ddde42813f913687b795acca0361a67e0e84b44816ee46d8bdf46635",
-    "src/transcript-delta-reader.ts": "3846e49d31cf6bf8e721553721521f6a073fc138dc5264d7b32c808643960bf3",
+    "src/daemon.ts": "918e12f70e70b972a343141f0b9d1a16ee2181d73a8bfbf635ba241815759866",
+    "src/codex-pane-ownership.ts": "b54f09a4ee307282f839e9009d60df5cb1c33cca1f4cd670196a62a3973d18ac",
+    "src/transcript-delta-reader.ts": "e215aad609be34129620510f1aa08e8dc2a2b5059b0e4409c3a896c94b4aa69e",
     "src/locale.ts": "b0a639ec4c5335f7ff66aaa3af99d6136b54b35f565c444dffb70b63f7f311f8",
     "src/ui/shared/panel-view.js": "fd17f77271254137b09c7c382ac8e3f379a7cc91b0819cb3b23e4e699c8cfac2",
     "src/ui/shared/app.css": "a773ab515fa124efd90e34d581ddfe72d86de6d97a0efce8f035d27969ab8f0c"
@@ -19,6 +19,12 @@
     "desk-zh-TW-narrow.png": "2d5bcafbacc162d034eea954780bb0901b3b3c322e3fd62d88f043fc0a323dc6"
   },
   "reviewRegressionHashes": {
-    "tests/codex-pane-ownership-2301.test.ts": "e3a89564e7e9b786bfe75d9af3dc2187c38cccde699964f1d584c8d156369239"
+    "tests/codex-pane-ownership-2301.test.ts": "ef3c21610b76e88297d1a604ce7b9c99addb64ca056df63d7b3ba31f093f6d44"
+  },
+  "viewSourceCommit": "fe05648f0ce81986d4550a986fc57def80bd25f2",
+  "r2RegressionHashes": {
+    "tests/codex-pane-ownership-2301.test.ts": "ef3c21610b76e88297d1a604ce7b9c99addb64ca056df63d7b3ba31f093f6d44",
+    "tests/codex-pane-read-race-2301.test.ts": "5677156aaf9c38060a179bf0444f4f1bf3b797c1c3bfebcac0441c0597b97c29",
+    "tests/codex-pane-discovery-2301.test.ts": "f4330343c17c6318af53dc0790236e579a680906efb64256ef6919108c2fc965"
   }
 }
