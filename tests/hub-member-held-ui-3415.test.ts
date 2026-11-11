@@ -38,7 +38,7 @@ it("a known revocation offers the same recovery while retaining its distinct rea
 
 it("new recovery controls tolerate cached strings and the original client interface", async () => {
   const p = page(); pages.push(p); i18n.setLang("en"); const original = hubWords.hw;
-  vi.spyOn(hubWords, "hw").mockImplementation((key: string, ...args: any[]) => key === "hold_rejected" ? "hub.hold_rejected" : original(key, ...args));
+  vi.spyOn(hubWords, "hw").mockImplementation((...args: unknown[]) => args[0] === "hold_rejected" ? "hub.hold_rejected" : original(...args));
   const c = { stub: false, pairing: async () => ({ state: "held", hold: "rejected", hubId: "h", binding: "b", memberOrigin: "https://hub.test" }), subscribe: () => () => {} };
   clients.setHubClient(c); await p.mount(h(ui.HubConnectCard, {})); await settle(20);
   expect(p.root.querySelector(".hub-held p")?.textContent).toBe("The Hub refused the pairing.");
