@@ -54,7 +54,8 @@ try {
       record(substitutions, "older-server-without-display-mark.html", body); return route.fulfill({ response, body });
     }
     const path = sourcePath(url.pathname);
-    if (retained && ((retained === "all" || retained === "js") ? sources.includes(path) && (retained !== "js" || path.endsWith(".js")) : path === oldFiles[retained])) {
+    if (retained && (retained === "css-old-app" ? ["src/ui/shared/app.css", "src/ui/shared/app.js"].includes(path)
+      : (retained === "all" || retained === "js") ? sources.includes(path) && (retained !== "js" || path.endsWith(".js")) : path === oldFiles[retained])) {
       try { const bytes = execFileSync("git", ["show", `${oldRef}:${path}`], { cwd: repo }); record(substitutions, path, bytes);
         return route.fulfill({ body: bytes, contentType: path.endsWith(".css") ? "text/css" : "text/javascript" });
       } catch { /* new optional modules do not exist on the control head */ }
@@ -99,7 +100,7 @@ try {
   const topology = () => page.evaluate(async () => { const { navStore } = await import("/assets/app-nav.js"); return navStore.get().workspace; });
   const menu = async (id: string, label: string) => {
     await page.locator(`[data-pane="${id}"] .ws-pane-head .menu > button`).click();
-    await page.getByRole("menuitem", { name: label, exact: true }).click(); await settle();
+    await page.getByRole(["自訂移動", "左右排列", "上下排列"].includes(label) ? "menuitemradio" : "menuitem", { name: label, exact: true }).click(); await settle();
   };
   const box = async (selector: string) => { const r = await page.locator(selector).boundingBox(); assert.ok(r, selector); return r; };
   const within = async () => {
@@ -107,7 +108,7 @@ try {
     assert.ok(f.x >= r.x - 1 && f.y >= r.y - 1 && f.x + f.width <= r.x + r.width + 1 && f.y + f.height <= r.y + r.height + 1, JSON.stringify({ r, f }));
     assert.ok(f.width >= 420 && f.height >= 360); return f;
   };
-  if (["css", "model", "navigation"].includes(retained)) {
+  if (["css", "css-old-app", "model", "navigation"].includes(retained)) {
     if (retained !== "css") {
       await page.evaluate(async (name: string) => { const { appStore } = await import("/assets/app-store.js"); await appStore.get().chatWorkspace?.open(name); }, b);
       await page.getByText("未能載入分割對話。目前對話不變；請重新整理頁面再試。", { exact: true }).waitFor();
