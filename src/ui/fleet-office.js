@@ -996,10 +996,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // office walks to it first (#2564). An NPC drawn as furniture with a `walk` strolls near its spot alike (#2596). A
   // pack's `idleVisits` (#3685) now and then sends an idle person to a free seat in another area instead, for a while.
   const wander = zones && !overview && !still && !layout;
+  // #3685: who sits where on a visit, kept between ticks (the layout is rebuilt on every state change; the style's
+  // seats are not): someone who turns idle later never moves a visitor already there. A new style starts afresh.
+  const visitMemo = useMemo(() => ({ claims: new Map(), idle: null }), [skin]);
   useEffect(() => {
     if (!zones || overview) return undefined;
     const go = () => {
-      const t = now(), to = walkTargets(desksOf(L), L, t, wander, skin.pack.furniture, night);
+      const t = now(), to = walkTargets(desksOf(L), L, t, wander, skin.pack.furniture, night, visitMemo);
       // An act's walk; not someone in bed for the night (#2568: bedtime wins, as for mail).
       for (const d of desksOf(L)) { const a = actsHere.get(d.node.name), at = !d.night && actLive(a, d.node.state, Date.now(), actSeen.current) ? actTarget(a, L, walkers, t) : null; if (at) to.set(d.node.name, at); }
       for (const [name, at] of mail.targets(L, t)) to.set(name, at);
@@ -1011,7 +1014,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (still) return undefined;
     const h = setInterval(go, WANDER.TICK);
     return () => clearInterval(h);
-  }, [L, wander, mail, skin, night, actsHere]);
+  }, [L, wander, mail, skin, night, actsHere, visitMemo]);
   // …and in each tile on a zones style; the traffic within a tile is its own, between tiles the overview's.
   useEffect(() => {
     for (const tl of tiles) if (tl.zones) tl.walkers.sync(new Map(desksOf(tl.L).map((d) => [d.node.name, d.seat])), now(), tl.L, still);

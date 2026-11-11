@@ -92,9 +92,9 @@ describe("visitAt", () => {
     expect(backward).toEqual(forward);
     expect(forward.some(Boolean)).toBe(true);
   });
-  it("a visit starts on a wander turn, stays minSeconds–maxSeconds (whole seconds) after the walk there; visits never overlap", () => {
-    const g = graphOf(), spring = g.areas.spring.rect;
-    const walk = Math.ceil(Math.hypot(spring.x + spring.w / 2 - HOME.x, spring.y + spring.h / 2 - HOME.y) / Z.WALK.SPEED);
+  it("a visit starts on a wander turn, lasts the longest walk there plus minSeconds–maxSeconds (whole seconds); visits never overlap", () => {
+    // The seat is walkTargets' to pick: the visit leaves room for the farthest one (here a straight line to each).
+    const g = graphOf(), walk = Math.max(...g.areas.spring.seats.map((q: any) => Math.ceil(Math.hypot(q.x - HOME.x, q.y - HOME.y) / Z.WALK.SPEED)));
     for (const name of ["atlas", "quill", "sage"]) {
       const vs = visitsOver(name, g, 200);
       expect(vs.length).toBeGreaterThan(5);
@@ -103,10 +103,11 @@ describe("visitAt", () => {
         expect(v.area).toBe("spring");
         expect((v.start + phase) % Z.WANDER.PERIOD).toBe(0);
         const stay = v.end - v.start - walk;
+        expect(stay).toBe(v.stay);
         expect(stay % 1000).toBe(0);
         expect(stay).toBeGreaterThanOrEqual(20000);
         expect(stay).toBeLessThanOrEqual(60000);
-        if (i) expect(v.start).toBeGreaterThanOrEqual(vs[i - 1].end);
+        if (i) expect(v.start).toBeGreaterThanOrEqual(vs[i - 1].end + walk);   // home again before the next one
         expect(Z.visitAt(name, HOME, g, v.end - 1, "lounge")).toEqual(v);
         expect(Z.visitAt(name, HOME, g, v.start - 1, "lounge")?.start).not.toBe(v.start);
       });
@@ -147,7 +148,8 @@ describe("walkTargets with idleVisits", () => {
     for (let t = 0; t < 120 * Z.WANDER.PERIOD; t += STEP) {
       const m = Z.walkTargets(desks, g, t), v = Z.visitAt("atlas", HOME, g, t, "lounge");
       for (const d of desks.slice(1)) expect(m.get(d.node.name)).toBe(d.seat);
-      if (v) { away++; expect(key(m.get("atlas"))).toMatch(/^(800|1000|1100),100$/); } else expect(m.get("atlas")).toBe(HOME);
+      // Away only on a visit (and home again once its stay is over, before the visit's own end).
+      if (m.get("atlas") !== HOME) { away++; expect(v).not.toBeNull(); expect(key(m.get("atlas"))).toMatch(/^(800|1000|1100),100$/); } else if (!v) expect(m.get("atlas")).toBe(HOME);
       expect(Z.walkTargets(desks, g, t, false).get("atlas")).toBe(HOME);
     }
     expect(away).toBeGreaterThan(0);
@@ -193,6 +195,83 @@ describe("walkTargets with idleVisits", () => {
       const out = desks.filter((d) => key(m.get(d.node.name)) !== key(d.seat)).map((d) => key(m.get(d.node.name)));
       expect(new Set(out).size).toBe(out.length);
     }
+  });
+});
+
+describe("#3697 review: arrival and seats already taken", () => {
+  // A graph where the area's middle is near and its one seat far: home → w1 → w2 (by the middle) → w3 → w4 → w5 → seat.
+  const detour = () => {
+    const pk = packOf({ idleVisits: [{ area: "garden", weight: 100, minSeconds: 5, maxSeconds: 5 }],
+      areas: { ...MANIFEST().areas, garden: { rect: [700, 0, 580, 360], seats: [[800, 100]] } },
+      waypoints: [{ id: "w1", x: 150, y: 450 }, { id: "w2", x: 990, y: 190 }, { id: "w3", x: 1270, y: 350 }, { id: "w4", x: 1270, y: 10 }, { id: "w5", x: 810, y: 10 }],
+      edges: [["w1", "w2"], ["w2", "w3"], ["w3", "w4"], ["w4", "w5"]] });
+    return Z.zonesLayout(pk, []);
+  };
+  const route = (g: any, a: any, z: any) => Math.ceil(M.pathLength(M.routeVia({ waypoints: g.waypoints, edges: g.edges }, a, z)) / Z.WALK.SPEED);
+  it("a visit lasts until the stay is over at the seat walked to, however far along the graph that seat is", () => {
+    const g = detour(), seat = { x: 800, y: 100 }, r = g.areas.garden.rect;
+    const far = route(g, HOME, seat), middle = route(g, HOME, { x: r.x + r.w / 2, y: r.y + r.h / 2 });
+    expect(far).toBeGreaterThan(middle + 3000);                                  // the case: the seat's walk is the longer one
+    let checked = 0;
+    for (const name of ["atlas", "quill", "sage", "orbit"]) {
+      for (const v of visitsOver(name, g, 120)) {
+        const at = (t: number) => Z.walkTargets([idleAt(name, HOME)], g, t).get(name);
+        expect(key(at(v.start))).toBe(key(seat));
+        const leave = v.start + far + 5000;                                       // arrived, then the stay (min = max = 5 s)
+        expect(leave).toBeLessThanOrEqual(v.end);
+        expect(key(at(leave - 1))).toBe(key(seat));
+        expect(at(leave)).toBe(HOME);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(3);
+  });
+  it("with the page's memory: home once the stay is over; a visit taken late starts then, and only if it still fits", () => {
+    const g = graphOf([{ area: "spring", weight: 100, minSeconds: 30, maxSeconds: 30 }]);
+    const work = { node: { name: "atlas", state: "working" }, seat: { x: 100, y: 100 }, area: "work" };
+    const walkTo = (q: any) => Math.ceil(Math.hypot(q.x - HOME.x, q.y - HOME.y) / Z.WALK.SPEED);
+    let early = 0, late = 0;
+    for (const v of visitsOver("atlas", g, 200)) {
+      // From the start: the seat, then home when the stay is over — before the visit's own end when the seat is near.
+      const memo = { claims: new Map(), idle: null };
+      const seat = Z.walkTargets([idleAt("atlas", HOME)], g, v.start, true, [], false, memo).get("atlas");
+      const leave = v.start + walkTo(seat) + 30000;
+      expect(key(Z.walkTargets([idleAt("atlas", HOME)], g, leave - 1, true, [], false, memo).get("atlas"))).toBe(key(seat));
+      if (leave < v.end) { early++; expect(Z.walkTargets([idleAt("atlas", HOME)], g, leave, true, [], false, memo).get("atlas")).toBe(HOME); }
+      // Working at the start, idle 10 s later: the visit is taken then — it no longer fits (its end left room for a
+      // walk from the start), so atlas stays home.
+      const lateMemo = { claims: new Map(), idle: null };
+      Z.walkTargets([work], g, v.start, true, [], false, lateMemo);
+      const far = v.end - v.start - 30000;
+      if (v.start + 10000 + walkTo(seat) + 30000 > v.end && walkTo(seat) > far - 10000) {
+        late++;
+        expect(Z.walkTargets([idleAt("atlas", HOME)], g, v.start + 10000, true, [], false, lateMemo).get("atlas")).toBe(HOME);
+      }
+    }
+    expect(early).toBeGreaterThan(0);
+    expect(late).toBeGreaterThan(0);
+  });
+  it("someone turning idle later never moves a visitor already in the seat, even with an earlier visit by the clock", () => {
+    const g = graphOf([{ area: "garden", weight: 100, minSeconds: 100, maxSeconds: 100 }]);   // the garden has one seat
+    const homeA = { x: 100, y: 500 }, homeB = { x: 200, y: 500 }, workB = { x: 100, y: 100 };
+    let found = 0;
+    for (const a of visitsOver("atlas", g, 400, homeA)) {
+      const t = a.start, b = Z.visitAt("quill", homeB, g, t, "lounge");
+      if (!b || !(b.start < a.start) || b.end < t + 21000 || found >= 3) continue;   // quill's visit is the earlier one by the clock
+      found++;
+      const memo = { claims: new Map(), idle: null };
+      const working = [idleAt("atlas", homeA), { node: { name: "quill", state: "working" }, seat: workB, area: "work" }];
+      expect(key(Z.walkTargets(working, g, t, true, [], false, memo).get("atlas"))).toBe("800,500");   // atlas takes it
+      const both = [idleAt("atlas", homeA), idleAt("quill", homeB)];
+      for (const dt of [1000, 5000, 20000]) {
+        const m = Z.walkTargets(both, g, t + dt, true, [], false, memo);
+        expect(key(m.get("atlas"))).toBe("800,500");                              // still atlas's
+        expect(key(m.get("quill"))).not.toBe("800,500");
+      }
+      // Without the page's memory, the clock alone decides (the earliest visit first), as for a page opened now.
+      expect(key(Z.walkTargets(both, g, t + 1000).get("quill"))).toBe("800,500");
+    }
+    expect(found).toBeGreaterThan(0);
   });
 });
 
