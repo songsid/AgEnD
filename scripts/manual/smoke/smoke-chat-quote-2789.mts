@@ -2,8 +2,11 @@
 // shared smoke fixture (the product's own web server from an in-process FleetManager, a scratch home, loopback only —
 // no fleet start, no network). Per case (desk/phone × light/dark × en/zh-TW; GATE=ci: desk-light-en + phone-dark-zh-TW):
 //   - select a passage in one message (a Range: the browser's own selectionchange) → the pill: its words; desktop — its
-//     pointer at the passage's end, not over the passage; phone — inside the 16-px gutter, a clear gap above the
+//     pointer at the passage's end, not over the passage, BELOW its last line (M-2872) and clear of a simulated Edge
+//     selection mini menu drawn above the selection's end; phone — inside the 16-px gutter, a clear gap above the
 //     composer's whole box, not over the passage;
+//   - M-2872 flip: the last line of the newest message at the thread's visible bottom → the pill above it when there is
+//     no room below (the room measured and recorded);
 //   - its click: the passage is in the composer as "> …" lines with the caret on the next line; the selection and the
 //     pill are gone; desktop — the composer has the focus; phone — it does not (the keyboard stays down);
 //   - repeat with two more passages, an answer typed under each: the composer holds all three in order; at its 240-px
@@ -12,7 +15,9 @@
 //     blockquotes;
 //   - a selection across two messages, or in a message's header: no pill;
 //   - SKEW (an open tab from before): the previous panel-chat.js (OLD_REF) with this server's modules — the chat works,
-//     no pill, no error; this panel-chat.js with the previous app.css — the pill still works;
+//     no pill, no error; this panel-chat.js with the previous app.css — the pill still works; the chat-quote.js from
+//     before M-2872 (QUOTE_REF) with this server — the pill and the quote work (above the line: the "before" picture,
+//     with the simulated Edge menu, its overlap recorded);
 //   - no page error, no CSP report.
 // Native long-press selection on a real phone can't be driven headless (the leader's ruling A is pinned in
 // tests/web-chat-reply-ui-2272.test.ts); a real phone confirms it before a beta.
@@ -29,6 +34,8 @@ const GATE = process.env.GATE === "full" ? "full" : "ci";
 // The SKEW legs compare with the page before the feature: on this (alpha) line, release/2.3.5-alpha just before #3556
 // merged (its merge commit's parent) — a branch tip would already hold the feature once it landed. Main's is ea4de219c^.
 const OLD_REF = process.env.OLD_REF ?? "d8dd79910^";
+// M-2872's SKEW/"before" leg: chat-quote.js as this (alpha) line had it before the pill moved below the selection.
+const QUOTE_REF = process.env.QUOTE_REF ?? "7dd2b0d07";
 const OUT = join(process.env.OUT ?? "/tmp/smoke-out", SMOKE);
 mkdirSync(OUT, { recursive: true });
 const r: Record<string, unknown> = { gate: GATE, oldRef: OLD_REF };
@@ -55,6 +62,9 @@ const SELECT = `(passage) => {
   const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT); let node = null, at = -1;
   while (w.nextNode()) { const i = w.currentNode.data.indexOf(passage); if (i >= 0) { node = w.currentNode; at = i; break; } }
   const range = document.createRange(); range.setStart(node, at); range.setEnd(node, at + passage.length);
+  // Out of the thread's visible box (later messages scrolled it away): bring it into view first, as a person would.
+  const sc = document.querySelector(".scroller")?.getBoundingClientRect(), r0 = [...range.getClientRects()].filter((x) => x.width > 0);
+  if (sc && r0.length && (r0[0].top < sc.top || r0[r0.length - 1].bottom > sc.bottom)) host.scrollIntoView({ block: "center" });
   const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
   const rects = [...range.getClientRects()].filter((x) => x.width > 0);
   return rects.map((x) => ({ left: x.left, right: x.right, top: x.top, bottom: x.bottom }));
@@ -65,6 +75,16 @@ const PILL = `() => {
   let box = document.querySelector(".composer-box")?.getBoundingClientRect();
   return { text: p.textContent, left: b.left, right: b.right, top: b.top, bottom: b.bottom, h: b.height, tipX: tip ? tip.left + tip.width / 2 : null,
     vw: innerWidth, boxTop: box ? box.top : null, phone: p.classList.contains("is-phone") };
+}`;
+/** M-2872: a stand-in for Edge's selection mini menu (hide / … / copy / search), where Edge draws it: just above the
+ * selection's end, centred on it. A page can't turn the real one off; the PNGs show the pill clear of it. */
+const EDGE = `(r) => {
+  document.getElementById("fake-edge-menu")?.remove();
+  const m = document.createElement("div"); m.id = "fake-edge-menu"; m.textContent = "Edge menu (sim.) ⋯";
+  const s = m.style; s.position = "fixed"; s.zIndex = "2147483647"; s.width = "132px"; s.height = "34px"; s.left = Math.round(r.right - 66) + "px";
+  s.top = Math.round(r.top - 6 - 34) + "px"; s.display = "flex"; s.alignItems = "center"; s.justifyContent = "center"; s.font = "12px system-ui";
+  s.background = "#2b2b2b"; s.color = "#f3f3f3"; s.borderRadius = "8px"; s.boxShadow = "0 4px 14px rgba(0,0,0,.35)"; s.pointerEvents = "none";
+  document.body.append(m); const b = m.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
 }`;
 const covers = (a: any, z: any) => Math.min(a.right, z.right) > Math.max(a.left, z.left) && Math.min(a.bottom, z.bottom) > Math.max(a.top, z.top);
 
@@ -85,8 +105,13 @@ try {
       const rects = await page.evaluate(`(${SELECT})(${JSON.stringify(PASSAGES[L][i])})`) as any[];
       await page.waitForSelector(".quote-pop", { timeout: 3000 }).catch(() => {});
       const pill = await page.evaluate(`(${PILL})()`) as any;
-      await page.screenshot({ path: shotPath(SMOKE, cn, `${tag}-select`) });
       const last = rects[rects.length - 1];
+      const menu = phone ? null : await page.evaluate(`(${EDGE})(${JSON.stringify(last)})`) as any;
+      await page.screenshot({ path: shotPath(SMOKE, cn, `${tag}-select`) });
+      if (menu) {
+        await page.evaluate(() => document.getElementById("fake-edge-menu")?.remove());
+        check(`${cn}:${tag}:below-clear-of-edge-menu`, !!pill && pill.top >= last.bottom && !covers(pill, menu), { pill, last, menu });
+      }
       const words = L === "zh-TW" ? (phone ? "引用選取的文字" : "引用") : (phone ? "Quote selection" : "Quote");
       check(`${cn}:${tag}:pill`, !!pill && pill.text === words && pill.phone === phone && !rects.some((z) => covers(pill, z))
         && (phone ? pill.left >= 16 && pill.right <= pill.vw - 16 + 1 && pill.boxTop !== null && (pill.bottom <= pill.boxTop - 8 || pill.top < last.top)
@@ -174,9 +199,48 @@ try {
     check(`${cn}:no-errors`, errs.length === 0 && cspNow.length === 0, { errs, csp: cspNow });
     await ctx.close();
   }
+  // M-2872 flip: the newest message's last line sits at the thread's visible bottom → no room below → the pill above it.
+  {
+    const c: MatrixCase = { device: "desk", theme: "light", lang: "en" };
+    // Enough later messages for the thread to scroll, then one in the middle scrolled so its line is at the visible bottom edge.
+    for (let i = 0; i < 8; i++) emit("agent", `Status ${i + 1}: rehearsal leg ${i + 1} passed; nothing waits on you here.`, 500_000 - i * 1000);
+    const FLIP = "Status 6: rehearsal leg 6 passed";
+    const { ctx, page, csp } = await fx.page(c, { path: `/ui/chat/${encodeURIComponent(name)}` });
+    await page.addInitScript({ content: "window.__name = (f) => f;" });
+    const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
+    await page.goto(`${fx.base}/ui/chat/${encodeURIComponent(name)}`);
+    await page.waitForSelector(".msg[data-key]", { timeout: 20000 }); await page.waitForTimeout(1200);
+    await page.evaluate(`((passage) => {
+      const host = [...document.querySelectorAll(".msg[data-key]")].find((m) => (m.textContent || "").includes(passage));
+      const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT); let node = null, at = -1;
+      while (w.nextNode()) { const i = w.currentNode.data.indexOf(passage); if (i >= 0) { node = w.currentNode; at = i; break; } }
+      const rg = document.createRange(); rg.setStart(node, at); rg.setEnd(node, at + passage.length);
+      const sc = document.querySelector(".scroller"), rs = [...rg.getClientRects()].filter((x) => x.width > 0);
+      sc.scrollTop += rs[rs.length - 1].bottom - (sc.getBoundingClientRect().bottom - 8);
+    })(${JSON.stringify(FLIP)})`);
+    await page.waitForTimeout(400);
+    const rects = await page.evaluate(`(${SELECT})(${JSON.stringify(FLIP)})`) as any[];
+    await page.waitForSelector(".quote-pop", { timeout: 3000 }).catch(() => {});
+    const pill = await page.evaluate(`(${PILL})()`) as any;
+    const last = rects[rects.length - 1];
+    const room = await page.evaluate(`(() => { const s = document.querySelector(".scroller").getBoundingClientRect(); return Math.min(innerHeight, s.bottom) - ${last.bottom}; })()`) as number;
+    const menu = await page.evaluate(`(${EDGE})(${JSON.stringify(last)})`) as any;
+    await page.screenshot({ path: shotPath(SMOKE, "desk-light-en", "flip-select") });
+    const need = pill ? pill.h + 14 : 0;
+    r.flipRoom = { room, need, sc: await page.evaluate(`(() => { const s = document.querySelector(".scroller"); const b = s.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, sh: s.scrollHeight, ch: s.clientHeight, st: s.scrollTop, msgs: document.querySelectorAll(".msg[data-key]").length }; })()`) };
+    // Too little room below → above (pointer down); enough → below. Either way never over the passage.
+    const ok = !!pill && !rects.some((z) => covers(pill, z)) && (room < need ? pill.bottom <= last.top : pill.top >= last.bottom);
+    check("flip:placement", ok, { pill, last, room, need, menu });
+    check("flip:exercised-above", room < need, { room, need });
+    const cspNow = await csp();
+    check("flip:no-errors", errs.length === 0 && cspNow.length === 0, { errs, csp: cspNow });
+    await ctx.close();
+  }
   // SKEW: the previous panel-chat.js with this server — no pill, no error; this panel-chat.js with the previous app.css — the pill works.
   const oldPanel = old("src/ui/panel-chat.js"), oldCss = old("src/ui/shared/app.css");
-  for (const [leg, file, body] of [["old-panel", "/ui/js/panel-chat.js", oldPanel], ["old-css", "/assets/app.css", oldCss]] as const) {
+  let oldQuote: string | null = null;
+  try { oldQuote = execFileSync("git", ["-C", REPO, "show", `${QUOTE_REF}:src/ui/chat-quote.js`], { encoding: "utf8", maxBuffer: 16 << 20 }); } catch { /* none */ }
+  for (const [leg, file, body] of [["old-panel", "/ui/js/panel-chat.js", oldPanel], ["old-css", "/assets/app.css", oldCss], ["old-quote", "/ui/js/chat-quote.js", oldQuote]] as const) {
     if (!body) { check(`skew:${leg}`, false, `no ${file} at ${OLD_REF}`); continue; }
     const c: MatrixCase = { device: "desk", theme: "light", lang: "en" };
     const { ctx, page, csp } = await fx.page(c, { path: `/ui/chat/${encodeURIComponent(name)}` });
@@ -185,8 +249,16 @@ try {
     await page.route(`**${file}`, (route: any) => route.fulfill({ status: 200, contentType: file.endsWith(".css") ? "text/css" : "application/javascript", body }));
     await page.goto(`${fx.base}/ui/chat/${encodeURIComponent(name)}`);
     await page.waitForSelector(".msg[data-key]", { timeout: 20000 }); await page.waitForTimeout(1000);
-    await page.evaluate(`(${SELECT})(${JSON.stringify(PASSAGES.en[0])})`); await page.waitForTimeout(500);
+    const srects = await page.evaluate(`(${SELECT})(${JSON.stringify(PASSAGES.en[0])})`) as any[]; await page.waitForTimeout(500);
     const pill = await page.evaluate("!!document.querySelector('.quote-pop')");
+    if (leg === "old-quote" && pill) {
+      // The "before" picture: the pill above the line, next to where Edge draws its own menu.
+      const box = await page.evaluate(`(${PILL})()`) as any, sl = srects[srects.length - 1];
+      const menu = await page.evaluate(`(${EDGE})(${JSON.stringify(sl)})`) as any;
+      await page.screenshot({ path: shotPath(SMOKE, "skew", "old-quote-before-with-edge-menu") });
+      await page.evaluate(() => document.getElementById("fake-edge-menu")?.remove());
+      r.beforeOverlapsEdgeMenu = { overlaps: covers(box, menu), above: box.bottom <= sl.top, pill: box, menu };
+    }
     let value = "";
     if (pill) { await page.click(".quote-pop .quote-pick"); await page.waitForTimeout(250); value = await page.evaluate("document.getElementById('msgIn').value") as string; }
     await page.screenshot({ path: shotPath(SMOKE, "skew", leg) });

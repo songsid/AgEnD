@@ -1,0 +1,42 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-discovery-2301.test.ts (6 tests | 1 failed) 132ms
+   × a directory-count cap refuses even when the matching file was already seen 15ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-discovery-2301.test.ts > a directory-count cap refuses even when the matching file was already seen
+AssertionError: expected { …(5) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "identity": {
+    "dev": 2128,
+    "ino": 15946877,
+  },
+  "offset": 135,
+  "path": "/tmp/codex-discovery2301-2Mgip3/sessions/rollout-01a1c81a-35be-7fc0-9a6d-f53f7d6c4c07.jsonl",
+  "sessionId": "01a1c81a-35be-7fc0-9a6d-f53f7d6c4c07",
+  "validateFile": [Function validateFile],
+}
+
+ ❯ tests/codex-pane-discovery-2301.test.ts:114:26
+    112|     };
+    113|   };
+    114|   expect(await f.bind()).toBeNull();
+       |                          ^
+    115|   expect(opens).toBe(1);
+    116| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 34 passed (35)
+   Start at  10:05:02
+   Duration  4.06s (transform 2.08s, setup 416ms, import 2.56s, tests 1.80s, environment 0ms)
+

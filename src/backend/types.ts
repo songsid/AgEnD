@@ -649,6 +649,9 @@ export interface CliBackend {
    */
   isDeliveryInputReadyPane?(pane: string): boolean;
 
+  /** Live footer identity, for an ephemeral pre-paste transcript binding. Never resume intent or cwd discovery. */
+  readRawPasteSession?(pane: string): { sessionId: string; sessionsDir: string } | null;
+
   /**
    * Complete ownership of a composer whose wrapped input is longer than isDeliveryInputReadyPane's tail window: its `›`
    * row and every continuation row down to the footer are proven. Absent: no such proof.
