@@ -13,6 +13,7 @@ const mounted: AppPage[] = [];
 let calls: string[] = [];
 let detail: Record<string, unknown> = {};
 let failWrites = false;       // a settings write the server refuses
+let webDevExtra: Record<string, unknown> = {};   // keys web-dev has in fleet.yaml besides its directory and description
 const live = (name: string, o: Record<string, unknown> = {}) => ({ name, status: "running", backend: "claude-code", model: "opus", context_pct: 10, tags: [], execution_state: "idle", ...o });
 const INSTANCES = [live("web-dev", { tags: ["Platform"] }), live("api-server", { status: "stopped" }), live("qa-bot", { status: "paused" }), live("classic-ops-1", { tags: ["classic"] }), live("loner", { card_v: "v1" })];
 /** #1629 r4 §1: loner's identity card, as GET /api/card/loner answers it (a person's tagline over the agent's bio). */
@@ -34,7 +35,7 @@ async function fakeFetch(url: string, init: { method?: string } = {}) {
   calls.push(`${m} ${url}`);
   const SETTINGS: Record<string, unknown> = {
     "/api/settings/schema": { impacts: {}, order: ["now", "instance", "fleet"] },
-    "/api/settings/fleet/raw": { defaults: {}, channels: [], instances: { "web-dev": { working_directory: "/w/web", description: "Builds the site" } } },
+    "/api/settings/fleet/raw": { defaults: {}, channels: [], instances: { "web-dev": { working_directory: "/w/web", description: "Builds the site", ...webDevExtra } } },
     "/api/settings/classic": { defaults: {}, channels: { "555:discord": { instanceName: "classic-ops-1", name: "ops", adapterId: "discord", channelId: "555", backend: "codex" } } }, "/api/settings/connections": [],
     "/api/settings/status-emojis": { keys: [], builtins: { discord: {}, telegram: {} }, telegram_allowed: [], suggestions: [] }, "/api/fleet": { version: "2.2.0", instances: [{ name: "web-dev", status: "running" }] },
     "/api/profiles": [{ instance_name: "web-dev", status: "running", backend: "claude-code", tags: [] }], "/api/settings/pending": [],
@@ -78,6 +79,7 @@ afterEach(async () => {
   req.takeAgentRequest();
   held.clear();
   failWrites = false;
+  webDevExtra = {};
   (globalThis as any).confirm = undefined;
   calls = [];
 });
@@ -383,6 +385,52 @@ describe("Edit in Settings: that agent's dialog — only an agent Settings knows
       expect([name, pg.root.querySelector("dialog") ? "dialog" : null]).toEqual([name, null]);
       await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
     }
+  });
+});
+
+describe("the MCP proxy reply's confirmation on the Settings path (makeCtx: confirms agentPage.confirmMcpProxy)", () => {
+  /** Settings → Agents, web-dev's dialog open (requested as "Edit in Settings" was): tick or untick the box, press Done, then Settings' own Save. */
+  async function run(extra: Record<string, unknown>, on: boolean, answers: boolean[]) {
+    webDevExtra = extra;
+    // @ts-expect-error — a JS module of the app, with no types
+    const S = await import("../src/ui/panel-settings.js");
+    const pg = page({ url: "http://127.0.0.1:19280/settings", storage: { agend_tour_done: "1" } });
+    mounted.push(pg);
+    (globalThis as any).fetch = fakeFetch;
+    req.requestAgentSettings("web-dev");
+    await pg.mount(h(S.SettingsPanel, { route: { panel: "settings", section: "agents" }, navKey: `settings:agents|mcp|${on}` }));
+    await settle(8);
+    const box = pg.root.querySelector("dialog #ag-mcp-proxy");
+    expect(box, "the dialog has the MCP proxy reply box").not.toBeNull();
+    box.checked = on; fire(box, "change"); await settle(6);
+    const done = pg.root.querySelectorAll("dialog .btn-primary").find((b: any) => b.textContent.trim() === "Done");
+    done.click(); await settle(8);
+    const asked: string[] = [];
+    (globalThis as any).confirm = (msg: string) => { asked.push(msg); return answers.shift() ?? true; };
+    const save = async () => { pg.root.querySelector(".s-pending .btn-primary").click(); await settle(20); await new Promise(r => setTimeout(r, 200)); await settle(10); };
+    const patches = () => calls.filter(c => c === "PATCH /api/settings/fleet/instances/web-dev").length;
+    return { pg, asked, save, patches };
+  }
+  it("turning it on asks first; declining applies nothing and keeps it staged; accepting applies it", async () => {
+    const { pg, asked, save, patches } = await run({}, true, [false, true]);
+    expect(pg.root.querySelector(".s-pending"), "staged by Done").not.toBeNull();
+    await save();
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain("MCP proxy reply");
+    expect(asked[0]).toContain("secrets");                                  // the named threat: raw screen text posted to a channel
+    expect(patches(), "declined: nothing written").toBe(0);
+    expect(pg.root.querySelector(".s-pending"), "declined: still staged").not.toBeNull();
+    await save();
+    expect(asked).toHaveLength(2);
+    for (let i = 0; i < 40 && !patches(); i++) await new Promise(r => setTimeout(r, 50));
+    expect(patches()).toBe(1);
+  });
+  it("turning it off does not ask", async () => {
+    const { asked, save, patches } = await run({ mcp_proxy_reply: true }, false, []);
+    await save();
+    for (let i = 0; i < 40 && !patches(); i++) await new Promise(r => setTimeout(r, 50));
+    expect(asked, "no question").toEqual([]);
+    expect(patches()).toBe(1);
   });
 });
 
