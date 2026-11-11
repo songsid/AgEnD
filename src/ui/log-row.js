@@ -72,7 +72,9 @@ export function shortPath(p) {
   return `...${text.includes("/") ? "/" : "\\"}${parts.slice(-2).join(text.includes("/") ? "/" : "\\")}`;
 }
 const NAMED_BY_SUBJECT = new Set(["file_path", "path", "notebook_path", "pattern", "url", "query", "description", "command", "cmd", "offset", "limit",
-  "timeout", "run_in_background", "replace_all", "output_mode", "glob", "type", "head_limit", "max_results", "subagent_type"]);
+  "timeout", "run_in_background", "replace_all", "output_mode", "glob", "type", "head_limit", "max_results", "subagent_type",
+  // antigravity (CommandLine, Path, Cwd…) and grok (target_file, target_directory, task_id…): what log-steps-agy-grok.ts names a step by
+  "CommandLine", "Cwd", "SafeToAutoRun", "WaitMsBeforeAsync", "Path", "Action", "target_file", "target_directory", "task_id", "task_ids"]);
 /**
  * What the arguments add to the row's title: a command (shown once, as code), an edit (old and new text), the rest as the
  * server sent it — and nothing when the title already says it all (only a path, a pattern, a limit…). A raw JSON block is
@@ -85,7 +87,7 @@ export function inputView(x, cat) {
   try { const v = JSON.parse(raw); if (v && typeof v === "object" && !Array.isArray(v)) o = v; } catch { /* cut or not JSON */ }
   if (!o) return { raw };
   const str = (v) => (typeof v === "string" ? v : null);
-  const cmd = cat === "run" ? str(o.command) ?? str(o.cmd) : null;
+  const cmd = cat === "run" ? str(o.command) ?? str(o.cmd) ?? str(o.CommandLine) : null;
   if (cmd !== null) {
     const extra = Object.keys(o).filter((k) => !NAMED_BY_SUBJECT.has(k));
     return { code: stripShellWrapper(cmd), ...(extra.length ? { raw: JSON.stringify(Object.fromEntries(extra.map((k) => [k, o[k]])), null, 2) } : {}) };

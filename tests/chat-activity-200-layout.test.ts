@@ -76,6 +76,12 @@ describe("what a step shows", () => {
     expect(v({ input: '{"query":"select:x","max_results":1}' }, "other").raw).toContain("select:x");
     expect(v({ input: '{"command":"a very long command that was cut', subject: "a" }, "run")).toEqual({ raw: '{"command":"a very long command that was cut' });
     expect(v({}, "run")).toBeNull();
+    // antigravity and grok (log-steps-agy-grok.ts): their own argument names
+    expect(v({ input: '{"CommandLine":"ls -la","Cwd":"/srv/w","SafeToAutoRun":true}', subject: "ls -la" }, "run")).toEqual({ code: "ls -la" });
+    expect(v({ input: '{"command":"git status"}', subject: "git status" }, "run")).toEqual({ code: "git status" });
+    expect(v({ input: '{"target_file":"/a/b.ts","offset":1}', subject: "/a/b.ts" }, "read")).toBeNull();
+    expect(v({ input: '{"Path":"/a/b.ts"}', subject: "/a/b.ts" }, "edit")).toBeNull();
+    expect(v({ input: '{"file_path":"/a/b.ts","old_string":"x","new_string":"y"}', subject: "/a/b.ts" }, "edit")).toEqual({ diff: { old: "x", next: "y" } });   // grok search_replace
   });
 });
 
