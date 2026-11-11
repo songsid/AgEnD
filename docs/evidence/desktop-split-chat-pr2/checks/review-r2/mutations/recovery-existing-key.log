@@ -1,0 +1,55 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+·······xxx·xx·
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 9 passed (14)
+   Start at  00:33:46
+   Duration  3.92s (transform 1.74s, setup 120ms, import 190ms, tests 3.43s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is none
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is writing
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is done
+AssertionError: expected { label: 'Update alpha', …(3) } to match object { …(2) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -1,7 +1,6 @@
+  {
+-   "key": "original-ambiguous-write",
+    "request": {
+      "body": {
+        "description": "Draft alpha",
+      },
+      "method": "PATCH",
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:115:52
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > recovered retry metadata is not reused when its request is edited
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > recovered retry metadata is not reused when its request is refused
+AssertionError: expected undefined to be 'original-ambiguous-write' // Object.is equality
+
+- Expected:
+"original-ambiguous-write"
+
++ Received:
+undefined
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:134:97
+    132| it.each(["edited", "refused"])("recovered retry metadata is not reused…
+    133|   await mount(true); await sessions.alpha.apply(); await settle(); awa…
+    134|   controller.focus("a"); await settle(10); expect(sessions.alpha.stage…
+       |                                                                                                 ^
+    135|   if (reason === "edited") {
+    136|     const input: any = p.root.querySelector("#pane-a-ag-desc"); input.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯

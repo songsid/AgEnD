@@ -1,0 +1,148 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+··xx·xxxxxxxxx
+
+ Test Files  1 failed (1)
+      Tests  11 failed | 3 passed (14)
+   Start at  00:33:31
+   Duration  4.00s (transform 1.86s, setup 87ms, import 158ms, tests 3.59s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 11 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > only the initiating pane consumes its failed leftovers (suspended=true)
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:55:20
+     53|   app.appStore.set({ settingsOp: { ...app.appStore.get().settingsOp, p…
+     54|   if (suspended) { expect(rig.take).not.toHaveBeenCalled(); controller…
+     55|   expect(rig.take).toHaveBeenCalledTimes(1); expect(sessions.alpha.sta…
+       |                    ^
+     56|   expect(sessions.beta.staged.has("agent:alpha")).toBe(false); expect(…
+     57| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/11]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > an owner suspended at completion resets once on return without resetting the other pane
+AssertionError: expected '' to be 'Draft alpha' // Object.is equality
+
+- Expected
++ Received
+
+- Draft alpha
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:63:81
+     61|   rig.data = { fleet: { defaults: {}, instances: { alpha: { descriptio…
+     62|   app.appStore.set({ settingsOp: { ...app.appStore.get().settingsOp, p…
+     63|   controller.focus("a"); await settle(9); expect(models.alpha.inst.des…
+       |                                                                                 ^
+     64|   controller.focus("b"); await settle(5); expect(sessions.beta.epoch).…
+     65|   controller.focus("a"); await settle(7); expect(sessions.alpha.epoch)…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/11]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > a suspended owner recovers done after another pane's later operation finishes
+AssertionError: expected '' to be 'Draft alpha' // Object.is equality
+
+- Expected
++ Received
+
+- Draft alpha
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:104:65
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/11]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > a suspended owner recovers failed after another pane's later operation finishes
+AssertionError: expected undefined to match object { …(2) }
+
+- Expected:
+{
+  "confirms": [],
+  "key": "original-ambiguous-write",
+}
+
++ Received:
+undefined
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:105:59
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/11]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is none
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is writing
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is done
+AssertionError: expected { label: 'Update alpha', …(3) } to match object { …(2) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -1,7 +1,6 @@
+  {
+-   "key": "original-ambiguous-write",
+    "request": {
+      "body": {
+        "description": "Draft alpha",
+      },
+      "method": "PATCH",
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:115:52
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/11]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > an actual form refreshes its successful baseline after another pane replaces the global outcome
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:128:32
+    126|   app.appStore.set({ settingsOp: { ...app.appStore.get().settingsOp, p…
+    127|   await sessions.beta.apply(); await settle(); controller.focus("a"); …
+    128|   expect(sessions.alpha.epoch).toBe(epoch + 1); expect(sessions.alpha.…
+       |                                ^
+    129|   expect((p.root.querySelector("#pane-a-ag-desc") as any).value).toBe(…
+    130| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/11]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > recovered retry metadata is not reused when its request is edited
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > recovered retry metadata is not reused when its request is refused
+AssertionError: expected undefined to be 'original-ambiguous-write' // Object.is equality
+
+- Expected:
+"original-ambiguous-write"
+
++ Received:
+undefined
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:134:97
+    132| it.each(["edited", "refused"])("recovered retry metadata is not reused…
+    133|   await mount(true); await sessions.alpha.apply(); await settle(); awa…
+    134|   controller.focus("a"); await settle(10); expect(sessions.alpha.stage…
+       |                                                                                                 ^
+    135|   if (reason === "edited") {
+    136|     const input: any = p.root.querySelector("#pane-a-ag-desc"); input.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/11]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > retained outcome observers do not accumulate across suspension and are released when the workspace closes
+AssertionError: expected 4 to be 6 // Object.is equality
+
+- Expected
++ Received
+
+- 6
++ 4
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:153:190
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/11]⎯

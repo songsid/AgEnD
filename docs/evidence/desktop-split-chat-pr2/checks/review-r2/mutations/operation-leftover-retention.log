@@ -1,0 +1,51 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+······x·xx····
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 11 passed (14)
+   Start at  00:33:20
+   Duration  5.04s (transform 2.43s, setup 111ms, import 187ms, tests 4.54s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > a suspended owner recovers failed after another pane's later operation finishes
+AssertionError: expected undefined to match object { …(2) }
+
+- Expected:
+{
+  "confirms": [],
+  "key": "original-ambiguous-write",
+}
+
++ Received:
+undefined
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:105:59
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is writing
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is done
+AssertionError: expected { label: 'Update alpha', …(3) } to match object { …(2) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -1,7 +1,6 @@
+  {
+-   "key": "original-ambiguous-write",
+    "request": {
+      "body": {
+        "description": "Draft alpha",
+      },
+      "method": "PATCH",
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:115:52
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯

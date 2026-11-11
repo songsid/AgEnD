@@ -1,0 +1,150 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+(node:4126729) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+····················x·················································x···············x·x··x·
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/esm-skew-roles-138.test.ts > PR #3553 review: the new modules link whichever web-authorize.js the tab holds > the session menu (app-session.js, imported by the shell) links against the RETAINED base web-authorize.js
+AssertionError: expected 'file:///tmp/agend-skew-edlXXI/app-ses…' to be 'ok' // Object.is equality
+
+- Expected
++ Received
+
+- ok
++ file:///tmp/agend-skew-edlXXI/app-session.js:11
++ import { appStore } from "./app-store.js";
++          ^^^^^^^^
++ SyntaxError: The requested module './app-store.js' does not provide an export named 'appStore'
++     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)
++     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)
++     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
++     at async file:///tmp/agend-skew-edlXXI/[eval1]:1:11
++
++ Node.js v22.22.2
++
+
+ ❯ tests/esm-skew-roles-138.test.ts:73:35
+     71|     const { dir, entry } = scratch(path, BASE_AUTHORIZE);
+     72|     const r = link(dir, entry);
+     73|     expect(r.ok ? "ok" : r.error).toBe("ok");
+       |                                   ^
+     74|   });
+     75|   it.each(ENTRIES)("%s links against the current web-authorize.js", (_…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/esm-skew-roles-138.test.ts > PR #3553 review: the new modules link whichever web-authorize.js the tab holds > the session menu (app-session.js, imported by the shell) links against the current web-authorize.js
+AssertionError: expected 'file:///tmp/agend-skew-PcE7O5/app-ses…' to be 'ok' // Object.is equality
+
+- Expected
++ Received
+
+- ok
++ file:///tmp/agend-skew-PcE7O5/app-session.js:11
++ import { appStore } from "./app-store.js";
++          ^^^^^^^^
++ SyntaxError: The requested module './app-store.js' does not provide an export named 'appStore'
++     at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)
++     at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)
++     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
++     at async file:///tmp/agend-skew-PcE7O5/[eval1]:1:11
++
++ Node.js v22.22.2
++
+
+ ❯ tests/esm-skew-roles-138.test.ts:78:35
+     76|     const { dir, entry } = scratch(path, NEW_AUTHORIZE);
+     77|     const r = link(dir, entry);
+     78|     expect(r.ok ? "ok" : r.error).toBe("ok");
+       |                                   ^
+     79|   });
+     80|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/esm-skew-roles-138.test.ts > PR #3553 review: the new modules link whichever web-authorize.js the tab holds > the words the new modules print exist whichever copy is loaded (the roles, Manage devices): no raw key in either
+AssertionError: expected 'file:///tmp/agend-skew-c41HE4/app-ses…' to deeply equal [ 'Owner ✓', …(5) ]
+
+- Expected:
+[
+  "Owner ✓",
+  "Admin · not verified",
+  "Guest",
+  "Read-only",
+  "Role",
+  "Manage devices",
+]
+
++ Received:
+"file:///tmp/agend-skew-c41HE4/app-session.js:11
+import { appStore } from \"./app-store.js\";
+         ^^^^^^^^
+SyntaxError: The requested module './app-store.js' does not provide an export named 'appStore'
+    at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async file:///tmp/agend-skew-c41HE4/[eval1]:1:11
+
+Node.js v22.22.2
+"
+
+ ❯ tests/esm-skew-roles-138.test.ts:93:50
+     91|       const r = link(dir, entry, `const { roleName } = await import(".…
+     92|         console.log(JSON.stringify([roleName("admin", true), roleName(…
+     93|       expect(r.ok ? JSON.parse(r.out) : r.error).toEqual(["Owner ✓", "…
+       |                                                  ^
+     94|     }
+     95|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  tests/web-preview-1306.test.ts > the fleet runs it beside the web listener (scratch AGEND_HOME) > binds 127.0.0.1; a loopback /ui load gets frame-src <same host>:<preview port>/frame and the page's data
+AssertionError: expected { 'data-mode': 'full', …(13) } to deeply equal { 'data-mode': 'full', …(11) }
+
+- Expected
++ Received
+
+@@ -1,6 +1,8 @@
+  {
++   "data-chat-layout-scope": "64ebe5755c6f5f6ee8a830ae531eaf3c9982f541af183afd13d3a536fd7b8f27",
++   "data-chat-workspace": "1",
+    "data-dashboard-origin": "http://127.0.0.1:35167",
+    "data-fleet-tz": "UTC",
+    "data-log-tab": "0",
+    "data-mode": "full",
+    "data-owner-css-state": "off",
+
+ ❯ tests/web-preview-1306.test.ts:155:33
+    153|       expect(directive(csp, "frame-ancestors")).toBe("frame-ancestors …
+    154|       expect(r.headers["x-frame-options"]).toBe("DENY");
+    155|       expect(bodyAttrs(r.body)).toEqual({
+       |                                 ^
+    156|         // data-mode: the app's entry reads it (#1408 step 1); the sig…
+    157|         "data-mode": "full", "data-subagents": "1", "data-dashboard-or…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  tests/web-usage-rail-1673.test.ts > #1673: a wide screen shows usage as a rail beside the page > what keeps those sizes in the stylesheet: the names share one cell; each tab reserves its label in the current tab's weight; one gap on every page; the slot is unseen
+AssertionError: expected 'flex: 0 0 auto;' to contain 'flex-direction: column;'
+
+Expected: "flex-direction: column;"
+Received: "flex: 0 0 auto;"
+
+ ❯ tests/web-usage-rail-1673.test.ts:166:44
+    164|     expect(rule(".hd-text-names > span")).toBe("grid-area: 1 / 1; visi…
+    165|     expect(rule(".hd-text-names > .on")).toBe("visibility: visible;");
+    166|     expect(rule(".inst-switch .seg-item")).toContain("flex-direction: …
+       |                                            ^
+    167|     expect(rule(".inst-switch .seg-item")).toContain("gap: 0;");
+    168|     for (const d of ["content: attr(data-label);", "font-weight: var(-…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  3 failed (3)
+      Tests  5 failed | 88 passed (93)
+   Start at  23:48:59
+   Duration  16.90s (transform 8.49s, setup 205ms, import 8.56s, tests 7.59s, environment 0ms)

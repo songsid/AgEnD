@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+x····
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  02:23:26
+   Duration  2.10s (transform 1.13s, setup 114ms, import 212ms, tests 1.62s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-fields-3637.test.ts > the merged Classic account picker has pane IDs and retains each CLI's choices through suspension
+AssertionError: expected '' to be 'other' // Object.is equality
+
+- Expected
++ Received
+
+- other
+
+ ❯ tests/web-chat-pane-fields-3637.test.ts:36:26
+     34|   expect(models[0].pending()).toEqual(expected); expect(models[1].pend…
+     35|   await p.unmount(); await p.mount(h(Form, { n: 0 })); await settle(5);
+     36|   expect(models[0].acct).toBe("other"); expect(models[0].pending()).to…
+       |                          ^
+     37|   models[0].set("backend")("claude-code"); await settle(4); expect(mod…
+     38|   expect((globalThis.fetch as any).mock.calls.some(([url]: any[]) => {…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

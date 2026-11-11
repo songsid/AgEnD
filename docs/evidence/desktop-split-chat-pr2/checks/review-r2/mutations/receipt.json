@@ -1,0 +1,82 @@
+{
+  "head": "4ab6105cfe041251511652b722fb290ce71f8604",
+  "tree": "ba34adc6d2f73580da93452ce047698d5be899ba",
+  "cases": [
+    {
+      "id": "operation-completion-retention",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-operation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "operation-leftover-retention",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-operation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "operation-late-owner",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-operation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "outcome-suspension",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-operation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "restage-retry-key",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-operation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "restage-changed-request",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-operation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "recovery-existing-key",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-operation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "recovery-definite-refusal",
+      "file": "src/ui/agent-details-settings.js",
+      "test": "web-chat-workspace-operation-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    }
+  ],
+  "inputs": {
+    "4e321b3b9d49f7fa1bd453f47563bae8c09e403a40c3ea304ae70d094134dc08": [
+      "src/ui/agent-details-settings.js",
+      "src/ui/agent-details-settings.js",
+      "src/ui/agent-details-settings.js",
+      "src/ui/agent-details-settings.js",
+      "src/ui/agent-details-settings.js",
+      "src/ui/agent-details-settings.js",
+      "src/ui/agent-details-settings.js",
+      "src/ui/agent-details-settings.js"
+    ]
+  }
+}

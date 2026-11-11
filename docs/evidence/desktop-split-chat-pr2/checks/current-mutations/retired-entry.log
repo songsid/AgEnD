@@ -1,0 +1,62 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+····x
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  23:22:03
+   Duration  1.23s (transform 678ms, setup 158ms, import 218ms, tests 583ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-entry-3637.test.ts > loading and delayed quotation retain their exact navigation intent > session retirement fences further local entry and delayed insertions
+AssertionError: expected { Object (route, seq) } to be { Object (route, workspace, ...) } // Object.is equality
+
+- Expected
++ Received
+
+  {
+-   "path": "/ui/log/alpha?compare=gamma&paneB=chat&layout=right&focus=b",
+    "route": {
+      "instance": "gamma",
+      "panel": "chat",
+    },
+-   "seq": 6,
+-   "workspace": {
+-     "a": {
+-       "hash": "",
+-       "route": {
+-         "instance": "alpha",
+-         "panel": "log",
+-       },
+-       "search": "",
+-       "seq": 1,
+-     },
+-     "b": {
+-       "hash": "",
+-       "route": {
+-         "instance": "gamma",
+-         "panel": "chat",
+-       },
+-       "search": "",
+-       "seq": 2,
+-     },
+-     "flipped": false,
+-     "focus": "b",
+-     "layout": "right",
+-     "ratio": 0.5,
+-   },
++   "seq": 7,
+  }
+
+ ❯ tests/web-chat-workspace-entry-3637.test.ts:56:32
+     54|     const before = nav.navStore.get(); await entry.open("delta");
+     55|     await new Promise(resolve => setTimeout(resolve, 5));
+     56|     expect(nav.navStore.get()).toBe(before); expect(app.appStore.get()…
+       |                                ^
+     57|     expect(query.mock.calls.some(([selector]) => selector.startsWith("…
+     58|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

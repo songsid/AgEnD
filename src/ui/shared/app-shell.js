@@ -23,6 +23,7 @@ import { OwnerCssKeepBar } from "./owner-css.js";
 import { UpdateLine } from "./app-update.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
 import { initSettingsContentWidth } from "./settings-width.js";
+import * as paneContext from "./app-ctx.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
 export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), keyboard: false, dialog: null, side: null, banner: null });
@@ -537,10 +538,13 @@ function PrefsPopover() {
  * The header every panel shows: ☰ (phone, or a collapsed sidebar), its title and status, then its actions. `nav`
  * (#1523 N2): an instance page's view switch — beside the title on a wide screen, a row of tabs under it on a phone.
  */
-export function PanelHeader({ title, sub, children, headingRef, nav, notice }) {
+export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions }) {
   const shell = useStore(shellStore);
   const admin = useCanCreate();
   const canCreate = admin && !!newInstanceOpener;
+  const pane = paneContext.usePane?.();
+  if (pane?.Header) return html`<${pane.Header} title=${title} sub=${sub} headingRef=${headingRef} nav=${nav} notice=${notice}
+    pageControls=${pageControls} pageActions=${pageActions} />`;
   return html`<header data-trust="header" class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
     <button type="button" id="sbOpen" class="icon-btn sb-open" onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
       aria-label=${narrow() ? t("app.openMenu") : t("app.expand")} title=${narrow() ? t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" /></button>
@@ -552,6 +556,7 @@ export function PanelHeader({ title, sub, children, headingRef, nav, notice }) {
     ${notice || null}
   </header>`;
 }
+PanelHeader.workspaceVersion = 1;
 
 /**
  * #1523 N2: the instance a page is about — Chat, View, Log (#1218) or Details of it — or null. #2183: with one open, the
@@ -1254,7 +1259,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       ${viewOnly || guest || hub ? null : html`<${RestartLine} />`}
       ${viewOnly || guest || hub ? null : html`<${UpdateLine} />`}
       ${viewOnly || guest || hub || !shell.banner ? null : html`<${shell.banner} />`}
-      <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
+      ${shell.workspaceHost ? html`<${shell.workspaceHost} nav=${nav} panels=${panels} />` : html`<${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />`}
     </main>
     ${hub ? null : html`<${RightRail} route=${nav.route} />`}
     ${hub ? null : html`<${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />`}

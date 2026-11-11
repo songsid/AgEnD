@@ -11,6 +11,7 @@ import { html, useLayoutEffect, useRef, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
 import { recordEdit } from "./text-undo.js";
 import { appStore, createStore, guestPage, useStore } from "./app-store.js";
+import { Menu } from "./ui-menu.js";
 import { chatPath, detailsPath, logPath, viewPath } from "./app-route.js";
 import { Icon } from "./ui-icons.js";
 import { Skeleton } from "./ui-states.js";
@@ -488,6 +489,7 @@ function SortMenu({ sort }) {
  */
 export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting = {}, viewOnly = false, onPick }) {
   const nav = useStore(navStore);
+  const workspace = useStore(appStore).chatWorkspace;
   const names = useStore(namesStore);   // #1722: which name leads
   useIdentityColors();                  // #1958: repaint when the host's colour settings or the themes switch change
   const filterRef = useRef(null);
@@ -644,7 +646,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           onClick=${() => toggleFavorite(name, known)}><${Icon} name="star" size=${14} /></button>` : null}${canConfigure && supportsInstanceFeature(it, "details")
       // one step to this agent's settings (its Details & settings page, Basic info; a kind with no Basic info — a ClassicBot room — starts at its first category); the row itself still opens the chat.
       ? html`<a class="icon-btn inst-gear" href=${`${detailsPath(name)}?cat=basic`} aria-label=${tn("gearOpen", { name: label })} title=${tn("gearOpen", { name: label })}
-          onClick=${onPick}><${Icon} name="settings" size=${14} /></a>` : null}</li>`;
+          onClick=${onPick}><${Icon} name="settings" size=${14} /></a>` : null}
+      ${workspace && !viewOnly && route?.instance ? html`<${Menu} cls="inst-workspace" label=${t("app.more")} items=${[
+        { key: "beside", label: workspace.label(name), onSelect: () => workspace.open(name) },
+        canConfigure && supportsInstanceFeature(it, "details") ? { key: "settings", label: t("app.details"), icon: "settings", onSelect: () => workspace.settings(name) } : null]} />` : null}</li>`;
   };
   // #2401: an open list of two or more lines leaves room under the count for "shown" and Clear (stacked); otherwise compact.
   const facetSet = f.status.length > 0 || f.cli.length > 0;
