@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "63f5e4464485560919e09964d5503e9fc89bc639d6e3f63156243acc795c6c32": "light-drag-bottom.png"
+    },
+    {
+      "917d370f558e5705fa97b554b39bba74132d1d96f7da86f766ca3310a85306ed": "light-drag-center.png"
+    },
+    {
+      "0b40cf3f8f1b89cb07dec90b2728cfcfdd43f8f08313f1554293b48b79f8c349": "light-drag-right.png"
+    },
+    {
+      "1f71f0aeca7560e1c03c92a28653a9d03dfe66d558047499299f6db07fe4067b": "light-float.png"
+    },
+    {
+      "e8543c94db8e563379b4d2196e5646f83c7668aaf7729d11ac321f05c1808078": "light-header.png"
+    },
+    {
+      "78d4a9af50699abda2abd5a8d4e495256f6dfe8929b25bd3801ffbe3538f437d": "light-log.png"
+    },
+    {
+      "12baf80511eeb5efdacf9072d5e4f17cd82d59ac20385dedf9ec23d16aa1af75": "light-menu.png"
+    },
+    {
+      "35ad405597bdb0ec9ab53215e8a5b9ff15614ee0317d55ae79cf8c48f15b16ff": "light-popout.png"
+    },
+    {
+      "41c56c39ba06e4309a39c36fbfaf3fe1fa7da0fd24b5bcaae461348a4ccfb58c": "light-right.png"
+    },
+    {
+      "fc5b911ac46d1384a07e16bc1be07d8e91a48a56c3a7052c0eb7db98b9942ad1": "light-sidebar.png"
+    },
+    {
+      "83714369a688bee6d41078d61c35d12bc3a854b45811bd248c7e7c47137b96b6": "light-single.png"
+    },
+    {
+      "2a9871f1ddaaa2131e04587c93d05896aab83a9459a240e2e9cb4f9dc1dfa2c0": "light-stack.png"
+    }
+  ]
+}

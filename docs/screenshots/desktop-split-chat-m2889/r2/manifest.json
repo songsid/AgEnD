@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "algorithm": "SHA-256",
+  "historicalR1": "ff2d1d59c28b6488827d9372428178c18c4fc850",
+  "files": {
+    "eb5ea31becbbb68affdbeb51df0eb8e2ffba610d3d8f58ac75f9300d5f807155": [
+      "docs/design/desktop-split-chat.md"
+    ],
+    "9197c5b6767bc005575c76bf941bdcf936b66586377a4985965df14d7ded890b": [
+      "docs/screenshots/desktop-split-chat-m2889/README.md"
+    ],
+    "8214a9f158f14b0ef29467918226a0721dcd623b898664d1652fecc6e2570183": [
+      "docs/screenshots/desktop-split-chat-m2889/manifest.json"
+    ],
+    "ac97997456e8af6ec9d84b99ad43f703c7fb22d71888f0f618a0cdbfda4d5450": [
+      "docs/screenshots/desktop-split-chat-m2889/dark-float.png"
+    ],
+    "c9638f3b0e426bf1b4b94665086a546ad67b65330901d4e4332aa241036e5020": [
+      "docs/screenshots/desktop-split-chat-m2889/dark-header.png"
+    ],
+    "81a384242e53eedcaa5fee077f13273207b2c4d12cdc94def67536037669ae98": [
+      "docs/screenshots/desktop-split-chat-m2889/dark-right.png"
+    ],
+    "d5434ae9cdc39c6e60fcf4f5ce89606a88860792adff2d1a2218b43e1ca53045": [
+      "docs/screenshots/desktop-split-chat-m2889/dark-sidebar.png"
+    ],
+    "870ecf3db428fa2dbf48a891ae4c8326a610296ed3e0dacaef56da40353c788b": [
+      "docs/screenshots/desktop-split-chat-m2889/dark-snap.png"
+    ],
+    "b3a3a0b44c55085b10e8fc945a1a43f4b3a6165a5df6d4f69b48c3e4df8031ef": [
+      "docs/screenshots/desktop-split-chat-m2889/dark-stack.png"
+    ],
+    "7bfee15cde2848e8721f70734973cc2c35e0f9910864283bd583e93e864b8a1f": [
+      "docs/screenshots/desktop-split-chat-m2889/light-float.png"
+    ],
+    "47100dcaa3f80cc0e528923d3e51c59ae944882d7804f008e360fb0dbe7ad6d2": [
+      "docs/screenshots/desktop-split-chat-m2889/light-header.png"
+    ],
+    "5675a9e98cf1f8eff98dcb2e74f0ffc999eb302c18bbada58fc8d91b67ef04de": [
+      "docs/screenshots/desktop-split-chat-m2889/light-right.png"
+    ],
+    "c6a49a282962be1215b860610c6f39d4d92af88a4f89530be5430dda8e7fbb33": [
+      "docs/screenshots/desktop-split-chat-m2889/light-sidebar.png"
+    ],
+    "1597450b306f71926fe766de6923365bb004d2de6a40fc8e9f1412afb5eacf61": [
+      "docs/screenshots/desktop-split-chat-m2889/light-snap.png"
+    ],
+    "0b39bd77e0b465685284a024beb1983c0957a5254eafcf44ce2f0d3207de0a35": [
+      "docs/screenshots/desktop-split-chat-m2889/light-stack.png"
+    ],
+    "ef1f17b3eed4539902edb69b487499ea8c962cc57ecb3cce75ce988d1399abe3": [
+      "docs/screenshots/desktop-split-chat-m2889/mock-dom.mjs"
+    ],
+    "f67eda9861016f506bd3380a569cc26279c612dbf5a17846eced1034a33a3723": [
+      "docs/screenshots/desktop-split-chat-m2889/mock.css"
+    ],
+    "ab846f004b94f27e6d5c0d6264b096df43001e27f5256179b65f905259d910d6": [
+      "docs/screenshots/desktop-split-chat-m2889/receipt.json"
+    ],
+    "a6929dd60e789b0bf1f9a72231d958c3cd62fe53c981d747bc577a668f459e56": [
+      "docs/screenshots/desktop-split-chat-m2889/render.mts"
+    ],
+    "3470f69ad5e33d900fab085ebb24043449d27b482de35aee5247100b6a131af0": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/README.md"
+    ],
+    "dbc633cfa0eeae36f95caf650177699d1f419a1a9b330b6087099a95ef54cf4f": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/checks.json"
+    ],
+    "119ee86d238b974fb6a85cdf58aebb755219a1ad90ad6a28378c385c9f7614f3": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/image-bindings.json"
+    ],
+    "63f5e4464485560919e09964d5503e9fc89bc639d6e3f63156243acc795c6c32": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/light-drag-bottom.png"
+    ],
+    "917d370f558e5705fa97b554b39bba74132d1d96f7da86f766ca3310a85306ed": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/light-drag-center.png"
+    ],
+    "0b40cf3f8f1b89cb07dec90b2728cfcfdd43f8f08313f1554293b48b79f8c349": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/light-drag-right.png"
+    ],
+    "1f71f0aeca7560e1c03c92a28653a9d03dfe66d558047499299f6db07fe4067b": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/light-float.png"
+    ],
+    "e8543c94db8e563379b4d2196e5646f83c7668aaf7729d11ac321f05c1808078": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/light-header.png"
+    ],
+    "78d4a9af50699abda2abd5a8d4e495256f6dfe8929b25bd3801ffbe3538f437d": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/light-log.png"
+    ],
+    "12baf80511eeb5efdacf9072d5e4f17cd82d59ac20385dedf9ec23d16aa1af75": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/light-menu.png"
+    ],
+    "35ad405597bdb0ec9ab53215e8a5b9ff15614ee0317d55ae79cf8c48f15b16ff": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/light-popout.png"
+    ],
+    "41c56c39ba06e4309a39c36fbfaf3fe1fa7da0fd24b5bcaae461348a4ccfb58c": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/light-right.png"
+    ],
+    "fc5b911ac46d1384a07e16bc1be07d8e91a48a56c3a7052c0eb7db98b9942ad1": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/light-sidebar.png"
+    ],
+    "83714369a688bee6d41078d61c35d12bc3a854b45811bd248c7e7c47137b96b6": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/light-single.png"
+    ],
+    "2a9871f1ddaaa2131e04587c93d05896aab83a9459a240e2e9cb4f9dc1dfa2c0": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/light-stack.png"
+    ],
+    "93f58b45d4ece83cd190e6c18ec0eb674e8d3c97e204ff6692ed8ef7a6d5a536": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/mock-dom.mjs"
+    ],
+    "78cd4b2606aaa89a47e513d9b4deac01cf4e241b5ec77981c47ff97742204e65": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/mock.css"
+    ],
+    "0bdb805bc7e2f1f645e565f41267c9cb91d7108e0020d6f2d682aeee362424cf": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/receipt.json"
+    ],
+    "374e7dc20fd11bb577944d549d533affdce024696d2cfd6f7077ed3d1a174d49": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/render.mts"
+    ],
+    "72d99e7af106abe7ed42f41e4b10e3edb59fe69163e4624632cf93a1217b7b48": [
+      "docs/screenshots/desktop-split-chat-m2889/r2/visual-review.json"
+    ]
+  }
+}

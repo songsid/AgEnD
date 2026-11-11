@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "scope": "Static design validation only; no product implementation or behavioral acceptance.",
+  "captureCases": 12,
+  "captureInputsVerified": 18,
+  "servedAssetBindings": 125,
+  "geometry": "12/12 pass",
+  "svgTabIcons": "4 per proposed pane",
+  "logFilterBars": 1,
+  "processGuardViolations": [],
+  "cleanup": true,
+  "renderExitCode": 0,
+  "productDiff": [],
+  "syntax": "node --check r2/mock-dom.mjs passed",
+  "diffCheck": "git diff --check passed",
+  "historicalR1UnchangedPaths": 16
+}

@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "review": "built-in image review",
+  "scope": "All12 final original zh-TW light1600x1000 stills; no functionality/popup/product acceptance.",
+  "result": "visual clear",
+  "bindings": "image-bindings.json",
+  "hashesVerifiedBeforeAndAfter": 12,
+  "blockers": [],
+  "observations": [
+    "All four SVG tabs render.",
+    "One Log filter bar; records and timestamps readable.",
+    "Drafts legible; float clears the main composer.",
+    "Pop-out parent selects remaining Agent.",
+    "No workspace bar or unintended clipping."
+  ]
+}

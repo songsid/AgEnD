@@ -1,77 +1,102 @@
-# 桌面雙對話與拖曳排列（#3637）
+# 桌面雙對話：VS Code 精簡版（#3637，r2）
 
-狀態：設計提案，等待使用者同意；**尚未實作**。目標：alpha／2.4。調查基準：`1066a85a2c48cae18e700b207adba1cdb450cf5a`。
+狀態：**設計提案，尚未實作，等使用者同意才建置**。目標：alpha／2.4。原始碼調查與圖稿基準：1066a85a2c48cae18e700b207adba1cdb450cf5a；r1 提案：ff2d1d59c28b6488827d9372428178c18c4fc850。
 
 ## 給使用者的摘要
 
-建議先限制 **兩個不同的對話**，預設左右並排；也能改成上下，或把第二個對話放成右下角浮窗。每個窗格都有自己的訊息、捲動位置、狀態與輸入框。關閉窗格只是收起畫面，不會停止 Agent。
+不增加「桌面雙對話」工具列。**每格保留 Agent 標頭，以及 💬 聊天／🖥 視窗／📜 紀錄／⚙ 設定**；分頁只切換自己那格。左邊看紀錄、右邊聊天可以同時進行。只有一格時，外觀與今天相同。
 
-從側欄 Agent 的「⋯ → 在另一窗格開啟」，或目前對話標頭的「另開對話」選第二個 Agent。一般點側欄會切換**目前有焦點的窗格**；有框線和「目前窗格」標示，不靠顏色猜。已經開著的 Agent 會直接取得焦點，不重複開啟同一對話。
+側欄 Agent 的 **⋯ → 在旁邊開啟**，或把 Agent 拖到聊天區邊緣，就能開第二格。預設左右各半；每格標頭的分割按鈕／⋯ 可選左右、上下、交換位置、**自訂移動**或**彈出成獨立視窗**。沒有永久排列列。
 
-拖曳窗格標頭時顯示左、右、上、下與浮窗停靠位置；放開後才套用。分隔線與浮窗右下角都能拖曳調整大小，也能用鍵盤。複製維持原樣；「引用到另一窗格：Agent 名稱」會把選取文字放進另一個輸入框，**不會自動送出**。
+拖標頭時，藍色半透明區顯示落點：左、右、上、下可分割，中央可取代目標格；Esc 取消。拖分隔線調比例，雙擊回各半。「自訂移動」是頁內可拖、可調大小的浮窗；「彈出」是另一個真正的瀏覽器視窗，可移到另一螢幕。
 
-這個裝置會記住排列；重新整理可回復兩個對話。手機和窄視窗仍然一次顯示一個對話。HTML 預覽與工作區沿用現有面板；雙對話時改以現有的展開模式開啟，關閉後回到原排列，不再塞第三欄。
+最多兩個不同 Agent；一般點側欄只換**有焦點的那格**。引用到另一格只放入草稿，**絕不自動送出**。關格子或彈出視窗不停止 Agent。手機與窄畫面一次只顯示一格。
 
-[圖稿索引與範圍](../screenshots/desktop-split-chat-m2889/README.md)。所有圖都是本機假資料的設計示意，沒有新增可用功能。
+[r2 圖稿索引](../screenshots/desktop-split-chat-m2889/r2/README.md)。圖稿使用本機假資料與真正 app shell；全部是靜態提案，不是功能驗收。
+
+## r1 → r2
+
+- 移除共用工作區列；四個分頁回到每格，不能藏進更多選單。窄格可讓分頁換到標頭第二行，仍顯示圖示與文字。
+- 開第二格用側欄 ⋯、側欄拖放、標頭分割按鈕；排列只在各格選單。
+- 採 VS Code 的邊緣／中央落點、Alt 分割方向、sash 雙擊重設，不照搬會搶瀏覽器快捷鍵的部分。
+- 依最新補充，**同時保留頁內「自訂移動」及真正「彈出視窗」**。r1 原圖與 receipt 保留原範圍，沒有改標成 r2。
 
 ## 先沿用現有結構
 
-| 現有機制 | 本提案如何使用 |
+| 現有機制 | r2 的接點 |
 |---|---|
-| [#1408 app shell](1408-app-shell.md)：一個 Outlet、導覽、lease 與頁面串流 | 在 Chat 場景內增加兩個有獨立生命週期的窗格，不增加另一套 shell。換頁／登出仍取消全部；更換 B 只取消 B。 |
-| [#1481 HTML preview](https://github.com/songsid/AgEnD/issues/1481)：拖曳分隔線、鍵盤調整、裝置記憶與窄螢幕展開 | 共用其幾何限制、分隔線與儲存處理；擴充既有 Chat 場景的排列。不是把完整對話塞進現有的編輯器 `SidePanel`。 |
-| `preview-panel.js` 的單一附件位置 | HTML、Markdown、Files & changes 本來就共用這一格。保留一個來源與最多一個 live HTML frame；雙對話時使用既有展開模式，不巢狀分割。 |
-| 工作區面板 | 仍綁定發起的 Agent；Follow 的訂閱與輪詢隨該面板關閉。不受另一個對話取得焦點影響。 |
-| Needs you | 仍是全頁共用的入口、數量與確認流程。前往時收起雙對話的 view／預覽，回來恢復排列與既有草稿；不複製確認卡或權限。 |
-| [M-2520／#3226](https://github.com/songsid/AgEnD/issues/3226)：Hub 共用聊天模組 | 重用 `chat-thread`、`chat-composer`、WorkBar、header／rail 的呈現邊界。v1 先做同一個 Fleet 的對話；未來 Hub 接同一窗格 host，但保留自己的 store、transport 與授權，不跨來源嵌入另一個 app。 |
+| [#1408 app shell](1408-app-shell.md)：Outlet、lease、導覽、串流 | 在既有 Agent 場景放兩個 pane host，不另建 shell。拆全頁／窗格生命週期，Chat／View／Log／Details 切換留在目標格；全頁 Needs you／Fleet／Settings 仍由原 Outlet 管。 |
+| [#1481 HTML preview](https://github.com/songsid/AgEnD/issues/1481) | 沿用分隔線、幾何界限、裝置記憶與窄幅展開規則；不把聊天塞進編輯器用的 SidePanel。 |
+| preview-panel 與工作區 | 保留單一附件 slot、最多一個 live HTML frame。雙格開預覽／Files & changes 時用既有展開模式，標來源 Agent／返回，不增第三欄。Follow 隨附件面板關閉。 |
+| Needs you | 全頁入口、數量、確認與權限不變；離開雙格釋放 view／預覽，回來還原格子與既有草稿。不複製確認卡。 |
+| [M-2520／#3226](https://github.com/songsid/AgEnD/issues/3226) Hub chat-app | 共用 thread／composer／header／rail 與 pane host；v1 先同一 Fleet。Hub 保留自己的 store、transport、授權，不跨來源嵌 app，不另造 dock。 |
 
-實作前必須先拆開目前的單一 `setCurrent`、標題與焦點管理、composer 的固定 DOM id／全頁查找，以及 thread cache 的單一保護對象。單純同時 mount 兩次 `ChatPanel` 會互相覆寫，也可能把同一份 thread DOM 搬走。
+目前不能直接 mount 兩個 ChatPanel：單一 setCurrent、全頁 title／搜尋、composer 固定 id、thread cache 保護對象、預覽清理會互相覆寫。先拆 visible-agent set ＋ focused pane、pane-local refs／lease／generation，再接兩格。InstanceSwitch 交由 pane router；格內「設定」指該 Agent 的 Details，**不是**全 Fleet 設定。
 
-## 操作與排列
+## VS Code 手勢對照與開啟規則
 
-| 問題 | 建議行為 |
+| 操作 | AgEnD r2 |
 |---|---|
-| 開啟 B | 側欄 ⋯，或對話標頭「另開對話」中的既有 Agent 選擇器。第一回預設左右各半；之後沿用裝置上次選的模式。 |
-| 一般點側欄 | 切換有焦點的窗格；在此之前就清楚標示要被更換的 Agent。若該對話已在另一格，改成移動焦點。 |
-| 已有兩格再用「在另一窗格開啟」 | 更換非焦點的那格，選單顯示「取代：Agent 名稱」。原草稿與附件沿用現有 agent-owned store，不悄悄清掉。 |
-| 關閉／交換 | 每格標頭都有關閉；剩下一格展開。「排列」選單提供交換位置、平均分配與收起第二格。關閉不停止 Agent，也不清空草稿。交換保留草稿與捲動位置；需要搬動的內嵌預覽先停止，沿用「重新預覽」。 |
-| 拖曳 | 僅用窗格標頭的拖曳區，不搶走訊息選字、附件拖放或側欄原有手勢。出現停靠目標與落點預覽；Esc／放開在目標外會取消。 |
-| 左右／上下 | 8px 分隔區，滑鼠可拖；每格最小 360px 寬、320px 高。上下排列需要可用高度至少 648px，否則先單格顯示並保留偏好。 |
-| 浮窗 | 初始 440×400px、右下角，預設放在主輸入框上方，讓兩個輸入框都可見。可移動，右下角調整大小，最小 380×320px；始終限制在聊天工作區內，不蓋側欄、全頁 dialog 或 Needs you。視窗縮小時重新限制位置。 |
-| 為何先兩格 | 現有 thread／草稿以 Agent 為索引；兩格足以比較與交互工作，也能限制畫面、記憶體及焦點複雜度。v1 不做任意數量的視窗管理器。 |
+| 側欄 ⋯ → 在旁邊開啟 | 一格時在右側開 B；已有兩格，選單寫「取代：非焦點 Agent 名稱」。同 Agent 已開就聚焦，不複製。 |
+| 標頭 Split Editor Right | 點分割圖示開 Agent 選擇器，選後向右分割；**Alt＋點向下**。不同於編輯器：不能複製同 Agent，所以需選第二個。兩格時明示取代對象。 |
+| 拖側欄 Agent／窗格標頭 | 超過最小拖曳距離才開始；左／右／上／下藍色半區先預覽、放開套用，中央覆蓋目標格。Esc／無效區取消。訊息選字、附件拖放不啟動排列。 |
+| 已有兩格再拖 | 仍最多兩格：外部 Agent 取代落點所屬格，邊緣決定兩格方向／順序，不建第三格。拖既有 B 到 A 中央是**交換**，對自己中央不動；原草稿保留。 |
+| sash 拖曳／雙擊 | 調比例／回 50:50。左右每格至少 360px；上下至少 320px，需可用高度 ≥648px。拖曳與鍵盤共用界限。 |
+| 每格排列選單 | 左右、上下、交換位置、自訂移動、彈出成獨立視窗、收起此格。單格不出現無效的交換／收起；不增加永久列。 |
+| 自訂移動 | 第二格為頁內浮窗，完整四分頁與 composer 保留。標頭自由拖、角落縮放，拖回藍色邊緣可停靠。初始 560×460px、右下且在主 composer 上方；最小 420×360px，限聊天區內，不蓋側欄／dialog／Needs you。尺寸不足回單格。 |
+| 拖出視窗 | 瀏覽器無可靠的窗外 pointer/drop 保證，且可能封鎖非點擊 popup；**v1 不以拖出自動開窗**。拖到無效區維持原位，以標頭選單明確點擊開窗；不加一個不能可靠完成的拖出落點。 |
 
-雙格時縮短每格標頭，只留 Agent、狀態、拖曳區、關閉與更多選單；模型選擇仍在各自輸入框上方，既有「檢視／紀錄／設定」放進該格更多選單。排列與「另開對話」位於共用工作區列。單格維持原有標頭，不能因為桌面 viewport 很寬，就把窄窗格當成完整桌面頁塞入全部按鈕。
+普通側欄點擊換焦點格；標頭、分頁、composer 點擊都可取得焦點。焦點用細框與「目前」標記，不只靠顏色。收起一格後另一格展開，保留原草稿、附件、捲動、狀態。同一 Agent 不開兩格，避免既有 agent-owned thread DOM／草稿／佇列互搶。
 
-## 每個窗格的資料、引用與焦點
+## 彈出：真視窗，不是頁內浮窗
 
-- 每格有獨立的 lease／generation、thread subscription、composer refs、附件、IME、scroll memo、命令選單與狀態。草稿及送出佇列仍以原對話為主，不以「左／右」作權限識別。
-- v1 同一 Agent 的同一對話只能出現一次；再次選它會聚焦現有窗格。沒有新建 Agent 或 CLI session 的暗示。
-- 原來的「引用／回覆」仍送回來源對話。新增明確的「引用到另一窗格：B」才會把文字、來源 Agent 名稱送進 B 的游標位置，保留 B 既有草稿、undo，並移動焦點；必須由人按送出。這是文字引用，不把 A 的 `replyTo` id 偽裝成 B 的回覆參照。跨兩個窗格／訊息的混合選取仍不當作一則引用。
-- 焦點格負責側欄選取、頁籤標題、既有搜尋與整頁外觀；每格的 Agent 身分呈現留在該格。Enter 只由實際輸入框處理；不把 A 的按鍵轉送給 B。Esc 先關選單／取消拖曳，再由原有規則作用於焦點格，不能一次停止兩個回覆。
-- 每格是有 Agent 名稱的 region；DOM／ARIA id 唯一。Tab 可到另一格的標頭／輸入框，既有命令選單加入「切換到另一窗格」。不占用瀏覽器 F6／Ctrl+Tab。分隔線用 `role=separator`；方向鍵調 16px、Shift+方向鍵 64px，Home／End 到界限。浮窗選單的「移動／調整大小」同樣可用方向鍵、Enter 套用、Esc 取消；不要求一定會拖曳。變更完成才播報位置，不在每個 pointer tick 播報。
-- 拖曳幾何盡量只改 CSSOM、保留 root 與 thread 身分，不重掛 composer。若交換位置需要改 DOM 順序，先按來源停止將移動的 live frame，再重新掛載；不能隱藏、快取或搬動仍在執行的預覽。關閉 B 不得呼叫會停止 A 預覽的全域清理。
+在人的點擊處同步 window.open 同來源既有 /ui/chat/B?presentation=popout，應用隱藏自己的側欄，保留 Agent 標頭、四分頁與功能。瀏覽器決定視窗或分頁、是否顯示網址列；不能保證沒有 OS／瀏覽器外框，也不能強制移到另一螢幕。
 
-## 記憶、網址與窄畫面
+- 同來源既有 cookie 登入，**URL 不放 token、session、草稿**，子視窗照常重新授權。公開／訪客／唯讀不因 pop-out 改變。
+- 保留 WindowProxy，以 exact origin ＋ exact child window 做短暫 ready／草稿交接；子視窗接收未送文字／附件後確認。不傳 cookie、權限或後端操作，完成後解除 opener，忽略過期／重複回覆。不以任意 postMessage 當登入證明。
+- **子視窗載入且確認接收前，原格保留**；成功才收起、另一格展開。被擋、登入失效、逾時或無法交接時，提示「未能開啟，請允許彈出視窗或留在這裡」，原格／草稿不動。不能用帶 noopener 的 null 回傳判斷封鎖，因為也可能已開但無 handle。
+- 關子視窗只關畫面，不停 Agent，原頁不自動再開。可從側欄重開；reload 子視窗恢復單 Agent pop-out，不再彈出另一窗。各視窗各有 history。
+- 兩格上限是**同頁**，不新增跨分頁的全域視窗管理器。跨視窗用正常複製貼上，「引用到另一格」v1 先只做同頁兩格。
 
-- `localStorage` 包在 try/catch；只存版本、兩個對話識別、焦點、排列、比例及浮窗幾何，不存訊息、草稿、附件或 token。按 Fleet 和目前登入者區分，登出清除該人的窗格列表；沒有可用的非秘密 viewer 識別時，只保存在本分頁記憶。不增加伺服器設定。
-- 範例：`/ui/chat/A?compare=B&layout=right&focus=b`。模式為 `right`、`stack`、`float`；幾何留在裝置端。重新整理及分享此網址回復兩格；權限仍重新檢查。B 不存在或不可讀時顯示不可用與關閉，不能偷偷換成別的 Agent。
-- `/ui` 可回復此裝置最後的工作區；明確的 `/ui/chat/A` 沒有 compare 就只開 A，不硬塞舊 B。開／換／關對話走既有 history；Back／Forward 回復當時的對話組合。單純聚焦、拖曳或調大小用 replace／裝置記憶，不塞滿上一頁紀錄。比例與數字必須有界限，壞資料退回單格。
-- 分割須同時滿足 **viewport ≥1200px、可用聊天寬度 ≥760px**。任一不足即單格；既有 shell 的 900px 手機斷點不改。保留兩個選擇，用短頁籤切換，每次只 mount 一個聊天。回到夠寬時恢復原排列；手機不提供拖曳分割或浮窗。雙對話時暫收起既有 usage rail；不覆寫單格時的偏好。
+## 資料、引用、鍵盤與可及性
 
-## 成本、舊分頁與建置切分
+每格分頁沿用原有 session 權限及 supportsInstanceFeature；分格不增加訪客、唯讀或不支援 backend 的能力。每格有自己的 view、composer、scroll、IME、附件、狀態 chip、subscription、lease。草稿／佇列仍屬 Agent，切紀錄再回聊天不清草稿。A 的 Log refresh／filter 不影響 B Chat；焦點格供側欄、頁籤標題、搜尋判定，Enter 只作用於實際輸入框。
 
-不是每格新增 EventSource：仍是 app 的一條 stream；poll-only／public-link 模式仍為零條 SSE。兩格只增加兩個依 Agent 分流的 view subscription／必要 history read。gap recovery 必須涵蓋兩個可見 Agent；共用 history 與卡片請求去重。保留現有 thread cache／message node 上限，保護兩個可見 thread；不用複製整份 Fleet store。關閉／換頁要收回該格的 timers、subagent observers、scroll listeners 與 lease；不喚醒、不暫停或停止後端 Agent。
+「引用到另一窗格：B」把文字與來源名稱放進 B 游標處，保留 undo／草稿，由人送出；不用 A 的 replyTo id 假裝 B 回覆。跨兩格／多訊息混選不當成單則引用。B 正看紀錄時，引用動作明示切 B 到聊天再放草稿。
 
-舊 JS 不認 compare 時仍開 A。新版先確認新窗格 host、自己的字串及 CSS 都載入，才顯示開第二格的控制；舊 server／缺模組／舊 CSS 時保留原單格，不先拆掉 A。新 CSS 限定在新 workspace class，不改舊 shell。保留現有 shared exports／舊路徑 re-export；不讓新 caller 靜態 import 舊快取裡不存在的名稱。SKEW 須含新 JS＋舊 app.css、舊 JS＋新 CSS、舊 server／新 shell，以及持有草稿時的載入失敗。
+| 快捷鍵／焦點 | 提案 |
+|---|---|
+| 分割 | Windows／Linux Ctrl+反斜線，Mac Cmd+反斜線，與 VS Code 相同，開第二 Agent 選擇器。向下用 Alt＋點或選單。 |
+| 切換格 | 候選為 Windows／Linux Ctrl+Alt+反斜線，Mac Ctrl+Cmd+反斜線；另有標頭／命令選單「切換到另一窗格」及 Tab。這是網頁替代鍵，不冒稱 VS Code 原鍵；實作驗 Chrome／Edge／Safari／Firefox、非 US 鍵盤，衝突則只留選單。 |
+| 必須保留 | **Ctrl／Cmd+1、2** 留給瀏覽器；Ctrl+Tab、F6、Ctrl／Cmd+W、瀏覽器前後頁與輸入法不攔截。只在 Agent 場景、非 IME composition 接排列鍵，既有文字輸入鍵優先。 |
+| 分隔線／浮窗 | role=separator，可 Tab；方向鍵 16px、Shift＋方向鍵 64px、Home／End 到界限；選單回各半。浮窗「移動／調整大小」用方向鍵、Enter 套用、Esc 取消。 |
 
-使用者同意後才建置，PR 建議：
+每格有 Agent／目前分頁名稱的 region、唯一 DOM／ARIA id。收起後焦點回剩餘格標頭；不偷正在輸入的 IME。Esc 先關選單／取消拖曳，再依原規則處理焦點格，不同時停止兩個回覆。完成排列才播報，避免 pointer tick 連續朗讀。窄格四分頁可換行，不縮成無名圖示。
 
-1. **先整理所有權，單格行為不變**：把頁面職責與 ChatView 拆開，pane-local refs／id／lease、visible-agent set、gap recovery 與 preview 清理；維持 Hub 共用模組的舊介面。
-2. **左右／上下與完整導航**：開啟、聚焦、關閉、交換、引用、網址／裝置記憶、窄畫面與單一附件 host。新模式完成才顯示入口。
-3. **浮窗與停靠**：共用 resize 幾何、pointer／鍵盤、完整 SKEW／可及性／樣式檢查。確認雙 composer 的草稿／IME／附件互不干擾；B 的延遲結果不落到 A；Esc 不同時停止兩個；close/reopen 50 次後資源回到基線、SSE 數不變、live preview ≤1。對相同訊息量量測記憶體；本設計稿不宣稱已跑過雙窗格效能或安全驗收。
+## 記憶、網址、窄畫面與成本
 
-Hub 接入另排，使用同一 host 邊界，不另做一套 dock 系統，也不擴大跨來源或使用者權限。
+- localStorage 包 try/catch，按 Fleet／非秘密 viewer id 分隔。只存版本、Agent、每格分頁、焦點、right／stack／float、比例、浮窗界限，不存訊息／草稿／附件／token。登出清列表，無 viewer id 只記憶體；reload 不自動開 popup。
+- 例：/ui/chat/A?compare=B&layout=right&paneA=log&paneB=chat&focus=b。舊 JS 忽略 query 仍開 A；新版 reload／deep link 還原兩格、各自重新驗權。B 不可讀顯示不可用／收起，不偷換人。明確 /ui/chat/A 無 compare 就單格；/ui 才回裝置偏好。開／換／關走 history，焦點／比例 replace，不塞滿 Back。
+- **viewport ≥1200px 且聊天可用寬 ≥760px** 才雙格，否則只 mount 焦點格，以短 Agent 頁籤切換，保留兩格／分頁／排列。原 shell 900px 斷點不改；上下高度不足亦單格。窄畫面無拖曳／頁內浮窗，窄 popup 仍完整單格、四分頁可換第二行。
+- 同頁兩格共用**一條 app stream**，poll-only／public-link 仍零 SSE。pop-out 是另一份 document，照既有頁面各一條；主頁＋pop-out 合計可兩條，不另建跨視窗 transport。
+- 共用 store／history 去重，gap recovery 覆蓋兩個可見 Agent。thread cache 保護兩格但不提高 KEEP／NODES 上限，不因開格啟動 Agent。清 timers／scroll／observers／lease 只清該格；全頁離開／登出清兩格。
+- live HTML 不可在執行時隱藏、快取或搬 DOM；交換／改布局需搬時先停原 frame，再用既有「重新預覽」。B 清理不能停 A 附件，同頁 live frame ≤1。
 
-## 調查來源
+## SKEW 與建置切分
 
-基準原始碼：[app shell](../../src/ui/shared/app-shell.js)、[leases](../../src/ui/shared/app-ctx.js)、[ChatPanel／thread retention](../../src/ui/panel-chat.js)、[chat store](../../src/ui/chat-store.js)、[composer](../../src/ui/shared/chat-composer.js)、[preview slot](../../src/ui/shared/preview-panel.js)、[workspace](../../src/ui/workspace-panel.js)、[quote validation](../../src/ui/chat-quote.js)。這些是現況；上面列的是待批准的變更，不能把圖稿當成功能驗收。
+新 pane host、字串、CSS 都 ready 才顯示入口；舊 server／缺模組／舊 CSS 退原單格且保草稿。保留舊 exports／re-export，不靜態 import 舊快取不存在的名字。新 CSS 限新 workspace class。舊版不識 pop-out presentation 時，完整單格仍可用，不白頁。
+
+使用者同意後按順序做：
+
+1. **所有權整理，單格不變**：拆 page／pane，Chat／View／Log／Details 可局部切換，唯一 refs／id、visible-agent／gap、preview ownership；Hub 舊介面不變。
+2. **左右／上下完整路徑**：側欄／標頭開格、四分頁、焦點、取代／交換／收起、引用、URL／記憶／窄幅、鍵盤／a11y；此 slice 完整才顯入口。
+3. **拖曳與自訂移動**：共用幾何／sash，邊緣／中央落點、Esc、50:50、鍵盤移動／縮放。
+4. **pop-out**：同步開窗、被擋／ready／草稿交接／失敗留原格、opener／origin、獨立登入生命週期，不擴權。
+
+每段 fail-first 與真操作；SKEW 含新 JS＋舊 app.css、舊 JS＋新 CSS、舊 server、新舊 pane/tab／popup 模組交錯、載入失敗時草稿。驗雙 composer IME／附件隔離、遲到結果不串格、Esc 不雙停、50 次 close/reopen 資源回基線、同頁 SSE 不變、live preview ≤1，同訊息量比記憶體。圖稿不代替這些驗收。
+
+## 對照與來源
+
+[VS Code editor groups／Alt 分割](https://code.visualstudio.com/docs/editing/getting-started/userinterface)、[layout／獨立視窗](https://code.visualstudio.com/docs/configure/custom-layout)、[快捷鍵](https://code.visualstudio.com/docs/reference/default-keybindings) 提供分組操作；[Chrome 快捷鍵](https://support.google.com/chrome/answer/157179?hl=en) 確認數字鍵留給瀏覽器。Slack [separate windows](https://slack.com/intl/en-gb/help/articles/4403608802963-Open-separate-windows-in-Slack) 適合明確旁開／開窗入口；[Edge split screen](https://www.microsoft.com/en-us/edge/features/split-screen) 是同分頁雙頁參考。AgEnD 採 VS Code 排列手勢，保留 Agent／權限／草稿邊界。
+
+[MDN window.open](https://developer.mozilla.org/en-US/docs/Web/API/Window/open) 說明 popup、手勢與 handle 限制。現況接點：[app shell](../../src/ui/shared/app-shell.js)、[lease](../../src/ui/shared/app-ctx.js)、[ChatPanel](../../src/ui/panel-chat.js)、[InstanceSwitch](../../src/ui/shared/instance-switch.js)、[store](../../src/ui/chat-store.js)、[preview](../../src/ui/shared/preview-panel.js)、[workspace](../../src/ui/workspace-panel.js)、[quote](../../src/ui/chat-quote.js)。這些是調查依據，新操作仍待批准。
