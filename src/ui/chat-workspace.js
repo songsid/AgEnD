@@ -76,7 +76,7 @@ function AgentPicker({ controller, layout, currentName, onClose }) {
       onClick=${() => { onClose(); controller.open(it.name, layout); }}>${it.display_name || it.name}</button>`)}
   </div></${Dialog}>`;
 }
-function choose(controller, event) { showDialog(AgentPicker, { controller, currentName: controller.focusedName(), layout: event?.altKey ? "stack" : "right" }); }
+function choose(controller, event, owner) { if (owner) controller.focus(owner); showDialog(AgentPicker, { controller, currentName: controller.focusedName(), layout: event?.altKey ? "stack" : "right" }); }
 
 export function PaneHeader({ title, sub, headingRef, nav, notice, pageControls, pageActions }) {
   const pane = usePane(), slot = useRef(null), menuSlot = useRef(null), token = useRef({});
@@ -95,7 +95,7 @@ export function PaneHeader({ title, sub, headingRef, nav, notice, pageControls, 
     { key: "stack", label: tw("stack"), checked: pane.layout === "stack", onSelect: () => pane.controller.layout("stack") },
     { key: "swap", label: tw("swap"), onSelect: () => pane.controller.swap() },
     { key: "other", label: tw("other"), onSelect: () => pane.controller.focus(pane.id === "a" ? "b" : "a", { moveFocus: true }) },
-    { key: "split", label: tw("split"), icon: "sidebar", onSelect: () => choose(pane.controller) },
+    { key: "split", label: tw("split"), icon: "sidebar", onSelect: () => choose(pane.controller, undefined, pane.id) },
     { key: "close", label: tw("close"), icon: "close", onSelect: () => pane.controller.closePane(pane.id) },
     ...(pane.focused ? pageActions || [] : []),
   ];
@@ -106,7 +106,7 @@ export function PaneHeader({ title, sub, headingRef, nav, notice, pageControls, 
       ${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
     ${nav}
     <div class="panel-actions"><span class=${`ws-tools-slot${foldTools ? " ws-tools-folded" : ""}`} ref=${slot}></span>
-      <button type="button" class="icon-btn ws-pane-split" title=${tw("split")} aria-label=${tw("split")} onClick=${event => choose(pane.controller, event)}><${Icon} name="sidebar" /></button>
+      <button type="button" class="icon-btn ws-pane-split" title=${tw("split")} aria-label=${tw("split")} onClick=${event => choose(pane.controller, event, pane.id)}><${Icon} name="sidebar" /></button>
       <${Menu} ownerKey=${`${pane.name}:${pane.route.panel}`} inactive=${!pane.focused} onOpen=${() => pane.controller.focus(pane.id)} items=${items} label=${t("app.more")}
         leading=${foldTools && pane.focused ? html`<div class="ws-menu-tools" role="presentation" ref=${el => { menuSlot.current = el; pane.controls.move(token.current, el || slot.current, !!el); }}></div>` : null} />
       <button type="button" class="icon-btn ws-pane-close" title=${tw("close")} aria-label=${tw("close")} onClick=${() => pane.controller.closePane(pane.id)}><${Icon} name="close" /></button>

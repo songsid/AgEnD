@@ -273,18 +273,20 @@ const EmojiImg = ({ url, alt }) => {
 /**
  * One status_emojis map. `platform` and `channel` say where it applies; `previewBody(map)` is what the preview resolves.
  * `onChange({ value, baseline })` reports the map (null when empty) and what it was.
+ * An optional pane draft restores the edited map while keeping the saved baseline; ordinary editors still seed from own.
  */
-export function StatusEmojiEditor({ own, platform, channel, previewBody, onChange, idPrefix = "" }) {
+export function StatusEmojiEditor({ own, platform, channel, previewBody, onChange, idPrefix = "", draft }) {
   const fieldId = key => `${idPrefix}se-${key}`;
   const lease = useLease("status-emojis");
   const [cat, setCat] = useState(catalog);
-  const [values, setValues] = useState({ ...(own || {}) });
+  const baseline = useRef(draft === undefined ? own : draft.baseline);
+  const [values, setValues] = useState({ ...((draft === undefined ? own : draft.value) || {}) });
   const [preview, setPreview] = useState(null);
   const [picker, setPicker] = useState(null);
   const seq = useRef(0), timer = useRef(null);
   useEffect(() => { (async () => { const c = await loadCatalog(); if (lease.current()) setCat(c); })(); }, [lease]);
   const keys = cat ? cat.keys : [];
-  useEffect(() => { if (cat) onChange({ value: orderedStatusMap(values, keys), baseline: orderedStatusMap(own, keys) }); }, [cat, values]);
+  useEffect(() => { if (cat) onChange({ value: orderedStatusMap(values, keys), baseline: orderedStatusMap(draft === undefined ? own : baseline.current, keys) }); }, [cat, values]);
   useEffect(() => {
     if (!cat) return;
     lease.clear(timer.current);
@@ -509,7 +511,7 @@ export function AgentFields({ m, cat, onDelete, idPrefix = "" }) {
     <${Card} title=${html`${pt("cardEmojis")} <${InfoTip} text=${pt("tip_emojis")} name=${pt("cardEmojis")} /> <${Impact} schema=${schema} field="instance.status_emojis" />`}>
       <${Info}>${pt("emojisWhat")}</${Info}>
       <p class="note">${tn("statusEmojisInstance")}</p>
-      <${StatusEmojiEditor} own=${inst.status_emojis} platform=${ctx.channelType(channel)} channel=${channel} idPrefix=${idPrefix}
+      <${StatusEmojiEditor} own=${inst.status_emojis} draft=${ctx.formMemory ? emojis : undefined} platform=${ctx.channelType(channel)} channel=${channel} idPrefix=${idPrefix}
         previewBody=${(map) => ({ channel_id: channel, instance_config: map })} onChange=${setEmojis} />
     </${Card}></div>`;
   }

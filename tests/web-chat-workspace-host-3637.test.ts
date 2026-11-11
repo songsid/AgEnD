@@ -60,6 +60,19 @@ describe("the real panel host is additive to the single pane", () => {
     expect(p.root.querySelector('[data-pane="a"]')).not.toBeNull();
     expect(p.root.querySelectorAll(".ws-pane")).toHaveLength(1);
   });
+  it.each(["a", "b"])("Alt-Split from A keeps A even with %s initially focused", async focus => {
+    app.applyStatus({ instances: ["alpha", "beta", "gamma"].map(name => ({ name, backend: "claude-code", status: "running", state: "idle" })) });
+    controller.open("beta"); controller.focus(focus); await mount();
+    const dialog = await import("/assets/app-shell.js") as any;
+    function DialogHost() { const s = app.useStore(dialog.shellStore); return s.dialog ? h(s.dialog.Component, { ...s.dialog.props, onClose: dialog.closeDialog }) : null; }
+    const node = p.document.createElement("div"); p.root.appendChild(node);
+    const { render } = await import("/assets/preact.module.js"); render(h(DialogHost), node); await settle();
+    fire(p.root.querySelector('[data-pane="a"] .ws-pane-split')!, "click", { button: 0, altKey: true }); await settle(4);
+    const button = [...node.querySelectorAll(".ws-agent-choices button")].find((b: any) => b.textContent === "gamma");
+    expect(button).not.toBeUndefined(); fire(button!, "click", { button: 0 }); await settle(4);
+    expect(controller.current().a.route.instance).toBe("alpha"); expect(controller.current().b.route.instance).toBe("gamma"); expect(controller.current().layout).toBe("stack");
+    render(null, node);
+  });
   it("does not move an unfocused text-tab target between pointer down and click", async () => {
     controller.open("beta"); await mount();
     const link = p.root.querySelector('[data-pane="a"] a[href="/ui/chat/alpha"]')!;

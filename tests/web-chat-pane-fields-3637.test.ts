@@ -51,3 +51,26 @@ describe("two full Settings panes keep label and form ownership", () => {
     expect(memories[1].listeners.size).toBe(0);
   });
 });
+
+it("retains edited and cleared emoji values with their original baseline across remount, then resets on discard", async () => {
+  const memory = { state: new Map(), listeners: new Map(), set(key: string, next: any) { const v = typeof next === "function" ? next(this.state.get(key)) : next; this.state.set(key, v); this.listeners.get(key)?.(v); } };
+  let model: any;
+  function Form() {
+    const inst = { backend: "claude-code", status_emojis: { received: "⭐" } };
+    const ctx = { fleet: { defaults: {} }, schema: buildSettingsImpactSchema(), formMemory: memory, channelType: () => "telegram" };
+    model = fields.useAgentForm({ name: "alpha", inst, ctx });
+    return h(fields.AgentFields, { m: model, cat: "channel", idPrefix: "pane-a-" });
+  }
+  await p.mount(h(Form)); await settle(5);
+  const input = () => p.root.querySelector("#pane-a-se-received") as any;
+  input().value = "🎉"; fire(input(), "input"); await settle(4);
+  expect(model.pending()).toEqual({ status_emojis: { received: "🎉" } });
+  await p.unmount(); await p.mount(h(Form)); await settle(5);
+  expect(input().value).toBe("🎉"); expect(model.pending()).toEqual({ status_emojis: { received: "🎉" } });
+  input().value = ""; fire(input(), "input"); await settle(4);
+  expect(model.pending()).toEqual({ status_emojis: null });
+  await p.unmount(); await p.mount(h(Form)); await settle(5);
+  expect(input().value).toBe(""); expect(model.pending()).toEqual({ status_emojis: null });
+  await p.unmount(); memory.state.clear(); await p.mount(h(Form)); await settle(5);
+  expect(input().value).toBe("⭐"); expect(model.pending()).toEqual({});
+});

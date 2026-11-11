@@ -28,7 +28,7 @@ const STUBS: Record<string, string> = {
     export function register(ns, by) { for (const l of Object.keys(tables)) for (const [k, v] of Object.entries(by[l] || {})) tables[l][ns + "." + k] = v; }
     export const t = (key, ...v) => String(tables.en[key] ?? key).replace(/\\{(\\d+)\\}/g, (_, i) => v[i]);
     export const lang = () => "en"; export const setLang = () => {};`,
-  "app-store.js": `export const guestPage = () => false;`,
+  "app-store.js": `export const guestPage = () => false; export const appStore = { get: () => ({}) };`,
   "ui-icons.js": `export const Icon = () => null;`,
   "ui-dialog.js": `export const Dialog = () => null;`,
   "settings-confirm.js": `export async function api() { return { ok: true, status: 200, body: null }; }`,

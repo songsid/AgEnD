@@ -106,7 +106,9 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
   const started = useRef(false);
   const nameRef = useRef(name);
   nameRef.current = name;
-  const submitted = useRef(new Map());     // the changes as they were when a Save began (what comes back after a failure keeps its confirms)
+  // The runner is page-owned; only its submitting pane may recover leftovers or reset forms.
+  // This record survives compact suspension, but ends with this Details route/session.
+  const [ownership] = state("operation", () => ({ id: null, submitted: new Map(), settledPhase: null }));
 
   const reload = async () => {
     const m = await loadSettingsModule();
@@ -167,21 +169,23 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
 
   // Changes a failed Apply did not land come back to be staged again.
   useEffect(() => {
-    if (!op || !op.leftover || !op.leftover.length) return;
+    if (!op || op.id !== ownership.id || !op.leftover || !op.leftover.length) return;
     const back = takeLeftover();
     if (!back.length) return;
-    setStaged((s) => { const m = new Map(s); for (const c of back) { const k = c.stageKey || c.key; if (k && !m.has(k)) m.set(k, { ...(submitted.current.get(k) || {}), ...c, stageKey: k }); } return m; });
-  }, [op && op.leftover]);
+    setStaged((s) => { const m = new Map(s); for (const c of back) { const k = c.stageKey || c.key; if (k && !m.has(k)) m.set(k, { ...(ownership.submitted.get(k) || {}), ...c, stageKey: k }); } return m; });
+  }, [op && op.id, op && op.leftover]);
 
-  // An Apply that finished changed the configuration: read it again, and draw the forms from it.
-  const lastPhase = useRef(op ? op.phase : null);
+  // A successful Save redraws only its owner's forms. Another pane's typed/staged edits remain untouched.
   useEffect(() => {
-    const phase = op ? op.phase : null;
-    if (lastPhase.current !== phase && (phase === "done" || phase === "failed") && started.current) {
-      reload().finally(() => { if (phase === "done" && lease.current()) { formMemory.state.clear(); setEpoch((n) => n + 1); } });
-    }
-    lastPhase.current = phase;
-  }, [op && op.phase]);
+    const phase = op?.phase, id = op?.id;
+    if (id !== ownership.id || ownership.settledPhase === phase || !["done", "failed"].includes(phase)) return;
+    const finish = () => {
+      if (!lease.current() || ownership.id !== id) return;
+      ownership.settledPhase = phase;
+      if (phase === "done") { ownership.submitted.clear(); formMemory.state.clear(); setEpoch(n => n + 1); }
+    };
+    if (started.current) reload().finally(finish); else finish();
+  }, [op && op.id, op && op.phase]);
 
   const applying = useRef(false);
   const apply = async () => {
@@ -199,7 +203,11 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
     } finally { applying.current = false; }
     if (!lease.current() || operationActive()) return;
     const list = [...stagedRef.current.values()].map(({ label, impact, request, stageKey, key }) => ({ label, impact, request, stageKey, key }));
-    if (startOperation(list)) { submitted.current = new Map(stagedRef.current); setStaged(new Map()); }
+    if (startOperation(list)) {
+      ownership.id = appStore.get().settingsOp?.id;
+      ownership.submitted = new Map(stagedRef.current); ownership.settledPhase = null;
+      setStaged(new Map());
+    }
   };
 
   const ctx = mod && data && !data.error

@@ -110,6 +110,17 @@ try {
   assert.equal(await page.locator("#pane-a-msgIn").inputValue(), "尚未送出的草稿");
   await page.locator("#pane-b-msgIn").fill("另一格的草稿");
   await shot("right", 2);
+  if (process.env.REVIEW_R1 === "1") {
+    // B starts focused. Alt-clicking A's split owns A, not whichever pane was focused before the click.
+    await page.locator('[data-pane="a"] .ws-pane-split').click({ modifiers: ["Alt"] });
+    await page.locator(".ws-agent-choices").getByRole("button", { name: fx.instances[0].name, exact: true }).click();
+    const topology = await page.evaluate(async () => { const { navStore } = await import("/assets/app-nav.js"); const w = navStore.get().workspace; return { a: w.a.route.instance, b: w.b.route.instance, layout: w.layout }; });
+    assert.deepEqual(topology, { a, b: fx.instances[0].name, layout: "stack" });
+    await shot("alt-split-owner", 2);
+    await page.evaluate(async (names: string[]) => { const nav = await import("/assets/app-nav.js"); nav.navigate(`/ui/chat/${encodeURIComponent(names[0])}?compare=${encodeURIComponent(names[1])}&focus=b`, { workspace: true }); }, [a, b]);
+    await page.locator("#pane-b-msgIn").waitFor();
+    receipt.splitOwner = topology;
+  }
   if (process.env.LIFECYCLES === "1") {
     const cdp = await ctx.newCDPSession(page);
     await cdp.send('Performance.enable'); await cdp.send('HeapProfiler.collectGarbage');
@@ -188,10 +199,17 @@ try {
     const originals = await Promise.all([page.locator("#pane-a-ag-desc").inputValue(), page.locator("#pane-b-ag-desc").inputValue()]);
     await page.locator("#pane-a-ag-desc").fill("保留 A 的設定草稿");
     await page.locator("#pane-b-ag-desc").fill("保留 B 的設定草稿");
+    let emojiOriginal = "";
+    if (process.env.REVIEW_R1 === "1") {
+      await page.locator('[data-pane="a"] .s-nav a[href$="cat=channel"]').click();
+      await page.locator("#pane-a-se-received").waitFor(); emojiOriginal = await page.locator("#pane-a-se-received").inputValue();
+      await page.locator("#pane-a-se-received").fill("🎉"); await page.locator("#pane-b-ag-desc").click();
+    }
     await page.setViewportSize({ width: 1100, height: 900 });
     await page.locator(".ws-agent-tabs").waitFor();
     await page.locator(".ws-agent-tabs .seg-item").nth(0).click();
     await page.waitForFunction(() => (document.querySelector("#pane-a-ag-desc") as HTMLInputElement)?.value === "保留 A 的設定草稿");
+    if (process.env.REVIEW_R1 === "1") assert.equal(await page.locator("#pane-a-se-received").inputValue(), "🎉");
     await shot("suspended-settings-a", 1);
     await page.locator(".ws-agent-tabs .seg-item").nth(1).click();
     await page.waitForFunction(() => (document.querySelector("#pane-b-ag-desc") as HTMLInputElement)?.value === "保留 B 的設定草稿");
@@ -200,6 +218,11 @@ try {
     assert.equal(await page.locator("#pane-a-ag-desc").inputValue(), "保留 A 的設定草稿");
     assert.equal(await page.locator("#pane-b-ag-desc").inputValue(), "保留 B 的設定草稿");
     await shot("restored-settings", 2);
+    if (process.env.REVIEW_R1 === "1") {
+      assert.equal(await page.locator("#pane-a-se-received").inputValue(), "🎉");
+      await shot("restored-emojis", 2); await page.locator("#pane-a-se-received").fill(emojiOriginal);
+      receipt.emojiSuspension = { editedValueRetained: true, originalRestoredWithoutApply: true };
+    }
     // Restore both fields rather than applying or discarding a write; the remaining journey is unchanged.
     await page.locator("#pane-a-ag-desc").fill(originals[0]); await page.locator("#pane-b-ag-desc").fill(originals[1]);
     await page.waitForFunction(() => !document.querySelector(".ws-pane .s-pending"));
