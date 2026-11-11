@@ -147,7 +147,9 @@ const program = new Command();
 // These read-only entry points need an existing fleet. Check once before any
 // token lookup, YAML read or status probe; setup/help/version remain available.
 program.hook("preAction", (_hooked, action) => {
-  if (action.parent !== program || !["ls", "status", "web"].includes(action.name())) return;
+  const readOnly = action.parent === program && ["ls", "status", "web"].includes(action.name());
+  const legacyStatus = action.name() === "status" && action.parent?.name() === "fleet";
+  if (!readOnly && !legacyStatus) return;
   try { statSync(FLEET_CONFIG_PATH); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;

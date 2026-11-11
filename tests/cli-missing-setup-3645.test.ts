@@ -16,7 +16,7 @@ function cli(args: string[], tz = "UTC", config?: string) {
 }
 describe("#3645 read-only CLI before setup", () => {
   for (const [tz, hint] of [["UTC", "AgEnD isn't set up yet: run agend setup."], ["Asia/Taipei", "AgEnD 尚未設定：請執行 agend setup。"]]) {
-    it.each([["ls"], ["status"], ["web", "--code"]])(`${tz} %j gives one setup hint, not a stack`, (...args) => {
+    it.each([["ls"], ["status"], ["web", "--code"], ["fleet", "status"]])(`${tz} %j gives one setup hint, not a stack`, (...args) => {
       const r = cli(args, tz);
       expect(r.status, r.stdout + r.stderr).toBe(1);
       expect(r.stdout).toBe("");
