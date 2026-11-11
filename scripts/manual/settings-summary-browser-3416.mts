@@ -47,7 +47,7 @@ try {
     await page.route(`**/api/settings/pending/${view.id}`, (r: any) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(view) }));
     await page.goto(fx.base + "/settings/access");
     await page.evaluate(async (v: any) => { const m: any = await import("/ui/js/settings-confirm.js" as string); m.track(v); }, view);
-    await page.waitForSelector(".s-pending .pending-summary");
+    await page.waitForSelector(".pending-stack.inline .pending-summary");
     await page.evaluate(async () => { await document.fonts.ready; await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r()))); });
     const text = await page.locator(".pending-summary").innerText();
     const translated = !["before", "old-shell", "old-server"].includes(c.variant);
@@ -55,7 +55,7 @@ try {
     if (!text.includes(expected === "en" ? "fingerprint" : "指紋") || !text.includes(expected === "en" ? "inherit it" : "繼承此設定")) throw Error(`wrong summary language: ${caseName(c)} ${c.variant}: ${text}`);
     const state = await page.evaluate(async () => { const { appStore }: any = await import("/assets/app-store.js" as string); const v = appStore.get().pendingChanges[0]; return { summary: v.summary, count: appStore.get().pendingChanges.length }; });
     if (JSON.stringify(state.summary) !== JSON.stringify(view.summary) || state.count !== 1) throw Error("canonical summary changed");
-    const layout = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth - innerWidth, tap: [...document.querySelectorAll(".pending-card button")].map(el => { const r = el.getBoundingClientRect(); return { width: r.width, height: r.height }; }), sidebar: !!document.querySelector("#sidebar"), settings: !!document.querySelector(".s-pending") }));
+    const layout = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth - innerWidth, tap: [...document.querySelectorAll(".pending-card button")].map(el => { const r = el.getBoundingClientRect(); return { width: r.width, height: r.height }; }), sidebar: !!document.querySelector("#sidebar"), settings: !!document.querySelector(".pending-stack.inline") }));
     if (layout.overflow > 1 || !layout.sidebar || !layout.settings || c.device === "phone" && layout.tap.some((r: any) => r.width < 44 || r.height < 44)) throw Error("shell/layout gate failed: " + JSON.stringify(layout));
     const name = `${c.variant}-${caseName(c)}`; await page.screenshot({ path: join(out, name + ".png"), fullPage: true });
     let switchText: string | null = null;
