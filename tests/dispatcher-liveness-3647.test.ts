@@ -70,6 +70,9 @@ describe("judgeAssignee: each suppression", () => {
   });
   it("stopped by a person, paused by an operator: no notice", () => {
     expect(judgeAssignee({ process: "stopped" }, card, S, late)).toBeNull();
+    // stopped while idle, or with a prompt still on screen: still theirs to know, not a quiet or prompt notice (Fable L12)
+    expect(judgeAssignee({ process: "stopped", execution: { state: "idle", since: T0 } }, card, S, late)).toBeNull();
+    expect(judgeAssignee({ process: "stopped", execution: { state: "idle", since: T0 }, prompt: { since: T0 } }, card, S, late)).toBeNull();
     expect(judgeAssignee({ process: "running", paused: { reason: "operator", at: T0 } }, card, S, late)).toBeNull();
   });
   it("an unknown execution state never alarms", () => {
@@ -167,6 +170,36 @@ describe("the sweep (real ledger)", () => {
     r.at(T0 + 61 * MIN); await r.tick();
     expect(r.sent()).toHaveLength(0);
     expect([...r.outbox.values()][0]!.state).toBe("cancelled");
+  });
+
+  it("the stop notice was cancelled or failed (never read): no 'working again' line (Fable L7)", async () => {
+    for (const lost of ["cancelled", "failed"]) {
+      const r = rig({ cards: [claimed("M-15", "m")] });
+      r.facts.set("m", idle());
+      r.at(T0 + 60 * MIN); await r.tick();
+      for (const v of r.outbox.values()) v.state = lost;              // the outbox gave up on it
+      r.facts.set("m", { ...idle(), lastWorkingAt: T0 + 61 * MIN });
+      r.at(T0 + 62 * MIN); await r.tick();
+      expect([...r.outbox.values()].some((v) => /working again/.test(v.text)), lost).toBe(false);
+      expect(r.ledger.listOpen()).toHaveLength(0);
+    }
+  });
+
+  it("a notice the outbox does not take is tried again on the next sweep — never lost for the episode (Fable review)", async () => {
+    const r = rig({ cards: [claimed("M-16", "n")] });
+    r.facts.set("n", idle());
+    const deps = (r.live as any).deps as DispatcherLivenessDeps;
+    const real = deps.deliver;
+    let fail = 1;
+    deps.deliver = (to: string, text: string, key: string) => { if (fail-- > 0) throw new Error("SQLITE_BUSY"); return real(to, text, key); };
+    r.at(T0 + 60 * MIN); await r.tick();
+    expect(r.sent()).toHaveLength(0);
+    expect(r.ledger.listOpen()).toHaveLength(0);                     // no episode yet
+    r.at(T0 + 61 * MIN); await r.tick();
+    expect(r.sent()).toHaveLength(1);
+    expect(r.ledger.get("uuid-M-16")?.noticeKey).toMatch(/^task-liveness:leader:/);
+    r.at(T0 + 62 * MIN); await r.tick();
+    expect(r.sent()).toHaveLength(1);
   });
 
   it("background work the pane does not show (a live subagent) keeps quiet from being told", async () => {
