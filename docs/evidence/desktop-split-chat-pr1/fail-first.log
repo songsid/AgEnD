@@ -1,0 +1,121 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-ownership-3637
+
+ ❯ tests/web-chat-pane-ownership-3637.test.ts (8 tests | 7 failed) 1338ms
+     × recovers both visible histories once after a gap, defers hidden chats and survives an older owner's cleanup 10ms
+     × publishes a prompt in the unfocused visible pane without a hidden-chat toast 6ms
+     × never evicts any mounted thread, including while a different pane leaves 10ms
+     × binds each composer and delayed feedback to its own agent; only the focused pane publishes its title 12ms
+     × routes ordinary text-tab clicks through their pane but leaves browser modified clicks alone 11ms
+     × leaving A cannot close B's newly opened preview 35ms
+     × notifies every outlet waiting on one shared lazy import 11ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > visible chats are distinct from page focus > recovers both visible histories once after a gap, defers hidden chats and survives an older owner's cleanup
+TypeError: st.show is not a function
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:39:18
+     37|       t: (key: string) => key, toast: vi.fn(), announce: vi.fn(), now:…
+     38|     }) : null;
+     39|     const a = st.show("alpha"), b = st.show("beta"); a.focus(true);
+       |                  ^
+     40|     await st.openHistory("hidden"); reads.length = 0;
+     41|     st.onGap(); await settle();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > visible chats are distinct from page focus > publishes a prompt in the unfocused visible pane without a hidden-chat toast
+TypeError: chat.store.show is not a function
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:53:26
+     51|     const st = chat.createStoreForTests; // the same production store …
+     52|     void st;
+     53|     const a = chat.store.show("alpha"), b = chat.store.show("beta"); a…
+       |                          ^
+     54|     const off = chat.store.subscribe(changed);
+     55|     chat.store.onPrompt({ nonce: "pane-beta", instance: "beta", text: …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > visible chats are distinct from page focus > never evicts any mounted thread, including while a different pane leaves
+AssertionError: expected [ 'a', 'b' ] to deeply equal [ 'hidden' ]
+
+- Expected
++ Received
+
+  [
+-   "hidden",
++   "a",
++   "b",
+  ]
+
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:61:88
+     59|   it("never evicts any mounted thread, including while a different pan…
+     60|     expect(chat.threadsToLetGo([["a", 400], ["b", 400], ["hidden", 1]]…
+     61|       { keep: 1, maxNodes: 2, favorites: new Set(), protected: new Set…
+       |                                                                                        ^
+     62|   });
+     63| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > pane scope adds no DOM and retains legacy defaults > binds each composer and delayed feedback to its own agent; only the focused pane publishes its title
+AssertionError: expected null not to be null
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:75:19
+     73|     expect(p.document.title).toBe("alpha · AgEnD");
+     74|     const a = p.document.getElementById("pane-a-msgIn"), b = p.documen…
+     75|     expect(a).not.toBeNull(); expect(b).not.toBeNull();
+       |                   ^
+     76|     expect(p.document.querySelectorAll("textarea")).toHaveLength(2);
+     77|     expect(p.document.activeElement).toBe(a);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > pane scope adds no DOM and retains legacy defaults > routes ordinary text-tab clicks through their pane but leaves browser modified clicks alone
+AssertionError: expected null not to be null
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:88:22
+     86|     await p.mount(pane("a", true, h(tabs.InstanceSwitch, { name: "alph…
+     87|     const link = p.document.querySelector('.inst-switch a[href="/view/…
+     88|     expect(link).not.toBeNull();
+       |                      ^
+     89|     const modified = fire(link, "click", { button: 0, ctrlKey: true });
+     90|     expect(modified.defaultPrevented).toBe(false); expect(navigate).no…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > pane scope adds no DOM and retains legacy defaults > leaving A cannot close B's newly opened preview
+AssertionError: expected null to be 'b-html' // Object.is equality
+
+- Expected:
+"b-html"
+
++ Received:
+null
+
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:99:32
+     97|     preview.openPanel({ key: "b-html", instance: "beta", code: "<h1>B<…
+     98|     await p.mount(make(false));
+     99|     expect(preview.shownKey()).toBe("b-html");
+       |                                ^
+    100|   });
+    101|   it("notifies every outlet waiting on one shared lazy import", async …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > pane scope adds no DOM and retains legacy defaults > notifies every outlet waiting on one shared lazy import
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:107:18
+    105|     const props = { route: { panel: "probe" }, seq: 1, panels };
+    106|     await p.mount(h("div", null, h(shell.Outlet, props), h(shell.Outle…
+    107|     expect(load).toHaveBeenCalledTimes(1);
+       |                  ^
+    108|     done(() => h("span", { class: "ready-pane" }, "Ready")); await set…
+    109|     expect(p.document.querySelectorAll(".ready-pane")).toHaveLength(2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  7 failed | 1 passed (8)
+   Start at  20:14:57
+   Duration  1.88s (transform 1.22s, setup 122ms, import 252ms, tests 1.34s, environment 0ms)
+

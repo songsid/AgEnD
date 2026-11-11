@@ -1,0 +1,3 @@
+(node:3315038) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+{"mode":"old-chat","head":"5bf0bbb174ca409a36f1f9060a5be4a6c7ebe007","cases":10,"oneStream":true,"externalRequests":0,"substitutions":{"/ui/js/panel-chat.js":2,"/assets/instance-switch.js":2,"/ui/js/chat-store.js":2,"/assets/chat-composer.js":2,"/ui/js/image-lightbox.js":2}}

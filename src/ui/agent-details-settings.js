@@ -10,6 +10,8 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { navigate, setLeaveGuard } from "/assets/app-nav.js";
+import * as routing from "/assets/app-nav.js";
+import * as paneContext from "/assets/app-ctx.js";
 import { detailsPath } from "/assets/app-route.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
@@ -84,6 +86,8 @@ const loadSettingsModule = () => (settingsModule ||= import("./panel-settings.js
  * changes wait for the Apply bar (one runner: the app's, settings-apply.js); leaving the page with some asks first.
  */
 export function useAgentSettings({ name, lease, enabled, navKey }) {
+  const pane = paneContext.usePane?.();
+  const go = pane?.navigate || navigate;
   const [mod, setMod] = useState(null);
   const [data, setData] = useState(null);
   const [staged, setStaged] = useState(() => new Map());
@@ -114,12 +118,20 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
     return true;
   };
   const unstage = (key) => setStaged((s) => { if (!s.has(key)) return s; const m = new Map(s); m.delete(key); return m; });
-  const discard = () => { setStaged(new Map()); setEpoch((n) => n + 1); reload(); };
+  const clearStaged = () => {
+    // A different pane can still refuse navigation. Keep the rendered state and its guard coherent across rerenders,
+    // and reset this pane's forms even when the person remains here after that other pane cancels.
+    const empty = new Map();
+    stagedRef.current = empty;
+    setStaged(empty);
+    setEpoch((n) => n + 1);
+  };
+  const discard = () => { clearStaged(); reload(); };
 
   // Leaving the page with staged changes asks first (the Settings page's question); the same agent's other categories are not leaving.
   useEffect(() => {
     let asking = false;
-    lease.hold(setLeaveGuard((to, path) => {
+    const check = (to, path) => {
       const n = stagedRef.current.size;
       if (!n || (to && to.panel === "details" && to.instance === nameRef.current)) return true;
       if (!asking) {
@@ -127,12 +139,13 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
         ask(tn("discardOnLeave", n), { confirmLabel: tn("discard"), danger: true }).then((yes) => {
           asking = false;
           if (!yes || !lease.current()) return;
-          stagedRef.current = new Map();
-          navigate(path, { force: true });
+          clearStaged();
+          go(path, routing.addLeaveGuard ? { skipGuard: check } : { force: true });
         });
       }
       return false;
-    }));
+    };
+    lease.hold((pane?.addLeaveGuard || routing.addLeaveGuard || setLeaveGuard)(check));
     lease.on(window, "beforeunload", (e) => { if (stagedRef.current.size) { e.preventDefault(); e.returnValue = ""; } });
   }, [lease]);
 
@@ -183,12 +196,14 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
 
 /** The categories in the shared Settings `.s-nav`: "Status" (Overview) and "Settings" (the rest), an icon in front of every item. */
 export function AgentCategoryNav({ name, kind, cat, dirty }) {
+  const pane = paneContext.usePane?.();
+  const id = (key) => pane ? `pane-${pane.id}-${key}` : key;
   const cats = categoriesOf(kind);
   const item = (id) => html`<a key=${id} href=${categoryPath(name, id)} class=${`seg-item${cat === id ? " active" : ""}`} aria-current=${cat === id ? "page" : undefined} title=${categoryLabel(kind, id)}>
     <${Icon} name=${CATEGORY_ICONS[id]} size=${16} /><span>${categoryLabel(kind, id)}</span>${dirty && dirty.has(id) ? html`<span class="count" role="img" aria-label=${pt("unsavedDot")} title=${pt("unsavedDot")}>●</span>` : null}</a>`;
   return html`<nav data-trust="panel-navigation" class="seg s-nav" aria-label=${pt("title")}><div class="s-nav-groups">
-    <div class="s-nav-group" role="group" aria-labelledby="ap-grp-status"><span class="s-nav-head" id="ap-grp-status">${pt("groupStatus")}</span>${item("overview")}</div>
-    <div class="s-nav-group" role="group" aria-labelledby="ap-grp-settings"><span class="s-nav-head" id="ap-grp-settings">${pt("groupSettings")}</span>${cats.slice(1).map(item)}</div></div></nav>`;
+    <div class="s-nav-group" role="group" aria-labelledby=${id("ap-grp-status")}><span class="s-nav-head" id=${id("ap-grp-status")}>${pt("groupStatus")}</span>${item("overview")}</div>
+    <div class="s-nav-group" role="group" aria-labelledby=${id("ap-grp-settings")}><span class="s-nav-head" id=${id("ap-grp-settings")}>${pt("groupSettings")}</span>${cats.slice(1).map(item)}</div></div></nav>`;
 }
 
 /** The page's heading: the category's name, who it affects, and a line on what it is. */
@@ -203,6 +218,7 @@ export function AgentPageHead({ name, kind, cat, inst }) {
  * categories never drops a draft. Each edit is staged as it is made; an edit put back leaves nothing staged.
  */
 function AgentForms({ name, kind, cat, sess, inst, room, onDirty, onDelete, deleting }) {
+  const pane = paneContext.usePane?.();
   const { ctx } = sess;
   const key = kind === "classic" ? `classic:${room.key}` : `agent:${name}`;
   const form = kind === "classic" ? useClassicForm({ room, ctx }) : kind === "native" ? useNativeForm({ name, inst, ctx }) : useAgentForm({ name, inst, ctx });
@@ -220,7 +236,7 @@ function AgentForms({ name, kind, cat, sess, inst, room, onDirty, onDelete, dele
   }, [patchJson, ready, deleting]);
   const cats = categoriesOf(kind).slice(1);
   const Fields = kind === "classic" ? ClassicFields : kind === "native" ? NativeFields : AgentFields;
-  return cats.map((c) => html`<div key=${c} class="ap-panel" id=${`ap-panel-${c}`} hidden=${c !== cat}>
+  return cats.map((c) => html`<div key=${c} class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-${c}` : `ap-panel-${c}`} hidden=${c !== cat}>
     <${Fields} m=${form} cat=${c} onDelete=${kind === "fleet" && c === "adv" ? onDelete : undefined} /></div>`);
 }
 

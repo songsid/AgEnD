@@ -12,6 +12,7 @@ export const navStore = createStore({ route: null, seq: 0 });
 
 let win = null;
 let guard = null;
+const paneGuards = new Set();
 let here = null;                                 // the path the app shows now (popstate has already changed the address)
 
 /**
@@ -23,7 +24,10 @@ export function setLeaveGuard(fn) {
   guard = fn;
   return () => { if (guard === fn) guard = null; };
 }
-const mayLeave = (route, path) => !guard || guard(route, path) !== false;
+/** Pane guards coexist; disposing one never removes another pane's staged-change protection. */
+export function addLeaveGuard(fn) { paneGuards.add(fn); return () => paneGuards.delete(fn); }
+const mayLeave = (route, path, skip) => (!guard || guard === skip || guard(route, path) !== false)
+  && [...paneGuards].every(fn => fn === skip || fn(route, path) !== false);
 
 /** Start following the address bar. An old /ui#instance=<name> link becomes /ui/chat/<name> before the first render. */
 export function startRouter(w = window) {
@@ -52,7 +56,7 @@ export function navigate(path, opts = {}) {
   if (moved) { const hash = url.hash; url = new URL(moved, win.location.href); if (!url.hash && hash) url.hash = hash; }
   const route = parseRoute(url.pathname);
   if (!route || url.origin !== win.location.origin) { win.location.assign(url.href); return; }
-  if (!opts.force && !mayLeave(route, url.pathname + url.search)) return;
+  if (!opts.force && !mayLeave(route, url.pathname + url.search, opts.skipGuard)) return;
   if (url.pathname + url.search !== win.location.pathname + win.location.search || (url.hash && url.hash !== win.location.hash)) {
     win.history[opts.replace ? "replaceState" : "pushState"](null, "", url.pathname + url.search + url.hash);
   }

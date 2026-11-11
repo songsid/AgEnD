@@ -38,6 +38,8 @@ const P = () => globalThis.AgendPreview;
 let state = { open: null, run: 0 };
 let runs = 0, version = 0, claims = 0;
 const subs = new Set();
+const hosts = new Map(); // instance → mounted host token; an older cleanup cannot close its successor
+
 function set(next) { state = next; version++; for (const fn of [...subs]) { try { fn(state); } catch { /* one listener's error stops no other */ } } }
 /**
  * Hub E (#3226): the fleet's Files & changes view (workspace-panel.js) is the fleet's only — never served to the Hub, and
@@ -238,7 +240,15 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const [, choice] = useState(0);
   useEffect(() => (P() ? P().onChange(() => { if (pending.current && ownAllow.current !== pending.current) pending.current = 0; choice(n => n + 1); }) : undefined), []);
   // Leaving the chat (another instance, another panel) closes the panel: its frame stops with the thread's.
-  useEffect(() => () => closePanel(), []);
+  useEffect(() => {
+    const owner = {};
+    hosts.set(name, owner);
+    return () => {
+      if (hosts.get(name) !== owner) return;
+      hosts.delete(name);
+      if (state.open?.instance === name) closePanel();
+    };
+  }, [name]);
   // Leaving the chat: a pending request answers nobody, and our own full screen is taken back.
   useEffect(() => () => { fsGen.current++; exitOwn(fsTarget.current); fsTarget.current = null; }, []);
   // Full screen ends with the browser's own Esc or its exit control too: follow it.

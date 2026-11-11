@@ -59,7 +59,7 @@ export function replyAboutPage(open, deps = chat) {
   if (msg) deps.startReply(open.instance, msg);
   else deps.clearReply(open.instance);
   deps.addToDraft(open.instance, aboutLine(open));
-  deps.focus();
+  deps.focus(open.instance);
   return true;
 }
 
@@ -81,7 +81,7 @@ export function errorLines(log) {
 export function sendErrors(open, log, deps = chat) {
   if (!replyAboutPage(open, deps)) return false;
   for (const line of errorLines(log)) deps.addToDraft(open.instance, line);
-  deps.focus();
+  deps.focus(open.instance);
   return true;
 }
 
@@ -100,7 +100,7 @@ export function pickLine(result) {
 export function sendPick(open, result, deps = chat) {
   if (!result || !replyAboutPage(open, deps)) return false;
   deps.addToDraft(open.instance, pickLine(result));
-  deps.focus();
+  deps.focus(open.instance);
   return true;
 }
 

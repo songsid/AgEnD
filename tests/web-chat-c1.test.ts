@@ -648,7 +648,7 @@ describe("chat page: the composer and the history", () => {
     // Hub PR A (#3226): the box itself is drawn by the shared composer row, which panel-chat renders.
     const composer = readFileSync(join(process.cwd(), "src", "ui", "shared", "chat-composer.js"), "utf8");
     expect(panel).toContain("<${ComposerInput} inputRef=${input}");
-    expect(composer).toMatch(/<textarea id="msgIn"/);
+    expect(composer).toMatch(/<textarea id=\$\{ids\.msgIn \|\| "msgIn"\}/);
     expect(composer).not.toMatch(/<input id="msgIn"/);
     expect(panel).toContain("R().composerKey(e, { touch: touchScreen() })");
     expect(panel).toContain("store.openHistory(name, lease, ac?.signal)");   // #2188: aborted when the chat is left before it answers
@@ -680,7 +680,7 @@ describe("chat page: the composer and the history", () => {
     expect(panel).not.toMatch(/store\.state\.msgs\[name\] \|\| \[\]\)\)?;?\s*$|thread\.render\(store\.state\.msgs/m);
     expect(panel).toContain("retryOutgoing: (clientId) => store.retryOutgoing(name, clientId)");
     expect(panel).toContain("deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId)");
-    expect(panel).toContain("putBackOutgoing: (clientId) => { recordEdit(composerField()); store.putBackOutgoing(name, clientId); }");
+    expect(panel).toContain("putBackOutgoing: (clientId) => { recordEdit(composerField(name)); store.putBackOutgoing(name, clientId); }");
   });
 });
 

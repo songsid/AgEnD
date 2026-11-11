@@ -1,0 +1,26 @@
+{
+  "sourceCaptureHead": "5bf0bbb174ca409a36f1f9060a5be4a6c7ebe007",
+  "control": "996e3e201e39d70e0d892c8420a169d9eb4e1eb6",
+  "sourceTestChecks": "post-sync-focused.log: 245/245; final-checks.log: 100/101 (unchanged C3 import deadline); c3-post-sync-isolated.log: 52/52",
+  "nativeTypes": "source/test passed",
+  "changelog": "369 fragments passed",
+  "browser": {
+    "cases": 60,
+    "controlCandidateGeometryComparisons": 20,
+    "geometryDifferences": 0,
+    "oneStreamInEveryCase": true,
+    "externalBrowserRequests": 0,
+    "visualOriginalsInspected": 60
+  },
+  "mutations": {
+    "assertionCaught": 13,
+    "restored": true,
+    "evidence": "mutations.json"
+  },
+  "limits": [
+    "Owned pane/steps display fixtures, seeded theme/language; no backend transcript E2E",
+    "No live preview/browser frame exercise; existing lifecycle unit tests cover it",
+    "Retained asset sets are enumerated, not an exhaustive arbitrary mixture",
+    "No live Fleet, native runtime, CLI, real directory or vendor account"
+  ]
+}
