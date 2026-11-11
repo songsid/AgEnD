@@ -3,7 +3,7 @@ import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 const rig = vi.hoisted(() => ({ start: vi.fn(), take: vi.fn(), read: vi.fn(), data: { fleet: { defaults: {}, instances: { alpha: { description: "" }, beta: { description: "" } } } } }));
 vi.mock("/ui/js/settings-apply.js", () => ({ operationActive: () => false, startOperation: rig.start, takeLeftover: rig.take }));
 vi.mock("/ui/js/panel-settings.js", () => ({ loadAll: rig.read, makeCtx: (data: any) => ({ ...data, schema: {}, channelType: () => "telegram" }) }));
-let p: AppPage, nav: any, app: any, ctx: any, settings: any, forms: any, host: any, controller: any, seq = 0, width = 1000;
+let p: AppPage, nav: any, app: any, ctx: any, settings: any, forms: any, host: any, controller: any, seq = 0, width = 1000, enabledAlpha = true;
 const sessions: Record<string, any> = {}, models: Record<string, any> = {};
 beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19280/ui/fleet/agent/alpha" }); (p.window as any).innerWidth = 1400;
@@ -15,7 +15,7 @@ beforeAll(async () => {
   rig.read.mockImplementation(async () => rig.data);
   rig.start.mockImplementation((changes: any[]) => { app.appStore.set({ settingsOp: { id: ++seq, phase: "writing", steps: changes, leftover: [] } }); return true; });
 });
-afterEach(async () => { controller?.close(); await p.unmount(); app.appStore.set({ settingsOp: null }); width = 1000; rig.data.fleet.instances.alpha.description = ""; rig.take.mockReset(); rig.read.mockReset(); rig.read.mockImplementation(async () => rig.data); });
+afterEach(async () => { controller?.close(); await p.unmount(); app.appStore.set({ settingsOp: null }); width = 1000; enabledAlpha = true; rig.data.fleet.instances.alpha.description = ""; rig.take.mockReset(); rig.read.mockReset(); rig.read.mockImplementation(async () => rig.data); });
 afterAll(() => { p.restore(); delete (globalThis as any).fetch; delete (globalThis as any).ResizeObserver; });
 async function mount() {
   nav.navigate("/ui/fleet/agent/alpha", { force: true, workspace: true });
@@ -23,7 +23,7 @@ async function mount() {
   controller.open("beta"); controller.pane("b").navigate("/ui/fleet/agent/beta");
   function Form({ name, sess }: any) { models[name] = forms.useAgentForm({ name, inst: sess.ctx.fleet.instances[name], ctx: sess.ctx }); return h("input", { value: models[name].f.description }); }
   function Panel({ route, navKey }: any) {
-    const sess = settings.useAgentSettings({ name: route.instance, lease: ctx.useLease(navKey), enabled: true, navKey }); sessions[route.instance] = sess;
+    const sess = settings.useAgentSettings({ name: route.instance, lease: ctx.useLease(navKey), enabled: route.instance !== "alpha" || enabledAlpha, navKey }); sessions[route.instance] = sess;
     return sess.ctx ? h(Form, { key: sess.epoch, name: route.instance, sess }) : null;
   }
   const Workspace = host.createWorkspaceHost(controller), panels = new Map([["details", { Component: Panel }]]);
@@ -52,10 +52,10 @@ it.each([false, true])("only the initiating pane consumes its failed leftovers (
 });
 it("an owner suspended at completion resets once on return without resetting the other pane", async () => {
   await mount(); const a = sessions.alpha.epoch, b = sessions.beta.epoch;
-  await sessions.alpha.apply(); await settle(); width = 650; p.window.dispatchEvent({ type: "resize" } as any); await settle(5);
+  await sessions.alpha.apply(); await settle(); width = 650; p.window.dispatchEvent({ type: "resize" } as any); await settle(5); enabledAlpha = false;
   rig.data = { fleet: { defaults: {}, instances: { alpha: { description: "Draft alpha" }, beta: { description: "" } } } };
   app.appStore.set({ settingsOp: { ...app.appStore.get().settingsOp, phase: "done" } }); await settle(7);
-  controller.focus("a"); await settle(9); expect(sessions.alpha.epoch).toBe(a + 1); expect(models.alpha.pending()).toEqual({});
+  controller.focus("a"); await settle(9); expect(models.alpha.inst.description).toBe("Draft alpha"); expect(sessions.alpha.epoch).toBe(a + 1); expect(models.alpha.pending()).toEqual({});
   controller.focus("b"); await settle(5); expect(sessions.beta.epoch).toBe(b); expect(models.beta.pending().description).toBe("Draft beta");
   controller.focus("a"); await settle(7); expect(sessions.alpha.epoch).toBe(a + 1);
 });

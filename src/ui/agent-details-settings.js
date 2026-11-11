@@ -103,7 +103,7 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
   const [epoch, setEpoch] = state("epoch", 0);              // moves after a Discard and after a Save: the forms start again from what is saved
   const gen = useRef(0);
   const { settingsOp: op } = useStore(appStore);
-  const started = useRef(false);
+  const started = useRef(!!data && !data.error);
   const nameRef = useRef(name);
   nameRef.current = name;
   // The runner is page-owned; only its submitting pane may recover leftovers or reset forms.
@@ -118,6 +118,7 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
     setMod(m);
     // A read that fails after a failed Save keeps what was read before: the forms (and the draft in them) stay.
     setData((prev) => (next.error && prev && !prev.error ? prev : next));
+    return !next.error;
   };
   useEffect(() => { if (enabled && !started.current) { started.current = true; reload(); } }, [enabled]);
 
@@ -184,7 +185,7 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
       ownership.settledPhase = phase;
       if (phase === "done") { ownership.submitted.clear(); formMemory.state.clear(); setEpoch(n => n + 1); }
     };
-    if (started.current) reload().finally(finish); else finish();
+    if (started.current) reload().then(accepted => { if (accepted) finish(); }, () => {}); else finish();
   }, [op && op.id, op && op.phase]);
 
   const applying = useRef(false);

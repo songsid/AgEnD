@@ -113,7 +113,8 @@ try {
   if (process.env.REVIEW_R1 === "1") {
     // B starts focused. Alt-clicking A's split owns A, not whichever pane was focused before the click.
     await page.locator('[data-pane="a"] .ws-pane-split').click({ modifiers: ["Alt"] });
-    await page.locator(".ws-agent-choices").getByRole("button", { name: fx.instances[0].name, exact: true }).click();
+    const choiceLabel = await page.evaluate(async (name: string) => { const { appStore } = await import("/assets/app-store.js"); return appStore.get().instances.find((it: any) => it.name === name)?.display_name || name; }, fx.instances[0].name);
+    await page.locator(".ws-agent-choices").getByRole("button", { name: choiceLabel, exact: true }).click();
     const topology = await page.evaluate(async () => { const { navStore } = await import("/assets/app-nav.js"); const w = navStore.get().workspace; return { a: w.a.route.instance, b: w.b.route.instance, layout: w.layout }; });
     assert.deepEqual(topology, { a, b: fx.instances[0].name, layout: "stack" });
     await shot("alt-split-owner", 2);
