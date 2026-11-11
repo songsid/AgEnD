@@ -202,6 +202,24 @@ describe("the chat's states", () => {
     const box = p.root.querySelector("#msgIn"); box.value = "more"; fire(box, "input"); await settle();
     expect([send().hidden, send().disabled]).toEqual([false, false]);
   });
+  it("M-2904 (Prism #3651): Stop's rules come with the chat — its own stylesheet, linked once; app.css holds none; served as CSS", async () => {
+    await mountChat("alpha");
+    expect(p.document.querySelectorAll('link[data-chat-work-bar-css="1"]').length).toBe(1);
+    const { linkWorkBarCss } = await import("/ui/js/panel-chat.js" as string);
+    linkWorkBarCss();
+    expect(p.document.querySelectorAll('link[data-chat-work-bar-css="1"]').length).toBe(1);
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync(new URL("../src/ui/shared/chat-work-bar.css", import.meta.url), "utf8");
+    expect(css).toMatch(/\.work-bar \.btn-stop \{ flex: none; margin-left: auto; \}/);
+    expect(css).toMatch(/\(max-width: 899px\), \(pointer: coarse\) \{ \.work-bar \.btn-stop \{ min-height: var\(--tap, 44px\); min-width: var\(--tap, 44px\); \} \}/);
+    expect(readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8")).not.toMatch(/\.work-bar \.btn-stop/);
+    const { handleAuthRequest } = await import("../src/auth-api.js");
+    const got = await new Promise<{ status: number; type: string; body: string }>(resolve => {
+      const res: any = { writeHead(st: number, h: Record<string, string>) { this.st = st; this.h = h; }, end(b: Buffer | string) { resolve({ status: this.st, type: this.h?.["Content-Type"], body: String(b) }); } };
+      handleAuthRequest({ method: "GET", url: "/assets/chat-work-bar.css", headers: { host: "127.0.0.1" } } as any, res, new URL("http://127.0.0.1/assets/chat-work-bar.css"), {} as any);
+    });
+    expect([got.status, got.type.startsWith("text/css"), got.body]).toEqual([200, true, css]);
+  });
 });
 
 describe("Fleet: a late answer never lands after the person moved on", () => {

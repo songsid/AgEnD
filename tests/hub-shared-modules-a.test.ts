@@ -111,6 +111,12 @@ describe("ComposerInput, RailFrame and PageHead", () => {
     expect([p.root.querySelector("#sendBtn").disabled, p.root.querySelector("#stopBtn")]).toEqual([true, null]);
     await p.unmount();
   });
+  it("M-2904 (Fable #3653): panel-chat still hands ComposerInput a hidden stop — an older chat-composer.js (kept by a tab that loaded the Hub panel first) reads stop.* with no default", () => {
+    const src = readFileSync(ui("panel-chat.js"), "utf8");
+    expect(src).toMatch(/const HIDDEN_STOP = Object\.freeze\(\{ hidden: true, disabled: true, title: "", label: "", onClick: \(\) => \{\} \}\);/);
+    const at = src.indexOf("<${ComposerInput}");
+    expect(src.slice(at, src.indexOf("/>", at))).toContain("stop=${HIDDEN_STOP}");
+  });
   it("M-2904: WorkBarView draws Stop only when given one, beside what it stops", async () => {
     let stopped = 0;
     await p.mount(h(C.WorkBarView, { kind: "working", label: "Alpha is working…", elapsed: "3s", elapsedTitle: "t" })); await settle(2);
