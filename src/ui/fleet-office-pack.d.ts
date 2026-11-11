@@ -17,6 +17,9 @@ export interface CheckedPack {
   waypoints: Array<{ id: string; x: number; y: number }>; edges: Array<[string, string]>;
   furniture: PackFurniture[]; characters: Record<string, Record<string, PackStrip>>; byInstance: Record<string, string>;
   props: Record<string, PackStrip>; bubbles: Record<string, Record<string, string[]>>;
+  /** #3681: a character set's own lines (`characters.<set>.bubbles`) and an instance's (`bubblesByInstance`); only when the pack has any. */
+  bubblesBySet?: Record<string, Record<string, Record<string, string[]>>>;
+  bubblesByInstance?: Record<string, Record<string, Record<string, string[]>>>;
   room: { floor?: string; wall?: string }; desk: { back?: string; front?: string; lit?: string };
   /** #2661: the Office levels' words — titles from each level up, and titles pinned on instances or NPCs. */
   levels?: { titles?: Array<{ from: number; name: string }>; fixed?: Record<string, { title: string; hideLevel: boolean }> };

@@ -520,7 +520,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const says = sp.look.night ? "paused" : sp.look.state;                // asleep at night: its "Zzz…" lines
     // What an agent says itself (office_set, #2578): whole, kept over the area's thinning like a call.
     const act = p.acts && p.acts.get(sp.look.name), own = actLive(act, says, Date.now(), p.actSeen) && act.say ? act.say : null;
-    const b = own ? { text: own, shown: [...own].length } : bubbleAt(sp.look.name, says, ms, linesFor(says, p.lang, sk.pack, p.lines));
+    const b = own ? { text: own, shown: [...own].length } : bubbleAt(sp.look.name, says, ms, linesFor(says, p.lang, sk.pack, p.lines, sp.look.name));   // #3681: theirs, their set's, the pack's
     if (b) bubbles.push({ key: sp.look.name, area: sp.area, state: sp.look.state, calling: CALLING.has(sp.look.state), rank: own ? 0 : bubbleRank(sp.look.state), shown: b.shown,
       box: bubbleBox(ctx, sp.x, sp.y, b.text), tail: { x: sp.x, y: sp.y }, sp, b });
   }
