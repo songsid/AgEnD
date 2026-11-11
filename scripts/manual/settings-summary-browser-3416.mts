@@ -51,6 +51,8 @@ try {
     await page.route(`**/api/settings/pending/${view.id}`, (r: any) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(view) }));
     await page.goto(fx.base + "/settings/access");
     await page.evaluate(async (v: any) => { const m: any = await import("/ui/js/settings-confirm.js" as string); m.track(v); }, view);
+    await page.waitForSelector(".pending-stack.inline .pending-details");
+    await page.locator(".pending-details").evaluateAll((nodes: any[]) => { for (const node of nodes) node.open = true; });
     await page.waitForSelector(".pending-stack.inline .pending-summary");
     await page.evaluate(async () => { await document.fonts.ready; await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r()))); });
     const text = await page.locator(".pending-summary").innerText();
