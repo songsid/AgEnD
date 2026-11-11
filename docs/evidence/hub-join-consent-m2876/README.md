@@ -6,7 +6,7 @@ The old waiting tab knew only a handoff id. Its Review fallback navigated to Nee
 
 ## Source and results
 
-The definitive browser and retained-module runs capture clean source **0af23deb43cbf8d178a27c5e9462299e8081c695**, with tree, input and served-body digests in each original receipt. Later evidence commits do not relabel those executions. The changed product and test blobs are unchanged from the focused/native-type runs. Earlier interrupted/harness-debug runs are not counted as acceptance.
+The definitive browser and retained-module runs capture clean source **0af23deb43cbf8d178a27c5e9462299e8081c695**, with tree, input and served-body digests in each original receipt. Later evidence commits do not relabel those executions. The full matrix predates the narrow replay correction described below; its changed UI/CSS and initial Start behavior remain unchanged. Earlier interrupted/harness-debug runs are not counted as acceptance.
 
 | Check | Result and scope |
 |---|---|
@@ -22,6 +22,12 @@ The definitive browser and retained-module runs capture clean source **0af23deb4
 | Style gates | Settings CI matrix 114 checks; Hub CI matrix 79 checks. The dedicated journeys additionally measure new phone code controls and connected-card controls, using checkbox labels as their actual targets. |
 
 CSS is byte-identical to the baseline, so the candidate runs use the same CSS with the new modules. Retained-asset tests do not claim every mixed module combination, a deployed older backend, Safari, or a real account.
+
+## Replay correction after CI
+
+At149f3139, the existing Settings idempotency test caught a second call to `selfConfirm` when an identical request reused its claim. Source `a0cbc2bf` limits code-affordance decoration to company Start and explicitly skips that callback. Generic replays retain their previous response path. The existing generic assertion plus an added code-protected Start assertion fail before this fix; six focused files then pass129/129, and both final replay controls pass2/2 with a nonempty exact digest. See `replay-r1.json` for the honest modified-tree fail-first reconstruction and exact result scopes. No UI, initial Start, policy or Hub effect changes; the original browser/Argon results retain their source pins.
+
+Two historical admin stills caught a loading state (`browser-pass/phone-light-zh-TW-admin.png` and `skew-strings/desk-light-en-admin.png`). Separate settled and post-sync captures show enabled copy controls; neither original is overwritten. Argon’s corrected check passed all three first-time-user tasks from10 bounded originals at15c6cd25; nonexistent pasted-state images and dynamic behavior were excluded from that visual scope.
 
 ## Original screenshots
 

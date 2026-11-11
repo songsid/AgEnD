@@ -63,6 +63,12 @@
     ]
   },
   {
+    "digest": "15c62e9407c4e5578506a8df4ae72eba0605d669c2fc1dedab3150caaecf89ef",
+    "paths": [
+      "src/settings-http-confirmation.ts"
+    ]
+  },
+  {
     "digest": "1747417cb0851b9afaee2d0b6b2c25fdb7a3c0482470164fc8df6a4b8cfbf8c8",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/desk-dark-zh-TW-empty.png"
@@ -338,12 +344,6 @@
     ]
   },
   {
-    "digest": "9a6f02f09898e48163219bfb63df230ae69c30a1694437db0fc7f7ebd8659ce5",
-    "paths": [
-      "docs/evidence/hub-join-consent-m2876/checks.json"
-    ]
-  },
-  {
     "digest": "9da9213d8dd3f1de4acd3a53b93acc6a277870b787fd62eaa0b65e72e6008a89",
     "paths": [
       "src/settings-confirmation.ts"
@@ -393,6 +393,12 @@
       "docs/evidence/hub-join-consent-m2876/skew-confirm/phone-dark-zh-TW-admin.png",
       "docs/evidence/hub-join-consent-m2876/skew-panel/phone-dark-zh-TW-admin.png",
       "docs/evidence/hub-join-consent-m2876/skew-strings/phone-dark-zh-TW-admin.png"
+    ]
+  },
+  {
+    "digest": "a9b3070bf40a7e2038bbaed791d924d561306c2dd3286187d255c81db80854c0",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/README.md"
     ]
   },
   {
@@ -546,12 +552,6 @@
     ]
   },
   {
-    "digest": "d7c182479f1222cd77c51570e65a0827f1804318d593dba14347937968b81252",
-    "paths": [
-      "docs/evidence/hub-join-consent-m2876/README.md"
-    ]
-  },
-  {
     "digest": "d839af4ff1907187725c9523bdb8c7059ccbd1f76a6092aae36973429519a8b9",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/skew-panel/phone-dark-zh-TW-empty.png"
@@ -576,6 +576,18 @@
     ]
   },
   {
+    "digest": "e539497edf7a5db8b5ae4deb577d43bc4ac0fc889d06c7d08cea2b514df6ce1e",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/checks.json"
+    ]
+  },
+  {
+    "digest": "e6791742f2ee21b9229cc760b928a2491284ffdf1b6eddb236bd387387913059",
+    "paths": [
+      "docs/evidence/hub-join-consent-m2876/replay-r1.json"
+    ]
+  },
+  {
     "digest": "ea28dfa48a7f23c7610c118433bcf0ec13f9211f0ab515538a03b429c062f551",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/phone-light-en-admin.png"
@@ -597,12 +609,6 @@
     "digest": "efdcde25a506c7dc10c8f47a7b1b8f1ecc412cb600ec82d86fa62032384f4bfd",
     "paths": [
       "docs/evidence/hub-join-consent-m2876/browser-pass/phone-dark-en-connected.png"
-    ]
-  },
-  {
-    "digest": "f01c7e95be83541d1e1101510aa1c4896177980a65f1e56c6779404f5e6d8573",
-    "paths": [
-      "src/settings-http-confirmation.ts"
     ]
   },
   {

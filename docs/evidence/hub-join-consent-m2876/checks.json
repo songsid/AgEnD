@@ -11,7 +11,7 @@
       0,
       0
     ],
-    "laterProductAndTestBlobsUnchanged": true
+    "scope": "historical pre-R1 source; current replay correction recorded in replay-r1.json"
   },
   "mutations": {
     "total": 10,
