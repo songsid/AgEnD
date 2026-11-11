@@ -24,8 +24,10 @@ export function inspectInstallUserManager(unit: string, d: InstallUserManagerDep
   const privateSocket = privateSocketPath(true, d.env, d.uid);
   const bus = (d.env.XDG_RUNTIME_DIR || `/run/user/${d.uid}`) + "/bus";
   const manager = d.state(`user@${d.uid}.service`, false);
+  // A stale shell runtime directory cannot establish loss of this manager's sockets.
+  const managerPaths = privateSocket === privateSocketPath(true, {}, d.uid);
   const kind = manager === "stopped" ? "stopped"
-    : manager === "running" && !d.exists(bus) && !d.exists(privateSocket) ? "missing-sockets" : "unavailable";
+    : manager === "running" && managerPaths && !d.exists(bus) && !d.exists(privateSocket) ? "missing-sockets" : "unavailable";
   return { kind, uid: d.uid, unit, bus, privateSocket };
 }
 

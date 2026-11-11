@@ -9,6 +9,7 @@ const helper = "src/install-user-systemd.ts";
 const installer = "src/service-installer.ts";
 const cases = [
   ["preflight", installer, "if (problem) throw new InstallUserManagerError(problem);", "if (problem && false) throw new InstallUserManagerError(problem);", "names an active manager|names a stopped manager"],
+  ["manager-paths", helper, 'manager === "running" && managerPaths &&', 'manager === "running" &&', "unverified runtime directory|stale environment"],
   ["stopped-state", helper, 'manager === "stopped" ? "stopped"', 'manager === "stopped" ? "unavailable"', "names a stopped manager"],
   ["both-sockets", helper, '!d.exists(bus) && !d.exists(privateSocket)', '!d.exists(bus) || !d.exists(privateSocket)', "unknown manager"],
   ["unknown-state", helper, 'manager === "stopped" ? "stopped"', '(manager === "stopped" || manager === "unavailable") ? "stopped"', "unknown manager"],

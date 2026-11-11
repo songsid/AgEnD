@@ -1,0 +1,5 @@
+Service installed at: <FIXTURE>/home/.config/systemd/user/com.agend.fleet.service
+❌ Fleet service was installed but could not be started: The systemd user manager cannot be reached (user@1000.service); its state or sockets could not be verified.
+This is a known issue in WSL versions before 2.6.0. For a lasting fix, run wsl --update from Windows, then reopen WSL (see microsoft/WSL#13143).
+Check the user manager first; no restart was attempted.
+sudo systemctl status user@1000.service

@@ -26,3 +26,5 @@ This run uses an existing **Ubuntu 22.04.5 / Node 22.23.3** image with systemd a
 ## Risk and rollback
 
 The extra state reads are existing bounded read-only systemctl probes. If connectivity/state cannot be verified, installation leaves the unit written but refuses activation and asks for inspection. Recovery commands interrupt user services only when the person runs them; the warning is explicit. Reverting this patch restores the old diagnostic/activation behavior; there is no data/schema migration.
+
+R1: [canonical-path classification correction and current checks](r1/README.md). The R0 receipts above retain their original input bindings and execution scope.
