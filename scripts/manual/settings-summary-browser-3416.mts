@@ -32,7 +32,7 @@ try {
     const instances = Object.fromEntries(["first", "second", "third"].map(n => [n, {}]));
     const diff = settingsChangeDiff({ defaults: { cross_instance_visibility: "hidden" }, instances, api_key: "dummy-old" },
       { defaults: { cross_instance_visibility: "full" }, instances, api_key: "dummy-next" }, { operation: "PATCH /api/settings/fleet" })!;
-    const store = new SettingsConfirmationStore({}); stores.push(store);
+    const store = new SettingsConfirmationStore({ audit: () => {} }); stores.push(store);
     const view: any = store.propose({ session: "owned-display-fixture", key: caseName(c) + c.variant, fingerprint: diff.fingerprint,
       section: diff.section, requestedBy: "Fixture browser", source: "web_session", summary: diff.summary, summary_i18n: diff.summary_i18n, bytes: 1,
       current: () => true, unchanged: async () => true, apply: async () => { effects++; return {}; } }).view;
