@@ -22,7 +22,8 @@ if ($RuntimeProfile) {
   Real-Entry $entry
   $security = $entry.GetAccessControl([Security.AccessControl.AccessControlSections]::Access -bor [Security.AccessControl.AccessControlSections]::Owner)
   $owner = $security.GetOwner([Security.Principal.SecurityIdentifier]).Value
-  if ($owner -ne $user.Value -and $owner -ne 'S-1-5-18') { throw 'Runtime profile has a different owner' }
+  # Elevated Windows writes may use the Administrators default owner. That principal is already trusted by the DACL policy.
+  if ($owner -notin $allowed) { throw 'Runtime profile has a different owner' }
   $raw = [Security.AccessControl.RawSecurityDescriptor]::new($security.GetSecurityDescriptorBinaryForm(),0)
   if (-not ($raw.ControlFlags -band [Security.AccessControl.ControlFlags]::DiscretionaryAclPresent) -or $null -eq $raw.DiscretionaryAcl) { throw 'Runtime profile has no private DACL' }
   foreach ($rule in $security.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {

@@ -211,6 +211,6 @@ Runtime 會在那台電腦上讀取 `claude auth status`，對每個 credential 
 
 ## Profile 資料夾的 Windows 權限
 
-Runtime 在讀取 profile 狀態前會檢查 Windows ACL，`--profile`／`AGEND_RUNTIME_HOME` 指定的自訂路徑也一樣。新目錄在建立時就只允許目前 Windows 使用者與 SYSTEM 存取。現有目錄不會被自動更改權限：擁有者必須是目前使用者或 SYSTEM，檔案與子目錄的存取權只可授予目前使用者、SYSTEM 或本機 Administrators。遇到 reparse point、共用子檔案、無法讀取的 ACL，或其他一般帳號可替換的父目錄，就會在讀取狀態前拒絕。父目錄的 ACL 與無關檔案都不會被改寫。
+Runtime 在讀取 profile 狀態前會檢查 Windows ACL，`--profile`／`AGEND_RUNTIME_HOME` 指定的自訂路徑也一樣。新目錄在建立時就只允許目前 Windows 使用者與 SYSTEM 存取。現有目錄不會被自動更改權限：擁有者及檔案、子目錄的存取權都只可屬於目前使用者、SYSTEM 或本機 Administrators。提高權限的 Windows 程序可能以 Administrators 作為新檔案的預設擁有者；它沿用同一組受信任身分，不會因此允許其他一般使用者或服務帳號。遇到 reparse point、共用子檔案、無法讀取的 ACL，或其他一般帳號可替換的父目錄，就會在讀取狀態前拒絕。父目錄的 ACL 與無關檔案都不會被改寫。
 
 每次最多檢查 20,000 個項目、25 秒（PowerShell 程序最多 30 秒），因此很大或很慢的 profile 也可能被拒絕。請選擇新的專用目錄，或由目錄擁有者檢查並限制既有權限；不要把整個家目錄或共用工作目錄當成 profile。舊的共用 profile 會被拒絕，不會自動改權限或搬移內容。這不能隔離同一個 Windows 使用者、SYSTEM 或本機管理員；機器憑證也尚未加密，請勿共用或同步 profile。CLI 既有登入檔、profile 擁有權與移除標記維持原樣。
