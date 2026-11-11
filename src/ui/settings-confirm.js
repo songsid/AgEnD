@@ -64,7 +64,7 @@ let timer = null, polling = false;
 
 function publish() {
   appStore.set({
-    pendingChanges: [...tracked.values()].map(({ view, at, label, retry, displaySummary }) => ({
+    pendingChanges: [...tracked.values()].filter(({ view }) => view.presentation !== "hub-join").map(({ view, at, label, retry, displaySummary }) => ({
       ...view,
       label: label || null,
       // Display only: the server owns the diff, confirmation digest and execution.

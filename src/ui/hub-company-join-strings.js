@@ -34,7 +34,7 @@ register("companyJoin", {
   },
   "zh-TW": {
     title: "連接 Hub", lead: "使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。",
-    address: "Hub 位址或公司連結", addressHint: "貼上 Hub 管理員提供的公司連結，或輸入 Hub 網頁位址。",
+    address: "Hub 位址或公司連結", addressHint: "貼上 Hub 管理員提供的公司連結，或輸入 Hub 網址。",
     fleetName: "Fleet 名稱", defaultFleet: "我的 Fleet", start: "以公司帳號登入", pending: "等待本機授權確認…", loading: "正在讀取連線狀態…",
     joining: "正在連接 Fleet…", awaiting: "請在 Hub 頁面完成公司帳號登入。", saved: "Fleet 已連接", offline: "連線資料已儲存，正在等待 Hub 連線…",
     stop: "取消連接", resume: "恢復這次連接", retry: "再次檢查", held: "連接需要處理", cancelled: "已取消連接",

@@ -2,12 +2,18 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
-import { api, confirmedWrite } from "./settings-confirm.js";
+import { api, confirmedWrite, confirmWithCode } from "./settings-confirm.js";
 import { hj, joinError, joinResponseCode } from "./hub-company-join-strings.js";
 // Own words: a new panel must also work with a cached older company-join dictionary.
 register("companyJoinWait", {
   "en": {
-    startHint: "Enter the Hub address and a Fleet name to continue.",
+    startHint: "Paste the Hub link first.", nameHint: "Enter a Fleet name to continue.",
+    getLink: "On the Hub Administration page, choose Copy colleague connection link and paste it here, or enter the Hub’s https address.",
+    connecting: "Opening Hub sign-in…", codeNeeded: "Your authenticator code is required.", target: "Hub: {0}",
+    codeLead: "You enabled authenticator codes for remote changes. Enter your own 6-digit code here to continue to Hub sign-in.",
+    codeLabel: "Your 6-digit authenticator code", codeGo: "Continue", codeWrong: "That code was not accepted. Try a current code.",
+    codeBusy: "Too many attempts. Wait and try again.", codeUnavailable: "This request cannot be verified now. Check the same connection again.",
+    codeInOriginal: "If your account asks for an authenticator code, enter it on the original Fleet Settings tab. This tab continues automatically.",
     checking: "Checking this connection’s status. Review any local confirmation before continuing.",
     pending: "Local confirmation is required. Hub sign-in has not started.",
     pendingNext: "Choose Review local confirmation and complete the next step shown on that card. This connection then continues here.",
@@ -17,7 +23,13 @@ register("companyJoinWait", {
     leaveWait: "Returning to Settings does not withdraw a submitted confirmation. Use Withdraw on its confirmation card to cancel it.",
   },
   "zh-TW": {
-    startHint: "請先填入 Hub 位址與 Fleet 名稱以繼續。",
+    startHint: "請先貼上 Hub 連結。", nameHint: "請填入 Fleet 名稱以繼續。",
+    getLink: "請在 Hub 管理頁按「複製同仁連線連結」並貼到這裡，或輸入 Hub 的 https 網址。",
+    connecting: "正在開啟 Hub 登入頁面…", codeNeeded: "請輸入你的驗證碼以繼續。", target: "Hub：{0}",
+    codeLead: "你已啟用遠端變更的驗證碼保護。請在這裡輸入你自己的 6 位數驗證碼，繼續前往 Hub 登入。",
+    codeLabel: "你的 6 位數驗證碼", codeGo: "繼續", codeWrong: "驗證碼未通過，請輸入目前的驗證碼。",
+    codeBusy: "嘗試次數過多，請稍候再試。", codeUnavailable: "目前無法驗證這次請求，請再次檢查同一個連接。",
+    codeInOriginal: "若你的帳號要求驗證碼，請在原本的 Fleet 設定分頁輸入。這個分頁會自動繼續。",
     checking: "正在確認這次連接的狀態；請先檢視待完成的本機確認。",
     pending: "需要先完成本機確認，Hub 登入尚未開始。",
     pendingNext: "請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。",
@@ -27,13 +39,15 @@ register("companyJoinWait", {
     leaveWait: "返回設定不會撤回已送出的確認；若要取消，請在該確認卡按「撤回」。",
   },
 });
-const jw = key => t(`companyJoinWait.${key}`);
+const jw = (key, ...args) => t(`companyJoinWait.${key}`, ...args);
 const root = "/api/hub/member/company-join";
 const LOCAL_WAIT_MS = 5 * 60_000; // matches the Settings confirmation ceiling; never renew on a status read
 export const companyJoinEmbedV1 = true;
 export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded = false } = {}) {
-  const notified = useRef(null);
+  const notified = useRef(null), submittedTarget = useRef("");
   const waiting = (() => { try { return new URLSearchParams(location.search).get("joinWait"); } catch { return null; } })();
+  const consentWait = (() => { try { return new URLSearchParams(location.search).get("joinConsent") === "1"; } catch { return false; } })();
+  const [code, setCode] = useState(""), [codeBusy, setCodeBusy] = useState(false), [codeError, setCodeError] = useState(null);
   const [view, setView] = useState(undefined), [error, setError] = useState(null), [busy, setBusy] = useState(false), [pending, setPending] = useState(null), [identityChanged, setIdentityChanged] = useState(false);
   const [bound, setBound] = useState(false), [timedOut, setTimedOut] = useState(false), [notice, setNotice] = useState(null);
   const waitDeadline = useRef(Date.now() + LOCAL_WAIT_MS), reading = useRef(null);
@@ -83,12 +97,12 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   const onPending = (id, change) => {
     setTimedOut(false);
     const remaining = Number(change?.remaining_ms);
-    setPending({ id, deadline: Date.now() + Math.min(LOCAL_WAIT_MS, Number.isFinite(remaining) ? Math.max(0, remaining) : LOCAL_WAIT_MS) });
+    setPending({ id, target: submittedTarget.current, inline: change?.presentation === "hub-join", state: change?.state, totp: change?.totp, deadline: Date.now() + Math.min(LOCAL_WAIT_MS, Number.isFinite(remaining) ? Math.max(0, remaining) : LOCAL_WAIT_MS) });
   };
   const reviewConfirmation = () => {
     const cards = [...document.querySelectorAll(".pending-card[data-pending]")];
     const card = pending ? cards.find(el => el.getAttribute("data-pending") === pending.id) : document.querySelector(".pending-stack");
-    if (!card) { location.assign("/ui/needs"); return; }
+    if (!card) { location.assign("/settings/hub"); return; }
     card.scrollIntoView?.({ block: "center" });
     const control = pending && card.querySelector("button, input, a");
     if (control) control.focus(); else { card.tabIndex = -1; card.focus(); }
@@ -99,7 +113,9 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     const gen = ++token.current; setBusy(true); setError(null); setNotice(null); setPending(null); setIdentityChanged(false);
     const handoffId = crypto.randomUUID();
     // Open the Fleet-owned waiting page during the user gesture, with no opener or cross-origin messaging.
-    globalThis.open("/settings/hub?joinWait=" + encodeURIComponent(handoffId), "_blank", "noopener");
+    let target = ""; try { target = new URL(form.address).origin; } catch {}
+    submittedTarget.current = target;
+    globalThis.open("/settings/hub?joinWait=" + encodeURIComponent(handoffId) + "&joinConsent=1#target=" + encodeURIComponent(target), "_blank", "noopener");
     try {
       const result = await confirmedWrite(root + "/start", { body: { ...form, handoffId }, label: hj("title"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
       if (!live.current || gen !== token.current) return;
@@ -131,8 +147,20 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     } catch { if (live.current && gen === token.current) setError(hj("unknown")); }
     finally { if (live.current && gen === token.current) setBusy(false); }
   };
+  const submitCode = async e => {
+    e.preventDefault(); if (codeBusy || !pending?.inline || pending.totp !== "ready" || !/^\d{6}$/.test(code)) return;
+    const gen = token.current, id = pending.id; setCodeBusy(true); setCodeError(null);
+    try { const r = await confirmWithCode(id, code);
+      if (!live.current || gen !== token.current || pending.id !== id) return;
+      setCode(""); if (r.ok) setPending(p => p?.id === id ? { ...p, state: "applying" } : p);
+      else setCodeError(jw(r.error === "wrong" ? "codeWrong" : r.error === "paused" ? "codeBusy" : "codeUnavailable"));
+    } catch { if (live.current && gen === token.current) setCodeError(jw("codeUnavailable")); }
+    finally { if (live.current && gen === token.current) setCodeBusy(false); }
+  };
+  const target = (() => { try { return waiting ? new URLSearchParams(location.hash.slice(1)).get("target") || "" : pending?.target || new URL(form.address).origin; } catch { return ""; } })();
+  const inlineWait = consentWait || pending?.inline;
   const retired = embedded && !bound && view?.state === "saved" && view.outcomeKnown;
-  const canStart = !waiting && (retired || view === null || view && ["ended", "cancelled"].includes(view.state) && !view.issued && view.outcomeKnown);
+  const canStart = !pending?.inline && !waiting && (retired || view === null || view && ["ended", "cancelled"].includes(view.state) && !view.issued && view.outcomeKnown);
   // The existing connection card owns ready status, sharing and disconnect. Do not duplicate it after handoff.
   if (!waiting && bound && view === null || !retired && view?.state === "saved" && (memberEnabled || view.link === "online") && onSaved) return null;
   const Frame = embedded ? "div" : "section";
@@ -140,7 +168,18 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     ${view === undefined && !waiting && !timedOut && !error ? html`<${Skeleton} variant="form" lines=${4} label=${hj("loading")} />` : null}
     ${error ? html`<${ErrorState} message=${error} onRetry=${read} />` : null}
     ${notice ? html`<p role="status" class="note">${notice}</p>` : null}
-    ${pending || unmatched ? html`<div role="status" class="company-local-wait">
+    ${(pending || unmatched) && inlineWait ? html`<div role="status" class="company-local-wait">
+      <p class="note">${jw(timedOut ? "localExpired" : pending?.state === "pending" ? pending.totp === "ready" ? "codeNeeded" : "codeUnavailable" : "connecting")}</p>
+      ${target ? html`<p class="note">${jw("target", target)}</p>` : null}
+      ${pending?.state === "pending" && pending.totp === "ready" ? html`<form class="form hub-join-code" onSubmit=${submitCode}>
+        <p class="note">${jw("codeLead")}</p><label class="field"><span>${jw("codeLabel")}</span><input value=${code} inputmode="numeric" autocomplete="one-time-code" maxlength="6" disabled=${codeBusy} onInput=${e => setCode(e.target.value)} /></label>
+        <div class="field-row"><button type="submit" class="btn btn-primary" disabled=${codeBusy || !/^\d{6}$/.test(code)}>${jw("codeGo")}</button></div>
+        ${codeError ? html`<p class="note" role="alert">${codeError}</p>` : null}
+      </form>` : pending?.state === "pending" ? html`<p class="note">${jw("codeUnavailable")}</p>` : null}
+      ${waiting ? html`<p class="note">${jw("codeInOriginal")}</p>` : null}
+      ${timedOut ? html`<button type="button" class="btn" onClick=${read}>${hj("retry")}</button>` : null}
+    </div>` : null}
+    ${(pending || unmatched) && !inlineWait ? html`<div role="status" class="company-local-wait">
       <p class="note">${jw(timedOut ? "localExpired" : !pending && (view === undefined || error) ? "checking" : "pending")}</p>
       <p class="note">${jw("pendingNext")}</p>
       <div class="field-row"><button type="button" class="btn btn-sm btn-primary" onClick=${reviewConfirmation}>${jw("reviewConfirmation")}</button>
@@ -149,9 +188,9 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
       ${waiting ? html`<p class="note">${jw("leaveWait")}</p>` : null}
     </div>` : null}
     ${canStart ? html`<form class="form" onSubmit=${start}>
-      <label class="field" for="hubCompanyAddress"><span>${hj("address")}</span><input id="hubCompanyAddress" type="text" value=${form.address} autocomplete="off" spellcheck=${false} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))} /><small class="note">${hj("addressHint")}</small></label>
+      <label class="field" for="hubCompanyAddress"><span>${hj("address")}</span><input id="hubCompanyAddress" type="text" value=${form.address} autocomplete="off" spellcheck=${false} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))} /><small class="note">${jw("getLink")}</small></label>
       <label class="field" for="hubCompanyFleetName"><span>${hj("fleetName")}</span><input id="hubCompanyFleetName" value=${form.label} maxlength="120" onInput=${e => setForm(f => ({ ...f, label: e.target.value }))} /></label>
-      <p class="note">${hj("firstUse")}</p>${!form.address.trim() || !form.label.trim() ? html`<p class="note" id="hubCompanyStartHint">${jw("startHint")}</p>` : null}<div class="field-row"><button class="btn btn-primary" type="submit" aria-describedby=${!form.address.trim() || !form.label.trim() ? "hubCompanyStartHint" : undefined} disabled=${busy || !form.address.trim() || !form.label.trim()}>${hj("start")}</button></div>
+      <p class="note">${hj("firstUse")}</p>${!form.address.trim() || !form.label.trim() ? html`<p class="note" id="hubCompanyStartHint">${jw(!form.address.trim() ? "startHint" : "nameHint")}</p>` : null}<div class="field-row"><button class="btn btn-primary" type="submit" aria-describedby=${!form.address.trim() || !form.label.trim() ? "hubCompanyStartHint" : undefined} disabled=${busy || !form.address.trim() || !form.label.trim()}>${hj("start")}</button></div>
       ${identityChanged ? html`<p class="note">${hj("repairLead")}</p><button class="btn btn-sm" type="button" disabled=${busy || !form.address.trim()} onClick=${repair}>${hj("repair")}</button>` : null}
     </form>` : null}
     ${view && !retired && (!waiting || view.handoffId === waiting) ? html`<div role="status"><strong>${hj(view.state === "saved" ? view.link === "online" ? "saved" : "joining" : view.state === "awaiting-sign-in" ? "awaiting" : view.state === "cancelled" ? "cancelled" : view.state === "held" || view.state === "ended" ? "held" : "joining")}</strong>

@@ -1,3 +1,4 @@
+import { register, t } from "/assets/app-i18n.js";
 /** Hub-only join page and Administration contents; the shell remains panel-hub's. */
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
@@ -79,6 +80,11 @@ export function HubCompanyJoinPage({ session }) {
     ${error ? html`<${ErrorState} message=${error} onRetry=${() => { setError(null); retry(); }} />` : null}
   </section></div></div>`;
 }
+register("companyJoin", {
+  en: { "guide.title": "How colleagues connect", "guide.one": "Copy the colleague connection link here.", "guide.two": "In their Fleet’s Settings → Hub, paste the link and choose {0}.", "guide.three": "Sign in on the Hub and choose Sign in and connect Fleet. Allowed groups need no further approval." },
+  "zh-TW": { "guide.title": "同仁如何連接", "guide.one": "在這裡複製同仁連線連結。", "guide.two": "在自己的 Fleet「設定 → Hub」貼上連結，按「{0}」。", "guide.three": "在 Hub 登入並按「登入並連接 Fleet」。允許的群組不需要另外核准。" },
+});
+const guide = (key, ...args) => t(`companyJoin.guide.${key}`, ...args);
 export const companyJoinAdminEntryV1 = entryWords.companyAdminStringsV1 === true;
 export function CompanyJoinAdminCard({ entry = false, groups = false } = {}) {
   const [view, setView] = useState(null), [error, setError] = useState(null), [busy, setBusy] = useState(false), [copied, setCopied] = useState(false);
@@ -110,6 +116,7 @@ export function CompanyJoinAdminCard({ entry = false, groups = false } = {}) {
     <p class="note">${hj("accessLead")}</p>
     <div class="field-row">${groups ? html`<a class="btn btn-primary" href="/ui/hub/admin?view=groups">${hj("groupOpen")}</a>` : null}
       <button type="button" class="btn" disabled=${!view?.enabled || !view?.companyLink || busy || !!error} aria-describedby="hubColleagueLinkHint" onClick=${async () => { try { await navigator.clipboard.writeText(view.companyLink); if (live.current) setCopied(true); } catch { if (live.current) setError(hj("copyFailed")); } }}>${hj(copied ? "copied" : "colleagueCopy")}</button></div>
+    <div class="form hub-company-guide"><h4>${guide("title")}</h4><ol class="note"><li>${guide("one")}</li><li>${guide("two", hj("start"))}</li><li>${guide("three")}</li></ol></div>
     <p class="note" id="hubColleagueLinkHint">${hj(view ? view.enabled ? "colleagueHint" : "offHint" : "loading")}</p>
     ${!view && !error ? html`<${Skeleton} variant="form" lines=${3} />` : null}
     ${error ? html`<${ErrorState} message=${error} onRetry=${read} />` : null}

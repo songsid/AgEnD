@@ -46,6 +46,8 @@ export interface SettingsPendingView {
   source: "web_session" | "public_link" | "setup_session" | "agent_request";
   execution?: { phase: "queued" | "running" | "cleanup"; job_id?: string; reason_code?: string };
   summary: readonly string[];
+  /** Display-only dedicated inline flow; no General confirmation is posted. */
+  presentation?: "hub-join";
   /**
    * How it is confirmed. #2868: "posting" while the General card is being sent (what the save itself answers), then
    * "chat" with `where` the card was posted (a platform and its connection), or "host_cli" when no General could take
@@ -78,6 +80,8 @@ export interface SettingsChangeProposal {
   requestedBy: string;
   source: SettingsPendingView["source"];
   summary: readonly string[];
+  /** Display-only dedicated inline flow; no General confirmation is posted. */
+  presentation?: "hub-join";
   bytes: number;
   remainingMs?: number;
   requestFingerprint?: string;
@@ -196,12 +200,12 @@ export class SettingsConfirmationStore {
       snapshotFingerprint: settingsFingerprint(proposal.snapshot?.() ?? null),
       deadline: this.now() + ttl, requestFingerprint: proposal.requestFingerprint, proposal, view: { id, state: "pending", section: proposal.section,
         requested_at: requested, requested_by: this.display(proposal.requestedBy), expires_at: requested + ttl,
-        source: proposal.source, summary: [...proposal.summary], confirmation: { kind: this.options.notify ? "posting" : "host_cli", code: id }, outcome: null } };
+        source: proposal.source, summary: [...proposal.summary], ...(proposal.presentation ? { presentation: proposal.presentation } : {}), confirmation: { kind: this.options.notify && !proposal.presentation ? "posting" : "host_cli", code: id }, outcome: null } };
     this.records.set(id, entry); this.keys.set(index, id); this.arm(entry); this.audit("requested", entry); this.changed(entry);
     // Notification may fail or arrive late. Neither admits a configuration write. Once it is over, a request no General
     // card attached to says so: the host's command is then the way (still pending: a decided one keeps its own kind).
     let reason: SettingsNoCardReason | undefined;
-    void Promise.resolve().then(() => this.options.notify?.(this.snapshot(entry))).then(r => { if (typeof r === "string") reason = r; }, () => { reason = "post_failed"; this.audit("notification_failed", entry); })
+    void Promise.resolve().then(() => proposal.presentation ? undefined : this.options.notify?.(this.snapshot(entry))).then(r => { if (typeof r === "string") reason = r; }, () => { reason = "post_failed"; this.audit("notification_failed", entry); })
       .finally(() => { if (entry.view.state === "pending" && entry.view.confirmation.kind === "posting") entry.view.confirmation = { kind: "host_cli", code: id, ...(reason ? { reason } : {}) }; });
     return { view: this.snapshot(entry), reused: false };
   }

@@ -1,4 +1,5 @@
 /** Start's narrowly scoped host consent and detached, private requester/confirmer capability. */
+import { FleetManager } from "../src/fleet-manager.js";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
@@ -10,14 +11,14 @@ import { companyJoinSession } from "../src/hub/join/fleet-authority.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 const stores: SettingsConfirmationStore[] = [];
 afterEach(() => { for (const store of stores.splice(0)) store.close(); });
-async function harness(hostHere: boolean, feature = true) {
-  let requester = true, confirmer = true;
+async function harness(hostHere: boolean, feature = true, policy = true) {
+  let requester = true, confirmer = true, policyCurrent = policy;
   const session = { ownerKey: {}, sessionId: "a".repeat(64), authorityEpoch: 1, hostHere, current: () => requester };
   const notify = vi.fn(), store = new SettingsConfirmationStore({ audit: vi.fn(), notify }); stores.push(store);
   const captured: any[] = [];
   const baseline = { config: { defaults: {}, instances: {} } as any, classic: {}, fingerprint: "unchanged" };
   const gate = new SettingsHttpConfirmation(store, { principal: () => ({ id: session.sessionId, label: "Host", source: "web_session", current: () => requester,
-    localAdmin: () => requester, localSession: session }), baseline: async () => baseline, snapshot: () => "constant", directCompanyJoin: feature, selfConfirm: () => null });
+    localAdmin: () => requester, localSession: session }), baseline: async () => baseline, snapshot: () => "constant", directCompanyJoin: feature, companyJoinPolicy: () => policyCurrent, totp: { state: () => "ready", confirm: () => ({ error: "wrong" }) }, selfConfirm: () => null });
   const req = new EventEmitter() as any; req.method = "POST"; req.url = "/api/hub/member/company-join/start"; req.headers = { cookie: "private", "idempotency-key": "start-once" }; req.destroy = () => {};
   const response = new Promise<any>(resolve => {
     const res = { destroyed: false, headersSent: false, setHeader: vi.fn(), writeHead() { this.headersSent = true; }, end(text: string) { resolve(JSON.parse(text)); } } as any;
@@ -28,7 +29,7 @@ async function harness(hostHere: boolean, feature = true) {
     queueMicrotask(() => { req.emit("data", Buffer.from(JSON.stringify({ address: "https://hub.example.test", label: "My Fleet" }))); req.emit("end"); });
   });
   const first = await response;
-  return { first, store, session, notify, captured, lose: () => { requester = false; }, deny: () => { confirmer = false; },
+  return { first, store, session, notify, captured, revokePolicy: () => { policyCurrent = false; }, lose: () => { requester = false; }, deny: () => { confirmer = false; },
     decide: () => store.decide(first.pending_change.id, "confirm", { label: "General admin", current: () => confirmer }) };
 }
 describe("company Start Settings authority", () => {
@@ -43,22 +44,42 @@ describe("company Start Settings authority", () => {
     expect(companyJoinSession(req({ "x-forwarded-for": "192.0.2.2" }), input)?.hostHere).toBe(false);
     const publicReq = req(); bindGatewayRequest(publicReq, { surface: "gateway", exposureId: "test", expectedOrigin: "https://public.example", isCurrent: () => true });
     expect(companyJoinSession(publicReq, input)).toBeNull();
+    for (const tier of ["guest", "read"] as const) {
+      const other = sessions.create({ tier, surface: "local", owner: { adapterId: "test", userId: tier }, label: tier, tokenEpoch: tokenEpoch(token) });
+      expect(companyJoinSession(req({ cookie: `agend_session=${other.sessionId}` }), input)).toBeNull();
+    }
     sessions.revokeByHandle(issued.record.handle); expect(own.current()).toBe(false);
   });
-  it("the original host Start auto-claims before General notification and its private capability remains current after Settings completes", async () => {
-    const h = await harness(true);
+  it.each([true, false])("a signed-in Fleet admin Start is consent, with no held card or General wait (host=%s)", async host => {
+    const h = await harness(host);
+    expect(h.first.pending_change).toMatchObject({ presentation: "hub-join" });
+    expect(h.first.pending_change.state).not.toBe("pending");
     await vi.waitFor(() => expect(h.store.get(h.first.pending_change.id, h.session.sessionId)?.state).toBe("applied"));
     expect(h.notify.mock.calls.some(([view]) => view.state === "pending")).toBe(false); expect(h.captured).toHaveLength(1);
     const c = h.captured[0]; expect(c.headers.cookie).toBeUndefined(); expect(c.authority.session).toBe(h.session);
     expect(c.execution.current()).toBe(false); expect(c.authority.confirmedCurrent()).toBe(true); expect(c.authority.session.current()).toBe(true);
+    h.revokePolicy(); expect(c.authority.confirmedCurrent()).toBe(false);
     h.lose(); expect(c.authority.session.current()).toBe(false); expect(c.authority.confirmedCurrent()).toBe(false);
   });
-  it.each([[false, true], [true, false]])("nonhost or a composition without the new scoped feature remains held (%s, %s)", async (host, feature) => {
-    const h = await harness(host, feature); await Promise.resolve();
+  it("a composition without the scoped feature keeps its previous confirmation path", async () => {
+    const h = await harness(true, false); await Promise.resolve();
     expect(h.first.pending_change.state).toBe("pending"); expect(h.captured).toHaveLength(0); expect(h.notify).toHaveBeenCalledOnce();
     const done = await h.decide(); expect(done.state).toBe("applied");
     const c = h.captured[0]; expect(c.authority.session).toBe(h.session); expect(c.execution.current()).toBe(false);
     expect(c.authority.confirmedCurrent()).toBe(true); h.deny(); expect(c.authority.confirmedCurrent()).toBe(false);
+  });
+  it.each([true, false])("an enforced admin code stays inline and never posts a General card (host=%s)", async host => {
+    const h = await harness(host, true, false); await Promise.resolve();
+    expect(h.first.pending_change).toMatchObject({ state: "pending", presentation: "hub-join", totp: "ready" });
+    expect(h.captured).toHaveLength(0); expect(h.notify).not.toHaveBeenCalled();
+  });
+  it.each([false, true])("company consent retains this admin’s enforced code even with message authority disabled (%s)", enforced => {
+    const req = {} as any, role = { ok: true, onHost: false, actor: { adapter_id: "test", user_id: "admin" } };
+    const owner = { settingsRole: vi.fn(() => ({ role })), strictFor: vi.fn(() => enforced) };
+    const allowed = (FleetManager.prototype as any).settingsCompanyJoinAllowed.call(owner, req);
+    expect(allowed).toBe(!enforced); expect(owner.settingsRole).toHaveBeenCalledWith(req, { ignoreSwitch: true });
+    owner.settingsRole.mockReturnValue({ role: { ok: false } } as any);
+    expect((FleetManager.prototype as any).settingsCompanyJoinAllowed.call(owner, req)).toBe(false);
   });
   it("company Start stays outward-Hub sensitive and rejects browser-supplied authority/origin/redirect fields", () => {
     const context = { config: { defaults: {}, instances: {} } as any, classic: {} };

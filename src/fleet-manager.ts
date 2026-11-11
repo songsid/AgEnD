@@ -3447,6 +3447,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       directAgentCreation: true,
       directHostInstall: true,
       directCompanyJoin: true,
+      companyJoinPolicy: req => this.settingsCompanyJoinAllowed(req),
       job: async id => {
         const settlement = this.settingsJobSettlements.get(id);
         if (!settlement) return false;
@@ -3512,6 +3513,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (chat && destinations.length) return this.settingsWebConfirmedNotice(view, affected, name, chat.platform);
       },
     };
+  }
+  /** Company Start is the signed-in admin’s consent; a personal enforced remote code still applies. */
+  private settingsCompanyJoinAllowed(req: IncomingMessage): boolean {
+    const { role } = this.settingsRole(req, { ignoreSwitch: true });
+    return role.ok && (role.onHost || !this.strictFor(role.actor));
   }
   /**
    * AGEND-122 (Prism P2): whether the ordinary New Agent shortcut — created at once, web-confirmed, with no held change — is open to
