@@ -33,7 +33,7 @@ def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
 def digesttree(root):
  rows=[(str(p.relative_to(root)),hashlib.sha256(p.read_bytes()).hexdigest()) for p in sorted(root.rglob('*')) if p.is_file()]
  return {'files':len(rows),'bindings':{hashlib.sha256(''.join(p+'\0'+d+'\n' for p,d in rows).encode()).hexdigest():['dist/']}}
-files=['src/hub/init/wizard.ts','src/hub/init/prompt.ts','src/hub/init/text.ts','tests/hub-init-setup-bugs-2917.test.ts']+list(map(str,sorted(Path('scripts/manual/hub-wizard-bugs-2917').glob('*'))))
+files=['src/hub/init/wizard.ts','src/hub/init/prompt.ts','src/hub/init/text.ts','tests/hub-init-setup-bugs-2917.test.ts']+[str(p) for p in sorted(Path('scripts/manual/hub-wizard-bugs-2917').glob('*')) if p.is_file()]
 bindings={}
 for f in files:bindings.setdefault(hashlib.sha256(Path(f).read_bytes()).hexdigest(),[]).append(f)
 data={'baselineCommit':base,'candidateCommit':git('rev-parse','HEAD'),'candidateTree':git('rev-parse','HEAD^{tree}'),'trackedDirty':bool(git('status','--porcelain','--untracked-files=no')),'inputs':bindings,'baselineArtifacts':digesttree(Path(dist)),'candidateArtifacts':digesttree(Path('dist')),'imageId':subprocess.check_output(['docker','image','inspect',image,'--format','{{.Id}}'],text=True).strip()}
