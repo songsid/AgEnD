@@ -31,3 +31,5 @@ node scripts/manual/runtime-assets-2965.mjs
 The smoke verifies the official tarball integrity, reconstructs the old builder's unchanged node-pty assets, and compares all output bytes and both Runtime ZIP SHA-256 values with a fixed fixture version. The xterm assets and Runtime program modules are the same inputs on both sides. Run only on an owned checkout; no provider, account, Runtime process or Windows host is contacted.
 
 N7 custom-profile ACL is a separate change. N8's historical PATH-selected staging interpreter concern is not claimed fixed by this build-copy change. No system Node installation is changed. Rollback restores the old development dependency and builder; there is no data or protocol migration.
+
+A nonblocking open on platforms that expose `O_NONBLOCK` prevents a source swapped for a FIFO from waiting indefinitely before descriptor checks. The opened descriptor must still match the previously checked regular file; nonblocking mode is never permission to read a special file. The real FIFO regression releases the old blocking reader in `finally` before removing its owned fixture.

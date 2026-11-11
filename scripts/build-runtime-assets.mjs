@@ -14,7 +14,7 @@ const sameFile = (a, b) => ['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs', 'mode'].
 export async function readRuntimeAsset(input) {
   const before = await lstat(input, { bigint: true });
   if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(MAX_ASSET_BYTES)) throw Error('Unsafe runtime pane asset');
-  const handle = await open(input, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  const handle = await open(input, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   try {
     if (!sameFile(before, await handle.stat({ bigint: true }))) throw Error('Runtime pane asset identity changed');
     const bytes = Buffer.alloc(Number(before.size) + 1); let used = 0;

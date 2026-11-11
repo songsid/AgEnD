@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, statSync, utimesSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, statSync, utimesSync, constants, openSync, closeSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -44,6 +45,23 @@ it("refuses an inode replacement with the same size and restored mtime between i
   hooks.lstat = path => { if (path !== f.input) return; hooks.lstat = undefined; renameSync(f.input, f.input + ".old"); writeFileSync(f.input, verified); utimesSync(f.input, before.atime, before.mtime); };
   await expect(copy(f.out, f.assets, f.source)).rejects.toThrow(/changed|identity|unsafe/i);
   expect(statSync(f.input).size).toBe(before.size); expect(statSync(f.input).ino).not.toBe(before.ino);
+});
+it.skipIf(process.platform === "win32")("refuses a regular source swapped for a real FIFO without waiting for a writer", async () => {
+  const f = fixture("fifo");
+  hooks.lstat = path => { if (path !== f.input) return; hooks.lstat = undefined; renameSync(f.input, f.input + ".old"); execFileSync("mkfifo", [f.input]); };
+  const flight = copy(f.out, f.assets, f.source).then(() => ({ state: "copied", error: "" }), error => ({ state: "refused", error: String(error) }));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const result = await Promise.race([flight, new Promise<{ state: string; error: string }>(resolve => { timer = setTimeout(() => resolve({ state: "waiting for writer", error: "" }), 1000); })]);
+    expect(statSync(f.input).isFIFO()).toBe(true);
+    expect(result.state).toBe("refused"); expect(result.error).toMatch(/changed|identity|unsafe/i);
+    expect(existsSync(join(f.out, "node-pty", file))).toBe(false);
+  } finally {
+    if (timer) clearTimeout(timer);
+    // Release a regressed blocking open before asserting cleanup: no orphan writer/reader or unfinished copy.
+    const writer = statSync(f.input).isFIFO() ? openSync(f.input, constants.O_RDWR | constants.O_NONBLOCK) : undefined;
+    try { await flight; } finally { if (writer !== undefined) closeSync(writer); }
+  }
 });
 it("refuses a same-inode rewrite even when size and mtime are restored", async () => {
   const f = fixture("ctime"), before = statSync(f.input, { bigint: true });
