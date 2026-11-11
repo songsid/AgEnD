@@ -7,11 +7,11 @@ const link="https://hub.example.test/join-info#hub=ZXhhY3QtaWRlbnRpdHk",invite="
 const until=async(fn:()=>unknown)=>{for(let i=0;i<100&&!fn();i++)await settle(5);expect(fn()).toBeTruthy();};
 beforeAll(async()=>{const p=page();panel=await import("/ui/js/panel-hub.js");company=await import("/ui/js/hub-company-join.js");clients=await import("/ui/js/hub-client.js");words=await import("/assets/app-i18n.js");p.restore();});
 afterEach(async()=>{for(const p of pages.splice(0)){await p.unmount();p.restore();}panel.resetHubSession();clients.setHubClient(null);vi.restoreAllMocks();vi.unstubAllGlobals();});
-async function fixture(o:{lang?:string;enabled?:boolean;admin?:boolean;marked?:boolean;groups?:boolean;held?:Promise<any>;card?:boolean;retainedLink?:boolean;pendingManual?:boolean}={}){
+async function fixture(o:{lang?:string;enabled?:boolean;admin?:boolean;marked?:boolean;groups?:boolean;held?:Promise<any>;card?:boolean;retainedLink?:boolean;pendingManual?:boolean;fleets?:any[]}={}){
  const p=page({url:"https://hub.example.test/ui/hub/admin",storage:{agend_lang:o.lang??"en"}});pages.push(p);words.setLang(o.lang??"en");let enabled=o.enabled??true;
  const calls:any[]=[],copy=vi.fn(async()=>{});vi.stubGlobal("navigator",{clipboard:{writeText:copy}});
  const session={ok:true,signedIn:true,displayName:"Ada Admin",login:"ada",admin:o.admin!==false,csrf:"exact-csrf",features:[...(o.marked===false?[]:["company-join-v1"]),...(o.groups===false?[]:["group-policy-v1"])]};
- const c={stub:false,web:true,groupPolicyV1:true,onSignedOut:()=>()=>{},session:vi.fn(async()=>session),rooms:async()=>({ok:true,rooms:[]}),catalog:async()=>({ok:true,askable:[]}),adminOverview:vi.fn(async()=>({ok:true,fleets:[],pairings:o.pendingManual?[{id:"p",ownerConfirmed:true,adminApproved:false,fingerprint:"f".repeat(64)}]:[]})),createPairing:vi.fn(async()=>({ok:true,code:"PAIR1234",expiresAt:Date.now()+60000,memberOrigin:"https://member.example.test"})),
+ const c={stub:false,web:true,groupPolicyV1:true,onSignedOut:()=>()=>{},session:vi.fn(async()=>session),rooms:async()=>({ok:true,rooms:[]}),catalog:async()=>({ok:true,askable:[]}),adminOverview:vi.fn(async()=>({ok:true,fleets:o.fleets??[],pairings:o.pendingManual?[{id:"p",ownerConfirmed:true,adminApproved:false,fingerprint:"f".repeat(64)}]:[]})),createPairing:vi.fn(async()=>({ok:true,code:"PAIR1234",expiresAt:Date.now()+60000,memberOrigin:"https://member.example.test"})),
   groupPolicy:vi.fn(async()=>({ok:true,groupPolicyV1:true,supported:true,binding:"ready",policy:{realm:"example",generation:"g1",revision:3,state:"never-enabled",groups:[],denies:[]},paused:[]})),
   searchGroups:vi.fn(async()=>({ok:true,groups:[],truncated:false})),resolveGroup:vi.fn(),previewGroupPolicy:vi.fn(),saveGroupPolicy:vi.fn()};clients.setHubClient(c);
  vi.stubGlobal("fetch",vi.fn(async(path:string,init:any={})=>{calls.push({path,init});let body:any;
@@ -67,6 +67,20 @@ describe("Administration leads with existing group and individual connection con
  });
  it("missing company feature retains the earlier group/manual entry and performs no company read",async()=>{
   const f=await fixture({marked:false});await until(()=>f.p.root.querySelector(".hub-groups-entry"));expect(f.p.root.querySelector(".hub-admin-access")).toBeNull();expect(f.p.root.querySelector("details.hub-admin-manual")).toBeNull();expect(f.calls).toEqual([]);
+ });
+ it.each(["en","zh-TW"])("A-L12: the fleet list — each row titled by its label, the owner below; active first; revoked folded with their count (%s)",async lang=>{
+  const own=(name:string,login:string)=>({realm:"example",objectId:login,name,login});
+  const fleets=[{id:"r1",status:"revoked",label:"old-box",owner:own("Bob","bob")},{id:"a1",status:"active",label:"build-box",owner:own("Carol","carol")},
+    {id:"s1",status:"suspended",label:null,owner:own("Dave","dave")},{id:"r2",status:"revoked",label:"older-box",owner:own("Bob","bob")}];
+  const f=await fixture({lang,fleets});await until(()=>f.p.root.querySelector(".hub-fleet-list"));
+  const list=f.p.root.querySelector(".hub-fleet-list");
+  expect(list.querySelector("h3").textContent).toBe(lang==="en"?"Paired fleets · 2":"已配對的 Fleet · 2");
+  const folded0=list.querySelector("details.hub-fleets-revoked"),inFold=new Set([...folded0.querySelectorAll("[data-fleet]")]);
+  const shown=[...list.querySelectorAll("[data-fleet]")].filter((r:any)=>!inFold.has(r)).map((r:any)=>r.getAttribute("data-fleet"));expect(shown).toEqual(["a1","s1"]);
+  const first=list.querySelector('[data-fleet="a1"]');expect(first.querySelector("strong").textContent).toBe("build-box");expect(first.querySelector("small").textContent).toBe("Carol · carol");
+  expect(list.querySelector('[data-fleet="s1"] strong').textContent).toBe(lang==="en"?"Dave's fleet":"Dave 的 Fleet");   // no label (older row): the owner's
+  const folded=list.querySelector("details.hub-fleets-revoked");expect(folded.open).toBeFalsy();expect(folded.querySelector("summary").textContent).toBe(lang==="en"?"Revoked (2)":"已撤銷（2）");
+  expect([...folded.querySelectorAll("[data-fleet]")].map((r:any)=>r.getAttribute("data-fleet"))).toEqual(["r1","r2"]);
  });
  it("a non-admin gets no controls or company lookup",async()=>{const f=await fixture({admin:false});expect(f.p.root.querySelector(".hub-admin-access")).toBeNull();expect(f.calls).toEqual([]);});
  it("old panels using the default component retain its existing company card",async()=>{
