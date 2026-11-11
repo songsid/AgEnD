@@ -221,19 +221,19 @@ function subjectOf(s: unknown): string | undefined {
   const t = oneLine(s);
   return t ? bounded(t, SUBJECT_MAX).text : undefined;
 }
-function inputOf(step: LogStep, input: unknown): void {
+export function inputOf(step: LogStep, input: unknown): void {
   if (input == null || input === "") return;
   const b = argsText(input, INPUT_MAX);
   step.input = b.text;
   if (b.cut) step.inputCut = b.cut;
 }
-function bodyOf(step: LogStep, text: string, max: number): void {
+export function bodyOf(step: LogStep, text: string, max: number): void {
   const b = bounded(text, max);
   step.body = b.text;
   if (b.cut) step.bodyCut = b.cut;
   else delete step.bodyCut;
 }
-const tsOf = (v: unknown): number => { const t = typeof v === "string" ? Date.parse(v) : NaN; return Number.isFinite(t) ? t : 0; };
+export const tsOf = (v: unknown): number => { const t = typeof v === "string" ? Date.parse(v) : NaN; return Number.isFinite(t) ? t : 0; };
 
 /* ------------------------------------------------------------------ anchors (AGEND-181) */
 
@@ -254,7 +254,7 @@ export function replyResultId(text: string): string | undefined {
   return /"messageId"\s*:\s*"([^"\\]{1,80})"/.exec(text)?.[1];
 }
 /** A `reply` call's anchor from its arguments: the masked start of its text. */
-function replyAnchor(input: unknown): StepAnchor | undefined {
+export function replyAnchor(input: unknown): StepAnchor | undefined {
   let v = input;
   if (typeof v === "string" && /^\s*[[{]/.test(v)) { try { v = JSON.parse(v); } catch { return undefined; } }
   const text = v && typeof v === "object" ? (v as Record<string, unknown>).text : undefined;
@@ -268,7 +268,7 @@ const REPLY_RESULT_SHAPE = /\{\s*"chatId"\s*:\s*"[^"\\]{1,80}"\s*,\s*"messageId"
  * it is a reply's complete result (`REPLY_RESULT_SHAPE`) — another tool's result that merely mentions a `chatId` is not —
  * and the page merges it into the call it already shows, by id.
  */
-function replyResult(step: LogStep, text: string): void {
+export function replyResult(step: LogStep, text: string): void {
   if (step.kind !== "tool") return;
   let id: string | undefined;
   if (step.tool) { if (!isReplyTool(step.tool)) return; id = replyResultId(text); }
@@ -321,13 +321,27 @@ export function describeTool(name: string, input: unknown): { cat: StepCat; subj
     }
     // kiro (classic and TUI names)
     case "fs_read": case "read": { const ops = inp.operations as Array<Record<string, unknown>> | undefined; return { cat: "read", subject: subjectOf(ops?.[0]?.path ?? inp.path) }; }
-    case "fs_write": case "write": return { cat: "edit", subject: subjectOf(inp.path) };
+    case "fs_write": case "write": return { cat: "edit", subject: subjectOf(inp.path ?? inp.file_path) };
     case "execute_bash": case "execute_cmd": return { cat: "run", subject: subjectOf(inp.command) };
     case "grep": return { cat: "search", subject: subjectOf([inp.pattern, inp.path].filter(Boolean).join("  in  ")) };
     case "glob": return { cat: "search", subject: subjectOf(inp.pattern) };
     case "web_fetch": case "web_search": return { cat: "web", subject: subjectOf(inp.url ?? inp.query) };
     case "todo_list": return { cat: "plan", subject: subjectOf(inp.task_list_description) };
     case "task": case "subagent": case "use_subagent": return { cat: "agent", subject: subjectOf(inp.task ?? inp.content) };
+    // antigravity (agy)
+    case "run_command": return { cat: "run", subject: subjectOf(inp.CommandLine) };
+    case "write_file": case "edit_file": return { cat: "edit", subject: subjectOf(inp.Path) };
+    case "manage_task": return { cat: "plan", subject: subjectOf(inp.Action) };
+    case "search_web": return { cat: "web", subject: subjectOf(inp.query) };
+    // grok (and agy's read_file, which names its argument `Path`)
+    case "read_file": return { cat: "read", subject: subjectOf(inp.target_file ?? inp.Path ?? inp.path) };
+    case "run_terminal_command": case "monitor": return { cat: "run", subject: subjectOf(inp.command) };
+    case "search_replace": return { cat: "edit", subject: subjectOf(inp.file_path) };
+    case "list_dir": return { cat: "read", subject: subjectOf(inp.target_directory) };
+    case "todo_write": { const n = Array.isArray(inp.todos) ? inp.todos.length : 0; return { cat: "plan", subject: n ? `${n}` : undefined }; }
+    case "spawn_subagent": return { cat: "agent", subject: subjectOf(inp.description) };
+    case "get_command_or_subagent_output": case "kill_command_or_subagent": return { cat: "run", subject: subjectOf(inp.task_id ?? inp.task_ids) };
+    case "search_tool": return { cat: "search", subject: subjectOf(inp.query) };
   }
   // AgEnD's own tools, as kiro names them (no mcp__ prefix): messaging, not work.
   if (AGEND_BARE.has(name)) return { cat: "message", subject: subjectOf(inp.target_instance ?? inp.instance_name ?? inp.name) };
@@ -345,7 +359,7 @@ export interface ParserOpts {
   thinking?: boolean;
 }
 
-abstract class StepParser {
+export abstract class StepParser {
   constructor(protected readonly opts: ParserOpts = {}) {}
   protected turn = "";
   private open = new Map<string, LogStep>();

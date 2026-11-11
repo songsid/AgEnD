@@ -545,6 +545,7 @@ import { estimateCapacity, type CapacityEstimate, type CapacityHour } from "./us
 import { covered, hourSources } from "./usage-rollup.js";
 import { KEEP_DAYS, type HourTotals } from "./cache-ledger.js";
 import { ratesFor } from "./cache-prices.js";
+import { antigravityTranscriptPath, grokUpdatesPath } from "./log-transcript-paths.js";
 
 /** #2163: `classic` — a ClassicBot room's agent: only the skills about its own look and the dashboard. */
 type ManagedSkillRole = "general" | "worker" | "classic";
@@ -6623,7 +6624,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private compactWatchService: CompactWatch | null = null;
   private get compactWatch(): CompactWatch {
     return this.compactWatchService ??= new CompactWatch({
-      source: (name) => { const src = this.logSource(name); return { path: src.path, format: src.format }; },
+      source: (name) => { const src = this.logSource(name); return { path: src.path, format: src.format === "claude" || src.format === "codex" ? src.format : null }; },
       // The launch that runs it now (the same value the daemon sends with raw_paste_written).
       owner: (name) => {
         const daemon = this.lifecycle.daemons.get(name);
@@ -6670,6 +6671,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { backend, path, format: "claude", ...(path ? {} : { reason: "no_transcript" }) };
     }
     if (backend === "codex") return { backend, path: live, format: "codex", ...(live ? {} : { reason: "not_running" }) };
+    // AGEND-181 PR2: agy and grok keep their records per working directory (log-transcript-paths.ts); a stopped instance's last
+    // work is still there. Classic rooms have no working directory of their own: nothing to read.
+    if (backend === "antigravity" || backend === "grok") {
+      const cwd = config ? (config.working_directory || this.getInstanceDir(name)) : null;
+      const path = cwd ? (backend === "antigravity" ? antigravityTranscriptPath(cwd) : grokUpdatesPath(cwd)) : null;
+      return { backend, path, format: backend, ...(path ? {} : { reason: "no_transcript" }) };
+    }
     if (backend === "kiro-cli") {
       // #1218 PR4: events only until the launch's root and the current conversation are both proven (kiro-log-gate.ts);
       // the reason names which proof is missing. With today's proofs the gate never opens, and nothing is read for kiro:
