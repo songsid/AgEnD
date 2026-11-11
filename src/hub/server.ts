@@ -10,8 +10,7 @@ import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_PATHS, par
 import { HubSocket, type HubLinkCloseCode } from "./socket.js";
 import { HubProtocolError, parseStrictJson } from "./validation.js";
 import { HubPairingService } from "./pairing.js";
-import { readPrivateFile } from "./private-files.js";
-import { readHubIdentity } from "./tls.js";
+import { readHubMemberTls } from "./tls.js";
 import { personKeyString } from "./identity.js";
 import { handleCompanyJoin } from "./join/http.js";
 import type { HubCompanyJoin } from "./join/service.js";
@@ -42,9 +41,9 @@ export class HubServer {
   address(): AddressInfo | null { const x = this.server?.address(); return x && typeof x !== "string" ? x : null; }
   async start(): Promise<void> {
     if (!this.current() || this.server) throw new HubProtocolError("unavailable");
-    const identity = readHubIdentity(this.options);
+    const material = readHubMemberTls(this.options), identity = material.identity;
     if (identity.hubId !== this.options.hubId) throw new HubProtocolError("invalid");
-    const server = createServer({ key: readPrivateFile(this.options.home, "hub/keys/tls-key.pem"), cert: readPrivateFile(this.options.home, "hub/keys/tls-cert.pem"), minVersion: "TLSv1.2", maxHeaderSize: 8 * 1024 },
+    const server = createServer({ key: material.keyPem, cert: material.certificatePem, minVersion: "TLSv1.2", maxHeaderSize: 8 * 1024 },
       (req, res) => { void this.http(req, res).catch(() => this.response(res, 503, { code: "unavailable" })); });
     this.server = server; this.wss = new WebSocketServer({ noServer: true, maxPayload: HUB_LIMITS.frame, perMessageDeflate: false });
     server.requestTimeout = server.headersTimeout = 5_000; server.keepAliveTimeout = 5_000; server.maxHeadersCount = 16;

@@ -36,7 +36,7 @@ import { HubPairingService } from "../pairing.js";
 import { ensurePrivateDirectory, readPrivateFile } from "../private-files.js";
 import { HubServer, type HubLinkContext } from "../server.js";
 import { HUB_TRANSPORT_MIGRATION, HubTransportStore } from "../store.js";
-import { readHubIdentity } from "../tls.js";
+import { readHubMemberTls, readHubIdentity } from "../tls.js";
 import type { HubAskerEnvelope, HubMemberFrame, HubMode, HubPerson, HubServerFrame, HubServerTransport, HubUnitOfWork, PersonKey } from "../types.js";
 import { HubFileVersionFloor } from "../version-floor.js";
 import { HUB_NAME_RULE, type HubSettingsWriter } from "../settings-commit.js";
@@ -366,7 +366,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         webOrigin: settings.webOrigin, memberOrigin: settings.memberOrigin };
       const companyJoin = new HubCompanyJoin({ home: options.home, db, store, audit, groups, notices: pairingNotices,
         identity: companyIdentity, connected: fleetId => memberServer?.features(fleetId) !== null && memberServer?.features(fleetId) !== undefined, signInvitation: claims => signCompanyInvitation(claims, issuerKey), descriptor: signCompanyDescriptor(companyIdentity, issuerKey),
-        certificatePem: readPrivateFile(options.home, "hub/keys/tls-cert.pem"), administrator: settings.administrator,
+        certificatePem: readHubMemberTls({home:options.home,memberOrigin:settings.memberOrigin}).certificatePem, administrator: settings.administrator,
         eventDays: settings.retention.eventDays, current: live, now });
       const pairing = new HubPairingService({
         store,
