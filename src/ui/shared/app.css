@@ -336,9 +336,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .ws-agent-tabs .seg-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-pane .ws-pane-head { flex-wrap: nowrap; gap: var(--s-1); padding: var(--s-1) var(--s-2); }
 .ws-pane-head .panel-title { flex: 1 1 auto; min-width: 24px; overflow: hidden; gap: var(--s-1); }
-.ws-pane-head .panel-title h1 { min-width: 0; font-size: var(--fs-md); }
+.ws-pane-head .panel-title h1 { flex: 1 1 auto; min-width: 0; font-size: var(--fs-md); }
 .ws-focus-label { flex-shrink: 0; font-size: var(--fs-xs); }
-.ws-pane-head .panel-sub { flex-shrink: 1; min-width: 0; max-width: 90px; overflow: hidden; white-space: nowrap; }
+.ws-pane-head .panel-sub { flex: 0 0 auto; min-width: 0; max-width: 90px; overflow: hidden; white-space: nowrap; }
 .ws-pane-head .panel-sub .hd-chip { display: none; }
 .ws-pane .ws-pane-head .inst-switch { flex-basis: auto; order: initial; width: auto; display: flex; }
 .ws-pane-head .inst-switch .seg-item { flex: 0 0 auto; }

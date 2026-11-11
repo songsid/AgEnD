@@ -83,12 +83,13 @@ try {
       streams: (window as any).__streams, layout: document.querySelector(".chat-workspace")?.getAttribute("data-layout"),
       panes: [...document.querySelectorAll(".ws-pane")].map(el => { const r = el.getBoundingClientRect(); return { id: el.getAttribute("data-pane"), box: [r.x, r.y, r.width, r.height],
         headerOverflow: (el.querySelector('.panel-head')?.scrollWidth || 0) > (el.querySelector('.panel-head')?.clientWidth || 0),
+        statusInside: [...el.querySelectorAll('.ws-pane-head .panel-sub .status')].every(status => { const r = status.getBoundingClientRect(), parent = status.parentElement!.getBoundingClientRect(); return getComputedStyle(status).fontSize === '0px' || (r.left >= parent.left - 1 && r.right <= parent.right + 1); }),
         actionsInside: [...el.querySelectorAll('.ws-pane-head .panel-actions > button, .ws-pane-head .panel-actions > .menu > button')].every(button => { const z = button.getBoundingClientRect(); return z.left >= r.left && z.right <= r.right && (!matchMedia('(pointer: coarse)').matches || (z.width >= 44 && z.height >= 44)); }),
         titles: [...el.querySelectorAll("h1, .panel-title, .panel-head")].map((node: any) => ({ kind: node.tagName + "." + node.className, text: node.textContent, scroll: node.scrollLeft, box: [node.getBoundingClientRect().x, node.getBoundingClientRect().width], sw: node.scrollWidth })),
         tabs: [...el.querySelectorAll(".inst-switch a")].map(a => a.textContent) }; }) }));
     assert.equal(geometry.headers, panes); assert.equal(geometry.textTools, 1); assert.equal(geometry.overflow, false);
     assert.equal(geometry.streams.active, 1); assert.equal(geometry.streams.max, 1); assert.equal(fx.fm.sseClients.size, 1);
-    for (const pane of geometry.panes) { assert.equal(pane.headerOverflow, false, JSON.stringify(pane)); assert.equal(pane.actionsInside, true, JSON.stringify(pane)); }
+    for (const pane of geometry.panes) { assert.equal(pane.headerOverflow, false, JSON.stringify(pane)); assert.equal(pane.actionsInside, true, JSON.stringify(pane)); assert.equal(pane.statusInside, true, JSON.stringify(pane)); }
     const file = `${theme}-zh-TW-${label}.png`; await page.screenshot({ path: join(out, file) }); receipt.cases.push({ label, file, geometry });
   }
   await shot("single", 1);
