@@ -357,7 +357,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .ws-pane .pv-panel { position: absolute; inset: 0; width: auto; min-width: 0; max-width: none; z-index: 5; }
 .ws-pane .pv-divider { display: none; }
 .v-li:has(> .inst-workspace) { position: relative; }
-.inst-workspace { position: absolute; right: 0; top: 6px; visibility: hidden; }
+.v-li > .inst-workspace { position: absolute; right: 0; top: 6px; visibility: hidden; }
 .inst-workspace > .icon-btn { width: 28px; height: 28px; padding: 0; }
 .v-li:hover > .inst-workspace, .v-li:focus-within > .inst-workspace { visibility: visible; }
 .v-li:has(> .inst-workspace):is(:hover, :focus-within) > .inst-gear { visibility: hidden; }
