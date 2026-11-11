@@ -978,6 +978,21 @@ const noticeMode = (v) => v !== "false" && v !== false;
 const noticeChoices = () => [{ value: "true", label: tn("noticeTopic") }, { value: "false", label: tn("noticeOff") }];
 const noticeLabel = (v) => tn(v ? "noticeTopic" : "noticeOff");
 
+/** #3647: the dispatcher-liveness thresholds (defaults.task_board.liveness), as the form holds them. */
+const LIVENESS_DEFAULTS = { enabled: true, quiet_minutes: 60, prompt_minutes: 10, crash_grace_minutes: 5 };
+function livenessForm(d) {
+  const lv = (d.task_board && d.task_board.liveness) || {};
+  return { liveOn: lv.enabled !== false, liveQuiet: String(lv.quiet_minutes ?? LIVENESS_DEFAULTS.quiet_minutes),
+    livePrompt: String(lv.prompt_minutes ?? LIVENESS_DEFAULTS.prompt_minutes), liveCrash: String(lv.crash_grace_minutes ?? LIVENESS_DEFAULTS.crash_grace_minutes) };
+}
+/** `defaults.task_board` as saved, with the liveness part from the form (the defaults merge replaces `task_board` whole). */
+function taskBoardDefaults(d, f) {
+  const n = (v) => Number(v);
+  return { ...(d.task_board || {}), liveness: f ? { enabled: f.liveOn, quiet_minutes: n(f.liveQuiet), prompt_minutes: n(f.livePrompt), crash_grace_minutes: n(f.liveCrash) }
+    : { enabled: ((d.task_board && d.task_board.liveness) || {}).enabled !== false, ...Object.fromEntries(["quiet_minutes", "prompt_minutes", "crash_grace_minutes"].map((k) => [k, ((d.task_board && d.task_board.liveness) || {})[k] ?? LIVENESS_DEFAULTS[k]])) } };
+}
+const minutesInRange = (v) => { const n = Number(v); return String(v).trim() !== "" && Number.isFinite(n) && n >= 1 && n <= 1440 ? "" : "livenessRange"; };
+
 /** General's form, from the saved defaults (`d`) and ClassicBot's (`c`). */
 function generalForm(d, c, fleet = {}, schema = {}) {
   const hang = d.hang_detector || {}, startup = d.startup || {};
@@ -989,6 +1004,8 @@ function generalForm(d, c, fleet = {}, schema = {}) {
     // would bring back a feature another admin changed meanwhile).
     ...Object.fromEntries(DASHBOARD_FEATURES.map((k) => [`dash_${k}`, dashboardDefault(d, k)])),
     hangOn: hang.enabled !== false, hang: String(hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES),
+    // #3647: telling a card's dispatcher when its assignee stops.
+    ...livenessForm(d),
     // #2347 §10 review: unset startup concurrency is automatic (deriveSpawnConcurrency: 2–10 by free memory and cores),
     // not 10 — an empty field, and a save that leaves it unset (the defaults merge replaces `startup` whole).
     concurrency: startup.concurrency == null ? "" : String(startup.concurrency), stagger: String(startup.stagger_delay_ms ?? 500),
@@ -1022,6 +1039,7 @@ function General({ ctx, part = "all" }) {
   const num = (v) => Number(v);
   const errors = {
     auto: nonNegative(f.auto), hang: positive(f.hang),
+    liveQuiet: minutesInRange(f.liveQuiet), livePrompt: minutesInRange(f.livePrompt), liveCrash: minutesInRange(f.liveCrash),
     concurrency: f.concurrency.trim() !== "" && (!Number.isInteger(num(f.concurrency)) || num(f.concurrency) < 1 || num(f.concurrency) > 20) ? "concurrencyRange" : "",
     stagger: !Number.isFinite(num(f.stagger)) || f.stagger.trim() === "" || num(f.stagger) < 0 || num(f.stagger) > 30000 ? "staggerRange" : "",
   };
@@ -1032,7 +1050,7 @@ function General({ ctx, part = "all" }) {
   useEffect(() => {
     if (!ready) {
       // Where it is (#2382 review): the bar in another section names it and goes there.
-      const at = { auto: "#g-auto", hang: "#g-hang", concurrency: "#g-conc", stagger: "#g-stag" }[Object.keys(errors).find((k) => errors[k])];
+      const at = { auto: "#g-auto", hang: "#g-hang", concurrency: "#g-conc", stagger: "#g-stag", liveQuiet: "#g-live-quiet", livePrompt: "#g-live-prompt", liveCrash: "#g-live-crash" }[Object.keys(errors).find((k) => errors[k])];
       syncStage(ctx, "defaults:invalid", { label: tn("updateDefaults"), invalid: tn(firstError), section: "agent-defaults", target: at });
       return;
     }
@@ -1046,6 +1064,7 @@ function General({ ctx, part = "all" }) {
       dashboard: Object.fromEntries(DASHBOARD_FEATURES.filter((k) => !Object.hasOwn(SEPARATE_FEATURE_KEYS, k)).map((k) => [k, f[`dash_${k}`]])),
       ...Object.fromEntries(Object.entries(SEPARATE_FEATURE_KEYS).map(([k, key]) => [key, f[`dash_${k}`]])),
       hang_detector: { enabled: f.hangOn, timeout_minutes: num(f.hang) },
+      task_board: taskBoardDefaults(d, f),
       startup: { ...(f.concurrency.trim() === "" ? {} : { concurrency: num(f.concurrency) }), stagger_delay_ms: num(f.stagger) },
     }, {
       backend: d.backend || "claude-code", model: d.model || undefined, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
@@ -1054,6 +1073,7 @@ function General({ ctx, part = "all" }) {
       dashboard: Object.fromEntries(DASHBOARD_FEATURES.filter((k) => !Object.hasOwn(SEPARATE_FEATURE_KEYS, k)).map((k) => [k, dashboardDefault(d, k)])),
       ...Object.fromEntries(Object.entries(SEPARATE_FEATURE_KEYS).map(([k, key]) => [key, dashboardDefault(d, k)])),
       hang_detector: { enabled: hang.enabled !== false, timeout_minutes: hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES },
+      task_board: taskBoardDefaults(d, null),
       startup: { ...(startup.concurrency == null ? {} : { concurrency: startup.concurrency }), stagger_delay_ms: startup.stagger_delay_ms ?? 500 },
     });
     const oc = original.c;
@@ -1158,6 +1178,14 @@ function General({ ctx, part = "all" }) {
         <label class=${fc("check", "hangOn")}><input id="g-hang-on" type="checkbox" checked=${f.hangOn} onChange=${(e) => set("hangOn")(e.target.checked)} /><span>${tn("hangEnabled")}</span>${dm("hangOn")}<${Impact} schema=${schema} field="defaults.hang_detector" /></label>
         <div class=${fc("field", "hang")}>${L(`${tn("hangTimeout")} (${tn("minutes")})`, "defaults.hang_detector", "g-hang", "hang")}<input id="g-hang" type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} value=${f.hang} onInput=${(e) => set("hang")(e.target.value)} /><${Feedback} error=${errors.hang} /></div>
       </div></section>
+      <section class="card" id="g-liveness"><h3>${tn("livenessTitle")}</h3>
+        <p class="note">${tn("livenessHint")}</p>
+        <div class="grid2">
+          <label class=${fc("check", "liveOn")}><input id="g-live-on" type="checkbox" checked=${f.liveOn} onChange=${(e) => set("liveOn")(e.target.checked)} /><span>${tn("livenessEnabled")}</span>${dm("liveOn")}<${Impact} schema=${schema} field="defaults.task_board" /></label>
+          <div class=${fc("field", "liveQuiet")}>${L(`${tn("livenessQuiet")} (${tn("minutes")})`, "defaults.task_board", "g-live-quiet", "liveQuiet")}<input id="g-live-quiet" type="number" min="1" max="1440" step="1" class=${errors.liveQuiet ? "invalid" : ""} value=${f.liveQuiet} onInput=${(e) => set("liveQuiet")(e.target.value)} /><${Feedback} error=${errors.liveQuiet} /></div>
+          <div class=${fc("field", "livePrompt")}>${L(`${tn("livenessPrompt")} (${tn("minutes")})`, "defaults.task_board", "g-live-prompt", "livePrompt")}<input id="g-live-prompt" type="number" min="1" max="1440" step="1" class=${errors.livePrompt ? "invalid" : ""} value=${f.livePrompt} onInput=${(e) => set("livePrompt")(e.target.value)} /><${Feedback} error=${errors.livePrompt} /></div>
+          <div class=${fc("field", "liveCrash")}>${L(`${tn("livenessCrash")} (${tn("minutes")})`, "defaults.task_board", "g-live-crash", "liveCrash")}<input id="g-live-crash" type="number" min="1" max="1440" step="1" class=${errors.liveCrash ? "invalid" : ""} value=${f.liveCrash} onInput=${(e) => set("liveCrash")(e.target.value)} /><${Feedback} error=${errors.liveCrash} /></div>
+        </div></section>
       <section class="card"><h3>${tn("startup")}</h3><div class="grid2">
         <div class=${fc("field", "concurrency")}>${L(tn("concurrency"), "fleet.spawn_concurrency", "g-conc")}<input id="g-conc" type="number" min="1" max="20" step="1" class=${errors.concurrency ? "invalid" : ""} value=${f.concurrency} onInput=${(e) => set("concurrency")(e.target.value)} /><${Feedback} error=${errors.concurrency} warning=${warnings.concurrency} />
           ${f.concurrency.trim() === "" ? html`<${InEffect} text=${tn("concurrencyAuto")} />` : null}</div>

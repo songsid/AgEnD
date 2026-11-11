@@ -418,8 +418,8 @@ describe("#3420: team-scoped decisions are told once, on the release that has th
   const ID = "2.3.5-decision-team-scope";
   const entry = AGENT_WHATS_NEW.find(e => e.id === ID)!;
   const others = AGENT_WHATS_NEW.filter(e => e.id !== ID).map(e => e.id);
-  it("is the newest entry, for every instance that has post_decision, with the exact parameter names", async () => {
-    expect(AGENT_WHATS_NEW.at(-1)?.id).toBe(ID);
+  it("is an entry (the newest until #3647's), for every instance that has post_decision, with the exact parameter names", async () => {
+    expect(AGENT_WHATS_NEW.map((e) => e.id)).toContain(ID);
     expect(entry.since).toBe("2.3.5-beta.2");                       // 2.3.5-beta.1 is published without it
     expect([entry.tools, entry.audience]).toEqual([["post_decision"], undefined]);
     const { PostDecisionArgs } = await import("../src/outbound-schemas.js");

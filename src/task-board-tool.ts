@@ -13,6 +13,8 @@
 import type { SchedulerDb } from "./scheduler/db.js";
 import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, type Actor, type CardPatch, type CardPriority, type CardSize, type CardStatus, type DispatcherInput, type NewCard } from "./scheduler/task-board.js";
 import { cardLine, cardText, myWorkText, projectsText, writeText } from "./scheduler/task-board-text.js";
+import { spanText } from "./dispatcher-liveness.js";
+import { t } from "./locale.js";
 
 /** A `create` naming one of these opens a board card; without them it is the tool's plain task. */
 const BOARD_CREATE = ["project", "parent", "scope", "acceptance", "context", "needs_review", "size", "dispatcher"] as const;
@@ -30,7 +32,7 @@ export const ACTION_FIELDS: Readonly<Record<string, readonly string[]>> = {
   claim: ["id"],
   done: ["id", "result"],
   get: ["id"],
-  list: ["filter_assignee", "filter_status", "verbose", "project", "parent"],
+  list: ["filter_assignee", "filter_status", "verbose", "project", "parent", "stale"],
   mine: [],
   projects: [],
 };
@@ -167,6 +169,16 @@ export function boardToolAction(db: SchedulerDb, instance: string, args: Record<
       return writeText(card, board.takeNotes(), from);
     }
     case "list": {
+      // #3647: the claimed cards whose assignee stopped (the same episodes the dispatcher was told about).
+      if (args.stale === true) {
+        const now = Date.now();
+        const lines = db.liveness.listOpen().flatMap((e) => {
+          const card = board.findCard(e.cardUuid);
+          if (!card || card.status !== "claimed" || (args.filter_assignee && card.assignee !== args.filter_assignee)) return [];
+          return [t("liveness.stale_line", card.code, e.assignee, t(`liveness.kind_${e.kind}`), spanText(now - e.since))];
+        });
+        return lines.length ? lines.join("\n") : t("liveness.stale_none");
+      }
       if (!has(args, ["project", "parent"])) return undefined;
       const filterStatus = args.filter_status === undefined ? undefined : (Array.isArray(args.filter_status) ? args.filter_status : [args.filter_status]).map((v) => status(v, "filter_status"));
       const project = args.project === "" || args.project === "none" ? null : (str(args.project) ?? (typeof args.project === "number" ? args.project : undefined));

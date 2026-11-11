@@ -143,6 +143,7 @@ export const TaskBoardArgs = z.object({
     .describe("Filter by status (list) — a single status or an array of statuses. Omit for live-only (open/claimed/blocked/review)."),
   verbose: z.boolean().optional()
     .describe("list: return full task records instead of compact rows (default false)"),
+  stale: z.boolean().optional().describe("list: only claimed cards whose assignee stopped (crashed, paused, stuck, waiting on a prompt, or quiet)"),
   // The task board (docs/design/task-board.md): naming one of these makes create/update a board card's.
   project: z.union([z.string(), z.number().int()]).optional().describe("Project name or id: a new main task's (create), a filter (list)"),
   parent: z.string().optional().describe("Main task number like M-3: a new sub task's (create), its sub tasks (list)"),

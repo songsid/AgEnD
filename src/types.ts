@@ -310,6 +310,11 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
   task_board?: {
     /** #2804: the task board's daily summary is gone; a value written before is accepted and ignored. */
     summary_at?: unknown;
+    /**
+     * #3647: tell a card's dispatcher when its assignee stops (dispatcher-liveness.ts). Minutes are 1–1440; defaults:
+     * on, quiet 60, prompt 10, crash grace 5.
+     */
+    liveness?: { enabled?: boolean; quiet_minutes?: number; prompt_minutes?: number; crash_grace_minutes?: number };
   };
   webhooks?: WebhookConfig[];
 }
