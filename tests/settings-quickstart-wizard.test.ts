@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -242,7 +243,7 @@ describe("a bot token already in use", () => {
     // The same token can be reached through a differently named variable, and a
     // variable name is not a token. Comparing names would both miss the real
     // clash and match a request that merely sent the name.
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const dir = tempDir();
     const fm = new FleetManager(dir);
     (fm as unknown as { fleetConfig: unknown }).fleetConfig = {
@@ -530,7 +531,7 @@ describe("POST /api/settings/quickstart/commit", () => {
       const res = await request("/api/settings/quickstart/commit", ctx, "POST", { ...input, channel_id: plan.body.channel_id, token_env: plan.body.token_env, token_env_generated: true });
       expect(res.status).toBe(200);
     }
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir) as any; fm.fleetConfig = ctx.fleetConfig;
     expect(["agent-dc", "agent-dc2"].map(n => [ctx.fleetConfig!.instances[n]!.channel_id, fm.getInstanceAdapterId(n)])).toEqual([["discord", "discord"], ["discord-2", "discord-2"]]);
   });

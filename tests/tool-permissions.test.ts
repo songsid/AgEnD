@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -290,7 +291,7 @@ function fleetManagerWith(toolSet: string | undefined) {
 describe("sink 1 — the fleet's outbound IPC", () => {
   /** Everything `handleOutboundFromInstance` touches before it decides. */
   async function outbound(toolSet: string | undefined, tool: string) {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const sent: Array<Record<string, unknown>> = [];
     const warn = vi.fn();
     const fm = {
@@ -647,7 +648,7 @@ describe("every typed handler answers, even when it cannot do the work", () => {
     // These are request/response over IPC. `return` with no message leaves the
     // caller waiting for something that is never coming, which is a hang, not
     // an error — and a hung agent is the harder failure to diagnose.
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     for (const [type, responseType] of [
       ["fleet_decision_create", "fleet_decision_response"],
       ["fleet_task", "fleet_task_response"],
@@ -751,7 +752,7 @@ describe("what fleet.yaml will accept", () => {
 describe("the startup notice is actually wired up", () => {
   it("is sent when a real fleet finishes starting", async () => {
     // Removing the call from finishStartup left every other test green.
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const dir = tempDir();
     writeFileSync(join(dir, "fleet.yaml"), [
       "defaults:", "  tool_set: full", "instances:", "  w:", "    working_directory: /tmp/w", "",
@@ -794,7 +795,7 @@ describe("general administrator orchestration tools (decision 9e3bea6c, #3043)",
   });
 
   it("allows General to call delete_instance, stop_instance, pause_instance, update_instance_config, update_fleet_defaults and create_team through the real permission check, while refusing a worker", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const check = (FleetManager.prototype as unknown as {
       checkToolPermission(sink: string, instance: string, tool: string): { allowed: boolean; message: string };
     }).checkToolPermission;
@@ -825,7 +826,7 @@ describe("general administrator orchestration tools (decision 9e3bea6c, #3043)",
   });
 
   it("allows General through the real ipc-outbound sink for all six orchestration tools while refusing a worker at the same sink", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const handle = (FleetManager.prototype as unknown as {
       handleOutboundFromInstance(instance: string, msg: Record<string, unknown>): Promise<void>;
     }).handleOutboundFromInstance;
@@ -985,7 +986,7 @@ describe("general administrator orchestration tools (decision 9e3bea6c, #3043)",
 
   it("keeps fleet-manager's sensitive-config confirmation by a fleet admin unchanged", async () => {
     const { EventEmitter } = await import("node:events");
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { SettingsConfirmationStore } = await import("../src/settings-confirmation.js");
     const dir = tempDir();
     const fm = new FleetManager(dir) as any;

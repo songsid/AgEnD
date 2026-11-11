@@ -5,6 +5,7 @@
  * public link; another session sees the change. Page: the Favorites group, the star (aria-pressed), Edit's ↑ ↓, the
  * public link read-only, zh-TW. Real store, router handler, FleetManager wiring and the real Shell in a mini DOM.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,7 +27,7 @@ describe("the host: nav.favorites", () => {
   const fleet = (names: string[]) => Object.fromEntries(names.map((n) => [n, { working_directory: "/tmp" }]));
   /** The fleet's own wiring (FleetManager.webPrefs): fleet.yaml's instances by own key, or a ClassicBot room. */
   async function fleetPrefs(names: string[], rooms: string[] = []) {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = Object.create(FleetManager.prototype) as InstanceType<typeof FleetManager>;
     Object.assign(fm, { dataDir: tmp(), fleetConfig: { instances: fleet(names) }, classicChannels: { getAll: () => rooms.map((instanceName) => ({ instanceName })) } });
     return fm.webPrefs;
@@ -71,7 +72,7 @@ describe("the host: nav.favorites", () => {
   it("removing an instance drops it from the favorites — only once the removal succeeded", async () => {
     const dir = tmp();
     vi.stubEnv("AGEND_HOME", dir);
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { authorizeExplicitInstanceRemoval } = await import("../src/instance-removal.js");
     const fm = new FleetManager(dir);
     const any = fm as unknown as Record<string, any>;
@@ -90,7 +91,7 @@ describe("the host: nav.favorites", () => {
   it("#1677 r1: an instance named \"constructor\" is removed like any other — its favorite goes (own key, not the inherited one)", async () => {
     const dir = tmp();
     vi.stubEnv("AGEND_HOME", dir);
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { authorizeExplicitInstanceRemoval } = await import("../src/instance-removal.js");
     const fm = new FleetManager(dir);
     const any = fm as unknown as Record<string, any>;
@@ -109,7 +110,7 @@ describe("the host: nav.favorites", () => {
     for (const stillThere of [false, true]) {
       const dir = tmp();
       vi.stubEnv("AGEND_HOME", dir);
-      const { FleetManager } = await import("../src/fleet-manager.js");
+      const { FleetManager } = fleetManagerModule;
       const fm = new FleetManager(dir);
       const any = fm as unknown as Record<string, any>;
       let rooms = [{ instanceName: "classic-ops", channelId: "c1" }, ...(stillThere ? [{ instanceName: "classic-ops", channelId: "c2" }] : [])];

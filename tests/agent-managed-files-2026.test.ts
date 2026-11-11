@@ -1,4 +1,5 @@
 /** Private filesystem only: no real fleet, sessions, tokens or user configuration. */
+import * as daemonModule from "../src/daemon.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -173,7 +174,7 @@ describe("managed in-state appearance files", () => {
   });
   it.each([["general", "general"], ["general-telegram", "general-telegram"], ["alpha", "workspaces/alpha-home"]])("daemon %s reads bytes from configured %s, never a tool-selected identity", async (name, part) => {
     const f = fixture(name, part); f.save(join(f.workspace, "web-assets/banner.png"));
-    const { Daemon } = await import("../src/daemon.js");
+    const { Daemon } = daemonModule;
     const { default: pino } = await import("pino");
     const { vi } = await import("vitest");
     vi.stubEnv("AGEND_HOME", f.stateDir);

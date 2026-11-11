@@ -16,7 +16,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { request, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { page, settle, type AppPage } from "./helpers/app-harness.js";
 
 vi.mock("node:child_process", async importOriginal => {
@@ -422,8 +422,11 @@ function raw(port: number, method: string, path: string, headers: Record<string,
 }
 
 describe("the routes", () => {
+  let fleetModule: typeof import("../src/fleet-manager.js");
+  // Keep cold transformation outside the assertions, after the earlier UI cache resets.
+  beforeAll(async () => { fleetModule = await import("../src/fleet-manager.js"); }, 120_000);
   async function fleet() {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetModule;
     const { csrfTokenFor, tokenEpoch } = await import("../src/web-session.js");
     const dir = tmp();
     const fm = new FleetManager(dir) as any;

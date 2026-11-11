@@ -8,6 +8,7 @@
  * - Glossary: no bare 代碼 anywhere — 裝置登入碼 (the dashboard's one-time code), 授權碼 (a provider's), 設定碼 (setup),
  *   結束碼 (an exit status), 兌換碼 (bonus codes).
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync, statSync, mkdtempSync, rmSync } from "node:fs";
 import { request, type Server } from "node:http";
@@ -170,7 +171,7 @@ describe("S-117 story 1: the server marks the page when no chat is connected", (
     r.on("error", reject); r.end();
   });
   it("a configured chat that is not connected (a fresh install) is marked like a web-only fleet; once connected, not", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const dir = mkdtempSync(join(tmpdir(), "agend-s117-")); dirs.push(dir);
     const fm = new FleetManager(dir), any = fm as any;
     fm.logger = { info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {}, child: () => fm.logger } as never;

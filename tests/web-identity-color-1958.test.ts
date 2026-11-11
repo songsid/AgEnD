@@ -12,6 +12,7 @@
  *   with the card and the profile row; a write sends a status frame; GET reads the choice back. The status frame
  *   carries the tiers; get_web_appearance says which colour and places are in force, whose they are, and if colours are off.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -229,7 +230,7 @@ describe("through the fleet: the profile route, the status frame, get_web_appear
   async function fleet() {
     const dir = tmp("agend-color-fm-");
     vi.stubEnv("AGEND_HOME", dir);
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { handleViewRequest } = await import("../src/view-api.js");
     const fm = new FleetManager(dir) as any;
     fm.fleetConfig = { instances: { alpha: { working_directory: dir }, beta: { working_directory: dir } }, defaults: {} };

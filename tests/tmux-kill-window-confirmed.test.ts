@@ -1,3 +1,4 @@
+import * as daemonModule from "../src/daemon.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -112,7 +113,7 @@ describe.skipIf(!have("tmux"))("TmuxManager.killWindowConfirmed", () => {
 // Real OS acceptance for #2806: two harmless processes, exclusively our socket.
 describe.skipIf(!have("tmux"))("#2806 failed startup cannot kill the active neighbour", () => {
   it("leaves both windows alive when disposal runs before the failed daemon owns a window", async () => {
-    const { Daemon } = await import("../src/daemon.js");
+    const { Daemon } = daemonModule;
     const { InstanceLifecycle } = await import("../src/instance-lifecycle.js");
     TmuxManager.setSocketName(SOCK);
     tmux("-f", "/dev/null", "new-session", "-d", "-s", "s", "-n", "neighbour", "sleep 100");

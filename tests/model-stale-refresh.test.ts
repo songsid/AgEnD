@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -52,7 +53,7 @@ function seed(models: Array<{ id: string }>, ageMs: number) {
 }
 
 async function makeFleet() {
-  const { FleetManager } = await import("../src/fleet-manager.js");
+  const { FleetManager } = fleetManagerModule;
   const fm = new FleetManager(dataDir);
   (fm as any).fleetConfig = { defaults: { backend: "claude-code" }, channel: {}, instances: { w: {} } };
   return fm as any;
@@ -111,7 +112,7 @@ describe("/model refreshes a stale model list", () => {
     // claude-code probe's own AbortController uses, so raising that leaf without
     // raising the deadline turns this red — which is the point.
     const { CLI_PROBE_LONGEST_CHAIN_MS } = await import("../src/backend/types.js");
-    const { CLI_ENV_PROBE_DEADLINE_MS } = await import("../src/fleet-manager.js");
+    const { CLI_ENV_PROBE_DEADLINE_MS } = fleetManagerModule;
     // The probe's bounded steps run back to back, so clearing only the longest
     // single leaf (8s) would be false confidence — a 10s deadline passes that
     // check and still truncates the 13s chain. Assert against the derived chain
@@ -172,7 +173,7 @@ describe("usage hang bounds — #720 LONGEST_SINGLE_FETCH_MS, #724 probe deadlin
 
   it("#720: the probe deadline also exceeds LONGEST_SINGLE_FETCH_MS (keeps chain bound tight)", async () => {
     const { LONGEST_SINGLE_FETCH_MS } = await import("../src/usage/providers.js");
-    const { CLI_ENV_PROBE_DEADLINE_MS } = await import("../src/fleet-manager.js");
+    const { CLI_ENV_PROBE_DEADLINE_MS } = fleetManagerModule;
     expect(CLI_ENV_PROBE_DEADLINE_MS).toBeGreaterThan(LONGEST_SINGLE_FETCH_MS);
   });
 
@@ -291,7 +292,7 @@ describe("usage hang bounds — #720 LONGEST_SINGLE_FETCH_MS, #724 probe deadlin
       .mockImplementationOnce(() => new Promise(() => {})) // never resolves → deadline fires
       .mockResolvedValueOnce({ models: [{ id: "recovered" }] });
     const fm = await makeFleet();
-    const { CLI_ENV_PROBE_DEADLINE_MS } = await import("../src/fleet-manager.js");
+    const { CLI_ENV_PROBE_DEADLINE_MS } = fleetManagerModule;
 
     // First call: probe hangs → deadline fires → null → falls back to cache.
     const p1 = fm.getModelOptions("w", false);

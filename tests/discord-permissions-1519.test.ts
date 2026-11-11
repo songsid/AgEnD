@@ -3,6 +3,7 @@
  * the adapter calls that need it, never Administrator; a channel picker probe; the invite link with a verify; a gateway
  * 4014 (disallowed intents) as the connection's problem.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -85,7 +86,7 @@ describe("a gateway 4014 is the connection's problem", () => {
     expect(["Invalid token", "4004", null].map(isDisallowedIntentsError)).toEqual([false, false, false]);
   });
   it("listSecureConnections names it while the connection is down, not once it connects", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { mkdtempSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const dir = mkdtempSync(join(tmpdir(), "agend-4014-"));

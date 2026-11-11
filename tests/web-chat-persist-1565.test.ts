@@ -8,6 +8,7 @@
  * the ledger with its message. Real WebChatHistory + WebChatDiskStore + WebFileLedger on a scratch directory;
  * FleetManager's restore on a scratch AGEND_HOME.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -341,7 +342,7 @@ describe("the fleet restores the configured instances only", () => {
       mkdirSync(join(h, "workspaces", name), { recursive: true });
       writeFileSync(fileOf(h, name), JSON.stringify({ format: 1, instance: name, owner, messages: [{ boot: "aa", id: 1, instance: name, sender: "x", text: "kept", ts: "2026-10-10T00:00:00Z", role: "user" }] }));
     }
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(h) as any;
     clearInterval(fm.sessionPruneTimer);
     const fid = "e".repeat(32);

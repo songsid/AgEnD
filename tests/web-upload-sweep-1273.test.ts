@@ -4,6 +4,7 @@
  * Files a message took follow the inbox's 7-day rotation, like a file from Telegram; nothing else is touched.
  * Scratch directories only (a scratch AGEND_HOME for the fleet path); no fleet started.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -248,7 +249,7 @@ describe("the fleet runs it at startup and again when the youngest comes due (sc
     const mk = (name: string, ageMs: number) => { const p = join(inbox, name); writeFileSync(p, "x"); const t = new Date(now - ageMs); utimesSync(p, t, t); return p; };
     const old = mk(`${PENDING_PREFIX}1-aaaaaaaa.png`, UPLOAD_TTL_MS + 60_000);
     const young = mk(`${PENDING_PREFIX}2-bbbbbbbb.png`, 25 * 60_000);
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(join(dir, "data"));
     const quiet = () => {};
     fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger } as unknown as typeof fm.logger;
@@ -265,7 +266,7 @@ describe("the fleet runs it at startup and again when the youngest comes due (sc
     const inbox = join(dir, "workspaces", "w", "inbox"); mkdirSync(inbox, { recursive: true });
     const prior = join(inbox, `${PENDING_PREFIX}1-aaaaaaaa.png`); writeFileSync(prior, "x");
     const t = new Date(now - 25 * 60_000); utimesSync(prior, t, t);    // a prior boot's: due in ~5 minutes
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(join(dir, "data"));
     const quiet = () => {};
     fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger } as unknown as typeof fm.logger;
