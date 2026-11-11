@@ -1,8 +1,8 @@
 {
   "v": 1,
-  "scope": "Digest-first manifest of original captures and explicitly normalized text logs. Source bindings are inside original receipts and capture-provenance.json.",
+  "scope": "Digest-first manifest. Original R0/R1 capture receipts and PNGs retain their source pins; text-log EOF normalization is explicit.",
   "files": {
-    "66dc32201db78f8fb34c02609c3f35951981fdc87ac5d98a896b1ce906c13ee4": [
+    "0347c82fc989b01e342e8efe288fba8fb4fa7c5de9cfe01e973ed29f46aafc13": [
       "README.md"
     ],
     "c762344870532cc89b4986bad684d0dced55fe985a46f7eea7fb49ee50442cf9": [
@@ -41,7 +41,8 @@
       "browser/final-dark/dark-zh-TW-log-and-chat.png"
     ],
     "9ac68e32b9a08b224c8713d4b7dd70ae0723d153f21b361a408c1af8d4666c79": [
-      "browser/final-dark/dark-zh-TW-log-and-view.png"
+      "browser/final-dark/dark-zh-TW-log-and-view.png",
+      "browser/review-r1-dark/dark-zh-TW-log-and-view.png"
     ],
     "7e5e6a8e3328fd2e1d4bfeffdf31be209c19c9760a53e03b7e280fc29f23a6fe": [
       "browser/final-dark/dark-zh-TW-minimum-width.png"
@@ -56,7 +57,8 @@
       "browser/final-dark/dark-zh-TW-overflow-menu.png"
     ],
     "1124313c49a645523db556bd808d973c362be7489dab41eca0c293fff3e60f6b": [
-      "browser/final-dark/dark-zh-TW-phone.png"
+      "browser/final-dark/dark-zh-TW-phone.png",
+      "browser/review-r1-dark/dark-zh-TW-phone.png"
     ],
     "8c3941649ae44be2e8808fa4b93e73726d0cbcffd751856cbc9a91164254d096": [
       "browser/final-dark/dark-zh-TW-quoted.png"
@@ -77,7 +79,8 @@
       "browser/final-dark/dark-zh-TW-suspended-settings-a.png"
     ],
     "8ad4c94f58709c32a6aab9bf4a3bd8492b58841136354f0cb7d7a520db79d5ce": [
-      "browser/final-dark/dark-zh-TW-two-settings.png"
+      "browser/final-dark/dark-zh-TW-two-settings.png",
+      "browser/review-r1-dark/dark-zh-TW-two-settings.png"
     ],
     "dc93121e5992213c232b6340b1595a89ae5479221f9ad5269a1668c41c879da6": [
       "browser/final-dark/receipt.json"
@@ -86,7 +89,8 @@
       "browser/final-light/light-zh-TW-log-and-chat.png"
     ],
     "181f22ce559e7bd07e7f21f5a0661e2ced16d187eaaa206ef65b6aebe77390ce": [
-      "browser/final-light/light-zh-TW-log-and-view.png"
+      "browser/final-light/light-zh-TW-log-and-view.png",
+      "browser/review-r1-light/light-zh-TW-log-and-view.png"
     ],
     "6b84b390accc71d37246bf061419cc31733717ec5e3843abe08699b8a92840c8": [
       "browser/final-light/light-zh-TW-minimum-width.png",
@@ -106,7 +110,8 @@
     ],
     "125f7ae63c2fd9aa9b538abd6300745ba13767fc04f5eeec03d6c2793f37b3e2": [
       "browser/final-light/light-zh-TW-phone.png",
-      "browser/lifecycles/light-zh-TW-phone.png"
+      "browser/lifecycles/light-zh-TW-phone.png",
+      "browser/review-r1-light/light-zh-TW-phone.png"
     ],
     "50b76cc4854e80cc87f4f0c1c25d3ba20db645e1281fe04b1b475ac07b99c4c2": [
       "browser/final-light/light-zh-TW-quoted.png"
@@ -130,7 +135,8 @@
       "browser/final-light/light-zh-TW-suspended-settings-a.png"
     ],
     "b292d11471d32983848445806ddd09691735995a42977c06605bd938d2cfa407": [
-      "browser/final-light/light-zh-TW-two-settings.png"
+      "browser/final-light/light-zh-TW-two-settings.png",
+      "browser/review-r1-light/light-zh-TW-two-settings.png"
     ],
     "f925febc5beb432ded1ebc4af89b8119bcda7da3a7fbfc466970e5dd0ade7239": [
       "browser/final-light/receipt.json"
@@ -192,6 +198,96 @@
     "cc06af79b5170af3ccc32cc337d531eff204b8dbffa48b924fe659f22d99b3e0": [
       "browser/lifecycles/receipt.json"
     ],
+    "7dc8a700d1df2a134a95a32c74c30ad9703bcc3ddb64f65d586df8c401ee86bb": [
+      "browser/review-r1-dark/dark-zh-TW-alt-split-owner.png"
+    ],
+    "7d79082701f26b2e34ed739976c93f9710c8d58e1cdff863238ad22e52da0d22": [
+      "browser/review-r1-dark/dark-zh-TW-log-and-chat.png"
+    ],
+    "35b820fdfb56966543322ac84ac7ae414796aff5f71c991ccbed2b26a72b1019": [
+      "browser/review-r1-dark/dark-zh-TW-minimum-width.png"
+    ],
+    "de44e0b7d6f537f93611b6570b27250e9e9d80fb60ed8bac917afacff1612665": [
+      "browser/review-r1-dark/dark-zh-TW-narrow.png"
+    ],
+    "71f0909b1a5c36c3e6f68c070e599779d781326688ec8134b183f2e82b23382c": [
+      "browser/review-r1-dark/dark-zh-TW-ordinary-deep-link.png"
+    ],
+    "99491f68add1c083cb2ffc9a7d371874f6c17233e5d6e7f1d83853d724799173": [
+      "browser/review-r1-dark/dark-zh-TW-overflow-menu.png"
+    ],
+    "36d1bc2a370960e2ed80030232d1c6f5100b5a6ec848ca6e5e00406160e09c7f": [
+      "browser/review-r1-dark/dark-zh-TW-quoted.png"
+    ],
+    "a8249309add0d4f933885f6b75a730067518e50a6ce3c9f669efc72e52813e4f": [
+      "browser/review-r1-dark/dark-zh-TW-reload-compare.png"
+    ],
+    "45df6e4121a8882e9a1a7d50f07310cd950f5e611fec97464ae63d9d7ff489c0": [
+      "browser/review-r1-dark/dark-zh-TW-restored-emojis.png"
+    ],
+    "3ad31ca1d5bc71e84a774238c927777b8c3f648d41e53af01e13fc6ebf404c00": [
+      "browser/review-r1-dark/dark-zh-TW-restored-settings.png"
+    ],
+    "0c709e4c7cb04c8b9c79fe57f627982dddd508598234cd8cf94fdc514c39a8a4": [
+      "browser/review-r1-dark/dark-zh-TW-right.png"
+    ],
+    "b16a621be970a6f073a8c235998e97798e7aae6d9ad93f94bc2cef1a110aad88": [
+      "browser/review-r1-dark/dark-zh-TW-single.png"
+    ],
+    "972baeef2074a500c6db742f2b6d6118a68b87c06c943e25d9afab49aef9a416": [
+      "browser/review-r1-dark/dark-zh-TW-stack.png"
+    ],
+    "9e4f5c6c6a8cf9b3cd295aa141e698a5b5ea48ee11c94694f16a85608557dd46": [
+      "browser/review-r1-dark/dark-zh-TW-suspended-settings-a.png"
+    ],
+    "cab73df37c0629a6ca4c8fc0aac629ff3569bf722433ce401227f40a1faf6360": [
+      "browser/review-r1-dark/receipt.json"
+    ],
+    "c4ef11c8f2ba26ca970361678c8576d8bff19a5a685674446330733d98359998": [
+      "browser/review-r1-light/light-zh-TW-alt-split-owner.png"
+    ],
+    "8a10eeca325b21cb94f6acfa519acf8f5e937a65fc6aa75b1e8531f39c64e386": [
+      "browser/review-r1-light/light-zh-TW-log-and-chat.png"
+    ],
+    "e95343b01c27873e0f9f5048ad98bd47f6861d18df99501f22fd7b622409f0db": [
+      "browser/review-r1-light/light-zh-TW-minimum-width.png"
+    ],
+    "61601f01b3122f0554c206619e303ce9b01dff350966d6372ede4e171174bb65": [
+      "browser/review-r1-light/light-zh-TW-narrow.png"
+    ],
+    "709a7fb17a703277d840a35da022321c3010645c15eced43ca82ca189167c53e": [
+      "browser/review-r1-light/light-zh-TW-ordinary-deep-link.png"
+    ],
+    "df624f3b785d27aa180133428dde8cf50164ab4eeef9a501d26226a02a98f1c9": [
+      "browser/review-r1-light/light-zh-TW-overflow-menu.png"
+    ],
+    "bd7ab609f284bbb9523408dc346016afca6f474199bf59128749f358cef69190": [
+      "browser/review-r1-light/light-zh-TW-quoted.png"
+    ],
+    "c9e5710383e3c8ecee77be62121f446894c09a2385b1e35fd9cbd2e1da974ac3": [
+      "browser/review-r1-light/light-zh-TW-reload-compare.png"
+    ],
+    "a1a53e9463ae9352fc0751ef5e9cbce3c1e1fb914bf2be259abbd782ad31ff62": [
+      "browser/review-r1-light/light-zh-TW-restored-emojis.png"
+    ],
+    "81f66692a7771dc9cf0b20db07d2875c8b62873a8535afc44c8c3fce41d2e6fb": [
+      "browser/review-r1-light/light-zh-TW-restored-settings.png"
+    ],
+    "d02c09e06c8f03e1c19321e36983857f28c4978de5f568f119e02fc7f4cbb4da": [
+      "browser/review-r1-light/light-zh-TW-right.png"
+    ],
+    "e3764de5dd70fd8639c4062341d6dab4f545e9fcf49ed2ccffe1cfbf2fa32c3e": [
+      "browser/review-r1-light/light-zh-TW-single.png"
+    ],
+    "fce53d8b782eb92f5b5a670ff504cc39aa4d29e291e450f350b87fd3d8c804c7": [
+      "browser/review-r1-light/light-zh-TW-stack.png"
+    ],
+    "b7ed60947e1388b9795e1d4d815d1fc78623f2b1e88b2bf10ab7ead82d1102c0": [
+      "browser/review-r1-light/light-zh-TW-suspended-settings-a.png"
+    ],
+    "9ae26096ddf87a3d0f69eafc704d2ad934c0114f9bd521214a6f04aa94648bea": [
+      "browser/review-r1-light/receipt.json"
+    ],
     "3ea6ef635c0da2e9528f48a579dc26c11c6019262334f21d30a354cf2b32e04c": [
       "browser/skew-final-chat/light-zh-TW-retained-chat.png",
       "browser/skew-final-context/light-zh-TW-retained-context.png",
@@ -228,7 +324,7 @@
     "faca3fae708aac379e3a310de216e1d7b5aad58ad22641b75addb01bf079642c": [
       "checks/async-fields-fail-first-r1.log"
     ],
-    "cd4c568a07d5d7fedda97c48eaea92925e635444e032fb9a3ba2ca2a8313ccdf": [
+    "ec794461764e1550bb31667807bdd382fa2e251982a59d0549ccd392b4b5cb74": [
       "checks/capture-provenance.json"
     ],
     "5f5266ed6a9444627e3d279769defd7bd579374d1f5084f25865e775b40a0a51": [
@@ -296,7 +392,11 @@
     ],
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
       "checks/current-source-types.log",
-      "checks/current-test-types.log"
+      "checks/current-test-types.log",
+      "checks/review-r1/review-r1-post-sync-source-types.log",
+      "checks/review-r1/review-r1-post-sync-test-types.log",
+      "checks/review-r1/review-r1-source-types.log",
+      "checks/review-r1/review-r1-test-types.log"
     ],
     "cae5bcc885bad2d93eb85c941f582b195b52617ce3b80413e7f8bf0913d05671": [
       "checks/final-2528-core.log"
@@ -307,7 +407,7 @@
     "d42d6a62e6bdce3de0ed0eaa34be5cb9d1a86c35aa768917654003ad6a8f453b": [
       "checks/final-focused.log"
     ],
-    "bc7f8fc3f8187b3aa883052b44e1e6edffdcd272fb6fb74a3a3dd9c4a922a518": [
+    "9f22ba6f4124e76473db9cb8d4c9fcc8ec846ef66e952f4d58cac96ec1b69af0": [
       "checks/log-normalization.json"
     ],
     "195a284dbf9a0cc77e443178d207d3f4fabe3071ffc7dd469b6edfa047ecd275": [
@@ -318,6 +418,114 @@
     ],
     "c243c4041bb2eb79f17144f604330c4edb524a6930640a31b2b87908bf2aa7cc": [
       "checks/quote-undo-fail-first.log"
+    ],
+    "d3cca6851a3f84b1d9d621202114a386c5d9ace3108303c1d4d256b189eb4dd0": [
+      "checks/review-r1/ci-r1-fail-first.log"
+    ],
+    "771d227e665732d5850fc6b171c895e74420265690dce9dea23deadc88f05133": [
+      "checks/review-r1/ci-r1-focused.log"
+    ],
+    "d5cfa342f9f043a97545d5f5274ec436575fb68e1c816d46f867b430fe02a6de": [
+      "checks/review-r1/mutations/async-emoji-prefix.log"
+    ],
+    "308e7ee7dda71f96705a6afe7ed2e01c520bea10b416576bfc7bf256e3a58369": [
+      "checks/review-r1/mutations/distinct.log"
+    ],
+    "5737098b8d880ce472060dd48210f9b1ebb9339dc6e9fc656a254db74ea198bf": [
+      "checks/review-r1/mutations/emoji-draft.log"
+    ],
+    "34411854f7284e4c2148644065136c255f662c85ee9640eac925f8bbf6f9de24": [
+      "checks/review-r1/mutations/form-prefix.log"
+    ],
+    "6c27c79ef4e9f5e175b9ef137007384aaba5abfb31681d5933c796566a11c3a6": [
+      "checks/review-r1/mutations/gateway-mark.log"
+    ],
+    "c8a6b4c3f954ac5580f02f8c94c6355456c56b1143afe00a3b8af82be6906521": [
+      "checks/review-r1/mutations/loading-fence.log"
+    ],
+    "1900ec375576af3219e3645554093650d1c2aaf01e275d9f5c386055e6ac4a37": [
+      "checks/review-r1/mutations/logout-cleanup.log"
+    ],
+    "98f98deefcf483375222e21039e5169fee6681e224b959141aa93d5594944f68": [
+      "checks/review-r1/mutations/operation-completion-owner.log"
+    ],
+    "b3a5774f6ddf8c94cb955e5dcf80bf81e337641f01cd38b10d6b5ae48da80b58": [
+      "checks/review-r1/mutations/operation-late-owner.log"
+    ],
+    "316a75cde7556dbef1a7d2657ca227da4bab8b537a214202099eaad6123bedc8": [
+      "checks/review-r1/mutations/operation-leftover-owner.log"
+    ],
+    "77e6642f7bd70338af252a3934a81149c66625a5d3cc71f7a15da341c0d2e579": [
+      "checks/review-r1/mutations/own-route.log"
+    ],
+    "f0775ba8a9b5d9cd7ba62b468112f76ef950f042a7c3ed4543f592404d59fd86": [
+      "checks/review-r1/mutations/quote-currency-paired.log"
+    ],
+    "ad45ee569451fee82970982aa200248dc695b14215ac0b2f12b869541b1b4f2c": [
+      "checks/review-r1/mutations/quote-early.log"
+    ],
+    "f19b0c4a441c112e074ae024f6b721d46caa30bbcffa2aa49f804176886cb618": [
+      "checks/review-r1/mutations/quote-undo.log"
+    ],
+    "43832d646c7d5c6433e54e49d0532c92b84a40c9847cdb7bae2e8d3f28235558": [
+      "checks/review-r1/mutations/receipt.json"
+    ],
+    "f50be50744d39de4692fee4a9ceb61db2a390d422eb001929ff3a6fc9cea9f17": [
+      "checks/review-r1/mutations/retired-entry.log"
+    ],
+    "1ec7871b2874fef00fa55123e88cd0ee98c7221934b150c583ebe594e2629aa5": [
+      "checks/review-r1/mutations/scope.log"
+    ],
+    "2f5b704894502df6753e4381663cb06d3f67bb4d075ef5c46c11deebf5464951": [
+      "checks/review-r1/mutations/settings-remount.log"
+    ],
+    "e120a53aef7f28dcd6db817a261a4b55a133020d91a69cbb81688c3d768f89dd": [
+      "checks/review-r1/mutations/split-button-owner.log"
+    ],
+    "bd324de07ff60379299fdb6d04817940fbae77e681cf5f12a9d929e38b697499": [
+      "checks/review-r1/mutations/suspended-forms.log"
+    ],
+    "18ff1a28c075f5c0768fb2dbcaf51d00788874b06c316b71ed0824ffb48da703": [
+      "checks/review-r1/mutations/suspended-guard.log"
+    ],
+    "5f0a56f5a4e3bdb7c329e3ca3deb2a4a3d13db43c1dae21b71556642e1f69e38": [
+      "checks/review-r1/mutations/suspended-retirement.log"
+    ],
+    "1f7f00df7f4135deaebbb0c285469f77bab0e32792bbc53f315db2671d1e77ef": [
+      "checks/review-r1/mutations/width.log"
+    ],
+    "cf73657150496b68ff90e6d7520f39b3627e2291ad128e5303977314e0332185": [
+      "checks/review-r1/prism-r1-fail-first.log"
+    ],
+    "92c39cbea6f3fc596ab843c4b3ff3135e8e334be2e2ac9f2cbd574861a9b8da1": [
+      "checks/review-r1/prism-r1-final-focused.log"
+    ],
+    "298f7f29e064e34a65198981f57dfa7f6934610fc29308bf814c456d2afbc7e8": [
+      "checks/review-r1/prism-r1-focused.log"
+    ],
+    "7522c9f6875a7ad1b1b726aa0ba454cd31d44c36f4e6025479f1ff01bc9168fd": [
+      "checks/review-r1/prism-r1-related.log"
+    ],
+    "ccc455c0ad9d07701ce69878ef5c47fe71be82f47828d673a2ad9b14cfe3dcdd": [
+      "checks/review-r1/prism-r1-suspended-owner-fail-first.log"
+    ],
+    "2f74a0701f0fc382fd4d783b6e92df814a4001cdfebc19e8f72ca355fd73e5b0": [
+      "checks/review-r1/review-r1-changelog.log"
+    ],
+    "e974a9188bf5bbfd946fe81d8507d4cfb28cc8364ce161a78ab30de94e2d6720": [
+      "checks/review-r1/review-r1-mutations.log"
+    ],
+    "a7fb74e26112a24a29e82f2e386005f225ae3c88c83e53e0c808a8befbf61c8d": [
+      "checks/review-r1/review-r1-post-sync.log"
+    ],
+    "f0ad000b4c4ba521bab083ccbd0dbdf5d4551e73e69cbf1d1f9849046f60574a": [
+      "checks/review-r1/single-timestamp-comparison.json"
+    ],
+    "17c1f6ead22ac215402019ae1930d4b8b544fa491a9714c2f25850767b2db950": [
+      "checks/review-r1/sync-parity.json"
+    ],
+    "e55f9a7f3216d7ccf000599065dc9eeec93a41cf64b10462708c57d175ffd9e4": [
+      "checks/review-r1/visual-review.json"
     ],
     "b8dee734ac7412b4bac1c7b56d889483a10d527fdf4c7e4c8c4698a741aa7442": [
       "checks/settings-remount-fail-first.log"

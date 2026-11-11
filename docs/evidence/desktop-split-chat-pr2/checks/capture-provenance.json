@@ -1,10 +1,10 @@
 {
   "scope": "Original clean captures; each input, served asset and retained substitution compared with its recorded Git object. No historical relabelling.",
   "totals": {
-    "inputs": 420,
-    "served": 2166,
+    "inputs": 480,
+    "served": 2564,
     "substitutions": 59,
-    "cases": 76
+    "cases": 110
   },
   "runs": [
     {
@@ -60,6 +60,24 @@
       "served": 199,
       "substitutions": 0,
       "cases": 13
+    },
+    {
+      "receipt": "browser/review-r1-dark/receipt.json",
+      "head": "d24a367f10df9cd710579283d44fcb25ef9e2aee",
+      "tree": "52247b65c7ee7b8a234a23d6956ed52ae021bd96",
+      "inputs": 30,
+      "served": 199,
+      "substitutions": 0,
+      "cases": 17
+    },
+    {
+      "receipt": "browser/review-r1-light/receipt.json",
+      "head": "d24a367f10df9cd710579283d44fcb25ef9e2aee",
+      "tree": "52247b65c7ee7b8a234a23d6956ed52ae021bd96",
+      "inputs": 30,
+      "served": 199,
+      "substitutions": 0,
+      "cases": 17
     },
     {
       "receipt": "browser/skew-final-chat/receipt.json",

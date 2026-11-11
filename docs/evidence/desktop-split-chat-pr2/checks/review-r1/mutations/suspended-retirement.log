@@ -1,0 +1,24 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+·····x·
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  00:02:45
+   Duration  2.68s (transform 1.27s, setup 534ms, import 798ms, tests 316ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-navigation-3637.test.ts > workspace shares the existing router and guarded history > retires suspended drafts and their guard resources on a real pane replacement
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ tests/web-chat-workspace-navigation-3637.test.ts:69:59
+     67|     controller.focus("b"); expect(memory.current()).toBe(true);
+     68|     controller.pane("a").navigate("/ui/log/beta");
+     69|     expect(memory.current()).toBe(false); expect(cleanup).toHaveBeenCa…
+       |                                                           ^
+     70|     expect(memory.state.size).toBe(0); memory.set("draft", "late"); ex…
+     71|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

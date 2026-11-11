@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+x
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  00:02:31
+   Duration  9.02s (transform 6.04s, setup 467ms, import 621ms, tests 7.38s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-suspend-3637.test.ts > suspends only DOM readers while retaining both Settings drafts and the hidden pane's leave guard
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/web-chat-workspace-suspend-3637.test.ts:46:44
+     44|   // B is not mounted, but replacing B still consults B's draft before…
+     45|   controller.pane("b").navigate("/ui/chat/gamma"); await settle();
+     46|   expect(confirm.confirmStore.get().queue).toHaveLength(1);
+       |                                            ^
+     47|   confirm.answerConfirm(confirm.confirmStore.get().queue[0].id, false)…
+     48|   expect(controller.current().b.route.instance).toBe("beta");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
