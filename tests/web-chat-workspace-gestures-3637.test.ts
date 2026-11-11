@@ -51,9 +51,11 @@ it("a changed-and-restored navigation permanently cancels held work", () => {
   p.window.dispatchEvent({ type: "pointermove", pointerId: 7, clientX: 800, clientY: 300 } as any); p.window.dispatchEvent({ type: "pointerup", pointerId: 7 } as any); expect(commit).not.toHaveBeenCalled();
 });
 it("a changed chat boundary or modal cancels instead of committing stale coordinates", () => {
-  manager.sashDown(event()); root.getBoundingClientRect = () => ({ left: 120, top: 50, width: 980, height: 800 });
+  manager.sashDown(event()); p.window.dispatchEvent({ type: "pointermove", pointerId: 7, clientX: 800, clientY: 300 } as any);
+  root.getBoundingClientRect = () => ({ left: 120, top: 50, width: 980, height: 800 });
   p.window.dispatchEvent({ type: "pointerup", pointerId: 7 } as any); expect(commit).not.toHaveBeenCalled();
-  manager.sashDown(event()); const dialog = p.document.createElement("dialog"); dialog.setAttribute("open", ""); p.root.appendChild(dialog);
+  manager.sashDown(event()); p.window.dispatchEvent({ type: "pointermove", pointerId: 7, clientX: 800, clientY: 300 } as any);
+  const dialog = p.document.createElement("dialog"); dialog.setAttribute("open", ""); p.root.appendChild(dialog);
   p.window.dispatchEvent({ type: "pointerup", pointerId: 7 } as any); dialog.remove(); expect(commit).not.toHaveBeenCalled();
 });
 it("free pointer move stays bounded, resize stays anchored, and an edge release docks", () => {
