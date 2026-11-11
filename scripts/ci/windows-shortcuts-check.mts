@@ -82,7 +82,9 @@ $dir = Join-Path $env:LOCALAPPDATA 'AgEnD'
 Write-Output ('TEMPS|' + ((Get-ChildItem -LiteralPath $dir -Filter 'shortcut-*.tmp.lnk' -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) -join ';'))
 foreach ($name in @('agend.ico', 'agend-restart.ico')) {
   $file = Join-Path $dir $name
-  Write-Output ('ICO|' + $name + '|' + (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLower())
+  # .NET's SHA-256: started from the workflow's pwsh 7, Windows PowerShell 5.1 inherits a module path without Get-FileHash.
+  $hash = [Security.Cryptography.SHA256]::Create().ComputeHash([IO.File]::ReadAllBytes($file))
+  Write-Output ('ICO|' + $name + '|' + (($hash | ForEach-Object { $_.ToString('x2') }) -join ''))
   foreach ($px in @(256, 48, 32, 16)) {
     $icon = New-Object System.Drawing.Icon($file, $px, $px)
     $bmp = $icon.ToBitmap()
