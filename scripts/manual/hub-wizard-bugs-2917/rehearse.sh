@@ -18,7 +18,7 @@ trap cleanup EXIT
 python3 - "$out/host-before.json" <<'PY'
 import json,os,sys
 from pathlib import Path
-Path(sys.argv[1]).write_text(json.dumps({'netns':os.readlink('/proc/self/ns/net'),'binfmt':sorted(os.listdir('/proc/sys/fs/binfmt_misc')))}))
+Path(sys.argv[1]).write_text(json.dumps({'netns':os.readlink('/proc/self/ns/net'),'binfmt':sorted(os.listdir('/proc/sys/fs/binfmt_misc'))}))
 PY
 mkdir "$scratch/base"
 git archive "$base" | tar -x -C "$scratch/base"
