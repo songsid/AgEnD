@@ -92,14 +92,21 @@ export function retireCompanyJoinForWebAddress(db: Database.Database, now: numbe
   const offers = db.prepare("SELECT id,body FROM hub_company_join_invites").all() as { id: string; body: string }[];
   if (rows.length > 1024 || offers.length > 1024) throw new HubProtocolError("uncertain");
   const current = rows.map(row => records.get(row.id));
+  const byId = new Map(current.map(record => [record.binding.requestId, record]));
   if (current.some(r => r.issuedHash !== null && ["issued", "acknowledged"].includes(r.stage) && now < r.outerDeadline))
     throw new HubProtocolError("backpressure");
   for (const row of offers) {
     const offer = validated(companyInvitationRecord, parseStrictJson(row.body));
     if (offer.claims.id !== row.id || offer.claims.expiresAt !== offer.claims.createdAt + 600_000)
       throw new HubProtocolError("uncertain");
-    if (offer.requestId !== null && (records.get(offer.requestId).issuedHash !== null) !== offer.consumed)
-      throw new HubProtocolError("uncertain");
+    if (offer.requestId !== null) {
+      const request = byId.get(offer.requestId);
+      // insert() normally prunes requests at retainUntil, while invitation expiry
+      // is only purged by createInvitation(). Missing live references still refuse;
+      // expired history cannot retarget or revive an issued delivery.
+      if (request ? (request.issuedHash !== null) !== offer.consumed : now < offer.claims.expiresAt)
+        throw new HubProtocolError("uncertain");
+    }
     // Absence is an existing, permanent invitation refusal, including A→B→A.
     if (!offer.consumed && db.prepare("DELETE FROM hub_company_join_invites WHERE id=? AND body=?").run(row.id, row.body).changes !== 1)
       throw new HubProtocolError("conflict");

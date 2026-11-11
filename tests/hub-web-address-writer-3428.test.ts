@@ -49,7 +49,7 @@ async function rig() {
             certificateFile: string;
             keyFile: string;
         }, audit: { appendInTransaction: () => { } } });
-    const writer = (step?: (s: string) => void) => createHubSettingsWriter({ home, readHub: () => structuredClone(hub), saveHub: patches => {
+    const writer = (step?: (s: string) => void, ownedHome = home) => createHubSettingsWriter({ home: ownedHome, readHub: () => structuredClone(hub), saveHub: patches => {
             for (const p of patches)
                 hub[p.path[1]!] = p.value;
         }, webAddressDecision: () => decision, now: () => Date.now(), step } as Parameters<typeof createHubSettingsWriter>[0]);
@@ -61,6 +61,16 @@ async function rig() {
     return { home, db, decision, writer, op, candidate, verify, hub: () => hub };
 }
 describe("#3428 shared sealed writer", () => {
+    it.each([false, true])("an owned home with trailing slash=%s commits and recovers within the same durability root", async trailing => {
+        const r = await rig(), w = r.writer(undefined, r.home + (trailing ? "/" : ""));
+        const p = r.op(w).prepare(r.candidate, owner, () => true);
+        r.op(w).commit(p.ref, owner, () => true);
+        r.writer(undefined, r.home + (trailing ? "/" : "")).recover();
+        expect(r.hub().webOrigin).toBe(r.candidate.origin);
+        expect(r.decision.head().revision).toBe(1);
+        expect(w.pending()).toBe(false);
+        expect(r.verify()).toBeTruthy();
+    });
     it.each(["owner", "epoch"])("controller refuses a replacement %s even when the host session id is reused", async mode => {
         const r = await rig(), writer = r.writer();
         const { createHubWebAddressControl } = await import("../src/hub/settings-web-address-control.js");

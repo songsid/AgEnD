@@ -43,7 +43,7 @@ function rig() {
     const addJoin = (stage: JoinRecord["stage"], issued = stage === "issued" || stage === "acknowledged") => {
         const record: JoinRecord = { v: 1, binding: { hub: { hubId: randomUUID(), webOrigin: "https://hub.example.test", memberOrigin: "https://member.example.test", spkiSha256: "a".repeat(64), issuerPublicKey: pem },
                 publicKey: pem, fleetOrigin: "http://127.0.0.1:8080", requestId: randomUUID(), operationId: randomUUID(), fleetId: randomUUID(), verifierS256: randomBytes(32).toString("base64url") },
-            version: 1, label: "Owned fixture", stateHash: "b".repeat(64), stage, createdAt: 1000, outerDeadline: 601000, retainUntil: 1201000,
+            version: 1, label: "Owned fixture", stateHash: "b".repeat(64), stage, createdAt: clock.now, outerDeadline: clock.now + 600000, retainUntil: clock.now + 1200000,
             browserHash: "c".repeat(64), browserOrigin: "http://127.0.0.1:8080", owner: null, sessionId: null, approvedAt: null, redeemDeadline: null, deliveryDeadline: 121000,
             issuedHash: issued ? "d".repeat(64) : null, reason: null, delivery: null, receipt: null, invitationId: null, approvedBy: null };
         db.transaction(() => records.insert(record)).immediate();
@@ -57,6 +57,27 @@ function rig() {
     return { db, home, decision, audit, request, clock, records, addJoin, addOffer };
 }
 describe("#3428 authoritative web-address SQL", () => {
+    it.each([false, true])("expired invitation survives ordinary request pruning (consumed=%s) without blocking address changes", consumed => {
+        const r = rig(), old = r.addJoin(consumed ? "acknowledged" : "pending");
+        const offer = r.addOffer(old.binding.requestId, consumed);
+        r.clock.now = old.retainUntil;
+        const fresh = r.addJoin("pending"); // Production insert prunes the old request, not the invitation.
+        expect(() => r.records.get(old.binding.requestId)).toThrow("not-found");
+        r.decision.commit(r.request(), () => true);
+        expect(r.decision.head().revision).toBe(1);
+        expect(r.records.get(fresh.binding.requestId)).toMatchObject({ stage: "ended", browserHash: null });
+        expect(r.db.prepare("SELECT id FROM hub_company_join_invites WHERE id=?").all(offer)).toEqual(consumed ? [{ id: offer }] : []);
+        r.decision.commit(r.request(), () => true); // Expired consumed history must not poison later moves either.
+        expect(r.decision.head().revision).toBe(2);
+    });
+    it("a missing live invitation request refuses without ending sessions or deciding", () => {
+        const r = rig(), old = r.addJoin("pending");
+        r.addOffer(old.binding.requestId);
+        r.db.prepare("DELETE FROM hub_company_join_requests WHERE id=?").run(old.binding.requestId);
+        expect(() => r.decision.commit(r.request(), () => true)).toThrow();
+        expect(r.decision.head().revision).toBe(0);
+        expect(r.db.prepare("SELECT state FROM hub_sessions").get()).toEqual({ state: "active" });
+    });
     it.each(["issued", "acknowledged"] as const)("%s receipt blocks an address decision until its original outer deadline", stage => {
         const r = rig(), join = r.addJoin(stage), op = r.request();
         expect(() => r.decision.commit(op, () => true)).toThrow("busy");
