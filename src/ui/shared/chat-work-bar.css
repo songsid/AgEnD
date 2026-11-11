@@ -1,0 +1,5 @@
+/* M-2904: Stop in the working bar above the chat composer (it left the composer row, where it took the input's width away).
+   Its own file, linked by panel-chat.js when it loads (Prism #3651): a tab opened before this change keeps its older
+   app.css, which has no rule for it — on a phone that Stop was 40×30, under the 44 px tap target. */
+.work-bar .btn-stop { flex: none; margin-left: auto; }
+@media (max-width: 899px), (pointer: coarse) { .work-bar .btn-stop { min-height: var(--tap, 44px); min-width: var(--tap, 44px); } }
