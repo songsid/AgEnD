@@ -253,7 +253,10 @@ export class DispatcherLiveness {
       let taken = false;
       try { taken = d.deliver(dispatcher, message, key); }
       catch (err) { d.log("warn", "Dispatcher liveness notice failed", { dispatcher, err: (err as Error).message }); }
-      for (const x of items) d.ledger.open({ cardUuid: x.card.uuid, assignee: x.card.assignee, dispatcher, dispatcherKind: "instance", kind: x.v.kind, since: x.v.since, detail: x.v.detail, noticeKey: taken ? key : null, notifiedAt: now, needsYou: away });
+      // Not taken (the outbox refused or threw): no episode yet, so the next sweep tries again — with the same key, which
+      // the outbox admits once, so a notice taken after all is never doubled (Fable #3670 review).
+      if (!taken) { d.log("warn", "Dispatcher liveness notice not taken; trying again on the next sweep", { dispatcher, cards: items.map((x) => x.card.code) }); continue; }
+      for (const x of items) d.ledger.open({ cardUuid: x.card.uuid, assignee: x.card.assignee, dispatcher, dispatcherKind: "instance", kind: x.v.kind, since: x.v.since, detail: x.v.detail, noticeKey: key, notifiedAt: now, needsYou: away });
       if (away) d.personChanged?.();
       d.log("info", "Dispatcher told: assignee stopped", { dispatcher, cards: items.map((x) => x.card.code), kinds: items.map((x) => x.v.kind), taken, ...(away ? { dispatcherAway: true } : {}) });
     }
