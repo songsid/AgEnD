@@ -4,7 +4,8 @@
 // probe's cache as an earlier daemon wrote it: claude's account catalog with a [1m] after EVERY model, each with the
 // window the account API reported (modelled on one Team account's listing, not live data); agy's `agy models` as agy 1.5.5
 // printed it (16 slugs). The model <select> is drawn open (size=N) so the picture shows the whole list.
-//   1 — claude: the list (before: aliases and a [1m] for every model in one run; after: the account's models only, flat);
+//   1 — claude: the list (before: aliases and a [1m] for every model in one run; after: the account's models, then the [1m] that
+//       can work — here Opus 4.6's and Sonnet 4.6's — under "1M context");
 //   2 — antigravity: the list (before: 16 slugs; after: one entry per model, the saved level shows as its model);
 //   3 — (branch) choosing an antigravity model: its slug is written (the medium one) and the effort field follows;
 //   4 — claude with no account list readable (the cache holds only the CLI's aliases): the documentation's ids, marked
@@ -78,7 +79,9 @@ try {
           check(`${cn}:claude-nolist`, first.groups.length === 1 && first.groups[0].label === (zh ? "尚未確認此帳號可用" : "Not checked against this account") && first.groups[0].options.every((v: string) => v.startsWith("claude-"))
             && first.groups[0].options.length > 0 && !values.some((v: string) => ["default", "opus", "sonnet", "haiku", "Fable", "opusplan"].includes(v)) && errs.length === 0, { first, errs });
         } else {
-          check(`${cn}:claude`, first.groups.length === 0 && values.join() === ["", ...account.map(a => a[0]), OTHER].join() && !values.some((v: string) => v.endsWith("[1m]")) && first.value === "claude-opus-4-6" && errs.length === 0 && (await csp()).length === 0, { first, errs });
+          check(`${cn}:claude`, first.groups.length === 1 && first.groups[0].label === (zh ? "1M context（需訂閱／方案支援）" : "1M context (plan-dependent)") && first.groups[0].options.join() === "claude-opus-4-6[1m],claude-sonnet-4-6[1m]"
+            && values.join() === ["", ...account.map(a => a[0]), "claude-opus-4-6[1m]", "claude-sonnet-4-6[1m]", OTHER].join() && values.filter((v: string) => v.endsWith("[1m]")).length === 2
+            && !values.some((v: string) => ["default", "opus", "sonnet", "haiku", "Fable", "opusplan"].includes(v)) && first.value === "claude-opus-4-6" && errs.length === 0 && (await csp()).length === 0, { first, errs });
         }
       } else {
         // 3: choosing another model writes its (medium) slug; the effort field follows with that model's levels.
@@ -121,7 +124,7 @@ try {
       await card.scrollIntoViewIfNeeded(); await card.screenshot({ path: shotPath(SMOKE, `skew-${way}`, `${LABEL}-card`) });
       const got = await page.evaluate(`(() => { const s = document.querySelector("#ag-model"); return { value: s.value, groups: s.querySelectorAll("optgroup").length, options: [...s.options].map((o) => o.value) }; })()`) as any;
       const once = new Set(got.options).size === got.options.length;
-      check(`skew-${way}`, errs.length === 0 && once && got.options.length > 4 && (way === "old-shell" ? got.groups === 0 && !got.options.some((v: string) => v === "opus") && served.size > 0 : way === "old-daemon" ? got.groups === 0 && got.options.includes("claude-opus-4-5-20251101[1m]") && got.options.includes("opus")
+      check(`skew-${way}`, errs.length === 0 && once && got.options.length > 4 && (way === "old-shell" ? got.groups === 1 && !got.options.some((v: string) => v === "opus") && served.size > 0 : way === "old-daemon" ? got.groups === 0 && got.options.includes("claude-opus-4-5-20251101[1m]") && got.options.includes("opus")
         : got.groups === 0 && served.size === 2) && (way === "old-modules-agy" ? got.value === "claude-opus-5-5-high" : true), { got: { ...got, options: got.options.length }, served: [...served], errs });
       r[`skew-${way}:detail`] = { groups: got.groups, value: got.value, options: got.options.length, served: [...served] };
       await ctx.close();

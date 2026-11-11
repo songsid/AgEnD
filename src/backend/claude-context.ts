@@ -1,6 +1,6 @@
 /**
- * Claude Code's 1M-token context window: which models the probe gives a `[1m]` variant (listApiModels → Telegram's
- * "/model → more models"; Web Settings lists none). No I/O.
+ * Claude Code's 1M-token context window: which models get a `[1m]` variant (listApiModels → Telegram's "/model → more
+ * models"; Web Settings' "1M context" group, web-model-groups.ts). No I/O.
  *
  * The native-1M table below is the documentation's, written by hand: a NEW model series it does not know is treated as
  * not native, so while its entry reports 1M+ it gets a redundant `[1m]` variant — add the series here when one ships.

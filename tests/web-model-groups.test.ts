@@ -1,6 +1,7 @@
 /**
- * AGEND-158 PR 3: the model list Web Settings shows — claude: the account's own models only (no aliases, no `[1m]`), the
- * documentation's ids marked unverified when there is none; other backends grouped (common / more); antigravity's effort
+ * AGEND-158 PR 3: the model list Web Settings shows — claude: the account's own models only (no aliases), a `[1m]` only
+ * where the model reports 1M+ and has no 1M by default, in its own group; the documentation's ids marked unverified when
+ * there is no account list; other backends grouped (common / more); antigravity's effort
  * levels merged into one entry per model — and a saved value that an older list showed still shows. Pure data and rendered dropdown; no CLI, no network.
  */
 import { readFileSync } from "node:fs";
@@ -36,12 +37,24 @@ const API = [
 ];
 const ids = (list: Array<{ id: string }>) => list.map(m => m.id);
 
-describe("claude: the account's own model list, nothing else", () => {
-  it("no aliases, no CLI list and no [1m] of any kind — one flat list (no group)", () => {
+describe("claude: the account's own model list, and the [1m] variants that can work", () => {
+  const ACCOUNT = ["claude-opus-5-5", "claude-opus-4-6", "claude-opus-4-5-20251101", "claude-haiku-4-5-20251001", "claude-old-x"];
+  it("no aliases and no CLI list; the account's models carry no group, the [1m] that can work come last in their own", () => {
     const shaped = shapeWebModelCatalog("claude-code", STATIC, API);
-    expect(ids(shaped)).toEqual(["claude-opus-5-5", "claude-opus-4-6", "claude-opus-4-5-20251101", "claude-haiku-4-5-20251001", "claude-old-x"]);
-    expect(shaped.some(m => m.group)).toBe(false);
+    expect(ids(shaped)).toEqual([...ACCOUNT, "claude-opus-4-6[1m]"]);
+    expect(shaped.filter(m => m.group).map(m => [m.id, m.group])).toEqual([["claude-opus-4-6[1m]", "oneMillion"]]);
     expect(shaped[0]).toMatchObject({ maxInputTokens: M });   // the catalog's own fields are kept
+  });
+  it("pinned: a model reporting 1M gets its [1m]; a 200K model, a native-1M model and one reporting nothing do not", () => {
+    const shaped = ids(shapeWebModelCatalog("claude-code", STATIC, API));
+    expect(shaped).toContain("claude-opus-4-6[1m]");                                              // reports 1,000,000, opt-in
+    for (const gone of ["claude-opus-4-5-20251101[1m]", "claude-haiku-4-5-20251001[1m]",       // report 200K
+      "claude-opus-5-5[1m]",                                                                       // 1M by default
+      "claude-old-x[1m]"]) expect(shaped, gone).not.toContain(gone);                              // no window reported
+  });
+  it("an older daemon's cache (a [1m] after every model, with the model's window) is cleaned the same way", () => {
+    const stale = ACCOUNT.flatMap(id => [{ id, label: id, maxInputTokens: id.includes("4-5") ? 200_000 : M }, { id: `${id}[1m]`, label: `${id}[1m]`, maxInputTokens: id.includes("4-5") ? 200_000 : M }]);
+    expect(ids(shapeWebModelCatalog("claude-code", STATIC, stale)).filter(id => id.endsWith("[1m]"))).toEqual(["claude-opus-4-6[1m]", "claude-old-x[1m]"]);
   });
   it("a model both lists name is listed once; without an account catalog there is nothing (the caller falls back to the documentation)", () => {
     expect(ids(shapeWebModelCatalog("claude-code", [{ id: "claude-opus-5-5", label: "x" }], [{ id: "claude-opus-5-5", label: "y" }]))).toEqual(["claude-opus-5-5"]);
@@ -54,7 +67,7 @@ describe("claude: the account's own model list, nothing else", () => {
   });
 });
 
-describe("the probe's [1m] rule (Telegram's /model → more models; Web Settings lists none)", () => {
+describe("the [1m] rule (the probe, for Telegram's /model → more models, and Web Settings' 1M group)", () => {
   it("native 1M: Fable, Sonnet 5+, Haiku 5.5+, Opus 4.7+; the rest are not; a series the table does not know is not", () => {
     for (const id of ["Fable", "claude-fable-5-2", "claude-opus-5-5", "claude-opus-4-7", "claude-opus-5", "claude-sonnet-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-4-7[1m]"]) expect(claudeNativeOneMillion(id), id).toBe(true);
     for (const id of ["claude-opus-4-6", "claude-opus-4-5-20251101", "claude-sonnet-4-6", "claude-sonnet-4-20250514", "claude-haiku-4-5-20251001", "claude-haiku-5", "opus", "claude-unknown"]) expect(claudeNativeOneMillion(id), id).toBe(false);
@@ -122,9 +135,9 @@ describe("what the dropdown does with it", () => {
     // a saved low stays low when effort is unset
     expect(resolveAgyLaunch("gemini-3.8-flash-low", null, AGY)).toMatchObject({ model: "gemini-3.8-flash-low", effort: null });
   });
-  it("an alias or [1m] that Claude's list no longer carries still shows as the current value, marked", () => {
+  it("an alias or [1m] that Claude's list does not carry still shows as the current value, marked", () => {
     const shaped = shapeWebModelCatalog("claude-code", STATIC, API);
-    for (const saved of ["opus", "sonnet[1m]", "claude-opus-4-6[1m]", "Fable"]) {
+    for (const saved of ["opus", "sonnet[1m]", "claude-opus-4-5-20251101[1m]", "Fable"]) {
       const options = modelChoices(shaped, saved, w, "inherit");
       expect(options[1]).toEqual({ value: saved, label: `${saved} — not listed` });   // kept, marked, not rewritten
       expect(options.filter((o: any) => o.value === saved)).toHaveLength(1);
@@ -143,6 +156,13 @@ describe("what the dropdown does with it", () => {
     // the documentation-only list is one group, and its heading is the information: it stays
     const doc = modelChoices(shapeDocumentedClaudeModels([{ id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" }]), "opus", w, "inherit");
     expect(groupModelOptions(doc).map((r: any) => r.group)).toEqual([null, "unverified", null]);
+    // claude: the account's models in the flat run, the 1M ones under their own heading (even with no other group), Other… after
+    const claude = groupModelOptions(modelChoices(shapeWebModelCatalog("claude-code", STATIC, API), "opus", w, "inherit"));
+    expect(claude.map((r: any) => r.group)).toEqual([null, "oneMillion", null]);
+    expect(claude[1].options.map((o: any) => o.value)).toEqual(["claude-opus-4-6[1m]"]);
+    // a claude account with no model that can take [1m]: no group at all
+    const none = modelChoices(shapeWebModelCatalog("claude-code", STATIC, API.filter(m => !m.id.includes("4-6"))), "", w, "inherit");
+    expect(groupModelOptions(none)).toEqual([{ group: null, options: none }]);
   });
   it("a list from a daemon without groups (an older daemon, a Windows computer's own) is the flat list it was", () => {
     expect(modelChoices([{ id: "a", label: "a" }, { id: "b", label: "b", description: "B" }], "", w, "inherit")).toEqual([
@@ -173,11 +193,14 @@ describe("the dropdown on a page", () => {
     return { select: p.root.querySelector("#m")!, value: () => value };
   };
 
-  it("claude: the account's models in one flat list, no group heading; an alias or [1m] is typed under Other…", async () => {
+  it("claude: the account's models, then the 1M ones under their own heading; an alias is typed under Other…", async () => {
     const { select, value } = await mount({ backend: "claude-code", instance: "w" }, "sonnet[1m]");
-    expect(select.querySelectorAll("optgroup")).toHaveLength(0);
+    const groups = [...select.querySelectorAll("optgroup")] as any[];
+    expect(groups.map(g => g.getAttribute("label"))).toEqual(["1M context (plan-dependent)"]);
+    expect([...groups[0].querySelectorAll("option")].map((o: any) => o.value)).toEqual(["claude-opus-4-6[1m]"]);
     const values = [...select.querySelectorAll("option")].map((o: any) => o.value);
-    expect(values).toEqual(["", "sonnet[1m]", "claude-opus-5-5", "claude-opus-4-6", "claude-opus-4-5-20251101", "claude-haiku-4-5-20251001", "claude-old-x", OTHER_MODEL]);
+    expect(values).toEqual(["", "sonnet[1m]", "claude-opus-5-5", "claude-opus-4-6", "claude-opus-4-5-20251101", "claude-haiku-4-5-20251001", "claude-old-x", "claude-opus-4-6[1m]", OTHER_MODEL]);
+    expect(values.some((v: string) => /^(default|opus|sonnet|haiku|opusplan|Fable)$/.test(v))).toBe(false);
     expect(select.value).toBe("sonnet[1m]");               // the saved value stays selected, not rewritten
     select.value = OTHER_MODEL; fire(select, "change"); await settle();
     expect(value()).toBe("sonnet[1m]");                      // Other… alone changes nothing; the box opens with it
@@ -226,7 +249,8 @@ describe("the routes answer the shaped catalog", () => {
     const r = get("/ui/models?backend=claude-code&instance=w", { modelCatalogForWeb: web, modelCatalogFor: () => { throw new Error("the unshaped one is not asked"); } });
     await r.finished;
     expect(web).toHaveBeenCalledWith("claude-code", "w");
-    expect(ids(r.json().models)).toEqual(["claude-opus-5-5", "claude-opus-4-6", "claude-opus-4-5-20251101", "claude-haiku-4-5-20251001", "claude-old-x"]);
+    expect(ids(r.json().models)).toEqual(["claude-opus-5-5", "claude-opus-4-6", "claude-opus-4-5-20251101", "claude-haiku-4-5-20251001", "claude-old-x", "claude-opus-4-6[1m]"]);
+    expect(r.json().models.find((m: any) => m.id === "claude-opus-4-6[1m]").group).toBe("oneMillion");
   });
   it("claude with no account list: the documented ids, unverified, no alias — also when only the static aliases were cached", async () => {
     for (const cached of [[], STATIC]) {
@@ -276,10 +300,12 @@ describe("POST /ui/models/refresh answers the shaped catalog too", () => {
     return { status: r.status, json: await r.json() as any };
   }
   const rows = () => [{ backend: "claude-code", version: "2.1.299" }];
-  it("claude: the refreshed account list, flat", async () => {
+  it("claude: the refreshed account list with only the [1m] that can work, in the 1M group (pinned)", async () => {
     const r = await post({ refreshModelCatalogFor: async () => ({ models: [...STATIC, ...API], refreshed: true }), modelCatalogForWeb: () => shapeWebModelCatalog("claude-code", STATIC, API) }, { backend: "claude-code", instance: "w" });
     expect(r.json.refreshed).toBe(true);
-    expect(ids(r.json.models)).toEqual(["claude-opus-5-5", "claude-opus-4-6", "claude-opus-4-5-20251101", "claude-haiku-4-5-20251001", "claude-old-x"]);
+    expect(ids(r.json.models)).toEqual(["claude-opus-5-5", "claude-opus-4-6", "claude-opus-4-5-20251101", "claude-haiku-4-5-20251001", "claude-old-x", "claude-opus-4-6[1m]"]);
+    expect(r.json.models.find((m: any) => m.id === "claude-opus-4-6[1m]").group).toBe("oneMillion");
+    for (const gone of ["claude-opus-4-5-20251101[1m]", "claude-haiku-4-5-20251001[1m]", "claude-opus-5-5[1m]"]) expect(ids(r.json.models)).not.toContain(gone);
   });
   it("claude with no account list after the refresh: the documentation's ids (unverified), as GET answers — not an empty list", async () => {
     for (const profile of [undefined, "work"]) {

@@ -143,13 +143,13 @@ export function modelChoices(catalog, value, words, inherit) {
 
 /**
  * The options as `<optgroup>`s: `[{ group, options }]` in order, `group` null for the ones outside any (inherit, the
- * current-but-unlisted value, "Other…"). Groups are headings that tell two sets apart, so with fewer than two groups
- * there is one ungrouped run — the flat list — except for a lone "unverified" one: that heading is itself the
- * information (these ids were not seen in this account), so it stays.
+ * current-but-unlisted value, the models a catalog leaves ungrouped, "Other…"). Groups are headings that tell two sets
+ * apart, so with fewer than two groups there is one ungrouped run — the flat list — except for a lone "unverified" or
+ * "oneMillion" one: that heading is itself the information (ids not seen in this account / plan-dependent), so it stays.
  */
 export function groupModelOptions(options) {
   const groups = new Set(options.map((o) => o.group).filter(Boolean));
-  if (groups.size < 2 && !groups.has("unverified")) return [{ group: null, options }];
+  if (groups.size < 2 && !groups.has("unverified") && !groups.has("oneMillion")) return [{ group: null, options }];
   const runs = [];
   for (const o of options) {
     const g = o.group || null, last = runs[runs.length - 1];

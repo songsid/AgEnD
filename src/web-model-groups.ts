@@ -2,10 +2,13 @@
  * The model list Web Settings shows (AGEND-158 PR 3): the same catalog the CLI env probe cached, shaped so that every
  * entry is one the person can pick.
  *
- * - claude-code: only the account's own model list (`GET /v1/models`) — no aliases (`default`, `opus`, …), no CLI list
- *   and no `[1m]` variant; a person who wants one types it under "Other…", and a saved one still shows as the current
- *   value. One group, so a flat list. When no account list could be read, the documentation's `claude-*` ids are all
- *   there is, grouped as `unverified` (named by the documentation, not seen in this account); aliases are not listed.
+ * - claude-code: the account's own model list (`GET /v1/models`) — no aliases (`default`, `opus`, …) and no CLI list; a
+ *   person who wants one types it under "Other…", and a saved one still shows as the current value. Its `[1m]`
+ *   variants are listed only where they can work — the model's own entry reports a 1M+ input window and the model does
+ *   not have 1M by default (`claudeOneMillionOffered`) — in their own group, `oneMillion` (the API cannot tell which
+ *   plans may use them); every other `[1m]` (an older daemon's cache wrote one after every model) is dropped. The
+ *   account's models themselves carry no group. When no account list could be read, the documentation's `claude-*` ids
+ *   are all there is, grouped as `unverified` (named by the documentation, not seen in this account); no aliases.
  * - other backends: `common` (the quick-pick tier) then `more` (the account catalog behind "more models") when a
  *   backend has both; a backend with a single tier carries no groups at all.
  * - antigravity: `agy models` lists one slug per effort level; the levels of one model are one entry, and the level is
@@ -17,8 +20,9 @@
  */
 import type { ModelOption } from "./backend/types.js";
 import { agyVariantOf } from "./backend/effort-metadata.js";
+import { claudeOneMillionOffered, ONE_MILLION_SUFFIX } from "./backend/claude-context.js";
 
-export type WebModelGroup = "common" | "more" | "unverified";
+export type WebModelGroup = "common" | "more" | "oneMillion" | "unverified";
 export interface WebModelOption extends ModelOption {
   group?: WebModelGroup;
   /** Other catalog slugs this entry stands for (antigravity: the model's other effort levels). */
@@ -51,8 +55,8 @@ export function mergeAntigravityLevels(models: readonly WebModelOption[]): WebMo
 
 /**
  * `common`: the quick-pick tier (aliases, the CLI's own list); `more`: the account catalog behind "more models".
- * claude-code answers the account catalog alone (without its `[1m]` variants), as one flat list; any other backend whose
- * catalog has only the first tier answers a flat list (no `group`).
+ * claude-code answers the account catalog alone — its `[1m]` variants only where offered, in their own group, last — and
+ * any other backend whose catalog has only the first tier answers a flat list (no `group`).
  */
 export function shapeWebModelCatalog(backend: string, common: readonly ModelOption[], more: readonly ModelOption[] = []): WebModelOption[] {
   const seen = new Set<string>();
@@ -61,14 +65,20 @@ export function shapeWebModelCatalog(backend: string, common: readonly ModelOpti
   const tiered = !claude && more.length > 0;
   const add = (m: ModelOption, group: WebModelGroup | undefined) => {
     if (!m || typeof m.id !== "string" || seen.has(m.id)) return;
-    if (claude && m.id.endsWith("[1m]")) return;
+    let shown = group;
+    if (claude && m.id.endsWith(ONE_MILLION_SUFFIX)) {
+      if (!claudeOneMillionOffered(m.id.slice(0, -ONE_MILLION_SUFFIX.length), m.maxInputTokens)) return;
+      shown = "oneMillion";
+    }
     seen.add(m.id);
-    out.push(group ? { ...m, group } : { ...m });
+    out.push(shown ? { ...m, group: shown } : { ...m });
   };
   if (!claude) for (const m of common) add(m, tiered ? "common" : undefined);
   for (const m of more) add(m, tiered ? "more" : undefined);
   // claude without an account catalog is the empty list: the caller's documented fallback (shapeDocumentedClaudeModels).
-  return backend === "antigravity" ? mergeAntigravityLevels(out) : out;
+  if (backend === "antigravity") return mergeAntigravityLevels(out);
+  // The 1M variants (plan-dependent) come last, the account's own models before them.
+  return claude ? [...out.filter(m => m.group !== "oneMillion"), ...out.filter(m => m.group === "oneMillion")] : out;
 }
 
 /**

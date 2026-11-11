@@ -1756,7 +1756,7 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
         options.push({ id: model.id, label: model.id, ...(model.display_name ? { description: model.display_name } : {}), ...facts });
         // The 1M variant only where the model itself reports 1M+ and does not have it by default (Opus 4.5 and Haiku 4.5
         // report 200K and the API refuses their `[1m]`; Opus 4.7+/Sonnet 5+ need no suffix). This feeds Telegram's
-        // "/model → more models" (Web Settings lists no `[1m]`).
+        // "/model → more models"; Web Settings lists the same ones (web-model-groups.ts).
         if (claudeOneMillionOffered(model.id, facts.maxInputTokens)) {
           options.push({ id: `${model.id}[1m]`, label: `${model.id}[1m]`, description: "1M context — plan-dependent", ...facts });
         }

@@ -90,7 +90,7 @@ export function BackendSelect({ value, onChange, disabled, id, hostOnly }) {
  * `inherit`: the label of the empty choice (inherit / none), or omit it when the field has none.
  */
 /** The heading of each model group the daemon names (web-model-groups.ts); an unknown one reads as "more". */
-const MODEL_GROUP_LABEL = { common: "modelGroupCommon", more: "modelGroupMore", unverified: "modelGroupUnverified" };
+const MODEL_GROUP_LABEL = { common: "modelGroupCommon", more: "modelGroupMore", oneMillion: "modelGroupOneMillion", unverified: "modelGroupUnverified" };
 export function ModelSelect({ value, onChange, disabled, id, backend, instance, runtime, machineId, inherit, catalogOverride, profile }) {
   const state = useRefreshableModels(catalogOverride === undefined ? backend : null, instance, { runtime, machineId, profile });
   const catalog = catalogOverride === undefined ? state.models : catalogOverride;
