@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { registerExecutableFixture } from "./support/process-guard.js";
 /**
  * #1328 (CLI audit 2026-10-07): the gaps fixable without a login.
@@ -188,7 +189,7 @@ describe("agy: effort levels from the binary's own --help", () => {
 
   describe("probe → cache → reader (the exact chain, scratch AGEND_HOME)", () => {
     const fleet = async () => {
-      const { FleetManager } = await import("../src/fleet-manager.js");
+      const { FleetManager } = fleetManagerModule;
       const fm = new FleetManager(scratch()) as any;
       fms.push(fm);
       return async (be: AntigravityBackend) => fm.persistCliEnvProbeResult("antigravity", await be.probeCLIEnv());

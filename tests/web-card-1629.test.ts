@@ -12,6 +12,8 @@
  *   the agent's; the card's routes are on the public link (r4.1 Q2) while theme reset/lock stay off it.
  * - The status frame carries card_v, which moves with what is drawn.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
+import * as daemonModule from "../src/daemon.js";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -211,7 +213,7 @@ describe("pictures in parts (r4 §1: larger than one message)", () => {
     const ws = tmp("agend-card-ws-");
     writeFileSync(join(ws, "me.png"), big);
     const { svc, store } = service();
-    const { Daemon } = await import("../src/daemon.js");
+    const { Daemon } = daemonModule;
     const daemon = new Daemon("worker", { working_directory: ws, log_level: "error", restart_policy: { max_retries: 1, backoff: "exponential", reset_after: 300 },
       context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 } } as never, join(ws, ".instance"), true, undefined, undefined, pino({ level: "silent" }) as never) as any;
     const send = vi.fn((_socket: unknown, _msg: unknown) => true);
@@ -318,7 +320,7 @@ describe("the card's routes", () => {
     expect([isPassiveWebRead("GET", "/api/card/a"), isPassiveWebRead("GET", "/api/card/a/banner"), isPassiveWebRead("DELETE", "/api/card/a")]).toEqual([true, true, false]);
   });
   it("through the handler: a person's edits (session and public link alike), resolved over the agent's; Reset clears only the agent's", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { handleViewRequest } = await import("../src/view-api.js");
     const { csrfTokenFor, tokenEpoch } = await import("../src/web-session.js");
     const { bindGatewayRequest } = await import("../src/web-request-context.js");

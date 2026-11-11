@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import type { Schedule, ScheduleRetry, ScheduleRun, CreateScheduleParams, UpdateScheduleParams, Decision, CreateDecisionParams, UpdateDecisionParams, Task, TaskCompact, ListTasksOpts, CreateTaskParams, UpdateTaskParams } from "./types.js";
 import { cardCode, TaskBoard, type Actor } from "./task-board.js";
+import { LivenessLedger } from "./task-liveness.js";
 
 /**
  * The project_root a team decision is stored under (#3421 review): never a working directory — a NUL is in no path —
@@ -13,6 +14,8 @@ export class SchedulerDb {
   private db: Database.Database;
   /** The task board on the `tasks` table: its rules, comments and history (task-board.ts). */
   readonly board: TaskBoard;
+  /** #3647: the dispatcher-liveness episodes (whose assignee stopped, who was told). */
+  readonly liveness: LivenessLedger;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
@@ -156,6 +159,7 @@ export class SchedulerDb {
       CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
     `);
     this.board = new TaskBoard(this.db);
+    this.liveness = new LivenessLedger(this.db);
     this.board.migrate();
     // #2293: each committed board write, as the tasks it touched (the search index keeps a doc per task).
     this.board.onChange(({ ids }) => {

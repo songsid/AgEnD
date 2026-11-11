@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **The task board tells a card's dispatcher when its assignee stops (#3647).** When an agent holding a claimed card crashes and does not come back, is paused (sign-in ended, usage limit, errors), looks stuck, waits on a prompt nobody answers for 10 minutes, or stays quiet with the card for 60 minutes, the agent that handed the card out gets one `[Task board]` notice, and one "working again" line when it recovers. Long background work (subagents, background tasks) and waiting on a reply do not count as quiet; planned restarts and updates send nothing. A person who handed out the card sees a quiet assignee in Needs you. `task list` with `stale: true` lists these cards. The thresholds are in Settings → Agent defaults → When an assignee stops (`defaults.task_board.liveness`). AgEnD only tells: nothing is restarted or reassigned.

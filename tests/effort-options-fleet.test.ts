@@ -75,6 +75,16 @@ describe("FleetManager.effortOptionsFor: the levels the model in the field takes
     }
   });
 
+  it("antigravity: the levels of the model in the field's list (one entry for its low / medium / high slugs), any slug of it alike (AGEND-178)", async () => {
+    mkdirSync(join(root, "agend", "cli-env"), { recursive: true });
+    const models = [...["low", "medium", "high"].map(l => ({ id: `gemini-3.8-flash-${l}`, label: `Gemini 3.8 Flash (${l})` })), { id: "gpt-oss-120b-medium", label: "GPT-OSS 120B (Medium)" }];
+    writeFileSync(join(root, "agend", "cli-env", "antigravity.json"), JSON.stringify({ backend: "antigravity", probedAt: Date.now(), models, effortLevels: ["low", "medium", "high"] }));
+    const fm = await rig("instances:\n  agy: { working_directory: /tmp, backend: antigravity, model: gemini-3.8-flash-high }\n");
+    expect(fm.effortOptionsFor("agy").levels).toEqual(["low", "medium", "high"]);
+    expect(fm.effortOptionsFor("agy", "gemini-3.8-flash-medium").levels).toEqual(["low", "medium", "high"]);
+    expect(fm.effortOptionsFor("agy", "gpt-oss-120b-medium").levels).toEqual(["medium"]);
+  });
+
   it("answers the effort in force with its source, and offers nothing for a CLI without an effort setting or an unknown agent", async () => {
     catalog();
     const fm = await rig(YAML);

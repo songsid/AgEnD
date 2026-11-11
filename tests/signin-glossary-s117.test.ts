@@ -11,6 +11,7 @@
  * turns on a web-only fleet's authenticator or other-device sign-in; a used launch link (#3270's auto sign-in) says how
  * to sign in again here; 6 位數驗證碼（驗證器 App）, 裝置登入碼 for another device, 手動配對碼 for the Hub.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync, statSync, mkdtempSync, rmSync } from "node:fs";
 import { request, type Server } from "node:http";
@@ -173,7 +174,7 @@ describe("S-117 story 1: the server marks the page when no chat is connected", (
     r.on("error", reject); r.end();
   });
   it("a configured chat that is not connected (a fresh install) is marked data-no-chat (words only); once connected, not", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const dir = mkdtempSync(join(tmpdir(), "agend-s117-")); dirs.push(dir);
     const fm = new FleetManager(dir), any = fm as any;
     fm.logger = { info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {}, child: () => fm.logger } as never;

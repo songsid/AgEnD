@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -71,7 +72,7 @@ function cached() {
   return JSON.parse(readFileSync(join(home, "cli-env", "antigravity.json"), "utf-8"));
 }
 async function makeFleet() {
-  const { FleetManager } = await import("../src/fleet-manager.js");
+  const { FleetManager } = fleetManagerModule;
   const fm = new FleetManager(dataDir);
   (fm as any).fleetConfig = { defaults: {}, channel: {}, instances: {} };
   return fm as any;

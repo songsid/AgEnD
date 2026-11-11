@@ -12,6 +12,7 @@
  *
  * Isolation: temp directories; no child process; the fleet's own handlers with its config set in memory.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { request, type Server } from "node:http";
@@ -133,7 +134,7 @@ describe("the `office_packs` feature: off unless set true", () => {
   });
 
   it("refused at the IPC sink and the agent endpoint until switched on, read at each call", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = { fleetConfig: { defaults: {}, instances: { dev: { working_directory: "/tmp/d" } as Record<string, unknown> } },
       logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() } };
     const check = (FleetManager.prototype as any).checkToolPermission.bind(fm);
@@ -709,7 +710,7 @@ function raw(port: number, method: string, path: string, headers: Record<string,
   });
 }
 async function fleet() {
-  const { FleetManager } = await import("../src/fleet-manager.js");
+  const { FleetManager } = fleetManagerModule;
   const dir = scratch();
   const fm = new FleetManager(dir) as any;
   const quiet = () => {};
