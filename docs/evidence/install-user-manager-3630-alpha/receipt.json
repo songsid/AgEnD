@@ -1,0 +1,68 @@
+{
+  "base": "9abdfa67f3d21734d5584ea6b188dd441e8877a0",
+  "candidate": "600b3b9c20ab5091abcc4aab3d27a7ff1cfe6355",
+  "modifiedProductTree": false,
+  "inputBindings": {
+    "c20a98162c2fb6ce30298b0cc4cc3165ec72a9cc6f9fc71931bba8c824908f06": [
+      "src/cli.ts"
+    ],
+    "9ab88429b3922fa190ef727e6db22cfa4900cde941ef51c004fb3e4d0e1e300b": [
+      "src/locale.ts"
+    ],
+    "55c1146a37846e4443ecdca4267f689c72bebb739b5ff4f7648b454f43330275": [
+      "src/service-installer.ts"
+    ],
+    "398ecbaaccb63e934ff99e630af832c34fd902decb2053a1ea374ed69a550685": [
+      "src/install-user-systemd.ts"
+    ],
+    "06ded3fe3c45d77789589426d378c62935c11efb9f5b61cff10d79490f879800": [
+      "tests/install-user-manager-3630.test.ts"
+    ],
+    "65c611ef465645b32f8e50c3d2ba021f7c45056b3d47e51ec01147b9ef230aa0": [
+      "changes/3630.md"
+    ],
+    "50f3367fb11e93b2d85bc528bd3974dfea95b4da886ff044a6917dc4d916e23f": [
+      "changes/3630.zh-TW.md"
+    ]
+  },
+  "parity": [
+    {
+      "path": "src/cli.ts",
+      "ownChangedLinesEqual": true
+    },
+    {
+      "path": "src/locale.ts",
+      "ownChangedLinesEqual": true
+    },
+    {
+      "path": "src/service-installer.ts",
+      "ownChangedLinesEqual": true
+    },
+    {
+      "path": "src/install-user-systemd.ts",
+      "ownChangedLinesEqual": true
+    },
+    {
+      "path": "tests/install-user-manager-3630.test.ts",
+      "ownChangedLinesEqual": true
+    },
+    {
+      "path": "changes/3630.md",
+      "ownChangedLinesEqual": true
+    },
+    {
+      "path": "changes/3630.zh-TW.md",
+      "ownChangedLinesEqual": true
+    }
+  ],
+  "checks": {
+    "focusedFiles": 5,
+    "focusedPassed": 133,
+    "newSuiteRestored": 14,
+    "baselineAssertionFailures": 4,
+    "guardReversalsCaught": 12,
+    "sourceTypes": "pass",
+    "testTypes": "pass"
+  },
+  "mainEvidence": "Main safe container rehearsal and copy review remain main-scoped; no alpha container rerun claimed."
+}

@@ -1,0 +1,29 @@
+{
+  "ef75de3578bca2aed6052ca9c2e4202fe01a2a6a86e88380bc6fd31fedeb733a": [
+    "docs/evidence/install-user-manager-3630-alpha/README.md"
+  ],
+  "7b718d33c8100a23a02afa8b8fd86d330a6d8353e5231b6aacaff2b569f14072": [
+    "docs/evidence/install-user-manager-3630-alpha/changelog.log"
+  ],
+  "e667e6515c6addc3bd4d1d641d948a937e116c48d54275a6be204639268cb8b3": [
+    "docs/evidence/install-user-manager-3630-alpha/fail-first.log"
+  ],
+  "b374f1b70013046a2c2d2b5caf50e1ad7862486f30c00aa3840272fb70b51e05": [
+    "docs/evidence/install-user-manager-3630-alpha/focused.log"
+  ],
+  "ebd7cea025dcbe5a32ec53e22e127866488e8c4f834739c73b87150545c426c6": [
+    "docs/evidence/install-user-manager-3630-alpha/mutations.json"
+  ],
+  "cbab525e65212311fd0f1458bed5b6e1a99eca17d2d55a5ff8592ee1109660b3": [
+    "docs/evidence/install-user-manager-3630-alpha/receipt.json"
+  ],
+  "e9e72f1f9be214d28b399c7cfeb76a4ac91201f536c81cd0c79f7053d8cd17b0": [
+    "docs/evidence/install-user-manager-3630-alpha/restored.log"
+  ],
+  "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748": [
+    "docs/evidence/install-user-manager-3630-alpha/test-types.log"
+  ],
+  "aa268e46f818d58516536fcec326656a48c29a59710ec60601bab337d2d47994": [
+    "docs/evidence/install-user-manager-3630-alpha/types.log"
+  ]
+}
