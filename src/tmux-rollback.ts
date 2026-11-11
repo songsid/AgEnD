@@ -20,6 +20,12 @@ export interface RollbackDeps {
   to: string;
   /** The bundled tmux's socket (null: the bundled tmux was never on here — nothing private to close). */
   socket: string | null;
+  /**
+   * M-2897: find the npm that will install the older version, BEFORE anything is stopped: the npm that manages this
+   * install (update-dispatch npmForUpdate, as `agend update` does), put first on PATH for the install and the start. None:
+   * the plain reason, and nothing is stopped (it used to stop the fleet, then fail at `npm install -g`). Omitted: PATH's npm.
+   */
+  npm?(): Promise<{ ok: true } | { ok: false; reason: string }>;
   stopFleet(): Promise<{ ok: boolean; detail: string }>;
   fleetGone(): Promise<boolean>;
   install(version: string): Promise<{ ok: boolean; detail: string }>;
@@ -30,13 +36,18 @@ export interface RollbackDeps {
 
 export type RollbackResult =
   | { ok: true }
-  | { ok: false; stage: "stop" | "close" | "install" | "start"; message: string };
+  | { ok: false; stage: "npm" | "stop" | "close" | "install" | "start"; message: string };
 
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 export async function rollback(d: RollbackDeps): Promise<RollbackResult> {
   if (!VERSION.test(d.to)) return { ok: false, stage: "stop", message: `"${d.to}" is not a version (e.g. 2.3.4).` };
   const p = d.probes ?? realProbes;
+  // 0. M-2897: the npm the install will use, found before the fleet is stopped.
+  if (d.npm) {
+    const npm = await d.npm();
+    if (!npm.ok) return { ok: false, stage: "npm", message: `Rollback not started: ${npm.reason}` };
+  }
 
   // 1. Stop, and see it gone (a SIGTERMed foreground fleet checkpoints on its way out).
   const stop = await d.stopFleet();

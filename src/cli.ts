@@ -3822,8 +3822,11 @@ program
     const { spawnSync } = await import("node:child_process");
     const self = (args: string[]) => spawnSync(process.execPath, [process.argv[1]!, ...args], { stdio: "inherit" });
     const fleetPid = (() => { try { return parseInt(readFileSync(join(DATA_DIR, "fleet.pid"), "utf-8").trim(), 10); } catch { return NaN; } })();
+    const { npmForUpdate } = await import("./update-dispatch.js");
     const result = await rollback({
       agendHome: DATA_DIR, from: pkgVersion, to: version.replace(/^v/, ""),
+      // M-2897: the npm that manages this install, also when PATH has none — first on PATH for npm install and agend start.
+      async npm() { const r = await npmForUpdate(); if (!r.ok) return r; if (r.path !== null) process.env.PATH = r.path; return { ok: true }; },
       socket: readServerRecord(DATA_DIR)?.socket ?? tmuxSocket(),
       async stopFleet() { const r = self(["stop", "--yes"]); return { ok: r.status === 0, detail: `agend stop exited ${r.status ?? r.signal}` }; },
       async fleetGone() {
