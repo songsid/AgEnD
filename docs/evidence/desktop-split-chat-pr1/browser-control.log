@@ -1,0 +1,3 @@
+(node:3304743) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+{"mode":"baseline","head":"996e3e201e39d70e0d892c8420a169d9eb4e1eb6","cases":20,"oneStream":true,"externalRequests":0,"substitutions":{}}

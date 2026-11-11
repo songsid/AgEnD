@@ -1,0 +1,231 @@
+{
+  "checks": [
+    {
+      "name": "real host launch sign-in",
+      "pass": true
+    },
+    {
+      "name": "actual Settings two-level shell",
+      "pass": true
+    },
+    {
+      "name": "initializer prepare",
+      "pass": true
+    },
+    {
+      "name": "verified synthetic LDAPS",
+      "pass": true
+    },
+    {
+      "name": "initializer commit",
+      "pass": true
+    },
+    {
+      "name": "initial Hub ready",
+      "pass": true
+    },
+    {
+      "name": "actual browser directory sign-in",
+      "pass": true
+    },
+    {
+      "name": "public manual pairing offer",
+      "pass": true
+    },
+    {
+      "name": "production member pairing API",
+      "pass": true
+    },
+    {
+      "name": "public pinned connect",
+      "pass": true
+    },
+    {
+      "name": "pending fingerprint",
+      "pass": true
+    },
+    {
+      "name": "exact owner confirmation",
+      "pass": true
+    },
+    {
+      "name": "exact admin confirmation",
+      "pass": true
+    },
+    {
+      "name": "local exact fingerprint confirmation",
+      "pass": true
+    },
+    {
+      "name": "production member reconciled before",
+      "pass": true
+    },
+    {
+      "name": "browser prepares address",
+      "pass": true
+    },
+    {
+      "name": "saved exact mount ready",
+      "pass": true
+    },
+    {
+      "name": "paired member reconnects with identical credential and pins",
+      "pass": true
+    },
+    {
+      "name": "member and issuer preserved",
+      "pass": true
+    },
+    {
+      "name": "old browser session ended",
+      "pass": true
+    },
+    {
+      "name": "actual browser directory sign-in",
+      "pass": true
+    },
+    {
+      "name": "new address accepts fresh real directory sign-in",
+      "pass": true
+    },
+    {
+      "name": "old address refused",
+      "pass": true
+    }
+  ],
+  "screenshots": [
+    "backend-before-hub.zh-TW.png",
+    "backend-after-relogin.zh-TW.png"
+  ],
+  "boundary": "Owned container, --network none, explicit uid1000, no capabilities. Real Fleet health/Settings shell, D3, Hub HTTPS, synthetic verified LDAPS, public manual pairing through the second FleetManager and its production member runtime with empty Agent inventory. No new address UI, full fleet daemon lifecycle, agent/model/CLI/tmux/native/real AD/pilot.",
+  "hubResponses": [
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": false
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    }
+  ],
+  "reconciliations": 2,
+  "profileSha256": "4ff3cd1d35fe40c7adf9b0deb356d57cfe17d35926bfb90b3666f870a700a1e7",
+  "ready": true,
+  "cleaned": true,
+  "productionSha256": [
+    {
+      "file": "src/hub/settings-web-address-control.ts",
+      "sha256": "a451fbfb6ccc59c475ef02c890103a7135ba4157440a92a5e3a1fa937064eb08"
+    },
+    {
+      "file": "src/hub/settings-web-address-decision.ts",
+      "sha256": "cbc72711dbe17306be80769aa3d2ff6d52566ad57da13e0f901e920cb092e073"
+    },
+    {
+      "file": "src/hub/settings-web-address-http.ts",
+      "sha256": "3bae72e80ab0a0796de8913fbf5d2e33da892932ad317dc477c6937d72cc9e04"
+    },
+    {
+      "file": "src/hub/settings-web-address-network.ts",
+      "sha256": "119fe3377bb667e6ed20342cb149c06a3d6a7a6334e180307b7d3240c0fbb9dd"
+    },
+    {
+      "file": "src/hub/settings-web-address-policy.ts",
+      "sha256": "2f9c687f524c030b490eced8f10f7635bc6cbc98b411e5428b182400a0208b2c"
+    },
+    {
+      "file": "src/hub/settings-web-address.ts",
+      "sha256": "9de0e3cabcb71e012a7984effe2c9b97285dc36c902e220d90ab392517500cd9"
+    },
+    {
+      "file": "src/fleet-manager.ts",
+      "sha256": "82c5ab5f843b43495f5733ce99db34cef180b40161618180fe22f7f0be2650f0"
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "55f99ac88ad54293316a82545742ef4b36ca8aa03b499d7dbd5cf7ed4a88c5b1"
+    },
+    {
+      "file": "src/hub/init/network.ts",
+      "sha256": "5672d2582f0cd8c181c5066033ded830e291b35410e515d0b71ffd79f200508f"
+    },
+    {
+      "file": "src/hub/init/plan-digest.ts",
+      "sha256": "9b4d4d22adc983b82232f2f0a41052dea35f13641ebf2adec98605f429933253"
+    },
+    {
+      "file": "src/hub/join/service.ts",
+      "sha256": "b3ee15c572c385b845052e25e49459cbf45cd1a08b6130fdb84751a7c93774f7"
+    },
+    {
+      "file": "src/hub/join/store.ts",
+      "sha256": "f4ee43e28152aef11a96c6ffd2190118518eb98d869ed227b24f51d0c7c23186"
+    },
+    {
+      "file": "src/hub/runtime.ts",
+      "sha256": "3b449f825234fe94bac0f24325fdcb0ca9800f0c83a3220bad5da2c3753f8eec"
+    },
+    {
+      "file": "src/hub/settings-commit.ts",
+      "sha256": "778284b011dd741414db9cf233ce646f506d8195993a0afdd051f650a88d0357"
+    },
+    {
+      "file": "src/hub/settings-directory-recovery.ts",
+      "sha256": "5c96df337ebe86cf702cba63f1595ee9416f74973dfaa97aae880e10cf2b7099"
+    },
+    {
+      "file": "src/settings-api.ts",
+      "sha256": "08bb230a4e78c31e59c7e34efb06ea37d6b1c189f3f1012db39733b3fb243d91"
+    }
+  ],
+  "sourceBase": "9c98307c938b77d8eaaebf5bcd3f20c5c27dce6f",
+  "sourceHead": "52cf20fd8581942ff9c17866f44b5db285893e0a",
+  "precommit": true,
+  "screenshotsSha256": {
+    "backend-before-hub.zh-TW.png": "0838cefd7ea85f081cc7e5be03ca2ddb903397cd73b9cafd9208480e54daa8b4",
+    "backend-after-relogin.zh-TW.png": "33417e8bf323b2fb752f67ccbf8a3d5aa4589621a2c8040b27bc54dc26f16737"
+  }
+}

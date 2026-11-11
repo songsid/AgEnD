@@ -610,6 +610,17 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     if (config.defaults.task_board !== undefined) {
       // #2804: its only key, summary_at, is accepted and ignored (the daily summary is gone).
       if (!isObj(config.defaults.task_board)) err("defaults.task_board", "must be a mapping");
+      else if (config.defaults.task_board.liveness !== undefined) {
+        // #3647: the dispatcher-liveness thresholds.
+        const lv = config.defaults.task_board.liveness;
+        if (!isObj(lv)) err("defaults.task_board.liveness", "must be a mapping");
+        else for (const [k, v] of Object.entries(lv)) {
+          if (k === "enabled") { if (typeof v !== "boolean") err("defaults.task_board.liveness.enabled", "must be true or false"); }
+          else if (k === "quiet_minutes" || k === "prompt_minutes" || k === "crash_grace_minutes") {
+            if (typeof v !== "number" || !Number.isFinite(v) || v < 1 || v > 1440) err(`defaults.task_board.liveness.${k}`, "must be a number of minutes from 1 to 1440");
+          } else err(`defaults.task_board.liveness.${k}`, "unknown key (enabled, quiet_minutes, prompt_minutes, crash_grace_minutes)");
+        }
+      }
     }
     if (config.defaults.startup !== undefined) {
       if (!isObj(config.defaults.startup)) err("defaults.startup", "must be a mapping");

@@ -1,6 +1,6 @@
 /** Narrow composition gate. No network/store/key/directory import or I/O on the ordinary off path. */
-import type { HubMode } from "./types.js";
-export interface HubMountedService { start(): Promise<void>; fence(): void; close(): Promise<void> }
+import type { HubMode, HubMemberLeaveBinding } from "./types.js";
+export interface HubMountedService { start(): Promise<void>; fence(): void; close(): Promise<void>; leave?(expected: HubMemberLeaveBinding): Promise<boolean> }
 export interface HubMountOptions {
   home: string;
   /** S5's pure hub/init/plan-digest.ts canonical config projection. Never hash a caller-selected subset. */
@@ -38,6 +38,12 @@ export class HubMount implements HubMode {
   epoch(): number { return this.generation; }
   serverEnabled(): boolean { return this.serverOn; }
   memberEnabled(): boolean { return this.memberOn; }
+  async memberLeave(expected: HubMemberLeaveBinding): Promise<boolean> {
+    const selected = this.member, generation = this.generation;
+    if (!this.memberOn || !selected?.leave) return false;
+    try { return await selected.leave(expected) === true && this.memberOn && this.member === selected && this.generation === generation; }
+    catch { return false; }
+  }
   /** Revocation is synchronous, before asynchronous stop/import/start work. */
   fenceServer(): void {
     this.serverGeneration++; this.serverOn = false; this.server?.fence();

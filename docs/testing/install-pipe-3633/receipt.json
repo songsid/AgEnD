@@ -1,0 +1,32 @@
+{
+  "base": "43e5708356d6b31cb596a719079f7dc945d8eed3",
+  "installedVersion": "2.3.4",
+  "scriptSha256": "e6816ea6fa060face148d60b4475eb244e88fc5b7e02efb6e5b24c4fe3b9ead4",
+  "baselineScriptSha256": "53e2d80039a8ef040afb9b6663fd4634c701dc4afc50578c21ae610c4a62fc15",
+  "shape": "curl -fsSL http://127.0.0.1:18863/install.sh | bash",
+  "before": "tzdata absent; no tmux/build tools; Node/npm preinstalled",
+  "baseline": {
+    "pipelineExit": 0,
+    "versionExit": 127,
+    "timezonePrompts": 197
+  },
+  "fixed": {
+    "pipelineExit": 0,
+    "versionExit": 0,
+    "timezonePrompts": 0
+  },
+  "environment": "ordinary Ubuntu24.04 container; no privileged/systemd/host networking; no account/backend/fleet",
+  "unit": "51/51; baseline new regression9/9 fail",
+  "typecheck": "native test typecheck passes",
+  "packSmoke": "built/packed current main; global npm install and PATH version1.22.0 pass; installed runtime guard passes after correcting fixture version-string argument",
+  "logs": {
+    "baseline.log": "640b3c27451d56957d9c47bfe1306d5e2a6fa11c325bbf95b64a3d9530f4c148",
+    "unit.log": "be196eeafeea49b9e55dcf829b2e62f774be8735d8ace49354263e1b25d81e4b",
+    "install-smoke-guard.log": "3d932fe9abefa4ac2c008e16eb77bd2f197c64bb1e6e9cc1d2dfa00e3817a69e",
+    "install-smoke.log": "aa356b34d4fac3c2a35f6cecc82c64c39f08f8d2106d351ca1c62850ecbd215a",
+    "fail-first.log": "ec6781a826dab82f44a2bc1ac49d9f945a90a5a339edef1db80d84b0f19de4ea",
+    "fixed.log": "36ead9e753c3e99d8b2d21afdfbb865874c1f52ce84ddaf9a97db8729c9c4b42"
+  },
+  "logNormalization": "ANSI removed, line endings normalized and trailing whitespace trimmed; no content masking",
+  "missingPathRegression": "exact exit1 and explicit agend-not-on-PATH message; broken/empty version also exact exit1"
+}

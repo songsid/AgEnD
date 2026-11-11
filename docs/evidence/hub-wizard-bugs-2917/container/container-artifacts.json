@@ -1,0 +1,18 @@
+{
+  "base": {
+    "files": 2734,
+    "bindings": {
+      "f2bf3ececf9e21bc90d863db782d56919537851c239a44b6ff31367b370297c3": [
+        "dist/"
+      ]
+    }
+  },
+  "candidate": {
+    "files": 2734,
+    "bindings": {
+      "96913a181c71e4e859e8567ab1d40c009b8f9c9517f06240f7da86df8f9f640d": [
+        "dist/"
+      ]
+    }
+  }
+}

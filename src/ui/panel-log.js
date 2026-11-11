@@ -15,6 +15,7 @@ import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/as
 import { register, t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
+import * as paneContext from "/assets/app-ctx.js";
 import { PanelHeader, setTitle, statusClass, statusLabel, openDrawer } from "/assets/app-shell.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderSlot, HeaderTools } from "/assets/header-tools.js";
@@ -198,10 +199,11 @@ export function collapse(items) {
 }
 
 export function LogPanel({ route, navKey }) {
+  const pane = paneContext.usePane?.();
   const app = useStore(appStore);
   const name = route.instance;
   const inst = app.instances.find((i) => i.name === name) || null;
-  useEffect(() => { setTitle(`${name} · ${t("app.log")}`); }, [name, navKey]);
+  useEffect(() => { if (pane?.focused !== false) setTitle(`${name} · ${t("app.log")}`); }, [name, navKey, pane?.focused]);
   if (!app.ready) return html`<div data-effect-panel="log" class="panel p-log"><${PanelHeader} title=${name} /><div data-trust="panel-content" class="panel-body"><${Skeleton} lines=${6} /></div></div>`;
   if (!inst) {
     return html`<div data-effect-panel="log" class="panel p-log"><${PanelHeader} title=${name} />

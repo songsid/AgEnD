@@ -1,0 +1,213 @@
+{
+  "checks": [
+    {
+      "name": "S2-L1 case-insensitive prefix finds Owners",
+      "pass": true
+    },
+    {
+      "name": "LDAP bounded subtree projection",
+      "pass": true
+    },
+    {
+      "name": "S2-L1 short prefix refused",
+      "pass": true
+    },
+    {
+      "name": "S2-L2 literal filter, no suggestions",
+      "pass": true
+    },
+    {
+      "name": "S2-L2 literal text reaches wire",
+      "pass": true
+    },
+    {
+      "name": "S2-L3 21 matches, 20 capped, continuation ignored",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 non-admin refused",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 missing CSRF refused",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 cross-origin refused",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 1",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 2",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 3",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 4",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 5",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 6",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 7",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 8",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 9",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 10",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 11",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 12",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 13",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 14",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 15",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 16",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 17",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 18",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 19",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 20",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 21",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 22",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 23",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 24",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 25",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 26",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 27",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 28",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 29",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 allowed search 30",
+      "pass": true
+    },
+    {
+      "name": "S2-L4 31st refused",
+      "pass": true
+    },
+    {
+      "name": "owned non-answering read bounded",
+      "pass": true
+    },
+    {
+      "name": "physical directory socket settled",
+      "pass": true
+    },
+    {
+      "name": "search grants no resource",
+      "pass": true
+    }
+  ],
+  "boundary": "Production source Hub HTTP/admin/CSRF + verified synthetic LDAPS in network-none container. No systemd, browser UI, native or live-directory claim.",
+  "pass": true,
+  "cleaned": true,
+  "production": [
+    {
+      "path": "src/hub/directory/directory.ts",
+      "digest": "9a15fd7459322e537e99b56b3f44df864459ef5b3cc31669ba608203c8fa4003"
+    },
+    {
+      "path": "src/hub/directory/groups.ts",
+      "digest": "cf77988c57b33ad74777179379697f2d7221b1a35756ff338d5da512ba4e46d2"
+    },
+    {
+      "path": "src/hub/directory/types.ts",
+      "digest": "54895ed5d13aaea13ddc742ddfbb60eb9996aa969e06bdd96e4dc27a74fa0e39"
+    },
+    {
+      "path": "src/hub/group-policy/admin-search.ts",
+      "digest": "5e8e536e0b28aa0b5f5d56746417dc8ccc1c1078c8fec41f266609bcdf5b1b61"
+    },
+    {
+      "path": "src/hub/group-policy/admin-api.ts",
+      "digest": "5b88cabce37acf111818a324d976ee20c3c954ea99f0adf70ed60b086878079f"
+    },
+    {
+      "path": "src/hub/group-policy/admin-control.ts",
+      "digest": "b75fc6bf87876013a7ce11f873dac6ee6d9fa5d19a71d404d64e8d1669fce22b"
+    },
+    {
+      "path": "src/hub/group-policy/admin-dto.ts",
+      "digest": "47798040eef42ea9160c3fc45ac04f787661269680b6874765595a53b603c03b"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "digest": "8bfa6a880d31905b17bb6c16b1ce8066f0bc5f7f74c636117c3ad154ecf83336"
+    }
+  ]
+}

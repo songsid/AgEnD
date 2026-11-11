@@ -5,9 +5,9 @@ import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_PATHS, par
 import { HubSocket } from "./socket.js";
 import { HubProtocolError } from "./validation.js";
 import { pinnedHubAgent, HubTlsIdentityError } from "./tls.js";
-import { verifyLease } from "./identity.js";
+import { verifyLease, sha256, canonicalArguments } from "./identity.js";
 import { HubMemberProfileStore, type HubMemberProfile } from "./profile.js";
-import type { HubAuthorizationLease, HubAuthorizationRequest, HubMemberFrame, HubServerFrame, HubMemberTransport } from "./types.js";
+import type { HubAuthorizationLease, HubAuthorizationRequest, HubMemberFrame, HubServerFrame, HubMemberTransport, HubMemberLeaveBinding } from "./types.js";
 export class HubAuthorizationError extends Error {
   constructor(readonly code: "denied" | "unavailable" | "stale", readonly reasonCode: string) { super(`Hub authorization ${code}`); }
 }
@@ -186,6 +186,19 @@ export class HubMemberClient implements HubMemberTransport {
   }
   async send(frame: HubMemberFrame): Promise<void> {
     if (!this.ready || !this.view?.current()) throw new HubAuthorizationError("unavailable", "unavailable"); await this.view.send(frame);
+  }
+  /** Best-effort narrowing for this exact saved binding. True means socket-written, never a durable remote ACK. */
+  async leave(expected: HubMemberLeaveBinding): Promise<boolean> {
+    try {
+      const view = this.view, profile = this.profile;
+      if (!this.ready || !view?.current() || !profile || expected.hubId !== profile.hub.hubId
+        || !view.features.has("member-leave-v1") || !view.features.has("welcome-caps-v1")) return false;
+      const store = new HubMemberProfileStore(this.options.home, expected.hubId), digest = store.profileDigest();
+      if (!digest || expected.binding !== sha256(JSON.stringify(["agend-hub-binding-v1", expected.hubId, digest]))
+        || canonicalArguments(store.readProfile()) !== canonicalArguments(profile) || !view.current()) return false;
+      await view.send({ v: 1, type: "member.leave", requestId: randomUUID(), linkEpoch: view.linkEpoch, payload: {} });
+      return true;
+    } catch { return false; }
   }
   async authorize(request: HubAuthorizationRequest): Promise<HubAuthorizationLease> {
     const view = this.view;

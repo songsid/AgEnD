@@ -28,7 +28,13 @@ export interface WebChoices {
   actions?: WebModelAction[];
   args?: string;
   step?: "backend" | "model" | "effort";
-  current: string | null; options: Array<{ id: string; label: string; disabled?: string; signIn?: string }>;
+  current: string | null;
+  /**
+   * `effort`: on a /model option, the reasoning-effort levels that model takes and the one the agent has set (null: none,
+   * so "auto") — the phone's second level (a model, then its effort). Absent: the model has no effort setting to offer
+   * here, or an older daemon, so the list is the plain one.
+   */
+  options: Array<{ id: string; label: string; disabled?: string; signIn?: string; effort?: { levels: string[]; current: string | null } }>;
   /** What the choice is for, when the command asks more than one thing (/backend: backend, then model, then effort). */
   prompt?: string;
 }

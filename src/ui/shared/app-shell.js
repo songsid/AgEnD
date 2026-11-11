@@ -1109,16 +1109,21 @@ export function retryable(load) {
 }
 
 /** Shows the panel for the route, loading its module the first time; Retry is a real new attempt. */
-function Outlet({ route, seq, panels }) {
+export function Outlet({ route, seq, panels }) {
   const [attempt, setAttempt] = useState(0);
   const [, force] = useState(0);
   const entry = route ? panels.get(route.panel) : null;
   useEffect(() => {
-    if (entry && !entry.Component && !entry.loading) {
+    if (!entry || entry.Component) return;
+    let current = true;
+    if (!entry.loading) {
       entry.error = null;
-      entry.loading = entry.load().then(C => { entry.Component = C; entry.error = null; }, err => { entry.error = err; }).finally(() => { entry.loading = null; force(n => n + 1); });
+      entry.loading = entry.load().then(C => { entry.Component = C; entry.error = null; }, err => { entry.error = err; }).finally(() => { entry.loading = null; });
       force(n => n + 1);
     }
+    // Every host follows the same import; a disposed host cannot publish its late completion.
+    entry.loading.then(() => { if (current) force(n => n + 1); });
+    return () => { current = false; };
   }, [entry, seq, attempt]);
   if (!route) return html`<div class="panel"><${ErrorState} message=${t("app.loadFailed")} /></div>`;
   if (entry && entry.error && !entry.loading) return html`<div class="panel"><${ErrorState} onRetry=${() => setAttempt(n => n + 1)} /></div>`;

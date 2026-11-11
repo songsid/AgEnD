@@ -1,4 +1,5 @@
 import { handleHubWebInitHttp } from "./hub/init/web-http.js";
+import { handleHubWebAddressHttp } from "./hub/settings-web-address-http.js";
 import { handleHubDirectoryHostNoticeHttp } from "./hub/settings-directory-host-notice-http.js";
 import { handleHubDirectoryHostSettingsHttp } from "./hub/settings-directory-host-http.js";
 import { officeInputPatch } from "./dashboard-permissions.js";
@@ -100,6 +101,7 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
 }
 
 export interface SettingsApiContext extends AppShellContext {
+  hubWebAddress?():Promise<import("./hub/settings-web-address-control.js").HubWebAddressControl>;
   hubSetupSession?(req:IncomingMessage):import("./hub/init/types.js").HubInitHostOwner|null;
   hubSetup?():Promise<import("./hub/init/web.js").HubWebInitializer>;
   hubDirectoryNotices?(): Promise<import("./hub/settings-directory-host-notices.js").HubDirectoryHostNotices>;
@@ -1131,6 +1133,7 @@ export function handleSettingsRequest(
   }
 
   if(handleHubWebInitHttp(req,res,url,ctx))return true;
+  if(handleHubWebAddressHttp(req,res,url,ctx))return true;
   if (handleHubDirectoryHostNoticeHttp(req, res, url, ctx)) return true;
   if (handleHubDirectoryHostSettingsHttp(req, res, url, ctx)) return true;
 

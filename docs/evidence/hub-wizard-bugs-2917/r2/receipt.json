@@ -1,0 +1,32 @@
+{
+  "testedGitHead": "59f481f6981947cbf61da6eb62d8d2cf188415a6",
+  "trackedDirty": true,
+  "modifiedInputs": {
+    "4f12fd8cdffa0599a82c8c53487a9b0b87e7597757f7dd5f2f9cbbc863a7f9ab": [
+      "tests/hub-service-init-cli.test.ts"
+    ],
+    "451b1497d7caff085433a0cb7a730795f8eb175f35c477ffba158141a8cd80c9": [
+      "tests/hub-directory-ca-wizard.test.ts"
+    ]
+  },
+  "unchangedProductInputCommit": "eeae77d272f5301717d54704d75b73d792be685e",
+  "ciFailure": {
+    "run": 43011754694,
+    "jobs": [
+      "test-shard (1)",
+      "test-shard (3)"
+    ],
+    "failedCases": 4
+  },
+  "localResult": {
+    "files": 10,
+    "passed": 103,
+    "skipped": 0
+  },
+  "restoredResult": {
+    "files": 2,
+    "passed": 9
+  },
+  "guardReversals": 3,
+  "scope": "All ten directly reachable wizard/CLI caller suites, including mocked quickstart; env-gated rig separately covered by R1."
+}

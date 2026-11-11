@@ -7,7 +7,9 @@
  *
  * - An operation names exactly what it changes; there is no generic reseal. `rename` sets/clears hub.name (absent, not blank).
  *   The internal, opt-in directory-v2 participant below changes only directory settings and the opaque bind file. Its route
- *   proof, production composition and UI are not exposed yet. Neither op changes issuer keys, hubId, origins or certificates.
+ *   proof and production composition remain separate from the file writer. Neither op changes issuer keys, hubId, origins
+ *   or certificates. The optional host-owner `webAddress` operation changes only webOrigin/webListen/webTls; its v3 journal
+ *   indexes an authoritative SQL decision for the TLS selector, ended browser sessions and an independent address head.
  * - `prepare` validates and returns a redacted summary and an opaque reference, bound to the session and person that asked,
  *   to the exact old image (the sealed digest and the manifest bytes) and to a short expiry. Nothing is written.
  * - `commit` runs with no await from its first check to publication (the fleet's config save is synchronous too), so no other
@@ -40,6 +42,8 @@ import { scalarString } from "./validation.js";
 import type { HubDirectorySessionRotation } from "./session-directory-transition.js";
 import type { HubDirectoryDecisionRequest, HubDirectorySettingsDecision, HubDirectorySettingsImage, HubDirectorySettingsOperation } from "./settings-directory-decision.js";
 import { parseHubDirectoryDecisionMetadata } from "./settings-directory-decision.js";
+import { createHubWebAddressSettingsOperation, type HubWebAddressJournal, type HubWebAddressSettingsWriter, type HubWebAddressStep } from "./settings-web-address.js";
+import type { HubWebAddressDecision } from "./settings-web-address-decision.js";
 
 export const SETTINGS_JOURNAL = "hub/settings-journal.json";
 export const SETTINGS_STAGED = "hub/settings-staged";
@@ -76,9 +80,11 @@ export interface HubSettingsWriterDeps {
   saveHub(patches: Array<{ path: string[]; value?: unknown; remove?: true }>): void;
   now?(): number;
   /** Tests only: called after each journal step, to stop there as a crash would. */
-  step?(name: "staged" | "committed" | "manifest" | "config" | "done" | "directory-decision" | "directory-secret"): void;
+  step?(name: "staged" | "committed" | "manifest" | "config" | "done" | "directory-decision" | "directory-secret" | HubWebAddressStep): void;
   /** Directory-v2 only: the existing Hub DB/floor/audit decision. Absent keeps every directory method unexposed. */
   directoryDecision?: () => HubDirectorySettingsDecision | null;
+  /** Web-address only: physical existing-DB participant; absent exposes no address operation. */
+  webAddressDecision?: () => HubWebAddressDecision | null;
 }
 
 interface Prepared { op: HubSettingsOp; person: string; sessionId: string; oldDigest: string; newDigest: string; manifestSha: string; expiresAt: number }
@@ -142,7 +148,9 @@ export interface HubSettingsWriter {
   pending(): boolean;
   /** Read/validate the existing journal without exposing its private material. */
   pendingDirectory(): boolean;
+  pendingWebAddress?(): boolean;
   directory?: HubDirectorySettingsWriter;
+  webAddress?: HubWebAddressSettingsWriter;
 }
 
 /** Internal material projection shared by the writer and its mount barrier; not a browser DTO or an authority proof. */
@@ -180,9 +188,11 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     catch { throw new HubSettingsError("unavailable", "the Hub's sealed settings do not verify"); }
     return { hub, digest, manifest, manifestSha: sha(manifest), confirmationId };
   };
-  const readJournal = (): Journal | DirectoryJournal | null => {
+  const readJournal = (): Journal | DirectoryJournal | HubWebAddressJournal | null => {
     if (!existsSync(file(SETTINGS_JOURNAL))) return null;
-    const j = JSON.parse(readFileSync(privatePath(deps.home, SETTINGS_JOURNAL), "utf8")) as Journal | DirectoryJournal;
+    const j = JSON.parse(readFileSync(privatePath(deps.home, SETTINGS_JOURNAL), "utf8")) as Journal | DirectoryJournal | HubWebAddressJournal;
+    if (j?.v === 3 && j.op === "web-address" && ["prepared", "installing", "done"].includes(j.phase)
+      && typeof j.id === "string" && /^[0-9a-f-]{36}$/.test(j.id) && Object.keys(j).sort().join() === "id,op,phase,v") return j;
     if (j?.v === 2 && j.op === "directory" && ["prepared", "installing", "done"].includes(j.phase)
       && typeof j.id === "string" && /^[0-9a-f-]{36}$/.test(j.id) && Object.keys(j).sort().join() === "id,op,phase,v") return j;
     if (j?.v !== 1 || j.op !== "rename" || !["prepared", "committed", "done"].includes(j.phase) || typeof j.id !== "string" || !/^[0-9a-f-]{36}$/.test(j.id)) {
@@ -375,10 +385,15 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
   };
 
   const pending = () => existsSync(file(SETTINGS_JOURNAL));
+  const webAddressOperation = createHubWebAddressSettingsOperation({ home: deps.home,
+    journalPath: SETTINGS_JOURNAL, stagedPath: SETTINGS_STAGED, receiptsPath: SETTINGS_RECEIPTS,
+    readHub: deps.readHub, saveHub: deps.saveHub, decision: () => deps.webAddressDecision?.() ?? null, pending, now, step });
   return {
     pending,
     pendingDirectory: () => readJournal()?.v === 2,
+    pendingWebAddress: () => readJournal()?.v === 3,
     ...(deps.directoryDecision ? { directory: directoryWriter } : {}),
+    ...(deps.webAddressDecision ? { webAddress: webAddressOperation.api } : {}),
 
     prepare(op, actor) {
       if (op.kind !== "rename") throw new HubSettingsError("invalid");
@@ -449,6 +464,7 @@ export function createHubSettingsWriter(deps: HubSettingsWriterDeps): HubSetting
     recover() {
       const j = readJournal();
       if (!j) return;
+      if (j.v === 3) { webAddressOperation.recover(j); return; }
       if (j.v === 2) { finishDirectory(j); return; }
       if (j.phase === "prepared") { cleanup(j.id); return; }   // nothing in force changed
       if (j.phase === "done") { cleanup(j.id); return; }

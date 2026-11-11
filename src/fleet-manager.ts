@@ -153,7 +153,7 @@ import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter, type MissedOfflineInbound } from "./channel/adapters/telegram.js";
 import { MissedOfflineStore } from "./missed-offline.js";
 import { createBackend } from "./backend/factory.js";
-import { readEffortMetadata } from "./backend/effort-metadata.js";
+import { effortOfferedUnasked, readEffortMetadata, readGrokEffortLevels } from "./backend/effort-metadata.js";
 import { codexEffort, flagEffort } from "./backend/launch-effort.js";
 import { codexMetadataHomes, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./backend/codex-metadata.js";
 import { readGrokModelCache } from "./backend/grok-model-cache.js";
@@ -164,6 +164,7 @@ import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
 import { boardActivity, boardCardLimit, boardToolAction } from "./task-board-tool.js";
 import { TaskBoardWaker, namesCard } from "./task-board-waker.js";
+import { DispatcherLiveness, LIVENESS_STARTUP_GRACE_MS, livenessSettings, type AssigneeFacts, type LivenessCard } from "./dispatcher-liveness.js";
 import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor } from "./scheduler/task-board.js";
 import type { SchedulerDb } from "./scheduler/db.js";
 import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
@@ -1789,6 +1790,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return hubInitializationSession(req,{token,sessions,config:this.fleetConfig,epoch,current:()=>!this.shuttingDown
       &&token===this.webToken&&sessions===this.webSessions&&epoch===this.webAuthorityState().epoch});
   }
+  private hubWebAddressControl:import("./hub/settings-web-address-control.js").HubWebAddressControl|null=null;
+  async hubWebAddress():Promise<import("./hub/settings-web-address-control.js").HubWebAddressControl>{
+    const runtime=await this.hubRuntimeCreated();
+    if(this.shuttingDown||!this.hubSettingsWriter)throw Error("The Hub is unavailable");
+    if(!this.hubWebAddressControl){
+      const {createHubWebAddressControl}=await import("./hub/settings-web-address-control.js");
+      if(this.shuttingDown)throw Error("The Hub is stopping");
+      this.hubWebAddressControl??=createHubWebAddressControl({home:this.dataDir,readConfig:()=>this.getRawFleetConfig(),writer:this.hubSettingsWriter,
+        withDecision:(work,current)=>runtime.withWebAddressDecision(work,current),running:hub=>runtime.serverHealth(hub)==="ready",settle:()=>this.applyHubSwitches()});
+    }
+    return this.hubWebAddressControl;
+  }
   async hubSetup():Promise<import("./hub/init/web.js").HubWebInitializer>{
     this.hubSetupInit??=(async()=>{
       const {createHubWebInitializer}=await import("./hub/init/web.js");
@@ -2201,6 +2214,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.hubSettingsWriter ??= createHubSettingsWriter({ home: this.dataDir,
         readHub: () => (this.rawFleetConfig as { hub?: unknown } | undefined)?.hub,
         directoryDecision: () => this.hubRuntime?.directoryDecision() ?? null,
+        webAddressDecision: () => this.hubRuntime?.webAddressDecision() ?? null,
         saveHub: patches => this.saveFleetConfig(patches) });
       const runtime = new HubRuntime({
         home: this.dataDir,
@@ -2661,6 +2675,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private instanceStateCache = new Map<string, InstanceStateSnapshot & { receivedAt: number }>();
   /** CLI pane status overrides; daemon.pid alone only proves FleetManager lives. */
   private instanceProcessStatus = new Map<string, "crashed" | "stopped">();
+  /** #3647: supervision gave up on these (crash loop, supervision ended) — cleared when the process runs again. */
+  private readonly livenessGone = new Map<string, { kind: "crash_loop" | "supervision_ended"; reason: string; at: number }>();
+  /** #3647: when each instance last showed working (after the startup grace): activity for "quiet". */
+  private readonly lastWorkingAt = new Map<string, number>();
+  private dispatcherLiveness: DispatcherLiveness | null = null;
   /** Adapters whose last slash command registration failed and General was told (#1131). */
   private slashRegistrationFailed = new Set<string>();
   /** Instances currently being auto-paused by warm_cap, so concurrent checks don't double-evict. */
@@ -4983,6 +5002,91 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.logger.error({ err }, "Reply-obligation sweep failed");
     }
+    this.tickDispatcherLiveness();
+  }
+
+  /** #3647: the lifecycle's word that supervision gave up on an instance (crash loop, supervision ended). */
+  onSupervisionGone(name: string, kind: "crash_loop" | "supervision_ended", reason: string): void {
+    this.livenessGone.set(name, { kind, reason, at: Date.now() });
+  }
+
+  /** #3647: one dispatcher-liveness sweep, on the reply-obligation timer (30 s). */
+  private tickDispatcherLiveness(): void {
+    const db = this.scheduler?.db;
+    if (!db || !this.deliveryOutbox?.isOpen || this.shuttingDown) return;
+    this.dispatcherLiveness ??= new DispatcherLiveness({
+      settings: () => livenessSettings(this.fleetConfig),
+      plannedRestart: () => this.isPlannedRestart(),
+      startedAt: () => this.startedAt,
+      claimedCards: () => this.livenessCards(),
+      facts: (name) => this.livenessFacts(name),
+      backgroundBusy: (name) => this.livenessBackgroundBusy(name),
+      isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
+      // Not running now: stopped, crashed, paused, or no daemon at all.
+      dispatcherAway: (name) => this.instanceProcessStatus.has(name) || this.lifecycle.isPaused(name) || !this.daemons.has(name),
+      boardOff: (name) => taskBoardOffIn(this.fleetConfig, name),
+      deliver: (instance, message, key) => this.admitTaskBoardNotice(instance, message, key),
+      withdraw: (prefix, stale, reason) => {
+        const outbox = this.deliveryOutbox;
+        return outbox?.isOpen ? outbox.withdrawWaitingNotices(prefix, (key) => stale(key), reason).length : 0;
+      },
+      noticeState: (key) => (this.deliveryOutbox?.isOpen ? this.deliveryOutbox.noticeStateByKey(key) : null),
+      personChanged: () => this.needsYou?.poke(),
+      ledger: db.liveness,
+      log: (level, message, extra) => this.logger[level](extra ?? {}, message),
+    });
+    void this.dispatcherLiveness.tick();
+  }
+
+  /** #3647: every claimed card with an assignee, with the times "quiet" counts from. */
+  private livenessCards(): LivenessCard[] {
+    const board = this.scheduler?.db.board;
+    if (!board) return [];
+    const ms = (iso: string | null | undefined) => { const v = iso ? Date.parse(iso) : NaN; return Number.isFinite(v) ? v : 0; };
+    return board.listCards({ status: ["claimed"], limit: 5000 }).cards.filter((c) => c.assignee).map((c) => ({
+      uuid: c.uuid, code: c.code, title: c.title, assignee: c.assignee!, dispatcher: c.dispatcher ? { kind: c.dispatcher.kind, name: c.dispatcher.name } : null,
+      claimedAt: Math.max(ms(board.lastChangeAt(c.uuid)), ms(c.startedAt)), updatedAt: ms(c.updatedAt),
+    }));
+  }
+
+  /** #3647: what the fleet knows about an assignee now; null when it is not an instance here. */
+  private livenessFacts(name: string): AssigneeFacts | null {
+    if (this.fleetConfig?.instances?.[name] == null) return null;
+    const status = this.instanceProcessStatus.get(name);
+    const exec = this.instanceStateCache.get(name);
+    let paused: AssigneeFacts["paused"] = null;
+    if (this.lifecycle.isPaused(name)) {
+      const dir = this.getInstanceDir(name);
+      paused = { reason: readPauseReason(dir), at: readPausedAt(dir) };
+    }
+    const p = this.instancePresentation(name);
+    const waitingOn = (() => {
+      try { return this.deliveryOutbox?.workingObligations(name).references.filter((r) => r.kind === "waiting").map((r) => (r as { owner: string }).owner) ?? []; }
+      catch { return []; }
+    })();
+    const idle = exec?.state === "idle" || paused?.reason === "idle" || paused?.reason === "warm_cap";
+    return {
+      process: status ?? "running",
+      gone: this.livenessGone.get(name) ?? null,
+      crashedAt: this.needsCrashedAt.get(name) ?? null,
+      paused,
+      usageHold: this.daemons.get(name)?.usageHold?.() ?? null,
+      execution: exec ? { state: exec.state, since: exec.stateChangedAt } : null,
+      lastWorkingAt: this.lastWorkingAt.get(name) ?? null,
+      prompt: p.state === "awaiting_input" && p.interaction?.since ? { since: p.interaction.since } : null,
+      waitingOn,
+      // Asked only when it could be quiet (one indexed read per idle assignee).
+      lastMessageAt: idle && this.deliveryOutbox?.isOpen ? this.deliveryOutbox.latestSentAt(name) : null,
+    };
+  }
+
+  /** #3647: work the pane does not show — the backend's background-work flag, or a live subagent. */
+  private async livenessBackgroundBusy(name: string): Promise<boolean> {
+    const daemon = this.daemons.get(name);
+    try { if (daemon?.getWorkingStateObservation?.().backgroundWork === true) return true; } catch { /* unknown: go on */ }
+    const answer = await this.subagentRuns(name);
+    if (answer.status === "busy") return true;                          // could not tell: not now
+    return answer.runs.some((r) => r.state === "running");
   }
 
   private expireReplyObligations(now: Date): void {
@@ -6591,6 +6695,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // asks "is anyone still reporting", which only the receiver can date.
       receivedAt: now,
     });
+    // #3647: activity, for "quiet" — not the boot itself (every agent shows working while it starts).
+    if (state === "working" && now - this.startedAt >= LIVENESS_STARTUP_GRACE_MS) this.lastWorkingAt.set(name, now);
     // The dashboard's "working" line and its Stop button follow the edges, not the heartbeat.
     if (previous?.state !== state) this.emitSseEvent("activity", { instance: name, state: this.getInstanceExecutionState(name) });
     for (const check of this.instanceIdleWaiters.get(name) ?? []) check();
@@ -6642,6 +6748,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.needsYou?.poke();
     if (status === "running") {
       this.instanceProcessStatus.delete(name);
+      this.livenessGone.delete(name);
       // A prior crash-loop marker is one-shot.  Successful respawn is the
       // authoritative recovery signal even when the marker outlived an IPC
       // disconnect and was not consumed by a new Daemon constructor.
@@ -18202,7 +18309,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private needsYouTaskItems(): import("./needs-you.js").TaskInput[] {
     // #2425: the task board's cards join Needs you only when the fleet asks for them (needs_you.task_board, off by
     // default since 2.3.0-beta.25); prompts, deliveries and the rest are unchanged.
-    return this.fleetConfig?.needs_you?.task_board === true ? this.needsYouTasks() : [];
+    // #3647: a card the person handed out whose assignee went quiet is theirs to see either way (it is not the card
+    // waiting for them, it is the agent that stopped).
+    return [...(this.fleetConfig?.needs_you?.task_board === true ? this.needsYouTasks() : []), ...this.needsYouStalls()];
+  }
+  /** #3647: the person's (or a missing or not-running dispatcher's) cards whose assignee went quiet. Crashed, paused and waiting agents
+   *  already have their own Needs-you items; quiet is the one nothing else shows. */
+  private needsYouStalls(): import("./needs-you.js").TaskInput[] {
+    const db = this.scheduler?.db;
+    if (!db) return [];
+    return db.liveness.listOpen().filter((e) => (e.dispatcherKind === "person" || e.needsYou) && e.kind === "quiet").flatMap((e) => {
+      const card = db.board.findCard(e.cardUuid);
+      if (!card || card.status !== "claimed") return [];
+      return [{ uuid: card.uuid, code: card.code, title: card.title, status: "stalled" as const, version: card.version,
+        assignee: card.assignee, since: e.since, note: t("liveness.kind_quiet") }];
+    });
   }
   private needsYouTasks(): import("./needs-you.js").TaskInput[] {
     const board = this.scheduler?.db.board;
@@ -19477,7 +19598,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const env = this.webModelEnv(backend, instance);
       const current = this.resolveInstanceModel(instance).model;
       const models = more ? this.modelCatalogFor(backend, instance) : env?.models ?? [];
-      return { current, options: this.withCurrentModel(models, current).map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })),
+      const own = this.resolveInstanceEffort(instance).effort;
+      return { current, options: this.withCurrentModel(models, current).map(o => {
+        const effort = this.modelEffortChoice(instance, backend, o.id, own);
+        return { id: o.id, label: this.modelChoiceLabel(o, current), ...(effort ? { effort } : {}) };
+      }),
         actions: more ? ["refreshAll"] : backend === "claude-code" ? ["refresh", "more"] : ["refresh"] };
     };
     return runWebCommand({
@@ -24069,6 +24194,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return [{ id: currentModel, label: currentModel, description: t("model.not_listed") }, ...options];
   }
 
+  /**
+   * The effort a /model option offers behind its "›" (the phone's second level): the levels `model` takes on this
+   * backend and the effort the agent has set, when the model has one of them (else null: it shows "auto"). Only where
+   * an effort change is applied live (a model switch then an effort one is no second restart), and not where the
+   * chat does not offer effort unasked (effortOfferedUnasked: antigravity). A file read; never a CLI.
+   */
+  private modelEffortChoice(instance: string, backend: string, model: string, set: string | null): { levels: string[]; current: string | null } | null {
+    if (!effortOfferedUnasked(backend)) return null;
+    try {
+      const { strategy, levels } = readEffortMetadata(backend, this.getInstanceDir(instance), model, this.catalogProfile(backend, instance));
+      return strategy === "runtime" && levels.length > 0 ? { levels, current: set && levels.includes(set) ? set : null } : null;
+    } catch { return null; }
+  }
+
   private modelChoiceLabel(
     option: import("./backend/types.js").ModelOption,
     currentModel: string,
@@ -24937,16 +25076,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch { return []; }
   }
 
+  /**
+   * What Settings → Runtime & model offers as the agent's effort: the levels `model` (null: the one it runs now) takes on
+   * this agent's backend and the effort in force with its source. The chat chip's own list (`effortLevelsFor`), only for
+   * the model named: a pure file read, never a CLI. `levels: []` — nothing to offer: a Windows agent, antigravity (its
+   * effort is not shown anywhere), or a backend / model without an effort setting.
+   */
+  effortOptionsFor(instanceName: string, model: string | null = null): { levels: string[]; effort: string | null; source: "instance" | "fleet-default" | "unset" } {
+    const { effort, source } = this.resolveInstanceEffort(instanceName);
+    const none = { levels: [] as string[], effort, source };
+    if (!this.fleetConfig?.instances[instanceName] || this.backendNameForInstance(instanceName) === "antigravity") return none;
+    try {
+      const { strategy, levels } = this.instanceEffortMetadata(instanceName, model?.trim() || null);
+      return { levels: strategy === "unsupported" ? [] : levels, effort, source };
+    } catch { return none; }
+  }
+
   /** The instance's backend's effort metadata; agy's levels are its model's (#1825), the one the instance runs. */
-  private instanceEffortMetadata(instanceName: string) {
+  private instanceEffortMetadata(instanceName: string, modelOverride: string | null = null) {
     if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return { strategy: "unsupported" as const, levels: [] as string[] };
     const backend = this.backendNameForInstance(instanceName);
     let model: string | null = null;
-    if (backend === "antigravity") {
+    // The model it runs, for the backends whose levels are the model's own: agy's catalog (#1825), claude's account
+    // catalog and grok's cache. codex's levels read its own config (the caller there knows which model runs); the
+    // rest ignore the model.
+    // Settings' model field, before it is saved (effortOptionsFor only, for every backend: the field is disabled until
+    // Save, so what it lists is the selected model's levels and what /effort applies against does not change). Without
+    // it, codex reads its config's model, which is what the chip and applyEffort use.
+    if (modelOverride) model = modelOverride;
+    else if (backend !== "codex") {
       const resolved = this.resolveInstanceModel(instanceName);
       model = resolved.source === "unresolved" ? null : resolved.model;
     }
-    return readEffortMetadata(backend, this.getInstanceDir(instanceName), model);
+    return readEffortMetadata(backend, this.getInstanceDir(instanceName), model, this.catalogProfile(backend, instanceName));
   }
 
   /** Configured effort for an instance: per-instance, else fleet default, else none. */
@@ -25158,7 +25320,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     let levels: string[];
     try {
-      const metadata = readEffortMetadata(backend, this.getInstanceDir(instanceName), runs);
+      const metadata = readEffortMetadata(backend, this.getInstanceDir(instanceName), runs, this.catalogProfile(backend, instanceName));
       levels = metadata.strategy === "unsupported" ? [] : metadata.levels;
     } catch { return []; }
     // #1811: only the levels this host's launch of that backend will pass (launch-effort.ts, the gate the launch
@@ -25211,7 +25373,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
       if (!binary) return () => false;
       const path = resolveBinary(binary);
-      return level => flagEffort(backend, level, path).arg !== null;
+      // grok's help lists no values: the model's own levels (its models_cache.json) are what it takes.
+      const modelLevels = backend === "grok" ? readGrokEffortLevels(model) : null;
+      return level => flagEffort(backend, level, path, undefined, modelLevels).arg !== null;
     }
     if (backend === "codex") {
       // `model` is the next launch's, proven by the caller (prospectiveCodexModel); the catalog is codex's own cache.
@@ -29315,6 +29479,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         backend,
         effort,
         effort_source,
+        // Whether the chat header's effort chip is offered (shown as "auto" while none is set): the backend takes an
+        // effort setting at all. Absent from an older daemon: a newer page then shows the chip only for a set effort.
+        effort_supported: effortStrategy !== "unsupported" && effortOfferedUnasked(backend),
         ...this.instancePresentation(name),
         // Board 003648ac: the last web /compact, while it runs and briefly after (the chat's card follows it).
         ...(compact ? { compact } : {}),

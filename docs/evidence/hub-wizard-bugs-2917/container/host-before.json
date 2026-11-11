@@ -1,0 +1,1 @@
+{"netns": "net:[4026531840]", "binfmt": ["WSLInterop", "aarch64", "arm", "mips64", "mips64le", "ppc64le", "register", "riscv64", "s390x", "status"]}
