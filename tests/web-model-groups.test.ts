@@ -5,7 +5,8 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
+import { createServer, type Server } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
@@ -17,6 +18,7 @@ import { claudeNativeOneMillion, claudeOneMillionOffered } from "../src/backend/
 import { mergeAntigravityLevels, shapeDocumentedClaudeModels, shapeWebModelCatalog } from "../src/web-model-groups.js";
 import { groupModelOptions, modelChoices, OTHER_MODEL } from "/ui/js/settings-catalog.js";
 
+const realFetch = globalThis.fetch;   // the page tests below replace and then delete it
 const AGY = parseAntigravityModelsOutput(readFileSync(join(import.meta.dirname, "fixtures", "agy-1.3.5-audit", "agy-models.stdout.txt"), "utf-8"));
 const M = 1_000_000;
 const STATIC = [{ id: "default", label: "default" }, { id: "sonnet", label: "sonnet" }, { id: "opus", label: "opus" }, { id: "Fable", label: "Fable" }];
@@ -235,6 +237,22 @@ describe("the routes answer the shaped catalog", () => {
       expect(r.json().models.every((m: any) => m.id.startsWith("claude-") && m.group === "unverified")).toBe(true);
     }
   });
+  it("claude with a credential profile and no account list: the same documented fallback as without a profile", async () => {
+    const rows = () => [{ backend: "claude-code", version: "2.1.299" }];
+    const web = vi.fn(() => []);
+    const without = get("/ui/models?backend=claude-code&instance=w", { modelCatalogForWeb: web, backendAvailabilityRows: rows });
+    await without.finished;
+    const withProfile = get("/ui/models?backend=claude-code&instance=w&profile=work", { modelCatalogForWeb: web, backendAvailabilityRows: rows });
+    await withProfile.finished;
+    expect(web).toHaveBeenLastCalledWith("claude-code", "w", { profile: "work" });
+    expect(withProfile.json()).toEqual(without.json());
+    expect(withProfile.json()).toMatchObject({ source: "official-catalog" });
+    expect(withProfile.json().models.length).toBeGreaterThan(0);
+    // another backend with a profile and nothing cached is still the empty list
+    const other = get("/ui/models?backend=grok&profile=work", { modelCatalogForWeb: () => [] });
+    await other.finished;
+    expect(other.json()).toEqual({ backend: "grok", models: [] });
+  });
   it("a context with only the plain catalog (and the CLI-cache fallback) is shaped the same way", async () => {
     const a = get("/ui/models?backend=antigravity&instance=a", { modelCatalogFor: () => AGY });
     await a.finished;
@@ -243,5 +261,38 @@ describe("the routes answer the shaped catalog", () => {
     await b.finished;
     expect(b.json()).toMatchObject({ source: "cli-cache" });
     expect(b.json().models).toHaveLength(4);
+  });
+});
+
+describe("POST /ui/models/refresh answers the shaped catalog too", () => {
+  const servers: Server[] = [];
+  afterAll(async () => { for (const server of servers.splice(0)) { server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); } });
+  async function post(ctxExtra: Record<string, unknown>, body: unknown) {
+    const token = "a".repeat(48);
+    const ctx: any = { webToken: token, logger: { info() {}, error() {}, warn() {}, debug() {} }, ...ctxExtra };
+    const server = createServer((req, res) => { handleWebRequest(req, res, new URL(req.url!, `http://${req.headers.host}`), ctx); });
+    servers.push(server); server.listen(0, "127.0.0.1"); await once(server, "listening");
+    const r = await realFetch(`http://127.0.0.1:${(server.address() as any).port}/ui/models/refresh`, { method: "POST", headers: { "Content-Type": "application/json", "x-agend-token": token }, body: JSON.stringify(body) });
+    return { status: r.status, json: await r.json() as any };
+  }
+  const rows = () => [{ backend: "claude-code", version: "2.1.299" }];
+  it("claude: the refreshed account list, flat", async () => {
+    const r = await post({ refreshModelCatalogFor: async () => ({ models: [...STATIC, ...API], refreshed: true }), modelCatalogForWeb: () => shapeWebModelCatalog("claude-code", STATIC, API) }, { backend: "claude-code", instance: "w" });
+    expect(r.json.refreshed).toBe(true);
+    expect(ids(r.json.models)).toEqual(["claude-opus-5-5", "claude-opus-4-6", "claude-opus-4-5-20251101", "claude-haiku-4-5-20251001", "claude-old-x"]);
+  });
+  it("claude with no account list after the refresh: the documentation's ids (unverified), as GET answers — not an empty list", async () => {
+    for (const profile of [undefined, "work"]) {
+      const r = await post({ refreshModelCatalogFor: async () => ({ models: [...STATIC], refreshed: false }), modelCatalogForWeb: () => [], backendAvailabilityRows: rows }, { backend: "claude-code", instance: "w", ...(profile ? { profile } : {}) });
+      expect(r.status).toBe(200);
+      expect(r.json).toMatchObject({ refreshed: false, source: "official-catalog" });
+      expect(r.json.models.length).toBeGreaterThan(0);
+      expect(r.json.models.every((m: any) => m.id.startsWith("claude-") && m.group === "unverified")).toBe(true);
+    }
+  });
+  it("another backend with an empty list stays empty", async () => {
+    const r = await post({ refreshModelCatalogFor: async () => ({ models: [], refreshed: false }), modelCatalogForWeb: () => [] }, { backend: "grok", instance: "w" });
+    expect(r.json).toMatchObject({ refreshed: false, models: [] });
+    expect(r.json.source).toBeUndefined();
   });
 });

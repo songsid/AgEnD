@@ -668,10 +668,6 @@ const boardBodies = new WeakMap<object, { key: string; body: string }>();
 const workBodies = new WeakMap<object, { key: string; body: string }>();
 
 /**
- * #1630 (#1635 review): an answer that waited on something (a list, a download) is sent only if the request is still
- * allowed — the session not revoked meanwhile, a public link's exposure still current. Otherwise 401, and nothing.
- */
-/**
  * The catalog Web Settings lists for a backend and instance (and credential profile): the fleet's shaped cache
  * (web-model-groups.ts), else — a hand-built context — the plain list, shaped the same way.
  */
@@ -681,6 +677,16 @@ function webCatalog(ctx: WebApiContext, backend: string, instance: string | null
   return shapeWebModelCatalog(backend, flat);
 }
 
+/** claude's fallback when no account list is readable: the documentation's `claude-*` ids for the host's CLI version, unverified. */
+function documentedClaudeCatalog(ctx: WebApiContext) {
+  const version = ctx.backendAvailabilityRows?.().find(row => row.backend === "claude-code")?.version;
+  return shapeDocumentedClaudeModels(claudeDocumentedModels(version));
+}
+
+/**
+ * #1630 (#1635 review): an answer that waited on something (a list, a download) is sent only if the request is still
+ * allowed — the session not revoked meanwhile, a public link's exposure still current. Otherwise 401, and nothing.
+ */
 function stillAuthorized(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): boolean {
   if (!permitWebContinuation(req, res, ctx)) return false;
   if (isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) return true;
@@ -2133,6 +2139,12 @@ export function handleWebRequest(
       // as GET /ui/models, rather than shaping `result.models`: that list is the flat one (it has lost which tier each
       // model came from, and claude's aliases / [1m] variants are in it), so only the cache read can be grouped right.
       const models = fleetAnswered && Array.isArray(result.models) ? webCatalog(ctx, backend, instance as string | null, typeof profile === "string" ? profile : null, result.models) : result.models;
+      // claude with no account list (the refresh could not read it, or the account has none) is answered as GET /ui/models
+      // answers it: the documentation's ids, marked unverified — never an empty list that shows nothing to pick.
+      if (fleetAnswered && backend === "claude-code" && Array.isArray(models) && models.length === 0) {
+        json(res, 200, { backend, ...result, models: documentedClaudeCatalog(ctx), source: "official-catalog" });
+        return;
+      }
       json(res, 200, { backend, ...result, models });
     })().catch(() => { if (!res.headersSent) json(res, 500, { error: "model_refresh_failed" }); });
     return true;
@@ -2176,11 +2188,10 @@ export function handleWebRequest(
     if(profile!==null && profile!=="" && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile)){json(res,400,{error:"Invalid model account"});return true;}
     if (handleNativeModelCatalog(req, res, url, ctx)) return true;
     const models = webCatalog(ctx, backend, instance, profile);
+    // claude with no account list — with or without a credential profile — is answered with the documentation's ids.
     const answerCatalog = (): void => {
-      if (backend === "claude-code" && !models.length && !profile) {
-        const version = ctx.backendAvailabilityRows?.().find(row => row.backend === backend)?.version;
-        json(res, 200, { backend, models: shapeDocumentedClaudeModels(claudeDocumentedModels(version)), source: "official-catalog" });
-      } else json(res, 200, { backend, models });
+      if (backend === "claude-code" && !models.length) json(res, 200, { backend, models: documentedClaudeCatalog(ctx), source: "official-catalog" });
+      else json(res, 200, { backend, models });
     };
     // The existing catalog belongs to this instance/account and always wins.
     if (models.length || !ctx.cliModelCatalogFor || profile!==null) { answerCatalog(); return true; }
@@ -2188,7 +2199,8 @@ export function handleWebRequest(
     void (async () => {
       const cliModels = await ctx.cliModelCatalogFor?.(backend, instance) ?? [];
       if (!canAnswer()) return;
-      if (cliModels.length) json(res, 200, { backend, models: shapeWebModelCatalog(backend, cliModels), source: "cli-cache" });
+      const shaped = shapeWebModelCatalog(backend, cliModels);
+      if (shaped.length) json(res, 200, { backend, models: shaped, source: "cli-cache" });
       else answerCatalog();
     })().catch(() => {
       if (canAnswer()) json(res, 503, { error: "CLI model cache unavailable" });
