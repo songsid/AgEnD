@@ -11,6 +11,8 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 export const groupSearchV1 = true;
+/** `id` is a prop (default "hubGroupSearch"; its note is `${id}Note`), so two pickers on one page never share an element id. */
+export const groupSearchIdV1 = true;
 register("hubGroupSearch", {
   en: {
     label: "Find a group", placeholder: "Start of the group's name, e.g. eng", hint: "Type at least 2 characters.",
@@ -45,7 +47,8 @@ export async function searchGroups(client, q) {
 }
 
 /** The search box: 300 ms after typing stops, the newest answer for the text in the box only. */
-export function GroupSearch({ client, disabled = false, exclude = [], label, onPick, onUnsupported } = {}) {
+export function GroupSearch({ client, disabled = false, exclude = [], label, onPick, onUnsupported, id = "hubGroupSearch" } = {}) {
+  const noteId = `${id}Note`;
   const [q, setQ] = useState(""), [answer, setAnswer] = useState(null), [busy, setBusy] = useState(false);
   const seq = useRef(0), told = useRef(false), live = useRef(true);
   useEffect(() => () => { live.current = false; }, []);
@@ -68,10 +71,10 @@ export function GroupSearch({ client, disabled = false, exclude = [], label, onP
     : answer.ok ? (hits.length ? (answer.truncated ? g("more") : null) : g("none", answer.q))
     : answer.reason === "limited" ? g("limited", answer.retryAfter ?? 60) : answer.reason === "invalid" ? g("invalid") : g("unknown");
   return html`<div class="hub-group-search">
-    <label class="field" for="hubGroupSearch"><span>${label || g("label")}</span>
-      <input id="hubGroupSearch" type="search" value=${q} disabled=${disabled} autocomplete="off" spellcheck=${false} placeholder=${g("placeholder")}
-        aria-describedby="hubGroupSearchNote" onInput=${(e) => setQ(e.target.value)} /></label>
-    ${message ? html`<p class="note" id="hubGroupSearchNote" role="status">${message}</p>` : null}
+    <label class="field" for=${id}><span>${label || g("label")}</span>
+      <input id=${id} type="search" value=${q} disabled=${disabled} autocomplete="off" spellcheck=${false} placeholder=${g("placeholder")}
+        aria-describedby=${noteId} onInput=${(e) => setQ(e.target.value)} /></label>
+    ${message ? html`<p class="note" id=${noteId} role="status">${message}</p>` : null}
     ${hits.length ? html`<ul class="hub-group-hits" role="list">${hits.map((h) => { const has = exclude.includes(h.objectId);
       return html`<li class="s-row" key=${h.objectId}><span class="hub-row-text"><strong>${h.cn}</strong><small class="note"><code>${h.dn}</code></small></span>
         <button type="button" class="btn btn-sm" disabled=${disabled || has} aria-label=${g("add", h.cn)} onClick=${() => onPick?.(h)}>${has ? g("added") : g("addShort")}</button></li>`; })}</ul>` : null}

@@ -78,4 +78,17 @@ describe("<GroupSearch>", () => {
     await type(p, "ad"); await wait(); await settle(8);
     expect(onUnsupported).toHaveBeenCalledTimes(1); expect(p.root.querySelector("#hubGroupSearch")).toBeNull();
   });
+  it("two pickers on one page (U2's step 2 under B2's scope dialog): each takes its own id; its label and note follow it", async () => {
+    expect(gs.groupSearchIdV1).toBe(true);
+    const client = { searchGroups: vi.fn(async () => ({ ok: true, groups: [], truncated: false })) };
+    const p = page({ url: "https://hub.example.test/ui/hub/admin", storage: { agend_lang: "en" } }); mounted.push(p);
+    await p.mount(h("div", null, h(gs.GroupSearch, { client }), h(gs.GroupSearch, { client, id: "hubEnrolmentScopeSearch" }))); await settle(6);
+    expect([...p.root.querySelectorAll("input[type=search]")].map((i: any) => i.id)).toEqual(["hubGroupSearch", "hubEnrolmentScopeSearch"]);
+    expect([...p.root.querySelectorAll("label.field")].map((l: any) => l.getAttribute("for"))).toEqual(["hubGroupSearch", "hubEnrolmentScopeSearch"]);
+    const second = p.root.querySelector("#hubEnrolmentScopeSearch"); second.value = "zz"; fire(second, "input"); await settle(4);
+    await new Promise(r => setTimeout(r, 330)); await settle(8);
+    expect(second.getAttribute("aria-describedby")).toBe("hubEnrolmentScopeSearchNote");
+    expect(p.root.querySelector("#hubEnrolmentScopeSearchNote")?.textContent).toBe("No group starts with “zz”.");
+    expect(p.root.querySelector("#hubGroupSearchNote")).toBeNull();
+  });
 });
