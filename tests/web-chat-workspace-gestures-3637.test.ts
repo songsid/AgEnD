@@ -8,7 +8,7 @@ beforeAll(async () => { p = page(); (p.window as any).innerWidth = 1400; module 
 beforeEach(() => {
   stamp = {}; w = { a: { route: { panel: "chat", instance: "alpha" } }, b: { route: { panel: "chat", instance: "beta" } }, focus: "b", layout: "right", ratio: .5 };
   root = p.document.createElement("div"); root.className = "chat-workspace"; root.getBoundingClientRect = () => ({ left: 100, top: 50, width: 1000, height: 800 });
-  for (const [id, left] of [["a", 100], ["b", 604]] as const) { const pane = p.document.createElement("section"); pane.setAttribute("data-pane", id); pane.className = "ws-pane"; pane.getBoundingClientRect = () => ({ left, top: 50, width: 496, height: 800 }); root.appendChild(pane); }
+  for (const [id, left] of [["a", 100], ["b", 604]] as const) { const pane = p.document.createElement("section"); pane.setAttribute("data-pane", id); pane.className = "ws-pane"; pane.getBoundingClientRect = () => ({ left, top: 50, right: left + 496, bottom: 850, width: 496, height: 800 }); root.appendChild(pane); }
   sash = p.document.createElement("div"); root.appendChild(sash); header = p.document.createElement("header"); root.querySelector('[data-pane="b"]').appendChild(header); p.root.appendChild(root);
   commit.mockReset(); drop.mockReset();
   manager = module.createWorkspaceGestures({ controller: { current: () => w, stamp: () => stamp, subscribe: (fn: any) => { observe = fn; return () => { observe = null; }; }, focus: () => {}, geometry: commit }, getRoot: () => root, onDrop: drop });
