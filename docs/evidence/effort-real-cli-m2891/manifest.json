@@ -1,0 +1,164 @@
+{
+  "format": "digest-first-v1",
+  "files": {
+    "d60b7dd50a2267c9320991d058c751d1a3f128e45f8d0f7837871294ce191896": [
+      "README.md"
+    ],
+    "1e63ea965485b602208cf7b17db2df1d2b5559e03e6bad1a37366504b2d1777a": [
+      "capture-normalization.json"
+    ],
+    "b6586a9e48abc93cefe83aa5d5b11dfffb2b22f7a39678b455d4b19104532975": [
+      "catalog-search.json"
+    ],
+    "f4599c4387f6e477cbc278aa784c2df7363195acd79d52a887863955fa20e518": [
+      "checks.json"
+    ],
+    "6bac7032ef264901d077a2d350ba673213e1ebef60dbce2dacce6fa8bb3579f0": [
+      "cleanup.json"
+    ],
+    "0735599652fc5a9f6025695c5031d836d384fa18368cf24291f3d335aad1ade0": [
+      "codex/codex-app-help.txt"
+    ],
+    "4c28677dbde406684cfafe5b4f6d8bf0c5837e83b60cd0dda9b6f829e50dbe7c": [
+      "codex/codex-effort-picker.txt"
+    ],
+    "ef0ca3ac19f122e6298eaa683941365df583147f9547b968033ac64761a7837d": [
+      "codex/codex-help.txt"
+    ],
+    "7cebbebab855c9dac631b566b3ac9e901f00bdfaf5936e2d026742c9dea263f5": [
+      "codex/codex-high-live.txt"
+    ],
+    "886d20f49d9cbd4243cb5b74f3008eac6a8bbe3d3bf1ee8ae67deec8f32bc0af": [
+      "codex/codex-live-proof.json"
+    ],
+    "25b651d18acf26f2ada8f1188233ce7aae12977e6b941299e9f3bce84193558d": [
+      "codex/codex-low-live.txt"
+    ],
+    "2f15a7bebad82577afa0d262bd3d3588ac55a57ebaa51b137f6b49bcb68739f9": [
+      "codex/codex-model-levels.json"
+    ],
+    "6f028e3a673149835277d81cca4e6226e365372c057b5ca996b448a9e1f75ceb": [
+      "codex/codex-model-picker.txt"
+    ],
+    "d52d7e90f056da2250717d796637568a13df9fe60130ae50ef1760eb9ad3a214": [
+      "codex/codex-models-rpc.json"
+    ],
+    "33324f10bbff7642eaa2bee14ed98bdd7c18ee0d60b24f68b8fa34752c8b29d0": [
+      "codex/codex-more-reasoning.txt"
+    ],
+    "5351db2e88bed0c6668037967bb6833462b6e556f443ea4059343e125d731ded": [
+      "codex/mock-config.toml"
+    ],
+    "b12349ccdd28b37b5ad7a6e5e6a0cb9a48a0178e739bcfc8e1f6f7b2fd5631d9": [
+      "distributions.json"
+    ],
+    "d2c21634b311c7cfad8d49ecd6e34c0f0ff45650a1a3d08adccc157a3889c1be": [
+      "harness/codex-models.py"
+    ],
+    "da128074dda51d19d5d7612a42840785b1211173751de4ef16b4399916b84653": [
+      "harness/opencode-mock.py"
+    ],
+    "71c59f4f7b1ce43d9b0320656904b481888cf4ee7c530a9194db2de25cf7b862": [
+      "harness/probe-codex.py"
+    ],
+    "f494689b8a5e11bd646aad7a7b68aacf36cb0f9e46601b4185e0eab6f3a92931": [
+      "harness/probe-opencode.py"
+    ],
+    "537d0b019bcc0a7481cc6cf99fa980656d31710e57edda433e2c2f9cf960d846": [
+      "harness/verify-evidence.py"
+    ],
+    "d26e0a71bca8333cac7732894f4e90c5ca8a83eac37b7591c54bc9f7ea81a4c3": [
+      "inputs.json"
+    ],
+    "a5fec8bde1addf68c900baaa50b53b2deb9d7c9d00991b9d19828dd2542c3ace": [
+      "kiro/kiro-chat-help.txt"
+    ],
+    "ae42df98dec4d87e81c54f845b93b9afba7eba9ddefafa35e3a92ef435c4c10c": [
+      "kiro/kiro-cli-help.txt"
+    ],
+    "0769651d63ee52a86188f71d2ddd1d5c12c76f55061647c0196cc134320ed4a5": [
+      "kiro/kiro-effort-high.txt"
+    ],
+    "957a50ad674588945c3a594c35f6a84838cbb4c2bef7dbaf887405b892f366d0": [
+      "kiro/kiro-effort-picker.txt"
+    ],
+    "3e95e9851d9243e99aea31ca637f488c19f8203436632858fec69047c80374d9": [
+      "kiro/kiro-models-offline.txt"
+    ],
+    "5466ac47c5aa5c2bab334ad51838df9ead18d5c735e53b3154c4f3cdcc78f98f": [
+      "kiro/kiro-start.txt"
+    ],
+    "6213c78e15c8d19cf1f3ce118594e0dfaf3892af84cfde1af972a780458c3241": [
+      "muse/README.md"
+    ],
+    "eb052e0d11f67d6e445c4ba501566f41cbc02398fa7a72c5456243d48e35d0f0": [
+      "muse/catalog-mock.json"
+    ],
+    "a2109072d953a19fd78129b87d3fbf18d2d2134bc2be3f2e30580c05b2dda100": [
+      "muse/manifest.json"
+    ],
+    "e0bc6341b8278cd90bf13f4d47cd69aa821d65b4376e1baa1f2e7a08cd65d832": [
+      "muse/muse-help.txt"
+    ],
+    "eaabca0fb554be2d6dbdcff3d51c4cbaa2e78015b31ac090fc33f0c2b5b8bd28": [
+      "muse/muse-live-proof.json"
+    ],
+    "419d8d310770d40164b105b9c8e219004d0531cbcd8e5cea1ecd84e2cf01f4db": [
+      "muse/muse-low-verified.txt"
+    ],
+    "49032fd546c7a47795513205a5afdd21c324a470ae36bb8d10a64ee25fa364f8": [
+      "muse/muse-max-verified.txt"
+    ],
+    "2e75b387a13e0867208c27b4023fd25deb1e0b635ab7c5b4cc88bef730c5662d": [
+      "muse/muse-model-profile-help.txt"
+    ],
+    "25f59c57d61309689812ca325caa854ae0310595729e82e38f9fb2ccf347bc81": [
+      "muse/muse-profile-spark.txt"
+    ],
+    "8efe5af10cb44334daf80cbb93ee9d0e4bbf796421a73c1e74eec87084920c34": [
+      "muse/muse-profile-wonder.txt"
+    ],
+    "2f1e64f801d5fabc79d562a1abfd1a63baa0d450a76ff5983b0781d5f9c10218": [
+      "muse-catalog-fixture-projection.json"
+    ],
+    "b2730160661fabfdd59e936fe7bccca5353bdc9bb7cc854a9e1ecff816d3a965": [
+      "opencode/mock-config.json"
+    ],
+    "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa": [
+      "opencode/oc-flag.exit"
+    ],
+    "52dba7f2dc15a5005b063936400e07efec5947d8c81eebc276f4ab21db1080f2": [
+      "opencode/oc-flag.txt"
+    ],
+    "3b20bfc2eae95238eb0e14e2320ffeb0cb69597ae903421c6a4124675ec2d2c5": [
+      "opencode/opencode-bundled-model-variants.json"
+    ],
+    "fef9b494c32846e18048f20f1dfa3d51033f7baf0793331de6be33dbe25399e3": [
+      "opencode/opencode-help.txt"
+    ],
+    "a3022f5a2bbfbc7e7beb3d36c4a9ab72e5e3313dea2d3ba4ba10802f3b5be0aa": [
+      "opencode/opencode-high-live.txt"
+    ],
+    "4b8935c590df369adf2524fbcefca01553a1458f699fd7445790d828ca777d86": [
+      "opencode/opencode-live-proof.json"
+    ],
+    "d5b3935ee9679616826bb25fa226a8e1abc4ea27074dc1937f5788ff861246b4": [
+      "opencode/opencode-low-live.txt"
+    ],
+    "4c3494ed6f3a9d47831a4b289c9ec1bc6c2f7cfc43a92beb9fe91282dea92939": [
+      "opencode/opencode-mock-model-variants.json"
+    ],
+    "af495f0bb759632f5421196fffd363369a2d6b69bfa3807aa4e928af031dc773": [
+      "opencode/opencode-models.txt"
+    ],
+    "c14a74d693c2cdd5fec1133f2944fa53f5f4e07cbc857a91ecc0d19d4eb660bf": [
+      "opencode/opencode-run-help.txt"
+    ],
+    "e4465fd8baad50b01712ae106a6a2708402f87bbd181862af2c6fcb589631c89": [
+      "opencode/opencode-variants.txt"
+    ],
+    "2c9ec5753f77a8ee82da6e2917c38bb0c0767aab389f9d38e5394b454a288ed7": [
+      "versions.txt"
+    ]
+  }
+}

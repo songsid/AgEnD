@@ -1,0 +1,39 @@
+
+  ┃                                                                                                 offline mock acknowledgement
+  ┃  m2891-opencode-low-121043337898046
+  ┃                                                                                                 Context
+                                                                                                    0 tokens
+     offline mock acknowledgement                                                                   0% used
+                                                                                                    $0.00 spent
+     ▣  Build · Probe reasoning · 334ms
+                                                                                                    LSP
+  ┃                                                                                                 LSPs are disabled
+  ┃  m2891-opencode-high-121046727271387
+  ┃
+
+     offline mock acknowledgement
+
+     ▣  Build · Probe reasoning · 42ms
+
+  ┃
+  ┃  m2891-opencode-low-121167922757527
+  ┃
+
+     offline mock acknowledgement
+
+     ▣  Build · Probe reasoning · 116ms
+
+  ┃
+  ┃  m2891-opencode-high-121171397758889
+  ┃
+
+     offline mock acknowledgement
+
+     ▣  Build · Probe reasoning · 41ms
+
+  ┃
+  ┃                                                                                                 /home/han/Projects/AgEnD-agend-dev-
+  ┃                                                                                                 sol2/.e2891/w:feat/hub-provider-setup-
+  ┃  Build · Probe reasoning Local audit mock · high                                                guidance
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   /AUDIT/w                  tab agents  ctrl+p commands    • OpenCode 1.19.5

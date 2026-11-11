@@ -1,0 +1,39 @@
+
+
+
+
+
+
+
+
+
+
+
+                                            Select variant                                   esc
+
+                                            Search
+
+                                            Default
+                                            low
+                                            medium
+                                            high
+                                 ┃
+                                 ┃  Ask
+                                 ┃
+                                 ┃  Build · Probe reasoning Local audit mock
+                                 ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                                                 tab agents  ctrl+p commands
+
+
+
+
+
+
+
+
+
+
+
+
+
+  /AUDIT/w:feat/hub-provider-setup-guidance                                                 1.19.5

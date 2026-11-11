@@ -1,0 +1,18 @@
+[
+  {
+    "path": "/v1/chat/completions",
+    "model": "probe-reasoning",
+    "reasoning_effort": "low",
+    "bodyDigest": "eeb45275b656726d8cb657bed1ece31f825f7a8a912a45e6b3bcad7989bb9678",
+    "paneShellPid": 3077682,
+    "children": "3077684 opencode"
+  },
+  {
+    "path": "/v1/chat/completions",
+    "model": "probe-reasoning",
+    "reasoning_effort": "high",
+    "bodyDigest": "87e05a43b80a01714c63e44e53613f6620ff9f645cf0ffe2bc0e8388aff94be9",
+    "paneShellPid": 3077682,
+    "children": "3077684 opencode"
+  }
+]

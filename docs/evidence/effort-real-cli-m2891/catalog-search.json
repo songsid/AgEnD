@@ -1,0 +1,27 @@
+{
+  "scope": "read-only earlier Kiro 3.x and Muse 1.4.15 audit fixtures/captures under the leader-authorized cache; no auth/config copied",
+  "kiro": {
+    "recordedCatalog": false,
+    "perModelTiers": "unverified (no recorded catalog)",
+    "searchedFixtureDirectories": 79,
+    "fieldsSearched": [
+      "additional_model_request_fields_schema",
+      "additionalModelRequestFieldsSchema",
+      "effortSchemaPath"
+    ]
+  },
+  "muse": {
+    "recordedCatalog": false,
+    "perModelTiers": "unverified (no recorded catalog)",
+    "priorAuditVersion": "1.4.15-R8339.1",
+    "priorMockCatalog": {
+      "data": [
+        {
+          "id": "mock-model"
+        }
+      ]
+    },
+    "note": "The 23-entry catalog in the previous audit is composer tips, not model metadata."
+  },
+  "vendorAccountCalls": 0
+}

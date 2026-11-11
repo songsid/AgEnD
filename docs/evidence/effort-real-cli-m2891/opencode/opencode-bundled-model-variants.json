@@ -1,0 +1,4039 @@
+[
+  {
+    "id": "openai/chatgpt-image-latest",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-4.1",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-4.1-fast",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-4.1-mini",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-4.1-mini-fast",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-4o",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-4o-2024-08-06",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-4o-2024-11-20",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-4o-fast",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-4o-mini",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-4o-mini-fast",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-5",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "reasoningEffort": "minimal",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5-fast",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "reasoningEffort": "minimal",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5-flex",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "reasoningEffort": "minimal",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5-mini",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "reasoningEffort": "minimal",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5-mini-fast",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "reasoningEffort": "minimal",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5-mini-flex",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "reasoningEffort": "minimal",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5-nano",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "reasoningEffort": "minimal",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5-nano-flex",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "reasoningEffort": "minimal",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5-pro",
+    "reasoning": true,
+    "variants": {
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.1",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.1-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.1-flex",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.2",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.2-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.2-flex",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.2-pro",
+    "reasoning": true,
+    "variants": {
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.3-codex",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.3-codex-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.3-codex-spark",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.4",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.4-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.4-mini",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.4-mini-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.4-mini-flex",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.4-nano",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.4-nano-flex",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.4-pro",
+    "reasoning": true,
+    "variants": {
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.5",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.5-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.5-pro",
+    "reasoning": true,
+    "variants": {
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.6",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.6-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.6-luna",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.6-luna-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.6-luna-pro",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.6-pro",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.6-sol",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.6-sol-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.6-sol-pro",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.6-terra",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.6-terra-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-5.6-terra-pro",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6-astra",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6-astra-fast",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6-astra-pro",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6-astra-ultrafast",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6-luna",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6-luna-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6-luna-pro",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6-sol",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6-sol-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6-sol-pro",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6.1-sol",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6.1-sol-fast",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6.1-sol-pro",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6.1-sol-ultrafast",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6.1-terra",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6.1-terra-fast",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-6.1-terra-pro",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-daybreak-blue-latest",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-daybreak-red-latest",
+    "reasoning": true,
+    "variants": {
+      "none": {
+        "reasoningEffort": "none",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "max": {
+        "reasoningEffort": "max",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/gpt-image-1-mini",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-image-1.5",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-image-2",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/gpt-realtime-2.1",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "reasoningEffort": "minimal",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "xhigh": {
+        "reasoningEffort": "xhigh",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/o3",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/o3-fast",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/o3-flex",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/o3-pro",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "medium": {
+        "reasoningEffort": "medium",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      },
+      "high": {
+        "reasoningEffort": "high",
+        "reasoningSummary": "auto",
+        "include": [
+          "reasoning.encrypted_content"
+        ]
+      }
+    }
+  },
+  {
+    "id": "openai/text-embedding-3-large",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/text-embedding-3-small",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "openai/text-embedding-ada-002",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "anthropic/claude-fable-5",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "high"
+      },
+      "xhigh": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "xhigh"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-fable-5-1",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "high"
+      },
+      "xhigh": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "xhigh"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-haiku-4-5",
+    "reasoning": true,
+    "variants": {
+      "high": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 16000
+        }
+      },
+      "max": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 31999
+        }
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-haiku-4-5-20251001",
+    "reasoning": true,
+    "variants": {
+      "high": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 16000
+        }
+      },
+      "max": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 31999
+        }
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-haiku-5-5",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "high"
+      },
+      "xhigh": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "xhigh"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-opus-4-5",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 16000
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 16000
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 16000
+        },
+        "effort": "high"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-opus-4-5-20251101",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 16000
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 16000
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 16000
+        },
+        "effort": "high"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-opus-4-6",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "effort": "high"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-opus-4-7",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "high"
+      },
+      "xhigh": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "xhigh"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-opus-4-8",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "high"
+      },
+      "xhigh": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "xhigh"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-opus-4-8-fast",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "high"
+      },
+      "xhigh": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "xhigh"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-opus-5",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "high"
+      },
+      "xhigh": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "xhigh"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-opus-5-5",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "high"
+      },
+      "xhigh": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "xhigh"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-opus-5-5-fast",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "high"
+      },
+      "xhigh": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "xhigh"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-opus-5-fast",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "high"
+      },
+      "xhigh": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "xhigh"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-sonnet-4-5",
+    "reasoning": true,
+    "variants": {
+      "high": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 16000
+        }
+      },
+      "max": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 31999
+        }
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-sonnet-4-5-20250929",
+    "reasoning": true,
+    "variants": {
+      "high": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 16000
+        }
+      },
+      "max": {
+        "thinking": {
+          "type": "enabled",
+          "budgetTokens": 31999
+        }
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-sonnet-4-6",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "effort": "high"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-sonnet-5",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "high"
+      },
+      "xhigh": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "xhigh"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "anthropic/claude-sonnet-5-5",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "low"
+      },
+      "medium": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "medium"
+      },
+      "high": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "high"
+      },
+      "xhigh": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "xhigh"
+      },
+      "max": {
+        "thinking": {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        "effort": "max"
+      }
+    }
+  },
+  {
+    "id": "google/deep-research-max-preview-04-2026",
+    "reasoning": true,
+    "variants": {}
+  },
+  {
+    "id": "google/deep-research-preview-04-2026",
+    "reasoning": true,
+    "variants": {}
+  },
+  {
+    "id": "google/gemini-2.5-computer-use-preview-10-2025",
+    "reasoning": true,
+    "variants": {}
+  },
+  {
+    "id": "google/gemini-2.5-flash",
+    "reasoning": true,
+    "variants": {
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingBudget": 12288
+        }
+      },
+      "max": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingBudget": 24576
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-2.5-flash-image",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "google/gemini-2.5-flash-lite",
+    "reasoning": true,
+    "variants": {
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingBudget": 12288
+        }
+      },
+      "max": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingBudget": 24576
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-2.5-flash-preview-tts",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "google/gemini-2.5-pro",
+    "reasoning": true,
+    "variants": {
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingBudget": 16000
+        }
+      },
+      "max": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingBudget": 31999
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-2.5-pro-preview-tts",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "google/gemini-3-flash-preview",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      },
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3-pro-image",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3-pro-image-preview",
+    "reasoning": true,
+    "variants": {}
+  },
+  {
+    "id": "google/gemini-3.1-flash-image",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3.1-flash-image-preview",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3.1-flash-lite",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      },
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3.1-flash-lite-image",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3.1-flash-live-preview",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      },
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3.1-flash-tts-preview",
+    "reasoning": true,
+    "variants": {}
+  },
+  {
+    "id": "google/gemini-3.1-pro-preview",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3.1-pro-preview-customtools",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3.5-flash",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      },
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3.5-flash-lite",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      },
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3.5-live-translate-preview",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "google/gemini-3.6-flash",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      },
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3.7-flash",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-3.8-flash",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-4-argon",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-embedding-001",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "google/gemini-embedding-2",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "google/gemini-flash-latest",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-flash-lite-latest",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      },
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemini-omni-flash-preview",
+    "reasoning": true,
+    "variants": {}
+  },
+  {
+    "id": "google/gemini-pro-latest",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "low"
+        }
+      },
+      "medium": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "medium"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemma-4-26b-a4b-it",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/gemma-4-31b-it",
+    "reasoning": true,
+    "variants": {
+      "minimal": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "minimal"
+        }
+      },
+      "high": {
+        "thinkingConfig": {
+          "includeThoughts": true,
+          "thinkingLevel": "high"
+        }
+      }
+    }
+  },
+  {
+    "id": "google/lyria-3-clip-preview",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "google/lyria-3-pro-preview",
+    "reasoning": false,
+    "variants": {}
+  }
+]

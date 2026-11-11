@@ -1,0 +1,4 @@
+[0m
+> build · probe-reasoning
+[0m
+offline mock acknowledgement

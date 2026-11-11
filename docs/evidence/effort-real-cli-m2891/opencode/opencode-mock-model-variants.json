@@ -1,0 +1,22 @@
+[
+  {
+    "id": "mock/probe-plain",
+    "reasoning": false,
+    "variants": {}
+  },
+  {
+    "id": "mock/probe-reasoning",
+    "reasoning": true,
+    "variants": {
+      "low": {
+        "reasoningEffort": "low"
+      },
+      "medium": {
+        "reasoningEffort": "medium"
+      },
+      "high": {
+        "reasoningEffort": "high"
+      }
+    }
+  }
+]

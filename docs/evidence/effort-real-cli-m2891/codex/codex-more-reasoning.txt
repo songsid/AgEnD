@@ -1,0 +1,35 @@
+
+› m2891-codex-low-121041767134929
+
+
+• Model changed to gpt-6.1-sol low for this session only
+
+
+› m2891-codex-low-121101219137607
+
+
+• ok
+
+  Worked for 59s • 18:33
+
+• Model changed to gpt-6.1-sol high for this session only
+
+
+› m2891-codex-high-121102962749782
+
+
+• ok
+
+  Worked for <1s • 18:33
+
+• Model changed to gpt-6.1-sol medium
+
+
+  Advanced Reasoning
+  ⚠ Consumes usage limits faster
+
+
+› 1. Max    For difficult problems when quality matters more than speed · higher usage
+  2. Ultra  For demanding work using multiple agents · highest usage
+
+  enter default · s session · esc back

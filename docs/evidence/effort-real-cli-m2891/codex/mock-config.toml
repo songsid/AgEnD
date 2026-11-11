@@ -1,0 +1,17 @@
+model = "gpt-6.1-sol"
+model_provider = "mock"
+model_reasoning_effort = "medium"
+check_for_update_on_startup = false
+[model_providers.mock]
+name = "mock"
+base_url = "http://127.0.0.1:18802/v1"
+wire_api = "responses"
+requires_openai_auth = false
+[projects."/AUDIT/w"]
+trust_level = "trusted"
+
+[tui]
+screen_reader_detection_done = true
+
+[tui.model_availability_nux]
+"gpt-6.1-sol" = 2

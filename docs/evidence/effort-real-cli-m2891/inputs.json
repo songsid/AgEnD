@@ -1,0 +1,27 @@
+{
+  "format": "digest-first-v1",
+  "repositoryInput": "5316eb1e0097777e14d9ddcc0ba60af7c03e5010",
+  "files": {
+    "83726e610900d654dad2b70fada2efa7adca474c52f0bb60e5bc12f00ec8b032": [
+      "scripts/manual/codex-version-audit/mock.mjs"
+    ],
+    "95f8db6b62533bf6f83cc45906eeaf77e8971edcab1ab650b9f9d323a3e32a09": [
+      "scripts/manual/muse-version-audit/mock.py"
+    ],
+    "2da393b8e7633ac175fc2a267c67180402d6136479500c292875acf62cbbb30e": [
+      "scripts/manual/kiro3-compatibility/capture.py"
+    ],
+    "1a1514066833e6a7cafc607540d0d7f710e24cb576155a5b7234c5ead9998eeb": [
+      "docs/dev/kiro-engine-survey-2.34.md"
+    ],
+    "6db8ac2fbfc20e7f15baf112c0d89ae0f5a83a41ea2d6a8b5cd7b405271d436e": [
+      "src/backend/codex.ts"
+    ],
+    "08df8c434c06955d7bd8a26e255c9782010f357788b766813b9a1fa581e5a98f": [
+      "src/backend/kiro.ts"
+    ],
+    "df6b256482fa2c776cff8240830a9f8d16ae877d7c2ce5986ee729320836d323": [
+      "src/backend/muse.ts"
+    ]
+  }
+}

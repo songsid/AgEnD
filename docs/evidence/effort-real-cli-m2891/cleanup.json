@@ -1,0 +1,28 @@
+{
+  "ownedProcessesBefore": [
+    "3068059 1834724 python3",
+    "3068072 3068070 sleep",
+    "3068117 3068070 muse",
+    "3077305 3068070 bash",
+    "3077307 3077305 kiro-cli",
+    "3077325 3068070 python3",
+    "3077326 3077307 kiro-cli-chat",
+    "3077410 3077326 bun",
+    "3077470 3077410 kiro-cli-chat",
+    "3077682 3068070 bash",
+    "3077684 3077682 opencode",
+    "3078595 3068070 bash",
+    "3078596 3078595 codex",
+    "3080493 3068070 bash",
+    "3080494 3080493 node"
+  ],
+  "ownedRunningAfter": [],
+  "privateTmuxSocketExists": false,
+  "namespaceMockTerminated": [
+    3068059
+  ],
+  "vendorAccountCalls": 0,
+  "liveFleetOrConfigChanged": false,
+  "tmuxAfterExitCode": 1,
+  "tmuxAfterMessage": "no server running on /AUDIT/t.sock"
+}

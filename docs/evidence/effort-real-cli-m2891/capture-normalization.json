@@ -1,0 +1,162 @@
+[
+  {
+    "path": "codex/codex-model-picker.txt",
+    "originalDigest": "ef78e629470562d1dccf0fdb42125ef92faf4fc42da03b3dc006876a8e84dae2",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "codex/codex-low-live.txt",
+    "originalDigest": "588c12c53c3878bfe2fa2aaf58c901a90196d48acb603df1d6fcf36bfee7e267",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "codex/codex-app-help.txt",
+    "originalDigest": "d2854a3ad9c9733f8be8034feb198ba017ddce07d539d8e777167fc96dffbd10",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "codex/codex-help.txt",
+    "originalDigest": "b69c5454449539e250b4d7f636e612e7a6686d60d1a9d2d50c8b82628af00dde",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "codex/codex-effort-picker.txt",
+    "originalDigest": "5b913ef3b72df3ed4ad88a8eeb93b192e2b2665824e576c7403e1529392cedfb",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "codex/codex-high-live.txt",
+    "originalDigest": "c8163bb11ca95ed806a631181fae4b31feebbc348ec1c4f14a59ad52fd23266d",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "codex/codex-more-reasoning.txt",
+    "originalDigest": "4f0a555a0c7f929baf66a00112d96d451f27e346fd9cba7f1405a70242e060be",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "kiro/kiro-cli-help.txt",
+    "originalDigest": "2bc68eb92e759fd5f51d8f8ff5911499647d50b2126c43c052f25729b1ab4768",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "kiro/kiro-effort-high.txt",
+    "originalDigest": "0781ef2a79a738712aa3f3e76c7e213c9c7f8fc34bb9c7186cf843ff3aad2317",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "kiro/kiro-chat-help.txt",
+    "originalDigest": "f0807e3ef3f0bf14b015d351202644eb2cab45958ddc0638010cc66d67151e7f",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "kiro/kiro-start.txt",
+    "originalDigest": "0e3e538bb3f04720b5f9b507c98ae1178e6ec714e22e85260c899a435da3e208",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "kiro/kiro-effort-picker.txt",
+    "originalDigest": "12c69a690097fa3e8ced8c8041d30902a0832c103cba241fe138fc8968e52f41",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "kiro/kiro-models-offline.txt",
+    "originalDigest": "3e95e9851d9243e99aea31ca637f488c19f8203436632858fec69047c80374d9",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "opencode/oc-flag.txt",
+    "originalDigest": "52dba7f2dc15a5005b063936400e07efec5947d8c81eebc276f4ab21db1080f2",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "opencode/opencode-models.txt",
+    "originalDigest": "af495f0bb759632f5421196fffd363369a2d6b69bfa3807aa4e928af031dc773",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "opencode/opencode-low-live.txt",
+    "originalDigest": "7ce2bb71597aca1b828d98a36a2878cd94b576c8d6b78e9604a3d159853c60a6",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "opencode/opencode-run-help.txt",
+    "originalDigest": "177277faec689a9ed77962dd130d68c045f279ee104ddebd9ab59d1ec22217ec",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "opencode/opencode-help.txt",
+    "originalDigest": "d529c6eee9c6e1a91f5432c00c99cb68875c9f72863fa530864aacfb427bef8d",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "opencode/opencode-variants.txt",
+    "originalDigest": "f157219ac47bb29fc78958007a473ab76c75473bcd93933173c788026f7c9cc0",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  },
+  {
+    "path": "opencode/opencode-high-live.txt",
+    "originalDigest": "2c911d726d1d2f5d138adb9bfd5ecb769216439301182792b420a8f4728f26a6",
+    "transforms": [
+      "owned audit root \u2192 /AUDIT",
+      "rstrip each line and trailing empty terminal rows"
+    ]
+  }
+]

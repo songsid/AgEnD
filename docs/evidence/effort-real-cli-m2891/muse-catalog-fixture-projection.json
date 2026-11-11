@@ -1,0 +1,14 @@
+{
+  "schema_version": 3,
+  "source": "provider_catalog",
+  "rows": [
+    {
+      "model_id": "muse-spark-1.3",
+      "reasoning_effort_variants": null
+    },
+    {
+      "model_id": "muse-wonder-1.0",
+      "reasoning_effort_variants": null
+    }
+  ]
+}

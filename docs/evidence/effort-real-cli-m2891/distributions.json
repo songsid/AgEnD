@@ -1,0 +1,42 @@
+[
+  {
+    "name": "codex",
+    "bytes": 320575976,
+    "digest": "cdcb45aaa01d0f14e298985e09465aebccd47f64ecd298aea44814af7b62bbda"
+  },
+  {
+    "name": "codex-code-mode-host",
+    "bytes": 79209744,
+    "digest": "83f3e174c2da2f1ca8655cce686e302509640d34c0f4407c1155056f64536e0f"
+  },
+  {
+    "name": "codex-exec-server",
+    "bytes": 81940392,
+    "digest": "43376b1af843ffc71726a35d53b6e2241cbe1e8c9e8ec758402460295eec2107"
+  },
+  {
+    "name": "kiro-cli",
+    "bytes": 43027744,
+    "digest": "94cae7e349f76869a19eae335a5b392fba8515743b1c2822b9ea33128c067cc6"
+  },
+  {
+    "name": "kiro-cli-chat",
+    "bytes": 207456488,
+    "digest": "596c48b3cba6db1f5c043434c20a5fd1d23ea7d35eb0b70e3bcfe4144d93a79c"
+  },
+  {
+    "name": "muse",
+    "bytes": 469588312,
+    "digest": "abe0a72878c62b570c6eed6c17c5fc3c520a990ecf040511741c00092312a3d5"
+  },
+  {
+    "name": "node",
+    "bytes": 124679552,
+    "digest": "81925c0995b5c1427b5d538e6a90ca2fdc4daffb786b09af749beaf7369d4e90"
+  },
+  {
+    "name": "opencode",
+    "bytes": 214386864,
+    "digest": "7df4e4136301f16589b0f30bf91a61380fca5f8ef22dd36570f5ebe1d4ec802c"
+  }
+]

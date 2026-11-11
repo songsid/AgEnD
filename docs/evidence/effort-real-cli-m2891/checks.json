@@ -1,0 +1,35 @@
+{
+  "codex": {
+    "liveLevels": [
+      "low",
+      "high"
+    ],
+    "sameCliProcess": true,
+    "requestDestination": "loopback mock",
+    "bundledModelCount": 12
+  },
+  "opencode": {
+    "liveLevels": [
+      "low",
+      "high"
+    ],
+    "sameCliProcess": true,
+    "requestDestination": "loopback mock",
+    "bundledModelCount": 140,
+    "withVariants": 109
+  },
+  "muse": {
+    "liveLevels": [
+      "low",
+      "max"
+    ],
+    "sameCliProcess": true,
+    "requestDestination": "loopback mock",
+    "effortBackends": "yes"
+  },
+  "kiro": {
+    "binaryVersion": "2.34.0",
+    "modelSpecificLiveSwitch": "unverified: mock has no effort schema",
+    "perModelTiers": "unverified (no recorded catalog)"
+  }
+}

@@ -1,0 +1,24 @@
+[
+  {
+    "model": "gpt-6.1-sol",
+    "requested": "low",
+    "wire": {
+      "effort": "low",
+      "context": "all_turns"
+    },
+    "paneShellPid": 3078595,
+    "children": "3078596 codex",
+    "bodyDigest": "e93e079f6f4b02bf31d4f4f8b957cf32470b1346f538384a17e95103436a4b03"
+  },
+  {
+    "model": "gpt-6.1-sol",
+    "requested": "high",
+    "wire": {
+      "effort": "high",
+      "context": "all_turns"
+    },
+    "paneShellPid": 3078595,
+    "children": "3078596 codex",
+    "bodyDigest": "94b650d67e31797e248cd4a3161d4646d2b71b583502054cf7d67433c499ff9a"
+  }
+]
