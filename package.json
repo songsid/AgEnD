@@ -100,7 +100,7 @@
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vitest": "^4.1.12",
     "@types/ws": "8.18.1",
-    "node-pty": "1.1.0",
+    "node-pty": "file:vendor/node-pty",
     "@xterm/headless": "6.0.0",
     "@xterm/addon-serialize": "0.14.0",
     "playwright-core": "1.64.0"

@@ -1,0 +1,13 @@
+{
+  "name": "node-pty",
+  "version": "1.1.0",
+  "description": "Fork pseudoterminals in Node.JS",
+  "license": "MIT",
+  "main": "./lib/index.js",
+  "types": "./typings/node-pty.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/microsoft/node-pty.git"
+  },
+  "agendWindowsAssets": 1
+}
