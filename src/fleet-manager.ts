@@ -164,6 +164,7 @@ import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
 import { boardActivity, boardCardLimit, boardToolAction } from "./task-board-tool.js";
 import { TaskBoardWaker, namesCard } from "./task-board-waker.js";
+import { DispatcherLiveness, LIVENESS_STARTUP_GRACE_MS, livenessSettings, type AssigneeFacts, type LivenessCard } from "./dispatcher-liveness.js";
 import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor } from "./scheduler/task-board.js";
 import type { SchedulerDb } from "./scheduler/db.js";
 import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
@@ -2655,6 +2656,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private instanceStateCache = new Map<string, InstanceStateSnapshot & { receivedAt: number }>();
   /** CLI pane status overrides; daemon.pid alone only proves FleetManager lives. */
   private instanceProcessStatus = new Map<string, "crashed" | "stopped">();
+  /** #3647: supervision gave up on these (crash loop, supervision ended) — cleared when the process runs again. */
+  private readonly livenessGone = new Map<string, { kind: "crash_loop" | "supervision_ended"; reason: string; at: number }>();
+  /** #3647: when each instance last showed working (after the startup grace): activity for "quiet". */
+  private readonly lastWorkingAt = new Map<string, number>();
+  private dispatcherLiveness: DispatcherLiveness | null = null;
   /** Adapters whose last slash command registration failed and General was told (#1131). */
   private slashRegistrationFailed = new Set<string>();
   /** Instances currently being auto-paused by warm_cap, so concurrent checks don't double-evict. */
@@ -4977,6 +4983,91 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.logger.error({ err }, "Reply-obligation sweep failed");
     }
+    this.tickDispatcherLiveness();
+  }
+
+  /** #3647: the lifecycle's word that supervision gave up on an instance (crash loop, supervision ended). */
+  onSupervisionGone(name: string, kind: "crash_loop" | "supervision_ended", reason: string): void {
+    this.livenessGone.set(name, { kind, reason, at: Date.now() });
+  }
+
+  /** #3647: one dispatcher-liveness sweep, on the reply-obligation timer (30 s). */
+  private tickDispatcherLiveness(): void {
+    const db = this.scheduler?.db;
+    if (!db || !this.deliveryOutbox?.isOpen || this.shuttingDown) return;
+    this.dispatcherLiveness ??= new DispatcherLiveness({
+      settings: () => livenessSettings(this.fleetConfig),
+      plannedRestart: () => this.isPlannedRestart(),
+      startedAt: () => this.startedAt,
+      claimedCards: () => this.livenessCards(),
+      facts: (name) => this.livenessFacts(name),
+      backgroundBusy: (name) => this.livenessBackgroundBusy(name),
+      isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
+      // Not running now: stopped, crashed, paused, or no daemon at all.
+      dispatcherAway: (name) => this.instanceProcessStatus.has(name) || this.lifecycle.isPaused(name) || !this.daemons.has(name),
+      boardOff: (name) => taskBoardOffIn(this.fleetConfig, name),
+      deliver: (instance, message, key) => this.admitTaskBoardNotice(instance, message, key),
+      withdraw: (prefix, stale, reason) => {
+        const outbox = this.deliveryOutbox;
+        return outbox?.isOpen ? outbox.withdrawWaitingNotices(prefix, (key) => stale(key), reason).length : 0;
+      },
+      noticeState: (key) => (this.deliveryOutbox?.isOpen ? this.deliveryOutbox.noticeStateByKey(key) : null),
+      personChanged: () => this.needsYou?.poke(),
+      ledger: db.liveness,
+      log: (level, message, extra) => this.logger[level](extra ?? {}, message),
+    });
+    void this.dispatcherLiveness.tick();
+  }
+
+  /** #3647: every claimed card with an assignee, with the times "quiet" counts from. */
+  private livenessCards(): LivenessCard[] {
+    const board = this.scheduler?.db.board;
+    if (!board) return [];
+    const ms = (iso: string | null | undefined) => { const v = iso ? Date.parse(iso) : NaN; return Number.isFinite(v) ? v : 0; };
+    return board.listCards({ status: ["claimed"], limit: 5000 }).cards.filter((c) => c.assignee).map((c) => ({
+      uuid: c.uuid, code: c.code, title: c.title, assignee: c.assignee!, dispatcher: c.dispatcher ? { kind: c.dispatcher.kind, name: c.dispatcher.name } : null,
+      claimedAt: Math.max(ms(board.lastChangeAt(c.uuid)), ms(c.startedAt)), updatedAt: ms(c.updatedAt),
+    }));
+  }
+
+  /** #3647: what the fleet knows about an assignee now; null when it is not an instance here. */
+  private livenessFacts(name: string): AssigneeFacts | null {
+    if (this.fleetConfig?.instances?.[name] == null) return null;
+    const status = this.instanceProcessStatus.get(name);
+    const exec = this.instanceStateCache.get(name);
+    let paused: AssigneeFacts["paused"] = null;
+    if (this.lifecycle.isPaused(name)) {
+      const dir = this.getInstanceDir(name);
+      paused = { reason: readPauseReason(dir), at: readPausedAt(dir) };
+    }
+    const p = this.instancePresentation(name);
+    const waitingOn = (() => {
+      try { return this.deliveryOutbox?.workingObligations(name).references.filter((r) => r.kind === "waiting").map((r) => (r as { owner: string }).owner) ?? []; }
+      catch { return []; }
+    })();
+    const idle = exec?.state === "idle" || paused?.reason === "idle" || paused?.reason === "warm_cap";
+    return {
+      process: status ?? "running",
+      gone: this.livenessGone.get(name) ?? null,
+      crashedAt: this.needsCrashedAt.get(name) ?? null,
+      paused,
+      usageHold: this.daemons.get(name)?.usageHold?.() ?? null,
+      execution: exec ? { state: exec.state, since: exec.stateChangedAt } : null,
+      lastWorkingAt: this.lastWorkingAt.get(name) ?? null,
+      prompt: p.state === "awaiting_input" && p.interaction?.since ? { since: p.interaction.since } : null,
+      waitingOn,
+      // Asked only when it could be quiet (one indexed read per idle assignee).
+      lastMessageAt: idle && this.deliveryOutbox?.isOpen ? this.deliveryOutbox.latestSentAt(name) : null,
+    };
+  }
+
+  /** #3647: work the pane does not show — the backend's background-work flag, or a live subagent. */
+  private async livenessBackgroundBusy(name: string): Promise<boolean> {
+    const daemon = this.daemons.get(name);
+    try { if (daemon?.getWorkingStateObservation?.().backgroundWork === true) return true; } catch { /* unknown: go on */ }
+    const answer = await this.subagentRuns(name);
+    if (answer.status === "busy") return true;                          // could not tell: not now
+    return answer.runs.some((r) => r.state === "running");
   }
 
   private expireReplyObligations(now: Date): void {
@@ -6585,6 +6676,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // asks "is anyone still reporting", which only the receiver can date.
       receivedAt: now,
     });
+    // #3647: activity, for "quiet" — not the boot itself (every agent shows working while it starts).
+    if (state === "working" && now - this.startedAt >= LIVENESS_STARTUP_GRACE_MS) this.lastWorkingAt.set(name, now);
     // The dashboard's "working" line and its Stop button follow the edges, not the heartbeat.
     if (previous?.state !== state) this.emitSseEvent("activity", { instance: name, state: this.getInstanceExecutionState(name) });
     for (const check of this.instanceIdleWaiters.get(name) ?? []) check();
@@ -6636,6 +6729,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.needsYou?.poke();
     if (status === "running") {
       this.instanceProcessStatus.delete(name);
+      this.livenessGone.delete(name);
       // A prior crash-loop marker is one-shot.  Successful respawn is the
       // authoritative recovery signal even when the marker outlived an IPC
       // disconnect and was not consumed by a new Daemon constructor.
@@ -18196,7 +18290,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private needsYouTaskItems(): import("./needs-you.js").TaskInput[] {
     // #2425: the task board's cards join Needs you only when the fleet asks for them (needs_you.task_board, off by
     // default since 2.3.0-beta.25); prompts, deliveries and the rest are unchanged.
-    return this.fleetConfig?.needs_you?.task_board === true ? this.needsYouTasks() : [];
+    // #3647: a card the person handed out whose assignee went quiet is theirs to see either way (it is not the card
+    // waiting for them, it is the agent that stopped).
+    return [...(this.fleetConfig?.needs_you?.task_board === true ? this.needsYouTasks() : []), ...this.needsYouStalls()];
+  }
+  /** #3647: the person's (or a missing or not-running dispatcher's) cards whose assignee went quiet. Crashed, paused and waiting agents
+   *  already have their own Needs-you items; quiet is the one nothing else shows. */
+  private needsYouStalls(): import("./needs-you.js").TaskInput[] {
+    const db = this.scheduler?.db;
+    if (!db) return [];
+    return db.liveness.listOpen().filter((e) => (e.dispatcherKind === "person" || e.needsYou) && e.kind === "quiet").flatMap((e) => {
+      const card = db.board.findCard(e.cardUuid);
+      if (!card || card.status !== "claimed") return [];
+      return [{ uuid: card.uuid, code: card.code, title: card.title, status: "stalled" as const, version: card.version,
+        assignee: card.assignee, since: e.since, note: t("liveness.kind_quiet") }];
+    });
   }
   private needsYouTasks(): import("./needs-you.js").TaskInput[] {
     const board = this.scheduler?.db.board;
