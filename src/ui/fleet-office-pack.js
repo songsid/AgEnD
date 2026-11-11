@@ -45,6 +45,19 @@
 //                                                     diagonal leg an L, so the walkSide / walkDown / walkUp strips
 //                                                     always fit (graph edges laid out across and up/down put the
 //                                                     corners on the aisles); default false
+//     "idleVisits": [{ "area": "spring", "weight": 20, "minSeconds": 30, "maxSeconds": 90 }, …],
+//                                                     optional (#3685), with stateZones: ≤ 8, each an area the pack
+//                                                     defines (none twice); weight 1–100, minSeconds 5–600,
+//                                                     maxSeconds minSeconds–600 (whole numbers). At each of an idle
+//                                                     person's stroll turns (fleet-office-zones.js WANDER, VISIT) the
+//                                                     entries' weights are rolled against today's stroll near the
+//                                                     seat, which weighs 100 (VISIT.STROLL): one entry of weight 20 is
+//                                                     a visit at 20 / 120 of the turns. A visit walks to a free seat
+//                                                     of that area (not reserved for someone else unless lent, nobody
+//                                                     sitting there, no other visitor's), stays minSeconds–maxSeconds
+//                                                     there and walks back (none free: a stroll that turn). Never their
+//                                                     own area, only while idle, and like strolls not with reduced
+//                                                     motion, nor in All offices or Edit layout
 //     "furniture": [ { "id": "rack", "sprite": STRIP, "x": 1020, "y": 140, "depth": 2,
 //                      "activeWhen": "crashed", "activeSprite": STRIP, "activeFor": "atlas", "loop": true, "activeOn": "seated", "hides": true, "label": "Rack",
 //                      "night": { "sprite": STRIP, "x": 300, "y": 420 },
@@ -162,7 +175,7 @@ const RESERVED = new Set(["cozy", "guild", "school"]);
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 const SRC = /^[A-Za-z0-9._/-]{1,200}$/;
 const HEX = /^#[0-9a-f]{6}$/i;
-const LIMIT = { areas: 32, seats: 64, furniture: 128, waypoints: 512, edges: 2048, sets: 64, byInstance: 500, lines: 12, line: 40, seatFor: 16, titles: 32, title: 24, fixed: 500 };
+const LIMIT = { areas: 32, seats: 64, furniture: 128, waypoints: 512, edges: 2048, sets: 64, byInstance: 500, lines: 12, line: 40, seatFor: 16, titles: 32, title: 24, fixed: 500, idleVisits: 8 };
 
 class Refused extends Error { constructor(at, why) { super(`${at}: ${why}`); } }
 /** `o[k]` when it is o's own property, else undefined: a name from a pack or a page never reaches Object.prototype. */
@@ -289,13 +302,30 @@ function levelsOf(v) {
 }
 
 /**
+ * #3685: a pack's `idleVisits` — up to LIMIT.idleVisits { area, weight 1–100, minSeconds 5–600, maxSeconds minSeconds–600 },
+ * each an area the pack defines, none twice; [] when it has none.
+ */
+function idleVisitsOf(v, areas) {
+  const seen = new Set();
+  return list(v ?? [], LIMIT.idleVisits, "idleVisits").map((e, i) => {
+    const at = `idleVisits[${i}]`;
+    obj(e, at); keys(e, ["area", "weight", "minSeconds", "maxSeconds"], at);
+    if (typeof e.area !== "string" || !own(areas, e.area)) throw new Refused(`${at}.area`, "an area the pack defines");
+    if (seen.has(e.area)) throw new Refused(`${at}.area`, "an area not listed before");
+    seen.add(e.area);
+    const minSeconds = int(e.minSeconds, 5, 600, `${at}.minSeconds`);
+    return { area: e.area, weight: int(e.weight, 1, 100, `${at}.weight`), minSeconds, maxSeconds: int(e.maxSeconds, minSeconds, 600, `${at}.maxSeconds`) };
+  });
+}
+
+/**
  * A pack's manifest, strictly: { ok: true, pack } or { ok: false, error: "<where>: <why>" }. `kept`: a pack the host
  * keeps already (read back, not uploaded), which may hold a RESERVED id.
  */
 export function checkSkinPack(x, { kept = false } = {}) {
   try {
     obj(x, "pack");
-    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "room", "desk", "levels"], "pack");
+    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "room", "desk", "levels", "idleVisits"], "pack");
     if (x.format !== 1) throw new Refused("format", "1");
     if (typeof x.id !== "string" || !ID.test(x.id)) throw new Refused("id", "1–40 letters, digits, _ or -");
     if (BUILT_IN.has(x.id) || (!kept && RESERVED.has(x.id))) throw new Refused("id", "a built-in skin's id");
@@ -329,6 +359,8 @@ export function checkSkinPack(x, { kept = false } = {}) {
       if (x.background === undefined) throw new Refused("background", "required with stateZones");
     }
     if (x.foreground !== undefined && !stateZones) throw new Refused("foreground", "only with stateZones");
+    if (x.idleVisits !== undefined && !stateZones) throw new Refused("idleVisits", "only with stateZones");
+    const idleVisits = idleVisitsOf(x.idleVisits, areas);
     const waypoints = [], ids = new Set();
     for (const [i, w] of list(x.waypoints ?? [], LIMIT.waypoints, "waypoints").entries()) {
       const at = `waypoints[${i}]`;
@@ -403,7 +435,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
       mailDrop: x.mailDrop === undefined ? null : point(x.mailDrop, "mailDrop"), waypoints, edges, straight: x.straight === true, furniture, characters, byInstance,
       props: x.props === undefined ? {} : strips(x.props, PROPS, "props", scale), bubbles,
       room: { floor: opt(room.floor, "room.floor"), wall: opt(room.wall, "room.wall") }, desk: { back: opt(desk.back, "desk.back"), front: opt(desk.front, "desk.front"), lit: opt(desk.lit, "desk.lit") },
-      ...(levels ? { levels } : {}),
+      ...(levels ? { levels } : {}), ...(idleVisits.length ? { idleVisits } : {}),
     } };
   } catch (err) {
     if (err instanceof Refused) return { ok: false, error: err.message };

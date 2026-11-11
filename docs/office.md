@@ -185,6 +185,7 @@ These need a zones style.
 
 - **Bedtime** (the **Bedtime 0–6: the idle sleep** box, per device, off by default): from 00:00 to 06:00 on the viewer's clock, idle people go to the sleeping area (the area `paused` uses) while it has a free seat, and sleep there with Zzz bubbles. The rest doze where they are. Working people keep working. Furniture with a `night` is drawn asleep at its night place.
 - **Strolls:** now and then an idle person walks to a nearby waypoint that no seat is on, stays a few seconds and walks back. A furniture item with `walk` strolls the same way. Strolls happen in a single office (not All offices), not with reduced motion, and not while Edit layout is open.
+- **Visits** (a pack's `idleVisits`, #3685): now and then an idle person goes to another area instead, such as a garden or a hot spring, sits on a free seat there for a while and walks back to their own seat. A free seat is one nobody sits on, no other visitor is heading for, and that isn't reserved for someone else (unless it's lent). With no free seat they stroll as usual. At each turn when they could stroll, each entry's `weight` is weighed against 100 for the usual stroll, so one entry of weight 20 sends them off at 20 of every 120 turns. The stay is `minSeconds`–`maxSeconds` after they get there. Nobody visits their own area, anyone who isn't idle stays put, and visits follow the same rules as strolls (a single office, no reduced motion, not in Edit layout). The same name at the same time always makes the same visit, on every screen.
 - **Mail:** a message to someone in this office from someone outside it flies in at the door as a letter and lands at the pack's `mailDrop` (or the office's own from Edit layout). Without one it lands at the waypoint nearest the middle of the room, off every seat. More letters wait 16 px apart to the right, never on a seat. With reduced motion no letters are shown. Its person walks over and picks it up, unless they're asleep. A letter waits up to a minute.
 - **Traffic** between people in the same office flies from sender to receiver. A delegation stays in progress until the worker's report comes back.
 
@@ -340,6 +341,7 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `waypoints` | ❌ | `[{ id, x, y }, …]`, up to 512 |
 | `edges` | ❌ | `[[id, id], …]`, up to 2048 |
 | `straight` | ❌ | `true`: every walk goes across, then up or down |
+| `idleVisits` | ❌ | with `stateZones`: `[{ "area", "weight", "minSeconds", "maxSeconds" }, …]`, up to 8, an area at most once: areas idle people now and then sit in for a while (see [Visits](#bedtime-strolls-and-mail)). `weight` 1–100 against 100 for a stroll; `minSeconds` 5–600; `maxSeconds` `minSeconds`–600 |
 | `furniture` | ❌ | items, up to 128 (see [Furniture](#furniture)) |
 | `characters` | ✅ | `{ set: { pose: STRIP, … } }`, up to 64 sets; `default` with `idle` required. Keys: `working`, `idle`, `paused`, `needs`, `walk`, `walkDown`, `walkUp`, `walkSide`, `prop` |
 | `byInstance` | ❌ | instance name → character set, up to 500 |

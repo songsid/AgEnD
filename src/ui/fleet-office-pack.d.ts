@@ -20,6 +20,8 @@ export interface CheckedPack {
   room: { floor?: string; wall?: string }; desk: { back?: string; front?: string; lit?: string };
   /** #2661: the Office levels' words — titles from each level up, and titles pinned on instances or NPCs. */
   levels?: { titles?: Array<{ from: number; name: string }>; fixed?: Record<string, { title: string; hideLevel: boolean }> };
+  /** #3685: areas an idle person now and then visits (a free seat there, for minSeconds–maxSeconds); absent: none. */
+  idleVisits?: Array<{ area: string; weight: number; minSeconds: number; maxSeconds: number }>;
 }
 export interface LayoutOverrides {
   pack: string;
