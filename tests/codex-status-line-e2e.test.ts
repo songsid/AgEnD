@@ -59,7 +59,7 @@ describe.skipIf(!enabled)("real codex 0.157: a quoted-key status_line without Co
     backend.writeConfig(config);
     backend.preTrust(wd);
     const privateConfig = parse(readFileSync(join((backend as any).isolatedCodexHome, "config.toml"), "utf8")) as any;
-    expect(privateConfig.tui.status_line).toEqual(["context-remaining", "model-with-reasoning"]);
+    expect(privateConfig.tui.status_line).toEqual(["session-id", "context-remaining", "model-with-reasoning"]);
     const cmd = backend.buildCommand(config);
     expect(backend.consumeLaunchWarning()).toBeNull();
 

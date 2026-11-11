@@ -86,6 +86,7 @@ import { markerConsumed, scanTranscriptForDeliveryMarker, type TranscriptMarkerK
 import { QUEUED_HANDOFF_MAX_REDELIVERIES, QueuedHandoffStore, type QueuedHandoff } from "./queued-handoffs.js";
 import { measureSyncWork, noteSyncWork } from "./sync-work-attribution.js";
 import { TranscriptDeltaReader } from "./transcript-delta-reader.js";
+import { checkpointCodexPane } from "./codex-pane-ownership.js";
 import {
   buildResumeContinuation,
   clearInFlightTurnMarker,
@@ -687,6 +688,7 @@ interface SubmissionSignature {
      * before a hit is used — a look that returns after a stop or respawn proves nothing for the replacement.
      */
     current: () => boolean;
+    validate?: () => Promise<boolean>;
     /** Set on the first hit (later looks reuse it); the write records it as its evidence. */
     provenBy?: TranscriptMarkerKind;
     onProof?: (kind: TranscriptMarkerKind) => void;
@@ -857,6 +859,9 @@ type DurableDeliveryAttempt = {
   /** sha256 of the text as this daemon received it, before formatting (#856). */
   contentSha256?: string;
 };
+type DeliveryTranscriptCheckpoint = { backend: string; path: string; offset: number; ownedCodex?: {
+  identity: { dev: number; ino: number }; current(): boolean; validate(): Promise<boolean>;
+} };
 type DeliveryVerdict = {
   reached: boolean;
   phase?: string;
@@ -868,7 +873,7 @@ type DeliveryVerdict = {
   /** #829: the caller's lifecycle fence went stale before anything was written. */
   fenced?: boolean;
   /** Where this attempt's transcript stood before the paste (#758), for a delivery only the output edge vouches for. */
-  transcriptCheckpoint?: { backend: string; path: string; offset: number };
+  transcriptCheckpoint?: DeliveryTranscriptCheckpoint;
   /** How the attempt was written (#1201: steer and native-queue hand-offs get a late consumed watch). */
   submissionMode?: DurableSubmissionMode;
   /** The submission was proven by the CLI's transcript rather than the pane: the evidence the outbox records. */
@@ -2841,7 +2846,7 @@ export class Daemon extends EventEmitter {
    */
   private async proveDeliveryFromTranscript(
     delivery: { deliveryId: string; attemptNo: number },
-    checkpoint: { backend: string; path: string; offset: number },
+    checkpoint: DeliveryTranscriptCheckpoint,
     rawPaste?: { text: string; unproven: string },
   ): Promise<void> {
     const spawn = this.spawnGeneration;
@@ -2852,18 +2857,22 @@ export class Daemon extends EventEmitter {
     // #1647: a raw paste has no marker; its text is the needle, and its pane proof already failed — so without the turn
     // in the transcript it stays uncertain (with the pane's reason), never the output-edge outcome.
     const needle: TranscriptNeedle = rawPaste ? { rawText: rawPaste.text } : delivery.deliveryId;
+    const bound = checkpoint.ownedCodex;
+    const reader = bound ? new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, needle, bound.identity) : null;
     let found = false;
     try {
       for (let polls = 0; polls <= TRANSCRIPT_PROOF_WINDOW_MS / TRANSCRIPT_PROOF_POLL_MS; polls++) {
         if (this.deliveryWritesStopping) return; // reconciliation owns the row now
-        const look = await scanTranscriptForDeliveryMarker(checkpoint.path, checkpoint.offset, checkpoint.backend, needle);
+        if (bound && (!bound.current() || !await bound.validate())) break;
+        const look = reader ? await reader.look() : await scanTranscriptForDeliveryMarker(checkpoint.path, checkpoint.offset, checkpoint.backend, needle);
+        if (bound && (!await bound.validate() || !bound.current())) break;
         if (look === "user" || look === "absorbed" || look === "queued") {
           found = true;
           outcome = "delivered";
           evidence = transcriptMarkerEvidence(look, !!rawPaste);
           break;
         }
-        last = look;
+        last = look === "pending" ? "unavailable" : look;
         if (spawn !== this.spawnGeneration || fence !== this.launchFenceEpoch) { last = "unavailable"; break; }
         await new Promise(r => setTimeout(r, TRANSCRIPT_PROOF_POLL_MS));
       }
@@ -2888,6 +2897,10 @@ export class Daemon extends EventEmitter {
     // Settle observably and leave the row for reconciliation — never a false completion, never another paste (#1207 P2).
     try {
       if (this.deliveryWritesStopping) return;
+      if (bound && (!await bound.validate() || !bound.current())) {
+        outcome = "uncertain";
+        evidence = "raw-paste-submit-proof:codex-session-binding-lost; not re-pasted";
+      }
       this.finishDurableDelivery(delivery, outcome, evidence);
     } catch (err) {
       this.logger.error({ err, deliveryId: delivery.deliveryId, attemptNo: delivery.attemptNo, outcome, evidence },
@@ -4989,7 +5002,7 @@ export class Daemon extends EventEmitter {
         else if (durableAttempt && verdict.paneWriteStarted) {
           const unproven = `${verdict.phase ?? "raw-paste"}:${verdict.proof ?? "unverified"}`;
           const checkpoint = verdict.transcriptCheckpoint;
-          if (checkpoint && RAW_TEXT_TRANSCRIPT_BACKENDS.includes(checkpoint.backend)) {
+          if (checkpoint && (checkpoint.ownedCodex || RAW_TEXT_TRANSCRIPT_BACKENDS.includes(checkpoint.backend))) {
             // #1647: the pane could not show it, but the CLI's transcript records the turn the paste started — later
             // than the pane window sometimes. Wait for it there (bounded), off the paste lock.
             this.logger.info({ deliveryId: durableAttempt.deliveryId, unproven },
@@ -10247,6 +10260,7 @@ export class Daemon extends EventEmitter {
       // first side effect; a crash during those waits remains safely replayable.
       if (durableAttempt && !beginChecked) {
         beginChecked = true;
+        const proofOwner = this.interactionOwner();
         const attemptEvidence = {
           ...await this.durableAttemptEvidence(
             windowId,
@@ -10259,7 +10273,17 @@ export class Daemon extends EventEmitter {
           pastedContentSha256: durableAttempt.contentSha256 ?? null,
           pastedBytesSha256: deliveryContentDigest(formatted),
         };
-        if (stillCurrent && !stillCurrent()) { verdict.fenced = true; return false; }
+        const codexCheckpoint = rawPaste && attemptEvidence.backend === "codex" && windowId
+          ? await this.bindCodexRawPaste(windowId, steerCurrent) : null;
+        if (codexCheckpoint) {
+          attemptEvidence.transcriptPath = codexCheckpoint.path;
+          attemptEvidence.transcriptOffset = codexCheckpoint.offset;
+          attemptEvidence.transcriptSessionId = codexCheckpoint.sessionId;
+        }
+        if ((stillCurrent && !stillCurrent()) || (rawPaste && attemptEvidence.backend === "codex"
+          && (!sameInteractionOwner(proofOwner, this.interactionOwner()) || !steerCurrent()))) {
+          verdict.fenced = true; return false;
+        }
         if (!this.beginDurableDelivery(durableAttempt, attemptEvidence)) {
           verdict.durableBeginRejected = true;
           verdict.phase = "submission-begin";
@@ -10273,12 +10297,13 @@ export class Daemon extends EventEmitter {
             backend: attemptEvidence.backend,
             path: attemptEvidence.transcriptPath,
             offset: attemptEvidence.transcriptOffset,
+            ...(codexCheckpoint ? { ownedCodex: codexCheckpoint.ownedCodex } : {}),
           };
           // From here every proof of this write may also ask the CLI's transcript (the pane can lose the echo to the
           // reply, or still be painting the paste) — this delivery's exact marker only, or a raw paste's exact text (#1647).
           // A raw paste's text only where the transcript is this instance's alone (RAW_TEXT_TRANSCRIPT_BACKENDS).
           if (["claude-code", "codex"].includes(attemptEvidence.backend)
-            && (!rawPaste || RAW_TEXT_TRANSCRIPT_BACKENDS.includes(attemptEvidence.backend))) {
+            && (!rawPaste || codexCheckpoint || RAW_TEXT_TRANSCRIPT_BACKENDS.includes(attemptEvidence.backend))) {
             signature.transcript = this.transcriptProofFor(verdict.transcriptCheckpoint,
               rawPaste ? { rawText: formatted } : durableAttempt.deliveryId, spawnAtWrite,
               stillCurrent, kind => { verdict.transcriptProof = kind; });
@@ -10978,10 +11003,13 @@ export class Daemon extends EventEmitter {
     let pane: string | null = null;
     try { pane = await this.tmux.capturePane(); } catch { /* the transcript may still say */ }
     if (owned && !owned()) return "unproven";
+    if (signature.transcript?.validate && !await signature.transcript.validate()) return "unproven";
+    if (owned && !owned()) return "unproven";
     const onPane = pane === null ? "unproven" : this.judgeSubmission(pane, signature, baseline);
     if (onPane === "submitted") return onPane;
     const t = signature.transcript;
     const found = await this.transcriptLook(signature);
+    if (t?.validate && !await t.validate()) return "unproven";
     // One synchronous stretch from here: the fence is asked after the last await, and only then is the hit kept and the
     // spawn's guard retired — a stop or respawn that lands between the look and this line leaves both untouched.
     if (!found || !t?.current() || (owned && !owned())) return onPane;
@@ -11009,7 +11037,7 @@ export class Daemon extends EventEmitter {
    * and the caller's own fence — so a look that lands after any of them is never used (#1380 review).
    */
   private transcriptProofFor(
-    checkpoint: { backend: string; path: string; offset: number },
+    checkpoint: DeliveryTranscriptCheckpoint,
     needle: TranscriptNeedle,
     spawnAtWrite: number,
     stillCurrent: (() => boolean) | undefined,
@@ -11017,11 +11045,50 @@ export class Daemon extends EventEmitter {
   ): NonNullable<SubmissionSignature["transcript"]> {
     const launchAtWrite = this.launchFenceEpoch;
     return {
-      reader: new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, needle),
+      reader: new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, needle, checkpoint.ownedCodex?.identity),
       current: () => !this.deliveryWritesStopping && this.spawnGeneration === spawnAtWrite
-        && this.launchFenceEpoch === launchAtWrite && (stillCurrent?.() ?? true),
+        && this.launchFenceEpoch === launchAtWrite && (stillCurrent?.() ?? true) && (checkpoint.ownedCodex?.current() ?? true),
+      validate: checkpoint.ownedCodex?.validate,
       onProof,
     };
+  }
+
+  /** A footer observation authorizes only this pre-write delta under this exact pane/launch. No persisted lease. */
+  private async bindCodexRawPaste(windowId: string, stillCurrent: () => boolean): Promise<(DeliveryTranscriptCheckpoint & { sessionId: string }) | null> {
+    const tmux = this.tmux, backend = this.backend, owner = this.interactionOwner();
+    if (!tmux || !backend?.readRawPasteSession) return null;
+    let retired = false;
+    const current = () => {
+      if (!retired && stillCurrent() && this.tmux === tmux && this.backend === backend && tmux.getWindowId() === windowId
+        && sameInteractionOwner(owner, this.interactionOwner()) && !this.deliveryWritesStopping) return true;
+      retired = true;
+      return false;
+    };
+    const observe = async () => {
+      if (!current() || await tmux.paneInMode?.() === true || !current()) return null;
+      const pane = await tmux.capturePane().catch(() => null);
+      if (!current() || pane === null || this.ownSwitch
+        || this.deliveryBlockingDialogs().some(dialog => Daemon.dialogMatches(dialog, pane))) return null;
+      return backend.readRawPasteSession!(pane);
+    };
+    const before = await observe();
+    if (!before || !current()) return null;
+    const file = await checkpointCodexPane(before.sessionsDir, before.sessionId, this.config.working_directory || process.cwd());
+    if (!file || !current()) return null;
+    const validate = async () => {
+      if (!current()) return false;
+      const first = await observe();
+      if (!first || first.sessionId !== before.sessionId || first.sessionsDir !== before.sessionsDir || !current()
+        || !await file.validateFile() || !current()) { retired = true; return false; }
+      const last = await observe();
+      if (!last || last.sessionId !== before.sessionId || last.sessionsDir !== before.sessionsDir || !current()) {
+        retired = true; return false;
+      }
+      return true;
+    };
+    if (!await validate()) return null;
+    return { backend: "codex", path: file.path, offset: file.offset, sessionId: file.sessionId,
+      ownedCodex: { identity: file.identity, current, validate } };
   }
 
   /** The CLI this daemon drives, for log lines shared by every backend ("claude-code", "codex", …). */

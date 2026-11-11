@@ -50,29 +50,29 @@ describe("the Context item lands in the TUI's effective status_line (#931)", () 
     ["an inline tui table without status_line", "tui = { animations = false }\n", []],
     ["an empty inline tui table", "tui = {}\n", []],
     ["no config", "", []],
-  ])("%s → context-remaining first, the user's items kept in order", (_label, userConfig, userItems) => {
+  ])("%s → UUID and context-remaining first, the user's items kept in order", (_label, userConfig, userItems) => {
     const { parsed, warning } = launchWith(userConfig as string);
-    expect(parsed.tui.status_line).toEqual(["context-remaining", ...(userItems as string[])]);
+    expect(parsed.tui.status_line).toEqual(["session-id", "context-remaining", ...(userItems as string[])]);
     expect(warning).toBeNull();
   });
 
   it("edits the TUI's status_line, not a same-named key in another table", () => {
     const { parsed, warning } = launchWith('[notice]\nstatus_line = ["x"]\n\n[tui]\nstatus_line = ["model-with-reasoning"]\n');
-    expect(parsed.tui.status_line).toEqual(["context-remaining", "model-with-reasoning"]);
+    expect(parsed.tui.status_line).toEqual(["session-id", "context-remaining", "model-with-reasoning"]);
     expect(parsed.notice.status_line).toEqual(["x"]);
     expect(warning).toBeNull();
   });
 
   it("is not fooled by a context item in another table", () => {
     const { parsed } = launchWith('[notice]\nstatus_line = ["context-remaining"]\n\n[tui]\nstatus_line = ["model-with-reasoning"]\n');
-    expect(parsed.tui.status_line).toEqual(["context-remaining", "model-with-reasoning"]);
+    expect(parsed.tui.status_line).toEqual(["session-id", "context-remaining", "model-with-reasoning"]);
     expect(parsed.notice.status_line).toEqual(["context-remaining"]);
   });
 
-  it("leaves a status_line that already shows context untouched, wherever the item sits", () => {
+  it("keeps the configured Context variant second, before the remaining items", () => {
     const user = '[tui]\nstatus_line = ["model-with-reasoning", "context-used"]\n';
     const { text, warning } = launchWith(user);
-    expect(text).toContain('status_line = ["model-with-reasoning", "context-used"]');
+    expect(text).toContain('status_line = ["session-id", "context-used", "model-with-reasoning"]');
     expect(warning).toBeNull();
   });
 });
@@ -87,7 +87,7 @@ describe("a status_line AgEnD cannot make verifiable is surfaced, not silent (#9
     const { parsed, warning, again } = launchWith(userConfig);
     // Only the unrelated update-check key is added; the TUI table is the user's.
     expect(parsed.tui).toEqual((parse(userConfig) as any).tui);
-    expect(warning).toMatch(/could not add a Context item/);
+    expect(warning).toMatch(/could not configure.*private status line/);
     // Where the user's status_line lives — the private copy is rebuilt each launch.
     expect(warning).toContain(join(process.env.CODEX_HOME!, "config.toml"));
     expect(again).toBeNull();
