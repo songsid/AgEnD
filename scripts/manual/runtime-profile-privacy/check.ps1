@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $script = (Get-Item -LiteralPath $PrivacyScript).FullName
 $user = [Security.Principal.WindowsIdentity]::GetCurrent().User
+if ([IO.DriveInfo]::new([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($ScratchParent))).DriveFormat -ne 'NTFS') { throw 'This proof requires owned NTFS scratch' }
 $work = Join-Path $ScratchParent ('agend-n7-' + [Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($work) | Out-Null
 $cases = 0
