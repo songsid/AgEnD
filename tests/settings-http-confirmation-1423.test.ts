@@ -49,6 +49,15 @@ function harness() {
 const actor = () => ({ label: "F", current: () => true });
 const candidate = (h: ReturnType<typeof harness>) => [{ ...h.config.channels[0], access: { mode: "locked", allowed_users: ["2"] } }];
 describe("#1423 actual Settings handler behind confirmation", () => {
+  it("projects display metadata through real proposal and GET while preserving the exact canonical summary", async () => {
+    const h = harness(), proposed = candidate(h), effect = prepareSettingsEffect("PUT", "/api/settings/fleet/channels", proposed, { config: h.config, classic: {} });
+    const first = await h.request("PUT", "/api/settings/fleet/channels", proposed);
+    expect(first.status).toBe(202); expect(first.body.pending_change.summary).toEqual(effect.diff!.summary);
+    expect(first.body.pending_change.summary_i18n).toEqual(effect.diff!.summary_i18n);
+    expect(first.body.pending_change.summary_i18n.some((line: unknown) => line !== null)).toBe(true);
+    const read = await h.request("GET", `/api/settings/pending/${first.body.pending_change.id}`);
+    expect(read.body.summary_i18n).toEqual(first.body.pending_change.summary_i18n); expect(h.save).not.toHaveBeenCalled();
+  });
   it("does not write a sensitive access edit until its actual confirmed replay, exactly once", async () => {
     const h = harness(); const response = await h.request("PUT", "/api/settings/fleet/channels", candidate(h));
     expect(response.status).toBe(202); expect(h.save).not.toHaveBeenCalled(); expect(h.config.channels[0].access.allowed_users).toEqual(["1"]);
