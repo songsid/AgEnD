@@ -2539,6 +2539,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   private rawFleetConfig: RawFleetConfig = {};
   /**
+   * AGEND-163: one agent's own saved settings, as fleet.yaml has them — not `fleetConfig.instances[name]`, which has the fleet's
+   * defaults merged in. Undefined when fleet.yaml has no such agent.
+   */
+  rawInstanceConfig(name: string): Record<string, unknown> | undefined {
+    const instances = (this.rawFleetConfig as { instances?: unknown }).instances;
+    if (!instances || typeof instances !== "object" || !Object.hasOwn(instances, name)) return undefined;
+    const own = (instances as Record<string, unknown>)[name];
+    return own && typeof own === "object" && !Array.isArray(own) ? own as Record<string, unknown> : undefined;
+  }
+  /**
    * S-51 (#3095, experimental, off by default): the Hub runtime. src/hub/runtime.js is imported only once a Hub switch
    * (hub.enabled / hub_member.enabled) is on; while both are off nothing Hub-related loads, opens or listens.
    */

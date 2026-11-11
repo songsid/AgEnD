@@ -332,7 +332,7 @@ templates:
 |-------|------|-------------|
 | `description` | string | Template description |
 | `team` | boolean | Auto-create team from deployed instances |
-| `instances` | object | Template definitions: `description`, `backend`, `model`, `model_failover`, `tool_set`, `systemPrompt`, `skipPermissions`, `lightweight`, `workflow`, `tags`, and optional `profile`. |
+| `instances` | object | Template definitions: `description`, `backend`, `model`, `model_failover`, `tool_set`, `systemPrompt`, `skipPermissions`, `lightweight`, `workflow`, `tags`, and optional `profile`. (There is no `instructions` key: the Agent instructions are `systemPrompt`; an `instructions` key in a template role is ignored.) |
 
 ---
 

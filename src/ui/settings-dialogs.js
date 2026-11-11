@@ -23,6 +23,7 @@ import "./settings-shared-strings.js";
 import { pt } from "./agent-page-strings.js";
 import { InfoTip } from "./settings-shared.js";
 import { INSTRUCTIONS_MAX_CHARS, InstructionsField } from "./agent-instructions-field.js";
+import { AgentTemplateTools } from "./agent-export-dialog.js";
 import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows } from "./settings-catalog.js";
 import {
   ACCESS_MODES, AGENT_MODES, CH_TYPES, DASHBOARD_CHOICES, DASHBOARD_FEATURES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
@@ -377,7 +378,8 @@ export function AgentFields({ m, cat, onDelete }) {
         <p class="note">${pt("note_description")}</p></div></${Card}>
     ${windows ? null : html`<${Card} title=${pt("cardInstructions")} span=${true}>
       <div class="field">${L(pt("lbl_instructions"), "instance.systemPrompt", "ag-sys", pt("tip_instructions"))}<${InstructionsField} id="ag-sys" value=${f.systemPrompt} saved=${inst.systemPrompt || ""} onChange=${set("systemPrompt")} />
-        <p class="note">${pt("note_instructions")}</p></div></${Card}>`}</div>`;
+        <p class="note">${pt("note_instructions")}</p></div>
+      <${AgentTemplateTools} name=${name} m=${m} /></${Card}>`}</div>`;
   if (cat === "runtime") return html`<div class="ap-grid">
     <${Card} title=${pt("cardRuntime")}>
       <${AgentRuntimeSettings} name=${name} inst=${{ ...inst, backend: f.backend }} inherited=${inheritedBackend ? html`<${Inherited} ...${inh("backend", f.backend, "#g-be", "backend")} />` : null} disabled=${Object.keys(m.pending()).length > 0 || ctx.staged?.size > 0} onChanged=${() => { ctx.reload(); if (m.onChanged) m.onChanged(); }} />

@@ -267,7 +267,7 @@ teams:
 `templates` 定義可重複部署的 instance 組合；`team: true` 會把部署出的 instance
 組成 team。模板 instance 支援 `description`、`backend`、`model`、`model_failover`、
 `tool_set`、`systemPrompt`、`skipPermissions`、`lightweight`、`workflow`、`tags`，以及
-引用 `profiles` 的 `profile` 欄位。
+引用 `profiles` 的 `profile` 欄位。沒有 `instructions` 鍵：Agent 指示就是 `systemPrompt`，範本角色裡的 `instructions` 會被忽略。
 
 ```yaml
 profiles:
