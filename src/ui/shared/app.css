@@ -318,6 +318,54 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   .p-fleet .panel-sub:has(.host-mem) { order: 1; flex: 1 0 100%; width: 100%; }
 }
 .panel-actions { display: flex; align-items: center; gap: var(--s-1); }
+/* #3637: versioned optional host. Retained app.css never offers the entry, even with newer JS. */
+:root { --chat-workspace-version: 1; }
+.chat-workspace { position: relative; flex: 1; min-height: 0; min-width: 0; display: grid; overflow: hidden; gap: 8px; background: var(--border); }
+.chat-workspace.ws-right { grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr); }
+.chat-workspace.ws-stack { grid-template-rows: minmax(320px, 1fr) minmax(320px, 1fr); }
+.chat-workspace.ws-compact { display: flex; flex-direction: column; gap: 0; background: var(--bg); }
+.ws-compact > .ws-pane { flex: 1; }
+.ws-pane { container-type: inline-size; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--bg); outline: 1px solid transparent; outline-offset: -1px; }
+.ws-pane.ws-focused { outline-color: var(--accent); }
+.ws-pane > .panel { flex: 1; min-height: 0; min-width: 0; }
+.ws-agent-tabs { flex-shrink: 0; padding: var(--s-1); }
+.ws-agent-tab { display: flex; flex: 1; min-width: 0; }
+.ws-agent-tab > .seg-item { flex: 1; min-width: 0; }
+.ws-agent-close { flex: none; }
+.ws-agent-name { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-agent-tabs .seg-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-pane .ws-pane-head { flex-wrap: nowrap; gap: var(--s-1); padding: var(--s-1) var(--s-2); }
+.ws-pane-head .panel-title { flex: 1 1 auto; min-width: 24px; overflow: hidden; gap: var(--s-1); }
+.ws-pane-head .panel-title h1 { min-width: 0; font-size: var(--fs-md); }
+.ws-focus-label { flex-shrink: 0; font-size: var(--fs-xs); }
+.ws-pane-head .panel-sub { flex-shrink: 1; min-width: 0; max-width: 90px; overflow: hidden; white-space: nowrap; }
+.ws-pane-head .panel-sub .hd-chip { display: none; }
+.ws-pane .ws-pane-head .inst-switch { flex-basis: auto; order: initial; width: auto; display: flex; }
+.ws-pane-head .inst-switch .seg-item { flex: 0 0 auto; }
+.ws-pane-head .panel-actions { flex-shrink: 0; gap: 2px; }
+.ws-page-tools, .ws-tools-slot { display: inline-flex; align-items: center; gap: 2px; }
+.ws-tools-slot.ws-tools-folded { display: none; }
+.ws-menu-tools { padding: var(--s-2); }
+.ws-pane-head .hide-narrow { display: none; }
+.ws-pane-head .icon-btn, .ws-pane-head .hd-text, .ws-pane-head .hd-usage { width: 32px; min-width: 32px; padding: var(--s-1); }
+.ws-agent-choices { display: grid; gap: var(--s-2); }
+@container (max-width: 480px) {
+  .ws-pane-head .panel-sub .status { font-size: 0; }
+  .ws-pane .ap-grid, .ws-pane .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .ws-pane .ap-span2 { grid-column: auto; }
+}
+.ws-pane .pv-panel { position: absolute; inset: 0; width: auto; min-width: 0; max-width: none; z-index: 5; }
+.ws-pane .pv-divider { display: none; }
+.v-li:has(> .inst-workspace) { position: relative; }
+.inst-workspace { position: absolute; right: 0; top: 6px; visibility: hidden; }
+.inst-workspace > .icon-btn { width: 28px; height: 28px; padding: 0; }
+.v-li:hover > .inst-workspace, .v-li:focus-within > .inst-workspace { visibility: visible; }
+.v-li:has(> .inst-workspace):is(:hover, :focus-within) > .inst-gear { visibility: hidden; }
+@media (pointer: coarse) {
+  .ws-pane-head :is(.icon-btn, .btn, .seg-item) { min-width: var(--tap); min-height: var(--tap); }
+  .ws-agent-tabs :is(.icon-btn, .seg-item) { min-width: var(--tap); min-height: var(--tap); }
+  .inst-workspace > .icon-btn { min-width: var(--tap); min-height: var(--tap); }
+}
 /* #1523 N2: the instance view switch — beside the title on a wide screen; on a phone, a row of tabs under the header. */
 .inst-switch.seg { padding: 0; margin: 0; width: auto; max-width: none; flex-shrink: 0; }
 .inst-switch .seg-item { min-height: 30px; flex-direction: column; justify-content: center; gap: 0; }

@@ -154,7 +154,7 @@ export function Drawer({ title, children, open = false }) {
   return html`<details class="drawer" open=${open}><summary>${title}</summary><div class="drawer-body">${children}</div></details>`;
 }
 /** A list of values (user ids, tags): chips with ×, and an input that adds on Enter or Add. Numbers stay numbers. */
-export function ChipList({ items, onChange, placeholder, label }) {
+export function ChipList({ items, onChange, placeholder, label, id }) {
   const [draft, setDraft] = useState("");
   const add = () => {
     const v = draft.trim();
@@ -166,7 +166,7 @@ export function ChipList({ items, onChange, placeholder, label }) {
     ${items.length ? html`<div class="chips">${items.map((v, i) => html`<span key=${`${i}:${v}`} class="chip">${String(v)}
       <button type="button" class="chip-x" aria-label=${tn("removeItem", String(v))} title=${tn("removeItem", String(v))}
         onClick=${() => onChange(items.filter((_, j) => j !== i))}><${Icon} name="close" size=${12} /></button></span>`)}</div>` : null}
-    <div class="field-row"><input type="text" value=${draft} placeholder=${placeholder} aria-label=${label || placeholder}
+    <div class="field-row"><input id=${id} type="text" value=${draft} placeholder=${placeholder} aria-label=${label || placeholder}
       onInput=${(e) => setDraft(e.target.value)} onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
       <button type="button" class="btn btn-sm" onClick=${add}><${Icon} name="plus" size=${14} />${tn("add")}</button></div>
   </div>`;
@@ -220,7 +220,8 @@ const EmojiImg = ({ url, alt }) => {
  * One status_emojis map. `platform` and `channel` say where it applies; `previewBody(map)` is what the preview resolves.
  * `onChange({ value, baseline })` reports the map (null when empty) and what it was.
  */
-export function StatusEmojiEditor({ own, platform, channel, previewBody, onChange }) {
+export function StatusEmojiEditor({ own, platform, channel, previewBody, onChange, idPrefix = "" }) {
+  const fieldId = key => `${idPrefix}se-${key}`;
   const lease = useLease("status-emojis");
   const [cat, setCat] = useState(catalog);
   const [values, setValues] = useState({ ...(own || {}) });
@@ -252,12 +253,12 @@ export function StatusEmojiEditor({ own, platform, channel, previewBody, onChang
     ${preview && preview.error ? html`<p class="feedback error">${preview.error}</p>` : null}
     ${preview && preview.problems && preview.problems.length ? html`<p class="feedback error">${preview.problems.map((p) => `${tn(`se_${p.key}`)}: ${p.problem} — ${tn("se_fallback")}`).join("  ")}</p>` : null}
     <div class="se-rows">${keys.map((key) => html`<div key=${key} class="se-row">
-      <label for=${`se-${key}`}>${tn(`se_${key}`)}</label>
-      <input id=${`se-${key}`} type="text" autocomplete="off" value=${values[key] || ""} placeholder=${builtins[key] || ""} onInput=${(e) => set(key, e.target.value)} />
+      <label for=${fieldId(key)}>${tn(`se_${key}`)}</label>
+      <input id=${fieldId(key)} type="text" autocomplete="off" value=${values[key] || ""} placeholder=${builtins[key] || ""} onInput=${(e) => set(key, e.target.value)} />
       <button type="button" class="btn btn-sm" onClick=${() => setPicker(picker === key ? null : key)} aria-expanded=${picker === key ? "true" : "false"}>${tn("se_pick")}</button>
-      <button type="button" class="icon-btn" aria-label=${tn("se_useDefault")} title=${tn("se_useDefault")} onClick=${() => { recordEdit(byId(`se-${key}`)); set(key, ""); }}><${Icon} name="close" size=${14} /></button>
+      <button type="button" class="icon-btn" aria-label=${tn("se_useDefault")} title=${tn("se_useDefault")} onClick=${() => { recordEdit(byId(fieldId(key))); set(key, ""); }}><${Icon} name="close" size=${14} /></button>
       ${picker === key ? html`<${EmojiPicker} cat=${cat} keyName=${key} platform=${platform} channel=${channel}
-        onPick=${(v) => { recordEdit(byId(`se-${key}`)); set(key, v); setPicker(null); }} onClose=${() => setPicker(null)} />` : null}
+        onPick=${(v) => { recordEdit(byId(fieldId(key))); set(key, v); setPicker(null); }} onClose=${() => setPicker(null)} />` : null}
     </div>`)}</div>
     <p class="note">${tn("se_hint")}</p>
   </div>`;
@@ -364,63 +365,65 @@ const Info = ({ children }) => html`<p class="s-info"><span aria-hidden="true">�
  * the fields of one category of a fleet agent (the same fields, ids and patch the dialog always had, grouped by what they
  * do and each with its ⓘ). `m`: useAgentForm's result. `onDelete`: the page's "Delete agent…" (the dialog has none).
  */
-export function AgentFields({ m, cat, onDelete }) {
-  const { f, set, setInherit, schema, defaults, inst, name, ctx, errors, shown, inh, L, ids, kiroUi, acct, acctBackend, setAcct, inheritedBackend, generalError, failoverWarn, setF, emojis, setEmojis } = m;
+export function AgentFields({ m, cat, onDelete, idPrefix = "" }) {
+  const { f, set, setInherit, schema, defaults, inst, name, ctx, errors, shown, inh, L: originalLabel, ids, kiroUi, acct, acctBackend, setAcct, inheritedBackend, generalError, failoverWarn, setF, emojis, setEmojis } = m;
+  const fieldId = key => key == null ? key : `${idPrefix}${key}`;
+  const L = (text, field, key, tip) => originalLabel(text, field, fieldId(key), tip);
   const windows = inst.runtime === "windows";
   if (cat === "basic") return html`<div class="ap-grid"><${Card} title=${pt("cardName")} span=${true}>
       <div class="grid2">
         <div class="field">${L(tn("displayName"), "instance.display_name", "ag-dn", pt("tip_displayName"))}
           <${Override} inherit=${f.inherit.display_name} onInherit=${setInherit("display_name")} inherited=${inh("display_name", defaults.display_name || name, null, "", !!defaults.display_name)}>
-            <input id="ag-dn" type="text" placeholder=${name} disabled=${f.inherit.display_name} value=${shown("display_name", f.display_name, defaults.display_name || "")} onInput=${(e) => set("display_name")(e.target.value)} /></${Override}></div>
+            <input id=${fieldId("ag-dn")} type="text" placeholder=${name} disabled=${f.inherit.display_name} value=${shown("display_name", f.display_name, defaults.display_name || "")} onInput=${(e) => set("display_name")(e.target.value)} /></${Override}></div>
         <div class="field">${L(tn("tags"), "instance.tags", undefined, pt("tip_tags"))}<${ChipList} items=${f.tags} onChange=${set("tags")} placeholder=${tn("tagPlaceholder")} label=${tn("tags")} /></div>
       </div>
-      <div class="field">${L(tn("description"), "instance.description", "ag-desc", pt("tip_description"))}<input id="ag-desc" type="text" value=${f.description} onInput=${(e) => set("description")(e.target.value)} />
+      <div class="field">${L(tn("description"), "instance.description", "ag-desc", pt("tip_description"))}<input id=${fieldId("ag-desc")} type="text" value=${f.description} onInput=${(e) => set("description")(e.target.value)} />
         <p class="note">${pt("note_description")}</p></div></${Card}>
     ${windows ? null : html`<${Card} title=${pt("cardInstructions")} span=${true}>
-      <div class="field">${L(pt("lbl_instructions"), "instance.systemPrompt", "ag-sys", pt("tip_instructions"))}<${InstructionsField} id="ag-sys" value=${f.systemPrompt} saved=${inst.systemPrompt || ""} onChange=${set("systemPrompt")} />
+      <div class="field">${L(pt("lbl_instructions"), "instance.systemPrompt", "ag-sys", pt("tip_instructions"))}<${InstructionsField} id=${fieldId("ag-sys")} value=${f.systemPrompt} saved=${inst.systemPrompt || ""} onChange=${set("systemPrompt")} />
         <p class="note">${pt("note_instructions")}</p></div>
-      <${AgentTemplateTools} name=${name} m=${m} /></${Card}>`}</div>`;
+      <${AgentTemplateTools} idPrefix=${idPrefix} name=${name} m=${m} /></${Card}>`}</div>`;
   if (cat === "runtime") return html`<div class="ap-grid">
     <${Card} title=${pt("cardRuntime")}>
-      <${AgentRuntimeSettings} name=${name} inst=${{ ...inst, backend: f.backend }} inherited=${inheritedBackend ? html`<${Inherited} ...${inh("backend", f.backend, "#g-be", "backend")} />` : null} disabled=${Object.keys(m.pending()).length > 0 || ctx.staged?.size > 0} onChanged=${() => { ctx.reload(); if (m.onChanged) m.onChanged(); }} />
-      ${!windows && capsOf(acctBackend)?.namedAccounts ? html`<${AccountSelect} id="ag-account" backend=${acctBackend} value=${acct} onChange=${setAcct} />` : null}
+      <${AgentRuntimeSettings} idPrefix=${idPrefix} name=${name} inst=${{ ...inst, backend: f.backend }} inherited=${inheritedBackend ? html`<${Inherited} ...${inh("backend", f.backend, "#g-be", "backend")} />` : null} disabled=${Object.keys(m.pending()).length > 0 || ctx.staged?.size > 0} onChanged=${() => { ctx.reload(); if (m.onChanged) m.onChanged(); }} />
+      ${!windows && capsOf(acctBackend)?.namedAccounts ? html`<${AccountSelect} id=${fieldId("ag-account")} backend=${acctBackend} value=${acct} onChange=${setAcct} />` : null}
     </${Card}>
     <${Card} title=${pt("cardModel")}>
-      <div class="field">${L(tn("model"), "instance.model", "ag-model", pt("tip_model"))}<${ModelSelect} id="ag-model" value=${f.model} onChange=${set("model")}
+      <div class="field">${L(tn("model"), "instance.model", "ag-model", pt("tip_model"))}<${ModelSelect} id=${fieldId("ag-model")} value=${f.model} onChange=${set("model")}
         backend=${acctBackend} instance=${name} profile=${windows ? undefined : acct} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
       ${acctBackend === "codex" && !windows ? html`<div class="field codex-speed">${L(tn("codexSpeed"), "instance.backend_options", "ag-speed", pt("tip_codexSpeed"))}
-        <${Select} id="ag-speed" value=${f.codex_speed} onChange=${set("codex_speed")}
+        <${Select} id=${fieldId("ag-speed")} value=${f.codex_speed} onChange=${set("codex_speed")}
           options=${CODEX_SPEED_CHOICES.map((v) => ({ value: v, label: tn(v === "fast" ? "codexSpeedFast" : v === "standard" ? "codexSpeedStandard" : "codexSpeedDefault") }))} />
         <p class="note">${tn("codexSpeedHint")}</p></div>` : null}
       <div class="field">${L(tn("modelFailover"), "instance.model_failover", "ag-fo", pt("tip_failover"))}
         <${Override} inherit=${f.inherit.model_failover} onInherit=${setInherit("model_failover")}
           inherited=${inh("model_failover", (defaults.model_failover && defaults.model_failover[0]) || tn("modelNone"), null, "", !!(defaults.model_failover && defaults.model_failover.length))}>
-          <${ModelSelect} id="ag-fo" disabled=${f.inherit.model_failover} backend=${acctBackend} instance=${name} profile=${windows ? undefined : acct} inherit=${tn("modelNone")}
+          <${ModelSelect} id=${fieldId("ag-fo")} disabled=${f.inherit.model_failover} backend=${acctBackend} instance=${name} profile=${windows ? undefined : acct} inherit=${tn("modelNone")}
             value=${shown("model_failover", f.model_failover, (defaults.model_failover && defaults.model_failover[0]) || "")} onChange=${set("model_failover")} /></${Override}>
         <${Feedback} warning=${failoverWarn} /></div>
       <${Info}>${pt("note_effort")}</${Info}>
     </${Card}></div>`;
   if (cat === "work") return html`<div class="ap-grid">
     <${Card} title=${pt("cardWorkdir")}>
-      <div class="field">${L(tn("workingDir"), "instance.working_directory", "ag-wd", pt("tip_workingDir"))}<input id="ag-wd" type="text" value=${f.working_directory} onInput=${(e) => set("working_directory")(e.target.value)} /></div>
+      <div class="field">${L(tn("workingDir"), "instance.working_directory", "ag-wd", pt("tip_workingDir"))}<input id=${fieldId("ag-wd")} type="text" value=${f.working_directory} onInput=${(e) => set("working_directory")(e.target.value)} /></div>
       <${Info}>${pt("note_workdir")}</${Info}></${Card}>
     <${Card} title=${pt("cardIdle")}>
       <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "instance.auto_pause_after", "ag-auto", pt("tip_autoPause"))}
         <${Override} inherit=${f.inherit.auto_pause_after} onInherit=${setInherit("auto_pause_after")} inherited=${inh("auto_pause_after", defaults.auto_pause_after ?? 0, "#g-auto", "minutes")}>
-          <input id="ag-auto" type="number" min="0" step="1" placeholder=${tn("zeroDisabled")} class=${errors.auto ? "invalid" : ""} disabled=${f.inherit.auto_pause_after}
+          <input id=${fieldId("ag-auto")} type="number" min="0" step="1" placeholder=${tn("zeroDisabled")} class=${errors.auto ? "invalid" : ""} disabled=${f.inherit.auto_pause_after}
             value=${shown("auto_pause_after", f.auto_pause_after, String(defaults.auto_pause_after ?? 0))} onInput=${(e) => set("auto_pause_after")(e.target.value)} /></${Override}>
         <${Feedback} error=${errors.auto} /></div>
       <div class="field">${L(`${tn("hangTimeout")} (${tn("minutes")})`, "instance.hang_detector", "ag-hang", pt("tip_hang"))}
         <${Override} inherit=${f.inherit.hang} onInherit=${setInherit("hang")}
           inherited=${inh("hang", m.dh.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES, "#g-hang", "minutes", hasOwn(m.dh, "timeout_minutes"))}>
-          <input id="ag-hang" type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} disabled=${f.inherit.hang}
+          <input id=${fieldId("ag-hang")} type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} disabled=${f.inherit.hang}
             value=${shown("hang", f.hang, String((defaults.hang_detector && defaults.hang_detector.timeout_minutes) ?? HANG_TIMEOUT_DEFAULT_MINUTES))} onInput=${(e) => set("hang")(e.target.value)} /></${Override}>
         <${Feedback} error=${errors.hang} /></div></${Card}>
     <${Card} title=${pt("cardTools")} span=${true}><div class="grid2">
       ${[["agent_mode", "agentMode", AGENT_MODES, defaults.agent_mode || "mcp", "#g-am", "tip_agentMode"], ["tool_set", "toolSet", TOOL_SETS, toolSetDefault(defaults, inst, name), "#g-ts", "tip_toolSet"]].map(([k, label, opts, dflt, target, tip]) => html`<div key=${k} class="field">
         ${L(tn(label), `instance.${k}`, `ag-${k}`, pt(tip))}
         <${Override} inherit=${f.inherit[k]} onInherit=${setInherit(k)} inherited=${inh(k, dflt, target, "", hasOwn(defaults, k))}>
-          <${Select} id=${`ag-${k}`} value=${shown(k, f[k], dflt)} disabled=${f.inherit[k]} onChange=${set(k)}
+          <${Select} id=${fieldId(`ag-${k}`)} value=${shown(k, f[k], dflt)} disabled=${f.inherit[k]} onChange=${set(k)}
             options=${opts.includes(shown(k, f[k], dflt)) ? opts : [shown(k, f[k], dflt), ...opts]} /></${Override}></div>`)}
       <div class="field">${L(tn("replyCompletionGuard"), "instance.reply_completion_guard", undefined, pt("tip_replyGuard"))}
         <${Override} inherit=${f.inherit.reply_completion_guard} onInherit=${setInherit("reply_completion_guard")} inherited=${inh("reply_completion_guard", defaults.reply_completion_guard ?? true, "#g-reply")}>
@@ -436,49 +439,49 @@ export function AgentFields({ m, cat, onDelete }) {
     const channel = f.channel_id || ids[0] || null;
     return html`<div class="ap-grid">
     <${Card} title=${pt("cardChannel")}>
-      <div class="field">${L(tn("channelBinding"), "instance.topic_id", "ag-ch", pt("tip_channel"))}<${Select} id="ag-ch" value=${f.channel_id} onChange=${set("channel_id")} options=${["", ...ids]} /></div>
+      <div class="field">${L(tn("channelBinding"), "instance.topic_id", "ag-ch", pt("tip_channel"))}<${Select} id=${fieldId("ag-ch")} value=${f.channel_id} onChange=${set("channel_id")} options=${["", ...ids]} /></div>
       <div class="field">${L(tn("generalTopicField"), "instance.general_topic", undefined, pt("tip_general"))}
-        <label class="check"><input aria-label=${tn("generalTopicField")} id="ag-general" type="checkbox" checked=${f.general_topic} onChange=${(e) => set("general_topic")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></div>
-      ${generalError ? html`<p class="feedback error" role="alert" id="ag-general-one">${generalError}</p>` : null}
+        <label class="check"><input aria-label=${tn("generalTopicField")} id=${fieldId("ag-general")} type="checkbox" checked=${f.general_topic} onChange=${(e) => set("general_topic")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></div>
+      ${generalError ? html`<p class="feedback error" role="alert" id=${fieldId("ag-general-one")}>${generalError}</p>` : null}
       ${[["tool_progress", "toolProgress", TOOL_PROGRESS, defaults.tool_progress ?? "off", "#g-tp", "tip_toolProgress"], ["cross_instance_visibility", "crossInstanceVisibility", VISIBILITY_MODES, visibilityDefault(defaults), "#g-vis", "tip_visibility"]].map(([k, label, opts, dflt, target, tip]) => html`<div key=${k} class="field">
         ${L(tn(label), `instance.${k}`, `ag-${k}`, pt(tip))}
         <${Override} inherit=${f.inherit[k]} onInherit=${setInherit(k)}
           inherited=${inh(k, dflt, target, k, k === "cross_instance_visibility" ? VISIBILITY_MODES.includes(defaults[k]) : hasOwn(defaults, k))}>
-          <${Select} id=${`ag-${k}`} value=${shown(k, f[k], dflt)} disabled=${f.inherit[k]} onChange=${set(k)}
+          <${Select} id=${fieldId(`ag-${k}`)} value=${shown(k, f[k], dflt)} disabled=${f.inherit[k]} onChange=${set(k)}
             options=${choiceOptions(k, opts.includes(shown(k, f[k], dflt)) || k === "cross_instance_visibility" ? opts : [shown(k, f[k], dflt), ...opts])} /></${Override}>
         ${k === "cross_instance_visibility" ? html`<p class="note">${tn("crossInstanceVisibilityHint")}</p>` : null}</div>`)}
     </${Card}>
     <${Card} title=${html`${pt("cardEmojis")} <${InfoTip} text=${pt("tip_emojis")} name=${pt("cardEmojis")} /> <${Impact} schema=${schema} field="instance.status_emojis" />`}>
       <${Info}>${pt("emojisWhat")}</${Info}>
       <p class="note">${tn("statusEmojisInstance")}</p>
-      <${StatusEmojiEditor} own=${inst.status_emojis} platform=${ctx.channelType(channel)} channel=${channel}
+      <${StatusEmojiEditor} own=${inst.status_emojis} platform=${ctx.channelType(channel)} channel=${channel} idPrefix=${idPrefix}
         previewBody=${(map) => ({ channel_id: channel, instance_config: map })} onChange=${setEmojis} />
     </${Card}></div>`;
   }
   // adv
   return html`<div class="ap-grid">
     ${windows ? html`<${Card} title=${pt("cardSystemPrompt")} span=${true}>
-      <div class="field">${L(tn("systemPrompt"), "instance.systemPrompt", "ag-sys", pt("tip_systemPrompt"))}<input id="ag-sys" type="text" placeholder="e.g. file:prompts/dev.md" value=${f.systemPrompt} onInput=${(e) => set("systemPrompt")(e.target.value)} /></div>
+      <div class="field">${L(tn("systemPrompt"), "instance.systemPrompt", "ag-sys", pt("tip_systemPrompt"))}<input id=${fieldId("ag-sys")} type="text" placeholder="e.g. file:prompts/dev.md" value=${f.systemPrompt} onInput=${(e) => set("systemPrompt")(e.target.value)} /></div>
       <p class="note">${pt("note_systemPrompt")}</p></${Card}>` : null}
     <${Card} title=${pt("cardLogging")}>
       <div class="field">${L(tn("logLevel"), "instance.log_level", "ag-log_level", pt("tip_logLevel"))}
         <${Override} inherit=${f.inherit.log_level} onInherit=${setInherit("log_level")} inherited=${inh("log_level", defaults.log_level || "info", "#g-ll", "", hasOwn(defaults, "log_level"))}>
-          <${Select} id="ag-log_level" value=${shown("log_level", f.log_level, defaults.log_level || "info")} disabled=${f.inherit.log_level} onChange=${set("log_level")}
+          <${Select} id=${fieldId("ag-log_level")} value=${shown("log_level", f.log_level, defaults.log_level || "info")} disabled=${f.inherit.log_level} onChange=${set("log_level")}
             options=${LOG_LEVELS.includes(shown("log_level", f.log_level, defaults.log_level || "info")) ? LOG_LEVELS : [shown("log_level", f.log_level, defaults.log_level || "info"), ...LOG_LEVELS]} /></${Override}></div>
       <div class="field">${L(pt("lbl_resumeWork"), "instance.resume_interrupted_work", undefined, pt("tip_resumeWork"))}
-        <label class="check"><input aria-label=${pt("lbl_resumeWork")} id="ag-resume" type="checkbox" checked=${f.resume_interrupted_work} onChange=${(e) => set("resume_interrupted_work")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></div>
+        <label class="check"><input aria-label=${pt("lbl_resumeWork")} id=${fieldId("ag-resume")} type="checkbox" checked=${f.resume_interrupted_work} onChange=${(e) => set("resume_interrupted_work")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></div>
       <div class="field">${L(pt("lbl_mcpProxy"), "instance.mcp_proxy_reply", undefined, pt("tip_mcpProxy"))}
-        <label class="check"><input aria-label=${pt("lbl_mcpProxy")} id="ag-mcp-proxy" type="checkbox" checked=${f.mcp_proxy_reply} onChange=${(e) => set("mcp_proxy_reply")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></div></${Card}>
+        <label class="check"><input aria-label=${pt("lbl_mcpProxy")} id=${fieldId("ag-mcp-proxy")} type="checkbox" checked=${f.mcp_proxy_reply} onChange=${(e) => set("mcp_proxy_reply")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></div></${Card}>
     <${Card} title=${pt("cardBoard")}>
       <div class="field">${L(pt("lbl_boardCards"), "instance.board_cards_at_once", "ag-cards", pt("tip_boardCards"))}
-        <input id="ag-cards" type="number" min="1" step="1" class=${errors.cards ? "invalid" : ""} value=${f.board_cards_at_once} onInput=${(e) => set("board_cards_at_once")(e.target.value)} />
+        <input id=${fieldId("ag-cards")} type="number" min="1" step="1" class=${errors.cards ? "invalid" : ""} value=${f.board_cards_at_once} onInput=${(e) => set("board_cards_at_once")(e.target.value)} />
         ${errors.cards ? html`<p class="feedback error" role="alert">${pt(errors.cards)}</p>` : null}</div></${Card}>
     <${Card} title=${pt("cardDashboard")} span=${true}>
       <fieldset class="field dash-perms"><legend>${L(tn("dashboardAccess"), "instance.dashboard")}</legend>
         <p class="note">${tn("dashboardAccessHint")}</p>
         <div class="grid2">${DASHBOARD_FEATURES.map((feature) => html`<div key=${feature} class="field">
-          <label for=${`ag-dash-${feature}`}>${tn(`dashboard_${feature}`)}</label>
-          <select id=${`ag-dash-${feature}`} value=${f.dashboard[feature]} onChange=${(e) => setF((x) => ({ ...x, dashboard: { ...x.dashboard, [feature]: e.target.value } }))}>
+          <label for=${fieldId(`ag-dash-${feature}`)}>${tn(`dashboard_${feature}`)}</label>
+          <select id=${fieldId(`ag-dash-${feature}`)} value=${f.dashboard[feature]} onChange=${(e) => setF((x) => ({ ...x, dashboard: { ...x.dashboard, [feature]: e.target.value } }))}>
             ${DASHBOARD_CHOICES.map((c) => html`<option key=${c} value=${c}>${c === "inherit"
               ? tn("dashboardInherit", tn(dashboardDefault(defaults, feature) ? "dashboardOn" : "dashboardOff")) : tn(c === "on" ? "dashboardOn" : "dashboardOff")}</option>`)}
           </select></div>`)}</div>
@@ -488,6 +491,7 @@ export function AgentFields({ m, cat, onDelete }) {
       <span class="note">${pt("deleteNote")}</span></div></${Card}>` : null}
   </div>`;
 }
+AgentFields.paneIds = true;
 
 export function AgentDialog({ name, inst, ctx, onClose }) {
   const m = useAgentForm({ name, inst, ctx });
@@ -839,23 +843,25 @@ export function useClassicForm({ room, ctx }) {
 }
 
 /** The fields of one category of a ClassicBot room: the dialog's fields, grouped, each with its ⓘ. */
-export function ClassicFields({ m, cat }) {
-  const { c, f, set, setInherit, errors, classicMode, fd, inherited, roomInh, schema, L } = m;
+export function ClassicFields({ m, cat, idPrefix = "" }) {
+  const { c, f, set, setInherit, errors, classicMode, fd, inherited, roomInh, schema, L: originalLabel } = m;
+  const fieldId = key => key == null ? key : `${idPrefix}${key}`;
+  const L = (text, field, key, tip) => originalLabel(text, field, fieldId(key), tip);
   if (cat === "runtime") return html`<div class="ap-grid"><${Card} title=${pt("cardRuntime")} span=${true}><div class="grid2">
-      <div class="field">${L(tn("backend"), "classic.backend", "cl-be", pt("tip_classicBackend"))}<${BackendSelect} id="cl-be" value=${f.backend} onChange=${set("backend")} />
+      <div class="field">${L(tn("backend"), "classic.backend", "cl-be", pt("tip_classicBackend"))}<${BackendSelect} id=${fieldId("cl-be")} value=${f.backend} onChange=${set("backend")} />
         ${!c.backend && f.backend === inherited.backend ? html`<${Inherited} ...${roomInh("backend", "backend", "#g-cbe", "#g-be")} />` : null}</div>
-      <div class="field">${L(tn("model"), "classic.model", "cl-model", pt("tip_classicModel"))}<${ModelSelect} id="cl-model" value=${f.model} onChange=${set("model")}
+      <div class="field">${L(tn("model"), "classic.model", "cl-model", pt("tip_classicModel"))}<${ModelSelect} id=${fieldId("cl-model")} value=${f.model} onChange=${set("model")}
         backend=${f.backend} instance=${c.instanceName} inherit=${tn("inheritValue", inherited.model || tn("modelCliDefault"))} /></div>
       <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "classic.auto_pause_after", "cl-auto", pt("tip_classicAutoPause"))}
         <${Override} inherit=${f.inherit.auto_pause_after} onInherit=${setInherit("auto_pause_after")} inherited=${roomInh("auto_pause_after", "minutes", "#classicbot", "#g-auto")}>
-          <input id="cl-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} disabled=${f.inherit.auto_pause_after}
+          <input id=${fieldId("cl-auto")} type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} disabled=${f.inherit.auto_pause_after}
             value=${f.inherit.auto_pause_after ? String(inherited.auto_pause_after) : f.auto_pause_after} onInput=${(e) => set("auto_pause_after")(e.target.value)} /></${Override}>
         <${Feedback} error=${errors.auto} /></div></div></${Card}></div>`;
   return html`<div class="ap-grid">
     <${Card} title=${pt("cardReplies")}>
       <div class="field">${L(tn("toolProgress"), "classic.tool_progress", "cl-tp", pt("tip_classicToolProgress"))}
         <${Override} inherit=${f.inherit.tool_progress} onInherit=${setInherit("tool_progress")} inherited=${roomInh("tool_progress", "tool_progress", "#g-ctp", "#g-tp")}>
-          <${Select} id="cl-tp" disabled=${f.inherit.tool_progress} value=${f.inherit.tool_progress ? inherited.tool_progress : f.tool_progress} onChange=${set("tool_progress")} options=${choiceOptions("tool_progress", TOOL_PROGRESS)} /></${Override}></div>
+          <${Select} id=${fieldId("cl-tp")} disabled=${f.inherit.tool_progress} value=${f.inherit.tool_progress ? inherited.tool_progress : f.tool_progress} onChange=${set("tool_progress")} options=${choiceOptions("tool_progress", TOOL_PROGRESS)} /></${Override}></div>
       <div class="field">${L(tn("replyCompletionGuard"), "classic.reply_completion_guard", undefined, pt("tip_classicReplyGuard"))}
         <${Override} inherit=${f.inherit.reply_completion_guard} onInherit=${setInherit("reply_completion_guard")} inherited=${roomInh("reply_completion_guard", "", "#g-creply", "#g-reply")}>
           <label class="check"><input aria-label=${tn("replyCompletionGuard")} type="checkbox" disabled=${f.inherit.reply_completion_guard} checked=${f.inherit.reply_completion_guard ? inherited.reply_completion_guard : f.reply_completion_guard}
@@ -871,10 +877,11 @@ export function ClassicFields({ m, cat }) {
       <div class="field">${L(tn("webEcho"), "classic.web_echo", undefined, pt("tip_classicWebEcho"))}
         <label class="check"><input aria-label=${tn("webEcho")} type="checkbox" checked=${f.web_echo} onChange=${(e) => set("web_echo")(e.target.checked)} /><span>${pt("checkEnable")}</span></label></div>
       <div class="field">${L(tn("contextLines"), "classic.context_lines", "cl-ctx", pt("tip_classicContext"))}
-        <input id="cl-ctx" type="number" min="0" step="1" class=${errors.context ? "invalid" : ""} value=${f.context_lines} onInput=${(e) => set("context_lines")(e.target.value)} />
+        <input id=${fieldId("cl-ctx")} type="number" min="0" step="1" class=${errors.context ? "invalid" : ""} value=${f.context_lines} onInput=${(e) => set("context_lines")(e.target.value)} />
         <${Feedback} error=${errors.context} /></div>
     </${Card}></div>`;
 }
+ClassicFields.paneIds = true;
 
 export function ClassicDialog({ room, ctx, onClose }) {
   const m = useClassicForm({ room, ctx });

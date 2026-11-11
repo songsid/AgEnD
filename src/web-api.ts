@@ -52,7 +52,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createReadStream, createWriteStream, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, CreateScheduleArgs, UpdateScheduleArgs, validateArgs } from "./outbound-schemas.js";
 import { scheduleView } from "./web-schedules.js";
@@ -4693,8 +4693,12 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
   const admission = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
   const childMark = mode === "full" && !gatewayRequestContext(req) && !viewer?.guest && admission.kind === "allow"
     && (admission.via !== "session" || admission.session.tier === "admin");
+  // #3637: display-only capability and a non-authorizing namespace. No account/session/token value reaches storage.
+  const workspaceMark = mode === "full" && !gatewayRequestContext(req) && !viewer?.guest && admission.kind === "allow";
+  const workspaceScope = workspaceMark && viewer?.person && ctx.webToken
+    ? createHmac("sha256", ctx.webToken).update(`agend-chat-layout-v1\0${viewer.person}`).digest("hex") : null;
 
-  return `<body data-mode="${mode}"${childMark ? ' data-subagents="1"' : ""}${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+  return `<body data-mode="${mode}"${childMark ? ' data-subagents="1"' : ""}${workspaceMark ? ' data-chat-workspace="1"' : ""}${workspaceScope ? ` data-chat-layout-scope="${workspaceScope}"` : ""}${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`

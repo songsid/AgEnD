@@ -45,27 +45,29 @@ export function useNativeForm({ name, inst, ctx }) {
   return { name, inst, ctx, form, set, dirty, ready, native, machine, machines, machineId, pending, stage };
 }
 
-export function NativeFields({ m, cat }) {
+export function NativeFields({ m, cat, idPrefix = "" }) {
+  const fieldId = key => `${idPrefix}${key}`;
   const { name, inst, ctx, form, set, dirty, ready, native, machine, machines, machineId } = m;
   if (cat === "basic") return html`<div class="ap-grid"><${Card} title=${pt("cardName")} span=${true}>
       <div class="grid2">
-        <div class="field"><${Lab} id="ni-dn" text=${tn("displayName")} tip=${pt("tip_displayName")} /><input id="ni-dn" value=${form.display_name} maxLength=${64} onInput=${event => set("display_name")(event.target.value)} /></div>
-        <div class="field"><${Lab} id="ni-tags" text=${tn("tags")} tip=${pt("tip_tags")} /><${ChipList} items=${form.tags} onChange=${set("tags")} placeholder=${tn("tagPlaceholder")} label=${tn("tags")} /></div>
+        <div class="field"><${Lab} id=${fieldId("ni-dn")} text=${tn("displayName")} tip=${pt("tip_displayName")} /><input id=${fieldId("ni-dn")} value=${form.display_name} maxLength=${64} onInput=${event => set("display_name")(event.target.value)} /></div>
+        <div class="field"><${Lab} id=${fieldId("ni-tags")} text=${tn("tags")} tip=${pt("tip_tags")} /><${ChipList} id=${idPrefix ? fieldId("ni-tags") : undefined} items=${form.tags} onChange=${set("tags")} placeholder=${tn("tagPlaceholder")} label=${tn("tags")} /></div>
       </div>
-      <div class="field"><${Lab} id="ni-desc" text=${tn("description")} tip=${pt("tip_description")} /><input id="ni-desc" value=${form.description} maxLength=${512} onInput=${event => set("description")(event.target.value)} /><p class="note">${pt("note_description")}</p></div></${Card}></div>`;
+      <div class="field"><${Lab} id=${fieldId("ni-desc")} text=${tn("description")} tip=${pt("tip_description")} /><input id=${fieldId("ni-desc")} value=${form.description} maxLength=${512} onInput=${event => set("description")(event.target.value)} /><p class="note">${pt("note_description")}</p></div></${Card}></div>`;
   if (cat === "runtime") return html`<div class="ap-grid">
-    <${Card} title=${pt("cardRuntime")}><${AgentRuntimeSettings} name=${name} inst=${{...inst,machine_name:machine?.name||inst.machine_name,machine_status:machine?.status||inst.machine_status,machine_missing:!!machineId&&!!machines.data&&machines.data.enabled!==false&&!machine}} disabled=${dirty||ctx.staged?.size>0} onChanged=${()=>{ctx.reload();if(m.onChanged)m.onChanged();}}/></${Card}>
-    <${Card} title=${pt("cardModel")}><div class="field"><${Lab} id="native-instance-model" text=${tn("model")} tip=${pt("tip_model")} /><${ModelSelect} id="native-instance-model" value=${form.model} onChange=${set("model")} backend=${inst.backend} instance=${name} runtime="windows" machineId=${machineId} inherit=${tr("model")} /></div></${Card}></div>`;
+    <${Card} title=${pt("cardRuntime")}><${AgentRuntimeSettings} idPrefix=${idPrefix} name=${name} inst=${{...inst,machine_name:machine?.name||inst.machine_name,machine_status:machine?.status||inst.machine_status,machine_missing:!!machineId&&!!machines.data&&machines.data.enabled!==false&&!machine}} disabled=${dirty||ctx.staged?.size>0} onChanged=${()=>{ctx.reload();if(m.onChanged)m.onChanged();}}/></${Card}>
+    <${Card} title=${pt("cardModel")}><div class="field"><${Lab} id=${fieldId("native-instance-model")} text=${tn("model")} tip=${pt("tip_model")} /><${ModelSelect} id=${fieldId("native-instance-model")} value=${form.model} onChange=${set("model")} backend=${inst.backend} instance=${name} runtime="windows" machineId=${machineId} inherit=${tr("model")} /></div></${Card}></div>`;
   if (cat === "work") return html`<div class="ap-grid"><${Card} title=${pt("cardWorkspace")} span=${true}>
-      <div class="field"><${Lab} id="ni-wd" text=${tn("workingDir")} tip=${pt("tip_workdirNative")} /><input id="ni-wd" value=${inst.working_directory || ""} readOnly=${true} aria-readonly="true" /><small>${t("nativeInstance.workspace")}</small></div>
-      <div class="field"><${Lab} id="ni-sb" text=${tr("access")} tip=${pt("tip_sandbox")} /><select id="ni-sb" value=${form.native_sandbox} onChange=${event => set("native_sandbox")(event.target.value)}><option value="read-only" disabled=${native?.readOnlySupport === false}>${tr("read")}</option><option value="workspace-write">${tr("write")}</option></select></div>
+      <div class="field"><${Lab} id=${fieldId("ni-wd")} text=${tn("workingDir")} tip=${pt("tip_workdirNative")} /><input id=${fieldId("ni-wd")} value=${inst.working_directory || ""} readOnly=${true} aria-readonly="true" /><small>${t("nativeInstance.workspace")}</small></div>
+      <div class="field"><${Lab} id=${fieldId("ni-sb")} text=${tr("access")} tip=${pt("tip_sandbox")} /><select id=${fieldId("ni-sb")} value=${form.native_sandbox} onChange=${event => set("native_sandbox")(event.target.value)}><option value="read-only" disabled=${native?.readOnlySupport === false}>${tr("read")}</option><option value="workspace-write">${tr("write")}</option></select></div>
       <${NativeAgendToolsHint} cli=${native} sandbox=${form.native_sandbox} />
       ${!ready && form.native_sandbox === "read-only" && native?.readOnlySupport === false ? html`<p class="note">${tr("noReadOnly")}</p>` : null}
       <p class="s-info"><span aria-hidden="true">ⓘ</span><span>${pt("nativeLimits")}</span></p></${Card}></div>`;
   return html`<div class="ap-grid"><${Card} title=${pt("cardSystemPrompt")} span=${true}>
-      <div class="field"><${Lab} id="ni-sys" text=${tn("systemPrompt")} tip=${pt("tip_systemPromptNative")} /><textarea id="ni-sys" rows="5" maxLength=${8000} value=${form.systemPrompt} onInput=${event => set("systemPrompt")(event.target.value)} /></div>
+      <div class="field"><${Lab} id=${fieldId("ni-sys")} text=${tn("systemPrompt")} tip=${pt("tip_systemPromptNative")} /><textarea id=${fieldId("ni-sys")} rows="5" maxLength=${8000} value=${form.systemPrompt} onInput=${event => set("systemPrompt")(event.target.value)} /></div>
       <p class="note">${pt("note_systemPrompt")}</p></${Card}></div>`;
 }
+NativeFields.paneIds = true;
 
 export function NativeInstanceSettings({ name, inst, ctx, onClose }) {
   const m = useNativeForm({ name, inst, ctx });

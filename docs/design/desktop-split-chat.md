@@ -1,6 +1,6 @@
-# 桌面雙對話：VS Code 精簡版（#3637，r2）
+# 桌面雙對話：VS Code 精簡版（#3637，原有文字分頁版）
 
-狀態：**設計提案，尚未實作，等使用者同意才建置**。目標：alpha／2.4。原始碼調查與圖稿基準：1066a85a2c48cae18e700b207adba1cdb450cf5a；r1 提案：ff2d1d59c28b6488827d9372428178c18c4fc850。
+狀態：**使用者已同意 d6735f99 的文字分頁設計，依文末四階段建置，僅 alpha／2.4**。PR1 #3671 已落地，保持單格外觀。PR2 提供左右／上下完整路徑；拖曳、分隔線、自訂移動及 pop-out 留在 PR3／PR4，不提前顯示未完成入口。原始碼調查與靜態圖稿基準：1066a85a2c48cae18e700b207adba1cdb450cf5a；r1 提案：ff2d1d59c28b6488827d9372428178c18c4fc850。
 
 ## 給使用者的摘要
 
@@ -12,7 +12,7 @@
 
 最多兩個不同 Agent；一般點側欄只換**有焦點的那格**。引用到另一格只放入草稿，**絕不自動送出**。關格子或彈出視窗不停止 Agent。手機與窄畫面一次只顯示一格。
 
-[最新原有文字分頁圖稿](../screenshots/desktop-split-chat-m2889/r2/text-tabs/README.md)；[r2 其他操作圖稿](../screenshots/desktop-split-chat-m2889/r2/README.md)。圖稿使用本機假資料與真正 app shell；全部是靜態提案，不是功能驗收。
+[最新原有文字分頁圖稿](https://github.com/songsid/AgEnD/blob/d6735f99/docs/screenshots/desktop-split-chat-m2889/r2/text-tabs/README.md)；[r2 其他操作圖稿](https://github.com/songsid/AgEnD/blob/d6735f99/docs/screenshots/desktop-split-chat-m2889/r2/README.md)。圖稿使用本機假資料與真正 app shell；全部是靜態提案，不是功能驗收。
 
 ## r1 → r2
 
@@ -56,7 +56,7 @@
 
 切換焦點時關閉舊 menu／卡片 popup，未完成的舊 Agent 動作不改綁到另一個 Agent；送出仍驗當初擷取的 Agent／lease。pop-out 是另一個 document，自有一組工具；不是在同頁重複。單格保留今天的標頭，不額外加 workspace bar。
 
-[原有 top bar 基準、左右、紀錄、浮窗、360px overflow 與彈出原圖](../screenshots/desktop-split-chat-m2889/r2/text-tabs/README.md)。先前 icon tabs 圖只作歷史，本次提案已取代它們。
+[原有 top bar 基準、左右、紀錄、浮窗、360px overflow 與彈出原圖](https://github.com/songsid/AgEnD/blob/d6735f99/docs/screenshots/desktop-split-chat-m2889/r2/text-tabs/README.md)。先前 icon tabs 圖只作歷史，本次提案已取代它們。
 
 ## VS Code 手勢對照與開啟規則
 

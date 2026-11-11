@@ -12,7 +12,7 @@ import { shellStore, closeDrawer } from "/assets/app-shell.js";
 import "/assets/chat-strings.js";
 
 const TOUR_KEY = "agend_tour_done";
-const byId = (id) => document.getElementById(id);
+const byId = (id) => document.getElementById(id) || document.querySelector(`.ws-focused [id$="-${id}"]`);
 // On a phone the instance list is in the closed drawer: the tour outlines what opens it (☰), and for "needs you" the
 // bottom tab's badge (#1408 step 5: retargeted to the app's shell).
 const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;

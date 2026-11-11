@@ -72,7 +72,7 @@ function ChatCard({ name, card }) {
   </div>`;
 }
 /** The header's card menu: ☑ Show card, ☑ Show picture and bio. */
-function CardMenu({ card }) {
+function CardMenu({ card, ownerKey }) {
   const prefs = useStore(chatCardPrefs);
   useStore(brokenPictures);                        // a banner that failed to load: the card cannot fold, the item greys out
   if (!card) return null;
@@ -81,7 +81,7 @@ function CardMenu({ card }) {
     { key: "row", checkbox: true, checked: !prefs.rowHidden && cardFoldable(card), disabled: !prefs.open || !cardFoldable(card), label: t("card.showRow"),
       onSelect: () => setChatCardRowHidden(!prefs.rowHidden) },
   ];
-  return html`<${Menu} items=${items} label=${t("card.menu")} icon="idcard" cls="chat-card-menu" active=${prefs.open} />`;
+  return html`<${Menu} items=${items} label=${t("card.menu")} icon="idcard" cls="chat-card-menu" active=${prefs.open} ownerKey=${ownerKey} />`;
 }
 import "/assets/chat-strings.js";
 import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
@@ -122,6 +122,31 @@ linkWorkBarCss();
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composers = new Map(); // agent → current mounted refs, never a retained thread's stale closure
 const composerField = (name) => composers.get(name)?.input.current || null;
+/** Cross-pane quote is plain draft text. It never copies a message id, executes a command or submits the composer. */
+export function insertPaneQuote(name, source, text, current = () => true) {
+  const binding = composers.get(name), field = binding?.input.current;
+  if (!field || !String(text || "").trim() || !current()) return false;
+  const value = store.state.drafts[name] || "";
+  const caret = field.dataset.touched === "1" ? composerCaret(field, value) : value.length;
+  const next = insertQuote(value, caret, `${source}:\n${text}`);
+  if (!next || !current()) return false;
+  recordEdit(field);
+  // The page's undo listener observes input events. Give it the same before/after pair as a paste, so its input
+  // listener cannot consume the marked snapshot before the next Undo reads it.
+  const Before = field.ownerDocument.defaultView?.InputEvent || Event;
+  if (!field.dispatchEvent(new Before("beforeinput", { bubbles: true, cancelable: true, inputType: "insertFromPaste" }))) return false;
+  const set = typeof HTMLTextAreaElement === "function" ? Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set : null;
+  if (set) set.call(field, next.value); else field.value = next.value;
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  field.dataset.touched = "1";
+  setTimeout(() => {
+    if (!current() || composers.get(name) !== binding || binding.input.current !== field) return;
+    try { field.setSelectionRange(next.caret, next.caret); } catch { /* non-text fixture */ }
+    field.focus(); showCaret(field, next.caret);
+  }, 0);
+  return true;
+}
+export const paneComposerReady = name => !!composerField(name);
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -384,7 +409,8 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   };
   const items = [
     // #1523 N2: Details is a page now (the Fleet side of this instance), not a dialog.
-    supportsInstanceFeature(inst,"details") ? { key: "details", label: t("chat.details"), icon: "info", onSelect: () => navigate(detailsPath(name)) } : null,
+    supportsInstanceFeature(inst,"details") ? { key: "details", label: t("chat.details"), icon: "info", onSelect: () => (paneNow.current?.navigate || navigate)(detailsPath(name)) } : null,
+    appStore.get().chatWorkspace ? { key: "splitChat", label: t("chatWorkspace.split"), icon: "sidebar", onSelect: () => appStore.get().chatWorkspace.pick() } : null,
     inst.runtime === "windows" ? {key:"settings",label:t("app.settings"),icon:"settings",onSelect:() => navigate(sectionPath("agents"))} : null,
     running || !supportsInstanceFeature(inst,"lifecycle") ? null : { key: "start", label: t("chat.start"), icon: "play", onSelect: () => action("start") },
     running && supportsInstanceFeature(inst,"lifecycle") ? { key: "restart", label: t("chat.restart"), icon: "restart", onSelect: () => action("restart") } : null,
@@ -417,7 +443,13 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${inst.effort && supportsInstanceFeature(inst,"effort") ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
 
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
-    <${PanelHeader} title=${inst.runtime === "windows" ? inst.display_name || name : headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
+    <${PanelHeader} title=${inst.runtime === "windows" ? inst.display_name || name : headerName(namesOf(inst || { name }, names.primary))} sub=${sub}
+      pageControls=${{ CardMenu, card, navKey, usage: supportsInstanceFeature(inst,"usage") }} pageActions=${[
+        pane && !guest && supportsInstanceFeature(inst,"commands") ? { key: "pane-backend", label: `${mw("backend")}: ${backendLabel(inst.backend)}`, onSelect: () => inst.runtime === "windows" ? navigate(sectionPath("agents")) : pick("backend") } : null,
+        pane && !guest && supportsInstanceFeature(inst,"commands") ? { key: "pane-model", label: t("chat.chipModel", modelText(inst)), onSelect: () => pick("model") } : null,
+        pane && inst.effort && supportsInstanceFeature(inst,"effort") ? { key: "pane-effort", label: t("chat.chipEffort", inst.effort), onSelect: () => pick("effort") } : null,
+        ...items]}
+      nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>
@@ -550,6 +582,7 @@ function follow(name, thread) {
 
 /** The thread's view: Preact owns the scroller and the jump pill; the kept list (chat-thread.js) is put inside it. */
 function Thread({ name, label = name, th, bindings }) {
+  const pane = paneContext.usePane?.(), paneNow = useRef(pane); paneNow.current = pane;
   const scroller = useRef(null), host = useRef(null);
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
@@ -593,6 +626,7 @@ function Thread({ name, label = name, th, bindings }) {
       phone: () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches,
       composerBox: () => bindings.box.current,
       threadBox: () => sc,
+      targets: () => appStore.get().chatWorkspace?.quoteTargets?.(name) || [],
       insert: (text) => {
         const field = bindings.input.current;
         const value = store.state.drafts[name] || "";
@@ -619,7 +653,7 @@ function Thread({ name, label = name, th, bindings }) {
       },
     });
     // A copied message link (#m=<boot>-<id>): show that message, flashed.
-    const linked = /^#m=([0-9a-f]{1,32}-\d{1,15})$/.exec(location.hash);
+    const linked = !paneNow.current && /^#m=([0-9a-f]{1,32}-\d{1,15})$/.exec(location.hash);
     if (linked) void thread.jumpTo(linked[1]);
     // #2293: search opening a message of this chat while it is shown — the address's #m= changes, the route does not.
     // Only this chat's address: during a jump to another chat this one is still mounted for a moment.
@@ -627,7 +661,7 @@ function Thread({ name, label = name, th, bindings }) {
       const m = /^#m=([0-9a-f]{1,32}-\d{1,15})$/.exec(location.hash);
       if (m && location.pathname === `/ui/chat/${encodeURIComponent(name)}`) void thread.jumpTo(m[1]);
     };
-    window.addEventListener("hashchange", onHash);
+    if (!paneNow.current) window.addEventListener("hashchange", onHash);
     return () => {
       window.removeEventListener("hashchange", onHash);
       unfollow();
@@ -643,6 +677,11 @@ function Thread({ name, label = name, th, bindings }) {
       else letGo(e, false);                                                // let go meanwhile (a new language)
     };
   }, [name]);
+  useLayoutEffect(() => {
+    if (!pane) return;
+    const linked = /^#m=([0-9a-f]{1,32}-\d{1,15})$/.exec(pane.hash || "");
+    if (linked) void th.current?.jumpTo(linked[1]);
+  }, [name, pane?.hash]);
   return html`<${Fragment}><div class="scroller" ref=${scroller}>
     <div class="thread-host" ref=${host}></div>
     ${empty === "hidden" ? html`<${Empty} icon="chat" title=${t("chat.guestAllHidden")} hint=${t("chat.guestAllHiddenHint")} />`
@@ -939,3 +978,4 @@ function DeleteDialog({ name, inst, onClose }) {
         onKeyDown=${(e) => { if (e.key === "Enter") go(); }} /></label>
   </${Dialog}>`;
 }
+ChatPanel.workspaceVersion = 1;

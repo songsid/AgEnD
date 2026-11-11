@@ -131,9 +131,10 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
   // Leaving the page with staged changes asks first (the Settings page's question); the same agent's other categories are not leaving.
   useEffect(() => {
     let asking = false;
-    const check = (to, path) => {
+    const check = (to, path, next) => {
       const n = stagedRef.current.size;
-      if (!n || (to && to.panel === "details" && to.instance === nameRef.current)) return true;
+      const remount = next && (!!pane !== !!next.workspace);
+      if (!n || (!remount && to && to.panel === "details" && to.instance === nameRef.current)) return true;
       if (!asking) {
         asking = true;
         ask(tn("discardOnLeave", n), { confirmLabel: tn("discard"), danger: true }).then((yes) => {
@@ -237,7 +238,7 @@ function AgentForms({ name, kind, cat, sess, inst, room, onDirty, onDelete, dele
   const cats = categoriesOf(kind).slice(1);
   const Fields = kind === "classic" ? ClassicFields : kind === "native" ? NativeFields : AgentFields;
   return cats.map((c) => html`<div key=${c} class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-${c}` : `ap-panel-${c}`} hidden=${c !== cat}>
-    <${Fields} m=${form} cat=${c} onDelete=${kind === "fleet" && c === "adv" ? onDelete : undefined} /></div>`);
+    <${Fields} m=${form} cat=${c} idPrefix=${pane ? `pane-${pane.id}-` : ""} onDelete=${kind === "fleet" && c === "adv" ? onDelete : undefined} /></div>`);
 }
 
 /** The settings categories' bodies: a read of the configuration first, then the forms. */
