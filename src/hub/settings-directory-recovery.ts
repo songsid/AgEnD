@@ -17,6 +17,7 @@ import { BIND_PASSWORD_REF, BIND_SECRET_REL } from "./init/layout.js";
 import type { HubDirectory, HubDirectoryConfig } from "./directory/index.js";
 import type { HubMountedDirectory } from "./settings-directory-runtime.js";
 import type { PersonKey } from "./types.js";
+import {createHubWebAddressDecision,type HubWebAddressDecision} from "./settings-web-address-decision.js";
 
 export interface HubDirectoryRecoveryOptions {
   home: string; hubId: string; memberOrigin: string;
@@ -68,6 +69,12 @@ function withState<T>(options: HubDirectoryRecoveryOptions, work: (participant: 
 
 export function withHubDirectoryRecovery<T>(options: HubDirectoryRecoveryOptions, work: (decision: HubDirectorySettingsDecision) => T): T {
   return withState(options, ({ decision }) => work(decision));
+}
+
+/** The same existing-state/floor checks; never create or migrate a database during address completion. */
+export function withHubWebAddressRecovery<T>(options: HubDirectoryRecoveryOptions & {initial:{certificateFile:string;keyFile:string}},
+  work:(decision:HubWebAddressDecision)=>T):T {
+  return withState(options,({db,audit})=>work(createHubWebAddressDecision({db,audit,home:options.home,hubId:options.hubId,initial:options.initial})));
 }
 
 /** Host-only cold access. A held/off listener is not permission to create/migrate state or start a directory client. */
