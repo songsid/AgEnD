@@ -3,7 +3,8 @@ import { createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, ra
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { CompanyJoinClient, CompanyJoinRemoteError } from "./client.js";
+import { CompanyJoinClient, CompanyJoinRemoteError, CompanyJoinReachError } from "./client.js";
+import { hostname } from "node:os";
 import { CompanyTrustStore, CompanyIdentityChanged } from "./trust.js";
 import { parseCompanyAddress } from "./descriptor.js";
 import { canonicalFleetOrigin, companyIdentityDigest, pkceChallenge, requireSeparateJoinHosts, CompanyBrowserHostnameConflict } from "./protocol.js";
@@ -115,6 +116,49 @@ export class CompanyJoinController {
     const metadata = await this.client.discover(address.webOrigin, current);
     if (!current()) throw new HubProtocolError("stale");
     new CompanyTrustStore(this.options.home).repair(metadata.hub, address.expected, current);
+  }
+  private probes = new Map<string, number[]>();
+  /**
+   * M-2921 (spec 1.1, "Probe"): what the Fleet would join, READ ONLY — the Hub's public metadata over CA-validated HTTPS,
+   * exactly as start fetches it, and nothing else: no pin, no journal, no handoff, no push (A-L4). 10 per session per
+   * minute. Answers the display name (an older Hub: null, and the page shows the host), whether the Hub takes company
+   * joins, how its identity compares with the saved pin, whether the two host names differ, and this computer's name as
+   * the suggested Fleet label. A Hub that cannot be read: { ok: false, reason: unreachable | certificate | not-hub }.
+   */
+  async probe(input: { address: string; fleetOrigin: string }, session: JoinLocalSession): Promise<
+    | { ok: true; hubName: string | null; webOrigin: string; companyJoin: boolean; identity: "new" | "known" | "changed"; separateHosts: boolean; suggestedLabel: string; features: string[] }
+    | { ok: false; reason: "unreachable" | "certificate" | "not-hub" | "limited" }> {
+    const body = validated(z.strictObject({ address: z.string().max(8192), fleetOrigin: z.string().max(2048) }), input);
+    canonicalFleetOrigin(body.fleetOrigin);
+    if (this.closed || !session.current()) throw new HubProtocolError("denied");
+    const now = this.now(), recent = (this.probes.get(session.sessionId) ?? []).filter(t => t > now - 60_000);
+    if (recent.length >= 10) return { ok: false, reason: "limited" };
+    recent.push(now); this.probes.set(session.sessionId, recent);
+    if (this.probes.size > 256) for (const [k, v] of this.probes) if (!v.some(t => t > now - 60_000)) this.probes.delete(k);
+    const address = parseCompanyAddress(body.address);
+    const current = () => !this.closed && session.current();
+    const suggestedLabel = probeLabel();
+    let metadata;
+    try { metadata = await this.client.discover(address.webOrigin, current, { display: true }); }
+    catch (error) {
+      if (error instanceof CompanyJoinReachError) return { ok: false, reason: error.kind };
+      if (error instanceof CompanyJoinRemoteError && error.code === "incompatible")
+        return { ok: true, hubName: null, webOrigin: address.webOrigin, companyJoin: false, identity: "new", separateHosts: separateHosts(body.fleetOrigin, address.webOrigin), suggestedLabel, features: [] };
+      if (error instanceof CompanyIdentityChanged)
+        return { ok: true, hubName: null, webOrigin: address.webOrigin, companyJoin: true, identity: "changed", separateHosts: separateHosts(body.fleetOrigin, address.webOrigin), suggestedLabel, features: [] };
+      throw error;
+    }
+    let existing = null;
+    try {
+      if (existsSync(join(this.options.home, "hub-member/state.json"))) {
+        const s = parseStrictJson(readPrivateFile(this.options.home, "hub-member/state.json")) as { hubId?: string };
+        if (s.hubId) existing = new HubMemberProfileStore(this.options.home, s.hubId).readProfile().hub;
+      }
+    } catch { existing = null; }
+    const fingerprint = companyIdentityDigest(metadata.hub);
+    const identity = address.expected !== null && address.expected !== fingerprint ? "changed" : new CompanyTrustStore(this.options.home).peek(metadata.hub, existing);
+    return { ok: true, hubName: metadata.name ?? null, webOrigin: metadata.hub.webOrigin, companyJoin: true, identity,
+      separateHosts: separateHosts(body.fleetOrigin, metadata.hub.webOrigin), suggestedLabel, features: [...metadata.features] };
   }
   async start(input: { address: string; label: string; fleetOrigin: string; handoffId?: string }, authority: JoinLocalAuthority) {
     const body = validated(z.strictObject({ address: z.string().max(8192), label: z.string().trim().min(1).max(120), fleetOrigin: z.string().max(2048), handoffId: uuid.optional() }), input);
@@ -313,4 +357,13 @@ export class CompanyJoinController {
     ++this.generation;
   } }
   close(): void { this.closed = true; ++this.generation; if (this.timer) clearTimeout(this.timer); }
+}
+
+/** M-2921: this computer's name as the suggested Fleet label (its first label, at most 120 characters); "" when none. */
+export function probeLabel(name: string = hostname()): string {
+  return (name.split(".")[0] ?? "").trim().slice(0, 120);
+}
+/** M-2921: the Fleet's and the Hub's browser host names differ (a different port is not enough). */
+function separateHosts(fleetOrigin: string, hubWebOrigin: string): boolean {
+  try { requireSeparateJoinHosts(fleetOrigin, hubWebOrigin); return true; } catch (error) { if (error instanceof CompanyBrowserHostnameConflict) return false; throw error; }
 }

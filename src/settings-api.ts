@@ -966,7 +966,7 @@ export function handleSettingsRequest(
   }
 
   // #3423: an original private cookie session owns each company-join operation. No header token or Hub identity is Fleet authority.
-  const companyRoute = path.match(/^\/api\/hub\/member\/company-join(?:\/(start|resume|cancel|bridge|repair-trust))?$/);
+  const companyRoute = path.match(/^\/api\/hub\/member\/company-join(?:\/(start|resume|cancel|bridge|repair-trust|probe))?$/);
   if (companyRoute) {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
     if (!ctx.hubCompanyJoin || !ctx.hubCompanySession) { json(res, 404, { error: "unavailable" }); return true; }
@@ -998,6 +998,12 @@ export function handleSettingsRequest(
         }
         const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8"));
         execution?.assert(); if (!session.current()) throw new HubProtocolError("revoked");
+        if (step === "probe") {
+          // M-2921: read only (the Hub's public metadata; no pin, journal, handoff or push) — a signed-in local admin of
+          // this browser session, never a header token, a guest or the public link (refused above).
+          if (!session.fleetOrigin || !settingsRequestLocalAdmin(req) || !body || Object.keys(body).length !== 1 || typeof body.address !== "string") throw new HubProtocolError("invalid");
+          json(res, 200, await api.probe({ address: body.address, fleetOrigin: session.fleetOrigin }, session)); return;
+        }
         if (step === "repair-trust") {
           if (!authority || !settingsRequestLocalAdmin(req) || !body || Object.keys(body).length !== 1 || typeof body.address !== "string") throw new HubProtocolError("invalid");
           await api.repairTrust(body.address, authority); json(res, 200, { ok: true });
