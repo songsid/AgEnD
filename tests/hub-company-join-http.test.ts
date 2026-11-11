@@ -1,20 +1,43 @@
 /** #3423 fail-first actual HTTPS/AD-wire admission, browser-origin, quota and replay controls. */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const dc = vi.hoisted(() => ({ port: 0 }));
 vi.mock("node:tls", async original => {
   const real = await original<typeof import("node:tls")>();
   return { ...real, connect: (options: import("node:tls").ConnectionOptions) => real.connect({ ...options,
     ...(options.host === "127.0.0.1" && options.port === 636 ? { port: dc.port } : {}) }) };
 });
+import { existsSync, rmSync } from "node:fs";
+import { makeTestCerts } from "./support/hub-init-fixtures.js";
+import { directoryCertificates } from "./support/hub-directory-ca-fixture.js";
 import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
-import { companyJoinRig, type JoinBrowser } from "./support/hub-company-join-rig.js";
+import { companyJoinRig, type CompanyJoinCertificates, type JoinBrowser } from "./support/hub-company-join-rig.js";
 import { pkceChallenge, signJoinProof, type JoinBinding, type JoinPurpose } from "../src/hub/join/protocol.js";
 import { sha256 } from "../src/hub/identity.js";
 import { advanceHubSessionEpoch, readHubSessionEpoch } from "../src/hub/session-epoch.js";
+declare module "vitest" { interface TaskMeta { companyJoinOff?: boolean } }
 let rig: Awaited<ReturnType<typeof companyJoinRig>> | undefined;
-afterEach(async () => { await rig?.close(); rig = undefined; vi.restoreAllMocks(); });
-async function world() {
-  const r = rig = await companyJoinRig(port => { dc.port = port; });
+let certificates: CompanyJoinCertificates;
+let prepared: Awaited<ReturnType<typeof world>>;
+beforeAll(() => {
+  const web = makeTestCerts();
+  try { certificates = { host: "hub.example.test", web, directory: directoryCertificates() }; }
+  catch (error) { rmSync(web.dir, { recursive: true, force: true }); throw error; }
+}, 120_000);
+afterAll(() => {
+  if (certificates) { certificates.directory.cleanup(); rmSync(certificates.web.dir, { recursive: true, force: true }); }
+});
+beforeEach(async ({ task }) => {
+  rig = await companyJoinRig(port => { dc.port = port; }, { certificates });
+  // Each case still gets its own keys, DB, directory peer, listeners, people, sessions and policy.
+  if (!task.meta.companyJoinOff) prepared = await world(rig);
+}, 120_000);
+afterEach(async () => {
+  try { await rig?.close(); }
+  finally { rig = undefined; vi.restoreAllMocks(); }
+  // Closing a case owns its Hub and peer, not the shared source certificate bundle.
+  expect(existsSync(certificates.web.cert)).toBe(true);
+});
+async function world(r: Awaited<ReturnType<typeof companyJoinRig>>) {
   const admin = await r.signIn("alice"); await r.enable(admin);
   expect((await r.call(admin, "PUT", "/hub/v1/admin/company-join", { enabled: true, expectedRevision: 1 })).status).toBe(200);
   return { r, admin };
@@ -42,14 +65,14 @@ async function attempt(r: Awaited<ReturnType<typeof companyJoinRig>>) {
 
 describe("company-join actual Hub boundary", () => {
   it("a genuinely unissued cancellation releases its reservation without creating a Fleet", async () => {
-    const { r } = await world(), a = await attempt(r), browser = await a.browser(); expect((await a.approve(browser)).status).toBe(200);
+    const { r } = prepared, a = await attempt(r), browser = await a.browser(); expect((await a.approve(browser)).status).toBe(200);
     expect(r.deps.companyJoin!.retained()).toBe(1);
     expect((await a.command("cancel")).body).toMatchObject({ state: "ended", issued: false });
     expect(r.deps.companyJoin!.retained()).toBe(0); expect(r.deps.store.read().fleets).toEqual([]);
     const next = await attempt(r); expect((await next.approve(await next.browser())).status).toBe(200);
   });
   it("Hub admission independently refuses a key binding that shares the Fleet browser hostname", async () => {
-    const { r } = await world(), metadata = (await r.call(null, "GET", "/hub/v1/join/metadata")).body;
+    const { r } = prepared, metadata = (await r.call(null, "GET", "/hub/v1/join/metadata")).body;
     const key = generateKeyPairSync("ed25519"), fleet = new URL(metadata.hub.webOrigin); fleet.port = "7443";
     const binding = { hub: metadata.hub, fleetOrigin: fleet.origin, requestId: randomUUID(), operationId: randomUUID(), fleetId: randomUUID(),
       publicKey: key.publicKey.export({ type: "spki", format: "pem" }).toString(), verifierS256: pkceChallenge(randomBytes(32).toString("base64url")) };
@@ -58,7 +81,7 @@ describe("company-join actual Hub boundary", () => {
     expect(r.db.prepare("SELECT COUNT(*) n FROM hub_company_join_requests").get()).toEqual({ n: 0 });
   });
   it.each(["cancel", "expiry"])("issued %s keeps mixed legacy/company admission headroom until its original outer deadline", async reason => {
-    const { r, admin } = await world(); await r.enable(admin, 8); let clock = Date.now(); vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const { r, admin } = prepared; await r.enable(admin, 8); let clock = Date.now(); vi.spyOn(Date, "now").mockImplementation(() => clock);
     const a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
     expect((await a.command("redeem", { verifier: a.verifier })).status).toBe(200);
     const b = await attempt(r), second = await b.browser();
@@ -76,14 +99,17 @@ describe("company-join actual Hub boundary", () => {
     const fresh = await attempt(r); expect((await fresh.approve(await fresh.browser())).status).toBe(200);
   });
   it("a directory epoch change fences the held browser authority and pinned redemption before any new credential", async () => {
-    const { r } = await world(), a = await attempt(r), browser = await a.browser(); expect((await a.approve(browser)).status).toBe(200);
+    const { r } = prepared, a = await attempt(r), browser = await a.browser(); expect((await a.approve(browser)).status).toBe(200);
     r.db.transaction(() => advanceHubSessionEpoch(r.db, readHubSessionEpoch(r.db))).immediate();
     const challenge = await r.call(null, "POST", "/hub/v1/join/challenge", { binding: a.binding, purpose: "redeem" }, { Origin: undefined });
     expect(challenge.status).toBe(503); expect(JSON.stringify(challenge.body)).not.toContain("credential");
     expect(r.deps.store.read().fleets).toEqual([]);
   });
-  it("is off by default and only the exact configured admin can enable it with Origin/CSRF and current revision", async () => {
-    const r = rig = await companyJoinRig(port => { dc.port = port; });
+  it("is off by default and only the exact configured admin can enable it with Origin/CSRF and current revision", { meta: { companyJoinOff: true } }, async () => {
+    const r = rig!;
+    const listening = vi.fn();
+    await expect(companyJoinRig(listening, { host: "other.example.test", certificates })).rejects.toThrow("Owned certificate hostname mismatch");
+    expect(listening).not.toHaveBeenCalled();
     expect((await r.call(null, "GET", "/hub/v1/join/metadata")).body.features).not.toContain("company-join-v1");
     const carol = await r.signIn("carol"), admin = await r.signIn("alice");
     expect((await r.call(admin, "GET", "/hub/v1/session")).body.features).toContain("company-join-v1");
@@ -96,7 +122,7 @@ describe("company-join actual Hub boundary", () => {
     expect((await r.call(admin, "PUT", path, body)).status).toBe(409);
   });
   it("refuses an attacker key advertising another Fleet origin before cookie/state/AD, without broadening Hub session CSRF", async () => {
-    const { r } = await world(), a = await attempt(r), before = r.wire.searches.length;
+    const { r } = prepared, a = await attempt(r), before = r.wire.searches.length;
     for (const origin of ["https://attacker.invalid", "null", ""]) {
       const refused = await a.open(origin); expect(refused.status).toBe(403); expect(refused.cookie).toBe("");
     }
@@ -107,7 +133,7 @@ describe("company-join actual Hub boundary", () => {
     expect(r.deps.store.read().fleets).toEqual([]);
   });
   it("issues once after one identity-submit, recovers exactly the same result, and refuses replay/wrong verifier", async () => {
-    const { r } = await world(), a = await attempt(r), browser = await a.browser();
+    const { r } = prepared, a = await attempt(r), browser = await a.browser();
     expect((await a.approve(browser)).status).toBe(200);
     expect((await a.command("status")).body.state).toBe("identity-approved");
     expect((await a.command("redeem", { verifier: randomBytes(32).toString("base64url") })).status).toBe(403);
@@ -127,7 +153,7 @@ describe("company-join actual Hub boundary", () => {
     expect(JSON.stringify((await a.command("redeem", { verifier: a.verifier })).body)).not.toContain(issued.body.credential);
   });
   it("outsider and unknown membership cannot borrow manual fallback or create a Fleet", async () => {
-    const { r } = await world(), a = await attempt(r), outsider = await a.browser("dan");
+    const { r } = prepared, a = await attempt(r), outsider = await a.browser("dan");
     expect((await a.approve(outsider)).status).toBe(403);
     expect(r.deps.store.read().fleets).toEqual([]);
     const b = await attempt(r), carol = await b.browser(); r.wire.state.mode = "unsupported";
@@ -135,7 +161,7 @@ describe("company-join actual Hub boundary", () => {
     expect(r.deps.store.read().fleets).toEqual([]);
   });
   it("an exact retained manual Fleet consumes the later automatic quota with a limit-specific refusal", async () => {
-    const { r, admin } = await world(), a = await attempt(r), carol = await a.browser();
+    const { r, admin } = prepared, a = await attempt(r), carol = await a.browser();
     const manual = await r.call(admin, "POST", "/hub/v1/admin/pairings", { login: "carol" }); expect(manual.status).toBe(200);
     const pending = r.deps.pairing.pair({ code: manual.body.code });
     expect((await r.call(carol, "POST", `/hub/v1/pairings/${pending.pairingId}/confirm`, { fingerprint: pending.fingerprint })).status).toBe(200);
@@ -145,7 +171,7 @@ describe("company-join actual Hub boundary", () => {
     expect(r.deps.store.read().fleets).toHaveLength(1);
   });
   it("legacy quick pairing and a company browser wait share the same one-person reservation", async () => {
-    const { r } = await world(), a = await attempt(r), carol = await a.browser();
+    const { r } = prepared, a = await attempt(r), carol = await a.browser();
     expect((await a.approve(carol)).status).toBe(200);
     expect((await r.call(carol, "POST", "/hub/v1/quick-pairing", { label: "Second reservation" })).status).toBe(409);
     const b = await attempt(r), second = await b.browser();
@@ -154,7 +180,7 @@ describe("company-join actual Hub boundary", () => {
     expect(r.deps.store.read().fleets).toHaveLength(1);
   });
   it("first redemption expires at60s without issuance and never restarts the operation clock", async () => {
-    const { r } = await world(); let clock = Date.now(); vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const { r } = prepared; let clock = Date.now(); vi.spyOn(Date, "now").mockImplementation(() => clock);
     const a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
     clock += 60_000;
     expect((await a.command("redeem", { verifier: a.verifier })).status).toBe(410);
@@ -165,7 +191,7 @@ describe("company-join actual Hub boundary", () => {
     expect(r.deps.store.read().fleets).toEqual([]);
   });
   it("same-result retrieval outlives the old60s redeem window but stops at exactly2min delivery", async () => {
-    const { r } = await world(); let clock = Date.now(); vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const { r } = prepared; let clock = Date.now(); vi.spyOn(Date, "now").mockImplementation(() => clock);
     const a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
     const first = await a.command("redeem", { verifier: a.verifier }); expect(first.status).toBe(200);
     clock += 60_000;
@@ -177,7 +203,7 @@ describe("company-join actual Hub boundary", () => {
     expect(r.deps.store.read().fleets).toHaveLength(1);
   });
   it("the10min outer deadline truncates both a late first redemption and its delivery window", async () => {
-    const { r } = await world(); let clock = Date.now(); vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const { r } = prepared; let clock = Date.now(); vi.spyOn(Date, "now").mockImplementation(() => clock);
     const a = await attempt(r), carol = await a.browser(); clock += 590_000;
     expect((await a.approve(carol)).status).toBe(200); clock += 9_000;
     const first = await a.command("redeem", { verifier: a.verifier }); expect(first.status).toBe(200);
@@ -188,7 +214,7 @@ describe("company-join actual Hub boundary", () => {
     expect(r.deps.store.read().fleets).toHaveLength(1);
   });
   it("post-commit cancellation erases delivery, keeps the exact retained result and cannot issue again", async () => {
-    const { r } = await world(), a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
+    const { r } = prepared, a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
     const first = await a.command("redeem", { verifier: a.verifier }); expect(first.status).toBe(200);
     expect((await a.command("cancel")).body).toMatchObject({ state: "undeliverable", reason: "cancelled", issued: true });
     expect((await a.command("redeem", { verifier: a.verifier })).status).toBe(410);
@@ -196,7 +222,7 @@ describe("company-join actual Hub boundary", () => {
     expect(r.deps.store.read().fleets).toHaveLength(1);
   });
   it("revocation and group suspension refuse recovery even while a transport row still looks active", async () => {
-    const { r, admin } = await world(), a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
+    const { r, admin } = prepared, a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
     expect((await a.command("redeem", { verifier: a.verifier })).status).toBe(200);
     const policyPath = "/hub/v1/admin/group-policy", policy = (await r.call(admin, "GET", policyPath)).body.policy;
     const owner = r.deps.store.read().fleets[0]!.owner;
@@ -209,7 +235,7 @@ describe("company-join actual Hub boundary", () => {
     expect((await a.command("tombstone")).body.state).toBe("revoked");
   });
   it("fresh AD membership loss closes delivery despite an unchanged active transport row", async () => {
-    const { r } = await world(), a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
+    const { r } = prepared, a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
     const issued = await a.command("redeem", { verifier: a.verifier }); expect(issued.status).toBe(200);
     r.people.find(p => p.login === "carol")!.groups = ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"];
     const denied = await a.command("redeem", { verifier: a.verifier }); expect(denied.status).toBe(403);
@@ -219,13 +245,13 @@ describe("company-join actual Hub boundary", () => {
     expect(r.db.prepare("SELECT json_extract(body,'$.receipt') r FROM hub_company_join_requests WHERE id=?").get(a.binding.requestId)).toEqual({ r: null });
   });
   it("sign-out of the exact identity-submit session fences a later key-authenticated redemption", async () => {
-    const { r } = await world(), a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
+    const { r } = prepared, a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
     expect((await r.call(carol, "DELETE", "/hub/v1/session")).status).toBe(200);
     expect((await a.command("redeem", { verifier: a.verifier })).status).toBe(403);
     expect(r.deps.store.read().fleets).toEqual([]);
   });
   it("an outbox failure rolls back credentials, provenance and receipt rather than publishing a partial grant", async () => {
-    const { r } = await world(), a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
+    const { r } = prepared, a = await attempt(r), carol = await a.browser(); expect((await a.approve(carol)).status).toBe(200);
     vi.spyOn(r.deps.pairingNotices!, "enqueue").mockImplementation(() => { throw Error("Owned injected outbox failure"); });
     expect((await a.command("redeem", { verifier: a.verifier })).status).toBe(503);
     const state = JSON.parse((r.db.prepare("SELECT state FROM hub_transport_state").get() as { state: string }).state);
@@ -235,7 +261,7 @@ describe("company-join actual Hub boundary", () => {
     expect(r.db.prepare("SELECT json_extract(body,'$.receipt') r FROM hub_company_join_requests WHERE id=?").get(a.binding.requestId)).toEqual({ r: null });
   });
   it("two browser tabs cannot approve a different request than the Fleet shown in that tab", async () => {
-    const { r } = await world(), a = await attempt(r), first = await a.browser(), b = await attempt(r), second = await b.browser();
+    const { r } = prepared, a = await attempt(r), first = await a.browser(), b = await attempt(r), second = await b.browser();
     expect((await a.approve(second)).status).toBe(403);
     expect((await r.call(second, "GET", `/hub/v1/join/browser?request=${a.binding.requestId}`)).status).toBe(403);
     expect((await r.call(first, "GET", `/hub/v1/join/browser?request=${a.binding.requestId}`)).body.requestId).toBe(a.binding.requestId);

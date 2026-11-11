@@ -1,0 +1,6 @@
+{
+  "tests/hub-compose.test.ts": "bdda365320013b8ee22d23ef9cb1e4e5c75d682b134fe3ffb82c6e1fdb447639",
+  "tests/hub-company-join-http.test.ts": "28ef8bcc93513c0f2a116e6978dc7b8ea0641672084b3bd0cc201dec9421e27f",
+  "tests/support/hub-company-join-rig.ts": "00ddbcee33334411aea7504466f93895b3d96824d63b583bb7ec070f131d1b48",
+  "scripts/manual/hub-setup-3699/pressure.py": "d4ce685b732e03028ab1bd3940d516b76352c22c9fc3236e197bd428ec3209e0"
+}
