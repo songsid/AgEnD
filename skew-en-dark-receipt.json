@@ -1,0 +1,1455 @@
+{
+ "lang": "en",
+ "scheme": "dark",
+ "oldTabBuild": "2.3.5-alpha.260",
+ "upgradedTo": "2.3.5-alpha.2924",
+ "nav": "/settings/hub",
+ "shownVersionTagInOldShell": "Connected",
+ "rawKeys": "none",
+ "card": "Hub connection\nConnected\nHub\nhttps://hub.example.test:18601\nFleet\nThis Fleet\nThis Fleet can use the Hub. Choose the Agents to share below; connecting does not share any Agent automatically.\nOpen Hub\nPause connection\nRemove this connection\nConnection settings\nShared agents\nEvery agent is private unless you share it. A shared agent answers Hub questions in its own conversation, with its own folder and the tools its Settings allow. Actions that need approval still come to you.\ngeneral\nprobe",
+ "errors": [],
+ "responses": [
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/tokens.css",
+   "status": 200,
+   "sha256": "0dd6c6e9665402a6",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/loading.css",
+   "status": 200,
+   "sha256": "68dd23194827d7a8",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/theme.js",
+   "status": 200,
+   "sha256": "ffc4f54dd8a2511e",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/signin.js",
+   "status": 200,
+   "sha256": "037b6bbd28264d4d",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/tokens.css",
+   "status": 200,
+   "sha256": "0dd6c6e9665402a6",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/loading.css",
+   "status": 200,
+   "sha256": "68dd23194827d7a8",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/theme.js",
+   "status": 200,
+   "sha256": "ffc4f54dd8a2511e",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app.css",
+   "status": 200,
+   "sha256": "3b67daaa9d0d45e7",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app.js",
+   "status": 200,
+   "sha256": "117cbe4e580fe279",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/agend-auth.js",
+   "status": 200,
+   "sha256": "88c5aff39e736ab0",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-html.js",
+   "status": 200,
+   "sha256": "8949e374c68b9252",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-prefs.js",
+   "status": 200,
+   "sha256": "d223ea3ca62d93e8",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-nav.js",
+   "status": 200,
+   "sha256": "4e77f5e98db14111",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/text-undo.js",
+   "status": 200,
+   "sha256": "3c59e5ba9039ad05",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-swipe.js",
+   "status": 200,
+   "sha256": "feb36efef72b92a5",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-store.js",
+   "status": 200,
+   "sha256": "cc0afbe551e1b585",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-stream.js",
+   "status": 200,
+   "sha256": "49234d50df7b41e0",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-route.js",
+   "status": 200,
+   "sha256": "d89c2578c4f45f96",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/ui-toast.js",
+   "status": 200,
+   "sha256": "601074179fe7c915",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-needs.js",
+   "status": 200,
+   "sha256": "0ad785a7cf88d1d4",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-shell.js",
+   "status": 200,
+   "sha256": "e1d6df23d61c44c6",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/owner-css.js",
+   "status": 200,
+   "sha256": "d38412dd2327ffb4",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/header-tools.js",
+   "status": 200,
+   "sha256": "fa17fa458645e5f9",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-i18n.js",
+   "status": 200,
+   "sha256": "6c42bb5f227555fe",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-themes.js",
+   "status": 200,
+   "sha256": "886b72a54b88f65f",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/preact.module.js",
+   "status": 200,
+   "sha256": "c30e721ebfdc6e2a",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/htm.module.js",
+   "status": 200,
+   "sha256": "ab33dd3f38059b9b",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/preact-hooks.module.js",
+   "status": 200,
+   "sha256": "f3555e7a8dba8417",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/ui-confirm.js",
+   "status": 200,
+   "sha256": "c1fe9587644da4bb",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/ui-icons.js",
+   "status": 200,
+   "sha256": "6f55664e3748e383",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-session.js",
+   "status": 200,
+   "sha256": "229868d5d26b2d57",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/identity-color.js",
+   "status": 200,
+   "sha256": "452d8ad48b3e0ab8",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/ui-states.js",
+   "status": 200,
+   "sha256": "0d9ae9002f0cf2a8",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/ui-dialog.js",
+   "status": 200,
+   "sha256": "25c22c87ff575b89",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/side-panel.js",
+   "status": 200,
+   "sha256": "aefbba84067328f2",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-update.js",
+   "status": 200,
+   "sha256": "0b675a3860b2f10a",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/agent-widget.js",
+   "status": 200,
+   "sha256": "8e90812b94bad0b9",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/settings-width.js",
+   "status": 200,
+   "sha256": "46dc2cb17194565a",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/usage-dialog.js",
+   "status": 200,
+   "sha256": "b7cb7d8f4df081e3",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/side-rail.js",
+   "status": 200,
+   "sha256": "80827afbb2896969",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/instance-nav.js",
+   "status": 200,
+   "sha256": "1834b22a516ddc58",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/device-roles.js",
+   "status": 200,
+   "sha256": "ca93209e235040a5",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/web-authorize.js",
+   "status": 200,
+   "sha256": "3c87a7c99b39adb8",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/app-ctx.js",
+   "status": 200,
+   "sha256": "13931083f463d39a",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/view-strings.js",
+   "status": 200,
+   "sha256": "23f03826cec94cb9",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/view-roster-store.js",
+   "status": 200,
+   "sha256": "5337cf691b5eb907",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/machine-name.js",
+   "status": 200,
+   "sha256": "9897ad69ca4983e9",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/read-stream.js",
+   "status": 200,
+   "sha256": "01e6cd78752e9022",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/usage-meter.js",
+   "status": 200,
+   "sha256": "2766db3d5d230dd1",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/backend-signin.js",
+   "status": 200,
+   "sha256": "cd84e403aed09e71",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/panel-chat.js",
+   "status": 200,
+   "sha256": "9c85993b4041fd51",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/agent-proposals.js",
+   "status": 200,
+   "sha256": "d3e66e73af1eaa00",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/hub-switcher.js",
+   "status": 200,
+   "sha256": "8fbc404fc9d3415c",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/hub-quick-pairing.js",
+   "status": 200,
+   "sha256": "187d5d44582d077a",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/cli-picker.js",
+   "status": 200,
+   "sha256": "9bfa2f309181d290",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/structured-signin.js",
+   "status": 200,
+   "sha256": "11913661d9152528",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/panel-settings.js",
+   "status": 200,
+   "sha256": "857e94bb6a3fe825",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/instance-switch.js",
+   "status": 200,
+   "sha256": "3ad9ba22116f12a9",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/account-identity.js",
+   "status": 200,
+   "sha256": "58c5adde8ba05b8a",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/general-location.js",
+   "status": 200,
+   "sha256": "efa13d68f9acb5b6",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/cli-caps.js",
+   "status": 200,
+   "sha256": "6d47437e2342f42c",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/model-picker.js",
+   "status": 200,
+   "sha256": "6f6063ada4c7fb87",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/native-pane-recovery.js",
+   "status": 200,
+   "sha256": "5ff624498e70183f",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/identity-card.js",
+   "status": 200,
+   "sha256": "0e6cc7eebbfa1bb2",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/ui-menu.js",
+   "status": 200,
+   "sha256": "51ec39fec7ed1d7e",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/chat-strings.js",
+   "status": 200,
+   "sha256": "fb99a156280a48c7",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-confirm.js",
+   "status": 200,
+   "sha256": "db54c674121a4603",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/chat-composer.js",
+   "status": 200,
+   "sha256": "23e6f5dc47f038d0",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/chat-store.js",
+   "status": 200,
+   "sha256": "148624fa1dc3ef5b",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/chat-quote.js",
+   "status": 200,
+   "sha256": "50fcda6f4f889016",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/chat-msg-actions.js",
+   "status": 200,
+   "sha256": "fc1668d8faab616f",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/chat-thread.js",
+   "status": 200,
+   "sha256": "535dc835a85f53e8",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/chat-emojis.js",
+   "status": 200,
+   "sha256": "8c5f81e4b455c521",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/preview-status.js",
+   "status": 200,
+   "sha256": "b1ab5fccfb378b05",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/chat-mentions.js",
+   "status": 200,
+   "sha256": "f631da1206454d72",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/preview-panel-actions.js",
+   "status": 200,
+   "sha256": "aab4e32c1471943c",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/preview-panel.js",
+   "status": 200,
+   "sha256": "0314fc1ec9b2eaab",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/chat-commands.js",
+   "status": 200,
+   "sha256": "39d0ee496042450e",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/chat-tour.js",
+   "status": 200,
+   "sha256": "e891cb4c37c7b4b7",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/image-lightbox.js",
+   "status": 200,
+   "sha256": "2284367b082ca539",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/chat-ambient.js",
+   "status": 200,
+   "sha256": "6a839e3b81b44c1a",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/hub-client.js",
+   "status": 200,
+   "sha256": "e650f6383e626eef",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/hub-strings.js",
+   "status": 200,
+   "sha256": "2472120486371a3a",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/hub-company-join-strings.js",
+   "status": 200,
+   "sha256": "9409c71c605f8bb2",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/hub-quick-strings.js",
+   "status": 200,
+   "sha256": "fa9724156cc78666",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/hub-read-strings.js",
+   "status": 200,
+   "sha256": "1be8bee71352ed41",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/provider-marks.js",
+   "status": 200,
+   "sha256": "0872a64d18b5e4c7",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/hub-owner-strings.js",
+   "status": 200,
+   "sha256": "d07902a4a675790a",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-build-version.js",
+   "status": 200,
+   "sha256": "5e683e041a904b58",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/setup-host-text.js",
+   "status": 200,
+   "sha256": "d59e74569219d9d8",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-shared-strings.js",
+   "status": 200,
+   "sha256": "d9726acd3dda4ad8",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/agent-page-strings.js",
+   "status": 200,
+   "sha256": "c877087c844c08e2",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-registry.js",
+   "status": 200,
+   "sha256": "09d5d8c27767dabf",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-strings.js",
+   "status": 200,
+   "sha256": "3685791d1b0b7a55",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-restart-strings.js",
+   "status": 200,
+   "sha256": "00f5e28fe0a0a58d",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-apply.js",
+   "status": 200,
+   "sha256": "d7d3fded9860c2d4",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-update.js",
+   "status": 200,
+   "sha256": "68be77c7b0530f60",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-model.js",
+   "status": 200,
+   "sha256": "abe877523e2f7e41",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-access-strings.js",
+   "status": 200,
+   "sha256": "c9ddaa923d255d2e",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-wizard.js",
+   "status": 200,
+   "sha256": "202f66647d8881a0",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-quota-notice.js",
+   "status": 200,
+   "sha256": "f99db2286485bc78",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-dialogs.js",
+   "status": 200,
+   "sha256": "a38de8ad6f6e4a5b",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-shared.js",
+   "status": 200,
+   "sha256": "1d75a1e154818366",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/native-instance-settings.js",
+   "status": 200,
+   "sha256": "4b4e28abd518bd75",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/hub.css",
+   "status": 200,
+   "sha256": "f944a5a768f17d56",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/panel-runtimes.js",
+   "status": 200,
+   "sha256": "484771b55207fcb9",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-appearance.js",
+   "status": 200,
+   "sha256": "167c40e22dc73fb0",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/panel-fleet.js",
+   "status": 200,
+   "sha256": "34d9d1f3be90b9d2",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-request.js",
+   "status": 200,
+   "sha256": "8f388533381376b3",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/first-run.js",
+   "status": 200,
+   "sha256": "0b363c12046deb67",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/office-share-dialog.js",
+   "status": 200,
+   "sha256": "3506cd35f00f2e14",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-guests.js",
+   "status": 200,
+   "sha256": "7e902bc960da79ca",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-draft.js",
+   "status": 200,
+   "sha256": "9a5b3a07613152dc",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-web-authority.js",
+   "status": 200,
+   "sha256": "eaff2462b280b0f0",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-access-overview.js",
+   "status": 200,
+   "sha256": "a2d7bd342b6606a8",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/page-share-dialog.js",
+   "status": 200,
+   "sha256": "fb83df8a590f4da0",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-outside.js",
+   "status": 200,
+   "sha256": "7a93e505f558ecb8",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-named-test.js",
+   "status": 200,
+   "sha256": "633ccbc6e06947c8",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-devices.js",
+   "status": 200,
+   "sha256": "36bcf9207b822547",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-hub-section.js",
+   "status": 200,
+   "sha256": "ae35b9de1c93479e",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-catalog.js",
+   "status": 200,
+   "sha256": "c2277ff35f029559",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/runtime-catalog.js",
+   "status": 200,
+   "sha256": "8dcd449764b70e87",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-layout.js",
+   "status": 200,
+   "sha256": "af0c4fd37f8dfec1",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-agent-filters.js",
+   "status": 200,
+   "sha256": "e2be5b57b659784d",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/accounts-view.js",
+   "status": 200,
+   "sha256": "9eabeaedcae2bbc4",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-shortcuts.js",
+   "status": 200,
+   "sha256": "c6c18ee3d3734eb4",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/card-strings.js",
+   "status": 200,
+   "sha256": "8b831695aa0b6ed5",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/chat-render.js",
+   "status": 200,
+   "sha256": "80d27c7b6ca39b27",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/chat-live-replies.js",
+   "status": 200,
+   "sha256": "d2441422fa50cf67",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/preview.js",
+   "status": 200,
+   "sha256": "d179862fd1d2535b",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/chat-time.js",
+   "status": 200,
+   "sha256": "ca3dacd41ddf8284",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/preview-panel-actions.js",
+   "status": 200,
+   "sha256": "a309a0f76d2a3d67",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/html-attachment.js",
+   "status": 200,
+   "sha256": "45ce6f2b941c6f0d",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/preview-panel.js",
+   "status": 200,
+   "sha256": "03ca3d5902a6a9bf",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/fx-motion.js",
+   "status": 200,
+   "sha256": "bda66cdd70fe0450",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/image-zoom.js",
+   "status": 200,
+   "sha256": "2b1261dc8cab528b",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/workspace-panel.js",
+   "status": 200,
+   "sha256": "cdedf76f46cb8362",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-revoke-strings.js",
+   "status": 200,
+   "sha256": "d24399ef36745094",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-token.js",
+   "status": 200,
+   "sha256": "e487caa2269d950f",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-discord.js",
+   "status": 200,
+   "sha256": "64e93dcb107b47e2",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-codex-copy.js",
+   "status": 200,
+   "sha256": "ba3a3b9f6c40d57f",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/agent-instructions-field.js",
+   "status": 200,
+   "sha256": "3f85b759b782dd97",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/agent-runtime-settings.js",
+   "status": 200,
+   "sha256": "1f4b6bb65220e585",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/credential-profile-select.js",
+   "status": 200,
+   "sha256": "213ca747dc5c502e",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/runtime-cli-install.js",
+   "status": 200,
+   "sha256": "91e78717871978fd",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/runtime-update-status.js",
+   "status": 200,
+   "sha256": "60ffcec9989db3e2",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/runtime-commands.js",
+   "status": 200,
+   "sha256": "49144d03b0527b71",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/windows-cli-catalog.js",
+   "status": 200,
+   "sha256": "ba23352a73106b9d",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/panel-windows-cli.js",
+   "status": 200,
+   "sha256": "a9336bd72c3db37e",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/agent-runtime.js",
+   "status": 200,
+   "sha256": "8fd357ee1b2c3824",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-learn.js",
+   "status": 200,
+   "sha256": "c1930acc2898d93d",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/settings-mods.js",
+   "status": 200,
+   "sha256": "55423f1135549c66",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-cache.js",
+   "status": 200,
+   "sha256": "dbc8f97c59b6e61c",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-tasks.js",
+   "status": 200,
+   "sha256": "17be536947fc7a1c",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-canvas.js",
+   "status": 200,
+   "sha256": "9065419622518d77",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/page-head.js",
+   "status": 200,
+   "sha256": "a9e9e71b8e64b54a",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/accounts-manage.js",
+   "status": 200,
+   "sha256": "7132a53e6f9cd911",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/accounts-keepalive.js",
+   "status": 200,
+   "sha256": "47dc197d38661390",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/host-install.js",
+   "status": 200,
+   "sha256": "18a6da06ecfef4b9",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-usage.js",
+   "status": 200,
+   "sha256": "7940c7360ffe5537",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/machine-signin.js",
+   "status": 200,
+   "sha256": "884c226f7fd9ae5f",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/chat-md-strings.js",
+   "status": 200,
+   "sha256": "31a90eea31b3f957",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/preview-versions.js",
+   "status": 200,
+   "sha256": "0583433c1027b8ca",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/preview-pages.js",
+   "status": 200,
+   "sha256": "6a1fd446d3200fa3",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/runtime-update-commands.js",
+   "status": 200,
+   "sha256": "b6f19d48e1c3259c",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/workspace-follow-strings.js",
+   "status": 200,
+   "sha256": "880aa89650dc8feb",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/workspace-strings.js",
+   "status": 200,
+   "sha256": "df4dbbf44d65daab",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-task-common.js",
+   "status": 200,
+   "sha256": "4292df7a24d06a15",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-task-stats.js",
+   "status": 200,
+   "sha256": "1016c4e485444621",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-task-work.js",
+   "status": 200,
+   "sha256": "690045dcd796cb58",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-org.js",
+   "status": 200,
+   "sha256": "ff3fc8fd14a56002",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-task-menu.js",
+   "status": 200,
+   "sha256": "26df41bad8a95208",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-task-view.js",
+   "status": 200,
+   "sha256": "30ae50ddd599f850",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-canvas-layout.js",
+   "status": 200,
+   "sha256": "890afa65d44d9dd6",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-task-card.js",
+   "status": 200,
+   "sha256": "d02fe51120935ca4",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-traffic.js",
+   "status": 200,
+   "sha256": "edb43159ad2e81f2",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-route-scene.js",
+   "status": 200,
+   "sha256": "145c671fb47f8eb1",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-canvas-view.js",
+   "status": 200,
+   "sha256": "199c0c33490bf43e",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-route.js",
+   "status": 200,
+   "sha256": "089e17faa09f8173",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office.js",
+   "status": 200,
+   "sha256": "9d54256e9073b6b0",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office-model.js",
+   "status": 200,
+   "sha256": "3889e0f7da854597",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office-levels.js",
+   "status": 200,
+   "sha256": "93a5c28cf162f47e",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office-skin.js",
+   "status": 200,
+   "sha256": "43f40ca042956104",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office-card.js",
+   "status": 200,
+   "sha256": "fdcfaab4872a1d18",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office-zones.js",
+   "status": 200,
+   "sha256": "d500d8cb3e7350fa",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office-store.js",
+   "status": 200,
+   "sha256": "b51a6462a53106c0",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office-editor.js",
+   "status": 200,
+   "sha256": "82767b783b244090",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office-view.js",
+   "status": 200,
+   "sha256": "1e5efd6267b2062d",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office-dialogue.js",
+   "status": 200,
+   "sha256": "1528d5da20006de5",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office-overview.js",
+   "status": 200,
+   "sha256": "a96ac0d5e6df964f",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office-layout.js",
+   "status": 200,
+   "sha256": "3ade469e3f62c9d1",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/ui/js/fleet-office-pack.js",
+   "status": 200,
+   "sha256": "b88c52383ce685f1",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/task-board.css",
+   "status": 200,
+   "sha256": "8788201aad76b78b",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/runtime-install.css",
+   "status": 200,
+   "sha256": "b0990ff3d911cccd",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/access-overview.css",
+   "status": 200,
+   "sha256": "24e87e3a9db59f4f",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-load",
+   "path": "/assets/model-picker.css",
+   "status": 200,
+   "sha256": "fb2132a83b8521d3",
+   "from": "OLD"
+  },
+  {
+   "phase": "old-tab-after-upgrade",
+   "path": "/ui/js/settings-hub-setup.js",
+   "status": 200,
+   "sha256": "456f51d3e0d68974",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-after-upgrade",
+   "path": "/ui/js/settings-hub-setup-strings.js",
+   "status": 200,
+   "sha256": "b287b3aedeae8c2f",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-after-upgrade",
+   "path": "/ui/js/settings-hub-connection.js",
+   "status": 200,
+   "sha256": "6ea234e5c7abe097",
+   "from": "NEW"
+  },
+  {
+   "phase": "old-tab-after-upgrade",
+   "path": "/ui/js/settings-hub-membership.js",
+   "status": 200,
+   "sha256": "9f1cee540f4b0295",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-after-upgrade",
+   "path": "/ui/js/hub-join-one-strings.js",
+   "status": 200,
+   "sha256": "b88374b979a4f183",
+   "from": "NEW"
+  },
+  {
+   "phase": "old-tab-after-upgrade",
+   "path": "/ui/js/settings-hub-company-join.js",
+   "status": 200,
+   "sha256": "6f721f4bf55c27e7",
+   "from": "NEW"
+  },
+  {
+   "phase": "old-tab-after-upgrade",
+   "path": "/ui/js/settings-hub.js",
+   "status": 200,
+   "sha256": "4f1cef56c428d35a",
+   "from": "NEW"
+  },
+  {
+   "phase": "old-tab-after-upgrade",
+   "path": "/ui/js/hub-provider-guidance.js",
+   "status": 200,
+   "sha256": "c576b285bb5e4e4b",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-after-upgrade",
+   "path": "/ui/js/hub-agent-copy.js",
+   "status": 200,
+   "sha256": "1a7743e19c3de707",
+   "from": "both"
+  },
+  {
+   "phase": "old-tab-after-upgrade",
+   "path": "/ui/js/hub-pairing-progress-strings.js",
+   "status": 200,
+   "sha256": "d99e5da4332b734c",
+   "from": "both"
+  }
+ ]
+}
