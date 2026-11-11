@@ -25,7 +25,7 @@ What AgEnD is: it runs several AI coding agents (Claude Code, Codex, Kiro CLI an
 4. **Don't turn off or work around any security setting.** That includes access lists, sign-in codes and file permissions (no `chmod 777`). Don't reinstall with `--force`.
 5. **Don't do anything that affects the whole computer without the user's OK.** For example a restart, `wsl --shutdown`, `wsl --unregister`, or deleting existing AgEnD data (`~/.agend`).
 6. **When something fails:** show the user the exact error and check section 7, Troubleshooting. If nothing there matches, stop and explain. Don't guess at system changes.
-7. **First check whether you are yourself an agent inside AgEnD.** Run `echo "$AGEND_INSTANCE_NAME"` in **your own** shell.
+7. **First check whether you are yourself an agent inside AgEnD.** Run `echo "$AGEND_INSTANCE_NAME"` in **your own** shell (Windows PowerShell: `$env:AGEND_INSTANCE_NAME`).
    - Set: AgEnD manages you, so it is already running on this computer. Only do the checks in section 5. **Don't** install, stop or restart AgEnD: that would interrupt you and every other agent.
    - Empty: carry on below.
 
@@ -132,10 +132,10 @@ It asks its questions in **its own window**, so **don't** run it inside your own
 To check the Windows install: read `%LOCALAPPDATA%\AgEnD\install.json`. It records the Linux distribution (`distro`) and user (`user`). Then run:
 
 ```powershell
-wsl -d <distro> -u <user> -- bash -lc "agend --version && agend ls"
+wsl -d <distro> -u <user> -- bash -lc "agend --version && agend ls && systemctl --user is-active com.agend.fleet"
 ```
 
-Run the checks in section 5 the same way, inside WSL. Once set up, the **AgEnD 儀表板** shortcut on the desktop opens the dashboard with a new sign-in code.
+The last line should say `active` (the installer already installed AgEnD as a service). Run the checks in section 5 the same way, inside WSL, but **skip** section 5's "Start AgEnD at login". Once set up, the **AgEnD 儀表板** shortcut on the desktop opens the dashboard with a new sign-in code.
 
 The full guide, for the user: https://songsid.github.io/AgEnD/install-windows/
 
@@ -212,11 +212,11 @@ After the approval, ⛔ **ask the user to go back to the setup page (still open)
 ### When the setup page goes wrong
 
 - **The tab was closed and the code no longer works** (the page says the code is incorrect): the code works only once.
-  1. Stop the `agend setup` still running in the background (stop that background task; if it's still there, `cat ~/.agend/fleet.lock` shows `"role":"setup-host"` and its `pid`: `kill` that pid).
+  1. Stop the `agend setup` you started in the background: stop your own background task. **Don't** kill a pid taken from `~/.agend/fleet.lock` (it may belong to another program by now). If you no longer control that task, wait for the page to close itself (at most 15 minutes), or ⛔ STOP and ask the user to press Ctrl-C in the terminal running it.
   2. Run `agend setup` again and give the user the new address and code.
-- **A new `agend setup` says `This installation already has agents configured`**: the settings were already written (for example the tab was closed after the approval, before Start AgEnD). Stop the leftover `agend setup` (as above), run `agend start`, and go to **section 5**.
+- **A new `agend setup` says `This installation already has agents configured`**: the settings were already written (for example the tab was closed after the approval, before Start AgEnD). Stop the leftover `agend setup` (as above), run `agend start`, and go to **section 5**. If `agend start` refuses because the setup page is still running, wait for it to close, then try again.
 - **It says `Setup has already been completed`**: setup finished earlier. Go to **section 5**. Don't use `--reset` unless the user explicitly asks.
-- **Approved, but the tab was closed before Start AgEnD**: the settings are written. Stop the leftover `agend setup` (as above; `ps` may show it as `node …/agend.cjs setup`), run `agend start`, and go to **section 5**.
+- **Approved, but the tab was closed before Start AgEnD**: the settings are written. Stop the leftover `agend setup` (as above), run `agend start`, and go to **section 5**.
 - **The page closes itself after 15 minutes or too many wrong codes**: run `agend setup` again.
 
 (If the user would rather set up in a terminal, ask them to run `agend quickstart` in **their own terminal window** and answer its questions. It's interactive; your tool can't answer it for them.)
@@ -250,6 +250,8 @@ Once the user sees the dashboard, you're done.
 - **With a bot**, ask the user to send a message in the Telegram group's General topic (or Discord's General channel) and check the bot answers.
 
 ### Start AgEnD at login
+
+**This part is only for macOS / Linux set up with `agend setup`.** The Windows installer already installs AgEnD as a service and starts it: skip this part and just check the service runs (section 3B).
 
 AgEnD started by the setup page is an ordinary background process: it doesn't come back after the computer restarts. ⛔ **STOP and ask the user whether it should start at login**, and tell them that setting it up stops AgEnD briefly and starts it again as a service, so any agent at work is interrupted once. If yes (macOS, or Linux with systemd):
 

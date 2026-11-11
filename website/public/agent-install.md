@@ -25,7 +25,7 @@ AgEnD 是什麼：在這台電腦上同時管理多個 AI 程式代理（Claude 
 4. **不要關閉或繞過任何安全設定。** 包括存取名單、登入碼、檔案權限（不要 `chmod 777`），也不要用 `--force` 重灌。
 5. **不要做影響整台電腦的動作，除非使用者同意。** 例如重新開機、`wsl --shutdown`、`wsl --unregister`、刪除既有的 AgEnD 資料（`~/.agend`）。
 6. **出錯時：** 把錯誤訊息原文告訴使用者，對照第 7 節「疑難排解」。找不到對應時就停下來說明，不要猜著修改系統設定。
-7. **先檢查你自己是不是 AgEnD 裡的 Agent。** 在**你自己的** shell 執行 `echo "$AGEND_INSTANCE_NAME"`。
+7. **先檢查你自己是不是 AgEnD 裡的 Agent。** 在**你自己的** shell 執行 `echo "$AGEND_INSTANCE_NAME"`（Windows PowerShell：`$env:AGEND_INSTANCE_NAME`）。
    - 有值：你就是 AgEnD 管理的 Agent，AgEnD 已經在這台電腦上跑了。只做第 5 節的驗證，**不要**安裝、停止或重新啟動 AgEnD（那會中斷你自己和其他 Agent）。
    - 沒有值：照下面的步驟做。
 
@@ -132,10 +132,10 @@ Windows 安裝程式會：
 檢查 Windows 上的安裝：讀 `%LOCALAPPDATA%\AgEnD\install.json`，裡面記著 Linux 發行版名稱（`distro`）和使用者（`user`），然後執行：
 
 ```powershell
-wsl -d <distro> -u <user> -- bash -lc "agend --version && agend ls"
+wsl -d <distro> -u <user> -- bash -lc "agend --version && agend ls && systemctl --user is-active com.agend.fleet"
 ```
 
-第 5 節的驗證指令都用同樣的方式在 WSL 裡執行。設定好之後，桌面上的「AgEnD 儀表板」捷徑會打開儀表板並帶上新的登入碼。
+最後一行應該是 `active`（安裝程式已經把 AgEnD 裝成服務）。第 5 節的驗證指令都用同樣的方式在 WSL 裡執行，但**不要**做第 5 節的「開機後自動執行」。設定好之後，桌面上的「AgEnD 儀表板」捷徑會打開儀表板並帶上新的登入碼。
 
 完整說明（給使用者看）：https://songsid.github.io/AgEnD/zh-tw/install-windows/
 
@@ -212,11 +212,11 @@ agend settings confirm <編號>
 ### 設定頁出了狀況
 
 - **分頁被關掉、設定碼不能再用**（頁面說代碼不正確）：設定碼只能用一次。
-  1. 停掉還在背景跑的 `agend setup`（停止那個背景工作；若還在，`cat ~/.agend/fleet.lock` 會看到 `"role":"setup-host"` 和它的 `pid`，對那個 pid 送 `kill`）。
+  1. 停掉你在背景執行的 `agend setup`：停止你自己開的那個背景工作。**不要**依 `~/.agend/fleet.lock` 裡的 pid 去 kill 程式（那個 pid 可能已經屬於別的程式）。如果你已經無法控制那個背景工作，就等設定頁自己關閉（最多 15 分鐘），或 ⛔ 請使用者在執行它的終端機按 Ctrl-C。
   2. 再執行一次 `agend setup`，把新的網址和設定碼給使用者。
-- **再執行 `agend setup` 時說 `This installation already has agents configured`**：設定已經寫好了（例如核准後、還沒按「啟動 AgEnD」就關掉分頁）。停掉殘留的 `agend setup`（同上），執行 `agend start`，到**第 5 節**。
+- **再執行 `agend setup` 時說 `This installation already has agents configured`**：設定已經寫好了（例如核准後、還沒按「啟動 AgEnD」就關掉分頁）。停掉殘留的 `agend setup`（同上），執行 `agend start`，到**第 5 節**。若 `agend start` 因設定頁還在執行而拒絕，等它關閉後再試。
 - **說 `Setup has already been completed`**：之前設定完成過。到**第 5 節**，不要用 `--reset` 重設，除非使用者明確要求。
-- **核准了、但還沒按「啟動 AgEnD」分頁就關了**：設定已經寫好。停掉殘留的 `agend setup`（同上；它在 `ps` 裡可能顯示成 `node …/agend.cjs setup`），執行 `agend start`，到**第 5 節**。
+- **核准了、但還沒按「啟動 AgEnD」分頁就關了**：設定已經寫好。停掉殘留的 `agend setup`（同上），執行 `agend start`，到**第 5 節**。
 - **頁面 15 分鐘後或錯誤太多次會自動關閉**：再執行一次 `agend setup`。
 
 （使用者偏好在終端機設定的話，可以請他在**自己的終端機視窗**執行 `agend quickstart`，照提示回答。它是互動式的，你的工具無法代為回答。）
@@ -250,6 +250,8 @@ Code:         ABCD-EFGH   (works once, valid ~5 min)
 - **用 bot 的話**，請他在 Telegram 群組的 General 主題（或 Discord 的 General 頻道）傳一則訊息，確認 bot 有回應。
 
 ### 讓 AgEnD 開機（登入）後自動執行
+
+**這一段只適用於 macOS／Linux 用 `agend setup` 設定的情況。** Windows 安裝程式已經把 AgEnD 裝成服務並啟動：跳過這一段，只確認服務在執行（第 3B 節）。
 
 設定頁啟動的 AgEnD 是一般背景程式，電腦重開後不會自己回來。⛔ **停下，問使用者要不要開機後自動執行**，並告訴他：設定時 AgEnD 會先停一下再以服務重新啟動，正在工作的 Agent 會被中斷一次。 要的話（macOS，或有 systemd 的 Linux）：
 
