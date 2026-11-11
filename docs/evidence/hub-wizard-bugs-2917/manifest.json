@@ -1,0 +1,194 @@
+{
+  "c5c5eb1895480a8da34c76076d95b2c9afbb420b915e8a10713a86691e9843b8": [
+    "docs/evidence/hub-wizard-bugs-2917/README.md"
+  ],
+  "5bb99a8cad0e32ab545b55a1e9f90148e29ba0c83f1abdcda253516a2d314c8b": [
+    "docs/evidence/hub-wizard-bugs-2917/changelog.log"
+  ],
+  "535ac51f4097189ef5d008ce7bb8f9e9c05ddd842d144cb0a8a2f5d1ae460dd7": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-en/certificate-guidance.txt"
+  ],
+  "02ed8b80e7846c8e54503712f5dad408c16e7a7660960fdad9a7995049ce0c1a": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-en/empty-address.txt"
+  ],
+  "b026cd6ef7ba5609e6b88c7aaebbfcd057d9d0a45a1753d1464a68d1cf7c7653": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-en/fingerprint-enter.txt"
+  ],
+  "ea4262a98abade7fd40933f3432e0cd4549b467c00386f57a6790302a6ae6897": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-en/handoff.txt"
+  ],
+  "338689fb33bfcb0e951bfd5f3a8a67a1596a9913e4e17ab0b093a58ba440a47e": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-en/receipt.json"
+  ],
+  "56fd826707cf3c5440981621731e61c9f2ed4f162afe0bf9a8991a0ed8939cb3": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-en/secret-method.txt"
+  ],
+  "c1776294b030dbe2c4e636554f86b153aff66666eb0321b13cbd54629b1fd7b1": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-en.log",
+    "docs/evidence/hub-wizard-bugs-2917/container/base-zh-TW.log"
+  ],
+  "14595ad99fabb3f51df9724af212ad26cbd9c25a2153ca6f6ab59aff918e71ac": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-zh-TW/certificate-guidance.txt"
+  ],
+  "133390b899c1d3b75a65969ecac4e0eaf9fd9597784abb277d324617c9967be6": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-zh-TW/empty-address.txt"
+  ],
+  "f691043f5c1f2bba20c98be318bea7d09783ccce073fd81712bf0baec68003d1": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-zh-TW/fingerprint-enter.txt"
+  ],
+  "f230abdfd1b0f899c152399334f014792f02b5e8543f045478ea8996cf8ec316": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-zh-TW/handoff.txt"
+  ],
+  "016be732e0d5787be5ca2977767d7deb65a80e07c4f894c0e0fc743134c5c680": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-zh-TW/receipt.json"
+  ],
+  "09241238ea0beb9ced25e4ba247dc512238a72b4c6f378ac0923cc11294b46d4": [
+    "docs/evidence/hub-wizard-bugs-2917/container/base-zh-TW/secret-method.txt"
+  ],
+  "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec": [
+    "docs/evidence/hub-wizard-bugs-2917/container/build-base.log",
+    "docs/evidence/hub-wizard-bugs-2917/container/build-candidate.log"
+  ],
+  "1660dd1eb100dd50eb2399bc10ed400f3000c4b70e03e4df482048642b824f50": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-en/certificate-guidance.txt"
+  ],
+  "9c9fdc173c46dd0b71dadaf06f0d5661aebaf2e52982bb0ede3607d1d23bdb10": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-en/empty-address.txt"
+  ],
+  "1524fa4e2e388f0c587c12afa730a493fd1345ab00c291d0dd81e135702133c1": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-en/fingerprint-enter.txt"
+  ],
+  "ff29755f01280948c8fbcaac6146ada4fd10c961e3c0c5747fa918a13f4073d8": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-en/handoff.txt"
+  ],
+  "8c815c67cde568838483e3ac19b34aab49da5ab8f98ab306f7d8fb31b97fc6a4": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-en/receipt.json"
+  ],
+  "0f33ba1013e786bfb97d2b2c9fc4f910cf6b3d7a3804baebd2661e9b0db58583": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-en/secret-method.txt"
+  ],
+  "15a4ea027489a2396a1008ca56cf9130e810b979b93e08bd55235809c28bab07": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-en.log",
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-zh-TW.log"
+  ],
+  "876d3b35861a18870be19e708e980101d1149f6da133c6c249623be2975958c0": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-zh-TW/certificate-guidance.txt"
+  ],
+  "68a92d537b2d65cfe26264f69cd6fb497744479e337e09f82d1632306eb9a8d2": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-zh-TW/empty-address.txt"
+  ],
+  "be22f9d59b6c1e0eaa5118239549bb5b72dafec429eb677b639030cd889876f8": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-zh-TW/fingerprint-enter.txt"
+  ],
+  "460c31635dceecbb5a84007fded8ba6546ee3ec3186546a0664ebb2ae7608762": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-zh-TW/handoff.txt"
+  ],
+  "1b1e73551dfa0d351c3e1417e3e01c35301bd2fa88d44e13e449a42d67875156": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-zh-TW/receipt.json"
+  ],
+  "07fdcaf5a49cbc92a32d09b927f9d5cf455015b1c798c1a0754b5abdd398c751": [
+    "docs/evidence/hub-wizard-bugs-2917/container/candidate-zh-TW/secret-method.txt"
+  ],
+  "b795789fa9b1bbfe37c10d2aad80167c78b992297e0c5388320bc874336b77f2": [
+    "docs/evidence/hub-wizard-bugs-2917/container/container-artifacts.json"
+  ],
+  "30c2883f9bfac7f1f23af56bfd114aa9449998cbf44dc3dc5addf33b2b06ad59": [
+    "docs/evidence/hub-wizard-bugs-2917/container/container-cleanup.log"
+  ],
+  "0f3d8ddb8b3f4be24047c9777a60d9cfa289bfa36af73568ad7727dd319b3f8f": [
+    "docs/evidence/hub-wizard-bugs-2917/container/container-created.log"
+  ],
+  "96020ecbd8a2bbe4b6d420e81061c94422b23225271061679190729c18a18b89": [
+    "docs/evidence/hub-wizard-bugs-2917/container/fake-directory.log"
+  ],
+  "4d8143e3123a442c0bb8a711f52f8421483ddb42e36c3c6b981e208bcf675ce1": [
+    "docs/evidence/hub-wizard-bugs-2917/container/host-after.json"
+  ],
+  "f93841aa68a58f7fde91da2a540eeb8f306a1b08450f3a433fbb6936f4cd6a67": [
+    "docs/evidence/hub-wizard-bugs-2917/container/host-before.json"
+  ],
+  "aa92236e08ad1c4797a820bb28f2fb1b1d244241a300e430c11424f4d68806e4": [
+    "docs/evidence/hub-wizard-bugs-2917/container/inputs.json"
+  ],
+  "33e26f35db6e57ce0c486ddc815fe966867e4f649e418eaf323f75f4720eb8e9": [
+    "docs/evidence/hub-wizard-bugs-2917/container/node-version.txt"
+  ],
+  "594d5ddd35aedb47f00d9c34d140017907a5b9f93c975aba125fc924daac5c07": [
+    "docs/evidence/hub-wizard-bugs-2917/container/os-release.txt"
+  ],
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
+    "docs/evidence/hub-wizard-bugs-2917/container/setup.log"
+  ],
+  "9466ab18c3e8710c5cbf9302d195d2de97b896459b7857b23f5db9f2918129c5": [
+    "docs/evidence/hub-wizard-bugs-2917/container/summary.json"
+  ],
+  "713ecd0f994c436ee639a627091f6703ba74be2446d36245107d8f6c16f45c98": [
+    "docs/evidence/hub-wizard-bugs-2917/fail-first.log"
+  ],
+  "2c366a829a35133a44b21c83b00e49f82b8a72020e26387ab7a43186e80bb809": [
+    "docs/evidence/hub-wizard-bugs-2917/final-focused.log"
+  ],
+  "a433cfb5176bca738b67bb0347208aa02f6cabbc2114b510e3435da0530c0084": [
+    "docs/evidence/hub-wizard-bugs-2917/final-mutations.log"
+  ],
+  "eb7d5ca34a7e63d24e15739e28395c68ee03406b64737051631d00aea26e5ccf": [
+    "docs/evidence/hub-wizard-bugs-2917/mutations.json"
+  ],
+  "28f34adcce2d2ba2d1b4726f6dc48a9396a1c363263f06833536e7d43812e585": [
+    "docs/evidence/hub-wizard-bugs-2917/restored-focused.log"
+  ],
+  "272283a400fbce2b9c74902c7f23fc52a2085a39a5f8dbea1246daa71f344fe1": [
+    "docs/evidence/hub-wizard-bugs-2917/source-types.log"
+  ],
+  "21cc27fd5be2f91b90d3116616c151064f39e7b20e61f2334241585a2197a1d1": [
+    "docs/evidence/hub-wizard-bugs-2917/test-types.log"
+  ],
+  "599c5c29e2cfa1ac32088f71c110df311d049d388c6777910c40bd90afd92b61": [
+    "src/hub/init/prompt.ts"
+  ],
+  "9ec1312fadd9d151dd07f393986a71e2454b16562b4a25886ccf24a529cabdcf": [
+    "src/hub/init/text.ts"
+  ],
+  "0c3b337a332bcff4b36e2f451727c6e50ef57f02b63eb27af8d90f07c9a0c34c": [
+    "src/hub/init/wizard.ts"
+  ],
+  "7adb45a7f25070f35ce3e4719e1b747ead9ec02b5262130b9658f23093fe12a5": [
+    "tests/hub-init-setup-bugs-2917.test.ts"
+  ],
+  "d9e37f5b3c78003042efe1984cd637f4469442e9b33dd017290d739b8a56ade4": [
+    "tests/hub-init-wizard.test.ts"
+  ],
+  "8ea6ddaedb56b064e40939b7a548d41c230a43dde259b171afad0236c57ad224": [
+    "tests/hub-install-handoff.test.ts"
+  ],
+  "ab7d6dd2a365e1ea2d5cdf6b697c19fe05571c2c2c29bcf35dc92498c55b1f39": [
+    "tests/hub-secret-file-wizard.test.ts"
+  ],
+  "64f30a139de4cb9c6b96de197e9c9ef600f6d94bcbe6aba77fa338e98b2831e6": [
+    "tests/hub-secret-file-cli.test.ts"
+  ],
+  "82516fcea44bd43d9bd6f22c61c62245fdabea14ca297f82320104cd8e5239c8": [
+    "changes/3658-hub-wizard.md"
+  ],
+  "4ef536d6826d89abb76dc8838517983748a7f9c33223f37576d3ee83ffa390eb": [
+    "changes/3658-hub-wizard.zh-TW.md"
+  ],
+  "f917c994ebe8c5cd2cd6908d17785b7c503df85976c1776247b8fd00d2fcef2f": [
+    "scripts/manual/hub-wizard-bugs-2917/README.md"
+  ],
+  "8884f3284f795e8c4836e647439fff7529b8ab5578fe24f2c49d3c39b05ea559": [
+    "scripts/manual/hub-wizard-bugs-2917/fake-directory.mjs"
+  ],
+  "a23df1d0f34a0c5527037dea03ac65e18aea3d9055fe7376d94cd5bc43627219": [
+    "scripts/manual/hub-wizard-bugs-2917/mutations.py"
+  ],
+  "3a5b8c7175d16d039f3109c532e4368a5fe1dbe9f217a826dc2673863e4d33ac": [
+    "scripts/manual/hub-wizard-bugs-2917/pty-wizard.py"
+  ],
+  "3e9f6886a253a9bf508b4c1279062e036aac5647713fec24caba899ef8fdadbe": [
+    "scripts/manual/hub-wizard-bugs-2917/rehearse.sh"
+  ],
+  "2c13913e92a1806a1afd71cbf9862ae9eea487ae099f9199180d2b0c42eb8fa6": [
+    "scripts/manual/hub-wizard-bugs-2917/setup.sh"
+  ]
+}

@@ -1,0 +1,18 @@
+Installed build: source · eeae77d272f5 (package 1.22.0). Run agend build-info --json for source details.
+
+═══ AgEnD Hub setup (experimental) ═══
+A Hub lets colleagues sign in with your organisation's directory and ask agents that fleet owners choose to publish.
+The Hub runs no agents and needs no AI CLI sign-in. Best placement: a dedicated, always-on machine or OS account with a stable intranet address.
+
+Hub name (optional; Enter shows “AgEnD Hub”): Retained setup
+Web address colleagues will open (https://host[:port]; a stable intranet IP or host name): https://hub.example.test:18601
+Member address fleets will connect to (https://host:port, different from the web address) [https://hub.example.test:9443]: https://hub.example.test:18602
+Web listener: the interface address and port to listen on []: 127.0.0.1:18601
+Member listener: the interface address and port to listen on []: 127.0.0.1:18602
+Checking the Hub's two local listeners…
+Both Hub listeners can bind locally; the check sockets are now closed. This does not test DNS from other computers, firewall access or reverse-proxy routing. Test both advertised HTTPS addresses from a member computer after startup.
+
+Browser HTTPS certificate
+To let colleagues connect with company accounts, Hub needs a certificate issued by your organisation's CA or another trusted CA, covering https://hub.example.test:18601. Hub and Fleet must use different hostnames (different ports are not enough). Self-signed certificates are for testing: bypassing a browser warning does not make a Fleet trust it.
+Certificate file (PEM, full chain), or type generate for a 30-day self-signed certificate: 
+Cancelled. Nothing was changed.

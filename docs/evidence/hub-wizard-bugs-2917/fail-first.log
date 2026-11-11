@@ -1,0 +1,175 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/hub-init-setup-bugs-2917.test.ts (14 tests | 13 failed) 2109ms
+     × returns to the CA choice on "" without trust, credentials or restarting the form 193ms
+     × returns to the CA choice on "not-a-fingerprint" without trust, credentials or restarting the form 13ms
+     × re-asks only the address for "" 26ms
+     × re-asks only the address for "   " 99ms
+     × re-asks only the address for "ldap://directory.example.test" 40ms
+     × re-asks only the address for "https://directory.example.test" 25ms
+     × re-asks only the address for "ldaps://user:dummy@directory.example.test" 5ms
+   × treats a password accidentally entered at the method choice as hidden invalid input, never as a password or output 6ms
+   × disables terminal echo before displaying a password prompt 2ms
+   × explains company-join certificate/hostname requirements before offering generation (en) 5ms
+   × explains company-join certificate/hostname requirements before offering generation (zh-TW) 2ms
+   × leads the completed handoff with the company-account one-box path (en) 255ms
+   × leads the completed handoff with the company-account one-box path (zh-TW) 807ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 13 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > CA refusal keeps earlier wizard answers > returns to the CA choice on "" without trust, credentials or restarting the form
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > CA refusal keeps earlier wizard answers > returns to the CA choice on "not-a-fingerprint" without trust, credentials or restarting the form
+AssertionError: expected 'cancelled' to be 'initialized' // Object.is equality
+
+Expected: "initialized"
+Received: "cancelled"
+
+ ❯ tests/hub-init-setup-bugs-2917.test.ts:57:27
+     55|   it.each(["", "not-a-fingerprint"])("returns to the CA choice on %j w…
+     56|     const t = rig([...start(), "corp", url, "fetch", pin, certs.caCert…
+     57|     expect(await t.run()).toBe("initialized");
+       |                           ^
+     58|     expect(t.io.remaining()).toBe(0);
+     59|     expect(t.io.prompts.filter(q => q === ht("name_q"))).toHaveLength(…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/13]⎯
+
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > directory endpoint is validated before CA choices or a TLS probe > re-asks only the address for ""
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > directory endpoint is validated before CA choices or a TLS probe > re-asks only the address for "   "
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > directory endpoint is validated before CA choices or a TLS probe > re-asks only the address for "ldap://directory.example.test"
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > directory endpoint is validated before CA choices or a TLS probe > re-asks only the address for "https://directory.example.test"
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > directory endpoint is validated before CA choices or a TLS probe > re-asks only the address for "ldaps://user:dummy@directory.example.test"
+AssertionError: CA prompt must wait for a valid LDAPS endpoint: expected [ Array(1) ] to have a length of 2 but got 1
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ Object.beforeAsk tests/hub-init-setup-bugs-2917.test.ts:81:139
+     79|     const t = rig([...start(), "corp", invalid, url, certs.caCert, "y"…
+     80|       beforeAsk(q, io) {
+     81|         if (q === ht("dir_ca_q")) expect(io.prompts.filter(x => x === …
+       |                                                                                                                                           ^
+     82|       },
+     83|     });
+ ❯ Object.io.io.ask tests/hub-init-setup-bugs-2917.test.ts:32:36
+ ❯ askDirectorySettings src/hub/init/wizard.ts:342:30
+ ❯ askDirectoryAndAdministrator src/hub/init/wizard.ts:279:22
+ ❯ wizard src/hub/init/wizard.ts:163:20
+ ❯ runHubInitWizard src/hub/init/wizard.ts:77:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/13]⎯
+
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > treats a password accidentally entered at the method choice as hidden invalid input, never as a password or output
+Error: script mismatch at "Service password: [1] enter without echo  [2] import a private file [1]: ": expected a visible answer
+ ❯ next tests/support/hub-init-fixtures.ts:157:36
+    155|     if (answer === undefined) throw new Error(`unscripted question: ${…
+    156|     const isHidden = typeof answer === "object";
+    157|     if (isHidden !== hidden) throw new Error(`script mismatch at "${qu…
+       |                                    ^
+    158|     const value = isHidden ? answer.hidden : answer;
+    159|     if (!hidden) out.push(value);
+ ❯ ask tests/support/hub-init-fixtures.ts:163:23
+ ❯ Object.io.io.ask tests/hub-init-setup-bugs-2917.test.ts:32:63
+ ❯ askBindSecret src/hub/init/wizard.ts:324:30
+ ❯ askDirectorySettings src/hub/init/wizard.ts:388:32
+ ❯ askDirectoryAndAdministrator src/hub/init/wizard.ts:279:22
+ ❯ wizard src/hub/init/wizard.ts:163:20
+ ❯ runHubInitWizard src/hub/init/wizard.ts:77:12
+ ❯ tests/hub-init-setup-bugs-2917.test.ts:94:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/13]⎯
+
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > disables terminal echo before displaying a password prompt
+AssertionError: expected [ false ] to deeply equal [ true ]
+
+- Expected
++ Received
+
+  [
+-   true,
++   false,
+  ]
+
+ ❯ tests/hub-init-setup-bugs-2917.test.ts:113:22
+    111|   listener!("Dummy-private-input\r");
+    112|   expect(await p).toBe("Dummy-private-input");
+    113|   expect(paintedRaw).toEqual([true]);
+       |                      ^
+    114|   expect(input.isRaw).toBe(false);
+    115| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/13]⎯
+
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > explains company-join certificate/hostname requirements before offering generation (en)
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > explains company-join certificate/hostname requirements before offering generation (zh-TW)
+AssertionError: expected 'cancelled' to be 'initialized' // Object.is equality
+
+Expected: "initialized"
+Received: "cancelled"
+
+ ❯ tests/hub-init-setup-bugs-2917.test.ts:120:25
+    118|   setLocale(locale);
+    119|   const t = rig([...start().slice(0, 5), "generate", "y", "corp", url,…
+    120|   expect(await t.run()).toBe("initialized");
+       |                         ^
+    121|   expect(t.io.text()).toMatch(/trusted|信任/);
+    122|   expect(t.io.text()).toMatch(/browser warning|瀏覽器警告/);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/13]⎯
+
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > leads the completed handoff with the company-account one-box path (en)
+AssertionError: expected 'Connecting fleets to this Hub\n  1. A…' to contain 'https://hub.example.test:8443/ui/hub'
+
+- Expected
++ Received
+
+- https://hub.example.test:8443/ui/hub
++ Connecting fleets to this Hub
++   1. As the administrator, sign in at https://hub.example.test:8443/web and create a pairing code for the fleet's owner (Administration → Paired fleets).
++   2. On the member's own computer, its owner opens Settings → Connect to a Hub, enters https://hub.example.test:9443 and the code.
++   3. Both screens show the same fingerprint; compare it, then the owner confirms and you approve.
++ Members pin this Hub's certificate key: SHA-256 ec1db9efadadbe1c5e02af5c4d3b33c27a7089c056941192a2c883d86129f2ef
+
+ ❯ tests/hub-init-setup-bugs-2917.test.ts:130:16
+    128|   expect(await t.run()).toBe("initialized");
+    129|   const text = t.io.text().slice(t.io.text().indexOf(ht("pairing_title…
+    130|   expect(text).toContain(web + "/ui/hub");
+       |                ^
+    131|   const company = locale === "en" ? "Sign in with company account" : "…
+    132|   const manual = locale === "en" ? "pairing code" : "配對碼";
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/13]⎯
+
+ FAIL  tests/hub-init-setup-bugs-2917.test.ts > leads the completed handoff with the company-account one-box path (zh-TW)
+AssertionError: expected '讓機群連上這個 Hub\n  1. 以管理員身分登入 https://hu…' to contain 'https://hub.example.test:8443/ui/hub'
+
+- Expected
++ Received
+
+- https://hub.example.test:8443/ui/hub
++ 讓機群連上這個 Hub
++   1. 以管理員身分登入 https://hub.example.test:8443/web，為機群主人建立配對碼（管理 → 已配對的機群）。
++   2. 成員主人在自己的電腦開啟 設定 → 連線到 Hub，輸入 https://hub.example.test:9443 與配對碼。
++   3. 兩邊畫面會顯示相同的指紋；核對後由主人確認、你核准。
++ 成員會釘選這個 Hub 的憑證金鑰：SHA-256 baf48d706e60d17a2b7baa2dc047f01aedc3c241f934d3c4033e7b2ece0decfe
+
+ ❯ tests/hub-init-setup-bugs-2917.test.ts:130:16
+    128|   expect(await t.run()).toBe("initialized");
+    129|   const text = t.io.text().slice(t.io.text().indexOf(ht("pairing_title…
+    130|   expect(text).toContain(web + "/ui/hub");
+       |                ^
+    131|   const company = locale === "en" ? "Sign in with company account" : "…
+    132|   const manual = locale === "en" ? "pairing code" : "配對碼";
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/13]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  13 failed | 1 passed (14)
+   Start at  18:53:29
+   Duration  6.63s (transform 2.87s, setup 1.08s, import 3.02s, tests 2.11s, environment 0ms)
+
