@@ -11,12 +11,13 @@ const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, encodi
 const digest = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 if (git("status", "--porcelain", "--untracked-files=no")) throw Error("capture requires a clean tracked tree");
 const head = git("rev-parse", "HEAD"), tree = git("rev-parse", "HEAD^{tree}");
-const inputs = ["src/settings-summary.ts", "src/settings-change.ts", "src/settings-confirmation.ts", "src/ui/shared/app-shell.js", "src/ui/settings-confirm.js", "src/ui/shared/app-i18n.js", "src/ui/shared/app.css", "src/ui/app.html", "scripts/manual/settings-summary-browser-3416.mts", "scripts/manual/smoke-fixture/index.mts"];
+const inputs = ["src/settings-summary.ts", "src/settings-change.ts", "src/settings-confirmation.ts", "src/ui/shared/app-shell.js", "src/ui/settings-confirm.js", "src/ui/shared/app-i18n.js", "src/ui/shared/app.css", "src/ui/app.html", "scripts/manual/settings-summary-browser-3416.mts", "scripts/manual/smoke-fixture/index.mts", "src/settings-effect.ts", "src/hub-pairing-summary.ts", "src/hub/member/exposure-api.ts", "tests/helpers/settings-summary-effects-3416.ts"];
 const sources = Object.fromEntries(inputs.map(p => [p, digest(readFileSync(join(repo, p)))]));
 const fx = await bootFixture({ port: Number(process.env.HP ?? 54940), instances: 2, classic: false });
 const { settingsChangeDiff } = await import(join(repo, "src/settings-change.ts"));
 const { SettingsConfirmationStore } = await import(join(repo, "src/settings-confirmation.ts"));
 const { setLocale } = await import(join(repo, "src/locale.ts"));
+const { effectSummaryCases } = await import(join(repo, "tests/helpers/settings-summary-effects-3416.ts"));
 const stores: any[] = [], results: any[] = []; let effects = 0;
 const keys = ["src/ui/shared/app-shell.js", "src/ui/settings-confirm.js", "src/ui/shared/app-i18n.js", "src/ui/shared/app.css"];
 const baselineAssets = Object.fromEntries(keys.map(p => [p, execFileSync("git", ["show", `${baseline}:${p}`], { cwd: repo, encoding: "utf8" })]));
@@ -30,8 +31,11 @@ try {
   for (const c of cases) {
     setLocale(c.lang === "en" ? "zh-TW" : "en");
     const instances = Object.fromEntries(["first", "second", "third"].map(n => [n, {}]));
-    const diff = settingsChangeDiff({ defaults: { cross_instance_visibility: "hidden" }, instances, api_key: "dummy-old" },
+    const generic = settingsChangeDiff({ defaults: { cross_instance_visibility: "hidden" }, instances, api_key: "dummy-old" },
       { defaults: { cross_instance_visibility: "full" }, instances, api_key: "dummy-next" }, { operation: "PATCH /api/settings/fleet" })!;
+    // A synthetic display gallery combines independent pure previews; it is never executed as one operation.
+    const extra = effectSummaryCases().filter(c => ["retention", "pair-connect", "exposure"].includes(c.name)).map(c => c.read().diff!);
+    const diff = { ...generic, summary: [...generic.summary, ...extra.flatMap(d => d.summary)], summary_i18n: [...generic.summary_i18n!, ...extra.flatMap(d => d.summary_i18n!)] };
     const store = new SettingsConfirmationStore({ audit: () => {} }); stores.push(store);
     const view: any = store.propose({ session: "owned-display-fixture", key: caseName(c) + c.variant, fingerprint: diff.fingerprint,
       section: diff.section, requestedBy: "Fixture browser", source: "web_session", summary: diff.summary, summary_i18n: diff.summary_i18n, bytes: 1,
@@ -68,13 +72,13 @@ try {
     if (canonical !== JSON.stringify({ summary: store.get(view.id, "owned-display-fixture")!.summary, fingerprint: diff.fingerprint })) throw Error("server record changed");
     const violations = await csp(); if (violations.length) throw Error("CSP: " + JSON.stringify(violations));
     await Promise.all(responses);
-    results.push({ name, fleetLocale: c.lang === "en" ? "zh-TW" : "en", pageLanguage: c.lang, text, switchText, canonical, layout, substitutions, served, csp: violations });
+    results.push({ name, fleetLocale: c.lang === "en" ? "zh-TW" : "en", pageLanguage: c.lang, text, switchText, canonical, layout, substitutions, served: Object.entries(served).map(([path,digest])=>({digest,paths:[path]})), csp: violations });
     await ctx.close(); store.close();
   }
 } finally { for (const s of stores) s.close(); await fx.close(); }
 if (effects !== 0 || git("rev-parse", "HEAD") !== head || git("status", "--porcelain", "--untracked-files=no")) throw Error("capture boundary changed");
 for (const p of inputs) if (sources[p] !== digest(readFileSync(join(repo, p)))) throw Error("source changed: " + p);
 writeFileSync(join(out, "receipt.json"), JSON.stringify({ head, tree, baseline, sources, browser: fx.browser.version(), effects, cases: results,
-  scope: "Display fixtures from real diff + confirmation store; real cookie sign-in/app.html/Settings shell/Preact/styles, recorded pending reads. No write, authority/effect or chat delivery E2E. Baseline exact assets substituted only as listed. No live account, fleet, CLI or native runtime." }, null, 2) + "\n");
+  scope: "Synthetic display gallery combining independent real diff/retention/pairing/exposure previews + confirmation store; never one executable operation; real cookie sign-in/app.html/Settings shell/Preact/styles, recorded pending reads. No write, authority/effect or chat delivery E2E. Baseline exact assets substituted only as listed. No live account, fleet, CLI or native runtime." }, null, 2) + "\n");
 console.log(JSON.stringify({ cases: results.length, screenshots: results.length + 2, effects, cleanup: "browser/listeners/store/scratch home closed" }));
 process.exit(0);

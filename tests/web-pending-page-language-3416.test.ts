@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { settingsChangeDiff } from "../src/settings-change.js";
-import { getLocale, setLocale } from "../src/locale.js";
+import { getLocale, setLocale, t } from "../src/locale.js";
 import { settingsSummaryCases } from "./helpers/settings-summary-cases-3416.js";
 const originalLocale = getLocale();
 let shell: any, app: any, words: any; const pages: AppPage[] = [];
@@ -72,4 +72,19 @@ it.each([{}, { 0: { v: 1, fallback: "original", parts: ["changed"] } }, [{ v: 1,
   const p = page(); pages.push(p); words.setLang("zh-TW", { store: false });
   app.appStore.set({ pendingChanges: [{ id: "f".repeat(32), state: "rejected", summary: ["original"], summary_i18n: presentation }] });
   await p.mount(h(shell.PendingChanges, {})); expect(p.root.querySelector(".pending-summary").textContent).toBe("original");
+});
+
+// Exact targets, versions, ports and fingerprints must survive translation in either direction.
+it.each(["en", "zh-TW"])("alpha effect summaries retain every argument in the %s page language", async language => {
+  const { effectSummaryMessages } = await import("./helpers/settings-summary-effects-3416.js");
+  const p = page(); pages.push(p); words.setLang(language, { store: false });
+  setLocale(language === "en" ? "zh-TW" : "en");
+  const rows = effectSummaryMessages.map(([key,args],i) => {
+    const line=t(key,...args); return {id:String(i).padStart(32,"b"),state:"rejected",summary:[line],summary_i18n:[{v:1,fallback:line,parts:[{key,args}]}]};
+  });
+  const canonical=JSON.stringify(rows); setLocale(language as "en" | "zh-TW");
+  const expected=effectSummaryMessages.map(([key,args])=>t(key,...args));
+  app.appStore.set({pendingChanges:rows}); await p.mount(h(shell.PendingChanges,{}));
+  expect([...p.root.querySelectorAll(".pending-summary li")].map((el:any)=>el.textContent)).toEqual(expected);
+  expect(JSON.stringify(rows)).toBe(canonical);
 });

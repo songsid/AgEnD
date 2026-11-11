@@ -50,3 +50,11 @@ it("freezes display metadata at proposal and in each read, outside audit and exe
     expect(apply).toHaveBeenCalledOnce();
   } finally { store.close(); }
 });
+
+it('alpha new-agent preferences localize absent without changing the selected backend',()=>{
+ setLocale('en');
+ const diff=settingsChangeDiff({new_instance:{}},{new_instance:{backend:'codex'}},{operation:'PATCH defaults'})!;
+ expect(diff.summary[0]).toBe('new\\_instance.backend: absent → codex');
+ expect(diff.summary_i18n![0]!.parts).toContainEqual({key:'settings_confirm.summary.absent',args:[]});
+ expect(diff.summary_i18n![0]!.fallback).toBe(diff.summary[0]);
+});
