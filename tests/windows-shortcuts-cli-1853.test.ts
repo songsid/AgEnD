@@ -20,7 +20,7 @@ import { InstallerPsBatch, hasPwsh } from "./support/installer-ps-batch.js";
 import {
   SHORTCUTS_HINT_MARKER, SHORTCUTS_MARKER, buildShortcutsScript, detectWsl, encodePowershell, findPowershell, interopState,
   powershellArgs, runShortcuts, sharedShortcutsPs, shortcutsHintOnce, type RunResult, type ShortcutsHost,
-  STDIN_LOADER, iconsLiteral, packageShortcutIcons,
+  STDIN_LOADER, iconsLiteral, packageShortcutIcons, stdinPayload,
 } from "../src/windows-shortcuts.js";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -67,7 +67,10 @@ describe("one copy of the shortcut code", () => {
     const args = powershellArgs();
     expect(decode(args)).toBe(STDIN_LOADER);
     expect(PS.length + args.join(" ").length).toBeLessThan(1_000);
-    expect(STDIN_LOADER).toMatch(/\[Console\]::OpenStandardInput\(\), \(New-Object Text\.UTF8Encoding \$false\)/);   // bytes as UTF-8, never the console code page
+    // Base64 of the UTF-8 script, so standard input is ASCII: 5.1 passes it through the console code page (a real Windows turned 儀表板 into ???).
+    expect(STDIN_LOADER).toMatch(/\[Text\.Encoding\]::UTF8\.GetString\(\[Convert\]::FromBase64String\(\$b\.Trim\(\)\)\)/);
+    expect(stdinPayload("中文")).toMatch(/^[A-Za-z0-9+/=]+$/);
+    expect(Buffer.from(stdinPayload("Write-Output '儀表板'"), "base64").toString("utf8")).toBe("Write-Output '儀表板'");
     expect(STDIN_LOADER).toMatch(/\. \(\[ScriptBlock\]::Create\(\$s\)\)$/);                                   // run at the top level (functions, exit)
     const full = buildShortcutsScript(shared, "Ubuntu-24.04", "a-rather-long-user-name", undefined, packageShortcutIcons());
     expect(full.length).toBeGreaterThan(32_767);                                                                 // the reason
@@ -105,7 +108,7 @@ describe("agend shortcuts", () => {
     expect(runs[0]!.args.slice(0, 5)).toEqual(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand"]);
     expect(runs[0]!.args).toHaveLength(6);
     expect(decode(runs[0]!.args)).toBe(STDIN_LOADER);
-    const script = runs[0]!.input;
+    const script = Buffer.from(runs[0]!.input, "base64").toString("utf8");
     expect(script).toContain(shared);
     expect(script).toContain("$script:OnWindows = $true");
     expect(script).toContain("$made = @(Install-AgendShortcuts 'Ubuntu-22.04' 'han' $null)");
@@ -119,7 +122,7 @@ describe("agend shortcuts", () => {
   it("M-2885: the package's icons go into the script as base64 bytes, both of them, and the real CLI deps read templates/icons", async () => {
     const { d, runs } = deps(host());
     expect(await runShortcuts({ ...d, icons: () => ICONS })).toBe(0);
-    expect(runs[0]!.input).toContain("$made = @(Install-AgendShortcuts 'Ubuntu-22.04' 'han' @{ 'agend.ico' = [Convert]::FromBase64String('AAABAAE='); 'agend-restart.ico' = [Convert]::FromBase64String('AAABAAI=') })");
+    expect(Buffer.from(runs[0]!.input, "base64").toString("utf8")).toContain("$made = @(Install-AgendShortcuts 'Ubuntu-22.04' 'han' @{ 'agend.ico' = [Convert]::FromBase64String('AAABAAE='); 'agend-restart.ico' = [Convert]::FromBase64String('AAABAAI=') })");
     expect(iconsLiteral({ "agend.ico": ICONS["agend.ico"] })).toBe("@{ 'agend.ico' = [Convert]::FromBase64String('AAABAAE=') }");   // a missing one is left out
     expect(iconsLiteral({})).toBe("$null");
     const real = packageShortcutIcons();
@@ -155,7 +158,7 @@ describe("agend shortcuts", () => {
       const answers = [other, second];
       const d = {
         host: host({ env: { WSL_DISTRO_NAME: "AgEnD", PATH: "/usr/bin" } }), user: "root", dataDir: "/root/.agend", shared: () => shared,
-        run: (_c: string, _args: string[], input: string) => { runs.push(input); return answers.shift()!; },
+        run: (_c: string, _args: string[], input: string) => { runs.push(Buffer.from(input, "base64").toString("utf8")); return answers.shift()!; },
         writeMarker: (path: string) => { markers.push(path); }, log: (l: string) => { lines.push(l); },
         now: () => new Date("2026-10-20T12:00:00Z"), confirm: async (q: string) => { asked.push(q); return answer; },
       };
@@ -479,14 +482,14 @@ describe.skipIf(!pwsh)("M-2885 with pwsh: the real process — loader on the com
     try {
       const env = { ...process.env, PATH: w.bin + ":" + (process.env.PATH ?? ""), LOCALAPPDATA: w.local, HOME: w.dir, USERPROFILE: w.dir, TMPDIR: w.dir, SystemRoot: join(w.dir, "Windows") };
       const script = fakeCom + "\n" + buildShortcutsScript(shared, "AgEnD", "root", undefined, ICONS);
-      const r = spawnSync("pwsh", powershellArgs(), { input: script, encoding: "utf8", env, timeout: 120_000 });
+      const r = spawnSync("pwsh", powershellArgs(), { input: stdinPayload(script), encoding: "utf8", env, timeout: 120_000 });
       expect(r.stderr).toBe("");
       expect(r.stdout).toMatch(/^AGEND_SHORTCUTS_MADE=2\r?$/m);
       expect(r.status).toBe(0);
       expect(readFileSync(join(w.local, "AgEnD", "restart-agend.ps1"), "utf8")).toContain("確定要重啟 AgEnD 嗎");
       expect(readFileSync(join(w.local, "AgEnD", "agend-restart.ico")).equals(ICONS["agend-restart.ico"])).toBe(true);
       expect(readFileSync(join(w.local, "lnk.txt"), "utf8")).toMatch(/AgEnD 重新啟動\.lnk \| .* \| icon=.*agend-restart\.ico,0/);
-      const failing = spawnSync("pwsh", powershellArgs(), { input: "Write-Output '中文 ok'\nexit 7\n", encoding: "utf8", env, timeout: 60_000 });
+      const failing = spawnSync("pwsh", powershellArgs(), { input: stdinPayload("Write-Output '中文 ok'\nexit 7\n"), encoding: "utf8", env, timeout: 60_000 });
       // The loader reads standard input WHOLE and runs it as one script block — never line by line: a here-string, a
       // function and an if/else that each span several lines only work that way (the leader's review of M-2885).
       const multi = [
@@ -508,7 +511,7 @@ describe.skipIf(!pwsh)("M-2885 with pwsh: the real process — loader on the com
         "Write-Output $text",
         "",
       ].join("\n");
-      const whole = spawnSync("pwsh", powershellArgs(), { input: multi, encoding: "utf8", env, timeout: 60_000 });
+      const whole = spawnSync("pwsh", powershellArgs(), { input: stdinPayload(multi), encoding: "utf8", env, timeout: 60_000 });
       expect([whole.status, whole.stderr]).toEqual([0, ""]);
       expect(whole.stdout.split(/\r?\n/).slice(0, 3)).toEqual(["LINES=2 abab", "first line", "  second line, with 'quotes' and a $notAVariable"]);
       expect([failing.status, failing.stdout.trim()]).toEqual([7, "中文 ok"]);

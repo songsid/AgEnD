@@ -13,14 +13,14 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildShortcutsScript, packageShortcutIcons, powershellArgs, sharedShortcutsPs, SHORTCUT_ICON_NAMES } from "../../src/windows-shortcuts.js";
+import { buildShortcutsScript, packageShortcutIcons, powershellArgs, sharedShortcutsPs, SHORTCUT_ICON_NAMES, stdinPayload } from "../../src/windows-shortcuts.js";
 
 const OUT = process.env.OUT ?? join(process.cwd(), "shortcut-check");
 mkdirSync(OUT, { recursive: true });
 const failures: string[] = [];
 const check = (ok: boolean, what: string) => { console.log(`${ok ? "PASS" : "FAIL"}  ${what}`); if (!ok) failures.push(what); };
 const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
-const ps = (script: string) => spawnSync("powershell.exe", powershellArgs(), { input: script, encoding: "utf8", timeout: 180_000 });
+const ps = (script: string) => spawnSync("powershell.exe", powershellArgs(), { input: stdinPayload(script), encoding: "utf8", timeout: 180_000 });
 const icons = packageShortcutIcons();
 check(SHORTCUT_ICON_NAMES.every(n => icons[n]?.length), "the package's two icons are readable");
 

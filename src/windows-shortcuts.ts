@@ -125,10 +125,18 @@ export function encodePowershell(script: string): string {
 
 /**
  * M-2885: what -EncodedCommand carries — only this loader. The script itself (the shared code, then the icons) arrives on
- * standard input as UTF-8, read as bytes (never the console's code page, so the Chinese names arrive intact), and runs
- * at the top level. Windows' command line holds 32,767 characters; the script with its icons is far longer.
+ * standard input, read WHOLE and run at the top level as ONE script block (never line by line). Windows' command line
+ * holds 32,767 characters; the script with its icons is far longer.
+ * Standard input carries base64 of the script's UTF-8 bytes — ASCII only: Windows PowerShell 5.1 passes redirected input
+ * through the console code page, which turned 「AgEnD 儀表板」 into "AgEnD ???" (a name Windows cannot save) on a real
+ * Windows; ASCII passes through every code page unchanged.
  */
-export const STDIN_LOADER = "$ErrorActionPreference = 'Stop'; $r = New-Object IO.StreamReader([Console]::OpenStandardInput(), (New-Object Text.UTF8Encoding $false)); $s = $r.ReadToEnd(); $r.Dispose(); . ([ScriptBlock]::Create($s))";
+export const STDIN_LOADER = "$ErrorActionPreference = 'Stop'; $r = New-Object IO.StreamReader([Console]::OpenStandardInput(), [Text.Encoding]::ASCII); $b = $r.ReadToEnd(); $r.Dispose(); $s = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b.Trim())); . ([ScriptBlock]::Create($s))";
+
+/** What goes on the loader's standard input: the script, as base64 of its UTF-8 bytes (see STDIN_LOADER). */
+export function stdinPayload(script: string): string {
+  return Buffer.from(script, "utf8").toString("base64");
+}
 
 export function powershellArgs(): string[] {
   return ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodePowershell(STDIN_LOADER)];
@@ -141,7 +149,7 @@ export interface ShortcutsDeps {
   user: string;
   dataDir: string;
   shared: () => string;
-  /** `input`: written to the program's standard input (the script, M-2885). */
+  /** `input`: written to the program's standard input (the script as stdinPayload gives it, M-2885). */
   run: (command: string, args: string[], input: string) => RunResult;
   /** The icons to put on the shortcuts (M-2885). */
   icons?: () => ShortcutIcons;
@@ -161,14 +169,14 @@ export async function runShortcuts(deps: ShortcutsDeps): Promise<number> {
   if (interopState(deps.host) === "off" || !powershell) { deps.log(t("shortcuts.no_interop")); return 1; }
   deps.log(t("shortcuts.making", distro, deps.user));
   const icons = deps.icons?.() ?? {};
-  let result = deps.run(powershell, powershellArgs(), buildShortcutsScript(deps.shared(), distro, deps.user, undefined, icons));
+  let result = deps.run(powershell, powershellArgs(), stdinPayload(buildShortcutsScript(deps.shared(), distro, deps.user, undefined, icons)));
   const other = OTHER_LINE.exec(result.stdout ?? "");
   if (other) {
     // The shortcuts (and install.json) point at another Linux or user: say so, and switch only on an explicit y.
     const [, otherDistro, otherUser] = other;
     const yes = await deps.confirm(t("shortcuts.other_target", otherDistro!, otherUser!, distro, deps.user));
     if (yes !== true) { deps.log(t(yes === null ? "shortcuts.kept_no_tty" : "shortcuts.kept", otherDistro!, otherUser!)); return 1; }
-    result = deps.run(powershell, powershellArgs(), buildShortcutsScript(deps.shared(), distro, deps.user, { distro: otherDistro!, user: otherUser! }, icons));
+    result = deps.run(powershell, powershellArgs(), stdinPayload(buildShortcutsScript(deps.shared(), distro, deps.user, { distro: otherDistro!, user: otherUser! }, icons)));
     // Changed while the person answered: what they agreed to replace is no longer there — nothing is written.
     const again = OTHER_LINE.exec(result.stdout ?? "");
     if (again) { deps.log(t("shortcuts.changed_meanwhile", again[1]!, again[2]!)); return 1; }
