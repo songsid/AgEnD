@@ -1,7 +1,7 @@
 /** Internal web-address operation of settings-commit.ts; one journal and one fleet configuration writer. */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, openSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createSecureContext } from "node:tls";
 import { z } from "zod";
 import { atomicWriteFileSync } from "../atomic-write.js";
@@ -91,7 +91,8 @@ interface Deps {
     step(name: HubWebAddressStep): void;
 }
 export function createHubWebAddressSettingsOperation(deps: Deps) {
-    const refs = new Map<string, Prepared>(), file = (s: string) => join(deps.home, s);
+    const root = resolve(deps.home);
+    const refs = new Map<string, Prepared>(), file = (s: string) => join(root, s);
     const read = (s: string, limit = 2 * 1024 * 1024) => readPrivateFile(deps.home, s, limit, { preserveBom: true });
     const flush = (s: string) => {
         let path = dirname(file(s));
@@ -103,7 +104,7 @@ export function createHubWebAddressSettingsOperation(deps: Deps) {
             finally {
                 closeSync(fd);
             }
-            if (path === deps.home)
+            if (path === root)
                 break;
             const parent = dirname(path);
             if (parent === path)
