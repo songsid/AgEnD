@@ -45,6 +45,7 @@ export interface HubHttpDeps {
   /** S-90: durable credential-transaction outbox, independent of a group's current operational allowance. */
   pairingNotices?: import("../pairing-notices.js").HubPairingNotices;
   /** Original security-notice recipients; independent of operational group or administrator permissions. */
+  memberAddressNotices?: import("../settings-member-address-notices.js").HubMemberAddressNotices;
   directoryNotices?: Pick<import("../settings-directory-notices.js").HubDirectoryNotices, "forSession" | "acknowledgeSession">;
   store: HubTransportStore;
   config: HubHttpConfig;

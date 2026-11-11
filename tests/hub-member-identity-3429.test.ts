@@ -23,6 +23,9 @@ describe("#3429 member TLS selector",()=>{
    expect(readFileSync(join(r.home,"hub/keys/identity.json"))).toEqual(metadata);
    expect(readFileSync(join(r.home,"hub/keys/tls-key.pem"))).toEqual(key);
    expect(readHubIdentity({home:r.home,memberOrigin:r.metadata.memberOrigin})).toEqual(r.before);
+   writeFileSync(join(r.home,r.path),cert,{mode:0o600});
+   writeFileSync(join(r.home,"hub/keys/identity.json"),JSON.stringify({...r.metadata,v:2,memberOrigin:"https://new-member.example.test:19443",certificateFile:r.path}),{mode:0o600});
+   expect(readHubIdentity({home:r.home,memberOrigin:"https://new-member.example.test:19443"})).toEqual(r.before);
  });
  it("a port-only move can retain the certificate byte for byte",async()=>{
    const r=await rig();expect(await prepareMemberCertificate(r.home,"https://127.0.0.1:19443")).toBe(r.cert);

@@ -3,7 +3,7 @@ import { createHubAudit } from "./audit/index.js";
 import { assertHubMigrationsCurrent, bindHubInstance, HubStateError, inspectStateSet, openHubDatabase,
   type HubMigration, type HubStateSet } from "./db.js";
 import { SERVER_SET, readKeyFile } from "./compose/storage.js";
-import { readHubIdentity } from "./tls.js";
+import { readHubIdentity, readHubMemberTls } from "./tls.js";
 import { HubTransportStore } from "./store.js";
 import { HubFileVersionFloor } from "./version-floor.js";
 import { createHubDirectorySettingsDecision, type HubDirectorySettingsDecision } from "./settings-directory-decision.js";
@@ -18,6 +18,7 @@ import type { HubDirectory, HubDirectoryConfig } from "./directory/index.js";
 import type { HubMountedDirectory } from "./settings-directory-runtime.js";
 import type { PersonKey } from "./types.js";
 import {createHubWebAddressDecision,type HubWebAddressDecision} from "./settings-web-address-decision.js";
+import { createHubMemberAddressDecision, type HubMemberAddressDecision } from "./settings-member-address-decision.js";
 
 export interface HubDirectoryRecoveryOptions {
   home: string; hubId: string; memberOrigin: string;
@@ -75,6 +76,16 @@ export function withHubDirectoryRecovery<T>(options: HubDirectoryRecoveryOptions
 export function withHubWebAddressRecovery<T>(options: HubDirectoryRecoveryOptions & {initial:{certificateFile:string;keyFile:string}},
   work:(decision:HubWebAddressDecision)=>T):T {
   return withState(options,({db,audit})=>work(createHubWebAddressDecision({db,audit,home:options.home,hubId:options.hubId,initial:options.initial})));
+}
+
+/** A member operation can crash between identity selection and config installation. Only this existing-state
+ * participant admits an internally coherent stored origin; the writer must match both exact image hashes to SQL.
+ * Normal mount/directory/web-address access still require the configured origin above. */
+export function withHubMemberAddressRecovery<T>(options: HubDirectoryRecoveryOptions, work: (decision: HubMemberAddressDecision) => T): T {
+  const material = readHubMemberTls({ home: options.home });
+  if (material.identity.hubId !== options.hubId) throw new HubStateError("hub-state-mismatch", "Member address identity differs");
+  return withState({ ...options, memberOrigin: material.metadata.memberOrigin }, ({ db, transport }) =>
+    work(createHubMemberAddressDecision({ db, transport, home: options.home, hubId: options.hubId })));
 }
 
 /** Host-only cold access. A held/off listener is not permission to create/migrate state or start a directory client. */

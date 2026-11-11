@@ -51,6 +51,8 @@ import { HubCompanyJoin } from "../join/service.js";
 import { createHubDirectorySettingsDecision, HUB_DIRECTORY_SETTINGS_MIGRATION } from "../settings-directory-decision.js";
 import { HUB_DIRECTORY_RECOVERY_MIGRATION } from "../settings-directory-recovery-intent.js";
 import { createHubWebAddressDecision, HUB_WEB_ADDRESS_MIGRATION, type HubWebAddressDecision } from "../settings-web-address-decision.js";
+import { createHubMemberAddressNotices } from "../settings-member-address-notices.js";
+import { createHubMemberAddressDecision, HUB_MEMBER_ADDRESS_MIGRATION, type HubMemberAddressDecision } from "../settings-member-address-decision.js";
 import { createHubDirectoryNotices, HUB_DIRECTORY_HOST_NOTICE_SINK, type HubDirectoryNotices } from "../settings-directory-notices.js";
 import { createHubDirectoryMountBarrier } from "../settings-directory-mount.js";
 import type { HubMountedDirectory, HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
@@ -75,6 +77,7 @@ export interface HubHttpDeps {
   groups?: HubGroupAuthorization;
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
   pairingNotices?: HubPairingNotices;
+  memberAddressNotices?: import("../settings-member-address-notices.js").HubMemberAddressNotices;
   directoryNotices?: Pick<HubDirectoryNotices, "forSession" | "acknowledgeSession">;
   store: HubTransportStore;
   current(): HubMode;
@@ -133,6 +136,7 @@ export interface HubServerFactoryOptions {
   directoryReady?(directory: HubMountedDirectory): () => void;
   /** Physical participant remains owned until this exact database generation is closed. */
   webAddressReady?(decision: HubWebAddressDecision): () => void;
+  memberAddressReady?(decision: HubMemberAddressDecision): () => void;
   /** Runtime-owned across server generations; absent on older/custom factories. */
   directoryResponses?: HubDirectoryResponseOwner;
   /** This AgEnD's version, shown on Hub Administration → This Hub. */
@@ -204,7 +208,7 @@ export function hubServerDatabasePlan(cfg: Record<string, unknown>, httpMigratio
   const migrations = [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_WEB_INIT_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpMigrations,
     retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION,
     groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION,
-    HUB_PAIRING_NOTICES_MIGRATION, HUB_COMPANY_JOIN_MIGRATION, HUB_DIRECTORY_SETTINGS_MIGRATION, HUB_DIRECTORY_RECOVERY_MIGRATION, HUB_WEB_ADDRESS_MIGRATION];
+    HUB_PAIRING_NOTICES_MIGRATION, HUB_COMPANY_JOIN_MIGRATION, HUB_DIRECTORY_SETTINGS_MIGRATION, HUB_DIRECTORY_RECOVERY_MIGRATION, HUB_WEB_ADDRESS_MIGRATION, HUB_MEMBER_ADDRESS_MIGRATION];
   return { settings, resolvedDirectory, groupGeneration, migrations };
 }
 
@@ -308,9 +312,14 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const addressDecision = createHubWebAddressDecision({ db, home: options.home, hubId: settings.hubId, initial: settings.webTls, audit });
       addressDecision.assertMounted(cfg);
       const addressHead = addressDecision.head();
+      const memberAddressDecision = createHubMemberAddressDecision({ db, home: options.home, hubId: settings.hubId, transport: store, now });
+      memberAddressDecision.assertMounted(cfg);
+      const memberAddressHead = memberAddressDecision.head();
       // A SQL decision closes old sign-in flights before any file hook, await or listener replacement.
       const live = () => {
-        try { const head=addressDecision.head();return owned() && directoryBarrier.current() && head.revision === addressHead.revision && head.operationId===addressHead.operationId; }
+        try { const head=addressDecision.head(), member=memberAddressDecision.head();return owned() && directoryBarrier.current()
+          && head.revision === addressHead.revision && head.operationId===addressHead.operationId
+          && member.revision === memberAddressHead.revision && member.operationId === memberAddressHead.operationId; }
         catch { return false; }
       };
       if (sha256(bindPassword) !== directoryBarrier.assertCurrent().bindSecretSha) throw new HubStateError("hub-directory-secret", "the directory bind secret changed while mounting");
@@ -417,6 +426,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         groupHttp: { control: groupControl, welcome: groupWelcome },
         pairingNotices,
         directoryNotices,
+        memberAddressNotices: createHubMemberAddressNotices(memberAddressDecision, live),
         ...(options.directorySettings ? { directorySettings: options.directorySettings } : {}),
         store,
         current: () => mode,
@@ -537,6 +547,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
             if (withdrawDirectory) teardown.add("the mounted directory control", withdrawDirectory);
             const withdrawAddress = options.webAddressReady?.(addressDecision);
             if (withdrawAddress) teardown.add("the mounted web-address participant", withdrawAddress);
+            const withdrawMemberAddress = options.memberAddressReady?.(memberAddressDecision);
+            if (withdrawMemberAddress) teardown.add("the mounted member-address participant", withdrawMemberAddress);
           } catch (err) {
             options.report(err instanceof HubStateError ? err.code : "service-unavailable", (err as Error).message);
             throw err;
