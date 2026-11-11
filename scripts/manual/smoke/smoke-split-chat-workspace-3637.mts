@@ -54,7 +54,7 @@ try {
       record(substitutions, "older-server-without-display-mark.html", body); return route.fulfill({ response, body });
     }
     const path = sourcePath(url.pathname);
-    if (retained && (retained === "all" ? sources.includes(path) : path === oldFiles[retained])) {
+    if (retained && ((retained === "all" || retained === "js") ? sources.includes(path) && (retained !== "js" || path.endsWith(".js")) : path === oldFiles[retained])) {
       try { const bytes = execFileSync("git", ["show", `${oldRef}:${path}`], { cwd: repo }); record(substitutions, path, bytes);
         return route.fulfill({ body: bytes, contentType: path.endsWith(".css") ? "text/css" : "text/javascript" });
       } catch { /* new optional modules do not exist on the control head */ }
@@ -95,7 +95,7 @@ try {
   await shot("single", 1);
   await page.locator("#msgIn").fill("尚未送出的草稿");
   if (retained) {
-    if (!["css", "all", "server"].includes(retained)) {
+    if (!["css", "all", "js", "server"].includes(retained)) {
       await page.evaluate(async (name: string) => { const { appStore } = await import("/assets/app-store.js"); await appStore.get().chatWorkspace?.open(name); }, b);
       await page.getByText("未能載入分割對話。目前對話不變；請重新整理頁面再試。", { exact: true }).waitFor();
     }
