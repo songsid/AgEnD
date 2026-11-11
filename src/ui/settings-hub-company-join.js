@@ -60,22 +60,25 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   }), live = useRef(true), token = useRef(0);
   // M-2921 (spec 1.1): the one input — classified here, probed (read only) 600 ms after typing stops and on blur.
   const [probe, setProbe] = useState(null), [probing, setProbing] = useState(false), [renaming, setRenaming] = useState(false), [now, setNow] = useState(Date.now());
-  const probeSeq = useRef(0), probed = useRef("");
+  // #3675 r1 P2: an answer is kept per address only to show it; it never stops another look. Blur asks again (spec 1.1),
+  // a failed or limited answer is asked again on the next blur, and a replaced identity is looked up again at once.
+  // The ref only keeps two looks at the same address from running at the same time.
+  const probeSeq = useRef(0), inflight = useRef("");
   const kind = classifyHubInput(form.address);
   const host = (() => { try { return new URL(kind.address).host; } catch { return ""; } })();
   const runProbe = async () => {
-    if (kind.kind !== "address" || probed.current === kind.address) return;
-    const seq = ++probeSeq.current, address = kind.address; probed.current = address; setProbing(true);
+    if (kind.kind !== "address" || inflight.current === kind.address) return;
+    const seq = ++probeSeq.current, address = kind.address; inflight.current = address; setProbing(true);
     try { const r = await api(root + "/probe", { method: "POST", body: JSON.stringify({ address }) });
       if (!live.current || seq !== probeSeq.current) return;
-      setProbe(r.ok ? { ...r.body, address } : r.body && r.body.ok === false && typeof r.body.reason === "string" ? { ...r.body, address } : null);
-    } catch { if (live.current && seq === probeSeq.current) setProbe(null); }
-    finally { if (live.current && seq === probeSeq.current) setProbing(false); }
+      // No answer at all (a network error, an older server): recorded as answered-without-a-word, which never blocks Start.
+      setProbe(r.ok ? { ...r.body, address } : r.body && r.body.ok === false && typeof r.body.reason === "string" ? { ...r.body, address } : { address, none: true });
+    } catch { if (live.current && seq === probeSeq.current) setProbe({ address, none: true }); }
+    finally { if (inflight.current === address) inflight.current = ""; if (live.current && seq === probeSeq.current) setProbing(false); }
   };
   useEffect(() => {
-    if (kind.kind !== "address") { probeSeq.current++; probed.current = ""; setProbe(null); setProbing(false); return; }
-    if (probed.current === kind.address) return;
-    setProbe(null);
+    if (kind.kind !== "address") { probeSeq.current++; inflight.current = ""; setProbe(null); setProbing(false); return; }
+    setProbe(p => p && p.address === kind.address ? p : null);
     const timer = setTimeout(runProbe, 600);
     return () => clearTimeout(timer);
   }, [kind.kind, kind.address]);
@@ -177,7 +180,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     try {
       const result = await confirmedWrite(root + "/repair-trust", { body: { address: kind.address || form.address }, label: hj("repair"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
       if (!live.current || gen !== token.current) return;
-      if (result.ok) { setIdentityChanged(false); setError(null); } else setError(joinError(joinResponseCode(result)));
+      if (result.ok) { setIdentityChanged(false); setError(null); setProbe(null); void runProbe(); } else setError(joinError(joinResponseCode(result)));
     } catch { if (live.current && gen === token.current) setError(hj("unknown")); }
     finally { if (live.current && gen === token.current) { setBusy(false); setPending(null); } }
   };
@@ -203,10 +206,10 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     finally { if (live.current && gen === token.current) setCodeBusy(false); }
   };
   const fleetLabel = (form.label.trim() || probe?.suggestedLabel || hj("defaultFleet")).slice(0, 120);
-  const problem = kind.kind === "error" ? j1(kind.error) : probe && probe.address === kind.address ? probeMessage(probe, host) : null;
+  const problem = kind.kind === "error" ? j1(kind.error) : probe && !probe.none && probe.address === kind.address ? probeMessage(probe, host) : null;
   // Start once the probe for exactly this address has answered without a problem. A probe that could not answer at all
   // (no reason: a network error, an older server) does not block Start: Start makes the same checks itself.
-  const ready = kind.kind === "address" && !problem && !probing && probed.current === kind.address && (!probe || probe.address === kind.address);
+  const ready = kind.kind === "address" && !problem && !probing && probe?.address === kind.address;
   const target = (() => { try { return pending?.target || (view && (!waiting || view.handoffId === waiting) ? view.hubOrigin : "") || (waiting ? new URLSearchParams(location.hash.slice(1)).get("target") || "" : new URL(kind.address).origin); } catch { return ""; } })();
   const inlineWait = consentWait || pending?.inline;
   const retired = embedded && !bound && view?.state === "saved" && view.outcomeKnown;

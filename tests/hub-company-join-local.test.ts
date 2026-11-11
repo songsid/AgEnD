@@ -306,13 +306,13 @@ describe("M-2921 (Hub UX U1): an enrolment code, and what the connected card sho
 });
 
 describe("M-2921 (spec 1.3, O1): the connected card's reconnect and 「移除這個連接」", () => {
-  async function joined(features: string[] = []) {
+  async function joined(features: string[] = [], during?: (w: any) => void) {
     const w = await world(); w.metadata.features.push(...features);
     const first = await w.start(); w.ready();
     expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "saved", issued: true });
     const order: string[] = [];
     const pairing = createHubMemberPairingApi({ home: w.directory, fence: () => order.push("fence"), withdrawAll: () => { order.push("withdraw"); },
-      leave: async () => { order.push("leave"); return true; }, link: () => "online" });
+      leave: async () => { order.push("leave"); during?.(w); return true; }, link: () => "online" });
     const shown = pairing.boundHub()!;
     expect(shown.binding).toMatch(/^[a-f0-9]{64}$/);
     const pushes: any[] = [], original = w.client.command.getMockImplementation()!;
@@ -348,6 +348,18 @@ describe("M-2921 (spec 1.3, O1): the connected card's reconnect and 「移除這
     w.deny();
     await expect(w.controller.remove({ ...w.shown, address: w.metadata.hub.webOrigin }, w.authority, w.pairing)).rejects.toMatchObject({ code: "denied" });
     expect(w.order).toEqual([]);
+    w.controller.close();
+  });
+  it.each(["reconnect", "remove"] as const)("#3675 r1 P2: %s — the confirmation withdrawn during the leave wait: no fence, tombstone, start over or start", async step => {
+    const w = await joined(["join-supersedes-v1", "member-leave-v1"], world => world.deny());
+    const calls = w.calls.length;
+    const run = step === "reconnect" ? w.controller.reconnect({ ...w.shown, address: w.metadata.hub.webOrigin, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing)
+      : w.controller.remove({ ...w.shown, address: w.metadata.hub.webOrigin }, w.authority, w.pairing);
+    await expect(run).rejects.toMatchObject({ code: "denied" });
+    expect(w.order).toEqual(["leave"]);
+    expect(w.pairing.view().state).not.toBe("unpaired");
+    expect(w.pairing.disconnected(w.shown.hubId)).toBe(false);
+    expect(w.calls.length).toBe(calls);
     w.controller.close();
   });
   it("remove: leave, fence, tombstone, start over — unpaired, the old binding retired; no start", async () => {

@@ -195,12 +195,7 @@ export class CompanyJoinController {
     if (display.webOrigin !== body.address) throw new HubProtocolError("conflict");    // the address the admin confirmed is the saved one
     let profile: HubMemberProfile;
     try { profile = new HubMemberProfileStore(this.options.home, body.hubId).readProfile(); } catch { throw new HubProtocolError("uncertain"); }
-    const view = pairing.view();
-    if (view.state === "paired" || view.state === "held" && view.hold !== "disconnected") {
-      const left = await pairing.disconnect({ hubId: body.hubId, binding: body.binding });
-      if (!left.ok) throw new HubProtocolError(left.error === "unsaved" ? "unavailable" : "conflict");
-    }
-    pairing.cancel();
+    await this.leaveExactly(body, authority, pairing);
     // The page's waiting tab (opened in the press) follows this handoff to the Hub's sign-in, as Start's does.
     return this.start({ address: display.webOrigin, label: display.label || probeLabel() || "Fleet", fleetOrigin: body.fleetOrigin, ...(body.handoffId ? { handoffId: body.handoffId } : {}) }, authority,
       { expected: companyIdentityDigest(profile.hub), supersedes: { fleetId: profile.fleetId, credential: profile.credential } });
@@ -218,15 +213,28 @@ export class CompanyJoinController {
     let origin: string | null = display?.webOrigin ?? null;
     if (!origin) { try { origin = new HubMemberProfileStore(this.options.home, body.hubId).readProfile().hub.webOrigin; } catch { origin = null; } }
     if (origin !== body.address) throw new HubProtocolError("conflict");
+    return { left: await this.leaveExactly(body, authority, pairing) };
+  }
+  /**
+   * Reconnect's and remove's shared first half: disconnect exactly this pairing (unless it already is), then start over.
+   * #3675 r1 P2: the confirmation is asked again after the disconnect's member.leave wait — inside the disconnect, before its
+   * fence and tombstone, and here before the start over — and the start over is only for the same exact binding.
+   */
+  private async leaveExactly(body: { hubId: string; binding: string }, authority: JoinLocalAuthority, pairing: ReconnectPairing): Promise<boolean> {
+    const live = () => !this.closed && authority.session.current() && authority.confirmedCurrent();
     const view = pairing.view();
     let left = false;
     if (view.state === "paired" || view.state === "held" && view.hold !== "disconnected") {
-      const out = await pairing.disconnect({ hubId: body.hubId, binding: body.binding });
+      const out = await pairing.disconnect({ hubId: body.hubId, binding: body.binding }, live);
+      if (!live()) throw new HubProtocolError("denied");
       if (!out.ok) throw new HubProtocolError(out.error === "unsaved" ? "unavailable" : "conflict");
       left = out.left === true;
     }
+    if (!live()) throw new HubProtocolError("denied");
+    const still = pairing.boundHub();
+    if (!still || still.hubId !== body.hubId || still.binding !== body.binding) throw new HubProtocolError("conflict");
     pairing.cancel();
-    return { left };
+    return left;
   }
   async start(input: { address: string; label: string; fleetOrigin: string; handoffId?: string; code?: string }, authority: JoinLocalAuthority,
     internal: { expected?: string; supersedes?: { fleetId: string; credential: string } } = {}) {
@@ -452,7 +460,7 @@ function separateHosts(fleetOrigin: string, hubWebOrigin: string): boolean {
 export interface ReconnectPairing {
   boundHub(): { hubId: string; binding: string | null } | null;
   view(): { state: string; hold?: string };
-  disconnect(expected: { hubId?: unknown; binding?: unknown }): Promise<{ ok: true; remote: "pending"; left?: boolean } | { ok: false; error: "unsaved" | "conflict" }>;
+  disconnect(expected: { hubId?: unknown; binding?: unknown }, current?: () => boolean): Promise<{ ok: true; remote: "pending"; left?: boolean } | { ok: false; error: "unsaved" | "conflict" }>;
   cancel(): unknown;
 }
 

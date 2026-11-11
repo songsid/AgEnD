@@ -245,7 +245,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
       return view();
     },
     /** Leave the Hub (a confirmed Settings replay): fence, tombstone, withdraw every exposure; the Hub revokes later. */
-    async disconnect(expected: { hubId?: unknown; binding?: unknown } = {}): Promise<{ ok: true; remote: "pending"; left?: boolean } | { ok: false; error: "unsaved" | "conflict" }> {
+    async disconnect(expected: { hubId?: unknown; binding?: unknown } = {}, current: () => boolean = () => true): Promise<{ ok: true; remote: "pending"; left?: boolean } | { ok: false; error: "unsaved" | "conflict" }> {
       // #3115 r1 P2 / r2: only the exact pairing the owner confirmed — its hub AND its saved profile (bindingId); a
       // replacement Hub, or a re-pair of the same Hub since, is another pairing.
       const b = boundHub();
@@ -253,14 +253,16 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
       const v = view();
       if (v.state !== "paired" && !(v.state === "held" && v.hold !== "disconnected" && v.memberOrigin)) return { ok: false, error: "conflict" };
       // The leave is the one wait in a disconnect: a second disconnect meanwhile is refused, and the pairing is checked
-      // again after it (a cancel, a connect or a re-pair during the wait: nothing more is done to the pairing).
+      // again after it (a cancel, a connect or a re-pair during the wait: nothing more is done to the pairing), and so is the
+      // caller's own authority (#3675 r1 P2: a confirmation revoked during the wait fences and tombstones nothing).
       if (leaving) return { ok: false, error: "conflict" };
       const gen = ++generation;
       leaving = true;
       let left: boolean;
       try { left = await sendLeave(deps.leave, { hubId: b.hubId, binding: b.binding }); } finally { leaving = false; }
       const after = boundHub();
-      if (gen !== generation || !after || after.hubId !== b.hubId || after.binding !== b.binding) return { ok: false, error: "conflict" };
+      let still = false; try { still = current(); } catch { still = false; }
+      if (!still || gen !== generation || !after || after.hubId !== b.hubId || after.binding !== b.binding) return { ok: false, error: "conflict" };
       try { deps.fence?.(); } catch { /* fenced on the tombstone below either way */ }
       try { write({ ...read(), disconnected: { at: now() } }); } catch { return { ok: false, error: "unsaved" }; }
       changed();

@@ -443,6 +443,16 @@ describe("M-2921: member.leave before a disconnect fences the link", () => {
     expect(r.fence).not.toHaveBeenCalled();
     expect(r.withdrawAll).not.toHaveBeenCalled();
   });
+  it("#3675 r1 P2: the caller's authority, asked again after the wait — revoked meanwhile: nothing is fenced, tombstoned or withdrawn", async () => {
+    let allowed = true;
+    const r = await paired({ leave: async () => { allowed = false; return true; } });
+    expect(await r.api.disconnect(shownOf(r.api), () => allowed)).toEqual({ ok: false, error: "conflict" });
+    expect(r.fence).not.toHaveBeenCalled(); expect(r.withdrawAll).not.toHaveBeenCalled();
+    expect(r.api.view().state).toBe("paired");
+    const t = await paired({ leave: async () => true });
+    expect(await t.api.disconnect(shownOf(t.api), () => { throw Error("gone"); })).toEqual({ ok: false, error: "conflict" });   // a throwing check is a no
+    expect(t.fence).not.toHaveBeenCalled();
+  });
   it("the saved profile changes during the wait (here: it is gone): the older disconnect tombstones nothing", async () => {
     let release!: (v: boolean) => void;
     const r = await paired({ leave: () => new Promise<boolean>(y => { release = y; }) });

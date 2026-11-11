@@ -65,6 +65,31 @@ describe("company join UI", () => {
     answer({ ok: false }); await settle(8);                                                  // no reason: the probe could not answer
     expect(button(p, "Sign in with company account").disabled).toBe(false);
   });
+  it("#3675 r1 P2: the same address is looked up again — after it could not be reached, the next blur asks again and the Hub is found", async () => {
+    const answers = [{ ok: false, reason: "unreachable" }, { ok: true, hubName: "Acme Hub", webOrigin: "https://hub.example.test", companyJoin: true, identity: "new", separateHosts: true, suggestedLabel: "box" }];
+    fetcher(path => path.endsWith("/probe") ? answers.shift() ?? answers[0] : { ok: true, operation: null });
+    const p = await mount(fleet.CompanyJoinSettings);
+    const address = p.root.querySelector("#hubCompanyAddress"); address.value = "hub.example.test"; fire(address, "input"); await settle(4); fire(address, "blur"); await settle(8);
+    expect(p.root.querySelector("#hubCompanyLine").textContent).toContain("cannot be reached");
+    expect(button(p, "Sign in with company account").disabled).toBe(true);
+    fire(address, "blur"); await settle(8);                                                  // the network is back: same address, asked again
+    expect(calls.filter(c => c.path.endsWith("/probe"))).toHaveLength(2);
+    expect(p.root.querySelector("#hubCompanyLine").textContent).toContain("Found \u201cAcme Hub\u201d");
+    expect(button(p, "Sign in with company account").disabled).toBe(false);
+  });
+  it("#3675 r1 P2: after the saved identity is replaced, the same address is looked up again (no stale E8)", async () => {
+    let identity = "changed";
+    fetcher((path, init) => path.endsWith("/probe") ? { ok: true, hubName: "Acme Hub", webOrigin: "https://hub.example.test", companyJoin: true, identity, separateHosts: true, suggestedLabel: "box" }
+      : path.endsWith("/repair-trust") ? (identity = "known", { ok: true }) : { ok: true, operation: null });
+    const p = await mount(fleet.CompanyJoinSettings);
+    const address = p.root.querySelector("#hubCompanyAddress"); address.value = "https://hub.example.test/join-info#hub=YWJj"; fire(address, "input"); await settle(4); fire(address, "blur"); await settle(8);
+    expect(p.root.querySelector("#hubCompanyLine").textContent).toContain("presents a different identity");
+    fire(button(p, "Replace saved Hub identity"), "click"); await settle(20);
+    expect(calls.filter(c => c.path.endsWith("/repair-trust"))).toHaveLength(1);
+    expect(calls.filter(c => c.path.endsWith("/probe"))).toHaveLength(2);
+    expect(p.root.querySelector("#hubCompanyLine").textContent).toContain("Found \u201cAcme Hub\u201d");
+    expect(button(p, "Sign in with company account").disabled).toBe(false);
+  });
   it.each([
     ["http://hub.example.test", "A Hub address must use https."],
     ["not a hub!", "That is not a Hub address. Enter one like hub.example.com."],
