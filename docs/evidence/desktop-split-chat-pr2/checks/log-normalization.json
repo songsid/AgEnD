@@ -204,6 +204,21 @@
     ],
     "afc9510f4198ebcd059e814c5e6499f19eda936cc9238361138c16e217ffa84d": [
       "checks/review-r2/mutations/restage-retry-key.log"
+    ],
+    "d6d08cdb9164167ced298bba1112a5bc2aab087d628f7a13de392a076fc6d54a": [
+      "checks/alpha-sync/sync-classic-related.log"
+    ],
+    "fc688e028101586e1be2d0e05ebc4cd3af94455ffd8293ca18ef6152cdbb1c02": [
+      "checks/alpha-sync/sync-classic-restored.log"
+    ],
+    "f01ac258214026a15b2b8745abcc71eff1d3cbdc8ecff590d91106656a87db46": [
+      "checks/alpha-sync/mutations/classic-model-profile.log"
+    ],
+    "ee340b278a6e90db228620219bcdef737f1ed32ea4eb9e1cb517c8c9495d2a35": [
+      "checks/alpha-sync/mutations/classic-account-id.log"
+    ],
+    "622166aea201a3c96fb50d07bdae831ff5494fcfee3f376f9970f0e9525305e6": [
+      "checks/alpha-sync/mutations/classic-account-memory.log"
     ]
   },
   "normalized": {
@@ -410,6 +425,21 @@
     ],
     "470e4220bff08dfb6495f2dbcbc7d2ccd4149e1d8ad59acf2a0d1b14c89a30e5": [
       "checks/review-r2/mutations/restage-retry-key.log"
+    ],
+    "8bafec452efeb26bc7ea1a1f44baf4ffc70d755f622db7e4823efbcc7ffdb029": [
+      "checks/alpha-sync/sync-classic-related.log"
+    ],
+    "02aa2de3eedca986d6e89ffee271fa27563cfdfe9dcfbea5a4c80c539f674a5b": [
+      "checks/alpha-sync/sync-classic-restored.log"
+    ],
+    "993d9060d4c51f007f7dcd177c7596247ef31ccc2a7cb0be10fd23f3f778b553": [
+      "checks/alpha-sync/mutations/classic-model-profile.log"
+    ],
+    "fe26acc14a42511c638767103f2f1a22f3559b8cff558747a65098ce8165de03": [
+      "checks/alpha-sync/mutations/classic-account-id.log"
+    ],
+    "d80aed0b9846ab7e4e68fffdd25d742dc565fe23d2fb83dfe39436b68913bb67": [
+      "checks/alpha-sync/mutations/classic-account-memory.log"
     ]
   }
 }

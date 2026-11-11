@@ -1,10 +1,10 @@
 {
   "scope": "Original clean captures; each input, served asset and retained substitution compared with its recorded Git object. No historical relabelling.",
   "totals": {
-    "inputs": 480,
-    "served": 2564,
-    "substitutions": 59,
-    "cases": 110
+    "inputs": 570,
+    "served": 3107,
+    "substitutions": 60,
+    "cases": 146
   },
   "runs": [
     {
@@ -146,6 +146,33 @@
       "receipt": "browser/skew-final-shell/receipt.json",
       "head": "76cf58bb4cc31c51436038515468ee064d160938",
       "tree": "80a33a76d6a4bb35f3efaf753fc175116652608e",
+      "inputs": 30,
+      "served": 143,
+      "substitutions": 1,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/sync-classic-dark/receipt.json",
+      "head": "3bfa962766958314ef58e73a799b75c333486dc3",
+      "tree": "4a0a4711575e87b7a367a735a843573d86e6ab29",
+      "inputs": 30,
+      "served": 200,
+      "substitutions": 0,
+      "cases": 17
+    },
+    {
+      "receipt": "browser/sync-classic-light/receipt.json",
+      "head": "3bfa962766958314ef58e73a799b75c333486dc3",
+      "tree": "4a0a4711575e87b7a367a735a843573d86e6ab29",
+      "inputs": 30,
+      "served": 200,
+      "substitutions": 0,
+      "cases": 17
+    },
+    {
+      "receipt": "browser/sync-classic-skew-fields/receipt.json",
+      "head": "3bfa962766958314ef58e73a799b75c333486dc3",
+      "tree": "4a0a4711575e87b7a367a735a843573d86e6ab29",
       "inputs": 30,
       "served": 143,
       "substitutions": 1,

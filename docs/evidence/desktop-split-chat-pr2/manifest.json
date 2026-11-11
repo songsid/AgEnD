@@ -2,7 +2,7 @@
   "v": 1,
   "scope": "Digest-first manifest. Original R0/R1 capture receipts and PNGs retain their source pins; R2 recovery checks are scoped separately. Text-log EOF normalization is explicit.",
   "files": {
-    "1dbed6fc2f31acea4285155421eb116db5a4340b57cae23cb7cfee833a69fd8f": [
+    "8b45e4b262009889d6e69bb700edb24bc919b5aec34f576b1b16862f3062c765": [
       "README.md"
     ],
     "c762344870532cc89b4986bad684d0dced55fe985a46f7eea7fb49ee50442cf9": [
@@ -42,7 +42,8 @@
     ],
     "9ac68e32b9a08b224c8713d4b7dd70ae0723d153f21b361a408c1af8d4666c79": [
       "browser/final-dark/dark-zh-TW-log-and-view.png",
-      "browser/review-r1-dark/dark-zh-TW-log-and-view.png"
+      "browser/review-r1-dark/dark-zh-TW-log-and-view.png",
+      "browser/sync-classic-dark/dark-zh-TW-log-and-view.png"
     ],
     "7e5e6a8e3328fd2e1d4bfeffdf31be209c19c9760a53e03b7e280fc29f23a6fe": [
       "browser/final-dark/dark-zh-TW-minimum-width.png"
@@ -58,7 +59,8 @@
     ],
     "1124313c49a645523db556bd808d973c362be7489dab41eca0c293fff3e60f6b": [
       "browser/final-dark/dark-zh-TW-phone.png",
-      "browser/review-r1-dark/dark-zh-TW-phone.png"
+      "browser/review-r1-dark/dark-zh-TW-phone.png",
+      "browser/sync-classic-dark/dark-zh-TW-phone.png"
     ],
     "8c3941649ae44be2e8808fa4b93e73726d0cbcffd751856cbc9a91164254d096": [
       "browser/final-dark/dark-zh-TW-quoted.png"
@@ -80,7 +82,8 @@
     ],
     "8ad4c94f58709c32a6aab9bf4a3bd8492b58841136354f0cb7d7a520db79d5ce": [
       "browser/final-dark/dark-zh-TW-two-settings.png",
-      "browser/review-r1-dark/dark-zh-TW-two-settings.png"
+      "browser/review-r1-dark/dark-zh-TW-two-settings.png",
+      "browser/sync-classic-dark/dark-zh-TW-two-settings.png"
     ],
     "dc93121e5992213c232b6340b1595a89ae5479221f9ad5269a1668c41c879da6": [
       "browser/final-dark/receipt.json"
@@ -111,7 +114,8 @@
     "125f7ae63c2fd9aa9b538abd6300745ba13767fc04f5eeec03d6c2793f37b3e2": [
       "browser/final-light/light-zh-TW-phone.png",
       "browser/lifecycles/light-zh-TW-phone.png",
-      "browser/review-r1-light/light-zh-TW-phone.png"
+      "browser/review-r1-light/light-zh-TW-phone.png",
+      "browser/sync-classic-light/light-zh-TW-phone.png"
     ],
     "50b76cc4854e80cc87f4f0c1c25d3ba20db645e1281fe04b1b475ac07b99c4c2": [
       "browser/final-light/light-zh-TW-quoted.png"
@@ -136,7 +140,8 @@
     ],
     "b292d11471d32983848445806ddd09691735995a42977c06605bd938d2cfa407": [
       "browser/final-light/light-zh-TW-two-settings.png",
-      "browser/review-r1-light/light-zh-TW-two-settings.png"
+      "browser/review-r1-light/light-zh-TW-two-settings.png",
+      "browser/sync-classic-light/light-zh-TW-two-settings.png"
     ],
     "f925febc5beb432ded1ebc4af89b8119bcda7da3a7fbfc466970e5dd0ade7239": [
       "browser/final-light/receipt.json"
@@ -199,13 +204,15 @@
       "browser/lifecycles/receipt.json"
     ],
     "7dc8a700d1df2a134a95a32c74c30ad9703bcc3ddb64f65d586df8c401ee86bb": [
-      "browser/review-r1-dark/dark-zh-TW-alt-split-owner.png"
+      "browser/review-r1-dark/dark-zh-TW-alt-split-owner.png",
+      "browser/sync-classic-dark/dark-zh-TW-alt-split-owner.png"
     ],
     "7d79082701f26b2e34ed739976c93f9710c8d58e1cdff863238ad22e52da0d22": [
       "browser/review-r1-dark/dark-zh-TW-log-and-chat.png"
     ],
     "35b820fdfb56966543322ac84ac7ae414796aff5f71c991ccbed2b26a72b1019": [
-      "browser/review-r1-dark/dark-zh-TW-minimum-width.png"
+      "browser/review-r1-dark/dark-zh-TW-minimum-width.png",
+      "browser/sync-classic-dark/dark-zh-TW-minimum-width.png"
     ],
     "de44e0b7d6f537f93611b6570b27250e9e9d80fb60ed8bac917afacff1612665": [
       "browser/review-r1-dark/dark-zh-TW-narrow.png"
@@ -214,43 +221,54 @@
       "browser/review-r1-dark/dark-zh-TW-ordinary-deep-link.png"
     ],
     "99491f68add1c083cb2ffc9a7d371874f6c17233e5d6e7f1d83853d724799173": [
-      "browser/review-r1-dark/dark-zh-TW-overflow-menu.png"
+      "browser/review-r1-dark/dark-zh-TW-overflow-menu.png",
+      "browser/sync-classic-dark/dark-zh-TW-overflow-menu.png"
     ],
     "36d1bc2a370960e2ed80030232d1c6f5100b5a6ec848ca6e5e00406160e09c7f": [
-      "browser/review-r1-dark/dark-zh-TW-quoted.png"
+      "browser/review-r1-dark/dark-zh-TW-quoted.png",
+      "browser/sync-classic-dark/dark-zh-TW-quoted.png"
     ],
     "a8249309add0d4f933885f6b75a730067518e50a6ce3c9f669efc72e52813e4f": [
       "browser/review-r1-dark/dark-zh-TW-reload-compare.png"
     ],
     "45df6e4121a8882e9a1a7d50f07310cd950f5e611fec97464ae63d9d7ff489c0": [
-      "browser/review-r1-dark/dark-zh-TW-restored-emojis.png"
+      "browser/review-r1-dark/dark-zh-TW-restored-emojis.png",
+      "browser/sync-classic-dark/dark-zh-TW-restored-emojis.png"
     ],
     "3ad31ca1d5bc71e84a774238c927777b8c3f648d41e53af01e13fc6ebf404c00": [
-      "browser/review-r1-dark/dark-zh-TW-restored-settings.png"
+      "browser/review-r1-dark/dark-zh-TW-restored-settings.png",
+      "browser/sync-classic-dark/dark-zh-TW-restored-settings.png"
     ],
     "0c709e4c7cb04c8b9c79fe57f627982dddd508598234cd8cf94fdc514c39a8a4": [
-      "browser/review-r1-dark/dark-zh-TW-right.png"
+      "browser/review-r1-dark/dark-zh-TW-right.png",
+      "browser/sync-classic-dark/dark-zh-TW-right.png"
     ],
     "b16a621be970a6f073a8c235998e97798e7aae6d9ad93f94bc2cef1a110aad88": [
-      "browser/review-r1-dark/dark-zh-TW-single.png"
+      "browser/review-r1-dark/dark-zh-TW-single.png",
+      "browser/sync-classic-dark/dark-zh-TW-single.png"
     ],
     "972baeef2074a500c6db742f2b6d6118a68b87c06c943e25d9afab49aef9a416": [
-      "browser/review-r1-dark/dark-zh-TW-stack.png"
+      "browser/review-r1-dark/dark-zh-TW-stack.png",
+      "browser/sync-classic-dark/dark-zh-TW-stack.png"
     ],
     "9e4f5c6c6a8cf9b3cd295aa141e698a5b5ea48ee11c94694f16a85608557dd46": [
-      "browser/review-r1-dark/dark-zh-TW-suspended-settings-a.png"
+      "browser/review-r1-dark/dark-zh-TW-suspended-settings-a.png",
+      "browser/sync-classic-dark/dark-zh-TW-suspended-settings-a.png"
     ],
     "cab73df37c0629a6ca4c8fc0aac629ff3569bf722433ce401227f40a1faf6360": [
       "browser/review-r1-dark/receipt.json"
     ],
     "c4ef11c8f2ba26ca970361678c8576d8bff19a5a685674446330733d98359998": [
-      "browser/review-r1-light/light-zh-TW-alt-split-owner.png"
+      "browser/review-r1-light/light-zh-TW-alt-split-owner.png",
+      "browser/sync-classic-light/light-zh-TW-alt-split-owner.png"
     ],
     "8a10eeca325b21cb94f6acfa519acf8f5e937a65fc6aa75b1e8531f39c64e386": [
-      "browser/review-r1-light/light-zh-TW-log-and-chat.png"
+      "browser/review-r1-light/light-zh-TW-log-and-chat.png",
+      "browser/sync-classic-light/light-zh-TW-log-and-chat.png"
     ],
     "e95343b01c27873e0f9f5048ad98bd47f6861d18df99501f22fd7b622409f0db": [
-      "browser/review-r1-light/light-zh-TW-minimum-width.png"
+      "browser/review-r1-light/light-zh-TW-minimum-width.png",
+      "browser/sync-classic-light/light-zh-TW-minimum-width.png"
     ],
     "61601f01b3122f0554c206619e303ce9b01dff350966d6372ede4e171174bb65": [
       "browser/review-r1-light/light-zh-TW-narrow.png"
@@ -259,31 +277,40 @@
       "browser/review-r1-light/light-zh-TW-ordinary-deep-link.png"
     ],
     "df624f3b785d27aa180133428dde8cf50164ab4eeef9a501d26226a02a98f1c9": [
-      "browser/review-r1-light/light-zh-TW-overflow-menu.png"
+      "browser/review-r1-light/light-zh-TW-overflow-menu.png",
+      "browser/sync-classic-light/light-zh-TW-overflow-menu.png"
     ],
     "bd7ab609f284bbb9523408dc346016afca6f474199bf59128749f358cef69190": [
-      "browser/review-r1-light/light-zh-TW-quoted.png"
+      "browser/review-r1-light/light-zh-TW-quoted.png",
+      "browser/sync-classic-light/light-zh-TW-quoted.png"
     ],
     "c9e5710383e3c8ecee77be62121f446894c09a2385b1e35fd9cbd2e1da974ac3": [
       "browser/review-r1-light/light-zh-TW-reload-compare.png"
     ],
     "a1a53e9463ae9352fc0751ef5e9cbce3c1e1fb914bf2be259abbd782ad31ff62": [
-      "browser/review-r1-light/light-zh-TW-restored-emojis.png"
+      "browser/review-r1-light/light-zh-TW-restored-emojis.png",
+      "browser/sync-classic-light/light-zh-TW-restored-emojis.png"
     ],
     "81f66692a7771dc9cf0b20db07d2875c8b62873a8535afc44c8c3fce41d2e6fb": [
-      "browser/review-r1-light/light-zh-TW-restored-settings.png"
+      "browser/review-r1-light/light-zh-TW-restored-settings.png",
+      "browser/sync-classic-light/light-zh-TW-restored-settings.png"
     ],
     "d02c09e06c8f03e1c19321e36983857f28c4978de5f568f119e02fc7f4cbb4da": [
-      "browser/review-r1-light/light-zh-TW-right.png"
+      "browser/review-r1-light/light-zh-TW-right.png",
+      "browser/sync-classic-light/light-zh-TW-right.png"
     ],
     "e3764de5dd70fd8639c4062341d6dab4f545e9fcf49ed2ccffe1cfbf2fa32c3e": [
-      "browser/review-r1-light/light-zh-TW-single.png"
+      "browser/review-r1-light/light-zh-TW-single.png",
+      "browser/sync-classic-light/light-zh-TW-single.png",
+      "browser/sync-classic-skew-fields/light-zh-TW-single.png"
     ],
     "fce53d8b782eb92f5b5a670ff504cc39aa4d29e291e450f350b87fd3d8c804c7": [
-      "browser/review-r1-light/light-zh-TW-stack.png"
+      "browser/review-r1-light/light-zh-TW-stack.png",
+      "browser/sync-classic-light/light-zh-TW-stack.png"
     ],
     "b7ed60947e1388b9795e1d4d815d1fc78623f2b1e88b2bf10ab7ead82d1102c0": [
-      "browser/review-r1-light/light-zh-TW-suspended-settings-a.png"
+      "browser/review-r1-light/light-zh-TW-suspended-settings-a.png",
+      "browser/sync-classic-light/light-zh-TW-suspended-settings-a.png"
     ],
     "9ae26096ddf87a3d0f69eafc704d2ad934c0114f9bd521214a6f04aa94648bea": [
       "browser/review-r1-light/receipt.json"
@@ -321,10 +348,100 @@
     "8a6a2e580520e9043a537c2b405988ee28901e656047313d50599edf915ff7cc": [
       "browser/skew-final-shell/receipt.json"
     ],
+    "8d0f6d9006e3c87f2deff994a190217b182630d65b0767614c73bce223a20792": [
+      "browser/sync-classic-dark/dark-zh-TW-log-and-chat.png"
+    ],
+    "0fdbfe1d8ac4172312d5e4d73d8fb7adaf41f90235933416ac163baa2db36876": [
+      "browser/sync-classic-dark/dark-zh-TW-narrow.png"
+    ],
+    "ca180d071a833872f5de46620d8253c3344975b49bd0edf4c287d84a143eefa6": [
+      "browser/sync-classic-dark/dark-zh-TW-ordinary-deep-link.png"
+    ],
+    "1dd0bfaba0268b07e47b6d0dbf55dfee3a9ef6a0f4b0ee9b322e3e87e02971d3": [
+      "browser/sync-classic-dark/dark-zh-TW-reload-compare.png"
+    ],
+    "2b9b5f01c6f11edbecf61d3092a88304607456a61fefd3b363f82ec4b4d4f243": [
+      "browser/sync-classic-dark/receipt.json"
+    ],
+    "f4bc01ed64a11a80ffce91512d16e064fd03a351d933ec44fd592eb509a8b9fc": [
+      "browser/sync-classic-light/light-zh-TW-log-and-view.png"
+    ],
+    "067383af4ada168d629d7f0f7ee74827c5b4541a5945ec4ae0cd11d46bafb515": [
+      "browser/sync-classic-light/light-zh-TW-narrow.png"
+    ],
+    "1dfff5c7269794cd10510696e25db45f43b6bd3ae8bdbc3baa5a6234cd7e7f47": [
+      "browser/sync-classic-light/light-zh-TW-ordinary-deep-link.png"
+    ],
+    "ee910a9d56c78d311124856eedd145eb9bcc250b28c2f47e387399171d65adf4": [
+      "browser/sync-classic-light/light-zh-TW-reload-compare.png"
+    ],
+    "b703e19951229827cb2b131f8629db0fff654ec2a56923c2c462f4df65e94325": [
+      "browser/sync-classic-light/receipt.json"
+    ],
+    "d3edb5281e2de503069c52971b2fef3b325f0a2d13acca80a08a053a7b5ec146": [
+      "browser/sync-classic-skew-fields/light-zh-TW-retained-fields.png"
+    ],
+    "8080673debd5b78309f572d03809a338fafe600ac042ef2e720d2b900eb11e3c": [
+      "browser/sync-classic-skew-fields/receipt.json"
+    ],
+    "fe26acc14a42511c638767103f2f1a22f3559b8cff558747a65098ce8165de03": [
+      "checks/alpha-sync/mutations/classic-account-id.log"
+    ],
+    "d80aed0b9846ab7e4e68fffdd25d742dc565fe23d2fb83dfe39436b68913bb67": [
+      "checks/alpha-sync/mutations/classic-account-memory.log"
+    ],
+    "993d9060d4c51f007f7dcd177c7596247ef31ccc2a7cb0be10fd23f3f778b553": [
+      "checks/alpha-sync/mutations/classic-model-profile.log"
+    ],
+    "0db11461be8f54c62baf095b88804a56d2978e2e700bce20d28956e8a9119295": [
+      "checks/alpha-sync/mutations/receipt.json"
+    ],
+    "51bce56d2893f8005c6fa47593c4a8888d0e70084e3cd049ca87199cbed70c72": [
+      "checks/alpha-sync/receipt.json"
+    ],
+    "ce59031e7befcf750d85cdd1ef1273b530c30420ab2fe1ffd80dd1090cf12a92": [
+      "checks/alpha-sync/sync-classic-changelog.log"
+    ],
+    "6630d621fed29c9c6ed9b1ae7d959b149a2823ca09cf613f0afbc5325e8454d6": [
+      "checks/alpha-sync/sync-classic-dark.log"
+    ],
+    "91efda1fc3359ebc2d46c0ffed260eafb04af45b0788e3fe058528b3276ea9e2": [
+      "checks/alpha-sync/sync-classic-light.log"
+    ],
+    "154d1615baa4f2337479568665ad806c35ed9b4a7725ae06923dd11d5828893e": [
+      "checks/alpha-sync/sync-classic-merge.json"
+    ],
+    "be74a6c15f4ac7635b50b93f18c9790256f89458f90c15163ee796290bdf512f": [
+      "checks/alpha-sync/sync-classic-mutations.log"
+    ],
+    "8bafec452efeb26bc7ea1a1f44baf4ffc70d755f622db7e4823efbcc7ffdb029": [
+      "checks/alpha-sync/sync-classic-related.log"
+    ],
+    "02aa2de3eedca986d6e89ffee271fa27563cfdfe9dcfbea5a4c80c539f674a5b": [
+      "checks/alpha-sync/sync-classic-restored.log"
+    ],
+    "3f21d24a5f06e95c08d2dbd2b812b426b038e738eae756b2c5d5f9d8899c110d": [
+      "checks/alpha-sync/sync-classic-skew-fields.log"
+    ],
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
+      "checks/alpha-sync/sync-classic-source-types.log",
+      "checks/alpha-sync/sync-classic-test-types.log",
+      "checks/current-source-types.log",
+      "checks/current-test-types.log",
+      "checks/review-r1/review-r1-post-sync-source-types.log",
+      "checks/review-r1/review-r1-post-sync-test-types.log",
+      "checks/review-r1/review-r1-source-types.log",
+      "checks/review-r1/review-r1-test-types.log",
+      "checks/review-r2/r2-source-types.log",
+      "checks/review-r2/r2-test-types.log"
+    ],
+    "9303dfe40a2a66fd14ae71869251bd2a1b5ede3bf8dbe57fad2f6424ea3368ae": [
+      "checks/alpha-sync/visual-review.json"
+    ],
     "faca3fae708aac379e3a310de216e1d7b5aad58ad22641b75addb01bf079642c": [
       "checks/async-fields-fail-first-r1.log"
     ],
-    "ec794461764e1550bb31667807bdd382fa2e251982a59d0549ccd392b4b5cb74": [
+    "0e57dca29f9ff03a0e1b672ec17b50606765436e4882fea59e79103de7c7ce44": [
       "checks/capture-provenance.json"
     ],
     "5f5266ed6a9444627e3d279769defd7bd579374d1f5084f25865e775b40a0a51": [
@@ -390,16 +507,6 @@
     "2b6d32be97a7cd1dbcbb270cbd0907c987e4f35ddd68c5d44c714e6081571b3d": [
       "checks/current-mutations/width.log"
     ],
-    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
-      "checks/current-source-types.log",
-      "checks/current-test-types.log",
-      "checks/review-r1/review-r1-post-sync-source-types.log",
-      "checks/review-r1/review-r1-post-sync-test-types.log",
-      "checks/review-r1/review-r1-source-types.log",
-      "checks/review-r1/review-r1-test-types.log",
-      "checks/review-r2/r2-source-types.log",
-      "checks/review-r2/r2-test-types.log"
-    ],
     "cae5bcc885bad2d93eb85c941f582b195b52617ce3b80413e7f8bf0913d05671": [
       "checks/final-2528-core.log"
     ],
@@ -409,7 +516,7 @@
     "d42d6a62e6bdce3de0ed0eaa34be5cb9d1a86c35aa768917654003ad6a8f453b": [
       "checks/final-focused.log"
     ],
-    "b1fd000fac7432795a9cbca4ebd9ac35dae22b00438a1732d7470278f6c13fc0": [
+    "3ee76365e53197a5f15495e4f6e1993b52f279850bf90182e4b853fcfaa80eba": [
       "checks/log-normalization.json"
     ],
     "195a284dbf9a0cc77e443178d207d3f4fabe3071ffc7dd469b6edfa047ecd275": [

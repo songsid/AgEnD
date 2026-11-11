@@ -1,0 +1,117 @@
+{
+  "head": "3bfa962766958314ef58e73a799b75c333486dc3",
+  "parents": [
+    "7034e6e18e8e4a747ea37aef2226c4328011bb51",
+    "ec9a119e6102577cdecf2702ff01991ef3231a3c"
+  ],
+  "old": "7034e6e18e8e4a747ea37aef2226c4328011bb51",
+  "incoming": "ec9a119e6102577cdecf2702ff01991ef3231a3c",
+  "base": "a18ad7428fb93b6be94fc39c6d8ecb8564fa68b0",
+  "incomingFiles": 73,
+  "overlap": [
+    "src/ui/agent-details-settings.js",
+    "src/ui/settings-dialogs.js",
+    "src/ui/shared/app.css",
+    "src/web-api.ts"
+  ],
+  "incomingDisjointExact": [
+    "changes/3675-hub-u1-one-input.md",
+    "changes/3675-hub-u1-one-input.zh-TW.md",
+    "changes/3679.md",
+    "changes/3679.zh-TW.md",
+    "changes/3681.md",
+    "changes/3681.zh-TW.md",
+    "changes/3690.md",
+    "changes/3690.zh-TW.md",
+    "docs/downgrade-compatibility.md",
+    "docs/downgrade-compatibility.zh-TW.md",
+    "docs/office.md",
+    "docs/office.zh-TW.md",
+    "docs/web-dashboard.md",
+    "docs/web-dashboard.zh-TW.md",
+    "scripts/manual/smoke/smoke-classic-room-account-2909.mts",
+    "scripts/manual/smoke/ui-gate-tap-allowlist.json",
+    "src/accounts-view.ts",
+    "src/fleet-manager.ts",
+    "src/general-knowledge/skills/web-dashboard/SKILL.md",
+    "src/hub/join/client.ts",
+    "src/hub/join/descriptor.ts",
+    "src/hub/join/display.ts",
+    "src/hub/join/local.ts",
+    "src/hub/join/trust.ts",
+    "src/hub/member/pairing-api.ts",
+    "src/instance-config-impact.ts",
+    "src/locale.ts",
+    "src/office-share.ts",
+    "src/settings-api.ts",
+    "src/settings-change.ts",
+    "src/settings-effect.ts",
+    "src/settings-http-confirmation.ts",
+    "src/ui/accounts-manage.js",
+    "src/ui/accounts-view.js",
+    "src/ui/fleet-office-levels.js",
+    "src/ui/fleet-office-pack.d.ts",
+    "src/ui/fleet-office-pack.js",
+    "src/ui/fleet-office-store.js",
+    "src/ui/fleet-office-zones.js",
+    "src/ui/fleet-office.js",
+    "src/ui/hub-company-join.js",
+    "src/ui/hub-join-one-strings.js",
+    "src/ui/panel-settings.js",
+    "src/ui/settings-hub-company-join.js",
+    "src/ui/settings-hub-connection.js",
+    "src/ui/settings-hub-section.js",
+    "src/ui/settings-hub.js",
+    "src/ui/settings-level-titles.js",
+    "src/ui/settings-registry.js",
+    "src/ui/settings-strings.js",
+    "src/web-office-store.ts",
+    "tests/accounts-manage-ui-3212.test.ts",
+    "tests/classic-room-account-2909.test.ts",
+    "tests/classic-room-account-review-2909.test.ts",
+    "tests/classic-room-account-ui-2909.test.ts",
+    "tests/hub-company-join-local.test.ts",
+    "tests/hub-company-join-settings.test.ts",
+    "tests/hub-company-join-ui.test.ts",
+    "tests/hub-company-join-wait.test.ts",
+    "tests/hub-connection-card-ui.test.ts",
+    "tests/hub-pairing-api-s3c.test.ts",
+    "tests/hub-u1-one-input-2921.test.ts",
+    "tests/hub-u1-probe-2921.test.ts",
+    "tests/hub-u1-routes-2921.test.ts",
+    "tests/hub-u1-setup-order-2921.test.ts",
+    "tests/named-link-test-2906.test.ts",
+    "tests/web-office-bubbles-per-set-3681.test.ts",
+    "tests/web-office-fleet-levels-3679.test.ts",
+    "tests/web-org-office.test.ts"
+  ],
+  "resolution": "One manual conflict in ClassicFields: preserve incoming acct/setAcct/acctBackend and ModelSelect profile, keep scoped field IDs. New acctDraft uses existing pane state hook. Automatic overlaps inspected; no package conflicts.",
+  "inheritedWhitespaceWarnings": [
+    "src/hub/join/local.ts",
+    "tests/hub-company-join-local.test.ts",
+    "tests/hub-connection-card-ui.test.ts"
+  ],
+  "ownDiffCheck": "git diff --check origin/release/2.3.5-alpha passes; incoming whitespace left byte-identical.",
+  "approvedSegmentsUnchanged": {
+    "a210b44a2748774c5064d91ab7019560968fa9c7127c02bf3cb2af0ac46934dc": [
+      "src/ui/agent-details-settings.js#useAgentSettings"
+    ],
+    "1597f76c11e7ad44bb39523a2d8faa91a5fb78325ff7c9dfedcfbe0afeebca3d": [
+      "src/ui/settings-dialogs.js#beforeClassicCategories"
+    ]
+  },
+  "approvedWholeFilesUnchanged": {
+    "3c2be15d3d29dbf6138cc91e3ca9436df4d585f910780746d6d1efc711d5e0f9": [
+      "src/ui/chat-workspace.js"
+    ],
+    "0474e9ae65fe7de25b58687346a129c87755fe4bbaaf534882eb7089b4bb59ef": [
+      "src/ui/chat-workspace-navigation.js"
+    ],
+    "d7d3fded9860c2d4688a60939f0f021797b26437bb78b096fb611cbde1b73b63": [
+      "src/ui/settings-apply.js"
+    ],
+    "db54c674121a4603bab3f7758951f3ece288cc2fcbd6e731259af899020c5f87": [
+      "src/ui/settings-confirm.js"
+    ]
+  }
+}
