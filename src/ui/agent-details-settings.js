@@ -118,7 +118,15 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
     return true;
   };
   const unstage = (key) => setStaged((s) => { if (!s.has(key)) return s; const m = new Map(s); m.delete(key); return m; });
-  const discard = () => { setStaged(new Map()); setEpoch((n) => n + 1); reload(); };
+  const clearStaged = () => {
+    // A different pane can still refuse navigation. Keep the rendered state and its guard coherent across rerenders,
+    // and reset this pane's forms even when the person remains here after that other pane cancels.
+    const empty = new Map();
+    stagedRef.current = empty;
+    setStaged(empty);
+    setEpoch((n) => n + 1);
+  };
+  const discard = () => { clearStaged(); reload(); };
 
   // Leaving the page with staged changes asks first (the Settings page's question); the same agent's other categories are not leaving.
   useEffect(() => {
@@ -131,7 +139,7 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
         ask(tn("discardOnLeave", n), { confirmLabel: tn("discard"), danger: true }).then((yes) => {
           asking = false;
           if (!yes || !lease.current()) return;
-          stagedRef.current = new Map();
+          clearStaged();
           go(path, routing.addLeaveGuard ? { skipGuard: check } : { force: true });
         });
       }

@@ -183,6 +183,43 @@ describe("pane scope adds no DOM and retains legacy defaults", () => {
     answerConfirm(confirm.get().queue[0].id, false); await settle();
     (globalThis as any).confirm = oldConfirm;
   });
+  for (const acceptSecond of [true, false]) it(`keeps A discarded across a rerender while B ${acceptSecond ? "accepts" : "cancels"} its question`, async () => {
+    const routing = await import("/assets/app-nav.js") as any;
+    const settings = await import("/ui/js/agent-details-settings.js") as any;
+    const confirm = await import("/assets/ui-confirm.js") as any;
+    const sessions: Record<string, any> = {};
+    function Probe({ name, revision }: { name: string; revision: number }) {
+      sessions[name] = settings.useAgentSettings({ name, lease: ctx.useLease(name), enabled: false, navKey: name });
+      return h("span", null, name, revision);
+    }
+    const make = (revision: number) => h("div", null, h(Probe, { name: "alpha", revision, key: "a" }), h(Probe, { name: "beta", revision, key: "b" }));
+    const previousConfirm = (globalThis as any).confirm; (globalThis as any).confirm = undefined;
+    try {
+      routing.startRouter(p.window); routing.navigate("/ui/chat/alpha", { force: true });
+      await p.mount(make(0));
+      sessions.alpha.stage("a", { label: "A" }); sessions.beta.stage("b", { label: "B" }); await settle();
+      routing.navigate("/ui/chat/beta"); await settle();
+      expect(confirm.confirmStore.get().queue).toHaveLength(1);
+      confirm.answerConfirm(confirm.confirmStore.get().queue[0].id, true); await settle();
+      expect(confirm.confirmStore.get().queue).toHaveLength(1); // B still has its own decision
+      await p.mount(make(1)); // status/parent rerender while B's question is open
+      confirm.answerConfirm(confirm.confirmStore.get().queue[0].id, acceptSecond); await settle();
+      expect(confirm.confirmStore.get().queue).toHaveLength(0);
+      expect(routing.navStore.get().route.instance).toBe(acceptSecond ? "beta" : "alpha");
+      expect(sessions.alpha.staged.size).toBe(0);
+      expect(sessions.beta.staged.size).toBe(acceptSecond ? 0 : 1);
+      if (!acceptSecond) {
+        routing.navigate("/ui/chat/beta"); await settle();
+        expect(confirm.confirmStore.get().queue).toHaveLength(1);
+        confirm.answerConfirm(confirm.confirmStore.get().queue[0].id, false); await settle();
+        expect(sessions.alpha.staged.size).toBe(0); expect(sessions.beta.staged.size).toBe(1);
+      }
+    } finally {
+      await p.unmount();
+      for (const question of [...confirm.confirmStore.get().queue]) confirm.answerConfirm(question.id, false);
+      (globalThis as any).confirm = previousConfirm;
+    }
+  });
   it("notifies every outlet waiting on one shared lazy import", async () => {
     let done!: (component: unknown) => void;
     const load = vi.fn(() => new Promise(resolve => { done = resolve; }));
