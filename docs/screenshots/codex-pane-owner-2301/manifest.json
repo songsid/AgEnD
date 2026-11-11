@@ -3,7 +3,7 @@
   "productHashes": {
     "src/backend/codex.ts": "d09749c6276a3ad5c9d54fd4b62640983fbe202752ab6d7bc9c1b6a4d57dc14b",
     "src/backend/types.ts": "ef1ef527c71eb9be6be7cf612c5c5f74e03a0f1f4641e95712a0d5d6ea9fbde4",
-    "src/daemon.ts": "60c4c732de6227afcfba0d8550eca6699d29670b966ead4129c261db2d36d29f",
+    "src/daemon.ts": "42a1d125c4d7e3dffa17eee3de529725fcbe7617cdbd62175e8a83ee80180ac5",
     "src/codex-pane-ownership.ts": "9d8fb401ddde42813f913687b795acca0361a67e0e84b44816ee46d8bdf46635",
     "src/transcript-delta-reader.ts": "9ca2026cd61da3f16b39113d1111f04fe3583bee5c58097dc101256898a81af2",
     "src/locale.ts": "362cfd22a0f822d75ffa994d1c7975eeac53866e274025a8ad2d5fffdb53cb2e",

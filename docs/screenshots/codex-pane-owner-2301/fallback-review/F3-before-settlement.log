@@ -1,0 +1,49 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-alpha
+
+ ❯ tests/codex-pane-ownership-2301.test.ts (24 tests | 3 failed) 1375ms
+     × binding loss before read retires the fallback without another paste or poll 57ms
+     × binding loss during empty read retires the fallback without another paste or poll 56ms
+     × binding loss before settlement retires the fallback without another paste or poll 60ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 post-paste fallback keeps the session lease > binding loss before read retires the fallback without another paste or poll
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 post-paste fallback keeps the session lease > binding loss during empty read retires the fallback without another paste or poll
+AssertionError: expected 'post-submit-proof:unproven; no-transc…' to be 'raw-paste-submit-proof:codex-session-…' // Object.is equality
+
+Expected: "raw-paste-submit-proof:codex-session-binding-lost; not re-pasted"
+Received: "post-submit-proof:unproven; no-transcript-turn (unavailable)"
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:509:24
+    507|         "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+    508|       ).get(h.row.deliveryId)?.evidence;
+    509|       expect(evidence).toBe(
+       |                        ^
+    510|         "raw-paste-submit-proof:codex-session-binding-lost; not re-pas…
+    511|       );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 post-paste fallback keeps the session lease > binding loss before settlement retires the fallback without another paste or poll
+AssertionError: expected 'delivered' to be 'uncertain' // Object.is equality
+
+Expected: "uncertain"
+Received: "delivered"
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:505:25
+    503|       // retired post-read lease must not sleep until the next transcr…
+    504|       await drainIO();
+    505|       expect(h.state()).toBe("uncertain");
+       |                         ^
+    506|       const evidence = (h.box as any).db.prepare(
+    507|         "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 21 passed (24)
+   Start at  09:40:46
+   Duration  4.15s (transform 2.01s, setup 87ms, import 2.52s, tests 1.38s, environment 0ms)
+
