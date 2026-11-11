@@ -1,5 +1,8 @@
 # U2 groundwork + B2 composition — not final acceptance
 
+Historical packet at 5d3385fe8. The subsequent complete public U2 composition
+is recorded in `../full-u2-composition/`; the hashes here bind the older source.
+
 This supersedes the source hashes in `../preparation/`. It composes the public
 U2 groundwork, not the complete administrator card. No parity/gate request and
 no heavy browser/container campaign is made by this packet.

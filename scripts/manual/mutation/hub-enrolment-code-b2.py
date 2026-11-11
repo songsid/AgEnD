@@ -36,7 +36,7 @@ cases = [
     ('member-compatible-query', 'src/ui/hub-client.js', '/api/hub/member/pairing?v=2${version === 3 ? "&notices=3" : ""}', '/api/hub/member/pairing?v=${version}', 'tests/hub-enrolment-code-client-b2.test.ts', 'default callers stay'),
     ('member-api-optin', 'src/settings-api.ts', ' || url.searchParams.get("v") === "2" && url.searchParams.get("notices") === "3"', '', 'tests/hub-pairing-api-s3c.test.ts', 'member Settings retains'),
     ('slot-capability', ui, 'export const enrolmentCodeV1 = true;', 'export const enrolmentCodeV1 = false;', 'tests/hub-enrolment-code-slot-b2.test.ts', 'first live code'),
-    ('code-step-refresh', ui, 'try { onChanged(); }', 'try { /* mutation */ }', 'tests/hub-enrolment-code-slot-b2.test.ts', 'first live code'),
+    ('code-step-refresh', ui, 'try { onChanged(); }', 'try { /* mutation */ }', 'tests/hub-enrolment-code-slot-b2.test.ts', 'first live code|complete U2 card'),
     ('projection-deadline-binding', 'src/ui/hub-join-approval.js', 'deadline: binding.current.deadline', 'deadline: options.deadline', 'tests/hub-join-approval-ui-b2.test.ts', 'temporary projection'),
 ]
 results = []

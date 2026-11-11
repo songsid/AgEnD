@@ -1,9 +1,9 @@
 # Hub join-code UI (B2)
 
 Implements the Phase B UI in `hub-ux-simplify.md` (public spec d015e6ce, #3658).
-The server implementation is #3673. This branch composes U2 groundwork at
-1c72b482 over that source. The complete U2 administrator card, landed dependency
-sync, final browser evidence and combined acceptance remain pending.
+The server implementation is #3673. This branch composes the complete public U2
+administrator card at c89dd65f (#3698) over that source. Landed dependency sync,
+final browser evidence and combined acceptance remain pending.
 
 ## U2 mounting contract
 
