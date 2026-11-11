@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { END_WARNING_MS, SignInKeepAlive, writeEntries, type KeepAliveDeps, type KeepAliveRecord, type KeepAliveRunners } from "../src/signin-keepalive.js";
+import { SignInKeepAlive, writeEntries, type KeepAliveDeps, type KeepAliveRecord, type KeepAliveRunners } from "../src/signin-keepalive.js";
 
 const DAY = 86_400_000, HOUR = 3_600_000, NOW = Date.UTC(2026, 10, 7, 13, 40, 0);
 const dirs: string[] = [];
@@ -84,12 +84,12 @@ describe("Claude Code: a failure from before the sign-in stops being said once t
       expect(row(f.ka), outcome).toMatchObject({ lastOutcome: outcome });
     }
   });
-  it("the old sign-in's end date is not said as “ended” after a new sign-in: the file's own end date is used", () => {
+  it("after a new sign-in the old failure is not asked about; no line from an end date at all (M-2932)", () => {
     const f = setup("claude-code", { ...OLD, endsAt: NOW - DAY });                           // the old login's end, already past
     claudeCreds(f.home, { expiresAt: NOW + 8 * HOUR, refreshTokenExpiresAt: NOW + 30 * DAY });
     expect(f.ka.attention()).toEqual([]);
-    claudeCreds(f.home, { expiresAt: NOW + 8 * HOUR, refreshTokenExpiresAt: NOW + END_WARNING_MS - HOUR });   // the NEW login ends soon: that is said, from its own date
-    expect(f.ka.attention().map((a) => [a.kind, a.endsAt])).toEqual([["ending", NOW + END_WARNING_MS - HOUR]]);
+    claudeCreds(f.home, { expiresAt: NOW + 8 * HOUR, refreshTokenExpiresAt: NOW + HOUR });   // even a near stored date says nothing
+    expect(f.ka.attention()).toEqual([]);
     const g = setup("claude-code", { ...OLD, endsAt: NOW - DAY });                            // still not signed in: the ask is said, and not “ended” as well
     expect(g.ka.attention().map((a) => a.kind)).toEqual(["needs_sign_in"]);
   });

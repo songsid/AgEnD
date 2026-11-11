@@ -68,7 +68,7 @@ export interface AccountRow {
   reconnect?: true;
 }
 /** Dates are ISO strings; `lastOutcome` is signin-keepalive.ts's Outcome. No token, path or output is in it. */
-export interface AccountKeepAlive { enabled: boolean; fallback?: boolean; endsAt?: string; expiresAt?: string; lastAt?: string; lastOutcome?: string; planType?: string }
+export interface AccountKeepAlive { enabled: boolean; fallback?: boolean; expiresAt?: string; lastAt?: string; lastOutcome?: string; planType?: string }
 export interface CliUpdateInfo extends CliUpdateView { via: "dashboard" | "self" }
 export interface AccountsCli {
   backend: string; profiles: boolean; installed: boolean;

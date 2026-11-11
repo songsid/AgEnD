@@ -20,6 +20,7 @@ import { AntigravityBackend, agyLoginScreenActive, agyTrustDialogState, parseAnt
 import { agyModelEffortLevels, agyModelFamily, readEffortMetadata } from "../src/backend/effort-metadata.js";
 import { cliHelp, flagEffort, readHelpText, resetCliHelpCache, resolveAgyLaunch } from "../src/backend/launch-effort.js";
 import { t } from "../src/locale.js";
+import { FleetManager } from "../src/fleet-manager.js";
 import { registerExecutableFixture } from "./support/process-guard.js";
 
 const FIX = join(import.meta.dirname, "fixtures");
@@ -133,7 +134,6 @@ describe("the catalog: one model per level", () => {
 describe("the fleet's /effort levels for an agy instance are its model's", () => {
   it("the instance's model, else the fleet default's, else agy's own (the probe's currentModel)", async () => {
     cacheCliEnv({ effortLevels: ["low", "medium", "high", "xhigh", "max"], currentModel: "claude-opus-5-5-medium" });
-    const { FleetManager } = await import("../src/fleet-manager.js");
     const fm = new FleetManager(join(root, "agend")) as any;
     try {
       fm.fleetConfig = { defaults: {}, instances: {

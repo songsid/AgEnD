@@ -280,6 +280,7 @@ import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResul
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import { cachedNativeModelCatalog } from "./native-model-catalog.js";
+import { shapeWebModelCatalog } from "./web-model-groups.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED, nativeCredentialProfile } from "./native-instance-registry.js";
 import { createNativeWindowsInstance, updateNativeWindowsInstance } from "./native-instance-api.js";
 import { NativeInstanceConfigEdit, parseNativeInstanceCreate, type NativeInstanceCreateInput } from "./native-instance-input.js";
@@ -21610,49 +21611,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #3292: Needs you's lines for kept sign-ins, in the fleet's language (posted in General's world, like config issues). */
   private keepAliveAttention(): import("./needs-you.js").SignInKeepAliveInput[] {
     const ka = this.signInKeepAlive; if (!ka) return [];
-    // M-2825: in the host's own time (the people reading it are where the fleet runs; a UTC day was a day off near midnight
-    // in Taipei), with the hour for an end date — a day's notice needs to say when that day ends.
+    // M-2825: in the host's own time (the people reading it are where the fleet runs; a UTC day was a day off near midnight in Taipei).
     const p2 = (n: number) => String(n).padStart(2, "0");
-    const day = (ms: number | undefined, at = false) => {
-      if (ms === undefined) return "?";
-      const d = new Date(ms);
-      return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}${at ? ` ${p2(d.getHours())}:${p2(d.getMinutes())}` : ""}`;
-    };
+    const day = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; };
     const owner = this.worlds.keys().next().value;
-    return ka.attention(this.signInsInUse()).map(a => ({
+    // M-2932: only what a refresh showed (needs_sign_in, not_renewed, transient) — never a stored end date.
+    return ka.attention().map(a => ({
       backend: a.backend, profile: a.profile, kind: a.kind, since: a.since, signIn: dashboardSignInSupported(a.backend, a.profile),
       ...(owner ? { owner } : {}),
-      detail: t(`keepalive.${a.kind}`, BACKEND_LABELS[a.backend] ?? a.backend, a.profile ?? t("keepalive.default_name"), a.kind === "transient" ? day(a.failedSince ?? a.since) : day(a.endsAt, a.kind === "ending" || a.kind === "ended")),
+      detail: t(`keepalive.${a.kind}`, BACKEND_LABELS[a.backend] ?? a.backend, a.profile ?? t("keepalive.default_name"), day(a.kind === "transient" ? a.failedSince ?? a.since : a.since)),
     }));
-  }
-
-  /**
-   * M-2825: the host sign-ins in use, once each — whose end date is warned about even when it is not kept alive:
-   * - each agent's and ClassicBot room's as configured (accountUses: a paired computer's agents use that computer's own);
-   * - #3577 review P2: the one each host agent is starting or running on AS LAUNCHED (its lease; a failed start whose CLI
-   *   may still run; a running agent with no lease, by its own launch snapshot) — a profile saved but not yet applied
-   *   leaves the old one in use until the restart, as keepAliveInUse() counts it.
-   */
-  private signInsInUse(): Array<{ backend: string; profile: string | null }> {
-    const seen = new Set<string>(), out: Array<{ backend: string; profile: string | null }> = [];
-    const add = (backend: string | undefined, profile: string | null | undefined) => {
-      if (!backend) return;
-      const key = this.credentialKey(backend, profile ?? null);
-      if (!seen.has(key)) { seen.add(key); out.push({ backend, profile: profile ?? null }); }
-    };
-    try { const uses = this.accountUses(); for (const u of [...uses.agents, ...uses.classic]) add(u.backend, u.profile); } catch { /* the launched ones below still count */ }
-    for (const [name, lease] of this.credentialLeases) if (lease.starting || this.daemons?.has(name)) add(lease.backend, lease.profile);
-    for (const o of this.credentialOrphans.values()) add(o.backend, o.profile);
-    const defaultBackend = this.fleetConfig?.defaults?.backend ?? "claude-code";
-    for (const [name, daemon] of this.daemons ?? []) {
-      if (this.credentialLeases.has(name)) continue;
-      let snap: InstanceConfig | undefined;
-      try { snap = daemon.getConfigSnapshot?.(); } catch { snap = undefined; }
-      if (!snap || isWindowsInstance(snap)) continue;
-      const backend = snap.backend ?? defaultBackend;
-      add(backend, this.launchCredentialProfile(snap, backend));
-    }
-    return out;
   }
 
   /** #3292: Settings → Accounts → Keep sign-in alive (POST /ui/accounts/keep-alive). `by`: the session's label, for the fleet log. */
@@ -25079,13 +25047,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * What Settings → Runtime & model offers as the agent's effort: the levels `model` (null: the one it runs now) takes on
    * this agent's backend and the effort in force with its source. The chat chip's own list (`effortLevelsFor`), only for
-   * the model named: a pure file read, never a CLI. `levels: []` — nothing to offer: a Windows agent, antigravity (its
-   * effort is not shown anywhere), or a backend / model without an effort setting.
+   * the model named: a pure file read, never a CLI. `levels: []` — nothing to offer: a Windows agent, or a backend / model
+   * without an effort setting. antigravity's levels are the model's own (its catalog has one slug per level, merged into
+   * one model in Settings' list), so this dropdown is where its effort is chosen.
    */
   effortOptionsFor(instanceName: string, model: string | null = null): { levels: string[]; effort: string | null; source: "instance" | "fleet-default" | "unset" } {
     const { effort, source } = this.resolveInstanceEffort(instanceName);
     const none = { levels: [] as string[], effort, source };
-    if (!this.fleetConfig?.instances[instanceName] || this.backendNameForInstance(instanceName) === "antigravity") return none;
+    if (!this.fleetConfig?.instances[instanceName]) return none;
     try {
       const { strategy, levels } = this.instanceEffortMetadata(instanceName, model?.trim() || null);
       return { levels: strategy === "unsupported" ? [] : levels, effort, source };
@@ -25442,6 +25411,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const env = this.webModelEnv(backend, instance, selection);
     const seen = new Set<string>();
     return [...(env?.models ?? []), ...(env?.apiModels ?? [])].filter(m => !seen.has(m.id) && !!seen.add(m.id));
+  }
+
+  /** The catalog Web Settings shows: the same cached lists, shaped and grouped (web-model-groups.ts); never a probe. */
+  modelCatalogForWeb(backend: string, instance: string | null, selection?: {profile?:string}): import("./web-model-groups.js").WebModelOption[] {
+    const env = this.webModelEnv(backend, instance, selection);
+    return shapeWebModelCatalog(backend, env?.models ?? [], env?.apiModels ?? []);
   }
 
   /** Explicit, bounded vendor rediscovery. Never publish an answer under a different account/config/instance. */

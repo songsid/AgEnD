@@ -5,6 +5,7 @@
  * moving its conversation is migrate_kiro_instance's job. ClassicBot channels and any fleet default kiro_ui keep
  * deciding for themselves.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -71,7 +72,7 @@ describe("every creation path writes a new kiro instance's engine", () => {
     const configPath = join(dataDir, "fleet.yaml");
     // #2910: a chat fleet (a channel), where create_instance makes a topic; with none the fleet is web-only.
     writeFileSync(configPath, `${defaults}channel:\n  type: telegram\n  mode: topic\n  bot_token_env: T\n  group_id: -100\n  access: { mode: locked, allowed_users: [1] }\n${seed}`);
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const { CreateInstanceArgs } = await import("../src/outbound-schemas.js");
     const fm = new FleetManager(dataDir);
     fm.loadConfig(configPath);

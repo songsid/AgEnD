@@ -14,6 +14,7 @@
  *   M3 (topic-commands): ch?.options?.general_channel_id instead of helper → W1 fails
  *   M4 (fleet-manager listSecureConnections): options-only read → W2 fails
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -132,7 +133,7 @@ describe("W1: autoCreateTopics binds General with legacy top-level general_chann
 
 describe("W2: listSecureConnections returns legacy top-level general_channel_id (#1552)", () => {
   it("general_channel_id is surfaced when only the legacy top-level field is set", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     // Use a real FleetManager instance with a temp dir to satisfy envFileKeys
     const dir = mkdtempSync(join(tmpdir(), "agend-gcid-legacy-"));
     const fm = new (FleetManager as any)(dir);

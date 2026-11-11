@@ -1,7 +1,8 @@
 // #2661: the Office levels on the page — what the host serves (GET /ui/office-levels, src/office-levels.ts: the level from
 // each instance's lifetime work, and where the viewer may see them, the numbers behind it) put into words and colours:
 // the tier a level is in, its title (the page's generic ones, or a skin pack's `levels.titles`), a title a pack pins on
-// someone (`levels.fixed`, which may hide the number), the badge's text and the XP bar. Pure: no DOM, no fetch.
+// someone (`levels.fixed`, which may hide the number), the badge's text and the XP bar. #3679: the fleet's own `levels`
+// (kept on the host for every office, GET /ui/offices) under a pack's (mergeLevels). Pure: no DOM, no fetch.
 import { t, register } from "/assets/app-i18n.js";
 
 register("olv", {
@@ -44,6 +45,21 @@ export function titleOf(level, titles) {
     if (name) return name;
   }
   return t(`olv.t${tierOf(level)}`);
+}
+
+/**
+ * #3679: the words an office's levels use — the fleet's own `levels` (every office), under its pack's: the pack's
+ * titles in place of the fleet's when it has any, and both `fixed` tables, the pack's entry winning for a name in both.
+ * Either may be null; null when neither says anything. The pinned table has no prototype (fixedOf reads own names only).
+ */
+export function mergeLevels(fleet, pack) {
+  if (!fleet) return pack || null;
+  if (!pack) return fleet;
+  const titles = Array.isArray(pack.titles) && pack.titles.length ? pack.titles : fleet.titles;
+  const out = {};
+  if (titles) out.titles = titles;
+  if (fleet.fixed || pack.fixed) out.fixed = Object.assign(Object.create(null), fleet.fixed, pack.fixed);
+  return out;
 }
 
 /** What a pack pins on `name` (an instance or an NPC's id): { title, hideLevel } or null. */

@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { admitSetupFinish, confirmedSetup } from "./helpers/setup-confirmation-1423.js";
 import { createServer } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -578,7 +579,7 @@ describe("the fleet resolves a leftover tunnel when it starts", () => {
     // lease left by a crash sat there until someone happened to run setup
     // again, and the argument that "the fleet coming up cleans this up" was
     // not true of any code.
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const dir = tempDir();
     writeFileSync(join(dir, "fleet.yaml"), "instances: {}\n");
     await writeLease(dir, {

@@ -1,8 +1,8 @@
 /**
  * #3292: Settings → Accounts → Keep sign-in alive (src/ui/accounts-keepalive.js, hooked into accounts-view.js's Row) —
  * the real modules over a faked GET /ui/accounts. A line under each Claude Code / Codex host row that has the part:
- * the switch, what it does (no model request), Claude Code's fallback once on, the sign-in's end date (a warning in its
- * last ten days), the plan and the last check; a paired computer's rows and rows without the part draw none. Switching
+ * the switch, what it does (no model request), Claude Code's fallback once on, the plan and the last check (M-2932: no end
+ * date — a Claude login's stored one is not a deadline); a paired computer's rows and rows without the part draw none. Switching
  * POSTs /ui/accounts/keep-alive and reads the view again fresh. Both languages; its own stylesheet linked once.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -64,16 +64,14 @@ describe("Keep sign-in alive on the Accounts rows (#3292)", () => {
     expect([ka("claude-code", "default"), ka("claude-code", "work"), ka("codex", "default")].every(Boolean)).toBe(true);
     expect([ka("claude-code", "home"), ka("codex", "team2"), ka("kiro-cli", "default")]).toEqual([null, null, null]);
   });
-  it("says what it does, the end date (a warning in its last ten days), the plan and the last check", async () => {
+  it("says what it does, the plan and the last check — and no end date, even from an older server that still sends one (M-2932)", async () => {
     await mount();
     const off = ka("claude-code", "default"), on = ka("claude-code", "work"), cx = ka("codex", "default");
     expect(text(off.querySelector("label"))).toBe("Keep connection alive");
     expect(off.querySelector('input[type="checkbox"]').checked).toBe(false);
     expect(text(off.querySelector('[role="tooltip"]'))).toContain("No model request");
     expect(off.querySelector(".s-keepalive-fallback")).toBeNull();                         // the fallback only once it is on
-    expect(off.querySelector(".s-keepalive-ends").className).not.toContain("is-warn");
-    expect(on.querySelector(".s-keepalive-ends").className).toContain("is-warn");
-    expect(text(on.querySelector(".s-keepalive-ends"))).toContain("Renewing can't move this date");
+    expect([off.querySelector(".s-keepalive-ends"), on.querySelector(".s-keepalive-ends")]).toEqual([null, null]);   // the rows still carry endsAt
     expect(text(on.querySelector(".s-keepalive-fallback"))).toContain("smallest model");
     expect(on.querySelector(".s-keepalive-last").className).toContain("is-bad");
     expect(text(on.querySelector(".s-keepalive-last"))).toMatch(/^Last check .+: not renewed$/);
@@ -190,7 +188,7 @@ describe("Keep sign-in alive on the Accounts rows (#3292)", () => {
     const on = ka("claude-code", "work");
     expect(text(on.querySelector("label"))).toBe("保持連接");
     expect(text(on.querySelector(".s-keepalive-last"))).toMatch(/：沒有續期$/);
-    expect(text(on.querySelector(".s-keepalive-ends"))).toContain("續期無法延後這個日期");
+    expect(on.querySelector(".s-keepalive-ends")).toBeNull();
     expect(p.document.querySelectorAll('link[data-accounts-keepalive-css="1"]').length).toBe(1);
   });
 });

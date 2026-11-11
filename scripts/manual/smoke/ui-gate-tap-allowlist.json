@@ -104,6 +104,7 @@
  "web-dashboard div.grid3 > div.field > input#cardLimit-portrait-max_kib": 1,
  "web-dashboard div.grid3 > div.field > input#cardLimit-portrait-max_width": 1,
  "web-dashboard div.s-app-icon-heading > h3.s-ap-title > a.s-learn": 1,
+ "web-dashboard section.card.s-level-titles > div.s-widget-actions > button.btn": 1,
  "web-dashboard div.s-setting-copy > details.s-setting-details > summary": 4,
  "web-dashboard section.card.s-appearance > details.s-app-icon-help > summary": 1,
  "web-dashboard section.card.s-appearance > div.s-css-actions > button.btn": 1,

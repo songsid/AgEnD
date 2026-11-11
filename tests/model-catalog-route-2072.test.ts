@@ -41,11 +41,11 @@ const nextTurn = () => new Promise<void>(resolve => setImmediate(resolve));
 describe("GET /ui/models", () => {
   it("answers the fleet's cached catalog for that backend and instance", async () => {
     const catalog = vi.fn(() => [{ id: "opus", label: "opus" }]);
-    const r = get("/ui/models?backend=claude-code&instance=w", catalog);
+    const r = get("/ui/models?backend=grok&instance=w", catalog);
     await r.finished;
     expect(r.status()).toBe(200);
-    expect(r.json()).toEqual({ backend: "claude-code", models: [{ id: "opus", label: "opus" }] });
-    expect(catalog).toHaveBeenCalledWith("claude-code", "w");
+    expect(r.json()).toEqual({ backend: "grok", models: [{ id: "opus", label: "opus" }] });
+    expect(catalog).toHaveBeenCalledWith("grok", "w");
     const r2 = get("/ui/models?backend=codex", catalog);
     await r2.finished;
     expect(catalog).toHaveBeenLastCalledWith("codex", null);
@@ -71,7 +71,8 @@ describe("GET /ui/models", () => {
     const catalog = vi.fn(() => []);
     const r = get("/ui/models?backend=claude-code", catalog, () => [{ backend: "claude-code", version: "2.1.299" }]);
     await r.finished;
-    expect(r.json()).toMatchObject({ backend: "claude-code", source: "official-catalog", models: expect.arrayContaining([{ id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" }]) });
+    expect(r.json()).toMatchObject({ backend: "claude-code", source: "official-catalog", models: expect.arrayContaining([{ id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", group: "unverified" }]) });
+    expect(r.json().models.some((m: any) => !m.id.startsWith("claude-"))).toBe(false);   // the aliases are not listed
     expect(catalog).toHaveBeenCalledWith("claude-code", null);
   });
   it.each(["runtime=other", "refresh=true"])("rejects malformed options %s before requesting models", async query => {

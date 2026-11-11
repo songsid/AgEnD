@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -382,7 +383,7 @@ describe("daemon: a recovery in progress cancels the revival restart (sol's revi
 
 describe("fleet-manager: concurrent restart sources share one restart (sol's review, #485)", () => {
   it("the second caller joins the in-flight restart instead of stopping the instance twice", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const dataDir = mkdtempSync(join(tmpdir(), "agend-restart-race-"));
     const fm = new FleetManager(dataDir) as any;
     fm.fleetConfig = {
@@ -414,7 +415,7 @@ describe("fleet-manager: concurrent restart sources share one restart (sol's rev
   });
 
   it("a failed restart releases the guard for the next attempt", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const dataDir = mkdtempSync(join(tmpdir(), "agend-restart-fail-"));
     const fm = new FleetManager(dataDir) as any;
     fm.fleetConfig = { defaults: {}, instances: { worker: { working_directory: dataDir } } };

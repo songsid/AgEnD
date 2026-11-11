@@ -27,6 +27,10 @@ So a beta never moves `latest`.
    - an entry in `src/agent-whats-new.ts` when a tool parameter an agent
      sees changes. Instances that were already running are told about it
      once.
+   - when a new Claude model series has shipped since the last release: its
+     entry in the native-1M table of `src/backend/claude-context.ts`. The
+     table is written by hand; a series it does not know gets a redundant
+     `[1m]` variant in Telegram's `/model` "More models".
 2. **Main CI is green on the candidate SHA.** Dispatch CodeQL on it too:
    `gh workflow run codeql.yml -R songsid/AgEnD --ref main -f sha=<candidate sha>`.
    A beta does not wait for the result (decision 36195467). Read it before the
