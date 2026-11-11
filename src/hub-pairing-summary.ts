@@ -1,3 +1,4 @@
+import { settingsSummary, summaryLine, summaryMessage, type SettingsSummaryPresentation } from "./settings-summary.js";
 /**
  * S3c PR B: the pairing projection's types and the confirmation summary — no I/O and no S1 import, so the fleet can
  * name a pairing step's summary without loading the Hub's pairing client (which loads only with hub_member on).
@@ -14,7 +15,7 @@ export function httpsOrigin(address: string): string | null {
 }
 
 /** What the owner is asked to confirm for a pairing step (Settings confirmation's summary); a refused input throws. */
-export function pairingSummary(action: "connect" | "confirm" | "disconnect", input: unknown, view: HubPairingView, bound: { hubId: string; binding: string | null } | null = null): { summary: string[] } {
+export function pairingSummary(action: "connect" | "confirm" | "disconnect", input: unknown, view: HubPairingView, bound: { hubId: string; binding: string | null } | null = null): { summary: string[]; summary_i18n?: SettingsSummaryPresentation } {
   const body = (input && typeof input === "object" && !Array.isArray(input) ? input : {}) as Record<string, unknown>;
   const refuse = (code: string) => { throw Object.assign(new Error(code), { code }); };
   const groups = (d: string) => d.toLowerCase().slice(0, 32).replace(/(.{4})(?=.)/g, "$1 ");
@@ -22,15 +23,19 @@ export function pairingSummary(action: "connect" | "confirm" | "disconnect", inp
     const origin = typeof body.address === "string" ? httpsOrigin(body.address) : null;
     if (!origin) refuse("address");
     if (view.state !== "unpaired") refuse("busy");
-    return { summary: [`Connect this fleet to the Hub at ${origin}`, "It asks the Hub's owner and administrator to approve it"] };
+    return settingsSummary([summaryLine(`Connect this fleet to the Hub at ${origin}`, summaryMessage("hub.pairing.summary.connect", origin!)),
+      summaryLine("It asks the Hub's owner and administrator to approve it", summaryMessage("hub.pairing.summary.approval"))]);
   }
   if (action === "confirm") {
     if (view.state !== "pending" || body.digest !== view.fingerprint.digest) refuse("conflict");
-    return { summary: [`Confirm the pairing fingerprint for ${(view as { memberOrigin: string }).memberOrigin}`, groups(String(body.digest))] };
+    return settingsSummary([summaryLine(`Confirm the pairing fingerprint for ${(view as { memberOrigin: string }).memberOrigin}`,
+      summaryMessage("hub.pairing.summary.confirm", (view as { memberOrigin: string }).memberOrigin)), groups(String(body.digest))]);
   }
   if (view.state !== "paired" && !(view.state === "held" && view.hold !== "disconnected" && view.memberOrigin)) refuse("conflict");
   // #3115 r1 P2: the confirmation names the exact Hub (its id, in the body the owner confirms); apply rechecks it.
   if (!bound || body.hubId !== bound.hubId || !bound.binding || body.binding !== bound.binding) refuse("conflict");
   const origin = view.state === "paired" ? view.hub.memberOrigin : (view as { memberOrigin: string }).memberOrigin;
-  return { summary: [`Disconnect this fleet from the Hub at ${origin} (${bound!.hubId}, pairing ${bound!.binding!.slice(0, 12)})`, "Every agent shared there is withdrawn; the Hub's administrator revokes the fleet there"] };
+  return settingsSummary([summaryLine(`Disconnect this fleet from the Hub at ${origin} (${bound!.hubId}, pairing ${bound!.binding!.slice(0, 12)})`,
+    summaryMessage("hub.pairing.summary.disconnect", origin!, bound!.hubId, bound!.binding!.slice(0, 12))),
+    summaryLine("Every agent shared there is withdrawn; the Hub's administrator revokes the fleet there", summaryMessage("hub.pairing.summary.withdraw"))]);
 }

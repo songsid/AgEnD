@@ -443,7 +443,7 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     // them (they were "ordinary" keys and silently left out of the card).
     if (path.length === 2 && path[0] === "new_instance" && (path[1] === "backend" || path[1] === "model")
       && (next === undefined || (typeof next === "string" && next.length <= 128 && !/[\p{Cc}\p{Cf}]/u.test(next)))) {
-      if (next !== undefined && next !== "") add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "absent")} → ${settingsDisplay(next)}`);
+      if (next !== undefined && next !== "") add(changeLine(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "absent")} → ${settingsDisplay(next)}`, [settingsDisplay(path.join("."))], old, next));
       return;
     }
     // Exactly this validated preference subtree. No credential/access field can hide inside it.
@@ -465,7 +465,7 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
         : key === "tags" ? Array.isArray(value) && value.length <= 32 && value.every(tag => typeof tag === "string" && tag.length > 0 && tag.length <= 64)
         : typeof value === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value));
       if (!valid(old) || !valid(next)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
-      add(`${label}: ${settingsDisplay(old)} → ${settingsDisplay(next)}`); return;
+      add(changeLine(`${label}: ${settingsDisplay(old)} → ${settingsDisplay(next)}`, [label], old, next)); return;
     }
     // Under an immediate key, only its known children are settings; a secret or an id list is still confirmed below.
     if (unknownImmediateChild(path) && !SETTINGS_SECRET_KEY.test(key) && !idLists.has(key)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
