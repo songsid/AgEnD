@@ -24949,15 +24949,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch { return []; }
   }
 
+  /**
+   * What Settings → Runtime & model offers as the agent's effort: the levels `model` (null: the one it runs now) takes on
+   * this agent's backend and the effort in force with its source. The chat chip's own list (`effortLevelsFor`), only for
+   * the model named: a pure file read, never a CLI. `levels: []` — nothing to offer: a Windows agent, antigravity (its
+   * effort is not shown anywhere), or a backend / model without an effort setting.
+   */
+  effortOptionsFor(instanceName: string, model: string | null = null): { levels: string[]; effort: string | null; source: "instance" | "fleet-default" | "unset" } {
+    const { effort, source } = this.resolveInstanceEffort(instanceName);
+    const none = { levels: [] as string[], effort, source };
+    if (!this.fleetConfig?.instances[instanceName] || this.backendNameForInstance(instanceName) === "antigravity") return none;
+    try {
+      const { strategy, levels } = this.instanceEffortMetadata(instanceName, model?.trim() || null);
+      return { levels: strategy === "unsupported" ? [] : levels, effort, source };
+    } catch { return none; }
+  }
+
   /** The instance's backend's effort metadata; agy's levels are its model's (#1825), the one the instance runs. */
-  private instanceEffortMetadata(instanceName: string) {
+  private instanceEffortMetadata(instanceName: string, modelOverride: string | null = null) {
     if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return { strategy: "unsupported" as const, levels: [] as string[] };
     const backend = this.backendNameForInstance(instanceName);
     let model: string | null = null;
     // The model it runs, for the backends whose levels are the model's own: agy's catalog (#1825), claude's account
     // catalog and grok's cache. codex's levels read its own config (the caller there knows which model runs); the
     // rest ignore the model.
-    if (backend !== "codex") {
+    // Settings' model field, before it is saved: not for codex, whose levels are the ones its config gives to the chip
+    // and to applyEffort alike — the page must list what a choice will be applied against.
+    if (modelOverride && backend !== "codex") model = modelOverride;
+    else if (backend !== "codex") {
       const resolved = this.resolveInstanceModel(instanceName);
       model = resolved.source === "unresolved" ? null : resolved.model;
     }

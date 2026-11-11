@@ -106,6 +106,55 @@ export function ModelSelect({ value, onChange, disabled, id, backend, instance, 
       value=${value} onInput=${(e) => onChange(e.target.value)} />` : null}
     ${managed ? html`${state.phase !== "load_error" ? html`<div class="model-catalog-status"><span class="note" role="status" aria-live="polite">${note}</span></div>` : null}<${ModelRefresh} state=${state} disabled=${disabled} initialFailure=${tn("modelCatalogFailed")} />` : null}</div>`;
 }
+/** The effort field takes effect at once (like the chat chip's), so its label says so: "now". */
+const EFFORT_SCHEMA = { impacts: { "instance.effort": "now" } };
+/**
+ * The agent's reasoning effort, under its model. One value with the chat header's effort chip: the choices are what the
+ * model in the field takes (read from the daemon as the model changes, never listed here), and a choice goes through
+ * the chip's own /effort — applied to a running agent at once, not staged. "Model default" is the unset state: it is
+ * not written, so it is the first choice and cannot be picked once an effort is set (/effort has no way back to it).
+ * Nothing shows for an agent, CLI or model without an effort setting. While the model field holds an unsaved change
+ * the choices are the new model's but disabled: an effort applies to the model that runs.
+ */
+export function EffortField({ m }) {
+  const { name, inst, f, ctx } = m;
+  const windows = inst.runtime === "windows";
+  const model = (f.model || "").trim();
+  const [state, setState] = useState(null), [busy, setBusy] = useState(false), [rev, setRev] = useState(0);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => {
+    if (windows) return undefined;
+    let live = true;
+    api(`/ui/effort-options?${new URLSearchParams({ instance: name, ...(model ? { model } : {}) })}`)
+      .then((r) => { if (live) setState(r.ok && r.body && Array.isArray(r.body.levels) ? r.body : { levels: [], effort: null }); },
+        () => { if (live) setState({ levels: [], effort: null }); });
+    return () => { live = false; };
+  }, [name, model, inst.model || "", rev, windows]);
+  if (windows || !state || !state.levels.length) return null;
+  const { levels, effort } = state;
+  // `inst.model` is the staged one once a model is chosen: the saved model is the daemon's word.
+  const unsavedModel = typeof state.model === "string" && model !== state.model.trim();
+  const pick = async (e) => {
+    const level = e.target.value;
+    if (!level || level === effort || busy) return;
+    setBusy(true);
+    try {
+      const r = await api("/ui/command", { method: "POST", body: JSON.stringify({ instance: name, command: "effort", args: level }) });
+      if (!r.ok) toast((r.body && r.body.error) || pt("effortFailed"), false);
+      else if (r.body && r.body.text) toast(r.body.text);
+    } catch { toast(pt("effortFailed"), false); }
+    if (!alive.current) return;
+    setBusy(false); setRev((x) => x + 1);
+    if (ctx.reloadLive) await ctx.reloadLive();
+  };
+  const options = [{ value: "", label: pt("effortDefault"), disabled: !!effort }, ...levels.map((l) => ({ value: l, label: l })),
+    ...(effort && !levels.includes(effort) ? [{ value: effort, label: pt("effortNotOffered", effort), disabled: true }] : [])];
+  return html`<div class="field"><${Label} text=${pt("lbl_effort")} schema=${EFFORT_SCHEMA} field="instance.effort" htmlFor="ag-effort" tip=${pt("tip_effort")} />
+    <select key=${`${effort || ""}:${rev}`} id="ag-effort" value=${effort || ""} disabled=${busy || unsavedModel} aria-busy=${busy ? "true" : undefined} onChange=${pick}>
+      ${options.map((o) => html`<option key=${o.value} value=${o.value} disabled=${o.disabled}>${o.label}</option>`)}</select>
+    ${unsavedModel ? html`<p class="note">${pt("note_effortSaveModel")}</p>` : null}</div>`;
+}
 export function Impact({ schema, field }) { return html`<span class="impact">${impactText(impactOf(schema, field))}</span>`; }
 export function Label({ text, schema, field, htmlFor, mark, tip }) {
   // with an ⓘ the label, the ⓘ and the timing sit in one header (the ⓘ is a button, never inside a label).
@@ -388,6 +437,7 @@ export function AgentFields({ m, cat, onDelete }) {
     <${Card} title=${pt("cardModel")}>
       <div class="field">${L(tn("model"), "instance.model", "ag-model", pt("tip_model"))}<${ModelSelect} id="ag-model" value=${f.model} onChange=${set("model")}
         backend=${acctBackend} instance=${name} profile=${windows ? undefined : acct} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
+      <${EffortField} m=${m} />
       ${acctBackend === "codex" && !windows ? html`<div class="field codex-speed">${L(tn("codexSpeed"), "instance.backend_options", "ag-speed", pt("tip_codexSpeed"))}
         <${Select} id="ag-speed" value=${f.codex_speed} onChange=${set("codex_speed")}
           options=${CODEX_SPEED_CHOICES.map((v) => ({ value: v, label: tn(v === "fast" ? "codexSpeedFast" : v === "standard" ? "codexSpeedStandard" : "codexSpeedDefault") }))} />
@@ -398,7 +448,6 @@ export function AgentFields({ m, cat, onDelete }) {
           <${ModelSelect} id="ag-fo" disabled=${f.inherit.model_failover} backend=${acctBackend} instance=${name} profile=${windows ? undefined : acct} inherit=${tn("modelNone")}
             value=${shown("model_failover", f.model_failover, (defaults.model_failover && defaults.model_failover[0]) || "")} onChange=${set("model_failover")} /></${Override}>
         <${Feedback} warning=${failoverWarn} /></div>
-      <${Info}>${pt("note_effort")}</${Info}>
     </${Card}></div>`;
   if (cat === "work") return html`<div class="ap-grid">
     <${Card} title=${pt("cardWorkdir")}>
