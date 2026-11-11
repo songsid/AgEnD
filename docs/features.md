@@ -577,7 +577,7 @@ The daemon notifies you in Telegram when a failover occurs and switches back to 
 
 ## Graceful restart
 
-`/restart` in the chat (without `full`) restarts the instances inside the running fleet process: it waits for all instances to go idle (no transcript activity for 10s), then restarts them one by one. A 5-minute timeout prevents hanging on stuck instances. The CLI's whole-fleet restart is `agend restart`, which goes through the service manager (#2356); `agend fleet restart` only runs `agend restart` now and goes away in 2.4.
+`/restart` in the chat (without `full`) restarts the instances inside the running fleet process: it waits for all instances to go idle (no transcript activity for 10s), then restarts them one by one. A 5-minute timeout prevents hanging on stuck instances. The CLI's whole-fleet restart is `agend restart`, which goes through the service manager (#2356); `agend fleet restart` only runs `agend restart` now and goes away in a later 2.4 release.
 
 ## Topic icon + idle archive
 

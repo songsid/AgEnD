@@ -107,8 +107,11 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // never reach an alpha install). The id is shared with main's entry, so nobody is told twice.
   { id: "2.3.5-decision-team-scope", since: "2.3.5-alpha.9", tools: ["post_decision"],
     text: "Decisions have a team scope: `post_decision` takes `scope: \"team\"` and `team: \"<name>\"` (a team you are in) — every member of that team sees it, wherever they work; other teams don't. It is the default when you are in one team (in several, name `team`; in none, the default stays `project`, this exact directory). `list_decisions` now lists your teams' decisions too (scope `team`, with `team`). Use `fleet` only for rules every team follows. CLI: `agend-agent decision-post <title> <content> team:<name>`." },
-  // #3647: the next alpha on this line; main names its next beta with the same id.
-  { id: "2.3.5-dispatcher-liveness", since: "2.3.5-alpha.15", tools: ["task"],
+  // #3647: the first release that has it — this line's next alpha, published as 2.4.0-alpha.1 (user 11-12). The id keeps
+  // its 2.3.5 name: main names its next beta with the same id, so nobody is told twice. `since` must be in the running
+  // release (planWhatsNew tells only entries whose release is the running one): a 2.3.5-alpha.N `since` on a 2.4.0-alpha.1
+  // install would be recorded silently, never told.
+  { id: "2.3.5-dispatcher-liveness", since: "2.4.0-alpha.1", tools: ["task"],
     text: "When an agent you handed a claimed card to stops — crashed and not back, paused (sign-in ended, usage limit, errors), stuck, waiting on a prompt nobody answers, or quiet with the card for 60 min — you get one `[Task board]` notice naming the card, what happened and what you can do (ask it, restart or wake it, reassign the card), and one \"working again\" line when it recovers. AgEnD only tells. `task` `list` with `stale: true` lists those cards." },
 ];
 

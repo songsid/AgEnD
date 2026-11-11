@@ -433,8 +433,18 @@ describe("agents are told once", async () => {
   const { AGENT_WHATS_NEW } = await import("../src/agent-whats-new.js");
   it("a what's-new entry names the notice and task list stale: true, from the next alpha", () => {
     const e = AGENT_WHATS_NEW.find((x) => x.id === "2.3.5-dispatcher-liveness");
-    expect(e).toMatchObject({ since: "2.3.5-alpha.15", tools: ["task"] });
+    expect(e).toMatchObject({ since: "2.4.0-alpha.1", tools: ["task"] });
     expect(e!.text).toContain("`stale: true`");
     expect(e!.text).toContain("AgEnD only tells");
+  });
+  // The release is published as 2.4.0-alpha.1 (user 11-12): planWhatsNew tells only the running release's entries, so a
+  // `since` left on 2.3.5-alpha.N would be recorded silently on that install and never told.
+  it("an agent upgraded from 2.3.5 to 2.4.0-alpha.1 is told it once, not silently marked seen", async () => {
+    const { planWhatsNew } = await import("../src/agent-whats-new.js");
+    const ID = "2.3.5-dispatcher-liveness", others = AGENT_WHATS_NEW.filter((x) => x.id !== ID).map((x) => x.id);
+    const plan = planWhatsNew({ record: { announced: others, version: "2.3.5" }, fresh: false, version: "2.4.0-alpha.1", tools: new Set(["task", "reply"]) });
+    expect(plan && "notice" in plan ? [plan.ids, plan.notice.includes("`stale: true`")] : plan).toEqual([[ID], true]);
+    expect(planWhatsNew({ record: { announced: [...others, ID] }, fresh: false, version: "2.4.0-alpha.2" })).toBeNull();   // told once
+    expect(planWhatsNew({ record: { announced: others }, fresh: false, version: "2.3.5" })).toBeNull();   // not before its release
   });
 });
