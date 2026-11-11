@@ -221,6 +221,7 @@ try {
     await shot("restored-settings", 2);
     if (process.env.REVIEW_R1 === "1") {
       assert.equal(await page.locator("#pane-a-se-received").inputValue(), "🎉");
+      await page.locator("#pane-a-se-received").scrollIntoViewIfNeeded();
       await shot("restored-emojis", 2); await page.locator("#pane-a-se-received").fill(emojiOriginal);
       await page.locator('[data-pane="a"] .s-nav a[href$="cat=basic"]').click();
       await page.locator("#pane-a-ag-desc").waitFor();
