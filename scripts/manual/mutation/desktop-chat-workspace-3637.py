@@ -24,14 +24,23 @@ cases = [
     ('suspended-forms', 'src/ui/settings-dialogs.js', [('paneState.usePaneState(ctx.formMemory, key, initial)', 'paneState.usePaneState(null, key, initial)')], 'web-chat-workspace-suspend-3637'),
     ('suspended-guard', 'src/ui/agent-details-settings.js', [('const hold = off => memory ? memory.hold(off) : lease.hold(off);', 'const hold = off => lease.hold(off);')], 'web-chat-workspace-suspend-3637'),
     ('suspended-retirement', 'src/ui/chat-workspace-navigation.js', [('dispose(record); retained.delete(key);', 'retained.delete(key);')], 'web-chat-workspace-navigation-3637'),
-    ('operation-completion-owner', 'src/ui/agent-details-settings.js', [('if (id !== ownership.id || ownership.settledPhase === phase', 'if (ownership.settledPhase === phase')], 'web-chat-workspace-operation-3637'),
-    ('operation-leftover-owner', 'src/ui/agent-details-settings.js', [('!op || op.id !== ownership.id || !op.leftover', '!op || !op.leftover')], 'web-chat-workspace-operation-3637'),
+    ('operation-completion-retention', 'src/ui/agent-details-settings.js', [('const phase = outcome?.phase, id = outcome?.id;', 'const phase = op?.phase, id = op?.id;')], 'web-chat-workspace-operation-3637'),
+    ('operation-leftover-retention', 'src/ui/agent-details-settings.js', [('if (!outcome || outcome.id !== ownership.id', 'if (!op || op.id !== outcome?.id || !outcome || outcome.id !== ownership.id')], 'web-chat-workspace-operation-3637'),
     ('operation-late-owner', 'src/ui/agent-details-settings.js', [('!lease.current() || ownership.id !== id', '!lease.current()')], 'web-chat-workspace-operation-3637'),
+    ('outcome-suspension', 'src/ui/agent-details-settings.js', [('(memory || lease).hold(appStore.subscribe', 'lease.hold(appStore.subscribe')], 'web-chat-workspace-operation-3637'),
+    ('restage-retry-key', 'src/ui/agent-details-settings.js', [('...(previous?.key && sameWrite(previous.request, change.request) ? { key: previous.key } : {}), ', '')], 'web-chat-workspace-operation-3637'),
+    ('restage-changed-request', 'src/ui/agent-details-settings.js', [('previous?.key && sameWrite(previous.request, change.request)', 'previous?.key')], 'web-chat-workspace-operation-3637'),
+    ('recovery-existing-key', 'src/ui/agent-details-settings.js', [('if (!k || (existing && !sameWrite(existing.request, c.request))) continue;', 'if (!k || existing) continue;')], 'web-chat-workspace-operation-3637'),
+    ('recovery-definite-refusal', 'src/ui/agent-details-settings.js', [(', key: c.key, stageKey: k', ', stageKey: k')], 'web-chat-workspace-operation-3637'),
     ('emoji-draft', 'src/ui/settings-dialogs.js', [('draft=${ctx.formMemory ? emojis : undefined}', 'draft=${undefined}')], 'web-chat-pane-fields-3637'),
     ('split-button-owner', 'src/ui/chat-workspace.js', [('if (owner) controller.focus(owner);', '/* no owner focus */')], 'web-chat-workspace-host-3637'),
     ('logout-cleanup', 'src/ui/shared/app-session.js', [('appStore.get().chatWorkspaceSessionEnd?.();', 'void 0;')], 'web-chat-workspace-session-3637'),
     ('gateway-mark', 'src/web-api.ts', [('const workspaceMark = mode === "full" && !gatewayRequestContext(req) && !viewer?.guest', 'const workspaceMark = mode === "full" && !viewer?.guest')], 'web-chat-workspace-shell-3637'),
 ]
+if len(sys.argv) > 2:
+    selected = set(sys.argv[2].split(','))
+    cases = [case for case in cases if case[0] in selected]
+    assert len(cases) == len(selected) > 0, 'unknown or empty mutation selection'
 git = lambda *args: subprocess.check_output(['git', *args], cwd=root, text=True).strip()
 receipt = {'head': git('rev-parse', 'HEAD'), 'tree': git('rev-parse', 'HEAD^{tree}'), 'cases': [], 'inputs': {}}
 for name, file, replacements, test in cases:
