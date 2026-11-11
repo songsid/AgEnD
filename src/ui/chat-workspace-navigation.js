@@ -4,7 +4,7 @@ import { agentRoute, dockWorkspace, navigatePane, openBeside, readWorkspace, wor
 
 export const workspaceGeometryVersion = 1;
 
-export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWorkspace = () => {} } = {}) {
+export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWorkspace = () => {}, geometry = false } = {}) {
   const guards = new Map(), panes = new Map(), retained = new Map();
   const dispose = record => {
     record.alive = false;
@@ -40,7 +40,7 @@ export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWor
       let w = null;
       if (mode === "navigate" && !opts.workspace && before.workspace && agentRoute(parseRoute(url.pathname)) && !url.searchParams.has("compare")) {
         w = navigatePane(before.workspace, before.workspace.focus, url);
-      } else w = readWorkspace(url, before.workspace);
+      } else w = readWorkspace(url, before.workspace, geometry);
       return w ? target(w) : { route: parseRoute(url.pathname), workspace: null, path: url.pathname + url.search + url.hash };
     },
     refresh(s) {
@@ -129,7 +129,7 @@ export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWor
       }
     },
     layout(layout, floating = "b") {
-      const w = current(); if (!w || !["right", "stack", "float"].includes(layout) || (w.layout === layout && (layout !== "float" || w.floating === floating))) return;
+      const w = current(); if (!w || !["right", "stack", "float"].includes(layout) || (layout === "float" && !geometry) || (w.layout === layout && (layout !== "float" || w.floating === floating))) return;
       go({ ...w, layout, ...(layout === "float" ? { floating: floating === "a" ? "a" : "b", rect: w.rect || null } : {}) });
     },
     swap() { const w = current(); if (w) go({ ...w, ...(w.layout === "float" ? { floating: w.floating === "a" ? "b" : "a" } : { flipped: !w.flipped }) }); },
@@ -141,8 +141,8 @@ export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWor
       if (next.workspace || next.route?.instance !== kept.route.instance) return;
       schedule(() => { if (nav.navStore.get() === next) doc.querySelector("#main .panel-head h1")?.focus(); });
     },
-    restore(w) { if (w) go(w, { replace: true }); },
-    restoreAddress() { const w = readWorkspace(address()); if (w) go(w, { replace: true }); },
+    restore(w) { if (w && (w.layout !== "float" || geometry)) go(w, { replace: true }); },
+    restoreAddress() { const w = readWorkspace(address(), null, geometry); if (w) go(w, { replace: true }); },
     close() { if (!alive) return; alive = false; for (const cancel of pending) cancel(); pending.clear(); for (const record of retained.values()) dispose(record); retained.clear(); off(); },
   };
 }

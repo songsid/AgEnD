@@ -24,6 +24,8 @@ cases = [
     ('keyboard-browser-keys', 'src/ui/chat-workspace-gestures.js', [('!w || !rect || modified(e) || !usable()', '!w || !rect || !usable()')], 'web-chat-workspace-gestures-3637'),
     ('pane-dom-identity', 'src/ui/chat-workspace.js', [('html`<${Pane} key=${id}', 'html`<${Pane}')], 'web-chat-workspace-host-3637'),
     ('sidebar-dock', 'src/ui/shared/instance-nav.js', [('dock && workspace.dragStart(item.name, e)', 'false')], 'web-chat-workspace-sidebar-3637'),
+    ('retained-float-model', 'src/ui/shared/chat-workspace-model.js', [('q.get("layout") === "float" && !allowFloat', 'false')], 'web-chat-workspace-skew-geometry-3637'),
+    ('retained-float-layout', 'src/ui/chat-workspace-navigation.js', [('(layout === "float" && !geometry) || ', '')], 'web-chat-workspace-skew-geometry-3637'),
 ]
 if len(sys.argv) > 2:
     selected = set(sys.argv[2].split(','))

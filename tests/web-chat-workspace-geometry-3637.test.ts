@@ -39,8 +39,8 @@ describe("float URLs and preferences stay topology-only", () => {
     const saved = model.saveWorkspace(w), next: any = model.restoreWorkspace(saved);
     expect(next?.layout).toBe("float"); expect(next?.floating).toBe("a"); expect(next?.rect).toEqual({ x: 10, y: 20, width: 560, height: 460 });
     expect(JSON.stringify(saved)).not.toContain("discard");
-    expect(model.readWorkspace(new URL(model.workspacePath(next), "https://fleet.example"))).toEqual(next);
-    expect(model.readWorkspace(new URL("https://fleet.example/ui/chat/alpha?compare=beta&layout=float&floatX=NaN"))).toBeNull();
+    expect(model.readWorkspace(new URL(model.workspacePath(next), "https://fleet.example"), null, true)).toEqual(next);
+    expect(model.readWorkspace(new URL("https://fleet.example/ui/chat/alpha?compare=beta&layout=float&floatX=NaN"), null, true)).toBeNull();
     expect(model.twoPaneFits(1400, 900, 350, "float")).toBe(false);
   });
 });

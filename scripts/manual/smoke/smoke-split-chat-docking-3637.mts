@@ -192,6 +192,8 @@ try {
     } else if (["host", "js", "all"].includes(retained)) {
       assert.equal(await page.locator('.ws-geometry').count(), 0); assert.equal(await page.locator('.ws-sash').count(), 0);
       assert.ok(Math.abs((await box('[data-pane="a"]')).width - (await box('[data-pane="b"]')).width) <= 1);
+      await page.goto(fx.base + `/ui/chat/${encodeURIComponent(a)}?compare=${encodeURIComponent(b)}&layout=float&floatPane=b`);
+      await page.locator('#msgIn').waitFor(); assert.equal(await page.locator('.chat-workspace').count(), 0); await shot(`retained-${retained}-float-refused`, 1);
     } else if (retained === "sidebar") { assert.equal(await page.locator('.ws-sash').count(), 1); }
   }
   await Promise.all(jobs); assert.deepEqual(errors, []); assert.deepEqual(blocked, []);

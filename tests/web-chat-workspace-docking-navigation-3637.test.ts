@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { page, type AppPage } from "./helpers/app-harness.js";
 let p: AppPage, nav: any, controller: any;
 const stopPreview = vi.fn();
-beforeAll(async () => { p = page({ url: "http://127.0.0.1/ui/chat/alpha" }); nav = await import("/assets/app-nav.js"); nav.startRouter(p.window); controller = (await import("/ui/js/chat-workspace-navigation.js")).installWorkspaceNavigation(nav, { beforeLayout: stopPreview }); });
+beforeAll(async () => { p = page({ url: "http://127.0.0.1/ui/chat/alpha" }); nav = await import("/assets/app-nav.js"); nav.startRouter(p.window); controller = (await import("/ui/js/chat-workspace-navigation.js")).installWorkspaceNavigation(nav, { geometry: true, beforeLayout: stopPreview }); });
 beforeEach(() => { nav.navigate("/ui/chat/alpha", { workspace: true, force: true }); controller.open("beta"); stopPreview.mockClear(); });
 afterAll(() => { controller.close(); p.restore(); });
 it("floats the requested pane and stops the old live preview before changing its DOM position", () => {

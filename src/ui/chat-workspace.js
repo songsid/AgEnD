@@ -232,7 +232,7 @@ export function installWorkspaceEntry({ nav, ready, landing = false, scope = "",
         if (!alive || nav.navStore.get() !== attempt) return; // a later navigation retires this loading intent
         if (!controller) {
           if (!nav.installNavigation || !PanelHeader.workspaceVersion) throw new Error("old shell");
-          controller = workspaceNavigation.installWorkspaceNavigation(nav, { beforeLayout: services?.stopPreview,
+          controller = workspaceNavigation.installWorkspaceNavigation(nav, { geometry: true, beforeLayout: services?.stopPreview,
             onWorkspace: () => { if (!shellStore.get().workspaceHost) shellStore.set({ workspaceHost: createWorkspaceHost(controller, gestures) }); } });
           let previous = null;
           nav.navStore.subscribe(next => {

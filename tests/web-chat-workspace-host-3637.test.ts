@@ -16,7 +16,7 @@ beforeAll(async () => {
   nav = await import("/assets/app-nav.js"); app = await import("/assets/app-store.js"); shell = await import("/assets/app-shell.js");
   ctx = await import("/assets/app-ctx.js"); tabs = await import("/assets/instance-switch.js");
   host = await import("/ui/js/chat-workspace.js");
-  nav.startRouter(p.window); controller = (await import("/ui/js/chat-workspace-navigation.js") as any).installWorkspaceNavigation(nav);
+  nav.startRouter(p.window); controller = (await import("/ui/js/chat-workspace-navigation.js") as any).installWorkspaceNavigation(nav, { geometry: true });
   app.applyStatus({ instances: ["alpha", "beta"].map(name => ({ name, backend: "claude-code", status: "running", state: "idle" })) });
 });
 afterEach(async () => { await p.unmount(); nav.navigate("/ui/chat/alpha", { workspace: true }); leases.clear(); width = 900; });

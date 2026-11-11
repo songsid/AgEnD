@@ -21,12 +21,13 @@ function pane(route, search = "", hash = "", prior) {
 }
 
 /** An explicit compare link is the only URL that restores two panes. An ordinary deep link stays single. */
-export function readWorkspace(url, previous = null) {
+export function readWorkspace(url, previous = null, allowFloat = false) {
   const route = parseRoute(url.pathname), q = url.searchParams;
   if (!agentRoute(route) || !q.has("compare") || keys.some(key => q.getAll(key).length > 1)) return null;
   const second = q.get("compare"), aView = q.get("paneA") || route.panel, bView = q.get("paneB") || "chat";
   if (!isSafeInstanceName(second) || second === route.instance || !PANE_VIEWS.includes(aView) || !PANE_VIEWS.includes(bView)) return null;
   if (q.has("layout") && !layouts.includes(q.get("layout"))) return null;
+  if (q.get("layout") === "float" && !allowFloat) return null; // retained adapters/hosts have no floating geometry
   if (q.has("focus") && !["a", "b"].includes(q.get("focus"))) return null;
   if (q.has("floatPane") && !["a", "b"].includes(q.get("floatPane"))) return null;
   const boxKeys = ["floatX", "floatY", "floatW", "floatH"];
