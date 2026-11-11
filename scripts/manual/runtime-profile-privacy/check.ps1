@@ -7,6 +7,14 @@ $ErrorActionPreference = 'Stop'
 $script = (Get-Item -LiteralPath $PrivacyScript).FullName
 $user = [Security.Principal.WindowsIdentity]::GetCurrent().User
 if ([IO.DriveInfo]::new([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($ScratchParent))).DriveFormat -ne 'NTFS') { throw 'This proof requires owned NTFS scratch' }
+# Hosted scratch prerequisites are logged separately from the product's bounded, path-free refusal.
+for ($ancestor = Get-Item -LiteralPath $ScratchParent -Force; $ancestor; $ancestor = $ancestor.Parent) {
+ $security = $ancestor.GetAccessControl()
+ Write-Host ("Scratch ancestor " + $ancestor.FullName + " owner=" + $security.GetOwner([Security.Principal.SecurityIdentifier]).Value)
+ foreach ($rule in $security.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
+  Write-Host ("  " + $rule.IdentityReference.Value + " " + $rule.AccessControlType + " " + $rule.FileSystemRights + " " + $rule.PropagationFlags)
+ }
+}
 $work = Join-Path $ScratchParent ('agend-n7-' + [Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($work) | Out-Null
 $cases = 0
