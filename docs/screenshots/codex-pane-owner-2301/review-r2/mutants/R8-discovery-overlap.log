@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-discovery-2301.test.ts (6 tests | 1 failed) 102ms
+   × times out held discovery, refuses overlapping work, and closes without reading after release 10ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-discovery-2301.test.ts > times out held discovery, refuses overlapping work, and closes without reading after release
+AssertionError: expected 2 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ tests/codex-pane-discovery-2301.test.ts:68:17
+     66|   const overlapping = f.bind();
+     67|   await new Promise<void>(r => immediate(r));
+     68|   expect(opens).toBe(1);
+       |                 ^
+     69|   await vi.advanceTimersByTimeAsync(251);
+     70|   expect(await overlapping).toBeNull();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 34 passed (35)
+   Start at  10:05:18
+   Duration  3.80s (transform 2.17s, setup 283ms, import 2.75s, tests 1.42s, environment 0ms)
+

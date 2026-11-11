@@ -1,0 +1,47 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-ownership-2301.test.ts (27 tests | 2 failed) 1583ms
+     × binding loss during empty read retires the fallback without another paste or poll 57ms
+     × binding loss before settlement retires the fallback without another paste or poll 69ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 post-paste fallback keeps the session lease > binding loss during empty read retires the fallback without another paste or poll
+AssertionError: expected 'submission_started' to be 'uncertain' // Object.is equality
+
+Expected: "uncertain"
+Received: "submission_started"
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:511:25
+    509|       // retired post-read lease must not sleep until the next transcr…
+    510|       await drainIO();
+    511|       expect(h.state()).toBe("uncertain");
+       |                         ^
+    512|       const evidence = (h.box as any).db.prepare(
+    513|         "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 post-paste fallback keeps the session lease > binding loss before settlement retires the fallback without another paste or poll
+AssertionError: expected 'delivered' to be 'uncertain' // Object.is equality
+
+Expected: "uncertain"
+Received: "delivered"
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:511:25
+    509|       // retired post-read lease must not sleep until the next transcr…
+    510|       await drainIO();
+    511|       expect(h.state()).toBe("uncertain");
+       |                         ^
+    512|       const evidence = (h.box as any).db.prepare(
+    513|         "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  2 failed | 33 passed (35)
+   Start at  10:05:47
+   Duration  3.75s (transform 1.85s, setup 269ms, import 2.34s, tests 1.69s, environment 0ms)
+

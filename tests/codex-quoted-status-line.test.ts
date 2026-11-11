@@ -72,13 +72,13 @@ describe("enableContextStatusLine — quoted TOML keys (#931, Layer 1)", () => {
     expect(matches).toHaveLength(1);
   });
 
-  it("does not inject when context item already present under quoted key (G8c)", () => {
+  it("adds UUID before the existing Context item under a quoted key (G8c)", () => {
     // Mutation guard G8c: Rule 1 must recognise "context-remaining" inside a
     // quoted key's value. Without it the rule exits early incorrectly.
     const original = `[tui]\n"status_line" = ["context-remaining", "model-current"]\n`;
     const out = writeAndRead(original);
     // Nothing should change.
-    expect(out).toBe(original);
+    expect(out).toBe('[tui]\nstatus_line = ["session-id", "context-remaining", "model-current"]\n');
   });
 
   it("still injects for unquoted keys (no regression)", () => {

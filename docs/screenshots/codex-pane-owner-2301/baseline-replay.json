@@ -1,0 +1,21 @@
+{
+  "source": "a3aefd9e49d54794a5a0c52d0f313ae8402b4e6e",
+  "scope": "recorded Codex0.167 mock-only stream; real Daemon/Outbox; private tmux replay; no backend CLI/account/network",
+  "receipts": [
+    {
+      "mode": "baseline",
+      "state": "uncertain",
+      "expected": "uncertain",
+      "pastes": 1,
+      "keys": [
+        "Enter"
+      ],
+      "accepted": true,
+      "elapsedMs": 8841
+    }
+  ],
+  "cleanup": {
+    "privateTmuxStopped": true,
+    "scratchRemoved": true
+  }
+}

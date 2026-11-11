@@ -1,0 +1,16 @@
+{
+  "version": "0.167.0",
+  "binarySha256": "cdcb45aaa01d0f14e298985e09465aebccd47f64ecd298aea44814af7b62bbda",
+  "sessionId": "01a1c833-edae-7e90-a5f2-fabac139e72f",
+  "rawText": "[quiet-heartbeat-2301] Check the inert task board; if nothing changed, stay silent.",
+  "isolated": "unshare user+network namespace; loopback only",
+  "account": false,
+  "ownedSocket": "/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main/.ca/capture-2301-last/tmux.sock",
+  "launches": 2,
+  "requestsLog": "/home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main/.ca/capture-2301-last/http.log",
+  "cleanup": {
+    "ownedTmuxStopped": true,
+    "ownedDaemonsExited": true,
+    "scratchHomeRemoved": true
+  }
+}

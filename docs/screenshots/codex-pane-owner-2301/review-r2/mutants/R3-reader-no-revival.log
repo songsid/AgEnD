@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-read-race-2301.test.ts (2 tests | 1 failed) 25ms
+   × checks the opened descriptor, not only the path before and after a replacement race 18ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-read-race-2301.test.ts > checks the opened descriptor, not only the path before and after a replacement race
+AssertionError: expected 'user' to be 'unavailable' // Object.is equality
+
+Expected: "unavailable"
+Received: "user"
+
+ ❯ tests/codex-pane-read-race-2301.test.ts:91:31
+     89|   expect(await cp.validateFile()).toBe(true);
+     90|   appendFileSync(f.path, user("ours"));
+     91|   expect(await reader.look()).toBe("unavailable");
+       |                               ^
+     92| });
+     93| it("a timed-out validation permanently retires admission while its one…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 34 passed (35)
+   Start at  10:04:39
+   Duration  3.87s (transform 1.99s, setup 293ms, import 2.48s, tests 1.68s, environment 0ms)
+

@@ -1173,6 +1173,16 @@ export class CodexBackend implements CliBackend {
     return false;
   }
 
+  readRawPasteSession(pane: string): { sessionId: string; sessionsDir: string } | null {
+    if (!this.isDeliveryInputReadyPane(pane)) return null;
+    const rows = pane.replace(/\r/g, "").split("\n");
+    while (rows.length && !rows.at(-1)!.trim()) rows.pop();
+    stripCodexPassiveHintRow(rows);
+    // Full first item and a complete numeric Context item. Truncation is readiness chrome, never ownership proof.
+    const match = rows.at(-1)?.match(/^[ \t]*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[ \t]+·[ \t]+Context[ \t]+(?:100|[0-9]{1,2})%[ \t]+(?:left|used)(?=[ \t]*$|[ \t]+·|[ \t]{2,})/i);
+    return match ? { sessionId: match[1].toLowerCase(), sessionsDir: join(this.isolatedCodexHome, "sessions") } : null;
+  }
+
   /**
    * Live status chrome that must veto the broad prompt/context ready match.
    *
@@ -1454,20 +1464,9 @@ export class CodexBackend implements CliBackend {
   }
 
   /**
-   * Ensure Codex's TUI status line shows context usage: the Context item is
-   * both what /ctx scrapes and the footer AgEnD's readiness proofs rely on.
-   * Rules (never drops or reorders the user's items):
-   *   1. the effective `tui.status_line` already has a context item
-   *      (context-remaining / -usage / -used) → leave the config untouched.
-   *   2. no context item:
-   *        - no status_line at all → write status_line = ["context-remaining"]
-   *        - status_line exists     → prepend "context-remaining" to it
-   * Best-effort string edit (no TOML writer), but every candidate edit is
-   * parsed back and kept only if the effective `tui.status_line` becomes
-   * `["context-remaining", ...the user's items]`. A `status_line` key in some
-   * other table is not the TUI's and must not be the one edited (#931). If no
-   * edit can be verified, the launch warns the operator instead of leaving the
-   * pane silently unready.
+   * Private footer: full thread UUID first, Context next, then the other user items in order (#2301).
+   * The shared config is never edited. Every textual candidate is parsed back before writing; an
+   * uneditable/invalid TOML layout keeps the existing launch warning and cannot provide ownership.
    */
   private enableContextStatusLine(): void {
     this.configuredStatusLineItems = undefined;
@@ -1480,42 +1479,38 @@ export class CodexBackend implements CliBackend {
     let content = "";
     try { content = readFileSync(configPath, "utf-8"); } catch { /* no file yet */ }
 
-    const ITEM = "context-remaining";
     const current = effectiveTuiStatusLine(content);
     if (current === "invalid") {
       this.statusLineWarning = t("codex.status_line_unverifiable", "tui.status_line is not a list of item names, or config.toml does not parse", sharedConfigPath);
       return;
     }
-    // Rule 1: the TUI already shows a context item → don't touch anything.
-    if (current?.some(item => CODEX_CONTEXT_STATUS_ITEM_RE.test(item))) return;
+    const context = current?.find(item => CODEX_CONTEXT_STATUS_ITEM_RE.test(item)) ?? "context-remaining";
+    const wanted = ["session-id", context, ...(current ?? []).filter(item => item !== context && item !== "session-id" && item !== "thread-id")];
+    if (current && current.length === wanted.length && current.every((item, i) => item === wanted[i])) return;
+    const array = `[${wanted.map(item => JSON.stringify(item)).join(", ")}]`;
 
     // TOML allows quoted keys: `"status_line" = [...]`, `"tui"."status_line"`,
     // `['tui']`. Every textual candidate is tried; parsing decides.
     const candidates: string[] = [];
     if (current) {
-      // Rule 2b: prepend our item to the user's existing array (don't overwrite).
-      // First position keeps "Context N% left" at the far left of the footer so a
-      // long cwd/other items can't push it past 80 cols and truncate it.
+      // Canonicalize only the private array. UUID and Context survive before lower-value items.
       for (const m of content.matchAll(/["']?status_line["']?\s*=\s*\[([^\]]*)\]/g)) {
-        const inner = m[1].trim().replace(/^,\s*/, "").replace(/,\s*$/, "");
-        const newInner = inner.length ? `"${ITEM}", ${inner}` : `"${ITEM}"`;
-        candidates.push(`${content.slice(0, m.index)}status_line = [${newInner}]${content.slice(m.index! + m[0].length)}`);
+        candidates.push(`${content.slice(0, m.index)}status_line = ${array}${content.slice(m.index! + m[0].length)}`);
       }
     } else {
       // Rule 2a: no status_line at all → add a minimal one.
       const base = content.length && !content.endsWith("\n") ? `${content}\n` : content;
       // Also recognise quoted section headers: `["tui"]` and `['tui']`.
       if (/^\[["']?tui["']?\][^\n]*\n/m.test(base)) {
-        candidates.push(base.replace(/^\[["']?tui["']?\][^\n]*\n/m, h => `${h}status_line = ["${ITEM}"]\n`));
+        candidates.push(base.replace(/^\[["']?tui["']?\][^\n]*\n/m, h => `${h}status_line = ${array}\n`));
       }
-      candidates.push(`${base}\n[tui]\nstatus_line = ["${ITEM}"]\n`);
+      candidates.push(`${base}\n[tui]\nstatus_line = ${array}\n`);
       // A config that defines tui with dotted keys cannot take a [tui] table.
-      candidates.push(`tui.status_line = ["${ITEM}"]\n${base}`);
+      candidates.push(`tui.status_line = ${array}\n${base}`);
       // Nor can an inline `tui = { … }` table: the item goes inside it.
-      candidates.push(base.replace(/^([ \t]*["']?tui["']?[ \t]*=[ \t]*\{)[ \t]*\}/m, `$1 status_line = ["${ITEM}"] }`));
-      candidates.push(base.replace(/^([ \t]*["']?tui["']?[ \t]*=[ \t]*\{)/m, `$1 status_line = ["${ITEM}"],`));
+      candidates.push(base.replace(/^([ \t]*["']?tui["']?[ \t]*=[ \t]*\{)[ \t]*\}/m, `$1 status_line = ${array} }`));
+      candidates.push(base.replace(/^([ \t]*["']?tui["']?[ \t]*=[ \t]*\{)/m, `$1 status_line = ${array},`));
     }
-    const wanted = [ITEM, ...(current ?? [])];
     const fixed = candidates.find(candidate => {
       const items = effectiveTuiStatusLine(candidate);
       return Array.isArray(items) && items.length === wanted.length && items.every((item, i) => item === wanted[i]);

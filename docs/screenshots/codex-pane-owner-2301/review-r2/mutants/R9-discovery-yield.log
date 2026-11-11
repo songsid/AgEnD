@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-main
+
+ ❯ tests/codex-pane-discovery-2301.test.ts (6 tests | 1 failed) 97ms
+   × yields during a large buffered listing so the deadline can cancel it 30ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-discovery-2301.test.ts > yields during a large buffered listing so the deadline can cancel it
+AssertionError: expected 20001 to be less than 20000
+ ❯ tests/codex-pane-discovery-2301.test.ts:131:17
+    129|   // starving the deadline behind an uninterrupted microtask chain.
+    130|   expect(reads).toBeGreaterThan(0);
+    131|   expect(reads).toBeLessThan(20_000);
+       |                 ^
+    132|   await vi.advanceTimersByTimeAsync(251);
+    133|   expect(await pending).toBeNull();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 34 passed (35)
+   Start at  10:05:25
+   Duration  3.63s (transform 1.97s, setup 315ms, import 2.45s, tests 1.48s, environment 1ms)
+
