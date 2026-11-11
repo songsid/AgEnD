@@ -37,7 +37,15 @@ for (const [label, withIcons] of [["without icons", false], ["with icons", true]
   check(r.status === 0 && /^AGEND_SHORTCUTS_MADE=2\r?$/m.test(r.stdout), `run ${label}: both shortcuts made (status ${r.status})`);
   if (!/^AGEND_SHORTCUTS_MADE=2\r?$/m.test(r.stdout)) {
     // Install-AgendShortcuts keeps going past a shortcut it cannot make: ask the same function directly, for its reason.
-    const why = ps(`$script:OnWindows = $true\n${shared}\ntry { New-AgendShortcut 'AgEnD probe' 'probe.ps1' '# probe' 'probe' | Out-Null; Write-Output 'PROBE|ok' } catch { Write-Output ('PROBE|' + $_.Exception.GetType().FullName + '|' + $_) }\n`);
+    const why = ps([
+      "$script:OnWindows = $true", shared,
+      "function Show-Scope { Write-Output ('SCOPE|script:OnWindows=' + [string]$script:OnWindows + '|global:OnWindows=' + [string]$global:OnWindows) }",
+      "Show-Scope",
+      "try { New-AgendShortcut 'AgEnD probe' 'probe.ps1' '# probe' 'probe' | Out-Null; Write-Output 'PROBE|ascii|ok' } catch { Write-Output ('PROBE|ascii|' + $_) }",
+      "try { New-AgendShortcut 'AgEnD 儀表板' 'open-dashboard.ps1' (Get-DashboardOpenerScript 'AgEnD-CI' 'runner') 'AgEnD 網頁儀表板（自動帶入登入碼）' | Out-Null; Write-Output 'PROBE|chinese|ok' } catch { Write-Output ('PROBE|chinese|' + $_) }",
+      "Write-Output ('PROBE|install|' + (@(Install-AgendShortcuts 'AgEnD-CI' 'runner') -join ';'))",
+      "",
+    ].join("\n"));
     console.log(why.stdout.trim());
   }
 }
