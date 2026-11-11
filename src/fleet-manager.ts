@@ -19471,7 +19471,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const env = this.webModelEnv(backend, instance);
       const current = this.resolveInstanceModel(instance).model;
       const models = more ? this.modelCatalogFor(backend, instance) : env?.models ?? [];
-      return { current, options: this.withCurrentModel(models, current).map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })),
+      const own = this.resolveInstanceEffort(instance).effort;
+      return { current, options: this.withCurrentModel(models, current).map(o => {
+        const effort = this.modelEffortChoice(instance, backend, o.id, own);
+        return { id: o.id, label: this.modelChoiceLabel(o, current), ...(effort ? { effort } : {}) };
+      }),
         actions: more ? ["refreshAll"] : backend === "claude-code" ? ["refresh", "more"] : ["refresh"] };
     };
     return runWebCommand({
@@ -24061,6 +24065,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private withCurrentModel(options: import("./backend/types.js").ModelOption[], currentModel: string | null | undefined): import("./backend/types.js").ModelOption[] {
     if (!currentModel || currentModel === "default" || options.some(o => o.id === currentModel)) return options;
     return [{ id: currentModel, label: currentModel, description: t("model.not_listed") }, ...options];
+  }
+
+  /**
+   * The effort a /model option offers behind its "›" (the phone's second level): the levels `model` takes on this
+   * backend and the effort the agent has set, when the model has one of them (else null: it shows "auto"). Only where
+   * an effort change is applied live (a model switch then an effort one is no second restart), and not antigravity,
+   * whose effort is part of the model it runs. A file read; never a CLI.
+   */
+  private modelEffortChoice(instance: string, backend: string, model: string, set: string | null): { levels: string[]; current: string | null } | null {
+    if (backend === "antigravity") return null;
+    try {
+      const { strategy, levels } = readEffortMetadata(backend, this.getInstanceDir(instance), model, this.catalogProfile(backend, instance));
+      return strategy === "runtime" && levels.length > 0 ? { levels, current: set && levels.includes(set) ? set : null } : null;
+    } catch { return null; }
   }
 
   private modelChoiceLabel(

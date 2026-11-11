@@ -48,6 +48,8 @@ function nativeCliTag(inst) {
 }
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { modelLabel, modelPickerStyles, mw } from "./model-picker.js";
+/** An effort level as a word: low → Low, xhigh → XHigh (the CLIs' own names). Local: a tab on an older model-picker.js still has it. */
+const effortWord = (level) => ({ xhigh: "XHigh" }[level] || String(level).charAt(0).toUpperCase() + String(level).slice(1));
 import { savePref } from "/assets/app-prefs.js";
 import { applyTheme, clearAmbient, resolvedMode, themeFor, themeImageUrl, themeMenuItems, themesStore } from "/assets/app-themes.js";
 import { colorMenuItem } from "/assets/identity-color.js";
@@ -664,6 +666,14 @@ function CommandCard({ name, lease }) {
   const run = (args, action) => store.runCommand(name, c.command, args, { alive: () => lease.current(), ...(action ? { action } : {}) });
   const actions = c.choices?.actions || [];
   const refresh = actions.find(a => a === "refresh" || a === "refreshAll");
+  // The phone's second level: a /model option with an `effort` (its levels and the one set) opens its own list, with a way back.
+  const [sub, setSub] = useState(null);
+  const open = sub && sub.for === c.choices ? c.choices.options.find((o) => o.id === sub.id && o.effort) : null;
+  const pickEffort = async (model, level) => {
+    setSub(null);
+    if (model.id !== c.choices.current) { await run(model.id); if (!lease.current() || !store.state.commands[name] || store.state.commands[name].error) return; }
+    await store.runCommand(name, "effort", level, { alive: () => lease.current() });
+  };
   return html`<div class=${`cmd-card${c.command === "model" ? " cmd-model" : ""}${c.error ? " bad" : ""}`} role=${c.error ? "alert" : "status"}>
     <div class="cmd-head"><span class="cmd-name mono">/${c.command}${c.command === "model" || c.choices?.step === "model" ? html` · ${mw("model")}` : null}</span>
       <div class="cmd-head-actions">${refresh ? html`<button type="button" class="icon-btn" data-model-action=${refresh} title=${mw("refresh")} aria-label=${mw("refresh")} disabled=${c.busy}
@@ -677,9 +687,18 @@ function CommandCard({ name, lease }) {
       : c.compact === "lost" ? t("chat.compactLost") : c.compact === "not_compacted" ? t("chat.compactNotCompacted") : t("chat.compactUnknown")}</p>` : null}
     ${c.choices?.step === "backend" ? html`<p class="note">${mw("next")}</p>` : null}
     ${c.choices && c.choices.prompt ?  html`<pre class="cmd-text">${c.choices.prompt}</pre>` : null}
-    ${c.choices ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdChoose")}>${c.choices.options.map((o) => html`<button key=${o.id} type="button"
+    ${open ? html`<div class="cmd-sub"><button type="button" class="btn btn-sm btn-ghost cmd-sub-back" disabled=${c.busy} onClick=${() => setSub(null)}>‹ ${modelLabel(open.label.replace(/^✓\s*/, ""))}</button></div>
+      <div class="cmd-choices cmd-effort-levels" role="group" aria-label=${mw("effort")}>${open.effort.levels.map((level) => html`<button key=${level} type="button"
+        class=${`btn btn-sm${level === open.effort.current ? " current" : ""}`} aria-current=${level === open.effort.current ? "true" : undefined}
+        disabled=${c.busy} onClick=${() => pickEffort(open, level)}>${effortWord(level)}</button>`)}</div>`
+    : c.choices ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdChoose")}>${c.choices.options.map((o) => {
+      const choice = html`<button key=${o.id} type="button"
       class=${`btn btn-sm${o.id === c.choices.current ? " current" : ""}`} aria-current=${o.id === c.choices.current ? "true" : undefined}
-      disabled=${c.busy || !!o.disabled} title=${o.disabled || undefined} onClick=${() => { if (!o.disabled) run(o.id); }}>${c.choices.step === "backend" ? html`<span>${backendLabel(o.id)}</span>${o.disabled ? html`<span class="note">${o.disabled}</span>` : null}` : modelLabel(c.command === "model" ? o.label.replace(/^✓\s*/, "") : o.label)}</button>`)}</div>` : null}
+      disabled=${c.busy || !!o.disabled} title=${o.disabled || undefined} onClick=${() => { if (!o.disabled) run(o.id); }}>${c.choices.step === "backend" ? html`<span>${backendLabel(o.id)}</span>${o.disabled ? html`<span class="note">${o.disabled}</span>` : null}` : modelLabel(c.command === "model" ? o.label.replace(/^✓\s*/, "") : o.label)}</button>`;
+      // On a phone (model-picker.css) the row shows its effort and a "›" to the effort list; elsewhere only the model button shows.
+      return c.command === "model" && c.choices.step !== "backend" && o.effort && !o.disabled ? html`<div key=${o.id} class="cmd-choice">${choice}<button type="button" class="btn btn-sm btn-ghost cmd-effort-go"
+        disabled=${c.busy} aria-label=${mw("effortFor", modelLabel(o.label.replace(/^✓\s*/, "")))} onClick=${() => setSub({ for: c.choices, id: o.id })}><span class="cmd-effort-now">${o.effort.current ? effortWord(o.effort.current) : mw("effortAuto")}</span> ›</button></div>` : choice;
+    })}</div>` : null}
     ${c.command === "model" && c.choices ? html`<p class="note">${mw("selectionHint")}</p>` : null}
     ${actions.includes("more") ? html`<div class="cmd-model-more"><button type="button" class="btn btn-sm btn-ghost" data-model-action="more" disabled=${c.busy} onClick=${() => run("", "more")}>${mw("more")}</button></div>` : null}
     ${c.choices && c.choices.options.some((o) => o.signIn) && !publicLinkPage() ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdSignIn")}>${c.choices.options.filter((o) => o.signIn).map((o) => html`<button

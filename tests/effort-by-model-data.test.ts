@@ -266,4 +266,19 @@ describe("FleetManager: the running model's levels, and what the chat header is 
     expect(of("haiku")).toMatchObject({ effort: null, effort_supported: false });
     expect(of("oc")).toMatchObject({ effort: null, effort_supported: false });
   });
+
+  it("a /model option's effort (the phone's second level): the model's levels and the set one, none for Haiku 4.5, agy or an unlisted backend", async () => {
+    catalog();
+    grokCache(GROK);
+    const fm = await rig("instances:\n  a: { working_directory: /tmp, backend: claude-code, model: claude-opus-4-6, effort: high }\n");
+    const choice = (backend: string, model: string, set: string | null) => fm.modelEffortChoice("a", backend, model, set);
+    expect(choice("claude-code", "claude-opus-4-6", "high")).toEqual({ levels: ["low", "medium", "high", "max"], current: "high" });
+    expect(choice("claude-code", "claude-opus-4-6", "xhigh")).toEqual({ levels: ["low", "medium", "high", "max"], current: null });   // not a level this model has: auto
+    expect(choice("claude-code", "claude-opus-4-6", null)).toEqual({ levels: ["low", "medium", "high", "max"], current: null });
+    expect(choice("claude-code", "claude-haiku-4-5-20251001", "high")).toBeNull();
+    expect(choice("grok", "grok-4.7", "xhigh")).toEqual({ levels: ["low", "medium", "high", "xhigh"], current: "xhigh" });
+    expect(choice("antigravity", "gemini-3.8-flash-high", "high")).toBeNull();
+    expect(choice("opencode", "x", "high")).toBeNull();
+    expect(choice("codex", "gpt-x", "high")).toBeNull();                                            // codex/kiro: a restart each, not offered here
+  });
 });

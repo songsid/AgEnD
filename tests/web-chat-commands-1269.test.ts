@@ -241,6 +241,64 @@ describe("the chat's commands (the real page modules)", () => {
     expect(c.card().className).toContain("bad");
   });
 
+  describe("a phone's model list with each model's effort (AGEND-176)", () => {
+    const options = [
+      { id: "a", label: "✓ Alpha", effort: { levels: ["low", "medium", "high", "xhigh"], current: "medium" } },
+      { id: "b", label: "Beta", effort: { levels: ["low", "high"], current: null } },
+      { id: "c", label: "Gamma" },
+    ];
+    const open = async () => {
+      const c = await chatPage();
+      c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {} : body.args ? { text: `ok ${body.command} ${body.args}` } : { choices: { current: "a", options } });
+      await c.type("/model"); await c.key("Enter");
+      return c;
+    };
+    const rows = (c: any) => c.card().querySelectorAll(".cmd-choices > .cmd-choice, .cmd-choices > .btn");
+
+    it("a model with an effort has its row's effort and a ›; one without is the plain button; the model button still applies it", async () => {
+      const c = await open();
+      expect(rows(c).map((r: any) => r.textContent.replace(/\s+/g, " ").trim())).toEqual(["AlphaMedium ›", "BetaAuto ›", "Gamma"]);
+      const go = c.card().querySelectorAll(".cmd-effort-go");
+      expect(go).toHaveLength(2);
+      expect(go[1].getAttribute("aria-label")).toContain("Beta");
+      fire(rows(c)[1].querySelector(".btn"), "click"); await settle();
+      expect(c.commands().at(-1)!.body).toEqual({ instance: "w", command: "model", args: "b" });
+    });
+
+    it("› opens that model's efforts (the set one marked), ‹ goes back to the models", async () => {
+      const c = await open();
+      fire(c.card().querySelectorAll(".cmd-effort-go")[0], "click"); await settle();
+      const levels = c.card().querySelectorAll(".cmd-effort-levels .btn");
+      expect(levels.map((b: any) => [b.textContent, b.getAttribute("aria-current")])).toEqual([["Low", null], ["Medium", "true"], ["High", null], ["XHigh", null]]);
+      expect(c.card().querySelector(".cmd-sub-back").textContent).toContain("Alpha");
+      expect(c.card().querySelector(".cmd-effort-go")).toBeNull();
+      fire(c.card().querySelector(".cmd-sub-back"), "click"); await settle();
+      expect(rows(c)).toHaveLength(3);
+    });
+
+    it("an effort of the model in use is /effort <level> alone; of another model, the model first, then the effort", async () => {
+      const c = await open();
+      fire(c.card().querySelectorAll(".cmd-effort-go")[0], "click"); await settle();
+      fire(c.card().querySelectorAll(".cmd-effort-levels .btn")[3], "click"); await settle();
+      expect(c.commands().map((x) => x.body)).toEqual([{ instance: "w", command: "model" }, { instance: "w", command: "effort", args: "xhigh" }]);
+      expect(c.card().querySelector(".cmd-text").textContent).toBe("ok effort xhigh");
+    });
+    it("another model: /model b, then /effort high", async () => {
+      const c = await open();
+      fire(c.card().querySelectorAll(".cmd-effort-go")[1], "click"); await settle();
+      fire(c.card().querySelectorAll(".cmd-effort-levels .btn")[1], "click"); await settle();
+      expect(c.commands().map((x) => x.body)).toEqual([{ instance: "w", command: "model" }, { instance: "w", command: "model", args: "b" }, { instance: "w", command: "effort", args: "high" }]);
+    });
+    it("a refused model switch leaves the effort unsent", async () => {
+      const c = await open();
+      c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {} : body.command === "model" && body.args ? { error: "no such model" } : { choices: { current: "a", options } });
+      fire(c.card().querySelectorAll(".cmd-effort-go")[1], "click"); await settle();
+      fire(c.card().querySelectorAll(".cmd-effort-levels .btn")[0], "click"); await settle();
+      expect(c.commands().map((x) => x.body.command + (x.body.args ? ` ${x.body.args}` : ""))).toEqual(["model", "model b"]);
+      expect(c.card().getAttribute("role")).toBe("alert");
+    });
+  });
+
   it("#1476 review: a command line typed while one is still out stays in the composer (nothing sent, nothing lost)", async () => {
     const c = await chatPage();
     let release!: () => void;
