@@ -726,6 +726,11 @@ function main(argv, injected) {
     pruneStale(prefix, deps).forEach(function (n) { log("  ↺ " + n); });
     var previous = isAgendPackage(path.join(root, "@songsid", "agend"));
     var bin = path.join(prefix, "bin", "agend");
+    // M-2885: the one-time line about desktop shortcuts (WSL) or launchers (a Linux desktop), said by the agend just
+    // installed and only in a terminal — on every successful end. Its outcome never changes this install's.
+    var sayShortcutsHint = function () {
+      try { deps.run(bin, ["shortcuts", "--hint"], { inherit: true, env: withoutUpdateNpmBounds(deps.env) }); } catch (e) { /* a hint never fails an install */ }
+    };
     // #2420: on a host with a service, what an update whose new service does not come up goes back to.
     var svc = serviceOf(serviceKind(deps), deps);
     if (svc && previous) {
@@ -772,7 +777,7 @@ function main(argv, injected) {
     // A fresh install (no fleet set up, not an upgrade): the next step is the setup wizard.
     var kind = serviceKind(deps);
     var configured = fs.existsSync(path.join(home, "fleet.yaml")) || fs.existsSync(path.join(home, "fleet.pid"));
-    if (!configured && !upgrade && !kind) { log("  Next: run `agend quickstart` to set up AgEnD."); return 0; }
+    if (!configured && !upgrade && !kind) { log("  Next: run `agend quickstart` to set up AgEnD."); sayShortcutsHint(); return 0; }
     // The service stays under the manager it has (`agend restart` picks the same one: system unit, else user unit or
     // launchd job): the new release's `agend install --no-activate` refreshes that definition without starting anything
     // (a legacy system unit is refreshed in place — never a second, user unit), then the fleet moves onto the new release:
@@ -845,6 +850,7 @@ function main(argv, injected) {
       var notUp = launchdReady(svc, home, deps);
       if (notUp) return rollBack(restarted ? "stopping" : "starting", "the launchd job did not come up on v" + version + ": " + notUp, "run `agend restart`");
     }
+    sayShortcutsHint();
     return 0;
   } finally {
     // Spent (put back), or not needed: only a rollback that could not finish keeps its copy, says where, and marks it

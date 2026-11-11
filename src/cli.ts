@@ -1888,11 +1888,26 @@ program
 
 program
   .command("shortcuts")
-  .description("WSL: create or update the Windows desktop shortcuts (the dashboard and restart)")
-  .action(async () => {
+  .description("Create or update the desktop shortcuts (the dashboard and restart): on Windows from WSL, or on a Linux desktop")
+  .addOption(new Option("--hint", "print the one-time line about them, if it is due (the installer runs this)").hideHelp())
+  .action(async (opts: { hint?: boolean }) => {
     // #1853: for an install that predates the installer's shortcuts, or that is only ever updated with `agend update`.
-    const { runShortcuts, realShortcutsDeps } = await import("./windows-shortcuts.js");
+    const { runShortcuts, realShortcutsDeps, detectWsl, realHost, printUpdateShortcutsHint } = await import("./windows-shortcuts.js");
+    // M-2885: the installer's last step (launcher/agend-install.cjs) — a hint never fails an install.
+    if (opts.hint) { await printUpdateShortcutsHint(DATA_DIR).catch(() => {}); return; }
     const { spawnSync } = await import("node:child_process");
+    // M-2885: a Linux desktop (not WSL) gets XDG launchers instead.
+    if (process.platform === "linux" && !detectWsl(realHost()).wsl) {
+      const { runLinuxLaunchers, realLinuxHost, packageIcons } = await import("./linux-launchers.js");
+      process.exitCode = await runLinuxLaunchers({
+        host: realLinuxHost((command, args) => {
+          const r = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "ignore"] });
+          return { status: r.status, stdout: r.stdout ?? "" };
+        }),
+        dataDir: DATA_DIR, icons: () => packageIcons(), log: line => console.log(line), now: () => new Date(),
+      });
+      return;
+    }
     const { userInfo } = await import("node:os");
     process.exitCode = await runShortcuts(realShortcutsDeps(DATA_DIR, userInfo().username, (command, args) => {
       const r = spawnSync(command, args, { encoding: "utf-8", timeout: 120_000, stdio: ["ignore", "pipe", "pipe"] });

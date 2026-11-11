@@ -108,7 +108,7 @@ describe("agend shortcuts", () => {
     expect(buildShortcutsScript("", "Ubuntu's", "o'neil")).toContain("Install-AgendShortcuts 'Ubuntu''s' 'o''neil'");
   });
   it.each([
-    ["not WSL", host({ env: {}, osRelease: "6.8.0-45-generic\n" }), "This is not WSL"],
+    ["not WSL (macOS and the like: a Linux desktop goes to the launchers before this, M-2885)", host({ env: {}, osRelease: "6.8.0-45-generic\n" }), "This is neither"],
     ["WSL without WSL_DISTRO_NAME", host({ env: {} }), "WSL_DISTRO_NAME is not set"],
     ["interop off (this host's own state: the .exe is there, the binfmt entry is not)", host({ binfmt: ["register", "status", "python3.10"] }), "interop is off"],
     ["no powershell.exe anywhere", host({ files: [] }), "interop is off"],
