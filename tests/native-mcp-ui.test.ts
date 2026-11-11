@@ -42,7 +42,7 @@ describe("native AgEnD tool capability hints",()=>{
 
   it("updates existing settings with the selected access mode and stages only that existing setting",async()=>{
     const {inst,stageAgent}=await settings();
-    const access=p.root.querySelector(".native-instance-settings label select");
+    const access=p.root.querySelector(".native-instance-settings #ni-sb");
     access.value="workspace-write";fire(access,"change");await settle();
     expect(note()?.textContent).toContain("messaging, delegation and task actions");
     expect(note()?.textContent).toContain("tool permissions");

@@ -3448,6 +3448,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       directAgentCreation: true,
       directHostInstall: true,
       directCompanyJoin: true,
+      companyJoinPolicy: req => this.settingsCompanyJoinAllowed(req),
       job: async id => {
         const settlement = this.settingsJobSettlements.get(id);
         if (!settlement) return false;
@@ -3513,6 +3514,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (chat && destinations.length) return this.settingsWebConfirmedNotice(view, affected, name, chat.platform);
       },
     };
+  }
+  /** Company Start is the signed-in admin’s consent; a personal enforced remote code still applies. */
+  private settingsCompanyJoinAllowed(req: IncomingMessage): boolean {
+    const { role } = this.settingsRole(req, { ignoreSwitch: true });
+    return role.ok && (role.onHost || !this.strictFor(role.actor));
   }
   /**
    * AGEND-122 (Prism P2): whether the ordinary New Agent shortcut — created at once, web-confirmed, with no held change — is open to
@@ -3631,10 +3637,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * that opens a link is never confirmed over a link (the public gateway, bound by the gateway itself, never by a header), the
    * code or not. The code is the authority; the session only carries it.
    */
+  /** Only the server-attested company Start carries its own policy, bound to the original live private cookie. */
+  private settingsCodeRole(req: IncomingMessage, proof: ReturnType<SettingsConfirmationStore["codePolicy"]>): { role: SettingsRole; handle: string | null } {
+    if (proof?.kind !== "company-start") return this.settingsRole(req);
+    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (auth.kind !== "ok" || gatewayRequestContext(req) || !proof.current(auth.session.idHash))
+      return { role: { ok: false, reason: "not_session" }, handle: null };
+    return this.settingsRole(req, { ignoreSwitch: true });
+  }
   private settingsCodeSession(store: SettingsConfirmationStore, req: IncomingMessage, id: string):
     { handle: string; actor: { adapter_id: string; user_id: string }; account: boolean; current(): boolean } | null {
+    const proof = store.codePolicy(id);
     const check = (asking: boolean): { handle: string; actor: { adapter_id: string; user_id: string }; account: boolean } | null => {
-      const { role, handle } = this.settingsRole(req);
+      const { role, handle } = this.settingsCodeRole(req, proof);
       if (!role.ok || !handle || role.onHost) return null;
       if (asking && !this.strictFor(role.actor)) return null;
       if (role.account && !this.settingsAccountMayConfirm(store, id, role.actor)) return null;
@@ -3674,7 +3689,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return webPeerOf(req) !== "loopback";
   }
   settingsTotpState(store: SettingsConfirmationStore, req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | "host_only" | null {
-    const { role } = this.settingsRole(req);
+    const { role } = this.settingsCodeRole(req, store.codePolicy(id));
     // The owner turned on "Only this computer can authorize": a page that is not on this computer is told so, in plain words.
     if (!role.ok) return role.reason === "loopback_only" ? "host_only" : null;
     // Apply now is open to it (the option is off, or this is the AgEnD computer's own browser): no code is asked.

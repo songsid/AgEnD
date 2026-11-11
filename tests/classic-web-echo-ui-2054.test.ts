@@ -63,7 +63,7 @@ async function openRoom() {
   await pg.mount(h(S.SettingsPanel, { route: { panel: "settings", section: "classic" }, navKey: "settings:classic|classic-ops-1|en" }));
   await settle(8);
   const dlg = pg.root.querySelector("dialog");
-  const check = (label: RegExp) => dlg?.querySelectorAll("label.check").find((l: any) => label.test(l.textContent))?.querySelector("input");
+  const check = (label: RegExp) => dlg?.querySelectorAll("label.check input").find((i: any) => label.test(`${i.getAttribute("aria-label") || ""} ${i.parentNode.textContent}`));
   return { pg, dlg, box: check(/Web echo/), collab: check(/Collaboration/) };
 }
 const toggle = async (box: any) => { box.checked = !box.checked; box.dispatchEvent(new Event("change")); await settle(2); };

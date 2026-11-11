@@ -22,12 +22,15 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
+import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
+import { settingsRequestJoinAuthority } from "../src/settings-request-capability.js";
 import { prepareSettingsEffect } from "../src/settings-effect.js";
 import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
-import { WEB_CSRF_HEADER } from "../src/web-auth.js";
+import { WEB_CSRF_HEADER, authorizeSession } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { adminKey, base32Encode, base32Decode, hotp, totpStep, TOTP_WRONG_LIMIT, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
 
@@ -112,8 +115,74 @@ function fleet(o: { enrolled?: boolean; chat?: boolean; strict?: boolean; va?: R
   /** What this request is told for that change: the code's state, and Apply now's label (null: none). */
   const asked = (s: { req: any }, id: string) => [any.settingsTotpState(store, s.req, id), any.settingsSelfConfirmation(store, s.req, id)?.label ?? null];
   const confirm = (s: { req: any; code?: () => string }, id: string, code = s.code ? s.code() : codeAt(Date.now())) => any.settingsTotpConfirm(store, s.req, id, code, store.confirmDigest(id));
-  return { fm, any, store, audit, session, propose, linkOn, hubConnect, asked, confirm, hold: () => { holdUnchanged = true; } };
+  const companyStart = async (s: ReturnType<typeof session>) => {
+    // A canonical loopback HTTP origin carried by a remote peer: real role/session/CSRF, no role stub.
+    s.req.headers.host = "127.0.0.1:19280"; s.req.headers.origin = "http://127.0.0.1:19280";
+    const applied = vi.fn(), authorities: any[] = [];
+    const gate = new SettingsHttpConfirmation(store, {
+      principal: req => {
+        const auth = authorizeSession(req, any.webToken, any.webSessions, { touch: false });
+        if (auth.kind !== "ok") return null;
+        const record = auth.session, sessions = any.webSessions;
+        return { id: record.idHash, label: record.label, source: "web_session", localSession: fm.hubCompanySession(req) ?? undefined,
+          localAdmin: () => record.tier === "admin" && record.surface === "local", current: () => sessions === any.webSessions && sessions.isCurrent(record, tokenEpoch(TOKEN)) };
+      }, baseline: async () => ({ config: fm.fleetConfig!, classic: {}, fingerprint: "same" }), snapshot: () => "same",
+      directCompanyJoin: true, companyJoinPolicy: req => any.settingsCompanyJoinAllowed(req),
+      selfConfirm: (req,id) => any.settingsSelfConfirmation(store,req,id),
+      totp: { state: (req,id) => any.settingsTotpState(store,req,id), confirm: (req,id,code,digest) => any.settingsTotpConfirm(store,req,id,code,digest) },
+    });
+    const first = await new Promise<any>(resolve => {
+      const req = Object.assign(new EventEmitter(), s.req, { url: "/api/hub/member/company-join/start", destroy() {} });
+      const res: any = { headersSent: false, destroyed: false, setHeader() {}, writeHead() { this.headersSent = true; }, end(body: string) { resolve(JSON.parse(body)); } };
+      gate.handle(req,res,new URL(req.url,"http://127.0.0.1:19280"),(replay,out) => {
+        applied(); authorities.push(settingsRequestJoinAuthority(replay)); out.writeHead(200); out.end(JSON.stringify({ ok: true })); return true;
+      });
+      queueMicrotask(() => { req.emit("data", Buffer.from(JSON.stringify({ address: "https://hub.example.test", label: "Owned Fleet" }))); req.emit("end"); });
+    });
+    return { first, applied, authorities };
+  };
+  return { fm, any, store, audit, session, propose, linkOn, hubConnect, asked, confirm, companyStart, hold: () => { holdUnchanged = true; } };
 }
+
+describe("company Start's own per-admin code policy", () => {
+  it.each([[false,false],[true,false],[false,true],[true,true]])("actual private remote cookie can see and confirm its inline code with message authority=%s, chat=%s", async (enabled,chat) => {
+    const f = fleet({ chat, va: { enabled } }), s = f.session(chat ? { account: ADMIN } : { host: true }), p = await f.companyStart(s);
+    expect(f.any.settingsCompanyJoinAllowed(s.req)).toBe(false); // strict: Start cannot silently skip the code
+    expect(p.first.pending_change).toMatchObject({ state: "pending", totp: "ready", presentation: "hub-join" });
+    expect(p.first.pending_change.confirm_digest).toBe(f.store.confirmDigest(p.first.pending_change.id));
+    expect(p.first.pending_change).not.toHaveProperty("codePolicy");
+    expect(f.any.settingsTotpState(f.store,s.req,p.first.pending_change.id)).toBe("ready");
+    const r = f.confirm(s,p.first.pending_change.id); expect(r.label).toBe("Authenticator code");
+    await f.store.decide(p.first.pending_change.id,"confirm",{...r,via:"web"});
+    expect(p.applied).toHaveBeenCalledOnce(); expect(p.authorities[0].confirmedCurrent()).toBe(true);
+    const ordinary = f.propose();
+    if (!enabled) { expect(f.asked(s,ordinary.view.id)).toEqual([null,null]); expect(f.confirm(s,ordinary.view.id)).toEqual({ error:"not_here" }); }
+  });
+  it("a display-only inline marker cannot bypass ordinary Settings policy", () => {
+    const f = fleet({ va: { enabled:false } }), s = f.session({ host:true });
+    const shown = f.store.propose({ session:s.record.idHash,key:"display-only",bytes:1,source:"web_session",section:"access",requestedBy:"browser",fingerprint:"f".repeat(64),summary:["Display only"],presentation:"hub-join",
+      current:()=>true,unchanged:async()=>true,apply:async()=>null }).view;
+    expect(f.asked(s,shown.id)).toEqual([null,null]); expect(f.confirm(s,shown.id)).toEqual({error:"not_here"});
+  });
+  it("the server-owned company claim grants no code role to another cookie, a header token or a wrong digest", async () => {
+    const f = fleet({ va: { enabled: false } }), s = f.session({ host: true }), other = f.session({ host: true }), p = await f.companyStart(s), id = p.first.pending_change.id;
+    expect(f.any.settingsTotpState(f.store,other.req,id)).toBeNull(); expect(f.confirm(other,id)).toEqual({ error: "not_here" });
+    const header = { ...s.req, headers: { ...s.req.headers, cookie: undefined, authorization: `Bearer ${TOKEN}` } };
+    expect(f.any.settingsTotpConfirm(f.store,header,id,s.code(),f.store.confirmDigest(id))).toEqual({ error: "not_here" });
+    expect(f.any.settingsTotpConfirm(f.store,s.req,id,s.code(),"wrong-digest")).toEqual({ error: "changed" });
+    expect(f.confirm(s,id).label).toBe("Authenticator code"); expect(p.applied).not.toHaveBeenCalled();
+  });
+  it.each(["session","host-only","demotion"])("a company code continuation is fenced by a late %s change", async change => {
+    const f = fleet({ chat: change === "demotion", va: { enabled: false } }), s = f.session(change === "demotion" ? { account: ADMIN } : { host: true }), p = await f.companyStart(s), id = p.first.pending_change.id;
+    const r = f.confirm(s,id); expect(r.label).toBe("Authenticator code");
+    if (change === "session") f.any.webSessions.revokeByHandle(s.record.handle);
+    else if (change === "host-only") (f.fm.fleetConfig!.web!.verified_authority as any).loopback_only = true;
+    else f.fm.fleetConfig!.channels![0]!.access!.allowed_users = [];
+    expect(r.current()).toBe(false);
+    await expect(f.store.decide(id,"confirm",{...r,via:"web"})).rejects.toMatchObject({ code:"admin_required" });
+    expect(p.applied).not.toHaveBeenCalled();
+  });
+});
 
 describe("who is asked for the code (their own switch on, a page that is not on this computer)", () => {
   it("a web-only fleet's admin session (a sign-in code) from the LAN, app set up: the code, no Apply now", () => {

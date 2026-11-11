@@ -1,0 +1,17 @@
+[
+  {
+    "name": "R1-normal-reader-retirement",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "R2-fallback-reader-retirement",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "R10-local-diagnostic-skip",
+    "compiled": true,
+    "caughtByAssertion": true
+  }
+]

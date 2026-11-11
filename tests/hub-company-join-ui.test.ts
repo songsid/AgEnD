@@ -36,12 +36,12 @@ describe("company join UI", () => {
   });
   it("opening Settings or a prefilled link never starts a join", async () => {
     fetcher(() => ({ ok: true, operation: null })); const p = await mount(fleet.CompanyJoinSettings);
-    expect(p.root.querySelector("#hubCompanyAddress")).not.toBeNull(); expect(button(p, "Sign in with company account")).toBeTruthy();
+    expect(p.root.textContent).toContain("Copy colleague connection link"); expect(p.root.querySelector("#hubCompanyAddress")).not.toBeNull(); expect(button(p, "Sign in with company account")).toBeTruthy();
     expect(calls.every(c => !c.init.method || c.init.method === "GET")).toBe(true);
   });
   it("explains why company sign-in is disabled until address and Fleet name are present",async()=>{
     fetcher(()=>({ok:true,operation:null}));const p=await mount(fleet.CompanyJoinSettings);
-    expect(p.root.textContent).toContain("Enter the Hub address and a Fleet name");expect(button(p,"Sign in with company account").getAttribute("aria-describedby")).toBe("hubCompanyStartHint");
+    expect(p.root.textContent).toContain("Paste the Hub link first");expect(button(p,"Sign in with company account").getAttribute("aria-describedby")).toBe("hubCompanyStartHint");
     const address=p.root.querySelector("#hubCompanyAddress");address.value="https://hub.example.test";fire(address,"input");await settle(5);
     expect(p.root.querySelector("#hubCompanyStartHint")).toBeNull();expect(button(p,"Sign in with company account").disabled).toBe(false);expect(calls.every(c=>!c.init.method||c.init.method==="GET")).toBe(true);
   });

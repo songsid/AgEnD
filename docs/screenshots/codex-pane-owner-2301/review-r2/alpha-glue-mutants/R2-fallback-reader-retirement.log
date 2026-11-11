@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/codex-owner-2301-alpha
+
+ ❯ tests/codex-pane-ownership-2301.test.ts (27 tests | 1 failed) 1696ms
+     × transcript fallback never revives after the original inode returns with late text 120ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/codex-pane-ownership-2301.test.ts > #2301 reader-observed replacement is permanent > transcript fallback never revives after the original inode returns with late text
+AssertionError: expected 'post-submit-proof:unproven; no-transc…' to be 'raw-paste-submit-proof:codex-session-…' // Object.is equality
+
+Expected: "raw-paste-submit-proof:codex-session-binding-lost; not re-pasted"
+Received: "post-submit-proof:unproven; no-transcript-turn (unavailable)"
+
+ ❯ tests/codex-pane-ownership-2301.test.ts:564:42
+    562|       expect((h.box as any).db.prepare(
+    563|         "SELECT evidence FROM delivery_attempts WHERE delivery_id=?",
+    564|       ).get(h.row.deliveryId)?.evidence).toBe(
+       |                                          ^
+    565|         "raw-paste-submit-proof:codex-session-binding-lost; not re-pas…
+    566|       );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 34 passed (35)
+   Start at  10:06:53
+   Duration  4.52s (transform 2.23s, setup 278ms, import 2.78s, tests 1.81s, environment 0ms)
+

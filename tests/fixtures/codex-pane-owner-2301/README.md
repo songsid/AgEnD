@@ -1,0 +1,11 @@
+# Recorded Codex footer / paste proof (#2301)
+
+Captured 2026-11-11 with the audited **Codex 0.167.0** Linux binary, SHA256 `cdcb45aaa01d0f14e298985e09465aebccd47f64ecd298aea44814af7b62bbda` (same pin as the existing 0.167 audit). The native npm package was extracted in an owned scratch prefix, never installed over a host CLI. All execution used an isolated user/network namespace (`unshare -Urn`), loopback-only mock Responses API, scratch HOME/CODEX_HOME, private tmux socket and a private git work directory. No real account, key, fleet, vendor network or tool action. The mock returns 80 inert text rows.
+
+The first launch records the old private footer order: Context, model, cwd. A second launch resumes that exact scratch thread with the approved private order: full session UUID, Context, model, cwd. The raw quiet-heartbeat text is submitted once. `after-fast.pane.txt` shows its echo already absent while the selected rollout records the exact plain user text. Default-width proof uses 120 columns. Captures at 100/80/45/30 columns expose truncation; 80 loses the complete Context value, 45/30 lose the UUID. These are **unmodified pane captures**, not synthetic footer additions. Rows are 24 in this capture; AgEnD's ordinary logical width is also 120 (its default height is 36).
+
+`rollout.selected.jsonl` retains the original metadata identity/source fields and the exact matching `response_item` user record. Only the metadata cwd is normalized to `/tmp/codex-owner-2301/work`; tests bind it to their actual scratch cwd. Large unrelated base instructions, context and assistant output records are omitted. Actual observed root metadata is `source: vscode`, `thread_source: user`, with equal `id` and `session_id`; tests also prove a wrong `id` cannot borrow `session_id`.
+
+The replay sends real tmux paste/Enter to an inert Python renderer, which appends that recorded user record and draws the captured fast-answer frame. Its startup/idle IPC boundary is inert; the production before-write binding, file reader, submission judge and durable receipt settlement run. This is recorded-stream replay, not an assertion that a live CLI was driven by the candidate daemon.
+
+Replay: `REPO=$PWD OUT=<owned receipt.json> unshare -Urn node --import tsx scripts/manual/codex-pane-owner-2301/replay.mts`.

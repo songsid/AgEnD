@@ -1,0 +1,67 @@
+[
+  {
+    "name": "R1-normal-reader-retirement",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "R2-fallback-reader-retirement",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "R3-reader-no-revival",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "R4-discovery-cancel",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "R5-discovery-entry-cap",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "R6-discovery-directory-cap",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "R7-discovery-depth-cap",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "R8-discovery-overlap",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "R9-discovery-yield",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "R10-local-diagnostic-skip",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "F1-before-look",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "F2-after-look",
+    "compiled": true,
+    "caughtByAssertion": true
+  },
+  {
+    "name": "F3-before-settlement",
+    "compiled": true,
+    "caughtByAssertion": true
+  }
+]

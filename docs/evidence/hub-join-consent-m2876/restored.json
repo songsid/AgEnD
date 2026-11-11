@@ -1,0 +1,213 @@
+{
+  "startTime": 1794366271803,
+  "passed": 38,
+  "failed": 0,
+  "success": true,
+  "files": [
+    {
+      "file": "tests/hub-admin-entry-ui.test.ts",
+      "tests": [
+        {
+          "name": "Administration leads with existing group and individual connection controls one leading access card, copy action, individual invitations; manual pairing under Advanced (en)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls one leading access card, copy action, individual invitations; manual pairing under Advanced (zh-TW)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls copies only the exact server-supplied identity link, without creating a code or invitation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls off stays off, with a reason for the disabled copy; enabling uses the existing revision and CSRF",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls an off response with a retained public link still cannot offer copying or an invitation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls Advanced reveals a manual pairing already waiting for explicit admin approval",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls an explicit individual invitation keeps the existing endpoint and scoped login body",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls an unread settings response does not claim joining is off or offer a copy",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls missing company feature retains the earlier group/manual entry and performs no company read",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls a non-admin gets no controls or company lookup",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "Administration leads with existing group and individual connection controls old panels using the default component retain its existing company card",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/hub-company-join-settings.test.ts",
+      "tests": [
+        {
+          "name": "company Start Settings authority only an actual local cookie session creates the private capability; loopback/header/forwarding never grant host authority",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority a signed-in Fleet admin Start is consent, with no held card or General wait (host=true)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority a signed-in Fleet admin Start is consent, with no held card or General wait (host=false)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority a composition without the scoped feature keeps its previous confirmation path",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=true)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=false)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority company consent retains this admin’s enforced code even with message authority disabled (false)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority company consent retains this admin’s enforced code even with message authority disabled (true)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company Start Settings authority company Start stays outward-Hub sensitive and rejects browser-supplied authority/origin/redirect fields",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "tests/hub-company-join-wait.test.ts",
+      "tests": [
+        {
+          "name": "company join local wait new waiting tabs show the target and continue automatically, without an approval detour",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait Start keeps its server claim inline and asks only the enforced code (false)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait Start keeps its server claim inline and asks only the enforced code (true)",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait the inline target stays bound to the submitted address while Start is held",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait a missing legacy confirmation card returns to Settings, never an empty Needs-you page",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait reload reattaches its sole code challenge with the server target and without another Start",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait a new waiting tab never adopts a different handoff’s code challenge",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait a loaded empty handoff is a confirmation wait, not an endless loading skeleton; it has a direct action and an exit",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait re-arms reads after repeated null frames and eventually observes this exact handoff without a reload",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait discovers matching B after older cancelled A, then pins only B",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait discovers matching B after older ended A, then pins only B",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait Check again discovers B after the local wait for unmatched A has expired, without a new Start",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait a different handoff never redirects this waiting tab",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait one slow status read retains physical ownership across polling and Retry; unmount retires its continuation",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait the five-minute pre-operation wait ends visibly, stops automatic reads and can inspect the same result without submitting Start",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait the original Start reveals the exact shared card and uses its sole Withdraw control",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait a lost withdrawal keeps the original Start held rather than inventing cancellation or permitting another Start",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "name": "company join local wait a local pending timeout does not apply, silently withdraw or retry the held change",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    }
+  ]
+}

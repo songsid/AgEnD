@@ -1,0 +1,226 @@
+{
+  "source": "1e64e73e3fe1618eccb043ef92cfd2f3d1607a8d",
+  "cases": [
+    {
+      "id": "C1-entry-policy",
+      "path": "src/settings-http-confirmation.ts",
+      "before": "&& principal.localSession?.current() === true && companyPolicy();",
+      "after": "&& principal.localSession?.current() === true;",
+      "originalDigest": "f01c7e95be83541d1e1101510aa1c4896177980a65f1e56c6779404f5e6d8573",
+      "exit": 1,
+      "failedAssertions": 2,
+      "passed": 7,
+      "failed": 2,
+      "failures": [
+        {
+          "test": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=true)",
+          "messages": [
+            "AssertionError: expected { \u2026(14) } to match object { state: 'pending', \u2026(2) }\n(16 matching properties omitted from actual)\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1283:10)\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/chai/index.js:1737:25)\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-settings.test.ts:73:36\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        },
+        {
+          "test": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=false)",
+          "messages": [
+            "AssertionError: expected { \u2026(14) } to match object { state: 'pending', \u2026(2) }\n(16 matching properties omitted from actual)\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1283:10)\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/chai/index.js:1737:25)\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-settings.test.ts:73:36\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C2-final-policy",
+      "path": "src/settings-http-confirmation.ts",
+      "before": "!companyDirect || companyPolicy() && principal.localSession?.current() === true",
+      "after": "!companyDirect || principal.localSession?.current() === true",
+      "originalDigest": "f01c7e95be83541d1e1101510aa1c4896177980a65f1e56c6779404f5e6d8573",
+      "exit": 1,
+      "failedAssertions": 2,
+      "passed": 7,
+      "failed": 2,
+      "failures": [
+        {
+          "test": "company Start Settings authority a signed-in Fleet admin Start is consent, with no held card or General wait (host=true)",
+          "messages": [
+            "AssertionError: expected true to be false // Object.is equality\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-settings.test.ts:61:62\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        },
+        {
+          "test": "company Start Settings authority a signed-in Fleet admin Start is consent, with no held card or General wait (host=false)",
+          "messages": [
+            "AssertionError: expected true to be false // Object.is equality\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-settings.test.ts:61:62\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C3-admin-role",
+      "path": "src/fleet-manager.ts",
+      "before": "return role.ok && (role.onHost || !this.strictFor(role.actor));",
+      "after": "return (role.onHost || !this.strictFor(role.actor));",
+      "originalDigest": "be635333bb4a36b29e5069e02c8f342ec75240d1395effb156e458bafd4256bb",
+      "exit": 1,
+      "failedAssertions": 1,
+      "passed": 8,
+      "failed": 1,
+      "failures": [
+        {
+          "test": "company Start Settings authority company consent retains this admin\u2019s enforced code even with message authority disabled (false)",
+          "messages": [
+            "AssertionError: expected true to be false // Object.is equality\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-settings.test.ts:82:89\n    at file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:2027:60\n    at file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C4-no-General",
+      "path": "src/settings-confirmation.ts",
+      "before": "proposal.presentation ? undefined : this.options.notify?.(this.snapshot(entry))",
+      "after": "this.options.notify?.(this.snapshot(entry))",
+      "originalDigest": "9da9213d8dd3f1de4acd3a53b93acc6a277870b787fd62eaa0b65e72e6008a89",
+      "exit": 1,
+      "failedAssertions": 2,
+      "passed": 7,
+      "failed": 2,
+      "failures": [
+        {
+          "test": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=true)",
+          "messages": [
+            "AssertionError: expected \"vi.fn()\" to not be called at all, but actually been called 1 times\n\nReceived:\n\n  1st vi.fn() call:\n\n    Array [\n      Object {\n        \"can_withdraw\": true,\n        \"confirmation\": Object {\n          \"code\": \"fbed31bf3467d7ede79c84c76686cd95\",\n          \"kind\": \"host_cli\",\n        },\n        \"expires_at\": 1794366518311,\n        \"hubJoin\": Object {\n          \"handoffId\": null,\n          \"target\": \"https://hub.example.test\",\n        },\n        \"id\": \"fbed31bf3467d7ede79c84c76686cd95\",\n        \"outcome\": null,\n        \"presentation\": \"hub-join\",\n        \"remaining_ms\": 300000,\n        \"requested_at\": 1794366218311,\n        \"requested_by\": \"Host\",\n        \"section\": \"channel\",\n        \"source\": \"web_session\",\n        \"state\": \"pending\",\n        \"summary\": Array [\n          \"Connect this Fleet to Hub https://hub.example.test using your company account. Agent sharing stays separate.\",\n        ],\n      },\n    ]\n\n\nNumber of calls: 1\n\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1467:10)\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/chai/index.js:1737:25)\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-settings.test.ts:74:62\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        },
+        {
+          "test": "company Start Settings authority an enforced admin code stays inline and never posts a General card (host=false)",
+          "messages": [
+            "AssertionError: expected \"vi.fn()\" to not be called at all, but actually been called 1 times\n\nReceived:\n\n  1st vi.fn() call:\n\n    Array [\n      Object {\n        \"can_withdraw\": true,\n        \"confirmation\": Object {\n          \"code\": \"95ab6756fde889632a5f0978c02698c2\",\n          \"kind\": \"host_cli\",\n        },\n        \"expires_at\": 1794366518317,\n        \"hubJoin\": Object {\n          \"handoffId\": null,\n          \"target\": \"https://hub.example.test\",\n        },\n        \"id\": \"95ab6756fde889632a5f0978c02698c2\",\n        \"outcome\": null,\n        \"presentation\": \"hub-join\",\n        \"remaining_ms\": 300000,\n        \"requested_at\": 1794366218317,\n        \"requested_by\": \"Host\",\n        \"section\": \"channel\",\n        \"source\": \"web_session\",\n        \"state\": \"pending\",\n        \"summary\": Array [\n          \"Connect this Fleet to Hub https://hub.example.test using your company account. Agent sharing stays separate.\",\n        ],\n      },\n    ]\n\n\nNumber of calls: 1\n\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1467:10)\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/chai/index.js:1737:25)\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-settings.test.ts:74:62\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C5-inline-partition",
+      "path": "src/ui/settings-confirm.js",
+      "before": "pendingChanges: views.filter(view => view.presentation !== \"hub-join\")",
+      "after": "pendingChanges: views",
+      "originalDigest": "db54c674121a4603bab3f7758951f3ece288cc2fcbd6e731259af899020c5f87",
+      "exit": 1,
+      "failedAssertions": 3,
+      "passed": 15,
+      "failed": 3,
+      "failures": [
+        {
+          "test": "company join local wait Start keeps its server claim inline and asks only the enforced code (false)",
+          "messages": [
+            "AssertionError: expected <section \u2026(3)>\u2026(2)</section> to be null\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-wait.test.ts:65:49\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        },
+        {
+          "test": "company join local wait Start keeps its server claim inline and asks only the enforced code (true)",
+          "messages": [
+            "AssertionError: expected <section \u2026(3)>\u2026(5)</section> to be null\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-wait.test.ts:65:49\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        },
+        {
+          "test": "company join local wait reload reattaches its sole code challenge with the server target and without another Start",
+          "messages": [
+            "AssertionError: expected <section \u2026(3)>\u2026(3)</section> to be null\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-wait.test.ts:87:109\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C6-submitted-target",
+      "path": "src/ui/settings-hub-company-join.js",
+      "before": "target: submittedTarget.current, inline:",
+      "after": "target: new URL(form.address).origin, inline:",
+      "originalDigest": "02d763179ea4b0581d6eeaac407e91c3bef189f2deebe5fbe6bdd6344c6b220e",
+      "exit": 0,
+      "failedAssertions": 0,
+      "passed": 18,
+      "failed": 0,
+      "failures": [],
+      "equivalent": "form is the Start closure snapshot; edits create a new render, not a new callback state"
+    },
+    {
+      "id": "C7-exact-handoff",
+      "path": "src/ui/settings-hub-company-join.js",
+      "before": "hubJoinChanges.filter(v => handoff ? v.hubJoin?.handoffId === handoff : v.id === pending?.id)",
+      "after": "hubJoinChanges.filter(() => true)",
+      "originalDigest": "02d763179ea4b0581d6eeaac407e91c3bef189f2deebe5fbe6bdd6344c6b220e",
+      "exit": 1,
+      "failedAssertions": 1,
+      "passed": 17,
+      "failed": 1,
+      "failures": [
+        {
+          "test": "company join local wait a new waiting tab never adopts a different handoff\u2019s code challenge",
+          "messages": [
+            "AssertionError: expected { Object (_listeners, nodeType, ...) } to be null\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-wait.test.ts:94:50\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C8-reload-adoption",
+      "path": "src/ui/settings-hub-company-join.js",
+      "before": "matching[0] || (!handoff && !pending && active.length === 1 ? active[0] : null)",
+      "after": "matching[0]",
+      "originalDigest": "02d763179ea4b0581d6eeaac407e91c3bef189f2deebe5fbe6bdd6344c6b220e",
+      "exit": 1,
+      "failedAssertions": 1,
+      "passed": 17,
+      "failed": 1,
+      "failures": [
+        {
+          "test": "company join local wait reload reattaches its sole code challenge with the server target and without another Start",
+          "messages": [
+            "AssertionError: expected null to be truthy\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-wait.test.ts:87:50\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C9-legacy-return",
+      "path": "src/ui/settings-hub-company-join.js",
+      "before": "location.assign(\"/settings/hub\"); return;",
+      "after": "location.assign(\"/ui/needs\"); return;",
+      "originalDigest": "02d763179ea4b0581d6eeaac407e91c3bef189f2deebe5fbe6bdd6344c6b220e",
+      "exit": 1,
+      "failedAssertions": 1,
+      "passed": 17,
+      "failed": 1,
+      "failures": [
+        {
+          "test": "company join local wait a missing legacy confirmation card returns to Settings, never an empty Needs-you page",
+          "messages": [
+            "AssertionError: expected \"vi.fn()\" to be called with arguments: [ '/settings/hub' ]\n\nReceived:\n\n  1st vi.fn() call:\n\n  [\n-   \"/settings/hub\",\n+   \"/ui/needs\",\n  ]\n\n\nNumber of calls: 1\n\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1487:10)\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/chai/index.js:1737:25)\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-company-join-wait.test.ts:81:67\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C10-three-steps",
+      "path": "src/ui/hub-company-join.js",
+      "before": "<li>${guide(\"three\")}</li>",
+      "after": "",
+      "originalDigest": "fd0e5024063e5d256887b8acd504e89513c3ac15a0a6e3bf6ce7f7450c8974ff",
+      "exit": 1,
+      "failedAssertions": 2,
+      "passed": 9,
+      "failed": 2,
+      "failures": [
+        {
+          "test": "Administration leads with existing group and individual connection controls one leading access card, copy action, individual invitations; manual pairing under Advanced (en)",
+          "messages": [
+            "AssertionError: expected [ <li></li>, <li></li> ] to have a length of 3 but got 2\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1389:20)\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/chai/index.js:1737:25)\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-admin-entry-ui.test.ts:27:59\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        },
+        {
+          "test": "Administration leads with existing group and individual connection controls one leading access card, copy action, individual invitations; manual pairing under Advanced (zh-TW)",
+          "messages": [
+            "AssertionError: expected [ <li></li>, <li></li> ] to have a length of 3 but got 2\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1389:20)\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/chai/index.js:1737:25)\n    at /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-join-consent-m2876-mutations/tests/hub-admin-entry-ui.test.ts:27:59\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol2/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        }
+      ]
+    }
+  ],
+  "restored": true
+}
