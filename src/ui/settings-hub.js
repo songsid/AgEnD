@@ -46,11 +46,13 @@ function Fingerprint({ label, fp }) {
 }
 
 export const hubConnectEmbedV1 = true;
-export function HubConnectCard({ embedded = false, onPairing, labels = {} } = {}) {
+export function HubConnectCard({ embedded = false, onPairing, labels = {}, prefill = null } = {}) {
   const client = hubClient();
   const [pairing, setPairing] = useState(null);
   const [readError, setReadError] = useState(false);
   const [form, setForm] = useState({ address: "", code: "" });
+  // M-2921: a pairing code typed in the one Hub input arrives here (filled in, never submitted).
+  useEffect(() => { if (prefill?.code) setForm(f => ({ address: prefill.address || f.address, code: prefill.code })); }, [prefill?.code, prefill?.address]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const live = useRef(true);

@@ -37,7 +37,7 @@ import { hostUpdateAckError, hostUpdatePlan } from "./web-host-install.js";
 import { LATEST_ACK_FIELD } from "./cli-audited.js";
 import { runtimeFacts } from "./cli-registry.js";
 import { INSTALLABLE_CLIS, isInstallableCli } from "./runtime-cli-install.js";
-import { parseCompanyAddress } from "./hub/join/descriptor.js";
+import { ENROLMENT_CODE, parseCompanyAddress } from "./hub/join/descriptor.js";
 
 export interface SettingsSecretProof {
   readonly key: string; readonly secret: string; readonly previous?: string;
@@ -66,7 +66,7 @@ export const isRuntimeCliInstallPath = (path: string): boolean => RUNTIME_CLI_IN
 /** Any dashboard route that installs or updates an AI CLI somewhere (the AgEnD computer, or a paired one): only a signed-in local administrator proposes it, never over the public link. */
 export const isCliInstallPath = (path: string): boolean => HOST_CLI_PATHS.has(path) || isRuntimeCliInstallPath(path);
 export function isSettingsMutation(method: string, path: string): boolean {
-  if (method === "POST" && /^\/api\/hub\/member\/company-join\/(start|resume|repair-trust)$/.test(path)) return true;
+  if (method === "POST" && /^\/api\/hub\/member\/company-join\/(start|resume|repair-trust|reconnect|remove)$/.test(path)) return true;
   if (method === "PUT" && path === "/api/settings/hub/membership") return true;
   if (method === "POST" && path === "/api/settings/hub/browser-certificate/apply") return true;
   if (method === "PUT" && path === "/api/settings/hub/retention") return true;
@@ -220,8 +220,13 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, summary_i18n: preview.summary_i18n, affectedConnections: [],
       authority: HUB_AUTHORITY } };
   }
-  if (/^\/api\/hub\/member\/company-join\/(start|resume|repair-trust)$/.test(path)) {
-    const b = record(body), start = path.endsWith("/start"), repair = path.endsWith("/repair-trust");
+  if (/^\/api\/hub\/member\/company-join\/(start|resume|repair-trust|reconnect|remove)$/.test(path)) {
+    const b = record(body), start = path.endsWith("/start"), repair = path.endsWith("/repair-trust"), reconnect = path.endsWith("/reconnect"), remove = path.endsWith("/remove");
+    const pairingOf = (keys: string[], optional: string[] = []) => {
+      const given = Object.keys(b).filter(k => !optional.includes(k));
+      if (given.length !== keys.length || Object.keys(b).some(k => !keys.includes(k) && !optional.includes(k)) || typeof b.hubId !== "string" || !/^[a-f0-9-]{36}$/.test(b.hubId)
+        || typeof b.binding !== "string" || !/^[a-f0-9]{64}$/.test(b.binding)) throw Error();
+    };
     let target: string;
     try {
       if (repair) {
@@ -229,8 +234,18 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
         const address = parseCompanyAddress(b.address); if (!address.expected || address.invitation) throw Error();
         target = address.webOrigin;
       } else if (start) {
-        if (Object.keys(b).some(k => !["address", "label", "handoffId"].includes(k)) || typeof b.address !== "string" || typeof b.label !== "string" || !b.label.trim() || b.label.length > 120) throw Error();
+        if (Object.keys(b).some(k => !["address", "label", "handoffId", "code"].includes(k)) || typeof b.address !== "string" || typeof b.label !== "string" || !b.label.trim() || b.label.length > 120) throw Error();
         if (b.handoffId !== undefined && (typeof b.handoffId !== "string" || !/^[a-f0-9-]{36}$/.test(b.handoffId))) throw Error();
+        if (b.code !== undefined && (typeof b.code !== "string" || !ENROLMENT_CODE.test(b.code))) throw Error();
+        target = parseCompanyAddress(b.address).webOrigin;
+      } else if (reconnect) {
+        pairingOf(["hubId", "binding", "address"], ["handoffId"]);
+        if (typeof b.address !== "string") throw Error();
+        if (b.handoffId !== undefined && (typeof b.handoffId !== "string" || !/^[a-f0-9-]{36}$/.test(b.handoffId))) throw Error();
+        target = parseCompanyAddress(b.address).webOrigin;
+      } else if (remove) {
+        pairingOf(["hubId", "binding", "address"]);
+        if (typeof b.address !== "string") throw Error();
         target = parseCompanyAddress(b.address).webOrigin;
       } else {
         if (Object.keys(b).length !== 1 || typeof b.operationId !== "string" || !/^[a-f0-9-]{36}$/.test(b.operationId)) throw Error();
@@ -238,7 +253,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       }
     } catch { throw new SettingsConfirmationError(400, "invalid_company_join"); }
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
-    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), ...settingsSummary([translatedSummary(repair ? "hub.companyJoin.repair" : "hub.companyJoin.confirm", target)]), affectedConnections: [],
+    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), ...settingsSummary([translatedSummary(repair ? "hub.companyJoin.repair" : reconnect ? "hub.companyJoin.reconnect" : remove ? "hub.companyJoin.remove" : "hub.companyJoin.confirm", target)]), affectedConnections: [],
       authority: HUB_AUTHORITY } };
   }
   const pairingStep = path.match(/^\/api\/hub\/member\/pairing\/(connect|confirm|disconnect)$/);
