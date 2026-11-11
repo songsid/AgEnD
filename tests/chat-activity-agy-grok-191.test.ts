@@ -7,7 +7,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ClaudeStepParser, CodexStepParser, stepsOf, readTailRecords, type LogStep } from "../src/log-steps.js";
+import { stepsOf, readTailRecords, type LogStep } from "../src/log-steps.js";
 import { AntigravityStepParser, GrokStepParser } from "../src/log-steps-agy-grok.js";
 import { LogService, type LogServiceDeps, type LogSource } from "../src/log-service.js";
 import { GROK_LOOKUP_TTL_MS, antigravityTranscriptPath, grokUpdatesPath } from "../src/log-transcript-paths.js";
@@ -246,6 +246,19 @@ describe("grok: edge cases of the format", () => {
     const s = grok([upd("tool_call", { toolCallId: "c1", title: "mystery", rawInput: {}, _meta: { "x.ai/tool": { name: "mystery", kind: "fetch" } } })]);
     expect(s[0]).toMatchObject({ tool: "mystery", cat: "web" });
   });
+  it("a refinement with no name of its own (no meta name, no title) keeps the call's tool; only unwrapping use_tool renames it (AGEND-195)", () => {
+    const cmd = grok([upd("tool_call", { toolCallId: "c1", title: "Run", rawInput: {}, _meta: { "x.ai/tool": { name: "run_terminal_command" } } }),
+      upd("tool_call_update", { toolCallId: "c1", rawInput: { command: "ls", variant: "x" } })]);
+    expect(cmd[0]).toMatchObject({ tool: "run_terminal_command", cat: "run", subject: "ls" });      // the counter-proof: it was "tool", cat other
+    const reply = grok([upd("tool_call", { toolCallId: "c2", title: "use_tool", rawInput: { tool_name: "agend__reply", tool_input: { text: "hi" } } }),
+      upd("tool_call_update", { toolCallId: "c2", rawInput: { tool_name: "agend__reply", tool_input: { text: "hi there" } } })]);
+    expect(reply[0]).toMatchObject({ tool: "mcp__agend__reply", cat: "message", anchor: { replyText: "hi" } });
+    const late = grok([upd("tool_call", { toolCallId: "c3", title: "use_tool", rawInput: {} }),
+      upd("tool_call_update", { toolCallId: "c3", rawInput: { tool_name: "github__list_issues", tool_input: { repo: "a/b" } } })]);
+    expect(late[0]).toMatchObject({ tool: "mcp__github__list_issues", cat: "mcp" });
+    const still = grok([upd("tool_call", { toolCallId: "c4", title: "use_tool", rawInput: {} }), upd("tool_call_update", { toolCallId: "c4", rawInput: { x: 1 } })]);
+    expect(still[0]!.tool).toBe("use_tool");
+  });
   it("a non-agend MCP tool is `mcp`; use_tool with no inner name stays use_tool", () => {
     const s = grok([upd("tool_call", { toolCallId: "c1", title: "use_tool", rawInput: { tool_name: "github__list_issues", tool_input: { repo: "a/b" } } }), upd("tool_call", { toolCallId: "c2", title: "use_tool", rawInput: {} })]);
     expect(s[0]).toMatchObject({ tool: "mcp__github__list_issues", cat: "mcp" });
@@ -356,21 +369,7 @@ describe("a result whose call lay before the range read is not undone at the tur
     p.push(JSON.stringify(generic(9, 'Created At: x\nCompleted At: y\n{"messageId":"web-no-chat-id"}')), 2);
     expect(p.steps.map((s) => s.anchor)).toEqual([{ messageId: "web-abc" }, undefined, undefined]);
   });
-  it("claude: the orphan result stays done when the turn ends in the same read", () => {
-    const p = new ClaudeStepParser();
-    p.push(JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "c1", content: "ok" }] } }), 0);
-    const out = p.push(JSON.stringify({ type: "system", subtype: "turn_duration", durationMs: 5 }), 10);
-    expect(out.map((s) => s.status)).toEqual([undefined]);
-    expect(p.steps.find((s) => s.id === "c1")!.status).toBe("done");
-  });
-  it("codex: the same", () => {
-    const p = new CodexStepParser();
-    p.push(JSON.stringify({ type: "response_item", payload: { type: "function_call_output", call_id: "c1", output: "ok" } }), 0);
-    const out = p.push(JSON.stringify({ type: "event_msg", payload: { type: "task_complete", duration_ms: 5, last_agent_message: "x" } }), 10);
-    expect(out.some((s) => s.id === "c1")).toBe(false);
-    expect(p.steps.find((s) => s.id === "c1")!.status).toBe("done");
-  });
-  it("antigravity and grok: the same", () => {
+  it("antigravity and grok: the same (claude and codex: tests/chat-activity-orphan-results-195.test.ts)", () => {
     const a = new AntigravityStepParser();
     a.push(JSON.stringify(generic(3, "Created At: x\nCompleted At: y\nok")), 0);
     const outA = a.push(JSON.stringify(planner(4, { content: "bye" })), 10);

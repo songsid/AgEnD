@@ -204,12 +204,18 @@ export class GrokStepParser extends StepParser {
     return [...out, { ...s }];
   }
 
-  /** The tool a `tool_call` (or its refinement) names: `use_tool` is the MCP tool inside it. */
-  private named(u: Record<string, unknown>): { name: string; input: unknown } {
+  /**
+   * The tool a `tool_call` (or its refinement) names: `use_tool` is the MCP tool inside it. A refinement may carry no name
+   * of its own (no meta name, no title): it is then of the call it refines (`current`) — never renamed to a placeholder —
+   * and is unwrapped only if that call is a `use_tool` (or the MCP tool already unwrapped from one).
+   */
+  private named(u: Record<string, unknown>, current?: string): { name: string; input: unknown } {
     const raw = (u.rawInput && typeof u.rawInput === "object" ? u.rawInput : {}) as Record<string, unknown>;
     const x = ((u._meta as Record<string, unknown> | undefined)?.["x.ai/tool"] ?? {}) as Record<string, unknown>;
-    const name = String(x.name ?? u.title ?? "tool");
-    if (name === "use_tool" && typeof raw.tool_name === "string") return { name: grokMcpName(raw.tool_name), input: raw.tool_input ?? {} };
+    const given = x.name ?? u.title;
+    const name = String(given ?? current ?? "tool");
+    const wrapped = name === "use_tool" || (given == null && current !== undefined && name.startsWith("mcp__"));
+    if (wrapped && typeof raw.tool_name === "string") return { name: grokMcpName(raw.tool_name), input: raw.tool_input ?? {} };
     // The refinement's `variant` is grok's own bookkeeping, not an argument.
     const { variant: _variant, ...input } = raw;
     return { name, input };
@@ -243,7 +249,8 @@ export class GrokStepParser extends StepParser {
     if (!status) {
       // A refinement of a call still running: its arguments are now complete (and use_tool's inner tool is known).
       if (!open) return [];
-      const { name, input } = this.named(u);
+      // A refinement with no name of its own is of the call's tool (it would otherwise become "tool", losing the name).
+      const { name, input } = this.named(u, open.tool);
       const before = JSON.stringify(open);
       open.tool = name; Object.assign(open, this.describe(name, input, u));
       if (isReplyTool(name) && !open.anchor) { const a = replyAnchor(input); if (a) open.anchor = a; }
