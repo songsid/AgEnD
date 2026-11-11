@@ -1,0 +1,192 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/settings-summary-3416-alpha-baseline
+
+ ❯ tests/settings-summary-effects-3416.test.ts (6 tests | 4 failed | 2 skipped) 61ms
+   × alpha held-effect producers carry copied display metadata in en without replacing raw fallback 39ms
+   × alpha held-effect producers carry copied display metadata in zh-TW without replacing raw fallback 5ms
+   × pairing keeps exact Hub, binding prefix and fingerprint in both raw and projected lines 4ms
+   × sharing metadata retains the chosen agent and next revision through effect dispatch 9ms
+ ❯ tests/web-pending-page-language-3416.test.ts (22 tests | 2 failed | 20 skipped) 2069ms
+   × alpha effect summaries retain every argument in the en page language 1215ms
+   × alpha effect summaries retain every argument in the zh-TW page language 37ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/settings-summary-effects-3416.test.ts > alpha held-effect producers carry copied display metadata in en without replacing raw fallback
+ FAIL  tests/settings-summary-effects-3416.test.ts > alpha held-effect producers carry copied display metadata in zh-TW without replacing raw fallback
+AssertionError: host-install: expected undefined to be 1 // Object.is equality
+
+- Expected:
+1
+
++ Received:
+undefined
+
+ ❯ tests/settings-summary-effects-3416.test.ts:11:47
+      9|   if(test.name==='membership-false'){expect(diff).toBeNull();continue;}
+     10|   expect(diff,test.name).not.toBeNull();
+     11|   expect(diff.summary_i18n?.length,test.name).toBe(diff.summary.length…
+       |                                               ^
+     12|   for(const [i,descriptor] of diff.summary_i18n!.entries()){
+     13|    if(descriptor!==null)expect(descriptor,test.name).toMatchObject({v:…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/settings-summary-effects-3416.test.ts > pairing keeps exact Hub, binding prefix and fingerprint in both raw and projected lines
+TypeError: Cannot read properties of undefined (reading '1')
+ ❯ tests/settings-summary-effects-3416.test.ts:23:17
+     21|  const confirm=cases.find(c=>c.name==='pair-confirm')!.read().diff!;
+     22|  expect(confirm.summary[1]).toBe('aaaa aaaa aaaa aaaa aaaa aaaa aaaa a…
+     23|  expect(confirm.summary_i18n![1]).toBeNull();
+       |                 ^
+     24|  const disconnect=cases.find(c=>c.name==='pair-disconnect')!.read().di…
+     25|  expect(disconnect.summary[0]).toContain('https://member.example.test …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/settings-summary-effects-3416.test.ts > sharing metadata retains the chosen agent and next revision through effect dispatch
+TypeError: Cannot read properties of undefined (reading '0')
+ ❯ tests/settings-summary-effects-3416.test.ts:31:14
+     29|  const diff=effectSummaryCases().find(c=>c.name==='exposure')!.read().…
+     30|  expect(diff.summary).toEqual(['Share "Atlas <text>" with the Hub',"Hu…
+     31|  expect(diff.summary_i18n![0]!.parts).toContainEqual({key:'hub.exposur…
+       |              ^
+     32|  expect(diff.summary_i18n![2]!.parts).toContainEqual({key:'hub.exposur…
+     33| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/web-pending-page-language-3416.test.ts > alpha effect summaries retain every argument in the en page language
+AssertionError: expected [ '在 AgEnD 主機上安裝 codex', …(22) ] to deeply equal [ …(23) ]
+
+- Expected
++ Received
+
+  [
+-   "Install codex on the AgEnD host",
+-   "Update codex on the AgEnD computer to 1.2.3, the release AgEnD has audited (the registry's update command, run unattended). Only this CLI changes; nothing the page sent is run.",
+-   "Update antigravity on the AgEnD computer to the LATEST release (not audited by AgEnD): the registry's update command for this CLI, run unattended; the CLI's own updater cannot choose a release. Only this CLI changes; nothing the page sent is run.",
+-   "Install codex 1.2.3 on the paired Windows computer aabbccdd: the version AgEnD pins, checked on that computer (its pinned hashes, the registry's signatures, the publisher's signature). Only this CLI is installed; nothing the page sent is run. That computer's owner's own switch still has to allow it.",
+-   "If antigravity is already on the paired Windows computer aabbccdd, this updates it to the vendor's LATEST release (not audited by AgEnD): the Runtime downloads the release the vendor's own manifest names and checks its checksum and the publisher's signature on that computer before switching to it.",
+-   "Replace the Hub browser certificate. The member transport identity stays the same.",
+-   "SHA-256 fingerprint: AA:BB:CC:DD",
+-   "Expires: 2030-01-02",
+-   "This certificate is self-signed. Browsers will warn unless you trust it separately.",
+-   "Hub question and answer content: keep 30 days",
+-   "Hub event records: keep 90 days",
+-   "Shorter periods can permanently remove older records at the next daily cleanup.",
+-   "Start this fleet's Hub. People can sign in to it again and chats with shared agents resume.",
+-   "Stop this fleet's Hub and pause chats with shared agents. Valid sign-ins can resume when it runs again. Nothing is deleted.",
+-   "Serve HTML previews on this Hub at port 18443.",
+-   "Stop serving HTML previews on this Hub.",
+-   "Enable this fleet's Hub membership. Pairing and sharing an agent are separate choices.",
+-   "Disable this fleet's Hub membership. New Hub work and answer disclosure stop; existing agent conversations remain.",
++   "在 AgEnD 主機上安裝 codex",
++   "在 AgEnD 這台電腦上把 codex 更新到 1.2.3（AgEnD 稽核過的版本），使用登錄表裡的更新指令（無人值守執行）。只會更新這個 CLI；頁面送來的內容不會被執行。",
++   "在 AgEnD 這台電腦上把 antigravity 更新到「最新版」（未經 AgEnD 稽核）：使用登錄表裡這個 CLI 的更新指令（無人值守執行）；這個 CLI 自己的更新器無法指定版本。只會更新這個 CLI；頁面送來的內容不會被執行。",
++   "在已配對的 Windows 電腦 aabbccdd 上安裝 codex 1.2.3：AgEnD 固定的版本，並在那台電腦上檢查（固定的雜湊、registry 簽章、發行者簽章）。只會安裝這個 CLI；頁面送來的內容不會被執行。仍需要那台電腦主人自己的開關允許。",
++   "如果已配對的 Windows 電腦 aabbccdd 上已經有 antigravity，這會把它更新到廠商的「最新版」（未經 AgEnD 稽核）：Runtime 會下載廠商自己的 manifest 指定的版本，並在那台電腦上檢查它的雜湊與發行者簽章，才會切換過去。",
++   "更換 Hub 瀏覽器憑證；成員傳輸身分保持不變。",
++   "SHA-256 指紋：AA:BB:CC:DD",
++   "到期時間：2030-01-02",
++   "這是自簽憑證。除非另外設定信任，否則瀏覽器會顯示警告。",
++   "Hub 提問與回答內容：保留 30 天",
++   "Hub 事件紀錄：保留 90 天",
++   "縮短保留天數後，下次每日清理可能永久刪除較早的紀錄。",
++   "啟動這個 Fleet 的 Hub。大家可以再次登入，與分享的 Agent 的對話會恢復。",
++   "停止這個 Fleet 的 Hub，暫停與分享的 Agent 的對話。再次執行後，仍有效的登入狀態可以恢復。不會刪除任何資料。",
++   "在這個 Hub 的連接埠 18443 提供 HTML 預覽。",
++   "停止在這個 Hub 提供 HTML 預覽。",
++   "啟用這個 Fleet 的 Hub 成員功能。配對與分享 Agent 需另外選擇。",
++   "停用這個 Fleet 的 Hub 成員功能。停止新的 Hub 工作與回答傳送；既有 Agent 對話會保留。",
+    "Connect this Fleet to Hub https://hub.example.test using your company account. Agent sharing stays separate.",
+-   "Replace the saved identity of Hub https://next.example.test using the new company link. This does not connect a Fleet.",
+-   "Run General on this host again? The Windows process must stop first. Its conversation is kept. General resumes this host’s saved conversation, or starts one if this host has none.",
+-   "Run General on Owned Windows? Its current process must stop first. The chat stays here. The host conversation is kept; Windows uses its own conversation. Pending or uncertain input will not be sent to the other conversation.",
+-   "Host and Windows conversations stay separate. Switching does not copy or merge their history.",
++   "使用新的公司連結，更換 Hub https://next.example.test 已儲存的身分。這項操作不會連接 Fleet。",
++   "要讓 General 回到這台主機執行嗎？必須先停止 Windows 程序，其對話會保留。General 會繼續這台主機儲存的對話；若主機沒有既有對話，才開啟新對話。",
++   "要讓 General 在 Owned Windows 執行嗎？必須先停止目前的程序。聊天位置不變。主機上的對話會保留，Windows 使用自己的對話。待處理或結果不明的輸入不會送到另一段對話。",
++   "主機與 Windows 各自保留對話，切換時不會複製或合併對話紀錄。",
+  ]
+
+ ❯ tests/web-pending-page-language-3416.test.ts:88:93
+     86|   const expected=effectSummaryMessages.map(([key,args])=>t(key,...args…
+     87|   app.appStore.set({pendingChanges:rows}); await p.mount(h(shell.Pendi…
+     88|   expect([...p.root.querySelectorAll(".pending-summary li")].map((el:a…
+       |                                                                                             ^
+     89|   expect(JSON.stringify(rows)).toBe(canonical);
+     90| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  tests/web-pending-page-language-3416.test.ts > alpha effect summaries retain every argument in the zh-TW page language
+AssertionError: expected [ …(23) ] to deeply equal [ '在 AgEnD 主機上安裝 codex', …(22) ]
+
+- Expected
++ Received
+
+  [
+-   "在 AgEnD 主機上安裝 codex",
+-   "在 AgEnD 這台電腦上把 codex 更新到 1.2.3（AgEnD 稽核過的版本），使用登錄表裡的更新指令（無人值守執行）。只會更新這個 CLI；頁面送來的內容不會被執行。",
+-   "在 AgEnD 這台電腦上把 antigravity 更新到「最新版」（未經 AgEnD 稽核）：使用登錄表裡這個 CLI 的更新指令（無人值守執行）；這個 CLI 自己的更新器無法指定版本。只會更新這個 CLI；頁面送來的內容不會被執行。",
+-   "在已配對的 Windows 電腦 aabbccdd 上安裝 codex 1.2.3：AgEnD 固定的版本，並在那台電腦上檢查（固定的雜湊、registry 簽章、發行者簽章）。只會安裝這個 CLI；頁面送來的內容不會被執行。仍需要那台電腦主人自己的開關允許。",
+-   "如果已配對的 Windows 電腦 aabbccdd 上已經有 antigravity，這會把它更新到廠商的「最新版」（未經 AgEnD 稽核）：Runtime 會下載廠商自己的 manifest 指定的版本，並在那台電腦上檢查它的雜湊與發行者簽章，才會切換過去。",
+-   "更換 Hub 瀏覽器憑證；成員傳輸身分保持不變。",
+-   "SHA-256 指紋：AA:BB:CC:DD",
+-   "到期時間：2030-01-02",
+-   "這是自簽憑證。除非另外設定信任，否則瀏覽器會顯示警告。",
+-   "Hub 提問與回答內容：保留 30 天",
+-   "Hub 事件紀錄：保留 90 天",
+-   "縮短保留天數後，下次每日清理可能永久刪除較早的紀錄。",
+-   "啟動這個 Fleet 的 Hub。大家可以再次登入，與分享的 Agent 的對話會恢復。",
+-   "停止這個 Fleet 的 Hub，暫停與分享的 Agent 的對話。再次執行後，仍有效的登入狀態可以恢復。不會刪除任何資料。",
+-   "在這個 Hub 的連接埠 18443 提供 HTML 預覽。",
+-   "停止在這個 Hub 提供 HTML 預覽。",
+-   "啟用這個 Fleet 的 Hub 成員功能。配對與分享 Agent 需另外選擇。",
+-   "停用這個 Fleet 的 Hub 成員功能。停止新的 Hub 工作與回答傳送；既有 Agent 對話會保留。",
++   "Install codex on the AgEnD host",
++   "Update codex on the AgEnD computer to 1.2.3, the release AgEnD has audited (the registry's update command, run unattended). Only this CLI changes; nothing the page sent is run.",
++   "Update antigravity on the AgEnD computer to the LATEST release (not audited by AgEnD): the registry's update command for this CLI, run unattended; the CLI's own updater cannot choose a release. Only this CLI changes; nothing the page sent is run.",
++   "Install codex 1.2.3 on the paired Windows computer aabbccdd: the version AgEnD pins, checked on that computer (its pinned hashes, the registry's signatures, the publisher's signature). Only this CLI is installed; nothing the page sent is run. That computer's owner's own switch still has to allow it.",
++   "If antigravity is already on the paired Windows computer aabbccdd, this updates it to the vendor's LATEST release (not audited by AgEnD): the Runtime downloads the release the vendor's own manifest names and checks its checksum and the publisher's signature on that computer before switching to it.",
++   "Replace the Hub browser certificate. The member transport identity stays the same.",
++   "SHA-256 fingerprint: AA:BB:CC:DD",
++   "Expires: 2030-01-02",
++   "This certificate is self-signed. Browsers will warn unless you trust it separately.",
++   "Hub question and answer content: keep 30 days",
++   "Hub event records: keep 90 days",
++   "Shorter periods can permanently remove older records at the next daily cleanup.",
++   "Start this fleet's Hub. People can sign in to it again and chats with shared agents resume.",
++   "Stop this fleet's Hub and pause chats with shared agents. Valid sign-ins can resume when it runs again. Nothing is deleted.",
++   "Serve HTML previews on this Hub at port 18443.",
++   "Stop serving HTML previews on this Hub.",
++   "Enable this fleet's Hub membership. Pairing and sharing an agent are separate choices.",
++   "Disable this fleet's Hub membership. New Hub work and answer disclosure stop; existing agent conversations remain.",
+    "以公司帳號將這個 Fleet 連接到 Hub https://hub.example.test。分享 Agent 需另外選擇。",
+-   "使用新的公司連結，更換 Hub https://next.example.test 已儲存的身分。這項操作不會連接 Fleet。",
+-   "要讓 General 回到這台主機執行嗎？必須先停止 Windows 程序，其對話會保留。General 會繼續這台主機儲存的對話；若主機沒有既有對話，才開啟新對話。",
+-   "要讓 General 在 Owned Windows 執行嗎？必須先停止目前的程序。聊天位置不變。主機上的對話會保留，Windows 使用自己的對話。待處理或結果不明的輸入不會送到另一段對話。",
+-   "主機與 Windows 各自保留對話，切換時不會複製或合併對話紀錄。",
++   "Replace the saved identity of Hub https://next.example.test using the new company link. This does not connect a Fleet.",
++   "Run General on this host again? The Windows process must stop first. Its conversation is kept. General resumes this host’s saved conversation, or starts one if this host has none.",
++   "Run General on Owned Windows? Its current process must stop first. The chat stays here. The host conversation is kept; Windows uses its own conversation. Pending or uncertain input will not be sent to the other conversation.",
++   "Host and Windows conversations stay separate. Switching does not copy or merge their history.",
+  ]
+
+ ❯ tests/web-pending-page-language-3416.test.ts:88:93
+     86|   const expected=effectSummaryMessages.map(([key,args])=>t(key,...args…
+     87|   app.appStore.set({pendingChanges:rows}); await p.mount(h(shell.Pendi…
+     88|   expect([...p.root.querySelectorAll(".pending-summary li")].map((el:a…
+       |                                                                                             ^
+     89|   expect(JSON.stringify(rows)).toBe(canonical);
+     90| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  6 failed | 22 skipped (28)
+   Start at  12:17:32
+   Duration  3.89s (transform 4.68s, setup 347ms, import 4.66s, tests 2.13s, environment 0ms)
+

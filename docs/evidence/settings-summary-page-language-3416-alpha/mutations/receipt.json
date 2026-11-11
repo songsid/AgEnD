@@ -1,0 +1,42 @@
+{
+  "source": "da40e468f880e2c312932b47abf1d1d60a9fa54c",
+  "results": [
+    {
+      "name": "preview-forward",
+      "file": "src/settings-effect.ts",
+      "exit": 1,
+      "semanticFailure": true,
+      "digest": "ca259cc466b7bd5500eff0d2e429ed06fc316801d8bfcc7b1a5d66ec0a44940f"
+    },
+    {
+      "name": "exposure-owner",
+      "file": "src/hub/member/exposure-api.ts",
+      "exit": 1,
+      "semanticFailure": true,
+      "digest": "4872ca7df32616071b4ee0237b01841611a914a867315690e7d11e07a6e7db59"
+    },
+    {
+      "name": "pair-binding",
+      "file": "src/hub-pairing-summary.ts",
+      "exit": 1,
+      "semanticFailure": true,
+      "digest": "82eaa54fffaefee0ba272326a18db8eb141e1fb4ca9346dd9c33345d5434f84e"
+    },
+    {
+      "name": "retention-argument",
+      "file": "src/ui/shared/app-shell.js",
+      "exit": 1,
+      "semanticFailure": true,
+      "digest": "f5b9e6112562ae9e799420f7450be2c4f29bf807a556606738c9babe9e2fef1d"
+    },
+    {
+      "name": "general-preview",
+      "file": "src/fleet-manager.ts",
+      "exit": 1,
+      "semanticFailure": true,
+      "digest": "fa9ae1cbbd7a8f217cd833898da248fae31f89521f0e280fec10bda5a5f60628"
+    }
+  ],
+  "sourceRestored": true,
+  "scope": "Each reversal alone; original source restored before next. Focused pure display/preview tests only."
+}

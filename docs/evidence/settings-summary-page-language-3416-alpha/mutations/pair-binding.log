@@ -1,0 +1,49 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/settings-summary-page-language-3416-alpha
+
+ ❯ tests/settings-summary-effects-3416.test.ts (6 tests | 1 failed | 5 skipped) 21ms
+   × pairing keeps exact Hub, binding prefix and fingerprint in both raw and projected lines 19ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 skipped (6)
+   Start at  12:16:01
+   Duration  1.63s (transform 1.03s, setup 93ms, import 1.37s, tests 21ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/settings-summary-effects-3416.test.ts > pairing keeps exact Hub, binding prefix and fingerprint in both raw and projected lines
+AssertionError: expected [ { …(2) } ] to deep equally contain { …(2) }
+
+- Expected:
+{
+  "args": [
+    "https://member.example.test",
+    "owned-hub",
+    "bbbbbbbbbbbb",
+  ],
+  "key": "hub.pairing.summary.disconnect",
+}
+
++ Received:
+[
+  {
+    "args": [
+      "https://member.example.test",
+      "owned-hub",
+      "foreign",
+    ],
+    "key": "hub.pairing.summary.disconnect",
+  },
+]
+
+ ❯ tests/settings-summary-effects-3416.test.ts:26:45
+     24|  const disconnect=cases.find(c=>c.name==='pair-disconnect')!.read().di…
+     25|  expect(disconnect.summary[0]).toContain('https://member.example.test …
+     26|  expect(disconnect.summary_i18n![0]!.parts).toContainEqual({key:'hub.p…
+       |                                             ^
+     27| });
+     28| it('sharing metadata retains the chosen agent and next revision throug…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

@@ -1,0 +1,1410 @@
+{
+  "baseline": "861ca2ac4c4f2ff05f1602f41b04687c2838ad8c",
+  "candidate": "c4fbd0cbb3e9591a6364444405f9301bc74cf884",
+  "dirty": "",
+  "inputs": [
+    {
+      "digest": "784bdb60eb7d5b44d5a2b09df66306d987fb91b9f2be8ac18bf3aa1d59c68901",
+      "paths": [
+        "src/settings-effect.ts"
+      ]
+    },
+    {
+      "digest": "247cbcf50563429717d1f5cc4fb2afe78d7590035f772b41f89a6709b39f91fa",
+      "paths": [
+        "src/hub-pairing-summary.ts"
+      ]
+    },
+    {
+      "digest": "b9b432e906684fc75429398e77edbc27c37f4481cb5cd046d4715fd99e21c66a",
+      "paths": [
+        "src/hub/member/exposure-api.ts"
+      ]
+    },
+    {
+      "digest": "362cfd22a0f822d75ffa994d1c7975eeac53866e274025a8ad2d5fffdb53cb2e",
+      "paths": [
+        "src/locale.ts"
+      ]
+    },
+    {
+      "digest": "f0a592f5e0b72ff7ef7922c3abadd6767e4fee5c1023afe4848aa472e1854041",
+      "paths": [
+        "tests/helpers/settings-summary-effects-3416.ts"
+      ]
+    },
+    {
+      "digest": "8d6075ce02cf785f28dd1312bd800f59eff95c08275fc83b9bda88e8d9313f45",
+      "paths": [
+        "scripts/manual/settings-summary-effects-canonical-3416.mts"
+      ]
+    }
+  ],
+  "cases": 36,
+  "identical": true,
+  "before": [
+    {
+      "language": "en",
+      "name": "host-install",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Install codex on the AgEnD host"
+          ],
+          "fingerprint": "2e9bbdacbc1b9d50bbb3c263074b3ab47da0196227282625ce277e31e2f2c3cf",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "host-update",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Update codex on the AgEnD computer to 0.167.0, the release AgEnD has audited (the registry's update command, run unattended). Only this CLI changes; nothing the page sent is run."
+          ],
+          "fingerprint": "55837966f569a78ca2c09cbc418bd1df68321c864d6814cc7267ea5ef94b2ff9",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "runtime-install",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Install codex 0.167.0 on the paired Windows computer 11111111: the version AgEnD pins, checked on that computer (its pinned hashes, the registry's signatures, the publisher's signature). Only this CLI is installed; nothing the page sent is run. That computer's owner's own switch still has to allow it."
+          ],
+          "fingerprint": "9ee027eb2cb84b3f849e5b17ae676d4f0cd2712a9076e1d32dd6453106768dea",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "certificate",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Replace the Hub browser certificate. The member transport identity stays the same.",
+            "SHA-256 fingerprint: AA:BB:CC:DD",
+            "Expires: 2030-01-02",
+            "This certificate is self-signed. Browsers will warn unless you trust it separately."
+          ],
+          "fingerprint": "61ea6d001de308072103038afe83af2f5bb666c30ce9ad307c8e4d940ce7302a",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "retention",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Hub question and answer content: keep 30 days",
+            "Hub event records: keep 90 days",
+            "Shorter periods can permanently remove older records at the next daily cleanup."
+          ],
+          "fingerprint": "ea64469f7b70dae4d143575b83bc9bea794093474489ec9fe441c3e879acbeed",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "run-true",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Start this fleet's Hub. People can sign in to it again and chats with shared agents resume."
+          ],
+          "fingerprint": "0aef778a0e767dee5889b4da7294cc94423b098e2944f36c37cf7ee13dbaf75f",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "preview-true",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Serve HTML previews on this Hub at port 18443."
+          ],
+          "fingerprint": "36ffd2766622b4d165ff9d3dc8cb1e41f8d7af3119e70d55b9ccde17889c8b07",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "membership-true",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Enable this fleet's Hub membership. Pairing and sharing an agent are separate choices."
+          ],
+          "fingerprint": "addccf207aab915e601041546747a4064036e798c60cda817debe8d35304b78d",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "run-false",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Stop this fleet's Hub and pause chats with shared agents. Valid sign-ins can resume when it runs again. Nothing is deleted."
+          ],
+          "fingerprint": "b935367254f918a9c8b86c00ba5e8fde6082aed976d2a32f9d290fa2c5e03c79",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "preview-false",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Stop serving HTML previews on this Hub."
+          ],
+          "fingerprint": "5e4340f035972e3164aa7c40e110cd61810243a6e76a493b3a726a3c713e446f",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "membership-false",
+      "value": {
+        "diff": null
+      }
+    },
+    {
+      "language": "en",
+      "name": "company-start",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Connect this Fleet to Hub https://hub.example.test using your company account. Agent sharing stays separate."
+          ],
+          "fingerprint": "824c720b0e9f268d7352285df73a3037ba4d08f5a9551160e56cdc485ef6980c",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "company-resume",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Connect this Fleet to Hub 11111111-1111-4111-8111-111111111111 using your company account. Agent sharing stays separate."
+          ],
+          "fingerprint": "0e09e17d9c82c5e6681bae027f4221a05f0375b23f082ce8ab9c86f7751c1050",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "company-repair",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Replace the saved identity of Hub https://hub.example.test using the new company link. This does not connect a Fleet."
+          ],
+          "fingerprint": "0aefa76750e621c6e36a246d569dc4765d06dbf22d9ba9d28c432d4602ec2419",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "exposure",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Share \"Atlas <text>\" with the Hub",
+            "Hub questions go to this agent's own conversation, with its folder and Settings tools",
+            "Revision: 8"
+          ],
+          "fingerprint": "f4d94349e0d9384c3e8ea6aaf087ebd688b3acb176b09733c39217ef394db562",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "pair-connect",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Connect this fleet to the Hub at https://hub.example.test",
+            "It asks the Hub's owner and administrator to approve it"
+          ],
+          "fingerprint": "d1a5c6952827c9b8dea50501d0a1140674bc1527a21d86d70ce288f324e10cc8",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "pair-confirm",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Confirm the pairing fingerprint for https://member.example.test",
+            "aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa"
+          ],
+          "fingerprint": "2c301ef3fd79f610eda6cbba5e6edb8e1863ffa6b328703e5a4eab61463e0035",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "pair-disconnect",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Disconnect this fleet from the Hub at https://member.example.test (owned-hub, pairing bbbbbbbbbbbb)",
+            "Every agent shared there is withdrawn; the Hub's administrator revokes the fleet there"
+          ],
+          "fingerprint": "db0514ff31c36fdfd1c865e91e283e939f4ab3678af30b6cf5d93c9306a49615",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "host-install",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "在 AgEnD 主機上安裝 codex"
+          ],
+          "fingerprint": "2e9bbdacbc1b9d50bbb3c263074b3ab47da0196227282625ce277e31e2f2c3cf",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "host-update",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "在 AgEnD 這台電腦上把 codex 更新到 0.167.0（AgEnD 稽核過的版本），使用登錄表裡的更新指令（無人值守執行）。只會更新這個 CLI；頁面送來的內容不會被執行。"
+          ],
+          "fingerprint": "55837966f569a78ca2c09cbc418bd1df68321c864d6814cc7267ea5ef94b2ff9",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "runtime-install",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "在已配對的 Windows 電腦 11111111 上安裝 codex 0.167.0：AgEnD 固定的版本，並在那台電腦上檢查（固定的雜湊、registry 簽章、發行者簽章）。只會安裝這個 CLI；頁面送來的內容不會被執行。仍需要那台電腦主人自己的開關允許。"
+          ],
+          "fingerprint": "9ee027eb2cb84b3f849e5b17ae676d4f0cd2712a9076e1d32dd6453106768dea",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "certificate",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "更換 Hub 瀏覽器憑證；成員傳輸身分保持不變。",
+            "SHA-256 指紋：AA:BB:CC:DD",
+            "到期時間：2030-01-02",
+            "這是自簽憑證。除非另外設定信任，否則瀏覽器會顯示警告。"
+          ],
+          "fingerprint": "61ea6d001de308072103038afe83af2f5bb666c30ce9ad307c8e4d940ce7302a",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "retention",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Hub 提問與回答內容：保留 30 天",
+            "Hub 事件紀錄：保留 90 天",
+            "縮短保留天數後，下次每日清理可能永久刪除較早的紀錄。"
+          ],
+          "fingerprint": "ea64469f7b70dae4d143575b83bc9bea794093474489ec9fe441c3e879acbeed",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "run-true",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "啟動這個 Fleet 的 Hub。大家可以再次登入，與分享的 Agent 的對話會恢復。"
+          ],
+          "fingerprint": "0aef778a0e767dee5889b4da7294cc94423b098e2944f36c37cf7ee13dbaf75f",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "preview-true",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "在這個 Hub 的連接埠 18443 提供 HTML 預覽。"
+          ],
+          "fingerprint": "36ffd2766622b4d165ff9d3dc8cb1e41f8d7af3119e70d55b9ccde17889c8b07",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "membership-true",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "啟用這個 Fleet 的 Hub 成員功能。配對與分享 Agent 需另外選擇。"
+          ],
+          "fingerprint": "addccf207aab915e601041546747a4064036e798c60cda817debe8d35304b78d",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "run-false",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "停止這個 Fleet 的 Hub，暫停與分享的 Agent 的對話。再次執行後，仍有效的登入狀態可以恢復。不會刪除任何資料。"
+          ],
+          "fingerprint": "b935367254f918a9c8b86c00ba5e8fde6082aed976d2a32f9d290fa2c5e03c79",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "preview-false",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "停止在這個 Hub 提供 HTML 預覽。"
+          ],
+          "fingerprint": "5e4340f035972e3164aa7c40e110cd61810243a6e76a493b3a726a3c713e446f",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "membership-false",
+      "value": {
+        "diff": null
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "company-start",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "以公司帳號將這個 Fleet 連接到 Hub https://hub.example.test。分享 Agent 需另外選擇。"
+          ],
+          "fingerprint": "824c720b0e9f268d7352285df73a3037ba4d08f5a9551160e56cdc485ef6980c",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "company-resume",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "以公司帳號將這個 Fleet 連接到 Hub 11111111-1111-4111-8111-111111111111。分享 Agent 需另外選擇。"
+          ],
+          "fingerprint": "0e09e17d9c82c5e6681bae027f4221a05f0375b23f082ce8ab9c86f7751c1050",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "company-repair",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "使用新的公司連結，更換 Hub https://hub.example.test 已儲存的身分。這項操作不會連接 Fleet。"
+          ],
+          "fingerprint": "0aefa76750e621c6e36a246d569dc4765d06dbf22d9ba9d28c432d4602ec2419",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "exposure",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Share \"Atlas <text>\" with the Hub",
+            "Hub questions go to this agent's own conversation, with its folder and Settings tools",
+            "Revision: 8"
+          ],
+          "fingerprint": "f4d94349e0d9384c3e8ea6aaf087ebd688b3acb176b09733c39217ef394db562",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "pair-connect",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Connect this fleet to the Hub at https://hub.example.test",
+            "It asks the Hub's owner and administrator to approve it"
+          ],
+          "fingerprint": "d1a5c6952827c9b8dea50501d0a1140674bc1527a21d86d70ce288f324e10cc8",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "pair-confirm",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Confirm the pairing fingerprint for https://member.example.test",
+            "aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa"
+          ],
+          "fingerprint": "2c301ef3fd79f610eda6cbba5e6edb8e1863ffa6b328703e5a4eab61463e0035",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "pair-disconnect",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Disconnect this fleet from the Hub at https://member.example.test (owned-hub, pairing bbbbbbbbbbbb)",
+            "Every agent shared there is withdrawn; the Hub's administrator revokes the fleet there"
+          ],
+          "fingerprint": "db0514ff31c36fdfd1c865e91e283e939f4ab3678af30b6cf5d93c9306a49615",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    }
+  ],
+  "after": [
+    {
+      "language": "en",
+      "name": "host-install",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Install codex on the AgEnD host"
+          ],
+          "fingerprint": "2e9bbdacbc1b9d50bbb3c263074b3ab47da0196227282625ce277e31e2f2c3cf",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "host-update",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Update codex on the AgEnD computer to 0.167.0, the release AgEnD has audited (the registry's update command, run unattended). Only this CLI changes; nothing the page sent is run."
+          ],
+          "fingerprint": "55837966f569a78ca2c09cbc418bd1df68321c864d6814cc7267ea5ef94b2ff9",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "runtime-install",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Install codex 0.167.0 on the paired Windows computer 11111111: the version AgEnD pins, checked on that computer (its pinned hashes, the registry's signatures, the publisher's signature). Only this CLI is installed; nothing the page sent is run. That computer's owner's own switch still has to allow it."
+          ],
+          "fingerprint": "9ee027eb2cb84b3f849e5b17ae676d4f0cd2712a9076e1d32dd6453106768dea",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "certificate",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Replace the Hub browser certificate. The member transport identity stays the same.",
+            "SHA-256 fingerprint: AA:BB:CC:DD",
+            "Expires: 2030-01-02",
+            "This certificate is self-signed. Browsers will warn unless you trust it separately."
+          ],
+          "fingerprint": "61ea6d001de308072103038afe83af2f5bb666c30ce9ad307c8e4d940ce7302a",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "retention",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Hub question and answer content: keep 30 days",
+            "Hub event records: keep 90 days",
+            "Shorter periods can permanently remove older records at the next daily cleanup."
+          ],
+          "fingerprint": "ea64469f7b70dae4d143575b83bc9bea794093474489ec9fe441c3e879acbeed",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "run-true",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Start this fleet's Hub. People can sign in to it again and chats with shared agents resume."
+          ],
+          "fingerprint": "0aef778a0e767dee5889b4da7294cc94423b098e2944f36c37cf7ee13dbaf75f",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "preview-true",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Serve HTML previews on this Hub at port 18443."
+          ],
+          "fingerprint": "36ffd2766622b4d165ff9d3dc8cb1e41f8d7af3119e70d55b9ccde17889c8b07",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "membership-true",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Enable this fleet's Hub membership. Pairing and sharing an agent are separate choices."
+          ],
+          "fingerprint": "addccf207aab915e601041546747a4064036e798c60cda817debe8d35304b78d",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "run-false",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Stop this fleet's Hub and pause chats with shared agents. Valid sign-ins can resume when it runs again. Nothing is deleted."
+          ],
+          "fingerprint": "b935367254f918a9c8b86c00ba5e8fde6082aed976d2a32f9d290fa2c5e03c79",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "preview-false",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Stop serving HTML previews on this Hub."
+          ],
+          "fingerprint": "5e4340f035972e3164aa7c40e110cd61810243a6e76a493b3a726a3c713e446f",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "membership-false",
+      "value": {
+        "diff": null
+      }
+    },
+    {
+      "language": "en",
+      "name": "company-start",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Connect this Fleet to Hub https://hub.example.test using your company account. Agent sharing stays separate."
+          ],
+          "fingerprint": "824c720b0e9f268d7352285df73a3037ba4d08f5a9551160e56cdc485ef6980c",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "company-resume",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Connect this Fleet to Hub 11111111-1111-4111-8111-111111111111 using your company account. Agent sharing stays separate."
+          ],
+          "fingerprint": "0e09e17d9c82c5e6681bae027f4221a05f0375b23f082ce8ab9c86f7751c1050",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "company-repair",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Replace the saved identity of Hub https://hub.example.test using the new company link. This does not connect a Fleet."
+          ],
+          "fingerprint": "0aefa76750e621c6e36a246d569dc4765d06dbf22d9ba9d28c432d4602ec2419",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "exposure",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Share \"Atlas <text>\" with the Hub",
+            "Hub questions go to this agent's own conversation, with its folder and Settings tools",
+            "Revision: 8"
+          ],
+          "fingerprint": "f4d94349e0d9384c3e8ea6aaf087ebd688b3acb176b09733c39217ef394db562",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "pair-connect",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Connect this fleet to the Hub at https://hub.example.test",
+            "It asks the Hub's owner and administrator to approve it"
+          ],
+          "fingerprint": "d1a5c6952827c9b8dea50501d0a1140674bc1527a21d86d70ce288f324e10cc8",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "pair-confirm",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Confirm the pairing fingerprint for https://member.example.test",
+            "aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa"
+          ],
+          "fingerprint": "2c301ef3fd79f610eda6cbba5e6edb8e1863ffa6b328703e5a4eab61463e0035",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "en",
+      "name": "pair-disconnect",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Disconnect this fleet from the Hub at https://member.example.test (owned-hub, pairing bbbbbbbbbbbb)",
+            "Every agent shared there is withdrawn; the Hub's administrator revokes the fleet there"
+          ],
+          "fingerprint": "db0514ff31c36fdfd1c865e91e283e939f4ab3678af30b6cf5d93c9306a49615",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "host-install",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "在 AgEnD 主機上安裝 codex"
+          ],
+          "fingerprint": "2e9bbdacbc1b9d50bbb3c263074b3ab47da0196227282625ce277e31e2f2c3cf",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "host-update",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "在 AgEnD 這台電腦上把 codex 更新到 0.167.0（AgEnD 稽核過的版本），使用登錄表裡的更新指令（無人值守執行）。只會更新這個 CLI；頁面送來的內容不會被執行。"
+          ],
+          "fingerprint": "55837966f569a78ca2c09cbc418bd1df68321c864d6814cc7267ea5ef94b2ff9",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "runtime-install",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "在已配對的 Windows 電腦 11111111 上安裝 codex 0.167.0：AgEnD 固定的版本，並在那台電腦上檢查（固定的雜湊、registry 簽章、發行者簽章）。只會安裝這個 CLI；頁面送來的內容不會被執行。仍需要那台電腦主人自己的開關允許。"
+          ],
+          "fingerprint": "9ee027eb2cb84b3f849e5b17ae676d4f0cd2712a9076e1d32dd6453106768dea",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "certificate",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "更換 Hub 瀏覽器憑證；成員傳輸身分保持不變。",
+            "SHA-256 指紋：AA:BB:CC:DD",
+            "到期時間：2030-01-02",
+            "這是自簽憑證。除非另外設定信任，否則瀏覽器會顯示警告。"
+          ],
+          "fingerprint": "61ea6d001de308072103038afe83af2f5bb666c30ce9ad307c8e4d940ce7302a",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "retention",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "Hub 提問與回答內容：保留 30 天",
+            "Hub 事件紀錄：保留 90 天",
+            "縮短保留天數後，下次每日清理可能永久刪除較早的紀錄。"
+          ],
+          "fingerprint": "ea64469f7b70dae4d143575b83bc9bea794093474489ec9fe441c3e879acbeed",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "run-true",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "啟動這個 Fleet 的 Hub。大家可以再次登入，與分享的 Agent 的對話會恢復。"
+          ],
+          "fingerprint": "0aef778a0e767dee5889b4da7294cc94423b098e2944f36c37cf7ee13dbaf75f",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "preview-true",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "在這個 Hub 的連接埠 18443 提供 HTML 預覽。"
+          ],
+          "fingerprint": "36ffd2766622b4d165ff9d3dc8cb1e41f8d7af3119e70d55b9ccde17889c8b07",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "membership-true",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "啟用這個 Fleet 的 Hub 成員功能。配對與分享 Agent 需另外選擇。"
+          ],
+          "fingerprint": "addccf207aab915e601041546747a4064036e798c60cda817debe8d35304b78d",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "run-false",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "停止這個 Fleet 的 Hub，暫停與分享的 Agent 的對話。再次執行後，仍有效的登入狀態可以恢復。不會刪除任何資料。"
+          ],
+          "fingerprint": "b935367254f918a9c8b86c00ba5e8fde6082aed976d2a32f9d290fa2c5e03c79",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "preview-false",
+      "value": {
+        "diff": {
+          "section": "access",
+          "summary": [
+            "停止在這個 Hub 提供 HTML 預覽。"
+          ],
+          "fingerprint": "5e4340f035972e3164aa7c40e110cd61810243a6e76a493b3a726a3c713e446f",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "membership-false",
+      "value": {
+        "diff": null
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "company-start",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "以公司帳號將這個 Fleet 連接到 Hub https://hub.example.test。分享 Agent 需另外選擇。"
+          ],
+          "fingerprint": "824c720b0e9f268d7352285df73a3037ba4d08f5a9551160e56cdc485ef6980c",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "company-resume",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "以公司帳號將這個 Fleet 連接到 Hub 11111111-1111-4111-8111-111111111111。分享 Agent 需另外選擇。"
+          ],
+          "fingerprint": "0e09e17d9c82c5e6681bae027f4221a05f0375b23f082ce8ab9c86f7751c1050",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "company-repair",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "使用新的公司連結，更換 Hub https://hub.example.test 已儲存的身分。這項操作不會連接 Fleet。"
+          ],
+          "fingerprint": "0aefa76750e621c6e36a246d569dc4765d06dbf22d9ba9d28c432d4602ec2419",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "exposure",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Share \"Atlas <text>\" with the Hub",
+            "Hub questions go to this agent's own conversation, with its folder and Settings tools",
+            "Revision: 8"
+          ],
+          "fingerprint": "f4d94349e0d9384c3e8ea6aaf087ebd688b3acb176b09733c39217ef394db562",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "pair-connect",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Connect this fleet to the Hub at https://hub.example.test",
+            "It asks the Hub's owner and administrator to approve it"
+          ],
+          "fingerprint": "d1a5c6952827c9b8dea50501d0a1140674bc1527a21d86d70ce288f324e10cc8",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "pair-confirm",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Confirm the pairing fingerprint for https://member.example.test",
+            "aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa"
+          ],
+          "fingerprint": "2c301ef3fd79f610eda6cbba5e6edb8e1863ffa6b328703e5a4eab61463e0035",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    },
+    {
+      "language": "zh-TW",
+      "name": "pair-disconnect",
+      "value": {
+        "diff": {
+          "section": "channel",
+          "summary": [
+            "Disconnect this fleet from the Hub at https://member.example.test (owned-hub, pairing bbbbbbbbbbbb)",
+            "Every agent shared there is withdrawn; the Hub's administrator revokes the fleet there"
+          ],
+          "fingerprint": "db0514ff31c36fdfd1c865e91e283e939f4ab3678af30b6cf5d93c9306a49615",
+          "affectedConnections": [],
+          "authority": {
+            "connections": [],
+            "primaryGeneral": true,
+            "unknown": false
+          }
+        }
+      }
+    }
+  ],
+  "scope": "Pure held-effect and preview replay. Only optional display metadata excluded; raw summary, fingerprint, classification, authority and refusals compared byte-for-byte. No account, CLI, native runtime or Settings execution."
+}

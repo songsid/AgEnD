@@ -1,0 +1,235 @@
+{
+  "source": "da40e468f880e2c312932b47abf1d1d60a9fa54c",
+  "baseline": "861ca2ac4c4f2ff05f1602f41b04687c2838ad8c",
+  "mainMerged": "cf7f4b88945c7f2c70036874f907bf4da690a9fb",
+  "focused": {
+    "files": [
+      "tests/settings-summary-page-language-3416.test.ts",
+      "tests/settings-summary-effects-3416.test.ts",
+      "tests/web-pending-page-language-3416.test.ts",
+      "tests/settings-summary-metadata-3416.test.ts",
+      "tests/settings-http-confirmation-1423.test.ts",
+      "tests/settings-web-apply-2170.test.ts",
+      "tests/hub-company-join-settings.test.ts",
+      "tests/settings-totp-confirm-b2b.test.ts",
+      "tests/hub-exposure-api-s3c.test.ts",
+      "tests/hub-pairing-api-s3c.test.ts",
+      "tests/hub-membership-settings.test.ts",
+      "tests/hub-browser-certificate-settings.test.ts",
+      "tests/i18n-ui-literals-2390.test.ts",
+      "tests/named-link-test-2906.test.ts",
+      "tests/web-settings-search-2347.test.ts"
+    ],
+    "passed": 322,
+    "failed": 0
+  },
+  "nativeTypes": [
+    "source-types.log",
+    "test-types.log"
+  ],
+  "canonical": {
+    "generic": 48,
+    "effects": 36,
+    "identical": true
+  },
+  "failFirst": {
+    "failed": 6,
+    "skipped": 22,
+    "scope": "Six selected assertion failures on baseline with current copied regression files; no module load failure. Two General tests unselected."
+  },
+  "mutations": {
+    "caught": 5,
+    "restoredPassed": 28
+  },
+  "browser": {
+    "cases": 20,
+    "pngs": 22,
+    "effects": 0,
+    "controlComparisons": 8,
+    "inputs": 14,
+    "servedBindings": 3640
+  },
+  "mainParity": [
+    {
+      "path": "src/settings-summary.ts",
+      "equal": true
+    },
+    {
+      "path": "tests/settings-summary-metadata-3416.test.ts",
+      "equal": true
+    },
+    {
+      "path": "tests/helpers/settings-summary-cases-3416.ts",
+      "equal": true
+    }
+  ],
+  "inputs": [
+    {
+      "digest": "378e7b2ace98f75b0f3ed04585b626101e75a17e7b609eba826c4d54a38b0e40",
+      "paths": [
+        "src/settings-summary.ts"
+      ]
+    },
+    {
+      "digest": "3233795785bb5ecd9ada6eb78b83285cd5ed24ee0ba7476984f75b91b88bed0d",
+      "paths": [
+        "src/settings-change.ts"
+      ]
+    },
+    {
+      "digest": "88805e35819edbe9f7947cf5708f15afe3eb16f1d091ba53706aa4722fa45620",
+      "paths": [
+        "src/settings-confirmation.ts"
+      ]
+    },
+    {
+      "digest": "d70e75697c4253d005a5c844dc49036d3ac7d837501403e160bb96ec2d7c481d",
+      "paths": [
+        "src/settings-http-confirmation.ts"
+      ]
+    },
+    {
+      "digest": "784bdb60eb7d5b44d5a2b09df66306d987fb91b9f2be8ac18bf3aa1d59c68901",
+      "paths": [
+        "src/settings-effect.ts"
+      ]
+    },
+    {
+      "digest": "3239e26303dbacf79114c0552177f54341a4b37ba6f8ed11c52004376d130795",
+      "paths": [
+        "src/fleet-manager.ts"
+      ]
+    },
+    {
+      "digest": "b9b432e906684fc75429398e77edbc27c37f4481cb5cd046d4715fd99e21c66a",
+      "paths": [
+        "src/hub/member/exposure-api.ts"
+      ]
+    },
+    {
+      "digest": "247cbcf50563429717d1f5cc4fb2afe78d7590035f772b41f89a6709b39f91fa",
+      "paths": [
+        "src/hub-pairing-summary.ts"
+      ]
+    },
+    {
+      "digest": "cfcb1af339d43593d4d3ad05da3031dd13dffeb07f3bfcdb6961a05f8a4a8b3b",
+      "paths": [
+        "src/ui/shared/app-shell.js"
+      ]
+    },
+    {
+      "digest": "28c078c660ec31711ffc053b1d8ea66e9db1aacc3cdd92d2c8a56fa464a9a4bd",
+      "paths": [
+        "tests/settings-summary-page-language-3416.test.ts"
+      ]
+    },
+    {
+      "digest": "3bef090d4a46d6b9c5872f103beda694173b453b2a91560c874d0670fac98445",
+      "paths": [
+        "tests/settings-summary-effects-3416.test.ts"
+      ]
+    },
+    {
+      "digest": "40517acdc681303af08f28c3ef5bd961c7da8bce40a8e06af277285fb8df57bb",
+      "paths": [
+        "tests/web-pending-page-language-3416.test.ts"
+      ]
+    },
+    {
+      "digest": "9070561e535a01929bd8504e38b0293b63278902eda08a71ffe7ddec1151ac74",
+      "paths": [
+        "tests/settings-summary-metadata-3416.test.ts"
+      ]
+    },
+    {
+      "digest": "640eee0f423f991048d0ee38fd99e7ae3e3ccbb8d698a5a1637fbd4c7fa2ee5e",
+      "paths": [
+        "tests/settings-http-confirmation-1423.test.ts"
+      ]
+    },
+    {
+      "digest": "a3778d2af9ce864e942976aa9f5c7fcde3476b7a22d4c00e6e8b0f141bd1b207",
+      "paths": [
+        "tests/settings-web-apply-2170.test.ts"
+      ]
+    },
+    {
+      "digest": "c2efcd44c35e58dc03c9cff48edc6e3bcc1eb243c1328dc3a05aef6cf245a08d",
+      "paths": [
+        "tests/hub-company-join-settings.test.ts"
+      ]
+    },
+    {
+      "digest": "536099a8819d296ad5375dec8d367eba946ae6bf7280131a7ff0adbdef7d8227",
+      "paths": [
+        "tests/settings-totp-confirm-b2b.test.ts"
+      ]
+    },
+    {
+      "digest": "fa1e9ff6cd75548c428fa2d239c38fd405249c10070d668d684922f445e25cb4",
+      "paths": [
+        "tests/hub-exposure-api-s3c.test.ts"
+      ]
+    },
+    {
+      "digest": "8ccfff1e557d42bc7822e1152beb0ed96d1c79caa3ed3b79039e66686d47f501",
+      "paths": [
+        "tests/hub-pairing-api-s3c.test.ts"
+      ]
+    },
+    {
+      "digest": "ce8d29fd5db5f7f4e811db8ff0c3e6dee95423a31868a2ac3125320707697a72",
+      "paths": [
+        "tests/hub-membership-settings.test.ts"
+      ]
+    },
+    {
+      "digest": "d20ceff1988235e85fd66b276e28ce4b2d9d0198381b28d7ff4eb3c2562e70c8",
+      "paths": [
+        "tests/hub-browser-certificate-settings.test.ts"
+      ]
+    },
+    {
+      "digest": "8ee13ae0495cd4883fe77218a98af29bc28674607c4c5ca863836b2613f470d6",
+      "paths": [
+        "tests/i18n-ui-literals-2390.test.ts"
+      ]
+    },
+    {
+      "digest": "8ac321c5349c73b21534c64cd99a9ac0a493c20ee32e4a22dccba5cacef27a71",
+      "paths": [
+        "tests/named-link-test-2906.test.ts"
+      ]
+    },
+    {
+      "digest": "efdeea7e34d0fd4aee4ee5614f79eafef1df7860d5946ec747bf6d4c310b7b67",
+      "paths": [
+        "tests/web-settings-search-2347.test.ts"
+      ]
+    },
+    {
+      "digest": "f0a592f5e0b72ff7ef7922c3abadd6767e4fee5c1023afe4848aa472e1854041",
+      "paths": [
+        "tests/helpers/settings-summary-effects-3416.ts"
+      ]
+    },
+    {
+      "digest": "8e165ff870c6d690ff987ac911a9a04d6e559a6eb3092713d3f75e51ebe5d46f",
+      "paths": [
+        "scripts/manual/settings-summary-browser-3416.mts"
+      ]
+    },
+    {
+      "digest": "8d6075ce02cf785f28dd1312bd800f59eff95c08275fc83b9bda88e8d9313f45",
+      "paths": [
+        "scripts/manual/settings-summary-effects-canonical-3416.mts"
+      ]
+    }
+  ],
+  "limits": [
+    "Synthetic combined gallery is never one executable operation.",
+    "Recorded pending reads; no Settings write, remote chat delivery or authority/effect browser E2E.",
+    "Existing phone Withdraw30px is unchanged on baseline and candidate."
+  ]
+}

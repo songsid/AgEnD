@@ -1,0 +1,102 @@
+{
+  "55ed9954d6ddab717c6449f367a7917be5fb8457d1e7d828752209fca8395e7f": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/README.md"
+  ],
+  "6d7d9e1e686b0561effae768a2c05c519b9b490ec7ad559a63359d196742f458": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-desk-dark-en.png"
+  ],
+  "de29cb48663d18c5b77a3c25ad81c6658e3b9b673b64c9066eeaec5a28171cf6": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-desk-dark-zh-TW.png"
+  ],
+  "4225a9419f56836ed812647064e4fc2c2dd943d5fc9f13ff3e5a747ea0c60deb": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-desk-light-en.png"
+  ],
+  "57841ae370775a6e41e65976a03edae62cdca8a0ee5893a67e50dfc19b5c7dd7": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-desk-light-zh-TW.png"
+  ],
+  "f37685a90fdcac02d11541907e4258fc9d1bc4709ae73bada84a8ddd0a56486b": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-phone-dark-en.png"
+  ],
+  "008fd3cbb735f709e4ae7f144c51e76854fcbdf1a5df110bc6c53aa5960a3d4e": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-phone-dark-zh-TW.png"
+  ],
+  "5ddccedf9311412ab0f182cfc9992188efd0aea36e325077b3e3e7aa9033a2c0": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-phone-light-en-switched.png",
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-phone-light-zh-TW.png",
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/old-confirm-phone-light-zh-TW.png",
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/old-i18n-phone-light-zh-TW.png"
+  ],
+  "7a797a55b3c26c33da8a87484eb7be994eaf7036e2136c9c4a81106af46d6a99": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-phone-light-en.png",
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-phone-light-zh-TW-switched.png"
+  ],
+  "fa03181048fd0d1b942e9a572d330f8894dbe9614028ac460583da9b841b023e": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/before-desk-dark-en.png"
+  ],
+  "764cde1dbd3febed447e1505df7a04836262ee6652b03b6d0263d02f86cd3c96": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/before-desk-dark-zh-TW.png"
+  ],
+  "654d1f1eef55df6ccd77c8df4faf22d3521d23cc854d29f90972650b81938156": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/before-desk-light-en.png"
+  ],
+  "08a1b168ab575922b5232a3f3dafccdd1585400c361590e1dd9d6e3aed504e06": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/before-desk-light-zh-TW.png"
+  ],
+  "3cba5ea9b3ea9a2629ac07f8240de3462f87589b5364f48a597082c564961f6f": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/before-phone-dark-en.png"
+  ],
+  "4af59742b2deec7313f69ce7765de4a09b8eb2bc64f490a4e87800451c82f28f": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/before-phone-dark-zh-TW.png"
+  ],
+  "6d0918759b97660ba7dcb28ffa5230a3f0d79502a592a26b05eee1b285dfb24a": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/before-phone-light-en.png"
+  ],
+  "dccec41cf8a2b14068caafed5708186352162ae1882b38d220481416e1aeb34b": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/before-phone-light-zh-TW.png",
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/old-server-phone-light-zh-TW.png",
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/old-shell-phone-light-zh-TW.png"
+  ],
+  "558733e2babdd0f25138026116b093b627e87370b505476c7d9f40676bbdf49f": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/browser/receipt.json"
+  ],
+  "aa99516871d8861a9ec7fc42a28ad5bc89d1ef938608f4749c738b70e73eda5b": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/checks.json"
+  ],
+  "5279bc1608188e59342228b64308d2ec85cb1a7f2d3a588e0b9bfec2bcccf638": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/effect-canonical.json"
+  ],
+  "fed08c7e94d45b86e271afbe8b96e750e878e09c162d4b852f4148aad737620a": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/fail-first.log"
+  ],
+  "fc2f97f77a8775795ac96deeb4c9c3b00d611d360c4cb632ad77398a487df2ca": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/focused.log"
+  ],
+  "888630ff404d685da86b152de063ca7ef159a1666aa5fa6aa6f494bf09edf4a1": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/generic-canonical.json"
+  ],
+  "4872ca7df32616071b4ee0237b01841611a914a867315690e7d11e07a6e7db59": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/mutations/exposure-owner.log"
+  ],
+  "fa9ae1cbbd7a8f217cd833898da248fae31f89521f0e280fec10bda5a5f60628": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/mutations/general-preview.log"
+  ],
+  "82eaa54fffaefee0ba272326a18db8eb141e1fb4ca9346dd9c33345d5434f84e": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/mutations/pair-binding.log"
+  ],
+  "ca259cc466b7bd5500eff0d2e429ed06fc316801d8bfcc7b1a5d66ec0a44940f": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/mutations/preview-forward.log"
+  ],
+  "df9df6b1ba384f2f47f87a1c64da821ce18f3499a8802c883a8da3d1fbb11284": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/mutations/receipt.json"
+  ],
+  "f5b9e6112562ae9e799420f7450be2c4f29bf807a556606738c9babe9e2fef1d": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/mutations/retention-argument.log"
+  ],
+  "0e389b624a0857b19c41ab0cd0cf659e8e7660a346d5b076b46a8f965a0cca31": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/restored.log"
+  ],
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
+    "docs/evidence/settings-summary-page-language-3416-alpha/source-types.log",
+    "docs/evidence/settings-summary-page-language-3416-alpha/test-types.log"
+  ]
+}

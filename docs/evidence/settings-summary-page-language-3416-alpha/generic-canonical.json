@@ -1,0 +1,1306 @@
+{
+  "baseline": "861ca2ac4c4f2ff05f1602f41b04687c2838ad8c",
+  "candidate": "c4fbd0cbb3e9591a6364444405f9301bc74cf884",
+  "dirty": "",
+  "sourceDigests": {
+    "baseline": "11bf86c2bb79707d9074b988c014e5a7f50ad7bc8aacaf5cffec3b372f6911cb",
+    "candidate": "3233795785bb5ecd9ada6eb78b83285cd5ed24ee0ba7476984f75b91b88bed0d",
+    "corpus": "da63bb22c8684ceafa27ad050dbc76d7294acdf76536bd333e9376b3c5ffff9e",
+    "harness": "8bfcb580ba708bbaa69130fd6c4fe917c5c9b74a365c930b87239ddf2c709d25"
+  },
+  "cases": 48,
+  "identical": true,
+  "before": [
+    {
+      "locale": "en",
+      "name": "secret",
+      "value": {
+        "section": "secret",
+        "summary": [
+          "PATCH secret",
+          "EXAMPLE\\_SECRET: fingerprint absent → 8a2b2f4731c2"
+        ],
+        "fingerprint": "38fa5039000e0b37a4030c7561ace70da57d375cf28d188c847654b461797c24",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "identity",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH identity",
+          "access.allowed\\_users: remove fleet admin (F) ID 1",
+          "access.allowed\\_users: add fleet admin (F) ID 2"
+        ],
+        "fingerprint": "1fdce1ef4e0b7cac42b2703ee2b27d3f96f2bf4fcd3bfcdca7149f8f4048933c",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "classic-admin",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH classic-admin",
+          "classic.channels.room.admin\\_users: remove Classic admin (C) ID 1",
+          "classic.channels.room.admin\\_users: add Classic admin (C) ID 2"
+        ],
+        "fingerprint": "9cf59b53aef388daa75d0b38dde258347ecaffa2ee6be4a5a8ed0f3d45ccf85e",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "user",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH user",
+          "allowed\\_users: remove user ID 1",
+          "allowed\\_users: add user ID 2"
+        ],
+        "fingerprint": "05fe3a5bced00efe3bb09abfaf3f14e493dcf0b378e1ce140031598d78a6ca33",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "group",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH group",
+          "allowed\\_groups: remove group ID 1",
+          "allowed\\_groups: add group ID 2"
+        ],
+        "fingerprint": "5c68cc6f3de1acb9eceb099e579522f4845feb09c7778a5b6eea20b816f1be68",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "guild",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH guild",
+          "allowed\\_guilds: remove guild ID 1",
+          "allowed\\_guilds: add guild ID 2"
+        ],
+        "fingerprint": "3777a6340b29542d658af1a9dc88490c99fccdc9ea455a46660afe06cc34e87f",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "identity-order",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH identity-order",
+          "allowed\\_users: order \\[\"1\",\"2\"\\] → \\[\"2\",\"1\"\\]"
+        ],
+        "fingerprint": "f49d760246f13be4afb668a1895d21b6981f37176996bd57caa6873d70478235",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "identity-inherit",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH identity-inherit",
+          "access.allowed\\_users: remove fleet admin (F) ID 1",
+          "access.allowed\\_users: field removed (inherit/omitted policy)"
+        ],
+        "fingerprint": "3ee5cbd47a377649c6382c13cf4c3e7dff530c17488517c39d3af1d463a3f33f",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "connections-order",
+      "value": {
+        "section": "channel",
+        "summary": [
+          "PATCH connections-order",
+          "fleet.channels: ordered connections / primary \\[\"a\",\"b\"\\] → \\[\"b\",\"a\"\\]"
+        ],
+        "fingerprint": "fba54ae8cc218316a23f0dbf3a7f25ea297bfcde61d1d7330468c0601759ff71",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "connection-add-remove",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH connection-add-remove",
+          "fleet.channels: ordered connections / primary \\[\"a\"\\] → \\[\"b\"\\]",
+          "fleet.channels: remove connection a",
+          "fleet.channels.a.id: a → absent",
+          "fleet.channels.a.type: discord → absent",
+          "fleet.channels.a.group\\_id: 100 → absent",
+          "fleet.channels.a.access.mode: locked → absent",
+          "fleet.channels.a.access.allowed\\_users: remove fleet admin (F) ID 1",
+          "fleet.channels.a.access.allowed\\_users: field removed (inherit/omitted policy)",
+          "fleet.channels: add connection b",
+          "fleet.channels.b.id: absent → b",
+          "fleet.channels.b.type: absent → discord",
+          "fleet.channels.b.group\\_id: absent → 100",
+          "fleet.channels.b.access.mode: absent → locked",
+          "fleet.channels.b.access.allowed\\_users: add fleet admin (F) ID 1"
+        ],
+        "fingerprint": "c03160ef27612274a358a1d2f7e9d03e67319a7216b62a02956ad95a3ac4bda5",
+        "affectedConnections": [
+          "a",
+          "b"
+        ]
+      }
+    },
+    {
+      "locale": "en",
+      "name": "number",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH number",
+          "permission\\_level: 1 → 2"
+        ],
+        "fingerprint": "858fbccddf9cadca87a45b391e391184aeba30264fb5fb3182cfb49d6754f588",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "default",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH default",
+          "fleet.web.session.local.idle\\_hours: 1 → default"
+        ],
+        "fingerprint": "c8d0ebcb50898fa6db5c9cda6bdd4133ea075d85802d53cd5a7b05f1a55b164c",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "directional",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH directional",
+          "fleet.web.log\\_tab: false → true"
+        ],
+        "fingerprint": "1dc231c867f6e51c32121e7c6036ce574faebbe260c6646fe45a27efddb4bfb2",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "deleted-agent",
+      "value": {
+        "section": "channel",
+        "summary": [
+          "PATCH deleted-agent",
+          "fleet.instances.worker: deleted"
+        ],
+        "fingerprint": "9c0595c69313ebda01c64ffb0346ce10767732f356b6bd535fc3d50f15726d12",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "forced",
+      "value": {
+        "section": "channel",
+        "summary": [
+          "PATCH forced",
+          "PATCH forced: confirmed operation"
+        ],
+        "fingerprint": "bbf6541fa3040b099a089f4797311c3f0f567dc7811b884e258d4929602a4e41",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "visibility-inherited",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH visibility-inherited",
+          "defaults.cross\\_instance\\_visibility \\(in effect\\): hidden → full — 6 agent(s) inherit it: one, two, three, four, five +1 more"
+        ],
+        "fingerprint": "bfaf4d6eb3ff2ec9cbfb09e55f89ffe93209cc8a3bcc5b2c697f679a20916e80",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "visibility-own",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH visibility-own",
+          "instances.worker.cross\\_instance\\_visibility \\(in effect\\): hidden → full"
+        ],
+        "fingerprint": "d203e64c20127220ecd5fb3d8f3e1b45c6f5d64240530a539d6a4ce7ed73145c",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "visibility-default",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH visibility-default",
+          "instances.worker.cross\\_instance\\_visibility: default → invalid"
+        ],
+        "fingerprint": "845d7978f740c71ea5d77833f9ffacc7ce7b8a13028c49d71d1ed8d5767f26f9",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "dashboard-inherited",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH dashboard-inherited",
+          "defaults.dashboard.task\\_board \\(in effect\\): false → true — 6 agent(s) inherit it: one, two, three, four, five +1 more"
+        ],
+        "fingerprint": "c202a85e3ecde8262c919d76023922e80694956774fb7fc63578c90863829d08",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "dashboard-own",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH dashboard-own",
+          "instances.worker.dashboard.task\\_board \\(in effect\\): false → true"
+        ],
+        "fingerprint": "41f9fac766a3e1b95f3a6780d53d5f27c40c46a5270bb03ec90bb0c862487724",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "dashboard-default",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH dashboard-default",
+          "instances.worker.dashboard.task\\_board: default → invalid"
+        ],
+        "fingerprint": "dd01f197ac48dd2199ceadec2903610c6a1b35bec07eea61c894275f2a93f8f3",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "record-limit",
+      "error": {
+        "name": "Error",
+        "code": "confirmation_diff_too_large",
+        "message": "confirmation_diff_too_large"
+      }
+    },
+    {
+      "locale": "en",
+      "name": "unit-limit",
+      "error": {
+        "name": "Error",
+        "code": "confirmation_diff_too_large",
+        "message": "confirmation_diff_too_large"
+      }
+    },
+    {
+      "locale": "en",
+      "name": "unsupported",
+      "error": {
+        "name": "Error",
+        "code": "unsupported_sensitive_effect",
+        "message": "unsupported_sensitive_effect"
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "secret",
+      "value": {
+        "section": "secret",
+        "summary": [
+          "PATCH secret",
+          "EXAMPLE\\_SECRET: 指紋 absent → 8a2b2f4731c2"
+        ],
+        "fingerprint": "38fa5039000e0b37a4030c7561ace70da57d375cf28d188c847654b461797c24",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "identity",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH identity",
+          "access.allowed\\_users: remove fleet admin (F) ID 1",
+          "access.allowed\\_users: add fleet admin (F) ID 2"
+        ],
+        "fingerprint": "1fdce1ef4e0b7cac42b2703ee2b27d3f96f2bf4fcd3bfcdca7149f8f4048933c",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "classic-admin",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH classic-admin",
+          "classic.channels.room.admin\\_users: remove Classic admin (C) ID 1",
+          "classic.channels.room.admin\\_users: add Classic admin (C) ID 2"
+        ],
+        "fingerprint": "9cf59b53aef388daa75d0b38dde258347ecaffa2ee6be4a5a8ed0f3d45ccf85e",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "user",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH user",
+          "allowed\\_users: remove user ID 1",
+          "allowed\\_users: add user ID 2"
+        ],
+        "fingerprint": "05fe3a5bced00efe3bb09abfaf3f14e493dcf0b378e1ce140031598d78a6ca33",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "group",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH group",
+          "allowed\\_groups: remove group ID 1",
+          "allowed\\_groups: add group ID 2"
+        ],
+        "fingerprint": "5c68cc6f3de1acb9eceb099e579522f4845feb09c7778a5b6eea20b816f1be68",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "guild",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH guild",
+          "allowed\\_guilds: remove guild ID 1",
+          "allowed\\_guilds: add guild ID 2"
+        ],
+        "fingerprint": "3777a6340b29542d658af1a9dc88490c99fccdc9ea455a46660afe06cc34e87f",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "identity-order",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH identity-order",
+          "allowed\\_users: order \\[\"1\",\"2\"\\] → \\[\"2\",\"1\"\\]"
+        ],
+        "fingerprint": "f49d760246f13be4afb668a1895d21b6981f37176996bd57caa6873d70478235",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "identity-inherit",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH identity-inherit",
+          "access.allowed\\_users: remove fleet admin (F) ID 1",
+          "access.allowed\\_users: field removed (inherit/omitted policy)"
+        ],
+        "fingerprint": "3ee5cbd47a377649c6382c13cf4c3e7dff530c17488517c39d3af1d463a3f33f",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "connections-order",
+      "value": {
+        "section": "channel",
+        "summary": [
+          "PATCH connections-order",
+          "fleet.channels: ordered connections / primary \\[\"a\",\"b\"\\] → \\[\"b\",\"a\"\\]"
+        ],
+        "fingerprint": "fba54ae8cc218316a23f0dbf3a7f25ea297bfcde61d1d7330468c0601759ff71",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "connection-add-remove",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH connection-add-remove",
+          "fleet.channels: ordered connections / primary \\[\"a\"\\] → \\[\"b\"\\]",
+          "fleet.channels: remove connection a",
+          "fleet.channels.a.id: a → absent",
+          "fleet.channels.a.type: discord → absent",
+          "fleet.channels.a.group\\_id: 100 → absent",
+          "fleet.channels.a.access.mode: locked → absent",
+          "fleet.channels.a.access.allowed\\_users: remove fleet admin (F) ID 1",
+          "fleet.channels.a.access.allowed\\_users: field removed (inherit/omitted policy)",
+          "fleet.channels: add connection b",
+          "fleet.channels.b.id: absent → b",
+          "fleet.channels.b.type: absent → discord",
+          "fleet.channels.b.group\\_id: absent → 100",
+          "fleet.channels.b.access.mode: absent → locked",
+          "fleet.channels.b.access.allowed\\_users: add fleet admin (F) ID 1"
+        ],
+        "fingerprint": "c03160ef27612274a358a1d2f7e9d03e67319a7216b62a02956ad95a3ac4bda5",
+        "affectedConnections": [
+          "a",
+          "b"
+        ]
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "number",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH number",
+          "permission\\_level: 1 → 2"
+        ],
+        "fingerprint": "858fbccddf9cadca87a45b391e391184aeba30264fb5fb3182cfb49d6754f588",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "default",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH default",
+          "fleet.web.session.local.idle\\_hours: 1 → default"
+        ],
+        "fingerprint": "c8d0ebcb50898fa6db5c9cda6bdd4133ea075d85802d53cd5a7b05f1a55b164c",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "directional",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH directional",
+          "fleet.web.log\\_tab: false → true"
+        ],
+        "fingerprint": "1dc231c867f6e51c32121e7c6036ce574faebbe260c6646fe45a27efddb4bfb2",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "deleted-agent",
+      "value": {
+        "section": "channel",
+        "summary": [
+          "PATCH deleted-agent",
+          "fleet.instances.worker: deleted"
+        ],
+        "fingerprint": "9c0595c69313ebda01c64ffb0346ce10767732f356b6bd535fc3d50f15726d12",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "forced",
+      "value": {
+        "section": "channel",
+        "summary": [
+          "PATCH forced",
+          "PATCH forced: confirmed operation"
+        ],
+        "fingerprint": "bbf6541fa3040b099a089f4797311c3f0f567dc7811b884e258d4929602a4e41",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "visibility-inherited",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH visibility-inherited",
+          "defaults.cross\\_instance\\_visibility（實際生效）: hidden → full — 6 個 agent 繼承此設定：one, two, three, four, five 等另外 1 個"
+        ],
+        "fingerprint": "bfaf4d6eb3ff2ec9cbfb09e55f89ffe93209cc8a3bcc5b2c697f679a20916e80",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "visibility-own",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH visibility-own",
+          "instances.worker.cross\\_instance\\_visibility（實際生效）: hidden → full"
+        ],
+        "fingerprint": "d203e64c20127220ecd5fb3d8f3e1b45c6f5d64240530a539d6a4ce7ed73145c",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "visibility-default",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH visibility-default",
+          "instances.worker.cross\\_instance\\_visibility: 預設 → invalid"
+        ],
+        "fingerprint": "845d7978f740c71ea5d77833f9ffacc7ce7b8a13028c49d71d1ed8d5767f26f9",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "dashboard-inherited",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH dashboard-inherited",
+          "defaults.dashboard.task\\_board \\(in effect\\): false → true — 6 agent(s) inherit it: one, two, three, four, five +1 more"
+        ],
+        "fingerprint": "c202a85e3ecde8262c919d76023922e80694956774fb7fc63578c90863829d08",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "dashboard-own",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH dashboard-own",
+          "instances.worker.dashboard.task\\_board \\(in effect\\): false → true"
+        ],
+        "fingerprint": "41f9fac766a3e1b95f3a6780d53d5f27c40c46a5270bb03ec90bb0c862487724",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "dashboard-default",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH dashboard-default",
+          "instances.worker.dashboard.task\\_board: default → invalid"
+        ],
+        "fingerprint": "dd01f197ac48dd2199ceadec2903610c6a1b35bec07eea61c894275f2a93f8f3",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "record-limit",
+      "error": {
+        "name": "Error",
+        "code": "confirmation_diff_too_large",
+        "message": "confirmation_diff_too_large"
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "unit-limit",
+      "error": {
+        "name": "Error",
+        "code": "confirmation_diff_too_large",
+        "message": "confirmation_diff_too_large"
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "unsupported",
+      "error": {
+        "name": "Error",
+        "code": "unsupported_sensitive_effect",
+        "message": "unsupported_sensitive_effect"
+      }
+    }
+  ],
+  "after": [
+    {
+      "locale": "en",
+      "name": "secret",
+      "value": {
+        "section": "secret",
+        "summary": [
+          "PATCH secret",
+          "EXAMPLE\\_SECRET: fingerprint absent → 8a2b2f4731c2"
+        ],
+        "fingerprint": "38fa5039000e0b37a4030c7561ace70da57d375cf28d188c847654b461797c24",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "identity",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH identity",
+          "access.allowed\\_users: remove fleet admin (F) ID 1",
+          "access.allowed\\_users: add fleet admin (F) ID 2"
+        ],
+        "fingerprint": "1fdce1ef4e0b7cac42b2703ee2b27d3f96f2bf4fcd3bfcdca7149f8f4048933c",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "classic-admin",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH classic-admin",
+          "classic.channels.room.admin\\_users: remove Classic admin (C) ID 1",
+          "classic.channels.room.admin\\_users: add Classic admin (C) ID 2"
+        ],
+        "fingerprint": "9cf59b53aef388daa75d0b38dde258347ecaffa2ee6be4a5a8ed0f3d45ccf85e",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "user",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH user",
+          "allowed\\_users: remove user ID 1",
+          "allowed\\_users: add user ID 2"
+        ],
+        "fingerprint": "05fe3a5bced00efe3bb09abfaf3f14e493dcf0b378e1ce140031598d78a6ca33",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "group",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH group",
+          "allowed\\_groups: remove group ID 1",
+          "allowed\\_groups: add group ID 2"
+        ],
+        "fingerprint": "5c68cc6f3de1acb9eceb099e579522f4845feb09c7778a5b6eea20b816f1be68",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "guild",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH guild",
+          "allowed\\_guilds: remove guild ID 1",
+          "allowed\\_guilds: add guild ID 2"
+        ],
+        "fingerprint": "3777a6340b29542d658af1a9dc88490c99fccdc9ea455a46660afe06cc34e87f",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "identity-order",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH identity-order",
+          "allowed\\_users: order \\[\"1\",\"2\"\\] → \\[\"2\",\"1\"\\]"
+        ],
+        "fingerprint": "f49d760246f13be4afb668a1895d21b6981f37176996bd57caa6873d70478235",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "identity-inherit",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH identity-inherit",
+          "access.allowed\\_users: remove fleet admin (F) ID 1",
+          "access.allowed\\_users: field removed (inherit/omitted policy)"
+        ],
+        "fingerprint": "3ee5cbd47a377649c6382c13cf4c3e7dff530c17488517c39d3af1d463a3f33f",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "connections-order",
+      "value": {
+        "section": "channel",
+        "summary": [
+          "PATCH connections-order",
+          "fleet.channels: ordered connections / primary \\[\"a\",\"b\"\\] → \\[\"b\",\"a\"\\]"
+        ],
+        "fingerprint": "fba54ae8cc218316a23f0dbf3a7f25ea297bfcde61d1d7330468c0601759ff71",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "connection-add-remove",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH connection-add-remove",
+          "fleet.channels: ordered connections / primary \\[\"a\"\\] → \\[\"b\"\\]",
+          "fleet.channels: remove connection a",
+          "fleet.channels.a.id: a → absent",
+          "fleet.channels.a.type: discord → absent",
+          "fleet.channels.a.group\\_id: 100 → absent",
+          "fleet.channels.a.access.mode: locked → absent",
+          "fleet.channels.a.access.allowed\\_users: remove fleet admin (F) ID 1",
+          "fleet.channels.a.access.allowed\\_users: field removed (inherit/omitted policy)",
+          "fleet.channels: add connection b",
+          "fleet.channels.b.id: absent → b",
+          "fleet.channels.b.type: absent → discord",
+          "fleet.channels.b.group\\_id: absent → 100",
+          "fleet.channels.b.access.mode: absent → locked",
+          "fleet.channels.b.access.allowed\\_users: add fleet admin (F) ID 1"
+        ],
+        "fingerprint": "c03160ef27612274a358a1d2f7e9d03e67319a7216b62a02956ad95a3ac4bda5",
+        "affectedConnections": [
+          "a",
+          "b"
+        ]
+      }
+    },
+    {
+      "locale": "en",
+      "name": "number",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH number",
+          "permission\\_level: 1 → 2"
+        ],
+        "fingerprint": "858fbccddf9cadca87a45b391e391184aeba30264fb5fb3182cfb49d6754f588",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "default",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH default",
+          "fleet.web.session.local.idle\\_hours: 1 → default"
+        ],
+        "fingerprint": "c8d0ebcb50898fa6db5c9cda6bdd4133ea075d85802d53cd5a7b05f1a55b164c",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "directional",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH directional",
+          "fleet.web.log\\_tab: false → true"
+        ],
+        "fingerprint": "1dc231c867f6e51c32121e7c6036ce574faebbe260c6646fe45a27efddb4bfb2",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "deleted-agent",
+      "value": {
+        "section": "channel",
+        "summary": [
+          "PATCH deleted-agent",
+          "fleet.instances.worker: deleted"
+        ],
+        "fingerprint": "9c0595c69313ebda01c64ffb0346ce10767732f356b6bd535fc3d50f15726d12",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "forced",
+      "value": {
+        "section": "channel",
+        "summary": [
+          "PATCH forced",
+          "PATCH forced: confirmed operation"
+        ],
+        "fingerprint": "bbf6541fa3040b099a089f4797311c3f0f567dc7811b884e258d4929602a4e41",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "visibility-inherited",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH visibility-inherited",
+          "defaults.cross\\_instance\\_visibility \\(in effect\\): hidden → full — 6 agent(s) inherit it: one, two, three, four, five +1 more"
+        ],
+        "fingerprint": "bfaf4d6eb3ff2ec9cbfb09e55f89ffe93209cc8a3bcc5b2c697f679a20916e80",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "visibility-own",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH visibility-own",
+          "instances.worker.cross\\_instance\\_visibility \\(in effect\\): hidden → full"
+        ],
+        "fingerprint": "d203e64c20127220ecd5fb3d8f3e1b45c6f5d64240530a539d6a4ce7ed73145c",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "visibility-default",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH visibility-default",
+          "instances.worker.cross\\_instance\\_visibility: default → invalid"
+        ],
+        "fingerprint": "845d7978f740c71ea5d77833f9ffacc7ce7b8a13028c49d71d1ed8d5767f26f9",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "dashboard-inherited",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH dashboard-inherited",
+          "defaults.dashboard.task\\_board \\(in effect\\): false → true — 6 agent(s) inherit it: one, two, three, four, five +1 more"
+        ],
+        "fingerprint": "c202a85e3ecde8262c919d76023922e80694956774fb7fc63578c90863829d08",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "dashboard-own",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH dashboard-own",
+          "instances.worker.dashboard.task\\_board \\(in effect\\): false → true"
+        ],
+        "fingerprint": "41f9fac766a3e1b95f3a6780d53d5f27c40c46a5270bb03ec90bb0c862487724",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "dashboard-default",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH dashboard-default",
+          "instances.worker.dashboard.task\\_board: default → invalid"
+        ],
+        "fingerprint": "dd01f197ac48dd2199ceadec2903610c6a1b35bec07eea61c894275f2a93f8f3",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "en",
+      "name": "record-limit",
+      "error": {
+        "name": "Error",
+        "code": "confirmation_diff_too_large",
+        "message": "confirmation_diff_too_large"
+      }
+    },
+    {
+      "locale": "en",
+      "name": "unit-limit",
+      "error": {
+        "name": "Error",
+        "code": "confirmation_diff_too_large",
+        "message": "confirmation_diff_too_large"
+      }
+    },
+    {
+      "locale": "en",
+      "name": "unsupported",
+      "error": {
+        "name": "Error",
+        "code": "unsupported_sensitive_effect",
+        "message": "unsupported_sensitive_effect"
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "secret",
+      "value": {
+        "section": "secret",
+        "summary": [
+          "PATCH secret",
+          "EXAMPLE\\_SECRET: 指紋 absent → 8a2b2f4731c2"
+        ],
+        "fingerprint": "38fa5039000e0b37a4030c7561ace70da57d375cf28d188c847654b461797c24",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "identity",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH identity",
+          "access.allowed\\_users: remove fleet admin (F) ID 1",
+          "access.allowed\\_users: add fleet admin (F) ID 2"
+        ],
+        "fingerprint": "1fdce1ef4e0b7cac42b2703ee2b27d3f96f2bf4fcd3bfcdca7149f8f4048933c",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "classic-admin",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH classic-admin",
+          "classic.channels.room.admin\\_users: remove Classic admin (C) ID 1",
+          "classic.channels.room.admin\\_users: add Classic admin (C) ID 2"
+        ],
+        "fingerprint": "9cf59b53aef388daa75d0b38dde258347ecaffa2ee6be4a5a8ed0f3d45ccf85e",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "user",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH user",
+          "allowed\\_users: remove user ID 1",
+          "allowed\\_users: add user ID 2"
+        ],
+        "fingerprint": "05fe3a5bced00efe3bb09abfaf3f14e493dcf0b378e1ce140031598d78a6ca33",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "group",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH group",
+          "allowed\\_groups: remove group ID 1",
+          "allowed\\_groups: add group ID 2"
+        ],
+        "fingerprint": "5c68cc6f3de1acb9eceb099e579522f4845feb09c7778a5b6eea20b816f1be68",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "guild",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH guild",
+          "allowed\\_guilds: remove guild ID 1",
+          "allowed\\_guilds: add guild ID 2"
+        ],
+        "fingerprint": "3777a6340b29542d658af1a9dc88490c99fccdc9ea455a46660afe06cc34e87f",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "identity-order",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH identity-order",
+          "allowed\\_users: order \\[\"1\",\"2\"\\] → \\[\"2\",\"1\"\\]"
+        ],
+        "fingerprint": "f49d760246f13be4afb668a1895d21b6981f37176996bd57caa6873d70478235",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "identity-inherit",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH identity-inherit",
+          "access.allowed\\_users: remove fleet admin (F) ID 1",
+          "access.allowed\\_users: field removed (inherit/omitted policy)"
+        ],
+        "fingerprint": "3ee5cbd47a377649c6382c13cf4c3e7dff530c17488517c39d3af1d463a3f33f",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "connections-order",
+      "value": {
+        "section": "channel",
+        "summary": [
+          "PATCH connections-order",
+          "fleet.channels: ordered connections / primary \\[\"a\",\"b\"\\] → \\[\"b\",\"a\"\\]"
+        ],
+        "fingerprint": "fba54ae8cc218316a23f0dbf3a7f25ea297bfcde61d1d7330468c0601759ff71",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "connection-add-remove",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH connection-add-remove",
+          "fleet.channels: ordered connections / primary \\[\"a\"\\] → \\[\"b\"\\]",
+          "fleet.channels: remove connection a",
+          "fleet.channels.a.id: a → absent",
+          "fleet.channels.a.type: discord → absent",
+          "fleet.channels.a.group\\_id: 100 → absent",
+          "fleet.channels.a.access.mode: locked → absent",
+          "fleet.channels.a.access.allowed\\_users: remove fleet admin (F) ID 1",
+          "fleet.channels.a.access.allowed\\_users: field removed (inherit/omitted policy)",
+          "fleet.channels: add connection b",
+          "fleet.channels.b.id: absent → b",
+          "fleet.channels.b.type: absent → discord",
+          "fleet.channels.b.group\\_id: absent → 100",
+          "fleet.channels.b.access.mode: absent → locked",
+          "fleet.channels.b.access.allowed\\_users: add fleet admin (F) ID 1"
+        ],
+        "fingerprint": "c03160ef27612274a358a1d2f7e9d03e67319a7216b62a02956ad95a3ac4bda5",
+        "affectedConnections": [
+          "a",
+          "b"
+        ]
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "number",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH number",
+          "permission\\_level: 1 → 2"
+        ],
+        "fingerprint": "858fbccddf9cadca87a45b391e391184aeba30264fb5fb3182cfb49d6754f588",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "default",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH default",
+          "fleet.web.session.local.idle\\_hours: 1 → default"
+        ],
+        "fingerprint": "c8d0ebcb50898fa6db5c9cda6bdd4133ea075d85802d53cd5a7b05f1a55b164c",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "directional",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH directional",
+          "fleet.web.log\\_tab: false → true"
+        ],
+        "fingerprint": "1dc231c867f6e51c32121e7c6036ce574faebbe260c6646fe45a27efddb4bfb2",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "deleted-agent",
+      "value": {
+        "section": "channel",
+        "summary": [
+          "PATCH deleted-agent",
+          "fleet.instances.worker: deleted"
+        ],
+        "fingerprint": "9c0595c69313ebda01c64ffb0346ce10767732f356b6bd535fc3d50f15726d12",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "forced",
+      "value": {
+        "section": "channel",
+        "summary": [
+          "PATCH forced",
+          "PATCH forced: confirmed operation"
+        ],
+        "fingerprint": "bbf6541fa3040b099a089f4797311c3f0f567dc7811b884e258d4929602a4e41",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "visibility-inherited",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH visibility-inherited",
+          "defaults.cross\\_instance\\_visibility（實際生效）: hidden → full — 6 個 agent 繼承此設定：one, two, three, four, five 等另外 1 個"
+        ],
+        "fingerprint": "bfaf4d6eb3ff2ec9cbfb09e55f89ffe93209cc8a3bcc5b2c697f679a20916e80",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "visibility-own",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH visibility-own",
+          "instances.worker.cross\\_instance\\_visibility（實際生效）: hidden → full"
+        ],
+        "fingerprint": "d203e64c20127220ecd5fb3d8f3e1b45c6f5d64240530a539d6a4ce7ed73145c",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "visibility-default",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH visibility-default",
+          "instances.worker.cross\\_instance\\_visibility: 預設 → invalid"
+        ],
+        "fingerprint": "845d7978f740c71ea5d77833f9ffacc7ce7b8a13028c49d71d1ed8d5767f26f9",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "dashboard-inherited",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH dashboard-inherited",
+          "defaults.dashboard.task\\_board \\(in effect\\): false → true — 6 agent(s) inherit it: one, two, three, four, five +1 more"
+        ],
+        "fingerprint": "c202a85e3ecde8262c919d76023922e80694956774fb7fc63578c90863829d08",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "dashboard-own",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH dashboard-own",
+          "instances.worker.dashboard.task\\_board \\(in effect\\): false → true"
+        ],
+        "fingerprint": "41f9fac766a3e1b95f3a6780d53d5f27c40c46a5270bb03ec90bb0c862487724",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "dashboard-default",
+      "value": {
+        "section": "access",
+        "summary": [
+          "PATCH dashboard-default",
+          "instances.worker.dashboard.task\\_board: default → invalid"
+        ],
+        "fingerprint": "dd01f197ac48dd2199ceadec2903610c6a1b35bec07eea61c894275f2a93f8f3",
+        "affectedConnections": []
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "record-limit",
+      "error": {
+        "name": "Error",
+        "code": "confirmation_diff_too_large",
+        "message": "confirmation_diff_too_large"
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "unit-limit",
+      "error": {
+        "name": "Error",
+        "code": "confirmation_diff_too_large",
+        "message": "confirmation_diff_too_large"
+      }
+    },
+    {
+      "locale": "zh-TW",
+      "name": "unsupported",
+      "error": {
+        "name": "Error",
+        "code": "unsupported_sensitive_effect",
+        "message": "unsupported_sensitive_effect"
+      }
+    }
+  ],
+  "scope": "Pure producer calls; optional display metadata excluded. Canonical strings, fingerprints, classifications, affected owners and refusals compared byte-for-byte. No account/CLI/native/runtime operation."
+}
