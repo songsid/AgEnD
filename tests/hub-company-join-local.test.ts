@@ -23,13 +23,13 @@ async function world() {
   const { hubId, spkiSha256, issuerPublicKey } = identity;
   const hub = { hubId, spkiSha256, issuerPublicKey, memberOrigin: "https://hub.example.test:9443", webOrigin: "https://hub.example.test" };
   const metadata = { v: 1 as const, hub, identityDigest: companyIdentityDigest(hub), certificatePem: readFileSync(join(hubHome, "hub/keys/tls-cert.pem"), "utf8"), features: ["company-join-v1"] };
-  let alive = true, confirmed = true, stamp = "initial", enabled = false, remote = "pending", now = Date.now(), settleFailure = false;
+  let alive = true, confirmed = true, stamp = "initial", enabled = false, remote = "pending", now = Date.now(), settleFailure = false, obstruction: string | null = null;
   const owner = { realm: "corp", objectId: randomUUID() }, credential = "a".repeat(64), calls: string[] = [];
   const session = { ownerKey: {}, sessionId: "b".repeat(64), authorityEpoch: 1, hostHere: true, current: () => alive };
   const authority = { session, confirmedCurrent: () => confirmed };
   const client = { discover: vi.fn(async () => metadata), command: vi.fn(async (binding: any, purpose: string) => {
     calls.push(purpose);
-    const status = { state: remote, reason: null, issued: ["issued", "acknowledged"].includes(remote), fleetId: remote === "pending" ? null : binding.fleetId,
+    const status = { state: remote, reason: remote === "pending" ? obstruction : null, issued: ["issued", "acknowledged"].includes(remote), fleetId: remote === "pending" ? null : binding.fleetId,
       generation: remote === "pending" ? null : 1, outerDeadline: now + 600_000, redeemDeadline: now + 60_000, deliveryDeadline: now + 120_000 };
     if (purpose === "push") return { requestId: binding.requestId, expiresAt: now + 600_000, browserAction: hub.webOrigin + "/hub/join/open" };
     if (purpose === "redeem") { remote = "issued"; return { ...status, state: "issued", issued: true, fleetId: binding.fleetId, generation: 1, owner, credential, hub, certificatePem: metadata.certificatePem }; }
@@ -45,7 +45,7 @@ async function world() {
   const start = () => controller.start({ address: hub.webOrigin, label: "My Fleet", fleetOrigin: "http://127.0.0.1:4444" }, authority);
   return { directory, hubHome, metadata, calls, client, session, authority, controller, options, activate, start,
     ready: () => { remote = "identity-approved"; }, lose: () => { alive = false; }, deny: () => { confirmed = false; }, replace: () => { stamp = "replacement"; },
-    diskFailure: (value: boolean) => { settleFailure = value; }, advance: (ms: number) => { now += ms; }, enabled: () => enabled };
+    diskFailure: (value: boolean) => { settleFailure = value; }, obstruct: (r: string | null) => { obstruction = r; }, advance: (ms: number) => { now += ms; }, enabled: () => enabled };
 }
 describe("Fleet local company join", () => {
   it.each([false, true])("an expired unissued abandonment allows a new session to Start without cleanup (restart %s)", async restart => {
@@ -357,6 +357,26 @@ describe("M-2921 (spec 1.3, O1): the connected card's reconnect and 「移除這
     expect(w.pairing.view()).toEqual({ state: "unpaired" });
     expect(w.pairing.disconnected(w.shown.hubId)).toBe(true);
     expect(w.calls.length).toBe(calls);
+    w.controller.close();
+  });
+});
+
+describe("M-2921: the Hub's refusals of a pending request show on the Fleet card", () => {
+  it.each(["offer-pending", "limit-reached", "denied", "backpressure"])("%s: shown while the Hub says so, cleared when it is approved; the same request goes on", async (why) => {
+    const w = await world(), first = await w.start();
+    w.obstruct(why); w.advance(2_000);
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "awaiting-sign-in", waiting: why });
+    w.obstruct(null); w.advance(2_000);
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "awaiting-sign-in", waiting: null });
+    w.obstruct(why); w.advance(2_000); await w.controller.status(first.operationId, w.session);
+    w.obstruct(null); w.ready(); w.advance(2_000);
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "saved", issued: true, waiting: null });
+    w.controller.close();
+  });
+  it("an unknown reason on a pending request is not shown (only the four S1 names)", async () => {
+    const w = await world(), first = await w.start();
+    w.obstruct("something-new"); w.advance(2_000);
+    expect(await w.controller.status(first.operationId, w.session)).toMatchObject({ state: "awaiting-sign-in", waiting: null });
     w.controller.close();
   });
 });

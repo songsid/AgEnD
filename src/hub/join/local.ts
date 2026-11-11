@@ -33,7 +33,12 @@ interface Options {
   enableMembership(current: () => boolean, accept: () => void): void;
   activate(): void; link(): "online" | "offline";
 }
-interface Operation { record: LocalJoinJournal; authority: JoinLocalAuthority; generation: number; busy?: Promise<void>; nextPollAt?: number }
+interface Operation { record: LocalJoinJournal; authority: JoinLocalAuthority; generation: number; busy?: Promise<void>; nextPollAt?: number;
+  /** S1 (M-2921): what holds the pending request at the Hub right now (from its last status; not saved — the next poll says again). */
+  waiting?: JoinWaiting | null }
+/** S1: the Hub's nonterminal obstructions on a pending request (cleared once approved; the same request can go on after). */
+const JOIN_WAITING = ["offer-pending", "limit-reached", "denied", "backpressure"] as const;
+export type JoinWaiting = typeof JOIN_WAITING[number];
 const sameSnapshot = (a: JoinLocalSnapshot, b: JoinLocalSnapshot) => a.membership === b.membership && a.binding === b.binding;
 export class CompanyJoinController {
   private readonly client: Pick<CompanyJoinClient, "discover" | "command">;
@@ -68,7 +73,8 @@ export class CompanyJoinController {
     const expired = this.expiredUnissued(r) && !["cancelled", "ended"].includes(r.stage);
     return { operationId: r.operationId, handoffId: r.handoffId, state: expired ? "ended" : r.stage === "active" ? "saved" : r.stage === "pending" ? "awaiting-sign-in" : r.stage === "preparing" ? "joining" : r.stage,
       reason: expired ? "expired" : r.reason, hubOrigin: r.binding.hub.webOrigin, expiresAt: r.deadline, issued: r.issued, outcomeKnown: r.outcomeKnown,
-      fleetId: r.issued ? r.binding.fleetId : null, ...(r.stage === "active" ? { link: this.options.link() } : {}) };
+      fleetId: r.issued ? r.binding.fleetId : null, ...(r.stage === "active" ? { link: this.options.link() } : {}),
+      waiting: r.stage === "pending" && !expired && this.active?.record.operationId === r.operationId ? this.active.waiting ?? null : null };
   }
   private assertUnbound(): void {
     if (this.bound()) throw new HubProtocolError("conflict");
@@ -354,6 +360,7 @@ export class CompanyJoinController {
     if (!current()) throw new HubProtocolError("stale");
     if (status.issued && (status.fleetId !== r.binding.fleetId || status.generation !== 1)) throw new HubProtocolError("denied");
     this.persist(op, { issued: status.issued, outcomeKnown: true, remoteState: status.state });
+    op.waiting = status.state === "pending" && (JOIN_WAITING as readonly string[]).includes(status.reason ?? "") ? status.reason as JoinWaiting : null;
     if (["ended", "undeliverable", "revoked"].includes(status.state)) {
       this.persist(op, { stage: "ended", reason: status.reason ?? status.state }); return;
     }
