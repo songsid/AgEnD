@@ -1,0 +1,26 @@
+active
+active
+
+BASELINE OUTPUT
+系統服務已安裝於：/root/.config/systemd/user/com.agend.fleet.service
+Failed to connect to bus: No such file or directory
+❌ Fleet 系統服務已安裝，但無法啟動：Command failed: systemctl --user daemon-reload
+Run manually: systemctl --user daemon-reload && systemctl --user enable --now com.agend.fleet
+
+CANDIDATE OUTPUT
+系統服務已安裝於：/root/.config/systemd/user/com.agend.fleet.service
+❌ Fleet 系統服務已安裝，但無法啟動：user@0.service 仍在執行，但連線用的兩個通訊端不見了：/run/user/0/bus、/run/user/0/systemd/private。
+環境變數無法重建遺失的通訊端。
+重新啟動 user@0.service 會停止 Fleet 和其中所有 Agent，也會中斷這個使用者的其他所有服務。請先確認沒有 Agent 正在工作，再手動執行。
+這是 WSL 2.6.0 以前的已知問題。長久解法：在 Windows 執行 wsl --update，再重新開啟 WSL（參考 microsoft/WSL#13143）。 也可以先用下面的指令暫時復原：
+手動復原（AgEnD 不會自動重新啟動使用者管理員）：
+systemctl restart user@0.service
+export XDG_RUNTIME_DIR=/run/user/0
+unset DBUS_SESSION_BUS_ADDRESS
+systemctl --user start dbus.socket
+systemctl --user daemon-reload
+systemctl --user enable --now --no-block com.agend.fleet.service
+Created symlink /root/.config/systemd/user/default.target.wants/com.agend.fleet.service → /root/.config/systemd/user/com.agend.fleet.service.
+active
+
+PASS: active manager/missing sockets diagnosed; inert process survived diagnosis, was interrupted by manual restart; sockets and inert unit recovered. No real Fleet or agent started.
