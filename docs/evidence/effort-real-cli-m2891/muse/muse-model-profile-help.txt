@@ -1,0 +1,11 @@
+Show what one model resolves to, per knob, for one effort tier.
+
+Usage: muse model-profile show <model> [--effort <tier>]
+
+Arguments:
+  <model>  A catalog model id, e.g. muse-spark-1.3
+
+Options:
+  --effort <tier>  none | minimal | low | medium | high | xhigh | max | ultra
+  -h, --help       Print this help
+

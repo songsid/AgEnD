@@ -1,0 +1,22 @@
+[
+  {
+    "model": "muse-spark-1.3",
+    "requested": "low",
+    "wire": {
+      "effort": "low",
+      "summary": "auto"
+    },
+    "bodyDigest": "8693703c74c63fb3a16e8833ef471a188fe3f6695d6dbc350cc4765da03cce74",
+    "panePid": "3068117"
+  },
+  {
+    "model": "muse-spark-1.3",
+    "requested": "max",
+    "wire": {
+      "effort": "max",
+      "summary": "auto"
+    },
+    "bodyDigest": "782e9cee4ab3456d95ec07a678cf80131cba008168afd94993a7e7cc913c0c57",
+    "panePid": "3068117"
+  }
+]

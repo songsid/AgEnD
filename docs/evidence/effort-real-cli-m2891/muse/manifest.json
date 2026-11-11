@@ -1,0 +1,32 @@
+{
+  "format": "digest-first-v1",
+  "files": {
+    "6213c78e15c8d19cf1f3ce118594e0dfaf3892af84cfde1af972a780458c3241": [
+      "README.md"
+    ],
+    "eb052e0d11f67d6e445c4ba501566f41cbc02398fa7a72c5456243d48e35d0f0": [
+      "catalog-mock.json"
+    ],
+    "e0bc6341b8278cd90bf13f4d47cd69aa821d65b4376e1baa1f2e7a08cd65d832": [
+      "muse-help.txt"
+    ],
+    "eaabca0fb554be2d6dbdcff3d51c4cbaa2e78015b31ac090fc33f0c2b5b8bd28": [
+      "muse-live-proof.json"
+    ],
+    "419d8d310770d40164b105b9c8e219004d0531cbcd8e5cea1ecd84e2cf01f4db": [
+      "muse-low-verified.txt"
+    ],
+    "49032fd546c7a47795513205a5afdd21c324a470ae36bb8d10a64ee25fa364f8": [
+      "muse-max-verified.txt"
+    ],
+    "2e75b387a13e0867208c27b4023fd25deb1e0b635ab7c5b4cc88bef730c5662d": [
+      "muse-model-profile-help.txt"
+    ],
+    "25f59c57d61309689812ca325caa854ae0310595729e82e38f9fb2ccf347bc81": [
+      "muse-profile-spark.txt"
+    ],
+    "8efe5af10cb44334daf80cbb93ee9d0e4bbf796421a73c1e74eec87084920c34": [
+      "muse-profile-wonder.txt"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+model:  muse-wonder-1.0
+effort: max
+
+base_instructions_variant  full
+measured_tuning_cell       true
+plugin_text_variant        exact-minimal-literal-tests
+default_reasoning_effort   high
+
+re-resolution (ADR 42674 D7):
+  base_instructions_variant  perRequest
+  measured_tuning_cell       perRequest
+  plugin_text_variant        startupFixed — the reminder duty rides the reminder roster, which D7 keeps startupFixed, and skill bodies are fixed when the session's skills load
+  default_reasoning_effort   startupFixed — it SELECTS the session tier, so re-resolving it mid-session would fight the user's own /effort choice
+
