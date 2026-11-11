@@ -383,7 +383,7 @@ Claude Code、Antigravity 或 Grok instance 的聊天可以在它每則回覆上
 - **步驟屬於哪一則回覆**，是依對話紀錄裡既有的 id 判斷（開啟這一輪的訊息 id，以及每次 `reply` 呼叫回傳的 id），不靠時間推測。需要靠回覆文字、時間，或只能靠回合對應的區塊，會在區塊裡標明；完全對不上的回合會獨立顯示，不會亂猜。只保留最新 800 個步驟，較早的回覆可能沒有區塊。歷程是從對話紀錄讀出來的，所以不受頻道進度訊息只保留最近 8 行的限制（該訊息和它的 `tool_progress` 設定維持原樣）。
 - **思考**有自己的開關 `web.log_thinking`，**預設關閉**（**設定 → 網頁儀表板**；開啟需 fleet admin 確認）。關閉時完全不讀，AgEnD 也不會動 Claude 的設定。開啟後，在這個儀表板登入的 admin 會在區塊裡看到（在伺服器端過濾，公開連結和訪客一律不會收到），AgEnD 會在該 instance 產生的 Claude 設定加入 `showThinkingSummaries`，該 instance 下次啟動時生效，並可能改變每一輪的花費。紀錄分頁本身仍然不顯示思考。
 - Agent 工作目錄內的路徑以相對路徑顯示，家目錄顯示為 `~`（只改顯示：把游標移到列的路徑上可看完整路徑；紀錄分頁仍顯示完整路徑）。機密值的遮蔽和紀錄分頁相同。
-- 聊天的 **⋯** 選單有 **顯示活動** 與 **顯示思考**，只影響這個瀏覽器。Codex 還沒有這個區塊：要等有真實、已遮罩的 Codex 對話紀錄證明後才會開（擁有者在 #3648 的決定——未證明的 backend 維持現狀），在那之前聊天不會有東西，紀錄分頁對 Codex 的顯示和以前一樣。**Antigravity** 讀的是它自己的對話紀錄（`~/.gemini/antigravity-cli/brain/<對話>/.system_generated/logs/transcript.jsonl`，也就是工作目錄最近用的那段對話），**Grok** 讀的是工作目錄裡最新的 session（`~/.grok/sessions/…/updates.jsonl`）；兩者都已在真實的互動式 instance 上驗證過。Antigravity 的思考是 planner 自己的思考文字；Grok 的是它寫的摘要，有時是空的。如果在同一個工作目錄、AgEnD 之外另外開了同一種 CLI，「最近的對話」會被它接走，時間軸也會跟著過去。
+- 聊天的 **⋯** 選單有 **顯示活動** 與 **顯示思考**，只影響這個瀏覽器。Codex 還沒有這個區塊：要等有真實、已遮罩的 Codex 對話紀錄證明後才會開（擁有者在 #3648 的決定——未證明的 backend 維持現狀），在那之前聊天不會有東西，紀錄分頁對 Codex 的顯示和以前一樣。**Antigravity** 讀的是它自己的對話紀錄（`~/.gemini/antigravity-cli/brain/<對話>/.system_generated/logs/transcript.jsonl`，也就是工作目錄最近用的那段對話），**Grok** 讀的是工作目錄裡最新的 session（`~/.grok/sessions/…/updates.jsonl`）；兩者都已在真實的互動式 instance 上驗證過。Antigravity 的思考是 planner 自己的思考文字；Grok 的是它寫的摘要，有時是空的。兩者都是依工作目錄（而不是依 instance）找到紀錄：共用同一個工作目錄的 instance（或 instance 與手動啟動的 agent）讀的是同一份紀錄，會互相看到對方的步驟；在同一個工作目錄另外開了同一種 CLI 時，「最近的對話」會被它接走，時間軸也會跟著過去。請讓每個 instance 使用自己的工作目錄。
 
 ## `/view`
 
