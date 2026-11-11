@@ -610,6 +610,8 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   .p-settings > .s-pending .btn { min-height: var(--tap); }
   /* #3647: the "When an assignee stops" minutes are phone tap targets (style guide rule 7). */
   .p-settings #g-liveness input { min-height: var(--tap); }
+  /* #3679: the "Level titles for every office" card's Save, Insert example and Clear are phone tap targets (rule 7). */
+  .p-settings .s-level-titles .s-widget-actions .btn { min-height: var(--tap); min-width: var(--tap); }
   .p-settings #g-liveness .s-switch { min-height: var(--tap); }
   .p-settings #g-liveness .s-switch input[type="checkbox"] { width: var(--tap); }
   /* Settings' dialogs are full-screen sheets (§7): an agent's or a connection's fields get the whole screen, the title on
