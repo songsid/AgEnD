@@ -311,7 +311,9 @@ office's overrides (the pack stays as uploaded), **Reset** goes back to the pack
 saved the offices meanwhile, Save says so and keeps your layout — Save again puts it on the current list. A crowded area packs extra people into a tighter grid, then shows "+N" in its corner; there
 only calls and work get bubbles (a few at most) and name tags show on hover or focus. **Hide paused and stopped**
 (per browser, off by default) leaves the sleepers out. Now and then someone says a short line for their state in a
-bubble (never message content). Reduced motion: still poses, nothing in the air, bubbles shown whole.
+bubble (never message content): a pack's lines for that instance (`bubblesByInstance`), else its character set's
+(`characters.<set>.bubbles`), else the pack's `bubbles`, else the page's own (#3681). Reduced motion: still poses,
+nothing in the air, bubbles shown whole.
 **All offices** (in the switcher once two or more offices are stored, kept per device) shows every stored office as
 a tile on one canvas, each exactly as its own view (its style, members, seats, bubbles, walking), labelled with its
 name and head count, each as large as its office's content, packed to fill the panel; **Lobby tile** (on by

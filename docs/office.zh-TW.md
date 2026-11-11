@@ -148,6 +148,19 @@ fleet 管理員在直接連線的 dashboard 上（不是透過公開連結）使
 
 **泡泡。** `bubbles: { "en": { "working": ["On it."] }, "zh-TW": { … } }` 取代頁面內建的某個狀態的句子：最多 12 句，每句 1–40 字。
 
+每個人也可以有自己的聲音。一組角色可以在姿勢旁邊帶自己的 `bubbles`（格式與上限相同）；`bubblesByInstance` 則讓某個 instance 不必有自己的角色組也能有自己的句子：
+
+```text
+"characters": {
+  "default": { "idle": STRIP },
+  "fox": { "idle": STRIP, "bubbles": { "zh-TW": { "working": ["正在嗅線索。"] } } }
+},
+"byInstance": { "atlas": "fox" },
+"bubblesByInstance": { "quill": { "zh-TW": { "idle": ["墨水乾了。"] } } }
+```
+
+某人在某個狀態說的句子，取下面第一個在頁面語言下有該狀態句子的：他自己的（`bubblesByInstance`）、他的角色組的（`byInstance` 指定的組，否則 `default`）、外觀包的 `bubbles`、最後是頁面內建的。所以只寫了 `working` 句子的角色組，閒著時仍說外觀包的句子。agent 用 `office_set` 說的話仍然蓋過這些。
+
 **辦公桌式外觀包。** 沒有 `stateZones` 的外觀包沿用辦公桌配置，可以提供自己的 `room`（`floor`、`wall`）與 `desk`（`back`、`front`、`lit`）圖片。
 
 **尺寸與錨點。** 影格條顯示的大小是 `w·scale × h·scale`，除非它用邏輯單位指定 `dw` 或 `dh`；只給其中一個時，另一個依比例算出。`(ax, ay)` 是圖片上要放在位置點的那一點（預設底部中央，所以人站在座位上）。scale 2 時的建議尺寸：角色 32×48，道具 12×12。
@@ -341,10 +354,11 @@ fleet 管理員也可以在 General 的通知上按 **核准**，核准等待中
 | `edges` | ❌ | `[[id, id], …]`，最多 2048 條 |
 | `straight` | ❌ | `true`：每次走動都先橫走再上下走 |
 | `furniture` | ❌ | 家具，最多 128 件（見[家具](#家具)） |
-| `characters` | ✅ | `{ 角色組: { 姿勢: STRIP, … } }`，最多 64 組；必須有含 `idle` 的 `default`。欄位：`working`、`idle`、`paused`、`needs`、`walk`、`walkDown`、`walkUp`、`walkSide`、`prop` |
+| `characters` | ✅ | `{ 角色組: { 姿勢: STRIP, … } }`，最多 64 組；必須有含 `idle` 的 `default`。欄位：`working`、`idle`、`paused`、`needs`、`walk`、`walkDown`、`walkUp`、`walkSide`、`prop`，以及 `bubbles`（這組自己的句子，格式同外觀包的 `bubbles`） |
 | `byInstance` | ❌ | instance 名稱 → 角色組，最多 500 個 |
 | `props` | ❌ | `task`、`send`、`report`、`broadcast`：飛行物的 STRIP |
 | `bubbles` | ❌ | `{ "en" \| "zh-TW": { 狀態: [句子, …] } }`，最多 12 句，每句 1–40 字 |
+| `bubblesByInstance` | ❌ | instance 名稱 → 他自己的句子，格式同 `bubbles`，最多 500 個（見[製作外觀包](#製作外觀包)的「泡泡」） |
 | `room`、`desk` | ❌ | 辦公桌配置的圖：`room.floor`、`room.wall`、`desk.back`、`desk.front`、`desk.lit` |
 | `levels` | ❌ | `{ titles, fixed }`：等級的頭銜與固定頭銜（見[外觀包的頭銜](#外觀包的頭銜)） |
 

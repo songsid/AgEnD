@@ -148,6 +148,19 @@ A minimal zones pack:
 
 **Bubbles.** `bubbles: { "en": { "working": ["On it."] }, "zh-TW": { … } }` replaces the page's own lines for a state: up to 12 lines, each 1–40 characters.
 
+Each resident can have their own voice too. A character set may carry its own `bubbles` (same shape and limits) beside its poses, and `bubblesByInstance` gives one instance its own lines without a set of its own:
+
+```text
+"characters": {
+  "default": { "idle": STRIP },
+  "fox": { "idle": STRIP, "bubbles": { "en": { "working": ["Sniffing it out."] } } }
+},
+"byInstance": { "atlas": "fox" },
+"bubblesByInstance": { "quill": { "en": { "idle": ["Ink's dry."] } } }
+```
+
+A person's line for a state comes from the first of these that has lines for it, in the page's language: their own (`bubblesByInstance`), their character set's (`byInstance`'s set, else `default`'s), the pack's `bubbles`, then the page's own. So a set with lines only for `working` still says the pack's lines when idle. What an agent says with `office_set` still shows over all of them.
+
 **A Desks-like pack.** A pack without `stateZones` keeps the Desks layout and may give its own `room` (`floor`, `wall`) and `desk` (`back`, `front`, `lit`) pictures.
 
 **Sizes and anchors.** A strip's displayed size is `w·scale × h·scale`, unless it gives `dw` and/or `dh` in logical units; with only one of them, the other keeps the aspect. `(ax, ay)` is the image point placed on the position (default: bottom centre, so a person stands on their seat). Suggested sizes at scale 2: a character 32×48, a prop 12×12.
@@ -341,10 +354,11 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `edges` | ❌ | `[[id, id], …]`, up to 2048 |
 | `straight` | ❌ | `true`: every walk goes across, then up or down |
 | `furniture` | ❌ | items, up to 128 (see [Furniture](#furniture)) |
-| `characters` | ✅ | `{ set: { pose: STRIP, … } }`, up to 64 sets; `default` with `idle` required. Keys: `working`, `idle`, `paused`, `needs`, `walk`, `walkDown`, `walkUp`, `walkSide`, `prop` |
+| `characters` | ✅ | `{ set: { pose: STRIP, … } }`, up to 64 sets; `default` with `idle` required. Keys: `working`, `idle`, `paused`, `needs`, `walk`, `walkDown`, `walkUp`, `walkSide`, `prop`, and `bubbles` (the set's own lines, as the pack's `bubbles`) |
 | `byInstance` | ❌ | instance name → character set, up to 500 |
 | `props` | ❌ | `task`, `send`, `report`, `broadcast`: STRIPs for what flies |
 | `bubbles` | ❌ | `{ "en" \| "zh-TW": { state: [line, …] } }`, up to 12 lines of 1–40 characters |
+| `bubblesByInstance` | ❌ | instance name → its own lines, as `bubbles`, up to 500 (see [Make a skin pack](#make-a-skin-pack), **Bubbles**) |
 | `room`, `desk` | ❌ | Desks layout pictures: `room.floor`, `room.wall`, `desk.back`, `desk.front`, `desk.lit` |
 | `levels` | ❌ | `{ titles, fixed }`: the levels' titles and pinned titles (see [Titles from a skin pack](#titles-from-a-skin-pack)) |
 
