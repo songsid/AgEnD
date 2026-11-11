@@ -18,7 +18,7 @@ Only the acquired runtime lease enables raw Codex transcript proof. Codex is **n
 
 ## Bounds and limits
 
-Discovery has a 250 ms logical deadline, at most20,000 entries,512 directories and depth8; it yields every64 entries. Any unreadable directory, symlink, depth/count cap or incomplete enumeration refuses uniqueness. Timed-out discovery cancels further work and closes its owned directory after a pending operation returns. Only one physical acquisition per sessions path may drain at a time. Local raw Codex skips the diagnostic newest-cwd checkpoint entirely, using only the exact-UUID bounded acquisition; ordinary and native Runtime checkpoint paths are preserved.
+Discovery has a 250 ms logical deadline, at most20,000 entries,512 directories and depth8; it yields every64 entries. Any unreadable directory, symlink, depth/count cap or incomplete enumeration refuses uniqueness. Timed-out discovery stops its directory walk and closes its owned directory after a pending operation returns; fixed-size metadata inspection may drain but cannot authorize a late checkpoint. Only one physical acquisition per sessions path may drain at a time. Local raw Codex skips the diagnostic newest-cwd checkpoint entirely, using only the exact-UUID bounded acquisition; ordinary and native Runtime checkpoint paths are preserved.
 
 No extra paste, recovery Enter or automatic replay is added. The first unwritten session, missing rollout, truncated/unknown footer, unsupported metadata and lost ownership may still produce uncertainty. Exact text proves consumption, not that the model finished or replied. CLI timestamps are not ownership evidence. This is the ordinary tmux path; it is not a new native-Runtime receipt mechanism or a Windows acceptance claim.
 

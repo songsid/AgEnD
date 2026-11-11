@@ -1,6 +1,6 @@
 # #2301 acceptance — exact pane/session paste proof
 
-Alpha product source: `6fd5edd59eb84dc17e05eeb5cc05888edcae82b9`; the accompanying manifest binds the relevant product bytes and six PNGs. A later evidence-only commit does not change those bytes.
+Alpha product source: `e93dd8661959b1646b338eb17e98743b55ed030e`; the accompanying manifest binds the relevant product bytes and six PNGs. A later evidence-only commit does not change those bytes.
 
 | Check | Result |
 |---|---|
@@ -38,3 +38,13 @@ The View recipe uses the production tmuxArgs and an explicit `/usr/bin/tmux`3.7b
 The fallback regression is byte-identical to the main replacement test: a real bound lease switches after paste before the marker arrives, or before final settlement, and saves the binding-lost reason with one paste/Enter. The fake clock also pins prompt retirement after an empty read instead of another poll. Alpha scoped9-file control:135/135; test types clean. `fallback-review/` holds independent alpha reversals. Product hashes correspond to6fd5; the later manual-script, tests and evidence commit does not change product bytes.
 
 Plain-merge sync `ed343b623` includes alpha tip `7dd2b0d07` (#3615) without conflicts. It adds Hub-member recovery, leaving all manifest-bound product bytes and View assets unchanged from the recorded source. Post-sync six-file check (new proof files, alpha native exclusion and the two incoming Hub tests):55/55; both native TypeScript checks pass. The fallback-review packet additionally catches all three compiling fence removals independently on alpha.
+
+## R2: reader-loss retirement and async acquisition
+
+Two shared-core failures were reproduced before the fixes: a real normal/fallback reader saw a replacement, the original inode returned with the late exact raw text, and the receipt falsely became delivered (two assertion failures). The old sync index also failed five discovery controls; the probe with eight extra files and40ms per synchronous stat spent about400ms in sync work. Both fail-first logs are from main's old shared blobs.
+
+The reader now permanently reports bound-file loss to the same attempt lease in both confirmation paths, even if the original returns before the next metadata validation. Its own reader also cannot revive. Discovery now streams async directory entries with no stat/sort of unrelated files, yields every64 entries, and refuses incomplete scans at20,000 entries/512directories/depth8 or any unreadable/symlink entry. A250ms deadline starts before the async work; a timed-out walk cancels and closes after the outstanding operation drains, and another acquisition cannot overlap on that sessions path. Fixed-size metadata inspection may drain, but cannot publish a late checkpoint. Local raw Codex skips the otherwise synchronous diagnostic newest-cwd checkpoint; ordinary delivery and native Runtime checkpoints retain their existing behavior.
+
+Final scoped check: 205/205 across nine files (including native checkpoint controls), zero skips; both native TypeScript checks pass. Thirteen independent compiling removals (ten new guards plus the three earlier fallback fences) all fail assertions; restored control passes. Alpha additionally independently reverses its normal/fallback retirement wiring and local diagnostic skip:3/3 caught. Source-bound private-tmux replay refreshed at `e93dd8661959b1646b338eb17e98743b55ed030e`: owned delivered, switched/replaced/narrow uncertain, exactly one paste/Enter in every case and cleanup true. See `review-r2/`.
+
+The six View images were captured at `6fd5edd59eb84dc17e05eeb5cc05888edcae82b9`. The terminal frames and View JS/CSS are unchanged by R2; manifest separately records their capture source and the new proof-source hashes. No new UI or footer rendering changes. All safety/rollback limitations above remain; a huge or slow sessions tree may still yield uncertainty rather than new authority.

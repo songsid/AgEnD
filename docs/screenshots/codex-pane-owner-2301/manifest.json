@@ -1,11 +1,11 @@
 {
-  "sourceCommit": "6fd5edd59eb84dc17e05eeb5cc05888edcae82b9",
+  "sourceCommit": "e93dd8661959b1646b338eb17e98743b55ed030e",
   "productHashes": {
     "src/backend/codex.ts": "d09749c6276a3ad5c9d54fd4b62640983fbe202752ab6d7bc9c1b6a4d57dc14b",
     "src/backend/types.ts": "ef1ef527c71eb9be6be7cf612c5c5f74e03a0f1f4641e95712a0d5d6ea9fbde4",
-    "src/daemon.ts": "42a1d125c4d7e3dffa17eee3de529725fcbe7617cdbd62175e8a83ee80180ac5",
-    "src/codex-pane-ownership.ts": "9d8fb401ddde42813f913687b795acca0361a67e0e84b44816ee46d8bdf46635",
-    "src/transcript-delta-reader.ts": "9ca2026cd61da3f16b39113d1111f04fe3583bee5c58097dc101256898a81af2",
+    "src/daemon.ts": "bdf3f06bcaacaf6784d65d09ed3ef009749645e9e0f552b72a4c181cde6cc14e",
+    "src/codex-pane-ownership.ts": "b54f09a4ee307282f839e9009d60df5cb1c33cca1f4cd670196a62a3973d18ac",
+    "src/transcript-delta-reader.ts": "e8b7ad7861fe893c182adc7c2cad1527dd0e82ac68a2788c7b88ad24a695edc0",
     "src/locale.ts": "362cfd22a0f822d75ffa994d1c7975eeac53866e274025a8ad2d5fffdb53cb2e",
     "src/ui/shared/panel-view.js": "fd17f77271254137b09c7c382ac8e3f379a7cc91b0819cb3b23e4e699c8cfac2",
     "src/ui/shared/app.css": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
@@ -19,7 +19,13 @@
     "desk-zh-TW-narrow.png": "81fa28e1bcca12918180dd230b6432282e5117564b5eb8f140b56bd135e244b8"
   },
   "regressionHashes": {
-    "tests/codex-pane-ownership-2301.test.ts": "e3a89564e7e9b786bfe75d9af3dc2187c38cccde699964f1d584c8d156369239",
-    "tests/codex-pane-native-exclusion-2301.test.ts": "7c5ace6ae80b1460c39d28f1a84a6c9b50a900aeadf868dbfb60d0d784196e29"
+    "tests/codex-pane-ownership-2301.test.ts": "ef3c21610b76e88297d1a604ce7b9c99addb64ca056df63d7b3ba31f093f6d44",
+    "tests/codex-pane-native-exclusion-2301.test.ts": "ef57393e5bfe498ded60fed955dfdb5a90d0f204725fa8ca7432828b2611aef8"
+  },
+  "viewSourceCommit": "6fd5edd59eb84dc17e05eeb5cc05888edcae82b9",
+  "r2RegressionHashes": {
+    "tests/codex-pane-ownership-2301.test.ts": "ef3c21610b76e88297d1a604ce7b9c99addb64ca056df63d7b3ba31f093f6d44",
+    "tests/codex-pane-read-race-2301.test.ts": "5677156aaf9c38060a179bf0444f4f1bf3b797c1c3bfebcac0441c0597b97c29",
+    "tests/codex-pane-discovery-2301.test.ts": "f4330343c17c6318af53dc0790236e579a680906efb64256ef6919108c2fc965"
   }
 }
