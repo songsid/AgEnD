@@ -614,6 +614,8 @@ export interface WebApiContext {
   resolveInstanceEffort?(name: string): { effort: string | null; source: "instance" | "fleet-default" | "unset" };
   /** Effort strategy for backend capability check. */
   effortStrategyFor?(name: string): "runtime" | "restart" | "unsupported";
+  /** Settings → Runtime & model's effort choices: the levels `model` (null: the running one) takes, and the effort in force. */
+  effortOptionsFor?(name: string, model?: string | null): { levels: string[]; effort: string | null; source: "instance" | "fleet-default" | "unset" };
   readonly scheduler: {
     db: {
       listTasks(opts?: { assignee?: string; status?: string }): unknown[];
@@ -2172,6 +2174,18 @@ export function handleWebRequest(
     })().catch(() => {
       if (canAnswer()) json(res, 503, { error: "CLI model cache unavailable" });
     });
+    return true;
+  }
+
+  // The effort levels Settings → Runtime & model's dropdown offers for an agent and a (not yet saved) model — the chat chip's list.
+  if (method === "GET" && path === "/ui/effort-options") {
+    const instance = url.searchParams.get("instance") ?? "", model = url.searchParams.get("model");
+    if (!instance || !isSafeInstanceName(instance) || (model !== null && (model.length > 256 || /[\x00-\x1f\x7f]/.test(model)))) { json(res, 400, { error: "instance (and optional model) required" }); return true; }
+    if (!Object.hasOwn(ctx.fleetConfig?.instances ?? {}, instance) || !ctx.effortOptionsFor) { json(res, 404, { error: "Not available" }); return true; }
+    const { levels, effort, source } = ctx.effortOptionsFor(instance, model || null);
+    // `model`: the one saved for the agent (empty: it follows the default), so the page can tell a model it has not saved yet.
+    const saved = (ctx.fleetConfig!.instances[instance] as { model?: unknown }).model;
+    json(res, 200, { instance, levels, effort, source, model: typeof saved === "string" ? saved : "" });
     return true;
   }
 

@@ -5,8 +5,9 @@ import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 let p: AppPage, fields: any, native: any;
 beforeAll(async () => {
   p = page();
-  (globalThis as any).fetch = vi.fn(async (url: string) => ({ ok: url.includes("status-emojis"), status: url.includes("status-emojis") ? 200 : 404,
-    json: async () => url.endsWith("/status-emojis") ? { keys: ["received", "failed"], builtins: { discord: {}, telegram: {} } } : { entries: [], problems: [] } }));
+  (globalThis as any).fetch = vi.fn(async (url: string) => ({ ok: /status-emojis|effort-options/.test(url), status: /status-emojis|effort-options/.test(url) ? 200 : 404,
+    json: async () => url.endsWith("/status-emojis") ? { keys: ["received", "failed"], builtins: { discord: {}, telegram: {} } }
+      : url.includes("effort-options") ? { levels: ["low", "high"], effort: null, model: "" } : { entries: [], problems: [] } }));
   fields = await import("/ui/js/settings-dialogs.js"); native = await import("/ui/js/native-instance-settings.js");
 });
 afterEach(async () => p.unmount());

@@ -1,0 +1,36 @@
+{
+  "tree": "candidate",
+  "locale": "zh-TW",
+  "container": "cairn-wizard-2917-agend-wizard-2917.nhbuci",
+  "cases": [
+    {
+      "case": "empty-address",
+      "invalidAddressBlocked": true
+    },
+    {
+      "case": "fingerprint-enter",
+      "returnedToCaChoices": true,
+      "previousAnswersKept": true
+    },
+    {
+      "case": "secret-method",
+      "misplacedSecretEchoed": false,
+      "completedAfterCorrection": true,
+      "noSecretInHandoff": true,
+      "privateSecretOnly": true
+    },
+    {
+      "case": "handoff",
+      "companyJoinLeads": true,
+      "passwordNotEchoed": true
+    },
+    {
+      "case": "certificate-guidance",
+      "requirementsBeforeCertificateChoice": true
+    }
+  ],
+  "realAd": false,
+  "pilot": false,
+  "passwordsInArgv": false,
+  "outputSecretSubstitution": "only the baseline canary and fixture credential if present"
+}

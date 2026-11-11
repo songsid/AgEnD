@@ -33,6 +33,15 @@ register("nativecli", {
   en: { unverified:"Not yet verified", unverifiedHint:"{0} {1}: AgEnD has not tested this version in Windows panes yet. It still runs; any screen AgEnD does not recognise stops and waits for you in Needs you." },
   "zh-TW": { unverified:"尚未驗證", unverifiedHint:"{0} {1}：AgEnD 還沒在 Windows 面板中測試過這個版本。它仍然可以執行；遇到 AgEnD 認不得的畫面時，會停下來在「需要你」等你處理。" },
 });
+/**
+ * The effort chip's text: the effort set, else "auto" (the CLI's own default) for a backend that takes an effort
+ * setting (`effort_supported`, sent by the daemon since the always-shown chip), else none. An older daemon sends no
+ * `effort_supported`: the chip then shows only for a set effort, as it always did. Kept here, not in the shared
+ * instance-nav.js: a tab opened before an upgrade gets this panel with its old shell.
+ */
+export function effortChip(inst) {
+  return inst.effort || (inst.effort_supported === true ? "auto" : "");
+}
 function nativeCliTag(inst) {
   if (inst.native_cli_verification !== "unverified") return null;
   const cli = inst.backend === "codex" ? "Codex" : inst.backend === "claude-code" ? "Claude Code" : inst.backend;
@@ -40,6 +49,8 @@ function nativeCliTag(inst) {
 }
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { modelLabel, modelPickerStyles, mw } from "./model-picker.js";
+/** An effort level as a word: low → Low, xhigh → XHigh (the CLIs' own names). Local: a tab on an older model-picker.js still has it. */
+const effortWord = (level) => ({ xhigh: "XHigh" }[level] || String(level).charAt(0).toUpperCase() + String(level).slice(1));
 import { savePref } from "/assets/app-prefs.js";
 import { applyTheme, clearAmbient, resolvedMode, themeFor, themeImageUrl, themeMenuItems, themesStore } from "/assets/app-themes.js";
 import { colorMenuItem } from "/assets/identity-color.js";
@@ -440,14 +451,14 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${nativeCliTag(inst)}${inst.machine_id ? html`<span class="tag runtime-machine-tag" title=${t("chat.machineName",machineName(inst.machine_id,inst.machine_name))}>${machineName(inst.machine_id,inst.machine_name)}</span>${inst.machine_status !== "online" ? html`<span class="tag runtime-machine-offline">${t(inst.machine_status === "revoked" ? "chat.machineRevoked" : "chat.machineOffline")}</span>` : null}` : null}
     ${!guest && supportsInstanceFeature(inst,"commands") ? html`<button type="button" class="hd-chip chat-model-entry" title=${mw("backend")} aria-label=${mw("backend")} onClick=${() => inst.runtime === "windows" ? navigate(sectionPath("agents")) : pick("backend")}>${backendLabel(inst.backend)} ▾</button>
       <button type="button" class="hd-chip chat-model-entry" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelLabel(inst.model || modelText(inst))} ▾</button>` : null}
-    ${inst.effort && supportsInstanceFeature(inst,"effort") ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
+    ${effortChip(inst) && supportsInstanceFeature(inst,"effort") ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", effortChip(inst))} aria-label=${t("chat.chipEffort", effortChip(inst))} onClick=${() => pick("effort")}>${effortChip(inst)}</button>` : null}`;
 
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
     <${PanelHeader} title=${inst.runtime === "windows" ? inst.display_name || name : headerName(namesOf(inst || { name }, names.primary))} sub=${sub}
       pageControls=${{ CardMenu, card, navKey, usage: supportsInstanceFeature(inst,"usage") }} pageActions=${[
         pane && !guest && supportsInstanceFeature(inst,"commands") ? { key: "pane-backend", label: `${mw("backend")}: ${backendLabel(inst.backend)}`, onSelect: () => inst.runtime === "windows" ? navigate(sectionPath("agents")) : pick("backend") } : null,
         pane && !guest && supportsInstanceFeature(inst,"commands") ? { key: "pane-model", label: t("chat.chipModel", modelText(inst)), onSelect: () => pick("model") } : null,
-        pane && inst.effort && supportsInstanceFeature(inst,"effort") ? { key: "pane-effort", label: t("chat.chipEffort", inst.effort), onSelect: () => pick("effort") } : null,
+        pane && effortChip(inst) && supportsInstanceFeature(inst,"effort") ? { key: "pane-effort", label: t("chat.chipEffort", effortChip(inst)), onSelect: () => pick("effort") } : null,
         ...items]}
       nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
@@ -735,6 +746,14 @@ function CommandCard({ name, lease }) {
   const run = (args, action) => store.runCommand(name, c.command, args, { alive: () => lease.current(), ...(action ? { action } : {}) });
   const actions = c.choices?.actions || [];
   const refresh = actions.find(a => a === "refresh" || a === "refreshAll");
+  // The phone's second level: a /model option with an `effort` (its levels and the one set) opens its own list, with a way back.
+  const [sub, setSub] = useState(null);
+  const open = sub && sub.for === c.choices ? c.choices.options.find((o) => o.id === sub.id && o.effort) : null;
+  const pickEffort = async (model, level) => {
+    setSub(null);
+    if (model.id !== c.choices.current) { await run(model.id); if (!lease.current() || !store.state.commands[name] || store.state.commands[name].error) return; }
+    await store.runCommand(name, "effort", level, { alive: () => lease.current() });
+  };
   return html`<div class=${`cmd-card${c.command === "model" ? " cmd-model" : ""}${c.error ? " bad" : ""}`} role=${c.error ? "alert" : "status"}>
     <div class="cmd-head"><span class="cmd-name mono">/${c.command}${c.command === "model" || c.choices?.step === "model" ? html` · ${mw("model")}` : null}</span>
       <div class="cmd-head-actions">${refresh ? html`<button type="button" class="icon-btn" data-model-action=${refresh} title=${mw("refresh")} aria-label=${mw("refresh")} disabled=${c.busy}
@@ -748,9 +767,18 @@ function CommandCard({ name, lease }) {
       : c.compact === "lost" ? t("chat.compactLost") : c.compact === "not_compacted" ? t("chat.compactNotCompacted") : t("chat.compactUnknown")}</p>` : null}
     ${c.choices?.step === "backend" ? html`<p class="note">${mw("next")}</p>` : null}
     ${c.choices && c.choices.prompt ?  html`<pre class="cmd-text">${c.choices.prompt}</pre>` : null}
-    ${c.choices ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdChoose")}>${c.choices.options.map((o) => html`<button key=${o.id} type="button"
+    ${open ? html`<div class="cmd-sub"><button type="button" class="btn btn-sm btn-ghost cmd-sub-back" disabled=${c.busy} onClick=${() => setSub(null)}>‹ ${modelLabel(open.label.replace(/^✓\s*/, ""))}</button></div>
+      <div class="cmd-choices cmd-effort-levels" role="group" aria-label=${mw("effort")}>${open.effort.levels.map((level) => html`<button key=${level} type="button"
+        class=${`btn btn-sm${level === open.effort.current ? " current" : ""}`} aria-current=${level === open.effort.current ? "true" : undefined}
+        disabled=${c.busy} onClick=${() => pickEffort(open, level)}>${effortWord(level)}</button>`)}</div>`
+    : c.choices ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdChoose")}>${c.choices.options.map((o) => {
+      const choice = html`<button key=${o.id} type="button"
       class=${`btn btn-sm${o.id === c.choices.current ? " current" : ""}`} aria-current=${o.id === c.choices.current ? "true" : undefined}
-      disabled=${c.busy || !!o.disabled} title=${o.disabled || undefined} onClick=${() => { if (!o.disabled) run(o.id); }}>${c.choices.step === "backend" ? html`<span>${backendLabel(o.id)}</span>${o.disabled ? html`<span class="note">${o.disabled}</span>` : null}` : modelLabel(c.command === "model" ? o.label.replace(/^✓\s*/, "") : o.label)}</button>`)}</div>` : null}
+      disabled=${c.busy || !!o.disabled} title=${o.disabled || undefined} onClick=${() => { if (!o.disabled) run(o.id); }}>${c.choices.step === "backend" ? html`<span>${backendLabel(o.id)}</span>${o.disabled ? html`<span class="note">${o.disabled}</span>` : null}` : modelLabel(c.command === "model" ? o.label.replace(/^✓\s*/, "") : o.label)}</button>`;
+      // On a phone (model-picker.css) the row shows its effort and a "›" to the effort list; elsewhere only the model button shows.
+      return c.command === "model" && c.choices.step !== "backend" && o.effort && !o.disabled ? html`<div key=${o.id} class="cmd-choice">${choice}<button type="button" class="btn btn-sm btn-ghost cmd-effort-go"
+        disabled=${c.busy} aria-label=${mw("effortFor", modelLabel(o.label.replace(/^✓\s*/, "")))} onClick=${() => setSub({ for: c.choices, id: o.id })}><span class="cmd-effort-now">${o.effort.current ? effortWord(o.effort.current) : mw("effortAuto")}</span> ›</button></div>` : choice;
+    })}</div>` : null}
     ${c.command === "model" && c.choices ? html`<p class="note">${mw("selectionHint")}</p>` : null}
     ${actions.includes("more") ? html`<div class="cmd-model-more"><button type="button" class="btn btn-sm btn-ghost" data-model-action="more" disabled=${c.busy} onClick=${() => run("", "more")}>${mw("more")}</button></div>` : null}
     ${c.choices && c.choices.options.some((o) => o.signIn) && !publicLinkPage() ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdSignIn")}>${c.choices.options.filter((o) => o.signIn).map((o) => html`<button

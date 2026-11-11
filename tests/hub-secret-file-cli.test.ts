@@ -37,7 +37,7 @@ it("wires private-file selection through the real CLI into the sealed initialize
   const webOrigin = `https://hub.example.test:${webPort}`, memberOrigin = `https://hub.example.test:${memberPort}`;
   const secret = "Dummy-cli-file-only-秘密\n", person = "Dummy-person-only", path = join(home, "owner-secret"); writeFileSync(path, secret, { mode: 0o600 });
   const io = scriptedIO(["Example Hub", webOrigin, memberOrigin, `127.0.0.1:${webPort}`, `127.0.0.1:${memberPort}`, certs.cert, certs.key,
-    "corp", "ldaps://directory.example.test", certs.caCert, "y", "2", "DC=example,DC=test", "CN=Reader,DC=example,DC=test", "2", path,
+    "corp", "ldaps://directory.example.test", certs.caCert, "y", "2", "DC=example,DC=test", "CN=Reader,DC=example,DC=test", { hidden: "2" }, { hidden: path },
     "alice", "y", "7", "30", "initialize", "no"]);
   const hidden = io.io.askHidden;
   io.io.askHidden = async question => { expect(question).not.toContain("Service account password"); return hidden(question); };

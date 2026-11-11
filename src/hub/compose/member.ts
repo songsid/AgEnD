@@ -499,6 +499,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       });
 
       return {
+        async leave(expected: import("../types.js").HubMemberLeaveBinding) { return live() && await client!.leave(expected); },
         async start() {
           if (!live()) throw new HubStateError("service-unavailable", "the Hub member was switched off while starting");
           options.attachAttention(() => service.attentionItems());

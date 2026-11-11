@@ -153,7 +153,7 @@ import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter, type MissedOfflineInbound } from "./channel/adapters/telegram.js";
 import { MissedOfflineStore } from "./missed-offline.js";
 import { createBackend } from "./backend/factory.js";
-import { readEffortMetadata } from "./backend/effort-metadata.js";
+import { effortOfferedUnasked, readEffortMetadata, readGrokEffortLevels } from "./backend/effort-metadata.js";
 import { codexEffort, flagEffort } from "./backend/launch-effort.js";
 import { codexMetadataHomes, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./backend/codex-metadata.js";
 import { readGrokModelCache } from "./backend/grok-model-cache.js";
@@ -1789,6 +1789,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return hubInitializationSession(req,{token,sessions,config:this.fleetConfig,epoch,current:()=>!this.shuttingDown
       &&token===this.webToken&&sessions===this.webSessions&&epoch===this.webAuthorityState().epoch});
   }
+  private hubWebAddressControl:import("./hub/settings-web-address-control.js").HubWebAddressControl|null=null;
+  async hubWebAddress():Promise<import("./hub/settings-web-address-control.js").HubWebAddressControl>{
+    const runtime=await this.hubRuntimeCreated();
+    if(this.shuttingDown||!this.hubSettingsWriter)throw Error("The Hub is unavailable");
+    if(!this.hubWebAddressControl){
+      const {createHubWebAddressControl}=await import("./hub/settings-web-address-control.js");
+      if(this.shuttingDown)throw Error("The Hub is stopping");
+      this.hubWebAddressControl??=createHubWebAddressControl({home:this.dataDir,readConfig:()=>this.getRawFleetConfig(),writer:this.hubSettingsWriter,
+        withDecision:(work,current)=>runtime.withWebAddressDecision(work,current),running:hub=>runtime.serverHealth(hub)==="ready",settle:()=>this.applyHubSwitches()});
+    }
+    return this.hubWebAddressControl;
+  }
   async hubSetup():Promise<import("./hub/init/web.js").HubWebInitializer>{
     this.hubSetupInit??=(async()=>{
       const {createHubWebInitializer}=await import("./hub/init/web.js");
@@ -2201,6 +2213,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.hubSettingsWriter ??= createHubSettingsWriter({ home: this.dataDir,
         readHub: () => (this.rawFleetConfig as { hub?: unknown } | undefined)?.hub,
         directoryDecision: () => this.hubRuntime?.directoryDecision() ?? null,
+        webAddressDecision: () => this.hubRuntime?.webAddressDecision() ?? null,
         saveHub: patches => this.saveFleetConfig(patches) });
       const runtime = new HubRuntime({
         home: this.dataDir,
@@ -19471,7 +19484,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const env = this.webModelEnv(backend, instance);
       const current = this.resolveInstanceModel(instance).model;
       const models = more ? this.modelCatalogFor(backend, instance) : env?.models ?? [];
-      return { current, options: this.withCurrentModel(models, current).map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })),
+      const own = this.resolveInstanceEffort(instance).effort;
+      return { current, options: this.withCurrentModel(models, current).map(o => {
+        const effort = this.modelEffortChoice(instance, backend, o.id, own);
+        return { id: o.id, label: this.modelChoiceLabel(o, current), ...(effort ? { effort } : {}) };
+      }),
         actions: more ? ["refreshAll"] : backend === "claude-code" ? ["refresh", "more"] : ["refresh"] };
     };
     return runWebCommand({
@@ -24063,6 +24080,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return [{ id: currentModel, label: currentModel, description: t("model.not_listed") }, ...options];
   }
 
+  /**
+   * The effort a /model option offers behind its "›" (the phone's second level): the levels `model` takes on this
+   * backend and the effort the agent has set, when the model has one of them (else null: it shows "auto"). Only where
+   * an effort change is applied live (a model switch then an effort one is no second restart), and not where the
+   * chat does not offer effort unasked (effortOfferedUnasked: antigravity). A file read; never a CLI.
+   */
+  private modelEffortChoice(instance: string, backend: string, model: string, set: string | null): { levels: string[]; current: string | null } | null {
+    if (!effortOfferedUnasked(backend)) return null;
+    try {
+      const { strategy, levels } = readEffortMetadata(backend, this.getInstanceDir(instance), model, this.catalogProfile(backend, instance));
+      return strategy === "runtime" && levels.length > 0 ? { levels, current: set && levels.includes(set) ? set : null } : null;
+    } catch { return null; }
+  }
+
   private modelChoiceLabel(
     option: import("./backend/types.js").ModelOption,
     currentModel: string,
@@ -24931,16 +24962,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch { return []; }
   }
 
+  /**
+   * What Settings → Runtime & model offers as the agent's effort: the levels `model` (null: the one it runs now) takes on
+   * this agent's backend and the effort in force with its source. The chat chip's own list (`effortLevelsFor`), only for
+   * the model named: a pure file read, never a CLI. `levels: []` — nothing to offer: a Windows agent, antigravity (its
+   * effort is not shown anywhere), or a backend / model without an effort setting.
+   */
+  effortOptionsFor(instanceName: string, model: string | null = null): { levels: string[]; effort: string | null; source: "instance" | "fleet-default" | "unset" } {
+    const { effort, source } = this.resolveInstanceEffort(instanceName);
+    const none = { levels: [] as string[], effort, source };
+    if (!this.fleetConfig?.instances[instanceName] || this.backendNameForInstance(instanceName) === "antigravity") return none;
+    try {
+      const { strategy, levels } = this.instanceEffortMetadata(instanceName, model?.trim() || null);
+      return { levels: strategy === "unsupported" ? [] : levels, effort, source };
+    } catch { return none; }
+  }
+
   /** The instance's backend's effort metadata; agy's levels are its model's (#1825), the one the instance runs. */
-  private instanceEffortMetadata(instanceName: string) {
+  private instanceEffortMetadata(instanceName: string, modelOverride: string | null = null) {
     if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return { strategy: "unsupported" as const, levels: [] as string[] };
     const backend = this.backendNameForInstance(instanceName);
     let model: string | null = null;
-    if (backend === "antigravity") {
+    // The model it runs, for the backends whose levels are the model's own: agy's catalog (#1825), claude's account
+    // catalog and grok's cache. codex's levels read its own config (the caller there knows which model runs); the
+    // rest ignore the model.
+    // Settings' model field, before it is saved (effortOptionsFor only, for every backend: the field is disabled until
+    // Save, so what it lists is the selected model's levels and what /effort applies against does not change). Without
+    // it, codex reads its config's model, which is what the chip and applyEffort use.
+    if (modelOverride) model = modelOverride;
+    else if (backend !== "codex") {
       const resolved = this.resolveInstanceModel(instanceName);
       model = resolved.source === "unresolved" ? null : resolved.model;
     }
-    return readEffortMetadata(backend, this.getInstanceDir(instanceName), model);
+    return readEffortMetadata(backend, this.getInstanceDir(instanceName), model, this.catalogProfile(backend, instanceName));
   }
 
   /** Configured effort for an instance: per-instance, else fleet default, else none. */
@@ -25152,7 +25206,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     let levels: string[];
     try {
-      const metadata = readEffortMetadata(backend, this.getInstanceDir(instanceName), runs);
+      const metadata = readEffortMetadata(backend, this.getInstanceDir(instanceName), runs, this.catalogProfile(backend, instanceName));
       levels = metadata.strategy === "unsupported" ? [] : metadata.levels;
     } catch { return []; }
     // #1811: only the levels this host's launch of that backend will pass (launch-effort.ts, the gate the launch
@@ -25205,7 +25259,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
       if (!binary) return () => false;
       const path = resolveBinary(binary);
-      return level => flagEffort(backend, level, path).arg !== null;
+      // grok's help lists no values: the model's own levels (its models_cache.json) are what it takes.
+      const modelLevels = backend === "grok" ? readGrokEffortLevels(model) : null;
+      return level => flagEffort(backend, level, path, undefined, modelLevels).arg !== null;
     }
     if (backend === "codex") {
       // `model` is the next launch's, proven by the caller (prospectiveCodexModel); the catalog is codex's own cache.
@@ -29309,6 +29365,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         backend,
         effort,
         effort_source,
+        // Whether the chat header's effort chip is offered (shown as "auto" while none is set): the backend takes an
+        // effort setting at all. Absent from an older daemon: a newer page then shows the chip only for a set effort.
+        effort_supported: effortStrategy !== "unsupported" && effortOfferedUnasked(backend),
         ...this.instancePresentation(name),
         // Board 003648ac: the last web /compact, while it runs and briefly after (the chat's card follows it).
         ...(compact ? { compact } : {}),

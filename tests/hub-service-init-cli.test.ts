@@ -40,7 +40,7 @@ it.each([false, true])("Hub init service install uses its explicit home/backgrou
   if (active) writeFileSync(join(home, "fleet.pid"), "42");
   const io = scriptedIO(["Example Hub", `https://hub.example.test:${web}`, `https://hub.example.test:${member}`, `127.0.0.1:${web}`, `127.0.0.1:${member}`,
     certs.cert, certs.key, "corp", "ldaps://directory.example.test", certs.caCert, "y", "2", "DC=example,DC=test", "CN=Reader,DC=example,DC=test",
-    "1", { hidden: "Dummy-service-only" }, "alice", "y", "7", "30", "initialize", "install"]);
+    { hidden: "1" }, { hidden: "Dummy-service-only" }, "alice", "y", "7", "30", "initialize", "install"]);
   const directory = fakeDirectory({ "alice": { ok: true, person: ADMIN } }); state.io = io.io; state.create = directory.create;
   expect(await runHubInitCommand(new FakeIdentity())).toBe("initialized"); expect(io.remaining()).toBe(0);
   if (active) {

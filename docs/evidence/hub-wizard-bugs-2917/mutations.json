@@ -1,0 +1,114 @@
+{
+  "mutations": [
+    {
+      "name": "M1-fingerprint-cancels",
+      "file": "src/hub/init/wizard.ts",
+      "failedTests": 2,
+      "assertions": [
+        "CA refusal keeps earlier wizard answers returns to the CA choice on \"\" without trust, credentials or restarting the form",
+        "CA refusal keeps earlier wizard answers returns to the CA choice on \"not-a-fingerprint\" without trust, credentials or restarting the form"
+      ]
+    },
+    {
+      "name": "M2-fingerprint-ignored",
+      "file": "src/hub/init/wizard.ts",
+      "failedTests": 2,
+      "assertions": [
+        "CA refusal keeps earlier wizard answers returns to the CA choice on \"\" without trust, credentials or restarting the form",
+        "CA refusal keeps earlier wizard answers returns to the CA choice on \"not-a-fingerprint\" without trust, credentials or restarting the form"
+      ]
+    },
+    {
+      "name": "M3-url-unvalidated",
+      "file": "src/hub/init/wizard.ts",
+      "failedTests": 5,
+      "assertions": [
+        "directory endpoint is validated before CA choices or a TLS probe re-asks only the address for \"\"",
+        "directory endpoint is validated before CA choices or a TLS probe re-asks only the address for \"   \"",
+        "directory endpoint is validated before CA choices or a TLS probe re-asks only the address for \"ldap://directory.example.test\"",
+        "directory endpoint is validated before CA choices or a TLS probe re-asks only the address for \"https://directory.example.test\"",
+        "directory endpoint is validated before CA choices or a TLS probe re-asks only the address for \"ldaps://user:dummy@directory.example.test\""
+      ]
+    },
+    {
+      "name": "M4-method-echoes",
+      "file": "src/hub/init/wizard.ts",
+      "failedTests": 1,
+      "assertions": [
+        "treats a password accidentally entered at the method choice as hidden invalid input, never as a password or output"
+      ]
+    },
+    {
+      "name": "M5-path-echoes",
+      "file": "src/hub/init/wizard.ts",
+      "failedTests": 5,
+      "assertions": [
+        "private service-password file import in init and resume imports exact bytes after explicit file selection in en, without retaining the source path or echoing the secret",
+        "private service-password file import in init and resume imports exact bytes after explicit file selection in zh-TW, without retaining the source path or echoing the secret",
+        "private service-password file import in init and resume refuses a non-private file with fixed guidance and cancels before person sign-in or initialization",
+        "private service-password file import in init and resume can correct a bad source choice/file without carrying a rejected secret into initialization",
+        "private service-password file import in init and resume resumes the same sealed plan with an explicitly imported secret and retains the source file"
+      ]
+    },
+    {
+      "name": "M9-file-ca-refusal-cancels",
+      "file": "src/hub/init/wizard.ts",
+      "failedTests": 1,
+      "assertions": [
+        "CA refusal keeps earlier wizard answers returns to CA choices when the file CA is not approved"
+      ]
+    },
+    {
+      "name": "M10-fetched-ca-refusal-cancels",
+      "file": "src/hub/init/wizard.ts",
+      "failedTests": 1,
+      "assertions": [
+        "CA refusal keeps earlier wizard answers returns to CA choices when the fetch CA is not approved"
+      ]
+    },
+    {
+      "name": "M6-paints-before-raw",
+      "file": "src/hub/init/prompt.ts",
+      "failedTests": 1,
+      "assertions": [
+        "disables terminal echo before displaying a password prompt"
+      ]
+    },
+    {
+      "name": "M7-old-certificate-copy",
+      "file": "src/hub/init/text.ts",
+      "failedTests": 2,
+      "assertions": [
+        "explains company-join certificate/hostname requirements before offering generation (en)",
+        "explains company-join certificate/hostname requirements before offering generation (zh-TW)"
+      ]
+    },
+    {
+      "name": "M8-old-handoff-copy",
+      "file": "src/hub/init/text.ts",
+      "failedTests": 2,
+      "assertions": [
+        "leads the completed handoff with the company-account one-box path (en)",
+        "leads the completed handoff with the company-account one-box path (zh-TW)"
+      ]
+    }
+  ],
+  "restored": true,
+  "sourceDigests": [
+    {
+      "0c3b337a332bcff4b36e2f451727c6e50ef57f02b63eb27af8d90f07c9a0c34c": [
+        "src/hub/init/wizard.ts"
+      ]
+    },
+    {
+      "599c5c29e2cfa1ac32088f71c110df311d049d388c6777910c40bd90afd92b61": [
+        "src/hub/init/prompt.ts"
+      ]
+    },
+    {
+      "9ec1312fadd9d151dd07f393986a71e2454b16562b4a25886ccf24a529cabdcf": [
+        "src/hub/init/text.ts"
+      ]
+    }
+  ]
+}

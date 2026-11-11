@@ -54,11 +54,12 @@ export class HubTransportStore {
     } catch { this.failed = true; throw new HubProtocolError("uncertain"); }
   }
   /** owningDb is callback-scoped, for a same-transaction participant; never stash or use it after change returns. */
-  mutate<T>(event: Omit<HubAuditRecord, "id" | "sequence" | "policyVersion">, change: (state: HubTransportState, owningDb: Database.Database) => T): T {
+  mutate<T>(event: Omit<HubAuditRecord, "id" | "sequence" | "policyVersion">, change: (state: HubTransportState, owningDb: Database.Database) => T,
+    beforePublish?: () => void): T {
     let writing = false;
     try {
       return this.db.transaction(() => {
-        const state = this.read(), result = change(state, this.db);
+        const state = this.read(), previous = JSON.stringify(state), result = change(state, this.db);
         if (result && typeof (result as { then?: unknown }).then === "function") throw new HubProtocolError();
         state.revision++;
         validated(stateSchema, state);
@@ -69,6 +70,19 @@ export class HubTransportStore {
         const audited: unknown = this.options.appendAudit({ ...event, id: randomUUID(), sequence: state.revision, policyVersion: state.revocationVersion }, this.db);
         if (audited && typeof (audited as { then?: unknown }).then === "function") {
           void Promise.resolve(audited).catch(() => {}); throw new HubProtocolError("uncertain");
+        }
+        if (beforePublish) {
+          // The independent floor is already raised. Inside this uncommitted transaction only, match that revision
+          // while retaining the previous authorization image so captured permits can fence the last audit.
+          const readImage = () => (this.db.prepare("SELECT state FROM hub_transport_state WHERE singleton=1").get() as { state: string }).state;
+          if (readImage() !== previous) throw new HubProtocolError("uncertain");
+          const staged = JSON.stringify({ ...JSON.parse(previous), revision: state.revision });
+          this.db.prepare("UPDATE hub_transport_state SET state=? WHERE singleton=1").run(staged);
+          const checked: unknown = beforePublish();
+          if (checked && typeof (checked as { then?: unknown }).then === "function") {
+            void Promise.resolve(checked).catch(() => {}); throw new HubProtocolError("uncertain");
+          }
+          if (readImage() !== staged || this.options.floor.read() !== state.revision) throw new HubProtocolError("uncertain");
         }
         this.db.prepare("UPDATE hub_transport_state SET state=? WHERE singleton=1").run(JSON.stringify(state));
         return result;

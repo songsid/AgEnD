@@ -2,7 +2,7 @@
  * `agend hub init` (S-48 / S5a; #3095 "Installing a Hub" addendum, hub.md §5). Steps:
  *   same-account check → name and addresses → browser HTTPS certificate → directory (LDAPS) and first-admin lookup
  *   → local confirmation of that immutable identity → retention → confirm → commit (enabled last)
- *   → optional service install (explicit) → member pairing instructions.
+ *   → optional service install (explicit) → company-join and advanced pairing instructions.
  * No Hub is installed before final confirmation. Explicit certificate generation uses private temporary staging.
  */
 import { hubHandoffLines } from "./handoff.js";
@@ -321,10 +321,11 @@ async function askBindSecret(deps: HubWizardDeps): Promise<string | undefined> {
   const { io } = deps;
   for (;;) {
     if (!deps.readSecretFile) return io.askHidden(ht("dir_bind_pw_q"));
-    const choice = (await io.ask(ht("dir_bind_source_q"))).trim();
+    // A person may enter their password at this choice instead of the next prompt. Hide the whole secret step.
+    const choice = (await io.askHidden(ht("dir_bind_source_q"))).trim();
     if (!choice || choice === "1") return io.askHidden(ht("dir_bind_pw_q"));
     if (choice !== "2") { io.say(ht("dir_bind_source_invalid")); continue; }
-    const path = (await io.ask(ht("dir_bind_file_q"))).trim();
+    const path = (await io.askHidden(ht("dir_bind_file_q"))).trim();
     try { return deps.readSecretFile(path); }
     catch (err) {
       if (err instanceof WizardCancelled) throw err;
@@ -334,11 +335,22 @@ async function askBindSecret(deps: HubWizardDeps): Promise<string | undefined> {
   }
 }
 
-async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: HubDirectoryConfig; bindPassword: string } | undefined> {
+async function askDirectoryUrl(io: WizardIO): Promise<string> {
+  for (;;) {
+    const url = (await io.ask(ht("dir_url_q"))).trim();
+    try {
+      // Reuse the runtime's LDAPS-only endpoint checks before any certificate probe or other directory question.
+      resolveDirectoryConfig({ realm: "bootstrap", url, baseDn: "cn=bootstrap", bindDn: "cn=bootstrap", profile: "ad" });
+      return url;
+    } catch { io.say(ht("dir_url_invalid")); }
+  }
+}
+
+async function askDirectoryCa(deps: HubWizardDeps, url: string): Promise<{
+  caPem?: string; pending?: { probe: DirectoryCertificateProbe; pin: string };
+} | undefined> {
   const { io } = deps;
   for (;;) {
-    const realm = (await io.ask(ht("dir_realm_q"))).trim();
-    const url = (await io.ask(ht("dir_url_q"))).trim();
     const caFile = (await io.ask(ht("dir_ca_q"))).trim();
     let caPem: string | undefined, pending: { probe: DirectoryCertificateProbe; pin: string } | undefined;
     if (caFile.toLowerCase() === "fetch") {
@@ -348,10 +360,13 @@ async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: H
         io.say(ht("dir_leaf_unverified"));
         io.say(ht("dir_ca_details", probe.certificate.subject, probe.certificate.fingerprint256, probe.certificate.validTo));
         const pin = await io.ask(ht("dir_leaf_confirm_q"));
-        if (!sameDirectoryFingerprint(probe.certificate.fingerprint256, pin)) { io.say(ht("dir_leaf_refused")); return undefined; }
+        if (!sameDirectoryFingerprint(probe.certificate.fingerprint256, pin)) {
+          io.say(ht(pin.trim() ? "dir_leaf_refused" : "dir_ca_not_approved"));
+          continue;
+        }
         try {
           const bundle = await deps.directoryCertificates.fetch(probe, pin);
-          if (!await confirmDirectoryCa(io, bundle.pem)) return undefined;
+          if (!await confirmDirectoryCa(io, bundle.pem)) { io.say(ht("dir_ca_not_approved")); continue; }
           caPem = bundle.pem;
         } catch (err) {
           if (err instanceof Error && err.message === "directory_ca_auth_required") pending = { probe, pin };
@@ -366,7 +381,7 @@ async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: H
     } else if (caFile) {
       try {
         caPem = deps.readFile(caFile);
-        if (!await confirmDirectoryCa(io, caPem)) return undefined;
+        if (!await confirmDirectoryCa(io, caPem)) { io.say(ht("dir_ca_not_approved")); continue; }
       } catch (err) {
         if (err instanceof WizardCancelled) throw err;
         io.say(ht("dir_ca_unreadable"));
@@ -374,6 +389,18 @@ async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: H
         continue;
       }
     }
+    return { caPem, pending };
+  }
+}
+
+async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: HubDirectoryConfig; bindPassword: string } | undefined> {
+  const { io } = deps;
+  for (;;) {
+    const realm = (await io.ask(ht("dir_realm_q"))).trim();
+    const url = await askDirectoryUrl(io);
+    const ca = await askDirectoryCa(deps, url);
+    if (!ca) return undefined;
+    const { caPem, pending } = ca;
     const profile = (await io.ask(ht("dir_profile_q"))).trim() === "2" ? "openldap" : "ad";
     const baseDn = (await io.ask(ht("dir_base_q"))).trim();
     const bindDn = (await io.ask(ht("dir_bind_q"))).trim();

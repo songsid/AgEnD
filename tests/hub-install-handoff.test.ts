@@ -65,7 +65,7 @@ it.each(["en", "zh-TW"] as const)("shows scoped commands and retained-data/pairi
   try { await runHubHandoffCommand(); expect(process.exitCode).toBe(previous); } finally { process.exitCode = previous; }
   const text = output.mock.calls.flat().join("\n");
   for (const command of ["stop", "restart", "uninstall", "hub handoff"]) expect(text).toContain(`AGEND_HOME='${root}' agend ${command}`);
-  expect(text).toContain("/inert/service"); expect(text).toContain("https://hub.example.test:8443/web");
+  expect(text).toContain("/inert/service"); expect(text).toContain("https://hub.example.test:8443/ui/hub");
   expect(text).toContain(locale === "en" ? "every agent" : "所有 agent"); expect(text).toContain(locale === "en" ? "does not erase" : "不會抹除");
   expect(text).not.toContain("Dummy-bind-secret-only"); expect(text).not.toContain("--force");
   expect(readFileSync(join(root, "fleet.yaml"))).toEqual(before); expect(readFileSync(join(root, "hub/secrets/directory-bind"))).toEqual(secret);

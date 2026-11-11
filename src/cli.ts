@@ -144,6 +144,20 @@ setLocale(detectLocale(configForLocale));
 
 const program = new Command();
 
+// These read-only entry points need an existing fleet. Check once before any
+// token lookup, YAML read or status probe; setup/help/version remain available.
+program.hook("preAction", (_hooked, action) => {
+  const readOnly = action.parent === program && ["ls", "status", "web"].includes(action.name());
+  const legacyStatus = action.name() === "status" && action.parent?.name() === "fleet";
+  if (!readOnly && !legacyStatus) return;
+  try { statSync(FLEET_CONFIG_PATH); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    console.error(t("cli.setup_required"));
+    process.exit(1);
+  }
+});
+
 /**
  * #2481: an installed version whose fleet keeps failing to start is said on every command, with what to run to go back.
  * Not for the fleet process itself (its own `fleet start`/`stop`, whose output is the service's log), completion, or
@@ -3808,8 +3822,11 @@ program
     const { spawnSync } = await import("node:child_process");
     const self = (args: string[]) => spawnSync(process.execPath, [process.argv[1]!, ...args], { stdio: "inherit" });
     const fleetPid = (() => { try { return parseInt(readFileSync(join(DATA_DIR, "fleet.pid"), "utf-8").trim(), 10); } catch { return NaN; } })();
+    const { npmForUpdate } = await import("./update-dispatch.js");
     const result = await rollback({
       agendHome: DATA_DIR, from: pkgVersion, to: version.replace(/^v/, ""),
+      // M-2897: the npm that manages this install, also when PATH has none — first on PATH for npm install and agend start.
+      async npm() { const r = await npmForUpdate(); if (!r.ok) return r; if (r.path !== null) process.env.PATH = r.path; return { ok: true }; },
       socket: readServerRecord(DATA_DIR)?.socket ?? tmuxSocket(),
       async stopFleet() { const r = self(["stop", "--yes"]); return { ok: r.status === 0, detail: `agend stop exited ${r.status ?? r.signal}` }; },
       async fleetGone() {

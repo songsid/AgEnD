@@ -1,0 +1,38 @@
+Installed build: source · eeae77d272f5 (package 1.22.0). Run agend build-info --json for source details.
+
+═══ AgEnD Hub setup (experimental) ═══
+A Hub lets colleagues sign in with your organisation's directory and ask agents that fleet owners choose to publish.
+The Hub runs no agents and needs no AI CLI sign-in. Best placement: a dedicated, always-on machine or OS account with a stable intranet address.
+
+Hub name (optional; Enter shows “AgEnD Hub”): Retained setup
+Web address colleagues will open (https://host[:port]; a stable intranet IP or host name): https://hub.example.test:18601
+Member address fleets will connect to (https://host:port, different from the web address) [https://hub.example.test:9443]: https://hub.example.test:18602
+Web listener: the interface address and port to listen on []: 127.0.0.1:18601
+Member listener: the interface address and port to listen on []: 127.0.0.1:18602
+Checking the Hub's two local listeners…
+Both Hub listeners can bind locally; the check sockets are now closed. This does not test DNS from other computers, firewall access or reverse-proxy routing. Test both advertised HTTPS addresses from a member computer after startup.
+
+Browser HTTPS certificate
+To let colleagues connect with company accounts, Hub needs a certificate issued by your organisation's CA or another trusted CA, covering https://hub.example.test:18601. Hub and Fleet must use different hostnames (different ports are not enough). Self-signed certificates are for testing: bypassing a browser warning does not make a Fleet trust it.
+Certificate file (PEM, full chain), or type generate for a 30-day self-signed certificate: /opt/fixture/hub-chain.pem
+Its private key file (PEM, not encrypted): /opt/fixture/hub.key
+Browser certificate SHA-256: E7:37:A1:A3:57:A0:42:5A:5E:A5:25:18:AE:26:7C:1A:F1:B0:35:A5:41:EA:BB:B3:4E:38:59:99:66:FA:57:44
+Certificate for hub.example.test, valid until Nov 13 11:14:05 2026 GMT.
+
+Directory (LDAP / Active Directory, LDAPS only)
+Directory id: a short stable name for this directory, lowercase (for example “corp”): example
+Directory address (ldaps://host[:port]): ldaps://directory.example.test
+Directory CA: PEM file, “fetch” to inspect and fetch from this directory, or Enter for system roots: fetch
+The directory presented this certificate. Its issuer is not trusted yet. No login or password has been sent.
+Certificate: CN=directory.example.test
+SHA-256: 21:82:F4:7C:78:C8:07:C8:C8:BB:FF:CC:CC:8B:99:32:3C:F2:4A:46:6D:D4:02:C6:D0:4A:45:58:1E:AF:29:2D
+Expires: Nov 13 11:14:05 2026 GMT
+Compare it using a trusted source. Type the full SHA-256 fingerprint to allow a one-time CA lookup, or press Enter to return to the CA choices and keep your earlier answers:
+No CA was approved. Your earlier answers are kept; choose a CA option again.
+Directory CA: PEM file, “fetch” to inspect and fetch from this directory, or Enter for system roots: /opt/fixture/ca.pem
+Compare each CA fingerprint with a trusted copy from your directory administrator or certificate store.
+Certificate: CN=wizard-test-ca
+SHA-256: 44:09:9E:F6:1C:40:C8:18:27:78:46:D9:C7:50:5F:30:D3:EE:2D:B4:65:A7:30:D9:76:52:22:49:7C:D1:01:A3
+Expires: Nov 13 11:14:05 2026 GMT
+Trust these exact CA certificates for this Hub directory? [y/N]
+Cancelled. Nothing was changed.

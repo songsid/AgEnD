@@ -16,6 +16,9 @@ set -euo pipefail
 
 # ── Helpers ───────────────────────────────────────────────
 
+# Package managers and their child scripts must receive EOF, not the rest of curl | bash.
+# sudo may authenticate through its controlling terminal; without one it must fail, never read the script.
+
 # Default SUDO — empty for root, "sudo" for regular users
 if [ "$(id -u)" -eq 0 ]; then
   SUDO=""
@@ -126,16 +129,19 @@ if [ "$NODE_OK" = false ]; then
 
   # Install nvm if not present
   if [ ! -d "${NVM_DIR:-$HOME/.nvm}" ]; then
-    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+    # Fetch first: the child shell must not share the piped installer as stdin.
+    NVM_INSTALL_SCRIPT=$(curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh </dev/null)
+    bash -c "$NVM_INSTALL_SCRIPT" </dev/null
+    unset NVM_INSTALL_SCRIPT
   fi
 
   export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
   # shellcheck source=/dev/null
-  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" </dev/null
 
-  nvm install 22
-  nvm use 22
-  nvm alias default 22
+  nvm install 22 </dev/null
+  nvm use 22 </dev/null
+  nvm alias default 22 </dev/null
 
   # Restore command_exists if we shadowed it for WSL
   if [ "$IS_WSL" = true ]; then
@@ -176,7 +182,7 @@ fi
 # Ensure nvm node is first in PATH on WSL
 if [ "$IS_WSL" = true ] && [ -d "${NVM_DIR:-$HOME/.nvm}" ]; then
   export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
-  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" </dev/null
   NODE_BIN_PATH=$(command -v node 2>/dev/null || true)
   if [[ "$NODE_BIN_PATH" == /mnt/[a-z]/* ]]; then
     warn "Windows node still first in PATH — nvm node may not be active"
@@ -192,15 +198,15 @@ if command_exists tmux; then
 else
   echo "  Installing tmux..."
   case "$PKG_MGR" in
-    brew)   brew install tmux ;;
+    brew)   NONINTERACTIVE=1 brew install tmux </dev/null ;;
     apt|dnf|pacman)
       if [ "$(id -u)" -ne 0 ] && ! command_exists sudo; then
         error "Cannot install tmux automatically (sudo is not available). Please install tmux and re-run."
       fi
       case "$PKG_MGR" in
-        apt)    $SUDO apt-get update -qq && $SUDO apt-get install -y -qq tmux ;;
-        dnf)    $SUDO dnf install -y tmux ;;
-        pacman) $SUDO pacman -S --noconfirm tmux ;;
+        apt)    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update -qq </dev/null && $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tmux </dev/null ;;
+        dnf)    $SUDO dnf install -y tmux </dev/null ;;
+        pacman) $SUDO pacman -S --noconfirm tmux </dev/null ;;
       esac
       ;;
     *)      error "Cannot install tmux automatically. Please install manually." ;;
@@ -223,14 +229,14 @@ if ! command_exists g++; then
   echo "  First-time setup can take several minutes. Package-manager progress will be shown below; please wait."
   case "$PKG_MGR" in
     brew)   ;; # macOS Xcode CLT usually provides this
-    apt)    $SUDO apt-get update && $SUDO apt-get install -y build-essential python3 ;;
-    dnf)    $SUDO dnf groupinstall -y "Development Tools" ;;
-    pacman) $SUDO pacman -S --noconfirm base-devel ;;
+    apt)    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update </dev/null && $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential python3 </dev/null ;;
+    dnf)    $SUDO dnf groupinstall -y "Development Tools" </dev/null ;;
+    pacman) $SUDO pacman -S --noconfirm base-devel </dev/null ;;
   esac
 fi
 
 if command_exists agend; then
-  CURRENT=$(agend --version 2>/dev/null || echo "unknown")
+  CURRENT=$(agend --version </dev/null 2>/dev/null || echo "unknown")
   warn "AgEnD already installed (${CURRENT}), upgrading..."
 fi
 
@@ -241,7 +247,7 @@ fi
 # or the prefix is under $HOME, create the missing directories. After that, pick
 # sudo from whether lib/node_modules or lib is writable. A writable prefix must
 # not override an existing unwritable lib (mkdir -p does not chmod it).
-NPM_PREFIX=$(npm config get prefix 2>/dev/null || echo "/usr/local")
+NPM_PREFIX=$(npm config get prefix </dev/null 2>/dev/null || echo "/usr/local")
 npm_prefix_existing="$NPM_PREFIX"
 while [ ! -e "$npm_prefix_existing" ]; do
   npm_prefix_parent=$(dirname "$npm_prefix_existing")
@@ -263,19 +269,19 @@ fi
 # <<< npm-prefix sudo
 
 # Remove old @suzuke/agend if present (bin name conflict)
-if npm list -g @suzuke/agend >/dev/null 2>&1; then
+if npm list -g @suzuke/agend </dev/null >/dev/null 2>&1; then
   warn "Removing old @suzuke/agend to avoid conflicts..."
-  $SUDO npm uninstall -g @suzuke/agend 2>/dev/null || true
+  $SUDO npm uninstall -g @suzuke/agend </dev/null 2>/dev/null || true
   # Remove leftover binary symlink (npm uninstall sometimes leaves it)
-  rm -f "$(npm prefix -g)/bin/agend" 2>/dev/null || true
+  rm -f "$(npm prefix -g </dev/null)/bin/agend" 2>/dev/null || true
 elif command_exists agend; then
   AGEND_REAL=$(readlink -f "$(command -v agend)" 2>/dev/null || true)
   if [[ "$AGEND_REAL" == */AgEnD/* ]] || [[ "$AGEND_REAL" == *"@suzuke/agend"* ]] || [[ "$AGEND_REAL" == */Projects/* ]]; then
     warn "Removing npm-linked @suzuke/agend..."
     AGEND_BIN_DIR=$(dirname "$(command -v agend)")
-    $SUDO rm -f "$AGEND_BIN_DIR/agend" "$AGEND_BIN_DIR/agend-agent" 2>/dev/null || true
+    $SUDO rm -f "$AGEND_BIN_DIR/agend" "$AGEND_BIN_DIR/agend-agent" </dev/null 2>/dev/null || true
     NVM_MODULES="$(dirname "$AGEND_BIN_DIR")/lib/node_modules/@suzuke"
-    $SUDO rm -rf "$NVM_MODULES" 2>/dev/null || true
+    $SUDO rm -rf "$NVM_MODULES" </dev/null 2>/dev/null || true
   fi
 fi
 
@@ -336,9 +342,9 @@ ensurePrivateHome(process.env.AGEND_HOME || path.join(require("os").homedir(), "
 AGEND_PRIVATE_HOME
 # <<< private-home bootstrap
 AGEND_SPEC="@songsid/agend@${AGEND_VERSION:-latest}"
-if npm view "$AGEND_SPEC" bin --json 2>/dev/null | grep -q '"agend-install"'; then
+if npm view "$AGEND_SPEC" bin --json </dev/null 2>/dev/null | grep -q '"agend-install"'; then
   installer_rc=0
-  $SUDO npm exec --yes --package "$AGEND_SPEC" -- agend-install || installer_rc=$?
+  $SUDO npm exec --yes --package "$AGEND_SPEC" -- agend-install </dev/null || installer_rc=$?
   if [ "$installer_rc" -eq 75 ]; then
     # #2284: the installer could not take the install lock and said why above — most often another AgEnD install that
     # is still running (then: let it finish), sometimes something left behind that it names. Not a failed install.
@@ -352,14 +358,17 @@ if npm view "$AGEND_SPEC" bin --json 2>/dev/null | grep -q '"agend-install"'; th
   fi
 else
   # A release from before the installer (this page can be newer than the release it installs).
-  $SUDO npm install -g "$AGEND_SPEC" || error "Installation failed. Try: npm install -g $AGEND_SPEC"
+  $SUDO npm install -g "$AGEND_SPEC" </dev/null || error "Installation failed. Try: npm install -g $AGEND_SPEC"
 fi
 # <<< agend-installer step
 hash -r 2>/dev/null || true
 if ! command_exists agend; then
   error "Installation finished, but \`agend\` is not on PATH. Open a new terminal (or: source ~/.profile)."
 fi
-info "AgEnD $(agend --version) installed"
+if ! AGEND_INSTALLED_VERSION=$(agend --version </dev/null) || [ -z "$AGEND_INSTALLED_VERSION" ]; then
+  error "Installation finished, but agend --version could not run from your PATH. Run this installer again to repair the installation (see the error above)."
+fi
+info "AgEnD $AGEND_INSTALLED_VERSION installed"
 
 # ── Shell completion ───────────────────────────────────────
 # bash: static file in bash-completion's completions dir — no rc file touched,
@@ -370,9 +379,9 @@ info "AgEnD $(agend --version) installed"
 #   otherwise agend says exactly what to run.
 if [ -z "${AGEND_NO_COMPLETION:-}" ] && command_exists agend; then
   if [ -n "${AGEND_MODIFY_RC:-}" ]; then
-    agend completion install --modify-rc || true
+    agend completion install --modify-rc </dev/null || true
   else
-    agend completion install || true
+    agend completion install </dev/null || true
   fi
 fi
 

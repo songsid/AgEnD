@@ -1,0 +1,152 @@
+{
+  "journeys": [
+    {
+      "tree": "base",
+      "locale": "en",
+      "container": "cairn-wizard-2917-agend-wizard-2917.nhbuci",
+      "cases": [
+        {
+          "case": "empty-address",
+          "bugReproduced": true,
+          "advancedPastEmptyAddress": true
+        },
+        {
+          "case": "fingerprint-enter",
+          "bugReproduced": true,
+          "exitAfterEnter": 0
+        },
+        {
+          "case": "secret-method",
+          "misplacedSecretEchoed": true,
+          "completedAfterCorrection": false,
+          "noSecretInHandoff": false,
+          "privateSecretOnly": false
+        },
+        {
+          "case": "handoff",
+          "companyJoinLeads": false,
+          "passwordNotEchoed": true
+        },
+        {
+          "case": "certificate-guidance",
+          "requirementsBeforeCertificateChoice": false
+        }
+      ],
+      "realAd": false,
+      "pilot": false,
+      "passwordsInArgv": false,
+      "outputSecretSubstitution": "only the baseline canary and fixture credential if present"
+    },
+    {
+      "tree": "base",
+      "locale": "zh-TW",
+      "container": "cairn-wizard-2917-agend-wizard-2917.nhbuci",
+      "cases": [
+        {
+          "case": "empty-address",
+          "bugReproduced": true,
+          "advancedPastEmptyAddress": true
+        },
+        {
+          "case": "fingerprint-enter",
+          "bugReproduced": true,
+          "exitAfterEnter": 0
+        },
+        {
+          "case": "secret-method",
+          "misplacedSecretEchoed": true,
+          "completedAfterCorrection": false,
+          "noSecretInHandoff": false,
+          "privateSecretOnly": false
+        },
+        {
+          "case": "handoff",
+          "companyJoinLeads": false,
+          "passwordNotEchoed": true
+        },
+        {
+          "case": "certificate-guidance",
+          "requirementsBeforeCertificateChoice": false
+        }
+      ],
+      "realAd": false,
+      "pilot": false,
+      "passwordsInArgv": false,
+      "outputSecretSubstitution": "only the baseline canary and fixture credential if present"
+    },
+    {
+      "tree": "candidate",
+      "locale": "en",
+      "container": "cairn-wizard-2917-agend-wizard-2917.nhbuci",
+      "cases": [
+        {
+          "case": "empty-address",
+          "invalidAddressBlocked": true
+        },
+        {
+          "case": "fingerprint-enter",
+          "returnedToCaChoices": true,
+          "previousAnswersKept": true
+        },
+        {
+          "case": "secret-method",
+          "misplacedSecretEchoed": false,
+          "completedAfterCorrection": true,
+          "noSecretInHandoff": true,
+          "privateSecretOnly": true
+        },
+        {
+          "case": "handoff",
+          "companyJoinLeads": true,
+          "passwordNotEchoed": true
+        },
+        {
+          "case": "certificate-guidance",
+          "requirementsBeforeCertificateChoice": true
+        }
+      ],
+      "realAd": false,
+      "pilot": false,
+      "passwordsInArgv": false,
+      "outputSecretSubstitution": "only the baseline canary and fixture credential if present"
+    },
+    {
+      "tree": "candidate",
+      "locale": "zh-TW",
+      "container": "cairn-wizard-2917-agend-wizard-2917.nhbuci",
+      "cases": [
+        {
+          "case": "empty-address",
+          "invalidAddressBlocked": true
+        },
+        {
+          "case": "fingerprint-enter",
+          "returnedToCaChoices": true,
+          "previousAnswersKept": true
+        },
+        {
+          "case": "secret-method",
+          "misplacedSecretEchoed": false,
+          "completedAfterCorrection": true,
+          "noSecretInHandoff": true,
+          "privateSecretOnly": true
+        },
+        {
+          "case": "handoff",
+          "companyJoinLeads": true,
+          "passwordNotEchoed": true
+        },
+        {
+          "case": "certificate-guidance",
+          "requirementsBeforeCertificateChoice": true
+        }
+      ],
+      "realAd": false,
+      "pilot": false,
+      "passwordsInArgv": false,
+      "outputSecretSubstitution": "only the baseline canary and fixture credential if present"
+    }
+  ],
+  "cases": 20,
+  "hostNamespacesUnchanged": true
+}
