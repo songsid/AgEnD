@@ -680,6 +680,7 @@ register("pendingSummary", {
     "hub.pairing.summary.disconnect": "Disconnect this fleet from the Hub at {0} ({1}, pairing {2})",
     "hub.pairing.summary.withdraw": "Every agent shared there is withdrawn; the Hub's administrator revokes the fleet there",
     "settings_confirm.summary.default": "default", "settings_confirm.summary.absent": "absent", "settings_confirm.summary.fingerprint": "fingerprint",
+    "settings_confirm.summary.text_chars": "{0} characters", "settings_confirm.summary.text_none": "not set",
     "settings_confirm.summary.in_effect": "{0} (in effect)", "settings_confirm.summary.inherit": " — {0} agent(s) inherit it: {1}", "settings_confirm.summary.more": " +{0} more",
     "settings_confirm.summary.deleted": "deleted", "settings_confirm.summary.add": "add", "settings_confirm.summary.remove": "remove", "settings_confirm.summary.order": "order",
     "settings_confirm.summary.removed": "field removed (inherit/omitted policy)", "settings_confirm.summary.connections": "ordered connections / primary",
@@ -720,6 +721,7 @@ register("pendingSummary", {
     "hub.pairing.summary.disconnect": "中斷這個 Fleet 與 {0} 的 Hub 連接（{1}，配對 {2}）",
     "hub.pairing.summary.withdraw": "撤下所有分享到該 Hub 的 Agent；由 Hub 管理員在該處撤銷這個 Fleet",
     "settings_confirm.summary.default": "預設", "settings_confirm.summary.absent": "未設定", "settings_confirm.summary.fingerprint": "指紋",
+    "settings_confirm.summary.text_chars": "{0} 字", "settings_confirm.summary.text_none": "未設定",
     "settings_confirm.summary.in_effect": "{0}（實際生效）", "settings_confirm.summary.inherit": " — {0} 個 agent 繼承此設定：{1}", "settings_confirm.summary.more": " 等另外 {0} 個",
     "settings_confirm.summary.deleted": "已刪除", "settings_confirm.summary.add": "新增", "settings_confirm.summary.remove": "移除", "settings_confirm.summary.order": "順序",
     "settings_confirm.summary.removed": "已移除欄位（繼承／未指定的政策）", "settings_confirm.summary.connections": "連接順序／主要連接",
@@ -760,7 +762,8 @@ const pendingSummaryArguments = Object.fromEntries([
   ["hub.pairing.summary.confirm", "s"],
   ["hub.pairing.summary.disconnect", "sss"],
   ["hub.pairing.summary.withdraw", ""],
-  ...["default", "absent", "fingerprint", "deleted", "add", "remove", "order", "removed", "connections", "connection", "confirmed", "role.classicAdmin", "role.fleetAdmin", "role.user", "role.group", "role.guild"].map(key => [`settings_confirm.summary.${key}`, ""]),
+  ...["default", "absent", "fingerprint", "deleted", "add", "remove", "order", "removed", "connections", "connection", "confirmed", "role.classicAdmin", "role.fleetAdmin", "role.user", "role.group", "role.guild", "text_none"].map(key => [`settings_confirm.summary.${key}`, ""]),
+  ["settings_confirm.summary.text_chars", "n"],
   ["settings_confirm.summary.in_effect", "s"], ["settings_confirm.summary.inherit", "ns"], ["settings_confirm.summary.more", "n"],
 ]);
 function legacyPendingSummaryLine(line) {

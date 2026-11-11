@@ -1029,7 +1029,7 @@ fleet 指示以附加的方式注入，不會覆蓋 CLI 內建的系統提示。
 
 ## systemPrompt 檔案路徑 (systemPrompt file paths)
 
-fleet.yaml 的 `systemPrompt` 欄位支援 `file:` 前綴，從檔案載入內容：
+fleet.yaml 的 `systemPrompt` 欄位（儀表板上 Agent「設定 › 基本資料」裡的「Agent 指示」，以前叫「System prompt」，是同一個欄位）支援 `file:` 前綴，從檔案載入內容：
 
 ```yaml
 instances:
@@ -1040,6 +1040,32 @@ instances:
 相對路徑以 **instance 的 `working_directory`** 為基準（#1314）；`~/` 與絕對路徑照原樣使用。這個目錄只是相對路徑的*起點*，不是邊界：`../` 與符號連結可以離開它，就像絕對路徑可以指向 fleet 使用者讀得到的任何檔案一樣。`~name/`（其他使用者的家目錄）不支援，會發出警告並拒絕，絕不會當成名為 `~name` 的目錄來讀。這項變更以前是以 fleet 程序的目前目錄為基準（安裝的服務下是 `~/.agend`，手動執行 `agend fleet start` 時是 shell 所在目錄）。為了相容：相對路徑在 working_directory 下找不到檔案、但舊的 fleet 目錄下有時，仍會改用舊檔案，log 會列出兩個路徑，並在該 instance 的主題通知一次。這個退回機制仍然存在，之後的版本會移除；請將檔案移到 instance 的工作目錄以消除警告。
 
 可以用逗號串接多個部分（`"file:a.md, file:b.md"`，中間也可以夾行內文字），各部分之間以空行連接。**只有至少一個部分是 `file:` 參照時**才會以逗號切分，所以像 `"You are Kuro, a careful reviewer"` 這樣的行內提示會維持一段。讀不到、超過 256 KiB，或不是一般檔案（例如 FIFO 或裝置，開啟時不會阻塞）的檔案不會貢獻任何內容；log 會列出它的路徑與錯誤（絕不列出內容），設定驗證也會對找不到檔案的參照發出警告。`workflow: "file:…"` 設定也用同樣的方式讀檔。
+
+## 導出 Agent 設定與載入範本
+
+在儀表板上，Agent 的「設定 › 基本資料 › Agent 指示」卡片有「導出」與「載入範本」。導出會把這個 Agent **已儲存**的可攜設定寫成 `<角色>.agend-agent.yaml`：
+
+```yaml
+agend_export: 1
+kind: agent
+role: reviewer
+agent:
+  description: Reviews UI changes
+  tags: [review, ui]
+  systemPrompt: |        # Agent 指示（即 `systemPrompt` 欄位），只導出寫出來的文字
+    # Role …
+  model: claude-sonnet-5-5
+  tool_set: coordinator
+behavior:
+  tool_progress: standard
+library: { skills: [], mcp: [] }   # 預留
+```
+
+- **白名單。** 只寫入、只讀取上面這些欄位。帳號與憑證設定檔、密鑰、頻道與討論串 ID、`working_directory`、`machine_id`、`dashboard`／`skipPermissions`、`pre_task_command`、Status emojis、用量提醒與顯示名稱一律不導出；檔案裡若有這些，載入時略過並說明原因。
+- **密鑰掃描。** 描述、標籤或 Agent 指示看起來含有密鑰（API key、token、私鑰、網址內的密碼…）時，會擋下複製與下載，移除後才能導出。
+- **不導出 `file:` 引用**（它指向導出者電腦上的檔案）；載入時檔案裡的 `file:` 值會略過而不是填入。超過 24,000 字元（編輯器上限）的文字不會放進導出檔，對話框會說明。
+- **載入只填表單。** 仍要按「儲存」並走原本的確認流程。尚未發佈的草稿格式（`agent.instructions`）會被列為不認得的欄位。
+- **範本。** `deploy_template` 與 `create_instance` 照舊傳遞 `systemPrompt`。沒有 `instructions` 參數或範本鍵：給了也會被忽略。
 
 ## 分批錯開啟動 (Staggered startup)
 

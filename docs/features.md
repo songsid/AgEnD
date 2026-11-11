@@ -1071,7 +1071,7 @@ The message is still delivered — the warning is advisory, letting the sender d
 
 ## systemPrompt file paths
 
-The `systemPrompt` field in fleet.yaml supports a `file:` prefix to load content from a file:
+The `systemPrompt` field in fleet.yaml — shown in the dashboard as **Agent instructions** (Settings › Basic info of an agent; it used to be called "System prompt", and it is the same field) — supports a `file:` prefix to load content from a file:
 
 ```yaml
 instances:
@@ -1082,6 +1082,32 @@ instances:
 A relative path is resolved against the **instance's `working_directory`** (#1314); `~/` and absolute paths are used as given. That directory is where a relative path *starts*, not a boundary: `../` and symlinks can lead out of it, just as an absolute path can name any file the fleet's user can read. `~name/` (another user's home) is not supported; it is refused with a warning, never read as a directory called `~name`. Before this change it was the fleet process's current directory (`~/.agend` under the installed service, the shell's directory after a manual `agend fleet start`). For compatibility, a relative path whose file is missing under the working directory still falls back to the old fleet-directory file: the log names both paths and the instance's topic is told once. The fallback is still there, and a later release will remove it; move the file under the instance’s working directory to remove the warning.
 
 Several parts can be combined with commas (`"file:a.md, file:b.md"`, inline text allowed between them); they are joined with blank lines. The value is split on commas **only when at least one part is a `file:` reference**, so an inline prompt such as `"You are Kuro, a careful reviewer"` stays one paragraph. A file that cannot be read, is larger than 256 KiB, or is not a regular file (a FIFO or a device — opened without blocking) contributes nothing; the log names its path and the error (never its contents), and config validation warns about a reference that names no file. The `workflow: "file:…"` setting reads its file the same way.
+
+## Exporting an agent's settings and loading a template
+
+In the dashboard, an agent's **Settings › Basic info › Agent instructions** card has **Export** and **Load template**. Export writes the agent's *saved* portable settings as `<role>.agend-agent.yaml`:
+
+```yaml
+agend_export: 1
+kind: agent
+role: reviewer
+agent:
+  description: Reviews UI changes
+  tags: [review, ui]
+  systemPrompt: |        # the Agent instructions (the `systemPrompt` field), written text only
+    # Role …
+  model: claude-sonnet-5-5
+  tool_set: coordinator
+behavior:
+  tool_progress: standard
+library: { skills: [], mcp: [] }   # reserved
+```
+
+- **Allow-list.** Only the fields above are written or read. Accounts and credential profiles, keys, channel and topic ids, `working_directory`, `machine_id`, `dashboard` / `skipPermissions`, `pre_task_command`, status emojis, quota notices and the display name are never exported, and a file that carries them has them skipped (with the reason) on load.
+- **Secret scan.** A Description, tags or Agent instructions that look like a secret (API keys, tokens, private keys, passwords in URLs…) block Copy and Download until removed.
+- **`file:` references are not exported** (they name a file on the exporter's computer), and a loaded file's `file:` value is skipped, not filled. A text longer than 24,000 characters (the editor's limit) is left out of an export, and the dialog says so.
+- **Loading only fills the form.** Save and the usual confirmations still apply. A file from the unreleased draft format (`agent.instructions`) is reported as an unknown field.
+- **Templates.** `deploy_template` and `create_instance` pass `systemPrompt` as before. There is no `instructions` argument or template key: one that is given is ignored.
 
 ## Staggered startup
 

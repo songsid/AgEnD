@@ -54,6 +54,21 @@ function fingerprint(value: unknown): string {
   return createHash("sha256").update(String(value)).digest("hex").slice(0, 12);
 }
 function fingerprintParts(value: unknown): SettingsSummaryPart[] { const valueHash = fingerprint(value); return valueHash === "absent" ? [word("absent")] : [valueHash]; }
+/**
+ * A long free text for a confirmation card: its length, fingerprint and first words — never the whole of it. Only an
+ * agent's `systemPrompt` is shown this way, and only when it is long (a short text or a `file:` reference is still listed
+ * whole, as it always was), so a text of up to 24,000 characters neither fills the 4,096 the card holds
+ * (confirmation_diff_too_large) nor changes without the person seeing that it changed.
+ */
+const TEXT_HEAD_CHARS = 40;
+const LONG_TEXT_CHARS = 240;
+function longTextSummary(value: unknown): { text: string; parts: SettingsSummaryPart[] } {
+  if (typeof value !== "string" || value === "") return { text: settingsDisplay(t("settings_confirm.summary.text_none")), parts: [word("text_none")] };
+  const flat = value.replace(/\s+/g, " ").trim();
+  const head = settingsDisplay(`“${[...flat].slice(0, TEXT_HEAD_CHARS).join("")}${[...flat].length > TEXT_HEAD_CHARS ? "…" : ""}”`);
+  return { text: `${t("settings_confirm.summary.text_chars", value.length)}, ${t("settings_confirm.summary.fingerprint")} ${fingerprint(value)}, ${head}`,
+    parts: [word("text_chars", value.length), ", ", word("fingerprint"), " ", ...fingerprintParts(value), ", ", head] };
+}
 function same(a: unknown, b: unknown): boolean { return settingsFingerprint(a) === settingsFingerprint(b); }
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 /**
@@ -451,6 +466,16 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
       const fleet = path[1] === "defaults";
       if ([old, next].every(v => v === undefined || v === null || !quotaNoticeProblem(v, fleet))) return;
       throw new SettingsConfirmationError(400, "unsupported_quota_notice");
+    }
+    // An agent's systemPrompt (its "Agent instructions") when it is long: the card is judged from the fleet's root
+    // (fleet.instances.<name>.…) and the authority classifier (settings-authority.ts) from `instances.<name>.…` — both
+    // must give this short line, or the long text would be listed there. The change's own fingerprint (below) still covers
+    // every character: what is confirmed is exactly this text.
+    if (path.at(-1) === "systemPrompt" && path.at(-3) === "instances" && (path.length === 3 || (path.length === 4 && path[0] === "fleet"))
+      && (old === undefined || old === null || typeof old === "string") && (next === undefined || next === null || typeof next === "string")
+      && ((typeof old === "string" ? old.length : 0) > LONG_TEXT_CHARS || (typeof next === "string" ? next.length : 0) > LONG_TEXT_CHARS)) {
+      { const was = longTextSummary(old), now = longTextSummary(next); add(summaryLine(`${settingsDisplay(path.join("."))}: ${was.text} → ${now.text}`, settingsDisplay(path.join(".")), ": ", ...was.parts, " → ", ...now.parts)); }
+      return;
     }
     if (ordinary(path, old, next) || plainList(path, old, next) || codexSpeedPath(path, old, next) || accountProfilePath(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";

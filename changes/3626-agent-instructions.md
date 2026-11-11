@@ -1,0 +1,4 @@
+---
+section: Changed
+---
+- **An agent's System prompt is now "Agent instructions", in Basic info.** It is the same field as before (`systemPrompt` in `fleet.yaml`, and what the AI is told is word for word what it was), now edited like a document: Markdown with an Edit / Preview switch, a counter (characters and bytes; up to 24,000 characters when you edit it), a note that Codex reads at most 32 KiB of `AGENTS.md` in total (with a warning past about 16 KiB), and the line that it is read when the agent next starts. A `file:` reference still works and the page shows it as the file it names. It moved from Advanced, so there is one place for it, and its ⓘ and the docs say it used to be called "System prompt". The save confirmation shows a long text by its length, a fingerprint and its first words instead of the whole of it. Nothing is migrated, and a Windows native agent keeps its own system prompt dialog.

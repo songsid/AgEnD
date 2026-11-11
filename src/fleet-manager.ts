@@ -2539,6 +2539,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   private rawFleetConfig: RawFleetConfig = {};
   /**
+   * AGEND-163: one agent's own saved settings, as fleet.yaml has them — not `fleetConfig.instances[name]`, which has the fleet's
+   * defaults merged in. Undefined when fleet.yaml has no such agent.
+   */
+  rawInstanceConfig(name: string): Record<string, unknown> | undefined {
+    const instances = (this.rawFleetConfig as { instances?: unknown }).instances;
+    if (!instances || typeof instances !== "object" || !Object.hasOwn(instances, name)) return undefined;
+    const own = (instances as Record<string, unknown>)[name];
+    return own && typeof own === "object" && !Array.isArray(own) ? own as Record<string, unknown> : undefined;
+  }
+  /**
    * S-51 (#3095, experimental, off by default): the Hub runtime. src/hub/runtime.js is imported only once a Hub switch
    * (hub.enabled / hub_member.enabled) is on; while both are off nothing Hub-related loads, opens or listens.
    */
@@ -28199,6 +28209,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * What the install's own channel offers: the target version and whether it came from that channel's dist-tag. Throws
    * when npm cannot be asked (the callers decide what a failed look means).
    */
+  /** Tests only: where lookUpUpdateTarget looks for npm (M-2858); unset in production (the running install, process.env). */
+  private updateNpmProbe?: { deps?: import("./update-dispatch.js").DispatchDeps; env?: NodeJS.ProcessEnv };
+
   private async lookUpUpdateTarget(currentVersion: string): Promise<{ target: string; fromChannel: boolean }> {
     // Both npm lookups are async: as execSync they froze the fleet event loop for
     // up to 15s each, and on a beta build BOTH ran — 30s with no WATCHDOG ping,
@@ -28207,8 +28220,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { execFile } = await import("./child-process.js");
     const { promisify } = await import("node:util");
     const execFileP = promisify(execFile);
+    // M-2858: the npm that manages this install, also when the service's PATH has none (the alpha.13 rehearsal: with
+    // only ~/.volta/bin/npm, nothing was ever offered and web Update answered 409 nothing_to_install).
+    const { npmEnvForUpdate } = await import("./update-dispatch.js");
+    const npmEnv = await npmEnvForUpdate(this.updateNpmProbe?.deps, this.updateNpmProbe?.env);
+    if (!npmEnv.ok) throw new Error(npmEnv.reason);
     const npmVersion = async (spec: string): Promise<string> => {
-      const { stdout } = await execFileP("npm", ["view", spec, "version"], { timeout: 15_000 });
+      const { stdout } = await execFileP("npm", ["view", spec, "version"], { timeout: 15_000, env: npmEnv.env });
       return stdout.toString().trim();
     };
     const latest = await npmVersion("@songsid/agend");

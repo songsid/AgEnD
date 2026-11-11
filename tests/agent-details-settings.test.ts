@@ -78,11 +78,11 @@ describe("the categories", () => {
 
 describe("every field of the old agent dialog is in a category, with its ⓘ", () => {
   const WHERE: Record<string, string[]> = {
-    basic: ["#ag-dn", "#ag-desc"],
+    basic: ["#ag-dn", "#ag-desc", "#ag-sys"],
     runtime: ["#ag-model", "#ag-fo"],
     work: ["#ag-wd", "#ag-auto", "#ag-hang", "#ag-agent_mode", "#ag-tool_set"],
     channel: ["#ag-ch", "#ag-general", "#ag-tool_progress", "#ag-cross_instance_visibility"],
-    adv: ["#ag-sys", "#ag-log_level", "#ag-resume", "#ag-mcp-proxy", "#ag-cards", "#ag-dash-appearance", "#ag-dash-task_board", "#ag-dash-web_settings", "#ag-dash-office", "#ag-dash-office_packs"],
+    adv: ["#ag-log_level", "#ag-resume", "#ag-mcp-proxy", "#ag-cards", "#ag-dash-appearance", "#ag-dash-task_board", "#ag-dash-web_settings", "#ag-dash-office", "#ag-dash-office_packs"],
   };
   it("by category", async () => {
     const f = await form({ backend: "claude-code", working_directory: "/w" });
@@ -97,7 +97,8 @@ describe("every field of the old agent dialog is in a category, with its ⓘ", (
     for (const cat of ["basic", "runtime", "work", "channel", "adv"]) expect(p.root.querySelectorAll(`[data-cat="${cat}"] .s-tipbtn`).length, cat).toBeGreaterThan(0);
     expect(p.root.querySelectorAll(".s-tipbtn").length).toBeGreaterThanOrEqual(20);
     expect(f.$('[data-cat="channel"]')?.textContent).toContain("What this is");
-    expect(f.$('[data-cat="adv"]')?.textContent).toContain("existing field");              // System prompt: the existing field, unchanged
+    expect(f.$('[data-cat="basic"]')?.textContent).toContain("Formerly");                   // Agent instructions: the field Settings called "System prompt"
+    expect(f.$('[data-cat="adv"]')?.textContent).not.toContain("System prompt");           // one place only
   });
   it("only the page offers Delete (the dialog passes no onDelete)", async () => {
     const f = await form({ backend: "claude-code", working_directory: "/w" });
