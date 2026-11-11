@@ -4,7 +4,10 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
-import { CompanyJoinController } from "../src/hub/join/local.js";
+import { signCompanyInvitation } from "../src/hub/join/invitation.js";
+import { parseCompanyAddress } from "../src/hub/join/descriptor.js";
+import { createPrivateKey } from "node:crypto";
+import { ENROLMENT_CODE, normalEnrolmentCode, CompanyJoinController } from "../src/hub/join/local.js";
 import { currentLocalJoinId, readLocalJoin } from "../src/hub/join/local-journal.js";
 import { currentBinding, createHubMemberPairingApi } from "../src/hub/member/pairing-api.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
@@ -40,7 +43,7 @@ async function world() {
     enableMembership: (current: () => boolean, accept: () => void) => { if (!current()) throw Error("lost"); if (settleFailure) throw Error("disk"); enabled = true; stamp = "enabled"; accept(); } };
   const controller = new CompanyJoinController(options);
   const start = () => controller.start({ address: hub.webOrigin, label: "My Fleet", fleetOrigin: "http://127.0.0.1:4444" }, authority);
-  return { directory, metadata, calls, client, session, authority, controller, options, activate, start,
+  return { directory, hubHome, metadata, calls, client, session, authority, controller, options, activate, start,
     ready: () => { remote = "identity-approved"; }, lose: () => { alive = false; }, deny: () => { confirmed = false; }, replace: () => { stamp = "replacement"; },
     diskFailure: (value: boolean) => { settleFailure = value; }, advance: (ms: number) => { now += ms; }, enabled: () => enabled };
 }
@@ -260,6 +263,24 @@ describe("M-2921 (Hub UX U1): an enrolment code, and what the connected card sho
     w.metadata.features.push("enrolment-code-v1");
     await w.controller.start({ address: w.metadata.hub.webOrigin, label: "Coded", fleetOrigin: "http://127.0.0.1:4444", code: "ABCD-EF23" }, w.authority);
     expect(pushes.at(-1)).toMatchObject({ label: "Coded", code: "ABCDEF23" });
+    w.controller.close();
+  });
+  it("B1 alphabet: Crockford base32 in any case, 0 and 1 allowed, I/L/O/U refused (no aliases); pushed as 8 uppercase characters", () => {
+    for (const ok of ["ABCD-EF01", "abcdef01", "0000-1111", "VWXY-Z789"]) expect(ENROLMENT_CODE.test(ok)).toBe(true);
+    for (const bad of ["ABCI-EF23", "ABCL-EF23", "ABCO-EF23", "ABCU-EF23", "ABCD-EF2", "ABCD--EF23", "ABCD EF23"]) expect(ENROLMENT_CODE.test(bad)).toBe(false);
+    expect(normalEnrolmentCode("abcd-ef01")).toBe("ABCDEF01");
+  });
+  it("a code with a letter outside the alphabet is invalid; a code together with an invitation is invalid; neither leaves a pin or a journal", async () => {
+    const w = await world(); w.metadata.features.push("enrolment-code-v1");
+    await expect(w.controller.start({ address: w.metadata.hub.webOrigin, label: "Coded", fleetOrigin: "http://127.0.0.1:4444", code: "ABCO-EF23" }, w.authority)).rejects.toMatchObject({ code: "invalid" });
+    const at = Date.now(), claims = { v: 2 as const, id: randomUUID(), hub: w.metadata.hub, owner: { realm: "corp", objectId: randomUUID() },
+      approvedBy: { realm: "corp", objectId: randomUUID() }, nonce: "c".repeat(64), createdAt: at, expiresAt: at + 600_000 };
+    const signed = signCompanyInvitation(claims, createPrivateKey(readFileSync(join(w.hubHome, "hub/keys/issuer-key.pem"))));
+    const invited = `${w.metadata.hub.webOrigin}/join-info#invite=${signed}`;
+    expect(parseCompanyAddress(invited).invitation).toBe(signed);                     // a real invitation: the refusal is the code's
+    await expect(w.controller.start({ address: invited, label: "Coded", fleetOrigin: "http://127.0.0.1:4444", code: "ABCD-EF23" }, w.authority)).rejects.toMatchObject({ code: "invalid" });
+    expect(existsSync(join(w.directory, "hub-member/company-trust"))).toBe(false);
+    expect(currentLocalJoinId(w.directory)).toBeNull();
     w.controller.close();
   });
   it("redeem asks for the display fields; the card's record holds the label, the address, the Hub's name and the owner's label", async () => {
