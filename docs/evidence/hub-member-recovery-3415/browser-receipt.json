@@ -1,0 +1,2632 @@
+{
+  "head": "c604ae782e8523414ccfa52b14a43b1db583e452",
+  "tree": "1d2f36471318818ddc8d52d299eab263c4278b1b",
+  "dirty": false,
+  "base": "9a351611bea1363ce7248c5954876b9c2e6685de",
+  "inputs": {
+    "scripts/manual/hub-member-recovery-3415.mts": "408d0be0edb9a9463aaff3e2dde04ea750e3d4a28e4493e61734e18cf0b4e188",
+    "scripts/manual/smoke-fixture/index.mts": "333248244d4651b1419a4c2ee32bae7c4d5d930019d9ffafcf94daaa7ee3ee3c",
+    "src/ui/app.html": "0722e98592188ff6871f0b77004ae765f1ddd59a86c96f6bf98a459c13b018e6",
+    "src/ui/settings-hub.js": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a",
+    "src/ui/hub-strings.js": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b",
+    "src/ui/hub-client.js": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6",
+    "src/ui/settings-hub-connection.js": "77ec3cdfbf5e06f360f9ce9c8995c9bc8aa567de4e5ff96a990a9b3852ec435d",
+    "src/ui/shared/app.css": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d",
+    "src/ui/shared/hub.css": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+  },
+  "scope": "Real app.html, Settings navigation, current shared CSS, cookie sign-in and browser. Explicit view/step HTTP fixtures only; no restored backend or authorization claim from these screenshots. Real SQLite/TLS restore/re-pair is a separate automated test.",
+  "checks": [
+    {
+      "name": "desk-light-en-before real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-before reproduces absent recovery",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-before passive",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-before no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-before no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-before CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-rejected real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-rejected Pair again",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-rejected reason",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-rejected passive",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-rejected no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-rejected no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-rejected CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-offline real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-offline Pair again",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-offline reason",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-offline passive",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-offline no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-offline no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-offline CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-revoked real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-revoked Pair again",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-revoked reason",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-revoked passive",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-revoked no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-revoked no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en-revoked CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-before real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-before reproduces absent recovery",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-before passive",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-before no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-before no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-before CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-rejected real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-rejected Pair again",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-rejected reason",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-rejected passive",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-rejected no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-rejected no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-rejected CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-offline real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-offline Pair again",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-offline reason",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-offline passive",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-offline no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-offline no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-offline CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-revoked real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-revoked Pair again",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-revoked reason",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-revoked passive",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-revoked no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-revoked no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW-revoked CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-before real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-before reproduces absent recovery",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-before passive",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-before no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-before no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-before CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-rejected real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-rejected Pair again",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-rejected reason",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-rejected passive",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-rejected no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-rejected no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-rejected CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-offline real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-offline Pair again",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-offline reason",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-offline passive",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-offline no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-offline no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-offline CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-revoked real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-revoked Pair again",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-revoked reason",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-revoked passive",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-revoked no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-revoked no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en-revoked CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-before real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-before reproduces absent recovery",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-before passive",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-before no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-before no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-before CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-rejected real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-rejected Pair again",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-rejected reason",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-rejected passive",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-rejected no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-rejected no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-rejected CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-offline real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-offline Pair again",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-offline reason",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-offline passive",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-offline no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-offline no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-offline CSP",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-revoked real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-revoked Pair again",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-revoked reason",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-revoked passive",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-revoked no overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-revoked no script errors",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW-revoked CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-before real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-before reproduces absent recovery",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-before passive",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-before no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-before no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-before CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-rejected real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-rejected Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-rejected reason",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-rejected passive",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-rejected no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-rejected tap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-rejected dialog before write",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-rejected existing exact disconnect",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-rejected existing cancel",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-rejected no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-rejected CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-offline real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-offline Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-offline reason",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-offline passive",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-offline no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-offline tap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-offline no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-offline CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-revoked real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-revoked Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-revoked reason",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-revoked passive",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-revoked no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-revoked tap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-revoked no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en-revoked CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-before real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-before reproduces absent recovery",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-before passive",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-before no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-before no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-before CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-rejected real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-rejected Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-rejected reason",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-rejected passive",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-rejected no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-rejected tap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-rejected dialog before write",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-rejected existing exact disconnect",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-rejected existing cancel",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-rejected no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-rejected CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-offline real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-offline Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-offline reason",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-offline passive",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-offline no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-offline tap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-offline no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-offline CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-revoked real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-revoked Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-revoked reason",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-revoked passive",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-revoked no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-revoked tap",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-revoked no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW-revoked CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-before real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-before reproduces absent recovery",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-before passive",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-before no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-before no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-before CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-rejected real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-rejected Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-rejected reason",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-rejected passive",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-rejected no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-rejected tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-rejected no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-rejected CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-offline real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-offline Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-offline reason",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-offline passive",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-offline no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-offline tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-offline no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-offline CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-revoked real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-revoked Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-revoked reason",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-revoked passive",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-revoked no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-revoked tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-revoked no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en-revoked CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-before real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-before reproduces absent recovery",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-before passive",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-before no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-before no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-before CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-rejected real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-rejected Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-rejected reason",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-rejected passive",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-rejected no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-rejected tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-rejected no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-rejected CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-offline real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-offline Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-offline reason",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-offline passive",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-offline no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-offline tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-offline no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-offline CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-revoked real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-revoked Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-revoked reason",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-revoked passive",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-revoked no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-revoked tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-revoked no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-revoked CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-strings real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-strings Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-strings reason",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-strings passive",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-strings no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-strings tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-strings no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-strings CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-client real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-client Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-client reason",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-client passive",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-client no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-client tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-client no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-client CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-ui real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-ui old UI generic hold",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-ui passive",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-ui no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-ui tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-ui no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-ui CSP",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-css real Settings shell",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-css Pair again",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-css reason",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-css passive",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-css no overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-css tap",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-css no script errors",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW-old-css CSP",
+      "ok": true
+    },
+    {
+      "name": "no native lifecycle",
+      "ok": true
+    },
+    {
+      "name": "source unchanged during capture",
+      "ok": true
+    },
+    {
+      "name": "pinned tree unchanged",
+      "ok": true
+    }
+  ],
+  "assets": {
+    "desk-light-en:before:/settings/hub": {
+      "status": 200,
+      "digest": "d7f1898a18eb42d5d16fe216800e1b082e2239258ed5dd4ecd6e4728e453651a"
+    },
+    "desk-light-en:before:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "before:src/ui/hub-strings.js": {
+      "revision": "9a351611bea1363ce7248c5954876b9c2e6685de",
+      "digest": "29b4f71d909940ddb525d6e2038808d7eace1513b93cdf869fd05a5b788a361e"
+    },
+    "desk-light-en:before:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "29b4f71d909940ddb525d6e2038808d7eace1513b93cdf869fd05a5b788a361e"
+    },
+    "desk-light-en:before:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-light-en:before:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "before:src/ui/settings-hub.js": {
+      "revision": "9a351611bea1363ce7248c5954876b9c2e6685de",
+      "digest": "d6d581429b18c9e0365f5388495762af53ebf2c213e0758c6900b67a9f16627c"
+    },
+    "desk-light-en:before:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "d6d581429b18c9e0365f5388495762af53ebf2c213e0758c6900b67a9f16627c"
+    },
+    "desk-light-en:rejected:/settings/hub": {
+      "status": 200,
+      "digest": "e18cceab161f4e36925be420395a4ffac50381395c1e436f487135523f4d936f"
+    },
+    "desk-light-en:rejected:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-light-en:rejected:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-light-en:rejected:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "desk-light-en:rejected:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-light-en:rejected:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "desk-light-en:offline:/settings/hub": {
+      "status": 200,
+      "digest": "8d6f15e094b77142459f7ae483c3859a34636ea24eec4aaab79ccf7fad4307b9"
+    },
+    "desk-light-en:offline:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-light-en:offline:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-light-en:offline:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "desk-light-en:offline:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-light-en:offline:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "desk-light-en:revoked:/settings/hub": {
+      "status": 200,
+      "digest": "8c97c3e0cd9dbb335fd0d6aa3420050e7cc2fd73f41df7ed9144dabb404fd664"
+    },
+    "desk-light-en:revoked:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-light-en:revoked:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-light-en:revoked:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "desk-light-en:revoked:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-light-en:revoked:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "desk-light-zh-TW:before:/settings/hub": {
+      "status": 200,
+      "digest": "ef5353186cfbdf81c50e7f327ec1f7a2ff318a3875320d23e1a662253e3dac29"
+    },
+    "desk-light-zh-TW:before:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-light-zh-TW:before:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "29b4f71d909940ddb525d6e2038808d7eace1513b93cdf869fd05a5b788a361e"
+    },
+    "desk-light-zh-TW:before:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-light-zh-TW:before:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-light-zh-TW:before:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "d6d581429b18c9e0365f5388495762af53ebf2c213e0758c6900b67a9f16627c"
+    },
+    "desk-light-zh-TW:rejected:/settings/hub": {
+      "status": 200,
+      "digest": "8d5e599b627815cea31f202e72b2a3d5ac7b5a95f6d6fa8f905111faa61fbd5f"
+    },
+    "desk-light-zh-TW:rejected:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-light-zh-TW:rejected:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "desk-light-zh-TW:rejected:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-light-zh-TW:rejected:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-light-zh-TW:rejected:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "desk-light-zh-TW:offline:/settings/hub": {
+      "status": 200,
+      "digest": "b7601fe5232ad7c7ad86e4a263c66decda64375f47b84c4511ee5e5c131bd948"
+    },
+    "desk-light-zh-TW:offline:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-light-zh-TW:offline:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-light-zh-TW:offline:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "desk-light-zh-TW:offline:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-light-zh-TW:offline:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "desk-light-zh-TW:revoked:/settings/hub": {
+      "status": 200,
+      "digest": "707de7bc3db070ca2c3ec7e3a3e86d5b6ec3f22f18bff78cf1dfe62441b88e92"
+    },
+    "desk-light-zh-TW:revoked:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-light-zh-TW:revoked:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-light-zh-TW:revoked:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "desk-light-zh-TW:revoked:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-light-zh-TW:revoked:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "desk-dark-en:before:/settings/hub": {
+      "status": 200,
+      "digest": "2e3d7277efe8f62a60ce8dd108e983a0ff46ef9db45e097177d8eb031c3b8249"
+    },
+    "desk-dark-en:before:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-dark-en:before:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "29b4f71d909940ddb525d6e2038808d7eace1513b93cdf869fd05a5b788a361e"
+    },
+    "desk-dark-en:before:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-dark-en:before:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-dark-en:before:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "d6d581429b18c9e0365f5388495762af53ebf2c213e0758c6900b67a9f16627c"
+    },
+    "desk-dark-en:rejected:/settings/hub": {
+      "status": 200,
+      "digest": "880896589280ea36230f6536a8a4ac29f788905a1adac76a678de48977f60b86"
+    },
+    "desk-dark-en:rejected:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-dark-en:rejected:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-dark-en:rejected:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "desk-dark-en:rejected:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-dark-en:rejected:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "desk-dark-en:offline:/settings/hub": {
+      "status": 200,
+      "digest": "55b4a761cfc10ba8798ec9ed8fe690d89097294ad341a360faf6550190131d25"
+    },
+    "desk-dark-en:offline:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-dark-en:offline:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-dark-en:offline:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "desk-dark-en:offline:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-dark-en:offline:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "desk-dark-en:revoked:/settings/hub": {
+      "status": 200,
+      "digest": "4c94037efb8b2dc11af63acd058022ff3ff0cff8d2029975376976515d079732"
+    },
+    "desk-dark-en:revoked:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-dark-en:revoked:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-dark-en:revoked:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "desk-dark-en:revoked:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-dark-en:revoked:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "desk-dark-zh-TW:before:/settings/hub": {
+      "status": 200,
+      "digest": "7d85a07b859cbb1748d86104b4c49f58672376ed02a99142ba4bb3f9d05f352d"
+    },
+    "desk-dark-zh-TW:before:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-dark-zh-TW:before:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "29b4f71d909940ddb525d6e2038808d7eace1513b93cdf869fd05a5b788a361e"
+    },
+    "desk-dark-zh-TW:before:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-dark-zh-TW:before:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-dark-zh-TW:before:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "d6d581429b18c9e0365f5388495762af53ebf2c213e0758c6900b67a9f16627c"
+    },
+    "desk-dark-zh-TW:rejected:/settings/hub": {
+      "status": 200,
+      "digest": "ba554888767740df88138d30958cafb39b392e53d7f45b5149276bb5031a677c"
+    },
+    "desk-dark-zh-TW:rejected:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-dark-zh-TW:rejected:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-dark-zh-TW:rejected:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "desk-dark-zh-TW:rejected:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-dark-zh-TW:rejected:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "desk-dark-zh-TW:offline:/settings/hub": {
+      "status": 200,
+      "digest": "33b6c0617e07054da2715aea25a5bb3943c24c172bcb98f23af8b9ac43063091"
+    },
+    "desk-dark-zh-TW:offline:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-dark-zh-TW:offline:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-dark-zh-TW:offline:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "desk-dark-zh-TW:offline:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-dark-zh-TW:offline:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "desk-dark-zh-TW:revoked:/settings/hub": {
+      "status": 200,
+      "digest": "0138365b3cf26c0a219b5768211fd25f2b23d130436c8932eaef231db6cff4ae"
+    },
+    "desk-dark-zh-TW:revoked:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "desk-dark-zh-TW:revoked:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "desk-dark-zh-TW:revoked:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "desk-dark-zh-TW:revoked:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "desk-dark-zh-TW:revoked:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-light-en:before:/settings/hub": {
+      "status": 200,
+      "digest": "bc803e981c144888a8f9dfa002fc457ed69f1abfa4602c4cf4cfdaca37d7c8bd"
+    },
+    "phone-light-en:before:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-light-en:before:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "29b4f71d909940ddb525d6e2038808d7eace1513b93cdf869fd05a5b788a361e"
+    },
+    "phone-light-en:before:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-light-en:before:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-light-en:before:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "d6d581429b18c9e0365f5388495762af53ebf2c213e0758c6900b67a9f16627c"
+    },
+    "phone-light-en:rejected:/settings/hub": {
+      "status": 200,
+      "digest": "a0f73dd2fb48416e7a62fa427780abc2d81279a34fce1646a210fe937d791e12"
+    },
+    "phone-light-en:rejected:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-light-en:rejected:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-light-en:rejected:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-light-en:rejected:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-light-en:rejected:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-light-en:offline:/settings/hub": {
+      "status": 200,
+      "digest": "568d19742d80055905feac3e32cc6077edb1841017fc84f840c777e6e994275f"
+    },
+    "phone-light-en:offline:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-light-en:offline:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-light-en:offline:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-light-en:offline:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-light-en:offline:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-light-en:revoked:/settings/hub": {
+      "status": 200,
+      "digest": "be633434ac9774d50e1215f45c06c3ec9adc2b49e45eabece116154cd303c88f"
+    },
+    "phone-light-en:revoked:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-light-en:revoked:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-light-en:revoked:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-light-en:revoked:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-light-en:revoked:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-light-zh-TW:before:/settings/hub": {
+      "status": 200,
+      "digest": "5a0caabb57600ba686cd2ffee14cbf4cfacb26193cd0ee875f6e01d33d2d98af"
+    },
+    "phone-light-zh-TW:before:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-light-zh-TW:before:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "29b4f71d909940ddb525d6e2038808d7eace1513b93cdf869fd05a5b788a361e"
+    },
+    "phone-light-zh-TW:before:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-light-zh-TW:before:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-light-zh-TW:before:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "d6d581429b18c9e0365f5388495762af53ebf2c213e0758c6900b67a9f16627c"
+    },
+    "phone-light-zh-TW:rejected:/settings/hub": {
+      "status": 200,
+      "digest": "a6e1b9c4a1f6ae5f1b47ca23409ef900e91af83c8bfbcbb29c63d32db1273cf1"
+    },
+    "phone-light-zh-TW:rejected:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-light-zh-TW:rejected:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-light-zh-TW:rejected:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-light-zh-TW:rejected:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-light-zh-TW:rejected:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-light-zh-TW:offline:/settings/hub": {
+      "status": 200,
+      "digest": "519a59df5fc8709a17fbb2b731656bf92d9585bfebb4dc7cda4af3cbaf800cb1"
+    },
+    "phone-light-zh-TW:offline:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-light-zh-TW:offline:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-light-zh-TW:offline:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-light-zh-TW:offline:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-light-zh-TW:offline:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-light-zh-TW:revoked:/settings/hub": {
+      "status": 200,
+      "digest": "ef642921d24fea43a0be86be2b4efc1b62b698d9c9781ca1df41d928b3caedb0"
+    },
+    "phone-light-zh-TW:revoked:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-light-zh-TW:revoked:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-light-zh-TW:revoked:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-light-zh-TW:revoked:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-light-zh-TW:revoked:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-dark-en:before:/settings/hub": {
+      "status": 200,
+      "digest": "0f6c055beeb9dcd50ff60e68490c6988e5be862344ae5eb2e60df7300a511573"
+    },
+    "phone-dark-en:before:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-dark-en:before:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "29b4f71d909940ddb525d6e2038808d7eace1513b93cdf869fd05a5b788a361e"
+    },
+    "phone-dark-en:before:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-dark-en:before:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-dark-en:before:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "d6d581429b18c9e0365f5388495762af53ebf2c213e0758c6900b67a9f16627c"
+    },
+    "phone-dark-en:rejected:/settings/hub": {
+      "status": 200,
+      "digest": "c82f24b5b9cdcbd317aa859d72e419bf43f2f34359359b338d63778e936f838c"
+    },
+    "phone-dark-en:rejected:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-dark-en:rejected:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-dark-en:rejected:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-dark-en:rejected:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-dark-en:rejected:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-dark-en:offline:/settings/hub": {
+      "status": 200,
+      "digest": "be321a826594808e6ff91d873cc98ba30002b15d30251a9efb141864979c471a"
+    },
+    "phone-dark-en:offline:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-dark-en:offline:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-dark-en:offline:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-dark-en:offline:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-dark-en:offline:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-dark-en:revoked:/settings/hub": {
+      "status": 200,
+      "digest": "c072891d106bb1919c0fc66ce794aa4f2c8c2010b5a662158e3c35bdc271b61c"
+    },
+    "phone-dark-en:revoked:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-dark-en:revoked:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-dark-en:revoked:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-dark-en:revoked:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-dark-en:revoked:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-dark-zh-TW:before:/settings/hub": {
+      "status": 200,
+      "digest": "a82fe8a89ed2e7586e97a55107277758352380111a64669954a0768d6663ed83"
+    },
+    "phone-dark-zh-TW:before:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-dark-zh-TW:before:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "29b4f71d909940ddb525d6e2038808d7eace1513b93cdf869fd05a5b788a361e"
+    },
+    "phone-dark-zh-TW:before:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-dark-zh-TW:before:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-dark-zh-TW:before:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "d6d581429b18c9e0365f5388495762af53ebf2c213e0758c6900b67a9f16627c"
+    },
+    "phone-dark-zh-TW:rejected:/settings/hub": {
+      "status": 200,
+      "digest": "854af680687ba54381db5f9e21ecc2592026433cdfc7418db6374298f37d641c"
+    },
+    "phone-dark-zh-TW:rejected:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-dark-zh-TW:rejected:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-dark-zh-TW:rejected:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-dark-zh-TW:rejected:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-dark-zh-TW:rejected:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-dark-zh-TW:offline:/settings/hub": {
+      "status": 200,
+      "digest": "df50edc58507e4d11b8200a511f82d5390b19ffc32ff5787943a129c38cf7b61"
+    },
+    "phone-dark-zh-TW:offline:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-dark-zh-TW:offline:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-dark-zh-TW:offline:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-dark-zh-TW:offline:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-dark-zh-TW:offline:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-dark-zh-TW:revoked:/settings/hub": {
+      "status": 200,
+      "digest": "3d761d625cded2e87c663793f11df2274fafa58748b6671c28467b9bb843f123"
+    },
+    "phone-dark-zh-TW:revoked:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-dark-zh-TW:revoked:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-dark-zh-TW:revoked:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-dark-zh-TW:revoked:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-dark-zh-TW:revoked:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-dark-zh-TW:old-strings:/settings/hub": {
+      "status": 200,
+      "digest": "486fd086a4e71deacb4394b6aa8f31728d0cc013431ae3de8de2739166de7bbe"
+    },
+    "phone-dark-zh-TW:old-strings:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "old-strings:src/ui/hub-strings.js": {
+      "revision": "9a351611bea1363ce7248c5954876b9c2e6685de",
+      "digest": "29b4f71d909940ddb525d6e2038808d7eace1513b93cdf869fd05a5b788a361e"
+    },
+    "phone-dark-zh-TW:old-strings:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "29b4f71d909940ddb525d6e2038808d7eace1513b93cdf869fd05a5b788a361e"
+    },
+    "phone-dark-zh-TW:old-strings:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-dark-zh-TW:old-strings:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-dark-zh-TW:old-strings:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-dark-zh-TW:old-client:/settings/hub": {
+      "status": 200,
+      "digest": "17214947cd4677b7705d69b9c76825559e532d5411a3573c12ebabdd00652c6e"
+    },
+    "phone-dark-zh-TW:old-client:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "old-client:src/ui/hub-client.js": {
+      "revision": "9a351611bea1363ce7248c5954876b9c2e6685de",
+      "digest": "d4c42dc1c4d284aca80f0dedf4aef8cf5601c4c0d5f0c9bc52e947542df35056"
+    },
+    "phone-dark-zh-TW:old-client:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "d4c42dc1c4d284aca80f0dedf4aef8cf5601c4c0d5f0c9bc52e947542df35056"
+    },
+    "phone-dark-zh-TW:old-client:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-dark-zh-TW:old-client:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-dark-zh-TW:old-client:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    },
+    "phone-dark-zh-TW:old-ui:/settings/hub": {
+      "status": 200,
+      "digest": "50137bd22c3b8f789b47ab25e805d8c84a90ea92799b1661b247e929dbfc2416"
+    },
+    "phone-dark-zh-TW:old-ui:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-dark-zh-TW:old-ui:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-dark-zh-TW:old-ui:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-dark-zh-TW:old-ui:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "old-ui:src/ui/settings-hub.js": {
+      "revision": "9a351611bea1363ce7248c5954876b9c2e6685de",
+      "digest": "d6d581429b18c9e0365f5388495762af53ebf2c213e0758c6900b67a9f16627c"
+    },
+    "phone-dark-zh-TW:old-ui:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "d6d581429b18c9e0365f5388495762af53ebf2c213e0758c6900b67a9f16627c"
+    },
+    "old-css:src/ui/shared/app.css": {
+      "revision": "9a351611bea1363ce7248c5954876b9c2e6685de",
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-dark-zh-TW:old-css:/settings/hub": {
+      "status": 200,
+      "digest": "35ac5c9def7736f43fcb06460ae48d5c38b29045539431c1a1f99aeb51805f88"
+    },
+    "phone-dark-zh-TW:old-css:/assets/app.css": {
+      "status": 200,
+      "digest": "e11330248e5b40e1fb22af5189b0abeda056f2e69006861d22a053c37e8d6a0d"
+    },
+    "phone-dark-zh-TW:old-css:/ui/js/hub-strings.js": {
+      "status": 200,
+      "digest": "2472120486371a3a2573222119edad7c53978e290b75c1ff1ed8857a47a23a3b"
+    },
+    "phone-dark-zh-TW:old-css:/ui/js/hub-client.js": {
+      "status": 200,
+      "digest": "e650f6383e626eefae55a6f77cf4a5d41c6f4cfecf58255ede0ca98ea6a6d1d6"
+    },
+    "phone-dark-zh-TW:old-css:/assets/hub.css": {
+      "status": 200,
+      "digest": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472"
+    },
+    "phone-dark-zh-TW:old-css:/ui/js/settings-hub.js": {
+      "status": 200,
+      "digest": "4a5a1c0c7d72725e7f9cb3c27bdfdc4dde009d7a7cccb564c5ccc54844babf7a"
+    }
+  },
+  "cases": [
+    {
+      "tag": "desk-light-en-before",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Show the full fingerprint",
+            "w": 166.171875,
+            "h": 30
+          },
+          {
+            "text": "Revoke connection",
+            "w": 153.65625,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-light-en-rejected",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Pair again",
+            "w": 96,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-light-en-offline",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Show the full fingerprint",
+            "w": 166.171875,
+            "h": 30
+          },
+          {
+            "text": "Revoke connection",
+            "w": 153.65625,
+            "h": 36
+          },
+          {
+            "text": "Pair again",
+            "w": 96,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-light-en-revoked",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Pair again",
+            "w": 96,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-light-zh-TW-before",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "顯示完整指紋",
+            "w": 98.015625,
+            "h": 30
+          },
+          {
+            "text": "撤銷連接",
+            "w": 86.015625,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-light-zh-TW-rejected",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-light-zh-TW-offline",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "顯示完整指紋",
+            "w": 98.015625,
+            "h": 30
+          },
+          {
+            "text": "撤銷連接",
+            "w": 86.015625,
+            "h": 36
+          },
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-light-zh-TW-revoked",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-dark-en-before",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Show the full fingerprint",
+            "w": 166.171875,
+            "h": 30
+          },
+          {
+            "text": "Revoke connection",
+            "w": 153.65625,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-dark-en-rejected",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Pair again",
+            "w": 96,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-dark-en-offline",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Show the full fingerprint",
+            "w": 166.171875,
+            "h": 30
+          },
+          {
+            "text": "Revoke connection",
+            "w": 153.65625,
+            "h": 36
+          },
+          {
+            "text": "Pair again",
+            "w": 96,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-dark-en-revoked",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Pair again",
+            "w": 96,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-dark-zh-TW-before",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "顯示完整指紋",
+            "w": 98.015625,
+            "h": 30
+          },
+          {
+            "text": "撤銷連接",
+            "w": 86.015625,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-dark-zh-TW-rejected",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-dark-zh-TW-offline",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "顯示完整指紋",
+            "w": 98.015625,
+            "h": 30
+          },
+          {
+            "text": "撤銷連接",
+            "w": 86.015625,
+            "h": 36
+          },
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "desk-dark-zh-TW-revoked",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 36
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-light-en-before",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Show the full fingerprint",
+            "w": 166.171875,
+            "h": 44
+          },
+          {
+            "text": "Revoke connection",
+            "w": 153.65625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-light-en-rejected",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Pair again",
+            "w": 96,
+            "h": 44
+          }
+        ]
+      },
+      "writes": [
+        {
+          "path": "/api/hub/member/pairing/disconnect",
+          "body": {
+            "hubId": "11111111-2222-4333-8444-555555555555",
+            "binding": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        },
+        {
+          "path": "/api/hub/member/pairing/cancel"
+        }
+      ]
+    },
+    {
+      "tag": "phone-light-en-offline",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Show the full fingerprint",
+            "w": 166.171875,
+            "h": 44
+          },
+          {
+            "text": "Revoke connection",
+            "w": 153.65625,
+            "h": 44
+          },
+          {
+            "text": "Pair again",
+            "w": 96,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-light-en-revoked",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Pair again",
+            "w": 96,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-light-zh-TW-before",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "顯示完整指紋",
+            "w": 98.015625,
+            "h": 44
+          },
+          {
+            "text": "撤銷連接",
+            "w": 86.015625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-light-zh-TW-rejected",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": [
+        {
+          "path": "/api/hub/member/pairing/disconnect",
+          "body": {
+            "hubId": "11111111-2222-4333-8444-555555555555",
+            "binding": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        },
+        {
+          "path": "/api/hub/member/pairing/cancel"
+        }
+      ]
+    },
+    {
+      "tag": "phone-light-zh-TW-offline",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "顯示完整指紋",
+            "w": 98.015625,
+            "h": 44
+          },
+          {
+            "text": "撤銷連接",
+            "w": 86.015625,
+            "h": 44
+          },
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-light-zh-TW-revoked",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-dark-en-before",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Show the full fingerprint",
+            "w": 166.171875,
+            "h": 44
+          },
+          {
+            "text": "Revoke connection",
+            "w": 153.65625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-dark-en-rejected",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Pair again",
+            "w": 96,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-dark-en-offline",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Show the full fingerprint",
+            "w": 166.171875,
+            "h": 44
+          },
+          {
+            "text": "Revoke connection",
+            "w": 153.65625,
+            "h": 44
+          },
+          {
+            "text": "Pair again",
+            "w": 96,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-dark-en-revoked",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "Pair again",
+            "w": 96,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-dark-zh-TW-before",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "顯示完整指紋",
+            "w": 98.015625,
+            "h": 44
+          },
+          {
+            "text": "撤銷連接",
+            "w": 86.015625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-dark-zh-TW-rejected",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-dark-zh-TW-offline",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "顯示完整指紋",
+            "w": 98.015625,
+            "h": 44
+          },
+          {
+            "text": "撤銷連接",
+            "w": 86.015625,
+            "h": 44
+          },
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-dark-zh-TW-revoked",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-dark-zh-TW-old-strings",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-dark-zh-TW-old-client",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-dark-zh-TW-old-ui",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "重新開始",
+            "w": 86.015625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    },
+    {
+      "tag": "phone-dark-zh-TW-old-css",
+      "geometry": {
+        "overflow": false,
+        "taps": [
+          {
+            "text": "重新配對",
+            "w": 86.015625,
+            "h": 44
+          }
+        ]
+      },
+      "writes": []
+    }
+  ],
+  "cleaned": true,
+  "status": "PASS"
+}

@@ -108,6 +108,11 @@ export class HubServer {
         connection = { link, context, ready: false, hello: false, timer: setTimeout(() => link.end(), 5_000) }; connection.timer.unref();
         this.connections.set(binding.fleetId, connection);
       });
+    } catch (error) {
+      // A pinned machine client can distinguish a refused saved credential from an outage. No private reason crosses.
+      if (this.current() && !socket.destroyed && error instanceof HubProtocolError && error.code === "denied") {
+        socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\nCache-Control: no-store\r\n\r\n");
+      } else socket.destroy();
     } finally { this.handshakes--; }
   }
   private async receive(frame: HubMemberFrame, connection: Connection, revocationVersion: number): Promise<void> {

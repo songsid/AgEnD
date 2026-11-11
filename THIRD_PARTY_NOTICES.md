@@ -142,3 +142,7 @@ component's full licence text in its `LICENSES/` directory:
 | ncurses, https://invisible-island.net/ncurses/ | 6.5 | X11 (MIT-style) | linked statically; the terminfo subset is compiled from its `misc/terminfo.src` |
 | utf8proc, https://github.com/JuliaStrings/utf8proc | 2.12.0 | MIT, and the Unicode License v3 for its data tables | linked statically |
 | musl libc, https://musl.libc.org | 1.2.5 (the Alpine build image's, checked at build time) | MIT | linked statically, Linux builds only |
+
+## Windows Runtime pane assets
+
+The contributor-only `vendor/node-pty` subset comes from Microsoft node-pty 1.1.0 (MIT), with the existing ConPTY license and third-party notices. The Runtime ships these same JS/prebuild/license bytes. See [the upstream provenance and file hashes](vendor/node-pty/README.agend.md), [node-pty license](vendor/node-pty/LICENSE), and [ConPTY notices](vendor/node-pty/CONPTY-NOTICE.md).

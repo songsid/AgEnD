@@ -78,8 +78,8 @@ export interface HubMemberFactoryOptions {
   /** Security inbox is available to the current binding's local Settings page, on chat and web-only fleets. */
   attachPairingNotices?(read: (() => import("../types.js").HubPairingNotice[]) | null): void;
   pokeAttention(): void;
-  /** The member link as S3c's pairing view shows it: online after a completed handshake, revoked when the Hub said so. */
-  linkState?(state: "online" | "offline" | "revoked"): void;
+  /** The member link as S3c's pairing view shows it: online after reconciliation; refused/invalid saved links remain visible for their exact profile. */
+  linkState?(state: "online" | "offline" | "revoked" | "rejected", profileDigest?: string | null): void;
   report(code: HubHoldCode, detail: string): void;
   /**
    * A non-fatal hold while the member keeps running (the provider could not be set up: every exposure stays
@@ -325,6 +325,9 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       } catch (err) {
         throw new HubStateError("hub-member-pairing", `the Hub pairing is missing or invalid: ${(err as Error).message}`);
       }
+      const profileDigest = new HubMemberProfileStore(options.home, hubId).profileDigest();
+      let terminalHold = false;
+      const reportLink = (state: "online" | "offline" | "revoked" | "rejected") => options.linkState?.(state, profileDigest);
       const [execution, exposureMods] = await Promise.all([options.components.execution(), options.components.exposures()]);
 
       // 1. The member state set: new (create all) or complete (open); partial is refused.
@@ -469,7 +472,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (l.current() && live()) {
             online = l;
             quota.start(l);
-            options.linkState?.("online");
+            terminalHold = false; reportLink("online");
             // Questions admitted while offline (or before a restart, with no input yet) go out on this link.
             service.pump();
           }
@@ -477,7 +480,9 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         receive,
         hold: (code) => {
           quota.stop();
-          options.linkState?.(code === "revoked" ? "revoked" : "offline");
+          const state = code === "revoked" ? "revoked" : code === "rejected" || code === "invalid" ? "rejected" : "offline";
+          terminalHold = state === "revoked" || state === "rejected";
+          reportLink(state);
           options.log("warn", "Hub link held", { code });
         },
         now,
@@ -513,7 +518,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           client?.fence();
           options.representative.attachReports(null, null);
           options.attachExposures(null);
-          options.linkState?.("offline");
+          // Mount drains failed startup too. Keep its actionable rejection until a different pairing takes over.
+          if (!terminalHold) reportLink("offline");
         },
         async close() {
           fenced = true;
