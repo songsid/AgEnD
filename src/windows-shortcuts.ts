@@ -75,6 +75,23 @@ export function sharedShortcutsPs(templateText?: string): string {
 
 const psQuote = (value: string) => `'${value.replace(/'/g, "''")}'`;
 
+/** M-2885: the shortcut icons this package ships (templates/icons, built by scripts/build-shortcut-icons.py). */
+export const SHORTCUT_ICON_NAMES = ["agend.ico", "agend-restart.ico"] as const;
+export type ShortcutIcons = Partial<Record<(typeof SHORTCUT_ICON_NAMES)[number], Buffer>>;
+
+/** The icons as the package has them; one that can't be read is left out (that shortcut keeps whatever icon it has). */
+export function packageShortcutIcons(dir = join(dirname(fileURLToPath(import.meta.url)), "..", "templates", "icons")): ShortcutIcons {
+  const icons: ShortcutIcons = {};
+  for (const name of SHORTCUT_ICON_NAMES) { try { icons[name] = readFileSync(join(dir, name)); } catch { /* left out */ } }
+  return icons;
+}
+
+/** `$icons` for Install-AgendShortcuts: base64 literals only (no quoting needed), or `$null` when there are none. */
+export function iconsLiteral(icons: ShortcutIcons = {}): string {
+  const entries = SHORTCUT_ICON_NAMES.filter(name => icons[name]?.length).map(name => `'${name}' = [Convert]::FromBase64String('${icons[name]!.toString("base64")}')`);
+  return entries.length ? `@{ ${entries.join("; ")} }` : "$null";
+}
+
 /** The target install.json named when the person was asked (and said yes to replacing). */
 export interface ShortcutsTarget { distro: string; user: string }
 
@@ -84,7 +101,7 @@ export interface ShortcutsTarget { distro: string; user: string }
  * without asking, the leader 2026-10-20) — unless it is exactly the one the person was shown and said yes to
  * (`confirmedOver`), read again right before writing: changed while they answered, it stops again (#2279 review).
  */
-export function buildShortcutsScript(shared: string, distro: string, user: string, confirmedOver?: ShortcutsTarget): string {
+export function buildShortcutsScript(shared: string, distro: string, user: string, confirmedOver?: ShortcutsTarget, icons: ShortcutIcons = {}): string {
   const seen = confirmedOver ? `@{ Distro = ${psQuote(confirmedOver.distro)}; User = ${psQuote(confirmedOver.user)} }` : "$null";
   return [
     "$ErrorActionPreference = 'Stop'",
@@ -95,7 +112,7 @@ export function buildShortcutsScript(shared: string, distro: string, user: strin
     `  $other = Get-InstallRecordConflict ${psQuote(distro)} ${psQuote(user)}`,
     "  Write-Output ('AGEND_RECORD_OTHER=' + $other.Distro + '|' + $other.User); exit 0",
     "}",
-    `$made = @(Install-AgendShortcuts ${psQuote(distro)} ${psQuote(user)})`,
+    `$made = @(Install-AgendShortcuts ${psQuote(distro)} ${psQuote(user)} ${iconsLiteral(icons)})`,
     "Write-Output ('AGEND_SHORTCUTS_MADE=' + $made.Count)",
     "",
   ].join("\n");
@@ -106,8 +123,23 @@ export function encodePowershell(script: string): string {
   return Buffer.from(script, "utf16le").toString("base64");
 }
 
-export function powershellArgs(script: string): string[] {
-  return ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodePowershell(script)];
+/**
+ * M-2885: what -EncodedCommand carries — only this loader. The script itself (the shared code, then the icons) arrives on
+ * standard input, read WHOLE and run at the top level as ONE script block (never line by line). Windows' command line
+ * holds 32,767 characters; the script with its icons is far longer.
+ * Standard input carries base64 of the script's UTF-8 bytes — ASCII only, which no console code page can alter, whatever
+ * Windows PowerShell 5.1 does with redirected input. (The "AgEnD ???" first seen on a real Windows was not this: it was
+ * WScript.Shell saving through the ANSI code page — see New-AgendShortcut.)
+ */
+export const STDIN_LOADER = "$ErrorActionPreference = 'Stop'; $r = New-Object IO.StreamReader([Console]::OpenStandardInput(), [Text.Encoding]::ASCII); $b = $r.ReadToEnd(); $r.Dispose(); $s = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b.Trim())); . ([ScriptBlock]::Create($s))";
+
+/** What goes on the loader's standard input: the script, as base64 of its UTF-8 bytes (see STDIN_LOADER). */
+export function stdinPayload(script: string): string {
+  return Buffer.from(script, "utf8").toString("base64");
+}
+
+export function powershellArgs(): string[] {
+  return ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodePowershell(STDIN_LOADER)];
 }
 
 export interface RunResult { status: number | null; stdout: string; stderr: string; error?: Error }
@@ -117,7 +149,10 @@ export interface ShortcutsDeps {
   user: string;
   dataDir: string;
   shared: () => string;
-  run: (command: string, args: string[]) => RunResult;
+  /** `input`: written to the program's standard input (the script as stdinPayload gives it, M-2885). */
+  run: (command: string, args: string[], input: string) => RunResult;
+  /** The icons to put on the shortcuts (M-2885). */
+  icons?: () => ShortcutIcons;
   writeMarker: (path: string, content: string) => void;
   log: (line: string) => void;
   now: () => Date;
@@ -133,14 +168,15 @@ export async function runShortcuts(deps: ShortcutsDeps): Promise<number> {
   const powershell = findPowershell(deps.host);
   if (interopState(deps.host) === "off" || !powershell) { deps.log(t("shortcuts.no_interop")); return 1; }
   deps.log(t("shortcuts.making", distro, deps.user));
-  let result = deps.run(powershell, powershellArgs(buildShortcutsScript(deps.shared(), distro, deps.user)));
+  const icons = deps.icons?.() ?? {};
+  let result = deps.run(powershell, powershellArgs(), stdinPayload(buildShortcutsScript(deps.shared(), distro, deps.user, undefined, icons)));
   const other = OTHER_LINE.exec(result.stdout ?? "");
   if (other) {
     // The shortcuts (and install.json) point at another Linux or user: say so, and switch only on an explicit y.
     const [, otherDistro, otherUser] = other;
     const yes = await deps.confirm(t("shortcuts.other_target", otherDistro!, otherUser!, distro, deps.user));
     if (yes !== true) { deps.log(t(yes === null ? "shortcuts.kept_no_tty" : "shortcuts.kept", otherDistro!, otherUser!)); return 1; }
-    result = deps.run(powershell, powershellArgs(buildShortcutsScript(deps.shared(), distro, deps.user, { distro: otherDistro!, user: otherUser! })));
+    result = deps.run(powershell, powershellArgs(), stdinPayload(buildShortcutsScript(deps.shared(), distro, deps.user, { distro: otherDistro!, user: otherUser! }, icons)));
     // Changed while the person answered: what they agreed to replace is no longer there — nothing is written.
     const again = OTHER_LINE.exec(result.stdout ?? "");
     if (again) { deps.log(t("shortcuts.changed_meanwhile", again[1]!, again[2]!)); return 1; }
@@ -163,6 +199,7 @@ export function realShortcutsDeps(dataDir: string, user: string, run: ShortcutsD
   return {
     host: realHost(), user, dataDir, run,
     shared: () => sharedShortcutsPs(),
+    icons: () => packageShortcutIcons(),
     writeMarker: (path, content) => { mkdirSync(dirname(path), { recursive: true, mode: 0o700 }); writeFileSync(path, content); },
     log: line => console.log(line),
     now: () => new Date(),
