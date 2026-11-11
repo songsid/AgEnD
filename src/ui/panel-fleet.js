@@ -67,7 +67,7 @@ register("fleet", {
     backend: "Backend",
     newInstance: "New instance", directory: "Directory", directoryHint: "Optional — a workspace is created if empty", topic: "Name", topicHint: "From the directory name",
     topicRequired: "Name is required when Directory is empty", description: "Description", descriptionHint: "What this instance does", model: "Model", modelHint: "e.g. sonnet, opus, gpt-5",
-    branch: "Branch (git worktree)", branchHint: "e.g. feature-x", tags: "Tags", tagsHint: "comma-separated, e.g. dev, review", systemPrompt: "System prompt", systemPromptHint: "Custom instructions for this instance",
+    branch: "Branch (git worktree)", branchHint: "e.g. feature-x", tags: "Tags", tagsHint: "comma-separated, e.g. dev, review", systemPrompt: "Agent instructions", systemPromptHint: "Custom instructions for this instance (formerly “System prompt”)",
     fleetDefault: "Use the fleet default", notInstalled: "(not installed)", notSignedIn: "(not signed in — use /login)", tooOld: "(needs {0} or newer)", unchecked: "(not checked yet)", deprecated: "(deprecated)", instanceCreated: "Instance created",
   },
   "zh-TW": {
@@ -94,7 +94,7 @@ register("fleet", {
     backend: "Backend",
     newInstance: "新增 Agent", directory: "目錄", directoryHint: "可留空——留空會自動建立工作區", topic: "名稱", topicHint: "預設取自目錄名稱",
     topicRequired: "目錄留空時必須填寫名稱", description: "說明", descriptionHint: "這個 Agent 做什麼", model: "模型", modelHint: "例如 sonnet、opus、gpt-5",
-    branch: "分支（git worktree）", branchHint: "例如 feature-x", tags: "標籤", tagsHint: "以逗號分隔，例如 dev, review", systemPrompt: "System prompt", systemPromptHint: "這個 Agent 的自訂指示",
+    branch: "分支（git worktree）", branchHint: "例如 feature-x", tags: "標籤", tagsHint: "以逗號分隔，例如 dev, review", systemPrompt: "Agent 指示", systemPromptHint: "這個 Agent 的自訂指示（以前叫「System prompt」）",
     fleetDefault: "使用 fleet 預設", notInstalled: "（未安裝）", notSignedIn: "（未登入，請用 /login）", tooOld: "（需要 {0} 以上版本）", unchecked: "（尚未檢查）", deprecated: "（已淘汰）", instanceCreated: "Agent 已建立",
   },
 });
