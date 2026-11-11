@@ -81,6 +81,15 @@ describe("B1 enrolment-code protected routes and actual join", () => {
     const more = await make(r, admin), d = await begin(r, more.code); expect((await d.approve("carol")).status).toBe(429);
     expect((await d.command("status")).body).toMatchObject({ state: "pending", reason: "limit-reached" });
   });
+  it("concurrent last-slot approvals and redemption issue exactly one Fleet and one use", async () => {
+    const { r, admin } = await world(), code = await make(r, admin, { maxUses: 1 }), a = await begin(r, code.code), b = await begin(r, code.code);
+    const approved = await Promise.all([a.approve("carol"), b.approve("dan")]);
+    expect(approved.filter(x => x.status === 200)).toHaveLength(1);
+    const issued = await Promise.all([a.redeem(), b.redeem()]); expect(issued.filter(x => x.status === 200)).toHaveLength(1);
+    expect(r.deps.store.read().fleets).toHaveLength(1);
+    expect(r.db.prepare("SELECT uses FROM hub_enrolment_codes WHERE id=?").get(code.id)).toEqual({ uses: 1 });
+    expect(r.db.prepare("SELECT count(*) n FROM hub_enrolment_code_uses").get()).toEqual({ n: 1 });
+  });
   it("revoking between approve/issue ends only unissued requests, and an issued receipt still redelivers", async () => {
     const { r, admin } = await world(), code = await make(r, admin), a = await begin(r, code.code), b = await begin(r, code.code);
     expect((await a.approve("carol")).status).toBe(200); const first = await a.redeem(); expect(first.status).toBe(200);
