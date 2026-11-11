@@ -57,6 +57,20 @@ cases += [
  ('member-version','src/settings-api.ts',[
   ('n.source === "code" && version >= 3','n.source === "code"')], 'tests/hub-pairing-api-s3c.test.ts','member Settings retains'),
 ]
+cases += [
+ ('code-resume','src/hub/group-policy/authorization.ts',[
+  ('const retainedApproval = retainedSource === "code"','const retainedApproval = retainedSource === "code" && operation === "check"')], 'tests/hub-enrolment-code-http-b1.test.ts','real never-enabled admin resume'),
+ ('manual-resume','src/hub/group-policy/authorization.ts',[
+  ('operation === "check" && retainedSource === "manual"','(operation === "check" || operation === "resume") && retainedSource === "manual"')], 'tests/hub-enrolment-code-permit-b1.test.ts','resume preserves the manual'),
+ ('resume-admin','src/hub/group-policy/authorization.ts',[
+  ('if (authenticated.kind !== "directory" || personKeyString(validated(person, authenticated.person)) !== personKeyString(administrator))','if (authenticated.kind !== "directory")')], 'tests/hub-enrolment-code-permit-b1.test.ts','resume refuses a different admin'),
+ ('resume-eligibility','src/hub/group-policy/resources.ts',[
+  ('if (eligibility) {','if (eligibility && before.source !== "code") {')], 'tests/hub-enrolment-code-permit-b1.test.ts','resume refuses owner eligibility'),
+ ('resume-epoch','src/hub/group-policy/authorization.ts',[
+  ('if (operation === "resume" && previous !== epoch)','if (false && operation === "resume" && previous !== epoch)')], 'tests/hub-enrolment-code-permit-b1.test.ts','held eligibility fences never-enabled code resume after epoch'),
+ ('resume-late','src/hub/group-policy/resources.ts',[
+  ('if (state === "active") assert(ctx);','')], 'tests/hub-enrolment-code-permit-b1.test.ts','late invalidation cancellation'),
+]
 if len(sys.argv)>1: cases=[c for c in cases if c[0] in sys.argv[1:]]
 results=[]
 for name,path,edits,test,title in cases:

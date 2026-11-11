@@ -227,4 +227,21 @@ describe("B1 enrolment-code protected routes and actual join", () => {
     expect(r.db.prepare("SELECT state FROM hub_group_resources WHERE source='code'").get()).toEqual({ state: "suspended" });
     expect((await r.call(admin, "GET", "/hub/v1/admin/group-policy")).body.policy.state).toBe("never-enabled");
   });
+  it("real never-enabled admin resume recovers a code Fleet after removing its exclusion", async () => {
+    const { r, admin } = await world(), code = await make(r, admin), a = await begin(r, code.code);
+    expect((await a.approve("dan")).status).toBe(200); expect((await a.redeem()).status).toBe(200);
+    await exclude(r, admin, "dan");
+    const path = "/hub/v1/admin/group-policy", policy = { ...(await r.call(admin, "GET", path)).body.policy, denies: [] };
+    const preview = await r.call(admin, "POST", path + "/preview", { policy }); expect(preview.status, preview.text).toBe(200);
+    expect((await r.call(admin, "PUT", path, { policy, previewDigest: preview.body.previewDigest })).status).toBe(200);
+    const view = (await r.call(admin, "GET", path)).body, paused = view.paused.find((row: any) => row.resource.id === a.binding.fleetId);
+    expect(view.policy.state).toBe("never-enabled"); expect(paused).toBeDefined();
+    const request = { resource: paused.resource, expectedPolicyRevision: view.policy.revision, expectedLifecycleRevision: paused.lifecycleRevision };
+    expect((await r.call(admin, "POST", path + "/resources/resume", { ...request, expectedLifecycleRevision: paused.lifecycleRevision + 1 })).status).toBe(409);
+    const resumed = await r.call(admin, "POST", path + "/resources/resume", request); expect(resumed.status, resumed.text).toBe(200);
+    expect(resumed.body).toMatchObject({ ok: true, state: "active", lifecycleRevision: paused.lifecycleRevision + 1 });
+    expect((await r.call(admin, "GET", path)).body.paused).toEqual([]);
+    expect(r.db.prepare("SELECT source,state FROM hub_group_resources WHERE source='code'").get()).toEqual({ source: "code", state: "active" });
+    expect(r.db.prepare("SELECT action FROM hub_audit WHERE action='group-resource.resumed'").all()).toHaveLength(1);
+  });
 });

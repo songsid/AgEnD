@@ -1,6 +1,6 @@
 # B1 backend validation
 
-This is the original packet at 5db75bb9. The [R1 packet](r1/README.md) records the later exclusion, policy-impact and member-version corrections. The original small4 image repeats small3; it does not prove a fifth distinct visible handoff. R1 adds an exact-label capture assertion and refreshed images.
+This is the original packet at 5db75bb9. The [R1 packet](r1/README.md) records the later exclusion, policy-impact and member-version corrections; [R2](r2/README.md) records explicit code Resume before first policy enable. The original small4 image repeats small3; it does not prove a fifth distinct visible handoff. R1 adds an exact-label capture assertion and refreshed images.
 
 Precommit source-hash-bound evidence from an owned, network-none, read-only container. The receipt binds all 21 changed production modules and five technical screenshots. No pilot, real AD, backend CLI or native runtime was used.
 

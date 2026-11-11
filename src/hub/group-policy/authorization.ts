@@ -98,9 +98,11 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
       assert(ctx.current);
       if (bindingOf().kind !== "ready" || policyOf() !== policy || JSON.stringify(policy.read()) !== serializedPolicy) throw new HubGroupPolicyError("conflict");
     };
-    const retainedManual = operation === "check" && ["manual", "code"].includes((db.prepare("SELECT source FROM hub_group_resources WHERE resource_key=?")
-      .get(JSON.stringify([resource.kind, resource.id, resource.revision])) as { source: string } | undefined)?.source ?? "");
-    if (before.state === "never-enabled" && !retainedManual) {
+    const retainedSource = operation === "check" || operation === "resume" ? (db.prepare("SELECT source FROM hub_group_resources WHERE resource_key=?")
+      .get(JSON.stringify([resource.kind, resource.id, resource.revision])) as { source: string } | undefined)?.source : undefined;
+    // Code approval survives policy enablement state; explicit resume still takes every administrator/eligibility fence below.
+    const retainedApproval = retainedSource === "code" || operation === "check" && retainedSource === "manual";
+    if (before.state === "never-enabled" && !retainedApproval) {
       if (operation === "resume") throw new HubGroupPolicyError("invalid");
       return Object.freeze({ source: "legacy" as const, assertCurrent() {
         policyCurrent(); if (version() !== epoch) throw new HubGroupPolicyError("conflict");
