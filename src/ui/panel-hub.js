@@ -1,6 +1,8 @@
 import * as ownerEntryWords from "./hub-owner-strings.js";
 import * as companyViews from "./hub-company-join.js";
 import { hj, joinError } from "./hub-company-join-strings.js";
+import { useJoinApproval } from "./hub-join-approval.js";
+import { he } from "./hub-enrolment-code-strings.js";
 import { joinRequest, companyInfoRequest, CompanyJoinInfoPage, useCompanyJoinContext, CompanyJoinLead, approveCompanyJoin, HubCompanyJoinPage, CompanyJoinAdminCard } from "./hub-company-join.js";
 // AgEnD Hub P1, slice 3: the Hub workspace's pages — the chats (/ui/hub, a room at /ui/hub?room=<id>; #3226 B), My
 // exposures and Administration (/ui/hub/exposures, /ui/hub/admin; reached from the session row's menu) — and its session row. Served only by a Hub's own listener at its own origin, over the Hub's /hub/v1/*
@@ -176,6 +178,8 @@ function linkHubSigninCss(doc = typeof document !== "undefined" ? document : nul
 }
 function HubSignIn() {
   const company = useCompanyJoinContext();
+  const generation = useRef(0);
+  const approval = useJoinApproval({ requestId: company.requestId, deadline: company.view?.outerDeadline, approve: approveCompanyJoin, current: () => joinRequest() === company.requestId });
   useEffect(() => {
     linkHubSigninCss();
     // #3318 review F1: signed out from the phone drawer's session menu (or a session that ended while it was open), the
@@ -190,6 +194,7 @@ function HubSignIn() {
   const [form, setForm] = useState({ login: "", password: "" });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  useEffect(() => { setBusy(false); setMsg(null); return () => { generation.current++; }; }, [company.requestId]);
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
@@ -199,12 +204,15 @@ function HubSignIn() {
       doc?.getElementById(!form.login.trim() ? "hubLogin" : "hubPassword")?.focus();
       return;
     }
+    const mine = ++generation.current, requestId = company.requestId;
     setBusy(true); setMsg(null);
     const r = await hubClient().signIn(form.login.trim(), form.password);
+    if (mine !== generation.current || joinRequest() !== requestId) return;
     if (r.ok) {
       setForm({ login: "", password: "" });
       if (company.requestId) {
-        const joined = await approveCompanyJoin(company.requestId, r.csrf);
+        const joined = await approval.run(r.csrf);
+        if (mine !== generation.current || joined.code === "retired") return;
         if (!joined.ok) { setBusy(false); setSession({ ...r, companyJoinFailure: { requestId: company.requestId, code: joined.code } }); return; }
       }
       setBusy(false); setSession(r); return;
@@ -227,6 +235,7 @@ function HubSignIn() {
         value=${form.password} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, password: v })); }} />
       <button type="submit" class="hub-signin-go" disabled=${busy || company.requestId && !company.view?.ok}>${company.requestId ? hj("signInConnect") : hw("signIn")}</button>
     </form>` : company.view?.ok ? html`<p role="status">${joinError(company.view.reason || company.view.state)}</p>` : null}
+    ${approval.queued ? html`<p class="note" role="status">${he("queued")}</p>` : null}
     <p class="hub-signin-msg" role=${msg ? "alert" : undefined}>${msg || ""}</p>
     ${company.requestId && (msg || company.view?.state !== "pending") && company.view?.returnPath ? html`<a class="btn btn-sm" href=${company.view.returnPath} rel="noreferrer">${hj("return")}</a>` : null}
   </section></main>`;
