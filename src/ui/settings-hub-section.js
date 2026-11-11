@@ -52,7 +52,7 @@ export function HubSection({ overPublicLink, hubHost, hubOrigin }) {
   if (overPublicLink) return html`<section class="card s-group" id="hub-public-link"><p class="note">${hubSectionText("publicLink")}</p></section>`;
   return html`<div class="s-hub-section">
     <${Lazy} load=${() => import("./settings-hub-connection.js").catch(() => import("./settings-hub-membership.js"))} pick=${m => m.HubConnectionSettings || m.HubMembershipSettings}
-      props=${{ onMode: mode => setJoined(mode === "connected" || mode === "connecting" || mode === "paused") }} />
+      props=${{ onMode: mode => { if (mode !== "unknown") setJoined(mode === "connected" || mode === "connecting" || mode === "paused"); } }} />
     ${!hubHost && typeof document !== "undefined" && document.body?.dataset.hubSetup === "1"
       ? joined ? html`<details class="s-ui-disclosure hub-setup-folded"><summary>${hubSectionText("setupLink")}</summary><${Lazy} load=${() => import("./settings-hub-setup.js")} pick=${(m) => m.HubSetupSettings} /></details>`
         : html`<${Lazy} load=${() => import("./settings-hub-setup.js")} pick=${(m) => m.HubSetupSettings} />` : null}

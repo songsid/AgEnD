@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 
 const mounted: AppPage[] = [];
-const until = async (test: () => unknown) => { for (let i = 0; i < 150 && !test(); i++) await settle(3); };
+// Real time, not ticks: each card is its own lazy module, and a loaded CI runner can take seconds to import them.
+const until = async (test: () => unknown) => { const end = Date.now() + 10_000; while (!test() && Date.now() < end) { await settle(3); await new Promise(r => setTimeout(r, 20)); } };
 const response = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body });
 afterEach(async () => { for (const pg of mounted.splice(0)) { await pg.unmount(); pg.restore(); } });
 const paired = { state: "paired", binding: "b".repeat(64), hub: { hubId: "11111111-2222-4333-8444-555555555555", name: null, memberOrigin: "https://member.example.test", webOrigin: "https://hub.example.test", fingerprint: { kind: "hub-key", digest: "f".repeat(64) } }, link: "online" };
@@ -11,8 +12,14 @@ const paired = { state: "paired", binding: "b".repeat(64), hub: { hubId: "111111
 async function section(pairing: unknown, folded = false) {
   const pg = page({ url: "http://127.0.0.1:19280/settings/hub", storage: { agend_tour_done: "1" } }); mounted.push(pg);
   pg.document.body.dataset.hubSetup = "1";
-  (globalThis as any).fetch = async (path: string) => response(path.split("?")[0] === "/api/settings/hub/membership"
-    ? { ok: true, enabled: true, connectionCardV1: true, pairing } : { ok: true, operation: null, display: null });
+  // Answer every read the cards make as the real server would for this one pairing (the embedded pairing card re-reads
+  // /api/hub/member/pairing; an empty answer there would read as "not connected" and unfold the card mid-test).
+  (globalThis as any).fetch = async (path: string) => {
+    const p = path.split("?")[0];
+    return response(p === "/api/settings/hub/membership" ? { ok: true, enabled: true, connectionCardV1: true, pairing }
+      : p === "/api/hub/member/pairing" ? { ok: true, pairing, notices: [] }
+      : p === "/api/hub/member/exposures" ? { ok: true, rows: [] } : { ok: true, operation: null, display: null });
+  };
   (await import("/assets/app-i18n.js")).setLang("en", { store: false });
   const { HubSection } = await import("/ui/js/settings-hub-section.js");
   await pg.mount(h(HubSection, { hubHost: false, overPublicLink: false }));
@@ -32,6 +39,7 @@ describe("M-2921: the Hub setup card's place", () => {
   });
   it("connected: 設定 Hub folds into one closed line under the connection card", async () => {
     const pg = await section(paired, true);
+    await new Promise(r => setTimeout(r, 1000)); await settle(10);                    // the fold stays after the cards' later re-reads
     expect(order(pg)).toEqual(["hub-connection", "hub-setup"]);
     const folded = pg.root.querySelector(".hub-setup-folded");
     expect(folded?.open).toBeFalsy(); expect(folded?.querySelector("summary")?.textContent).toBe("Set up a Hub");
