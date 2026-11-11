@@ -10,7 +10,7 @@ import { j1, classifyHubInput, probeMessage, waitingMessage, reasonMessage, left
 register("companyJoinWait", {
   "en": {
     startHint: "Paste the Hub link first.", nameHint: "Enter a Fleet name to continue.",
-    getLink: "On the Hub Administration page, choose Copy colleague connection link and paste it here, or enter the Hub’s https address.",
+    getLink: "Enter the Hub address (for example hub.example.com), or paste the link your Hub administrator gave you.",
     connecting: "Opening Hub sign-in…", codeNeeded: "Your authenticator code is required.", target: "Hub: {0}",
     codeLead: "You enabled authenticator codes for remote changes. Enter your own 6-digit code here to continue to Hub sign-in.",
     codeLabel: "Your 6-digit authenticator code", codeGo: "Continue", codeWrong: "That code was not accepted. Try a current code.",
@@ -26,7 +26,7 @@ register("companyJoinWait", {
   },
   "zh-TW": {
     startHint: "請先貼上 Hub 連結。", nameHint: "請填入 Fleet 名稱以繼續。",
-    getLink: "請在 Hub 管理頁按「複製同仁連線連結」並貼到這裡，或輸入 Hub 的 https 網址。",
+    getLink: "請輸入 Hub 位址（例如 hub.example.com），或貼上 Hub 管理員給你的連結。",
     connecting: "正在開啟 Hub 登入頁面…", codeNeeded: "請輸入你的驗證碼以繼續。", target: "Hub：{0}",
     codeLead: "你已啟用遠端變更的驗證碼保護。請在這裡輸入你自己的 6 位數驗證碼，繼續前往 Hub 登入。",
     codeLabel: "你的 6 位數驗證碼", codeGo: "繼續", codeWrong: "驗證碼未通過，請輸入目前的驗證碼。",
