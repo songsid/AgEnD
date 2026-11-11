@@ -110,6 +110,43 @@ try {
   assert.equal(await page.locator("#pane-a-msgIn").inputValue(), "尚未送出的草稿");
   await page.locator("#pane-b-msgIn").fill("另一格的草稿");
   await shot("right", 2);
+  if (process.env.LIFECYCLES === "1") {
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Performance.enable'); await cdp.send('HeapProfiler.collectGarbage');
+    const heap = async () => (await cdp.send('Performance.getMetrics')).metrics.find((x: any) => x.name === 'JSHeapUsedSize').value;
+    const before = await heap();
+    // One composer is mid-composition while the other's state redraws the page; no fake keyboard/vendor call.
+    const composing = await page.evaluate(async (names: string[]) => {
+      const { store } = await import('/ui/js/panel-chat.js'); const field = document.querySelector('#pane-a-msgIn') as HTMLTextAreaElement;
+      const before = store.state.drafts[names[0]];
+      field.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })); field.value = '輸入中的注音候選';
+      field.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, inputType: 'insertCompositionText' }));
+      store.setDraft(names[1], 'B redraw during composition');
+      const { appStore } = await import('/assets/app-store.js'); appStore.set({ connection: appStore.get().connection });
+      await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
+      const during = { value: field.value, draft: store.state.drafts[names[0]] };
+      field.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+      return { before, during, after: store.state.drafts[names[0]] };
+    }, [a, b]);
+    assert.equal(composing.during.value, '輸入中的注音候選'); assert.equal(composing.during.draft, composing.before); assert.equal(composing.after, composing.during.value);
+    await page.locator('#pane-a-msgIn').fill('尚未送出的草稿'); await page.locator('#pane-b-msgIn').fill('另一格的草稿');
+    await page.locator('[data-pane="a"] input[type=file]').setInputFiles({ name: 'owned-a.txt', mimeType: 'text/plain', buffer: Buffer.from('owned fixture only') });
+    assert.equal(await page.locator('[data-pane="a"] .file-chip').count(), 1); assert.equal(await page.locator('[data-pane="b"] .file-chip').count(), 0);
+    for (let n = 0; n < 50; n++) {
+      await page.locator('[data-pane="b"] .ws-pane-close').click(); await page.locator('#msgIn').waitFor();
+      assert.equal(await page.locator('#msgIn').inputValue(), '尚未送出的草稿');
+      await page.evaluate(async (name: string) => { const { appStore } = await import('/assets/app-store.js'); await appStore.get().chatWorkspace.open(name); }, b);
+      await page.locator('#pane-b-msgIn').waitFor();
+      assert.equal(await page.locator('#pane-b-msgIn').inputValue(), '另一格的草稿');
+      assert.equal(await page.locator('.chat-workspace .panel.p-chat').count(), 2); assert.equal(await page.locator('#main .hd-text').count(), 1);
+      assert.equal(await page.locator('[data-pane="a"] .file-chip').count(), 1); assert.equal(await page.locator('[data-pane="b"] .file-chip').count(), 0);
+      assert.equal(fx.fm.sseClients.size, 1);
+    }
+    await cdp.send('HeapProfiler.collectGarbage');
+    receipt.lifecycle = { cycles: 50, composing, heapBefore: before, heapAfter: await heap(), filesStayedWithA: true, pageStreams: 1, toolsRoots: 1 };
+    await page.evaluate(async (name: string) => { const { store } = await import('/ui/js/panel-chat.js'); store.removeFile(name, 0); }, a);
+    await cdp.detach();
+  }
   // Actual browser Range → existing quote pill → the other composer's edit history. No send.
   const sends: string[] = [];
   const onRequest = (req: any) => { if (req.method() === "POST" && new URL(req.url()).pathname === "/ui/send") sends.push(req.url()); };
