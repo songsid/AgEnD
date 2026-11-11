@@ -14,22 +14,24 @@ afterEach(() => { for (const store of stores.splice(0)) store.close(); });
 async function harness(hostHere: boolean, feature = true, policy = true) {
   let requester = true, confirmer = true, policyCurrent = policy;
   const session = { ownerKey: {}, sessionId: "a".repeat(64), authorityEpoch: 1, hostHere, current: () => requester };
-  const notify = vi.fn(), store = new SettingsConfirmationStore({ audit: vi.fn(), notify }); stores.push(store);
+  const notify = vi.fn(), asked = vi.fn(() => null), store = new SettingsConfirmationStore({ audit: vi.fn(), notify }); stores.push(store);
   const captured: any[] = [];
   const baseline = { config: { defaults: {}, instances: {} } as any, classic: {}, fingerprint: "unchanged" };
   const gate = new SettingsHttpConfirmation(store, { principal: () => ({ id: session.sessionId, label: "Host", source: "web_session", current: () => requester,
-    localAdmin: () => requester, localSession: session }), baseline: async () => baseline, snapshot: () => "constant", directCompanyJoin: feature, companyJoinPolicy: () => policyCurrent, totp: { state: () => "ready", confirm: () => ({ error: "wrong" }) }, selfConfirm: () => null });
-  const req = new EventEmitter() as any; req.method = "POST"; req.url = "/api/hub/member/company-join/start"; req.headers = { cookie: "private", "idempotency-key": "start-once" }; req.destroy = () => {};
-  const response = new Promise<any>(resolve => {
+    localAdmin: () => requester, localSession: session }), baseline: async () => baseline, snapshot: () => "constant", directCompanyJoin: feature, companyJoinPolicy: () => policyCurrent, totp: { state: () => "ready", confirm: () => ({ error: "wrong" }) }, selfConfirm: asked });
+  const send = () => {
+   const req = new EventEmitter() as any; req.method = "POST"; req.url = "/api/hub/member/company-join/start"; req.headers = { cookie: "private", "idempotency-key": "start-once" }; req.destroy = () => {};
+   return new Promise<any>(resolve => {
     const res = { destroyed: false, headersSent: false, setHeader: vi.fn(), writeHead() { this.headersSent = true; }, end(text: string) { resolve(JSON.parse(text)); } } as any;
     gate.handle(req, res, new URL(req.url, "http://127.0.0.1:4444"), (replay, output) => {
       captured.push({ authority: settingsRequestJoinAuthority(replay), execution: settingsRequestExecution(replay), headers: replay.headers });
       output.writeHead(200); output.end(JSON.stringify({ ok: true, operation: { operationId: "original-op" } })); return true;
     });
     queueMicrotask(() => { req.emit("data", Buffer.from(JSON.stringify({ address: "https://hub.example.test", label: "My Fleet" }))); req.emit("end"); });
-  });
-  const first = await response;
-  return { first, store, session, notify, captured, revokePolicy: () => { policyCurrent = false; }, lose: () => { requester = false; }, deny: () => { confirmer = false; },
+   });
+  };
+  const first = await send();
+  return { first, send, store, session, notify, asked, captured, revokePolicy: () => { policyCurrent = false; }, lose: () => { requester = false; }, deny: () => { confirmer = false; },
     decide: () => store.decide(first.pending_change.id, "confirm", { label: "General admin", current: () => confirmer }) };
 }
 describe("company Start Settings authority", () => {
@@ -72,6 +74,12 @@ describe("company Start Settings authority", () => {
     const h = await harness(host, true, false); await Promise.resolve();
     expect(h.first.pending_change).toMatchObject({ state: "pending", presentation: "hub-join", totp: "ready" });
     expect(h.captured).toHaveLength(0); expect(h.notify).not.toHaveBeenCalled();
+  });
+  it("replaying the same code-protected Start keeps its digest without asking for consent again", async () => {
+    const h = await harness(false, true, false), again = await h.send();
+    expect(h.first.pending_change.confirm_digest).toEqual(expect.stringMatching(/\S+/));
+    expect(again.pending_change).toMatchObject({ id: h.first.pending_change.id, state: "pending", presentation: "hub-join", totp: "ready", confirm_digest: h.first.pending_change.confirm_digest });
+    expect(h.asked).not.toHaveBeenCalled(); expect(h.captured).toHaveLength(0); expect(h.notify).not.toHaveBeenCalled();
   });
   it.each([false, true])("company consent retains this admin’s enforced code even with message authority disabled (%s)", enforced => {
     const req = {} as any, role = { ok: true, onHost: false, actor: { adapter_id: "test", user_id: "admin" } };

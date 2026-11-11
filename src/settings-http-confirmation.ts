@@ -161,7 +161,7 @@ export class SettingsHttpConfirmation {
     const requestFingerprint = settingsFingerprint([method, url.pathname, body]);
     if (principal?.current() && key) {
       const prior = this.store.findRequest(principal.id, key, requestFingerprint);
-      if (prior) { json(res, 202, { ok: true, result: "pending_confirmation", pending_change: this.forPage(req, prior) }); return; }
+      if (prior) { json(res, 202, { ok: true, result: "pending_confirmation", pending_change: companyStart ? this.forPage(req, prior, false) : prior }); return; }
     }
     const baseline = await this.options.baseline();
     if (res.destroyed || req.aborted) return;
