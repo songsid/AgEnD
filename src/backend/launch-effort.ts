@@ -106,7 +106,9 @@ export function flagEffort(
   const option = helpOption(help, flag);
   if (!option.listed) return skip(backend, level, t("effort.launch_no_flag", flag));
   // grok's help lists no values (and it takes any string): the levels its model cache gives the model that runs
-  // (`modelLevels`, which has xhigh on the 4.6/4.7 models), else only the levels AgEnD knew it has.
+  // (`modelLevels`, which has xhigh on the 4.6/4.7 models; `[]`: the cache says the model has no effort setting, so
+  // none is passed), else only the levels AgEnD knew it has.
+  if (backend === "grok" && option.levels === null && modelLevels?.length === 0) return skip(backend, level, t("effort.launch_model_no_effort"));
   const levels = option.levels ?? (backend === "grok" ? (modelLevels?.length ? [...modelLevels] : [...EFFORT_CAPABILITIES.grok.levels]) : null);
   if (!levels) return skip(backend, level, t("effort.launch_no_levels", flag));
   if (!levels.includes(level)) return skip(backend, level, t("effort.launch_level_not_offered", levels.join(", ")));

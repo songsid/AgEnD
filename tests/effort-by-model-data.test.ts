@@ -19,6 +19,7 @@ import { parseClaudeEffortCapability, readClaudeEffortLevels, readEffortMetadata
 import { flagEffort } from "../src/backend/launch-effort.js";
 // @ts-expect-error — a JS module of the app, with no types
 import { EFFORT_BACKENDS, effectiveSummary } from "../src/ui/settings-model.js";
+import { t } from "../src/locale.js";
 import { registerExecutableFixture } from "./support/process-guard.js";
 
 const eff = (...levels: string[]) => ({ supported: true, ...Object.fromEntries(["low", "medium", "high", "xhigh", "max"].map(l => [l, { supported: levels.includes(l) }])) });
@@ -187,6 +188,23 @@ describe("grok: reasoning_efforts of models_cache.json", () => {
     expect(flagEffort("grok", "xhigh", bin, help, null).arg).toBeNull();
     expect(flagEffort("grok", "xhigh", bin, help, ["low", "medium", "high"]).arg).toBeNull();
     expect(flagEffort("grok", "medium", bin, help)).toMatchObject({ arg: " --reasoning-effort medium" });
+  });
+
+  it("a model the cache says has no effort setting gets no --reasoning-effort at all, and a quiet note", () => {
+    const bin = join(root, "grok");
+    writeFileSync(bin, "#!/bin/sh\n"); chmodSync(bin, 0o755); registerExecutableFixture(bin);
+    const help = () => "      --reasoning-effort <EFFORT>\n          Reasoning effort\n          [aliases: --effort]\n";
+    const r = flagEffort("grok", "medium", bin, help, []);
+    expect(r.arg).toBeNull();
+    expect(r.note).toContain(t("effort.launch_model_no_effort"));
+    expect(flagEffort("grok", "medium", bin, help, undefined).arg).toBe(" --reasoning-effort medium");   // no cache: as before
+  });
+
+  it("the placeholder model 'default' reads grok's cached default model, like no model", () => {
+    grokCache(GROK);
+    cliEnv("grok", { currentModel: "grok-4.7" });
+    expect(readGrokEffortLevels("default")).toEqual(["low", "medium", "high", "xhigh"]);
+    expect(readGrokEffortLevels("Default")).toEqual(["low", "medium", "high", "xhigh"]);
   });
 });
 

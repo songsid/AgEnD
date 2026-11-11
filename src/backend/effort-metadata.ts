@@ -201,7 +201,9 @@ let grokLevelsMemo: { path: string; size: number; mtimeMs: number; levels: Map<s
  * returns anything but level names (the cache also holds credentials).
  */
 export function readGrokEffortLevels(model: string | null, grokHome: string = process.env.GROK_HOME?.trim() || join(homedir(), ".grok")): string[] | null {
-  const name = model?.trim() || readCachedCurrentModel("grok");
+  // No model, or the placeholder "default" (unresolved): the default model grok's CLI env probe cached.
+  const named = model?.trim();
+  const name = (named && named.toLowerCase() !== "default" ? named : null) || readCachedCurrentModel("grok");
   if (!name) return null;
   const path = join(grokHome, "models_cache.json");
   try {
