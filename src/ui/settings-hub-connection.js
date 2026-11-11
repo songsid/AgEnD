@@ -39,7 +39,7 @@ const validPairing = p => !!p && states.has(p.state) && (p.state === "unpaired" 
   || p.state === "pending" && endpoint(p.memberOrigin) && /^[a-f0-9]{64}$/i.test(p.fingerprint?.digest || "") && Number.isFinite(p.expiresAt)
   || p.state === "paired" && endpoint(p.hub?.memberOrigin) && endpoint(p.hub?.webOrigin) && /^[a-f0-9]{64}$/i.test(p.hub?.fingerprint?.digest || "") && ["online", "offline"].includes(p.link));
 const safeOrigin = p => { try { const value = p?.hub?.webOrigin, u = new URL(value); return u.protocol === "https:" && u.origin === value ? u.origin + "/ui/hub" : null; } catch { return null; } };
-export function HubConnectionSettings() {
+export function HubConnectionSettings({ onMode } = {}) {
   const publicPage = globalThis.document?.body?.dataset?.publicLink === "1";
   const [view, setView] = useState(null), [error, setFailureCode] = useState(""), [busy, setBusy] = useState(false), [fallback, setFallback] = useState(typeof legacy.markMember !== "function");
   const [Company, setCompany] = useState(null), [Connect, setConnect] = useState(null), [pending, setPending] = useState(null);
@@ -122,6 +122,8 @@ export function HubConnectionSettings() {
     if (!card) { location.assign("/ui/needs"); return; }
     card.scrollIntoView?.({ block: "center" }); card.querySelector("button,input,a")?.focus();
   };
+  const reported = !view ? "unknown" : view.pairing?.state === "paired" ? (!view.enabled ? "paused" : view.pairing.link === "online" ? "connected" : "connecting") : "unconnected";
+  useEffect(() => { onMode?.(reported); }, [reported]);
   if (publicPage) return null;
   if (fallback) return html`<${legacy.HubMembershipSettings} />`;
   const p = view?.pairing, paired = p?.state === "paired", paused = paired && !view.enabled;
