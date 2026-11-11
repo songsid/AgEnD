@@ -1,0 +1,14 @@
+{
+  "numTotalTests": 75,
+  "numPassedTests": 75,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "success": true,
+  "files": [
+    {
+      "name": "changelog-fragments.test.ts",
+      "status": "passed",
+      "failed": []
+    }
+  ]
+}

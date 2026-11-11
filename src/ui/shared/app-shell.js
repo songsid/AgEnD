@@ -569,10 +569,55 @@ register("pendingHub", {
   en: { connect: "Connect this Fleet to Hub {0} using your company account. Agent sharing stays separate." },
   "zh-TW": { connect: "以公司帳號將這個 Fleet 連接到 Hub {0}。分享 Agent 需另外選擇。" },
 });
-function pendingSummaryLine(line) {
-  if (typeof line !== "string") return line;
+// Optional presentation only. Own namespace works with a retained app-i18n.js; no new import is required.
+register("pendingSummary", {
+  en: {
+    "settings_confirm.summary.default": "default", "settings_confirm.summary.absent": "absent", "settings_confirm.summary.fingerprint": "fingerprint",
+    "settings_confirm.summary.in_effect": "{0} (in effect)", "settings_confirm.summary.inherit": " — {0} agent(s) inherit it: {1}", "settings_confirm.summary.more": " +{0} more",
+    "settings_confirm.summary.deleted": "deleted", "settings_confirm.summary.add": "add", "settings_confirm.summary.remove": "remove", "settings_confirm.summary.order": "order",
+    "settings_confirm.summary.removed": "field removed (inherit/omitted policy)", "settings_confirm.summary.connections": "ordered connections / primary",
+    "settings_confirm.summary.connection": "connection", "settings_confirm.summary.confirmed": "confirmed operation",
+    "settings_confirm.summary.role.classicAdmin": "Classic admin (C)", "settings_confirm.summary.role.fleetAdmin": "fleet admin (F)",
+    "settings_confirm.summary.role.user": "user", "settings_confirm.summary.role.group": "group", "settings_confirm.summary.role.guild": "guild",
+  },
+  "zh-TW": {
+    "settings_confirm.summary.default": "預設", "settings_confirm.summary.absent": "未設定", "settings_confirm.summary.fingerprint": "指紋",
+    "settings_confirm.summary.in_effect": "{0}（實際生效）", "settings_confirm.summary.inherit": " — {0} 個 agent 繼承此設定：{1}", "settings_confirm.summary.more": " 等另外 {0} 個",
+    "settings_confirm.summary.deleted": "已刪除", "settings_confirm.summary.add": "新增", "settings_confirm.summary.remove": "移除", "settings_confirm.summary.order": "順序",
+    "settings_confirm.summary.removed": "已移除欄位（繼承／未指定的政策）", "settings_confirm.summary.connections": "連接順序／主要連接",
+    "settings_confirm.summary.connection": "連接", "settings_confirm.summary.confirmed": "需確認的操作",
+    "settings_confirm.summary.role.classicAdmin": "Classic 管理員（C）", "settings_confirm.summary.role.fleetAdmin": "Fleet 管理員（F）",
+    "settings_confirm.summary.role.user": "使用者", "settings_confirm.summary.role.group": "群組", "settings_confirm.summary.role.guild": "伺服器",
+  },
+});
+const pendingSummaryArguments = Object.fromEntries([
+  ...["default", "absent", "fingerprint", "deleted", "add", "remove", "order", "removed", "connections", "connection", "confirmed", "role.classicAdmin", "role.fleetAdmin", "role.user", "role.group", "role.guild"].map(key => [`settings_confirm.summary.${key}`, ""]),
+  ["settings_confirm.summary.in_effect", "s"], ["settings_confirm.summary.inherit", "ns"], ["settings_confirm.summary.more", "n"],
+]);
+function legacyPendingSummaryLine(line) {
   const known = /^(?:Connect this Fleet to Hub (.+) using your company account\. Agent sharing stays separate\.|以公司帳號將這個 Fleet 連接到 Hub (.+)。分享 Agent 需另外選擇。)$/.exec(line);
   return known ? t("pendingHub.connect", known[1] ?? known[2]) : line;
+}
+function pendingSummaryLine(line, descriptor) {
+  if (typeof line !== "string") return line;
+  if (descriptor != null) {
+    if (descriptor.v !== 1 || descriptor.fallback !== line || !Array.isArray(descriptor.parts) || !descriptor.parts.length || descriptor.parts.length > 64) return legacyPendingSummaryLine(line);
+    let units = 0;
+    const rendered = [];
+    for (const part of descriptor.parts) {
+      if (typeof part === "string") { units += part.length; rendered.push(part); }
+      else {
+        if (!part || typeof part.key !== "string" || !Object.prototype.hasOwnProperty.call(pendingSummaryArguments, part.key) || !Array.isArray(part.args)) return legacyPendingSummaryLine(line);
+        const shape = pendingSummaryArguments[part.key];
+        if (part.args.length !== shape.length || !part.args.every((arg, i) => shape[i] === "s" ? typeof arg === "string" : typeof arg === "number" && Number.isFinite(arg))) return legacyPendingSummaryLine(line);
+        units += part.args.reduce((sum, arg) => sum + String(arg).length, 0);
+        rendered.push(t(`pendingSummary.${part.key}`, ...part.args));
+      }
+      if (units > 8192) return legacyPendingSummaryLine(line);
+    }
+    return rendered.join("");
+  }
+  return legacyPendingSummaryLine(line);
 }
 export function PendingChanges({ inline = false } = {}) {
   const { pendingChanges } = useStore(appStore);
@@ -598,7 +643,7 @@ export function PendingChanges({ inline = false } = {}) {
       ${p.state === "pending" ? html`<span class="pending-left">${t("app.pendingLeft", mmss(p.deadline - NOW()))}</span>` : null}
       ${p.dismiss ? html`<button type="button" class="icon-btn" aria-label=${t("app.close")} title=${t("app.close")} onClick=${p.dismiss}><${Icon} name="close" size=${14} /></button>` : null}</div>
     ${p.label ? html`<div class="pending-label">${p.label}</div>` : null}
-    ${Array.isArray(p.summary) && p.summary.length ? html`<ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${pendingSummaryLine(line)}</li>`)}</ul>` : null}
+    ${Array.isArray(p.summary) && p.summary.length ? html`<ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${pendingSummaryLine(line, Array.isArray(p.summary_i18n) && p.summary_i18n.length === p.summary.length ? p.summary_i18n[i] : null)}</li>`)}</ul>` : null}
     ${p.state === "pending" ? html`<${PendingHow} p=${p} />` : null}
     ${(p.state === "applying" || p.state === "applied") && p.confirmation && p.confirmation.kind === "web" ? html`<p class="note">${t("app.pendingWeb")}</p>` : null}
     ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" && p.outcome && p.outcome.message ? html`<p class="note">${p.outcome.message}</p>` : null}

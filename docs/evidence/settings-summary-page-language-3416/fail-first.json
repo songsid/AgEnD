@@ -1,0 +1,37 @@
+{
+  "numTotalTests": 27,
+  "numPassedTests": 0,
+  "numFailedTests": 4,
+  "numPendingTests": 23,
+  "success": false,
+  "files": [
+    {
+      "name": "settings-summary-page-language-3416.test.ts",
+      "status": "failed",
+      "failed": [
+        {
+          "title": "carries display descriptors without changing the canonical diff or rendered chat summary",
+          "failure": "AssertionError: expected undefined to match object { v: 1, \u2026(1) }"
+        },
+        {
+          "title": "freezes display metadata at proposal and in each read, outside audit and execution authority",
+          "failure": "AssertionError: expected undefined to deeply equal [ { v: 1, \u2026(2) } ]"
+        }
+      ]
+    },
+    {
+      "name": "web-pending-page-language-3416.test.ts",
+      "status": "failed",
+      "failed": [
+        {
+          "title": "zh-TW page renders the generic summary independently of the fleet locale",
+          "failure": "AssertionError: expected 'key: fingerprint abcdef \u2192 123456' to be 'key: \u6307\u7d0b abcdef \u2192 123456' // Object.is equality"
+        },
+        {
+          "title": "en page renders the generic summary independently of the fleet locale",
+          "failure": "AssertionError: expected 'key: \u6307\u7d0b abcdef \u2192 123456' to be 'key: fingerprint abcdef \u2192 123456' // Object.is equality"
+        }
+      ]
+    }
+  ]
+}

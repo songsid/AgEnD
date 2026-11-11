@@ -1,0 +1,24 @@
+{
+  "originalSource": "764ca008f2ec73afbda5a5023907fa372d90789c",
+  "captureSource": "aa4dc3baedf2e45094d126ac284657454c1f1eda",
+  "tree": "8d64abf8c077339645e5e1d25f27551243446899",
+  "representationOnly": true,
+  "roundTripByteEqual": true,
+  "captureReexecuted": false,
+  "pngsChanged": false,
+  "caseCount": 16,
+  "servedBindings": 2000,
+  "receipts": [
+    {
+      "digest": "f8bf2a191ffbf0d6546f884fbfa8a6e6537e23c4ceeb0954a746e1fdfd1ea164",
+      "revision": "original",
+      "path": "docs/evidence/settings-summary-page-language-3416/browser/receipt.json"
+    },
+    {
+      "digest": "8f768c2f42ad2c259a198a3bb5135fb1da5436fe1bbabd2020c33166dd5f5fdb",
+      "revision": "digest-first",
+      "path": "docs/evidence/settings-summary-page-language-3416/browser/receipt.json"
+    }
+  ],
+  "scope": "Only served receipt maps become ordered digest-first rows. Every original path/digest and all other metadata reconstruct the original Git blob byte-for-byte. Historical execution remains pinned to its original source."
+}

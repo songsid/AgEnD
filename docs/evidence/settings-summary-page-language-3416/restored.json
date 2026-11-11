@@ -1,0 +1,29 @@
+{
+  "numTotalTests": 39,
+  "numPassedTests": 39,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "success": true,
+  "files": [
+    {
+      "name": "settings-http-confirmation-1423.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "settings-summary-metadata-3416.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "settings-summary-page-language-3416.test.ts",
+      "status": "passed",
+      "failed": []
+    },
+    {
+      "name": "web-pending-page-language-3416.test.ts",
+      "status": "passed",
+      "failed": []
+    }
+  ]
+}
