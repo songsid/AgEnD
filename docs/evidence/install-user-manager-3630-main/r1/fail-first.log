@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 <REPO>
+
+ ❯ tests/install-user-manager-3630.test.ts (16 tests | 2 failed | 14 skipped) 29ms
+   × an unverified runtime directory never prescribes a restart (canonical sockets present: true) 11ms
+   × an unverified runtime directory never prescribes a restart (canonical sockets present: false) 16ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/install-user-manager-3630.test.ts > an unverified runtime directory never prescribes a restart (canonical sockets present: true)
+ FAIL  tests/install-user-manager-3630.test.ts > an unverified runtime directory never prescribes a restart (canonical sockets present: false)
+AssertionError: expected 'missing-sockets' to be 'unavailable' // Object.is equality
+
+Expected: "unavailable"
+Received: "missing-sockets"
+
+ ❯ tests/install-user-manager-3630.test.ts:135:18
+    133|     state: (_unit, user) => user ? 'unavailable' : 'running',
+    134|   })!;
+    135|   expect(p.kind).toBe('unavailable');
+       |                  ^
+    136|   expect(installActivationHints(new InstallUserManagerError(p), 'linux…
+    137| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 14 skipped (16)
+   Start at  15:31:51
+   Duration  1.17s (transform 809ms, setup 140ms, import 762ms, tests 29ms, environment 0ms)

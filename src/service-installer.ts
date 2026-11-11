@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { ensureUserSystemd } from "./user-systemd.js";
+import { inspectInstallUserManager, InstallUserManagerError } from "./install-user-systemd.js";
 import ejs from "ejs";
 const { render } = ejs;
 import { homedir, platform } from "node:os";
@@ -1140,6 +1141,15 @@ export function startSystemService(): boolean {
 }
 
 export function activateService(plistPath: string, pidPath: string): void {
+  const plat = detectPlatform();
+  if (plat === "linux") {
+    ensureUserSystemd(undefined, { linger: true });
+    const unit = plistPath.replace(/.*\//, "");
+    const problem = inspectInstallUserManager(unit, { uid: process.getuid?.() ?? 0, env: process.env, exists: existsSync,
+      state: (name, user) => getSystemdServiceState(name, user) });
+    // Refuse before stopping a hand-started Fleet or issuing daemon-reload/enable/start. No manager restart here.
+    if (problem) throw new InstallUserManagerError(problem);
+  }
   // Kill manually-running fleet if present
   if (existsSync(pidPath)) {
     const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
@@ -1156,7 +1166,6 @@ export function activateService(plistPath: string, pidPath: string): void {
     try { unlinkSync(pidPath); } catch {}
   }
 
-  const plat = detectPlatform();
   if (plat === "macos") {
     const uid = process.getuid?.() ?? 501;
     const domain = `gui/${uid}`;
@@ -1164,7 +1173,6 @@ export function activateService(plistPath: string, pidPath: string): void {
     reloadLaunchdJob(domain, label, plistPath);
   } else {
     const serviceName = plistPath.replace(/.*\//, "").replace(/\.service$/, "");
-    ensureUserSystemd(undefined, { linger: true });   // #2264: linger on, so the fleet outlives the login that installed it
     execSync("systemctl --user daemon-reload", { stdio: "inherit" });
     // #2331: what systemd loaded, before the fleet starts under it.
     for (const line of loadedUnitCheck({ user: true, unit: serviceName, unitPath: plistPath })) console.log(line);

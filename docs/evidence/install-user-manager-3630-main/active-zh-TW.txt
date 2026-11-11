@@ -1,0 +1,12 @@
+系統服務已安裝於：<FIXTURE>/home/.config/systemd/user/com.agend.fleet.service
+❌ Fleet 系統服務已安裝，但無法啟動：user@1000.service 仍在執行，但連線用的兩個通訊端不見了：<FIXTURE>/missing-runtime/bus、<FIXTURE>/missing-runtime/systemd/private。
+環境變數無法重建遺失的通訊端。
+重新啟動 user@1000.service 會停止 Fleet 和其中所有 Agent，也會中斷這個使用者的其他所有服務。請先確認沒有 Agent 正在工作，再手動執行。
+這是 WSL 2.6.0 以前的已知問題。長久解法：在 Windows 執行 wsl --update，再重新開啟 WSL（參考 microsoft/WSL#13143）。 也可以先用下面的指令暫時復原：
+手動復原（AgEnD 不會自動重新啟動使用者管理員）：
+sudo systemctl restart user@1000.service
+export XDG_RUNTIME_DIR=/run/user/1000
+unset DBUS_SESSION_BUS_ADDRESS
+systemctl --user start dbus.socket
+systemctl --user daemon-reload
+systemctl --user enable --now --no-block com.agend.fleet.service
