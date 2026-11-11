@@ -7,6 +7,7 @@
  * 目錄連線, 服務連線, 測試連線, 重新連線, 連線中斷, 離線), and 配對 / pair inside the pairing-code path's own keys, named below.
  */
 import { describe, expect, it } from "vitest";
+import { readdirSync } from "node:fs";
 import { uiDictionaries, type UiString } from "./helpers/ui-dictionaries.js";
 
 export const MODULES = ["hub-strings.js", "hub-company-join-strings.js", "hub-quick-strings.js", "hub-owner-strings.js", "hub-group-strings.js", "hub-chat-strings.js",
@@ -14,6 +15,8 @@ export const MODULES = ["hub-strings.js", "hub-company-join-strings.js", "hub-qu
   "settings-hub-connection.js", "settings-hub-membership.js", "settings-hub-company-join.js",
   // U1 / U2's own dictionaries (written after the spec's list).
   "hub-join-one-strings.js", "hub-join-steps.js", "hub-group-search.js"].map((f) => `src/ui/${f}`);
+/** Everything else on the Hub's and Fleet-Hub's screens (A-L15 found words there too): every hub-* and settings-hub* module. */
+export const ALL = [...new Set([...MODULES, ...readdirSync("src/ui").filter((f) => /^(hub-|settings-hub).*\.js$/.test(f)).map((f) => `src/ui/${f}`)])];
 
 /** The pairing-code path's own keys: 配對 / pair may appear here (and only the "pair" class of terms is excused). */
 export const PAIRING_CODE_KEYS = new Set([
@@ -22,7 +25,8 @@ export const PAIRING_CODE_KEYS = new Set([
   "hubOwner.pairSteps", "hubOwner.pendingPairings",
   "hubPairingProgress.connectFailed", "hubPairingProgress.notApplied", "hubPairingProgress.unknown",
 ]);
-const ZH_NETWORK = /網路連線|目錄連線|服務連線|測試連線|重新連線|連線中斷|離線/g;
+// Network links (not the Fleet–Hub relationship), and 公開連結 — the public-link feature's own name, not "publish".
+const ZH_NETWORK = /網路連線|目錄連線|服務連線|測試連線|重新連線|連線中斷|AD 連線|離線|公開連結/g;
 const ZH_ALWAYS = /手動配對碼|一次性配對碼|同仁連線連結|組織帳號|公開|連線/;
 const EN_ALWAYS = /one-time pairing code|manual pairing code|\bexposures?\b|\bexpose[ds]?\b|organisation|\bHub admin\b(?!istrator)/i;
 
@@ -45,15 +49,15 @@ export function offences(s: UiString): string[] {
 }
 
 describe("U3: one vocabulary across the Hub and Fleet Hub strings (A-L14)", () => {
-  it.each(MODULES)("%s: every value is read, more than zero keys, no banned term outside the pairing-code path", (file) => {
+  it.each(ALL)("%s: every value is read, no banned term outside the pairing-code path (the spec's modules: more than zero keys)", (file) => {
     const d = uiDictionaries(file);
     expect(d.unread).toEqual([]);
-    expect(d.strings.length).toBeGreaterThan(0);
+    if (MODULES.includes(file)) expect(d.strings.length).toBeGreaterThan(0);
     const bad = d.strings.flatMap((s) => offences(s).map((o) => `${s.ns}.${s.key} [${s.lang}] "${o}": ${s.text}`));
     expect(bad).toEqual([]);
   });
   it("the allow-list names only keys that exist (no stale entry hides nothing)", () => {
-    const keys = new Set(MODULES.flatMap((f) => uiDictionaries(f).strings.map((s) => `${s.ns}.${s.key}`)));
+    const keys = new Set(ALL.flatMap((f) => uiDictionaries(f).strings.map((s) => `${s.ns}.${s.key}`)));
     expect([...PAIRING_CODE_KEYS].filter((k) => !keys.has(k))).toEqual([]);
   });
   it("A-L14: the gate fires when a banned term is put back — each class once", () => {
@@ -70,7 +74,7 @@ describe("U3: one vocabulary across the Hub and Fleet Hub strings (A-L14)", () =
     expect(offences(s("en", "Pair a fleet"))).toEqual(["pair"]);
     expect(offences(s("en", "One-time pairing code"))).toEqual(["One-time pairing code"]);
     // …and lets through what the table keeps
-    expect(offences(s("zh-TW", "請輸入配對碼。暫時離線會自動重新連線。目錄連線失敗。"))).toEqual([]);
+    expect(offences(s("zh-TW", "請輸入配對碼。暫時離線會自動重新連線。目錄連線失敗。公開連結上沒有。"))).toEqual([]);
     expect(offences(s("en", "Ask them for a pairing code. Contact your Hub administrator."))).toEqual([]);
     expect(offences(s("en", "Pairing requests for you", "pairingsTitle"))).toEqual([]);             // the code path's own key
   });
