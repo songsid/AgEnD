@@ -25,7 +25,7 @@ const receipt: any = { head: git("rev-parse", "HEAD"), tree: git("rev-parse", "H
   scope: "Owned scratch FleetManager; actual browser/server/session/stream; fixture terminal and step reads; no CLI or live fleet", inputs, assets, cases: [] };
 const errors: string[] = [], blocked: string[] = [], jobs: Promise<unknown>[] = [];
 const theme = process.env.THEME || "light";
-const retained = process.env.RETAIN || "", oldRef = process.env.OLD_REF || "438bcb2c8c5ce56ab2ce49b240c6b83c2385485e";
+const retained = process.env.RETAIN || "", oldRef = process.env.OLD_REF || "d2440106a2805187eb50a13c2385144192261f9a";
 const oldFiles: Record<string, string> = { css: "src/ui/shared/app.css", shell: "src/ui/shared/app-shell.js", chat: "src/ui/panel-chat.js", fields: "src/ui/settings-dialogs.js", session: "src/ui/shared/app-session.js" };
 const substitutions: Record<string, string[]> = {};
 const sourcePath = (path: string) => path.startsWith("/assets/") ? "src/ui/shared/" + path.slice(8) : path.startsWith("/ui/js/") ? "src/ui/" + path.slice(7) : "";
@@ -49,6 +49,10 @@ try {
   await ctx.route("**/*", async (route: any) => {
     const url = new URL(route.request().url());
     if (url.origin !== fx.base) { blocked.push(url.origin); return route.abort(); }
+    if (retained === "server" && route.request().isNavigationRequest()) {
+      const response = await route.fetch(), body = (await response.text()).replace(/ data-chat-(?:workspace|layout-scope)="[^"]*"/g, "");
+      record(substitutions, "older-server-without-display-mark.html", body); return route.fulfill({ response, body });
+    }
     const path = sourcePath(url.pathname);
     if (retained && (retained === "all" ? sources.includes(path) : path === oldFiles[retained])) {
       try { const bytes = execFileSync("git", ["show", `${oldRef}:${path}`], { cwd: repo }); record(substitutions, path, bytes);
@@ -90,7 +94,7 @@ try {
   await shot("single", 1);
   await page.locator("#msgIn").fill("尚未送出的草稿");
   if (retained) {
-    if (!["css", "all"].includes(retained)) {
+    if (!["css", "all", "server"].includes(retained)) {
       await page.evaluate(async (name: string) => { const { appStore } = await import("/assets/app-store.js"); await appStore.get().chatWorkspace?.open(name); }, b);
       await page.getByText("未能載入分割對話。目前對話不變；請重新整理頁面再試。", { exact: true }).waitFor();
     }
