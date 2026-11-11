@@ -24330,6 +24330,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * What the install's own channel offers: the target version and whether it came from that channel's dist-tag. Throws
    * when npm cannot be asked (the callers decide what a failed look means).
    */
+  /** Tests only: where lookUpUpdateTarget looks for npm (M-2858); unset in production (the running install, process.env). */
+  private updateNpmProbe?: { deps?: import("./update-dispatch.js").DispatchDeps; env?: NodeJS.ProcessEnv };
+
   private async lookUpUpdateTarget(currentVersion: string): Promise<{ target: string; fromChannel: boolean }> {
     // Both npm lookups are async: as execSync they froze the fleet event loop for
     // up to 15s each, and on a beta build BOTH ran — 30s with no WATCHDOG ping,
@@ -24338,8 +24341,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const { execFile } = await import("./child-process.js");
     const { promisify } = await import("node:util");
     const execFileP = promisify(execFile);
+    // M-2858: the npm that manages this install, also when the service's PATH has none (the alpha.13 rehearsal: with
+    // only ~/.volta/bin/npm, nothing was ever offered and web Update answered 409 nothing_to_install).
+    const { npmEnvForUpdate } = await import("./update-dispatch.js");
+    const npmEnv = await npmEnvForUpdate(this.updateNpmProbe?.deps, this.updateNpmProbe?.env);
+    if (!npmEnv.ok) throw new Error(npmEnv.reason);
     const npmVersion = async (spec: string): Promise<string> => {
-      const { stdout } = await execFileP("npm", ["view", spec, "version"], { timeout: 15_000 });
+      const { stdout } = await execFileP("npm", ["view", spec, "version"], { timeout: 15_000, env: npmEnv.env });
       return stdout.toString().trim();
     };
     const latest = await npmVersion("@songsid/agend");

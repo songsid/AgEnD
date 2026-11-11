@@ -207,6 +207,17 @@ export async function npmForUpdate(deps: DispatchDeps = defaultDispatchDeps, pat
   return { ok: true, path: [...first, pathEnv].filter(Boolean).join(delimiter), npmDir: first[0]! };
 }
 
+/**
+ * M-2858 (alpha.13 rehearsal): the environment the fleet runs `npm` in for the update check and the web Update offer
+ * (`npm view`) — the same proof as npmForUpdate: unchanged when PATH has an npm, else PATH with the npm that manages
+ * this install first. None: its reason (the check then reports that it could not look, as for any npm failure).
+ */
+export async function npmEnvForUpdate(deps: DispatchDeps = defaultDispatchDeps, env: NodeJS.ProcessEnv = process.env): Promise<{ ok: true; env: NodeJS.ProcessEnv } | { ok: false; reason: string }> {
+  const found = await npmForUpdate(deps, env.PATH ?? "");
+  if (!found.ok) return found;
+  return { ok: true, env: found.path === null ? env : { ...env, PATH: found.path } };
+}
+
 /** `npmDir` (#3440): the directory of the npm that proved this install — the update runs with it first on PATH. */
 export type InstalledAgend = { ok: true; agend: string; version: string; npmDir?: string } | { ok: false; reason: string };
 
