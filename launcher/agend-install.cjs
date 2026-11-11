@@ -845,6 +845,9 @@ function main(argv, injected) {
       var notUp = launchdReady(svc, home, deps);
       if (notUp) return rollBack(restarted ? "stopping" : "starting", "the launchd job did not come up on v" + version + ": " + notUp, "run `agend restart`");
     }
+    // M-2885: the one-time line about desktop shortcuts (WSL) or launchers (a Linux desktop), said by the agend just
+    // installed and only in a terminal. Its outcome never changes this install's.
+    try { deps.run(bin, ["shortcuts", "--hint"], { inherit: true, env: withoutUpdateNpmBounds(deps.env) }); } catch (e) { /* a hint never fails an install */ }
     return 0;
   } finally {
     // Spent (put back), or not needed: only a rollback that could not finish keeps its copy, says where, and marks it

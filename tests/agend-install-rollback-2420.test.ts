@@ -416,7 +416,7 @@ describe("#2420 the success path is unchanged", () => {
     const r = rig({ kind, running: true });
     expect(r.main()).toBe(0);
     // launchd alone: the job is asked once whether the fleet came up (it did: /health answered).
-    expect(r.calls).toEqual([`npm install -g @songsid/agend@${NEW}`, "agend install --no-activate", "agend restart --yes", ...(kind === "launchd" ? ["launchctl print gui/501/com.agend.fleet"] : [])]);
+    expect(r.calls).toEqual([`npm install -g @songsid/agend@${NEW}`, "agend install --no-activate", "agend restart --yes", ...(kind === "launchd" ? ["launchctl print gui/501/com.agend.fleet"] : []), "agend shortcuts --hint"]);
     expect(r.healthAsked).toEqual(kind === "launchd" ? [19280] : []);
     expect(r.version()).toBe(NEW);
     expect(r.rollbackDir()).toEqual([]);

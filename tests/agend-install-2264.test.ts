@@ -148,7 +148,7 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     expect(run.stdout).toMatch(/moved aside an install lock that could not be read/);
     // The service is the new release's: its `agend install --no-activate` (the unit rewritten under the manager it has;
     // linger on — ensureUserSystemd below), then starting it.
-    expect(readFileSync(join(s.home, "agend-calls.log"), "utf8").trim().split("\n")).toEqual(["install --no-activate", "start"]);
+    expect(readFileSync(join(s.home, "agend-calls.log"), "utf8").trim().split("\n")).toEqual(["install --no-activate", "start", "shortcuts --hint"]);
     // The chat's progress moved on from "downloading": installed, v2.0.0 (the new fleet takes it to its final message).
     const marker = JSON.parse(readFileSync(join(s.home, "update-in-progress.json"), "utf8"));
     expect(marker.progress).toMatchObject({ stage: "installed", version: "2.0.0", target: { messageId: "2" } });
@@ -189,7 +189,7 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     fleetRuns(s.home);
     const run = s.npm(["exec", "--yes", "--package", v2, "--", "agend-install", "--upgrade", "--spec", v2]);
     expect(run.status, run.stdout + run.stderr).toBe(0);
-    expect(readFileSync(join(s.home, "agend-calls.log"), "utf8").trim().split("\n")).toEqual(["restart --yes"]);
+    expect(readFileSync(join(s.home, "agend-calls.log"), "utf8").trim().split("\n")).toEqual(["restart --yes", "shortcuts --hint"]);
   });
 
   it("the user's host after the session ended: the service is installed but stopped — refreshed, then started (re-running the one-liner)", () => {
@@ -200,7 +200,7 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     withUnit(s.root);
     const run = s.npm(["exec", "--yes", "--package", v2, "--", "agend-install", "--spec", v2]);
     expect(run.status, run.stdout + run.stderr).toBe(0);
-    expect(readFileSync(join(s.home, "agend-calls.log"), "utf8").trim().split("\n")).toEqual(["install --no-activate", "start"]);
+    expect(readFileSync(join(s.home, "agend-calls.log"), "utf8").trim().split("\n")).toEqual(["install --no-activate", "start", "shortcuts --hint"]);
   });
 
   it("another npm running on the host: npm's leftovers are not touched (the installer says so), and npm then fails as before", () => {
@@ -534,26 +534,26 @@ describe("#2264 review (Prism r1 P1): the service stays under the manager it has
     setup(r);
     writeFileSync(join(r.home, "fleet.pid"), "9191");
     expect(installer.main(spec(), r.deps)).toBe(0);
-    expect(r.calls.filter(c => c.startsWith("agend"))).toEqual(["agend install --no-activate", "agend restart --yes"]);
+    expect(r.calls.filter(c => c.startsWith("agend"))).toEqual(["agend install --no-activate", "agend restart --yes", "agend shortcuts --hint"]);
   });
   it.each(cases)("%s, fleet stopped: `install --no-activate`, then `start`", (_name, setup) => {
     const r = unitRig();
     setup(r);
     expect(installer.main(spec(), r.deps)).toBe(0);
-    expect(r.calls.filter(c => c.startsWith("agend"))).toEqual(["agend install --no-activate", "agend start"]);
+    expect(r.calls.filter(c => c.startsWith("agend"))).toEqual(["agend install --no-activate", "agend start", "agend shortcuts --hint"]);
   });
   it("a hand-started fleet: an upgrade restarts it and makes no unit (#1631); the one-liner leaves it alone; no fleet at all: nothing", () => {
     const up = unitRig({ live: [9191] });
     writeFileSync(join(up.home, "fleet.pid"), "9191");
     expect(installer.main(spec(), up.deps)).toBe(0);
-    expect(up.calls.filter(c => c.startsWith("agend"))).toEqual(["agend restart --yes"]);
+    expect(up.calls.filter(c => c.startsWith("agend"))).toEqual(["agend restart --yes", "agend shortcuts --hint"]);
     const oneLiner = unitRig({ live: [9191] });
     writeFileSync(join(oneLiner.home, "fleet.pid"), "9191");
     expect(installer.main(["--spec", `@songsid/agend@${OWN_VERSION}`], oneLiner.deps)).toBe(0);
-    expect(oneLiner.calls.filter(c => c.startsWith("agend"))).toEqual([]);
+    expect(oneLiner.calls.filter(c => c.startsWith("agend"))).toEqual(["agend shortcuts --hint"]);   // M-2885: only the one-time line
     const none = unitRig();
     expect(installer.main(spec(), none.deps)).toBe(0);
-    expect(none.calls.filter(c => c.startsWith("agend"))).toEqual([]);
+    expect(none.calls.filter(c => c.startsWith("agend"))).toEqual(["agend shortcuts --hint"]);
   });
 });
 
