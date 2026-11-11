@@ -32,6 +32,15 @@ register("nativecli", {
   en: { unverified:"Not yet verified", unverifiedHint:"{0} {1}: AgEnD has not tested this version in Windows panes yet. It still runs; any screen AgEnD does not recognise stops and waits for you in Needs you." },
   "zh-TW": { unverified:"尚未驗證", unverifiedHint:"{0} {1}：AgEnD 還沒在 Windows 面板中測試過這個版本。它仍然可以執行；遇到 AgEnD 認不得的畫面時，會停下來在「需要你」等你處理。" },
 });
+/**
+ * The effort chip's text: the effort set, else "auto" (the CLI's own default) for a backend that takes an effort
+ * setting (`effort_supported`, sent by the daemon since the always-shown chip), else none. An older daemon sends no
+ * `effort_supported`: the chip then shows only for a set effort, as it always did. Kept here, not in the shared
+ * instance-nav.js: a tab opened before an upgrade gets this panel with its old shell.
+ */
+export function effortChip(inst) {
+  return inst.effort || (inst.effort_supported === true ? "auto" : "");
+}
 function nativeCliTag(inst) {
   if (inst.native_cli_verification !== "unverified") return null;
   const cli = inst.backend === "codex" ? "Codex" : inst.backend === "claude-code" ? "Claude Code" : inst.backend;
@@ -376,7 +385,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${nativeCliTag(inst)}${inst.machine_id ? html`<span class="tag runtime-machine-tag" title=${t("chat.machineName",machineName(inst.machine_id,inst.machine_name))}>${machineName(inst.machine_id,inst.machine_name)}</span>${inst.machine_status !== "online" ? html`<span class="tag runtime-machine-offline">${t(inst.machine_status === "revoked" ? "chat.machineRevoked" : "chat.machineOffline")}</span>` : null}` : null}
     ${!guest && supportsInstanceFeature(inst,"commands") ? html`<button type="button" class="hd-chip chat-model-entry" title=${mw("backend")} aria-label=${mw("backend")} onClick=${() => inst.runtime === "windows" ? navigate(sectionPath("agents")) : pick("backend")}>${backendLabel(inst.backend)} ▾</button>
       <button type="button" class="hd-chip chat-model-entry" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelLabel(inst.model || modelText(inst))} ▾</button>` : null}
-    ${inst.effort && supportsInstanceFeature(inst,"effort") ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
+    ${effortChip(inst) && supportsInstanceFeature(inst,"effort") ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", effortChip(inst))} aria-label=${t("chat.chipEffort", effortChip(inst))} onClick=${() => pick("effort")}>${effortChip(inst)}</button>` : null}`;
 
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
     <${PanelHeader} title=${inst.runtime === "windows" ? inst.display_name || name : headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>

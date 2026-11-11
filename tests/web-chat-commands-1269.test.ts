@@ -279,6 +279,27 @@ describe("the chat's commands (the real page modules)", () => {
     expect(c.commands().map((x) => x.body)).toEqual([{ instance: "w", command: "backend" }, { instance: "w", command: "model" }, { instance: "w", command: "effort" }]);
   });
 
+  it("the effort chip is always there for a backend that takes an effort, 'auto' while none is set (AGEND-176)", async () => {
+    const c = await chatPage({ model: "claude-opus-5-5", effort: null, effort_supported: true });
+    const chips = c.p.root.querySelectorAll(".hd-chip");
+    expect(chips.map((b: any) => b.textContent)).toEqual(["Claude Code ▾", "claude-opus-5-5 ▾", "auto"]);
+    expect(chips[2].getAttribute("aria-label")).toContain("auto");
+    fire(chips[2], "click"); await settle();
+    expect(c.commands().map((x) => x.body)).toEqual([{ instance: "w", command: "effort" }]);
+  });
+
+  for (const [why, over, expected] of [
+    ["the backend has no effort setting", { effort: null, effort_supported: false }, []],
+    ["an older daemon does not say", { effort: null }, []],
+    ["an older daemon, an effort set: as before", { effort: "high" }, ["high"]],
+    ["a set effort beyond the old three", { effort: "xhigh", effort_supported: true }, ["xhigh"]],
+  ] as Array<[string, Record<string, unknown>, string[]]>) {
+    it(`effort chip: ${why}`, async () => {
+      const c = await chatPage({ model: "m", ...over });
+      expect(c.p.root.querySelectorAll(".hd-chip").map((b: any) => b.textContent)).toEqual(["Claude Code ▾", "m ▾", ...expected]);
+    });
+  }
+
   it("the store's single flight covers the buttons too: a quick action while a command is out sends nothing", async () => {
     const c = await chatPage({ context_pct: 82 });
     let release!: () => void;

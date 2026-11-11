@@ -29,7 +29,7 @@ export function toolSetDefault(defaults, inst, name = "") {
 export const TOOL_PROGRESS = ["off", "standard", "verbose"];
 export const AGENT_MODES = ["mcp", "cli"];
 export const ACCESS_MODES = ["locked", "open", "pairing"];
-export const EFFORT_BACKENDS = new Set(["claude-code", "codex", "kiro-cli", "grok", "antigravity"]);
+export const EFFORT_BACKENDS = new Set(["claude-code", "codex", "kiro-cli", "grok", "antigravity", "muse"]);
 export const STATUS_ORDER = { running: 0, paused: 1, crashed: 2, stopped: 3 };
 
 export const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
