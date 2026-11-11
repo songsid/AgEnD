@@ -1,0 +1,18 @@
+/* Use the real text InstanceSwitch rules from app.css. No .seg-item redesign. */
+.text-tabs-workspace .mock-pane { container-name:textpane;container-type:inline-size; }
+.text-tabs-workspace .mock-pane>.panel-head { display:flex;flex-wrap:nowrap;align-items:center;height:60px;min-height:60px;padding:8px;gap:6px; }
+.text-tabs-workspace .panel-title { flex:1 1 auto;min-width:64px;display:flex;align-items:center;gap:6px;overflow:hidden; }
+.text-tabs-workspace .panel-title h1 { flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.text-tabs-workspace .panel-sub { flex:none;margin:0;font-size:var(--fs-sm); }
+.text-tabs-workspace .inst-switch.seg { order:0;flex:0 0 auto;flex-basis:auto;width:auto;display:flex;overflow:visible; }
+.text-tabs-workspace .inst-switch [hidden] { display:none !important; }
+.text-tabs-workspace .panel-actions { flex:0 0 auto;gap:6px; }
+.text-tabs-workspace .page-shared-tools,.text-tabs-workspace .pane-actions { display:flex;align-items:center;gap:2px;flex:none; }
+.text-tabs-workspace .panel-head .sb-open,.text-tabs-workspace .panel-head .sb-new { display:none; }
+.text-tabs-workspace .mock-pane.is-focused>.panel-head { box-shadow:inset 0 -2px 0 var(--accent); }
+.text-tabs-workspace .pane-more .menu-list { max-height:calc(100vh - 88px);overflow:auto;min-width:240px; }
+@container textpane (max-width:599px){
+ .text-tabs-workspace .page-shared-tools .hide-narrow { display:none; }
+ .text-tabs-workspace .page-shared-tools .hd-text,.text-tabs-workspace .page-shared-tools .hd-usage { width:32px;min-width:32px;padding-inline:0; }
+}
+

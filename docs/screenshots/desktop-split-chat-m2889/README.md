@@ -1,3 +1,5 @@
+> **最新提案：[原有文字分頁＋單一工具群組](r2/text-tabs/README.md)**。下方 icon tabs 是歷史設計，已由使用者最新回饋取代；舊圖／receipts保持原範圍。
+
 > **最新：[r2 同一列標頭](r2/header-row/README.md)**，含360px長名稱控制。
 
 > **目前提案已更新至 [r2](r2/README.md)**：每格四分頁、沒有工作區列、VS Code 手勢，同時保留頁內自訂移動與真正彈出視窗。下方 r1 原圖與 receipts 只作歷史參考；舊 manifest 的文件摘要對應 ff2d1d59。

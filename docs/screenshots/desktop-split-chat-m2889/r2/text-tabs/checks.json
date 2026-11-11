@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "scope": "Static design only. No product/interaction/a11y/popup acceptance.",
+  "captureCases": 6,
+  "paneHeaders": 10,
+  "baselineLabels": [
+    "聊天",
+    "檢視",
+    "紀錄",
+    "設定"
+  ],
+  "tabStyleProperties": [
+    "font-size",
+    "font-family",
+    "font-weight",
+    "line-height",
+    "padding-left",
+    "padding-right",
+    "border-radius",
+    "min-height",
+    "color",
+    "background-color"
+  ],
+  "tabStyleMatches": 40,
+  "textTabIcons": 0,
+  "sharedTools": "Card/font/usage each1 per document; popout comparison2documents",
+  "minimum360": "Long name truncates;聊天 visible;檢視/紀錄/設定 in pane menu",
+  "captureInputsVerified": 23,
+  "servedBindings": 125,
+  "processGuardViolations": [],
+  "cleanup": true,
+  "renderExitCode": 0,
+  "productDiff": [],
+  "syntax": "node --check mock-dom.mjs passed",
+  "diffCheck": "git diff --check passed"
+}

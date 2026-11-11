@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "985d59eed7d9a63ca94c30fbac8b329b7b4bf6db2deee92f831f789c01e9206a": "light-baseline.png"
+    },
+    {
+      "b57c35136f0ce3f17a1a2f50efe6bb2bbf0898ce1f233d6d43b7e1512c7c3ed6": "light-float.png"
+    },
+    {
+      "f8c5f0af271008a78d30a3b2d30217b2b278c96bbed878b4b40bb54636fcda45": "light-log.png"
+    },
+    {
+      "937d318b713ee4772d6def17d89a371bc2cdeb6bdb81b5efa9e9fe9d8847ee67": "light-narrow360.png"
+    },
+    {
+      "8be984ab037637c2270aead4bbc55037bbcde90e1d23e64fc9cf82764efb6720": "light-popout.png"
+    },
+    {
+      "0e4f17b0b124c81fb7c46460c81b1481a8accdbe4cc5af215f5c69388ea663d7": "light-right.png"
+    }
+  ]
+}

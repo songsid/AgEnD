@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "review": "built-in image inspection",
+  "result": "visual clear",
+  "scope": "6final original zh-TW light1600x1000 stills; no behavior or accessibility acceptance.",
+  "files": [
+    "light-baseline.png",
+    "light-right.png",
+    "light-log.png",
+    "light-float.png",
+    "light-narrow360.png",
+    "light-popout.png"
+  ],
+  "finalHashVerification": 6,
+  "rereadFinal": [
+    "light-baseline.png",
+    "light-float.png",
+    "light-log.png",
+    "light-narrow360.png"
+  ],
+  "unchangedCarried": [
+    "light-right.png",
+    "light-popout.png"
+  ],
+  "blockers": []
+}
