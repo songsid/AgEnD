@@ -608,6 +608,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   /* The bar on a phone: the app's 16 px gutter, and Discard / Save a full tap target. */
   .p-settings > .s-pending { padding-left: var(--s-4); padding-right: var(--s-4); }
   .p-settings > .s-pending .btn { min-height: var(--tap); }
+  /* #3647: the "When an assignee stops" minutes are phone tap targets (style guide rule 7). */
+  .p-settings #g-liveness input { min-height: var(--tap); }
+  .p-settings #g-liveness .s-switch { min-height: var(--tap); }
+  .p-settings #g-liveness .s-switch input[type="checkbox"] { width: var(--tap); }
   /* Settings' dialogs are full-screen sheets (§7): an agent's or a connection's fields get the whole screen, the title on
      top and the actions at the bottom, inside it. The app's own questions (ask()) stay bottom sheets. */
   .p-settings .dlg { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
