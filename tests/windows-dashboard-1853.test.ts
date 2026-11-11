@@ -20,7 +20,7 @@ const ending = code.slice(code.indexOf('if ($script:InstallerReady) { Write-Host
 
 describe("the installer ends on the dashboard (static)", () => {
   it("the shortcut is made and the dashboard opened, after the progress is cleared; console commands only under 進階", () => {
-    expect(ending).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)/);
+    expect(ending).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER \$AGEND_ICONS\)/);
     // #2650 item 10: a dashboard that does not open names the two ways back to it (neither reinstalls).
     expect(ending).toContain('if (-not (Invoke-OpenDashboard $UBUNTU_DISTRO $AGEND_USER -BackendSignins $browserSignins))');
     expect(ending).toContain('if ($script:InstallerReady -and $missingBackends.Count -eq 0)');
