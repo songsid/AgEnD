@@ -438,6 +438,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .act-block .act-earlier { align-self: center; }
 .act-block .act-lvl, .act-block .act-partial { margin: 0; }
 .act-block .log-item { background: transparent; padding: 3px var(--s-1); }
+.act-block .log-item.compact { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--s-2); }
+.act-block .log-item.compact .log-head { flex: 1 1 0; min-width: 0; }
+.act-block .log-item.compact .log-detail, .act-block .log-item.compact .log-text, .act-block .log-item.compact .note, .act-block .log-item.compact .log-more { flex: 1 1 100%; }
 .act-block .log-item.compact .log-cat { font-weight: var(--fw-regular); color: var(--text-2); }
 .act-block .log-item.latest .log-cat, .act-block .log-item.latest .log-subject { font-weight: var(--fw-semibold); color: var(--text); }
 .act-block .log-think { font-style: italic; color: var(--text-2); }
