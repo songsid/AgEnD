@@ -90,6 +90,37 @@ describe("company join UI", () => {
     expect(p.root.querySelector("#hubCompanyLine").textContent).toContain("Found \u201cAcme Hub\u201d");
     expect(button(p, "Sign in with company account").disabled).toBe(false);
   });
+  it("#3675 r2 P2: a look held from before the repair answers late with the old identity — retired; the fresh look after the repair stands", async () => {
+    const ok = (identity: string) => ({ ok: true, hubName: "Acme Hub", webOrigin: "https://hub.example.test", companyJoin: true, identity, separateHosts: true, suggestedLabel: "box" });
+    const held: Array<(v: any) => void> = []; let n = 0;
+    fetcher(path => path.endsWith("/probe") ? (++n === 2 ? new Promise(r => held.push(r)) : ok(n === 1 ? "changed" : "known"))
+      : path.endsWith("/repair-trust") ? { ok: true } : { ok: true, operation: null });
+    const p = await mount(fleet.CompanyJoinSettings);
+    const address = p.root.querySelector("#hubCompanyAddress"); address.value = "https://hub.example.test/join-info#hub=YWJj"; fire(address, "input"); await settle(4); fire(address, "blur"); await settle(8);
+    expect(p.root.querySelector("#hubCompanyLine").textContent).toContain("presents a different identity");
+    fire(address, "blur"); await settle(6);                                                 // a second look, held
+    fire(button(p, "Replace saved Hub identity"), "click"); await settle(20);              // the fresh look after the repair answers "known"
+    expect(calls.filter(c => c.path.endsWith("/probe"))).toHaveLength(3);
+    held[0](ok("changed")); await settle(10);                                               // the held, older look answers late
+    expect(p.root.querySelector("#hubCompanyLine").textContent).toContain("Found \u201cAcme Hub\u201d");
+    expect(button(p, "Sign in with company account").disabled).toBe(false);
+  });
+  it("#3675 r2 P2: a repair of A that finishes after the input moved to B (already found) never looks A up again nor disables B", async () => {
+    const ok = (identity: string, webOrigin: string) => ({ ok: true, hubName: webOrigin.includes("b.") ? "B Hub" : "A Hub", webOrigin, companyJoin: true, identity, separateHosts: true, suggestedLabel: "box" });
+    let release!: (v: any) => void;
+    fetcher((path, init) => path.endsWith("/probe") ? (JSON.parse(init.body).address.includes("b.example") ? ok("new", "https://b.example.test") : ok("changed", "https://a.example.test"))
+      : path.endsWith("/repair-trust") ? new Promise(r => { release = r; }) : { ok: true, operation: null });
+    const p = await mount(fleet.CompanyJoinSettings);
+    const address = p.root.querySelector("#hubCompanyAddress"); address.value = "https://a.example.test/join-info#hub=YWJj"; fire(address, "input"); await settle(4); fire(address, "blur"); await settle(8);
+    fire(button(p, "Replace saved Hub identity"), "click"); await settle(6);              // the repair of A is held
+    address.value = "b.example.test"; fire(address, "input"); await settle(4); fire(address, "blur"); await settle(8);
+    expect(p.root.querySelector("#hubCompanyLine").textContent).toContain("Found \u201cB Hub\u201d");
+    const looks = calls.filter(c => c.path.endsWith("/probe")).length;
+    release({ ok: true }); await settle(20);
+    expect(calls.filter(c => c.path.endsWith("/probe"))).toHaveLength(looks);              // A is not looked up again
+    expect(p.root.querySelector("#hubCompanyLine").textContent).toContain("Found \u201cB Hub\u201d");
+    expect(button(p, "Sign in with company account").disabled).toBe(false);
+  });
   it.each([
     ["http://hub.example.test", "A Hub address must use https."],
     ["not a hub!", "That is not a Hub address. Enter one like hub.example.com."],

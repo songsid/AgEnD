@@ -1064,7 +1064,7 @@ export function handleSettingsRequest(
         const body = JSON.parse(bytes.toString("utf8") || "{}") as Record<string, unknown>;
         if (step === "connect" || step === "disconnect") ctx.invalidateHubCompanyJoin?.();
         const r = step === "connect" ? await api.connect({ address: body.address, code: body.code }, current)
-          : step === "confirm" ? await api.confirmFingerprint(body.digest, current) : await api.disconnect({ hubId: body.hubId, binding: body.binding });
+          : step === "confirm" ? await api.confirmFingerprint(body.digest, current) : await api.disconnect({ hubId: body.hubId, binding: body.binding }, current);   // #3675 r2: asked again after member.leave's wait
         json(res, r.ok ? 200 : 409, r);
       }).catch(() => json(res, 400, { ok: false, error: "unsaved" }));
       return true;

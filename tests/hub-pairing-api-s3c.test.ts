@@ -157,10 +157,10 @@ describe("the pairing routes", async () => {
   const { bindGatewayRequest } = await import("../src/web-request-context.js");
   const { isSettingsMutation, prepareSettingsEffect } = await import("../src/settings-effect.js");
   const { pairingSummary } = await import("../src/hub-pairing-summary.js");
-  async function call(o: { method: string; path: string; json?: unknown; replay?: boolean; admin?: boolean; gateway?: boolean; api: unknown }) {
+  async function call(o: { method: string; path: string; json?: unknown; replay?: boolean; admin?: boolean; gateway?: boolean; api: unknown; localAdmin?: () => boolean }) {
     const raw = Buffer.from(JSON.stringify(o.json ?? {}));
     const cap = new SettingsExecution({ current: () => true, snapshot: () => null });
-    const req: any = o.replay ? createSettingsReplay({ method: o.method, url: o.path, body: raw, binding: "owned", localAdmin: () => o.admin !== false }, cap)
+    const req: any = o.replay ? createSettingsReplay({ method: o.method, url: o.path, body: raw, binding: "owned", localAdmin: o.localAdmin ?? (() => o.admin !== false) }, cap)
       : Object.assign(new EventEmitter(), { method: o.method, url: o.path, headers: o.admin === false ? {} : { "x-agend-token": "tok" } });
     if (o.gateway) bindGatewayRequest(req, { surface: "gateway", exposureId: "scratch", expectedOrigin: "https://scratch.invalid", isCurrent: () => true });
     const ctx = { webToken: "tok", webSessions: null, fleetConfig: { instances: {} }, logger: { warn: vi.fn() }, hubMemberPairing: () => o.api };
@@ -199,6 +199,23 @@ describe("the pairing routes", async () => {
     expect(await call({ method: "POST", path: "/api/hub/member/pairing/confirm", json: { digest: "x" }, replay: true, api })).toMatchObject({ status: 409, body: { ok: false, error: "conflict" } });
     expect(await call({ method: "POST", path: "/api/hub/member/pairing/disconnect", replay: true, api })).toMatchObject({ status: 200, body: { ok: true, remote: "pending" } });
     expect(await call({ method: "GET", path: "/api/hub/member/pairing", api: null })).toMatchObject({ status: 404, body: { error: "unavailable" } });
+  });
+  it("#3675 r2 P2: the pairing-code Disconnect route asks the replay's authority again after member.leave's wait — withdrawn meanwhile: 409, nothing fenced, withdrawn or tombstoned", async () => {
+    for (const withdraw of [true, false]) {
+      let admin = true;
+      const r = rig({ leave: async () => { if (withdraw) admin = false; return true; } });
+      await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+      r.answers.push("paired"); await r.api.confirmFingerprint(r.digest, yes); await r.flush();
+      const out = await call({ method: "POST", path: "/api/hub/member/pairing/disconnect", json: shownOf(r.api), replay: true, api: r.api, localAdmin: () => admin });
+      if (withdraw) {
+        expect(out).toMatchObject({ status: 409, body: { ok: false, error: "conflict" } });
+        expect([r.fence, r.withdrawAll].map((f) => f.mock.calls.length)).toEqual([0, 0]);
+        expect(r.api.view().state).toBe("paired");
+      } else {                                                                              // control: authority kept → disconnected
+        expect(out).toMatchObject({ status: 200, body: { ok: true, remote: "pending", left: true } });
+        expect(r.api.view()).toMatchObject({ state: "held", hold: "disconnected" });
+      }
+    }
   });
 });
 

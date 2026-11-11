@@ -63,14 +63,17 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   // #3675 r1 P2: an answer is kept per address only to show it; it never stops another look. Blur asks again (spec 1.1),
   // a failed or limited answer is asked again on the next blur, and a replaced identity is looked up again at once.
   // The ref only keeps two looks at the same address from running at the same time.
-  const probeSeq = useRef(0), inflight = useRef("");
+  // #3675 r2: every look is bound to the address it was asked for and to its generation; only the newest answer for the
+  // address in the input counts. A forced look (after a replaced identity) retires any look still running.
+  const probeSeq = useRef(0), inflight = useRef(""), current = useRef("");
   const kind = classifyHubInput(form.address);
+  current.current = kind.kind === "address" ? kind.address : "";
   const host = (() => { try { return new URL(kind.address).host; } catch { return ""; } })();
-  const runProbe = async () => {
-    if (kind.kind !== "address" || inflight.current === kind.address) return;
-    const seq = ++probeSeq.current, address = kind.address; inflight.current = address; setProbing(true);
+  const runProbe = async (target = current.current, force = false) => {
+    if (!target || target !== current.current || !force && inflight.current === target) return;
+    const seq = ++probeSeq.current, address = target; inflight.current = address; setProbing(true);
     try { const r = await api(root + "/probe", { method: "POST", body: JSON.stringify({ address }) });
-      if (!live.current || seq !== probeSeq.current) return;
+      if (!live.current || seq !== probeSeq.current || address !== current.current) return;
       // No answer at all (a network error, an older server): recorded as answered-without-a-word, which never blocks Start.
       setProbe(r.ok ? { ...r.body, address } : r.body && r.body.ok === false && typeof r.body.reason === "string" ? { ...r.body, address } : { address, none: true });
     } catch { if (live.current && seq === probeSeq.current) setProbe({ address, none: true }); }
@@ -79,7 +82,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   useEffect(() => {
     if (kind.kind !== "address") { probeSeq.current++; inflight.current = ""; setProbe(null); setProbing(false); return; }
     setProbe(p => p && p.address === kind.address ? p : null);
-    const timer = setTimeout(runProbe, 600);
+    const timer = setTimeout(() => runProbe(kind.address), 600);
     return () => clearTimeout(timer);
   }, [kind.kind, kind.address]);
   useEffect(() => {
@@ -178,9 +181,11 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   const repair = async () => {
     if (busy) return; const gen = ++token.current; setBusy(true); setError(null);
     try {
-      const result = await confirmedWrite(root + "/repair-trust", { body: { address: kind.address || form.address }, label: hj("repair"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
+      const repaired = kind.address || form.address;
+      const result = await confirmedWrite(root + "/repair-trust", { body: { address: repaired }, label: hj("repair"), onPending: (id, change) => { if (live.current && gen === token.current) onPending(id, change); } });
       if (!live.current || gen !== token.current) return;
-      if (result.ok) { setIdentityChanged(false); setError(null); setProbe(null); void runProbe(); } else setError(joinError(joinResponseCode(result)));
+      // Look the repaired address up again — only while it is still the one in the input (moved on: that address's own look stands).
+      if (result.ok) { setIdentityChanged(false); setError(null); if (current.current === repaired) { setProbe(null); void runProbe(repaired, true); } } else setError(joinError(joinResponseCode(result)));
     } catch { if (live.current && gen === token.current) setError(hj("unknown")); }
     finally { if (live.current && gen === token.current) { setBusy(false); setPending(null); } }
   };
@@ -242,7 +247,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     </div>` : null}
     ${canStart ? html`<form class="form hub-join-one" onSubmit=${start}>
       <label class="field" for="hubCompanyAddress"><span>${j1("input")}</span><input id="hubCompanyAddress" type="text" value=${form.address} placeholder=${j1("placeholder")} autocomplete="off" spellcheck=${false} autocapitalize="off"
-        aria-describedby="hubCompanyLine" aria-invalid=${problem ? "true" : undefined} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))} onBlur=${runProbe} /></label>
+        aria-describedby="hubCompanyLine" aria-invalid=${problem ? "true" : undefined} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))} onBlur=${() => runProbe()} /></label>
       <p class="note hub-join-line" id="hubCompanyLine" role=${problem ? "alert" : "status"}>${problem ? problem
         : kind.kind === "pairing" ? j1("otherPairing")
         : probing ? j1("probing")
