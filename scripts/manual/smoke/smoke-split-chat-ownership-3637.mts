@@ -76,8 +76,12 @@ try {
     }, code);
     await page.waitForURL(fx.base + "/ui");
     try {
-      for (const [panel, path] of [["chat", `/ui/chat/${encodeURIComponent(name)}`], ["view", `/view/${encodeURIComponent(name)}`], ["log", `/ui/log/${encodeURIComponent(name)}`], ["details", `/ui/fleet/agent/${encodeURIComponent(name)}`]]) {
+      for (const [label, panel, path] of [["chat", "chat", `/ui/chat/${encodeURIComponent(name)}`], ["chat-working", "chat", `/ui/chat/${encodeURIComponent(name)}`], ["view", "view", `/view/${encodeURIComponent(name)}`], ["log", "log", `/ui/log/${encodeURIComponent(name)}`], ["details", "details", `/ui/fleet/agent/${encodeURIComponent(name)}`]]) {
         await page.evaluate(async (path: string) => { const nav = await import("/assets/app-nav.js"); nav.navigate(path); }, path);
+        if (label === "chat-working") {
+          await page.evaluate(async (name: string) => { const m = await import("/assets/app-store.js"); m.appStore.set((s: any) => ({ ...s, exec: { ...s.exec, [name]: "working" } })); }, name);
+          await page.locator(".work-bar #stopBtn").waitFor();
+        }
         await page.locator(`.p-${panel}`).waitFor(); await page.locator(`.p-${panel} .inst-switch`).waitFor();
         await page.evaluate(async () => { await document.fonts.ready; await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
         await page.waitForTimeout(200);
@@ -88,8 +92,8 @@ try {
         });
         assert.equal(geometry.headers, 1); assert.equal(geometry.overflow, false); assert.equal(geometry.sources.active, 1); assert.equal(geometry.sources.max, 1);
         assert.equal(fx.fm.sseClients.size, 1, "the same page retains one server stream across in-page tabs");
-        const file = `${caseName(c)}-${panel}.png`; await page.screenshot({ path: join(out, file) });
-        receipt.cases.push({ case: caseName(c), panel, file, geometry });
+        const file = `${caseName(c)}-${label}.png`; await page.screenshot({ path: join(out, file) });
+        receipt.cases.push({ case: caseName(c), panel: label, file, geometry });
       }
       await Promise.all(jobs); assert.deepEqual(blocked, []); assert.deepEqual(errors, []);
     } finally { await ctx.close(); }
