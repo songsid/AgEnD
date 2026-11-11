@@ -14,5 +14,5 @@ Both Hub listeners can bind locally; the check sockets are now closed. This does
 
 Browser HTTPS certificate
 To let colleagues connect with company accounts, Hub needs a certificate issued by your organisation's CA or another trusted CA, covering https://hub.example.test:18601. Hub and Fleet must use different hostnames (different ports are not enough). Self-signed certificates are for testing: bypassing a browser warning does not make a Fleet trust it.
-Certificate file (PEM, full chain), or type generate for a 30-day self-signed certificate: 
+Certificate file (PEM, full chain), or type generate for a 30-day self-signed certificate:
 Cancelled. Nothing was changed.

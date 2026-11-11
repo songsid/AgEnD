@@ -21,6 +21,6 @@ Certificate for hub.example.test, valid until Nov 13 11:14:05 2026 GMT.
 
 Directory (LDAP / Active Directory, LDAPS only)
 Directory id: a short stable name for this directory, lowercase (for example “corp”): example
-Directory address (ldaps://host[:port]): 
-Directory CA: PEM file, “fetch” to inspect and fetch from this directory, or Enter for system roots: 
+Directory address (ldaps://host[:port]):
+Directory CA: PEM file, “fetch” to inspect and fetch from this directory, or Enter for system roots:
 Cancelled. Nothing was changed.

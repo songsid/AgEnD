@@ -14,5 +14,5 @@ Both Hub listeners can bind locally; the check sockets are now closed. This does
 
 Browser HTTPS certificate
 Import a trusted certificate covering https://hub.example.test:18601, or generate a 30-day self-signed certificate for this address. Browsers warn about self-signed certificates until the owner arranges trust. Generation does not change any trust store. The Hub never signs anyone in over plain HTTP.
-Certificate file (PEM, full chain), or type generate for a 30-day self-signed certificate: 
+Certificate file (PEM, full chain), or type generate for a 30-day self-signed certificate:
 Cancelled. Nothing was changed.
