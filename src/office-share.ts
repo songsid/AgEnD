@@ -412,7 +412,8 @@ export class OfficeShareView {
    * missing key, which watches everyone). #2662: and only the character sets someone shown wears (theirs in `byInstance`,
    * and `default` for everyone else), with `files` only the pictures it still names: the page loads what is drawn, not
    * every set of a fleet-sized pack. #2691: a reserved seat's `for` cut as an office's (cutOwners). #2661: a title
-   * pinned (`levels.fixed`) only for people shown or an NPC. A copy: the kept pack is never changed.
+   * pinned (`levels.fixed`) only for people shown or an NPC. #3681: an instance's own lines (`bubblesByInstance`) only
+   * for people shown (a set's go with its set). A copy: the kept pack is never changed.
    */
   pack(answer: unknown): unknown {
     if (!isObj(answer) || !isObj(answer.manifest)) return answer;
@@ -429,6 +430,7 @@ export class OfficeShareView {
       const { byUser: _people, ...rest } = manifest.portraits;
       manifest.portraits = { ...rest, ...(isObj(rest.byInstance) ? { byInstance: Object.fromEntries(Object.entries(rest.byInstance).filter(([k]) => this.scope.has(k))) } : {}) };
     }
+    if (isObj(manifest.bubblesByInstance)) manifest.bubblesByInstance = Object.fromEntries(Object.entries(manifest.bubblesByInstance).filter(([k]) => this.scope.has(k)));
     if (isObj(manifest.characters)) {
       const worn = new Set(["default", ...Object.values(isObj(manifest.byInstance) ? manifest.byInstance : {}).filter((v): v is string => typeof v === "string")]);
       manifest.characters = Object.fromEntries(Object.entries(manifest.characters).filter(([k]) => worn.has(k)));

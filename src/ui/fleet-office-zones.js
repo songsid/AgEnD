@@ -437,10 +437,19 @@ export function thinBubbles(items, over) {
   return out;
 }
 
-/** The lines for a state: the skin's (in the page's language), else the page's own. */
-export function linesFor(state, lang, pack, defaults) {
-  const mine = pack && own(own(pack.bubbles, lang), state);
-  return Array.isArray(mine) && mine.length ? mine : own(defaults, state) || [];
+/**
+ * The lines for a state: the skin's (in the page's language), else the page's own. #3681: for a person (`name`), the
+ * pack's lines for them first (bubblesByInstance), then their character set's (byInstance's set, else "default"), then
+ * the pack's shared ones — each looked up by language and state, so a set with no lines for a state says the pack's.
+ */
+export function linesFor(state, lang, pack, defaults, name) {
+  const pick = (table) => { const l = own(own(table, lang), state); return Array.isArray(l) && l.length ? l : null; };
+  if (pack && typeof name === "string") {
+    const by = own(pack.byInstance, name), set = own(pack.characters, by) ? by : "default";
+    const mine = pick(own(pack.bubblesByInstance, name)) || pick(own(pack.bubblesBySet, set));
+    if (mine) return mine;
+  }
+  return (pack && pick(pack.bubbles)) || own(defaults, state) || [];
 }
 
 // ── Furniture ──
