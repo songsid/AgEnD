@@ -13,6 +13,7 @@
  * Nothing here runs in the daemon, and nothing reads a CLI's file on a tool call.
  */
 import { stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { ClaudeStepParser, CodexStepParser, bounded, readTailRecords, type LogStep } from "./log-steps.js";
 import { SCREEN_MAX_BYTES } from "./dialog-screen-text.js";
 import { LOOKS_PER_POLL, isClaudeAssistantHead, readNewLines, readWholeLine, type LongLine } from "./transcript-jsonl.js";
@@ -39,6 +40,10 @@ export interface LogEventRow { id: number; event_type: string; payload: unknown;
 
 export interface LogServiceDeps {
   enabled(): boolean;
+  /** AGEND-181: `web.log_thinking` (default on). Off: no request gets thinking, whatever the route says. */
+  thinking?(): boolean;
+  /** AGEND-181: an instance's working directory — the page shows paths under it relative (display only). */
+  cwd?(name: string): string | undefined;
   /** An instance the Log may show (a fleet instance or a ClassicBot room). */
   known(name: string): boolean;
   source(name: string): LogSource;
@@ -51,7 +56,13 @@ export interface LogServiceDeps {
   clearInterval?(handle: unknown): void;
 }
 
-export interface LogQuery { after?: number; before?: number; key?: string; skip?: boolean; limit?: number; watch?: boolean; ev?: number }
+export interface LogQuery { after?: number; before?: number; key?: string; skip?: boolean; limit?: number; watch?: boolean; ev?: number;
+  /**
+   * AGEND-181: the thinking steps are wanted AND this viewer may have them. Set by the route only for an admin session
+   * on the local dashboard, and only with `web.log_thinking` on; absent: the parser does not make them, so they are
+   * never in an answer for anyone else (filtered here on the server, not hidden by the page).
+   */
+  thinking?: boolean }
 
 /** A fleet event as the page shows it: its type (the page words it) and its details, masked. */
 export interface LogEvent { id: number; ts: number; type: string; detail?: string;
@@ -73,6 +84,10 @@ export type LogAnswer =
   | { enabled: false }
   | {
     enabled: true; instance: string; backend: string; supported: boolean; reason?: string;
+    /** AGEND-181: whether this answer may hold `thinking` steps (the request asked and was allowed). */
+    thinking: boolean;
+    /** AGEND-181: where paths are shortened from — the instance's working directory and the server's home (display only). */
+    cwd?: string; home?: string;
     /** The transcript's identity (device-inode): a cursor of another one is reset. */
     key?: string;
     steps: LogStep[]; events: LogEvent[];
@@ -93,7 +108,7 @@ export type ReadBack =
   | { backend: string; format: "claude" | "codex" | null; reason: string; key?: undefined; steps?: undefined }
   | { backend: string; format: "claude" | "codex"; key: string; steps: LogStep[]; before: number | null; end: number; reset?: boolean; reason?: undefined };
 
-const parserFor = (format: "claude" | "codex") => (format === "claude" ? new ClaudeStepParser() : new CodexStepParser());
+const parserFor = (format: "claude" | "codex", thinking = false) => (format === "claude" ? new ClaudeStepParser({ thinking }) : new CodexStepParser({ thinking }));
 /** The long records worth reading whole for a Log (a reply, a turn record); every other long one by its head. */
 const wholeFor = (format: "claude" | "codex") => (head: string) => (format === "claude"
   ? isClaudeAssistantHead(head)
@@ -113,7 +128,10 @@ export class LogService {
     if (!this.deps.known(name)) return null;
     const src = this.deps.source(name);
     const evs = this.eventsFor(name, q.ev);
-    const base = { enabled: true as const, instance: name, backend: src.backend, events: evs.events, ev: evs.ev };
+    const thinking = q.thinking === true && this.deps.thinking?.() !== false;
+    const cwd = this.deps.cwd?.(name);
+    const base = { enabled: true as const, instance: name, backend: src.backend, events: evs.events, ev: evs.ev, thinking,
+      ...(cwd ? { cwd } : {}), home: homedir() };
     if (!src.format || !src.path) {
       return { ...base, supported: !!src.format, reason: src.reason ?? (src.format ? "no_transcript" : "unsupported"), steps: [], before: null, after: null };
     }
@@ -124,9 +142,9 @@ export class LogService {
     const answer = { ...base, supported: true, key };
     const fresh = q.key !== undefined && q.key !== key;
     const past = q.after !== undefined && q.after > st.size;
-    if (q.after !== undefined && !fresh && !past) return { ...answer, ...(await this.forward(src.path, src.format, q.after, !!q.skip)) };
-    if (q.before !== undefined && !fresh) return { ...answer, ...(await this.backward(src.path, src.format, q.before, Math.min(q.limit ?? LOG_OLDER_LIMIT, LOG_OLDER_LIMIT))), after: null };
-    const back = await this.backward(src.path, src.format, undefined, Math.min(q.limit ?? LOG_STEPS_LIMIT, LOG_STEPS_LIMIT));
+    if (q.after !== undefined && !fresh && !past) return { ...answer, ...(await this.forward(src.path, src.format, q.after, !!q.skip, thinking)) };
+    if (q.before !== undefined && !fresh) return { ...answer, ...(await this.backward(src.path, src.format, q.before, Math.min(q.limit ?? LOG_OLDER_LIMIT, LOG_OLDER_LIMIT), thinking)), after: null };
+    const back = await this.backward(src.path, src.format, undefined, Math.min(q.limit ?? LOG_STEPS_LIMIT, LOG_STEPS_LIMIT), thinking);
     return { ...answer, ...back, ...((fresh || past) && (q.after !== undefined || q.before !== undefined) ? { reset: true } : {}) };
   }
 
@@ -154,9 +172,9 @@ export class LogService {
   }
 
   /** The steps before `end` (the newest when undefined), at most `limit`, and where older ones start. */
-  private async backward(path: string, format: "claude" | "codex", end: number | undefined, limit: number): Promise<{ steps: LogStep[]; before: number | null; after: number }> {
+  private async backward(path: string, format: "claude" | "codex", end: number | undefined, limit: number, thinking = false): Promise<{ steps: LogStep[]; before: number | null; after: number }> {
     const tail = await readTailRecords(path, { maxLines: 4000, ...(end !== undefined ? { end } : {}) });
-    const parser = parserFor(format);
+    const parser = parserFor(format, thinking);
     const whole = wholeFor(format);
     const firstAt = new Map<string, number>();
     for (const r of tail.records) {
@@ -184,8 +202,8 @@ export class LogService {
   }
 
   /** The steps after `from` (≤ LOOKS_PER_POLL looks), and the cursor after them. */
-  private async forward(path: string, format: "claude" | "codex", from: number, skip: boolean): Promise<{ steps: LogStep[]; before: null; after: number; skip?: boolean; more?: boolean }> {
-    const parser = parserFor(format);
+  private async forward(path: string, format: "claude" | "codex", from: number, skip: boolean, thinking = false): Promise<{ steps: LogStep[]; before: null; after: number; skip?: boolean; more?: boolean }> {
+    const parser = parserFor(format, thinking);
     const whole = wholeFor(format);
     let offset = from, skipping = skip, more = false;
     for (let look = 0; look < LOOKS_PER_POLL; look++) {

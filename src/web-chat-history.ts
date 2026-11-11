@@ -115,6 +115,14 @@ export interface WebChatMessage {
   /** A live web delivery id, or a native runtime turn's durable history identity. */
   messageId?: string;
   /**
+   * AGEND-181: the id the agent's own transcript names this row by, so the chat can attach the steps behind a reply
+   * exactly: a person's message — the `message_id` in the prompt the agent was given (a web message's, or a platform
+   * message's); an agent reply — the `messageId` its `reply` call returned. Unlike `messageId` it is kept on disk and
+   * plays no part in deliveries, reactions or replies. Absent on rows from before it was recorded (the page then
+   * falls back to matching text).
+   */
+  anchor?: string;
+  /**
    * Who the server says wrote it (#1306), set by the code path that emitted it — never read from the text or the
    * sender name: `agent` (a delivered reply), `user` (a person, on any surface; the default), `status` (a daemon
    * status line on a web-only fleet). Only `agent` messages may get HTML preview cards.
@@ -287,6 +295,8 @@ export interface StoredWebChatMessage {
   /** A native runtime turn's durable identity only. Ordinary web delivery ids stay live-only. */
   messageId?: string;
   attachments?: Array<{ id?: string; path?: string; kind: "photo" | "document"; name: string; size: number; mime: string }>;
+  /** AGEND-181: see WebChatMessage.anchor. */
+  anchor?: string;
   /** The label of a person's button click (what the page shows for it; the buttons themselves are not kept). */
   click?: { label: string };
   /** #1990: a status line's links (validated again when read back). */
@@ -389,7 +399,7 @@ export class WebChatHistory {
 
   /** #1565: what was said, with no interactive state or web delivery ids; native turn identity is durable. */
   private stored(m: WebChatMessage): StoredWebChatMessage {
-    const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}),
+    const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.anchor ? { anchor: m.anchor } : {}), ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}),
       ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}),
       ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}), ...(m.cards?.length ? { cards: [...m.cards] } : {}) };
     if (nativeHistoryMessageId(m.messageId, m.role)) row.messageId = m.messageId;
@@ -498,7 +508,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; anchor?: string; role?: string; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
     return this.recordEntry(msg);
   }
 
@@ -525,6 +535,9 @@ export class WebChatHistory {
       ...(msg.attachments && msg.attachments.length ? { attachments: msg.attachments.slice(0, 20).map(a => ({ id: a.id, kind: a.kind, name: a.name, size: a.size, mime: a.mime, ...drawnSize(a) })) } : {}),
       ...(typeof msg.messageId === "string" && msg.messageId ? { messageId: msg.messageId.slice(0, 64) } : {}),
     };
+    // AGEND-181: a web person's message is anchored by the id the agent was given for it; any row by the `anchor` given.
+    const anchor = typeof msg.anchor === "string" && msg.anchor ? msg.anchor : entry.messageId;
+    if (anchor && ANCHOR_ID.test(anchor)) entry.anchor = anchor.slice(0, 80);
     const buttons = msg.role === "agent" ? webChatButtons(msg.buttons) : undefined;
     if (buttons) entry.buttons = buttons;
     const click = entry.role === "user" ? webChatClick(msg.click) : undefined;
@@ -855,6 +868,9 @@ interface RestoredFile { id?: string; path?: string; kind: "photo" | "document";
  * inert history identity and survives. #2305: the instance's reactions (what was answered) survive too. Restored
  * messages keep their original boot/id rather than taking a new cursor in this process.
  */
+/** An anchor id: what a transcript can name a message by (web-…, a platform's digits, a tool result's id). */
+const ANCHOR_ID = /^[A-Za-z0-9._:-]{1,80}$/;
+
 function restoredRow(raw: unknown, instance: string, thisBoot: string): { message: WebChatMessage; files: RestoredFile[]; posts: WebChatPost[] } | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const r = raw as Record<string, unknown>;
@@ -877,6 +893,7 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   if (role === "user" && typeof r.from === "string" && FROM.test(r.from)) message.from = r.from;
   // #2085 (made the channel's late) and #1774 (recorded late): either way, where it stands in its boot's sequence.
   if (typeof r.seenSeq === "number" && Number.isSafeInteger(r.seenSeq) && r.seenSeq > r.id) message.seenSeq = r.seenSeq;
+  if (typeof r.anchor === "string" && ANCHOR_ID.test(r.anchor)) message.anchor = r.anchor;
   const replyTo = role === "user" ? webChatReplyRefOf(r.replyTo) : undefined;
   if (replyTo) message.replyTo = replyTo;
   const reactions = webReactionsOf(r.reactions);
