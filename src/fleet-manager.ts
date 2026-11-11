@@ -153,7 +153,7 @@ import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter, type MissedOfflineInbound } from "./channel/adapters/telegram.js";
 import { MissedOfflineStore } from "./missed-offline.js";
 import { createBackend } from "./backend/factory.js";
-import { readEffortMetadata } from "./backend/effort-metadata.js";
+import { effortOfferedUnasked, readEffortMetadata, readGrokEffortLevels } from "./backend/effort-metadata.js";
 import { codexEffort, flagEffort } from "./backend/launch-effort.js";
 import { codexMetadataHomes, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./backend/codex-metadata.js";
 import { readGrokModelCache } from "./backend/grok-model-cache.js";
@@ -19471,7 +19471,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const env = this.webModelEnv(backend, instance);
       const current = this.resolveInstanceModel(instance).model;
       const models = more ? this.modelCatalogFor(backend, instance) : env?.models ?? [];
-      return { current, options: this.withCurrentModel(models, current).map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })),
+      const own = this.resolveInstanceEffort(instance).effort;
+      return { current, options: this.withCurrentModel(models, current).map(o => {
+        const effort = this.modelEffortChoice(instance, backend, o.id, own);
+        return { id: o.id, label: this.modelChoiceLabel(o, current), ...(effort ? { effort } : {}) };
+      }),
         actions: more ? ["refreshAll"] : backend === "claude-code" ? ["refresh", "more"] : ["refresh"] };
     };
     return runWebCommand({
@@ -24063,6 +24067,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return [{ id: currentModel, label: currentModel, description: t("model.not_listed") }, ...options];
   }
 
+  /**
+   * The effort a /model option offers behind its "›" (the phone's second level): the levels `model` takes on this
+   * backend and the effort the agent has set, when the model has one of them (else null: it shows "auto"). Only where
+   * an effort change is applied live (a model switch then an effort one is no second restart), and not where the
+   * chat does not offer effort unasked (effortOfferedUnasked: antigravity). A file read; never a CLI.
+   */
+  private modelEffortChoice(instance: string, backend: string, model: string, set: string | null): { levels: string[]; current: string | null } | null {
+    if (!effortOfferedUnasked(backend)) return null;
+    try {
+      const { strategy, levels } = readEffortMetadata(backend, this.getInstanceDir(instance), model, this.catalogProfile(backend, instance));
+      return strategy === "runtime" && levels.length > 0 ? { levels, current: set && levels.includes(set) ? set : null } : null;
+    } catch { return null; }
+  }
+
   private modelChoiceLabel(
     option: import("./backend/types.js").ModelOption,
     currentModel: string,
@@ -24936,11 +24954,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return { strategy: "unsupported" as const, levels: [] as string[] };
     const backend = this.backendNameForInstance(instanceName);
     let model: string | null = null;
-    if (backend === "antigravity") {
+    // The model it runs, for the backends whose levels are the model's own: agy's catalog (#1825), claude's account
+    // catalog and grok's cache. codex's levels read its own config (the caller there knows which model runs); the
+    // rest ignore the model.
+    if (backend !== "codex") {
       const resolved = this.resolveInstanceModel(instanceName);
       model = resolved.source === "unresolved" ? null : resolved.model;
     }
-    return readEffortMetadata(backend, this.getInstanceDir(instanceName), model);
+    return readEffortMetadata(backend, this.getInstanceDir(instanceName), model, this.catalogProfile(backend, instanceName));
   }
 
   /** Configured effort for an instance: per-instance, else fleet default, else none. */
@@ -25152,7 +25173,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     let levels: string[];
     try {
-      const metadata = readEffortMetadata(backend, this.getInstanceDir(instanceName), runs);
+      const metadata = readEffortMetadata(backend, this.getInstanceDir(instanceName), runs, this.catalogProfile(backend, instanceName));
       levels = metadata.strategy === "unsupported" ? [] : metadata.levels;
     } catch { return []; }
     // #1811: only the levels this host's launch of that backend will pass (launch-effort.ts, the gate the launch
@@ -25205,7 +25226,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
       if (!binary) return () => false;
       const path = resolveBinary(binary);
-      return level => flagEffort(backend, level, path).arg !== null;
+      // grok's help lists no values: the model's own levels (its models_cache.json) are what it takes.
+      const modelLevels = backend === "grok" ? readGrokEffortLevels(model) : null;
+      return level => flagEffort(backend, level, path, undefined, modelLevels).arg !== null;
     }
     if (backend === "codex") {
       // `model` is the next launch's, proven by the caller (prospectiveCodexModel); the catalog is codex's own cache.
@@ -29309,6 +29332,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         backend,
         effort,
         effort_source,
+        // Whether the chat header's effort chip is offered (shown as "auto" while none is set): the backend takes an
+        // effort setting at all. Absent from an older daemon: a newer page then shows the chip only for a set effort.
+        effort_supported: effortStrategy !== "unsupported" && effortOfferedUnasked(backend),
         ...this.instancePresentation(name),
         // Board 003648ac: the last web /compact, while it runs and briefly after (the chat's card follows it).
         ...(compact ? { compact } : {}),

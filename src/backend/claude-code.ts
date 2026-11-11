@@ -1,5 +1,5 @@
 import { CLAUDE_MINIMUM_ERROR } from "../claude-model-minimum.js";
-import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
+import { EFFORT_CAPABILITIES, parseClaudeEffortCapability } from "./effort-metadata.js";
 import { selectionCard } from "../selection-card.js";
 import { flagEffort } from "./launch-effort.js";
 import { basename, dirname, join, resolve } from "node:path";
@@ -1742,13 +1742,18 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
       });
       clearTimeout(timer);
       if (!res.ok) { this.apiModelReadFailed = true; return []; }
-      const body = await res.json() as { data?: Array<{ id?: string; display_name?: string }> };
+      const body = await res.json() as { data?: Array<{ id?: string; display_name?: string; max_input_tokens?: unknown; capabilities?: unknown }> };
       if (!Array.isArray(body.data)) { this.apiModelReadFailed = true; return []; }
       const options: import("./types.js").ModelOption[] = [];
       for (const model of body.data ?? []) {
         if (!model.id) continue;
-        options.push({ id: model.id, label: model.id, ...(model.display_name ? { description: model.display_name } : {}) });
-        options.push({ id: `${model.id}[1m]`, label: `${model.id}[1m]`, description: "1M context — plan-dependent" });
+        // The account API's own per-model facts, kept for the effort menu and the 1M variants (#3624 follow-up).
+        const facts = {
+          ...(Number.isFinite(model.max_input_tokens) && (model.max_input_tokens as number) > 0 ? { maxInputTokens: model.max_input_tokens as number } : {}),
+          ...(() => { const levels = parseClaudeEffortCapability(model.capabilities); return levels ? { effortLevels: levels } : {}; })(),
+        };
+        options.push({ id: model.id, label: model.id, ...(model.display_name ? { description: model.display_name } : {}), ...facts });
+        options.push({ id: `${model.id}[1m]`, label: `${model.id}[1m]`, description: "1M context — plan-dependent", ...facts });
       }
       return options;
     } catch {

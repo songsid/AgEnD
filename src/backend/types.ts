@@ -209,6 +209,13 @@ export interface ModelOption {
   id: string;
   label: string;
   description?: string;
+  /** Context window the account API reports for this model (claude `max_input_tokens`); absent when unknown. */
+  maxInputTokens?: number;
+  /**
+   * The effort levels this model accepts, in AgEnD's canonical order (claude `capabilities.effort`). `[]`: the model
+   * has no effort setting (Haiku 4.5); absent: unknown, so the backend's own list applies.
+   */
+  effortLevels?: string[];
 }
 
 /** How long a cached CLI env (`<AGEND_HOME>/cli-env/<backend>.json`) is valid; after that nothing may read it. */
