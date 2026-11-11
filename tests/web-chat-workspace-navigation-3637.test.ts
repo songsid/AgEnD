@@ -60,6 +60,15 @@ describe("workspace shares the existing router and guarded history", () => {
     expect(nav.navStore.get().route.instance).toBe("gamma");
     expect(nav.navStore.get().workspace.a.route.panel).toBe("log");
   });
+  it("retires suspended drafts and their guard resources on a real pane replacement", () => {
+    controller.pane("a").navigate("/ui/fleet/agent/beta?cat=basic");
+    const memory = controller.pane("a").retain("settings"), cleanup = vi.fn();
+    memory.hold(cleanup); memory.set("draft", "not persisted");
+    controller.focus("b"); expect(memory.current()).toBe(true);
+    controller.pane("a").navigate("/ui/log/beta");
+    expect(memory.current()).toBe(false); expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(memory.state.size).toBe(0); memory.set("draft", "late"); expect(memory.state.size).toBe(0);
+  });
   it("retires preview before a layout is published, including a restored history entry", () => {
     const before = nav.navStore.get().workspace;
     retirePreview.mockImplementationOnce(() => expect(nav.navStore.get().workspace).toBe(before));

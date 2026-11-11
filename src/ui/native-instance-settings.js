@@ -1,6 +1,7 @@
 // Windows uses the same staged instance settings flow, with its runtime's supported fields.
 // the form is a hook (useNativeForm) and its fields are grouped by category (NativeFields), so the Settings dialog
 // and the Details & settings page (agent-details-settings.js) draw the same fields, each with its ⓘ.
+import * as paneState from "/assets/app-ctx.js";
 import { html, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { Dialog } from "/assets/ui-dialog.js";
@@ -23,7 +24,8 @@ export function useNativeForm({ name, inst, ctx }) {
   const catalog = useWindowsCliCatalog(!machineId), machines = useRuntimeCatalog(!!machineId);
   const machine = machines.data?.machines?.find(item => item.id === machineId);
   const native = (machineId ? machine?.inventory : catalog.data)?.clis?.find(cli => cli.id === inst.backend);
-  const [form,setForm] = useState(() => ({display_name:inst.display_name || name,description:inst.description || "",model:inst.model || "",systemPrompt:inst.systemPrompt || "",native_sandbox:inst.native_sandbox || "read-only",tags:Array.isArray(inst.tags) ? [...inst.tags] : []}));
+  const state = (key, initial) => paneState.usePaneState ? paneState.usePaneState(ctx.formMemory, key, initial) : useState(initial);
+  const [form,setForm] = state("native", () => ({display_name:inst.display_name || name,description:inst.description || "",model:inst.model || "",systemPrompt:inst.systemPrompt || "",native_sandbox:inst.native_sandbox || "read-only",tags:Array.isArray(inst.tags) ? [...inst.tags] : []}));
   const set = key => value => setForm(current => ({...current,[key]:value}));
   const dirty=Object.entries(form).some(([key,value])=>JSON.stringify(typeof value==="string"?value.trim():value)!==JSON.stringify(key==="display_name"?inst.display_name||name:key==="native_sandbox"?inst.native_sandbox||"read-only":key==="tags"?inst.tags||[]:inst[key]||""));
   const ready = !!form.display_name.trim() && !(form.native_sandbox === "read-only" && native?.readOnlySupport === false);

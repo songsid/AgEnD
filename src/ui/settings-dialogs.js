@@ -6,6 +6,7 @@ import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js"
 import { t } from "/assets/app-i18n.js";
 import { recordEdit } from "/assets/text-undo.js";
 import { useLease } from "/assets/app-ctx.js";
+import * as paneState from "/assets/app-ctx.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
@@ -353,8 +354,9 @@ function EmojiPicker({ cat, keyName, platform, channel, onPick, onClose }) {
 export function useAgentForm({ name, inst, ctx }) {
   const { fleet, schema } = ctx;
   const defaults = fleet.defaults || {};
-  const [f, setF] = useState(() => agentForm(inst, defaults, name));
-  const [emojis, setEmojis] = useState({ value: inst.status_emojis || null, baseline: inst.status_emojis || null });
+  const state = (key, initial) => paneState.usePaneState ? paneState.usePaneState(ctx.formMemory, key, initial) : useState(initial);
+  const [f, setF] = state("agent", () => agentForm(inst, defaults, name));
+  const [emojis, setEmojis] = state("emojis", { value: inst.status_emojis || null, baseline: inst.status_emojis || null });
   // #1302: the baseline is what the picker shows before anyone touches it.
   const visibilityBaseline = useMemo(() => (hasOwn(inst, "cross_instance_visibility") ? (VISIBILITY_MODES.includes(inst.cross_instance_visibility) ? inst.cross_instance_visibility : VISIBILITY_MODES[0]) : null), []);
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
@@ -378,7 +380,7 @@ export function useAgentForm({ name, inst, ctx }) {
   // #3212: the agent's own credential profile for its CLI ("" = none: it follows the fleet default). Host agents only.
   const acctBackend = f.backend || defaults.backend || "claude-code";
   const ownAccount = (inst.backend_options && inst.backend_options[acctBackend] && inst.backend_options[acctBackend].credential_profile) || "";
-  const [acct, setAcct] = useState(ownAccount);
+  const [acct, setAcct] = state("account", ownAccount);
   const pending = () => {
     const patch = agentPatch({ ...f, status_emojis: emojis.value }, inst, defaults, visibilityBaseline, emojis.baseline);
     if (inst.runtime === "windows" || acct === ownAccount) return patch;
@@ -843,7 +845,8 @@ export function useClassicForm({ room, ctx }) {
     reply_completion_guard: cd.reply_completion_guard ?? fd.reply_completion_guard ?? true,
   };
   const c = room;
-  const [f, setF] = useState(() => ({
+  const state = (key, initial) => paneState.usePaneState ? paneState.usePaneState(ctx.formMemory, key, initial) : useState(initial);
+  const [f, setF] = state("classic", () => ({
     backend: c.backend || inherited.backend, model: c.model || "",
     auto_pause_after: String(c.auto_pause_after ?? inherited.auto_pause_after), tool_progress: c.tool_progress ?? inherited.tool_progress,
     reply_completion_guard: c.reply_completion_guard ?? inherited.reply_completion_guard,

@@ -2,6 +2,7 @@
 import { html, render, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { PaneScope, usePane } from "/assets/app-ctx.js";
+import * as paneState from "/assets/app-ctx.js";
 import { Outlet, PanelHeader, shellStore, showDialog, isMacLike, toggleSidebar } from "/assets/app-shell.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { Menu } from "/assets/ui-menu.js";
@@ -33,7 +34,7 @@ export async function verifyWorkspaceDependencies({ chat, details, log, view }) 
     import("/assets/instance-switch.js"), import("/assets/ui-menu.js"), import("/assets/view-roster-store.js"),
     import("/assets/chat-composer.js"), import("./image-lightbox.js"), import("/assets/preview-panel.js"),
     import("./agent-runtime-settings.js"), import("./agent-export-dialog.js"), import("/assets/app-session.js")]);
-  if (!chat.ChatPanel.workspaceVersion || !details.DetailsPanel.workspaceVersion || !log.LogPanel.workspaceVersion || !view.ViewPanel.workspaceVersion
+  if (!paneState.usePaneState || !chat.ChatPanel.workspaceVersion || !details.DetailsPanel.workspaceVersion || !log.LogPanel.workspaceVersion || !view.ViewPanel.workspaceVersion
     || !fields.AgentFields.paneIds || !fields.ClassicFields.paneIds || !native.NativeFields.paneIds
     || !quote.installQuoteSelection.workspaceVersion || !tabs.InstanceSwitch.workspaceVersion || !menu.Menu.workspaceVersion || !roster.followRoster
     || !composer.ComposerInput.paneIds || !composer.WorkBarView.paneIds || !image.LightboxHost.paneOwner

@@ -26,7 +26,7 @@ const receipt: any = { head: git("rev-parse", "HEAD"), tree: git("rev-parse", "H
 const errors: string[] = [], blocked: string[] = [], jobs: Promise<unknown>[] = [];
 const theme = process.env.THEME || "light";
 const retained = process.env.RETAIN || "", oldRef = process.env.OLD_REF || "d2440106a2805187eb50a13c2385144192261f9a";
-const oldFiles: Record<string, string> = { css: "src/ui/shared/app.css", shell: "src/ui/shared/app-shell.js", chat: "src/ui/panel-chat.js", fields: "src/ui/settings-dialogs.js", session: "src/ui/shared/app-session.js" };
+const oldFiles: Record<string, string> = { css: "src/ui/shared/app.css", shell: "src/ui/shared/app-shell.js", chat: "src/ui/panel-chat.js", fields: "src/ui/settings-dialogs.js", session: "src/ui/shared/app-session.js", context: "src/ui/shared/app-ctx.js" };
 const substitutions: Record<string, string[]> = {};
 const sourcePath = (path: string) => path.startsWith("/assets/") ? "src/ui/shared/" + path.slice(8) : path.startsWith("/ui/js/") ? "src/ui/" + path.slice(7) : "";
 receipt.retained = retained; receipt.oldRef = oldRef; receipt.substitutions = substitutions;
@@ -184,6 +184,25 @@ try {
   });
   assert.ok(formIds.count > 4); assert.equal(formIds.count, formIds.unique, JSON.stringify(formIds)); assert.equal(formIds.ownLabels, true, JSON.stringify(formIds));
   await shot("two-settings", 2); receipt.forms = formIds;
+  if (process.env.SETTINGS_SUSPEND === "1") {
+    await page.locator("#pane-a-ag-desc").fill("保留 A 的設定草稿");
+    await page.locator("#pane-b-ag-desc").fill("保留 B 的設定草稿");
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await page.locator(".ws-agent-tabs").waitFor();
+    await page.locator(".ws-agent-tabs .seg-item").nth(0).click();
+    await page.waitForFunction(() => (document.querySelector("#pane-a-ag-desc") as HTMLInputElement)?.value === "保留 A 的設定草稿");
+    await shot("suspended-settings-a", 1);
+    await page.locator(".ws-agent-tabs .seg-item").nth(1).click();
+    await page.waitForFunction(() => (document.querySelector("#pane-b-ag-desc") as HTMLInputElement)?.value === "保留 B 的設定草稿");
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await page.locator("#pane-a-ag-desc").waitFor();
+    assert.equal(await page.locator("#pane-a-ag-desc").inputValue(), "保留 A 的設定草稿");
+    assert.equal(await page.locator("#pane-b-ag-desc").inputValue(), "保留 B 的設定草稿");
+    await shot("restored-settings", 2);
+    // Restore both fields rather than applying or discarding a write; the remaining journey is unchanged.
+    await page.locator("#pane-a-ag-desc").fill(""); await page.locator("#pane-b-ag-desc").fill("");
+    receipt.settingsSuspension = { bothDraftsRestored: true, hiddenReadersUnmounted: true, applied: false };
+  }
   // Restore the second pane to Chat through its own visible tab/menu, without a page navigation.
   await page.evaluate(async (names: string[]) => { const nav = await import("/assets/app-nav.js"); nav.navigate(`/ui/log/${encodeURIComponent(names[0])}?compare=${encodeURIComponent(names[1])}&paneB=chat&focus=a`, { workspace: true }); }, [a, b]);
   await page.locator('[data-pane="a"] .panel-actions > .menu > button').click();

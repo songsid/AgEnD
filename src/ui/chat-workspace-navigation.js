@@ -3,7 +3,14 @@ import { parseRoute, routePath } from "/assets/app-route.js";
 import { agentRoute, navigatePane, openBeside, readWorkspace, workspacePath } from "/assets/chat-workspace-model.js";
 
 export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWorkspace = () => {} } = {}) {
-  const guards = new Map(), panes = new Map();
+  const guards = new Map(), panes = new Map(), retained = new Map();
+  const dispose = record => {
+    record.alive = false;
+    for (const off of record.offs) off();
+    const forms = record.state.get("forms");
+    forms?.state.clear(); forms?.listeners.clear();
+    record.offs.clear(); record.state.clear(); record.listeners.clear();
+  };
   const page = window, doc = document, pending = new Set();
   let alive = true;
   const schedule = fn => {
@@ -20,6 +27,10 @@ export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWor
   const off = nav.installNavigation({
     beforePublish(next, before) {
       const a = before.workspace, b = next.workspace;
+      for (const [key, record] of retained) {
+        const route = b?.[record.id]?.route;
+        if (!route || route.panel !== record.route.panel || route.instance !== record.route.instance) { dispose(record); retained.delete(key); }
+      }
       if (b) onWorkspace();
       if (a && b && (a.layout !== b.layout || a.flipped !== b.flipped)) beforeLayout();
     },
@@ -39,6 +50,23 @@ export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWor
   function pane(id) {
     if (panes.has(id)) return panes.get(id);
     const value = {
+      // Only page-local draft state survives a compact-layout suspension. No DOM, readers or credentials are persisted.
+      retain(key) {
+        const route = current()?.[id]?.route;
+        if (!route) return null;
+        const name = `${id}:${key}`;
+        if (retained.has(name)) return retained.get(name);
+        const record = { id, route, alive: true, state: new Map(), listeners: new Map(), offs: new Set(),
+          current: () => alive && record.alive && retained.get(name) === record,
+          hold(off) { record.offs.add(off); },
+          set(key, next) {
+            if (!record.current()) return;
+            const value = typeof next === "function" ? next(record.state.get(key)) : next;
+            record.state.set(key, value); record.listeners.get(key)?.(value);
+          },
+        };
+        retained.set(name, record); return record;
+      },
       navigate(path, opts = {}) {
         // A guard's yes resumes the exact full URL it was asked about, including a close/swap/global navigation.
         if (opts.skipGuard) { nav.navigate(path, { ...opts, skipGuard: guards.get(opts.skipGuard), workspace: true }); return; }
@@ -92,6 +120,6 @@ export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWor
     },
     restore(w) { if (w) go(w, { replace: true }); },
     restoreAddress() { const w = readWorkspace(address()); if (w) go(w, { replace: true }); },
-    close() { if (!alive) return; alive = false; for (const cancel of pending) cancel(); pending.clear(); off(); },
+    close() { if (!alive) return; alive = false; for (const cancel of pending) cancel(); pending.clear(); for (const record of retained.values()) dispose(record); retained.clear(); off(); },
   };
 }

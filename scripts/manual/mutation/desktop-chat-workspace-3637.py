@@ -21,6 +21,9 @@ cases = [
     ('form-prefix', 'src/ui/settings-dialogs.js', [('key == null ? key : `${idPrefix}${key}`', 'key == null ? key : `${key}`')], 'web-chat-pane-fields-3637'),
     ('async-emoji-prefix', 'src/ui/settings-dialogs.js', [('channel=${channel} idPrefix=${idPrefix}', 'channel=${channel}')], 'web-chat-pane-fields-3637'),
     ('settings-remount', 'src/ui/agent-details-settings.js', [('const remount = next && (!!pane !== !!next.workspace);', 'const remount = false;')], 'web-chat-workspace-settings-3637'),
+    ('suspended-forms', 'src/ui/settings-dialogs.js', [('paneState.usePaneState(ctx.formMemory, key, initial)', 'paneState.usePaneState(null, key, initial)')], 'web-chat-workspace-suspend-3637'),
+    ('suspended-guard', 'src/ui/agent-details-settings.js', [('const hold = off => memory ? memory.hold(off) : lease.hold(off);', 'const hold = off => lease.hold(off);')], 'web-chat-workspace-suspend-3637'),
+    ('suspended-retirement', 'src/ui/chat-workspace-navigation.js', [('dispose(record); retained.delete(key);', 'retained.delete(key);')], 'web-chat-workspace-navigation-3637'),
     ('logout-cleanup', 'src/ui/shared/app-session.js', [('appStore.get().chatWorkspaceSessionEnd?.();', 'void 0;')], 'web-chat-workspace-session-3637'),
     ('gateway-mark', 'src/web-api.ts', [('const workspaceMark = mode === "full" && !gatewayRequestContext(req) && !viewer?.guest', 'const workspaceMark = mode === "full" && !viewer?.guest')], 'web-chat-workspace-shell-3637'),
 ]

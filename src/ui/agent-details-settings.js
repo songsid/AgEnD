@@ -88,12 +88,19 @@ const loadSettingsModule = () => (settingsModule ||= import("./panel-settings.js
 export function useAgentSettings({ name, lease, enabled, navKey }) {
   const pane = paneContext.usePane?.();
   const go = pane?.navigate || navigate;
-  const [mod, setMod] = useState(null);
-  const [data, setData] = useState(null);
-  const [staged, setStaged] = useState(() => new Map());
+  const memory = pane?.retain?.("settings");
+  const state = (key, initial) => paneContext.usePaneState ? paneContext.usePaneState(memory, key, initial) : useState(initial);
+  const [mod, setMod] = state("module", null);
+  const [data, setData] = state("data", null);
+  const [staged, setStaged] = state("staged", () => new Map());
+  const [formMemory] = state("forms", () => ({ state: new Map(), listeners: new Map(), set(key, next) {
+    if (memory && !memory.current()) return;
+    const value = typeof next === "function" ? next(this.state.get(key)) : next;
+    this.state.set(key, value); this.listeners.get(key)?.(value);
+  } }));
   const stagedRef = useRef(staged);
   stagedRef.current = staged;
-  const [epoch, setEpoch] = useState(0);              // moves after a Discard and after a Save: the forms start again from what is saved
+  const [epoch, setEpoch] = state("epoch", 0);              // moves after a Discard and after a Save: the forms start again from what is saved
   const gen = useRef(0);
   const { settingsOp: op } = useStore(appStore);
   const started = useRef(false);
@@ -119,6 +126,7 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
   };
   const unstage = (key) => setStaged((s) => { if (!s.has(key)) return s; const m = new Map(s); m.delete(key); return m; });
   const clearStaged = () => {
+    formMemory.state.clear();
     // A different pane can still refuse navigation. Keep the rendered state and its guard coherent across rerenders,
     // and reset this pane's forms even when the person remains here after that other pane cancels.
     const empty = new Map();
@@ -130,24 +138,31 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
 
   // Leaving the page with staged changes asks first (the Settings page's question); the same agent's other categories are not leaving.
   useEffect(() => {
+    if (memory?.guarded) return;
+    if (memory) memory.guarded = true;
     let asking = false;
+    const current = () => memory ? memory.current() : lease.current();
+    const changes = () => memory ? memory.state.get("staged") : stagedRef.current;
     const check = (to, path, next) => {
-      const n = stagedRef.current.size;
+      const n = changes().size;
       const remount = next && (!!pane !== !!next.workspace);
       if (!n || (!remount && to && to.panel === "details" && to.instance === nameRef.current)) return true;
       if (!asking) {
         asking = true;
         ask(tn("discardOnLeave", n), { confirmLabel: tn("discard"), danger: true }).then((yes) => {
           asking = false;
-          if (!yes || !lease.current()) return;
+          if (!yes || !current()) return;
           clearStaged();
           go(path, routing.addLeaveGuard ? { skipGuard: check } : { force: true });
         });
       }
       return false;
     };
-    lease.hold((pane?.addLeaveGuard || routing.addLeaveGuard || setLeaveGuard)(check));
-    lease.on(window, "beforeunload", (e) => { if (stagedRef.current.size) { e.preventDefault(); e.returnValue = ""; } });
+    const hold = off => memory ? memory.hold(off) : lease.hold(off);
+    hold((pane?.addLeaveGuard || routing.addLeaveGuard || setLeaveGuard)(check));
+    const unload = e => { if (changes().size) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", unload);
+    hold(() => window.removeEventListener("beforeunload", unload));
   }, [lease]);
 
   // Changes a failed Apply did not land come back to be staged again.
@@ -163,7 +178,7 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
   useEffect(() => {
     const phase = op ? op.phase : null;
     if (lastPhase.current !== phase && (phase === "done" || phase === "failed") && started.current) {
-      reload().finally(() => { if (phase === "done") setEpoch((n) => n + 1); });
+      reload().finally(() => { if (phase === "done" && lease.current()) { formMemory.state.clear(); setEpoch((n) => n + 1); } });
     }
     lastPhase.current = phase;
   }, [op && op.phase]);
@@ -190,7 +205,8 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
   const ctx = mod && data && !data.error
     ? mod.makeCtx(data, setData, stage, unstage, reload, reload, () => lease.current(), { drafts: new Map(), draftEpoch: epoch, staged, savingDrafts: () => null, savingStaged: () => null })
     : null;
-  return { mod, data, ctx, staged, stage, unstage, discard, apply, op, epoch, reload };
+  if (ctx && memory) ctx.formMemory = formMemory;
+  return { mod, data, ctx, formMemory: memory ? formMemory : null, staged, stage, unstage, discard, apply, op, epoch, reload };
 }
 
 // ── The nav ──

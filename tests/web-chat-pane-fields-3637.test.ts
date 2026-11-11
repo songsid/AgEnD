@@ -15,9 +15,13 @@ afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 describe("two full Settings panes keep label and form ownership", () => {
   it.each(["fleet", "classic", "native"])("namespaces every %s control and changes only the intended form", async kind => {
     const forms: any[] = [];
+    const memories = [0, 1].map(() => ({ state: new Map(), listeners: new Map(), set(key: string, next: any) {
+      const value = typeof next === "function" ? next(this.state.get(key)) : next;
+      this.state.set(key, value); this.listeners.get(key)?.(value);
+    } }));
     function Form({ n }: { n: number }) {
       const name = `agent-${n}`, inst = { backend: "claude-code", working_directory: "/rig", ...(kind === "native" ? { runtime: "windows" } : {}) };
-      const ctx = { fleet: { defaults: {}, instances: { [name]: inst } }, schema: buildSettingsImpactSchema(), drafts: new Map(), staged: new Map(),
+      const ctx = { fleet: { defaults: {}, instances: { [name]: inst } }, schema: buildSettingsImpactSchema(), formMemory: memories[n], drafts: new Map(), staged: new Map(),
         channelType: () => "telegram", classicRuntime: () => ({ execution: "idle" }), stageAgent: vi.fn(), shortName: (s: string) => s, reload: vi.fn() };
       const m = kind === "classic" ? fields.useClassicForm({ room: { instanceName: name, key: name }, ctx })
         : kind === "native" ? native.useNativeForm({ name, inst, ctx }) : fields.useAgentForm({ name, inst, ctx });
@@ -41,5 +45,9 @@ describe("two full Settings panes keep label and form ownership", () => {
     input.value = kind === "classic" ? "9" : "Only this pane"; fire(input, "input"); await settle(3);
     expect(forms[0].pending()).toEqual(kind === "classic" ? { context_lines: 9 } : { description: "Only this pane" });
     expect(forms[1].pending()).toEqual({});
+    await p.unmount();
+    await p.mount(h(Form, { n: 0 })); await settle(3);
+    expect(forms[0].pending()).toEqual(kind === "classic" ? { context_lines: 9 } : { description: "Only this pane" });
+    expect(memories[1].listeners.size).toBe(0);
   });
 });
