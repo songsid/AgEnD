@@ -222,8 +222,9 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   }
   if (/^\/api\/hub\/member\/company-join\/(start|resume|repair-trust|reconnect|remove)$/.test(path)) {
     const b = record(body), start = path.endsWith("/start"), repair = path.endsWith("/repair-trust"), reconnect = path.endsWith("/reconnect"), remove = path.endsWith("/remove");
-    const pairingOf = (keys: string[]) => {
-      if (Object.keys(b).length !== keys.length || Object.keys(b).some(k => !keys.includes(k)) || typeof b.hubId !== "string" || !/^[a-f0-9-]{36}$/.test(b.hubId)
+    const pairingOf = (keys: string[], optional: string[] = []) => {
+      const given = Object.keys(b).filter(k => !optional.includes(k));
+      if (given.length !== keys.length || Object.keys(b).some(k => !keys.includes(k) && !optional.includes(k)) || typeof b.hubId !== "string" || !/^[a-f0-9-]{36}$/.test(b.hubId)
         || typeof b.binding !== "string" || !/^[a-f0-9]{64}$/.test(b.binding)) throw Error();
     };
     let target: string;
@@ -238,8 +239,9 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
         if (b.code !== undefined && (typeof b.code !== "string" || !ENROLMENT_CODE.test(b.code))) throw Error();
         target = parseCompanyAddress(b.address).webOrigin;
       } else if (reconnect) {
-        pairingOf(["hubId", "binding", "address"]);
+        pairingOf(["hubId", "binding", "address"], ["handoffId"]);
         if (typeof b.address !== "string") throw Error();
+        if (b.handoffId !== undefined && (typeof b.handoffId !== "string" || !/^[a-f0-9-]{36}$/.test(b.handoffId))) throw Error();
         target = parseCompanyAddress(b.address).webOrigin;
       } else if (remove) {
         pairingOf(["hubId", "binding", "address"]);

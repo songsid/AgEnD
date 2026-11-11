@@ -161,9 +161,14 @@ describe("M-2921: the connected and held card (spec 1.1 / 1.3)", () => {
     const f = await fixture({ enabled: true, pairing: held(hold), display }); await until(() => button(f.p, "Reconnect"));
     expect(button(f.p, "Reconnect").className).toContain("btn-primary");
     expect(f.p.root.querySelector(".hub-held").textContent).toContain("Acme Hub");
-    expect(f.p.root.querySelector(".hub-held").textContent).not.toContain(":18602");
+    expect(f.p.root.querySelector("#hub-connection").textContent).not.toContain("member.example.test");    // the held card names the Hub, never the member address
+    expect(f.p.root.querySelector("#hub-connection h3").textContent).toBe("Acme Hub");
+    const open = vi.fn(); vi.stubGlobal("open", open);
     await click(f.p, "Reconnect");
-    expect(f.calls.filter(c => c.path.endsWith("/company-join/reconnect")).map(c => JSON.parse(c.init.body))).toEqual([{ hubId: id, binding: "b".repeat(64), address: "https://hub.example.test" }]);
+    const sent = f.calls.filter(c => c.path.endsWith("/company-join/reconnect")).map(c => JSON.parse(c.init.body));
+    expect(sent).toEqual([{ hubId: id, binding: "b".repeat(64), address: "https://hub.example.test", handoffId: expect.stringMatching(/^[a-f0-9-]{36}$/) }]);
+    // the Fleet's own waiting tab, opened in the press, follows exactly that handoff to the Hub's sign-in
+    expect(open).toHaveBeenCalledWith("/settings/hub?joinWait=" + sent[0].handoffId + "&joinConsent=1#target=" + encodeURIComponent("https://hub.example.test"), "_blank", "noopener");
   });
   it.each(["unsaved", "unknown_outcome"])("held (%s): no reconnect — that hold keeps its own recovery", async hold => {
     const f = await fixture({ enabled: true, pairing: held(hold), display }); await until(() => f.p.root.querySelector(".hub-held")); await settle(10);

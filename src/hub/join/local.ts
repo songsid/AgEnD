@@ -185,8 +185,8 @@ export class CompanyJoinController {
    * (`supersedes`, when the Hub takes it). The admin's press is the consent for all of it (O1). A step that fails leaves
    * what the steps before it did, and the button can be pressed again. No saved address: "invalid" (the page offers 其他方式).
    */
-  async reconnect(input: { hubId: string; binding: string; address: string; fleetOrigin: string }, authority: JoinLocalAuthority, pairing: ReconnectPairing) {
-    const body = validated(z.strictObject({ hubId: uuid, binding: hash, address: z.string().max(2048), fleetOrigin: z.string().max(2048) }), input);
+  async reconnect(input: { hubId: string; binding: string; address: string; fleetOrigin: string; handoffId?: string }, authority: JoinLocalAuthority, pairing: ReconnectPairing) {
+    const body = validated(z.strictObject({ hubId: uuid, binding: hash, address: z.string().max(2048), fleetOrigin: z.string().max(2048), handoffId: uuid.optional() }), input);
     if (this.closed || !authority.session.current() || !authority.confirmedCurrent()) throw new HubProtocolError("denied");
     const bound = pairing.boundHub();
     if (!bound || bound.hubId !== body.hubId || bound.binding !== body.binding) throw new HubProtocolError("conflict");
@@ -201,7 +201,8 @@ export class CompanyJoinController {
       if (!left.ok) throw new HubProtocolError(left.error === "unsaved" ? "unavailable" : "conflict");
     }
     pairing.cancel();
-    return this.start({ address: display.webOrigin, label: display.label || probeLabel() || "Fleet", fleetOrigin: body.fleetOrigin }, authority,
+    // The page's waiting tab (opened in the press) follows this handoff to the Hub's sign-in, as Start's does.
+    return this.start({ address: display.webOrigin, label: display.label || probeLabel() || "Fleet", fleetOrigin: body.fleetOrigin, ...(body.handoffId ? { handoffId: body.handoffId } : {}) }, authority,
       { expected: companyIdentityDigest(profile.hub), supersedes: { fleetId: profile.fleetId, credential: profile.credential } });
   }
   /**

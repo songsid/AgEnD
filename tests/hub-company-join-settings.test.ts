@@ -113,7 +113,9 @@ describe("company Start Settings authority", () => {
       const diff = prepareSettingsEffect("POST", path, pairing, context).diff!;
       expect(diff).toMatchObject({ authority: { primaryGeneral: true, connections: [] } });
       expect(JSON.stringify(diff.summary_i18n)).toContain(`hub.companyJoin.${step}`);
-      for (const bad of [{ ...pairing, binding: "z" }, { ...pairing, hubId: "x" }, { hubId: pairing.hubId, binding: pairing.binding }, { ...pairing, address: "http://hub.example.test" },
+      if (step === "reconnect") expect(prepareSettingsEffect("POST", path, { ...pairing, handoffId: randomUUID() }, context).diff).toBeTruthy();
+      else expect(() => prepareSettingsEffect("POST", path, { ...pairing, handoffId: randomUUID() }, context)).toThrow();
+      for (const bad of [{ ...pairing, handoffId: "x" }, { ...pairing, binding: "z" }, { ...pairing, hubId: "x" }, { hubId: pairing.hubId, binding: pairing.binding }, { ...pairing, address: "http://hub.example.test" },
         { ...pairing, label: "x" }, { ...pairing, fleetOrigin: "https://victim.test" }]) expect(() => prepareSettingsEffect("POST", path, bad, context)).toThrow();
     }
   });

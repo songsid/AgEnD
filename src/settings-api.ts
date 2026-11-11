@@ -1015,8 +1015,9 @@ export function handleSettingsRequest(
           const pairing = ctx.hubMemberPairing?.() ?? null;
           if (!pairing || !authority || !settingsRequestLocalAdmin(req) || !body || typeof body !== "object") throw new HubProtocolError("invalid");
           if (step === "reconnect") {
-            if (!session.fleetOrigin || Object.keys(body).some(k => !["hubId", "binding", "address"].includes(k))) throw new HubProtocolError("invalid");
-            json(res, 200, { ok: true, operation: await api.reconnect({ hubId: body.hubId, binding: body.binding, address: body.address, fleetOrigin: session.fleetOrigin }, authority, pairing) });
+            if (!session.fleetOrigin || Object.keys(body).some(k => !["hubId", "binding", "address", "handoffId"].includes(k))) throw new HubProtocolError("invalid");
+            json(res, 200, { ok: true, operation: await api.reconnect({ hubId: body.hubId, binding: body.binding, address: body.address, fleetOrigin: session.fleetOrigin,
+              ...(body.handoffId !== undefined ? { handoffId: body.handoffId } : {}) }, authority, pairing) });
           } else {
             if (Object.keys(body).some(k => !["hubId", "binding", "address"].includes(k))) throw new HubProtocolError("invalid");
             const removed = await api.remove({ hubId: body.hubId, binding: body.binding, address: body.address }, authority, pairing);

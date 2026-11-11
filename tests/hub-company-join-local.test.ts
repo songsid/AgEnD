@@ -322,8 +322,9 @@ describe("M-2921 (spec 1.3, O1): the connected card's reconnect and 「移除這
   it("reconnect: leave, fence, tombstone, start over, then one start for the saved address and label — asking the Hub to retire the old Fleet", async () => {
     const w = await joined(["join-supersedes-v1", "member-leave-v1"]);
     const profile = JSON.parse(readFileSync(join(w.directory, "hub-member", w.shown.hubId, "pairing.json"), "utf8"));
-    const op = await w.controller.reconnect({ ...w.shown, address: w.metadata.hub.webOrigin, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing);
-    expect(op).toMatchObject({ operationId: expect.any(String) });
+    const handoffId = randomUUID();
+    const op = await w.controller.reconnect({ ...w.shown, address: w.metadata.hub.webOrigin, fleetOrigin: "http://127.0.0.1:4444", handoffId }, w.authority, w.pairing);
+    expect(op).toMatchObject({ operationId: expect.any(String), handoffId });
     expect(w.order).toEqual(["leave", "fence", "withdraw"]);
     expect(w.pushes.at(-1)).toMatchObject({ label: "My Fleet", supersedes: { fleetId: profile.fleetId, credential: profile.credential } });
     w.controller.close();
