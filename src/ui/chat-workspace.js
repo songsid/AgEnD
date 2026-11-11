@@ -36,7 +36,8 @@ export async function verifyWorkspaceDependencies({ chat, details, log, view }) 
     import("/assets/instance-switch.js"), import("/assets/ui-menu.js"), import("/assets/view-roster-store.js"),
     import("/assets/chat-composer.js"), import("./image-lightbox.js"), import("/assets/preview-panel.js"),
     import("./agent-runtime-settings.js"), import("./agent-export-dialog.js"), import("/assets/app-session.js")]);
-  if (!workspaceNavigation.workspaceGeometryVersion || !paneState.usePaneState || !chat.ChatPanel.workspaceVersion || !details.DetailsPanel.workspaceVersion || !log.LogPanel.workspaceVersion || !view.ViewPanel.workspaceVersion
+  if (getComputedStyle(document.documentElement).getPropertyValue("--chat-workspace-geometry-version").trim() !== "1"
+    || !workspaceNavigation.workspaceGeometryVersion || !paneState.usePaneState || !chat.ChatPanel.workspaceVersion || !details.DetailsPanel.workspaceVersion || !log.LogPanel.workspaceVersion || !view.ViewPanel.workspaceVersion
     || !fields.AgentFields.paneIds || !fields.ClassicFields.paneIds || !native.NativeFields.paneIds
     || !quote.installQuoteSelection.workspaceVersion || !tabs.InstanceSwitch.workspaceVersion || !menu.Menu.workspaceVersion || !roster.followRoster
     || !composer.ComposerInput.paneIds || !composer.WorkBarView.paneIds || !image.LightboxHost.paneOwner

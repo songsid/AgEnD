@@ -36,19 +36,22 @@ export function createWorkspaceGestures({ controller, getRoot, onDrop = (name, t
     return null;
   };
   const preview = (a, x, y, floating = false) => {
-    hideOverlay(); a.target = null;
+    a.target = null;
     const hit = floating ? { id: a.id === "a" ? "b" : "a", rect: a.bounds } : locate(x, y);
-    if (!hit) return;
+    if (!hit) { hideOverlay(); return; }
     const zone = dropZone(hit.rect, x, y);
-    if (!zone || (floating && zone === "center")) return;
+    if (!zone || (floating && zone === "center")) { hideOverlay(); return; }
     a.target = { id: hit.id, zone };
-    overlay = doc.createElement("div"); overlay.className = "ws-drop-overlay"; overlay.setAttribute("aria-hidden", "true");
-    const box = doc.createElement("div"), label = doc.createElement("span"), rect = dropBox(hit.rect, zone);
-    box.className = "ws-drop-target"; box.setAttribute("data-zone", zone); box.setAttribute("data-target", hit.id); label.textContent = geometryText(zone); box.appendChild(label); overlay.appendChild(box);
+    // Keep the browser's native drop target alive between dragover and drop.
+    if (!overlay) {
+      overlay = doc.createElement("div"); overlay.className = "ws-drop-overlay"; overlay.setAttribute("aria-hidden", "true");
+      const box = doc.createElement("div"); box.className = "ws-drop-target"; box.appendChild(doc.createElement("span")); overlay.appendChild(box); doc.body.appendChild(overlay);
+    }
+    const box = overlay.firstElementChild, label = box.firstElementChild, rect = dropBox(hit.rect, zone);
+    box.setAttribute("data-zone", zone); box.setAttribute("data-target", hit.id); label.textContent = geometryText(zone);
     // CSSOM follows the preview/sidebar resizers; no CSP-blocked style attribute or user-controlled CSS text.
     for (const [key, value] of Object.entries(a.bounds)) if (["left", "top", "width", "height"].includes(key)) overlay.style.setProperty(key, `${value}px`);
     for (const [key, value] of Object.entries(rect)) box.style.setProperty(key, `${value - (key === "left" ? a.bounds.left : key === "top" ? a.bounds.top : 0)}px`);
-    doc.body.appendChild(overlay);
   };
   const finish = (commit = false) => {
     const a = active; if (!a) return;

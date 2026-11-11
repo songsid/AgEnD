@@ -22,6 +22,8 @@ it("shows an edge preview for an owned drag, commits once, and ignores a foreign
   manager.dragStart("beta", event({ dataTransfer: transfer() }), "b");
   fire(root, "dragover", { clientX: 110, clientY: 300 });
   expect(p.document.querySelector('.ws-drop-overlay [data-zone="left"]')).not.toBeNull();
+  const overlay = p.document.querySelector(".ws-drop-overlay"); fire(root, "dragover", { clientX: 111, clientY: 300 });
+  expect(p.document.querySelector(".ws-drop-overlay")).toBe(overlay);
   fire(root, "drop", { clientX: 110, clientY: 300 }); expect(drop).toHaveBeenCalledExactlyOnceWith("beta", "a", "left");
   expect(p.document.querySelector(".ws-drop-overlay")).toBeNull();
 });
