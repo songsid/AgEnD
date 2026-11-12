@@ -141,7 +141,9 @@ try {
   const queueBefore=receipt.queueTextObserved??0;
   let result:any[];
   try{
-   if(withGroups)await wait(()=>readyForConsent===5||released,30_000);
+   if(withGroups)try{await wait(()=>readyForConsent===5||released,30_000);}catch(error){
+    receipt.consentReadinessFailure={readyForConsent,at:Date.now(),pages:await ui.readiness(visible,prefix)};throw error;
+   }
    if(withGroups)for(let offset=0;offset<32;offset+=4){
     for(const login of seedPeople.slice(offset,offset+4)){const p=rig.people.find((p:any)=>p.login===login);const job=rig.deps.groups.prepareOwnerEligibility({realm:'corp',objectId:p.id},{requestId:randomUUID(),current:()=>true});seedJobs.push(job);void job.catch(()=>release());}
     await wait(()=>held===offset+4||released,10_000);if(released)throw Error('Controlled physical pool setup refused');
@@ -150,7 +152,7 @@ try {
    const machineJobs=withGroups?[...groupPeople.map(p=>attempt(null,p)),...persons.slice(5).map(p=>attempt(code.code,p))]:persons.map((p,i)=>attempt(code.code,p,i<5?visible[i]:null));
    result=await Promise.all(withGroups?[...visibleJobs,...machineJobs]:machineJobs);
   }
-  finally{release();allowConsent();if(deadline)clearTimeout(deadline);await Promise.allSettled([...seedJobs,...visibleJobs]);rig.directory.checkEligibility=original;if(activeProbe){await activeProbe.stop();activeProbe=null;}}
+  finally{release();allowConsent();if(deadline)clearTimeout(deadline);const settled=await Promise.allSettled([...seedJobs,...visibleJobs]);receipt.controlSettlements=settled.filter((r:any)=>r.status==='rejected').map((r:any)=>String(r.reason).slice(0,2000));rig.directory.checkEligibility=original;if(activeProbe){await activeProbe.stop();activeProbe=null;}}
   receipt.lastResults=result.map((r:any)=>({issued:r.issued,fleetId:r.binding.fleetId,started:r.started,connected:r.connected??null}));
   const uses=rig.db.prepare('SELECT uses FROM hub_enrolment_codes WHERE id=?').get(code.id).uses;
   check(prefix+' all issued and pinned member links reconciled',result.every(r=>r.issued));check(prefix+' uses counted once',uses===n);

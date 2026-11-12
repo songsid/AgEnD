@@ -162,23 +162,29 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     } finally { await page.close(); }
   }
   async function joinFleet(f: any, code: string, login: string, beforeSignIn: () => Promise<void> = async()=>{}, onQueued: () => void = ()=>{}) {
+    const mark=(phase:string)=>{f.joinPhase=phase;f.joinPhaseAt=Date.now();};mark('fleet-start');
     const started = Date.now(); await f.page.locator('#hubCompanyAddress').fill(rig.webOrigin + ' ' + code); await f.page.locator('#hubCompanyAddress').blur();
     const rename = f.page.getByRole('button',{name:f.lang==='zh-TW'?'改名':'Rename',exact:true}); await rename.waitFor(); await rename.click();
     await f.page.locator('#hubCompanyFleetName').fill(f.label);
     await shot(f.page,f.label+'-01-fleet-start');
     const opened = f.ctx.waitForEvent('page'); await f.page.getByRole('button',{name:f.lang==='zh-TW'?'以公司帳號登入':'Sign in with company account',exact:true}).click();
-    const hub = await opened; await hub.waitForURL(rig.webOrigin+'/ui/hub?join=*');
+    mark('popup');const hub = await opened;f.hubPage=hub;f.hubResponses=[];
+    hub.on('response',(res:any)=>{const path=new URL(res.url()).pathname;if(!['/hub/v1/join/browser','/hub/v1/session'].includes(path))return;
+      const row:any={at:Date.now(),path,status:res.status()};f.hubResponses.push(row);if(f.hubResponses.length>20)f.hubResponses.shift();
+      void res.json().then((json:any)=>{for(const k of ['code','error','reason'])if(typeof json[k]==='string'&&/^[a-z-]{1,40}$/.test(json[k]))row[k]=json[k];}).catch(()=>{});
+    });
+    mark('handoff-navigation');await hub.waitForURL(rig.webOrigin+'/ui/hub?join=*');mark('signin-or-consent');
     if(!f.preSigned) {
       await hub.locator('#hubLogin').fill(login); await hub.locator('#hubPassword').fill('Dummy-'+login+'-only');
-      await shot(hub,f.label+'-02-hub-signin'); await beforeSignIn();
+      await shot(hub,f.label+'-02-hub-signin');mark('consent-ready'); await beforeSignIn();
       await hub.getByRole('button',{name:f.lang==='zh-TW'?'登入並連接 Fleet':'Sign in and connect Fleet',exact:true}).click();
     } else {
       // An existing company session still explicitly consents to this new Fleet; sign-in is not approval.
       const consent=hub.getByRole('button',{name:f.lang==='zh-TW'?/^以 .+ 的身分連接$/:/^Connect as .+$/});
-      await consent.waitFor();await shot(hub,f.label+'-02-existing-account-consent');await beforeSignIn();await consent.click();
+      await consent.waitFor();await shot(hub,f.label+'-02-existing-account-consent');mark('consent-ready');await beforeSignIn();await consent.click();
     }
 
-    const queued = hub.getByText(f.lang==='zh-TW'?'目前很多人同時加入，正在排隊…':'Many people are connecting at once. Waiting in the queue…',{exact:true});
+    mark('waiting-connected');const queued = hub.getByText(f.lang==='zh-TW'?'目前很多人同時加入，正在排隊…':'Many people are connecting at once. Waiting in the queue…',{exact:true});
     const queueProof = queued.waitFor({timeout:10_000}).then(async()=>{ await shot(hub,f.label+'-03-queued');receipt.queueTextObserved=(receipt.queueTextObserved??0)+1;onQueued(); }).catch(()=>{});
     await wait(()=>f.fm.hubMemberLink==='online',300_000); await queueProof;
     const id = currentLocalJoinId(f.dir), journal = readLocalJoin(f.dir,id!); online.add(journal.binding.fleetId);
@@ -257,6 +263,17 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     }
   }
 
+  async function readiness(visible:any[],prefix:string) {
+    return Promise.all(visible.map(async f=>{
+      const result:any={label:f.label,phase:f.joinPhase??null,phaseAt:f.joinPhaseAt??null,responses:f.hubResponses??[],pageErrors:[...f.errors]};
+      const page=f.hubPage;
+      if(!page||page.isClosed()){result.closed=true;return result;}
+      try{result.path=new URL(page.url()).pathname;result.text=(await page.locator('body').innerText({timeout:2000})).slice(0,2000);
+        const name=prefix+'-'+f.label+'-readiness-failure.png';await page.screenshot({path:join(out,name),fullPage:true,timeout:2000});receipt.screenshots.push(name);
+      }catch(e:any){result.diagnosticError=String(e).slice(0,500);}
+      return result;
+    }));
+  }
   async function cachedShots() {
     for (const phone of [false,true]) for (const lang of ['en','zh-TW']) {
       const names=['app-shell.js','app-html.js','app-i18n.js','app.css','hub-client.js'];
@@ -267,5 +284,5 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
       } finally { await ctx.close(); }
     }
   }
-  return { adminShots,cachedShots,prepareFleet,signInFleet,joinFleet,pendingRefusal,finishRefusal,shot,adminPage,closeVisible:async()=>{ const failures:unknown[]=[];try{for(const f of active.splice(0).reverse()){try{await f.close();}catch(e){failures.push(e);}}for(const f of [...preparing]){try{await releaseFleet(f);}catch(e){failures.push(e);}finally{preparing.delete(f);}}}finally{process.env.AGEND_HOME=environmentHome;}if(failures.length)throw new AggregateError(failures,'Owned Fleet cleanup failed'); } };
+  return { adminShots,cachedShots,readiness,prepareFleet,signInFleet,joinFleet,pendingRefusal,finishRefusal,shot,adminPage,closeVisible:async()=>{ const failures:unknown[]=[];try{for(const f of active.splice(0).reverse()){try{await f.close();}catch(e){failures.push(e);}}for(const f of [...preparing]){try{await releaseFleet(f);}catch(e){failures.push(e);}finally{preparing.delete(f);}}}finally{process.env.AGEND_HOME=environmentHome;}if(failures.length)throw new AggregateError(failures,'Owned Fleet cleanup failed'); } };
 }
