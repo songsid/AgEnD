@@ -321,7 +321,7 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     // #3145: every asker shares the representative agent's one conversation — said before anyone types; and who asks.
     await until(() => pg.root.querySelector(".hub-room-empty"));
     expect(pg.root.querySelector(".hub-room-empty")!.textContent).toContain("shares its one conversation");
-    expect(pg.root.querySelector(".hub-identity")!.textContent).toContain("not any authority");
+    expect(pg.root.querySelector(".hub-identity")!.textContent).toContain("The agent answers within what its owner allows");
     const box = pg.root.querySelector("#msgIn") as any; box.value = "Q3?"; fire(box, "input"); await settle(5);
     (pg.root.querySelector("#sendBtn") as any).click();
     await until(() => pg.root.querySelector(".msg.user .tick"));

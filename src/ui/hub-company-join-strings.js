@@ -4,7 +4,7 @@ register("companyJoin", {
   en: {
     title: "Connect to a Hub", lead: "Use your company account. A successful connection enables membership; no Agents are shared.",
     address: "Hub address or company link", addressHint: "Use the company link from your Hub administrator, or the Hub's web address.",
-    fleetName: "Fleet name", defaultFleet: "My Fleet", start: "Sign in with company account", pending: "Waiting for local confirmation…", loading: "Reading connection status…",
+    fleetName: "Fleet name", defaultFleet: "My Fleet", start: "Sign in with company account", pending: "Waiting for your confirmation…", loading: "Reading connection status…",
     joining: "Connecting your Fleet…", awaiting: "Finish signing in on the Hub page.", saved: "Fleet connected", offline: "Connection saved. Waiting for the Hub link…",
     stop: "Cancel connection", resume: "Recover this connection", retry: "Check again", held: "Connection needs attention", cancelled: "Connection cancelled",
     unknown: "The result could not be verified. Check this same connection before starting another one.",
@@ -35,7 +35,7 @@ register("companyJoin", {
   "zh-TW": {
     title: "連接 Hub", lead: "使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。",
     address: "Hub 位址或公司連結", addressHint: "貼上 Hub 管理員提供的公司連結，或輸入 Hub 網址。",
-    fleetName: "Fleet 名稱", defaultFleet: "我的 Fleet", start: "以公司帳號登入", pending: "等待本機授權確認…", loading: "正在讀取連接狀態…",
+    fleetName: "Fleet 名稱", defaultFleet: "我的 Fleet", start: "以公司帳號登入", pending: "等待你的確認…", loading: "正在讀取連接狀態…",
     joining: "正在連接 Fleet…", awaiting: "請在 Hub 頁面完成公司帳號登入。", saved: "Fleet 已連接", offline: "連接資料已儲存，正在等待與 Hub 的網路連線…",
     stop: "取消連接", resume: "恢復這次連接", retry: "再次檢查", held: "連接需要處理", cancelled: "已取消連接",
     unknown: "目前無法確認結果。請先檢查這次連接，不要另開一次連接。",

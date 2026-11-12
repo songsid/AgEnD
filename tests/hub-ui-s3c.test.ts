@@ -40,7 +40,7 @@ describe("the member client", () => {
       "POST /api/hub/member/exposures": () => ({ ok: false, status: 202, body: { ok: true, result: "pending_confirmation", pending_change: { id: "p".repeat(32), expires_at: 123 } } }) });
     const c = client.createMemberClient({ confirm: f.confirm });
     const r = await c.setExposed("atlas", true, 0, { dataViewId: "agent", tools: [] });
-    expect(r).toMatchObject({ ok: true, pending: { expiresAt: 123 }, view: { agent: "atlas", pending: { expiresAt: 123 } } });
+    expect(r).toMatchObject({ ok: true, pending: { id: "p".repeat(32), expiresAt: 123 }, view: { agent: "atlas", pending: { expiresAt: 123 } } });
     expect(await r.settled).toEqual({ state: "applied" });
     expect(JSON.parse(f.calls[1]![1].body)).toEqual({ agent: "atlas", dataViewId: "agent", tools: [], expectedRevision: 0 });
     expect(f.calls[1]![1].headers).toMatchObject({ "Idempotency-Key": "k1" });
