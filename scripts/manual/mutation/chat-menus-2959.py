@@ -1,6 +1,7 @@
 """Serial offline semantic reversals; run only outside the host quiet window."""
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -25,13 +26,20 @@ cases = [
      'readableShade(dark, "light", pageNow("light"))', menu),
     ('retained-css', 'src/ui/shared/ui-menu.js',
      'getComputedStyle(document.documentElement).getPropertyValue("--agent-menu-version").trim() === "1"', 'true', menu),
+    ('retained-css-trigger', 'src/ui/shared/instance-nav.js', 'trigger=${styledMenus ?', 'trigger=${true ?', menu),
     ('placement-scroll-owner', 'src/ui/shared/ui-menu.js', 'if (anchored) window.addEventListener("scroll",place,true);',
      'void 0;', menu),
     ('quote-display-name', host, 'tw("quote", targetName)', 'tw("quote", name)', 'tests/web-chat-workspace-entry-3637.test.ts'),
     ('quote-row-icon', 'src/ui/chat-quote.js', 'b.append(iconEl(doc));\n      const span = doc.createElement("span"); span.textContent = target.label;',
      'const span = doc.createElement("span"); span.textContent = target.label;', 'tests/web-chat-quote-2789.test.ts'),
 ]
+if len(sys.argv) > 2:
+    selected = set(sys.argv[2].split(','))
+    cases = [case for case in cases if case[0] in selected]
+    assert len(cases) == len(selected) > 0
 for label, path, before, after, test in cases:
+    if os.getloadavg()[0] > 10:
+        raise SystemExit('host load above10: pause before the next local test run')
     p = root / path
     original = p.read_bytes()
     assert original == subprocess.check_output(['git', 'show', f'HEAD:{path}'], cwd=root), (label, 'commit the tested source first')
@@ -41,6 +49,8 @@ for label, path, before, after, test in cases:
     try:
         p.write_text(text.replace(before, after, 1))
         subprocess.run(['node', '--check', str(p)], cwd=root, check=True, capture_output=True)
+        if os.getloadavg()[0] > 10:
+            raise SystemExit('host load above10: source restored; test not started')
         result = subprocess.run(['npx', 'vitest', 'run', test, '--maxWorkers=1'], cwd=root, text=True,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         (out / f'{label}.log').write_text(result.stdout)
@@ -51,6 +61,6 @@ for label, path, before, after, test in cases:
         p.write_bytes(original)
         assert p.read_bytes() == original
         (out / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
-assert len(receipt['cases']) == 10
+assert len(receipt['cases']) == len(cases) > 0
 if not all(case['assertionCaught'] for case in receipt['cases']):
     raise SystemExit(1)

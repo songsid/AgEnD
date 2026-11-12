@@ -134,4 +134,16 @@ describe("the pane menu uses the same icon rows as the sidebar", () => {
       fire(list, "keydown", { key: "Escape" }); await settle(4); expect(p.root.querySelector('[role="menu"]')).toBeNull();
     } finally { await p.unmount(); vi.unstubAllGlobals(); }
   });
+  it("retained CSS keeps a single ordinary sidebar trigger instead of two unstyled glyphs", async () => {
+    vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: () => "" }));
+    try {
+      roster.navStore.set({ favorites: ["alpha"] });
+      await p.mount(h(roster.InstanceNav, { route: pane.route, items: [inst], loaded: true }));
+      const slot = p.root.querySelector(".inst-row-menu")!;
+      expect(slot.querySelectorAll(".inst-menu-star, .inst-menu-more")).toHaveLength(0);
+      expect(slot.querySelectorAll("button .icon")).toHaveLength(1);
+      fire(slot.querySelector("button")!, "click"); await settle(4);
+      expect(slot.querySelector('[role="menuitem"]')!.textContent).toBe("Remove from favorites");
+    } finally { await p.unmount(); vi.unstubAllGlobals(); }
+  });
 });

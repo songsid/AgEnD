@@ -497,6 +497,7 @@ function SortMenu({ sort }) {
 export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting = {}, viewOnly = false, onPick }) {
   const nav = useStore(navStore);
   const workspace = useStore(appStore).chatWorkspace;
+  const styledMenus = typeof getComputedStyle === "function" && getComputedStyle(document.documentElement).getPropertyValue("--agent-menu-version").trim() === "1";
   const names = useStore(namesStore);   // #1722: which name leads
   useIdentityColors();                  // #1958: repaint when the host's colour settings or the themes switch change
   const filterRef = useRef(null);
@@ -683,7 +684,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
         <span class="sr-only">${tn("tooltipBackend", { value: backendLabel(it.backend) })}</span></span>
     </a>${menuItems.length ? html`<${Menu} cls=${`inst-workspace inst-row-menu agent-menu${starred ? " is-favorite" : ""}`} fit=${true} topLayer=${true}
       ownerKey=${name} label=${t("agentRow.actions", label)} items=${menuItems}
-      trigger=${html`<span class="inst-menu-star" aria-hidden="true">${starred ? html`<${Icon} name="star" size=${14} />` : null}</span><span class="inst-menu-more" aria-hidden="true"><${Icon} name="more" size=${16} /></span>`} />`
+      trigger=${styledMenus ? html`<span class="inst-menu-star" aria-hidden="true">${starred ? html`<${Icon} name="star" size=${14} />` : null}</span><span class="inst-menu-more" aria-hidden="true"><${Icon} name="more" size=${16} /></span>` : undefined} />`
       : starred ? html`<span class="inst-favorite-mark" aria-hidden="true"><${Icon} name="star" size=${14} /></span>` : null}</li>`;
   };
   // #2401: an open list of two or more lines leaves room under the count for "shown" and Clear (stacked); otherwise compact.
