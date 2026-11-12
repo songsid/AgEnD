@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/agent-back-to-chat-m2960
+
+
+ Test Files  5 passed (5)
+      Tests  90 passed (90)
+   Start at  23:49:29
+   Duration  10.31s (transform 2.25s, setup 375ms, import 501ms, tests 8.20s, environment 1ms)
+

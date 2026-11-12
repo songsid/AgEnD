@@ -1,0 +1,26 @@
+{
+  "runs": 7,
+  "inputs": 133,
+  "assets": 1425,
+  "retained": 1,
+  "checkpoints": 65,
+  "pngs": 22,
+  "desktopComparisons": [
+    {
+      "file": "light-zh-TW-settings.png",
+      "changedPixels": 29
+    },
+    {
+      "file": "light-zh-TW-split-settings.png",
+      "changedPixels": 7
+    },
+    {
+      "file": "dark-zh-TW-settings.png",
+      "changedPixels": 43
+    },
+    {
+      "file": "dark-zh-TW-split-settings.png",
+      "changedPixels": 7
+    }
+  ]
+}
