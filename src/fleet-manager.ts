@@ -350,7 +350,7 @@ import { BrowserBackendSignIns } from "./browser-backend-signins.js";
 import { createStructuredSignInTransport } from "./structured-signin-transport.js";
 import { ONBOARDING_BACKENDS, readPendingBackendSignIns } from "./backend-signin-pending.js";
 import { structuredSignInSupported } from "./structured-signin.js";
-import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
+import { handleSettingsRequest, switchClassicRoomProfile, type ClassicProfileSwitch, type RawConfigPatch } from "./settings-api.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { remoteCardAction, remoteCardChoiceLabel, remoteCardOutcomeText, remoteCardPrompt, REMOTE_CARD_TEXT_MAX } from "./remote-card-prompt.js";
@@ -17960,6 +17960,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * ClassicBot room's launched or would-be login when the room runs that backend. Null: the backend's default login
    * (also for a backend that has no profiles, where the option is ignored).
    */
+  /** #3715: update_instance_config's ClassicBot room account switch — the room's Settings save (#3691), from a tool. */
+  switchClassicRoomProfile(name: string, backendOptions: unknown): Promise<ClassicProfileSwitch> {
+    return switchClassicRoomProfile(this as unknown as import("./settings-api.js").SettingsApiContext, name, backendOptions);
+  }
+
   credentialProfileOf(name: string, backend: string): string | null {
     if (isWindowsInstance(this.fleetConfig?.instances[name])) return null;
     if (!credentialHomeSpec(backend)) return null;

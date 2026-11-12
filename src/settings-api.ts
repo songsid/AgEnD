@@ -9,7 +9,7 @@ import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
-import { instanceCredentialProfile, signedOutCredentialProfile } from "./backend/credential-profile.js";
+import { credentialHomeSpec, credentialProfileHome, instanceCredentialProfile, signedOutCredentialProfile } from "./backend/credential-profile.js";
 import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestLocalAdminCurrent, settingsRequestJoinAuthority, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
@@ -368,6 +368,89 @@ function spliceChangedLines(original: string, base: string, edited: string): str
     else i++;
   }
   return out.join("\n");
+}
+
+/** #3715: what switchClassicRoomProfile answers. `profile` is the room's effective profile after the write (null: the shared login). */
+export type ClassicProfileSwitch =
+  | { ok: true; channel: string; backend: string; profile: string | null; changed: boolean }
+  | { ok: false; error: string; loginCommand?: string };
+
+/**
+ * #3715 (M-2961): `update_instance_config` on a ClassicBot room may change its AI account and nothing else —
+ * `backend_options.<cli>.credential_profile` (a name, or null / "" for the fleet default). The same write as the room's
+ * Settings save (#3691, M-2909): only that room's backend_options lines change, comments and other rooms stay as they
+ * are; then the room restarts through restartClassicInstanceFromSettings (the #1753 handoff: Claude's conversation is
+ * carried, Kiro starts fresh), and the file is put back if that restart fails. Refused, with nothing written: a room this
+ * fleet doesn't have, any other key, a backend without accounts, a profile that doesn't exist on this host or isn't
+ * signed in (the web's 409, with the login command).
+ */
+export async function switchClassicRoomProfile(ctx: SettingsApiContext, instanceName: string, patch: unknown): Promise<ClassicProfileSwitch> {
+  const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+  if (!record(patch) || !Object.keys(patch).length) return { ok: false, error: "backend_options must map a backend to { credential_profile }" };
+  for (const [backend, options] of Object.entries(patch)) {
+    if (!KNOWN_BACKENDS.includes(backend) || !credentialHomeSpec(backend)) return { ok: false, error: `${backend} has no named accounts` };
+    if (!record(options) || Object.keys(options).length !== 1 || !Object.hasOwn(options, "credential_profile")) {
+      return { ok: false, error: `On a ClassicBot room only backend_options.${backend}.credential_profile can be changed` };
+    }
+    const value = options.credential_profile;
+    if (value === null || value === "") continue;
+    const { problems } = normalizeBackendOptions({ [backend]: { credential_profile: value } });
+    if (typeof value !== "string" || problems.length) return { ok: false, error: `backend_options.${backend}.credential_profile: ${problems[0]?.message ?? "must be a profile name"}` };
+    if (!existsSync(credentialProfileHome(ctx.dataDir, backend, value))) return { ok: false, error: `No ${backend} account named "${value}" on this host` };
+    const login = signedOutCredentialProfile(ctx.dataDir, backend, value);
+    if (login) return { ok: false, error: `The ${backend} account "${value}" is not signed in. Sign it in first`, loginCommand: login.loginCommand };
+  }
+  let classic: Record<string, unknown>;
+  try { classic = readClassic(ctx); } catch (err) { return { ok: false, error: (err as Error).message }; }
+  const channels = record(classic.channels) ? classic.channels : {};
+  const key = Object.keys(channels).find(k => record(channels[k]) && (channels[k] as Record<string, unknown>).instanceName === instanceName);
+  if (key === undefined) return { ok: false, error: `No ClassicBot room runs as '${instanceName}' in classicBot.yaml` };
+  const room = channels[key] as Record<string, unknown>;
+  const previous = structuredClone(classic);
+  // Per backend, as for an agent: setting one CLI's account keeps the others; null / "" goes back to the default.
+  const options: Record<string, Record<string, unknown>> = structuredClone(record(room.backend_options) ? room.backend_options as Record<string, Record<string, unknown>> : {});
+  for (const [backend, o] of Object.entries(patch as Record<string, Record<string, unknown>>)) {
+    const namespace = { ...(record(options[backend]) ? options[backend] : {}) };
+    if (o.credential_profile === null || o.credential_profile === "") delete namespace.credential_profile;
+    else namespace.credential_profile = o.credential_profile;
+    if (Object.keys(namespace).length) options[backend] = namespace; else delete options[backend];
+  }
+  const merged = { ...room };
+  if (Object.keys(options).length) merged.backend_options = options; else delete merged.backend_options;
+  const cd = record(classic.defaults) ? classic.defaults : {};
+  const backend = String(room.backend ?? cd.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code");
+  const fleetOptions = ctx.fleetConfig?.defaults?.backend_options as Record<string, Record<string, unknown>> | undefined;
+  const after = classicProfile(normalizeBackendOptions(merged.backend_options).options, fleetOptions, backend);
+  // The room lands on the fleet default's account when its own is cleared: that one must be signed in too (web: 409).
+  if (after.state === "profile") {
+    const login = signedOutCredentialProfile(ctx.dataDir, backend, after.name);
+    if (login) return { ok: false, error: `The ${backend} account "${after.name}" is not signed in. Sign it in first`, loginCommand: login.loginCommand };
+  }
+  const profile = after.state === "profile" ? after.name : null;
+  if (isDeepStrictEqual(merged.backend_options, room.backend_options)) return { ok: true, channel: key, backend, profile, changed: false };
+  channels[key] = merged;
+  const invalidBefore = new Set(validateClassicBotConfig(previous).errors.map(issueKey));
+  const introduced = validateClassicBotConfig(classic).errors.filter(e => !invalidBefore.has(issueKey(e)));
+  if (introduced.length) return { ok: false, error: `Rejected: ${introduced.map(e => `${e.path}: ${e.message}`).join("; ")}` };
+  const paths = [["channels", key, "backend_options"]];
+  try { writeClassicLeaves(ctx, classic, paths); }
+  catch (err) { ctx.logger.warn({ err, key }, "update_instance_config: failed to write classicBot.yaml"); return { ok: false, error: "failed to write classicBot.yaml" }; }
+  const undo = settingsUndo(classicPath(ctx), previous, classic, paths);
+  try {
+    await ctx.restartClassicInstanceFromSettings?.(instanceName, ["backend_options"]);
+  } catch (err) {
+    // As the Settings save: put the file back, then bring the room up on what it had.
+    try {
+      // Back through the same leaf writer, so the file's comments and other rooms come back as they were too.
+      const retained = undoSettingsPaths(classicPath(ctx), readClassic(ctx), undo);
+      writeClassicLeaves(ctx, retained.value, paths);
+    } catch (rollbackErr) { ctx.logger.error({ err: rollbackErr, key }, "update_instance_config: failed to roll back classicBot.yaml"); }
+    try { await ctx.restartClassicInstanceFromSettings?.(instanceName, ["backend_options"]); }
+    catch (recoveryErr) { ctx.logger.error({ err: recoveryErr, instanceName }, "update_instance_config: failed to restore the classic room after rollback"); }
+    return { ok: false, error: `The room's restart failed, so its account was put back: ${(err as Error).message}` };
+  }
+  ctx.logger.info({ key, instanceName, backend, profile }, "update_instance_config: switched a ClassicBot room's account");
+  return { ok: true, channel: key, backend, profile, changed: true };
 }
 
 const issueKey = (i: { path: string; message: string }) => i.path + "\u0000" + i.message;
