@@ -349,4 +349,31 @@ describe("Prism #3709 R4: an explicit reply id that finds no row never falls bac
     const g = groupSteps(rows([rowB]), s, { now: 1e12 });
     expect(g.groups.map((x: any) => [x.n, x.rowKey, x.level])).toEqual([[0, "b-4", "id"], [1, null, "none"]]);
   });
+  // Prism #3709 re-review: the words fallback must respect the call's own turn as the time fallback does.
+  describe("the words fallback stays inside the call's own turn", () => {
+    const running = { ...rep("a-r", 120, undefined), status: "running" } as LogStep;     // A's reply, in flight: no result, no id
+    const aSteps = [user("ua", "tA", 100, "web-ua"), bash("a-bash", "tA", 110), running];
+    const aDone = [user("ua", "tA", 100, "web-ua"), bash("a-bash", "tA", 110), rep("a-r", 120, undefined), { id: "a-e", turn: "tA", ts: 130, kind: "turn_end" } as LogStep];
+    const ledgerAB = [
+      { boot: "b", id: 1, role: "user", text: "q1", ts: new Date(99).toISOString(), anchor: "web-ua" },
+      { boot: "b", id: 3, role: "user", text: "q2", ts: new Date(199).toISOString(), anchor: "web-ub" },
+      rowB,                                                                                // B's reply, the same words, anchored
+    ];
+    it("A's in-flight reply is not hung on B's row (B's call is not in the held steps)", () => {
+      const g = groupSteps(ledgerAB, aSteps, { now: 125 });
+      expect(g.groups.some((x: any) => x.rowKey === "b-4")).toBe(false);
+      expect(g.live?.level).toBe("live");                                                  // unproved: live, at the end
+      expect(g.live?.rowKey).toBeNull();
+    });
+    it("the same, once A's turn has ended and the reply never got a row: unattached, never on B's row", () => {
+      const g = groupSteps(ledgerAB, aDone, { now: 1e12 });
+      expect(g.groups.map((x: any) => [x.turn, x.rowKey, x.level])).toEqual([["tA", null, "none"]]);
+    });
+    it("controls: inside its own turn the words still match; with no candidate row nothing is attached", () => {
+      const own = { boot: "b", id: 2, role: "agent", text: "Done.", ts: new Date(121).toISOString() };   // A's row, not anchored (older ledger)
+      const g = groupSteps([ledgerAB[0], own, ledgerAB[1], rowB], aDone, { now: 1e12 });
+      expect(g.groups.map((x: any) => [x.rowKey, x.level])).toEqual([["b-2", "text"]]);
+      expect(groupSteps([ledgerAB[0], ledgerAB[1]], aDone, { now: 1e12 }).groups.map((x: any) => x.level)).toEqual(["none"]);
+    });
+  });
 });

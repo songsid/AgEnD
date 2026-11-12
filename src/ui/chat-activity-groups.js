@@ -13,7 +13,8 @@
 //   id    the reply call's result `messageId` equals the row's `anchor` (what afterReplyRouted records). A call that names
 //         an id and finds no such row is never matched by text or time (R4): its segment stays unattached (`none`) or live;
 //   text  the start of the call's text equals the start of an agent row's text — rows taken in order, never back (a
-//         monotonic cursor: two replies that say the same short thing each get their own row);
+//         monotonic cursor: two replies that say the same short thing each get their own row) — and inside the call's own
+//         turn, as for `time` (R4: an in-flight reply must not take the row of the next user's reply that says the same);
 //   time  an unclaimed agent row written within TIME_SLACK_MS of the call, and inside the call's own turn (from its user
 //         row to the next user row; with no user row to tell, from the turn's first step to the next turn's);
 //   turn  the turn has no `reply` at all (a backend that has none): its steps go above the last agent row between its
@@ -100,7 +101,7 @@ export function groupSteps(rows, steps, opts = {}) {
       return r ? claim(r, "id") : null;
     }
     if (a.replyText) {
-      const r = agents.find((c) => c.i >= cursor && !taken.has(c.i) && free(c) && c.x.text !== undefined && head(c.x.text) === a.replyText);
+      const r = agents.find((c) => c.i >= cursor && !taken.has(c.i) && free(c) && inTurn(c) && c.x.text !== undefined && head(c.x.text) === a.replyText);
       if (r) return claim(r, "text");
     }
     if (replyStep.ts) {
