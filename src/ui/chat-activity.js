@@ -29,6 +29,7 @@ register("act", {
     partial: "Earlier steps of this turn are not loaded.", earlier: "Show {0} earlier steps", calls: "{0} calls",
     menuActivity: "Show activity", menuThinking: "Show thinking",
     quiet: "no new record for {0}",
+    ph_waiting: "Waiting for the model…", ph_reasoning: "Reasoning…", ph_tool: "Running a tool…", ph_permission: "Waiting for permission…", ph_text: "Writing the reply…",
     statusOnly: "This agent's steps are not shown in the chat; this line only says it is working.",
     waiting: "Nothing written yet. The agent records each thought and tool call as it finishes, so they show up here one by one.",
   },
@@ -39,6 +40,7 @@ register("act", {
     partial: "這一輪較早的步驟尚未載入。", earlier: "顯示更早的 {0} 個步驟", calls: "{0} 次呼叫",
     menuActivity: "顯示活動", menuThinking: "顯示思考",
     quiet: "{0} 沒有新紀錄",
+    ph_waiting: "等待模型回應…", ph_reasoning: "推理中…", ph_tool: "執行工具中…", ph_permission: "等待權限確認…", ph_text: "撰寫回覆中…",
     statusOnly: "這個 agent 的步驟不會顯示在對話裡；這一行只表示它正在處理。",
     waiting: "目前還沒有紀錄。Agent 會在每個思考或工具呼叫完成時才寫入，完成後會一個一個出現在這裡。",
   },
@@ -47,6 +49,8 @@ const ta = (key, ...a) => t(`act.${key}`, ...a);
 
 /** A live group whose newest step is this old (and nothing is running) says so: still thinking, not stuck. */
 export const QUIET_MS = 15000;
+/** The phases the server may name (grok's `events.jsonl`): the closed set it sends, each with a word above. Any other is not shown. */
+const PHASES = new Set(["waiting", "reasoning", "tool", "permission", "text"]);
 /** A group shows this many rows, the newest; "Show N earlier steps" adds EARLIER_STEP more each time. */
 export const SHOWN_MAX = 30;
 /** This many consecutive calls of one tool (Read, Grep…) are folded into one line that opens to them (Multica's rule: two are worth two lines, five are one act). */
@@ -157,8 +161,12 @@ export function ActivityBlock({ group, ctx, now: clock }) {
   // (Paperclip's "no output for 40s - still running"): the newest step is old and no call is running — the agent is
   // still thinking (the CLIs write a thought only when it ends), not stuck. Said, so a long silence does not look like a hang.
   const quiet = live && last && last.ts && !(last.kind === "tool" && last.status === "running") ? now - last.ts : 0;
+  // grok's own phase (its events.jsonl, the server's `phase`): where it is now — Reasoning…, Running a tool… — in the
+  // place of the plain "Working…", and of the newest step while no call is running (that step is over; the phase is now). A phase
+  // not known (the server sends none) is the line it was. A running call keeps its own, more exact line.
+  const phased = live && group.phase && PHASES.has(group.phase) && !(last && last.kind === "tool" && last.status === "running") ? ta(`ph_${group.phase}`) : "";
   const summary = live
-    ? { icon: null, title: last ? stepLine(last, ctx.paths) : ta("working"), meta: [tools ? ta(tools === 1 ? "tool" : "tools", tools) : "", dur, quiet >= QUIET_MS ? ta("quiet", elapsed(quiet)) : ""].filter(Boolean).join(" · ") }
+    ? { icon: null, title: phased || (last ? stepLine(last, ctx.paths) : ta("working")), meta: [tools ? ta(tools === 1 ? "tool" : "tools", tools) : "", dur, quiet >= QUIET_MS ? ta("quiet", elapsed(quiet)) : ""].filter(Boolean).join(" · ") }
     : { icon: "tasks", title: tools ? `${ta("history")} · ${tools === 1 ? ta("usedTool") : ta("usedTools", tools)}` : `${ta("activity")} · ${rows.length === 1 ? ta("stepN") : ta("stepsN", countOf(rows))}`, meta: dur };
   const list = (items) => {
     const newest = live ? rows[all - 1] : null;
@@ -224,9 +232,9 @@ export function composeActivity(name, rows, now = Date.now(), opts = {}) {
   // (#3709 R6), muse, opencode, kiro), or a transcript with no step yet, still has the "Working…" line while the agent is working.
   // It comes from the page's busy state alone — nothing is read from a transcript or the pane. Not busy, or the first answer not
   // in yet (`supported` null): nothing.
-  if (s.info.supported === false || (s.info.supported !== null && !s.dead && !s.steps.length)) return busy ? statusRows(rows, opts.since, s.info.supported === false) : rows;
+  if (s.info.supported === false || (s.info.supported !== null && !s.dead && !s.steps.length)) return busy ? statusRows(rows, opts.since, s.info.supported === false, s.phase) : rows;
   if (s.dead || !s.steps.length) return rows;
-  return composeRows(rows, groupSteps(rows, s.steps, { now, complete: s.complete, busy }));
+  return composeRows(rows, groupSteps(rows, s.steps, { now, complete: s.complete, busy, phase: s.phase }));
 }
 
 /**
@@ -234,10 +242,10 @@ export function composeActivity(name, rows, now = Date.now(), opts = {}) {
  * does not show (`statusOnly`) or whose transcript has none yet. `since`: epoch ms the agent began working, as this page saw it
  * (the working bar's own clock), else the last prompt's time; none known: no elapsed time.
  */
-function statusRows(rows, since, statusOnly) {
+function statusRows(rows, since, statusOnly, phase) {
   let from = Number.isFinite(since) ? since : 0;
   if (!from) { for (let i = rows.length - 1; i >= 0; i--) if (rows[i].role === "user") { const t = Date.parse(rows[i].ts); if (Number.isFinite(t)) from = t; break; } }
-  const live = { key: "act:status", turn: "status", n: 0, level: "live", rowKey: null, items: [], trailing: [], ts: from, from, to: 0, ended: false, turnEnded: false, busy: true, ...(statusOnly ? { statusOnly: true } : {}) };
+  const live = { key: "act:status", turn: "status", n: 0, level: "live", rowKey: null, items: [], trailing: [], ts: from, from, to: 0, ended: false, turnEnded: false, busy: true, ...(statusOnly ? { statusOnly: true } : {}), ...(phase ? { phase } : {}) };
   return composeRows(rows, { groups: [], live });
 }
 
@@ -268,6 +276,8 @@ export function observeActivity(name, opts) {
     if (!j || !j.enabled) { s.dead = true; return; }
     const was = s.info.thinking;
     const wasLevel = s.info.level;
+    // where grok is in its turn (absent: not grok, no turn open, or a phase the server does not name). Every answer says it afresh.
+    s.phase = j.phase && PHASES.has(j.phase) ? j.phase : null;
     s.info = { supported: j.supported !== false, reason: j.reason || null, level: j.level || "standard", thinking: j.thinking === true, cwd: j.cwd, home: j.home, backend: j.backend };
     if (was !== s.info.thinking || wasLevel !== s.info.level) activityInfoStore.set((x) => ({ v: x.v + 1 }));
     // tool_progress off: nothing to hold, no cursor (the next read opens again, and sees the setting turned on).

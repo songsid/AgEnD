@@ -16,8 +16,8 @@ import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { ClaudeStepParser, CodexStepParser, bounded, chatStep, readTailRecords, type LogStep } from "./log-steps.js";
 import type { ToolProgressLevel } from "./tool-progress.js";
-import { AntigravityStepParser, GrokStepParser } from "./log-steps-agy-grok.js";
-import type { LogFormat } from "./log-transcript-paths.js";
+import { AntigravityStepParser, GrokStepParser, readGrokPhase, type GrokPhase } from "./log-steps-agy-grok.js";
+import { grokEventsPath, type LogFormat } from "./log-transcript-paths.js";
 export type { LogFormat };
 import { SCREEN_MAX_BYTES } from "./dialog-screen-text.js";
 import { LOOKS_PER_POLL, isClaudeAssistantHead, readNewLines, readWholeLine, type LongLine } from "./transcript-jsonl.js";
@@ -114,6 +114,12 @@ export type LogAnswer =
     /** AGEND-181: where paths are shortened from — the instance's working directory and the server's home (display only).
      *  Present only for the chat's block and a thinking answer (an admin session on the local dashboard): they name the OS user. */
     cwd?: string; home?: string;
+    /**
+     * for the chat's block of a grok instance, where grok is in its turn now (from its `events.jsonl`: reasoning,
+     * running a tool…), so the live line can say it. Only the chat's answer (an admin session), only while a turn is open and only
+     * a value of the closed set — nothing else of that file. Absent: not grok, no such file, no turn open, or a phase not known.
+     */
+    phase?: GrokPhase;
     /** The transcript's identity (device-inode): a cursor of another one is reset. */
     key?: string;
     steps: LogStep[]; events: LogEvent[];
@@ -159,7 +165,7 @@ const dbTime = (s: string): number => { const t = Date.parse(s.replace(" ", "T")
 
 export class LogService {
   /** `chat` / `log`: who holds the watch (the chat's block: gated by tool_progress; the Log tab: by log_tab) — either keeps it. */
-  private readonly watches = new Map<string, { until: number; path: string; size: number; ino: number; timer: unknown; chat: boolean; log: boolean }>();
+  private readonly watches = new Map<string, { until: number; path: string; size: number; ino: number; timer: unknown; chat: boolean; log: boolean; phasePath: string | null; phase: GrokPhase | null }>();
   constructor(private readonly deps: LogServiceDeps) {}
 
   private now(): number { return this.deps.now ? this.deps.now() : performance.now(); }
@@ -215,8 +221,11 @@ export class LogService {
     let st: { dev: number; ino: number; size: number };
     try { st = await stat(src.path); } catch { return { ...base, supported: true, reason: "no_transcript", steps: [], before: null, after: null }; }
     const key = `${st.dev}-${st.ino}`;
-    if (q.watch) this.watch(name, src.path, st.size, st.ino, chat);
-    const answer = { ...base, supported: true, key };
+    // grok's own phase, for the chat's block only (this request is the admin's: the route refused anyone else).
+    const phasePath = chat && src.format === "grok" ? grokEventsPath(src.path) : null;
+    const phase = phasePath ? await readGrokPhase(phasePath) : null;
+    if (q.watch) this.watch(name, src.path, st.size, st.ino, chat, phasePath, phase);
+    const answer = { ...base, supported: true, key, ...(phase ? { phase } : {}) };
     const done = (settled: ReturnType<typeof settle>, rest: object = {}): LogAnswer => {
       if (!settled) { this.unwatch(name, "chat"); return offAnswer(); }
       return { ...answer, ...settled, ...rest } as LogAnswer;
@@ -337,13 +346,17 @@ export class LogService {
   }
 
   /** Hold (or renew) the watch on `name`: its transcript's size is looked at while the lease lasts. */
-  private watch(name: string, path: string, size: number, ino: number, chat = false): void {
+  private watch(name: string, path: string, size: number, ino: number, chat = false, phasePath: string | null = null, phase: GrokPhase | null = null): void {
     const until = this.now() + WATCH_LEASE_MS;
     const held = this.watches.get(name);
-    if (held && held.path === path) { held.until = until; held.chat ||= chat; held.log ||= !chat; return; }
+    if (held && held.path === path) {
+      held.until = until; held.chat ||= chat; held.log ||= !chat;
+      if (chat && held.phasePath !== phasePath) { held.phasePath = phasePath; held.phase = phase; }
+      return;
+    }
     if (held) this.unwatch(name, "all");
     const setI = this.deps.setInterval ?? ((fn: () => void, ms: number) => { const t = setInterval(fn, ms); (t as { unref?: () => void }).unref?.(); return t; });
-    const w = { until, path, size, ino, timer: null as unknown, chat, log: !chat };
+    const w = { until, path, size, ino, timer: null as unknown, chat, log: !chat, phasePath: chat ? phasePath : null, phase: chat ? phase : null };
     w.timer = setI(() => { void this.look(name); }, WATCH_POLL_MS);
     this.watches.set(name, w);
   }
@@ -359,7 +372,15 @@ export class LogService {
     let st: { size: number; ino: number };
     try { st = await stat(w.path); } catch { return; }
     if (this.watches.get(name) !== w) return;
-    if (st.size !== w.size || st.ino !== w.ino) {
+    // grok writes a thought to `updates.jsonl` only when it ends, but its phase to `events.jsonl` as it happens: a
+    // change of that phase is a tick too (a bounded tail read, only while a chat holds the watch), so the live line moves from
+    // "Reasoning…" to "Running a tool…" without waiting for a step. Not the file's size (it grows with every repeat of one
+    // phase): only a different phase is a signal.
+    const phase = w.chat && w.phasePath ? await readGrokPhase(w.phasePath) : w.phase;
+    if (this.watches.get(name) !== w) return;
+    const phaseMoved = phase !== w.phase;
+    w.phase = phase;
+    if (st.size !== w.size || st.ino !== w.ino || phaseMoved) {
       w.size = st.size; w.ino = st.ino;
       this.deps.emit("steps_tick", { instance: name });
     }

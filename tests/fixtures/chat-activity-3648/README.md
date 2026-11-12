@@ -27,3 +27,14 @@ not exist, a write, a command that fails (exit 1), a middle report and a final o
 Both are redacted: the user name and home directory are replaced by `user`; the instance's working directory is a scratch
 directory. The ids (`hmsg-…`, `web-…`), the tool names and the `{"chatId":"web","messageId":"web-…"}` results are the real ones.
 `*-web-chat.ledger.json` is the chat ledger `/ui/history` served for the same five messages.
+
+## grok's `events.jsonl`
+
+`grok-events-phases.jsonl` is a real `events.jsonl` of an interactive grok (`grok-4.7`, `--always-approve`) instance on the
+preview, two turns: the first complete (`turn_started` … `turn_ended`, with two tool calls), the second still open (reasoning
+for five minutes, then a tool call, then reasoning again). grok writes it live — a `phase_changed` the moment a phase starts,
+`streaming_reasoning` repeated while it reasons — unlike `updates.jsonl`, which gets a thought only when it ends.
+
+Kept: the lines of the turns, with each long run of identical `streaming_reasoning` lines thinned to three. Removed: the
+`mcp_*` records (they name the launch's wrapper script and binding), the session id (zeroed), the tool-call ids (numbered).
+The phase values seen are `waiting_for_model`, `streaming_reasoning`, `tool_execution`, `permission_prompt`, `streaming_text`.
