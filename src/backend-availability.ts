@@ -311,18 +311,34 @@ export async function staticBackendVersion(backend: string, path: string): Promi
 }
 
 /**
+ * Backends whose `--version` is a local read that never starts an update or a vendor request (AGEND-223): both are single-file binaries with no version on disk, so where no network
+ * namespace can be made (a Docker container: `unshare -rn` is "Operation not permitted" there) the netless run is impossible and the card read "installed ?" forever. For these two only,
+ * `--version` then runs directly — still under the no-update switches, the memory scope where systemd can make one, and the 5 s deadline. Evidence: `agy --version` and `grok --version`
+ * leave `last_check.timestamp` / `version.json` (their update state) untouched and print the same inside a namespace with no network. Every other backend keeps the strict rule
+ * (muse never; the rest unknown), since nothing shows their `--version` is as quiet.
+ */
+export const DIRECT_VERSION_BACKENDS: ReadonlySet<string> = new Set(["antigravity", "grok"]);
+
+/** What the host can do for a `--version` run; tests pass their own. */
+export interface VersionProbeCaps { netless: () => Promise<boolean>; scope: () => Promise<boolean>; }
+const hostVersionCaps: VersionProbeCaps = { netless: canRunNetless, scope: canScope };
+
+/**
  * The version, without letting any CLI change anything or reach the network (the leader's rule, #2078):
  * 1. what is on disk (staticBackendVersion) — every OS, every backend;
  * 2. else, on Linux where an unprivileged network namespace can be made, `<path> --version` inside it (no network),
  *    with the CLIs' no-update switches, a deadline and (where systemd can) a memory cap; muse never (STATIC_VERSION_FILES);
- * 3. else unknown — never a networked `--version`. No version is no "too old" claim: the backend stays selectable.
+ * 3. else, for DIRECT_VERSION_BACKENDS only (Linux), the same run without the namespace (AGEND-223);
+ * 4. else unknown — never a networked `--version`. No version is no "too old" claim: the backend stays selectable.
  */
-export async function probeBackendVersion(backend: string, path: string): Promise<string | null> {
+export async function probeBackendVersion(backend: string, path: string, caps: VersionProbeCaps = hostVersionCaps): Promise<string | null> {
   const known = await staticBackendVersion(backend, path);
   if (known || STATIC_VERSION_FILES[backend]) return known;
-  if (!(await canRunNetless())) return null;
-  const argv = ["unshare", "-rn", "--", "env", ...Object.entries(NO_UPDATE_ENV).map(([k, v]) => `${k}=${v}`), path, "--version"];
-  const child = (await canScope())
+  const netless = await caps.netless();
+  if (!netless && !(DIRECT_VERSION_BACKENDS.has(backend) && process.platform === "linux")) return null;
+  const run = ["env", ...Object.entries(NO_UPDATE_ENV).map(([k, v]) => `${k}=${v}`), path, "--version"];
+  const argv = netless ? ["unshare", "-rn", "--", ...run] : run;
+  const child = (await caps.scope())
     ? spawnProbeCommand("systemd-run", ["--user", "--scope", "-q", "-p", `MemoryMax=${VERSION_PROBE_MEMORY}`, "--", ...argv])
     : spawnProbeCommand(argv[0]!, argv.slice(1));
   return parseVersion(await answer(child, 5000));
