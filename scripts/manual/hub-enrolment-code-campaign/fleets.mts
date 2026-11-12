@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import yaml from 'js-yaml';
-import { settleRefusalCleanup } from './refusal-cleanup.mjs';
+import { settleRefusalCleanup, refusalCleanupReason } from './refusal-cleanup.mjs';
 const built = '/tmp/b1-dist';
 const { FleetManager } = await import(built + '/fleet-manager.js');
 const { CompanyJoinClient } = await import(built + '/hub/join/client.js');
@@ -203,12 +203,15 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     await hub.getByText(message,{exact:true}).waitFor();await shot(hub,f.label+'-'+reason);
     check(f.label+' refusal saves no credential',!existsSync(join(f.dir,'hub-member',rig.deps.companyJoin.metadata().hub.hubId,'pairing.json')));
     const cancel=f.page.locator('.s-company-join').getByRole('button',{name:f.lang==='zh-TW'?/^(取消|取消連接)$/:/^(Cancel|Cancel connection)$/});
-    const operation=currentLocalJoinId(f.dir)!;
-    const stage=await settleRefusalCleanup({reason,wait,read:()=>{
+    const operation=currentLocalJoinId(f.dir)!,local=readLocalJoin(f.dir,operation);
+    const remote=reason==='code-ended'?rig.deps.companyJoin.records.get(local.binding.requestId):null;
+    const terminalReason=refusalCleanupReason({reason,binding:local.binding,remote,
+      codeEnded:!!remote?.enrolmentCodeId&&rig.deps.companyJoin.codes.state(rig.deps.companyJoin.codes.get(remote.enrolmentCodeId))!=='live'});
+    const stage=await settleRefusalCleanup({reason:terminalReason,wait,read:()=>{
       if(currentLocalJoinId(f.dir)!==operation)throw Error('Owned refusal operation changed');
       return readLocalJoin(f.dir,operation);
     },click:()=>cancel.first().click({timeout:5000})});
-    receipt.refusalCleanup??=[];receipt.refusalCleanup.push({label:f.label,reason,stage});
+    receipt.refusalCleanup??=[];receipt.refusalCleanup.push({label:f.label,reason,terminalReason,stage});
     receipt.refusalViews??=[];receipt.refusalViews.push({label:f.label,reason,lang:f.lang,phone:f.phone});
   }
   async function adminShots() {

@@ -4,3 +4,7 @@ export function settleRefusalCleanup(options: {
   wait(done: () => boolean): Promise<unknown>;
   reason: string;
 }): Promise<string>;
+
+export function refusalCleanupReason(options: {
+ reason: string; binding: { requestId: string; operationId: string; fleetId: string }; remote: any; codeEnded: boolean;
+}): string;
