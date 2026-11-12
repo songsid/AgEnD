@@ -525,9 +525,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const panelPath = viewOnly || (route && route.panel === "view") ? viewPath
     : route && route.panel === "log" ? logPath                                  // #1218: Log → Log
     : route && route.panel === "details" ? detailsPath : chatPath;
-  const rowPath = (name) => byName.get(name)?.runtime === "windows" && ["view", "log", "details"].includes(route?.panel)
-    ? chatPath(name) : panelPath(name);
   const active = route && (route.panel === "chat" || route.panel === "view" || route.panel === "log" || route.panel === "details") ? route.instance : null;
+  // A selected row returns to Chat; a different row keeps the current view. Real hrefs give Enter the same action.
+  const rowPath = (name) => !viewOnly && name === active ? chatPath(name)
+    : byName.get(name)?.runtime === "windows" && ["view", "log", "details"].includes(route?.panel) ? chatPath(name) : panelPath(name);
   const own = (map, name) => Object.prototype.hasOwnProperty.call(map, name);
   const byName = new Map(items.map((it) => [nameOf(it), it]));
   const facetOf = (name) => statusFacet(byName.get(name), own(exec, name) ? exec[name] : null, own(awaiting, name) ? awaiting[name] : null);

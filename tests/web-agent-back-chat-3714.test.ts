@@ -20,13 +20,13 @@ afterAll(() => { p.restore(); vi.unstubAllGlobals(); });
 function Roster({ viewOnly = false }) { const state = app.useStore(nav.navStore); return h(roster.InstanceNav, { route: state.route, items: instances, viewOnly }); }
 const row = (name: string) => [...p.root.querySelectorAll("a.inst")].find((link: any) => link.getAttribute("href")?.endsWith(`/${name}`)) as any;
 const pick = async (name: string) => { fire(row(name), "click", { button: 0 }); await settle(5); };
-async function split() {
+async function split(realDetails = false) {
   controller = (await import("/ui/js/chat-workspace-navigation.js") as any).installWorkspaceNavigation(nav, { geometry: true });
   controller.open("beta"); controller.pane("a").navigate("/ui/fleet/agent/alpha"); controller.pane("b").navigate("/ui/fleet/agent/beta");
   const Workspace = host.createWorkspaceHost(controller);
   function Panel({ route, navKey }: any) { return h("div", { class: "panel" }, h(shell.PanelHeader, { title: route.instance,
     pageControls: { navKey, ...(route.panel === "details" ? { backToChat: { path: `/ui/chat/${route.instance}`, label: "Back to chat" } } : {}) } }), h("textarea", { "data-agent": route.instance })); }
-  const panels = new Map(["chat", "details", "log", "view"].map(panel => [panel, { Component: Panel }]));
+  const panels = new Map(["chat", "details", "log", "view"].map(panel => [panel, { Component: realDetails && panel === "details" ? details.DetailsPanel : Panel }]));
   function App() { return h("div", null, h(Roster, {}), h(Workspace, { nav: app.useStore(nav.navStore), panels })); }
   await p.mount(h(App)); await settle(6);
 }
@@ -80,7 +80,7 @@ describe("#3714 Settings Back to chat", () => {
     } finally { i18n.setLang("en", { store: false }); }
   });
   it("the split Settings X returns its own pane to chat without closing it or changing its peer", async () => {
-    await split(); const peer = controller.current().b;
+    await split(true); const peer = controller.current().b;
     const back = p.root.querySelector('[data-pane="a"] .ws-pane-close'); expect(back.getAttribute("aria-label")).toBe("Back to chat");
     fire(back, "click", { button: 0 }); await settle(5); expect(controller.current()).not.toBeNull();
     expect(controller.current().a.route).toEqual({ panel: "chat", instance: "alpha" }); expect(controller.current().b).toBe(peer);

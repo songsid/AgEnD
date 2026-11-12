@@ -97,6 +97,7 @@ export function PaneHeader({ title, sub, headingRef, nav, notice, pageControls, 
   useLayoutEffect(() => () => pane.controls.release(token.current), []);
   const tabs = pane.tabs.filter(tab => !pane.visibleTabs.includes(tab));
   const app = useStore(appStore), inst = app.instances.find(it => it.name === pane.name);
+  const backToChat = pageControls?.backToChat;
   const inherited = (pane.focused ? pageActions || [] : []).filter(item => item && !item.heading
     && !["splitChat", "split", "pane-backend", "pane-model", "pane-effort"].includes(item.key) && item.label !== tw("split"));
   const appearance = item => /^(identity-color|theme-|page-|widget-|ambient-|fullWidth)/.test(item.key || "");
@@ -135,7 +136,8 @@ export function PaneHeader({ title, sub, headingRef, nav, notice, pageControls, 
       <button type="button" class="icon-btn ws-pane-split" title=${tw("split")} aria-label=${tw("split")} onClick=${event => choose(pane.controller, event, pane.id)}><${Icon} name="sidebar" /></button>
       <${Menu} cls="agent-menu" fit=${true} ownerKey=${`${pane.name}:${pane.route.panel}`} inactive=${!pane.focused} onOpen=${() => pane.controller.focus(pane.id)} items=${items} label=${t("app.more")}
         leading=${foldTools && pane.focused ? html`<div class="ws-menu-tools" role="presentation" ref=${el => { menuSlot.current = el; pane.controls.move(token.current, el || slot.current, !!el); }}></div>` : null} />
-      <button type="button" class="icon-btn ws-pane-close" title=${tw("close")} aria-label=${tw("close")} onClick=${() => pane.controller.closePane(pane.id)}><${Icon} name="close" /></button>
+      <button type="button" class="icon-btn ws-pane-close" title=${backToChat?.label || tw("close")} aria-label=${backToChat?.label || tw("close")}
+        onClick=${() => backToChat ? pane.navigate(backToChat.path) : pane.controller.closePane(pane.id)}><${Icon} name="close" /></button>
     </div>${notice || null}
   </header>`;
 }
