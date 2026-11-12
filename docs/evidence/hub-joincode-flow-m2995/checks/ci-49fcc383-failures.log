@@ -1,0 +1,39 @@
+2026-11-12T18:17:12.9902521Z ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+2026-11-12T18:17:12.9903181Z 
+2026-11-12T18:17:12.9907911Z  FAIL  tests/hub-enrolment-code-slot-b2.test.ts > U2 and B2 compose without an injected stand-in component > the complete U2 card re-reads saved codes after create and revoke (en)
+2026-11-12T18:17:12.9911480Z  FAIL  tests/hub-enrolment-code-slot-b2.test.ts > U2 and B2 compose without an injected stand-in component > the complete U2 card re-reads saved codes after create and revoke (zh-TW)
+2026-11-12T18:17:12.9915486Z AssertionError: expected "vi.fn()" to be called once with arguments: [ Array(1) ]
+2026-11-12T18:17:12.9916221Z 
+2026-11-12T18:17:12.9916551Z Number of calls: 0
+2026-11-12T18:17:12.9917014Z 
+2026-11-12T18:17:12.9917889Z  ❯ tests/hub-enrolment-code-slot-b2.test.ts:53:42
+2026-11-12T18:17:12.9968051Z      51|     expect(p.root.querySelector("#hubEnrolmentCodeSlot").textContent).…
+2026-11-12T18:17:12.9969868Z      52|     fire(named(p, end), "click"); await settle(25);
+2026-11-12T18:17:12.9971547Z      53|     expect(r.client.revokeEnrolmentCode).toHaveBeenCalledExactlyOnceWi…
+2026-11-12T18:17:12.9972931Z        |                                          ^
+2026-11-12T18:17:12.9974060Z      54|     expect(p.root.querySelector('li[data-step="2"]').classList.contain…
+2026-11-12T18:17:12.9975663Z      55|     expect(named(p, copy).disabled).toBe(true);
+2026-11-12T18:17:12.9976503Z 
+2026-11-12T18:17:12.9976998Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+2026-11-12T18:17:12.9977383Z 
+2026-11-12T18:17:12.9979521Z  FAIL  tests/hub-enrolment-code-slot-b2.test.ts > U2 and B2 compose without an injected stand-in component > company join off disables creation and outer instructions, while an existing code can still be ended
+2026-11-12T18:17:12.9981818Z AssertionError: expected "vi.fn()" to be called once with arguments: [ Array(1) ]
+2026-11-12T18:17:12.9982718Z 
+2026-11-12T18:17:12.9983024Z Number of calls: 0
+2026-11-12T18:17:12.9983494Z 
+2026-11-12T18:17:12.9984341Z  ❯ tests/hub-enrolment-code-slot-b2.test.ts:74:42
+2026-11-12T18:17:12.9985398Z      72|     expect(named(p, "Create join code").disabled).toBe(true); expect(n…
+2026-11-12T18:17:12.9986864Z      73|     fire(named(p, "End this code now"), "click"); await settle(15);
+2026-11-12T18:17:12.9988218Z      74|     expect(r.client.revokeEnrolmentCode).toHaveBeenCalledExactlyOnceWi…
+2026-11-12T18:17:12.9989042Z        |                                          ^
+2026-11-12T18:17:12.9989570Z      75|   });
+2026-11-12T18:17:12.9990252Z      76|   it("the actual module stays inert with a held older client", async (…
+2026-11-12T18:17:12.9990690Z 
+2026-11-12T18:17:12.9991027Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+2026-11-12T18:17:12.9991314Z 
+2026-11-12T18:17:12.9991352Z 
+2026-11-12T18:17:13.0017384Z  Test Files  1 failed | 502 passed | 1 skipped (504)
+2026-11-12T18:17:13.0111121Z       Tests  3 failed | 8175 passed | 24 skipped (8202)
+2026-11-12T18:17:13.0112120Z    Start at  18:10:49
+2026-11-12T18:17:13.0120126Z    Duration  383.28s (transform 24.13s, setup 23.85s, import 334.78s, tests 699.41s, environment 76ms)
+2026-11-12T18:17:13.0122412Z 

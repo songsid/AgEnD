@@ -2,7 +2,8 @@
   "sourceDirty": false,
   "productBinding": "PRODUCTION_SHA256SUMS",
   "phase": "after",
-  "source": "38aea69ecb1264854927bba30ab8086867de8a14",
+  "source": "68d4d0c55a1af0b666ba8377a9a7525dcf612a64",
+  "longLabel": false,
   "skew": null,
   "boundary": "Production Hub HTTP shell/assets/Preact/Dialog and real dummy-directory sign-in; company-join/code/queue API DTOs are browser-routed fixtures. No directory, real Fleet, capacity, packaged-runtime or Docker claim.",
   "browser": "156.0.8078.4",
@@ -13,6 +14,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -31,6 +33,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -57,6 +60,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": [
           {
@@ -98,6 +102,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -112,6 +117,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -126,6 +132,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -140,6 +147,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -159,6 +167,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -177,6 +186,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -203,6 +213,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": [
           {
@@ -244,6 +255,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -258,6 +270,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -272,6 +285,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -286,6 +300,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -305,6 +320,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -328,6 +344,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -359,6 +376,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -386,6 +404,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -405,6 +424,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -424,6 +444,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -443,6 +464,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -467,6 +489,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -490,6 +513,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -521,6 +545,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -548,6 +573,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -567,6 +593,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -586,6 +613,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }
@@ -605,6 +633,7 @@
       "ok": true,
       "detail": {
         "x": 0,
+        "dialogX": 0,
         "csp": [],
         "small": []
       }

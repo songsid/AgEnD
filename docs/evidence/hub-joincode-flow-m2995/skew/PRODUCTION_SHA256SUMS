@@ -2,7 +2,7 @@ bcbe6ca540e979f46d6ab8bb04ae3d2029a841fe865c1a577e847ac1c869b946  src/hub/enrolm
 cf493871d1330d61dbe1f1ac58749378ab79ace61bdc70fa5356ac23f75ee82f  src/hub/http/compose.ts
 ad7b9ee4aa0b93a1c60cc7b89893689ddaa3871ccd6e4ff270801fce4dcb6b12  src/hub/join/service.ts
 c65959222e3044c898773d5811fd50c20525064ddd02081cb22fdc74bf04395e  src/ui/hub-client.js
-de65cc27d01c80a5f5f9ae4b62f395edb6e3d960afe821e806dc83b26877d87a  src/ui/hub-enrolment-code.js
+99e87e7a29db81e162b4874829ce7ec5b965ff7e2b21790e509e933abc76bc00  src/ui/hub-enrolment-code.js
 1ae6496f5838934df8008c782b0f249404a3d3dfdff96769c39879f24a2b6324  src/ui/hub-enrolment-code-strings.js
 4c48aed807c6249f2f7695be97cf773ddabb8e4c99a47ce496ad2c3d0d0383e3  src/ui/hub-joincode-flow-strings.js
 abfdaf90a367c11b1c229e6b5d8e00b75ead6b1b799fcfdfcb7d28414616c2e1  src/ui/hub-join-approval.js

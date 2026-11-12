@@ -1,0 +1,10 @@
+/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995/scripts/manual/hub-joincode-flow-m2995/accept.mts:24
+const check = (name: string, ok: boolean, detail?: unknown) => { checks.push({ name, ok, ...(detail === undefined ? {} : { detail }) }); if (!ok) throw Error(name); };
+                                                                                                                                                        ^
+
+Error: desk-light-en:long-label:no-overflow
+    at check (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995/scripts/manual/hub-joincode-flow-m2995/accept.mts:24:153)
+    at shot (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995/scripts/manual/hub-joincode-flow-m2995/accept.mts:84:7)
+    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995/scripts/manual/hub-joincode-flow-m2995/accept.mts:105:101)
+
+Node.js v22.22.2

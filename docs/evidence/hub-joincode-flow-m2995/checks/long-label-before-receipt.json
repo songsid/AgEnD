@@ -1,0 +1,30 @@
+{
+  "sourceDirty": false,
+  "productBinding": "PRODUCTION_SHA256SUMS",
+  "phase": "after",
+  "source": "49fcc3838813a08ec005a4d10ecee0bf760ff8ad",
+  "skew": null,
+  "boundary": "Production Hub HTTP shell/assets/Preact/Dialog and real dummy-directory sign-in; company-join/code/queue API DTOs are browser-routed fixtures. No directory, real Fleet, capacity, packaged-runtime or Docker claim.",
+  "browser": "156.0.8078.4",
+  "playwright": "1.64.0",
+  "checks": [
+    {
+      "name": "phone-dark-en:confirm:no-write",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en:confirm:names",
+      "ok": true
+    },
+    {
+      "name": "long-name-no-scroll",
+      "ok": false,
+      "detail": {
+        "scroll": 1820,
+        "client": 390
+      }
+    }
+  ],
+  "images": [],
+  "cleanup": "owned browser/listener/rig/keys closed in finally"
+}
