@@ -73,7 +73,12 @@ try {
     let isChild = url.searchParams.get("presentation") === "popout";
     try { isChild ||= route.request().frame().page() !== page; } catch { assert.ok(route.request().isNavigationRequest()); }
 
-    if (isChild && scenario === "auth" && route.request().isNavigationRequest()) { const headers = route.request().headers(); delete headers.cookie; return route.continue({ headers }); }
+    if (isChild && scenario === "auth" && route.request().isNavigationRequest()) {
+      // Browser-managed Cookie cannot be overridden by route.continue; issue an actual no-cookie server read.
+      const response = await route.fetch({ headers: { ...route.request().headers(), cookie: "" }, maxRedirects: 0 });
+      receipt.cases.push({ label: "unauthenticated-child-navigation", path: url.pathname, status: response.status() });
+      return route.fulfill({ response });
+    }
     if (isChild && scenario === "changed" && url.pathname === "/ui/js/chat-popout.js") await childGate;
     const childControls: Record<string, string[]> = { "child-css": ["src/ui/shared/app.css"], "child-app": ["src/ui/shared/app.js"], "child-shell": ["src/ui/shared/app-shell.js"], "child-chat": ["src/ui/panel-chat.js"], "parent-store": ["src/ui/chat-store.js"] };
     if (childControls[retained]?.includes(path) && (isChild || retained === "parent-store")) {
@@ -210,6 +215,7 @@ try {
   assert.deepEqual(errors, []); assert.deepEqual(blocked, []); assert.deepEqual(effects, []);
   receipt.effects = effects; receipt.errors = errors; receipt.external = blocked; receipt.scenario = scenario;
 } finally {
+  receipt.finalPages = ctx.pages().map((tab: any) => new URL(tab.url()).pathname);
   releaseChild!(); await ctx.close(); await fx.close(); await Promise.allSettled(jobs);
   for (const path of sources) assert.equal(hash(readFileSync(join(repo, path))), initial.get(path), "source changed during capture");
   writeFileSync(join(out, "receipt.json"), JSON.stringify(receipt, null, 2) + "\n");
