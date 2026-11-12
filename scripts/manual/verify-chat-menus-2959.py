@@ -22,9 +22,14 @@ def source(path):
     raise AssertionError(path)
 
 result = {'runs': 0, 'inputs': 0, 'assets': 0, 'retained': 0, 'checkpoints': 0, 'pngs': 0}
-for p in sorted((evidence / 'browser').glob('*/receipt.json')):
+expected = {f'{kind}-{device}-{theme}-{lang}' for kind in ['before', 'after']
+            for device in ['desktop', 'phone'] for theme in ['light', 'dark'] for lang in ['en', 'zh-TW']}
+expected |= {'skew-' + name for name in ['css', 'ui-menu', 'instance-nav', 'host', 'quote']} | {'narrow360'}
+receipts = sorted((evidence / 'browser').glob('*/receipt.json'))
+assert {p.parent.name for p in receipts} == expected, 'incomplete browser matrix'
+for p in receipts:
     r = json.loads(p.read_text())
-    assert not r['dirty'], p
+    assert r['completed'] and not r['dirty'], p
     assert r['tree'] == subprocess.check_output(['git', 'rev-parse', r['head'] + '^{tree}'], cwd=root, text=True).strip(), p
     for digest, paths in r['inputs'].items():
         for path in paths:
@@ -46,6 +51,7 @@ for p in sorted((evidence / 'browser').glob('*/receipt.json')):
             assert (p.parent / case['file']).is_file(), (p, case['file'])
     assert not r['errors'] and not r['effects'] and not r['external'], p
     assert all(keys == ['nav.favorites'] for keys in r['preferences']), p
+    assert all(x == {'path': '/api/settings/status-emojis/preview', 'method': 'POST'} for x in r['previews']), p
     result['runs'] += 1
     result['checkpoints'] += len(r['cases'])
     result['pngs'] += len(list(p.parent.glob('*.png')))
