@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClassicChannelManager } from "../src/classic-channel-manager.js";
 import { outboundHandlers } from "../src/outbound-handlers.js";
 import { switchClassicRoomProfile, type SettingsApiContext } from "../src/settings-api.js";
+import { noteSettingsWrite } from "../src/settings-transaction.js";
 
 const dirs: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -42,7 +43,8 @@ channels:
 `;
 const ROOMS = ["classic-alpha-0001", "classic-beta-0002"];
 
-function setup(opts: { running?: boolean; launched?: (name: string, backend: string) => string | null; restartFails?: boolean } = {}) {
+function setup(opts: { running?: boolean; launched?: (name: string, backend: string) => string | null; restartFails?: boolean | ((path: string) => void);
+  restore?: () => Promise<"restarted" | "not-running" | "superseded"> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agend-3715-")); dirs.push(dir);
   // "work" and "team" signed in (fake tokens), "ghost" made but never signed in.
   for (const name of ["work", "team"]) {
@@ -53,11 +55,16 @@ function setup(opts: { running?: boolean; launched?: (name: string, backend: str
   mkdirSync(join(dir, "credential-profiles", "claude-code", "ghost"), { recursive: true });
   const path = join(dir, "classicBot.yaml");
   writeFileSync(path, HAND);
-  const restart = vi.fn(async () => { if (opts.restartFails) throw new Error("start refused"); });
+  const restart = vi.fn(async (..._args: unknown[]) => {
+    if (typeof opts.restartFails === "function") { opts.restartFails(path); throw new Error("start refused"); }
+    if (opts.restartFails) throw new Error("start refused");
+  });
+  const restore = vi.fn(opts.restore ?? (async () => "restarted" as const));
   const settings = {
     fleetConfig: { defaults: {}, instances: {} }, configPath: join(dir, "fleet.yaml"), dataDir: dir,
     logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
-    restartClassicInstanceFromSettings: restart,
+    // FleetManager.beginClassicProfileSwitch in production (its own tests below); here its two calls are observed.
+    beginClassicProfileSwitch: (name: string, fields: string[]) => ({ restart: () => restart(name, fields), restore, close() {} }),
   } as unknown as SettingsApiContext;
   const running = opts.running ?? true;
   // The tool's context: FleetManager in production (switchClassicRoomProfile delegates to settings-api's, with itself).
@@ -76,7 +83,7 @@ function setup(opts: { running?: boolean; launched?: (name: string, backend: str
       return p.state === "profile" ? p.name : null;
     })),
   } as any;
-  return { dir, path, ctx, restart };
+  return { dir, path, ctx, restart, restore };
 }
 async function update(ctx: any, name: string, config: Record<string, unknown>) {
   let result: any, error: string | null | undefined;
@@ -156,11 +163,42 @@ describe("refused, with nothing written and no restart", () => {
     });
   }
   it("a failed restart puts classicBot.yaml back byte for byte and brings the room up again", async () => {
-    const { path, ctx, restart } = setup({ restartFails: true });
+    const { path, ctx, restore } = setup({ restartFails: true });
     const r = await update(ctx, "classic-alpha-0001", { backend_options: { "claude-code": { credential_profile: "work" } } });
-    expect([r.result, r.error]).toEqual([null, expect.stringContaining("put back")]);
+    expect([r.result, r.error]).toEqual([null, expect.stringContaining("so its account was put back and the room was started on it again")]);
     expect(readFileSync(path, "utf8")).toBe(HAND);
-    expect(restart.mock.calls.length).toBe(2);
+    expect(restore).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Prism on #3719 (3): a failed restart says what really happened", () => {
+  const SWITCH = { backend_options: { "claude-code": { credential_profile: "work" } } };
+  it("a newer edit of the same account meanwhile is kept, said, and nothing is restarted for it", async () => {
+    const { path, ctx, restore } = setup({ restartFails: (file) => {
+      const now = yaml.load(readFileSync(file, "utf8")) as any, next = structuredClone(now);
+      next.channels["123#discord"].backend_options = { "claude-code": { credential_profile: "team" } };
+      noteSettingsWrite(file, now, next); writeFileSync(file, yaml.dump(next));
+    } });
+    const r = await update(ctx, "classic-alpha-0001", SWITCH);
+    expect(r.error).toContain("was not put back: classicBot.yaml was changed again meanwhile");
+    expect((yaml.load(readFileSync(path, "utf8")) as any).channels["123#discord"].backend_options).toEqual({ "claude-code": { credential_profile: "team" } });
+    expect(restore).not.toHaveBeenCalled();
+  });
+  it("a file that can't be read back: said, and nothing is restarted", async () => {
+    const { ctx, restore } = setup({ restartFails: (file) => writeFileSync(file, "channels: [unclosed\n") });
+    const r = await update(ctx, "classic-alpha-0001", SWITCH);
+    expect(r.error).toContain("could not be put back");
+    expect(restore).not.toHaveBeenCalled();
+  });
+  it("put back, but the room's own restart on it fails too: said", async () => {
+    const { path, ctx } = setup({ restartFails: true, restore: async () => { throw new Error("pane gone"); } });
+    const r = await update(ctx, "classic-alpha-0001", SWITCH);
+    expect(r.error).toContain("starting the room on it failed too (pane gone)");
+    expect(readFileSync(path, "utf8")).toBe(HAND);
+  });
+  it("put back, and the room was changed by someone else meanwhile: not restarted, said", async () => {
+    const { ctx } = setup({ restartFails: true, restore: async () => "superseded" });
+    expect((await update(ctx, "classic-alpha-0001", SWITCH)).error).toContain("The room was not restarted: it was stopped or started by something else meanwhile.");
   });
   it("controls: an agent in fleet.yaml keeps its own path; an unknown name keeps its error", async () => {
     const { ctx } = setup();
@@ -168,36 +206,103 @@ describe("refused, with nothing written and no restart", () => {
   });
 });
 
+/**
+ * The real FleetManager: beginClassicProfileSwitch, restartClassicInstanceFromSettings, startClassicInstance and
+ * startInstance run as in production; only the boundaries are replaced — the stop (it invalidates the room's epoch at
+ * once, as the real one does in its transition, and takes the daemon away) and the CLI launch inside lifecycle.start
+ * (it publishes a daemon whose snapshot is the config it was given, through the same `published` callback).
+ */
+async function realFleet(opts: { starts?: Array<"ok" | "fail" | ((fm: any) => void)>; holdHandoff?: Promise<void> } = {}) {
+  const { FleetManager } = await import("../src/fleet-manager.js");
+  const { dir, path } = setup();
+  const previousHome = process.env.AGEND_HOME; process.env.AGEND_HOME = dir;
+  const fm = new FleetManager(dir) as any;
+  fm.fleetConfig = { defaults: {}, instances: {} };
+  const log = { debug() {}, info() {}, warn() {}, error() {}, child() { return log; } } as never;
+  const classic = new ClassicChannelManager(dir, log); classic.configureAdapters([{ id: "discord", type: "discord" }]);
+  fm.classicChannels = classic; classic.reloadFromDisk();
+  const name = "classic-alpha-0001";
+  const daemon = (config: Record<string, unknown>) => ({ applyConfigUpdate: vi.fn(), getConfigSnapshot: () => config, getProcessStatus: () => "running" as const });
+  const original = daemon({ backend: "claude-code", working_directory: join(dir, "workspaces", name) });
+  fm.lifecycle.daemons.set(name, original);
+  const stop = vi.spyOn(fm, "stopInstance").mockImplementation((...args: unknown[]) => {
+    const n = args[0] as string; fm.lifecycle.invalidate(n);
+    return (async () => { await Promise.resolve(); fm.lifecycle.daemons.delete(n); return { backgroundWorkEnded: false }; })();
+  });
+  vi.spyOn(fm, "switchConversation").mockImplementation(async () => { await opts.holdHandoff; return { carried: true, sessionId: "s", bytes: 1, ms: 1, replacedOlderCopy: false }; });
+  const plan = [...(opts.starts ?? ["ok"])];
+  const started: Record<string, unknown>[] = [];
+  vi.spyOn(fm.lifecycle, "start").mockImplementation(async (...args: unknown[]) => {
+    const [n, config, , , , , published] = args as [string, Record<string, unknown>, unknown, unknown, unknown, unknown, ((d: object) => void) | undefined];
+    const step = plan.shift() ?? "ok";
+    started.push(config);
+    if (typeof step === "function") { step(fm); throw new Error("first start refused"); }
+    if (step === "fail") throw new Error("first start refused");
+    const d = daemon(config); fm.lifecycle.daemons.set(n, d); published?.(d);
+  });
+  // Only the restart's 250 ms settle is skipped; every other timer (the operation's own deadline among them) is real.
+  const realTimeout = globalThis.setTimeout;
+  vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number, ...rest: unknown[]) =>
+    ms === 250 ? (fn(), 0 as any) : realTimeout(fn, ms, ...rest)) as any);
+  const run = async (config: Record<string, unknown>) => {
+    let result: any, error: string | null | undefined;
+    await outboundHandlers.get("update_instance_config")!(fm, { name, config }, (value, message) => { result = value; error = message; }, { instanceName: "general" } as any);
+    return { result, error };
+  };
+  const done = () => { if (previousHome === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = previousHome; };
+  const profileOf = (config: Record<string, unknown> | undefined) => (config?.backend_options as any)?.["claude-code"]?.credential_profile ?? null;
+  return { fm, dir, path, name, original, stop, started, run, done, profileOf };
+}
+const TEAM = { backend_options: { "claude-code": { credential_profile: "team" } } };
+
 describe("end to end through FleetManager: the answer is what the relaunch started with", () => {
-  it("update_instance_config → the #3691 write → restartClassicInstanceFromSettings → the room's start config → launched_profile", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
-    const { dir, path } = setup();
-    const previousHome = process.env.AGEND_HOME; process.env.AGEND_HOME = dir;
+  it("update_instance_config → the #3691 write → the owned restart → the room's start config → launched_profile", async () => {
+    const f = await realFleet();
     try {
-      const fm = new FleetManager(dir) as any;
-      fm.fleetConfig = { defaults: {}, instances: {} };
-      const log = { debug() {}, info() {}, warn() {}, error() {}, child() { return log; } } as never;
-      const classic = new ClassicChannelManager(dir, log); classic.configureAdapters([{ id: "discord", type: "discord" }]);
-      fm.classicChannels = classic; classic.reloadFromDisk();
-      const name = "classic-alpha-0001";
-      // Running on the shared login; the stop and the CLI start are replaced, everything between them is the product's.
-      const daemon = (config: Record<string, unknown>) => ({ applyConfigUpdate: vi.fn(), getConfigSnapshot: () => config, getProcessStatus: () => "running" as const });
-      fm.lifecycle.daemons.set(name, daemon({ backend: "claude-code", working_directory: join(dir, "workspaces", name) }));
-      vi.spyOn(fm, "stopInstance").mockImplementation(async () => { fm.lifecycle.daemons.delete(name); return { backgroundWorkEnded: false }; });
-      vi.spyOn(fm, "switchConversation").mockResolvedValue({ carried: true, sessionId: "s", bytes: 1, ms: 1, replacedOlderCopy: false });
-      const started: Record<string, unknown>[] = [];
-      vi.spyOn(fm, "startInstance").mockImplementation(async (...args: unknown[]) => { const [n, config] = args as [string, Record<string, unknown>]; started.push(config); fm.lifecycle.daemons.set(n, daemon(config)); });
-      vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void) => { fn(); return 0 as any; }) as any);
-      let result: any, error: string | null | undefined;
-      await outboundHandlers.get("update_instance_config")!(fm, { name, config: { backend_options: { "claude-code": { credential_profile: "team" } } } },
-        (value, message) => { result = value; error = message; }, { instanceName: "general" } as any);
-      expect(error).toBeUndefined();
-      expect(started).toHaveLength(1);
-      expect((started[0]!.backend_options as any)?.["claude-code"]?.credential_profile).toBe("team");
-      expect(result).toMatchObject({ success: true, credential_profile: "team", restarted: true, launched_profile: "team" });
-      expect(linesAdded(HAND, readFileSync(path, "utf8")).added.filter(Boolean).map(l => l.trim())).toEqual(["backend_options:", "claude-code:", "credential_profile: team"]);
-    } finally {
-      if (previousHome === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = previousHome;
-    }
+      const r = await f.run(TEAM);
+      expect(r.error).toBeUndefined();
+      expect(f.started.map(f.profileOf)).toEqual(["team"]);
+      expect(r.result).toMatchObject({ success: true, credential_profile: "team", restarted: true, launched_profile: "team" });
+      expect(linesAdded(HAND, readFileSync(f.path, "utf8")).added.filter(Boolean).map(l => l.trim())).toEqual(["backend_options:", "claude-code:", "credential_profile: team"]);
+    } finally { f.done(); }
+  });
+});
+
+describe("Prism on #3719 (1)(2): the compensation is owned, and brings the room back", () => {
+  it("(1) the new account's first start fails: the file goes back and the room is started again on its old account", async () => {
+    const f = await realFleet({ starts: ["fail", "ok"] });
+    try {
+      const r = await f.run(TEAM);
+      expect(r.error).toContain("so its account was put back and the room was started on it again");
+      expect(f.started.map(f.profileOf)).toEqual(["team", null]);           // the second start is the old (shared) login
+      expect(f.fm.lifecycle.daemons.has(f.name)).toBe(true);
+      expect(readFileSync(f.path, "utf8")).toBe(HAND);
+    } finally { f.done(); }
+  });
+  it("(2) a Stop while the handoff is held: the switch never launches, and the compensation doesn't start the room either", async () => {
+    let release!: () => void;
+    const f = await realFleet({ holdHandoff: new Promise<void>(r => { release = r; }) });
+    try {
+      const pending = f.run(TEAM);
+      await vi.waitFor(() => expect(f.fm.switchConversation).toHaveBeenCalled());
+      f.fm.lifecycle.invalidate(f.name);                                     // what a Stop does at once
+      release();
+      const r = await pending;
+      expect(f.started).toEqual([]);
+      expect(r.error).toContain("The room was not restarted: it was stopped or started by something else meanwhile.");
+      expect(f.fm.lifecycle.daemons.has(f.name)).toBe(false);
+      expect(readFileSync(f.path, "utf8")).toBe(HAND);
+    } finally { f.done(); }
+  });
+  it("(2) a newer runtime published after the failed start is left alone: no stop, no replacement", async () => {
+    const newer = { getConfigSnapshot: () => ({ backend: "claude-code" }), getProcessStatus: () => "running" as const };
+    const f = await realFleet({ starts: [(fm) => { fm.lifecycle.invalidate("classic-alpha-0001"); fm.lifecycle.daemons.set("classic-alpha-0001", newer); }] });
+    try {
+      const r = await f.run(TEAM);
+      expect(r.error).toContain("The room was not restarted");
+      expect(f.stop).toHaveBeenCalledOnce();                                  // the switch's own stop only
+      expect(f.fm.lifecycle.daemons.get(f.name)).toBe(newer);
+      expect(f.started).toHaveLength(1);
+    } finally { f.done(); }
   });
 });

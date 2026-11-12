@@ -175,6 +175,10 @@ export interface SettingsApiContext extends AppShellContext {
   explicitWake?(name: string, timeoutMs?: number, retryStoppedSession?: boolean): Promise<void>;
   restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[], execution?: SettingsExecution): Promise<void>;
   captureClassicSettingsRestoration?(instanceName: string, changedFields: string[], execution?: SettingsExecution): () => Promise<void>;
+  /** #3715: an owned room account switch — the forward restart and its compensation bound to one receipt (FleetManager). */
+  beginClassicProfileSwitch?(instanceName: string, changedFields: string[]): {
+    restart(): Promise<void>; restore(): Promise<"restarted" | "not-running" | "superseded">; close(): void;
+  };
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
   startSettingsApply?(key: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
@@ -370,6 +374,37 @@ function spliceChangedLines(original: string, base: string, edited: string): str
   return out.join("\n");
 }
 
+/**
+ * #3715 (Prism on #3719): after a failed restart, put the room's account back and bring the room up on it — and say
+ * what actually happened. The file goes back through the same leaf writer only where nothing changed it since (a newer
+ * edit wins, and nothing is restarted for it); the room is restarted only by this operation's own receipt, never over
+ * a runtime someone else has stopped or started meanwhile.
+ */
+async function rollBackClassicProfile(ctx: SettingsApiContext, key: string, instanceName: string, paths: string[][],
+  undo: ReturnType<typeof settingsUndo>, op: { restore(): Promise<"restarted" | "not-running" | "superseded"> }, cause: string): Promise<string> {
+  const failed = `The room's restart failed (${cause})`;
+  try {
+    const retained = undoSettingsPaths(classicPath(ctx), readClassic(ctx), undo);
+    if (retained.conflicts) {
+      ctx.logger.warn({ key, instanceName }, "update_instance_config: classicBot.yaml changed meanwhile; the newer account is kept");
+      return `${failed}. Its account was not put back: classicBot.yaml was changed again meanwhile, and that newer change is kept. Check the room.`;
+    }
+    writeClassicLeaves(ctx, retained.value, paths);
+  } catch (rollbackErr) {
+    ctx.logger.error({ err: rollbackErr, key }, "update_instance_config: failed to roll back classicBot.yaml");
+    return `${failed}, and classicBot.yaml could not be put back (${(rollbackErr as Error).message}). The room's backend_options may still name the new account. Check the room.`;
+  }
+  let recovery: "restarted" | "not-running" | "superseded";
+  try { recovery = await op.restore(); }
+  catch (recoveryErr) {
+    ctx.logger.error({ err: recoveryErr, instanceName }, "update_instance_config: failed to restore the classic room after rollback");
+    return `${failed}. Its account was put back in classicBot.yaml, but starting the room on it failed too (${(recoveryErr as Error).message}). Check the room.`;
+  }
+  return recovery === "restarted" ? `${failed}, so its account was put back and the room was started on it again.`
+    : recovery === "not-running" ? `${failed}. Its account was put back in classicBot.yaml; the room was not running.`
+    : `${failed}. Its account was put back in classicBot.yaml. The room was not restarted: it was stopped or started by something else meanwhile.`;
+}
+
 /** #3715: what switchClassicRoomProfile answers. `profile` is the room's effective profile after the write (null: the shared login). */
 export type ClassicProfileSwitch =
   | { ok: true; channel: string; backend: string; profile: string | null; changed: boolean }
@@ -432,23 +467,20 @@ export async function switchClassicRoomProfile(ctx: SettingsApiContext, instance
   const invalidBefore = new Set(validateClassicBotConfig(previous).errors.map(issueKey));
   const introduced = validateClassicBotConfig(classic).errors.filter(e => !invalidBefore.has(issueKey(e)));
   if (introduced.length) return { ok: false, error: `Rejected: ${introduced.map(e => `${e.path}: ${e.message}`).join("; ")}` };
+  if (!ctx.beginClassicProfileSwitch) return { ok: false, error: "This fleet cannot restart a ClassicBot room here" };
   const paths = [["channels", key, "backend_options"]];
+  // Owned before the write: the runtime this operation may stop, restart and — if that fails — bring back.
+  const op = ctx.beginClassicProfileSwitch(instanceName, ["backend_options"]);
   try { writeClassicLeaves(ctx, classic, paths); }
-  catch (err) { ctx.logger.warn({ err, key }, "update_instance_config: failed to write classicBot.yaml"); return { ok: false, error: "failed to write classicBot.yaml" }; }
+  catch (err) { op.close(); ctx.logger.warn({ err, key }, "update_instance_config: failed to write classicBot.yaml"); return { ok: false, error: "failed to write classicBot.yaml" }; }
   const undo = settingsUndo(classicPath(ctx), previous, classic, paths);
   try {
-    await ctx.restartClassicInstanceFromSettings?.(instanceName, ["backend_options"]);
+    await op.restart();
   } catch (err) {
-    // As the Settings save: put the file back, then bring the room up on what it had.
-    try {
-      // Back through the same leaf writer, so the file's comments and other rooms come back as they were too.
-      const retained = undoSettingsPaths(classicPath(ctx), readClassic(ctx), undo);
-      writeClassicLeaves(ctx, retained.value, paths);
-    } catch (rollbackErr) { ctx.logger.error({ err: rollbackErr, key }, "update_instance_config: failed to roll back classicBot.yaml"); }
-    try { await ctx.restartClassicInstanceFromSettings?.(instanceName, ["backend_options"]); }
-    catch (recoveryErr) { ctx.logger.error({ err: recoveryErr, instanceName }, "update_instance_config: failed to restore the classic room after rollback"); }
-    return { ok: false, error: `The room's restart failed, so its account was put back: ${(err as Error).message}` };
+    op.close();
+    return { ok: false, error: await rollBackClassicProfile(ctx, key, instanceName, paths, undo, op, (err as Error).message) };
   }
+  op.close();
   ctx.logger.info({ key, instanceName, backend, profile }, "update_instance_config: switched a ClassicBot room's account");
   return { ok: true, channel: key, backend, profile, changed: true };
 }
