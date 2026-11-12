@@ -50,6 +50,29 @@ describe("B2 code management through the Hub's same-origin client", () => {
       expect(streams).toEqual(["/hub/v1/notices/events?v=2", "/hub/v1/notices/events?v=3"]);
     } finally { vi.unstubAllGlobals(); }
   });
+  it.each(["401", "signOut"])("retires the prior session's notice capability after %s", async retirement => {
+    const urls: string[] = [], streams: string[] = [];
+    class Stream { constructor(url: string) { streams.push(url); } addEventListener() {} close() {} }
+    vi.stubGlobal("EventSource", Stream);
+    try {
+      const response = (status: number, body: Record<string, unknown>) => ({ ok: status === 200, status,
+        headers: new Headers(), json: async () => body });
+      const fetchImpl = vi.fn(async (url: string) => {
+        urls.push(url); return response(200, { signedIn: true, csrf: "inert", features: ["enrolment-code-v1"], notices: [] });
+      });
+      const c = create({ fetchImpl }); await c.signIn("fixture", "inert");
+      await c.pairingNotices(3); expect(urls.at(-1)).toBe("/hub/v1/notices?v=3");
+      if (retirement === "401") {
+        fetchImpl.mockImplementationOnce(async (url: string) => {
+          urls.push(url); return response(401, { code: "denied" });
+        });
+        expect((await c.enrolmentCodes()).status).toBe(401);
+      } else await c.signOut();
+      await c.pairingNotices(3); expect(urls.at(-1)).toBe("/hub/v1/notices?v=2");
+      c.subscribePairingNotices(() => {}, () => {}, 3)();
+      expect(streams).toEqual(["/hub/v1/notices/events?v=2"]);
+    } finally { vi.unstubAllGlobals(); }
+  });
 });
 
 describe("B2 member notice version is leased by the current renderer", () => {
