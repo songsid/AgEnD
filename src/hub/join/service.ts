@@ -174,12 +174,16 @@ export class HubCompanyJoin {
     await this.codeAdmin(ctx);
     return this.atomic(() => { if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
       this.maintainCodes();
-      const codes = this.codes.list().map(code => ({ ...code,
-        inFlight: this.codeReservations(code.id), recent: (this.options.db.prepare("SELECT u.fleet_id,u.owner,u.at FROM hub_enrolment_code_uses u WHERE code_id=? ORDER BY at DESC,rowid DESC LIMIT 50").all(code.id) as { fleet_id: string; owner: string; at: number }[]).map(use => {
+      const codes = this.codes.list().map(code => {
+        // Display all unissued joins, including people who have not signed in yet. Quota reservations stay separate.
+        const inFlight = (this.options.db.prepare("SELECT id FROM hub_company_join_requests WHERE json_extract(body,'$.enrolmentCodeId')=? AND stage IN('pending','identity-approved') AND outer_deadline>?")
+          .all(code.id, this.now()) as { id: string }[]).map(row => this.records.get(row.id)).filter(r => !r.issuedHash);
+        return { ...code, inFlight: inFlight.length, inFlightLabels: inFlight.slice(0, 3).map(r => r.label),
+        recent: (this.options.db.prepare("SELECT u.fleet_id,u.owner,u.at FROM hub_enrolment_code_uses u WHERE code_id=? ORDER BY at DESC,rowid DESC LIMIT 50").all(code.id) as { fleet_id: string; owner: string; at: number }[]).map(use => {
           const person = this.options.db.prepare("SELECT display_name,login_label FROM hub_people WHERE person=?").get(use.owner) as { display_name: string; login_label: string } | undefined;
           const fleet = this.options.store.read().fleets.find(f => f.id === use.fleet_id);
           return { label: fleet?.label ?? "", owner: { name: person?.display_name ?? "", login: person?.login_label ?? "" }, at: use.at };
-        }) }));
+        }) }; });
       if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked"); return { codes };
     });
   }
@@ -187,7 +191,7 @@ export class HubCompanyJoin {
     const actor = await this.codeAdmin(ctx);
     this.atomic(() => { if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked"); this.codes.revoke(id, actor.person);
       const rows = this.options.db.prepare("SELECT id FROM hub_company_join_requests WHERE json_extract(body,'$.enrolmentCodeId')=? AND stage IN('pending','identity-approved')").all(id) as { id: string }[];
-      for (const row of rows) this.end(this.records.get(row.id), "authority");
+      for (const row of rows) this.endCode(this.records.get(row.id));
       if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
     });
     return (await this.listCodes(ctx)).codes.find(code => code.id === id)!;
@@ -200,7 +204,7 @@ export class HubCompanyJoin {
         const r = this.records.get(id);
         const row = this.options.db.prepare("SELECT id FROM hub_enrolment_codes WHERE id=?").get(r.enrolmentCodeId!);
         if (r.outerDeadline <= this.now() || r.stage === "identity-approved" && (r.redeemDeadline === null || r.redeemDeadline <= this.now())) this.end(r, "expired");
-        else if (!row || this.codes.state(this.codes.get(r.enrolmentCodeId!)) !== "live") this.end(r, "authority");
+        else if (!row || this.codes.state(this.codes.get(r.enrolmentCodeId!)) !== "live") this.endCode(r);
       }
     });
   }
@@ -412,6 +416,12 @@ export class HubCompanyJoin {
     const next: JoinRecord = { ...r, stage: r.issuedHash ? "undeliverable" : "ended", reason, receipt: null, version: r.version + 1 };
     this.records.save(next, r.version); return next;
   }
+  private endCode(r: JoinRecord): void {
+    if (!r.enrolmentCodeId || r.issuedHash || !["pending", "identity-approved"].includes(r.stage)) throw new HubProtocolError("uncertain");
+    // Keep the durable v3 vocabulary readable by older servers. The exact ended/unissued/code tuple projects
+    // this denied approval as code-ended; ordinary authority loss and already-issued recovery are untouched.
+    this.end(r, "denied");
+  }
   private expire(input: JoinRecord): JoinRecord {
     if (input.issuedHash && input.stage !== "revoked") {
       const fleet = this.options.store.read().fleets.find(f => f.id === input.binding.fleetId);
@@ -435,7 +445,8 @@ export class HubCompanyJoin {
     });
   }
   private view(r: JoinRecord) {
-    return { state: r.stage, reason: r.reason, issued: r.issuedHash !== null, fleetId: r.issuedHash ? r.binding.fleetId : null,
+    const reason = r.stage === "ended" && r.enrolmentCodeId && !r.issuedHash && r.reason === "denied" ? "code-ended" : r.reason;
+    return { state: r.stage, reason, issued: r.issuedHash !== null, fleetId: r.issuedHash ? r.binding.fleetId : null,
       generation: r.issuedHash ? 1 : null, outerDeadline: r.outerDeadline, redeemDeadline: r.redeemDeadline, deliveryDeadline: r.deliveryDeadline };
   }
   status(binding: unknown, proof: unknown, payload: unknown, purpose: "status" | "tombstone" = "status") {

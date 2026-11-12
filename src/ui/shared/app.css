@@ -1482,6 +1482,7 @@ img.amb-p { object-fit: contain; }
   .dlg-box { max-height: 90vh; }
   .dlg-actions { padding-bottom: max(var(--s-5), env(safe-area-inset-bottom)); }
   .dlg-actions .btn { flex: 1; min-height: var(--tap); }
+  .dlg-head .dlg-x { min-width: var(--tap); min-height: var(--tap); }
   .row-item .btn, .s-row .btn, .n-actions .btn { min-height: var(--tap); }
   .s-row .icon-btn { min-width: var(--tap); min-height: var(--tap); }
   .p-settings .s-company-join :is(.field input, .btn) { min-height: var(--tap); }

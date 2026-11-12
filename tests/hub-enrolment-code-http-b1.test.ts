@@ -146,10 +146,40 @@ describe("B1 enrolment-code protected routes and actual join", () => {
   it("real revoke retires a pending code request and preserves its specific browser feedback", async () => {
     const { r, admin } = await world(), code = await make(r, admin), a = await begin(r, code.code);
     const browser = await a.openBrowser("dan");
+    const listed = (await r.call(admin, "GET", "/hub/v1/admin/enrolment-codes")).body.codes[0];
+    expect(listed).toMatchObject({ inFlight: 1, inFlightLabels: ["Code Fleet"] });
     expect((await r.call(admin, "POST", "/hub/v1/admin/enrolment-codes/" + code.id + "/revoke", {})).status).toBe(200);
+    expect((await a.command("status")).body).toMatchObject({ state: "ended", reason: "code-ended", issued: false });
+    expect((await r.call(browser, "GET", "/hub/v1/join/browser?request=" + a.binding.requestId)).body).toMatchObject({ state: "ended", reason: "code-ended", issued: false });
     expect((await r.call(browser, "POST", "/hub/v1/join/approve", { requestId: a.binding.requestId })).body).toEqual({ code: "denied", reason: "code-ended" });
     expect(r.db.prepare("SELECT uses FROM hub_enrolment_codes WHERE id=?").get(code.id)).toEqual({ uses: 0 });
     expect(r.deps.store.read().fleets).toHaveLength(0);
+  });
+  it("a code exhausted by another join ends pending work with the code reason and preserves issued recovery", async () => {
+    const { r, admin } = await world(), code = await make(r, admin, { maxUses: 1 }), joined = await begin(r, code.code), pending = await begin(r, code.code);
+    const browser = await pending.openBrowser("dan");
+    expect((await joined.approve("carol")).status).toBe(200); const issued = await joined.redeem(); expect(issued.status).toBe(200);
+    expect((await r.call(browser, "POST", "/hub/v1/join/approve", { requestId: pending.binding.requestId })).body).toEqual({ code: "denied", reason: "code-ended" });
+    expect((await pending.command("status")).body).toMatchObject({ state: "ended", reason: "code-ended", issued: false });
+    expect((await r.call(browser, "GET", "/hub/v1/join/browser?request=" + pending.binding.requestId)).body).toMatchObject({ state: "ended", reason: "code-ended" });
+    expect((await joined.redeem()).body.credential).toBe(issued.body.credential);
+    expect(r.deps.store.read().fleets).toHaveLength(1);
+  });
+  it("code creation returns distinct protected HTTP reasons for the live and hourly caps", async () => {
+    const { r, admin } = await world(), codes = [];
+    for (let n = 0; n < 8; n++) codes.push(await make(r, admin));
+    const create = () => r.call(admin, "POST", "/hub/v1/admin/enrolment-codes", {});
+    const live = await create(); expect(live.status).toBe(429);
+    expect(live.body).toEqual({ code: "backpressure", reason: "live-code-limit" });
+    expect((await r.call(null, "POST", "/hub/v1/admin/enrolment-codes", {})).status).toBe(401);
+    const outsider = await r.call(await r.signIn("dan"), "POST", "/hub/v1/admin/enrolment-codes", {});
+    expect(outsider.status).toBe(403); expect(outsider.body).toEqual({ code: "denied" });
+    for (const code of codes.slice(0, 2)) {
+      expect((await r.call(admin, "POST", `/hub/v1/admin/enrolment-codes/${code.id}/revoke`, {})).status).toBe(200);
+      await make(r, admin);
+    }
+    const hourly = await create(); expect(hourly.status).toBe(429);
+    expect(hourly.body).toEqual({ code: "backpressure", reason: "hourly-code-limit" });
   });
   it("an issued code request keeps conflict/recovery even after its code ends", async () => {
     const { r, admin } = await world(), code = await make(r, admin), a = await begin(r, code.code), browser = await a.openBrowser("dan");
@@ -220,6 +250,7 @@ describe("B1 enrolment-code protected routes and actual join", () => {
     expect((await a.approve("dan")).status).toBe(200);
     r.db.transaction(() => retireCompanyJoinForWebAddress(r.db, Date.now())).immediate();
     expect(r.deps.companyJoin!.records.get(a.binding.requestId)).toMatchObject({ stage: "ended", reason: "authority", browserHash: null });
+    expect((await a.command("status")).body).toMatchObject({ state: "ended", reason: "authority" });
     expect((await r.call(admin, "GET", "/hub/v1/admin/enrolment-codes")).body.codes[0]).toMatchObject({ uses: 0, inFlight: 0, state: "live" });
     const b = await begin(r, code.code); expect((await b.approve("dan")).status).toBe(200); expect((await b.redeem()).status).toBe(200);
     expect(() => r.db.transaction(() => retireCompanyJoinForWebAddress(r.db, Date.now())).immediate()).toThrow("backpressure");

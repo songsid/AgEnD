@@ -5,6 +5,7 @@ import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { hubClient } from "./hub-client.js";
 import { hj, joinError } from "./hub-company-join-strings.js";
 import { useJoinApproval } from "./hub-join-approval.js";
+import { queueMessage } from "./hub-joincode-flow-strings.js";
 import { he } from "./hub-enrolment-code-strings.js";
 import * as entryWords from "./hub-company-join-strings.js";
 import { HubJoinCard } from "./hub-join-steps.js";
@@ -110,7 +111,7 @@ export function HubCompanyJoinPage({ session }) {
       ${view.state === "pending" ? !error ? html`<div class="field-row"><button class="btn btn-primary" type="button" disabled=${busy} onClick=${connect}>${hj("connectAs", session.displayName || session.login)}</button></div>` : null : terminal && !view.issued && codeFailure && error ? null : html`<p role="status">${view.state === "acknowledged" ? hj(view.connected ? "done" : "offline") : terminal ? joinError(view.reason || view.state) : hj("approved")}</p>`}
       ${view.issued && terminal && view.state !== "acknowledged" ? html`<p class="note">${hj("issued")}</p>` : null}
       ${view.returnPath ? html`<div class="field-row"><a class="btn btn-sm" href=${view.returnPath} rel="noreferrer">${hj("return")}</a></div>` : null}` : view ? html`<${ErrorState} message=${joinError(view.code)} onRetry=${retry} />` : null}
-    ${approval.queued ? html`<p class="note" role="status">${he("queued")}</p>` : null}
+    ${approval.queued ? html`<p class="note" role="status">${queueMessage(approval.retryAttempt)}</p>` : null}
     ${error ? html`<${ErrorState} message=${error} onRetry=${failure?.code === "backpressure" ? connect : () => { if (!codeFailure) setError(null); retry(); }} />` : null}
   </section></div></div>`;
 }

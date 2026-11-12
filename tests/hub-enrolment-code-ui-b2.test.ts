@@ -23,6 +23,7 @@ const text = (p: AppPage) => p.root.textContent || "";
 const buttons = (p: AppPage, name: string) => [...p.root.querySelectorAll("button")].filter((b: any) => b.textContent === name);
 async function open(p: AppPage) { fire(buttons(p, "Create join code")[0], "click"); await settle(10); }
 async function submit(p: AppPage) { fire(p.root.querySelector("#hubEnrolmentCreate"), "submit"); await settle(15); }
+async function confirmEnd(p: AppPage) { expect(p.root.querySelector("dialog")).not.toBeNull(); fire(p.root.querySelector("dialog .btn-danger"), "click"); await settle(10); }
 function input(p: AppPage, id: string, value: string, event = "input") { const el = p.root.querySelector(id); el.value = value; fire(el, event); }
 async function groupDn(p: AppPage, value: string) {
   // Actual U2 picker, unsupported on this fixture client: it hands over to the existing exact-DN resolver.
@@ -33,6 +34,44 @@ async function groupDn(p: AppPage, value: string) {
 }
 
 describe("B2 code management: explicit configured-admin actions", () => {
+  it.each([
+    ["en", "live-code-limit", "At most 8 join codes can be live. End one before creating another."],
+    ["en", "hourly-code-limit", "At most 10 join codes can be created in one hour. Try again later."],
+    ["zh-TW", "live-code-limit", "最多 8 組有效的加入碼，請先停用一組，再建立新的加入碼。"],
+    ["zh-TW", "hourly-code-limit", "一小時內最多建立 10 組加入碼，請晚點再試。"],
+  ])("a %s/%s creation limit names its real remedy", async (lang, reason, message) => {
+    const fetchImpl = vi.fn(async (_url: string, init: any) => ({ ok: init.method === "GET", status: init.method === "GET" ? 200 : 429, headers: new Headers(),
+      json: async () => init.method === "GET" ? { codes: [] } : { code: "backpressure", reason } }));
+    const c = clients.createHubWebClient({ fetchImpl }), p = await mount(c, {}, lang);
+    fire(buttons(p, lang === "en" ? "Create join code" : "建立加入碼")[0], "click"); await settle(8); await submit(p);
+    expect(text(p)).toContain(message); expect(text(p)).not.toContain(lang === "en" ? "The Hub is busy" : "Hub 目前忙碌");
+    expect(fetchImpl.mock.calls.filter(([, init]: any) => init.method === "POST")).toHaveLength(1);
+  });
+  it.each(["en", "zh-TW"])("%s end-code confirmation names affected joins, supports Cancel and shows success", async lang => {
+    let ended = false;
+    const c = fake({ enrolmentCodes: vi.fn(async () => ({ ok: true, codes: [{ ...liveCode(), inFlight: 3,
+      inFlightLabels: ["Design Fleet", "<img src=x>", "QA Fleet"], ...(ended ? { state: "revoked", code: null } : {}) }] })),
+      revokeEnrolmentCode: vi.fn(async () => { ended = true; return { ok: true }; }) });
+    const p = await mount(c, { enabled: false }, lang), end = lang === "en" ? "End this code now" : "立即停用這組碼";
+    fire(buttons(p, end)[0], "click"); await settle(5);
+    expect(c.revokeEnrolmentCode).not.toHaveBeenCalled();
+    const dialog = p.root.querySelector("dialog"); expect(dialog).not.toBeNull();
+    expect(dialog.textContent).toContain("1234-ABCD"); expect(dialog.textContent).toContain("Design Fleet");
+    expect(dialog.textContent).toContain(lang === "en" ? "3 Fleet connections in progress will stop" : "正在連接的 3 台 Fleet 將中斷");
+    expect(dialog.textContent).toContain("<img src=x>"); expect(dialog.querySelector("img")).toBeNull();
+    fire([...dialog.querySelectorAll("button")].find((b: any) => b.textContent === (lang === "en" ? "Cancel" : "取消")), "click"); await settle(5);
+    expect(c.revokeEnrolmentCode).not.toHaveBeenCalled(); expect(p.root.querySelector("dialog")).toBeNull();
+    fire(buttons(p, end)[0], "click"); await settle(5); fire(p.root.querySelector("dialog .btn-danger"), "click"); await settle(15);
+    expect(c.revokeEnrolmentCode).toHaveBeenCalledExactlyOnceWith(ID); expect(p.root.querySelector("dialog")).toBeNull();
+    expect(text(p)).toContain(lang === "en" ? "The code has ended. Fleets already connected are unchanged." : "加入碼已停用，已連接的 Fleet 不受影響。");
+  });
+  it("sign-out retires an unconfirmed end-code dialog without a write", async () => {
+    let signedOut!: () => void;
+    const c = fake({ enrolmentCodes: async () => ({ ok: true, codes: [liveCode()] }), onSignedOut: (fn: any) => { signedOut = fn; return () => {}; } });
+    const p = await mount(c); fire(buttons(p, "End this code now")[0], "click"); await settle(5);
+    expect(p.root.querySelector("dialog")).not.toBeNull(); signedOut(); await settle(5);
+    expect(p.root.querySelector("dialog")).toBeNull(); expect(c.revokeEnrolmentCode).not.toHaveBeenCalled();
+  });
   it("is a named opt-in slot and stays inert with a cached client", async () => {
     expect(ui.enrolmentCodeV1).toBe(true); expect(ui.HubEnrolmentCode).toBeTypeOf("function");
     const c = fake({ enrolmentCodeV1: undefined }), p = await mount(c);
@@ -81,6 +120,7 @@ describe("B2 code management: explicit configured-admin actions", () => {
     const c = fake({ enrolmentCodes: vi.fn(async () => ({ ok: true, codes: [liveCode()] })) }), changed = vi.fn();
     const p = await mount(c, { enabled: false, onChanged: changed }); expect(buttons(p, "Create join code")[0].disabled).toBe(true);
     fire(buttons(p, "End this code now")[0], "click"); await settle(15);
+    await confirmEnd(p);
     expect(c.revokeEnrolmentCode).toHaveBeenCalledExactlyOnceWith(ID); expect(changed).toHaveBeenCalledOnce();
     expect(c.createEnrolmentCode).not.toHaveBeenCalled();
   });
@@ -123,6 +163,7 @@ describe("B2 code management: explicit configured-admin actions", () => {
     const c = fake({ onSignedOut: (fn: any) => { signedOut = fn; return () => {}; },
       enrolmentCodes: async () => ({ ok: true, codes: [liveCode()] }), revokeEnrolmentCode: vi.fn(() => new Promise(resolve => { release = resolve; })) });
     const changed = vi.fn(), p = await mount(c, { onChanged: changed }); fire(buttons(p, "End this code now")[0], "click"); await settle(3);
+    await confirmEnd(p);
     signedOut(); await settle(5); expect(text(p)).not.toContain("1234-ABCD");
     release({ ok: true }); await settle(10); expect(changed).not.toHaveBeenCalled(); expect(text(p)).not.toContain("1234-ABCD");
   });
@@ -133,6 +174,7 @@ describe("B2 code management: explicit configured-admin actions", () => {
     const timers: Array<() => void> = [], original = globalThis.setTimeout;
     vi.spyOn(globalThis, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => ms === 5000 ? (timers.push(fn), 123 as any) : original(fn, ms, ...args));
     const p = await mount(c); timers.shift()!(); await settle(3); fire(buttons(p, "End this code now")[0], "click"); await settle(10);
+    await confirmEnd(p);
     release({ ok: true, codes: [liveCode()] }); await settle(10);
     expect(text(p)).not.toContain("1234-ABCD"); expect(text(p)).toContain("Ended");
   });

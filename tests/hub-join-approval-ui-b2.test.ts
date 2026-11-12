@@ -24,6 +24,21 @@ async function rig(answer: (n: number) => any, lang = "en") {
   return { p, calls, posts: () => calls.filter(c => c.path.endsWith("/approve")) };
 }
 describe("B2 actual Hub approval page", () => {
+  it.each(["en", "zh-TW"])("%s queue shows the current retry out of eight without changing its request", async lang => {
+    const timers = queueTimers(), r = await rig(() => ({ ok: false, code: "backpressure" }), lang);
+    fire(button(r.p, lang === "en" ? "Connect as Carol" : "以 Carol 的身分連接"), "click"); await settle(8);
+    expect(r.p.root.textContent).toContain(lang === "en" ? "Retry 1 of 8" : "第 1 次重試，共 8 次");
+    timers.shift()!(); await settle(8);
+    expect(r.p.root.textContent).toContain(lang === "en" ? "Retry 2 of 8" : "第 2 次重試，共 8 次");
+    expect(r.posts()).toHaveLength(2); expect(r.posts().every(c => JSON.parse(c.init.body).requestId === ID)).toBe(true);
+  });
+  it.each(["en", "zh-TW"])("%s terminal status carries the ended-code reason without a preceding approve failure", async lang => {
+    const p = page({ url: "https://hub.example.test/ui/hub?join=" + ID, storage: { agend_lang: lang } }); mounted.push(p); i18n.setLang(lang, { store: false });
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, state: "ended", reason: "code-ended", issued: false }) })));
+    await p.mount(h(ui.HubCompanyJoinPage, { session: { csrf: "owned" } })); await settle(12);
+    expect(p.root.textContent).toContain(lang === "en" ? "This join code is no longer valid or has been used up." : "加入碼已失效或已用完。");
+    expect(p.root.textContent).not.toContain(lang === "en" ? "Local authorization changed" : "本機授權已變更");
+  });
   it("shows the queue and retries the same request and session after backpressure", async () => {
     const timers = queueTimers(), r = await rig(n => n === 1 ? { ok: false, code: "backpressure" } : { ok: true });
     fire(button(r.p, "Connect as Carol"), "click"); await settle(10);
@@ -110,11 +125,11 @@ describe("B2 actual Hub approval page", () => {
     await r.p.unmount(); expect(signal.aborted).toBe(true); release({ ok: false, code: "denied" }); await settle(5);
     expect(r.p.root.textContent).toBe("");
   });
-  it("approval after company sign-in queues the same request without signing in a second time", async () => {
-    const timers = queueTimers(), p = page({ url: "https://hub.example.test/ui/hub?join=" + ID }); mounted.push(p); i18n.setLang("en", { store: false });
+  it.each(["en", "zh-TW"])("%s approval after company sign-in shows retry progress without signing in a second time", async lang => {
+    const timers = queueTimers(), p = page({ url: "https://hub.example.test/ui/hub?join=" + ID, storage: { agend_lang: lang } }); mounted.push(p); i18n.setLang(lang, { store: false });
     const deadline = Date.now() + 60_000, calls: any[] = []; let approvals = 0;
     vi.stubGlobal("fetch", vi.fn(async (path: string, init: any = {}) => {
-      calls.push({ path, init }); const r = path.includes("/approve") ? (++approvals === 1 ? { ok: false, code: "backpressure" } : { ok: true })
+      calls.push({ path, init }); const r = path.includes("/approve") ? (++approvals <= 2 ? { ok: false, code: "backpressure" } : { ok: true })
         : { ok: true, state: "pending", label: "My Fleet", outerDeadline: deadline };
       return { ok: r.ok !== false, json: async () => r };
     }));
@@ -123,9 +138,10 @@ describe("B2 actual Hub approval page", () => {
     await p.mount(h(panel.HubPanel, { route: { tab: "ask" } })); await settle(20);
     const login = p.root.querySelector("#hubLogin"), password = p.root.querySelector("#hubPassword");
     login.value = "carol"; fire(login, "input"); password.value = "inert-fixture"; fire(password, "input"); await settle(3);
-    fire(p.root.querySelector("form"), "submit"); await settle(10); expect(p.root.textContent).toContain("Waiting in the queue");
+    fire(p.root.querySelector("form"), "submit"); await settle(10); expect(p.root.textContent).toContain(lang === "en" ? "Retry 1 of 8" : "第 1 次重試，共 8 次");
+    timers.shift()!(); await settle(10); expect(p.root.textContent).toContain(lang === "en" ? "Retry 2 of 8" : "第 2 次重試，共 8 次");
     timers.shift()!(); await settle(15); expect(signIn).toHaveBeenCalledOnce();
-    const posts = calls.filter(c => c.path.includes("/approve")); expect(posts).toHaveLength(2);
+    const posts = calls.filter(c => c.path.includes("/approve")); expect(posts).toHaveLength(3);
     expect(posts.every(c => JSON.parse(c.init.body).requestId === ID && c.init.headers["X-AgEnD-Hub-CSRF"] === "new-session")).toBe(true);
     expect(p.root.querySelector("#hubPassword")).toBeNull();
   });

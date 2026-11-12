@@ -22,9 +22,10 @@ export function useJoinApproval(options) {
     if (!holder.current || holder.current.csrf !== csrf) {
       holder.current?.queue.cancel();
       holder.current = { csrf, queue: createJoinApprovalQueue({ requestId, deadline, csrf, current, approve: options.approve,
-        onChange: event => { if (current()) setPhase(event.phase); } }) };
+        onChange: event => { if (current()) setPhase(event); } }) };
     }
     return holder.current.queue.run();
   };
-  return { run, queued: phase === "queued", busy: phase === "approving" || phase === "queued" };
+  return { run, queued: phase?.phase === "queued", busy: phase?.phase === "approving" || phase?.phase === "queued",
+    retryAttempt: phase?.phase === "queued" ? phase.attempts : null };
 }

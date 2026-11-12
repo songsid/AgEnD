@@ -217,7 +217,9 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     let json = null;
     try { json = await r.json(); } catch { json = null; }
     if (r.status === 401) { csrf = null; codeNotices = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
-    if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0 };
+    if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0,
+      ...(method === "POST" && path === "/hub/v1/admin/enrolment-codes" && r.status === 429 && json?.code === "backpressure"
+        && ["live-code-limit", "hourly-code-limit"].includes(json.reason) ? { reason: json.reason } : {}) };
     return { ok: true, ...(json && typeof json === "object" ? json : {}) };
   }
   const id = (v) => encodeURIComponent(String(v));
