@@ -119,6 +119,7 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "runtimes.windows_cli": "now",
   "runtimes.remote_runtime": "now",
   "runtimes.max_agents_per_machine": "now",
+  "web.log_thinking": "now",
   "web.usage_report_on_public_link": "now",
   "web.office_levels": "now",
   "web.preview_cdn": "now",

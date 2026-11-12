@@ -167,6 +167,8 @@ export interface WebLoginSink {
   terminal(info: { url: string; ttlMinutes: number; command: string; loopback: boolean; public: boolean }): void;
   /** The session ended (any way); its words still come through adapter.sendText. */
   ended(result: { ok: boolean }): void;
+  /** AGEND-203: the start was refused because a sign-in for `backend` is in progress — the dialog offers a button to end it (chat says `/login cancel`). */
+  busy?(backend: string): void;
 }
 
 export interface LoginStartOptions {
@@ -229,12 +231,14 @@ export interface LoginControllerDeps {
     /** The credential profile the buttons sign in (#1699): a click must never fall back to the default login. */
     profile?: string;
   }): Promise<void>;
-  /** Fleet-wide window reservation (shared with install). */
+  /** The backend's window reservation (one per backend, shared with install and the other credential writers; see login-window-lock.ts). */
   claimWindow(backend: string): LoginWindowClaim | null;
   releaseWindow(claim: LoginWindowClaim): void;
   /** False once the fleet is shutting down or the claim was superseded — continuations must stop. */
   isClaimCurrent(claim: LoginWindowClaim): boolean;
-  windowBusyMessage(): string;
+  windowBusyMessage(backend: string): string;
+  /** Who holds the window a start for `backend` was refused by (its own, or the install in progress), so the dashboard can offer to end it. */
+  windowHolder?(backend: string): LoginWindowClaim | null;
   // Injection seams (tests): default to the real engine.
   checkAuth?: (check: AuthCheck, env?: Record<string, string>) => Promise<AuthCheckResult>;
   createSession?: (spec: WebTerminalSpec, events: WebTerminalEvents, logger: TerminalLogger) => WebTerminalSession;
@@ -320,12 +324,21 @@ export class LoginController {
   private managedTunnel: ManagedTunnel | null = null;
   /** A public-link start between its claim and its session: getting cloudflared (#1141 review). */
   private pendingTunnelStart: { backend: string; abort: AbortController; sink?: WebLoginSink } | null = null;
+  /** Starts past their confirmation, between the claim and a published session (claim id → backend). One whose claim was ended meanwhile (cancelled) no longer counts. */
+  private readonly starting = new Map<number, { backend: string; claim: LoginWindowClaim }>();
 
   constructor(private readonly deps: LoginControllerDeps) {}
 
-  /** A session, or a public-link start still getting its cloudflared (cancellable either way). */
-  isActive(): boolean { return this.active !== null || this.pendingTunnelStart !== null; }
+  /** A session, or a start that has not published one yet (a public-link start still getting its cloudflared): all cancellable. */
+  isActive(): boolean { return this.active !== null || this.pendingTunnelStart !== null || this.pendingStart() !== null; }
   get activeBackend(): string | null { return this.active?.backend ?? null; }
+  /** The backend of the session `cancel()` would end: the running one, the public-link start still getting its cloudflared, or a start between its claim and its session (AGEND-207). */
+  get pendingBackend(): string | null { return this.active?.backend ?? this.pendingTunnelStart?.backend ?? this.pendingStart()?.backend ?? null; }
+  /** A start past its confirmation whose claim is still live and that has no session yet. */
+  private pendingStart(): { backend: string; claim: LoginWindowClaim } | null {
+    for (const s of this.starting.values()) if (this.deps.isClaimCurrent(s.claim)) return s;
+    return null;
+  }
   /**
    * #3212 PR 2: whether a sign-in for this backend's `profile` (null: its default login) is running — or one for this
    * backend is still starting (its public link coming) and its profile is not known yet. Remove refuses while it is.
@@ -382,7 +395,12 @@ export class LoginController {
     // resumption after an await re-checks that the claim is still current —
     // a fleet shutdown in between must stop us (sol round 2 B1/B2).
     const claim = this.deps.claimWindow(backend);
-    if (!claim) return this.deps.windowBusyMessage();
+    if (!claim) return this.refused(chat, this.deps.windowBusyMessage(backend), this.deps.windowHolder?.(backend) ?? null);
+    // AGEND-203: windows are per backend now, but this controller holds ONE terminal session (and one tunnel) at a time: while another backend's session is
+    // running — or starting — this one waits, and says whose it is. The checks below are synchronous with the claim, so two starts cannot both pass.
+    const other = this.otherSession(claim);
+    if (other !== null) { this.deps.releaseWindow(claim); return this.refused(chat, t("login.busy", other), { id: 0, kind: "web", backend: other }); }
+    if (opts.skipAuthCheck) this.starting.set(claim.id, { backend, claim });
     let transferred = false;
     // Reserve before installer/probe awaits; another purpose may not join this start.
     const tunnelReservation = opts.tunnel && opts.skipAuthCheck ? this.deps.reserveTunnel?.(`login:${claim.id}`) : undefined;
@@ -390,8 +408,27 @@ export class LoginController {
     try {
       return await this.startClaimed(flow, backend, chat, opts, cfg, claim, generation, () => { transferred = true; }, tunnelReservation);
     } finally {
+      this.starting.delete(claim.id);
       if (!transferred) { this.deps.releaseWindow(claim); tunnelReservation?.releaseUnused(); }
     }
+  }
+
+  /** The backend of another terminal session this controller already runs or is starting, if any. */
+  private otherSession(claim: LoginWindowClaim): string | null {
+    if (this.active) return this.active.backend;
+    if (this.pendingTunnelStart) return this.pendingTunnelStart.backend;
+    for (const [id, s] of this.starting) if (id !== claim.id && this.deps.isClaimCurrent(s.claim)) return s.backend;
+    return null;
+  }
+
+  /** A refused start's answer: chat's words, or — for the dashboard — a sentence without the chat command, and the backend whose sign-in it can end. */
+  private refused(chat: LoginChat, message: string, holder: LoginWindowClaim | null): string {
+    // Only a holder the dashboard can end gets the button: a sign-in. An install, a sign-out/Remove or a keep-alive refresh just finishes (or is refused in plain words).
+    if (!chat.web || !holder || holder.kind === "install") return message;
+    // A sign-out, Remove or keep-alive refresh ends by itself: say so in plain words — a button would only ask again while it still runs.
+    if (holder.kind !== "web") return t("login.busy_wait", holder.backend);
+    try { chat.web.busy?.(holder.backend); } catch { /* the dialog's state only */ }
+    return t("login.busy_web", holder.backend);
   }
 
   /** The fence every continuation applies after an await: stopping, a newer shutdown generation, or a lost claim. */
@@ -690,7 +727,13 @@ export class LoginController {
       abort.abort();
       return t("login.cancelled", backend);
     }
-    if (!this.active) return t("login.no_session");
+    if (!this.active) {
+      // AGEND-207: a start between its claim and its session: ending its claim makes the start see it lost the window (`stale`) and stop.
+      const start = this.pendingStart();
+      if (!start) return t("login.no_session");
+      this.deps.releaseWindow(start.claim);
+      return t("login.cancelled", start.backend);
+    }
     const backend = this.active.shown;
     await this.active.session.cancel("cancelled");
     return t("login.cancelled", backend);

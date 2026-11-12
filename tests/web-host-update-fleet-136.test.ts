@@ -90,7 +90,7 @@ describe("startWebInstall — update", () => {
     expect(flow.command).toContain("agend-install");
     expect(flow.command).toContain("curl -fsSL https://x.ai/cli/install.sh | bash -s 1.0.77");
     expect(flow.command).not.toMatch(/latest/);
-    expect((fm as any).loginWindow.current).toMatchObject({ kind: "install", backend: "grok" });
+    expect((fm as any).loginWindow.heldFor("grok")).toMatchObject({ kind: "install", backend: "grok" });
   });
   it("success: the version afterwards is the binary probe's own, read again; the window is released", async () => {
     writeGrok("1.0.70"); onPath();

@@ -109,6 +109,11 @@ export interface OutboundContext {
   requestWindowsConfig?(requester: string, name: string, patch: Record<string, unknown>): Promise<{ id: string; state: string }>;
   /** M-2297: the fleet's stop (lifecycle transition; a native pane closed, never detached). Throws when it cannot. */
   stopInstance(name: string): Promise<{ backgroundWorkEnded: boolean }>;
+  /** #3715: a ClassicBot room's account (backend_options.<cli>.credential_profile), written and relaunched as Settings does. */
+  switchClassicRoomProfile?(name: string, backendOptions: unknown): Promise<
+    { ok: true; channel: string; backend: string; profile: string | null; changed: boolean } | { ok: false; error: string; loginCommand?: string }>;
+  /** The profile an instance was launched on (a ClassicBot room: its running daemon's), null for the shared login. */
+  credentialProfileOf?(name: string, backend: string): string | null;
   restartSingleInstance(name: string, opts?: { freshStart?: boolean; explicit?: boolean; carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null } }): Promise<void>;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number, retryStoppedSession?: boolean): Promise<void>;
@@ -1445,6 +1450,13 @@ const updateInstanceConfig: Handler = async (ctx, rawArgs, respond, meta) => {
     respond(null, WINDOWS_TOOL_SET_REFUSED);
     return;
   }
+  // #3715 (M-2961): a ClassicBot room takes its AI account and nothing else. The raw keys decide (the schema strips
+  // unknown ones), so an unsupported field is refused rather than dropped.
+  if (typeof target === "string" && !(instances && Object.hasOwn(instances, target))
+    && (ctx.classicChannels?.getAll() ?? []).some(channel => channel.instanceName === target)) {
+    await updateClassicRoomProfile(ctx, target, (rawArgs as any)?.config, respond);
+    return;
+  }
   const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
   if (!v.ok) { respond(null, v.error); return; }
   // M-2239 P1-1: a Windows agent's settings belong to the administrator's dashboard, not to another agent.
@@ -1464,6 +1476,38 @@ const updateInstanceConfig: Handler = async (ctx, rawArgs, respond, meta) => {
   }
   applyInstanceConfigPatch(ctx, v.data.name, v.data.config, respond);
 };
+
+/** Today's refusal (#3715 keeps it word for word for every key but a room's account). */
+const CLASSIC_CONFIG_REFUSED = "This is a ClassicBot instance (managed in classicBot.yaml). Use set_display_name or set_description to configure it.";
+
+/**
+ * #3715: update_instance_config on a ClassicBot room. Only `config.backend_options.<backend>.credential_profile`; the
+ * write and relaunch are the room's Settings save (switchClassicRoomProfile). The answer names the profile the room was
+ * relaunched on, read back from its running daemon — not the one asked for.
+ */
+async function updateClassicRoomProfile(ctx: OutboundContext, name: string, rawConfig: unknown, respond: Respond): Promise<void> {
+  const config = rawConfig && typeof rawConfig === "object" && !Array.isArray(rawConfig) ? rawConfig as Record<string, unknown> : {};
+  const fields = Object.keys(config).filter(key => config[key] !== undefined);
+  if (fields.length !== 1 || fields[0] !== "backend_options" || !ctx.switchClassicRoomProfile) { respond(null, CLASSIC_CONFIG_REFUSED); return; }
+  let result: Awaited<ReturnType<NonNullable<OutboundContext["switchClassicRoomProfile"]>>>;
+  try { result = await ctx.switchClassicRoomProfile(name, config.backend_options); }
+  catch (err) { respond(null, `Failed to switch the room's account: ${(err as Error).message}`); return; }
+  if (!result.ok) { respond(null, result.loginCommand ? `${result.error}:\n  ${result.loginCommand}` : result.error); return; }
+  const running = targetState(ctx, name) === "running";
+  const launched = running ? (ctx.credentialProfileOf?.(name, result.backend) ?? null) : undefined;
+  respond({
+    success: true,
+    name,
+    classic_room: result.channel,
+    backend: result.backend,
+    credential_profile: result.profile ?? "default",
+    changed: result.changed,
+    restarted: result.changed && running,
+    ...(running
+      ? { launched_profile: launched ?? "default", ...(launched !== result.profile ? { warning: `The room is running on "${launched ?? "default"}", not "${result.profile ?? "default"}".` } : {}) }
+      : { note: `The room is ${targetState(ctx, name)}; it starts on this account next time.` }),
+  });
+}
 
 /**
  * What update_instance_config merges into an instance — and, in-process only, what chat `/backend` (#1806) needs on
@@ -1485,7 +1529,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
     const isClassic = (ctx.classicChannels?.getAll() ?? [])
       .some(channel => channel.instanceName === name);
     respond(null, isClassic
-      ? "This is a ClassicBot instance (managed in classicBot.yaml). Use set_display_name or set_description to configure it."
+      ? CLASSIC_CONFIG_REFUSED
       : `Instance '${name}' not found in fleet config`);
     return;
   }

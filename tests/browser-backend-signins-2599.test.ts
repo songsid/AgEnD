@@ -62,6 +62,14 @@ it("duplicate begin joins the same run, owner-only hints, then skip waits for cl
   expect(skipped.skipped).toContain("codex"); expect(skipped.pending).toContain("codex");
   expect(readFileSync(join(h.dir, "backend-signin-pending.json"), "utf8")).not.toContain("TEST-CODE");
 });
+it("#3725 review: only the begin that CREATED a run names it (`started`); one that joined a run already going — a double click, another tab, a refresh — names none", async () => {
+  const h = rig(); const a = await h.c.begin(h.owner, "codex"); const b = await h.c.begin(h.owner, "codex");
+  expect(a.started).toBe(a.login?.id); expect(a.started).toMatch(/^[0-9a-f]{32}$/);
+  expect(b.login?.id).toBe(a.login?.id); expect(b.started).toBeUndefined();
+  expect(h.c.snapshot(h.owner).started).toBeUndefined();                    // a read never claims one
+  // Another backend's start while codex runs joins codex's run too (one structured run at a time here): it names none, so its dialog cannot end codex's run on Close.
+  const other = await h.c.begin(h.owner, "kiro-cli"); expect(other.login?.id).toBe(a.login?.id); expect(other.started).toBeUndefined();
+});
 it("failed cleanup blocks replacement attempts and handoff", async () => {
   const h = rig(); await h.c.begin(h.owner, "codex"); h.transport.close.mockRejectedValue(new Error("private vendor text"));
   await expect(h.c.skip(h.owner, "codex")).rejects.toThrow("signin_cleanup_failed");

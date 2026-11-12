@@ -38,6 +38,7 @@ import {
 import type { Logger } from "./logger.js";
 import type { InstanceClient } from "./channel/ipc-bridge.js";
 import type { EventLog } from "./event-log.js";
+import { thinkingOn } from "./log-service.js";
 import type { TmuxControlClient } from "./tmux-control.js";
 import type { FleetInstructionsParams } from "./instructions.js";
 import type { DeliveryStatus } from "./status-emojis.js";
@@ -2047,6 +2048,9 @@ export class InstanceLifecycle {
       ? this.ctx.kiroPeerWorkingDirectories ? () => this.ctx.kiroPeerWorkingDirectories!(name) : undefined
       : () => peerWorkingDirectories(this.ctx.fleetConfig, name, backendName));
     daemon.setStatusEmojiAvoidList(() => this.ctx.statusEmojiAvoidList?.(name));
+    // AGEND-181/197: thinking summaries in the transcript, only while the thinking switch is ON (it is off by default: then
+    // the CLI's own settings are left exactly as they were).
+    daemon.setThinkingSummaries?.(() => thinkingOn(this.ctx.fleetConfig?.web));
     // Before start: the first spawn builds the command and emits its launch
     // warning synchronously inside Daemon.start, long before
     // attachIncidentHandlers runs (#984).
