@@ -63,7 +63,7 @@ On the Hub, **Administration** opens with the **Let colleagues join** card. Whil
 
 Under the card:
 
-- **Invitation exceptions** lets one named person connect without being in an allowed group.
+- **Individual invitations** lets one named person connect without being in an allowed group.
 - **Link with key fingerprint (Advanced)** is a link that also carries the Hub's identity, for a colleague who must check the fingerprint by hand. They paste it into the same Hub address box.
 
 The **Connected fleets** list shows each Fleet by its name, with its owner under it. Revoked Fleets are folded under **Revoked (*n*)**. To end a Fleet's connection from the Hub, open its row's menu and choose **Revoke…**.
