@@ -1,0 +1,36 @@
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><link rel="stylesheet" href="m.css"><body><h1>Hub 管理 → 角色與權限：編輯角色 <span class="tag">設計示意，非現有畫面</span></h1>
+<p class="sub">角色是一組有名字的權限。內建三個：管理員、主管、成員；可以再新增。角色指派給個人或 AD 群組；「團隊」權限一定要指定範圍（一個 AD 群組）。</p>
+<div class="row"><div class="side"><p class="cap">角色</p>
+<div class="item">管理員 <span class="pill gray">內建 · 2 人</span></div>
+<div class="item on">主管 <span class="pill gray">內建 · 3 人</span></div>
+<div class="item">成員 <span class="pill gray">內建 · 132 人</span></div>
+<div class="item">專案負責人 <span class="pill gray">自訂 · 4 人</span></div>
+<span class="btn ghost">＋ 新增角色</span>
+<div class="note" style="margin-top:22px">「管理員」的權限不能改，也不能刪除。<br>最後一位管理員不能被移除。</div></div>
+<div class="col"><div class="card"><h2>主管 <span class="pill gray">內建，可調整權限</span></h2><span class="muted">可以看自己團隊的加入情況與用量，並核准團隊成員的申請。看不到任何人的對話內容。</span>
+<div class="row" style="margin-top:6px"><div class="col">
+<div class="grp">自己使用</div>
+<div class="ck"><span class="box on">✓</span><span>和 Agent 對話</span></div>
+<div class="ck"><span class="box on">✓</span><span>分享 Agent</span></div>
+<div class="ck"><span class="box on">✓</span><span>連接 Fleet　每人最多 <b>2</b> 台</span></div>
+<div class="grp">團隊（限指派時選的範圍）</div>
+<div class="ck"><span class="box on">✓</span><span>查看團隊名單<small>誰已加入、連接了幾台 Fleet、分享了幾個 Agent</small></span></div>
+<div class="ck"><span class="box on">✓</span><span>查看團隊用量<small>每人提問與回答的次數；不含內容</small></span></div>
+<div class="ck"><span class="box on">✓</span><span>核准連接申請<small>讓範圍內、還沒有連接權限的人連接一台 Fleet</small></span></div>
+<div class="ck"><span class="box"></span><span>核准提問申請<small>只限擁有者已交給主管核准的 Agent</small></span></div>
+</div><div class="col">
+<div class="grp">Hub 管理（整個 Hub）</div>
+<div class="ck"><span class="box"></span><span>管理已連接的 Fleet<small>查看全部、撤銷</small></span></div>
+<div class="ck"><span class="box"></span><span>管理加入方式<small>公司帳號連接、加入碼、個別邀請</small></span></div>
+<div class="ck"><span class="box"></span><span>指派角色<small>只能指派自己擁有的權限以內的角色</small></span></div>
+<div class="ck"><span class="box"></span><span>查看稽核紀錄</span></div>
+<div class="ck"><span class="box lock">–</span><span style="color:#777">編輯角色、Hub 設定<small>只有「管理員」有，不能加到其他角色</small></span></div>
+</div></div></div>
+<div class="card" style="margin-top:14px"><h2>指派給</h2>
+<table><tr><th>對象</th><th>範圍</th><th>到期</th><th>指派者</th><th></th></tr>
+<tr><td>王小明 <span class="mono muted">alice</span></td><td>AD 群組「RD 一部」· 24 人</td><td>無</td><td>陳管理 · 11/14</td><td class="right link">移除</td></tr>
+<tr><td>AD 群組「RD 主管」· 2 人</td><td>AD 群組「RD 全體」· 132 人</td><td>無</td><td>陳管理 · 11/14</td><td class="right link">移除</td></tr></table>
+<div class="in ph" style="margin-top:12px"><span>搜尋姓名或 AD 群組</span><span class="muted">範圍：選一個 AD 群組 ▾　到期：無 ▾</span></div>
+<div class="imp"><b>儲存前的檢查</b>：1 人會新增「查看團隊用量」：王小明。沒有人會失去權限。<br><span class="warn">把角色指派給 AD 群組後，能在 AD 管理這個群組成員的人，也就能決定誰有這個角色。</span></div>
+<span class="btn">儲存</span><span class="btn ghost">取消</span></div></div></div>
+</body></html>

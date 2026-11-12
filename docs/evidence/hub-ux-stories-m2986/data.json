@@ -1,0 +1,1704 @@
+{
+ "meta": {
+  "intro": "從三種角色的角度寫下使用者故事，再一步一步對照 alpha 最新版的畫面原始碼與字串：每一步會看到什麼、有哪些按鈕、接著做什麼，以及這一步順不順。全部是讀原始碼得到的，沒有實際執行。",
+  "pills": [
+   "原始碼版本：release/2.3.5-alpha @ 8da18b33",
+   "2026-11-13",
+   "只讀原始碼，未實際執行",
+   "撰寫與走查：Argon、GrokCore、Sentinel 兩兩一組",
+   "彙整與查核：Lumen"
+  ],
+  "overview": "連接與分享這條主線已經走得通，新的「讓同仁加入」三步驟卡片是最清楚的一段。問題集中在三處：帶 ClassicBot 聊天室的人沒有路可走而且畫面沒說、主管想做的事多半沒有畫面、幾段文字是寫給別的情境的人看的。",
+  "footer": "方法：三個 Agent 兩兩一組，各寫一個角色的故事並對照原始碼走查；每一則引用的檔案與行號都由彙整者在 8da18b33 重新查核。查核時修正了三處：管理員的群組設定原本走的是已不顯示的舊畫面，改為現行的三步驟卡片；兩段引用的文字與原始碼不符，已改為原文。加入碼（#3706）尚未合併，標為「尚未合併」。本頁沒有實際執行任何流程，回答是否真的送達、時間是否在標準內，要等實機走查。"
+ },
+ "axes": {
+  "channel": [
+   "只有 Web",
+   "Web + Discord",
+   "Web + Telegram"
+  ],
+  "mfa": [
+   "已綁定驗證器",
+   "未綁定"
+  ],
+  "agent": [
+   "Fleet Agent",
+   "ClassicBot 聊天室"
+  ]
+ },
+ "legend": {
+  "story": "有故事，而且走得順",
+  "warn": "有故事，走得通但有令人困惑的步驟",
+  "impossible": "產品上做不到",
+  "oos": "這個角色不會遇到",
+  "gap": "有故事，但使用者需要的畫面不存在"
+ },
+ "findings": [
+  {
+   "sev": "blocker",
+   "title": "帶 ClassicBot 聊天室的人無法分享，畫面也沒說為什麼",
+   "detail": "「分享的 Agent」只列出 Fleet 的 Agent，ClassicBot 聊天室不在清單裡。只有聊天室的人會看到「這個 Fleet 還沒有 Agent。」，然後就沒有下一步。情境矩陣有一半因此做不到。",
+   "fix": "先在這一頁寫明「目前只能分享 Fleet Agent，ClassicBot 聊天室還不行」；要不要支援聊天室是產品決定。",
+   "stories": [],
+   "src": [
+    "src/ui/settings-hub.js:254",
+    "src/fleet-manager.ts:2315-2316",
+    "src/hub/member/exposure-api.ts:82-91"
+   ],
+   "cls": "gap",
+   "owner": "dev-claude2",
+   "files": "在「分享的 Agent」加一句說明並改空白狀態的文字：src/ui/settings-hub.js:254、hub-strings.js:145、hub-agent-copy.js:14。要不要支援聊天室另外決定。"
+  },
+  {
+   "sev": "missing",
+   "title": "主管不是一個角色：團隊名單、申請核准、用量都沒有畫面",
+   "detail": "Hub 只有管理員與 Agent 擁有者。主管看不到團隊誰加入了（進不了「管理」），同仁沒有地方申請提問，也沒有依同仁或團隊的用量。",
+   "fix": "先決定主管要不要成為產品角色。最小的一步：給群組負責人一個唯讀的團隊檢視（誰已連接、誰問過）。",
+   "stories": [
+    "M2",
+    "M3",
+    "M4"
+   ],
+   "src": [
+    "src/ui/panel-hub.js:821-838,874",
+    "src/ui/hub-quota.js:19-21"
+   ],
+   "cls": "decision",
+   "owner": "使用者決定",
+   "files": ""
+  },
+  {
+   "sev": "missing",
+   "title": "允許提問只能一次一位、打確切的登入名稱",
+   "detail": "沒有搜尋，也不能依 AD 群組或部門授權；最長 90 天。十個人的團隊要輸入十次，到期再來一次。管理員那邊已經可以搜尋群組，這裡還不行。",
+   "fix": "沿用「讓同仁加入」的群組搜尋，讓擁有者可以允許一個 AD 群組提問；至少提供姓名搜尋。",
+   "stories": [
+    "M1",
+    "U4"
+   ],
+   "src": [
+    "src/ui/panel-hub.js:844-868",
+    "src/ui/hub-owner-strings.js:32-33"
+   ],
+   "cls": "decision",
+   "owner": "使用者決定",
+   "files": ""
+  },
+  {
+   "sev": "missing",
+   "title": "加入碼還不在 alpha 裡",
+   "detail": "「讓同仁加入」的步驟 3 已經留了位置，但加入碼的建立與管理畫面在 #3706，尚未合併。大量加入目前只能靠 AD 群組。",
+   "fix": "#3706 合併後補走這一段。",
+   "stories": [
+    "A3"
+   ],
+   "src": [
+    "src/ui/hub-join-steps.js:64-77"
+   ],
+   "cls": "gap",
+   "owner": "Ridge",
+   "files": "已在進行：#3706（feat/hub-enrolment-code-ui-b2）。"
+  },
+  {
+   "sev": "missing",
+   "title": "Hub 登入只有密碼一道",
+   "detail": "Hub（包含管理員）只用公司帳號與密碼登入。使用者在自己 Fleet 綁的驗證器保護不到 Hub，所以「是否綁定驗證器」只影響自己的儀表板。",
+   "fix": "這是安全上的取捨，請擁有者決定：維持（靠 AD 的政策），或為 Hub 管理員加第二道驗證。",
+   "stories": [
+    "A5",
+    "A3"
+   ],
+   "src": [
+    "src/ui/panel-hub.js:220",
+    "src/ui/hub-strings.js:92-94"
+   ],
+   "cls": "decision",
+   "owner": "使用者決定",
+   "files": ""
+  },
+  {
+   "sev": "confusing",
+   "title": "「暫停提問」其實收不回來，而且會清空授權名單",
+   "detail": "卡片叫「暫停提問」，確認按鈕叫「停止所有提問」，狀態叫「已暫停」。暫停後 Hub 上沒有恢復按鈕：要回自己的 Fleet 重新分享並確認，而且舊的授權不會回來，每個人都要重新允許。確認框只說了前半句。",
+   "fix": "改叫「停止分享」，並在確認框寫明「之後要回 Fleet 重新分享，而且要重新允許每一個人」；或做成真的可以恢復的暫停。",
+   "stories": [
+    "M3"
+   ],
+   "src": [
+    "src/ui/hub-owner-strings.js:36-37",
+    "src/ui/hub-strings.js:110",
+    "src/hub/catalog.ts:10-13"
+   ],
+   "cls": "gap",
+   "owner": "dev-claude2",
+   "files": "先改文字：src/ui/hub-owner-strings.js:36-37、hub-strings.js:110（含英文）。做成可恢復的暫停另外決定。"
+  },
+  {
+   "sev": "confusing",
+   "title": "登入頁一律先講驗證器 App",
+   "detail": "主說明固定是「填入驗證器 App 的 6 位數驗證碼，即可自動登入。」。沒綁驗證器的人（用 /web 或 agend web --code）要讀到下面的小字才知道自己該怎麼做。",
+   "fix": "主說明改成兩種都講的一句，或依這個 Fleet 有沒有設定驗證器來顯示。",
+   "stories": [
+    "U1",
+    "U3"
+   ],
+   "src": [
+    "src/ui/shared/signin.js:66-68,133"
+   ],
+   "cls": "gap",
+   "owner": "#3562 的作者（網頁登入）",
+   "files": "src/ui/shared/signin.js:66 與英文對應行。"
+  },
+  {
+   "sev": "confusing",
+   "title": "只有 Web 的 Fleet，分享後卻被叫去 General 確認",
+   "detail": "打開分享後那一列固定顯示「已送出確認：請在 General 的聊天或設定中確認，才會分享。」，同一頁的確認卡又說「這個 Fleet 沒有連接聊天平台，所以沒有 General 可以接收確認卡。」。",
+   "fix": "列的提示依確認方式顯示：有 General 才提 General；否則寫「請在上方的確認卡完成」。",
+   "stories": [
+    "U1",
+    "U2"
+   ],
+   "src": [
+    "src/ui/hub-strings.js:147",
+    "src/ui/settings-hub.js:235",
+    "src/ui/shared/app-shell.js:898"
+   ],
+   "cls": "gap",
+   "owner": "dev-claude2",
+   "files": "src/ui/hub-strings.js:75,147、settings-hub.js:235。"
+  },
+  {
+   "sev": "confusing",
+   "title": "按了「以公司帳號登入」，先出現的是「本機確認」",
+   "detail": "接了聊天平台、沒綁驗證器的人，按下去後看到「需要先完成本機確認，Hub 登入尚未開始。」，要先到 General 按確認，Hub 登入頁才會開。之後分享再確認一次。「本機確認」是什麼沒有解釋。",
+   "fix": "把這一步說成一句人話（例如「請先在 Discord 的 General 按確認，確定是你本人要連接」），並直接寫出要去哪個平台。",
+   "stories": [
+    "U3"
+   ],
+   "src": [
+    "src/ui/settings-hub-company-join.js:36-39"
+   ],
+   "cls": "gap",
+   "owner": "dev-claude2",
+   "files": "src/ui/settings-hub-company-join.js:36-39 與英文對應行。"
+  },
+  {
+   "sev": "confusing",
+   "title": "終端機的交接說明指向不存在的選單",
+   "detail": "agend hub init 結束時說「在「管理 → 允許的群組與人員」允許同仁」。畫面上那張卡片現在叫「讓同仁加入」，舊標題已不顯示。",
+   "fix": "把交接說明改成「管理 → 讓同仁加入」。",
+   "stories": [
+    "A1"
+   ],
+   "src": [
+    "src/hub/init/text.ts:258-260",
+    "src/ui/hub-join-steps.js:41"
+   ],
+   "cls": "gap",
+   "owner": "Cairn",
+   "files": "src/hub/init/text.ts:129,259-260。"
+  },
+  {
+   "sev": "confusing",
+   "title": "叫 Hub 管理員去找 Hub 管理員",
+   "detail": "目錄不能列出群組時，「讓同仁加入」的步驟 2 顯示「這個目錄無法列出群組來設定權限。請找 Hub 管理員。」，而看到這句話的人就是 Hub 管理員。",
+   "fix": "寫出原因與能做的事：需要 AD 與 LDAPS；請到「這個 Hub」的目錄設定檢查，或改用個別邀請。",
+   "stories": [
+    "A3"
+   ],
+   "src": [
+    "src/ui/hub-join-steps.js:50,157,206"
+   ],
+   "cls": "gap",
+   "owner": "dev-claude2",
+   "files": "src/ui/hub-join-steps.js:32,50。"
+  },
+  {
+   "sev": "confusing",
+   "title": "核准被拒絕時說「你沒有權限」，其實是對方",
+   "detail": "管理員按「核准…」時，如果 Fleet 擁有者已不在目錄資格內，或被個別禁止連接，訊息是「你沒有權限（或權限已被撤回）。」。",
+   "fix": "這個情況用自己的訊息：「{姓名} 目前不能連接 Fleet（不在允許的範圍，或已被禁止）。」",
+   "stories": [
+    "A4"
+   ],
+   "src": [
+    "src/ui/hub-strings.js:97",
+    "src/hub/pairing.ts:134-138",
+    "src/hub/group-policy/resources.ts:191-196"
+   ],
+   "cls": "gap",
+   "owner": "dev-claude2",
+   "files": "src/ui/panel-hub.js:915-920 加上這個情況的訊息，字串放 hub-strings.js。"
+  },
+  {
+   "sev": "confusing",
+   "title": "用瀏覽器架 Hub：不是主機登入的人只看到一句話",
+   "detail": "「設定 Hub」卡只有在 AgEnD 電腦上用主機登入才有按鈕。其他登入方式看到「請在這台電腦開啟自己的儀表板，使用主機登入後設定 Hub。」，沒說主機登入怎麼做。",
+   "fix": "補上做法：「到執行 AgEnD 的那台電腦，在終端機執行 agend web，用它開啟的頁面來設定」。",
+   "stories": [
+    "A2"
+   ],
+   "src": [
+    "src/ui/settings-hub-setup-strings.js:38",
+    "src/ui/settings-hub-setup.js:9,74"
+   ],
+   "cls": "gap",
+   "owner": "dev-claude2",
+   "files": "src/ui/settings-hub-setup-strings.js:38 與英文對應行。"
+  },
+  {
+   "sev": "confusing",
+   "title": "授權名單看不出對方加入了沒",
+   "detail": "可以先允許一個還沒登入過 Hub 的人。名單上只有姓名與到期日，主管會以為對方已經可以用了。",
+   "fix": "在列上加一個狀態：「還沒登入過 Hub」。",
+   "stories": [
+    "M2"
+   ],
+   "src": [
+    "src/ui/panel-hub.js:821-826",
+    "src/hub/catalog.ts:227"
+   ],
+   "cls": "gap",
+   "owner": "Ridge",
+   "files": "伺服器在授權列回報對方是否登入過（src/hub/catalog.ts:227 附近），畫面加標籤（src/ui/panel-hub.js:821-826）。"
+  },
+  {
+   "sev": "polish",
+   "title": "同一件事兩個名字：「例外邀請」與「個別邀請」",
+   "detail": "卡片的字串準備了「個別邀請」，畫面上顯示的仍是舊名「例外邀請」。",
+   "fix": "統一成「個別邀請」。",
+   "stories": [
+    "A4"
+   ],
+   "src": [
+    "src/ui/hub-company-join.js:139",
+    "src/ui/hub-join-steps.js:53"
+   ],
+   "cls": "polish",
+   "owner": "dev-claude2",
+   "files": "src/ui/hub-company-join.js:139 改用 hub-join-steps.js:53 的字串。"
+  },
+  {
+   "sev": "polish",
+   "title": "撤銷 Fleet 的確認只寫擁有者，不寫是哪一台",
+   "detail": "清單已顯示 Fleet 名稱，確認框卻是「要撤銷 {擁有者} 的 Fleet 嗎？」。同一個人有兩台時分不出來。",
+   "fix": "確認框帶上 Fleet 名稱。",
+   "stories": [
+    "A4"
+   ],
+   "src": [
+    "src/ui/panel-hub.js:923"
+   ],
+   "cls": "polish",
+   "owner": "dev-claude2",
+   "files": "src/ui/panel-hub.js:923、hub-strings.js:117。"
+  },
+  {
+   "sev": "polish",
+   "title": "提問頁的說明很難懂",
+   "detail": "「Agent 只看到你的 Hub 身分，不代表擁有者 Fleet 的任何授權。」對提問的人來說不知道在講什麼。",
+   "fix": "改成提問者關心的事：「對方會看到是你問的；Agent 用擁有者允許的範圍回答。」",
+   "stories": [
+    "U4"
+   ],
+   "src": [
+    "src/ui/hub-strings.js:99"
+   ],
+   "cls": "polish",
+   "owner": "dev-claude2",
+   "files": "src/ui/hub-strings.js:99 與英文對應行。"
+  },
+  {
+   "sev": "polish",
+   "title": "用瀏覽器建好 Hub 後，要自己先重新整理再開啟",
+   "detail": "「Hub 已建立」之後有「開啟 Hub 登入」與「重新整理設定頁」兩個按鈕，先後順序只寫在說明文字裡。",
+   "fix": "Hub 啟動好之前先不給「開啟 Hub 登入」，或自動確認啟動狀態。",
+   "stories": [
+    "A2"
+   ],
+   "src": [
+    "src/ui/settings-hub-setup-strings.js:60"
+   ],
+   "cls": "polish",
+   "owner": "#3449 的作者（瀏覽器設定）",
+   "files": "src/ui/settings-hub-setup.js、settings-hub-setup-strings.js:60。"
+  },
+  {
+   "sev": "polish",
+   "title": "終端機精靈很長",
+   "detail": "agend hub init 約有 35 處提問或輸入點，目錄那一段最長。這次只讀原始碼，沒有逐題重走。",
+   "fix": "實機走查時計時；能從目錄自動查到的就不要問。",
+   "stories": [
+    "A1"
+   ],
+   "src": [
+    "src/hub/init/wizard.ts"
+   ],
+   "cls": "polish",
+   "owner": "Cairn",
+   "files": "實機走查時計時後再決定：src/hub/init/wizard.ts。"
+  }
+ ],
+ "roles": [
+  {
+   "id": "user",
+   "name": "一般使用者",
+   "pair": "Argon（主筆）＋ GrokCore",
+   "lead": "同仁把自己的 Fleet 連上公司 Hub、分享一個 Agent、允許同事提問，並向別人分享的 Agent 提問。登入自己儀表板的方式取決於 Fleet 的通道與是否綁定驗證器；Hub 本身一律用公司帳號與密碼登入。",
+   "matrix": [
+    {
+     "c": 0,
+     "m": 0,
+     "a": 0,
+     "status": "story",
+     "stories": [
+      "U2",
+      "U4"
+     ],
+     "note": "在設定頁內輸入 6 位數驗證碼確認"
+    },
+    {
+     "c": 0,
+     "m": 1,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "U1",
+      "U4"
+     ],
+     "note": "走得通；登入頁與分享提示的文字對不上這個情境"
+    },
+    {
+     "c": 1,
+     "m": 0,
+     "a": 0,
+     "status": "story",
+     "stories": [
+      "U2",
+      "U4"
+     ],
+     "note": ""
+    },
+    {
+     "c": 1,
+     "m": 1,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "U3",
+      "U4"
+     ],
+     "note": "走得通；登入頁先講驗證器，/web 只在小字"
+    },
+    {
+     "c": 2,
+     "m": 0,
+     "a": 0,
+     "status": "story",
+     "stories": [
+      "U2",
+      "U4"
+     ],
+     "note": ""
+    },
+    {
+     "c": 2,
+     "m": 1,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "U3",
+      "U4"
+     ],
+     "note": "同 Discord"
+    },
+    {
+     "c": 0,
+     "m": 0,
+     "a": 1,
+     "status": "impossible",
+     "note": "ClassicBot 聊天室不在「分享的 Agent」清單，無法直接分享"
+    },
+    {
+     "c": 0,
+     "m": 1,
+     "a": 1,
+     "status": "impossible",
+     "note": "同上"
+    },
+    {
+     "c": 1,
+     "m": 0,
+     "a": 1,
+     "status": "impossible",
+     "note": "同上"
+    },
+    {
+     "c": 1,
+     "m": 1,
+     "a": 1,
+     "status": "impossible",
+     "note": "同上"
+    },
+    {
+     "c": 2,
+     "m": 0,
+     "a": 1,
+     "status": "impossible",
+     "note": "同上"
+    },
+    {
+     "c": 2,
+     "m": 1,
+     "a": 1,
+     "status": "impossible",
+     "note": "同上"
+    }
+   ],
+   "stories": [
+    {
+     "id": "U1",
+     "title": "只有 Web、沒綁驗證器的同仁：連接 Fleet 並分享 Agent",
+     "who": "沒有接聊天平台、也沒設定驗證器 App 的同仁",
+     "goal": "登入自己的儀表板、連上公司 Hub、分享一個 Agent",
+     "entry": "登入頁 → 設定 → Hub",
+     "success": "不看文件，5 分鐘內連上，Agent 那一列顯示「已分享：Hub 的提問會送到這個 Agent 自己的對話。」",
+     "cells": "只有 Web／未綁定／Fleet Agent",
+     "verdict": "走得通。兩處文字是寫給別的情境的人看的：登入頁先講驗證器，分享提示叫他去 General 確認。",
+     "steps": [
+      {
+       "screen": "登入 AgEnD",
+       "text": "登入 AgEnD\n填入驗證器 App 的 6 位數驗證碼，即可自動登入。\n驗證碼或裝置登入碼\n也可以貼上 8 字元裝置登入碼\n在 AgEnD 電腦上執行 agend web --code 取得裝置登入碼。",
+       "buttons": [
+        "登入"
+       ],
+       "action": "在 AgEnD 電腦執行 agend web --code，貼上 8 字元碼，按「登入」",
+       "src": "src/ui/shared/signin.js:66-68,79,133",
+       "status": "confusing",
+       "note": "主說明不分情境，一律先講驗證器 App（signin.js:133）。沒綁驗證器的人要讀到最下面的小字才知道該怎麼做。"
+      },
+      {
+       "screen": "設定 → Hub：連接卡（空白）",
+       "text": "使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。\nHub 位址\n請輸入 Hub 位址（例如 hub.example.com），或貼上 Hub 管理員給你的連結。",
+       "buttons": [
+        "以公司帳號登入",
+        "其他方式"
+       ],
+       "action": "輸入管理員給的 Hub 位址",
+       "src": "src/ui/settings-hub-company-join.js:29,249-258；hub-join-one-strings.js:36",
+       "status": "ok",
+       "note": "只有一個輸入框。"
+      },
+      {
+       "screen": "設定 → Hub：找到 Hub",
+       "text": "正在查詢 Hub…\n找到「{Hub 名稱}」。這台 Fleet 會顯示為「{主機名稱}」",
+       "buttons": [
+        "改名",
+        "以公司帳號登入"
+       ],
+       "action": "按「以公司帳號登入」",
+       "src": "src/ui/hub-join-one-strings.js:38-39；settings-hub-company-join.js:168-171",
+       "status": "ok",
+       "note": "送出前先確認位址真的是 Hub，名稱自動帶入。"
+      },
+      {
+       "screen": "Hub 登入分頁",
+       "text": "登入 Hub\n連接 {Fleet 名稱}\nFleet 位址：{位址}\n帳號　密碼",
+       "buttons": [
+        "登入並連接 Fleet"
+       ],
+       "action": "輸入公司帳號與密碼",
+       "src": "src/ui/panel-hub.js:218-234；hub-company-join-strings.js:54",
+       "status": "ok",
+       "note": "這一按同時是登入與同意。"
+      },
+      {
+       "screen": "Hub 分頁：完成",
+       "text": "已連接。可以關閉這個分頁。",
+       "buttons": [
+        "返回 Fleet 設定"
+       ],
+       "action": "分頁自動關閉；沒關掉時按「返回 Fleet 設定」",
+       "src": "src/ui/hub-company-join.js:14,85-95",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "設定 → Hub：分享的 Agent",
+       "text": "Fleet 已連接，你可以在下方選擇要分享的 Agent。\n分享的 Agent\n每個 Agent 預設都不分享。分享後，Agent 會在自己的對話中回答 Hub 的提問…",
+       "buttons": [
+        "分享 {Agent}（開關）"
+       ],
+       "action": "打開一個 Agent 的分享開關",
+       "src": "src/ui/settings-hub.js:250-260；hub-agent-copy.js:14",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "設定：等待確認",
+       "text": "等待你的確認\n已送出確認：請在 General 的聊天或設定中確認，才會分享。\n（確認卡）這個 Fleet 沒有連接聊天平台，所以沒有 General 可以接收確認卡。",
+       "buttons": [
+        "立即套用"
+       ],
+       "action": "在這台電腦的瀏覽器按「立即套用」",
+       "src": "src/ui/hub-strings.js:147；settings-hub.js:235；shared/app-shell.js:898,1016-1017",
+       "status": "confusing",
+       "note": "同一個畫面上，列的提示叫他去 General 確認，確認卡又說這個 Fleet 沒有 General。"
+      }
+     ]
+    },
+    {
+     "id": "U2",
+     "title": "已綁驗證器 App 的同仁：連接並用 6 位數驗證碼確認分享",
+     "who": "已設定驗證器 App 的同仁（三種通道都適用）",
+     "goal": "連上 Hub、分享 Agent，全程不離開設定頁",
+     "entry": "登入頁 → 設定 → Hub",
+     "success": "5 分鐘內完成；驗證碼都在原本的卡片裡輸入",
+     "cells": "三種通道／已綁定／Fleet Agent",
+     "verdict": "最順的一條路。六個步驟都與原始碼一致。",
+     "steps": [
+      {
+       "screen": "登入 AgEnD",
+       "text": "登入 AgEnD\n填入驗證器 App 的 6 位數驗證碼，即可自動登入。\n驗證碼或裝置登入碼",
+       "buttons": [
+        "登入"
+       ],
+       "action": "輸入驗證器 App 的 6 位數驗證碼",
+       "src": "src/ui/shared/signin.js:66-68,480",
+       "status": "ok",
+       "note": "主說明正好是這個人需要的。"
+      },
+      {
+       "screen": "設定 → Hub：連接卡",
+       "text": "Hub 位址\n找到「{Hub 名稱}」。這台 Fleet 會顯示為「{主機名稱}」",
+       "buttons": [
+        "以公司帳號登入"
+       ],
+       "action": "輸入位址，按「以公司帳號登入」",
+       "src": "src/ui/settings-hub-company-join.js:168-171,246-258",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "設定 → Hub：卡片內輸入驗證碼",
+       "text": "請輸入你的驗證碼以繼續。\nHub：{Hub 名稱}\n你已啟用遠端變更的驗證碼保護。請在這裡輸入你自己的 6 位數驗證碼，繼續前往 Hub 登入。\n你的 6 位數驗證碼",
+       "buttons": [
+        "繼續",
+        "取消"
+       ],
+       "action": "輸入自己 Fleet 的 6 位數驗證碼，按「繼續」",
+       "src": "src/ui/settings-hub-company-join.js:30-32,173-180,229-236",
+       "status": "ok",
+       "note": "說明了為什麼要輸入、輸入的是哪一組。"
+      },
+      {
+       "screen": "Hub 登入分頁",
+       "text": "登入 Hub\n連接 {Fleet 名稱}\n帳號　密碼",
+       "buttons": [
+        "登入並連接 Fleet"
+       ],
+       "action": "輸入公司帳號與密碼",
+       "src": "src/ui/panel-hub.js:218-234",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "設定 → Hub：打開分享",
+       "text": "分享 {Agent}（開關）\n等待你的確認\n已送出確認：請在 General 的聊天或設定中確認，才會分享。",
+       "buttons": [],
+       "action": "看頁面上方的「等待確認的變更」卡",
+       "src": "src/ui/settings-hub.js:229-236；hub-strings.js:147",
+       "status": "polish",
+       "note": "提示只提 General；這個人其實是在同一頁輸入驗證碼。"
+      },
+      {
+       "screen": "設定：確認卡輸入驗證碼",
+       "text": "等待確認\n輸入驗證器 App 的 6 位數驗證碼，就能確認這項變更。\n6 位數驗證碼（驗證器 App）",
+       "buttons": [
+        "確認"
+       ],
+       "action": "輸入驗證碼，按「確認」；列變成「已分享：Hub 的提問會送到這個 Agent 自己的對話。」",
+       "src": "src/ui/shared/app-shell.js:1018；hub-agent-copy.js:15",
+       "status": "ok",
+       "note": ""
+      }
+     ]
+    },
+    {
+     "id": "U3",
+     "title": "接了 Discord 或 Telegram、沒綁驗證器的同仁：在 General 確認",
+     "who": "Fleet 接了 Discord 或 Telegram、沒設定驗證器 App 的同仁",
+     "goal": "用 /web 取得的碼登入、連上 Hub、在 General 確認分享",
+     "entry": "登入頁 → 設定 → Hub → General",
+     "success": "5 分鐘內完成連接與確認",
+     "cells": "Web + Discord、Web + Telegram／未綁定／Fleet Agent",
+     "verdict": "走得通，但要在瀏覽器與聊天之間來回兩次（連接一次、分享一次）。",
+     "steps": [
+      {
+       "screen": "登入 AgEnD",
+       "text": "登入 AgEnD\n填入驗證器 App 的 6 位數驗證碼，即可自動登入。\n驗證碼或裝置登入碼\n也可以貼上 8 字元裝置登入碼",
+       "buttons": [
+        "登入",
+        "傳一組新的裝置登入碼給我"
+       ],
+       "action": "在 General 輸入 /web，貼上收到的 8 字元碼",
+       "src": "src/ui/shared/signin.js:66-68,76,133",
+       "status": "confusing",
+       "note": "主說明先講驗證器 App；用 /web 的人要看小字。"
+      },
+      {
+       "screen": "設定 → Hub",
+       "text": "Hub\n使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。\nHub 位址",
+       "buttons": [
+        "以公司帳號登入"
+       ],
+       "action": "輸入位址，按「以公司帳號登入」",
+       "src": "src/ui/settings-hub-company-join.js:225-257",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "設定 → Hub：需要本機確認",
+       "text": "需要先完成本機確認，Hub 登入尚未開始。\n請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。",
+       "buttons": [
+        "開啟本機確認"
+       ],
+       "action": "到 General 的確認卡（已授權的瀏覽器可按「立即套用」）",
+       "src": "src/ui/settings-hub-company-join.js:36-39,240-244；shared/app-shell.js:1009-1012",
+       "status": "confusing",
+       "note": "「本機確認」沒有解釋是什麼；使用者按了「以公司帳號登入」，預期看到的是 Hub 登入頁。"
+      },
+      {
+       "screen": "General（Discord／Telegram）確認卡",
+       "text": "🔒 設定變更等待 fleet 管理員確認",
+       "buttons": [
+        "確認",
+        "拒絕"
+       ],
+       "action": "按「確認」",
+       "src": "src/locale.ts:3283,3292-3293",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "Hub 登入分頁",
+       "text": "登入 Hub\n請使用公司帳號登入。密碼只送給目錄服務驗證，不會被保存。\n帳號　密碼",
+       "buttons": [
+        "登入並連接 Fleet"
+       ],
+       "action": "輸入公司帳號與密碼",
+       "src": "src/ui/panel-hub.js:218-230；hub-company-join-strings.js:54",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "設定 → Hub：打開分享",
+       "text": "Fleet 已連接，你可以在下方選擇要分享的 Agent。\n分享的 Agent",
+       "buttons": [
+        "分享 {Agent}（開關）"
+       ],
+       "action": "打開一個 Agent 的分享開關",
+       "src": "src/ui/settings-hub.js:251-258",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "設定 → Hub：等待確認",
+       "text": "等待你的確認\n已送出確認：請在 General 的聊天或設定中確認，才會分享。",
+       "buttons": [],
+       "action": "回到 General，在確認卡按「確認」",
+       "src": "src/ui/settings-hub.js:235；hub-strings.js:147",
+       "status": "ok",
+       "note": "這裡的提示正好符合這個情境。"
+      },
+      {
+       "screen": "設定 → Hub：已分享",
+       "text": "已分享：Hub 的提問會送到這個 Agent 自己的對話。",
+       "buttons": [
+        "允許他人提問…"
+       ],
+       "action": "完成",
+       "src": "src/ui/hub-agent-copy.js:15；settings-hub.js:272",
+       "status": "ok",
+       "note": ""
+      }
+     ]
+    },
+    {
+     "id": "U4",
+     "title": "允許同事提問自己的 Agent，並向別人的 Agent 提問",
+     "who": "已連接並分享 Agent 的同仁",
+     "goal": "讓一位同事可以提問；自己也問別人分享的 Agent 並得到回答",
+     "entry": "設定 → Hub → Hub 的「我分享的 Agent」→ Hub 首頁",
+     "success": "3 分鐘內完成允許；送出問題後看到「已回答」",
+     "cells": "六個 Fleet Agent 情境都適用",
+     "verdict": "走得通。允許提問要自己知道同事的登入名稱，沒有搜尋。",
+     "steps": [
+      {
+       "screen": "設定 → Hub：已分享的列",
+       "text": "已分享：Hub 的提問會送到這個 Agent 自己的對話。",
+       "buttons": [
+        "允許他人提問…"
+       ],
+       "action": "按「允許他人提問…」，開啟 Hub",
+       "src": "src/ui/settings-hub.js:24,272",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "Hub：我分享的 Agent",
+       "text": "我分享的 Agent\n可以提問的人\n還沒有人可以提問",
+       "buttons": [
+        "允許提問…"
+       ],
+       "action": "對話框自動開啟",
+       "src": "src/ui/panel-hub.js:802,821；hub-owner-strings.js:32-34",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "Hub：允許提問對話框",
+       "text": "允許提問 {Agent}\n對方的登入名稱\n對方登入這個 Hub 用的帳號。\n期限",
+       "buttons": [
+        "允許",
+        "取消"
+       ],
+       "action": "輸入同事的登入名稱，選期限，按「允許」",
+       "src": "src/ui/panel-hub.js:844-868；hub-owner-strings.js:32-33",
+       "status": "polish",
+       "note": "只有文字框，沒有目錄搜尋；一次一位，要自己知道同事的確切登入名稱。"
+      },
+      {
+       "screen": "Hub 首頁",
+       "text": "與 Agent 對話",
+       "buttons": [
+        "開啟對話",
+        "新對話"
+       ],
+       "action": "按「新對話」",
+       "src": "src/ui/hub-welcome.js:98-102；panel-hub.js:385",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "Hub：新對話",
+       "text": "新對話\n搜尋 Agent 或擁有者\n只列出有人允許你提問的 Agent。",
+       "buttons": [
+        "提問"
+       ],
+       "action": "找到 Agent，按「提問」",
+       "src": "src/ui/panel-hub.js:434-466；hub-chat-strings.js:41-42",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "Hub：對話",
+       "text": "問 {Agent} 第一個問題\n你是以自己的身分提問。Agent 只看到你的 Hub 身分，不代表擁有者 Fleet 的任何授權。",
+       "buttons": [
+        "送出"
+       ],
+       "action": "輸入問題，按「送出」",
+       "src": "src/ui/panel-hub.js:640-645,710；hub-strings.js:99；hub-chat-strings.js:44-45",
+       "status": "polish",
+       "note": "「不代表擁有者 Fleet 的任何授權」對提問的人來說很難懂。"
+      },
+      {
+       "screen": "Hub：送達與回答",
+       "text": "等待擁有者的 fleet → 已送達擁有者的 fleet → 已回答",
+       "buttons": [],
+       "action": "等標記變成「已回答」",
+       "src": "src/ui/hub-chat-store.js:22-24；hub-chat-strings.js:47",
+       "status": "ok",
+       "note": "只讀原始碼，未實際執行；先前的演練環境用假的後端，沒看到真正的回答。"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admin",
+   "name": "管理員",
+   "pair": "GrokCore（主筆）＋ Sentinel（修正）",
+   "lead": "Hub 管理員架起 Hub、第一次登入取得管理權限、讓同仁用 AD 群組加入、處理例外、撤銷 Fleet、看安全通知。Hub 登入只用公司帳號與密碼，和管理員自己 Fleet 的通道或驗證器無關，所以六個 Fleet Agent 情境走的是同一條路。",
+   "matrix": [
+    {
+     "c": 0,
+     "m": 0,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "A5"
+     ],
+     "note": "Hub 不看 Fleet 的驗證器"
+    },
+    {
+     "c": 0,
+     "m": 1,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "A5"
+     ],
+     "note": "同左"
+    },
+    {
+     "c": 1,
+     "m": 0,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "A5"
+     ],
+     "note": "Discord 只用來登入自己的儀表板"
+    },
+    {
+     "c": 1,
+     "m": 1,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "A5"
+     ],
+     "note": "同左"
+    },
+    {
+     "c": 2,
+     "m": 0,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "A5"
+     ],
+     "note": "Telegram 只用來登入自己的儀表板"
+    },
+    {
+     "c": 2,
+     "m": 1,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "A5"
+     ],
+     "note": "同左"
+    },
+    {
+     "c": 0,
+     "m": 0,
+     "a": 1,
+     "status": "oos",
+     "note": "管理工作不涉及帶來的 Agent；ClassicBot 聊天室本來就無法分享到 Hub"
+    },
+    {
+     "c": 0,
+     "m": 1,
+     "a": 1,
+     "status": "oos",
+     "note": "同上"
+    },
+    {
+     "c": 1,
+     "m": 0,
+     "a": 1,
+     "status": "oos",
+     "note": "同上"
+    },
+    {
+     "c": 1,
+     "m": 1,
+     "a": 1,
+     "status": "oos",
+     "note": "同上"
+    },
+    {
+     "c": 2,
+     "m": 0,
+     "a": 1,
+     "status": "oos",
+     "note": "同上"
+    },
+    {
+     "c": 2,
+     "m": 1,
+     "a": 1,
+     "status": "oos",
+     "note": "同上"
+    }
+   ],
+   "stories": [
+    {
+     "id": "A1",
+     "title": "用終端機架起 Hub（agend hub init）",
+     "who": "IT 或負責的工程師，在一台專用機器上",
+     "goal": "Hub 跑起來，並指定第一位管理員",
+     "entry": "終端機：agend hub init",
+     "success": "看到「Hub 已設定完成」，並知道下一步去哪裡登入",
+     "cells": "六個 Fleet Agent 情境",
+     "verdict": "走得通。最後的交接文字指向一個畫面上不存在的選單名稱。",
+     "steps": [
+      {
+       "screen": "終端機：開場",
+       "text": "═══ AgEnD Hub 設定（實驗性）═══\nHub 讓同事用組織的目錄登入，向各機群主人選擇公開的 agent 提問。…建議放在一台專用、常開、有固定內網位址的機器或 OS 帳號上。",
+       "buttons": [],
+       "action": "執行 agend hub init",
+       "src": "src/hub/init/wizard.ts:105",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "終端機：名稱與網址",
+       "text": "Hub 名稱（選填；直接按 Enter 顯示「AgEnD Hub」）：\n同事要開的網址（https://主機[:埠]；固定的內網 IP 或主機名稱）：",
+       "buttons": [],
+       "action": "輸入名稱與 HTTPS 網址",
+       "src": "src/hub/init/wizard.ts:141；text.ts（name_q）",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "終端機：目錄",
+       "text": "目錄（LDAP / Active Directory，只接受 LDAPS）",
+       "buttons": [],
+       "action": "輸入 ldaps:// 位址、服務帳號、CA",
+       "src": "src/hub/init/wizard.ts:278",
+       "status": "polish",
+       "note": "整個精靈約有 35 處提問或輸入點（wizard.ts），目錄是最長的一段；這次只讀原始碼，沒有逐題重走。"
+      },
+      {
+       "screen": "終端機：第一位管理員",
+       "text": "選擇第一位 Hub 管理員。唯讀服務帳號只會查詢這個目錄帳號；當事人稍後在自己的瀏覽器登入，此處不需要個人密碼。\n要指定 {姓名}（{身分}）為第一位 Hub 管理員嗎？當事人首次成功在瀏覽器登入後，才會取得管理權限。[y/N]",
+       "buttons": [],
+       "action": "輸入目錄帳號，輸入 y",
+       "src": "src/hub/init/wizard.ts:282,169",
+       "status": "ok",
+       "note": "清楚說明這裡不需要個人密碼。"
+      },
+      {
+       "screen": "終端機：寫入",
+       "text": "輸入「initialize」寫入這份設定（輸入其他內容即取消）：",
+       "buttons": [],
+       "action": "輸入 initialize",
+       "src": "src/hub/init/wizard.ts:457",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "終端機：完成",
+       "text": "Hub 已設定完成（Hub id {id}）。\n第一位管理員：請開啟 {網址}，以指定的目錄身分登入以取得管理權限。",
+       "buttons": [],
+       "action": "在瀏覽器開啟那個網址",
+       "src": "src/hub/init/wizard.ts:469",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "終端機：交接說明",
+       "text": "讓機群連上這個 Hub\n1. 以 Hub 管理員身分登入 {網址}/ui/hub，在「管理 → 允許的群組與人員」允許同仁，並開啟公司連接。\n2. 同仁在自己 Fleet 的「設定 → Hub」輸入 {網址}，按「以公司帳號登入」。\n進階：手動配對碼位於 Hub 的「管理 → 進階」…",
+       "buttons": [],
+       "action": "照著說明去找「允許的群組與人員」",
+       "src": "src/hub/init/text.ts:258-260；handoff.ts:19-20",
+       "status": "confusing",
+       "note": "畫面上沒有「允許的群組與人員」：管理頁的卡片叫「讓同仁加入」（hub-join-steps.js:41）。舊標題的字串還在，但已不顯示。"
+      }
+     ]
+    },
+    {
+     "id": "A2",
+     "title": "用瀏覽器架起 Hub（設定 → Hub →「在這台電腦設定」）",
+     "who": "坐在 AgEnD 電腦前、用主機登入的人",
+     "goal": "不開終端機，在自己的儀表板把 Hub 建起來",
+     "entry": "自己 Fleet 的儀表板：設定 → Hub",
+     "success": "看到「Hub 已建立」與「開啟 Hub 登入」",
+     "cells": "六個 Fleet Agent 情境（但只限這台電腦上的主機登入）",
+     "verdict": "有這條路，而且和終端機是同一套設定。只有主機登入看得到按鈕；從 Discord、Telegram 或驗證器登入的人只會看到一句話。",
+     "steps": [
+      {
+       "screen": "設定 → Hub：「設定 Hub」卡",
+       "text": "設定 Hub\n在這台電腦執行團隊 Hub。目錄會驗證登入；你指定的管理員第一次登入時，才會取得管理權限。",
+       "buttons": [
+        "在這台電腦設定"
+       ],
+       "action": "按「在這台電腦設定」",
+       "src": "src/ui/settings-hub-setup-strings.js:37-38；settings-hub-setup.js:156；settings-hub-section.js:56",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "同一張卡：不是主機登入時",
+       "text": "請在這台電腦開啟自己的儀表板，使用主機登入後設定 Hub。",
+       "buttons": [],
+       "action": "走到 AgEnD 電腦前，重新登入",
+       "src": "src/ui/settings-hub-setup-strings.js:38；settings-hub-setup.js:9,74",
+       "status": "confusing",
+       "note": "「主機登入」是什麼、怎麼做（在那台電腦執行 agend web）沒有寫。用 /web 或驗證器登入的管理員會卡在這句話。"
+      },
+      {
+       "screen": "設定表單",
+       "text": "（網址、監聽位址、目錄、服務帳號、CA、第一位管理員的目錄登入名稱）\n我們會查詢目前不可變的目錄身分，這裡不需要個人密碼。設定完成後，請由本人登入 Hub。",
+       "buttons": [
+        "繼續",
+        "返回",
+        "取消設定",
+        "測試連線並檢查"
+       ],
+       "action": "填完，按「測試連線並檢查」",
+       "src": "src/ui/settings-hub-setup-strings.js:55-57",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "檢查通過",
+       "text": "服務連線與指定管理員已通過檢查。儲存時會再次檢查。\n以這裡顯示的位址、憑證與管理員建立 Hub。群組權限會維持關閉，直到 Hub 管理員自行啟用。",
+       "buttons": [
+        "建立 Hub"
+       ],
+       "action": "按「建立 Hub」",
+       "src": "src/ui/settings-hub-setup-strings.js:58-59",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "Hub 已建立",
+       "text": "Hub 已建立\n設定已密封。請重新整理設定頁確認啟動狀態，再開啟 Hub，以指定的目錄帳號登入。",
+       "buttons": [
+        "開啟 Hub 登入",
+        "重新整理設定頁"
+       ],
+       "action": "按「開啟 Hub 登入」",
+       "src": "src/ui/settings-hub-setup-strings.js:60",
+       "status": "polish",
+       "note": "要使用者自己先重新整理再開啟，兩個按鈕的先後順序靠文字說明。"
+      }
+     ]
+    },
+    {
+     "id": "A3",
+     "title": "讓同仁加入：開啟公司帳號連接、選 AD 群組、把一句話傳給同仁",
+     "who": "第一次登入的 Hub 管理員",
+     "goal": "指定群組的同仁可以自己連接 Fleet，不必逐一核准",
+     "entry": "Hub 網址 → 登入 → 管理",
+     "success": "三個步驟都顯示「已完成」，並複製了給同仁的那句話",
+     "cells": "六個 Fleet Agent 情境",
+     "verdict": "新的三步驟卡片是整個 Hub 最清楚的一段。目錄不支援時，卡片卻叫管理員去找管理員。",
+     "steps": [
+      {
+       "screen": "Hub 登入",
+       "text": "登入 Hub\n請使用公司帳號登入。密碼只送給目錄服務驗證，不會被保存。\n帳號　密碼",
+       "buttons": [
+        "登入"
+       ],
+       "action": "用被指定的目錄帳號登入",
+       "src": "src/ui/panel-hub.js:220；hub-strings.js:92-94",
+       "status": "ok",
+       "note": "Hub 沒有第二道驗證；見 A5 最後一步。"
+      },
+      {
+       "screen": "Hub：側欄",
+       "text": "管理\n連接 Fleet",
+       "buttons": [],
+       "action": "按「管理」",
+       "src": "src/ui/hub-chat-strings.js:64",
+       "status": "ok",
+       "note": "Hub 還沒有任何 Fleet 時，首頁也直接放了同一張卡（hub-welcome.js:120）。"
+      },
+      {
+       "screen": "管理：「讓同仁加入」步驟 1",
+       "text": "讓同仁加入\n三個步驟，每一步都依 Hub 已儲存的設定判斷是否完成。\n1 允許同仁用公司帳號連接 Fleet",
+       "buttons": [
+        "允許以公司帳號連接 Fleet（開關）"
+       ],
+       "action": "打開開關",
+       "src": "src/ui/hub-join-steps.js:41-42,199-204",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "步驟 2：誰可以加入",
+       "text": "2 誰可以加入\n加入可以連接 Fleet 的 AD 群組，然後儲存。\n（搜尋群組）\n每人最多 1 台　和 Agent 對話　分享 Agent\n沒有人會失去任何權限。",
+       "buttons": [
+        "用辨別名稱新增",
+        "移除",
+        "儲存"
+       ],
+       "action": "搜尋群組名稱、選一個，按「儲存」",
+       "src": "src/ui/hub-join-steps.js:43-46,159-178",
+       "status": "ok",
+       "note": "可以用名稱搜尋，不必再打完整的辨別名稱；儲存前先顯示會影響誰。"
+      },
+      {
+       "screen": "步驟 2：目錄不支援時",
+       "text": "這個目錄無法列出群組來設定權限。請找 Hub 管理員。",
+       "buttons": [],
+       "action": "不知道該找誰：自己就是 Hub 管理員",
+       "src": "src/ui/hub-join-steps.js:50,157,206",
+       "status": "confusing",
+       "note": "這句話是顯示給 Hub 管理員看的，卻叫他去找 Hub 管理員；也沒說缺的是什麼（需要 AD、LDAPS）。"
+      },
+      {
+       "screen": "步驟 3：告訴同仁怎麼加入",
+       "text": "3 告訴同仁怎麼加入\n在 AgEnD 的「設定 → Hub」輸入 {hub 主機名稱}，再用公司帳號登入。\n（步驟 1、2 未完成時：請先完成步驟 1 和 2。）",
+       "buttons": [
+        "複製這段說明"
+       ],
+       "action": "按「複製這段說明」，貼到公司群組",
+       "src": "src/ui/hub-join-steps.js:38-40,79-87",
+       "status": "ok",
+       "note": "同仁只需要一個主機名稱。"
+      },
+      {
+       "screen": "步驟 3：加入碼",
+       "text": "（加入碼的位置，功能尚未合併）",
+       "buttons": [],
+       "action": "想發一組加入碼給一整個部門",
+       "src": "src/ui/hub-join-steps.js:64-77（#3706）",
+       "status": "missing",
+       "pending": true,
+       "note": "位置已預留，加入碼的管理畫面在 #3706，還沒合併；alpha 最新版看不到。"
+      }
+     ]
+    },
+    {
+     "id": "A4",
+     "title": "例外處理：個別邀請、手動配對碼、撤銷一台 Fleet",
+     "who": "Hub 管理員",
+     "goal": "讓不在群組裡的人連接一台 Fleet；之後撤銷某一台",
+     "entry": "Hub → 管理",
+     "success": "邀請已複製；被撤銷的 Fleet 顯示「已撤銷」",
+     "cells": "六個 Fleet Agent 情境",
+     "verdict": "走得通。同一件事在畫面上有兩個名字，核准被拒絕時的訊息說的是「你」。",
+     "steps": [
+      {
+       "screen": "管理：「讓同仁加入」卡片下方",
+       "text": "例外邀請\n提供給尚無群組權限的合格人員。發出邀請即代表你的核准，邀請只限該人員與這個 Hub 使用。邀請只核准一次 Fleet 連接，不會授予 Agent 對話或分享權限。\n公司登入名稱",
+       "buttons": [
+        "建立邀請"
+       ],
+       "action": "輸入對方的登入名稱，按「建立邀請」",
+       "src": "src/ui/hub-company-join.js:139-141；hub-company-join-strings.js:57,60",
+       "status": "polish",
+       "note": "這一段在卡片字串裡另有名稱「個別邀請」（hub-join-steps.js:53），沒被使用；畫面顯示的是舊名「例外邀請」。"
+      },
+      {
+       "screen": "邀請連結",
+       "text": "例外邀請（連結）",
+       "buttons": [
+        "複製邀請"
+       ],
+       "action": "複製，私下傳給那個人",
+       "src": "src/ui/hub-company-join.js:142-143",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "管理：進階：使用配對碼連接",
+       "text": "進階：使用配對碼連接\n配對一個 Fleet\n產生配對碼　給 Fleet 的擁有者：10 分鐘內在他的 Fleet 輸入，只能用一次。\n擁有者核對指紋\n你核准　核對同一個指紋後核准。",
+       "buttons": [
+        "產生配對碼",
+        "複製位址與配對碼",
+        "核准…"
+       ],
+       "action": "只在公司帳號連接不能用時才走這條路",
+       "src": "src/ui/panel-hub.js:942-963；hub-owner-strings.js:32,36-42",
+       "status": "ok",
+       "note": "已收進「進階」，不再和主要流程並列。"
+      },
+      {
+       "screen": "按「核准…」被拒絕時",
+       "text": "你沒有權限（或權限已被撤回）。",
+       "buttons": [],
+       "action": "不知道是誰沒有權限",
+       "src": "src/ui/hub-strings.js:97；panel-hub.js:915-920；src/hub/pairing.ts:134-138；group-policy/resources.ts:191-196",
+       "status": "confusing",
+       "note": "被拒絕的是 Fleet 擁有者（不在目錄資格內，或被個別禁止連接），訊息卻對管理員說「你沒有權限」。"
+      },
+      {
+       "screen": "管理：已連接的 Fleet",
+       "text": "已連接的 Fleet · {數量}\n{Fleet 名稱}　{擁有者} · {登入名稱}　使用中\n要撤銷 {擁有者} 的 Fleet 嗎？它的連接會結束，分享的內容都會撤回。",
+       "buttons": [
+        "撤銷…",
+        "撤銷"
+       ],
+       "action": "在列的選單按「撤銷…」，再確認",
+       "src": "src/ui/panel-hub.js:923,958-972",
+       "status": "polish",
+       "note": "清單已顯示 Fleet 名稱、已撤銷的收合起來。確認框只寫擁有者，不寫是哪一台；同一人有兩台時分不出來。"
+      }
+     ]
+    },
+    {
+     "id": "A5",
+     "title": "看安全通知",
+     "who": "Hub 管理員",
+     "goal": "知道有新的 Fleet 連上來，不認得就撤銷",
+     "entry": "Hub → 通知",
+     "success": "看過並確認已讀，或看到沒有通知",
+     "cells": "六個 Fleet Agent 情境",
+     "verdict": "走得通。Hub 管理員的登入只有密碼一道，Fleet 的驗證器保護不到 Hub。",
+     "steps": [
+      {
+       "screen": "Hub：通知",
+       "text": "通知\n有新的 Fleet 連接到這個 Hub 時，會在這裡通知你。如果你不認得它，請撤銷。",
+       "buttons": [],
+       "action": "打開「通知」",
+       "src": "src/ui/panel-hub.js:131；hub-chat-strings.js:38",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "AD 連線變更",
+       "text": "AD 連線變更\nHub 登入設定變更的安全通知。通知代表已記錄變更，不代表目前的網路連線正常。",
+       "buttons": [
+        "確認已讀"
+       ],
+       "action": "按「確認已讀」",
+       "src": "src/ui/hub-directory-notice-strings.js:16",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "Fleet 安全通知",
+       "text": "沒有安全通知\n（有時）已連接新的 Fleet：{名稱}　由 Hub 群組規則核准。",
+       "buttons": [
+        "撤銷此 Fleet"
+       ],
+       "action": "不認得就撤銷",
+       "src": "src/ui/hub-chat-strings.js:38；hub-quick-strings.js:38",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "沒有畫面：Hub 的第二道驗證",
+       "text": "",
+       "buttons": [],
+       "action": "想為管理員登入加上驗證器",
+       "src": "src/ui/panel-hub.js:220（只有帳號與密碼）",
+       "status": "missing",
+       "note": "Hub 登入只有公司帳號與密碼。管理員在自己 Fleet 綁的驗證器不會用在 Hub 上，所以「是否綁定驗證器」對管理員的工作沒有差別。"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "manager",
+   "name": "主管",
+   "pair": "Sentinel（主筆）＋ Argon",
+   "lead": "Hub 裡沒有「主管」這個角色。最接近的是「分享了 Agent 的擁有者」：他可以決定誰能問自己的 Agent、看最近誰問過、撤銷或暫停。這一組先寫下主管實際會想做的事，再對照畫面，沒有畫面的地方照實標出來。",
+   "matrix": [
+    {
+     "c": 0,
+     "m": 0,
+     "a": 0,
+     "status": "gap",
+     "stories": [
+      "M1",
+      "M2",
+      "M3",
+      "M4"
+     ],
+     "note": "只能以 Agent 擁有者的身分操作；團隊名單、申請、用量都沒有畫面"
+    },
+    {
+     "c": 0,
+     "m": 1,
+     "a": 0,
+     "status": "gap",
+     "stories": [
+      "M1",
+      "M2",
+      "M3",
+      "M4"
+     ],
+     "note": "同左；回自己 Fleet 要在那台電腦取得登入碼"
+    },
+    {
+     "c": 1,
+     "m": 0,
+     "a": 0,
+     "status": "gap",
+     "stories": [
+      "M1",
+      "M2",
+      "M3",
+      "M4"
+     ],
+     "note": "同左；回 Fleet 可用驗證器或 Discord 的登入碼"
+    },
+    {
+     "c": 1,
+     "m": 1,
+     "a": 0,
+     "status": "gap",
+     "stories": [
+      "M1",
+      "M2",
+      "M3",
+      "M4"
+     ],
+     "note": "同左；重新分享要到 General 確認"
+    },
+    {
+     "c": 2,
+     "m": 0,
+     "a": 0,
+     "status": "gap",
+     "stories": [
+      "M1",
+      "M2",
+      "M3",
+      "M4"
+     ],
+     "note": "同 Discord"
+    },
+    {
+     "c": 2,
+     "m": 1,
+     "a": 0,
+     "status": "gap",
+     "stories": [
+      "M1",
+      "M2",
+      "M3",
+      "M4"
+     ],
+     "note": "同 Discord"
+    },
+    {
+     "c": 0,
+     "m": 0,
+     "a": 1,
+     "status": "impossible",
+     "note": "ClassicBot 聊天室無法直接分享；主管仍可分享另一個 Fleet Agent"
+    },
+    {
+     "c": 0,
+     "m": 1,
+     "a": 1,
+     "status": "impossible",
+     "note": "同上"
+    },
+    {
+     "c": 1,
+     "m": 0,
+     "a": 1,
+     "status": "impossible",
+     "note": "同上"
+    },
+    {
+     "c": 1,
+     "m": 1,
+     "a": 1,
+     "status": "impossible",
+     "note": "同上"
+    },
+    {
+     "c": 2,
+     "m": 0,
+     "a": 1,
+     "status": "impossible",
+     "note": "同上"
+    },
+    {
+     "c": 2,
+     "m": 1,
+     "a": 1,
+     "status": "impossible",
+     "note": "同上"
+    }
+   ],
+   "stories": [
+    {
+     "id": "M1",
+     "title": "讓團隊同仁向我的 Agent 提問",
+     "who": "分享了一個 Agent 的主管（不是 Hub 管理員）",
+     "goal": "讓指定的同仁可以提問，並設定到期日",
+     "entry": "Hub →「我分享的 Agent」",
+     "success": "名單出現那位同仁與到期日",
+     "cells": "六個 Fleet Agent 情境",
+     "verdict": "一個人走得通。整個團隊要一個一個加，沒有依部門或 AD 群組授權。",
+     "steps": [
+      {
+       "screen": "Hub 登入",
+       "text": "登入 Hub\n帳號　密碼",
+       "buttons": [
+        "登入"
+       ],
+       "action": "用公司帳號登入",
+       "src": "src/ui/hub-strings.js:92,94；panel-hub.js:224",
+       "status": "ok",
+       "note": "不是自己 Fleet 的登入碼或驗證器。"
+      },
+      {
+       "screen": "Hub：側欄",
+       "text": "我分享的 Agent\n誰可以提問、到什麼時候",
+       "buttons": [],
+       "action": "打開清單，點自己分享的 Agent",
+       "src": "src/ui/hub-chat-strings.js:64；panel-hub.js:363,791",
+       "status": "ok",
+       "note": "前提：Fleet 已連接，而且這個 Agent 已分享。"
+      },
+      {
+       "screen": "Agent 頁",
+       "text": "可以提問的人\n還沒有人可以提問",
+       "buttons": [
+        "允許提問…"
+       ],
+       "action": "按「允許提問…」",
+       "src": "src/ui/panel-hub.js:821；hub-owner-strings.js:32,34",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "允許提問對話框",
+       "text": "允許提問 {Agent}\n對方的登入名稱\n對方登入這個 Hub 用的帳號。\n期限：1／7／30／90 天",
+       "buttons": [
+        "允許",
+        "取消"
+       ],
+       "action": "輸入同仁的登入名稱，選期限",
+       "src": "src/ui/panel-hub.js:70,844-868；hub-owner-strings.js:32-33",
+       "status": "ok",
+       "note": "預設 7 天。"
+      },
+      {
+       "screen": "授權結果",
+       "text": "1 人可以提問\n{姓名}　{登入名稱} · 到 {日期}（{剩餘}）",
+       "buttons": [
+        "撤銷…"
+       ],
+       "action": "核對姓名與到期日",
+       "src": "src/ui/panel-hub.js:822-826；hub-owner-strings.js:35,42",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "授權失敗",
+       "text": "目前無法允許這個帳號。請確認登入名稱正確、帳號仍可使用，再試一次。",
+       "buttons": [],
+       "action": "改正登入名稱再試",
+       "src": "src/ui/hub-grant-strings.js:9；panel-hub.js:854",
+       "status": "ok",
+       "note": "說明了可能的原因與下一步。"
+      },
+      {
+       "screen": "沒有畫面：依部門整批授權",
+       "text": "",
+       "buttons": [],
+       "action": "想一次讓整個團隊可以提問",
+       "src": "src/ui/panel-hub.js:860（只有一個登入名稱欄位）",
+       "status": "missing",
+       "note": "沒有部門或 AD 群組選擇器。十個人的團隊要重複十次，最長 90 天後再來一次。"
+      }
+     ]
+    },
+    {
+     "id": "M2",
+     "title": "盤點團隊：誰已加入、誰在用",
+     "who": "同一位主管",
+     "goal": "知道團隊裡誰已經連上 Hub、誰問過我的 Agent",
+     "entry": "Hub →「我分享的 Agent」→ Agent 頁",
+     "success": "看得到授權名單與最近提問；知道哪些資訊看不到",
+     "cells": "六個 Fleet Agent 情境",
+     "verdict": "看得到「誰問過我的 Agent」。看不到「我的團隊誰加入了」，主管也進不了管理頁。",
+     "steps": [
+      {
+       "screen": "Agent 頁：可以提問的人",
+       "text": "可以提問的人\n{姓名}　到 {日期}（{剩餘}）",
+       "buttons": [],
+       "action": "看已授權的同仁與到期日",
+       "src": "src/ui/panel-hub.js:821-826；src/hub/catalog.ts:227",
+       "status": "confusing",
+       "note": "授權可以早於對方第一次登入，所以名單上有名字不代表那個人已經加入 Hub；畫面沒有區分。"
+      },
+      {
+       "screen": "Agent 頁：最近的提問",
+       "text": "最近的提問\n誰問的、什麼時候，有沒有回答。問了什麼留在你 Fleet 的聊天裡。\n已回答／等待中／未回答",
+       "buttons": [
+        "重新整理"
+       ],
+       "action": "看姓名、時間與狀態",
+       "src": "src/ui/panel-hub.js:829-836；hub-owner-strings.js:38-39",
+       "status": "ok",
+       "note": "是逐筆的近期活動，不是成員名單。"
+      },
+      {
+       "screen": "沒有畫面：團隊加入名單",
+       "text": "",
+       "buttons": [],
+       "action": "想查「我的團隊誰還沒加入」",
+       "src": "src/ui/panel-hub.js:821-838（擁有者頁只有授權、額度開關、近期提問、暫停）",
+       "status": "missing",
+       "note": "沒有部門名單、加入狀態，也沒有依同仁的彙總。"
+      },
+      {
+       "screen": "直接打開「管理」",
+       "text": "只有 Hub 管理員可以查看\n已連接的 Fleet 與配對碼在這裡管理。",
+       "buttons": [],
+       "action": "只能請 Hub 管理員幫忙查",
+       "src": "src/ui/hub-strings.js:112；panel-hub.js:874",
+       "status": "missing",
+       "note": "不是管理員就看不到「管理」，側欄也不顯示。主管沒有唯讀的團隊檢視。"
+      }
+     ]
+    },
+    {
+     "id": "M3",
+     "title": "撤銷一個人、暫停所有提問，再恢復",
+     "who": "同一位主管",
+     "goal": "收回某人的權限；暫時停止所有提問，之後恢復",
+     "entry": "Hub → Agent 頁",
+     "success": "撤銷後對方的對話關閉；暫停後沒有人能問；知道怎麼恢復",
+     "cells": "六個 Fleet Agent 情境",
+     "verdict": "撤銷清楚。「暫停」其實收不回來：要回自己的 Fleet 重新分享，而且每個人都要重新授權，按下去之前畫面沒有講到後半句。",
+     "steps": [
+      {
+       "screen": "沒有畫面：同仁申請提問",
+       "text": "",
+       "buttons": [],
+       "action": "同仁想問，只能私下找主管，主管再主動授權",
+       "src": "src/ui/panel-hub.js:821,844（只有「允許提問…」）",
+       "status": "missing",
+       "note": "沒有申請與核准的流程；「主管核准」這件事在 Hub 裡不存在。"
+      },
+      {
+       "screen": "同仁那一列的選單",
+       "text": "{姓名} 的更多動作",
+       "buttons": [
+        "撤銷…"
+       ],
+       "action": "按「撤銷…」",
+       "src": "src/ui/panel-hub.js:825；hub-owner-strings.js:38-39",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "撤銷確認",
+       "text": "要撤銷 {姓名} 的權限嗎？對方的對話會關閉。",
+       "buttons": [
+        "撤銷"
+       ],
+       "action": "確認",
+       "src": "src/ui/hub-strings.js:111；panel-hub.js:804-806",
+       "status": "ok",
+       "note": "後果寫得清楚。"
+      },
+      {
+       "screen": "暫停提問卡",
+       "text": "暫停提問\n重新分享之前，沒有人能再提問。已經問過的內容仍然看得到。",
+       "buttons": [
+        "暫停…"
+       ],
+       "action": "按「暫停…」",
+       "src": "src/ui/panel-hub.js:837-838；hub-owner-strings.js:36-37",
+       "status": "confusing",
+       "note": "「暫停」聽起來可以再按一下恢復，其實不行。"
+      },
+      {
+       "screen": "暫停確認",
+       "text": "要停止所有人向 {Agent} 提問嗎？之後要再分享，需要你的 Fleet 重新核准。",
+       "buttons": [
+        "停止所有提問"
+       ],
+       "action": "確認；狀態變成「已暫停」",
+       "src": "src/ui/hub-strings.js:110；panel-hub.js:808-810",
+       "status": "confusing",
+       "note": "卡片叫「暫停」，按鈕叫「停止所有提問」，狀態叫「已暫停」，同一件事三個說法；沒提到之後每個人都要重新授權。"
+      },
+      {
+       "screen": "沒有畫面：在 Hub 恢復",
+       "text": "要開始或停止分享，請到你 Fleet 的「設定 → Hub」。",
+       "buttons": [],
+       "action": "回到自己的 Fleet",
+       "src": "src/ui/hub-owner-strings.js:35；panel-hub.js:837（已暫停時整張卡不顯示）",
+       "status": "missing",
+       "note": "暫停後這一頁沒有「恢復」按鈕。"
+      },
+      {
+       "screen": "自己 Fleet：設定 → Hub",
+       "text": "分享 {Agent}（開關）\n等待你的確認",
+       "buttons": [],
+       "action": "關掉再打開分享，並依自己 Fleet 的方式確認",
+       "src": "src/ui/settings-hub.js:229；hub-strings.js:144,147",
+       "status": "confusing",
+       "note": "要離開 Hub、回到 Fleet，再走一次確認（General、驗證碼或這台電腦）。"
+      },
+      {
+       "screen": "回到 Hub 重新授權",
+       "text": "可以提問的人\n還沒有人可以提問",
+       "buttons": [
+        "允許提問…"
+       ],
+       "action": "把每一位同仁重新加回來",
+       "src": "src/hub/catalog.ts:10-13；src/ui/panel-hub.js:821",
+       "status": "confusing",
+       "note": "新的分享不會帶回舊的授權。暫停一次，整份名單要重建。"
+      }
+     ]
+    },
+    {
+     "id": "M4",
+     "title": "看團隊的用量與額度",
+     "who": "同一位主管",
+     "goal": "知道團隊用了多少、誰用得多",
+     "entry": "Hub → Agent 頁",
+     "success": "找到用量；或清楚知道 Hub 不提供",
+     "cells": "六個 Fleet Agent 情境",
+     "verdict": "Hub 只有一個「要不要讓提問者看到概略額度」的開關。沒有任何用量報表。",
+     "steps": [
+      {
+       "screen": "Agent 頁：訂閱額度",
+       "text": "訂閱額度\n向提問者顯示額度\n分享這個 Agent 的可用狀態。確切用量留在你的 Fleet。",
+       "buttons": [
+        "向提問者顯示額度（開關）"
+       ],
+       "action": "決定要不要讓提問者看到概略狀態",
+       "src": "src/ui/hub-quota.js:19-21,80",
+       "status": "ok",
+       "note": "只有可見性的開關，沒有數字。"
+      },
+      {
+       "screen": "沒有畫面：擁有者看自己 Agent 的狀態",
+       "text": "充足／快用完／用完／未知（只出現在提問者的對話裡）",
+       "buttons": [],
+       "action": "想自己看一眼目前的狀態",
+       "src": "src/ui/hub-quota.js:19,39；src/hub/catalog.ts:289",
+       "status": "missing",
+       "note": "狀態卡只給提問者看；擁有者不能把自己加成提問者，所以在 Hub 上看不到自己 Agent 的狀態。"
+      },
+      {
+       "screen": "沒有畫面：依團隊或同仁的用量",
+       "text": "確切用量留在你的 Fleet。",
+       "buttons": [],
+       "action": "回自己 Fleet 看整體額度",
+       "src": "src/ui/hub-quota.js:21；panel-hub.js:828",
+       "status": "missing",
+       "note": "沒有依同仁或依團隊拆分的用量。Fleet 上的額度是整個帳號的，不能當成每個人的花費。"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
