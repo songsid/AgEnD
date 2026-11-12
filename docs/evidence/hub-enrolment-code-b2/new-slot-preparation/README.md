@@ -1,0 +1,7 @@
+# Fresh alpha sync and bounded diagnosis preparation
+
+Plain merge d27317e3c combines4545c30f6 with landed B1/alpha8c4b4a34. Two conflicts retain the exact B2 additive v3-notices query and its gate tests. Every source and test byte after the merge matches4545c30f6; incoming disjoint docs are preserved. B1 product code is not changed here.
+
+The new manual mode implements the leader-authorized diagnosis-first campaign. It captures a self-process CPU profile, event-loop/GC/CPU-throttle readings and owned SQLite/fs timings only for the original combined wave. The fixed diagnostic budget is30minutes. No production guard, authority, deadline or capacity criterion changes. A failed but cleaned diagnostic may proceed to the independently scoped missing legs; overall readiness still requires every phase, including diagnosis, to pass. Any budget/host/overlap STOP aborts.
+
+65 focused cases across four files and both native typechecks pass. The unknown-mode guard reversal fails its intended assertion; exact restoration passes8guard cases. An inert SQLite/owned-file test checks real statement results, actual fsync observations and exact method restoration. esbuild parses all modified manual scripts. These are preparation checks; no new runtime/remaining-leg success is inferred. CPU profiling overhead and all failures will be retained. Any B1 backend correction goes into its own alpha follow-up PR.

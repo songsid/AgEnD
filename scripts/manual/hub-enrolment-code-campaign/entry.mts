@@ -31,10 +31,11 @@ const sample = () => {
 };
 const watch = setInterval(() => { sample(); try { requireWindow(plan, source, Date.now(), existsSync('/control/STOP')); } catch (e) { stop(String(e)); } }, 1000);
 process.on('SIGTERM', () => stop('supervisor SIGTERM')); process.on('SIGINT', () => stop('supervisor SIGINT'));
-async function run(name: string, command: string, args: string[], env = {}) {
+async function run(name: string, command: string, args: string[], env = {}, maximumMs = 0) {
   requireWindow(plan, source, Date.now(), existsSync('/control/STOP')); if (stopping) throw Error('Campaign stopped');
   const phase: any = { name, startedAt: Date.now() }; receipt.phases.push(phase);
   const log = await import('node:fs').then(fs => fs.openSync('/evidence/' + name + '.log', 'wx', 0o600));
+  const budget=maximumMs?setTimeout(()=>stop(name+' fixed budget exceeded'),maximumMs):null;
   try {
     const code = await new Promise<number | null>((done, reject) => {
       child = spawn(command, args, { cwd: '/work', env: { ...process.env, ...env }, detached: true, stdio: ['ignore', log, log] });
@@ -42,7 +43,7 @@ async function run(name: string, command: string, args: string[], env = {}) {
     });
     phase.finishedAt = Date.now(); phase.exitCode = code; sample();
     if (code !== 0 || stopping) throw Error(name + ' did not complete successfully');
-  } finally { (await import('node:fs')).closeSync(log); }
+  } finally { if(budget)clearTimeout(budget);(await import('node:fs')).closeSync(log); }
 }
 try {
   symlinkSync('/work/node_modules', '/tmp/node_modules'); symlinkSync('/work/launcher', '/tmp/launcher');
@@ -58,22 +59,44 @@ try {
     'tests/hub-enrolment-code-store-b1.test.ts','tests/hub-enrolment-code-http-b1.test.ts','tests/hub-enrolment-code-permit-b1.test.ts',
     'tests/hub-enrolment-code-audit-b1.test.ts','tests/hub-enrolment-code-upgrade-b1.test.ts','tests/hub-pairing-api-s3c.test.ts',
     'tests/hub-enrolment-code-slot-b2.test.ts','tests/hub-pairing-notices.test.ts','tests/hub-pairing-inbox.test.ts','--maxWorkers=1','--cache=false','--configLoader','runner'], { VITEST_CACHE_DIR: '/tmp/vitest-cache' });
-  await run(phases[1], process.execPath, ['--import','tsx','scripts/manual/hub-enrolment-code-campaign/capacity.mts']);
+  if(plan.mode==='diagnose-3713') {
+    const diagnosisDeadline=Date.now()+30*60_000;
+    try { await run('diagnose-3713',process.execPath,['--import','tsx','scripts/manual/hub-enrolment-code-campaign/capacity.mts'],{CAMPAIGN_MODE:'diagnose'},30*60_000); }
+    catch(e){
+      if(stopping)throw e;
+      const file='/evidence/receipt-diagnosis.json';
+      if(!existsSync(file)||JSON.parse(readFileSync(file,'utf8')).cleaned!==true)throw e;
+      receipt.diagnosticError=String(e); // Retain failure; remaining legs do not convert it to a pass.
+    }
+    const reviewed='/control/DIAGNOSIS_REVIEWED';
+    while(!existsSync(reviewed)){
+      requireWindow(plan,source,Date.now(),existsSync('/control/STOP'));
+      if(stopping||Date.now()>=diagnosisDeadline)throw Error('Fixed diagnostic review budget exceeded');
+      await new Promise(resolve=>setTimeout(resolve,1000));
+    }
+    const reviewText=readFileSync(reviewed,'utf8');if(reviewText.length>4096)throw Error('Diagnostic review marker too large');
+    const review=JSON.parse(reviewText);
+    if(review.source!==source||!['backend','harness','inconclusive'].includes(review.classification))throw Error('Diagnostic review not bound to source');
+    receipt.diagnosisReview=review;
+    await run('remaining-acceptance',process.execPath,['--import','tsx','scripts/manual/hub-enrolment-code-campaign/capacity.mts'],{CAMPAIGN_MODE:'remainder'});
+  } else {
+    await run(phases[1], process.execPath, ['--import','tsx','scripts/manual/hub-enrolment-code-campaign/capacity.mts']);
+  }
   await run('hub-ui-style', process.execPath, ['--import','tsx','scripts/manual/smoke/smoke-hub-ui-gate.mts'], { PW_DIR:'/pw', OUT:'/evidence/style', MATRIX:'quick' });
   await run('hub-shell-style', process.execPath, ['--import','tsx','scripts/manual/smoke/smoke-hub-shell-gate.mts'], { PW_DIR:'/pw', OUT:'/evidence/style', MATRIX:'quick' });
   await run(phases[2], process.execPath, ['--import','tsx','scripts/manual/hub-enrolment-code-b1/rollback.mts'], { AGEND_OWNED_CONTAINER: 'hub-enrolment-code-b1' });
   requireWindow(plan, source, Date.now(), existsSync('/control/STOP'));
-  for(const file of ['receipt-runtime.json','rollback-receipt.json']) {
+  for(const file of (plan.mode==='diagnose-3713'?['receipt-diagnosis.json','receipt-remainder.json','rollback-receipt.json']:['receipt-runtime.json','rollback-receipt.json'])) {
     if(!existsSync('/evidence/'+file))throw Error('Missing phase receipt: '+file);
     const phase=JSON.parse(readFileSync('/evidence/'+file,'utf8'));
     if(phase.ready!==true||phase.cleaned!==true)throw Error('Phase did not verify cleanup/readiness: '+file);
-    if(file==='receipt-runtime.json'&&phase.source!==source)throw Error('Runtime phase used another source');
+    if(file!=='rollback-receipt.json'&&phase.source!==source)throw Error('Runtime phase used another source');
   }
   receipt.ready = true;
 } catch (e) { receipt.error = String(e); process.exitCode = 1; }
 finally {
   clearInterval(watch); sample(); receipt.finishedAt = Date.now();
-  for (const [key,file] of [['runtime','receipt-runtime.json'],['rollback','rollback-receipt.json']] as const) {
+  for (const [key,file] of [['runtime','receipt-runtime.json'],['diagnosis','receipt-diagnosis.json'],['remainder','receipt-remainder.json'],['rollback','rollback-receipt.json']] as const) {
     if (existsSync('/evidence/' + file)) receipt[key] = JSON.parse(readFileSync('/evidence/' + file, 'utf8'));
   }
   writeFileSync(join('/evidence','receipt.json'), JSON.stringify(receipt, null, 2), { mode: 0o600 });

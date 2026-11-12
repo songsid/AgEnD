@@ -8,7 +8,9 @@ import { createRequire, syncBuiltinESMExports } from 'node:module';
 if (process.env.SAFE_RUN !== '1' || process.env.AGEND_OWNED_CONTAINER !== 'hub-enrolment-code-campaign' || !existsSync('/.dockerenv')) throw Error('Owned SAFE_RUN container required');
 const out=process.env.OUT!, root=mkdtempSync(join(tmpdir(),'ridge-b1-')); mkdirSync(out,{recursive:true});
 process.env.AGEND_HOME=join(root,'environment');mkdirSync(process.env.AGEND_HOME,{mode:0o700});
-const receipt:any={source:process.env.CAMPAIGN_SHA,checks:[],waves:[],screenshots:[],boundary:'Owned network-none source build. Five independent production Fleet web/settings/join/member services per mass wave, no Agent lifecycle or backend CLI. Remaining clients use shipped compiled join/member code and explicit harness-side durable profiles. Synthetic LDAP; owned HTTPS proxies; deliberate eligibility-delay control for real admission backpressure. Not packaged/systemd/native/pilot/real AD.'};
+const mode=process.env.CAMPAIGN_MODE??'full',diagnose=mode==='diagnose',remainder=mode==='remainder';
+if(!['full','diagnose','remainder'].includes(mode))throw Error('Unknown campaign mode');
+const receipt:any={mode,source:process.env.CAMPAIGN_SHA,checks:[],waves:[],screenshots:[],boundary:'Owned network-none source build. Five independent production Fleet web/settings/join/member services per mass wave, no Agent lifecycle or backend CLI. Remaining clients use shipped compiled join/member code and explicit harness-side durable profiles. Synthetic LDAP; owned HTTPS proxies; deliberate eligibility-delay control for real admission backpressure. Not packaged/systemd/native/pilot/real AD.'};
 const check=(name:string,pass:boolean)=>{receipt.checks.push({name,pass});console.log(JSON.stringify({check:name,pass}));if(!pass)throw Error(name);};
 const wait=async(fn:()=>boolean,ms=30000)=>{const end=Date.now()+ms;while(!fn()&&Date.now()<end)await new Promise(r=>setTimeout(r,40));if(!fn())throw Error('Owned fixture deadline');};
 const tls=createRequire(import.meta.url)('node:tls'), original=tls.connect;let dc=0;
@@ -25,7 +27,7 @@ const {createLocalJoin,saveLocalJoin}=await import('/tmp/b1-dist/hub/join/local-
 const {syncJoinPrivate}=await import('/tmp/b1-dist/hub/join/private.js');
 const {companyJoinRig}=await import('../../../tests/support/hub-company-join-rig.js');
 const {chromium}=createRequire((process.env.PW_DIR ?? '/work')+'/')('playwright-core');
-let rig:any,browser:any,ui:any;const clients:any[]=[],online=new Set<string>();
+let activeProbe:any=null;let rig:any,browser:any,ui:any;const clients:any[]=[],online=new Set<string>();
 const group='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 try {
  rig=await companyJoinRig((port:number)=>dc=port);
@@ -44,7 +46,7 @@ try {
  const metadata=await client.discover(rig.webOrigin,()=>true);check('built strict discovery advertises code',metadata.features.includes('enrolment-code-v1'));
  browser=await chromium.launch({args:['--no-sandbox','--no-proxy-server','--host-resolver-rules=MAP *.example.test 127.0.0.1']});
  ui=campaignUi(rig,browser,receipt,check,online);
- await ui.adminShots();
+ if(!remainder)await ui.adminShots();
  const create=async(maxUses:number,scope:any={kind:'directory'})=>{const r=await rig.call(admin,'POST','/hub/v1/admin/enrolment-codes',{expires:'today',maxUses,perPersonFleets:1,scope});check('admin creates '+maxUses+'-use code',r.status===201);return r.body;};
  const secrets:string[]=[];
  const rawJson=(client as any).json.bind(client);(client as any).json=async(...args:any[])=>{const began=Date.now();try{return await rawJson(...args);}catch(e:any){const diagnostic={path:String(args[1]).split('?')[0],elapsedMs:Date.now()-began,code:e.code??null,kind:e.kind??null};receipt.machineErrors??=[];receipt.machineErrors.push(diagnostic);console.error(JSON.stringify({machineFailure:diagnostic}));throw e;}};
@@ -90,6 +92,7 @@ try {
  }
  function people(prefix:string,n:number,groups:string[]=[]){return Array.from({length:n},(_,i)=>{const login=prefix+i;rig.people.push({id:randomUUID(),login,dn:'CN='+login+',DC=example,DC=test',password:'Dummy-'+login+'-only',groups});return login;});}
  async function wave(n:number,prefix:string,withGroups=false){
+  if(diagnose&&withGroups){const {startDiagnostics}=await import('./diagnostics.mts');activeProbe=await startDiagnostics(rig,out);}
   const visible=await Promise.all(Array.from({length:5},(_,i)=>ui.prepareFleet(i,prefix)));
   const code=await create(n);secrets.push(code.code.replace('-',''));const persons=people(prefix,n),start=Date.now();
   const groupPeople=withGroups?people(prefix+'group',3,[group]):[];
@@ -123,7 +126,8 @@ try {
    const machineJobs=withGroups?[...groupPeople.map(p=>attempt(null,p)),...persons.slice(5).map(p=>attempt(code.code,p))]:persons.map((p,i)=>attempt(code.code,p,i<5?visible[i]:null));
    result=await Promise.all(withGroups?[...visibleJobs,...machineJobs]:machineJobs);
   }
-  finally{release();allowConsent();if(deadline)clearTimeout(deadline);await Promise.allSettled([...seedJobs,...visibleJobs]);rig.directory.checkEligibility=original;}
+  finally{release();allowConsent();if(deadline)clearTimeout(deadline);await Promise.allSettled([...seedJobs,...visibleJobs]);rig.directory.checkEligibility=original;if(activeProbe){await activeProbe.stop();activeProbe=null;}}
+  receipt.lastResults=result.map((r:any)=>({issued:r.issued,fleetId:r.binding.fleetId,started:r.started,connected:r.connected??null}));
   const uses=rig.db.prepare('SELECT uses FROM hub_enrolment_codes WHERE id=?').get(code.id).uses;
   check(prefix+' all issued and pinned member links reconciled',result.every(r=>r.issued));check(prefix+' uses counted once',uses===n);
   await wait(()=>result.every((r,i)=>i<5?visible[i].fm.hubMemberLink==='online':r.member?.ready===true&&r.member?.view?.current()===true),30_000);
@@ -140,6 +144,7 @@ try {
    databaseBytes:statSync(join(rig.home,'hub/hub.sqlite')).size,walBytes:existsSync(join(rig.home,'hub/hub.sqlite-wal'))?statSync(join(rig.home,'hub/hub.sqlite-wal')).size:0});
   await ui.closeVisible();
  }
+ if(!remainder){
  // Code-specific authenticated refusals: actual fresh-company sign-in and real server reasons.
  const variants=[{lang:'en',phone:false},{lang:'en',phone:true},{lang:'zh-TW',phone:false},{lang:'zh-TW',phone:true}];
  const scopeCode=await create(8,{kind:'group',realm:'corp',objectId:group,dn:'CN=Owners,DC=example,DC=test'});secrets.push(scopeCode.code.replace('-',''));
@@ -153,6 +158,9 @@ try {
  // Respect the120/min bucket across independent acceptance waves; never reset or bypass it.
  await new Promise(r=>setTimeout(r,60_000));await wave(50,'mass');
  await new Promise(r=>setTimeout(r,60_000));await wave(50,'withgroups',true);
+ }
+ if(!diagnose){
+ if(remainder){const live=await create(2);secrets.push(live.code.replace('-',''));}
  await ui.cachedShots();
  const compat=await create(1);secrets.push(compat.code.replace('-',''));const compatPerson=people('compat',1)[0];
  const retained=await attempt(compat.code,compatPerson,null,async()=>{},()=>{},true);check('B-L9 old v2-only member link connected',retained.issued);
@@ -162,6 +170,7 @@ try {
  const upgraded=new HubMemberClient({home:retained.home,hubId:metadata.hub.hubId,memberOrigin:metadata.hub.memberOrigin,current:()=>true,reconcile:async()=>{online.add(retained.binding.fleetId);},receive:async()=>{},hold:()=>{}});
  clients.push(upgraded);await upgraded.start();await wait(()=>target()==='delivered',30000);check('B-L9 code notice delivered after actual member upgrade',online.has(retained.binding.fleetId));
 
+ const activeBeforeRevoke=rig.deps.store.read().fleets.filter((f:any)=>f.status==='active').length;
  const revoke=await create(50);secrets.push(revoke.code.replace('-',''));const names=people('revoke',50);
  const revokeStarts:number[]=[];const launchRevoke=(p:string)=>{revokeStarts.push(Date.now());return attempt(revoke.code,p);};
  const first=await Promise.all(names.slice(0,25).map(launchRevoke));check('revoke first 25 issued',first.every(x=>x.issued));
@@ -170,18 +179,20 @@ try {
  check('revoke wave starts within 60 seconds',Math.max(...revokeStarts)-Math.min(...revokeStarts)<60000);
  receipt.waves.push({kind:'revoke-at-25',started:Math.min(...revokeStarts),startSpanMs:Math.max(...revokeStarts)-Math.min(...revokeStarts),uses:25,hubAndFleetsRss:process.memoryUsage().rss,databaseBytes:statSync(join(rig.home,'hub/hub.sqlite')).size});
  check('revoked counter stops at 25',rig.db.prepare('SELECT uses FROM hub_enrolment_codes WHERE id=?').get(revoke.id).uses===25);
- check('issued fleets stay active after code revocation',rig.deps.store.read().fleets.filter((f:any)=>f.status==='active').length===149);
+ check('issued fleets stay active after code revocation',rig.deps.store.read().fleets.filter((f:any)=>f.status==='active').length===activeBeforeRevoke+25);
  check('no join expired',rig.db.prepare("SELECT count(*) n FROM hub_company_join_requests WHERE json_extract(body,'$.reason')='expired'").get().n===0);
  const scan=(directory:string):boolean=>readdirSync(directory,{withFileTypes:true}).every(entry=>entry.isDirectory()?scan(join(directory,entry.name)):!secrets.some(s=>readFileSync(join(directory,entry.name)).includes(Buffer.from(s))));
- check('no plain code anywhere in Hub home',scan(rig.home));check('audit hash chain',rig.deps.audit.verifyChain().ok===true);receipt.ready=true;
+ check('no plain code anywhere in Hub home',scan(rig.home));check('audit hash chain',rig.deps.audit.verifyChain().ok===true);}
+ receipt.ready=true;
 }catch(error){receipt.error=String(error);console.error(error);process.exitCode=1;}
 finally{
+ if(activeProbe){await activeProbe.stop();activeProbe=null;}
  const failures:string[]=[];const clean=async(name:string,work:()=>any)=>{try{await work();}catch{failures.push(name);}};
  for(const c of clients.reverse())await clean('member',()=>c.close());await clean('fleets',()=>ui?.closeVisible());await clean('browser',()=>browser?.close());await clean('Hub',()=>rig?.close());
  tls.connect=original;syncBuiltinESMExports();rmSync(root,{recursive:true,force:true});receipt.cleaned=failures.length===0;if(failures.length){receipt.cleanupFailures=failures;receipt.ready=false;}
  const files=["src/hub/audit/index.ts", "src/hub/catalog.ts", "src/hub/client.ts", "src/hub/compose/member.ts", "src/hub/compose/server.ts", "src/hub/enrolment-code.ts", "src/hub/group-policy/admin-impact.ts", "src/hub/group-policy/admin-inventory.ts", "src/hub/group-policy/authorization.ts", "src/hub/group-policy/impact-inventory.ts", "src/hub/group-policy/resources.ts", "src/hub/group-policy/store.ts", "src/hub/http/compose.ts", "src/hub/join/receipt.ts", "src/hub/join/service.ts", "src/hub/join/store.ts", "src/hub/member/pairing-notices.ts", "src/hub/pairing-notices.ts", "src/hub/pairing.ts", "src/hub/protocol.ts", "src/hub/server.ts", "src/hub/types.ts", "src/settings-api.ts"];
  files.push('src/fleet-manager.ts','src/ui/hub-join-steps.js','src/ui/hub-enrolment-code.js','src/ui/hub-enrolment-code-strings.js','src/ui/hub-join-approval.js','src/ui/hub-join-queue.js','src/ui/hub-client.js','src/ui/hub-company-join.js','src/ui/settings-hub.js','src/ui/settings-hub-company-join.js');
  receipt.production=files.map(path=>({path,sha256:createHash('sha256').update(readFileSync('/work/'+path)).digest('hex')}));
- receipt.images=receipt.screenshots.map((path:string)=>({path,sha256:createHash('sha256').update(readFileSync(join(out,path))).digest('hex')}));writeFileSync(join(out,'receipt-runtime.json'),JSON.stringify(receipt,null,2));
+ receipt.images=receipt.screenshots.map((path:string)=>({path,sha256:createHash('sha256').update(readFileSync(join(out,path))).digest('hex')}));writeFileSync(join(out,diagnose?'receipt-diagnosis.json':remainder?'receipt-remainder.json':'receipt-runtime.json'),JSON.stringify(receipt,null,2));
 }
 console.log(JSON.stringify({ready:receipt.ready===true,checks:receipt.checks.length,error:receipt.error}));process.exit(receipt.ready?0:1);

@@ -19,6 +19,10 @@ describe('combined campaign requires a later explicit GO and a live non-overlapp
     expect(() => requireWindow({ ...plan(), until: now + 3 * 3600_000 }, source, now)).toThrow('bounded');
     expect(() => requireWindow({ ...plan(), version: '1.22.0' }, source, now)).toThrow('version');
   });
+  it('only admits the declared diagnostic sequence, never an arbitrary phase or budget', () => {
+    expect(requireWindow({...plan(),mode:'diagnose-3713'},source,now).mode).toBe('diagnose-3713');
+    expect(()=>requireWindow({...plan(),mode:'skip-assertions'},source,now)).toThrow('mode');
+  });
   it('accepts the exact source during its later explicit-GO window', () => { const p = plan(); expect(requireWindow(p, source, now)).toBe(p); });
 });
 

@@ -114,3 +114,30 @@ Before publishing evidence, inspect every PNG and verify its source/hash receipt
 separate synthetic fixtures and version stamping from product/runtime claims,
 and retain any failures. Re-sync and regenerate the GO plan if the candidate
 changes. B1/B2 stay held for U2-first merge order and final parity review.
+
+## #3713 bounded diagnostic sequence
+
+A separately verified fresh GO may select `mode: "diagnose-3713"` in the plan.
+The supervisor gives the diagnostic phase a fixed30-minute budget, including its
+original warmup/capture sequence. Only the combined wave enables a self-process
+V8 CPU profile, event-loop/GC/cgroup CPU observations and timing wrappers for
+owned SQLite statements and fs calls. No arguments, file contents, secrets or
+SQL values are recorded. An inert in-memory SQL/owned-file check verifies the
+observed results and exact restoration of the wrapped methods. Profiling overhead
+is disclosed; diagnostic timings are not unprofiled performance measurements.
+
+A normally failed diagnostic retains its failure. Only if its runtime cleanup is
+verified may the same owned container proceed to a fresh Hub fixture for the
+previously missing legs: cached HTML/shell/client/CSS, actual v2 member upgrade,
+revoke-at25, plaintext/audit checks, then the serial style and rollback phases.
+The revoke assertion compares the complete active count before and after the25
+issues, instead of depending on the preceding independent mass waves. No issued
+Fleet may disappear or be added after revoke. A budget/host/overlap STOP aborts
+rather than proceeding. Overall `ready` still requires the diagnostic AND every
+remaining phase to pass; later passes cannot replace the failed diagnostic.
+
+The current policy/parser/source files and all client deadlines stay unchanged.
+A B1 backend fix must be a separate alpha PR. No previous or expired GO plan may
+be reused; the normal exact-committed-source interlock and2CPU/3GiB limits remain.
+
+The diagnostic sequence pauses after its cleaned first phase for the author to read the profile. Within the same30-minute budget, an owned control/DIAGNOSIS_REVIEWED JSON marker must name the exact source and classify backend/harness/inconclusive. This is an internal evidence checkpoint, not human approval. Missing/mismatched/late markers refuse; it does not extend the GO window.
