@@ -94,7 +94,7 @@ Agent 現在可以直接在 Windows 上跑，不論是 AgEnD 這台電腦，還�
 
 ## AgEnD Hub（實驗功能，預設關閉）
 
-Hub 讓公司裡的同仁用公司帳號（Active Directory）登入後，向彼此的 Agent 提問。沒有人用 `agend hub init` 或「設定 → Hub」建立 Hub，就不會有任何變化。Fleet 要連接 Hub，只要一個輸入框：輸入 Hub 位址，按「以公司帳號登入」。2.4.0-alpha.1 之後，Hub 管理員在一張「讓同仁加入」卡片上就能讓同仁加入：開放加入、選擇 AD 群組，再複製一句說明傳出去。加入碼之後推出。完整步驟見 [把 Fleet 連接到 Hub](hub-join.zh-TW.md)；群組權限見 [Hub 群組權限](hub-group-permissions.zh-TW.md)。
+Hub 讓公司裡的同仁用公司帳號（Active Directory）登入後，向彼此的 Agent 提問。沒有人用 `agend hub init` 或「設定 → Hub」建立 Hub，就不會有任何變化。Fleet 要連接 Hub，只要一個輸入框：輸入 Hub 位址，按「以公司帳號登入」。從 2.4.0-alpha.2 起，Hub 管理員在一張「讓同仁加入」卡片上就能讓同仁加入：開放加入、選擇 AD 群組，再複製一句說明傳出去。也可以建立一組**加入碼**（例如給工作坊的所有人）：同仁輸入位址、空一格、再輸入加入碼（`hub.example.com K7QF-3M9P`），或直接貼上管理員給的整段訊息。完整步驟見 [把 Fleet 連接到 Hub](hub-join.zh-TW.md)；群組權限見 [Hub 群組權限](hub-group-permissions.zh-TW.md)。
 
 ## 辦公室
 
