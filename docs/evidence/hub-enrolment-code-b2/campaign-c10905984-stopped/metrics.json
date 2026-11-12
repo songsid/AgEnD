@@ -1,0 +1,48 @@
+{
+  "source": "c10905984857e2e94e992acb14fcac4d11e282c8",
+  "ready": false,
+  "phases": [
+    {
+      "name": "build",
+      "startedAt": 1794468276260,
+      "finishedAt": 1794468287459,
+      "exitCode": 0
+    },
+    {
+      "name": "protocol",
+      "startedAt": 1794468287752,
+      "finishedAt": 1794468344464,
+      "exitCode": 0
+    },
+    {
+      "name": "ui-capacity",
+      "startedAt": 1794468344465,
+      "finishedAt": 1794468998973,
+      "exitCode": 1
+    }
+  ],
+  "runtimeCleaned": false,
+  "runtimeCleanupFailures": [
+    "fleets"
+  ],
+  "outerCleanup": "CID and owned image independently absent; launcher waited for sampler and removed ACTIVE.",
+  "waves": [
+    {
+      "n": 20,
+      "groups": 0,
+      "authenticationMs": null,
+      "startSpanMs": 14244,
+      "elapsedMs": 32490,
+      "uses": 20,
+      "everConnected": 20,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 524849152,
+      "databaseBytes": 823296,
+      "walBytes": 4165352
+    }
+  ],
+  "images": 78,
+  "maxHostLoad": 12.52,
+  "minAvailableMiB": 16607.69140625,
+  "maxContainerBytes": 1790582784
+}

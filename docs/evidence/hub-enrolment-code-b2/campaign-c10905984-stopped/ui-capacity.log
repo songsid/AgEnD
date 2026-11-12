@@ -1,0 +1,279 @@
+{"check":"company join enabled","pass":true}
+{"check":"built strict discovery advertises code","pass":true}
+{"check":"desk-light-en-admin-before no horizontal overflow","pass":true}
+{"check":"desk-light-en-admin-before no raw i18n keys","pass":true}
+{"check":"desk-light-en-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-light-en-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-light-en scoped picker input and note are distinct","pass":true}
+{"check":"desk-light-en-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-light-en-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-light-en resolved picker retires its input","pass":true}
+{"check":"desk-light-en-active-code no horizontal overflow","pass":true}
+{"check":"desk-light-en-active-code no raw i18n keys","pass":true}
+{"check":"desk-light-en admin page errors","pass":true}
+{"check":"desk-dark-en-admin-before no horizontal overflow","pass":true}
+{"check":"desk-dark-en-admin-before no raw i18n keys","pass":true}
+{"check":"desk-dark-en-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-dark-en-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-dark-en scoped picker input and note are distinct","pass":true}
+{"check":"desk-dark-en-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-dark-en-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-dark-en resolved picker retires its input","pass":true}
+{"check":"desk-dark-en-active-code no horizontal overflow","pass":true}
+{"check":"desk-dark-en-active-code no raw i18n keys","pass":true}
+{"check":"desk-dark-en admin page errors","pass":true}
+{"check":"desk-light-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"desk-light-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW resolved picker retires its input","pass":true}
+{"check":"desk-light-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW admin page errors","pass":true}
+{"check":"desk-dark-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"desk-dark-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW resolved picker retires its input","pass":true}
+{"check":"desk-dark-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW admin page errors","pass":true}
+{"check":"phone-light-en-admin-before no horizontal overflow","pass":true}
+{"check":"phone-light-en-admin-before no raw i18n keys","pass":true}
+{"check":"phone-light-en-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-light-en-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-light-en scoped picker input and note are distinct","pass":true}
+{"check":"phone-light-en-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-light-en-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-light-en resolved picker retires its input","pass":true}
+{"check":"phone-light-en-active-code no horizontal overflow","pass":true}
+{"check":"phone-light-en-active-code no raw i18n keys","pass":true}
+{"check":"phone-light-en admin page errors","pass":true}
+{"check":"phone-dark-en-admin-before no horizontal overflow","pass":true}
+{"check":"phone-dark-en-admin-before no raw i18n keys","pass":true}
+{"check":"phone-dark-en-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-dark-en-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-dark-en scoped picker input and note are distinct","pass":true}
+{"check":"phone-dark-en-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-dark-en-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-dark-en resolved picker retires its input","pass":true}
+{"check":"phone-dark-en-active-code no horizontal overflow","pass":true}
+{"check":"phone-dark-en-active-code no raw i18n keys","pass":true}
+{"check":"phone-dark-en admin page errors","pass":true}
+{"check":"phone-light-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"phone-light-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW resolved picker retires its input","pass":true}
+{"check":"phone-light-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW admin page errors","pass":true}
+{"check":"phone-dark-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"phone-dark-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW resolved picker retires its input","pass":true}
+{"check":"phone-dark-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW admin page errors","pass":true}
+{"check":"desk-light-en ended code is not redisplayed","pass":true}
+{"check":"desk-light-en-ended-code no horizontal overflow","pass":true}
+{"check":"desk-light-en-ended-code no raw i18n keys","pass":true}
+{"check":"desk-light-en ended page errors","pass":true}
+{"check":"desk-dark-en ended code is not redisplayed","pass":true}
+{"check":"desk-dark-en-ended-code no horizontal overflow","pass":true}
+{"check":"desk-dark-en-ended-code no raw i18n keys","pass":true}
+{"check":"desk-dark-en ended page errors","pass":true}
+{"check":"desk-light-zh-TW ended code is not redisplayed","pass":true}
+{"check":"desk-light-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW ended page errors","pass":true}
+{"check":"desk-dark-zh-TW ended code is not redisplayed","pass":true}
+{"check":"desk-dark-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW ended page errors","pass":true}
+{"check":"phone-light-en ended code is not redisplayed","pass":true}
+{"check":"phone-light-en-ended-code no horizontal overflow","pass":true}
+{"check":"phone-light-en-ended-code no raw i18n keys","pass":true}
+{"check":"phone-light-en ended page errors","pass":true}
+{"check":"phone-dark-en ended code is not redisplayed","pass":true}
+{"check":"phone-dark-en-ended-code no horizontal overflow","pass":true}
+{"check":"phone-dark-en-ended-code no raw i18n keys","pass":true}
+{"check":"phone-dark-en ended page errors","pass":true}
+{"check":"phone-light-zh-TW ended code is not redisplayed","pass":true}
+{"check":"phone-light-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW ended page errors","pass":true}
+{"check":"phone-dark-zh-TW ended code is not redisplayed","pass":true}
+{"check":"phone-dark-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW ended page errors","pass":true}
+{"check":"admin creates 8-use code","pass":true}
+{"check":"scope-0-code-scope no horizontal overflow","pass":true}
+{"check":"scope-0-code-scope no raw i18n keys","pass":true}
+{"check":"scope-0 refusal saves no credential","pass":true}
+{"check":"scope-1-code-scope no horizontal overflow","pass":true}
+{"check":"scope-1-code-scope no raw i18n keys","pass":true}
+{"check":"scope-1 refusal saves no credential","pass":true}
+{"check":"scope-2-code-scope no horizontal overflow","pass":true}
+{"check":"scope-2-code-scope no raw i18n keys","pass":true}
+{"check":"scope-2 refusal saves no credential","pass":true}
+{"check":"scope-3-code-scope no horizontal overflow","pass":true}
+{"check":"scope-3-code-scope no raw i18n keys","pass":true}
+{"check":"scope-3 refusal saves no credential","pass":true}
+{"check":"admin creates 4-use code","pass":true}
+{"check":"end pending code before actual sign-in","pass":true}
+{"check":"ended-0-code-ended no horizontal overflow","pass":true}
+{"check":"ended-3-code-ended no horizontal overflow","pass":true}
+{"check":"ended-0-code-ended no raw i18n keys","pass":true}
+{"check":"ended-3-code-ended no raw i18n keys","pass":true}
+{"check":"ended-2-code-ended no horizontal overflow","pass":true}
+{"check":"ended-2-code-ended no raw i18n keys","pass":true}
+{"check":"ended-1-code-ended no horizontal overflow","pass":true}
+{"check":"ended-1-code-ended no raw i18n keys","pass":true}
+{"check":"ended-0 refusal saves no credential","pass":true}
+{"check":"ended-3 refusal saves no credential","pass":true}
+{"check":"ended-2 refusal saves no credential","pass":true}
+{"check":"ended-1 refusal saves no credential","pass":true}
+{"check":"admin creates 20-use code","pass":true}
+{"check":"Origin-bound browser handoff small5","pass":true}
+{"check":"Origin-bound browser handoff small6","pass":true}
+{"check":"Origin-bound browser handoff small7","pass":true}
+{"check":"Origin-bound browser handoff small8","pass":true}
+{"check":"Origin-bound browser handoff small9","pass":true}
+{"check":"small-0-01-fleet-start no horizontal overflow","pass":true}
+{"check":"small-0-01-fleet-start no raw i18n keys","pass":true}
+{"check":"small-1-01-fleet-start no horizontal overflow","pass":true}
+{"check":"small-1-01-fleet-start no raw i18n keys","pass":true}
+{"check":"small-3-01-fleet-start no horizontal overflow","pass":true}
+{"check":"small-4-01-fleet-start no horizontal overflow","pass":true}
+{"check":"small-2-01-fleet-start no horizontal overflow","pass":true}
+{"check":"small-4-01-fleet-start no raw i18n keys","pass":true}
+{"check":"small-3-01-fleet-start no raw i18n keys","pass":true}
+{"check":"small-2-01-fleet-start no raw i18n keys","pass":true}
+{"check":"Origin-bound browser handoff small10","pass":true}
+{"check":"Origin-bound browser handoff small11","pass":true}
+{"check":"Origin-bound browser handoff small12","pass":true}
+{"check":"Origin-bound browser handoff small13","pass":true}
+{"check":"Origin-bound browser handoff small14","pass":true}
+{"check":"Origin-bound browser handoff small15","pass":true}
+{"check":"Origin-bound browser handoff small16","pass":true}
+{"check":"Origin-bound browser handoff small17","pass":true}
+{"check":"Origin-bound browser handoff small18","pass":true}
+{"check":"Origin-bound browser handoff small19","pass":true}
+{"check":"small-0-02-hub-signin no horizontal overflow","pass":true}
+{"check":"small-0-02-hub-signin no raw i18n keys","pass":true}
+{"check":"small-1-02-hub-signin no horizontal overflow","pass":true}
+{"check":"small-1-02-hub-signin no raw i18n keys","pass":true}
+{"check":"small-4-02-hub-signin no horizontal overflow","pass":true}
+{"check":"small-4-02-hub-signin no raw i18n keys","pass":true}
+{"check":"small-3-02-hub-signin no horizontal overflow","pass":true}
+{"check":"small-2-02-hub-signin no horizontal overflow","pass":true}
+{"check":"small-3-02-hub-signin no raw i18n keys","pass":true}
+{"check":"small-2-02-hub-signin no raw i18n keys","pass":true}
+{"check":"small-1 current production join is durably active","pass":true}
+{"check":"small-1 no per-Fleet admin approval","pass":true}
+{"check":"small-1 no page errors","pass":true}
+{"check":"small-1-04-connected no horizontal overflow","pass":true}
+{"check":"small-1-04-connected no raw i18n keys","pass":true}
+{"check":"small-0 current production join is durably active","pass":true}
+{"check":"small-0 no per-Fleet admin approval","pass":true}
+{"check":"small-0 no page errors","pass":true}
+{"check":"small-4 current production join is durably active","pass":true}
+{"check":"small-4 no per-Fleet admin approval","pass":true}
+{"check":"small-4 no page errors","pass":true}
+{"check":"small-3 current production join is durably active","pass":true}
+{"check":"small-3 no per-Fleet admin approval","pass":true}
+{"check":"small-3 no page errors","pass":true}
+{"check":"small-2 current production join is durably active","pass":true}
+{"check":"small-2 no per-Fleet admin approval","pass":true}
+{"check":"small-2 no page errors","pass":true}
+{"check":"small-2-04-connected no horizontal overflow","pass":true}
+{"check":"small-2-04-connected no raw i18n keys","pass":true}
+{"check":"small-0-04-connected no horizontal overflow","pass":true}
+{"check":"small-4-04-connected no horizontal overflow","pass":true}
+{"check":"small-3-04-connected no horizontal overflow","pass":true}
+{"check":"small-0-04-connected no raw i18n keys","pass":true}
+{"check":"small-4-04-connected no raw i18n keys","pass":true}
+{"check":"small-3-04-connected no raw i18n keys","pass":true}
+{"check":"small all issued and pinned member links reconciled","pass":true}
+{"check":"small uses counted once","pass":true}
+{"check":"small all member links current together","pass":true}
+{"check":"small starts inside 60 seconds","pass":true}
+{"check":"small connected within five minutes","pass":true}
+{"check":"small recent labels and owners","pass":true}
+{"check":"small labelled admin row small-0","pass":true}
+{"check":"small-admin-row-small-0 no horizontal overflow","pass":true}
+{"check":"small-admin-row-small-0 no raw i18n keys","pass":true}
+{"check":"small labelled admin row small-1","pass":true}
+{"check":"small-admin-row-small-1 no horizontal overflow","pass":true}
+{"check":"small-admin-row-small-1 no raw i18n keys","pass":true}
+{"check":"small labelled admin row small-2","pass":true}
+{"check":"small-admin-row-small-2 no horizontal overflow","pass":true}
+{"check":"small-admin-row-small-2 no raw i18n keys","pass":true}
+{"check":"small labelled admin row small-3","pass":true}
+{"check":"small-admin-row-small-3 no horizontal overflow","pass":true}
+{"check":"small-admin-row-small-3 no raw i18n keys","pass":true}
+{"check":"small labelled admin row small-4","pass":true}
+{"check":"small-admin-row-small-4 no horizontal overflow","pass":true}
+{"check":"small-admin-row-small-4 no raw i18n keys","pass":true}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":24,"code":"denied","kind":null}}
+{"check":"small next push refuses after exhaustion","pass":true}
+{"check":"admin creates 50-use code","pass":true}
+{"check":"mass-3-00-company-session no horizontal overflow","pass":true}
+{"check":"mass-3-00-company-session no raw i18n keys","pass":true}
+{"check":"mass-0-00-company-session no horizontal overflow","pass":true}
+{"check":"mass-0-00-company-session no raw i18n keys","pass":true}
+{"check":"mass-4-00-company-session no horizontal overflow","pass":true}
+{"check":"mass-4-00-company-session no raw i18n keys","pass":true}
+{"check":"mass-2-00-company-session no horizontal overflow","pass":true}
+{"check":"mass-1-00-company-session no horizontal overflow","pass":true}
+{"check":"mass-2-00-company-session no raw i18n keys","pass":true}
+{"check":"mass-1-00-company-session no raw i18n keys","pass":true}
+{"check":"Origin-bound browser handoff mass5","pass":true}
+{"check":"Origin-bound browser handoff mass6","pass":true}
+{"check":"Origin-bound browser handoff mass7","pass":true}
+{"check":"Origin-bound browser handoff mass8","pass":true}
+{"check":"Origin-bound browser handoff mass9","pass":true}
+{"check":"mass-4-01-fleet-start no horizontal overflow","pass":true}
+{"check":"mass-4-01-fleet-start no raw i18n keys","pass":true}
+{"check":"mass-0-01-fleet-start no horizontal overflow","pass":true}
+{"check":"mass-1-01-fleet-start no horizontal overflow","pass":true}
+{"check":"mass-1-01-fleet-start no raw i18n keys","pass":true}
+{"check":"mass-0-01-fleet-start no raw i18n keys","pass":true}
+{"check":"mass-2-01-fleet-start no horizontal overflow","pass":true}
+{"check":"mass-3-01-fleet-start no horizontal overflow","pass":true}
+{"check":"mass-3-01-fleet-start no raw i18n keys","pass":true}
+{"check":"mass-2-01-fleet-start no raw i18n keys","pass":true}
+{"check":"Origin-bound browser handoff mass10","pass":true}
+{"check":"Origin-bound browser handoff mass11","pass":true}
+{"check":"Origin-bound browser handoff mass12","pass":true}
+{"check":"Origin-bound browser handoff mass13","pass":true}
+{"check":"Origin-bound browser handoff mass14","pass":true}
+{"check":"Origin-bound browser handoff mass15","pass":true}
+{"check":"Origin-bound browser handoff mass16","pass":true}
+{"check":"Origin-bound browser handoff mass17","pass":true}
+{"check":"Origin-bound browser handoff mass18","pass":true}
+{"check":"Origin-bound browser handoff mass19","pass":true}
+page.waitForURL: Target page, context or browser has been closed
+=========================== logs ===========================
+waiting for navigation to "https://hub.example.test:39583/ui/hub?join=*" until "load"
+============================================================
+    at Object.joinFleet (/work/scripts/manual/hub-enrolment-code-campaign/fleets.mts:170:41)
+    at async wave (/work/scripts/manual/hub-enrolment-code-campaign/capacity.mts:151:11)
+    at async <anonymous> (/work/scripts/manual/hub-enrolment-code-campaign/capacity.mts:186:45) {
+  log: []
+}
+{"ready":false,"checks":268,"error":"Error: page.waitForURL: Target page, context or browser has been closed\n=========================== logs ===========================\nwaiting for navigation to \"https://hub.example.test:39583/ui/hub?join=*\" until \"load\"\n============================================================"}

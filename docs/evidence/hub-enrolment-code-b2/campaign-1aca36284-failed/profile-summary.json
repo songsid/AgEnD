@@ -1,0 +1,1110 @@
+{
+  "sampleCount": 324438,
+  "wallMs": 403635.461,
+  "self": [
+    {
+      "ms": 25726.9,
+      "function": "(garbage collector)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 20892.73,
+      "function": "(idle)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 5705.71,
+      "function": "(program)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 3813.08,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 3053.3,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 3035.84,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 3012.49,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2973.49,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2968.55,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2949.39,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2829.56,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2801.46,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2782.47,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2687.15,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2684.93,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2667.86,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2652.03,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2625.94,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2560.82,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2524.83,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2522.93,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2515.29,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2490.22,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2466.38,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 2414.63,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 2388.36,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1795.76,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1553.92,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1542.26,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1510.75,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1491.54,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1459.54,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1452.29,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1441.16,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1421.89,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1411.78,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1408.26,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1401.0,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1377.79,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1372.91,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1367.12,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1360.7,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1351.64,
+      "function": "",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 40864
+    },
+    {
+      "ms": 1311.82,
+      "function": "shutdown",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1178.53,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1159.21,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1129.2,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1097.12,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1078.49,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1028.61,
+      "function": "shutdown",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1025.11,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 963.59,
+      "function": "scalarString",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 937.69,
+      "function": "writev",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 920.43,
+      "function": "scalarString",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 909.37,
+      "function": "scalarString",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 909.21,
+      "function": "scalarString",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 899.97,
+      "function": "scalarString",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 899.41,
+      "function": "scalarString",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 897.7,
+      "function": "scalarString",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 784.18,
+      "function": "inst._zod.check",
+      "url": "file:///work/node_modules/zod/v4/core/checks.js",
+      "line": 362
+    },
+    {
+      "ms": 766.54,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 756.41,
+      "function": "",
+      "url": "file:///work/src/hub/pairing-notices.ts",
+      "line": 9
+    },
+    {
+      "ms": 738.41,
+      "function": "inst._zod.check",
+      "url": "file:///work/node_modules/zod/v4/core/checks.js",
+      "line": 362
+    },
+    {
+      "ms": 729.67,
+      "function": "inst._zod.check",
+      "url": "file:///work/node_modules/zod/v4/core/checks.js",
+      "line": 362
+    },
+    {
+      "ms": 726.21,
+      "function": "inst._zod.check",
+      "url": "file:///work/node_modules/zod/v4/core/checks.js",
+      "line": 362
+    },
+    {
+      "ms": 715.6,
+      "function": "inst._zod.check",
+      "url": "file:///work/node_modules/zod/v4/core/checks.js",
+      "line": 362
+    },
+    {
+      "ms": 709.5,
+      "function": "inst._zod.check",
+      "url": "file:///work/node_modules/zod/v4/core/checks.js",
+      "line": 362
+    },
+    {
+      "ms": 698.45,
+      "function": "inst._zod.check",
+      "url": "file:///work/node_modules/zod/v4/core/checks.js",
+      "line": 362
+    },
+    {
+      "ms": 683.36,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 679.63,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 677.47,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 675.37,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 665.19,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 661.73,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 660.32,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 652.27,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 647.41,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 636.34,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 635.9,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 634.21,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    }
+  ],
+  "inclusive": [
+    {
+      "ms": 403635.33,
+      "function": "(root)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 251970.32,
+      "function": "processTimers",
+      "url": "node:internal/timers",
+      "line": 506
+    },
+    {
+      "ms": 251642.79,
+      "function": "listOnTimeout",
+      "url": "node:internal/timers",
+      "line": 526
+    },
+    {
+      "ms": 233629.92,
+      "function": "",
+      "url": "file:///work/src/hub/pairing-notices.ts",
+      "line": 9
+    },
+    {
+      "ms": 136717.46,
+      "function": "flushFleet",
+      "url": "file:///work/src/hub/pairing-notices.ts",
+      "line": 7
+    },
+    {
+      "ms": 95892.11,
+      "function": "",
+      "url": "file:///work/src/hub/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 93252.88,
+      "function": "",
+      "url": "file:///work/src/hub/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 59997.77,
+      "function": "bindingCurrent",
+      "url": "file:///work/src/hub/pairing.ts",
+      "line": 1
+    },
+    {
+      "ms": 59382.07,
+      "function": "bindingCurrent",
+      "url": "file:///work/src/hub/pairing.ts",
+      "line": 1
+    },
+    {
+      "ms": 36366.68,
+      "function": "check",
+      "url": "file:///work/src/hub/pairing-notices.ts",
+      "line": 5
+    },
+    {
+      "ms": 36365.41,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 35847.65,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 35847.65,
+      "function": "current",
+      "url": "file:///work/src/hub/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 34412.27,
+      "function": "check",
+      "url": "file:///work/src/hub/pairing.ts",
+      "line": 1
+    },
+    {
+      "ms": 34353.36,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 33825.45,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 33825.45,
+      "function": "current",
+      "url": "file:///work/src/hub/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 33554.5,
+      "function": "check",
+      "url": "file:///work/src/hub/pairing.ts",
+      "line": 1
+    },
+    {
+      "ms": 33504.68,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 33500.48,
+      "function": "",
+      "url": "file:///work/src/hub/settings-directory-mount.ts",
+      "line": 1
+    },
+    {
+      "ms": 33378.0,
+      "function": "inspect",
+      "url": "file:///work/src/hub/settings-directory-decision.ts",
+      "line": 7
+    },
+    {
+      "ms": 33141.68,
+      "function": "",
+      "url": "file:///work/src/hub/settings-directory-mount.ts",
+      "line": 1
+    },
+    {
+      "ms": 32999.37,
+      "function": "inspect",
+      "url": "file:///work/src/hub/settings-directory-decision.ts",
+      "line": 7
+    },
+    {
+      "ms": 32434.18,
+      "function": "",
+      "url": "file:///work/src/hub/settings-directory-mount.ts",
+      "line": 1
+    },
+    {
+      "ms": 32323.37,
+      "function": "inspect",
+      "url": "file:///work/src/hub/settings-directory-decision.ts",
+      "line": 7
+    },
+    {
+      "ms": 32002.58,
+      "function": "",
+      "url": "file:///work/src/hub/settings-directory-mount.ts",
+      "line": 1
+    },
+    {
+      "ms": 31883.36,
+      "function": "inspect",
+      "url": "file:///work/src/hub/settings-directory-decision.ts",
+      "line": 7
+    },
+    {
+      "ms": 31740.3,
+      "function": "",
+      "url": "file:///work/src/hub/settings-directory-mount.ts",
+      "line": 1
+    },
+    {
+      "ms": 31633.47,
+      "function": "inspect",
+      "url": "file:///work/src/hub/settings-directory-decision.ts",
+      "line": 7
+    },
+    {
+      "ms": 31197.5,
+      "function": "redeem",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 25769.59,
+      "function": "read",
+      "url": "file:///work/src/hub/store.ts",
+      "line": 1
+    },
+    {
+      "ms": 25726.9,
+      "function": "(garbage collector)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 25683.65,
+      "function": "read",
+      "url": "file:///work/src/hub/store.ts",
+      "line": 1
+    },
+    {
+      "ms": 25565.7,
+      "function": "read",
+      "url": "file:///work/src/hub/store.ts",
+      "line": 1
+    },
+    {
+      "ms": 25184.92,
+      "function": "read",
+      "url": "file:///work/src/hub/store.ts",
+      "line": 1
+    },
+    {
+      "ms": 25095.54,
+      "function": "read",
+      "url": "file:///work/src/hub/store.ts",
+      "line": 1
+    },
+    {
+      "ms": 24866.32,
+      "function": "read",
+      "url": "file:///work/src/hub/store.ts",
+      "line": 1
+    },
+    {
+      "ms": 24795.58,
+      "function": "read",
+      "url": "file:///work/src/hub/store.ts",
+      "line": 1
+    },
+    {
+      "ms": 20892.73,
+      "function": "(idle)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 18718.88,
+      "function": "",
+      "url": "file:///work/src/hub/pairing-notices.ts",
+      "line": 5
+    },
+    {
+      "ms": 18632.56,
+      "function": "flushFleet",
+      "url": "file:///work/src/hub/pairing-notices.ts",
+      "line": 7
+    },
+    {
+      "ms": 16704.4,
+      "function": "processTicksAndRejections",
+      "url": "node:internal/process/task_queues",
+      "line": 71
+    },
+    {
+      "ms": 15671.73,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 15363.16,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 15238.08,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 15236.54,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 15212.92,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 15194.13,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 15047.77,
+      "function": "parserOnHeadersComplete",
+      "url": "node:_http_common",
+      "line": 77
+    },
+    {
+      "ms": 14994.39,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 14866.63,
+      "function": "parserOnIncoming",
+      "url": "node:_http_server",
+      "line": 1073
+    },
+    {
+      "ms": 14457.53,
+      "function": "emit",
+      "url": "node:events",
+      "line": 466
+    },
+    {
+      "ms": 14394.53,
+      "function": "runMicrotasks",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 12879.21,
+      "function": "",
+      "url": "file:///work/src/hub/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 12534.22,
+      "function": "callbackTrampoline",
+      "url": "node:internal/async_hooks",
+      "line": 118
+    },
+    {
+      "ms": 11223.95,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 11218.42,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 11062.23,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 11031.5,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10998.71,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10988.18,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10987.8,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10858.02,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10826.85,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10825.45,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10785.87,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10772.52,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10702.25,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10649.33,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10548.79,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10523.46,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10506.05,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10481.62,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10448.4,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10412.43,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 10250.46,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 9647.95,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 9123.2,
+      "function": "atomic",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 9023.94,
+      "function": "sqliteTransaction",
+      "url": "file:///work/node_modules/better-sqlite3/lib/methods/transaction.js",
+      "line": 52
+    },
+    {
+      "ms": 9008.07,
+      "function": "",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    }
+  ],
+  "files": [
+    {
+      "url": "file:///work/src/hub/validation.ts",
+      "selfMs": 144056.96
+    },
+    {
+      "url": "",
+      "selfMs": 56071.73
+    },
+    {
+      "url": "file:///work/node_modules/zod/v4/core/schemas.js",
+      "selfMs": 26288.91
+    },
+    {
+      "url": "(garbage collector)",
+      "selfMs": 25726.9
+    },
+    {
+      "url": "(idle)",
+      "selfMs": 20892.73
+    },
+    {
+      "url": "file:///work/node_modules/zod/v4/core/checks.js",
+      "selfMs": 20266.4
+    },
+    {
+      "url": "file:///work/node_modules/better-sqlite3/lib/methods/wrappers.js",
+      "selfMs": 10782.62
+    },
+    {
+      "url": "file:///work/scripts/manual/hub-enrolment-code-campaign/diagnostics.mts",
+      "selfMs": 7769.85
+    },
+    {
+      "url": "lstat",
+      "selfMs": 7466.88
+    },
+    {
+      "url": "file:///work/node_modules/better-sqlite3/lib/database.js",
+      "selfMs": 6678.55
+    },
+    {
+      "url": "(program)",
+      "selfMs": 5705.71
+    },
+    {
+      "url": "file:///work/src/hub/private-files.ts",
+      "selfMs": 3993.13
+    },
+    {
+      "url": "file:///work/src/hub/store.ts",
+      "selfMs": 3446.38
+    },
+    {
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "selfMs": 3238.78
+    },
+    {
+      "url": "node:internal/source_map/source_map_cache",
+      "selfMs": 3221.07
+    },
+    {
+      "url": "file:///work/src/hub/settings-directory-decision.ts",
+      "selfMs": 2795.05
+    },
+    {
+      "url": "node:fs",
+      "selfMs": 2741.54
+    },
+    {
+      "url": "shutdown",
+      "selfMs": 2493.52
+    },
+    {
+      "url": "node:path",
+      "selfMs": 2053.42
+    },
+    {
+      "url": "node:internal/buffer",
+      "selfMs": 1958.55
+    },
+    {
+      "url": "writev",
+      "selfMs": 1958.15
+    },
+    {
+      "url": "open",
+      "selfMs": 1934.92
+    },
+    {
+      "url": "export",
+      "selfMs": 1610.55
+    },
+    {
+      "url": "set filename",
+      "selfMs": 1499.21
+    },
+    {
+      "url": "node:internal/encoding",
+      "selfMs": 1495.79
+    },
+    {
+      "url": "file:///work/src/hub/pairing-notices.ts",
+      "selfMs": 1472.17
+    },
+    {
+      "url": "init",
+      "selfMs": 1370.96
+    },
+    {
+      "url": "Hash",
+      "selfMs": 1158.06
+    },
+    {
+      "url": "read",
+      "selfMs": 1140.04
+    },
+    {
+      "url": "spawn",
+      "selfMs": 1037.53
+    },
+    {
+      "url": "node:internal/async_hooks",
+      "selfMs": 956.36
+    },
+    {
+      "url": "decodeUTF8",
+      "selfMs": 901.67
+    },
+    {
+      "url": "node:buffer",
+      "selfMs": 900.12
+    },
+    {
+      "url": "getuid",
+      "selfMs": 835.6
+    },
+    {
+      "url": "file:///work/src/hub/identity.ts",
+      "selfMs": 811.69
+    }
+  ]
+}
