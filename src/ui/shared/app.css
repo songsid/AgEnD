@@ -4369,3 +4369,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .instructions-field { display: flex; flex-direction: column; gap: var(--s-2); }
 .instructions-field > .seg-inline { align-self: flex-start; }
 .instructions-field .pv-code { max-height: 24rem; }
+
+/* #3637: opt-in pop-out presentation. Normal single-pane selectors and phone layout are unchanged. */
+:root { --chat-popout-version: 1; }
+.chat-popout > .scrim, .chat-popout .sb-open, .chat-popout .sb-new, .chat-popout .sb-search { display: none !important; }
+.chat-popout .main { width: 100%; }
+.chat-popout .popup-pane-head { flex-wrap: nowrap; gap: var(--s-1); padding: var(--s-1) var(--s-2); }
+.chat-popout .popup-pane-head .inst-switch { flex-basis: auto; order: initial; width: auto; display: flex; }

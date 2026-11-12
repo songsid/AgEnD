@@ -55,7 +55,7 @@ server 只聽 **`127.0.0.1`**，port 是 `health_port`（預設 **19280**）。�
 ## Session
 
 - 每個 fleet 都使用自己的瀏覽器 cookie 名稱，因此同一主機、不同連接埠的儀表板可以同時保持登入。升級後會自動遷移屬於該 fleet 的有效工作階段；變更連接埠不會改變 cookie 識別。登出只影響該 fleet，輪替 token 仍會撤銷原有憑證。
-- session 是伺服器上的一筆紀錄，不是存在瀏覽器裡的值。預設在登入後最多 **48 小時**、或閒置 **48 小時**就會結束（以先到者為準；直接連到 dashboard 時，這兩個值可用 `web.session.local.absolute_hours`／`idle_hours` 設定，最多 720 小時，見[設定](configuration.zh-TW.md)）；本機 session 在 fleet 重啟後仍有效。公開 session 綁定單次入口，最長與連結本身一樣久、最多 8 小時（且不超過該帳號自己的 session 期限：管理員看 `web.session.local`，訪客看 `web.guests.session`），閒置 30 分鐘或入口關閉都會使其失效；不能用於本機或下一個入口，本機 cookie 與 header token 也不能用於公開入口。
+- session 是伺服器上的一筆紀錄，不是存在瀏覽器裡的值。預設在登入後最多 **48 小時**、或閒置 **48 小時**就會結束（以先到者為準；直接連到 dashboard 時，這兩個值可用 `web.session.local.absolute_hours`／`idle_hours` 設定，最多 720 小時，見[設定](configuration.zh-TW.md)）；本機 session 在 fleet 重啟後仍有效。公開 session 綁定單次入口，最長與連結本身一樣久、最多 8 小時（且不超過該帳號自己的 session 期限：管理員看 `web.session.local`，訪客看 `web.guests.session`），閒置 30 分鐘或入口關閉都會使其失效（有固定網域（具名通道）時，可用 `web.session.public_link.absolute_hours`／`idle_minutes` 調整這兩個值，最長 7 天、24 小時，見 **設定 → 存取與安全 → 登入 → 透過公開連結**；臨時通道上只能縮短）；不能用於本機或下一個入口，本機 cookie 與 header token 也不能用於公開入口。
 - 只有你的操作才算使用：打開頁面或聊天、送出訊息、變更任何東西。頁面自己定時做的事一律不算：即時串流（重新連線也一樣）、備援輪詢，以及 `/view` 的終端、名單與用量更新。所以開著不管的分頁——包括 `web.view_access: session` 時的 `/view`——仍會在閒置期限後結束（本機預設 48 小時、公開 session 30 分鐘）。
 - session 結束時，頁面會提示一次（「登入已結束。重新登入」），而且保留你畫面上正在做的事。
 - **Session 選單**（在側欄最下方）會顯示：
@@ -724,6 +724,8 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `web.upload_max_total_mb` | `100` | 一則訊息所有檔案合計的上限，整數 MB，1–500 |
 | `web.session.local.absolute_hours` | `48` | 從 dashboard 本身網址登入後可維持多久，1–720 小時 |
 | `web.session.local.idle_hours` | `48` | 閒置多久後登出，1–720 小時，且不超過 `absolute_hours` |
+| `web.session.public_link.absolute_hours` | `8` | 公開連結 session 的時效，1–168 小時；超過 8 需要 `web.public_link.hostname` |
+| `web.session.public_link.idle_minutes` | `30` | 公開連結 session 閒置多久後登出，5–1440 分鐘，且不超過 `absolute_hours`；超過 30 需要 `web.public_link.hostname` |
 | `web_terminal.enabled` | `true` | `false`：`/login` 會拒絕（沒有瀏覽器終端機） |
 | `web_terminal.ttl_minutes` | `10` | `/login` 的瀏覽器終端機開啟多久，1–20 分鐘 |
 

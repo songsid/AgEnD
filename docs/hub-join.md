@@ -21,7 +21,7 @@ You need the **Hub address** from your Hub administrator, for example `hub.examp
 4. Press **Sign in with company account**. A new tab opens on the Hub. Sign in there with your company account.
 5. When it is done, the Hub tab says it is connected and closes by itself. Your Fleet's page updates on its own and shows the Hub's name and **Connected with *your name*'s company account · This Fleet is called "*name*"**.
 
-A company link your administrator copied for you (`https://…/join-info#…`) works in the same box.
+A link your administrator gave you (`https://…/join-info#…`, such as the **Link with key fingerprint**) works in the same box.
 
 ### If it does not connect
 
@@ -55,27 +55,18 @@ Under **Other ways** there is the older **pairing code** method, for a Hub that 
 
 ## For the Hub administrator: let colleagues join
 
-### In this release
-
-On the Hub, **Administration → Company sign-in joining**:
-
-1. Turn on **Allow company-account Fleet connections**.
-2. Under **Allowed groups and people**, choose the AD groups whose members may connect a Fleet (**Manage group permissions**; see [Hub group permissions](hub-group-permissions.md)), or invite one person under **Invitation exceptions**.
-3. Tell colleagues your Hub address, for example `hub.example.com`. They follow [the steps above](#for-everyone-connect-your-fleet). **Copy colleague connection link** gives a link that also carries the Hub's identity; colleagues can paste it into the same box.
-
-### Coming in a later alpha: the Let colleagues join card
-
-> Not in this release yet. This part describes the simpler card that is in review; the controls below are not on the Hub until it ships.
-
-**Administration** will open with the **Let colleagues join** card. While no Fleet is connected yet, the same card is also on your Chats page. It has three steps. Steps 1 and 2 are marked **Done** from what the Hub has saved.
+On the Hub, **Administration** opens with the **Let colleagues join** card. While no Fleet is connected yet, the same card is also on your welcome page. It has three steps. Steps 1 and 2 are marked **Done** from what the Hub has saved.
 
 1. **Let colleagues connect Fleets with their company account.** Turn on **Allow company-account Fleet connections**.
-2. **Who can join.** Search for the AD groups whose members may connect a Fleet (type the start of a group's name), and add them. For each group, set **Each person up to *N* Fleets**, and whether its members may also **Chat with agents** and **Share agents**. The page then shows what the change does (who gains or loses something) before you press **Save**. A group the search doesn't find can be added under **Add by distinguished name**. All group settings are also on the **Group permissions** page: see [Hub group permissions](hub-group-permissions.md).
-3. **Tell colleagues how to join.** Once steps 1 and 2 are done, the card shows one sentence with your Hub's address: "In AgEnD, open Settings → Hub, enter *hub.example.com*, then sign in with the company account." **Copy these instructions** and send it to your colleagues.
+2. **Who can join.** Search for the AD groups whose members may connect a Fleet (type the start of a group's name), and add them. For each group, set **Each person up to *N* Fleets**, and whether its members may also **Chat with agents** and **Share agents**. Before you press **Save**, the card shows what the change does (who loses something, and what is paused). A group the search doesn't find can be added under **Add by distinguished name**. If your directory can't list groups, the card says so; ask whoever set up the Hub. More about groups: [Hub group permissions](hub-group-permissions.md).
+3. **Tell colleagues how to join.** Once steps 1 and 2 are done, the card shows one sentence with your Hub's address: "In AgEnD, open Settings → Hub, enter *hub.example.com*, then sign in with the company account." **Copy these instructions** and send it to your colleagues. They follow [the steps above](#for-everyone-connect-your-fleet).
 
-The **Connected fleets** list shows each Fleet's name and its owner. Revoked Fleets are folded under their own heading. **Revoke** ends a Fleet's connection from the Hub.
+Under the card:
 
-The link that includes the Hub's key fingerprint moves to **Link with key fingerprint (Advanced)** in step 3, for a colleague who must check the fingerprint by hand. **Individual invitations** for one named person are folded under the card.
+- **Invitation exceptions** lets one named person connect without being in an allowed group.
+- **Link with key fingerprint (Advanced)** is a link that also carries the Hub's identity, for a colleague who must check the fingerprint by hand. They paste it into the same Hub address box.
+
+The **Connected fleets** list shows each Fleet by its name, with its owner under it. Revoked Fleets are folded under **Revoked (*n*)**. To end a Fleet's connection from the Hub, open its row's menu and choose **Revoke…**.
 
 ### Coming later: join codes
 

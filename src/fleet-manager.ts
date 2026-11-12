@@ -410,7 +410,7 @@ import {
 import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCookies, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext, type TotpSignInResult } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
-import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
+import { guestSessionPolicy, localSessionPolicy, publicLinkSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
 import { enrolledRuntimeNotice } from "./runtime-enroll-notice.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
@@ -9232,6 +9232,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         localPolicy: () => localSessionPolicy(this.fleetConfig?.web?.session?.local),
         // #1920 §5.4: a guest's, from web.guests.session (never longer than the surface's own).
         guestPolicy: () => guestSessionPolicy(this.fleetConfig?.web?.guests?.session),
+        // #3708: web.session.public_link — longer than 30 min / 8 h only with a fixed hostname (a named tunnel).
+        gatewayPolicy: () => publicLinkSessionPolicy(this.fleetConfig?.web?.session?.public_link, publicLinkNamedHostname(this.fleetConfig?.web)),
         // A session over the temporary link ends with the link (its TTL, at most 8 h on a quick tunnel).
         exposureEnd: id => this.publicWebLink?.endOf(id) ?? null,
       });

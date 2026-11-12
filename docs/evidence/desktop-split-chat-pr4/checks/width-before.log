@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-pane-ownership-3637.test.ts (19 tests | 1 failed | 18 skipped) 1390ms
+     × resizes only scoped composers when their physical width changes, without touching an IME 39ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > pane scope adds no DOM and retains legacy defaults > resizes only scoped composers when their physical width changes, without touching an IME
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:89:31
+     87|       await p.mount(h("div", null, pane("a", true, panel("alpha")), pa…
+     88|       const a: any = p.document.getElementById("pane-a-msgIn");
+     89|       expect(observed.has(a)).toBe(true);
+       |                               ^
+     90|       let width = 600; a.getBoundingClientRect = () => ({ width });
+     91|       Object.defineProperty(a, "scrollHeight", { configurable: true, g…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 skipped (19)
+   Start at  11:23:26
+   Duration  1.81s (transform 1.23s, setup 106ms, import 144ms, tests 1.39s, environment 0ms)
+

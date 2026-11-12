@@ -1,0 +1,159 @@
+{
+  "previousHead": "65c36376ce6b3fc5bbbfa7b028a8ec44ee0c1848",
+  "incoming": "4f82fc4e3d2a02d893d44345b42de19bba839d0f",
+  "approvedParent": "73c338516002d7be511948ed4c729b3f7255aa80",
+  "conflicts": [
+    {
+      "path": "src/ui/chat-workspace-navigation.js",
+      "incomingEqualsApprovedParent": true,
+      "keptOwnExtension": true
+    },
+    {
+      "path": "src/ui/chat-workspace.js",
+      "incomingEqualsApprovedParent": true,
+      "keptOwnExtension": true
+    },
+    {
+      "path": "src/ui/shared/app.js",
+      "incomingEqualsApprovedParent": true,
+      "keptOwnExtension": true
+    },
+    {
+      "path": "tests/web-chat-workspace-docking-navigation-3637.test.ts",
+      "incomingEqualsApprovedParent": true,
+      "keptOwnExtension": true
+    },
+    {
+      "path": "tests/web-chat-workspace-geometry-3637.test.ts",
+      "incomingEqualsApprovedParent": true,
+      "keptOwnExtension": true
+    }
+  ],
+  "mergeHead": "f9f84f06c36629404efe3989aa93e512f04876dc",
+  "incomingBindings": {
+    "226d8556b7286cb24e38bf3ba63ce2e353a27fbea9768430fd6d28037794ecc5": [
+      "changes/3698-hub-u2-admin-card.md"
+    ],
+    "86817d20043363d3b18476f5e6ce52924b2bc2b9c1d2254b5d14dd3eeab9fd83": [
+      "changes/3698-hub-u2-admin-card.zh-TW.md"
+    ],
+    "683b191d028c758f75933648c5505cc07095e1e0d8e6439475ae97be349fb028": [
+      "docs/cli.md"
+    ],
+    "6d6ccefe474b687d7f3dc38aee631e777a147851633155da013c12206f96630a": [
+      "docs/features.md"
+    ],
+    "2b548e46a19d36956d9b83ad5f3adf81896226eda606d726388fe88b57fa22f4": [
+      "docs/testing/hub-setup-3699/README.md"
+    ],
+    "4e11a206fd5f9ee351b6250041da80c14b7ab3f86f07660131b681ac05523f2b": [
+      "docs/testing/hub-setup-3699/assertion-parity.json"
+    ],
+    "54ca5774e691378e25e60014d433d1f8c38b44c94886d9c687cb9caccc2ca486": [
+      "docs/testing/hub-setup-3699/company-full.log"
+    ],
+    "d58806a08ec072bcaec1e02e35509ba77661a10c375b54dfb76aebc4e5f16846": [
+      "docs/testing/hub-setup-3699/compose-full.log"
+    ],
+    "50a3e8758de5d8827659d188a0cb59f33a87d53983b9d701d29d98adcead9322": [
+      "docs/testing/hub-setup-3699/mutant-real-listener.log"
+    ],
+    "cccfd9afa42664fc5e7a5963f0b5b9a4aa21a9f9725c788956a923592fd6c274": [
+      "docs/testing/hub-setup-3699/mutant-self-connect.log"
+    ],
+    "d4cb1c7bb6274e5089e6a76f22bb7f8080d1f0906e93189b32c0d126873485b8": [
+      "docs/testing/hub-setup-3699/mutant-source-hostname.log"
+    ],
+    "1dd4aef1c8f0ca7260384863e7b27dec01dda37f98ff7e284b62a10b870bb8ee": [
+      "docs/testing/hub-setup-3699/mutant-source-ownership.log"
+    ],
+    "38c7008dd69c804acfcb53bb9098d457f549259b5fcc94aa54c7db4c547a1d6b": [
+      "docs/testing/hub-setup-3699/pressure-after.log"
+    ],
+    "ab2e5399872cfffe7dc9922eaf8eac5ced5314ff19bfe90fe34055c221186204": [
+      "docs/testing/hub-setup-3699/pressure-before.log"
+    ],
+    "45ca5ae883a941df93bc8c9ca78dd46bbdab218d186921f5acf7bba5a8b1f30e": [
+      "docs/testing/hub-setup-3699/results.md"
+    ],
+    "c83bb0dccc86e815327ea64123736d8169ee69b7aff5c0349e18ee2d9879abe4": [
+      "docs/testing/hub-setup-3699/self-connect-before.log"
+    ],
+    "f9631cfd226c07bbfbb5f8f839599444552408f9b17794f58a1090d84f50cdc0": [
+      "docs/testing/hub-setup-3699/source-hashes.json"
+    ],
+    "d4ce685b732e03028ab1bd3940d516b76352c22c9fc3236e197bd428ec3209e0": [
+      "scripts/manual/hub-setup-3699/pressure.py"
+    ],
+    "ac89af6b060196dcf987a7ae7d81751ab4ff58895a2ce3deb2316671eb3d93ca": [
+      "src/agent-whats-new.ts"
+    ],
+    "58bebb95d7d70f3178d71ec820a523a3771da69fd8f1709de42733f42d4358de": [
+      "src/cli.ts"
+    ],
+    "5de0ae2b15042afb904cdd2fede02eaa117a25b53346ff6dfba303aaa2daaf94": [
+      "src/general-knowledge/skills/fleet-restart/SKILL.md"
+    ],
+    "7e997f55f73a81071be0eb238e3c6fb3fc8a4c230a10ad6a7185e35c0711db6f": [
+      "src/hub/http/compose.ts"
+    ],
+    "832c39dc4a3e9996295ef42cbcd88350e2af2d45cec1752adeb0aea30c7da20f": [
+      "src/locale.ts"
+    ],
+    "5e72a3d210a6048e70d4bc8bc7f22cee50ceb10940f6be4f3e595a528e979f3d": [
+      "src/ui/hub-client.js"
+    ],
+    "d5c6847c171c24642dae828e04caf564030580ccafbe942061aafc9f98a5069e": [
+      "src/ui/hub-company-join.js"
+    ],
+    "2bb084a1cd5999891278413805424624125e3516f2f8e68d40636adb6fa3697c": [
+      "src/ui/hub-group-search.js"
+    ],
+    "ce7af483d340b980d38e71df9d39720605234a9186ea4d8431c47074b9ab9fe2": [
+      "src/ui/hub-join-steps.js"
+    ],
+    "85fdb004cc647322367e635ee6289564e0fcf4385a17ab4e8223f5a9d957d355": [
+      "src/ui/hub-welcome.js"
+    ],
+    "134eee93c487607e0654b1323a0d74fa3ff87e1861f05aa4b40e6a0aeae07bdb": [
+      "src/ui/panel-hub.js"
+    ],
+    "e8d9234628f8ac9e1e5a9732d15b6ddefc00fa2eba98d2a32fe52185164264bc": [
+      "src/ui/shared/hub-owner.css"
+    ],
+    "50b6ffb03576cc4b429d69e0336eef7b1c0896a296183a1af179d31d0fba6f31": [
+      "tests/dispatcher-liveness-3647.test.ts"
+    ],
+    "560bbef7165e4e5e58354988291ed8349e58c7ed11eb1e347888410991e3025d": [
+      "tests/fleet-restart-shim-2356.test.ts"
+    ],
+    "f69c727092c312eeeef520508261d2348c748ee63551d2af4b2ed04736c8ab0c": [
+      "tests/hub-admin-entry-ui.test.ts"
+    ],
+    "28ef8bcc93513c0f2a116e6978dc7b8ea0641672084b3bd0cc201dec9421e27f": [
+      "tests/hub-company-join-http.test.ts"
+    ],
+    "bdda365320013b8ee22d23ef9cb1e4e5c75d682b134fe3ffb82c6e1fdb447639": [
+      "tests/hub-compose.test.ts"
+    ],
+    "c27b903d40e53f4e97409645bcd81d9940525fb8381df28a916c892ab0f94f6c": [
+      "tests/hub-shared-modules-a.test.ts"
+    ],
+    "43548e41da6b29e821bacf6c51a30743e564d079b6be0ca4095b43aefc3c086e": [
+      "tests/hub-u2-group-search-2932.test.ts"
+    ],
+    "ee8763d36ffb27f6c5dbc357c9e253023661c023d29fcf1b3097aef0291eb32c": [
+      "tests/hub-u2-join-steps-2932.test.ts"
+    ],
+    "c047e161a8392a78dbeb040aed10b7ca37d49e20da1dca2fa0a3ae3ce5d393c3": [
+      "tests/hub-u2-welcome-2932.test.ts"
+    ],
+    "b005d860b2d05565f8a337f0638d04f74d4bd1f00f158108648aa302039aa7a0": [
+      "tests/named-link-test-2906.test.ts"
+    ],
+    "00ddbcee33334411aea7504466f93895b3d96824d63b583bb7ec070f131d1b48": [
+      "tests/support/hub-company-join-rig.ts"
+    ]
+  },
+  "incomingCount": 41
+}
