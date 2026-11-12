@@ -67,12 +67,13 @@ describe("#3714 selected agent activation", () => {
 });
 
 describe("#3714 Settings Back to chat", () => {
-  it.each([["en", "Back to chat"], ["zh-TW", "回到聊天"]])("the actual Settings header offers an accessible guarded return in %s", async (language, label) => {
+  it.each([["en", "Back to chat"], ["zh-TW", "回到聊天"]])("the actual Settings content offers an accessible guarded return in %s", async (language, label) => {
     const i18n = await import("/assets/app-i18n.js"); i18n.setLang(language, { store: false });
     nav.navigate("/ui/fleet/agent/alpha");
     try {
       await p.mount(h(details.DetailsPanel, { route: nav.navStore.get().route, navKey: "alpha-details" })); await settle(6);
-      const back = p.root.querySelector(".agent-back-chat"); expect(back).not.toBeNull();
+      const back = p.root.querySelector(".panel-body .agent-back-chat"); expect(back).not.toBeNull();
+      expect(p.root.querySelector(".panel-head .agent-back-chat")).toBeNull();
       expect(back.getAttribute("aria-label")).toBe(label); expect(back.getAttribute("title")).toBe(label); expect(back.getAttribute("href")).toBe("/ui/chat/alpha");
       const guard = vi.fn(() => false), off = nav.setLeaveGuard(guard);
       fire(back, "click", { button: 0 }); await settle(4); expect(guard).toHaveBeenCalled(); expect(nav.navStore.get().route.panel).toBe("details");
@@ -81,13 +82,15 @@ describe("#3714 Settings Back to chat", () => {
   });
   it("the split Settings X returns its own pane to chat without closing it or changing its peer", async () => {
     await split(true); const peer = controller.current().b;
-    const back = p.root.querySelector('[data-pane="a"] .ws-pane-close'); expect(back.getAttribute("aria-label")).toBe("Back to chat");
+    const back = p.root.querySelector('[data-pane="a"] .panel-body .agent-back-chat'); expect(back).not.toBeNull();
+    expect(back.getAttribute("aria-label")).toBe("Back to chat");
+    expect(p.root.querySelector('[data-pane="a"] .ws-pane-close').getAttribute("aria-label")).toBe("Close this pane");
     fire(back, "click", { button: 0 }); await settle(5); expect(controller.current()).not.toBeNull();
     expect(controller.current().a.route).toEqual({ panel: "chat", instance: "alpha" }); expect(controller.current().b).toBe(peer);
   });
   it("the split Settings X respects its pane's leave guard", async () => {
-    await split(); const before = controller.current(), off = controller.pane("b").addLeaveGuard(() => false);
-    try { fire(p.root.querySelector('[data-pane="b"] .ws-pane-close'), "click", { button: 0 }); await settle(4); expect(controller.current()).toBe(before); }
+    await split(true); const before = controller.current(), off = controller.pane("b").addLeaveGuard(() => false);
+    try { const back = p.root.querySelector('[data-pane="b"] .panel-body .agent-back-chat'); expect(back).not.toBeNull(); fire(back, "click", { button: 0 }); await settle(4); expect(controller.current()).toBe(before); }
     finally { off(); }
   });
   it("the Chat pane X still closes that pane", async () => {
@@ -96,9 +99,28 @@ describe("#3714 Settings Back to chat", () => {
     fire(p.root.querySelector('[data-pane="b"] .ws-pane-close'), "click", { button: 0 }); await settle(4);
     expect(nav.navStore.get().workspace).toBeNull(); expect(nav.navStore.get().route.instance).toBe("alpha");
   });
-  it("a pop-out Settings header keeps the same guarded return link", async () => {
-    nav.navigate("/ui/fleet/agent/alpha"); await p.mount(h(popup.PopoutHeader, { title: "alpha", pageControls: { backToChat: { path: "/ui/chat/alpha", label: "Back to chat" } } }));
-    const back = p.root.querySelector(".agent-back-chat"); expect(back).not.toBeNull();
-    expect(back.getAttribute("aria-label")).toBe("Back to chat"); fire(back, "click", { button: 0 }); await settle(4); expect(nav.navStore.get().route.panel).toBe("chat");
+  it("a Settings pane's header X closes the pane rather than returning to Chat", async () => {
+    await split(true);
+    const close = p.root.querySelector('[data-pane="b"] .ws-pane-close');
+    expect(close.getAttribute("aria-label")).toBe("Close this pane");
+    fire(close, "click", { button: 0 }); await settle(4);
+    expect(nav.navStore.get().workspace).toBeNull();
+    expect(nav.navStore.get().route).toEqual({ panel: "details", instance: "alpha" });
+  });
+  it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }])("the content return leaves modified clicks to the browser: %o", async modifiers => {
+    await split(true); const before = controller.current();
+    const back = p.root.querySelector('[data-pane="a"] .panel-body .agent-back-chat'); expect(back).not.toBeNull();
+    const event = fire(back, "click", { button: 0, ...modifiers }); await settle(3);
+    expect(event.defaultPrevented).toBe(false); expect(controller.current()).toBe(before);
+  });
+  it("a pop-out keeps the return inside actual Settings content, outside its header", async () => {
+    nav.navigate("/ui/fleet/agent/alpha"); shell.shellStore.set({ popout: true, popoutHeader: popup.PopoutHeader });
+    try {
+      await p.mount(h(details.DetailsPanel, { route: nav.navStore.get().route, navKey: "popup-details" })); await settle(6);
+      expect(p.root.querySelector(".popup-pane-head")).not.toBeNull();
+      expect(p.root.querySelector(".popup-pane-head .agent-back-chat")).toBeNull();
+      const back = p.root.querySelector(".panel-body .agent-back-chat"); expect(back).not.toBeNull();
+      expect(back.getAttribute("aria-label")).toBe("Back to chat"); fire(back, "click", { button: 0 }); await settle(4); expect(nav.navStore.get().route.panel).toBe("chat");
+    } finally { shell.shellStore.set({ popout: false, popoutHeader: null }); }
   });
 });
