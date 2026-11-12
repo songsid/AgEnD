@@ -465,7 +465,7 @@ describe("the chat panel (the real page modules)", () => {
     expect(stop().hidden).toBe(false);
     c.stream.emit("activity", { instance: "w", state: "idle" });
     await settle();
-    expect(bar()).toBeNull();
+    expect([bar().className, bar().textContent, bar().getAttribute("aria-hidden")], "#3724: idle keeps the strip, empty").toEqual(["work-bar idle", "", "true"]);
     expect([stop(), send().hidden]).toEqual([null, false]);                          // idle: no Stop at all, Send as always
   });
 
@@ -475,7 +475,7 @@ describe("the chat panel (the real page modules)", () => {
     await c.mount("w");
     c.stream.emit("activity", { instance: "other", state: "working" });
     await settle();
-    expect(c.p.root.querySelector(".work-bar")).toBeNull();
+    expect(c.p.root.querySelector(".work-bar").className, "#3724: idle keeps the strip, empty").toBe("work-bar idle");
     expect(c.p.root.querySelector("#stopBtn")).toBeNull();
     c.stream.emit("status", frame(inst("w", { state: "working" }), inst("other", { state: null })));
     await settle();
@@ -502,7 +502,7 @@ describe("the chat panel (the real page modules)", () => {
     // An older status without execution_state still works from `state`.
     c.stream.emit("status", frame(inst("w", { state: "idle" })));
     await settle();
-    expect(c.p.root.querySelector(".work-bar")).toBeNull();
+    expect(c.p.root.querySelector(".work-bar").className, "#3724: idle keeps the strip, empty").toBe("work-bar idle");
   });
 
   it("the name is text, never markup", async () => {
@@ -562,7 +562,7 @@ describe("the chat panel (the real page modules)", () => {
     expect(bar().className, "still stopping while it works").toBe("work-bar stopping");
     c.stream.emit("activity", { instance: "w", state: "idle" });
     await settle();
-    expect(bar()).toBeNull();
+    expect([bar().className, bar().textContent, bar().getAttribute("aria-hidden")], "#3724: idle keeps the strip, empty").toEqual(["work-bar idle", "", "true"]);
     c.stream.emit("activity", { instance: "w", state: "working" });
     await settle();
     expect(bar().className, "the next turn starts fresh").toBe("work-bar working");
