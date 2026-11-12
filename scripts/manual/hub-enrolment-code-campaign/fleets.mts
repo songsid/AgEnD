@@ -143,6 +143,10 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
       await hub.locator('#hubLogin').fill(login); await hub.locator('#hubPassword').fill('Dummy-'+login+'-only');
       await shot(hub,f.label+'-02-hub-signin'); await beforeSignIn();
       await hub.getByRole('button',{name:f.lang==='zh-TW'?'登入並連接 Fleet':'Sign in and connect Fleet',exact:true}).click();
+    } else {
+      // An existing company session still explicitly consents to this new Fleet; sign-in is not approval.
+      const consent=hub.getByRole('button',{name:f.lang==='zh-TW'?/^以 .+ 的身分連接$/:/^Connect as .+$/});
+      await consent.waitFor();await shot(hub,f.label+'-02-existing-account-consent');await consent.click();
     }
 
     const queued = hub.getByText(f.lang==='zh-TW'?'目前很多人同時加入，正在排隊…':'Many people are connecting at once. Waiting in the queue…',{exact:true});
