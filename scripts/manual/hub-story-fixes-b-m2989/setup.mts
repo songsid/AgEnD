@@ -45,7 +45,7 @@ try{for(const c of matrix()){
   const cookie=login.headers["set-cookie"][0].split(";")[0].split("=");ctx=await browser.newContext({viewport:VIEWPORTS[c.device],colorScheme:c.theme,locale:c.lang==="zh-TW"?"zh-TW":"en-US",isMobile:c.device==="phone",hasTouch:c.device==="phone"});
   await ctx.addCookies([{name:cookie[0],value:cookie[1],url:origin}]);
   fm.webPrefs.write("operator",new Map([["theme",c.theme],["lang",c.lang]]));
-  await ctx.addInitScript({content:`localStorage.setItem("agend_tour_done","1");localStorage.setItem("agend_firstrun_dismissed","1");localStorage.setItem("agend_usage_rail","0");window.__csp=[];document.addEventListener("securitypolicyviolation",e=>window.__csp.push(e.violatedDirective));`});
+  await ctx.addInitScript({content:`window.__name=fn=>fn;localStorage.setItem("agend_tour_done","1");localStorage.setItem("agend_firstrun_dismissed","1");localStorage.setItem("agend_usage_rail","0");window.__csp=[];document.addEventListener("securitypolicyviolation",e=>window.__csp.push(e.violatedDirective));`});
   const page=await ctx.newPage(),errors:string[]=[],wire:any[]=[];page.on("pageerror",(e:any)=>errors.push(e.message));page.on("response",(q:any)=>{if(q.url().includes("/api/settings/hub/setup"))wire.push({path:new URL(q.url()).pathname,status:q.status()});});
   const resources:Promise<void>[]=[];
   page.on("response",(response:any)=>{const u=new URL(response.url());if(/\.(js|css)$/.test(u.pathname))resources.push((async()=>{try{const hash=digest(await response.body()),paths=result.servedDigests[hash]??=[];if(!paths.includes(u.pathname))paths.push(u.pathname);}catch{}})());});

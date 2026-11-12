@@ -34,6 +34,7 @@ try{
   if(loadavg()[0]!>10)throw Error('Paused: host load above 10');
   const tag=[c.skew??mode,c.device,c.theme,c.lang].join('-'),ctx=await browser.newContext({viewport:c.device==='desk'?{width:1366,height:900}:{width:390,height:844},isMobile:c.device==='phone',hasTouch:c.device==='phone',colorScheme:c.theme,ignoreHTTPSErrors:true});
   try{
+   await ctx.addInitScript("window.__name=fn=>fn;");
    await ctx.addInitScript(({lang,theme}:any)=>{localStorage.setItem('agend_lang',lang);localStorage.setItem('agend_theme',theme);localStorage.setItem('agend_tour_done','1');localStorage.setItem('agend_firstrun_dismissed','1');},{lang:c.lang,theme:c.theme});
    const substitutions=mode==='before'?['panel-hub.js']:c.skew==='old-words'?['hub-owner-strings.js','hub-strings.js']:[];
    for(const file of substitutions){const body=execFileSync('git',['-C',repo,'show',base+':src/ui/'+file],{encoding:'utf8'});result.substitutions.push({ref:base,path:'src/ui/'+file,digest:digest(body)});await ctx.route('**/ui/js/'+file,(route:any)=>route.fulfill({status:200,contentType:'text/javascript',body}));}
