@@ -16,6 +16,9 @@ import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { ClaudeStepParser, CodexStepParser, bounded, chatStep, readTailRecords, type LogStep } from "./log-steps.js";
 import type { ToolProgressLevel } from "./tool-progress.js";
+import { AntigravityStepParser, GrokStepParser } from "./log-steps-agy-grok.js";
+import type { LogFormat } from "./log-transcript-paths.js";
+export type { LogFormat };
 import { SCREEN_MAX_BYTES } from "./dialog-screen-text.js";
 import { LOOKS_PER_POLL, isClaudeAssistantHead, readNewLines, readWholeLine, type LongLine } from "./transcript-jsonl.js";
 
@@ -38,8 +41,8 @@ export interface LogSource {
   backend: string;
   /** The transcript to read, or null: none known now. */
   path: string | null;
-  /** The parser for it: claude / codex (kiro: its own reader, later in phase 1); null: this backend has none. */
-  format: "claude" | "codex" | null;
+  /** The parser for it: claude / codex / antigravity / grok (kiro: its own reader, later in phase 1); null: this backend has none. */
+  format: LogFormat | null;
   /** Why there is nothing to read: "not_running" (its transcript is found while it runs), "no_transcript", "unsupported". */
   reason?: string;
 }
@@ -128,16 +131,29 @@ export type LogAnswer =
 
 /** LogService.readBack's answer: the steps before `end`, or why there are none (`reason`, no `steps`). */
 export type ReadBack =
-  | { backend: string; format: "claude" | "codex" | null; reason: string; key?: undefined; steps?: undefined }
-  | { backend: string; format: "claude" | "codex"; key: string; steps: LogStep[]; before: number | null; end: number; reset?: boolean; reason?: undefined };
+  | { backend: string; format: LogFormat | null; reason: string; key?: undefined; steps?: undefined }
+  | { backend: string; format: LogFormat; key: string; steps: LogStep[]; before: number | null; end: number; reset?: boolean; reason?: undefined };
 
 /** The transcript format whose new chat-activity projection (and thinking) is withheld until it has a real redacted fixture (#3648). */
 const CODEX_ACTIVITY_WITHHELD = "codex";
-const parserFor = (format: "claude" | "codex", thinking = false) => (format === "claude" ? new ClaudeStepParser({ thinking }) : new CodexStepParser({ thinking }));
-/** The long records worth reading whole for a Log (a reply, a turn record); every other long one by its head. */
-const wholeFor = (format: "claude" | "codex") => (head: string) => (format === "claude"
+const parserFor = (format: LogFormat, thinking = false) => {
+  switch (format) {
+    case "claude": return new ClaudeStepParser({ thinking });
+    case "codex": return new CodexStepParser({ thinking });
+    case "antigravity": return new AntigravityStepParser({ thinking });
+    case "grok": return new GrokStepParser({ thinking });
+  }
+};
+/**
+ * The long records worth reading whole for a Log (a reply, a turn record); every other long one by its head. agy's
+ * transcript.jsonl clips its own fields (no line passes 20 KB in the sample) and grok's long lines are file reads: neither
+ * has a record worth reading whole.
+ */
+const wholeFor = (format: LogFormat) => (head: string) => (format === "claude"
   ? isClaudeAssistantHead(head)
-  : head.includes('"type":"event_msg"') || (head.includes('"type":"response_item"') && /"payload":\{"type":"message"/.test(head)));
+  : format === "codex"
+    ? head.includes('"type":"event_msg"') || (head.includes('"type":"response_item"') && /"payload":\{"type":"message"/.test(head))
+    : false);
 
 const dbTime = (s: string): number => { const t = Date.parse(s.replace(" ", "T") + "Z"); return Number.isFinite(t) ? t : 0; };
 
@@ -237,7 +253,7 @@ export class LogService {
   }
 
   /** The steps before `end` (the newest when undefined), at most `limit`, and where older ones start. */
-  private async backward(path: string, format: "claude" | "codex", end: number | undefined, limit: number, thinking = false): Promise<{ steps: LogStep[]; before: number | null; after: number }> {
+  private async backward(path: string, format: LogFormat, end: number | undefined, limit: number, thinking = false): Promise<{ steps: LogStep[]; before: number | null; after: number }> {
     const tail = await readTailRecords(path, { maxLines: 4000, ...(end !== undefined ? { end } : {}) });
     const parser = parserFor(format, thinking);
     const whole = wholeFor(format);
@@ -267,7 +283,7 @@ export class LogService {
   }
 
   /** The steps after `from` (≤ LOOKS_PER_POLL looks), and the cursor after them. */
-  private async forward(path: string, format: "claude" | "codex", from: number, skip: boolean, thinking = false): Promise<{ steps: LogStep[]; before: null; after: number; skip?: boolean; more?: boolean }> {
+  private async forward(path: string, format: LogFormat, from: number, skip: boolean, thinking = false): Promise<{ steps: LogStep[]; before: null; after: number; skip?: boolean; more?: boolean }> {
     const parser = parserFor(format, thinking);
     const whole = wholeFor(format);
     let offset = from, skipping = skip, more = false;

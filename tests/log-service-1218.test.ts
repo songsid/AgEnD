@@ -331,7 +331,7 @@ describe("the fleet resolves where an instance's steps are read from — only wh
     expect(fm.logSource("c").path).toBe("/live/t.jsonl");
   });
   it("codex: only while it runs; kiro: fleet events only, with the reason; others: none; a ClassicBot room by its backend", async () => {
-    const fm = await fleet({ x: { working_directory: "/w/x", backend: "codex" }, k: { working_directory: "/w/k", backend: "kiro-cli" }, g: { working_directory: "/w/g", backend: "grok" } });
+    const fm = await fleet({ x: { working_directory: "/w/x", backend: "codex" }, k: { working_directory: "/w/k", backend: "kiro-cli" }, g: { working_directory: "/w/g", backend: "opencode" } });
     expect(fm.logSource("x")).toEqual({ backend: "codex", path: null, format: "codex", reason: "not_running" });
     fm.lifecycle.daemons.set("x", { logTranscriptPath: () => "/r/rollout.jsonl" });
     expect(fm.logSource("x")).toEqual({ backend: "codex", path: "/r/rollout.jsonl", format: "codex" });
@@ -345,12 +345,32 @@ describe("the fleet resolves where an instance's steps are read from — only wh
     expect(fm.logSource("k").reason).toBe("kiro_legacy");
     expect(await fm.logSteps("k", { watch: true })).toMatchObject({ enabled: true, backend: "kiro-cli", supported: false, reason: "kiro_legacy", steps: [] });
     expect(fm.log.watched()).toBe(0);                                       // nothing to watch: no lease, no timer
-    expect(fm.logSource("g")).toMatchObject({ backend: "grok", format: null, reason: "unsupported" });
+    expect(fm.logSource("g")).toMatchObject({ backend: "opencode", format: null, reason: "unsupported" });
     fm.classicRoomFor = (n: string) => (n === "room" ? { name: "room", backend: "codex" } : null);
     expect(fm.logSource("room").backend).toBe("codex");
   });
+  it("antigravity and grok (AGEND-181 PR2): the transcript of the instance's working directory, in their own format; none known: no_transcript", async () => {
+    const home = temp();
+    vi.stubEnv("HOME", home);
+    const { mkdirSync } = await import("node:fs");
+    const ID = "0323876c-f288-4572-a09d-1619b9277d59", SESSION = "01a1ca4c-295d-7f92-b60c-59b52093766c";
+    mkdirSync(join(home, ".gemini", "antigravity-cli", "cache"), { recursive: true });
+    writeFileSync(join(home, ".gemini", "antigravity-cli", "cache", "last_conversations.json"), JSON.stringify({ "/w/a": ID }));
+    const sessions = join(home, ".grok", "sessions", encodeURIComponent("/w/g"), SESSION);
+    mkdirSync(sessions, { recursive: true });
+    writeFileSync(join(sessions, "updates.jsonl"), "{}\n");
+    const fm = await fleet({ a: { working_directory: "/w/a", backend: "antigravity" }, g: { working_directory: "/w/g", backend: "grok" },
+      a2: { working_directory: "/w/none", backend: "antigravity" }, g2: { working_directory: "/w/none", backend: "grok" } });
+    expect(fm.logSource("a")).toEqual({ backend: "antigravity", format: "antigravity", path: join(home, ".gemini", "antigravity-cli", "brain", ID, ".system_generated", "logs", "transcript.jsonl") });
+    expect(fm.logSource("g")).toEqual({ backend: "grok", format: "grok", path: join(sessions, "updates.jsonl") });
+    expect(fm.logSource("a2")).toEqual({ backend: "antigravity", format: "antigravity", path: null, reason: "no_transcript" });
+    expect(fm.logSource("g2")).toEqual({ backend: "grok", format: "grok", path: null, reason: "no_transcript" });
+    // A ClassicBot room has no working directory of its own: nothing to read.
+    fm.classicRoomFor = (n: string) => (n === "room" ? { name: "room", backend: "grok" } : null);
+    expect(fm.logSource("room")).toEqual({ backend: "grok", format: "grok", path: null, reason: "no_transcript" });
+  });
   it("logSteps goes through the service: off by default, on when web.log_tab is true; an unknown name is null", async () => {
-    const fm = await fleet({ g: { working_directory: "/w/g", backend: "grok" } });
+    const fm = await fleet({ g: { working_directory: "/w/g", backend: "opencode" } });
     expect(await fm.logSteps("g", {})).toMatchObject({ enabled: true, supported: false });
     expect(await fm.logSteps("nope", {})).toBeNull();
     fm.fleetConfig.web = {};
