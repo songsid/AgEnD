@@ -1466,10 +1466,10 @@ function WebSection({ ctx, staged, part = "all" }) {
       <div class="grid2">
         <div class=${fc("field", "plAbs")}><label for="webPublicSessionAbsolute">${tn("publicSessionAbsolute")}<${Impact} schema=${schema} field="web.session.public_link.absolute_hours" /></label><input id="webPublicSessionAbsolute" type="number" min="1" max="168" step="any"
           class=${errors.plAbs ? "invalid" : ""} value=${f.plAbs} onInput=${(e) => set("plAbs")(e.target.value)} /><${Feedback} error=${errors.plAbs} />
-          ${!errors.plAbs && !errors.abs ? html`<${InEffect} text=${tn("hoursValue", plAbsNow)} why=${plAbsNow < plAbsAsked ? (plAbsQuick < plAbsAsked ? tn("publicSessionQuick") : tn("cappedBySession")) : null} />` : null}</div>
+          ${!errors.plAbs && !errors.abs && (value(f.plAbs) === null || plAbsNow < plAbsAsked) ? html`<${InEffect} text=${tn("hoursValue", plAbsNow)} why=${plAbsNow < plAbsAsked ? (plAbsQuick < plAbsAsked ? tn("publicSessionQuick") : tn("cappedBySession")) : null} />` : null}</div>
         <div class=${fc("field", "plIdle")}><label for="webPublicSessionIdle">${tn("publicSessionIdle")}<${Impact} schema=${schema} field="web.session.public_link.idle_minutes" /></label><input id="webPublicSessionIdle" type="number" min="5" max="1440" step="any"
           class=${errors.plIdle ? "invalid" : ""} value=${f.plIdle} onInput=${(e) => set("plIdle")(e.target.value)} /><${Feedback} error=${errors.plIdle} />
-          ${!errors.plIdle && !errors.plAbs && !errors.abs && !errors.idle ? html`<${InEffect} text=${tn("minutesValue", Math.round(plIdleNow))} why=${plIdleNow < plIdleAsked ? (plIdleQuick < plIdleAsked ? tn("publicSessionQuick") : tn("cappedBySession")) : null} />` : null}</div>
+          ${!errors.plIdle && !errors.plAbs && !errors.abs && !errors.idle && (value(f.plIdle) === null || plIdleNow < plIdleAsked) ? html`<${InEffect} text=${tn("minutesValue", Math.round(plIdleNow))} why=${plIdleNow < plIdleAsked ? (plIdleQuick < plIdleAsked ? tn("publicSessionQuick") : tn("cappedBySession")) : null} />` : null}</div>
       </div>
       ${!named ? html`<p class="note s-public-session-quick" id="webPublicSessionQuick">${tn("publicSessionNeedsHostname")}</p>` : null}
       <p class="note">${tn("publicSessionCeiling")}</p>
