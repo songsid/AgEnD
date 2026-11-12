@@ -1,9 +1,9 @@
-# Combined B1/B2/U2 campaign — prepared, unlaunched
+# Combined B1/B2/U2 campaign
 
-Run only after the leader's explicit timed GO following the alpha.15 rehearsal.
+Run only after the leader's explicit GO following the alpha.15 rehearsal.
 U2/B1/B2 target alpha.16. First sync the landed dependencies and verify the exact
-candidate. The current window allocation leaves `explicitGo` false. Preparation
-has run no Docker command, browser, Fleet service, directory or capacity wave.
+candidate. The template leaves `explicitGo` false. Preparation is separate from
+the actual campaign receipt; it makes no runtime or browser acceptance claim.
 
 ## Entry and stop
 
@@ -20,7 +20,13 @@ file names the attempt directory. On any reported overlap, create that attempt's
 `control/STOP` immediately. The supervisor checks once per second, stops its own
 child process group, and escalates after ten seconds. SIGINT/SIGTERM also stop
 the attempt. Cleanup stops a Docker CID only after matching its random owner
-label, and removes only the owned active marker. No automatic retry is present.
+label, removes its own labelled build-image tag and active marker. No automatic retry is present.
+
+With host swap off, preflight and a one-second host sampler refuse load >=12
+or MemAvailable below 4096 MiB. The sampler writes STOP for this attempt only;
+the container supervisor then terminates its own child. Host readings are recorded
+separately from container/child RSS. Check running containers before launch for
+other heavy campaigns; any reported overlap requires STOP.
 
 The launcher snapshots committed source only, refuses tracked modifications and
 SHA drift, and requires both digest-pinned base images to be cached. It performs
@@ -41,7 +47,9 @@ Dependency modules are mounted read-only. Images are unchanged from B1's kit.
    remain explicit in those tests. No runtime result is inferred from test names.
 3. Capture actual Administration create/group-scope/live/reloaded/ended views in
    EN/zh-TW, desktop/phone, light/dark. All requests use the real session/CSRF API.
-   Group suggestions use the committed synthetic LDAP wire's prefix/extensible
+   One code is created and reused across the eight capture contexts, then ended
+   once; captures do not bypass the ten-creations/hour limit. Group suggestions
+   use the committed synthetic LDAP wire's prefix/extensible
    filter support; there is no private fake-AD patch.
 4. B-L11: 20 people, including five separate Fleet homes, accounts and HTTPS
    hostnames running production Fleet web/settings/join/member paths. Each has a
@@ -84,8 +92,9 @@ missing evidence and overlap fail the attempt.
 
 - `bash -n` and `node --check` pass; esbuild parses all three `.mts` files without
   importing or executing them.
-- Five pure interlock tests pass. Isolated GO/source/overlap/clock/window-bound
-  reversals each fail intended assertions and restore exact bytes.
+- The original five pure interlock tests and GO/source/overlap/clock/window-bound
+  reversals are historical preparation evidence. The swap-off host guards have
+  their own focused tests and isolated reversals in the current acceptance.
 - Repository source and test typechecks pass, including the new interlock test.
   Those checks exclude manual `.mts` scripts, whose runtime imports and browser
   locators remain unexecuted. No claim of a runtime-ready or passing campaign is

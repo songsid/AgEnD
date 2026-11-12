@@ -128,6 +128,9 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     return { started,issued:true,binding:journal.binding,connected:Date.now() };
   }
   async function adminShots() {
+    // Reuse one real code across locales: captures must not bypass the ten-creations/hour policy.
+    let created: any = null;
+    const captures: any[] = [];
     for (const phone of [false,true]) for (const lang of ['en','zh-TW']) for (const theme of ['light','dark']) {
       const {ctx,page,errors} = await adminPage(lang,phone,theme), tag=(phone?'phone':'desk')+'-'+theme+'-'+lang;
       try {
@@ -138,15 +141,29 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
         await page.getByText('CN=Owners,DC=example,DC=test',{exact:false}).last().waitFor();await shot(page,tag+'-resolved-group');
         check(tag+' distinct picker IDs',await page.locator('#hubGroupSearch').count()===1&&await page.locator('#hubEnrolmentScopeSearch').count()===0);
         await page.locator('#hubCodeScope').selectOption('directory');
-        const answer = page.waitForResponse((r:any)=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/hub/v1/admin/enrolment-codes');
-        await page.locator('button[form="hubEnrolmentCreate"]').click(); const created = await (await answer).json();
+        if (created === null) {
+          const answer = page.waitForResponse((r:any)=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/hub/v1/admin/enrolment-codes');
+          await page.locator('button[form="hubEnrolmentCreate"]').click(); created = await (await answer).json();
+        } else {
+          await page.getByRole('button',{name:lang==='zh-TW'?'取消':'Cancel',exact:true}).click();
+        }
         const row = page.locator('[data-enrolment-code="'+created.id+'"]'); await row.locator('code').waitFor(); await shot(page,tag+'-active-code');
         await page.reload(); await page.locator('[data-enrolment-code="'+created.id+'"] code').waitFor();
-        await page.locator('[data-enrolment-code="'+created.id+'"] button.btn-danger').click(); await page.locator('[data-enrolment-code="'+created.id+'"] code').waitFor({state:'detached'});
-        await shot(page,tag+'-ended-code'); check(tag+' admin page errors',errors.length===0);
+        check(tag+' admin page errors',errors.length===0); captures.push({lang,phone,theme,tag});
+      } finally { await ctx.close(); }
+    }
+    // End it once through the real UI, then capture the retained ended row in each presentation.
+    for (const [index,{lang,phone,theme,tag}] of captures.entries()) {
+      const {ctx,page,errors}=await adminPage(lang,phone,theme);
+      try {
+        const row=page.locator('[data-enrolment-code="'+created.id+'"]'); await row.waitFor();
+        if(index===0) { await row.locator('button.btn-danger').click(); await row.locator('code').waitFor({state:'detached'}); }
+        check(tag+' ended code is not redisplayed',await row.locator('code').count()===0);
+        await shot(page,tag+'-ended-code');check(tag+' ended page errors',errors.length===0);
       } finally { await ctx.close(); }
     }
   }
+
   async function cachedShots() {
     for (const phone of [false,true]) for (const lang of ['en','zh-TW']) {
       const names=['app-shell.js','app-html.js','app-i18n.js','app.css','hub-client.js'];

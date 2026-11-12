@@ -9,3 +9,9 @@ export function requireWindow(plan, sha, now, stopped = false) {
   return plan;
 }
 export const phases = ['protocol', 'ui-capacity', 'rollback'];
+/** Host budget requested for the swap-off campaign. /proc's MemAvailable is converted to MiB by the watcher. */
+export function requireHostBudget(load, availableMiB) {
+  if (!Number.isFinite(load) || !Number.isFinite(availableMiB)) throw Error('Host resource readings unavailable');
+  if (load >= 12) throw Error('Host load reached campaign stop ceiling');
+  if (availableMiB < 4096) throw Error('Host available memory below 4 GiB');
+}
