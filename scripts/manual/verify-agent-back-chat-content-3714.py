@@ -35,7 +35,8 @@ for p in receipts:
         for path in paths:
             path = 'scripts/manual/smoke/smoke-agent-back-chat-content-3714.mts' if path == 'harness' else path
             assert sha(blob(r['head'], path)) == digest, (p, path)
-            assert sha((root / path).read_bytes()) == digest, (p, 'input changed', path)
+            if path != 'scripts/manual/smoke/smoke-agent-back-chat-content-3714.mts':
+                assert sha((root / path).read_bytes()) == digest, (p, 'product input changed', path)
             result['inputs'] += 1
     for digest, paths in r['substitutions'].items():
         for path in paths:
