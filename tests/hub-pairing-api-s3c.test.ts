@@ -200,6 +200,16 @@ describe("the pairing routes", async () => {
     expect(await call({ method: "POST", path: "/api/hub/member/pairing/disconnect", replay: true, api })).toMatchObject({ status: 200, body: { ok: true, remote: "pending" } });
     expect(await call({ method: "GET", path: "/api/hub/member/pairing", api: null })).toMatchObject({ status: 404, body: { error: "unavailable" } });
   });
+  it("member Settings retains code notices outside default/v2 presentation until explicit v3", async () => {
+    const base = { id: randomUUID(), fleetId: randomUUID(), generation: 1, label: "Owned Fleet", at: 100, revoked: false };
+    const notices = [{ ...base, source: "group" }, { ...base, id: randomUUID(), source: "manual" }, { ...base, id: randomUUID(), source: "code", codeId: randomUUID() }];
+    const api = { view: () => ({ state: "unpaired" }), notices: () => notices };
+    for (const [query, expected] of [["", ["group"]], ["?v=2", ["group", "manual"]], ["?v=3", ["group", "manual", "code"]], ["?v=99", ["group"]]] as const) {
+      const result = await call({ method: "GET", path: "/api/hub/member/pairing" + query, api });
+      expect(result.status).toBe(200); expect(result.body.notices.map((n: any) => n.source)).toEqual(expected);
+    }
+    expect(notices.map(n => n.source)).toEqual(["group", "manual", "code"]);
+  });
   it("#3675 r2 P2: the pairing-code Disconnect route asks the replay's authority again after member.leave's wait — withdrawn meanwhile: 409, nothing fenced, withdrawn or tombstoned", async () => {
     for (const withdraw of [true, false]) {
       let admin = true;

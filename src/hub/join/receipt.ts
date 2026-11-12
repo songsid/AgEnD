@@ -11,7 +11,7 @@ import { verifierSchema } from "./protocol.js";
 
 const bindingSchema = z.strictObject({ hubIdentityDigest: hash, requestId: uuid, operationId: uuid, owner: person, fleetId: uuid,
   generation: epoch, joinKeyThumbprint: hash, verifierS256: verifierSchema, issuedCredentialHash: hash,
-  resourceRevision: epoch, committedSource: z.enum(["group", "manual"]), provenanceDigest: hash,
+  resourceRevision: epoch, committedSource: z.enum(["group", "manual", "code"]), provenanceDigest: hash,
   issuedAt: epoch, deliveryDeadline: epoch, outerDeadline: epoch });
 export type DeliveryBinding = z.infer<typeof bindingSchema>;
 const binary = (min: number, max = min) => z.string().refine(s => /^[A-Za-z0-9_-]+$/.test(s)

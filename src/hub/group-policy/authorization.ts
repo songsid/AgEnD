@@ -2,18 +2,23 @@
 import type Database from "better-sqlite3";
 import type { HubAuditStore } from "../audit/index.js";
 import type { HubActor, PersonKey } from "../types.js";
+import { enrolmentScope, type EnrolmentScope } from "../enrolment-code.js";
 import type { HubDirectory } from "../directory/types.js";
 import { personKeyString } from "../identity.js";
-import { identifier, person, validated } from "../validation.js";
+import { identifier, person, uuid, validated } from "../validation.js";
 import { createHubGroupResources, HubGroupEnrollmentRefusal, parseHubGroupResource, type HubGroupResource, type HubGroupResourceView } from "./resources.js";
 import { HubGroupPolicyError, type GroupCheckContext, type HubGroupPolicyBinding, type HubGroupPolicyStore } from "./store.js";
 
 export class HubGroupAuthorizationError extends HubGroupPolicyError {
   constructor(readonly reason: "denied" | "held" | "resume-required" | "repair-required") { super("unavailable"); }
 }
+/** Feedback only after the authenticated owner's exact group-scope check. */
+export class HubCodeScopeRefusal extends HubGroupAuthorizationError {
+  constructor() { super("denied"); }
+}
 /** An operation must assert again immediately before committing, dispatching or disclosing protected data. */
 export interface HubGroupPermit {
-  readonly source: "legacy" | "manual" | "group";
+  readonly source: "legacy" | "manual" | "group" | "code";
   assertCurrent(): void;
 }
 /** Commit in the same transaction as the actual new fleet/publication, after ordinary consent/quota checks. */
@@ -65,7 +70,7 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
   };
   const sameRow = (a: HubGroupResourceView | null, b: HubGroupResourceView) => a !== null
     && a.state === "active" && a.revision === b.revision && a.source === b.source
-    && JSON.stringify(a.resource) === JSON.stringify(b.resource);
+    && JSON.stringify(a.resource) === JSON.stringify(b.resource) && JSON.stringify(a.code) === JSON.stringify(b.code);
 
   const run = async (input: HubGroupResource, incoming: GroupCheckContext,
     operation: "check" | "enroll" | "resume" | "asker", requireAdmin?: () => Promise<HubActor>): Promise<HubGroupPermit> => {
@@ -78,6 +83,7 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
     if (db.inTransaction) throw new HubGroupPolicyError("invalid"); // Never hold an outer SQL transaction across LDAP.
     const binding = bindingOf();
     if (binding.kind !== "ready") {
+      if (resource.kind === "fleet" && (db.prepare("SELECT source FROM hub_group_resources WHERE resource_key=?").get(JSON.stringify([resource.kind, resource.id, resource.revision])) as { source: string } | undefined)?.source === "code") throw new HubGroupAuthorizationError("repair-required");
       if (binding.kind !== "repair-required" || !binding.legacy || operation === "resume") throw new HubGroupAuthorizationError("repair-required");
       const fingerprint = binding.fingerprint;
       if (typeof fingerprint !== "string" || !/^[0-9a-f]{64}$/.test(fingerprint)) throw new HubGroupAuthorizationError("repair-required");
@@ -92,9 +98,11 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
       assert(ctx.current);
       if (bindingOf().kind !== "ready" || policyOf() !== policy || JSON.stringify(policy.read()) !== serializedPolicy) throw new HubGroupPolicyError("conflict");
     };
-    const retainedManual = operation === "check" && (db.prepare("SELECT source FROM hub_group_resources WHERE resource_key=?")
-      .get(JSON.stringify([resource.kind, resource.id, resource.revision])) as { source: string } | undefined)?.source === "manual";
-    if (before.state === "never-enabled" && !retainedManual) {
+    const retainedSource = operation === "check" || operation === "resume" ? (db.prepare("SELECT source FROM hub_group_resources WHERE resource_key=?")
+      .get(JSON.stringify([resource.kind, resource.id, resource.revision])) as { source: string } | undefined)?.source : undefined;
+    // Code approval survives policy enablement state; explicit resume still takes every administrator/eligibility fence below.
+    const retainedApproval = retainedSource === "code" || operation === "check" && retainedSource === "manual";
+    if (before.state === "never-enabled" && !retainedApproval) {
       if (operation === "resume") throw new HubGroupPolicyError("invalid");
       return Object.freeze({ source: "legacy" as const, assertCurrent() {
         policyCurrent(); if (version() !== epoch) throw new HubGroupPolicyError("conflict");
@@ -260,6 +268,39 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
         assertPreparation(); prepared.commit(database); committed = resources.read(resource);
         if (!committed || committed.source !== "manual" || committed.state !== "active") throw new HubGroupPolicyError("conflict");
         assertPreparation();
+      } });
+    },
+    async validateCodeScope(input: EnrolmentScope, incoming: GroupCheckContext) {
+      const scope = validated(enrolmentScope, input), ctx = capture(incoming); assert(ctx.current);
+      if (db.inTransaction || bindingOf().kind !== "ready") throw new HubGroupAuthorizationError("denied");
+      const policy = policyOf(), image = JSON.stringify(policy.read()), epoch = version();
+      const assertCurrent = () => { assert(ctx.current); if (bindingOf().kind !== "ready" || policyOf() !== policy || JSON.stringify(policy.read()) !== image || version() !== epoch) throw new HubGroupPolicyError("conflict"); };
+      if (scope.kind === "group" && (!policy.resolveEnrolmentGroup || !await policy.resolveEnrolmentGroup(administrator, { realm: scope.realm, objectId: scope.objectId }, scope.dn, ctx))) throw new HubGroupAuthorizationError("denied");
+      assertCurrent(); return { assertCurrent };
+    },
+    async prepareCodeEnrollment(input: HubGroupResource, inputGrant: { codeId: string; approvedBy: PersonKey; scope: EnrolmentScope; perPersonFleets: number }, incoming: GroupCheckContext): Promise<HubGroupEnrollmentPermit> {
+      const resource = parseHubGroupResource(input), ctx = capture(incoming), grant = { codeId: validated(uuid, inputGrant.codeId),
+        approvedBy: validated(person, inputGrant.approvedBy), scope: validated(enrolmentScope, inputGrant.scope), perPersonFleets: inputGrant.perPersonFleets };
+      assert(ctx.current);
+      if (db.inTransaction || resource.kind !== "fleet" || personKeyString(grant.approvedBy) !== personKeyString(administrator)
+        || resource.owner.realm !== administrator.realm || !Number.isInteger(grant.perPersonFleets) || grant.perPersonFleets < 1 || grant.perPersonFleets > 8
+        || bindingOf().kind !== "ready") throw new HubGroupAuthorizationError("denied");
+      const epoch = version(), policy = policyOf(), image = JSON.stringify(policy.read());
+      const assertPreparation = () => { assert(ctx.current);
+        if (bindingOf().kind !== "ready" || policyOf() !== policy || JSON.stringify(policy.read()) !== image || version() !== epoch) throw new HubGroupPolicyError("conflict");
+      };
+      if (policy.read().realm !== administrator.realm) throw new HubGroupAuthorizationError("denied");
+      if (grant.scope.kind === "group" && (!policy.checkEnrolmentGroup || !await policy.checkEnrolmentGroup(resource.owner,
+        { realm: grant.scope.realm, objectId: grant.scope.objectId }, ctx))) throw new HubCodeScopeRefusal();
+      assertPreparation();
+      const resources = createHubGroupResources({ db, policy, audit, current: alive, now });
+      const prepared = resources.prepareCodeRegistration(resource, grant, { ...ctx, current: () => { try { assertPreparation(); return true; } catch { return false; } } });
+      let committed: HubGroupResourceView | null = null;
+      return Object.freeze({ source: "code", maxFleets: grant.perPersonFleets, assertCurrent() {
+        assertPreparation(); const row = resources.read(resource); if (committed ? !sameRow(row, committed) : row !== null) throw new HubGroupPolicyError("conflict");
+      }, commit(database: Database.Database) {
+        assertPreparation(); prepared.commit(database); committed = resources.read(resource);
+        if (!committed || committed.source !== "code" || committed.state !== "active") throw new HubGroupPolicyError("conflict"); assertPreparation();
       } });
     },
     resume(resource: HubGroupResource, ctx: GroupCheckContext & { requireAdmin(): Promise<HubActor> }) {
