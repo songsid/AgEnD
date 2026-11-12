@@ -3,7 +3,8 @@
  * their own module, on the step model and helpers of log-steps.ts (which does not import this file).
  */
 import { constants } from "node:fs";
-import { open } from "node:fs/promises";
+import { lstat, open, realpath } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import type { LongLine } from "./transcript-jsonl.js";
 import {
   RESULT_MAX, StepParser, TEXT_MAX, bodyOf, describeTool, inputOf, isReplyTool, promptAnchor, replyAnchor, replyResult, tsOf,
@@ -322,20 +323,49 @@ export function grokPhaseOf(lines: readonly string[]): GrokPhase | null {
 }
 
 /**
- * The phase grok is in now, read from the end of `eventsPath` (from `grokEventsPath`: the validated session directory's own
- * `events.jsonl`). Opened without following a symbolic link, a regular file only, at most GROK_EVENTS_TAIL_BYTES from its end;
- * any failure (no such file, not a file, unreadable) is null — nothing is shown rather than a guess.
+ * The session directory of an `events.jsonl`, as it is NOW on disk: a real directory (not a symbolic link — `lstat` does not
+ * follow one) whose resolved path is exactly `<resolved parent>/<its own name>`, so it is a direct child of its cwd root and
+ * not another place reached through a link. Returns its identity (device and inode), or null.
  */
-export async function readGrokPhase(eventsPath: string | null): Promise<GrokPhase | null> {
+async function pinnedSessionDir(eventsPath: string): Promise<{ dev: number; ino: number } | null> {
+  const dir = dirname(eventsPath);
+  const st = await lstat(dir);
+  if (!st.isDirectory()) return null;                         // a symlink (or anything else) in the session's place
+  const [realDir, realRoot] = await Promise.all([realpath(dir), realpath(dirname(dir))]);
+  if (realDir !== join(realRoot, basename(dir))) return null; // resolves somewhere other than under the cwd root
+  return { dev: st.dev, ino: st.ino };
+}
+
+/** Test seam: runs once the file is open and checked, before it is read (what a swap of the directory during the read looks like). */
+export interface GrokPhaseReadHooks { afterOpen?: () => void | Promise<void> }
+
+/**
+ * The phase grok is in now, read from the end of `eventsPath` (from `grokEventsPath`: the validated session directory's own
+ * `events.jsonl`). The session directory must be a real directory directly under its cwd root (not a symlink to another
+ * place), and it is checked again after the read: a directory swapped or relinked while the file was being read is refused.
+ * The file is opened without following a symbolic link and without blocking (a FIFO in its place is refused at once, not
+ * waited on), a regular file only, at most GROK_EVENTS_TAIL_BYTES from its end; any failure (no such file, not a file,
+ * unreadable) is null — nothing is shown rather than a guess.
+ */
+export async function readGrokPhase(eventsPath: string | null, hooks: GrokPhaseReadHooks = {}): Promise<GrokPhase | null> {
   if (!eventsPath) return null;
   let fh: Awaited<ReturnType<typeof open>> | null = null;
   try {
-    fh = await open(eventsPath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const dirBefore = await pinnedSessionDir(eventsPath);
+    if (!dirBefore) return null;
+    // O_NONBLOCK: opening a FIFO for reading would otherwise wait for a writer; where it is not defined (Windows) it is 0.
+    fh = await open(eventsPath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
     const st = await fh.stat();
     if (!st.isFile() || st.size === 0) return null;
+    await hooks.afterOpen?.();
     const n = Math.min(st.size, GROK_EVENTS_TAIL_BYTES);
     const buf = Buffer.alloc(n);
     const { bytesRead } = await fh.read(buf, 0, n, st.size - n);
+    // the directory and the file are still the ones that were checked and opened
+    const dirAfter = await pinnedSessionDir(eventsPath);
+    const named = await lstat(eventsPath);
+    if (!dirAfter || dirAfter.dev !== dirBefore.dev || dirAfter.ino !== dirBefore.ino) return null;
+    if (!named.isFile() || named.dev !== st.dev || named.ino !== st.ino) return null;
     const lines = buf.toString("utf8", 0, bytesRead).split("\n");
     if (st.size > n) lines.shift();                           // the first line of a window that starts mid-file is partial
     return grokPhaseOf(lines);

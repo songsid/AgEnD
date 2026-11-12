@@ -12,7 +12,7 @@
  * Read only when the Log asks (sync, small): nothing here runs in the background. Limit, said on the page's reason: a
  * second agent of the same CLI started in the same directory outside AgEnD moves "latest" to its conversation.
  */
-import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -53,7 +53,10 @@ export function grokUpdatesPath(cwd: string, home = homedir(), now = Date.now())
     for (const name of readdirSync(base)) {
       if (!UUID.test(name)) continue;
       const file = join(base, name, "updates.jsonl");
-      try { const m = statSync(file).mtimeMs; if (m > bestMs) { bestMs = m; best = file; } } catch { /* a session with no updates yet */ }
+      try {
+        if (!lstatSync(join(base, name)).isDirectory()) continue;   // a symlink in a session's place (it may lead to another cwd's)
+        const m = statSync(file).mtimeMs; if (m > bestMs) { bestMs = m; best = file; }
+      } catch { /* a session with no updates yet */ }
     }
   } catch { best = null; }
   if (grokLookups.size > 64) grokLookups.clear();

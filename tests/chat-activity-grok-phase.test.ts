@@ -7,13 +7,14 @@
  * Counter-proofs: before this change the service answered no `phase` and the page had no word for one, so every test here that
  * reads `phase` fails on the previous code; the safety tests (path, unknown value, missing file, symlink) pin what is NOT shown.
  */
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { appendFileSync, closeSync, constants, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { LogService, type LogServiceDeps } from "../src/log-service.js";
 import { GROK_EVENTS_TAIL_BYTES, grokPhaseOf, readGrokPhase } from "../src/log-steps-agy-grok.js";
-import { grokEventsPath } from "../src/log-transcript-paths.js";
+import { grokEventsPath, grokUpdatesPath } from "../src/log-transcript-paths.js";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 import { installDom } from "./helpers/mini-dom.js";
 // @ts-expect-error — a JS module of the app, with no types
@@ -128,6 +129,103 @@ describe("readGrokPhase — a file read that cannot hurt", () => {
     // the newest line itself is cut by the window: the line before it decides
     const s2 = session([...filler, phase("tool_execution"), "x".repeat(10)]);
     expect(await readGrokPhase(s2.events)).toBe("tool");
+  });
+});
+
+describe("readGrokPhase — a FIFO in the file's place never blocks (review of #3739, P2-1)", () => {
+  it.skipIf(process.platform === "win32")("a FIFO named events.jsonl is refused at once, within a timeout", async () => {
+    const s = session(null);
+    execFileSync("mkfifo", [s.events]);
+    let release: number | null = null;
+    try {
+      const outcome = await Promise.race([
+        readGrokPhase(s.events).then((v) => ({ done: true as const, v })),
+        new Promise<{ done: false }>((r) => setTimeout(() => r({ done: false }), 2000)),
+      ]);
+      expect(outcome).toEqual({ done: true, v: null });             // without O_NONBLOCK the open waits for a writer: done is false
+    } finally {
+      // if the open did block, let it go (a writer arrives) so the test run does not keep a stuck thread
+      try { release = openSync(s.events, constants.O_RDWR | constants.O_NONBLOCK); } catch { /* nothing to release */ }
+      if (release !== null) closeSync(release);
+    }
+  }, 10_000);
+});
+
+describe("readGrokPhase — the session directory must really be the cwd root's own child (review of #3739, P2-2)", () => {
+  /** `<root>/.grok/sessions/<cwd>/` for two cwds, each with one real session; `a` is the one asked about. */
+  const twoCwds = () => {
+    const home = scratch();
+    const sessions = join(home, ".grok", "sessions");
+    const mk = (cwd: string, id: string, lines: string[]) => {
+      const dir = join(sessions, encodeURIComponent(cwd), id);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "updates.jsonl"), "{}\n");
+      writeFileSync(join(dir, "events.jsonl"), lines.join("\n") + "\n");
+      return dir;
+    };
+    return { home, sessions, mk };
+  };
+  const OTHER = "01a1ce90-0114-7dc2-9d69-da3fddae4e21";
+
+  it("control: an ordinary session directory is read as before", async () => {
+    const { mk } = twoCwds();
+    const dir = mk("/work/a", SESSION, [ev("turn_started"), phase("streaming_reasoning")]);
+    expect(await readGrokPhase(join(dir, "events.jsonl"))).toBe("reasoning");
+  });
+
+  it("<cwd-a>/<uuid> a symlink to another cwd's session: refused (its events are not this cwd's)", async () => {
+    const { sessions, mk } = twoCwds();
+    const foreign = mk("/work/b", OTHER, [ev("turn_started"), phase("tool_execution")]);
+    const linked = join(sessions, encodeURIComponent("/work/a"), SESSION);
+    mkdirSync(join(sessions, encodeURIComponent("/work/a")), { recursive: true });
+    symlinkSync(foreign, linked, "dir");
+    expect(await readGrokPhase(join(linked, "events.jsonl"))).toBeNull();     // without the directory check: "tool"
+    expect(await readGrokPhase(join(foreign, "events.jsonl"))).toBe("tool");   // the real one is unharmed
+  });
+
+  it("the lookup itself does not pick a symlinked session directory, even when it is the newest", () => {
+    const { home, sessions, mk } = twoCwds();
+    const own = mk("/work/a", SESSION, [ev("turn_started")]);
+    const foreign = mk("/work/b", OTHER, [ev("turn_started")]);
+    const linked = join(sessions, encodeURIComponent("/work/a"), "01a1ce90-0114-7dc2-9d69-da3fddae4e22");
+    symlinkSync(foreign, linked, "dir");
+    const future = new Date(Date.now() + 60_000);
+    utimesSync(join(foreign, "updates.jsonl"), future, future);               // the foreign one is the newest of all
+    expect(grokUpdatesPath("/work/a", home)).toBe(join(own, "updates.jsonl"));  // without the check: the symlinked one
+  });
+
+  it("the directory is swapped for a symlink to another cwd's while the file is being read: refused", async () => {
+    const { sessions, mk } = twoCwds();
+    const dir = mk("/work/a", SESSION, [ev("turn_started"), phase("streaming_reasoning")]);
+    const foreign = mk("/work/b", OTHER, [ev("turn_started"), phase("tool_execution")]);
+    void sessions;
+    const got = await readGrokPhase(join(dir, "events.jsonl"), {
+      afterOpen: () => { renameSync(dir, `${dir}.moved`); symlinkSync(foreign, dir, "dir"); },
+    });
+    expect(got).toBeNull();                                                    // without the second check: "reasoning" (the opened file)
+  });
+
+  it("the directory is replaced by another real directory (another inode) during the read: refused", async () => {
+    const { mk } = twoCwds();
+    const dir = mk("/work/a", SESSION, [ev("turn_started"), phase("streaming_reasoning")]);
+    const got = await readGrokPhase(join(dir, "events.jsonl"), {
+      afterOpen: () => {
+        renameSync(dir, `${dir}.moved`);
+        mkdirSync(dir);
+        writeFileSync(join(dir, "events.jsonl"), [ev("turn_started"), phase("tool_execution")].join("\n") + "\n");
+      },
+    });
+    expect(got).toBeNull();
+  });
+
+  it("the service: a symlinked session directory shows no phase", async () => {
+    const { sessions, mk } = twoCwds();
+    const foreign = mk("/work/b", OTHER, [ev("turn_started"), phase("tool_execution")]);
+    mkdirSync(join(sessions, encodeURIComponent("/work/a")), { recursive: true });
+    const linked = join(sessions, encodeURIComponent("/work/a"), SESSION);
+    symlinkSync(foreign, linked, "dir");
+    const sv = new LogService({ enabled: () => false, toolProgress: () => "verbose", thinking: () => true, known: () => true, source: () => ({ backend: "grok", path: join(linked, "updates.jsonl"), format: "grok" }), events: () => [], emit: () => {} });
+    expect("phase" in ((await sv.steps("x", { chat: true })) as any)).toBe(false);
   });
 });
 
