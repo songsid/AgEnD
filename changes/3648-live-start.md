@@ -1,0 +1,4 @@
+---
+section: Fixed
+---
+- **The chat shows the agent's live line from the moment it starts working (#3648).** The activity block used to appear only after the agent's first step, and Claude Code and grok write a thought to their transcript only when it ends, so a long thought left the chat with no sign of work. Now, while the agent is working, the newest turn shows its live line — "Working…" and the time so far, with a note that each thought and tool call shows up as it finishes — and the first step fills the same line. After 15 seconds with no new record it adds "no new record for N s", so a long thought does not look stuck. An agent whose steps the chat does not show (Codex, and the backends with no transcript reader) gets the same line with a note that its steps are not shown. It comes from the page's own busy state: nothing is read from the terminal.
