@@ -1,0 +1,11 @@
+live-cap 1 semantic
+hourly-cap 1 semantic
+http-reason 1 semantic
+client-reason 1 semantic
+pending-labels 1 semantic
+revoke-reason 1 semantic
+exhausted-reason 1 semantic
+end-confirm 1 semantic
+end-result 1 semantic
+queue-attempt 1 semantic
+signin-progress 1 semantic

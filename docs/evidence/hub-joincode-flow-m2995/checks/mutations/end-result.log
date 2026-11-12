@@ -1,0 +1,47 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts (35 tests | 2 failed | 33 skipped) 214ms
+     × en end-code confirmation names affected joins, supports Cancel and shows success 88ms
+     × zh-TW end-code confirmation names affected joins, supports Cancel and shows success 63ms
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 33 skipped (35)
+   Start at  02:01:59
+   Duration  522ms (transform 187ms, setup 76ms, import 120ms, tests 214ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > en end-code confirmation names affected joins, supports Cancel and shows success
+AssertionError: expected 'Create join codeEnded Connected 2 / 3…' to contain 'The code has ended. Fleets already co…'
+
+Expected: "The code has ended. Fleets already connected are unchanged."
+Received: "Create join codeEnded Connected 2 / 30Who can use it: Anyone in the company directory · Fleets per person 1Valid until 11/12/2026, 7:01:59 PM · 3 connections in progress"
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:66:21
+     64|     fire(buttons(p, end)[0], "click"); await settle(5); fire(p.root.qu…
+     65|     expect(c.revokeEnrolmentCode).toHaveBeenCalledExactlyOnceWith(ID);…
+     66|     expect(text(p)).toContain(lang === "en" ? "The code has ended. Fle…
+       |                     ^
+     67|   });
+     68|   it("sign-out retires an unconfirmed end-code dialog without a write"…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > zh-TW end-code confirmation names affected joins, supports Cancel and shows success
+AssertionError: expected '建立加入碼已停用 已加入 2 / 30誰可以用: 公司目錄中的任何人 · …' to contain '加入碼已停用，已連接的 Fleet 不受影響。'
+
+Expected: "加入碼已停用，已連接的 Fleet 不受影響。"
+Received: "建立加入碼已停用 已加入 2 / 30誰可以用: 公司目錄中的任何人 · 每人最多幾台 1有效到 11/12/2026, 7:01:59 PM · 3 台正在連接"
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:66:21
+     64|     fire(buttons(p, end)[0], "click"); await settle(5); fire(p.root.qu…
+     65|     expect(c.revokeEnrolmentCode).toHaveBeenCalledExactlyOnceWith(ID);…
+     66|     expect(text(p)).toContain(lang === "en" ? "The code has ended. Fle…
+       |                     ^
+     67|   });
+     68|   it("sign-out retires an unconfirmed end-code dialog without a write"…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+

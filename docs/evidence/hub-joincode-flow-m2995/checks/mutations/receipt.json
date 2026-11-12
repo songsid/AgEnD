@@ -1,0 +1,79 @@
+[
+  {
+    "name": "live-cap",
+    "file": "src/hub/enrolment-code.ts",
+    "exit": 1,
+    "semanticFailure": true,
+    "source": "bcbe6ca540e979f46d6ab8bb04ae3d2029a841fe865c1a577e847ac1c869b946"
+  },
+  {
+    "name": "hourly-cap",
+    "file": "src/hub/enrolment-code.ts",
+    "exit": 1,
+    "semanticFailure": true,
+    "source": "bcbe6ca540e979f46d6ab8bb04ae3d2029a841fe865c1a577e847ac1c869b946"
+  },
+  {
+    "name": "http-reason",
+    "file": "src/hub/http/compose.ts",
+    "exit": 1,
+    "semanticFailure": true,
+    "source": "cf493871d1330d61dbe1f1ac58749378ab79ace61bdc70fa5356ac23f75ee82f"
+  },
+  {
+    "name": "client-reason",
+    "file": "src/ui/hub-client.js",
+    "exit": 1,
+    "semanticFailure": true,
+    "source": "c65959222e3044c898773d5811fd50c20525064ddd02081cb22fdc74bf04395e"
+  },
+  {
+    "name": "pending-labels",
+    "file": "src/hub/join/service.ts",
+    "exit": 1,
+    "semanticFailure": true,
+    "source": "ad7b9ee4aa0b93a1c60cc7b89893689ddaa3871ccd6e4ff270801fce4dcb6b12"
+  },
+  {
+    "name": "revoke-reason",
+    "file": "src/hub/join/service.ts",
+    "exit": 1,
+    "semanticFailure": true,
+    "source": "ad7b9ee4aa0b93a1c60cc7b89893689ddaa3871ccd6e4ff270801fce4dcb6b12"
+  },
+  {
+    "name": "exhausted-reason",
+    "file": "src/hub/join/service.ts",
+    "exit": 1,
+    "semanticFailure": true,
+    "source": "ad7b9ee4aa0b93a1c60cc7b89893689ddaa3871ccd6e4ff270801fce4dcb6b12"
+  },
+  {
+    "name": "end-confirm",
+    "file": "src/ui/hub-enrolment-code.js",
+    "exit": 1,
+    "semanticFailure": true,
+    "source": "de65cc27d01c80a5f5f9ae4b62f395edb6e3d960afe821e806dc83b26877d87a"
+  },
+  {
+    "name": "end-result",
+    "file": "src/ui/hub-enrolment-code.js",
+    "exit": 1,
+    "semanticFailure": true,
+    "source": "de65cc27d01c80a5f5f9ae4b62f395edb6e3d960afe821e806dc83b26877d87a"
+  },
+  {
+    "name": "queue-attempt",
+    "file": "src/ui/hub-join-approval.js",
+    "exit": 1,
+    "semanticFailure": true,
+    "source": "abfdaf90a367c11b1c229e6b5d8e00b75ead6b1b799fcfdfcb7d28414616c2e1"
+  },
+  {
+    "name": "signin-progress",
+    "file": "src/ui/panel-hub.js",
+    "exit": 1,
+    "semanticFailure": true,
+    "source": "28c9338604d79d1c5e2ebc8a391d7836e43e21ad93fc28dd3a1a1b4d85ccfd9f"
+  }
+]

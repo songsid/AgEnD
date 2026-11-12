@@ -1,0 +1,31 @@
+{
+  "source": "8231fb5e12d5bcb92e6b48e93f9a85f6e51bc1d0",
+  "focused": {
+    "files": 19,
+    "tests": 422,
+    "exit": 0
+  },
+  "nativeTypescript": "7.0.2",
+  "sourceTypecheckExit": 0,
+  "testTypecheckExit": 0,
+  "mutants": {
+    "independent": 11,
+    "assertionFailures": 11,
+    "restored": true
+  },
+  "browser": {
+    "before": {
+      "checks": 45,
+      "pngs": 16
+    },
+    "after": {
+      "checks": 99,
+      "pngs": 28
+    },
+    "heldAssets": {
+      "checks": 89,
+      "pngs": 24
+    }
+  },
+  "scope": "Owned SQLite/HTTPS/synthetic LDAPS unit rig; source-shell browser with routed join/code DTOs. No real vendor/account/Fleet/pilot/native/packaged/capacity claim."
+}

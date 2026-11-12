@@ -1,0 +1,12 @@
+bcbe6ca540e979f46d6ab8bb04ae3d2029a841fe865c1a577e847ac1c869b946  src/hub/enrolment-code.ts
+cf493871d1330d61dbe1f1ac58749378ab79ace61bdc70fa5356ac23f75ee82f  src/hub/http/compose.ts
+ad7b9ee4aa0b93a1c60cc7b89893689ddaa3871ccd6e4ff270801fce4dcb6b12  src/hub/join/service.ts
+c65959222e3044c898773d5811fd50c20525064ddd02081cb22fdc74bf04395e  src/ui/hub-client.js
+de65cc27d01c80a5f5f9ae4b62f395edb6e3d960afe821e806dc83b26877d87a  src/ui/hub-enrolment-code.js
+1ae6496f5838934df8008c782b0f249404a3d3dfdff96769c39879f24a2b6324  src/ui/hub-enrolment-code-strings.js
+4c48aed807c6249f2f7695be97cf773ddabb8e4c99a47ce496ad2c3d0d0383e3  src/ui/hub-joincode-flow-strings.js
+abfdaf90a367c11b1c229e6b5d8e00b75ead6b1b799fcfdfcb7d28414616c2e1  src/ui/hub-join-approval.js
+3f222e7eefc71fb1176799499a19eec941d22e43521a87cd0ece0459e12e7acf  src/ui/hub-company-join-strings.js
+2ec4bab7fd7313e3c188917adfece4abd6f6de7c421e2424a99c824328684460  src/ui/hub-company-join.js
+28c9338604d79d1c5e2ebc8a391d7836e43e21ad93fc28dd3a1a1b4d85ccfd9f  src/ui/panel-hub.js
+db5c3a265b094ac0a85ac059efeee467577696f4eb909626dd1d1dc8ea382c04  src/ui/shared/app.css

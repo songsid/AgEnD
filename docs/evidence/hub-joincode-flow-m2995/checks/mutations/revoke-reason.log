@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995
+
+ ❯ tests/hub-enrolment-code-http-b1.test.ts (25 tests | 1 failed | 24 skipped) 1076ms
+     × real revoke retires a pending code request and preserves its specific browser feedback 1074ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 24 skipped (25)
+   Start at  02:01:48
+   Duration  4.36s (transform 2.39s, setup 79ms, import 3.05s, tests 1.08s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-enrolment-code-http-b1.test.ts > B1 enrolment-code protected routes and actual join > real revoke retires a pending code request and preserves its specific browser feedback
+AssertionError: expected { state: 'ended', …(7) } to match object { state: 'ended', …(2) }
+(5 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "issued": false,
+-   "reason": "code-ended",
++   "reason": "authority",
+    "state": "ended",
+  }
+
+ ❯ tests/hub-enrolment-code-http-b1.test.ts:152:46
+    150|     expect(listed).toMatchObject({ inFlight: 1, inFlightLabels: ["Code…
+    151|     expect((await r.call(admin, "POST", "/hub/v1/admin/enrolment-codes…
+    152|     expect((await a.command("status")).body).toMatchObject({ state: "e…
+       |                                              ^
+    153|     expect((await r.call(browser, "GET", "/hub/v1/join/browser?request…
+    154|     expect((await r.call(browser, "POST", "/hub/v1/join/approve", { re…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

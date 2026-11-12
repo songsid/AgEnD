@@ -1,0 +1,315 @@
+{
+  "sourceDirty": false,
+  "productBinding": "PRODUCTION_SHA256SUMS",
+  "phase": "before",
+  "source": "332add21fbbc92e716003f9040330eab807a74d3",
+  "skew": null,
+  "boundary": "Production Hub HTTP shell/assets/Preact/Dialog and real dummy-directory sign-in; company-join/code/queue API DTOs are browser-routed fixtures. No directory, real Fleet, capacity, packaged-runtime or Docker claim.",
+  "browser": "156.0.8078.4",
+  "playwright": "1.64.0",
+  "checks": [
+    {
+      "name": "desk-light-en:live-limit:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-en:live-limit:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-en:end-result:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-en:end-result:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-en:code-ended:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-en:code-ended:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-en:queue-first:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-en:queue-first:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-en:no-page-errors",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-zh-TW:live-limit:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-zh-TW:live-limit:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-zh-TW:end-result:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-zh-TW:end-result:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-zh-TW:code-ended:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-zh-TW:code-ended:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-zh-TW:queue-first:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "desk-light-zh-TW:queue-first:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "desk-light-zh-TW:no-page-errors",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:live-limit:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-en:live-limit:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:live-limit:dialog-tap",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:end-result:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-en:end-result:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:end-result:dialog-tap",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:code-ended:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-en:code-ended:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:code-ended:dialog-tap",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:queue-first:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-en:queue-first:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:queue-first:dialog-tap",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-en:no-page-errors",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:live-limit:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW:live-limit:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:live-limit:dialog-tap",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:end-result:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW:end-result:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:end-result:dialog-tap",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:code-ended:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW:code-ended:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:code-ended:dialog-tap",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:queue-first:no-overflow",
+      "ok": true,
+      "detail": {
+        "x": 0,
+        "csp": [],
+        "small": []
+      }
+    },
+    {
+      "name": "phone-dark-zh-TW:queue-first:csp",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:queue-first:dialog-tap",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "phone-dark-zh-TW:no-page-errors",
+      "ok": true,
+      "detail": []
+    }
+  ],
+  "images": [
+    "desk-light-en-live-limit.png",
+    "desk-light-en-end-result.png",
+    "desk-light-en-code-ended.png",
+    "desk-light-en-queue-first.png",
+    "desk-light-zh-TW-live-limit.png",
+    "desk-light-zh-TW-end-result.png",
+    "desk-light-zh-TW-code-ended.png",
+    "desk-light-zh-TW-queue-first.png",
+    "phone-dark-en-live-limit.png",
+    "phone-dark-en-end-result.png",
+    "phone-dark-en-code-ended.png",
+    "phone-dark-en-queue-first.png",
+    "phone-dark-zh-TW-live-limit.png",
+    "phone-dark-zh-TW-end-result.png",
+    "phone-dark-zh-TW-code-ended.png",
+    "phone-dark-zh-TW-queue-first.png"
+  ],
+  "cleanup": "owned browser/listener/rig/keys closed in finally"
+}

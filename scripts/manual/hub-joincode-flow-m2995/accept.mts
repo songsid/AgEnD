@@ -25,6 +25,12 @@ const production = ["src/hub/enrolment-code.ts", "src/hub/http/compose.ts", "src
 writeFileSync(join(OUT, "PRODUCTION_SHA256SUMS"), production.flatMap(file => { try { return [createHash("sha256").update(readFileSync(join(REPO, file))).digest("hex") + "  " + file]; } catch { if (BEFORE && file.endsWith("hub-joincode-flow-strings.js")) return []; throw Error("source missing: " + file); } }).join("\n") + "\n");
 const receipt: any = { sourceDirty: execFileSync("git", ["status", "--porcelain", "--", "src"], { cwd: REPO, encoding: "utf8" }).trim().length > 0, productBinding: "PRODUCTION_SHA256SUMS", phase: BEFORE ? "before" : "after", source: execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8" }).trim(),
   skew: SKEW, boundary: "Production Hub HTTP shell/assets/Preact/Dialog and real dummy-directory sign-in; company-join/code/queue API DTOs are browser-routed fixtures. No directory, real Fleet, capacity, packaged-runtime or Docker claim." };
+if (SKEW) {
+  const held = ["src/ui/hub-enrolment-code-strings.js", "src/ui/hub-join-approval.js", "src/ui/shared/app-shell.js", "src/ui/shared/app.css", "src/ui/shared/tokens.css"];
+  receipt.cachedSource = execFileSync("git", ["rev-parse", "HEAD"], { cwd: SKEW, encoding: "utf8" }).trim();
+  receipt.cachedBinding = "CACHED_SHA256SUMS";
+  writeFileSync(join(OUT, "CACHED_SHA256SUMS"), held.map(file => createHash("sha256").update(readFileSync(join(SKEW, file))).digest("hex") + "  " + file).join("\n") + "\n");
+}
 try {
   const port = await listenLoopback(server), origin = `https://127.0.0.1:${port}`;
   await provisionHubIdentity({ home: keys, memberOrigin: origin });

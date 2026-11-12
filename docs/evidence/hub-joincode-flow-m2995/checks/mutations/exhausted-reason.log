@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995
+
+ ❯ tests/hub-enrolment-code-http-b1.test.ts (25 tests | 1 failed | 24 skipped) 1437ms
+     × a code exhausted by another join ends pending work with the code reason and preserves issued recovery 1435ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 24 skipped (25)
+   Start at  02:01:53
+   Duration  4.90s (transform 2.57s, setup 80ms, import 3.26s, tests 1.44s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-enrolment-code-http-b1.test.ts > B1 enrolment-code protected routes and actual join > a code exhausted by another join ends pending work with the code reason and preserves issued recovery
+AssertionError: expected { state: 'ended', …(7) } to match object { state: 'ended', …(2) }
+(5 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "issued": false,
+-   "reason": "code-ended",
++   "reason": "authority",
+    "state": "ended",
+  }
+
+ ❯ tests/hub-enrolment-code-http-b1.test.ts:163:52
+    161|     expect((await joined.approve("carol")).status).toBe(200); const is…
+    162|     expect((await r.call(browser, "POST", "/hub/v1/join/approve", { re…
+    163|     expect((await pending.command("status")).body).toMatchObject({ sta…
+       |                                                    ^
+    164|     expect((await r.call(browser, "GET", "/hub/v1/join/browser?request…
+    165|     expect((await joined.redeem()).body.credential).toBe(issued.body.c…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

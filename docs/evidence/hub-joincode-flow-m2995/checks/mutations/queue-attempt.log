@@ -1,0 +1,47 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995
+
+ ❯ tests/hub-join-approval-ui-b2.test.ts (29 tests | 2 failed | 27 skipped) 675ms
+     × en queue shows the current retry out of eight without changing its request 57ms
+     × zh-TW queue shows the current retry out of eight without changing its request 37ms
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 27 skipped (29)
+   Start at  02:02:00
+   Duration  1.01s (transform 574ms, setup 92ms, import 124ms, tests 675ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-join-approval-ui-b2.test.ts > B2 actual Hub approval page > en queue shows the current retry out of eight without changing its request
+AssertionError: expected 'Connect My FleetFleet address: https:…' to contain 'Retry 1 of 8'
+
+Expected: "Retry 1 of 8"
+Received: "Connect My FleetFleet address: https://fleet.example.testConnect as CarolMany people are connecting at once. Waiting in the queue…"
+
+ ❯ tests/hub-join-approval-ui-b2.test.ts:30:34
+     28|     const timers = queueTimers(), r = await rig(() => ({ ok: false, co…
+     29|     fire(button(r.p, lang === "en" ? "Connect as Carol" : "以 Carol 的身分…
+     30|     expect(r.p.root.textContent).toContain(lang === "en" ? "Retry 1 of…
+       |                                  ^
+     31|     timers.shift()!(); await settle(8);
+     32|     expect(r.p.root.textContent).toContain(lang === "en" ? "Retry 2 of…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-join-approval-ui-b2.test.ts > B2 actual Hub approval page > zh-TW queue shows the current retry out of eight without changing its request
+AssertionError: expected '連接 My FleetFleet 位址: https://fleet.ex…' to contain '第 1 次重試，共 8 次'
+
+Expected: "第 1 次重試，共 8 次"
+Received: "連接 My FleetFleet 位址: https://fleet.example.test以 Carol 的身分連接目前很多人同時加入，正在排隊…"
+
+ ❯ tests/hub-join-approval-ui-b2.test.ts:30:34
+     28|     const timers = queueTimers(), r = await rig(() => ({ ok: false, co…
+     29|     fire(button(r.p, lang === "en" ? "Connect as Carol" : "以 Carol 的身分…
+     30|     expect(r.p.root.textContent).toContain(lang === "en" ? "Retry 1 of…
+       |                                  ^
+     31|     timers.shift()!(); await settle(8);
+     32|     expect(r.p.root.textContent).toContain(lang === "en" ? "Retry 2 of…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
