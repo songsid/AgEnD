@@ -35,7 +35,7 @@ describe("lazy browser-certificate Settings", () => {
     expect(JSON.parse(calls[2]!.options.body)).toEqual({ reference, revision });
     expect(calls[2]!.path).toBe("/api/settings/hub/browser-certificate/apply");
     await until(() => !pg.root.querySelector(".hub-certificate-proposal"));
-    expect(pg.root.textContent).toContain(language === "en" ? "New connections use it" : "新連線會使用新憑證");
+    expect(pg.root.textContent).toContain(language === "en" ? "New connections use it" : "新的網路連線會使用新憑證");
   });
   it("removes the prepared confirmation when the owner changes the source", async () => {
     const { pg } = await fixture("en");

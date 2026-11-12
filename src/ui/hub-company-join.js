@@ -110,7 +110,7 @@ export function HubCompanyJoinPage({ session }) {
 }
 register("companyJoin", {
   en: { "guide.title": "How colleagues connect", "guide.one": "Copy the colleague connection link here.", "guide.two": "In their Fleet’s Settings → Hub, paste the link and choose {0}.", "guide.three": "Sign in on the Hub and choose Sign in and connect Fleet. Allowed groups need no further approval." },
-  "zh-TW": { "guide.title": "同仁如何連接", "guide.one": "在這裡複製同仁連線連結。", "guide.two": "在自己的 Fleet「設定 → Hub」貼上連結，按「{0}」。", "guide.three": "在 Hub 登入並按「登入並連接 Fleet」。允許的群組不需要另外核准。" },
+  "zh-TW": { "guide.title": "同仁如何連接", "guide.one": "在這裡複製含金鑰指紋的連結。", "guide.two": "在自己的 Fleet「設定 → Hub」貼上連結，按「{0}」。", "guide.three": "在 Hub 登入並按「登入並連接 Fleet」。允許的群組不需要另外核准。" },
 });
 const guide = (key, ...args) => t(`companyJoin.guide.${key}`, ...args);
 export const companyJoinAdminEntryV1 = entryWords.companyAdminStringsV1 === true;

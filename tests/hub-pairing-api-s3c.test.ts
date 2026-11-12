@@ -323,7 +323,7 @@ describe("Prism #3115 r1 (pairing)", () => {
     const { pairingSummary } = await import("../src/hub-pairing-summary.js");
     const paired = { state: "paired", hub: { hubId: "h1", name: null, memberOrigin: "https://a.test", webOrigin: "https://w.a.test", fingerprint: { kind: "hub-key", digest: "a".repeat(64) } }, link: "offline" } as const;
     const bound = { hubId: "h1", binding: "b".repeat(64) };
-    expect(pairingSummary("disconnect", { hubId: "h1", binding: "b".repeat(64) }, paired, bound).summary[0]).toBe("Disconnect this fleet from the Hub at https://a.test (h1, pairing bbbbbbbbbbbb)");
+    expect(pairingSummary("disconnect", { hubId: "h1", binding: "b".repeat(64) }, paired, bound).summary[0]).toBe("Remove this fleet's connection to the Hub at https://a.test (h1, connection bbbbbbbbbbbb)");
     expect(() => pairingSummary("disconnect", { hubId: "h2", binding: "b".repeat(64) }, paired, bound)).toThrow(expect.objectContaining({ code: "conflict" }));
     expect(() => pairingSummary("disconnect", { hubId: "h1", binding: "c".repeat(64) }, paired, bound)).toThrow(expect.objectContaining({ code: "conflict" }));   // a re-pair
     expect(() => pairingSummary("disconnect", {}, paired, bound)).toThrow(expect.objectContaining({ code: "conflict" }));

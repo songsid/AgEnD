@@ -35,7 +35,7 @@ export function pairingSummary(action: "connect" | "confirm" | "disconnect", inp
   // #3115 r1 P2: the confirmation names the exact Hub (its id, in the body the owner confirms); apply rechecks it.
   if (!bound || body.hubId !== bound.hubId || !bound.binding || body.binding !== bound.binding) refuse("conflict");
   const origin = view.state === "paired" ? view.hub.memberOrigin : (view as { memberOrigin: string }).memberOrigin;
-  return settingsSummary([summaryLine(`Disconnect this fleet from the Hub at ${origin} (${bound!.hubId}, pairing ${bound!.binding!.slice(0, 12)})`,
+  return settingsSummary([summaryLine(`Remove this fleet's connection to the Hub at ${origin} (${bound!.hubId}, connection ${bound!.binding!.slice(0, 12)})`,
     summaryMessage("hub.pairing.summary.disconnect", origin!, bound!.hubId, bound!.binding!.slice(0, 12))),
     summaryLine("Every agent shared there is withdrawn; the Hub's administrator revokes the fleet there", summaryMessage("hub.pairing.summary.withdraw"))]);
 }

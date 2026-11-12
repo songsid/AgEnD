@@ -7,7 +7,7 @@ import { api, confirmedWrite } from "./settings-confirm.js";
 register("hubMembership", {
   en: {
     title: "Hub membership", enabled: "Allow this fleet to connect to a Hub",
-    hint: "Off by default. Enabling does not pair a Hub or share an agent; choose those separately below.",
+    hint: "Off by default. Enabling does not connect a Hub or share an agent; choose those separately below.",
     off: "Turning this off stops new Hub work and answer disclosure. Existing agent conversations remain.",
     loading: "Reading membership settings…", pending: "Waiting for owner confirmation…",
     failed: "The membership change could not be verified. Check again before trying another change.",
@@ -15,8 +15,8 @@ register("hubMembership", {
     retry: "Check again",
   },
   "zh-TW": {
-    title: "Hub 成員功能", enabled: "允許這個 Fleet 連線至 Hub",
-    hint: "預設關閉。啟用不會自動配對 Hub 或分享 Agent；請在下方另外選擇。",
+    title: "Hub 成員功能", enabled: "允許這個 Fleet 連接 Hub",
+    hint: "預設關閉。啟用不會自動連接 Hub 或分享 Agent；請在下方另外選擇。",
     off: "關閉後會停止新的 Hub 工作與回答傳送，既有 Agent 對話會保留。",
     loading: "正在讀取成員設定…", pending: "等待擁有者確認…",
     failed: "無法確認成員設定是否已變更。請再次檢查，再嘗試其他變更。",

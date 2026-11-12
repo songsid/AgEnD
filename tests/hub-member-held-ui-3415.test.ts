@@ -16,7 +16,7 @@ it.each(["en", "zh-TW"])("a rejected member explains recovery in %s and uses onl
   clients.setHubClient(c); vi.stubGlobal("confirm", () => true);
   await p.mount(h(ui.HubConnectCard, {})); await settle(20);
   expect(p.root.querySelector(".hub-held p")?.textContent).toContain(language === "en" ? "restored" : "還原");
-  const button: any = p.root.querySelector(".hub-held button"); expect(button?.textContent).toBe(language === "en" ? "Pair again" : "重新配對");
+  const button: any = p.root.querySelector(".hub-held button"); expect(button?.textContent).toBe(language === "en" ? "Reconnect" : "重新連接");
   expect(c.disconnect).not.toHaveBeenCalled(); expect(c.connect).not.toHaveBeenCalled();
   fire(button, "click"); await settle(20);
   expect(c.disconnect).toHaveBeenCalledExactlyOnceWith(shown); expect(c.cancel).not.toHaveBeenCalled();
@@ -32,7 +32,7 @@ it("a known revocation offers the same recovery while retaining its distinct rea
   const c = { stub: false, pairing: async () => ({ state: "held", hold: "revoked", hubId: "h", binding: "b", memberOrigin: "https://hub.test" }), subscribe: () => () => {}, cancel: vi.fn() };
   clients.setHubClient(c); await p.mount(h(ui.HubConnectCard, {})); await settle(20);
   expect(p.root.querySelector(".hub-held p")?.textContent).toContain("revoked");
-  expect(p.root.querySelector(".hub-held button")?.textContent).toBe("Pair again");
+  expect(p.root.querySelector(".hub-held button")?.textContent).toBe("Reconnect");
   expect(c.cancel).not.toHaveBeenCalled();
 });
 
@@ -41,8 +41,8 @@ it("new recovery controls tolerate cached strings and the original client interf
   vi.spyOn(hubWords, "hw").mockImplementation((...args: unknown[]) => args[0] === "hold_rejected" ? "hub.hold_rejected" : original(...args));
   const c = { stub: false, pairing: async () => ({ state: "held", hold: "rejected", hubId: "h", binding: "b", memberOrigin: "https://hub.test" }), subscribe: () => () => {} };
   clients.setHubClient(c); await p.mount(h(ui.HubConnectCard, {})); await settle(20);
-  expect(p.root.querySelector(".hub-held p")?.textContent).toBe("The Hub refused the pairing.");
-  expect(p.root.querySelector(".hub-held button")?.textContent).toBe("Pair again");
+  expect(p.root.querySelector(".hub-held p")?.textContent).toBe("The Hub refused the connection.");
+  expect(p.root.querySelector(".hub-held button")?.textContent).toBe("Reconnect");
   expect(p.root.textContent).not.toContain("hub.hold_rejected");
 });
 
@@ -53,5 +53,5 @@ it("an old Hub's silent offline state offers conditional recovery without claimi
   clients.setHubClient(c); await p.mount(h(ui.HubConnectCard, {})); await settle(20);
   expect(p.root.querySelector(".hub-held")).toBeNull();
   expect(p.root.querySelector(".hub-reconnect-help")?.textContent).toContain("temporary outage reconnects automatically");
-  expect(p.root.querySelector(".hub-repair")?.textContent).toBe("Pair again");
+  expect(p.root.querySelector(".hub-repair")?.textContent).toBe("Reconnect");
 });

@@ -38,7 +38,7 @@ describe("off-default lazy Hub membership Settings", () => {
   it.each(["en", "zh-TW"])("shows localized owner guidance while off (%s), saves only the boolean, then shows Connect's fields with no reload (cid-hub-no-reload)", async language => {
     const { pg, calls } = await fixture({ language });
     expect(pg.root.textContent).toContain(language === "en" ? "Hub membership" : "Hub 成員功能");
-    expect(pg.root.textContent).toContain(language === "en" ? "does not pair a Hub or share an agent" : "不會自動配對 Hub 或分享 Agent");
+    expect(pg.root.textContent).toContain(language === "en" ? "does not connect a Hub or share an agent" : "不會自動連接 Hub 或分享 Agent");
     expect(pg.root.textContent).not.toContain("hubMembership.");
     expect((pg.root.querySelector("#hubMemberEnabled") as any).checked).toBe(false);
     expect(calls.map(c => c.path)).toEqual(["/api/settings/hub/membership"]);

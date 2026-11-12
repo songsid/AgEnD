@@ -5,7 +5,7 @@ import { register, t } from "/assets/app-i18n.js";
 
 register("hubChat", {
   en: {
-    navSearch: "Search", notices: "Notices", noticesTitle: "Notices", noNotices: "No security notices", noticesLead: "When a new fleet connects to this Hub, you're told here. If you don't recognise it, revoke it.", settings: "Settings", signedIn: "Signed in", signOut: "Sign out",
+    navSearch: "Search", notices: "Notices", noticesTitle: "Notices", noNotices: "No security notices", noticesLead: "When a new fleet connects to this Hub, you're told here. If you don't recognize it, revoke it.", settings: "Settings", signedIn: "Signed in", signOut: "Sign out",
     chats: "Chats", newChat: "New chat", search: "Search chats", noChats: "No chats yet", noChatsHint: "Start one with New chat: it lists the agents someone allowed you to ask.",
     noMatch: "No chat matches.", waiting: "Waiting for an answer", represents: "Answers for {0}",
     pickTitle: "New chat", pickSearch: "Search agents or owners", pickHint: "Only the agents someone allowed you to ask are listed.",
@@ -31,7 +31,7 @@ register("hubChat", {
     adminTitle: "Hub administrator", adminSees: "Can't see the content.",
     notHere: "Not here", notHereText: "{0}'s files and changes, its terminal (View) and its tool progress: only {1} sees them, in their own fleet.",
     oneToOne: "A chat has only you and this agent.",
-    menu: "Menu", mine: "My shared agents", mineHint: "Who may ask them, until when", admin: "Administration", adminHint: "Pair fleets",
+    menu: "Menu", mine: "My shared agents", mineHint: "Who may ask them, until when", admin: "Administration", adminHint: "Connect fleets",
     back: "Chats",
   },
   "zh-TW": {
@@ -61,7 +61,7 @@ register("hubChat", {
     adminTitle: "Hub 管理員", adminSees: "看不到內容。",
     notHere: "這裡沒有", notHereText: "{0} 的檔案與變更、終端機畫面（View）、工具進度：只有 {1} 在自己的 fleet 看得到。",
     oneToOne: "一個聊天室只有你和這個 Agent。",
-    menu: "選單", mine: "我分享的 Agent", mineHint: "誰可以提問、到什麼時候", admin: "管理", adminHint: "配對 fleet",
+    menu: "選單", mine: "我分享的 Agent", mineHint: "誰可以提問、到什麼時候", admin: "管理", adminHint: "連接 Fleet",
     back: "對話",
   },
 });

@@ -74,7 +74,7 @@ describe("Administration leads with existing group and individual connection con
     {id:"s1",status:"suspended",label:null,owner:own("Dave","dave")},{id:"r2",status:"revoked",label:"older-box",owner:own("Bob","bob")}];
   const f=await fixture({lang,fleets});await until(()=>f.p.root.querySelector(".hub-fleet-list"));
   const list=f.p.root.querySelector(".hub-fleet-list");
-  expect(list.querySelector("h3").textContent).toBe(lang==="en"?"Paired fleets · 2":"已配對的 Fleet · 2");
+  expect(list.querySelector("h3").textContent).toBe(lang==="en"?"Connected fleets · 2":"已連接的 Fleet · 2");
   const folded0=list.querySelector("details.hub-fleets-revoked"),inFold=new Set([...folded0.querySelectorAll("[data-fleet]")]);
   const shown=[...list.querySelectorAll("[data-fleet]")].filter((r:any)=>!inFold.has(r)).map((r:any)=>r.getAttribute("data-fleet"));expect(shown).toEqual(["a1","s1"]);
   const first=list.querySelector('[data-fleet="a1"]');expect(first.querySelector("strong").textContent).toBe("build-box");expect(first.querySelector("small").textContent).toBe("Carol · carol");
