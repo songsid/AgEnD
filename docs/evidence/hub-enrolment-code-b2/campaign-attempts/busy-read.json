@@ -1,0 +1,27 @@
+{
+  "cause": "A code-list GET backpressure was described as too many code creations.",
+  "change": "Use generic Hub-busy guidance in EN/zh-TW; no authority/rate-limit/retry change.",
+  "failFirst": {
+    "semanticFailures": 2,
+    "selected": 2,
+    "oldCopy": true
+  },
+  "restoredUiPickerSlot": {
+    "tests": 37,
+    "files": 3,
+    "zeroSkips": true
+  },
+  "reversal": {
+    "change": "Remove backpressure presentation branch",
+    "semanticFailures": 2,
+    "restored": true
+  },
+  "production": {
+    "src/ui/hub-enrolment-code.js": "966c7613113455af0e3efe40b4efd546f33b86037b13ce2df38d25cdfce16ded",
+    "src/ui/hub-enrolment-code-strings.js": "f57f8986e74e00d952190eec739f264c87671b87796320490fc1c94c66ba2aeb"
+  },
+  "test": {
+    "tests/hub-enrolment-code-ui-b2.test.ts": "e40b0b55b6c7473f66a75b795da37b284b0a678bad7916fd2351ec1a37db2514"
+  },
+  "boundary": "Production Preact, inert GET failure, no browser/network/account. Actual earlier screenshot independently showed the old text; final campaign will bind revised production bytes."
+}

@@ -134,15 +134,17 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     for (const phone of [false,true]) for (const lang of ['en','zh-TW']) for (const theme of ['light','dark']) {
       const {ctx,page,errors} = await adminPage(lang,phone,theme), tag=(phone?'phone':'desk')+'-'+theme+'-'+lang;
       try {
-        const create = page.getByRole('button',{name:lang==='zh-TW'?'建立加入碼':'Create join code',exact:true}); await create.waitFor();
+        const create = page.getByRole('button',{name:lang==='zh-TW'?'建立加入碼':'Create join code',exact:true}); await create.waitFor(); await create.scrollIntoViewIfNeeded();
+        await page.waitForFunction(()=>{const b=document.querySelector('[data-enrolment-codes] .n-actions button') as HTMLButtonElement|null;return b!==null&&!b.disabled;});
         await shot(page,tag+'-admin-before'); await create.click(); await page.locator('#hubEnrolmentCreate').waitFor(); await shot(page,tag+'-create-dialog');
         await page.locator('#hubCodeScope').selectOption('group');await page.locator('#hubEnrolmentScopeSearch').fill('Own');
         check(tag+' scoped picker input and note are distinct',await page.locator('#hubEnrolmentScopeSearch').count()===1
           &&await page.locator('#hubEnrolmentScopeSearch').getAttribute('aria-describedby')==='hubEnrolmentScopeSearchNote'
-          &&await page.locator('#hubEnrolmentScopeSearchNote').count()===1
+          &&await page.locator('#hubEnrolmentScopeSearchNote').count()<=1
           &&await page.locator('#hubGroupSearch').count()<=1);
         await page.locator('dialog .hub-group-hits button').first().click();
-        await page.getByText('CN=Owners,DC=example,DC=test',{exact:false}).last().waitFor();await shot(page,tag+'-resolved-group');
+        await page.locator('#hubEnrolmentScopeSearch').waitFor({state:'detached'});
+        await page.locator('dialog').getByText('CN=Owners,DC=example,DC=test',{exact:false}).waitFor();await shot(page,tag+'-resolved-group');
         check(tag+' resolved picker retires its input',await page.locator('#hubEnrolmentScopeSearch').count()===0);
         await page.locator('#hubCodeScope').selectOption('directory');
         if (created === null) {

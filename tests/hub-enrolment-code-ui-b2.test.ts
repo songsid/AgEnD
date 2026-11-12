@@ -38,6 +38,15 @@ describe("B2 code management: explicit configured-admin actions", () => {
     const c = fake({ enrolmentCodeV1: undefined }), p = await mount(c);
     expect(text(p)).toBe(""); expect(c.enrolmentCodes).not.toHaveBeenCalled(); expect(c.createEnrolmentCode).not.toHaveBeenCalled();
   });
+  it.each([
+    ["en", "The Hub is busy. Try again shortly.", "Too many codes were created"],
+    ["zh-TW", "Hub 目前忙碌，請稍後再試。", "建立的加入碼太多"],
+  ])("busy code-list read gives truthful %s guidance without claiming creations", async (lang, message, misleading) => {
+    const c = fake({ enrolmentCodes: vi.fn(async () => ({ ok: false, code: "backpressure" })) });
+    const p = await mount(c, {}, lang);
+    expect(text(p)).toContain(message); expect(text(p)).not.toContain(misleading);
+    expect(c.createEnrolmentCode).not.toHaveBeenCalled();
+  });
   it("entry only reads; the shared dialog submits the specified defaults once", async () => {
     const c = fake(), changed = vi.fn(), p = await mount(c, { onChanged: changed });
     expect(c.createEnrolmentCode).not.toHaveBeenCalled(); await open(p);
