@@ -21760,9 +21760,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       classic: classic.filter(c => c.backend === backend && same(c.profile)).map(c => c.key),
       fleetDefault: same(fleetDefaults.get(backend)),
     };
+    // The window held on THIS backend, and only a sign-in of THIS backend explains it by account (the precise checks below). Another backend's running sign-in (a Grok terminal beside a
+    // Claude Code logout) says nothing about who holds this one: the held window itself then refuses Remove (a logout's child may still be running).
     const held = this.loginWindow.heldFor(backend);
     const signingIn = (this.loginController?.signingIn(backend, profile) ?? false) || (this.profileSignInsInstance?.signingIn(backend, profile) ?? false)
-      || (!!held && held !== ownClaim && !this.loginController?.activeBackend && !this.profileSignInsInstance?.active);   // a named account's sign-in holds the window too, and says WHICH account (above)
+      || (!!held && held !== ownClaim && this.loginController?.activeBackend !== backend && this.profileSignInsInstance?.active?.backend !== backend);   // a named account's sign-in holds the window too, and says WHICH account (above)
     return { backend, name, confirm, users, signingIn, usersUnknown: rooms.kind === "unknown" };
   }
 
