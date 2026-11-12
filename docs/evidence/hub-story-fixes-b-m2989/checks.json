@@ -1,0 +1,73 @@
+{
+  "scope": "findings10/14/18 only",
+  "focused": {
+    "files": 6,
+    "passed": 174,
+    "failed": 0
+  },
+  "pinnedBaselineReplay": {
+    "failed": 17,
+    "passed": 157,
+    "restored": true
+  },
+  "nativeSourceTypes": "PASS",
+  "nativeTestTypes": "PASS",
+  "changelogAssembly": {
+    "fragments": 412,
+    "result": "PASS"
+  },
+  "guardReversals": [
+    {
+      "label": "witness",
+      "exit": 1,
+      "failed": 2,
+      "passed": 51
+    },
+    {
+      "label": "legacy-dto",
+      "exit": 1,
+      "failed": 2,
+      "passed": 24
+    },
+    {
+      "label": "hub-id",
+      "exit": 1,
+      "failed": 1,
+      "passed": 27
+    },
+    {
+      "label": "origin",
+      "exit": 1,
+      "failed": 1,
+      "passed": 27
+    },
+    {
+      "label": "ready-state",
+      "exit": 1,
+      "failed": 2,
+      "passed": 26
+    },
+    {
+      "label": "handoff",
+      "exit": 1,
+      "failed": 1,
+      "passed": 15
+    }
+  ],
+  "browser": {
+    "cases": 42,
+    "originalPngs": 62,
+    "serial": true,
+    "cleaned": true
+  },
+  "imageOnlyReview": {
+    "originals": 26,
+    "blockingFindings": 0
+  },
+  "sync": {
+    "base": "eca2c65c83dd506e4e6913f4e2c7fb59bfcd908a",
+    "merge": "0aebc605a084120cf8cf813cec036ed511ec69dd",
+    "conflicts": false,
+    "scope": "seven disjoint incoming CI/history-scan files"
+  }
+}
