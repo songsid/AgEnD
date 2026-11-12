@@ -15,7 +15,7 @@ export function Menu({ items, label, icon = "more", cls = "", active = false, tr
   const [placement,setPlacement] = useState("");
   const btn = useRef(null), list = useRef(null);
   const shown = (items || []).filter(Boolean);
-  const anchored = topLayer && open && typeof getComputedStyle === "function" && getComputedStyle(document.documentElement).getPropertyValue("--agent-menu-version").trim() === "1";
+  const anchored = topLayer && open && typeof getComputedStyle === "function" && getComputedStyle(document.documentElement).getPropertyValue?.("--agent-menu-version")?.trim() === "1";
   useLayoutEffect(() => { setOpen(false); }, [ownerKey]);
   useLayoutEffect(() => { if (inactive) setOpen(false); }, [inactive]);
   useLayoutEffect(() => {

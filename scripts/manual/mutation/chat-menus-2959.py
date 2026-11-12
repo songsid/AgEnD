@@ -25,7 +25,7 @@ cases = [
     ('dark-name-unchanged', 'src/ui/shared/identity-color.js', 'readableShade(dark, "dark", pageNow("dark"))',
      'readableShade(dark, "light", pageNow("light"))', menu),
     ('retained-css', 'src/ui/shared/ui-menu.js',
-     'getComputedStyle(document.documentElement).getPropertyValue("--agent-menu-version").trim() === "1"', 'true', menu),
+     'getComputedStyle(document.documentElement).getPropertyValue?.("--agent-menu-version")?.trim() === "1"', 'true', menu),
     ('retained-css-trigger', 'src/ui/shared/instance-nav.js', 'trigger=${styledMenus ?', 'trigger=${true ?', menu),
     ('placement-scroll-owner', 'src/ui/shared/ui-menu.js', 'if (anchored) window.addEventListener("scroll",place,true);',
      'void 0;', menu),

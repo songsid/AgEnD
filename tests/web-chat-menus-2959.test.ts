@@ -135,7 +135,7 @@ describe("the pane menu uses the same icon rows as the sidebar", () => {
     } finally { await p.unmount(); vi.unstubAllGlobals(); }
   });
   it("retained CSS keeps a single ordinary sidebar trigger instead of two unstyled glyphs", async () => {
-    vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: () => "" }));
+    vi.stubGlobal("getComputedStyle", () => ({}));
     try {
       roster.navStore.set({ favorites: ["alpha"] });
       await p.mount(h(roster.InstanceNav, { route: pane.route, items: [inst], loaded: true }));

@@ -15,26 +15,28 @@ assert.ok(!dirty || process.env.DIAGNOSTIC_DIRTY === "1", "capture requires clea
 assert.ok(loadavg()[0] < 6, "browser campaign waits for 1-min load <6 and Ridge RELEASED");
 const oldRef = "3f02d04404f40596e9ee25b908f3bb9c793d70dd", retain = process.env.RETAIN || "";
 const theme = process.env.THEME || "light", language = process.env.LANGUAGE || "zh-TW", phone = process.env.SCREEN === "phone";
+const narrow = process.env.NARROW === "1";
 const files = ["src/ui/chat-workspace.js", "src/ui/chat-quote.js", "src/ui/panel-chat.js", "src/ui/shared/instance-nav.js", "src/ui/shared/ui-menu.js", "src/ui/shared/identity-color.js", "src/ui/shared/app.css"];
 const inputs: Record<string, string[]> = {}, assets: Record<string, string[]> = {}, substitutions: Record<string, string[]> = {};
 const record = (m: Record<string, string[]>, path: string, b: string | Buffer) => { const a = m[digest(b)] ||= []; if (!a.includes(path)) a.push(path); };
-const sources = [...files, "src/ui/shared/tokens.css", "src/ui/shared/app.js", "src/ui/shared/app-shell.js", "src/ui/shared/app-nav.js", "src/ui/shared/app-store.js", "src/ui/shared/app-prefs.js", "src/ui/shared/app-i18n.js", "src/ui/shared/app-themes.js", "src/ui/shared/view-strings.js", "src/ui/model-picker.js", "scripts/manual/smoke-fixture/index.mts", "scripts/manual/smoke-fixture/data.mts", "scripts/manual/smoke-fixture/from-defaults.mts"];
+const sources = [...files, "src/web-api.ts", "src/web-session.ts", "src/auth-api.ts", "src/fleet-manager.ts", "src/ui/shared/tokens.css", "src/ui/shared/app.js", "src/ui/shared/app-shell.js", "src/ui/shared/app-nav.js", "src/ui/shared/app-store.js", "src/ui/shared/app-prefs.js", "src/ui/shared/app-i18n.js", "src/ui/shared/app-themes.js", "src/ui/shared/view-strings.js", "src/ui/model-picker.js", "scripts/manual/smoke-fixture/index.mts", "scripts/manual/smoke-fixture/data.mts", "scripts/manual/smoke-fixture/from-defaults.mts"];
 for (const path of sources) record(inputs, path, readFileSync(join(repo, path)));
 record(inputs, "harness", readFileSync(new URL(import.meta.url))); mkdirSync(out, { recursive: true });
-const receipt: any = { head: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"), dirty, oldRef, retain, theme, language, phone,
+const receipt: any = { head: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"), dirty, oldRef, retain, theme, language, phone, narrow,
   scope: "Owned scratch FleetManager, real cookie/HTTP/SSE and production UI; mocked status model/display-name/colour/reply inputs and recorded chat text, no Fleet start/CLI/vendor/AD/live operation", inputs, assets, substitutions, cases: [], errors: [], effects: [], external: [], preferences: [] };
 const fx = await bootFixture({ port: Number(process.env.HP || 56042), instances: 6, classic: false });
 let ctx: any;
 const jobs: Promise<unknown>[] = [];
 const tr = (en: string, zh: string) => language === "en" ? en : zh;
 try {
+  receipt.browserVersion = fx.browser.version();
   const status = fx.fm.getUiStatus.bind(fx.fm), a = fx.instances[1].name, b = fx.instances[2].name;
   const passage = tr("Compare this passage in the other pane.", "把這段文字放到另一格比較。");
   const colors = ["preset:lime", "preset:orange", "#aaddff", "#ffbb11", "preset:violet", "preset:cyan"];
   fx.fm.getUiStatus = (...args: any[]) => { const s = status(...args); return { ...s, instances: s.instances.map((it: any, i: number) => ({ ...it, model: "Opus 5.5", effort: "auto", color: { person: colors[i % colors.length] }, color_show: { person: ["name", "bar", "ring"] }, ...(it.name === a ? { display_name: "Cairn" } : {}), ...(it.name === b ? { display_name: "AgEnD Leader", last_reply: new Date(Date.now() - 120000).toISOString() } : {}) })) }; };
   for (const name of [a, b]) fx.fm.emitSseEvent("message", { instance: name, sender: name, role: "agent", text: passage, ts: "2026-11-12T06:00:00.000Z" });
   fx.fm.webPrefs.write("operator", new Map([["theme", theme], ["lang", language], ["nav.favorites", [a]]]));
-  ctx = await fx.browser.newContext({ viewport: phone ? { width: 390, height: 844 } : { width: 1600, height: 1000 }, colorScheme: theme, locale: language, hasTouch: phone });
+  ctx = await fx.browser.newContext({ viewport: phone ? { width: 390, height: 844 } : { width: narrow ? 1200 : 1600, height: 1000 }, colorScheme: theme, locale: language, hasTouch: phone });
   await ctx.addInitScript(() => {
     const Original = window.EventSource; (window as any).__streams = { active: 0, max: 0 };
     window.EventSource = class extends Original {
@@ -83,6 +85,7 @@ try {
     await page.evaluate(async () => { await document.fonts.ready; await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
     assert.ok(loadavg()[0] <= 10, "host load exceeded10: close owned resources and pause");
     const geometry = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, streams: (window as any).__streams,
+      panes: [...document.querySelectorAll<HTMLElement>(".ws-pane")].map(el => ({ id: el.dataset.pane, width: el.getBoundingClientRect().width })),
       menus: [...document.querySelectorAll<HTMLElement>('[role="menu"]')].map(el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, clipped: r.left < 0 || r.right > innerWidth + 1 || r.bottom > innerHeight + 1 || r.top < 0 }; }) }));
     assert.equal(geometry.overflow, false); assert.equal(geometry.streams.active, 1); assert.equal(geometry.streams.max, 1);
     if (!retain) for (const m of geometry.menus) assert.equal(m.clipped, false);
@@ -120,11 +123,18 @@ try {
       const target = row(b), trigger = target.locator(retain === "instance-nav" ? ".inst-workspace > button" : ".inst-row-menu > button");
       await trigger.click(); await target.getByRole("menuitem", { name: tr("Open beside", "在旁邊開啟"), exact: true }).click();
       await page.locator('[data-pane="b"] textarea').waitFor(); await page.locator('[data-pane="b"] textarea').fill("保留草稿，不送出。");
+      if (narrow) {
+        const sash = await page.locator(".ws-sash").boundingBox(), box = await page.locator(".chat-workspace").boundingBox(); assert.ok(sash && box);
+        await page.mouse.move(sash.x + sash.width / 2, sash.y + sash.height / 2); await page.mouse.down();
+        await page.mouse.move(box.x + box.width - 360 - sash.width / 2, sash.y + sash.height / 2, { steps: 8 }); await page.mouse.up();
+        const width = await page.locator('[data-pane="b"]').evaluate((el: HTMLElement) => el.getBoundingClientRect().width);
+        assert.ok(width >= 359 && width <= 362, `narrow pane: ${width}`); check("real-sash-minimum", { width });
+      }
       if (!retain || retain === "quote" || retain === "host" || retain === "css") {
         await page.locator('[data-pane="a"] .msg .md').first().evaluate((el: HTMLElement, selected: string) => {
           const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let node: Text | null = null;
           while (walk.nextNode()) if (walk.currentNode.textContent?.includes(selected)) { node = walk.currentNode as Text; break; }
-          assertBrowser(!!node); function assertBrowser(ok: boolean) { if (!ok) throw new Error("recorded passage missing"); }
+          if (!node) throw new Error("recorded passage missing");
           const range = document.createRange(), at = node!.data.indexOf(selected); range.setStart(node!, at); range.setEnd(node!, at + selected.length);
           getSelection()!.removeAllRanges(); getSelection()!.addRange(range);
         }, passage);
