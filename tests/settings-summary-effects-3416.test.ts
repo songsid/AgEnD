@@ -23,7 +23,7 @@ it('pairing keeps exact Hub, binding prefix and fingerprint in both raw and proj
  expect(confirm.summary[1]).toBe('aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa');
  expect(confirm.summary_i18n![1]).toBeNull();
  const disconnect=cases.find(c=>c.name==='pair-disconnect')!.read().diff!;
- expect(disconnect.summary[0]).toContain('https://member.example.test (owned-hub, pairing bbbbbbbbbbbb)');
+ expect(disconnect.summary[0]).toContain('https://member.example.test (owned-hub, connection bbbbbbbbbbbb)');
  expect(disconnect.summary_i18n![0]!.parts).toContainEqual({key:'hub.pairing.summary.disconnect',args:['https://member.example.test','owned-hub','bbbbbbbbbbbb']});
 });
 it('sharing metadata retains the chosen agent and next revision through effect dispatch',()=>{

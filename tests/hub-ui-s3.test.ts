@@ -243,7 +243,7 @@ describe("Settings → Connect to a Hub", () => {
     stub();
     i18n.setLang("zh-TW", { store: false });
     const pg = await mountCard();
-    expect(pg.root.querySelector(".s-hub-connect h3")!.textContent).toBe("連線到 Hub");
+    expect(pg.root.querySelector(".s-hub-connect h3")!.textContent).toBe("連接 Hub");
   });
 });
 

@@ -13,7 +13,7 @@ register("directoryNotices", {
     uncertain: "We couldn't confirm the acknowledgment. Refresh to check before trying again.",
   },
   "zh-TW": {
-    pageLead: "Hub 登入與 Fleet 連線的安全通知。", title: "AD 連線變更", lead: "Hub 登入設定變更的安全通知。通知代表已記錄變更，不代表連線目前正常。",
+    pageLead: "Hub 登入與 Fleet 連接的安全通知。", title: "AD 連線變更", lead: "Hub 登入設定變更的安全通知。通知代表已記錄變更，不代表目前的網路連線正常。",
     hostLead: "供這台電腦的擁有者查看。你的確認與各 Hub 收件者的確認分開記錄。",
     changed: "已記錄 AD 連線變更", restored: "已記錄 AD 連線還原", host: "由主機擁有者變更", admin: "由 Hub 管理員變更",
     server: "伺服器", ca: "憑證信任", search: "搜尋設定", "service-account": "服務帳號", secret: "服務密碼", query: "目錄查詢",

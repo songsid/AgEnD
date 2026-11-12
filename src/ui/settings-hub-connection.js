@@ -22,9 +22,9 @@ register("hubConnection", {
   "zh-TW": {
     title: "Hub 連接", unconnected: "尚未連接", connected: "已連接", paused: "已暫停", connecting: "正在連接…", attention: "連接需要處理",
     hub: "Hub", fleet: "Fleet", thisFleet: "這個 Fleet", open: "開啟 Hub", pause: "暫停連接", resume: "恢復連接",
-    connectedHint: "這個 Fleet 已可使用 Hub。請在下方選擇要分享的 Agent；連接不會自動公開 Agent。",
+    connectedHint: "這個 Fleet 已可使用 Hub。請在下方選擇要分享的 Agent；連接不會自動分享 Agent。",
     pausedHint: "已停止新的 Hub 工作與回答傳送；連接資料和既有對話仍保留。",
-    connectingHint: "連接資料已儲存，正在等待 Hub 連線；尚未顯示為已連接。",
+    connectingHint: "連接資料已儲存，正在等待與 Hub 的網路連線；尚未顯示為已連接。",
     advanced: "使用配對碼連接（進階）", manualHint: "供使用配對碼的 Hub 使用。上方登入流程成功後會自動啟用成員功能。",
     enabled: "允許這個 Fleet 使用 Hub", pair: "以配對碼連接", settings: "連接設定", disconnect: "撤銷連接",
     pausedSettings: "恢復連接後，可使用既有連接設定或撤銷連接。",
