@@ -322,6 +322,13 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       for (const k of Object.keys(local)) if (local[k] === null) delete local[k];
       after.fleet.web.session = { ...cfg.web?.session, local };
     }
+    if (parsed.publicLinkSession) {
+      const pl: Record<string, any> = { ...cfg.web?.session?.public_link, ...parsed.publicLinkSession };
+      for (const k of Object.keys(pl)) if (pl[k] === null) delete pl[k];
+      const session: Record<string, any> = { ...after.fleet.web.session ?? cfg.web?.session };
+      if (Object.keys(pl).length) session.public_link = pl; else delete session.public_link;
+      after.fleet.web.session = session;
+    }
     if (terminalPatch) {
       const wt: Record<string, any> = { ...cfg.web_terminal, ...terminalPatch };
       for (const k of Object.keys(wt)) if (wt[k] === null) delete wt[k];

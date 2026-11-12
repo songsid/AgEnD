@@ -56,8 +56,8 @@ describe("the setting: web.session.local", () => {
     expect(errorsOf({ session: { local: { idle_hours: "24" } } })).toEqual(["web.session.local.idle_hours: must be a number of hours from 1 to 720"]);
     expect(errorsOf({ session: { local: { absolute_hours: 10, idle_hours: 20 } } })).toEqual(["web.session.local.idle_hours: must not exceed absolute_hours (20 > 10)"]);
   });
-  it("the public link's limits are not configurable; unknown keys are named", () => {
-    expect(errorsOf({ session: { gateway: { idle_hours: 24 } } })).toEqual(["web.session.gateway: is not configurable: a public-link session's limits are fixed"]);
+  it("the public link's limits are web.session.public_link (#3708), not `gateway`; unknown keys are named", () => {
+    expect(errorsOf({ session: { gateway: { idle_hours: 24 } } })).toEqual(["web.session.gateway: unknown key: the public link's limits are web.session.public_link"]);
     expect(errorsOf({ session: { local: { absolute: 24 } } })).toEqual(["web.session.local.absolute: unknown key (absolute_hours, idle_hours)"]);
     expect(errorsOf({ session: 24 })).toEqual(["web.session: must be a mapping"]);
   });

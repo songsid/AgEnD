@@ -350,7 +350,7 @@ import { BrowserBackendSignIns } from "./browser-backend-signins.js";
 import { createStructuredSignInTransport } from "./structured-signin-transport.js";
 import { ONBOARDING_BACKENDS, readPendingBackendSignIns } from "./backend-signin-pending.js";
 import { structuredSignInSupported } from "./structured-signin.js";
-import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
+import { handleSettingsRequest, switchClassicRoomProfile, type ClassicProfileSwitch, type RawConfigPatch } from "./settings-api.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { remoteCardAction, remoteCardChoiceLabel, remoteCardOutcomeText, remoteCardPrompt, REMOTE_CARD_TEXT_MAX } from "./remote-card-prompt.js";
@@ -410,7 +410,7 @@ import {
 import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCookies, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext, type TotpSignInResult } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
-import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
+import { guestSessionPolicy, localSessionPolicy, publicLinkSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
 import { enrolledRuntimeNotice } from "./runtime-enroll-notice.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
@@ -5022,7 +5022,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       claimedCards: () => this.livenessCards(),
       facts: (name) => this.livenessFacts(name),
       backgroundBusy: (name) => this.livenessBackgroundBusy(name),
-      isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
+      // #3720: a ClassicBot room's agent is an agent too (「ClassicBot 派工作也是 agent 派的」): a card it handed out is told
+      // to it like any instance's. A room that is gone falls to Needs you (not an agent here); one not running is away.
+      isInstance: (name) => this.fleetConfig?.instances?.[name] != null || this.isClassicInstance(name),
       // Not running now: stopped, crashed, paused, or no daemon at all.
       dispatcherAway: (name) => this.instanceProcessStatus.has(name) || this.lifecycle.isPaused(name) || !this.daemons.has(name),
       boardOff: (name) => taskBoardOffIn(this.fleetConfig, name),
@@ -8026,11 +8028,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Apply a Settings edit to a ClassicBot channel without waiting for the poller. */
-  async restartClassicInstanceFromSettings(instanceName: string, changedFields: string[] = [], execution?: SettingsExecution): Promise<void> {
-    return this.lifecycle.runTransition(instanceName, transition => this.restartClassicSettingsOwned(instanceName, changedFields, execution, transition));
+  async restartClassicInstanceFromSettings(instanceName: string, changedFields: string[] = [], execution?: SettingsExecution, opts?: { startIfStopped?: boolean }): Promise<void> {
+    return this.lifecycle.runTransition(instanceName, transition => this.restartClassicSettingsOwned(instanceName, changedFields, execution, transition, opts));
   }
 
-  private async restartClassicSettingsOwned(instanceName: string, changedFields: string[], execution: SettingsExecution | undefined, transition: TransitionHandle): Promise<void> {
+  /**
+   * #3715 (Prism on #3719): one owned ClassicBot room account switch. The forward restart and its compensation share one
+   * receipt — the room's epoch and daemon as this operation last left them — so a Stop or another start queued meanwhile
+   * supersedes both: the forward work never launches after it, and the compensation never stops or replaces a newer
+   * runtime. `restore` brings a room that was running before the switch back up (also when the failed start took its
+   * daemon away), and reports what it did.
+   */
+  beginClassicProfileSwitch(instanceName: string, changedFields: string[]): {
+    restart(): Promise<void>; restore(): Promise<"restarted" | "not-running" | "superseded">; close(): void;
+  } {
+    const generation = this.settingsGeneration;
+    const receipt = { instanceName, epoch: this.lifecycle.epochOf(instanceName), daemon: this.daemons.get(instanceName) as object | undefined };
+    const wasRunning = receipt.daemon !== undefined;
+    const owned = (): boolean => !this.shuttingDown && this.settingsGeneration === generation
+      && this.lifecycle.epochOf(instanceName) === receipt.epoch && this.daemons.get(instanceName) === receipt.daemon;
+    const forward = new SettingsExecution({ current: owned, snapshot: () => null });
+    this.classicSettingsOwners.set(forward, receipt);
+    return {
+      restart: () => this.restartClassicInstanceFromSettings(instanceName, changedFields, forward),
+      restore: async () => {
+        if (!owned()) return "superseded";
+        const cleanup = new SettingsExecution({ current: owned, snapshot: () => null });
+        this.classicSettingsOwners.set(cleanup, receipt);
+        try { await this.restartClassicInstanceFromSettings(instanceName, changedFields, cleanup, { startIfStopped: wasRunning }); }
+        finally { cleanup.close(); }
+        return wasRunning ? "restarted" : "not-running";
+      },
+      close: () => forward.close(),
+    };
+  }
+
+  private async restartClassicSettingsOwned(instanceName: string, changedFields: string[], execution: SettingsExecution | undefined, transition: TransitionHandle, opts?: { startIfStopped?: boolean }): Promise<void> {
     const generation = this.settingsGeneration;
     const receipt = execution ? this.classicSettingsOwners.get(execution) : undefined;
     const check = (): void => {
@@ -8041,7 +8074,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
     check();
     if (!this.classicChannels) throw new Error("Classic channel manager not initialized");
-    const wasRunning = this.daemons.has(instanceName);
+    // #3715: a compensation brings back a room its own failed start took down (startIfStopped, owned by its receipt).
+    const hasDaemon = this.daemons.has(instanceName);
+    const wasRunning = hasDaemon || opts?.startIfStopped === true;
     this.classicChannels.reloadFromDisk();
     this.reportClassicUnrecoverableIds();
     this.reregisterClassicChannels();
@@ -8057,20 +8092,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     // M-2909 (Prism on #3691): an account saved from Settings hands the conversation over like a classicBot.yaml edit
     // (#1753) — read against what it was launched on, before the stop takes that away.
-    const launchedSnapshot = this.daemons.get(instanceName)?.getConfigSnapshot?.();
-    const launchedBackend = launchedSnapshot?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
-    const profileSwitch = this.classicProfileChange(instanceName,
-      launchedBackend !== this.classicChannels.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend));
-    const launchedIn = launchedSnapshot?.working_directory;
-    const stopping = this.stopInstance(instanceName, transition);
-    // stop() invalidates synchronously in our transition. Keep only that exact acquisition.
-    if (receipt && this.lifecycle.epochOf(instanceName) === receipt.epoch + 1 && this.daemons.get(instanceName) === receipt.daemon) receipt.epoch++;
-    await stopping;
-    if (receipt && this.lifecycle.epochOf(instanceName) === receipt.epoch && !this.daemons.has(instanceName)) receipt.daemon = undefined;
-    check();
-    // #1753: the conversation goes along where it can; otherwise a switch that loses it starts fresh.
-    if (profileSwitch.carry) { await this.switchConversation(instanceName, { ...profileSwitch.carry, workingDirectory: launchedIn }); check(); }
-    else if (profileSwitch.startsFresh) this.writeFreshStartMarker(instanceName);
+    // #3715: with no daemon (a compensation after its own failed start) there is nothing to stop or hand over.
+    if (hasDaemon) {
+      const launchedSnapshot = this.daemons.get(instanceName)?.getConfigSnapshot?.();
+      const launchedBackend = launchedSnapshot?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+      const profileSwitch = this.classicProfileChange(instanceName,
+        launchedBackend !== this.classicChannels.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend));
+      const launchedIn = launchedSnapshot?.working_directory;
+      const stopping = this.stopInstance(instanceName, transition);
+      // stop() invalidates synchronously in our transition. Keep only that exact acquisition.
+      if (receipt && this.lifecycle.epochOf(instanceName) === receipt.epoch + 1 && this.daemons.get(instanceName) === receipt.daemon) receipt.epoch++;
+      await stopping;
+      if (receipt && this.lifecycle.epochOf(instanceName) === receipt.epoch && !this.daemons.has(instanceName)) receipt.daemon = undefined;
+      check();
+      // #1753: the conversation goes along where it can; otherwise a switch that loses it starts fresh.
+      if (profileSwitch.carry) { await this.switchConversation(instanceName, { ...profileSwitch.carry, workingDirectory: launchedIn }); check(); }
+      else if (profileSwitch.startsFresh) this.writeFreshStartMarker(instanceName);
+    }
     const stoppedEpoch = this.lifecycle.epochOf(instanceName);
     await new Promise(resolve => setTimeout(resolve, 250)); check();
     if (this.lifecycle.epochOf(instanceName) !== stoppedEpoch) throw new Error("Classic restart superseded by stop");
@@ -9193,6 +9231,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         localPolicy: () => localSessionPolicy(this.fleetConfig?.web?.session?.local),
         // #1920 §5.4: a guest's, from web.guests.session (never longer than the surface's own).
         guestPolicy: () => guestSessionPolicy(this.fleetConfig?.web?.guests?.session),
+        // #3708: web.session.public_link — longer than 30 min / 8 h only with a fixed hostname (a named tunnel).
+        gatewayPolicy: () => publicLinkSessionPolicy(this.fleetConfig?.web?.session?.public_link, publicLinkNamedHostname(this.fleetConfig?.web)),
         // A session over the temporary link ends with the link (its TTL, at most 8 h on a quick tunnel).
         exposureEnd: id => this.publicWebLink?.endOf(id) ?? null,
       });
@@ -17960,6 +18000,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * ClassicBot room's launched or would-be login when the room runs that backend. Null: the backend's default login
    * (also for a backend that has no profiles, where the option is ignored).
    */
+  /** #3715: update_instance_config's ClassicBot room account switch — the room's Settings save (#3691), from a tool. */
+  switchClassicRoomProfile(name: string, backendOptions: unknown): Promise<ClassicProfileSwitch> {
+    return switchClassicRoomProfile(this as unknown as import("./settings-api.js").SettingsApiContext, name, backendOptions);
+  }
+
   credentialProfileOf(name: string, backend: string): string | null {
     if (isWindowsInstance(this.fleetConfig?.instances[name])) return null;
     if (!credentialHomeSpec(backend)) return null;

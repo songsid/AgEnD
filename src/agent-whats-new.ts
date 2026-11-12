@@ -113,6 +113,8 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // install would be recorded silently, never told.
   { id: "2.3.5-dispatcher-liveness", since: "2.4.0-alpha.1", tools: ["task"],
     text: "When an agent you handed a claimed card to stops — crashed and not back, paused (sign-in ended, usage limit, errors), stuck, waiting on a prompt nobody answers, or quiet with the card for 60 min — you get one `[Task board]` notice naming the card, what happened and what you can do (ask it, restart or wake it, reassign the card), and one \"working again\" line when it recovers. AgEnD only tells. `task` `list` with `stale: true` lists those cards." },
+  { id: "2.4-classic-room-profile", since: "2.4.0-alpha.2", tools: ["update_instance_config"],
+    text: "`update_instance_config` can now switch a ClassicBot room's AI account: on a room it takes only `config.backend_options.<backend>.credential_profile` (a name, or null for the fleet default). Only that room's lines in classicBot.yaml change, the room restarts, and `launched_profile` in the answer is the account it restarted on. Any other key on a room is still refused." },
 ];
 
 /** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */

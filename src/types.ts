@@ -468,7 +468,8 @@ export interface WebConfig {
    * tailnet) is configurable; a public-link session's limits stay fixed. Hours, 1 ≤ idle_hours ≤ absolute_hours ≤ 720;
    * defaults 48 (absolute, from sign-in) and 48 (idle, since the last use; #1670). Shortening applies to existing sessions.
    */
-  session?: { local?: { absolute_hours?: number; idle_hours?: number } };
+  /** #3708: `public_link` — the public link's own limits; longer than 30 min / 8 h only with `public_link.hostname`. */
+  session?: { local?: { absolute_hours?: number; idle_hours?: number }; public_link?: { absolute_hours?: number; idle_minutes?: number } };
   /**
    * #1306: HTML previews in the web chat (default true). false: no preview listener; cards show Source and
    * Download only. Even when true, a browser runs a preview only after that device opted in.
