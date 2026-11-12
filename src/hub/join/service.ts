@@ -345,7 +345,14 @@ export class HubCompanyJoin {
   async approve(ctx: HubRequestContext, cookie: string, requestId: string) {
     this.enabled(); let r = this.browser(cookie, requestId);
     const actor = await ctx.current();
-    if (actor.kind !== "directory" || ctx.isCurrent?.() !== true || !this.records.current(r) || r.stage !== "pending") throw new HubProtocolError("conflict");
+    if (actor.kind !== "directory" || ctx.isCurrent?.() !== true || !this.records.current(r)) throw new HubProtocolError("conflict");
+    if (r.stage !== "pending") {
+      // An authenticated browser may have been open before normal revocation/expiry retired its unissued request.
+      // This is feedback only: issued results and unrelated retirement keep the ordinary conflict/recovery path.
+      if (r.enrolmentCodeId && !r.issuedHash && r.stage === "ended" && this.codes.state(this.codes.get(r.enrolmentCodeId)) !== "live")
+        throw new CompanyJoinCodeRefusal("code-ended");
+      throw new HubProtocolError("conflict");
+    }
     if (r.enrolmentCodeId) { this.maintainCodes(); r = this.browser(cookie, requestId); if (r.stage !== "pending") throw new CompanyJoinCodeRefusal("code-ended"); }
     try { return await this.admit(ctx, r, actor); }
     catch (error) {

@@ -37,12 +37,13 @@ async function begin(r: Awaited<ReturnType<typeof companyJoinRig>>, code: string
     return r.call(null, "POST", `/hub/v1/join/${purpose}`, { binding, payload, proof: signJoinProof(binding, purpose, c.body.nonce, c.body.expiresAt, payload, keys.privateKey) }, { Origin: undefined });
   };
   const pushed = await command("push", { label: "Code Fleet", invitation, code, stateHash: sha256(state) });
-  const approve = async (login: string) => {
+  const openBrowser = async (login: string) => {
     const open = await r.call(null, "POST", "/hub/join/open", new URLSearchParams({ requestId: binding.requestId, state }).toString(), { "Content-Type": "application/x-www-form-urlencoded", Origin: binding.fleetOrigin });
     expect(open.status).toBe(303); const browser = await r.signIn(login); browser.cookie += "; " + open.cookie;
-    return r.call(browser, "POST", "/hub/v1/join/approve", { requestId: binding.requestId });
+    return browser;
   };
-  return { binding, command, pushed, approve, redeem: () => command("redeem", { verifier }) };
+  const approve = async (login: string) => r.call(await openBrowser(login), "POST", "/hub/v1/join/approve", { requestId: binding.requestId });
+  return { binding, command, pushed, approve, openBrowser, redeem: () => command("redeem", { verifier }) };
 }
 describe("B1 enrolment-code protected routes and actual join", () => {
   it("configured admin creates/reloads a sealed code; eligible outsider joins without turning group policy on", async () => {
@@ -141,6 +142,29 @@ describe("B1 enrolment-code protected routes and actual join", () => {
     const now = Date.now(); r.db.prepare("UPDATE hub_enrolment_codes SET revoked_at=?,revoked_by=created_by,sealed=NULL WHERE id=?").run(now, code.id);
     expect((await a.approve("dan")).body).toMatchObject({ code: "denied", reason: "code-ended" });
     expect((await begin(r, code.code)).pushed.body).toEqual({ code: "denied" });
+  });
+  it("real revoke retires a pending code request and preserves its specific browser feedback", async () => {
+    const { r, admin } = await world(), code = await make(r, admin), a = await begin(r, code.code);
+    const browser = await a.openBrowser("dan");
+    expect((await r.call(admin, "POST", "/hub/v1/admin/enrolment-codes/" + code.id + "/revoke", {})).status).toBe(200);
+    expect((await r.call(browser, "POST", "/hub/v1/join/approve", { requestId: a.binding.requestId })).body).toEqual({ code: "denied", reason: "code-ended" });
+    expect(r.db.prepare("SELECT uses FROM hub_enrolment_codes WHERE id=?").get(code.id)).toEqual({ uses: 0 });
+    expect(r.deps.store.read().fleets).toHaveLength(0);
+  });
+  it("an issued code request keeps conflict/recovery even after its code ends", async () => {
+    const { r, admin } = await world(), code = await make(r, admin), a = await begin(r, code.code), browser = await a.openBrowser("dan");
+    expect((await r.call(browser, "POST", "/hub/v1/join/approve", { requestId: a.binding.requestId })).status).toBe(200);
+    expect((await a.redeem()).status).toBe(200);
+    expect((await r.call(admin, "POST", "/hub/v1/admin/enrolment-codes/" + code.id + "/revoke", {})).status).toBe(200);
+    expect((await r.call(browser, "POST", "/hub/v1/join/approve", { requestId: a.binding.requestId })).body).toEqual({ code: "conflict" });
+    expect(r.db.prepare("SELECT uses FROM hub_enrolment_codes WHERE id=?").get(code.id)).toEqual({ uses: 1 });
+  });
+  it("policy retirement with a live code keeps ordinary conflict", async () => {
+    const { r, admin } = await world(), code = await make(r, admin), a = await begin(r, code.code), browser = await a.openBrowser("dan");
+    expect((await r.call(browser, "POST", "/hub/v1/join/approve", { requestId: a.binding.requestId })).status).toBe(200);
+    await exclude(r, admin, "dan"); expect(r.deps.companyJoin!.records.get(a.binding.requestId).stage).toBe("ended");
+    expect((await r.call(browser, "POST", "/hub/v1/join/approve", { requestId: a.binding.requestId })).body).toEqual({ code: "conflict" });
+    expect(r.db.prepare("SELECT uses FROM hub_enrolment_codes WHERE id=?").get(code.id)).toEqual({ uses: 0 });
   });
   it("a last required audit cannot revoke the code and still publish a credential", async () => {
     const { r, admin } = await world(), code = await make(r, admin), a = await begin(r, code.code); expect((await a.approve("dan")).status).toBe(200);
