@@ -39,7 +39,7 @@ const ctx = await fx.browser.newContext({ viewport: process.env.SCREEN === "phon
 const watch = (tab: any) => {
   tab.setDefaultTimeout(10000);
   tab.on("pageerror", (error: Error) => errors.push(error.message));
-  tab.on("response", (response: any) => { const url = new URL(response.url()); if (url.origin === fx.base && /^\/(assets|ui\/js)\//.test(url.pathname)) jobs.push(response.body().then((bytes: Buffer) => record(assets, url.pathname, bytes))); });
+  tab.on("response", (response: any) => { const url = new URL(response.url()); if (url.origin === fx.base && /^\/(assets|ui\/js)\//.test(url.pathname)) jobs.push(response.body().then((bytes: Buffer) => record(assets, url.pathname, bytes)).catch(() => { (receipt.omittedAssets ||= []).push(url.pathname); })); });
 };
 ctx.on("page", watch);
 ctx.on("request", (request: any) => { const url = new URL(request.url()); if (/\/(send|command|upload|answer)/.test(url.pathname) && request.method() !== "GET") effects.push(url.pathname); });
@@ -71,12 +71,12 @@ try {
     }
     const path = sourcePath(url.pathname);
     let isChild = url.searchParams.get("presentation") === "popout";
-    try { isChild ||= route.request().frame().page() !== page; } catch { assert.ok(route.request().isNavigationRequest()); }
+    try { isChild ||= route.request().frame().page() !== page; } catch { assert.ok(route.request().isNavigationRequest()); let prior = route.request().redirectedFrom(); while (prior) { isChild ||= new URL(prior.url()).searchParams.get("presentation") === "popout"; prior = prior.redirectedFrom(); } }
 
-    if (isChild && scenario === "auth" && route.request().isNavigationRequest()) {
+    if (isChild && scenario === "auth") {
       // Browser-managed Cookie cannot be overridden by route.continue; issue an actual no-cookie server read.
       const response = await route.fetch({ headers: { ...route.request().headers(), cookie: "" }, maxRedirects: 0 });
-      receipt.cases.push({ label: "unauthenticated-child-navigation", path: url.pathname, status: response.status() });
+      if (route.request().isNavigationRequest()) receipt.cases.push({ label: "unauthenticated-child-navigation", path: url.pathname, status: response.status() });
       return route.fulfill({ response });
     }
     if (isChild && scenario === "changed" && url.pathname === "/ui/js/chat-popout.js") await childGate;

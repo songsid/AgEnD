@@ -41,7 +41,7 @@ describe("real pop-out exact-window, one-use handoff", () => {
     if (reason === "revoked") f.revoke(); if (reason === "pagehide") f.win.fire("pagehide");
     if (reason === "refused") { f.receive(msg("ready")); f.receive(msg("refused", { nonce })); }
     vi.advanceTimersByTime(POPOUT_DEADLINE_MS); f.receive(msg("received", { nonce }));
-    expect(f.complete).not.toHaveBeenCalled(); expect(f.notify).toHaveBeenCalled(); expect(f.win.open).toHaveBeenCalledTimes(1); f.owner.close();
+    expect(f.complete).not.toHaveBeenCalled(); if (reason !== "blocked") expect(f.child.opener).toBeNull(); expect(f.notify).toHaveBeenCalled(); expect(f.win.open).toHaveBeenCalledTimes(1); f.owner.close();
   });
   it("keeps an operation single-flight and refuses a stale ACK even before the polling tick", () => {
     const f = fixture(); f.open(); expect(f.open()).toBe(false); expect(f.win.open).toHaveBeenCalledTimes(1);

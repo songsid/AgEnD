@@ -17,6 +17,7 @@ export function createPopoutTransport({ win = window, scope, notify = () => {}, 
     const finish = reason => {
       if (done) return; done = true; win.removeEventListener("message", receive); clearInterval(timer);
       if (pending?.finish === finish) pending = null;
+      try { if (child) child.opener = null; } catch { /* a navigated window may no longer be same-origin */ }
       if (reason) notify(reason);
     };
     const receive = event => {
