@@ -64,7 +64,9 @@ Dependency modules are mounted read-only. Images are unchanged from B1's kit.
 5. B-L12: repeat with 50 people and five real Fleet UI paths. Assert the Hub's
    actual push timestamps span under 60 seconds and all connect within five
    minutes without manual retry. To make queue presentation observable, the
-   fixture deliberately delays real eligibility promises after shared-pool
+   fixture first completes real AD sign-in (including the five real browser
+   sessions), with that time included in wave elapsed time. It then deliberately
+   delays real eligibility promises after shared-pool
    admission. It releases them after a visible real Hub backpressure/queue
    result, with a bounded fallback. No 429, permit or credential is fabricated.
    This controlled overload is separate from natural-host capacity evidence.

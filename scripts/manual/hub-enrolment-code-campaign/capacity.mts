@@ -47,6 +47,7 @@ try {
  await ui.adminShots();
  const create=async(maxUses:number)=>{const r=await rig.call(admin,'POST','/hub/v1/admin/enrolment-codes',{expires:'today',maxUses,perPersonFleets:1,scope:{kind:'directory'}});check('admin creates '+maxUses+'-use code',r.status===201);return r.body;};
  const secrets:string[]=[];
+ const signedPeople=new Map<string,any>();
  let signins=0;const signinWaiters:Array<()=>void>=[];
  const enterSignin=async()=>{if(signins<3){signins++;return;}await new Promise<void>(resolve=>signinWaiters.push(resolve));};
  const leaveSignin=()=>{const next=signinWaiters.shift();if(next)next();else signins--;};
@@ -58,7 +59,9 @@ try {
   await command('push',{label:'Owned '+login,stateHash:createHash('sha256').update(state).digest('hex'),invitation:null,...(code?{code}:{})});
   const open=await rig.call(null,'POST','/hub/join/open',new URLSearchParams({requestId:binding.requestId,state}).toString(),{'Content-Type':'application/x-www-form-urlencoded',Origin:binding.fleetOrigin});
   check('Origin-bound browser handoff '+login,open.status===303);
-  let signed:any;await enterSignin();try{signed=await rig.signIn(login);signed.cookie+='; '+open.cookie;}finally{leaveSignin();}
+  let signed:any=signedPeople.get(login);
+  if(!signed){await enterSignin();try{signed=await rig.signIn(login);}finally{leaveSignin();}}
+  signed={...signed,cookie:signed.cookie+'; '+open.cookie};
   const approval=createJoinApprovalQueue({requestId:binding.requestId,csrf:signed.csrf,deadline:started+600000,current:()=>true,
    approve:async()=>{const r=await rig.call(signed,'POST','/hub/v1/join/approve',{requestId:binding.requestId});return{ok:r.status===200,code:r.body.code??r.body.error,reason:r.body.reason};},
    onChange:(e:any)=>{if(e.phase==='queued')receipt.clientQueueRetries=(receipt.clientQueueRetries??0)+1;}});
@@ -81,6 +84,13 @@ try {
   const visible=await Promise.all(Array.from({length:5},(_,i)=>ui.prepareFleet(i,prefix)));
   const code=await create(n);secrets.push(code.code.replace('-',''));const persons=people(prefix,n),start=Date.now();
   const groupPeople=withGroups?people(prefix+'group',3,[group]):[];
+  // Keep real AD sign-in inside the timed wave but before the deliberate eligibility hold.
+  // This controls the queue boundary without changing the unchanged five-second sign-in deadline.
+  let authenticatedAt:number|null=null;
+  if(n===50) {
+   await Promise.all([...persons.slice(5),...groupPeople].map(async login=>{await enterSignin();try{signedPeople.set(login,await rig.signIn(login));}finally{leaveSignin();}}));
+   await Promise.all(visible.map((f:any,i:number)=>ui.signInFleet(f,persons[i])));authenticatedAt=Date.now();
+  }
   // Deliberately hold actual eligibility promises AFTER the shared read pool admits them. No forged HTTP response/permit.
   const original=rig.directory.checkEligibility.bind(rig.directory);let held=0,released=n!==50,release!:()=>void;
   const gate=new Promise<void>(resolve=>{release=()=>{released=true;resolve();};});
@@ -97,9 +107,9 @@ try {
   check(prefix+' starts inside 60 seconds',span<60000);check(prefix+' connected within five minutes',elapsed<300000);
   if(n===50)check(prefix+' queue text appeared on a real Hub page',(receipt.queueTextObserved??0)>queueBefore);
   const list=await rig.call(admin,'GET','/hub/v1/admin/enrolment-codes');check(prefix+' recent labels and owners',list.body.codes.find((c:any)=>c.id===code.id).recent.length===n);
-  const view=await ui.adminPage();try{for(const f of visible)check(prefix+' labelled admin row '+f.label,await view.page.locator('.hub-fleet-list').getByText(f.label,{exact:true}).count()===1);await ui.shot(view.page,prefix+'-labelled-fleets');}finally{await view.ctx.close();}
+  const view=await ui.adminPage();try{for(const f of visible){const label=view.page.locator('.hub-fleet-list').getByText(f.label,{exact:true});check(prefix+' labelled admin row '+f.label,await label.count()===1);await label.scrollIntoViewIfNeeded();await ui.shot(view.page,prefix+'-admin-row-'+f.label);}}finally{await view.ctx.close();}
   const extra=people(prefix+'extra',1)[0];check(prefix+' next push refuses after exhaustion',await attempt(code.code,extra).then(()=>false,(e:any)=>e.code==='denied'));
-  receipt.waves.push({n,groups:groupPeople.length,startSpanMs:span,elapsedMs:elapsed,uses,everConnected:online.size,controlledHeldEligibility:held,hubAndFleetsRss:process.memoryUsage().rss,
+  receipt.waves.push({n,groups:groupPeople.length,authenticationMs:authenticatedAt===null?null:authenticatedAt-start,startSpanMs:span,elapsedMs:elapsed,uses,everConnected:online.size,controlledHeldEligibility:held,hubAndFleetsRss:process.memoryUsage().rss,
    databaseBytes:statSync(join(rig.home,'hub/hub.sqlite')).size,walBytes:existsSync(join(rig.home,'hub/hub.sqlite-wal'))?statSync(join(rig.home,'hub/hub.sqlite-wal')).size:0});
   await ui.closeVisible();
  }
