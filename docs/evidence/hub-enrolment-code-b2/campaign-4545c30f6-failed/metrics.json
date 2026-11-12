@@ -1,0 +1,99 @@
+{
+  "verdict": "FAILED",
+  "source": "4545c30f652cd589b889e2ee143902c8fa751999",
+  "phases": [
+    {
+      "name": "build",
+      "startedAt": 1794460493251,
+      "finishedAt": 1794460502240,
+      "exitCode": 0
+    },
+    {
+      "name": "protocol",
+      "startedAt": 1794460502278,
+      "finishedAt": 1794460548425,
+      "exitCode": 0
+    },
+    {
+      "name": "ui-capacity",
+      "startedAt": 1794460548426,
+      "finishedAt": 1794461413702,
+      "exitCode": 1
+    }
+  ],
+  "runtimeChecks": 470,
+  "waves": [
+    {
+      "n": 20,
+      "groups": 0,
+      "authenticationMs": null,
+      "startSpanMs": 9969,
+      "elapsedMs": 21050,
+      "uses": 20,
+      "everConnected": 20,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 520814592,
+      "databaseBytes": 835584,
+      "walBytes": 4169472
+    },
+    {
+      "n": 50,
+      "groups": 0,
+      "authenticationMs": 6584,
+      "startSpanMs": 50550,
+      "elapsedMs": 61117,
+      "uses": 50,
+      "everConnected": 70,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 659025920,
+      "databaseBytes": 1531904,
+      "walBytes": 4235392
+    }
+  ],
+  "machineErrors": [
+    {
+      "path": "/hub/v1/join/push",
+      "elapsedMs": 26,
+      "code": "denied",
+      "kind": null
+    },
+    {
+      "path": "/hub/v1/join/push",
+      "elapsedMs": 31,
+      "code": "denied",
+      "kind": null
+    },
+    {
+      "path": "/hub/v1/join/redeem",
+      "elapsedMs": 5834,
+      "code": "unavailable",
+      "kind": "unreachable"
+    },
+    {
+      "path": "/hub/v1/join/redeem",
+      "elapsedMs": 5406,
+      "code": "unavailable",
+      "kind": "unreachable"
+    }
+  ],
+  "queueTextObserved": 5,
+  "visibleQueueReleasedPool": true,
+  "visibleFleetJoins": 15,
+  "PNGs": 118,
+  "maxContainerBytes": 1665282048,
+  "oomEvents": [],
+  "hostMaxLoad1": 4.98,
+  "hostMinAvailableMiB": 11195.23828125,
+  "hostSwapMiB": [
+    8192
+  ],
+  "cleaned": true,
+  "notRun": [
+    "cached-assets SKEW",
+    "v2 member upgrade delivery",
+    "revoke-at25 wave",
+    "Hub-home plaintext scan and audit-chain final assertion",
+    "UI/shell style campaigns",
+    "source-Hub rollback"
+  ]
+}
