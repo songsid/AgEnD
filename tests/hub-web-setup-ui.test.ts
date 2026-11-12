@@ -114,7 +114,8 @@ describe("host-only browser Hub setup",()=>{
     held.resolve({v:1,initialized:true,runtime:{hubId,webOrigin:prepared.webOrigin,state:"ready"}}); await settle(15);
     expect(reading.init.signal.aborted).toBe(true);
     expect(p.root.querySelector(`a[href="${prepared.webOrigin}/ui/hub"]`)).toBeNull();
-    expect(p.root.textContent).toContain("no longer allowed");
+    expect(p.root.textContent).toContain(i18n.t("hubSetup.denied"));
+    expect(p.root.querySelector("#hub-setup h3")?.textContent).not.toBe("Hub created");
   });
   it("a held prepare after unmount cancels its returned draft and never tests or commits it",async()=>{
     const held=deferred();fetcher(path=>path.endsWith("/prepare")?held.promise:defaults(path));const p=await mount();await toAdmin(p);await submit(p);
