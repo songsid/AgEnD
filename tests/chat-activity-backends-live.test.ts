@@ -49,6 +49,9 @@ async function feedFor(src: LogSource, level: ToolProgressLevel = "standard") {
   pg = page(); (pg.document as any).body.dataset.chatActivity = "1";
   const feed = act.observeActivity("w", { fetcher, changed() {}, streamOn: () => () => {}, setTimer: () => 0, clearTimer() {} });
   feed.start(); await settle();
+  // The service reads the transcript file for real: wait for the first answer instead of a fixed number of ticks (a loaded CI runner is slower than a laptop).
+  for (let i = 0; i < 500; i++) { const info = act.activityInfo("w"); if (info && (info.supported !== null || info.level === "off")) break; await new Promise((r) => setTimeout(r, 10)); }
+  await settle();
   return feed;
 }
 const shape = (r: Mod[]) => r.map((x: any) => (x.role === "activity" ? `act:${x.group.level}${x.group.statusOnly ? ":status" : ""}:${x.group.items.length}` : x.role)).join(" ");
