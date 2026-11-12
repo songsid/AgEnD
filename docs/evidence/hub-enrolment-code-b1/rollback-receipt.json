@@ -1,0 +1,119 @@
+{
+  "checks": [
+    {
+      "name": "previous Hub starts and serves metadata",
+      "pass": true
+    },
+    {
+      "name": "upgraded company join enabled",
+      "pass": true
+    },
+    {
+      "name": "upgraded actual route creates first code/key",
+      "pass": true
+    },
+    {
+      "name": "previous Hub refuses upgraded component",
+      "pass": true
+    },
+    {
+      "name": "previous Hub starts after full pre-upgrade restore",
+      "pass": true
+    },
+    {
+      "name": "restore removes the new key",
+      "pass": true
+    }
+  ],
+  "legacy": "d2440106a2805187eb50a13c2385144192261f9a",
+  "boundary": "Owned source Hub factories with SQLite/TLS/synthetic LDAPS and a full private-home backup. Actual old bootstrap refusal/restored bootstrap; no npm package, systemd, runtime, pilot or real directory.",
+  "refusal": "HubStateError: the Hub database has \"enrolment-code\" (v1), which this version does not know",
+  "restoredModes": [
+    {
+      "path": "HOME/fleet.yaml",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub",
+      "mode": "700"
+    },
+    {
+      "path": "HOME/hub/floors",
+      "mode": "700"
+    },
+    {
+      "path": "HOME/hub/floors/transport",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/hub.sqlite",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/init",
+      "mode": "700"
+    },
+    {
+      "path": "HOME/hub/init/operation.json",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/init-manifest.json",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/install-inventory.json",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/keys",
+      "mode": "700"
+    },
+    {
+      "path": "HOME/hub/keys/content.key",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/keys/identity.json",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/keys/issuer-key.pem",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/keys/issuer-public.pem",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/keys/tls-cert.pem",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/keys/tls-key.pem",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/secrets",
+      "mode": "700"
+    },
+    {
+      "path": "HOME/hub/secrets/directory-bind",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/web-tls",
+      "mode": "700"
+    },
+    {
+      "path": "HOME/hub/web-tls/cert.pem",
+      "mode": "600"
+    },
+    {
+      "path": "HOME/hub/web-tls/key.pem",
+      "mode": "600"
+    }
+  ],
+  "ready": true,
+  "cleaned": true
+}

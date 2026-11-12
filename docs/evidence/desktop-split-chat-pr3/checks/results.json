@@ -1,0 +1,110 @@
+{
+  "head": "9f01c853f8d0053fab12c3dc28960d2a781bf3fa",
+  "tree": "3b03173ff68112af1dff2af840df3b25de23473d",
+  "scope": "26 related suites: 290 passing. Both typechecks and changelog passed. Final test-only spy isolation follows source/capture 6658a946; every recorded capture input is byte-identical at this head. No real CLI, AD, account or live Fleet.",
+  "inputs": {
+    "75dd009febe73ecb99e2673e791bcab8a07919260241c8130909653a1864acf9": [
+      "changes/3637-chat-docking.md"
+    ],
+    "7111305a17f5a4b4c69466d861417f16eeebf0f3f0ba1620a77ce39621aa8cc7": [
+      "changes/3637-chat-docking.zh-TW.md"
+    ],
+    "1feeddc6d5833066a87112f5222fdd714ca6b0762e52c7d8093e51de10ad7278": [
+      "scripts/manual/mutation/desktop-chat-docking-3637.py"
+    ],
+    "1b398755593e08d0f6e86013520d405e071bb5f7936a194fa754b3c4daa6e318": [
+      "scripts/manual/smoke/smoke-split-chat-docking-3637.mts"
+    ],
+    "abef2ba894e1d9bfa98ffa95dc62b497c286dbd8d090fa7907136a7116d7eddb": [
+      "src/auth-api.ts"
+    ],
+    "f4bad49945f1c7143209a165554adc332d80411f36aabea9943719b16bc34517": [
+      "src/ui/chat-workspace-gestures.js"
+    ],
+    "bfb796d841fe59679601d1b0e7ad0ecaaee1033009ea9220db214bded7ecf035": [
+      "src/ui/chat-workspace-navigation.js"
+    ],
+    "e6431ba67b2b0c0086e6cf0eaa7f922156762b25722f973c09ad6340d067ace5": [
+      "src/ui/chat-workspace.js"
+    ],
+    "de5acc635a73ebdc5b91c2b03b16d6cbaae9989fb063fe1bd30128bc7b44904c": [
+      "src/ui/shared/app.css"
+    ],
+    "65e42eaf62efc4b33eeed2eba4fc9b50199c3556dac648774107398ca9c74861": [
+      "src/ui/shared/app.js"
+    ],
+    "a87cd5ec9abf85ed67ddb099efb115c1b1003f99ae5b2e11a1a031dad7a647fa": [
+      "src/ui/shared/chat-workspace-model.js"
+    ],
+    "b0b9cfe9e190caf60ea47f6ecfe9570ab8260908362c8e26efa3caa0d48ffb73": [
+      "src/ui/shared/instance-nav.js"
+    ],
+    "967603a35628503ff4323a4dc7e9ad19b7d42b6fb8963de38f991cd7dd578582": [
+      "src/ui/shared/pane-geometry.js"
+    ],
+    "1dd3a7e6e33656d4f29f2aa25d6ad51c9c036f1b20150e4eadcfb46891cea8ed": [
+      "tests/web-chat-workspace-docking-navigation-3637.test.ts"
+    ],
+    "24d0e60db2cbbd5db522e7686f775eb7c82efb0e55fb2cd9144115653edd74c1": [
+      "tests/web-chat-workspace-geometry-3637.test.ts"
+    ],
+    "ec0cf48b2ac78c4c14c6b196167030ec5c1fe95f3c86c19c88ae53a6cf68b094": [
+      "tests/web-chat-workspace-gestures-3637.test.ts"
+    ],
+    "a573ff35c2f26e71d5931ba8cf63b5cd5af104095bf4dcfa7153e8625b8cb528": [
+      "tests/web-chat-workspace-host-3637.test.ts"
+    ],
+    "f12661b485ca30f838fc9924f856e43decccc047e2122581041176aee50d41cf": [
+      "tests/web-chat-workspace-navigation-3637.test.ts"
+    ],
+    "b0e1609418b97aaa58cbf81d53c3084b514b92cd2f47e1a77b8433362684e7d5": [
+      "tests/web-chat-workspace-sidebar-3637.test.ts"
+    ],
+    "1ef3007cb0dcbce1289031f38a72ba98234112f1d1739a8c4d1eca688f289fe5": [
+      "tests/web-chat-workspace-skew-geometry-3637.test.ts"
+    ]
+  },
+  "tests": {
+    "files": 26,
+    "passed": 290,
+    "failed": 0
+  },
+  "mutationControls": {
+    "cases": 17,
+    "assertionCaught": 17,
+    "restored": true
+  },
+  "captures": {
+    "runs": 14,
+    "cases": 108,
+    "sameInputsAtCandidate": true
+  },
+  "plainMerge": {
+    "commit": "902f507b992f6c6317075854e05c9d7ecc7175c6",
+    "base": "6b66b767ba1f401ebe5d92e458c73ec22d2a1fa7",
+    "clean": true,
+    "incomingFiles": [
+      "changes/3685-office-idle-visits.md",
+      "changes/3685-office-idle-visits.zh-TW.md",
+      "docs/downgrade-compatibility.md",
+      "docs/downgrade-compatibility.zh-TW.md",
+      "docs/office.md",
+      "docs/office.zh-TW.md",
+      "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "src/ui/fleet-office-pack.d.ts",
+      "src/ui/fleet-office-pack.js",
+      "src/ui/fleet-office-zones.js",
+      "src/ui/fleet-office.js",
+      "tests/web-office-idle-visits-3685.test.ts"
+    ],
+    "incomingBlobsExact": true
+  },
+  "commands": [
+    "npx vitest run tests/web-chat-workspace*.test.ts tests/web-chat-pane*.test.ts tests/web-instance-nav-n1.test.ts tests/sidebar-reply-time-2179.test.ts tests/web-csp-1300.test.ts tests/web-tokens-1408.test.ts tests/ui-css-literals-ratchet.test.ts tests/i18n-ui-literals-2390.test.ts tests/esm-skew-roles-138.test.ts tests/web-preview-1306.test.ts tests/hub-shared-modules-a.test.ts tests/web-office-idle-visits-3685.test.ts --maxWorkers=2 --reporter=dot",
+    "npx tsc --noEmit",
+    "npx tsc --noEmit -p tsconfig.test.json",
+    "node scripts/changelog-assemble.mjs --check",
+    "python3 scripts/manual/mutation/desktop-chat-docking-3637.py",
+    "python3 docs/evidence/desktop-split-chat-pr3/checks/verify.py"
+  ]
+}

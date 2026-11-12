@@ -1,0 +1,46 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts (16 tests | 2 failed) 24ms
+     × opens synchronously with just the existing route and presentation; closes its source only after exact ACK 9ms
+   × 50 sequential open/ACK/close cycles return handlers and timers to their baseline 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-transport-3637.test.ts > real pop-out exact-window, one-use handoff > opens synchronously with just the existing route and presentation; closes its source only after exact ACK
+AssertionError: expected "vi.fn()" to be called 1 times, but got 2 times
+ ❯ tests/web-chat-popout-transport-3637.test.ts:29:24
+     27|     expect(f.child.postMessage).toHaveBeenCalledWith(msg("draft", { no…
+     28|     expect(f.complete).not.toHaveBeenCalled(); f.receive(msg("received…
+     29|     expect(f.complete).toHaveBeenCalledTimes(1); f.owner.close();
+       |                        ^
+     30|   });
+     31|   it("rejects foreign origin/window/viewer/agent/nonce and duplicate R…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-chat-popout-transport-3637.test.ts > 50 sequential open/ACK/close cycles return handlers and timers to their baseline
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts:87:34
+     85|     win.fire("message", { source: child, origin: win.location.origin, …
+     86|     win.fire("message", { source: child, origin: win.location.origin, …
+     87|     expect(win.count("message")).toBe(0); expect(vi.getTimerCount()).t…
+       |                                  ^
+     88|   }
+     89|   expect(complete).toHaveBeenCalledTimes(50); owner.close(); expect(wi…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 14 passed (16)
+   Start at  11:20:36
+   Duration  354ms (transform 91ms, setup 102ms, import 46ms, tests 24ms, environment 0ms)
+

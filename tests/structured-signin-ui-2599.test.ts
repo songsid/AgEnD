@@ -14,7 +14,8 @@ function browser(options: Record<string, unknown> = {}, init: Record<string, unk
     const data = options.body ? JSON.parse(options.body) : null;
     if (data?.operation === "start") state.login = { backend: "kiro-cli", id: "a".repeat(32), revision: 3, phase: "method", choices: ["builder_id", "github"], canAct: true };
     if (data?.operation === "input") state.login = { ...state.login, revision: 4, canAct: false };
-    return { ok: true, json: async () => structuredClone(state) };
+    // As the server answers: only a start that CREATED the run names it (`started`).
+    return { ok: true, json: async () => ({ ...structuredClone(state), ...(data?.operation === "start" ? { started: state.login.id } : {}) }) };
   });
   const timers: (() => Promise<void>)[] = [];
   const ctx = createContext({ document: doc, fetch: fetcher, setTimeout: (fn: any) => { timers.push(fn); return 1; }, clearTimeout() {}, URL, confirm: nativeConfirm });

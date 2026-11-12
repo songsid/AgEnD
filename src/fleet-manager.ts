@@ -33,7 +33,7 @@ import { SettingsRouteLifetime } from "./settings-route-lifetime.js";
 import { GeneralManagedFileError } from "./runtime-general-protocol.js";
 import { GeneralBindings, generalBindingRevision, parseGeneralSwitchInput, switchGeneralLocation, type GeneralSwitchInput, type GeneralBindingRecord } from "./general-binding.js";
 import { confirmGeneralHostExit } from "./general-host-owner.js";
-import { settingsFingerprint, SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
+import { settingsFingerprint, SettingsExecution, SettingsExecutionError, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
 import { performance } from "node:perf_hooks";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -350,7 +350,7 @@ import { BrowserBackendSignIns } from "./browser-backend-signins.js";
 import { createStructuredSignInTransport } from "./structured-signin-transport.js";
 import { ONBOARDING_BACKENDS, readPendingBackendSignIns } from "./backend-signin-pending.js";
 import { structuredSignInSupported } from "./structured-signin.js";
-import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
+import { handleSettingsRequest, switchClassicRoomProfile, type ClassicProfileSwitch, type RawConfigPatch } from "./settings-api.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { remoteCardAction, remoteCardChoiceLabel, remoteCardOutcomeText, remoteCardPrompt, REMOTE_CARD_TEXT_MAX } from "./remote-card-prompt.js";
@@ -410,7 +410,7 @@ import {
 import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCookies, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext, type TotpSignInResult } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
-import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
+import { guestSessionPolicy, localSessionPolicy, publicLinkSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
 import { enrolledRuntimeNotice } from "./runtime-enroll-notice.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
@@ -5023,7 +5023,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       claimedCards: () => this.livenessCards(),
       facts: (name) => this.livenessFacts(name),
       backgroundBusy: (name) => this.livenessBackgroundBusy(name),
-      isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
+      // #3720: a ClassicBot room's agent is an agent too (「ClassicBot 派工作也是 agent 派的」): a card it handed out is told
+      // to it like any instance's. A room that is gone falls to Needs you (not an agent here); one not running is away.
+      isInstance: (name) => this.fleetConfig?.instances?.[name] != null || this.isClassicInstance(name),
       // Not running now: stopped, crashed, paused, or no daemon at all.
       dispatcherAway: (name) => this.instanceProcessStatus.has(name) || this.lifecycle.isPaused(name) || !this.daemons.has(name),
       boardOff: (name) => taskBoardOffIn(this.fleetConfig, name),
@@ -8031,25 +8033,59 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Compensation retains this transaction's exact instance owner across its own transitions. */
+  /** A Settings compensation for a ClassicBot room (#1423): throws stale when its receipt no longer owns the room. */
   captureClassicSettingsRestoration(instanceName: string, changedFields: string[], execution?: SettingsExecution): () => Promise<void> {
-    const generation = this.settingsGeneration;
-    const receipt = { instanceName, epoch: this.lifecycle.epochOf(instanceName), daemon: this.daemons.get(instanceName) as object | undefined };
-    if (execution) this.classicSettingsOwners.set(execution, receipt);
-    return async () => {
-      const cleanup = new SettingsExecution({ current: () => !this.shuttingDown && this.settingsGeneration === generation
-        && this.lifecycle.epochOf(instanceName) === receipt.epoch && this.daemons.get(instanceName) === receipt.daemon, snapshot: () => null });
-      this.classicSettingsOwners.set(cleanup, receipt);
-      try { cleanup.assert(); await this.restartClassicInstanceFromSettings(instanceName, changedFields, cleanup); }
-      finally { cleanup.close(); }
-    };
+    const op = this.beginClassicSettingsRestart(instanceName, changedFields, execution);
+    return async () => { if (await op.restore() === "superseded") throw new SettingsExecutionError("settings_execution_stale"); };
   }
 
   /** Apply a Settings edit to a ClassicBot channel without waiting for the poller. */
-  async restartClassicInstanceFromSettings(instanceName: string, changedFields: string[] = [], execution?: SettingsExecution): Promise<void> {
-    return this.lifecycle.runTransition(instanceName, transition => this.restartClassicSettingsOwned(instanceName, changedFields, execution, transition));
+  async restartClassicInstanceFromSettings(instanceName: string, changedFields: string[] = [], execution?: SettingsExecution, opts?: { startIfStopped?: boolean }): Promise<void> {
+    return this.lifecycle.runTransition(instanceName, transition => this.restartClassicSettingsOwned(instanceName, changedFields, execution, transition, opts));
   }
 
-  private async restartClassicSettingsOwned(instanceName: string, changedFields: string[], execution: SettingsExecution | undefined, transition: TransitionHandle): Promise<void> {
+  /** #3715: update_instance_config's room account switch — an owned restart with no request execution of its own. */
+  beginClassicProfileSwitch(instanceName: string, changedFields: string[]): ReturnType<FleetManager["beginClassicSettingsRestart"]> {
+    return this.beginClassicSettingsRestart(instanceName, changedFields);
+  }
+
+  /**
+   * One owned ClassicBot room restart and its compensation (#1423; #3715, Prism on #3719; M-2966). Both are bound to one
+   * receipt — the room's epoch and daemon as this operation last left them — so a Stop or another start queued meanwhile
+   * supersedes both: the forward work never launches after it, and the compensation never stops or replaces a newer
+   * runtime. A request's own execution (a confirmed continuation) is used for the forward work when there is one; a plain
+   * Save gets an owned one here, so its receipt follows its own stop and start instead of going stale at the first stop.
+   * `restore` brings a room that was running before back up — also when the failed start took its daemon away — and says
+   * what it did.
+   */
+  beginClassicSettingsRestart(instanceName: string, changedFields: string[], execution?: SettingsExecution): {
+    restart(): Promise<void>; restore(): Promise<"restarted" | "not-running" | "superseded">; close(): void;
+  } {
+    const generation = this.settingsGeneration;
+    const receipt = { instanceName, epoch: this.lifecycle.epochOf(instanceName), daemon: this.daemons.get(instanceName) as object | undefined };
+    const wasRunning = receipt.daemon !== undefined;
+    const owned = (): boolean => !this.shuttingDown && this.settingsGeneration === generation
+      && this.lifecycle.epochOf(instanceName) === receipt.epoch && this.daemons.get(instanceName) === receipt.daemon;
+    if (execution) this.classicSettingsOwners.set(execution, receipt);
+    let forward = execution, ownForward: SettingsExecution | undefined;
+    return {
+      restart: () => {
+        if (!forward) { forward = ownForward = new SettingsExecution({ current: owned, snapshot: () => null }); this.classicSettingsOwners.set(forward, receipt); }
+        return this.restartClassicInstanceFromSettings(instanceName, changedFields, forward);
+      },
+      restore: async () => {
+        if (!owned()) return "superseded";
+        const cleanup = new SettingsExecution({ current: owned, snapshot: () => null });
+        this.classicSettingsOwners.set(cleanup, receipt);
+        try { await this.restartClassicInstanceFromSettings(instanceName, changedFields, cleanup, { startIfStopped: wasRunning }); }
+        finally { cleanup.close(); }
+        return wasRunning ? "restarted" : "not-running";
+      },
+      close: () => ownForward?.close(),
+    };
+  }
+
+  private async restartClassicSettingsOwned(instanceName: string, changedFields: string[], execution: SettingsExecution | undefined, transition: TransitionHandle, opts?: { startIfStopped?: boolean }): Promise<void> {
     const generation = this.settingsGeneration;
     const receipt = execution ? this.classicSettingsOwners.get(execution) : undefined;
     const check = (): void => {
@@ -8060,7 +8096,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
     check();
     if (!this.classicChannels) throw new Error("Classic channel manager not initialized");
-    const wasRunning = this.daemons.has(instanceName);
+    // #3715: a compensation brings back a room its own failed start took down (startIfStopped, owned by its receipt).
+    const hasDaemon = this.daemons.has(instanceName);
+    const wasRunning = hasDaemon || opts?.startIfStopped === true;
     this.classicChannels.reloadFromDisk();
     this.reportClassicUnrecoverableIds();
     this.reregisterClassicChannels();
@@ -8076,20 +8114,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     // M-2909 (Prism on #3691): an account saved from Settings hands the conversation over like a classicBot.yaml edit
     // (#1753) — read against what it was launched on, before the stop takes that away.
-    const launchedSnapshot = this.daemons.get(instanceName)?.getConfigSnapshot?.();
-    const launchedBackend = launchedSnapshot?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
-    const profileSwitch = this.classicProfileChange(instanceName,
-      launchedBackend !== this.classicChannels.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend));
-    const launchedIn = launchedSnapshot?.working_directory;
-    const stopping = this.stopInstance(instanceName, transition);
-    // stop() invalidates synchronously in our transition. Keep only that exact acquisition.
-    if (receipt && this.lifecycle.epochOf(instanceName) === receipt.epoch + 1 && this.daemons.get(instanceName) === receipt.daemon) receipt.epoch++;
-    await stopping;
-    if (receipt && this.lifecycle.epochOf(instanceName) === receipt.epoch && !this.daemons.has(instanceName)) receipt.daemon = undefined;
-    check();
-    // #1753: the conversation goes along where it can; otherwise a switch that loses it starts fresh.
-    if (profileSwitch.carry) { await this.switchConversation(instanceName, { ...profileSwitch.carry, workingDirectory: launchedIn }); check(); }
-    else if (profileSwitch.startsFresh) this.writeFreshStartMarker(instanceName);
+    // #3715: with no daemon (a compensation after its own failed start) there is nothing to stop or hand over.
+    if (hasDaemon) {
+      const launchedSnapshot = this.daemons.get(instanceName)?.getConfigSnapshot?.();
+      const launchedBackend = launchedSnapshot?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+      const profileSwitch = this.classicProfileChange(instanceName,
+        launchedBackend !== this.classicChannels.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend));
+      const launchedIn = launchedSnapshot?.working_directory;
+      const stopping = this.stopInstance(instanceName, transition);
+      // stop() invalidates synchronously in our transition. Keep only that exact acquisition.
+      if (receipt && this.lifecycle.epochOf(instanceName) === receipt.epoch + 1 && this.daemons.get(instanceName) === receipt.daemon) receipt.epoch++;
+      await stopping;
+      if (receipt && this.lifecycle.epochOf(instanceName) === receipt.epoch && !this.daemons.has(instanceName)) receipt.daemon = undefined;
+      check();
+      // #1753: the conversation goes along where it can; otherwise a switch that loses it starts fresh.
+      if (profileSwitch.carry) { await this.switchConversation(instanceName, { ...profileSwitch.carry, workingDirectory: launchedIn }); check(); }
+      else if (profileSwitch.startsFresh) this.writeFreshStartMarker(instanceName);
+    }
     const stoppedEpoch = this.lifecycle.epochOf(instanceName);
     await new Promise(resolve => setTimeout(resolve, 250)); check();
     if (this.lifecycle.epochOf(instanceName) !== stoppedEpoch) throw new Error("Classic restart superseded by stop");
@@ -9212,6 +9253,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         localPolicy: () => localSessionPolicy(this.fleetConfig?.web?.session?.local),
         // #1920 §5.4: a guest's, from web.guests.session (never longer than the surface's own).
         guestPolicy: () => guestSessionPolicy(this.fleetConfig?.web?.guests?.session),
+        // #3708: web.session.public_link — longer than 30 min / 8 h only with a fixed hostname (a named tunnel).
+        gatewayPolicy: () => publicLinkSessionPolicy(this.fleetConfig?.web?.session?.public_link, publicLinkNamedHostname(this.fleetConfig?.web)),
         // A session over the temporary link ends with the link (its TTL, at most 8 h on a quick tunnel).
         exposureEnd: id => this.publicWebLink?.endOf(id) ?? null,
       });
@@ -17983,6 +18026,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * ClassicBot room's launched or would-be login when the room runs that backend. Null: the backend's default login
    * (also for a backend that has no profiles, where the option is ignored).
    */
+  /** #3715: update_instance_config's ClassicBot room account switch — the room's Settings save (#3691), from a tool. */
+  switchClassicRoomProfile(name: string, backendOptions: unknown): Promise<ClassicProfileSwitch> {
+    return switchClassicRoomProfile(this as unknown as import("./settings-api.js").SettingsApiContext, name, backendOptions);
+  }
+
   credentialProfileOf(name: string, backend: string): string | null {
     if (isWindowsInstance(this.fleetConfig?.instances[name])) return null;
     if (!credentialHomeSpec(backend)) return null;
@@ -21205,7 +21253,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         claimWindow: backend => this.loginWindow.tryClaim("web", backend),
         releaseWindow: claim => { this.loginWindow.release(claim); },
         isClaimCurrent: claim => this.loginWindow.isCurrent(claim),
-        windowBusyMessage: () => this.loginWindow.busyMessage(),
+        windowBusyMessage: backend => this.loginWindow.busyMessage(backend),
+        windowHolder: backend => this.loginWindow.holderFor(backend),
         tunnelDataDir: () => this.dataDir,
         reserveTunnel: owner => this.getTunnelLane().reserve("login", owner),
         // Throws when the prompt cannot be posted: the controller tells the
@@ -21358,7 +21407,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       accessToken: sink => this.loginController?.webAccessToken(sink) ?? null,
       isActiveFor: sink => this.loginController?.isActiveFor(sink) ?? false,
       cancelFor: (sink, opts) => this.loginController?.cancelFor(sink, opts) ?? Promise.resolve(false),
-      cancel: () => this.cancelLoginSession(),
+      cancel: backend => this.cancelLoginSession(backend),
       notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
       // No details in the event: each page reads its own view (GET /ui/backend-login), as its session may see it.
       // The accounts are forgotten when ANY sign-in ends, even one a later one replaced (it may be a different account now), and not at every step of a
@@ -21727,7 +21776,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (backend === "claude-code" && signOutDeps.platform === "darwin") {
       const dry = removeAccountProfile(this.dataDir, this.removalRequest(backend, name, confirm, null), undefined, { dryRun: true });
       if (!dry.ok) return refused(dry);
-      const claim = this.loginWindow.tryClaim("web", backend);
+      const claim = this.loginWindow.tryClaim("account", backend);
       if (!claim) return refused({ ok: false, error: "signing_in" });
       const step = await this.withAccountWriter(claim, async deps => {
         const out = await signOutAccount(this.dataDir, { backend, profile, confirm: true, signingIn: false }, deps);
@@ -21780,9 +21829,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       classic: classic.filter(c => c.backend === backend && same(c.profile)).map(c => c.key),
       fleetDefault: same(fleetDefaults.get(backend)),
     };
-    const held = this.loginWindow.current;
+    // The window held on THIS backend, and only a sign-in of THIS backend explains it by account (the precise checks below). Another backend's running sign-in (a Grok terminal beside a
+    // Claude Code logout) says nothing about who holds this one: the held window itself then refuses Remove (a logout's child may still be running).
+    const held = this.loginWindow.heldFor(backend);
     const signingIn = (this.loginController?.signingIn(backend, profile) ?? false) || (this.profileSignInsInstance?.signingIn(backend, profile) ?? false)
-      || (!!held && held !== ownClaim && held.backend === backend && !this.loginController?.activeBackend && !this.profileSignInsInstance?.active);   // a named account's sign-in holds the window too, and says WHICH account (above)
+      || (!!held && held !== ownClaim && this.loginController?.activeBackend !== backend && this.profileSignInsInstance?.active?.backend !== backend);   // a named account's sign-in holds the window too, and says WHICH account (above)
     return { backend, name, confirm, users, signingIn, usersUnknown: rooms.kind === "unknown" };
   }
 
@@ -21835,7 +21886,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #3305 review P2-3: the logout holds the shared login window from before it runs until its cleanup is done — no
     // sign-in (chat, dashboard, install) and no other logout starts meanwhile; one already running refuses this.
     const signingIn = (this.loginController?.signingIn(backend, named) ?? false) || (named !== null && (this.profileSignInsInstance?.signingIn(backend, named) ?? false));
-    const claim = signingIn ? null : this.loginWindow.tryClaim("web", backend);
+    const claim = signingIn ? null : this.loginWindow.tryClaim("account", backend);
     let result: SignOutResult;
     if (!claim) result = { ok: false, error: "signing_in" };
     else result = await this.withAccountWriter(claim, deps => signOutAccount(this.dataDir, { backend, profile: profile ?? null, confirm, signingIn: false }, deps));
@@ -22266,27 +22317,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     ]);
   }
 
-  /** `/login cancel` — abort the active session and remove its window. */
-  async cancelLoginSession(): Promise<string> {
+  /**
+   * `/login cancel` — abort the active session and remove its window. `backend` (AGEND-203, the dashboard's "Cancel the running sign-in" on a refused start): only the
+   * sign-in or install running on that backend; nothing else is touched, and the answer says none ran when there is none.
+   */
+  async cancelLoginSession(backend?: string): Promise<string> {
+    const mine = (b: string | null | undefined) => backend === undefined || b === backend;
     // `/login cancel` also stops an install that `/login` started — and the
     // sign-in an install that just succeeded is about to hand over to.
-    if (this.activeInstall) return this.cancelInstallSession();
-    if (this.installHandoff) {
-      const { backend } = this.installHandoff;
+    if (this.activeInstall && mine(this.activeInstall.backend)) return this.cancelInstallSession();
+    if (this.installHandoff && mine(this.installHandoff.backend)) {
+      const { backend: handedOff } = this.installHandoff;
       this.installHandoff.cancelled = true;
       this.installHandoff = null;
-      return t("login.cancelled", backend);
+      return t("login.cancelled", handedOff);
     }
     const browserLogin = this.browserBackendSignInsInstance, browserBackend = browserLogin?.activeBackend;
-    if (browserLogin && browserBackend) {
+    if (browserLogin && browserBackend && mine(browserBackend)) {
       const confirmed = await browserLogin.close();
       if (confirmed) this.browserBackendSignInsInstance = null;
       return confirmed ? t("login.cancelled", browserBackend) : t("login.browser_cleanup_failed");
     }
     // #3212: a named account's sign-in on this host ("Cancel sign-in and remove" and `/login cancel` end it as they end the others).
-    const ended = await this.profileSignInsInstance?.cancelActive();
-    if (ended) return ended.confirmed ? t("login.cancelled", t("login.profile_label", ended.target.backend, ended.target.profile)) : t("login.browser_cleanup_failed");
-    if (this.loginController?.isActive()) return this.loginController.cancel();
+    const target = this.profileSignInsInstance?.active ?? null;
+    if (!target || mine(target.backend)) {
+      const ended = await this.profileSignInsInstance?.cancelActive();
+      if (ended) return ended.confirmed ? t("login.cancelled", t("login.profile_label", ended.target.backend, ended.target.profile)) : t("login.browser_cleanup_failed");
+    }
+    if (this.loginController?.isActive() && mine(this.loginController.pendingBackend)) return this.loginController.cancel();
     return t("login.no_session");
   }
 
@@ -22462,7 +22520,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // login). Owned by this method until the session is published.
     const claim = this.loginWindow.tryClaim("install", backend);
     if (claim && await checkBinaryInstalledAsync(info.binary)) { this.loginWindow.release(claim); return t("install.already", backend, info.binary); }
-    if (!claim) return this.loginWindow.busyMessage();
+    if (!claim) return this.loginWindow.busyMessage(backend);
 
     // M-2281: the installer's output, live, in the chat that asked — no page shows this window.
     // Telegram gets its own <pre> (its markdown conversion keeps a fence as literal backticks); others a fenced block.

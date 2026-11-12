@@ -1,0 +1,34 @@
+[
+  {
+    "label": "scoped-width-observer",
+    "path": "src/ui/panel-chat.js",
+    "test": "tests/web-chat-pane-ownership-3637.test.ts",
+    "caught": true,
+    "semantic": true,
+    "redundant": false
+  },
+  {
+    "label": "width-ime",
+    "path": "src/ui/panel-chat.js",
+    "test": "tests/web-chat-pane-ownership-3637.test.ts",
+    "caught": true,
+    "semantic": true,
+    "redundant": false
+  },
+  {
+    "label": "width-height-cap",
+    "path": "src/ui/panel-chat.js",
+    "test": "tests/web-chat-pane-ownership-3637.test.ts",
+    "caught": true,
+    "semantic": true,
+    "redundant": false
+  },
+  {
+    "label": "width-retired-owner",
+    "path": "src/ui/panel-chat.js",
+    "test": "tests/web-chat-pane-ownership-3637.test.ts",
+    "caught": true,
+    "semantic": true,
+    "redundant": false
+  }
+]

@@ -14,7 +14,10 @@ import { routePath, detailsPath } from "/assets/app-route.js";
 import { supportsInstanceFeature } from "/assets/instance-nav.js";
 import { agentRoute, PANE_VIEWS, twoPaneFits } from "/assets/chat-workspace-model.js";
 import { workspaceMemory } from "/assets/chat-workspace-memory.js";
-import { installWorkspaceNavigation } from "./chat-workspace-navigation.js";
+import * as workspaceNavigation from "./chat-workspace-navigation.js";
+import { floatBox, splitSize } from "/assets/pane-geometry.js";
+import { createWorkspaceGestures, geometryText } from "./chat-workspace-gestures.js";
+import { createPanePopout, popoutText } from "./chat-popout.js";
 
 register("chatWorkspace", {
   en: { beside: "Open beside", replace: "Replace: {0}", split: "Split chat", choose: "Choose a second agent", current: "Focused pane", currentShort: "Active",
@@ -34,7 +37,8 @@ export async function verifyWorkspaceDependencies({ chat, details, log, view }) 
     import("/assets/instance-switch.js"), import("/assets/ui-menu.js"), import("/assets/view-roster-store.js"),
     import("/assets/chat-composer.js"), import("./image-lightbox.js"), import("/assets/preview-panel.js"),
     import("./agent-runtime-settings.js"), import("./agent-export-dialog.js"), import("/assets/app-session.js")]);
-  if (!paneState.usePaneState || !chat.ChatPanel.workspaceVersion || !details.DetailsPanel.workspaceVersion || !log.LogPanel.workspaceVersion || !view.ViewPanel.workspaceVersion
+  if (getComputedStyle(document.documentElement).getPropertyValue("--chat-workspace-geometry-version").trim() !== "1"
+    || !workspaceNavigation.workspaceGeometryVersion || !paneState.usePaneState || !chat.ChatPanel.workspaceVersion || !details.DetailsPanel.workspaceVersion || !log.LogPanel.workspaceVersion || !view.ViewPanel.workspaceVersion
     || !fields.AgentFields.paneIds || !fields.ClassicFields.paneIds || !native.NativeFields.paneIds
     || !quote.installQuoteSelection.workspaceVersion || !tabs.InstanceSwitch.workspaceVersion || !menu.Menu.workspaceVersion || !roster.followRoster
     || !composer.ComposerInput.paneIds || !composer.WorkBarView.paneIds || !image.LightboxHost.paneOwner
@@ -93,13 +97,21 @@ export function PaneHeader({ title, sub, headingRef, nav, notice, pageControls, 
     ...tabs.map(view => ({ key: `tab-${view}`, label: viewLabel(view), onSelect: () => pane.navigate(routePath({ panel: view, instance: pane.name })) })),
     { key: "right", label: tw("right"), checked: pane.layout === "right", onSelect: () => pane.controller.layout("right") },
     { key: "stack", label: tw("stack"), checked: pane.layout === "stack", onSelect: () => pane.controller.layout("stack") },
+    { key: "float", label: geometryText("float"), checked: pane.floating, onSelect: () => pane.controller.layout("float", pane.id) },
+    ...(pane.floating ? [{ key: "move-float", label: geometryText("move"), onSelect: () => pane.gestures.keyboard("move", pane.id) },
+      { key: "resize-float", label: geometryText("resize"), onSelect: () => pane.gestures.keyboard("resize", pane.id) }] : []),
+    ...(pane.layout !== "float" ? [{ key: "halves", label: geometryText("reset"), onSelect: () => pane.controller.geometry({ ratio: .5 }) }] : []),
     { key: "swap", label: tw("swap"), onSelect: () => pane.controller.swap() },
     { key: "other", label: tw("other"), onSelect: () => pane.controller.focus(pane.id === "a" ? "b" : "a", { moveFocus: true }) },
     { key: "split", label: tw("split"), icon: "sidebar", onSelect: () => choose(pane.controller, undefined, pane.id) },
+    ...(pane.popout ? [{ key: "popout", label: popoutText("open"), onSelect: () => pane.popout.open(pane.controller, pane.id) }] : []),
     { key: "close", label: tw("close"), icon: "close", onSelect: () => pane.controller.closePane(pane.id) },
-    ...(pane.focused ? pageActions || [] : []),
+    ...(pane.focused ? (pageActions || []).filter(item => item?.key !== "splitChat") : []),
   ];
-  return html`<header data-trust="header" class="panel-head ws-pane-head">
+  const interactive = event => event.target.closest("a,button,input,textarea,select,[contenteditable],.ws-page-tools");
+  return html`<header data-trust="header" class="panel-head ws-pane-head" draggable=${!pane.floating}
+    onDragStart=${event => { if (interactive(event) || !pane.gestures.dragStart(pane.name, event, pane.id)) event.preventDefault(); }} onDragEnd=${pane.gestures.dragEnd}
+    onPointerDown=${event => { if (pane.floating && !interactive(event)) pane.gestures.floatDown("move", pane.id, event); }}>
     ${shell.collapsed && pane.focused ? html`<button type="button" id="sbOpen" class="icon-btn sb-open" aria-label=${t("app.expand")}
       title=${t("app.expand")} aria-controls="sidebar" onClick=${toggleSidebar}><${Icon} name="menu" /></button>` : null}
     <div class="panel-title">${pane.focused ? html`<span class="tag ws-focus-label">${tw("currentShort")}</span>` : null}<h1 ref=${headingRef} tabindex="-1" title=${typeof title === "string" ? title : pane.name}>${title}</h1>
@@ -114,8 +126,9 @@ export function PaneHeader({ title, sub, headingRef, nav, notice, pageControls, 
   </header>`;
 }
 
-function Pane({ id, w, focused, compact, width, controller, controls, panels }) {
-  const pointer = useRef(false);
+function Pane({ id, w, focused, compact, width, height, controller, controls, panels, gestures, popout }) {
+  const pointer = useRef(false), ref = useRef(null);
+  useLayoutEffect(() => { ref.current?.style.setProperty("--ws-pane-height", `${height}px`); }, [height]);
   useEffect(() => {
     const reset = () => { pointer.current = false; };
     window.addEventListener("pointerup", reset); window.addEventListener("pointercancel", reset); window.addEventListener("blur", reset);
@@ -128,8 +141,8 @@ function Pane({ id, w, focused, compact, width, controller, controls, panels }) 
   const visibleTabs = tabs.slice();
   for (let n = visibleTabs.length - 1; visibleTabs.length > keep && n >= 0; n--) if (visibleTabs[n] !== p.route.panel) visibleTabs.splice(n, 1);
   const value = { ...controller.pane(id), id, name: p.route.instance, route: p.route, search: p.search, hash: p.hash, focused,
-    tabs, visibleTabs: compact ? tabs : visibleTabs, width, controller, controls, layout: w.layout, Header: compact ? null : PaneHeader };
-  return html`<section class=${`ws-pane${focused ? " ws-focused" : ""}`} data-pane=${id} role="region"
+    tabs, visibleTabs: compact ? tabs : visibleTabs, width, controller, controls, gestures, popout, floating: !compact && w.layout === "float" && w.floating === id, layout: w.layout, Header: compact ? null : PaneHeader };
+  return html`<section ref=${ref} id=${`ws-pane-${id}`} class=${`ws-pane${focused ? " ws-focused" : ""}${value.floating ? " ws-floating" : ""}`} data-pane=${id} role="region"
     aria-label=${tw("pane", p.route.instance, viewLabel(p.route.panel))} aria-current=${focused ? "true" : undefined}
     onPointerDown=${event => {
       pointer.current = true;
@@ -140,16 +153,28 @@ function Pane({ id, w, focused, compact, width, controller, controls, panels }) 
     onClick=${event => { pointer.current = false; if (!event.defaultPrevented && !event.target.closest(".menu, .ws-page-tools") && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.button === 0) controller.focus(id); }}
     onFocusIn=${() => { if (!pointer.current) controller.focus(id); }}>
     <${PaneScope} value=${value}><${Outlet} route=${p.route} seq=${p.seq} panels=${panels} /></${PaneScope}>
+    ${value.floating ? html`<button type="button" class="ws-float-resize" aria-label=${geometryText("resize")} title=${geometryText("resize")}
+      onPointerDown=${event => gestures.floatDown("resize", id, event)} onKeyDown=${event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); gestures.keyboard("resize", id); } }}></button>` : null}
     ${focused && !compact ? html`<span class="sr-only">${tw("current")}</span>` : null}
   </section>`;
 }
 
-export function createWorkspaceHost(controller) {
+export function createWorkspaceHost(controller, pageGestures, popout) {
   return function WorkspaceHost({ nav, panels }) {
     const ref = useRef(null), [size, setSize] = useState({ width: 0, height: 0, viewport: 0 });
     const controls = useMemo(() => createPageControls(), []);
+    const gestures = useMemo(() => pageGestures || createWorkspaceGestures({ controller, getRoot: () => ref.current }), []);
+    const movement = useStore(gestures.store);
+    useLayoutEffect(() => () => { if (!pageGestures) gestures.close(); }, []);
     const w = nav.workspace;
     const compact = !w || !twoPaneFits(size.viewport, size.width, size.height, w.layout);
+    const chosen = { ...w, ...movement.transient };
+    const split = splitSize(size.width, size.height, w?.layout, chosen.ratio), box = floatBox(size.width, size.height, chosen.rect);
+    useLayoutEffect(() => {
+      const el = ref.current; if (!el || compact) return;
+      el.style.setProperty("--ws-first", `${split.first}px`);
+      for (const [key, value] of Object.entries(box)) el.style.setProperty(`--ws-float-${key}`, `${value}px`);
+    }, [compact, split.first, box.x, box.y, box.width, box.height]);
     useLayoutEffect(() => {
       if (!ref.current) return;
       const update = () => { const r = ref.current?.getBoundingClientRect(); if (r) setSize({ width: r.width, height: r.height, viewport: window.innerWidth }); };
@@ -161,15 +186,23 @@ export function createWorkspaceHost(controller) {
     useLayoutEffect(() => { if (compact) controls.close(); }, [compact]);
     useLayoutEffect(() => () => controls.close(), []);
     if (!w) return html`<${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />`;
-    const ids = compact ? [w.focus] : w.flipped ? ["b", "a"] : ["a", "b"];
-    return html`<div ref=${ref} class=${`chat-workspace ws-${compact ? "compact" : w.layout}`} data-layout=${compact ? "single" : w.layout}>
+    const ids = compact ? [w.focus] : w.layout === "float" ? [w.floating === "a" ? "b" : "a", w.floating] : w.flipped ? ["b", "a"] : ["a", "b"];
+    const paneWidth = id => compact || w.layout === "stack" ? size.width : w.layout === "float" ? id === w.floating ? box.width : size.width : id === ids[0] ? split.first : split.second;
+    const paneHeight = id => compact || w.layout === "right" ? size.height : w.layout === "float" ? id === w.floating ? box.height : size.height : id === ids[0] ? split.first : split.second;
+    return html`<div ref=${ref} class=${`chat-workspace ws-geometry ws-${compact ? "compact" : w.layout}${movement.transient || movement.keyboard ? " ws-resizing" : ""}`} data-layout=${compact ? "single" : w.layout}>
       ${compact ? html`<nav class="ws-agent-tabs seg" aria-label=${tw("choose")}>${["a", "b"].map(id => html`<span class="ws-agent-tab">
         <button type="button" class=${`seg-item${w.focus === id ? " active" : ""}`} aria-current=${w.focus === id ? "page" : undefined}
           title=${w[id].route.instance} onClick=${() => controller.focus(id)}><span class="ws-agent-name">${w[id].route.instance}</span></button>
         <button type="button" class="icon-btn ws-agent-close" aria-label=${`${tw("close")}: ${w[id].route.instance}`}
           title=${tw("close")} onClick=${() => controller.closePane(id)}><${Icon} name="close" /></button></span>`)}</nav>` : null}
-      ${ids.map(id => html`<${Pane} key=${id} id=${id} w=${w} focused=${w.focus === id} compact=${compact}
-        width=${w.layout === "stack" ? size.width : (size.width - 8) / 2} controller=${controller} controls=${controls} panels=${panels} />`)}
+      ${ids.flatMap((id, n) => [n === 1 && !compact && w.layout !== "float" ? html`<div key="sash" class="ws-sash-slot"><div class="ws-sash" role="separator" tabindex="0"
+          aria-controls="ws-pane-a ws-pane-b" aria-label=${geometryText("sash")} title=${geometryText("reset")}
+          aria-orientation=${w.layout === "stack" ? "horizontal" : "vertical"} aria-valuemin=${Math.round(split.min)} aria-valuemax=${Math.round(split.max)} aria-valuenow=${Math.round(split.first)}
+          onKeyDown=${gestures.sashKey} onPointerDown=${gestures.sashDown} ondblclick=${() => controller.geometry({ ratio: .5 })}></div></div>` : null,
+        html`<${Pane} key=${id} id=${id} w=${w} focused=${w.focus === id} compact=${compact}
+          width=${paneWidth(id)} height=${paneHeight(id)} controller=${controller} controls=${controls} panels=${panels} gestures=${gestures} popout=${popout} />`])}
+      <span class="sr-only" role="status" aria-live="polite">${movement.announcement}</span>
+      ${movement.keyboard ? html`<p class="ws-geometry-hint" role="status">${geometryText("help")}</p>` : null}
     </div>`;
   };
 }
@@ -181,13 +214,20 @@ export function installWorkspaceEntry({ nav, ready, landing = false, scope = "",
   let storage = null;
   try { storage = localStorage; } catch { /* memory-only */ }
   const memory = workspaceMemory(storage, scope);
+  const popout = createPanePopout({ scope, chat });
+  const gestures = createWorkspaceGestures({ getRoot: () => document.querySelector(".chat-workspace") || document.getElementById("main"),
+    controller: { current: () => controller?.current(), stamp: () => nav.navStore.get(), subscribe: fn => nav.navStore.subscribe(fn),
+      focus: id => controller?.focus(id), geometry: change => controller?.geometry(change) },
+    onDrop: (name, target, zone) => { if (agentRoute(nav.navStore.get().route)) void open(name, undefined, { target, zone }); } });
   const retire = () => {
     if (!alive) return; alive = false; memory.clear();
+    popout?.close();
     controller?.close();
+    gestures.close();
     window.removeEventListener("resize", refresh); document.removeEventListener("keydown", key);
     appStore.set({ chatWorkspace: null, chatWorkspaceSessionEnd: null });
   };
-  async function open(name, layout = "right") {
+  async function open(name, layout = "right", drop) {
     if (!alive) return;
     const attempt = nav.navStore.get();
     try {
@@ -196,8 +236,8 @@ export function installWorkspaceEntry({ nav, ready, landing = false, scope = "",
         if (!alive || nav.navStore.get() !== attempt) return; // a later navigation retires this loading intent
         if (!controller) {
           if (!nav.installNavigation || !PanelHeader.workspaceVersion) throw new Error("old shell");
-          controller = installWorkspaceNavigation(nav, { beforeLayout: services?.stopPreview,
-            onWorkspace: () => { if (!shellStore.get().workspaceHost) shellStore.set({ workspaceHost: createWorkspaceHost(controller) }); } });
+          controller = workspaceNavigation.installWorkspaceNavigation(nav, { geometry: true, beforeLayout: services?.stopPreview,
+            onWorkspace: () => { if (!shellStore.get().workspaceHost) shellStore.set({ workspaceHost: createWorkspaceHost(controller, gestures, popout) }); } });
           let previous = null;
           nav.navStore.subscribe(next => {
             if (!alive) return;
@@ -210,10 +250,11 @@ export function installWorkspaceEntry({ nav, ready, landing = false, scope = "",
           if (controller.current()) memory.write(controller.current());
         }
       }
-      if (name) controller.open(name, layout);
+      if (name) { if (drop) controller.dock(name, drop.target, drop.zone); else controller.open(name, layout); }
     } catch { toast(tw("unavailable"), false); }
   }
   const entry = { open, pick: event => showDialog(AgentPicker, { controller: { current: () => controller?.current(), open }, currentName: nav.navStore.get().route?.instance, layout: event?.altKey ? "stack" : "right" }),
+    dragStart: (name, event) => agentRoute(nav.navStore.get().route) && gestures.dragStart(name, event), dragEnd: gestures.dragEnd,
     settings: name => nav.navigate(`${detailsPath(name)}?cat=basic`),
     quoteTargets(source) {
       const w = controller?.current(); if (!w) return [];

@@ -28,6 +28,8 @@ export interface ProfileSignInSnapshot {
   ready: boolean;
   /** Which account this is (an older page ignores it). */
   target: ProfileSignInTarget;
+  /** Only in the answer to a start that CREATED a run: that run's id. A start that joined a run already there carries none — nobody may end it as "mine". */
+  started?: string;
 }
 export interface ProfileSignInDeps {
   /** The signed-in local admin session is still the one that asked. */
@@ -169,7 +171,7 @@ export class ProfileSignIns {
       if (!added && this.deps.known(target.backend, target.profile) !== "exists") { await session.cancel(); throw new Error("signin_profile_unknown"); }
     }
     await session.start(relogin);
-    return this.snapshot(owner, target);
+    return { ...this.snapshot(owner, target), started: session.view(owner).id };
   }
   async input(owner: object, target: ProfileSignInTarget, id: string, revision: number, action: SignInAction): Promise<ProfileSignInSnapshot> {
     this.valid(target);

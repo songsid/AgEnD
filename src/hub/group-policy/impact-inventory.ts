@@ -7,7 +7,7 @@ import { grantApplies, grantOf, readExposure, exposureOf } from "../catalog.js";
 import { personFromString } from "../http/core.js";
 import { personKeyString } from "../identity.js";
 import { parseStrictJson, person, validated } from "../validation.js";
-import { parseHubGroupResource } from "./resources.js";
+import { parseStoredHubGroupResource } from "./resources.js";
 import { HubGroupPolicyError } from "./store.js";
 import type { HubGroupAdminInventory } from "./admin-inventory.js";
 import type { HubGroupImpactPerson, HubGroupImpactResource } from "./admin-impact.js";
@@ -43,8 +43,8 @@ export function createHubGroupImpactInventory(options: {
     };
     for (const fleet of transport.read().fleets) if (fleet.status === "active" && fleet.credentialHash) addResource({ kind: "fleet", id: fleet.id, revision: fleet.generation });
     for (const row of db.prepare("SELECT id,revision FROM hub_exposures WHERE state='published' ORDER BY id").all() as { id: string; revision: number }[]) addResource({ kind: "exposure", ...row });
-    for (const row of db.prepare("SELECT body FROM hub_group_resources ORDER BY resource_key").all() as { body: string }[]) {
-      const resource = parseHubGroupResource(parseStrictJson(row.body));
+    for (const row of db.prepare("SELECT body,source FROM hub_group_resources ORDER BY resource_key").all() as { body: string; source: string }[]) {
+      const { resource } = parseStoredHubGroupResource(parseStrictJson(row.body), row.source);
       if (resource.kind === "asker") addResource(resource);
     }
     const grants: unknown[] = [], at = now();

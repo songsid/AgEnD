@@ -1,0 +1,34 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+·······x··
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  03:40:01
+   Duration  463ms (transform 181ms, setup 130ms, import 116ms, tests 44ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-gestures-3637.test.ts > sash keyboard uses16/64px, Home/End, and Enter resets while browser shortcuts remain untouched
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array []
+
+
+Number of calls: 1
+
+ ❯ tests/web-chat-workspace-gestures-3637.test.ts:77:119
+     75|   manager.sashKey(event({ key: "Enter" })); expect(commit.mock.lastCal…
+     76|   const e = event({ key: "1", ctrlKey: true }); manager.sashKey(e); ex…
+     77|   const arrow = event({ key: "ArrowRight", ctrlKey: true }); manager.s…
+       |                                                                                                                       ^
+     78| });
+     79| it("floating keyboard motion is bounded, reversible and committed only…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

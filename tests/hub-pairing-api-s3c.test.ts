@@ -200,6 +200,16 @@ describe("the pairing routes", async () => {
     expect(await call({ method: "POST", path: "/api/hub/member/pairing/disconnect", replay: true, api })).toMatchObject({ status: 200, body: { ok: true, remote: "pending" } });
     expect(await call({ method: "GET", path: "/api/hub/member/pairing", api: null })).toMatchObject({ status: 404, body: { error: "unavailable" } });
   });
+  it("member Settings retains code notices outside default/v2 presentation until explicit v3", async () => {
+    const base = { id: randomUUID(), fleetId: randomUUID(), generation: 1, label: "Owned Fleet", at: 100, revoked: false };
+    const notices = [{ ...base, source: "group" }, { ...base, id: randomUUID(), source: "manual" }, { ...base, id: randomUUID(), source: "code", codeId: randomUUID() }];
+    const api = { view: () => ({ state: "unpaired" }), notices: () => notices };
+    for (const [query, expected] of [["", ["group"]], ["?v=2", ["group", "manual"]], ["?v=3", ["group", "manual", "code"]], ["?v=99", ["group"]]] as const) {
+      const result = await call({ method: "GET", path: "/api/hub/member/pairing" + query, api });
+      expect(result.status).toBe(200); expect(result.body.notices.map((n: any) => n.source)).toEqual(expected);
+    }
+    expect(notices.map(n => n.source)).toEqual(["group", "manual", "code"]);
+  });
   it("#3675 r2 P2: the pairing-code Disconnect route asks the replay's authority again after member.leave's wait — withdrawn meanwhile: 409, nothing fenced, withdrawn or tombstoned", async () => {
     for (const withdraw of [true, false]) {
       let admin = true;
@@ -306,7 +316,7 @@ describe("Prism #3115 r1 (pairing)", () => {
     const { pairingSummary } = await import("../src/hub-pairing-summary.js");
     const paired = { state: "paired", hub: { hubId: "h1", name: null, memberOrigin: "https://a.test", webOrigin: "https://w.a.test", fingerprint: { kind: "hub-key", digest: "a".repeat(64) } }, link: "offline" } as const;
     const bound = { hubId: "h1", binding: "b".repeat(64) };
-    expect(pairingSummary("disconnect", { hubId: "h1", binding: "b".repeat(64) }, paired, bound).summary[0]).toBe("Disconnect this fleet from the Hub at https://a.test (h1, pairing bbbbbbbbbbbb)");
+    expect(pairingSummary("disconnect", { hubId: "h1", binding: "b".repeat(64) }, paired, bound).summary[0]).toBe("Remove this fleet's connection to the Hub at https://a.test (h1, connection bbbbbbbbbbbb)");
     expect(() => pairingSummary("disconnect", { hubId: "h2", binding: "b".repeat(64) }, paired, bound)).toThrow(expect.objectContaining({ code: "conflict" }));
     expect(() => pairingSummary("disconnect", { hubId: "h1", binding: "c".repeat(64) }, paired, bound)).toThrow(expect.objectContaining({ code: "conflict" }));   // a re-pair
     expect(() => pairingSummary("disconnect", {}, paired, bound)).toThrow(expect.objectContaining({ code: "conflict" }));

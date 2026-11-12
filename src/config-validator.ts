@@ -1,6 +1,6 @@
 import { t } from "./locale.js";
 import { quotaNoticeProblem } from "./quota-notice-config.js";
-import { publicLinkModeProblem, publicLinkPatchShape } from "./public-web-link.js";
+import { publicLinkModeProblem, publicLinkNamedHostname, publicLinkPatchShape } from "./public-web-link.js";
 import { generalNames, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { adaptersWithoutGeneral, type ChannelLike } from "./platform-general.js";
 import { PROMPT_CACHE_TTLS, validateProvider } from "./backend/types.js";
@@ -11,7 +11,7 @@ import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } fro
 import { hostnameOf } from "./web-host-guard.js";
 import { mbText, PUBLIC_LINK_MAX_FILE_BYTES, UPLOAD_LIMITS, UPLOAD_MB_RANGE } from "./web-upload.js";
 import { previewOriginProblem } from "./web-preview.js";
-import { DEFAULT_SESSION_POLICY, GUEST_SESSION_BOUNDS, GUEST_SESSION_POLICY, LOCAL_SESSION_HOURS } from "./web-session.js";
+import { DEFAULT_SESSION_POLICY, GUEST_SESSION_BOUNDS, GUEST_SESSION_POLICY, LOCAL_SESSION_HOURS, PUBLIC_LINK_SESSION_BOUNDS } from "./web-session.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { VERIFIED_SESSION_HOURS } from "./authority/web-authority.js";
 import { existsSync } from "node:fs";
@@ -535,7 +535,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
       const problem = previewOriginProblem(config.web.preview_origin, config);
       if (problem) err("web.preview_origin", problem);
     }
-    if (config.web.session !== undefined) validateWebSession(config.web.session, err);
+    if (config.web.session !== undefined) validateWebSession(config.web.session, err, warn, publicLinkNamedHostname(config.web));
     if (config.web.guests !== undefined) validateWebGuests(config.web.guests, config, opts.rooms, err, warn);
     // #1939: the server switch and the §3 keys (§0: a session is authorized once; no step-up list).
     if (config.web.verified_authority !== undefined) {
@@ -875,11 +875,12 @@ function validateWebGuests(guests: unknown, config: Record<string, any>, rooms: 
   if (idle > absolute * 60) err("web.guests.session.idle_minutes", `must not exceed absolute_hours (${idle} min > ${absolute} h${abs === null ? ", the default" : ""})`);
 }
 
-function validateWebSession(session: unknown, err: (path: string, message: string) => void): void {
+function validateWebSession(session: unknown, err: (path: string, message: string) => void, warn?: (path: string, message: string) => void, named?: boolean): void {
   if (!isObj(session)) { err("web.session", "must be a mapping"); return; }
   for (const key of Object.keys(session)) {
-    if (key !== "local") err(`web.session.${key}`, key === "gateway" ? "is not configurable: a public-link session's limits are fixed" : "unknown key (local)");
+    if (key !== "local" && key !== "public_link") err(`web.session.${key}`, key === "gateway" ? "unknown key: the public link's limits are web.session.public_link" : "unknown key (local, public_link)");
   }
+  validatePublicLinkSession((session as Record<string, unknown>).public_link, err, warn, named === true);
   const local = (session as Record<string, unknown>).local;
   if (local === undefined) return;
   if (!isObj(local)) { err("web.session.local", "must be a mapping"); return; }
@@ -897,6 +898,31 @@ function validateWebSession(session: unknown, err: (path: string, message: strin
   const absolute = abs ?? DEFAULT_SESSION_POLICY.local.absoluteMs / 3_600_000;
   if (idle !== null && idle > absolute) {
     err("web.session.local.idle_hours", `must not exceed absolute_hours (${idle} > ${absolute}${abs === null ? ", the default" : ""})`);
+  }
+}
+
+/**
+ * #3708: `web.session.public_link` — idle_minutes 5–1440, absolute_hours 1–168, idle ≤ absolute (an absolute left out
+ * is its default, 8 h). Set without a fixed hostname it is a warning: a quick tunnel keeps at most 30 min / 8 h.
+ */
+function validatePublicLinkSession(value: unknown, err: (path: string, message: string) => void, warn: ((path: string, message: string) => void) | undefined, named: boolean): void {
+  if (value === undefined) return;
+  if (!isObj(value)) { err("web.session.public_link", "must be a mapping"); return; }
+  const v = value as Record<string, unknown>;
+  for (const key of Object.keys(v)) if (key !== "absolute_hours" && key !== "idle_minutes") err(`web.session.public_link.${key}`, "unknown key (absolute_hours, idle_minutes)");
+  const { absoluteHours: a, idleMinutes: i } = PUBLIC_LINK_SESSION_BOUNDS;
+  const num = (key: string, min: number, max: number, unit: string): number | null => {
+    const n = v[key];
+    if (n === undefined) return null;
+    if (typeof n !== "number" || !Number.isFinite(n) || n < min || n > max) { err(`web.session.public_link.${key}`, `must be a number of ${unit} from ${min} to ${max}`); return NaN; }
+    return n;
+  };
+  const abs = num("absolute_hours", a.min, a.max, "hours"), idle = num("idle_minutes", i.min, i.max, "minutes");
+  if (Number.isNaN(abs) || Number.isNaN(idle)) return;
+  const def = DEFAULT_SESSION_POLICY.gateway, absolute = abs ?? def.absoluteMs / 3_600_000;
+  if (idle !== null && idle > absolute * 60) err("web.session.public_link.idle_minutes", `must not exceed absolute_hours (${idle} min > ${absolute} h${abs === null ? ", the default" : ""})`);
+  else if (!named && ((abs !== null && abs * 60 > def.absoluteMs / 60_000) || (idle !== null && idle > def.idleMs / 60_000))) {
+    warn?.("web.session.public_link", `longer limits need web.public_link.hostname (a named tunnel): on a quick tunnel a session keeps at most ${def.idleMs / 60_000} min unused and ${def.absoluteMs / 3_600_000} h in all`);
   }
 }
 

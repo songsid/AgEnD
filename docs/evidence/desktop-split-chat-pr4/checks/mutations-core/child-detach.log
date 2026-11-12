@@ -1,0 +1,47 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts (16 tests | 1 failed) 31ms
+     × child waits for its current composer and acknowledges at most one validated draft, then detaches opener 7ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-transport-3637.test.ts > real pop-out exact-window, one-use handoff > child waits for its current composer and acknowledges at most one validated draft, then detaches opener
+AssertionError: expected { …(9) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "addEventListener": [Function addEventListener],
+  "closed": false,
+  "count": [Function count],
+  "crypto": {
+    "randomUUID": [Function randomUUID],
+  },
+  "fire": [Function fire],
+  "location": {
+    "origin": "https://fleet.example",
+  },
+  "open": [Function Mock],
+  "postMessage": [Function Mock],
+  "removeEventListener": [Function removeEventListener],
+}
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts:58:113
+     56|     expect(accept).not.toHaveBeenCalled();
+     57|     const e = { source: parent, origin: win.location.origin, data: msg…
+     58|     win.fire("message", e); win.fire("message", e); expect(accept).toH…
+       |                                                                                                                 ^
+     59|     expect(parent.postMessage).toHaveBeenLastCalledWith(msg("received"…
+     60|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 passed (16)
+   Start at  11:20:38
+   Duration  336ms (transform 91ms, setup 108ms, import 37ms, tests 31ms, environment 0ms)
+

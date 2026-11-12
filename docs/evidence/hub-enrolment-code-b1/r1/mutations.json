@@ -1,0 +1,44 @@
+[
+  {
+    "guard": "never-admission",
+    "nativeTypes": 0,
+    "exit": 1,
+    "semanticFailure": true,
+    "restoredSha256": "84fe8587c0c0d2f9135022dcb64b77343d3f9fbeb47caf0601db7318a9dce51d"
+  },
+  {
+    "guard": "never-retained",
+    "nativeTypes": 0,
+    "exit": 1,
+    "semanticFailure": true,
+    "restoredSha256": "84fe8587c0c0d2f9135022dcb64b77343d3f9fbeb47caf0601db7318a9dce51d"
+  },
+  {
+    "guard": "impact-source",
+    "nativeTypes": 0,
+    "exit": 1,
+    "semanticFailure": true,
+    "restoredSha256": "185c44308de5de3bd035ab24e924bfc2d39ca2b0e59e9382022cd978db53375b"
+  },
+  {
+    "guard": "never-impact",
+    "nativeTypes": 0,
+    "exit": 1,
+    "semanticFailure": true,
+    "restoredSha256": "0405cdcd06fee88f52d13965f10993e9aa721227260f65b3b6ef38127df06599"
+  },
+  {
+    "guard": "never-batch",
+    "nativeTypes": 0,
+    "exit": 1,
+    "semanticFailure": true,
+    "restoredSha256": "84fe8587c0c0d2f9135022dcb64b77343d3f9fbeb47caf0601db7318a9dce51d"
+  },
+  {
+    "guard": "member-version",
+    "nativeTypes": 0,
+    "exit": 1,
+    "semanticFailure": true,
+    "restoredSha256": "84cc1ac4e715eb319d349dea7267f1494e35258aab777c56267c9edf3580895e"
+  }
+]

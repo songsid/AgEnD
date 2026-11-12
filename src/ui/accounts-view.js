@@ -31,7 +31,7 @@ import { KeepAliveControl } from "./accounts-keepalive.js";   // #3292
 // cache that still holds #3536's module: "does not provide an export named 'VersionLine'") and takes the whole page with it. A namespace import links with either; the names both modules
 // have are read as before, and a copy of host-install.js without the version line simply shows no version line (the Install button and the run are all it ever had).
 import * as hostInstall from "./host-install.js";
-const { HostInstallRun, InstallButton, hostInstallStore, hostInstallText, installRunning, refreshHostInstall, runFor } = hostInstall;
+const { HostInstallRun, InstallButton, hostInstallStore, hostInstallText, refreshHostInstall, runFor } = hostInstall;
 const VersionLine = typeof hostInstall.VersionLine === "function" ? hostInstall.VersionLine : () => null;
 
 register("accounts", {
@@ -229,8 +229,18 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent, r
   useEffect(() => { if (loaded) void refreshAccounts(); }, [phase]);
   const active = structured && structured.login;
   const machineActive = !!machineLogin.phase && machineLogin.phase !== "done" && !(machineLogin.phase === "failed" && machineLogin.reason);
-  // AGEND-133: the host's login window is one — an install running holds Sign in, and a sign-in running holds Install.
-  const running = !!((login && login.phase === "running") || (active && active.phase !== "done" && !(active.phase === "failed" && active.reason)) || machineActive || installRunning(install));
+  // AGEND-203: the login window is one PER BACKEND (login-window-lock.ts) — a sign-in or install on one AI holds only that AI's buttons. `busyBackends` names them; the rest stay pressable:
+  //   - the terminal sign-in (`login`, also another tab's) and the structured one (`active`, also another tab's) hold the backend they run on;
+  //   - an install or update holds its backend's sign-in buttons, and every Install/Update button (one installer on the host: InstallButton/VersionLine read hostInstallStore themselves);
+  //   - a computer's account sign-in (the open dialog) is Claude Code's.
+  // Not here, on purpose: the terminal sign-in is one at a time too, so a second terminal AI (Grok while another is running) is refused by the server (`busy`), which the dialog's cancel flow handles.
+  const busyBackends = new Set();
+  if (login && login.phase === "running" && login.backend) busyBackends.add(login.backend);
+  if (active && active.phase !== "done" && !(active.phase === "failed" && active.reason) && active.backend) busyBackends.add(active.backend);
+  if (machineActive) busyBackends.add("claude-code");
+  if (install.starting) busyBackends.add(install.starting);
+  if (install.run && install.run.phase === "running" && install.run.backend) busyBackends.add(install.run.backend);
+  const running = (backend) => busyBackends.has(backend);
   if (!loaded) return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
     <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
     <${Skeleton} variant="cards" lines=${2} label=${tx("loading")} /></section>`;
@@ -241,7 +251,7 @@ export function AccountsView({ instances, stageAgent, stageDefault, openAgent, r
   const clis = (view && view.clis) || [];
   return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
     <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
-    ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running} openAgent=${openAgent} onMove=${begin((row) => setMove({ cli, row }))} stageDefault=${stageDefault}
+    ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running(cli.backend)} openAgent=${openAgent} onMove=${begin((row) => setMove({ cli, row }))} stageDefault=${stageDefault}
       onAdd=${begin((machine) => setAdding(machine ? { cli, machine } : cli))} onRemove=${begin((row) => setRemoving({ cli, row }))} onSignIn=${begin((target) => (target.machine ? openMachineSignIn(target) : openSignIn(target)))}
       onSignOut=${begin((row, mode) => setSigningOut({ cli, row, mode }))} />`)}
     ${move ? html`<${MoveDialog} cli=${move.cli} row=${move.row} instances=${instances} stageAgent=${stageAgent} rooms=${rooms} stageClassic=${stageClassic} onClose=${() => setMove(null)} />` : null}

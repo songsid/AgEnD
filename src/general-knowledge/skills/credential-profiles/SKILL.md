@@ -118,6 +118,25 @@ Accounts** (**Move agents here…**, and each CLI's **Fleet default**). Settings
 refuses a signed-out profile and names its login command.
 Never hand-edit `fleet.yaml`.
 
+### A ClassicBot room (#3715)
+
+A ClassicBot room is not in `fleet.yaml`, but its account is switched the same way:
+
+```
+update_instance_config(
+  name: "classic-room-0001",
+  config: { backend_options: { "claude-code": { credential_profile: "personal" } } },
+)
+```
+
+For a room this is the **only** thing `update_instance_config` changes; any other
+key is refused, as before. AgEnD writes only that room's lines in `classicBot.yaml`
+(comments and other rooms stay), restarts the room as a Settings save does (Claude
+Code's conversation goes along), and the reply's `launched_profile` is the account
+the room actually restarted on. `null` goes back to the fleet default. An account
+that does not exist on this host or is not signed in is refused, with nothing
+written. Never hand-edit `classicBot.yaml` for this.
+
 A fleet admin can also add a named account (**+ Add account**: creates its
 folder, then signs it in) and remove one (**Remove…**: deletes its folder, its
 sign-in and, for Claude Code, its own conversation copies) from that page.

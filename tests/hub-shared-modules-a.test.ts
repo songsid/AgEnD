@@ -41,7 +41,8 @@ describe("where the shared chat modules are served (#3226 PR A)", () => {
   });
   it("the Hub's own module list holds only Hub modules: it reaches the shared ones through /assets/", () => {
     expect([...HUB_UI_MODULES]).toEqual(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-grant-strings.js", "hub-button-actions.js", "hub-preview.js", "hub-attachments.js",
-      "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js"]);   // #3298 S-89/S-90
+      "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js",   // #3298 S-89/S-90
+      "hub-group-search.js", "hub-join-steps.js"]);   // Hub UX U2 (M-2932)
   });
 });
 

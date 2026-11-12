@@ -99,7 +99,7 @@ describe("“Cancel sign-in” ends it and closes the dialog (#3212)", () => {
   it("posts the cancel, says so, and closes", async () => {
     const closed = await resumed(RUNNING);
     fire(btn("Cancel connecting"), "click"); await settle(8);
-    expect(cancels()).toEqual([{ method: "POST", url: CANCEL, body: {} }]);        // once: the close that follows must not cancel a second time; the button's own cancel stays the plain one
+    expect(cancels()).toEqual([{ method: "POST", url: CANCEL, body: { backend: "claude-code" } }]);        // once: the close that follows must not cancel a second time; AGEND-215: the button names the backend of the sign-in it ends
     expect(closed).toEqual([1]);
   });
   it("in zh-TW: 關閉 ends it too", async () => {

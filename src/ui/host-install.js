@@ -225,10 +225,10 @@ export function VersionLine({ row, label, blocked = false }) {
   const u = row.cliUpdate;
   if (!u || !hostInstallOffered()) return null;
   const installed = u.installed || row.version || "?";
-  const text = u.latest ? th(u.state === "current" ? "verLatestCurrent" : u.state === "newer" ? "verLatestNewer" : "verLatestBehind", installed, u.audited)
+  // AGEND-223: a version that could not be read says so, for the vendor-latest CLIs too (it used to fall into the "{0} is installed" line with "?" as the version).
+  const text = u.state === "unknown" ? th("verUnknown", u.audited) : u.latest ? th(u.state === "current" ? "verLatestCurrent" : u.state === "newer" ? "verLatestNewer" : "verLatestBehind", installed, u.audited)
     : u.state === "current" ? th("verCurrent", installed, u.audited)
     : u.state === "newer" ? th("verNewer", installed, u.audited)
-    : u.state === "unknown" ? th("verUnknown", u.audited)
     : u.via === "self" ? th("verSelf", installed, u.audited)
     : th("verBehind", installed, u.audited);
   const run = runFor(state, row.backend);
