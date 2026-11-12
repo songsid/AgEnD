@@ -21707,7 +21707,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (backend === "claude-code" && signOutDeps.platform === "darwin") {
       const dry = removeAccountProfile(this.dataDir, this.removalRequest(backend, name, confirm, null), undefined, { dryRun: true });
       if (!dry.ok) return refused(dry);
-      const claim = this.loginWindow.tryClaim("web", backend);
+      const claim = this.loginWindow.tryClaim("account", backend);
       if (!claim) return refused({ ok: false, error: "signing_in" });
       const step = await this.withAccountWriter(claim, async deps => {
         const out = await signOutAccount(this.dataDir, { backend, profile, confirm: true, signingIn: false }, deps);
@@ -21815,7 +21815,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #3305 review P2-3: the logout holds the shared login window from before it runs until its cleanup is done — no
     // sign-in (chat, dashboard, install) and no other logout starts meanwhile; one already running refuses this.
     const signingIn = (this.loginController?.signingIn(backend, named) ?? false) || (named !== null && (this.profileSignInsInstance?.signingIn(backend, named) ?? false));
-    const claim = signingIn ? null : this.loginWindow.tryClaim("web", backend);
+    const claim = signingIn ? null : this.loginWindow.tryClaim("account", backend);
     let result: SignOutResult;
     if (!claim) result = { ok: false, error: "signing_in" };
     else result = await this.withAccountWriter(claim, deps => signOutAccount(this.dataDir, { backend, profile: profile ?? null, confirm, signingIn: false }, deps));

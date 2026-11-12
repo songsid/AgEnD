@@ -24,8 +24,12 @@
  */
 import { t } from "./locale.js";
 
-/** "keepalive" (#3292): a few seconds of `claude auth status` / `codex app-server` refreshing one idle sign-in. */
-export type LoginWindowKind = "web" | "install" | "keepalive";
+/**
+ * "web": a sign-in (terminal, browser or named account) — the only kind the dashboard can end with a button.
+ * "install": an installer window. "keepalive" (#3292): a few seconds of `claude auth status` / `codex app-server` refreshing one idle sign-in.
+ * "account" (AGEND-207): a sign-out or Remove of that backend's account — short, and not cancellable by the "Cancel that connection" button.
+ */
+export type LoginWindowKind = "web" | "install" | "keepalive" | "account";
 
 export interface LoginWindowClaim {
   readonly id: number;
