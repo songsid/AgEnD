@@ -1,0 +1,45 @@
+/* #3727 (M-2973): the image viewer's annotation editor (image-annotate.js), inside the viewer's dark dialog. Linked by its
+   module (an older app.css lacks it). Classes only (#1300). */
+.lb .an { position: absolute; inset: 0; display: flex; flex-direction: column; color: var(--media-ink); }
+.lb .an-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); background: var(--media-bar); }
+.lb .an-name { flex: 1 1 8em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
+.lb .an-tools, .lb .an-colours, .lb .an-history { display: inline-flex; align-items: center; gap: 4px; }
+.lb .an .btn { color: var(--media-ink); background: var(--media-btn); border-color: var(--media-line); min-width: 36px; min-height: 36px; justify-content: center; }
+.lb .an .btn:disabled { opacity: 0.45; }
+.lb .an .btn:not(.btn-primary):hover, .lb .an .btn:not(.btn-primary):focus-visible { color: var(--media-ink); background: var(--media-btn-on); }
+.lb .an .an-tool.on { background: var(--media-btn-on); border-color: var(--media-ink); }
+.lb .an .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.lb .an-glyph { font-size: 1.1em; line-height: 1; }
+/* A swatch: a button (36 px; 44 px on touch) holding its colour disc. */
+.lb .an-colour { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; cursor: pointer; }
+.lb .an-dot { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--media-line); box-sizing: border-box; }
+.lb .an-colour.on .an-dot { border-color: var(--media-ink); outline: 2px solid var(--media-ink); outline-offset: 2px; }
+.lb .an-colour:focus-visible { outline: 2px solid var(--media-ink); outline-offset: 1px; }
+.lb .an-colour-red { background: var(--mark-red); }
+.lb .an-colour-yellow { background: var(--mark-yellow); }
+.lb .an-colour-blue { background: var(--mark-blue); }
+.lb .an-colour-white { background: var(--mark-white); }
+.lb .an-close { margin-left: auto; }
+.lb .an-text { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); background: var(--media-panel); }
+.lb .an-text-label { flex: 1; display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-sm); }
+.lb .an-text input { flex: 1; min-width: 0; color: var(--media-ink); background: var(--media-btn); border: 1px solid var(--media-line); border-radius: 6px; padding: 6px 8px; font: inherit; }
+.lb .an-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: var(--s-3); box-sizing: border-box; overflow: hidden; }
+/* The canvas keeps its own pixel size and is shown fitted; drawing maps the pointer back to canvas pixels. */
+.lb .an-canvas { max-width: 100%; max-height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.lb .an-cursor-pen, .lb .an-cursor-box, .lb .an-cursor-arrow { cursor: crosshair; }
+.lb .an-cursor-text { cursor: text; }
+.lb .an-note { opacity: 0.85; }
+.lb .an-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); padding: var(--s-2) var(--s-3) calc(var(--s-2) + env(safe-area-inset-bottom, 0px)); background: var(--media-bar); }
+@media (max-width: 480px) {
+  /* The title and ✕ on the first row; the tools wrap below. */
+  .lb .an-name { order: -2; flex: 1 1 0; }
+  .lb .an-close { order: -1; margin-left: 0; }
+  .lb .an-bar > :not(.an-name):not(.an-close) { order: 0; }
+  .lb .an-tools { flex-basis: 100%; }
+  .lb .an-actions .btn { flex: 1; }
+}
+@media (pointer: coarse) {
+  .lb .an .btn, .lb .an .icon-btn { min-width: 44px; min-height: 44px; }
+  .lb .an-colour { width: 44px; height: 44px; }
+}

@@ -25,6 +25,8 @@ export interface BrowserBackendSignInSnapshot {
   states: Partial<Record<OnboardingBackend, AuthCheckResult | "console_only" | "not_installed">>;
   login: StructuredSignInView | null;
   ready: boolean;
+  /** Only in the answer to a start that CREATED a run: that run's id. A start that joined a run already there (another tab's, a double click) carries none — nobody may end it as "mine". */
+  started?: string;
 }
 type Run = { owner: object; backend: StructuredBackend; session: StructuredSignIn };
 
@@ -57,7 +59,7 @@ export class BrowserBackendSignIns {
   }
   get activeBackend(): StructuredBackend | null { return this.run && !this.terminal(this.run) ? this.run.backend : null; }
   private loginMayWrite(backend: OnboardingBackend): boolean {
-    return this.lock.current?.backend === backend || (this.run?.backend === backend
+    return this.lock.heldFor(backend) !== null || (this.run?.backend === backend
       && (!this.terminal(this.run) || this.run.session.view(this.run.owner).reason === "cleanup_failed"));
   }
   get ready(): boolean {
@@ -140,7 +142,7 @@ export class BrowserBackendSignIns {
     if (!this.current(owner) || this.run !== run) { await session.cancel(); throw new Error("signin_session_expired"); }
     if (!installed.includes(backend)) { await session.cancel(); this.states[backend] = "not_installed"; return this.snapshot(owner); }
     await session.start(relogin);
-    return this.snapshot(owner);
+    return { ...this.snapshot(owner), started: session.view(owner).id };
   }
   async input(owner: object, id: string, revision: number, action: SignInAction): Promise<BrowserBackendSignInSnapshot> {
     if (!this.current(owner) || !this.run || this.run.owner !== owner) throw new Error("signin_session_expired");
@@ -148,10 +150,14 @@ export class BrowserBackendSignIns {
     if (result !== "accepted") throw new Error(`signin_action_${result}`);
     return this.snapshot(owner);
   }
-  async cancel(owner: object): Promise<BrowserBackendSignInSnapshot> {
+  /**
+   * `id` (AGEND-203): only the run with that id — a dialog that is closed ends the run IT started, never one another tab began since.
+   * `backend` (AGEND-215): only a run on that backend — a dialog that has no run id of its own (it never started one) still never ends another backend's.
+   */
+  async cancel(owner: object, id?: string, backend?: string): Promise<BrowserBackendSignInSnapshot> {
     if (!this.current(owner)) throw new Error("signin_session_expired");
     const run = this.run;
-    if (run) await run.session.cancel();
+    if (run && (id === undefined || run.session.view(run.owner).id === id) && (backend === undefined || run.backend === backend)) await run.session.cancel();
     if (run?.session.view(owner).reason === "cleanup_failed") throw new Error("signin_cleanup_failed");
     return this.snapshot(owner);
   }

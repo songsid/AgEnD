@@ -83,7 +83,8 @@ function make(over: Partial<LoginControllerDeps> & { config?: Record<string, unk
     claimWindow: backend => lock.tryClaim("web", backend),
     releaseWindow: c => { lock.release(c); },
     isClaimCurrent: c => lock.isCurrent(c),
-    windowBusyMessage: () => lock.busyMessage(),
+    windowBusyMessage: backend => lock.busyMessage(backend),
+    windowHolder: backend => lock.holderFor(backend),
     checkAuth: async () => "invalid",
     createSession: (spec, ev) => { const s = new FakeSession(spec, ev); sessions.push(s); return s as never; },
     createHttp: (s, _l, o) => new FakeHttp(s as unknown as FakeSession, o) as never,
@@ -261,18 +262,49 @@ describe("authorization gate", () => {
     expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "claude-code"));
   });
 
-  it("one window fleet-wide: an active web login, or a held relay/install claim, blocks a second start", async () => {
+  it("one window per backend, one terminal session per controller: an active web login, or a held relay/install claim, blocks a second start on its backend", async () => {
     const { controller, sessions, lock } = make();
     expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "claude-code"));
     expect(controller.isActive()).toBe(true);
+    // The controller keeps one terminal session at a time: another backend waits, and the answer names the one that runs.
     expect(await controller.start("grok", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.busy", "claude-code"));
     expect(sessions).toHaveLength(1);
     const lock2 = new LoginWindowLock();
-    lock2.tryClaim("install", "grok");
+    lock2.tryClaim("install", "claude-code");
     const { controller: c2, sessions: s2 } = make({ lock: lock2 });
     expect(await c2.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("install.busy"));
     expect(s2).toHaveLength(0);
     expect(lock.isHeld).toBe(true);
+  });
+
+  it("AGEND-203: a sign-in held on ANOTHER backend (the dashboard's Claude Code one) does not block this backend's start", async () => {
+    const { controller, sessions, lock } = make();
+    const claude = lock.tryClaim("web", "claude-code");                             // e.g. an unfinished structured sign-in
+    expect(await controller.start("grok", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.started", "grok"));
+    expect(sessions).toHaveLength(1);
+    expect(lock.heldFor("claude-code")).toBe(claude);
+    expect(lock.heldFor("grok")).not.toBeNull();
+    // …but the same backend is held, and a dashboard asker is told which sign-in to end — in words that need no chat command.
+    const busy: string[] = [];
+    const sink = { isAdmin: () => true, confirm: () => {}, hint: () => {}, terminal: () => {}, ended: () => {}, busy: (b: string) => { busy.push(b); } };
+    const { controller: c2, lock: l2 } = make();
+    l2.tryClaim("web", "claude-code");
+    const web = { ...chat(adapterOf("discord"), "web:abc"), web: sink };
+    expect(await c2.start("claude-code", web, CONFIRMED)).toBe(t("login.busy_web", "claude-code"));
+    expect(busy).toEqual(["claude-code"]);
+    expect(t("login.busy_web", "claude-code")).not.toContain("/login");
+    setLocale("zh-TW");
+    expect(t("login.busy_web", "claude-code")).toContain("claude-code"); expect(t("login.busy_web", "claude-code")).not.toContain("/login");
+  });
+
+  it("AGEND-203: while this controller runs one backend's terminal login, another backend's dashboard start is told whose it is (and can end it)", async () => {
+    const { controller } = make();
+    expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "claude-code"));
+    const busy: string[] = [];
+    const sink = { isAdmin: () => true, confirm: () => {}, hint: () => {}, terminal: () => {}, ended: () => {}, busy: (b: string) => { busy.push(b); } };
+    expect(await controller.start("grok", { ...chat(adapterOf("discord"), "web:abc"), web: sink }, CONFIRMED)).toBe(t("login.busy_web", "claude-code"));
+    expect(busy).toEqual(["claude-code"]);
+    expect(controller.pendingBackend).toBe("claude-code");
   });
 
   it("B1: two concurrent starts whose pre-checks resolve together — exactly one session; the other sees busy", async () => {
@@ -281,14 +313,19 @@ describe("authorization gate", () => {
     // The confirmed path has no awaits before claiming; exercise the unconfirmed path (pre-check await) racing a confirmed one.
     const { controller, sessions, buttons, lock } = make({ checkAuth: async () => { await gate; return "invalid"; } });
     const a = controller.start("claude-code", chat(adapterOf("discord")));            // parks in pre-check, window claimed
-    const b = controller.start("grok", chat(adapterOf("discord")), CONFIRMED);   // must NOT get the window meanwhile
+    const b = controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED);   // must NOT get the backend's window meanwhile
     expect(await b).toBe(t("login.busy", "claude-code"));
+    // Another backend's confirmed start is not held up by a mere pre-check, and two confirmed starts cannot both pass.
+    const c = controller.start("grok", chat(adapterOf("discord")), CONFIRMED);
+    const d = controller.start("codex", chat(adapterOf("discord")), CONFIRMED);
+    expect(await d).toBe(t("login.busy", "grok"));
+    expect(await c).toBe(t("login.started", "grok"));
     release();
     expect(await a).toBeNull();                                                 // buttons posted, window released
     expect(buttons).toHaveLength(1);
-    expect(sessions).toHaveLength(0);
-    expect(lock.isHeld).toBe(false);
-    expect(await controller.start("grok", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.started", "grok"));
+    expect(sessions).toHaveLength(1);
+    expect(lock.heldFor("claude-code")).toBeNull();
+    expect(lock.heldFor("grok")).not.toBeNull();
   });
 });
 

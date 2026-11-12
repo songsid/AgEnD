@@ -161,10 +161,14 @@ describe("FleetManager", () => {
       accountSignOutDeps: { platform: "linux", run: r.run, keychainHas: noKeychain } });
     expect(await signOut(s.fm, "claude-code", "work", true, "x")).toEqual({ ok: false, error: "signing_in" });
     s.fm.loginController = { signingIn: () => false, activeBackend: null };
-    const held = s.fm.loginWindow.tryClaim("web", "codex");               // any sign-in or install holds the one window
+    const held = s.fm.loginWindow.tryClaim("web", "claude-code");         // a sign-in or install holds its backend's window
     expect(await signOut(s.fm, "claude-code", "work", true, "x")).toEqual({ ok: false, error: "signing_in" });
     s.fm.loginWindow.release(held);
     expect(r.runs).toEqual([]);
+    // AGEND-203: another backend's window does not hold this logout up.
+    const elsewhere = s.fm.loginWindow.tryClaim("web", "codex");
+    expect(await signOut(s.fm, "claude-code", "work", true, "x")).toEqual({ ok: true });
+    s.fm.loginWindow.release(elsewhere);
   });
   it("Remove on macOS: Claude Code's own logout first — only once every Remove check passed; an item left is reported", async () => {
     const { data, home } = profileDir("claude-code", "spare");
@@ -299,7 +303,7 @@ describe("#3305 review: what can change while a logout runs", () => {
     const p = signOut(fm, "claude-code", "work", true, "x");
     await h.began;
     expect(fm.loginWindow.tryClaim("web", "claude-code"), "a sign-in can't start").toBe(null);
-    expect(await signOut(fm, "codex", null, true, "x"), "nor a second logout").toEqual({ ok: false, error: "signing_in" });
+    expect(await signOut(fm, "claude-code", null, true, "x"), "nor a second logout of the same backend").toEqual({ ok: false, error: "signing_in" });
     h.gate.release(); expect(await p).toEqual({ ok: true });
     const after = fm.loginWindow.tryClaim("web", "claude-code");
     expect(after, "released once done").not.toBe(null);
@@ -363,9 +367,9 @@ describe("#3305 review r1 remainders", () => {
     let ended!: () => void; const gone = new Promise<void>((r) => { ended = r; });
     const fm = fmSelf(data, async () => ({ code: null, timedOut: true, gone }));
     expect(await signOut(fm, "claude-code", "work", true, "x")).toEqual({ ok: false, error: "failed" });
-    expect(fm.loginWindow.tryClaim("web", "codex"), "held while the child may still write").toBe(null);
+    expect(fm.loginWindow.tryClaim("web", "claude-code"), "held while the child may still write").toBe(null);
     ended(); await new Promise((r) => setTimeout(r, 5));
-    const after = fm.loginWindow.tryClaim("web", "codex"); expect(after).not.toBe(null); fm.loginWindow.release(after);
+    const after = fm.loginWindow.tryClaim("web", "claude-code"); expect(after).not.toBe(null); fm.loginWindow.release(after);
     const ok = fmSelf(data, async () => ({ code: 0, gone: Promise.resolve() }));
     expect(await signOut(ok, "claude-code", "work", true, "x")).toEqual({ ok: true });
     await new Promise((r) => setTimeout(r, 5));

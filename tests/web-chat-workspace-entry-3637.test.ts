@@ -31,6 +31,7 @@ describe("loading and delayed quotation retain their exact navigation intent", (
     const app = await import("/assets/app-store.js") as any;
     app.applyStatus({ instances: [{ name: "alpha" }, { name: "gamma", display_name: "AgEnD Leader" }] });
     const target = entry.quoteTargets("alpha")[0];
+    expect(target.name).toBe("gamma");
     expect(target.label).toBe("Quote into the other pane (AgEnD Leader)");
     const { setLang } = await import("/assets/app-i18n.js") as any;
     setLang("zh-TW", { store: false });

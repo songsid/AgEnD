@@ -2559,6 +2559,10 @@ export class Daemon extends EventEmitter {
     this.peerWorkingDirectories = peers;
   }
 
+  /** AGEND-181/197: whether the next launch asks for thinking summaries (web.log_thinking, off by default), read at each spawn. */
+  private thinkingSummaries: (() => boolean) | undefined;
+  setThinkingSummaries(on: (() => boolean) | undefined): void { this.thinkingSummaries = on; }
+
   /** #1005: read at each spawn so an edited status_emojis reaches the next instructions. */
   private statusEmojiAvoidList: (() => string[] | undefined) | undefined;
   setStatusEmojiAvoidList(list: (() => string[] | undefined) | undefined): void {
@@ -12539,6 +12543,7 @@ export class Daemon extends EventEmitter {
       agentPort: isCliMode ? agentPort : undefined,
       backendOptions,
       peerWorkingDirectories: this.peerWorkingDirectories,
+      ...(this.thinkingSummaries?.() === true ? { thinkingSummaries: true } : {}),
     };
   }
 

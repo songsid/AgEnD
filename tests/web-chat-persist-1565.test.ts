@@ -258,7 +258,7 @@ describe("files across a restart", () => {
     const p2 = await processWith(h, "bb");
     expect([p2.hist.list("alpha")[0]!.attachments, p2.ledger.read(e.id)]).toEqual([[{ gone: true, kind: "document", name: "waiting.txt", size: 7, mime: "text/plain; charset=utf-8" }], null]);
   });
-  it("no buttons, ticks or message ids are written", async () => {
+  it("no buttons, ticks or message ids are written (AGEND-181: a person's message keeps only `anchor`, the id its transcript names it by — `messageId` itself is still not written)", async () => {
     const h = home();
     const p = await processWith(h, "aa");
     say(p.hist, "alpha", "hi", { role: "agent", buttons: { id: "d".repeat(32), labels: ["Go"], values: ["v-secret"] } });
@@ -266,7 +266,9 @@ describe("files across a restart", () => {
     p.hist.setDelivery("alpha", "web-zz-1", "processing");
     await p.s.flush();
     const rows = JSON.parse(readFileSync(fileOf(h, "alpha"), "utf8")).messages as Array<Record<string, unknown>>;
-    expect(rows.map(r => Object.keys(r).sort())).toEqual([["boot", "id", "instance", "role", "sender", "text", "ts"], ["boot", "id", "instance", "role", "sender", "text", "ts"]]);
+    expect(rows.map(r => Object.keys(r).sort())).toEqual([["boot", "id", "instance", "role", "sender", "text", "ts"], ["anchor", "boot", "id", "instance", "role", "sender", "text", "ts"]]);
+    expect(rows.every(r => !("messageId" in r))).toBe(true);
+    expect(rows[1]!.anchor).toBe("web-zz-1");
   });
   it("an id leaves with its message when it falls out of the window — before and after a restart", async () => {
     const h = home();

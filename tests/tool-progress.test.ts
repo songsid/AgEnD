@@ -45,6 +45,13 @@ describe("summarizeProgress — claude-code shapes", () => {
     expect(label).toContain("daemon.ts");
   });
 
+  it("AGEND-210: shortens a long Windows path (backslashes) too", () => {
+    const label = summarizeProgress("Read", { file_path: "C:\\Users\\someone\\projects\\a-long-project-name\\src\\deep\\daemon.ts" });
+    expect(label).toContain("…/");
+    expect(label).toContain("src/deep/daemon.ts");
+    expect(label).not.toContain("Users");
+  });
+
   it("labels edits and writes as editing", () => {
     expect(summarizeProgress("Edit", { file_path: "/a/b.ts" })).toContain("✏️ 編輯檔案");
     expect(summarizeProgress("Write", { file_path: "/a/b.ts" })).toContain("✏️ 編輯檔案");

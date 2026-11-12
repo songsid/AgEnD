@@ -247,6 +247,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "accounts-keepalive.css": { file: join("shared", "accounts-keepalive.css"), type: "text/css; charset=utf-8" },
   // #3160: Follow agent's stylesheet (linked by workspace-panel.js; an older workspace.css or app.css lacks it).
   "workspace-follow.css": { file: join("shared", "workspace-follow.css"), type: "text/css; charset=utf-8" },
+  // #3727: the image viewer's annotation editor (linked by image-annotate.js; an older app.css lacks it).
+  "image-annotate.css": { file: join("shared", "image-annotate.css"), type: "text/css; charset=utf-8" },
   // The task board's list, filters, card menu and Insights (#3169-#3171): linked by fleet-task-view.js (an older app.css lacks it).
   "task-board.css": { file: join("shared", "task-board.css"), type: "text/css; charset=utf-8" },
   // Settings -> Runtime: the install tabs, command cards, reinstall notice and the account list (credential profiles, which account each sign-in is), linked by panel-runtimes.js; an older app.css lacks it.

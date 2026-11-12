@@ -1649,6 +1649,9 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
     // (--settings): claude 2.1.286 then never paints the dialog (verified live).
     // Only when the flag is actually passed — see buildCommand.
     if (config.skipPermissions !== false) settings.skipDangerousModePermissionPrompt = true;
+    // AGEND-181: without this the interactive TUI writes empty thinking blocks to its transcript (the API returns no
+    // summary unless asked); with it they carry text the chat timeline can show. Applies at the next launch.
+    if (config.thinkingSummaries === true) settings.showThinkingSummaries = true;
     writeFileSync(
       join(this.instanceDir, "claude-settings.json"),
       JSON.stringify(settings),

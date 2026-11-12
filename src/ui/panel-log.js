@@ -1,6 +1,8 @@
-// #1218 phase 1: one instance's Log (紀錄) — its work step by step: what it was asked, what it answered (never its
-// thinking), each tool call with its arguments and result, errors, where each turn ended, and fleet events (a crash, a
-// restart, a prompt waiting). Between View and Details (/ui/log/<name>). Behind the session gate (/ui/js/); offered on
+// #1218 phase 1: one instance's Log (紀錄) — its work step by step: what it was asked, what it answered, each tool call with its
+// arguments and result, errors, where each turn ended, and fleet events (a crash, a restart, a prompt waiting). This page never asks
+// for thinking (GET /ui/steps without `thinking`); the chat's activity timeline does, for an admin session on the local dashboard
+// (AGEND-181, chat-activity.js) — the step row is the one they share (log-row.js), so the row can draw thinking, this page just never
+// receives any. Between View and Details (/ui/log/<name>). Behind the session gate (/ui/js/); offered on
 // the public link too (the user's decision), read-only, with the same masking.
 //
 // On demand only (the user's decision on load): off by default (web.log_tab) — the tab says so, and offers to turn it
@@ -20,11 +22,11 @@ import { PanelHeader, setTitle, statusClass, statusLabel, openDrawer } from "/as
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderSlot, HeaderTools } from "/assets/header-tools.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
-import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
-import "/assets/chat-strings.js";
-import { chatTime, chatTimeFull } from "/assets/chat-time.js";
 import { confirmedWrite } from "./settings-confirm.js";
+import { LogRow, mergeSteps, timeline, collapse, tl } from "./log-row.js";
+// The step helpers live with the row (log-row.js, shared with the chat's timeline); the Log's own tests read them here.
+export { mergeSteps, timeline, collapse };
 
 register("log", {
   en: {
@@ -47,15 +49,6 @@ register("log", {
     empty: "Nothing here yet.", olderLoad: "Load older steps", olderStart: "The start of what can be read.", loading: "Loading…",
     olderTrimmed: "Older steps were let go to keep this page light. Open the Log again to read further back.",
     all: "All", tools: "Tools", errors: "Errors", filter: "Show", live: "Live", reset: "A new conversation began: showing it from its latest steps.",
-    user: "Asked", assistant: "Replied", error: "Error", errorCode: "Error {0}", turnEnd: "Turn ended", turnEndIn: "Turn ended · {0}",
-    compacted: "Conversation compacted", turn: "Turn",
-    running: "running", done: "done", failed: "failed", interrupted: "interrupted", exit: "exit {0}",
-    showScreen: "Show what was on screen", hideScreen: "Hide what was on screen",
-    showOutput: "Show output", hideOutput: "Hide output", args: "Arguments", output: "Output", noOutput: "No output.",
-    showAll: "Show all", showLess: "Show less", cut: "… {0} more characters not shown.", tooLarge: "Output of {0}: only its start is shown.",
-    times: "×{0}", newer: "{0} new",
-    cat_read: "Read", cat_edit: "Edit", cat_search: "Search", cat_run: "Run", cat_web: "Web", cat_mcp: "MCP", cat_agent: "Sub-agent",
-    cat_plan: "Plan", cat_message: "Message", cat_other: "Tool", plan_items: "{0} items",
     ev_crash_respawn: "Crashed and restarted", ev_crash_loop: "Keeps crashing", ev_hang_detected: "Looks stuck", ev_hang_action: "Stuck: acted on",
     ev_instance_paused: "Paused", ev_instance_resumed: "Resumed", ev_interactive_prompt: "Waiting at a prompt", ev_interactive_prompt_assist: "Prompt: asked for help", ev_remote_card: "Asked a question (posted to chat)", ev_remote_card_answer: "Question answered from chat",
     ev_dialog_parked: "A dialog waits", ev_model_failover: "Switched to another model", ev_model_recovered: "Model back",
@@ -86,15 +79,6 @@ register("log", {
     empty: "目前還沒有內容。", olderLoad: "載入更早的步驟", olderStart: "已經是能讀到的最早內容。", loading: "載入中…",
     olderTrimmed: "為了讓頁面保持輕快，較早的步驟已移出。重新開啟「紀錄」就能往前讀。",
     all: "全部", tools: "工具", errors: "錯誤", filter: "顯示", live: "即時", reset: "開始了新的對話：從它最新的步驟顯示。",
-    user: "收到要求", assistant: "回覆", error: "錯誤", errorCode: "錯誤 {0}", turnEnd: "回合結束", turnEndIn: "回合結束 · {0}",
-    compacted: "對話已壓縮", turn: "回合",
-    running: "執行中", done: "完成", failed: "失敗", interrupted: "中斷", exit: "結束碼 {0}",
-    showScreen: "顯示當時的畫面", hideScreen: "隱藏當時的畫面",
-    showOutput: "顯示輸出", hideOutput: "隱藏輸出", args: "參數", output: "輸出", noOutput: "沒有輸出。",
-    showAll: "顯示全部", showLess: "收合", cut: "… 還有 {0} 個字元沒有顯示。", tooLarge: "輸出共 {0}，只顯示開頭。",
-    times: "×{0}", newer: "{0} 則新的",
-    cat_read: "讀取", cat_edit: "編輯", cat_search: "搜尋", cat_run: "執行", cat_web: "網頁", cat_mcp: "MCP", cat_agent: "子 agent",
-    cat_plan: "計畫", cat_message: "訊息", cat_other: "工具", plan_items: "{0} 項",
     ev_crash_respawn: "當機後重新啟動", ev_crash_loop: "反覆當機", ev_hang_detected: "看起來卡住了", ev_hang_action: "卡住：已處理",
     ev_instance_paused: "已暫停", ev_instance_resumed: "已繼續", ev_interactive_prompt: "停在提示上等待", ev_interactive_prompt_assist: "提示：已請求協助", ev_remote_card: "提出問題（已貼到聊天）", ev_remote_card_answer: "問題已從聊天回答",
     ev_dialog_parked: "有對話框在等待", ev_model_failover: "改用另一個模型", ev_model_recovered: "模型恢復",
@@ -106,7 +90,6 @@ register("log", {
     ev_supervision_ended: "監督結束", ev_tmux_server_crash: "tmux 當掉", ev_malformed_tool_call: "格式錯誤的工具呼叫", ev_health_check_error: "健康檢查錯誤", ev_context_lost: "改用全新對話：context 遺失", ev_working_state: "工作狀態紀錄", ev_kiro_reconcile: "Kiro 對話接續處理",
   },
 });
-const tl = (key, ...a) => t(`log.${key}`, ...a);
 /** Why a kiro Log shows fleet events only (kiro-log-gate.ts): each is worded above. */
 export const KIRO_REASONS = new Set(["kiro_not_running", "kiro_v3", "kiro_engine_unknown", "kiro_legacy", "kiro_fresh", "kiro_v2_root", "kiro_no_profile", "kiro_session_unobservable"]);
 
@@ -116,87 +99,8 @@ export const POLL_MS = 4000;
 export const RENEW_MS = 30_000;
 /** Steps kept in the page; older ones beyond it are dropped from the top (the server still has them). */
 export const PAGE_MAX = 1000;
-/** A text longer than this many lines is folded until opened. */
-const FOLD_LINES = 8;
-
-// The app's own SVG icons (never emoji: a device without an emoji font shows boxes).
-const CAT_ICON = { read: "file", edit: "edit", search: "search", run: "code", web: "globe", mcp: "plug", agent: "team", plan: "tasks", message: "send", other: "sliders" };
-const KIND_ICON = { user: "user", assistant: "bot", error: "alert", turn_end: "stop", state: "info", event: "bell" };
-
-function size(bytes) {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${bytes} B`;
-}
-function duration(ms) {
-  if (!(ms >= 0)) return "";
-  if (ms < 1000) return `${ms} ms`;
-  const s = ms / 1000;
-  if (s < 60) return `${s < 10 ? s.toFixed(1) : Math.round(s)} s`;
-  const m = Math.floor(s / 60);
-  return `${m} m ${Math.round(s - m * 60)} s`;
-}
-const eventLabel = (type) => { const k = `log.ev_${type}`; const v = t(k); return v === k ? String(type).replace(/_/g, " ") : v; };
-
-/**
- * Merge `incoming` steps into `list` (array, in order): one with an id already there replaces it in place (a result
- * completing its call); a new one is added — at the end, or before everything when `older`. Returns a new array.
- */
-export function mergeSteps(list, incoming, older = false) {
-  const at = new Map(list.map((s, i) => [s.id, i]));
-  const fresh = new Map();
-  const next = list.slice();
-  const added = [];
-  for (const s of incoming) {
-    const i = at.get(s.id);
-    if (i !== undefined) {
-      // An older page never overwrites what a newer read already said about the same step — except to name a call the
-      // newer page knew only by its result (the call's record was older than that page): its tool, subject and input.
-      // A newer read that saw only a call's result (the call was before where it read) never unnames the call: its tool,
-      // category and start time stay; the outcome is the newer read's.
-      if (!older) next[i] = s.kind === "tool" && !s.tool && next[i].tool
-        ? { ...next[i], ...s, tool: next[i].tool, cat: next[i].cat, ts: next[i].ts }
-        : { ...next[i], ...s };
-      else if (next[i].kind === "tool" && !next[i].tool && s.tool) {
-        const { tool, cat, subject, input, ts } = s;
-        next[i] = { ...next[i], tool, cat, ...(subject !== undefined ? { subject } : {}), ...(input !== undefined ? { input } : {}), ...(ts ? { ts } : {}) };
-      }
-    } else if (fresh.has(s.id)) {
-      // The same step twice in one answer (never from the server's parser, whose ids are unique): the later one wins.
-      added[fresh.get(s.id)] = { ...added[fresh.get(s.id)], ...s };
-    } else { fresh.set(s.id, added.length); added.push(s); }
-  }
-  return older ? [...added, ...next] : [...next, ...added];
-}
-
-/** Steps and fleet events in one timeline: events placed by time among the steps (steps keep their file order). */
-export function timeline(steps, events) {
-  const evs = events.slice().sort((a, b) => a.ts - b.ts || a.id - b.id);
-  const out = [];
-  let e = 0;
-  for (const s of steps) {
-    while (e < evs.length && s.ts > 0 && evs[e].ts <= s.ts) out.push({ kind: "event", ...evs[e++] });
-    out.push(s);
-  }
-  while (e < evs.length) out.push({ kind: "event", ...evs[e++] });
-  return out;
-}
 
 const isError = (x) => x.kind === "error" || (x.kind === "event" && x.type !== "working_state") || x.status === "failed" || x.status === "interrupted";
-/** Consecutive identical finished tool steps (same tool, subject and status) as one row with a count: a loop shows. */
-export function collapse(items) {
-  const out = [];
-  for (const x of items) {
-    const prev = out[out.length - 1];
-    if (prev && x.kind === "tool" && prev.kind === "tool" && x.status !== "running" && prev.status === x.status
-      && prev.tool === x.tool && (prev.subject || "") === (x.subject || "") && prev.turn === x.turn) {
-      prev.repeat = (prev.repeat || 1) + 1;
-      continue;
-    }
-    out.push({ ...x });
-  }
-  return out;
-}
 
 export function LogPanel({ route, navKey }) {
   const pane = paneContext.usePane?.();
@@ -373,7 +277,7 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
         ? html`<div class="log-older"><button type="button" class="btn btn-sm" disabled=${older.busy} onClick=${loadOlder}>${older.busy ? tl("loading") : tl("olderLoad")}</button></div>`
         : cursor.current.trimmed ? html`<p class="note log-start">${tl("olderTrimmed")}</p>`
         : steps.length ? html`<p class="note log-start">${tl("olderStart")}</p>` : null}
-      ${items.length ? html`<ol class="log-list" role="log" aria-label=${t("app.log")}>${items.map((x, i) => html`<${Row} key=${`${x.kind}:${x.id}`} x=${x} prev=${items[i - 1]} />`)}</ol>`
+      ${items.length ? html`<ol class="log-list" role="log" aria-label=${t("app.log")}>${items.map((x, i) => html`<${LogRow} key=${`${x.kind}:${x.id}`} x=${x} prev=${items[i - 1]} />`)}</ol>`
         : html`<p class="note log-empty">${tl("empty")}</p>`}`;
   }
   const tools = state.phase === "on" ? html`<div data-trust="panel-controls" class="log-bar" role="group" aria-label=${tl("filter")}>
@@ -384,54 +288,5 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
     ${tools}
     <div data-trust="panel-content" class="panel-body log-body" ref=${scroller} onScroll=${onScroll}><div class="col log-col">${content}</div></div>
   </div>`;
-}
-
-/** One line of the Log. */
-function Row({ x, prev }) {
-  const [open, setOpen] = useState(false);
-  const [full, setFull] = useState(false);
-  const time = x.ts ? chatTime(x.ts, { yesterday: (hm) => t("chat.yesterdayAt", hm) }) : "";
-  const title = x.ts ? chatTimeFull(x.ts) : "";
-  const newTurn = x.kind === "user" && prev && prev.turn !== x.turn;
-  const head = (icon, label, extra) => html`<div class="log-head"><span class="log-icon" aria-hidden="true"><${Icon} name=${icon} size=${14} /></span>
-    <span class="log-label">${label}</span>${extra || null}<span class="grow"></span><span class="log-time" title=${title}>${time}</span></div>`;
-  const text = (body, cut, bytes) => {
-    if (!body) return null;
-    const lines = body.split("\n").length;
-    const folded = !full && lines > FOLD_LINES;
-    return html`<div class=${`log-text${folded ? " folded" : ""}`}>${body}</div>
-      ${lines > FOLD_LINES ? html`<button type="button" class="link-btn log-more" onClick=${() => setFull(!full)}>${full ? tl("showLess") : tl("showAll")}</button>` : null}
-      ${cut ? html`<p class="note">${tl("cut", cut.toLocaleString())}</p>` : null}
-      ${bytes ? html`<p class="note">${tl("tooLarge", size(bytes))}</p>` : null}`;
-  };
-  let row;
-  if (x.kind === "event") {
-    // M-2269: a dialog or prompt AgEnD saw (the CLI never writes it to its transcript): its text as it was on screen,
-    // folded until asked for. Text only (a text node), masked by the server.
-    row = html`${head(KIND_ICON.event, eventLabel(x.type))}${x.detail ? html`<div class="log-text muted">${x.detail}</div>` : null}
-      ${x.screen ? html`<button type="button" class="link-btn log-toggle log-screen-toggle" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>${open ? tl("hideScreen") : tl("showScreen")}</button>` : null}
-      ${x.screen && open ? html`<div class="log-detail"><div class="log-text mono log-screen">${x.screen}</div></div>` : null}`;
-  } else if (x.kind === "user" || x.kind === "assistant") {
-    row = html`${head(KIND_ICON[x.kind], tl(x.kind))}${text(x.body, x.bodyCut)}`;
-  } else if (x.kind === "error") {
-    row = html`${head(KIND_ICON.error, x.note ? tl("errorCode", x.note) : tl("error"))}${text(x.body, x.bodyCut)}`;
-  } else if (x.kind === "turn_end") {
-    row = head(KIND_ICON.turn_end, x.durationMs ? tl("turnEndIn", duration(x.durationMs)) : tl("turnEnd"),
-      x.status && x.status !== "done" ? html`<span class=${`log-status ${x.status}`}>${tl(x.status)}</span>` : null);
-  } else if (x.kind === "state") {
-    row = head(KIND_ICON.state, x.note === "compacted" ? tl("compacted") : x.note || "");
-  } else {
-    const cat = x.cat || "other";
-    const subject = cat === "plan" && x.subject ? tl("plan_items", x.subject) : x.subject || "";
-    const status = html`<span class=${`log-status ${x.status || "done"}`}>${x.status === "running" ? html`<span class="spinner" aria-hidden="true"></span>` : null}${tl(x.status || "done")}${typeof x.exitCode === "number" && x.exitCode !== 0 ? ` · ${tl("exit", x.exitCode)}` : ""}${x.durationMs ? ` · ${duration(x.durationMs)}` : ""}</span>`;
-    const label = html`<span class="log-cat">${tl(`cat_${cat}`)}</span>${subject ? html` <span class="log-subject mono">${subject}</span>` : null}${x.tool && !subject ? html` <span class="log-tool mono muted">${x.tool}</span>` : null}`;
-    const has = !!(x.body || x.input || x.bodyBytes);
-    row = html`${head(CAT_ICON[cat] || CAT_ICON.other, label, html`${x.repeat ? html`<span class="log-repeat">${tl("times", x.repeat)}</span>` : null}${status}`)}
-      ${has ? html`<button type="button" class="link-btn log-toggle" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>${open ? tl("hideOutput") : tl("showOutput")}</button>` : null}
-      ${open ? html`<div class="log-detail">
-        ${x.input ? html`<div class="log-sec"><span class="log-sec-h">${tl("args")}</span><div class="log-text mono">${x.input}</div>${x.inputCut ? html`<p class="note">${tl("cut", x.inputCut.toLocaleString())}</p>` : null}</div>` : null}
-        <div class="log-sec"><span class="log-sec-h">${tl("output")}</span>${x.body ? text(x.body, x.bodyCut, x.bodyBytes) : html`<p class="note">${tl("noOutput")}</p>`}</div></div>` : null}`;
-  }
-  return html`<li class=${`log-item k-${x.kind}${x.status ? ` s-${x.status}` : ""}${newTurn ? " turn-start" : ""}`}>${row}</li>`;
 }
 LogPanel.workspaceVersion = 1;
