@@ -35,6 +35,14 @@
     return u;
   }
 
+  /**
+   * #3716: CJK characters and full-width punctuation — kana, CJK ideographs (and extension A, compatibility), Hangul, the CJK
+   * symbols and punctuation block (「」『』、。) and the half/full-width forms (：，（）！？；). Before a bare URL they start it; inside
+   * one they end it.
+   */
+  var CJK = "\\u3000-\\u30ff\\u3400-\\u4dbf\\u4e00-\\u9fff\\uac00-\\ud7af\\uf900-\\ufaff\\uff00-\\uffef";
+  var BARE_URL_RE = new RegExp("(^|[\\s(" + CJK + "])((?:https?:\\/\\/)[^\\s<" + CJK + "]+[^\\s<.,;:!?)\\]'\"&" + CJK + "])", "g");
+
   function link(href, label) {
     return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" data-trust="link">' + label + "</a>";
   }
@@ -97,8 +105,9 @@
       var href = safeHref(url);
       return href ? stash(store, link(href, emphasis(label))) : m;
     });
-    // bare URLs
-    s = s.replace(/(^|[\s(])((?:https?:\/\/)[^\s<]+[^\s<.,;:!?)\]'"&])/g, function (m, pre, url) {
+    // bare URLs — after the start, a space, "(" or (#3716) a CJK character / full-width punctuation ("開好了：https://…"), and
+    // ending at the first CJK character or full-width punctuation ("https://x/y交給" links https://x/y), as Discord does.
+    s = s.replace(BARE_URL_RE, function (m, pre, url) {
       var href = safeHref(url);
       return href ? pre + stash(store, link(href, url)) : m;
     });
