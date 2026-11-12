@@ -37,6 +37,7 @@ try {
   for (const name of [a, b]) fx.fm.emitSseEvent("message", { instance: name, sender: name, role: "agent", text: passage, ts: "2026-11-12T06:00:00.000Z" });
   fx.fm.webPrefs.write("operator", new Map([["theme", theme], ["lang", language], ["nav.favorites", [a]]]));
   ctx = await fx.browser.newContext({ viewport: phone ? { width: 390, height: 844 } : { width: narrow ? 1200 : 1600, height: 1000 }, colorScheme: theme, locale: language, hasTouch: phone });
+  await ctx.addInitScript({ content: "window.__name = (f) => f;" }); // tsx's keepNames helper inside serialized browser callbacks
   await ctx.addInitScript(() => {
     const Original = window.EventSource; (window as any).__streams = { active: 0, max: 0 };
     window.EventSource = class extends Original {
