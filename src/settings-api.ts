@@ -59,6 +59,9 @@ import { CompanyBrowserHostnameConflict } from "./hub/join/protocol.js";
 import { HubProtocolError, validated, uuid } from "./hub/validation.js";
 import { join } from "node:path";
 import yaml from "js-yaml";
+import { parseDocument } from "yaml";
+import { isDeepStrictEqual } from "node:util";
+import { classicProfile, normalizeBackendOptions } from "./classic-bindings.js";
 import { channelWithDefaults } from "./config.js";
 import type { Logger } from "./logger.js";
 import type { FleetConfig, RawFleetConfig } from "./types.js";
@@ -302,18 +305,69 @@ function readClassic(ctx: SettingsApiContext): Record<string, unknown> {
   }
 }
 
-function writeClassicAtomic(ctx: SettingsApiContext, classic: Record<string, unknown>): void {
+function writeClassicAtomic(ctx: SettingsApiContext, classic: Record<string, unknown>, text = yaml.dump(classic, { lineWidth: -1 })): void {
   const target = classicPath(ctx);
   const temp = `${target}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
   const mode = existsSync(target) ? statSync(target).mode : 0o600;
   noteSettingsWrite(target, readClassic(ctx), classic);
   try {
-    writeFileSync(temp, yaml.dump(classic, { lineWidth: -1 }), { encoding: "utf-8", mode });
+    writeFileSync(temp, text, { encoding: "utf-8", mode });
     renameSync(temp, target);
   } catch (err) {
     try { unlinkSync(temp); } catch { /* temp may not have been created */ }
     throw err;
   }
+}
+
+/**
+ * M-2909: write only the given leaves of classicBot.yaml (a room's fields), keeping every other byte — comments,
+ * quoting, other rooms — as it is (the way fleet-yaml-patch.ts edits fleet.yaml). The edited document must load to
+ * exactly `classic` (what was validated); if it can't be edited in place, the whole file is written as before.
+ */
+function writeClassicLeaves(ctx: SettingsApiContext, classic: Record<string, unknown>, paths: string[][]): void {
+  const target = classicPath(ctx);
+  const loadsTo = (s: string) => { try { return isDeepStrictEqual(yaml.load(s) ?? {}, classic); } catch { return false; } };
+  let text: string | undefined;
+  try {
+    const original = existsSync(target) ? readFileSync(target, "utf-8") : "";
+    const doc = parseDocument(original);
+    if (!doc.errors.length) {
+      const base = doc.toString();
+      for (const path of paths) {
+        let value: unknown = classic;
+        for (const key of path) value = value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined;
+        if (value === undefined) doc.deleteIn(path); else doc.setIn(path, value);
+      }
+      const edited = doc.toString();
+      // The library re-renders some untouched bytes (the spaces before a trailing comment): take the changed lines from
+      // its render and every unchanged line from the file as it was.
+      const spliced = spliceChangedLines(original, base, edited);
+      text = spliced !== null && loadsTo(spliced) ? spliced : loadsTo(edited) ? edited : undefined;
+    }
+  } catch { text = undefined; }
+  if (text === undefined) ctx.logger.warn({ paths }, "settings: classicBot.yaml could not be edited in place; writing it whole");
+  writeClassicAtomic(ctx, classic, text);
+}
+
+/**
+ * `original`'s lines where `base` (its unedited render) and `edited` agree, `edited`'s where they differ — a line diff of
+ * base → edited replayed onto original. Null when the render does not keep the original's lines one for one, or the
+ * file is too large to diff here.
+ */
+function spliceChangedLines(original: string, base: string, edited: string): string | null {
+  const o = original.split("\n"), b = base.split("\n"), e = edited.split("\n");
+  if (o.length !== b.length || b.length * e.length > 4_000_000) return null;
+  // Longest common subsequence of base and edited lines.
+  const n = b.length, m = e.length, lcs: Uint32Array[] = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) lcs[i]![j] = b[i] === e[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+  const out: string[] = [];
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && b[i] === e[j]) { out.push(o[i]!); i++; j++; }
+    else if (j < m && (i >= n || lcs[i]![j + 1]! >= lcs[i + 1]![j]!)) { out.push(e[j]!); j++; }
+    else i++;
+  }
+  return out.join("\n");
 }
 
 const issueKey = (i: { path: string; message: string }) => i.path + "\u0000" + i.message;
@@ -1625,6 +1679,8 @@ export function handleSettingsRequest(
         "reply_completion_guard",
         "web_echo",
         "quota_notice",
+        // M-2909: the room's AI account (backend_options.<cli>.credential_profile; null: back to the fleet default).
+        "backend_options",
       ]);
       const unknown = Object.keys(body).filter(field => !allowed.has(field));
       if (unknown.length) return json(res, 400, { error: `unsupported fields: ${unknown.join(", ")}` });
@@ -1654,6 +1710,18 @@ export function handleSettingsRequest(
       if (body.web_echo !== undefined && typeof body.web_echo !== "boolean") {
         return json(res, 400, { error: "web_echo must be a boolean" });
       }
+      if (body.backend_options !== undefined && body.backend_options !== null) {
+        const { problems } = normalizeBackendOptions(body.backend_options);
+        if (problems.length) return json(res, 400, { error: `backend_options: ${problems.map(p => `${p.path ? `${p.path}: ` : ""}${p.message}`).join("; ")}` });
+        // An emptied choice is no choice: drop a null/"" profile, then a backend left with nothing, then the map itself.
+        const kept: Record<string, Record<string, unknown>> = {};
+        for (const [b, o] of Object.entries(body.backend_options as Record<string, Record<string, unknown>>)) {
+          const copy = { ...o };
+          if (copy.credential_profile === null || copy.credential_profile === "") delete copy.credential_profile;
+          if (Object.keys(copy).length) kept[b] = copy;
+        }
+        body.backend_options = Object.keys(kept).length ? kept : null;
+      }
 
       let classic: Record<string, unknown>;
       try { classic = readClassic(ctx); }
@@ -1670,11 +1738,27 @@ export function handleSettingsRequest(
       if (body.reply_completion_guard === null) delete merged.reply_completion_guard;
       if (body.reply_triggers === null) delete merged.reply_triggers;
       if (body.quota_notice === null) delete merged.quota_notice;
+      if (body.backend_options === null) delete merged.backend_options;
+      // M-2909 (as for an agent, #3212): moving a room onto a signed-out profile would leave its agent at a sign-in prompt.
+      // Prism on #3691: the binding before (its current backend and options) against after (the merged ones), whenever
+      // either can change — a backend change can land the room on a saved or inherited profile of the other CLI.
+      if (body.backend_options !== undefined || body.backend !== undefined) {
+        const cd = (classic.defaults && typeof classic.defaults === "object" ? classic.defaults : {}) as Record<string, unknown>;
+        const backendOf = (room: Record<string, unknown>) => String(room.backend ?? cd.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code");
+        const fleetOptions = ctx.fleetConfig?.defaults?.backend_options as Record<string, Record<string, unknown>> | undefined;
+        const beforeBackend = backendOf(current as Record<string, unknown>), afterBackend = backendOf(merged);
+        const before = classicProfile(normalizeBackendOptions((current as Record<string, unknown>).backend_options).options, fleetOptions, beforeBackend);
+        const after = classicProfile(normalizeBackendOptions(merged.backend_options).options, fleetOptions, afterBackend);
+        if (after.state === "profile" && !(before.state === "profile" && before.name === after.name && beforeBackend === afterBackend)) {
+          const login = signedOutCredentialProfile(ctx.dataDir, afterBackend, after.name);
+          if (login) return json(res, 409, { error: "credential_profile_signed_out", backend: afterBackend, profile: after.name, loginCommand: login.loginCommand });
+        }
+      }
       (channels as Record<string, unknown>)[key] = merged;
       const before = validateClassicBotConfig(previous);
       const after = validateClassicBotConfig(classic);
       if (rejectIfWorse(res, before, after)) return;
-      try { settingsWrite(req, () => writeClassicAtomic(ctx, classic), false); }
+      try { settingsWrite(req, () => writeClassicLeaves(ctx, classic, Object.keys(body).map(field => ["channels", key, field])), false); }
       catch (err) {
         ctx.logger.warn({ err, key }, "settings: failed to atomically update classic channel");
         return json(res, 500, { error: "failed to write classicBot.yaml" });

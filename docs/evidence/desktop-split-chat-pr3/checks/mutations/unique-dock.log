@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+······x·
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 passed (8)
+   Start at  03:39:50
+   Duration  426ms (transform 149ms, setup 172ms, import 60ms, tests 15ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-geometry-3637.test.ts > a dock remains a two-agent topology > re-docks or swaps the existing pane without duplicating or remounting either agent
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/web-chat-workspace-geometry-3637.test.ts:52:78
+     50|     const w: any = model.openBeside(null, { panel: "log", instance: "a…
+     51|     const dock: any = model.dockWorkspace(w, "a", "left", "beta");
+     52|     expect(dock.a).toBe(w.a); expect(dock.b).toBe(w.b); expect(dock.fl…
+       |                                                                              ^
+     53|     expect(model.dockWorkspace(w, "a", "center", "beta")?.flipped).toB…
+     54|     expect(model.dockWorkspace(w, "a", "center", "alpha")).toBe(w);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

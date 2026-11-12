@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+x
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  03:40:07
+   Duration  349ms (transform 146ms, setup 79ms, import 108ms, tests 28ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-skew-geometry-3637.test.ts > a retained host never restores float through a new topology helper or adapter
+AssertionError: expected undefined to be 'right' // Object.is equality
+
+- Expected:
+"right"
+
++ Received:
+undefined
+
+ ❯ tests/web-chat-workspace-skew-geometry-3637.test.ts:17:129
+     15|   const floating = { ...model.openBeside(null, { panel: "chat", instan…
+     16|   legacy.restore(floating); expect(legacy.current()).toBeNull();
+     17|   legacy.open("beta"); expect(legacy.current()?.layout).toBe("right");…
+       |                                                                                                                                 ^
+     18| });
+     19|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

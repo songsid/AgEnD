@@ -1,0 +1,137 @@
+{
+  "scope": "Original clean captures; each input, served asset and retained substitution compared with its recorded Git object. No historical relabelling.",
+  "totals": {
+    "inputs": 448,
+    "served": 1986,
+    "substitutions": 87,
+    "cases": 108
+  },
+  "runs": [
+    {
+      "receipt": "browser/before-dark/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 143,
+      "substitutions": 27,
+      "cases": 3
+    },
+    {
+      "receipt": "browser/before-light/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 143,
+      "substitutions": 27,
+      "cases": 3
+    },
+    {
+      "receipt": "browser/current-coarse/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 145,
+      "substitutions": 0,
+      "cases": 21
+    },
+    {
+      "receipt": "browser/current-dark/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 145,
+      "substitutions": 0,
+      "cases": 21
+    },
+    {
+      "receipt": "browser/current-en/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 145,
+      "substitutions": 0,
+      "cases": 21
+    },
+    {
+      "receipt": "browser/current-light/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 145,
+      "substitutions": 0,
+      "cases": 21
+    },
+    {
+      "receipt": "browser/skew-css/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 131,
+      "substitutions": 1,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/skew-css-old-app/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 145,
+      "substitutions": 2,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/skew-host/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 143,
+      "substitutions": 1,
+      "cases": 3
+    },
+    {
+      "receipt": "browser/skew-js/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 143,
+      "substitutions": 26,
+      "cases": 3
+    },
+    {
+      "receipt": "browser/skew-model/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 137,
+      "substitutions": 1,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/skew-navigation/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 145,
+      "substitutions": 1,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/skew-server/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 131,
+      "substitutions": 0,
+      "cases": 2
+    },
+    {
+      "receipt": "browser/skew-sidebar/receipt.json",
+      "head": "6658a9463444ae70914a34ecb12ea18b8e403c38",
+      "tree": "52b982ea2fac7f06c33ad13357ed192a55fe3cf4",
+      "inputs": 32,
+      "served": 145,
+      "substitutions": 1,
+      "cases": 2
+    }
+  ]
+}

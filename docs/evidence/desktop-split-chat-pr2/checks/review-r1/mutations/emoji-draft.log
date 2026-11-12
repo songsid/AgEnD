@@ -1,0 +1,28 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+···x
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  00:03:07
+   Duration  2.05s (transform 1.16s, setup 164ms, import 162ms, tests 1.56s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-fields-3637.test.ts > retains edited and cleared emoji values with their original baseline across remount, then resets on discard
+AssertionError: expected '⭐' to be '🎉' // Object.is equality
+
+Expected: "🎉"
+Received: "⭐"
+
+ ❯ tests/web-chat-pane-fields-3637.test.ts:69:25
+     67|   expect(model.pending()).toEqual({ status_emojis: { received: "🎉" } …
+     68|   await p.unmount(); await p.mount(h(Form)); await settle(5);
+     69|   expect(input().value).toBe("🎉"); expect(model.pending()).toEqual({ …
+       |                         ^
+     70|   input().value = ""; fire(input(), "input"); await settle(4);
+     71|   expect(model.pending()).toEqual({ status_emojis: null });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

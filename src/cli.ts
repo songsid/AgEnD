@@ -457,7 +457,7 @@ fleet
 
 fleet
   .command("restart")
-  .description("Deprecated: runs `agend restart` (removed in 2.4)")
+  .description("Deprecated: runs `agend restart` (removed in a later 2.4 release)")
   .argument("[instance]", "Restart only this instance (now `agend restart <instance>`)")
   .option("--reload", "Ignored: every full restart is `agend restart`")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")

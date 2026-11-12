@@ -92,6 +92,23 @@ describe("step 2: who can join", () => {
     expect(onSaved).toHaveBeenCalledTimes(1);
     expect(js.step2Done(c.saved(), null)).toBe(true);
   });
+  it.each(["stale-preview", "expired"])("#3698 r1: a save refused as %s says so, runs the server's check again, and the next 儲存 carries the new digest", async (code) => {
+    const c = client(); let n = 0;
+    c.previewGroupPolicy.mockImplementation(async () => ({ ok: true, previewDigest: String(++n).repeat(64).slice(0, 64), expiresAt: Date.now() + 60000, policyRevision: 3, authorizationVersion: 1,
+      impact: { losingActions: [], losingPublication: [], grandfathered: [], suspendedOnSave: [], adminLosesChat: false, held: [] } }));
+    const saved = c.saveGroupPolicy.getMockImplementation()!;
+    c.saveGroupPolicy.mockImplementationOnce((async () => ({ ok: false, code })) as any).mockImplementation(saved as any);
+    const p = await mount(js.JoinStep2, { client: c });
+    await typeSearch(p, "own"); fire(p.root.querySelector(".hub-group-hits button"), "click"); await settle(8);
+    await new Promise(r => setTimeout(r, 450)); await settle(10);
+    const save = () => [...p.root.querySelectorAll("button")].find((b: any) => b.textContent === "Save");
+    fire(save(), "click"); await settle(10);
+    expect(p.root.textContent).toContain("The check is out of date.");
+    await new Promise(r => setTimeout(r, 450)); await settle(10);
+    expect(c.previewGroupPolicy).toHaveBeenCalledTimes(2);                                   // checked again
+    fire(save(), "click"); await settle(10);
+    expect((c.saveGroupPolicy.mock.calls as any[]).map((a) => a[1])).toEqual(["1".repeat(64), "2".repeat(64)]);
+  });
   it("each person's Fleet limit set to 0 drops connect for that group; above 0 brings it back", async () => {
     const c = client({ policy: { state: "enabled", groups: [{ group: { realm: "example", objectId: owners.objectId }, dn: owners.dn, allow: ["ask_agents", "pair_fleet"], maxFleets: 2 }] } });
     const p = await mount(js.JoinStep2, { client: c });

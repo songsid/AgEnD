@@ -27,6 +27,8 @@ export interface CheckedPack {
   portraits?: { default?: PackPortrait; byInstance: Record<string, PackPortrait>; byUser: Record<string, PackPortrait>; npc: Record<string, PackPortrait> };
   /** #2861: the dialogue box's look — a 9-slice frame and colours (#rrggbb). */
   dialogBox?: { frame?: string; slice?: number; background?: string; border?: string; text?: string; name?: string };
+  /** #3685: areas an idle person now and then visits (a free seat there, for minSeconds–maxSeconds); absent: none. */
+  idleVisits?: Array<{ area: string; weight: number; minSeconds: number; maxSeconds: number }>;
 }
 /** #2861: a portrait's files by the state it is shown in (at least one). */
 export type PackPortrait = Partial<Record<"idle" | "working" | "needs", string>>;

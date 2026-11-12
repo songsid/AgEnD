@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+x
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-settings-3637.test.ts > first split and closing to one pane cannot silently discard a retained Settings form
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/web-chat-workspace-settings-3637.test.ts:28:88
+     26|   await entry.open("beta"); await settle(5);
+     27|   expect(confirm.confirmStore.get().queue).toHaveLength(1);
+     28|   expect(nav.navStore.get().workspace).toBeFalsy(); expect(sessions.al…
+       |                                                                                        ^
+     29|   confirm.answerConfirm(confirm.confirmStore.get().queue[0].id, false)…
+     30|   expect(sessions.alpha.staged.size).toBe(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  22:33:50
+   Duration  1.32s (transform 850ms, setup 95ms, import 128ms, tests 955ms, environment 0ms)

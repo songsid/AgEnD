@@ -1,0 +1,9 @@
+{
+  "browser": "REPO=$PWD OUT=<owned-output> [THEME=dark|COARSE=1|LIFECYCLES=1|SETTINGS_SUSPEND=1|RETAIN=css/shell/chat/fields/session/context/js/server] npx tsx scripts/manual/smoke/smoke-split-chat-workspace-3637.mts",
+  "reversals": "python3 scripts/manual/mutation/desktop-chat-workspace-3637.py .artifacts/split-chat-workspace/suspend-mutations",
+  "native-source": "npx tsc --noEmit",
+  "native-tests": "npx tsc --noEmit -p tsconfig.test.json",
+  "core": "npx vitest run tests/web-chat-workspace-3637.test.ts tests/web-chat-workspace-entry-3637.test.ts tests/web-chat-workspace-host-3637.test.ts tests/web-chat-workspace-navigation-3637.test.ts tests/web-chat-workspace-settings-3637.test.ts tests/web-chat-workspace-suspend-3637.test.ts tests/web-chat-workspace-session-3637.test.ts tests/web-chat-workspace-shell-3637.test.ts tests/web-chat-pane-ownership-3637.test.ts tests/web-chat-pane-fields-3637.test.ts tests/web-app-modules-1408.test.ts tests/effort-settings-field.test.ts tests/effort-by-model-data.test.ts --maxWorkers=1 --reporter=dot (current run also includes agent-details-settings.test.ts)",
+  "related": "npx vitest run tests/web-chat-quote-2789.test.ts tests/web-text-undo-2342.test.ts tests/i18n-ui-literals-2390.test.ts tests/web-csp-1268.test.ts tests/web-csp-1300.test.ts tests/hub-shared-modules-a.test.ts tests/web-role-rebind-138.test.ts tests/web-model-groups.test.ts tests/web-model-catalog-fleet-178.test.ts --maxWorkers=1 --reporter=dot",
+  "isolated-timeout-diagnostic": "npx vitest run tests/web-chat-pane-fields-3637.test.ts tests/web-chat-pane-ownership-3637.test.ts tests/i18n-ui-literals-2390.test.ts --maxWorkers=1 --reporter=dot"
+}

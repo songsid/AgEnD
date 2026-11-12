@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+x
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  23:22:31
+   Duration  3.78s (transform 2.41s, setup 231ms, import 367ms, tests 2.62s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-suspend-3637.test.ts > suspends only DOM readers while retaining both Settings drafts and the hidden pane's leave guard
+AssertionError: expected undefined to be 'Keep A' // Object.is equality
+
+- Expected:
+"Keep A"
+
++ Received:
+undefined
+
+ ❯ tests/web-chat-workspace-suspend-3637.test.ts:43:46
+     41|   expect(p.root.querySelectorAll(".ws-pane")).toHaveLength(1);
+     42|   controller.focus("a"); await settle(5);
+     43|   expect(models.alpha.pending().description).toBe("Keep A"); expect(se…
+       |                                              ^
+     44|   // B is not mounted, but replacing B still consults B's draft before…
+     45|   controller.pane("b").navigate("/ui/chat/gamma"); await settle();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

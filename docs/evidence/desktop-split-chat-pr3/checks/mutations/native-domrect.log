@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+·x········
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  03:40:00
+   Duration  497ms (transform 205ms, setup 103ms, import 156ms, tests 71ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-gestures-3637.test.ts > positions the preview from real DOMRect-style prototype getters
+AssertionError: expected undefined to be '1000px' // Object.is equality
+
+- Expected:
+"1000px"
+
++ Received:
+undefined
+
+ ❯ tests/web-chat-workspace-gestures-3637.test.ts:33:78
+     31|   root.getBoundingClientRect = () => Object.create({ left: 100, top: 5…
+     32|   manager.dragStart("beta", event({ dataTransfer: transfer() }), "b");…
+     33|   expect((p.document.querySelector(".ws-drop-overlay") as any)?.style.…
+       |                                                                              ^
+     34| });
+     35| it("Esc consumes only the active arrangement and no late drop can act"…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

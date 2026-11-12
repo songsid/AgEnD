@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+·······x··
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  00:01:19
+   Duration  859ms (transform 410ms, setup 393ms, import 183ms, tests 19ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-3637.test.ts > two-pane navigation uses one bounded topology > uses actual available width and stack height without changing phone breakpoints
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/web-chat-workspace-3637.test.ts:64:56
+     62|     expect(model.twoPaneFits(1200, 760, 700, "right")).toBe(true);
+     63|     expect(model.twoPaneFits(1199, 1000, 700, "right")).toBe(false);
+     64|     expect(model.twoPaneFits(1400, 759, 700, "right")).toBe(false);
+       |                                                        ^
+     65|     expect(model.twoPaneFits(1400, 900, 647, "stack")).toBe(false);
+     66|     expect(model.twoPaneFits(1400, 900, 648, "stack")).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

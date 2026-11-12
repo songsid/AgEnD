@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+····x·····
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  03:39:54
+   Duration  477ms (transform 181ms, setup 95ms, import 128ms, tests 67ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-gestures-3637.test.ts > a changed-and-restored navigation permanently cancels held work
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      Object {
+        "ratio": 0.6370967741935484,
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/web-chat-workspace-gestures-3637.test.ts:51:188
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

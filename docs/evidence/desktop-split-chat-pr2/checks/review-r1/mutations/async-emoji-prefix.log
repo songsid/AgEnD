@@ -1,0 +1,43 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+x··x
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+   Start at  00:01:51
+   Duration  6.17s (transform 3.71s, setup 769ms, import 227ms, tests 4.79s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-fields-3637.test.ts > two full Settings panes keep label and form ownership > namespaces every fleet control and changes only the intended form
+AssertionError: se-received, se-failed: expected 98 to be 100 // Object.is equality
+
+- Expected
++ Received
+
+- 100
++ 98
+
+ ❯ tests/web-chat-pane-fields-3637.test.ts:36:88
+     34|     const ids = [...p.root.querySelectorAll("[id]")].map((el: any) => …
+     35|     expect(ids.length).toBeGreaterThan(3);
+     36|     expect(new Set(ids).size, ids.filter((id, n) => ids.indexOf(id) !=…
+       |                                                                                        ^
+     37|     for (const label of p.root.querySelectorAll("label[for]")) {
+     38|       const id = label.getAttribute("for");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-chat-pane-fields-3637.test.ts > retains edited and cleared emoji values with their original baseline across remount, then resets on discard
+TypeError: Cannot set properties of null (setting 'value')
+ ❯ tests/web-chat-pane-fields-3637.test.ts:66:11
+     64|   await p.mount(h(Form)); await settle(5);
+     65|   const input = () => p.root.querySelector("#pane-a-se-received") as a…
+     66|   input().value = "🎉"; fire(input(), "input"); await settle(4);
+       |           ^
+     67|   expect(model.pending()).toEqual({ status_emojis: { received: "🎉" } …
+     68|   await p.unmount(); await p.mount(h(Form)); await settle(5);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯

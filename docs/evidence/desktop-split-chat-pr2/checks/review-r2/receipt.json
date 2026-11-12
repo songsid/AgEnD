@@ -1,0 +1,64 @@
+{
+  "head": "4ab6105cfe041251511652b722fb290ce71f8604",
+  "tree": "ba34adc6d2f73580da93452ce047698d5be899ba",
+  "scope": "R2 recovery-only source/tests. No new browser run; historical receipts/PNGs remain at their original source pins.",
+  "inputs": {
+    "4e321b3b9d49f7fa1bd453f47563bae8c09e403a40c3ea304ae70d094134dc08": [
+      "src/ui/agent-details-settings.js"
+    ],
+    "380a499fd7427f939976f8ea7e818de6f86379b366addb851ac0eb2de201ba0f": [
+      "tests/web-chat-workspace-operation-3637.test.ts"
+    ],
+    "af35773ba4d21e82d2186568643137495086eafc864ddb824e6f07d090c60bb9": [
+      "scripts/manual/mutation/desktop-chat-workspace-3637.py"
+    ],
+    "d7d3fded9860c2d4688a60939f0f021797b26437bb78b096fb611cbde1b73b63": [
+      "src/ui/settings-apply.js"
+    ],
+    "db54c674121a4603bab3f7758951f3ece288cc2fcbd6e731259af899020c5f87": [
+      "src/ui/settings-confirm.js"
+    ],
+    "0cb18e55e2f0062ab1a96d9c273a0cc5ba248abbfbf1bf1222dd46fc9e10e428": [
+      "src/ui/panel-settings.js"
+    ],
+    "cc0afbe551e1b5857bcfb79447bc24ce59b7a1988972101718c2994b49a95842": [
+      "src/ui/shared/app-store.js"
+    ],
+    "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6": [
+      "src/ui/shared/app-ctx.js"
+    ],
+    "0474e9ae65fe7de25b58687346a129c87755fe4bbaaf534882eb7089b4bb59ef": [
+      "src/ui/chat-workspace-navigation.js"
+    ],
+    "f9c04794b8b26814fbed938eb94838f44d5bcf9abbcb2144965ac83d329467d4": [
+      "tests/helpers/app-harness.ts"
+    ],
+    "1bc09a69bc25aaad7f430dafbaa288ff532e0c5cb2f8710bf6e2b63de53667fd": [
+      "tests/helpers/mini-dom.ts"
+    ]
+  },
+  "unchangedFromR1": {
+    "head": "e6ab594e0b4667be01fe716bd1abe88bdea345ea",
+    "files": [
+      "src/ui/settings-apply.js",
+      "src/ui/settings-confirm.js",
+      "src/ui/panel-settings.js",
+      "src/ui/settings-dialogs.js",
+      "src/ui/chat-workspace.js",
+      "src/ui/shared/app-store.js",
+      "src/ui/shared/app-ctx.js",
+      "src/ui/chat-workspace-navigation.js"
+    ],
+    "agentDetailsMarkupSuffix": "bb28a5fe19060c146645e8bc98af779d3176be794da7f16612f33758aaedb893"
+  },
+  "checks": {
+    "pinnedFailFirst": "5 assertion-failing tests, 9 unselected; one R1 product substitution, current committed tests; no harness errors",
+    "related": "87/87 six suites in the immediately preceding working tree; subsequent test edit adds only TypeScript non-null annotations to mock.lastCall access",
+    "restored": "14/14 current committed operation controls after all mutations restored",
+    "mutations": "8/8 selected R2 reversals compile and fail assertions; exact source restoration",
+    "sourceTypes": "passed",
+    "testTypes": "passed",
+    "changelog": "382 fragments OK"
+  },
+  "limits": "Reader/runner inert; actual makeCtx, AgentSettingsPanels/AgentForms and Settings hooks execute. No Apply HTTP/effect, real Fleet, account, CLI or AD. Prior browser glyph/timestamp/SKEW limits unchanged."
+}

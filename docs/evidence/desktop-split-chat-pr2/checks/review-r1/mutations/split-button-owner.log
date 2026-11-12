@@ -1,0 +1,28 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+····x·····
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  00:03:11
+   Duration  2.08s (transform 933ms, setup 307ms, import 472ms, tests 795ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-host-3637.test.ts > the real panel host is additive to the single pane > Alt-Split from A keeps A even with b initially focused
+AssertionError: expected 'gamma' to be 'alpha' // Object.is equality
+
+Expected: "alpha"
+Received: "gamma"
+
+ ❯ tests/web-chat-workspace-host-3637.test.ts:73:51
+     71|     const button = [...node.querySelectorAll(".ws-agent-choices button…
+     72|     expect(button).not.toBeUndefined(); fire(button!, "click", { butto…
+     73|     expect(controller.current().a.route.instance).toBe("alpha"); expec…
+       |                                                   ^
+     74|     render(null, node);
+     75|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

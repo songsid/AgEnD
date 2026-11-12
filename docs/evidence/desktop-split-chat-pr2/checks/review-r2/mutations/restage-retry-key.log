@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+·······xxx····
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 11 passed (14)
+   Start at  00:33:36
+   Duration  3.85s (transform 1.67s, setup 100ms, import 153ms, tests 3.43s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is none
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is writing
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is done
+AssertionError: expected undefined to be 'original-ambiguous-write' // Object.is equality
+
+- Expected:
+"original-ambiguous-write"
+
++ Received:
+undefined
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:118:56
+    116|   // Automatic restaging on another remount must preserve the same amb…
+    117|   controller.focus("b"); await settle(5); controller.focus("a"); await…
+    118|   expect(sessions.alpha.staged.get("agent:alpha").key).toBe("original-…
+       |                                                        ^
+    119|   if (phase !== "writing") { await sessions.alpha.apply(); expect(rig.…
+    120| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯

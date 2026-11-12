@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+x····
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  02:23:31
+   Duration  1.41s (transform 641ms, setup 84ms, import 108ms, tests 1.09s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-fields-3637.test.ts > the merged Classic account picker has pane IDs and retains each CLI's choices through suspension
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/web-chat-pane-fields-3637.test.ts:38:169
+     36|   expect(models[0].acct).toBe("other"); expect(models[0].pending()).to…
+     37|   models[0].set("backend")("claude-code"); await settle(4); expect(mod…
+     38|   expect((globalThis.fetch as any).mock.calls.some(([url]: any[]) => {…
+       |                                                                                                                                                                         ^
+     39|   await p.unmount(); memories[0].state.clear(); await p.mount(h(Form, …
+     40|   expect(models[0].pending()).toEqual({}); expect(models[0].acct).toBe…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

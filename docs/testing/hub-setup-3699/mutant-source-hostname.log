@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 <owned checkout>
+
+ ❯ tests/hub-company-join-http.test.ts (20 tests | 1 failed | 19 skipped) 434ms
+     × is off by default and only the exact configured admin can enable it with Origin/CSRF and current revision 266ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-company-join-http.test.ts > company-join actual Hub boundary > is off by default and only the exact configured admin can enable it with Origin/CSRF and current revision
+AssertionError: expected [Function] to throw error including 'Owned certificate hostname mismatch' but got 'browser certificate: the certificate …'
+
+Expected: "Owned certificate hostname mismatch"
+Received: "browser certificate: the certificate does not name the web address's host"
+
+ ❯ tests/hub-company-join-http.test.ts:111:90
+    109|     const r = rig!;
+    110|     const listening = vi.fn();
+    111|     await expect(companyJoinRig(listening, { host: "other.example.test…
+       |                                                                                          ^
+    112|     expect(listening).not.toHaveBeenCalled();
+    113|     expect((await r.call(null, "GET", "/hub/v1/join/metadata")).body.f…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 19 skipped (20)
+   Start at  03:20:02
+   Duration  3.79s (transform 2.43s, setup 81ms, import 3.14s, tests 434ms, environment 1ms)
+

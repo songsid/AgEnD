@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+x··
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-fields-3637.test.ts > two full Settings panes keep label and form ownership > namespaces every fleet control and changes only the intended form
+AssertionError: ag-effort: expected 99 to be 100 // Object.is equality
+
+- Expected
++ Received
+
+- 100
++ 99
+
+ ❯ tests/web-chat-pane-fields-3637.test.ts:32:88
+     30|     const ids = [...p.root.querySelectorAll("[id]")].map((el: any) => …
+     31|     expect(ids.length).toBeGreaterThan(3);
+     32|     expect(new Set(ids).size, ids.filter((id, n) => ids.indexOf(id) !=…
+       |                                                                                        ^
+     33|     for (const label of p.root.querySelectorAll("label[for]")) {
+     34|       const id = label.getAttribute("for");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed (3)
+   Start at  22:38:43
+   Duration  2.20s (transform 1.33s, setup 314ms, import 193ms, tests 1.49s, environment 0ms)

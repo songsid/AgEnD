@@ -80,6 +80,23 @@ describe("visible chats are distinct from page focus", () => {
 });
 
 describe("pane scope adds no DOM and retains legacy defaults", () => {
+  it("cross-pane quote edits only B's draft, records undo and never sends or copies A's reply identity", async () => {
+    await p.mount(h("div", null, pane("a", true, panel("alpha")), pane("b", false, panel("beta"))));
+    const undo = await import("/assets/text-undo.js") as any;
+    const a = p.document.getElementById("pane-a-msgIn") as any, b = p.document.getElementById("pane-b-msgIn") as any;
+    a.value = "A keeps typing"; fire(a, "input"); b.value = "Before"; fire(b, "input"); await settle(3);
+    const offUndo = undo.installTextUndo({ doc: p.document, win: p.window });
+    try {
+    const originalReply = chat.store.state.replies.beta;
+    expect(chat.insertPaneQuote("beta", "alpha", "Selected passage", () => false)).toBe(false);
+    expect(b.value).toBe("Before");
+    expect(chat.insertPaneQuote("beta", "alpha", "Selected passage")).toBe(true); await settle(4);
+    expect(a.value).toBe("A keeps typing"); expect(b.value).toContain("> alpha:\n> Selected passage");
+    expect(chat.store.state.replies.beta).toBe(originalReply);
+    expect(requests.filter(path => /send|command|reply-button/.test(path))).toEqual([]);
+    expect(fire(b, "keydown", { key: "z", ctrlKey: true }).defaultPrevented).toBe(true); expect(b.value).toBe("Before");
+    } finally { offUndo(); }
+  });
   it("keeps legacy composer IDs without a pane scope", async () => {
     await p.mount(panel("alpha"));
     expect(p.document.querySelectorAll("#msgIn")).toHaveLength(1);

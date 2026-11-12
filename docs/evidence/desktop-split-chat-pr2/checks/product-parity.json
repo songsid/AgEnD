@@ -1,0 +1,13 @@
+{
+  "scope": "Post-run comparison; product and test blobs from the final tests/reversals/browser checkpoint remain byte-identical at the harness/doc checkpoint.",
+  "finalHarnessHead": "c63d0fd836121f9c3d6b1b61922a7c99b90935b0",
+  "unchangedFrom": [
+    "2528bac5fdb09df9cca3ca83cc4bb282d9171a89",
+    "76cf58bb4cc31c51436038515468ee064d160938"
+  ],
+  "paths": [
+    "src",
+    "tests"
+  ],
+  "gitDiffExit": 0
+}

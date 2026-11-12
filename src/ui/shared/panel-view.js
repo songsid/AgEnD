@@ -13,7 +13,7 @@
 import { html, useEffect, useRef, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
 import { appStore, createStore, guestPage, guestTrusted, useStore } from "./app-store.js";
-import { useLease } from "./app-ctx.js";
+import { useLease, createLease } from "./app-ctx.js";
 import * as paneContext from "./app-ctx.js";
 import { PanelHeader, setTitle, onPanelKey, signInHref } from "./app-shell.js";
 import { InstanceSwitch } from "./instance-switch.js";
@@ -23,6 +23,7 @@ import { readStream } from "./read-stream.js";
 export { UsageMetric } from "./usage-dialog.js";
 import { STATUS_KEYS } from "./instance-nav.js";
 import { viewStore } from "./view-roster-store.js";
+import * as rosterOwner from "./view-roster-store.js";
 
 /** #1580: the app's stream says the fleet is not answering (a restart): the View's polls skip their turn until it is. */
 const fleetUnreachable = () => appStore.get().connection === "reconnecting";
@@ -192,25 +193,31 @@ export function ViewPanel({ route, navKey }) {
   // The roster: now, then every 5 s while this panel is mounted and the tab is visible (a passive read).
   useEffect(() => {
     if (guest) return;
-    const reads = readStream(lease);
-    const load = async () => {
-      if (typeof document !== "undefined" && document.hidden) return;
-      if (fleetUnreachable()) return;                      // #1580: the app's stream is reconnecting — no read storm
-      const token = reads.begin();
-      if (!token) return;
-      try {
-        const r = await lease.fetch("/api/profiles");
-        if (!reads.live(token)) return;
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const roster = await r.json();
-        if (!reads.live(token)) return;
-        viewStore.set({ loaded: true, error: null, roster: Array.isArray(roster) ? roster : [] });
-      } catch (e) { if (reads.live(token)) viewStore.set({ loaded: true, error: e && e.message ? e.message : "error" }); }
-      finally { reads.end(token); }
+    const start = (readLease) => {
+      const reads = readStream(readLease);
+      const load = async () => {
+        if (typeof document !== "undefined" && document.hidden) return;
+        if (fleetUnreachable()) return;                      // #1580: the app's stream is reconnecting — no read storm
+        const token = reads.begin();
+        if (!token) return;
+        try {
+          const r = await readLease.fetch("/api/profiles");
+          if (!reads.live(token)) return;
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const roster = await r.json();
+          if (!reads.live(token)) return;
+          viewStore.set({ loaded: true, error: null, roster: Array.isArray(roster) ? roster : [] });
+        } catch (e) { if (reads.live(token)) viewStore.set({ loaded: true, error: e && e.message ? e.message : "error" }); }
+        finally { reads.end(token); }
+      };
+      load();
+      readLease.interval(load, 5000);
+      readLease.on(document, "visibilitychange", () => { if (!document.hidden) load(); });
     };
-    load();
-    lease.interval(load, 5000);
-    lease.on(document, "visibilitychange", () => { if (!document.hidden) load(); });
+    if (pane && rosterOwner.followRoster) return rosterOwner.followRoster(() => {
+      const shared = createLease(); start(shared); return () => shared.dispose();
+    });
+    start(lease);
   }, [lease]);
   // /view on its own: the instance this browser looked at last, else the first one.
   useEffect(() => {
@@ -245,7 +252,8 @@ export function ViewPanel({ route, navKey }) {
     <${ViewIdentity} it=${it} viewOnly=${viewOnly} onEdit=${() => setDialog("edit")} />`;
 
   return html`<div data-effect-panel="view" class="panel p-view">
-    <${PanelHeader} title=${it ? (it.display_name || it.instance_name) : tn("title")}
+    <${PanelHeader} title=${it ? (it.display_name || it.instance_name) : tn("title")} pageControls=${{ navKey, view: true }}
+      pageActions=${guest ? [] : [{ key: "viewHelp", label: tn("helpButton"), icon: "info", onSelect: () => setDialog("help") }]}
       sub=${it ? html`<span class="status"><span class=${`dot ${it.status === "running" ? "ok" : it.status === "crashed" ? "bad" : "off"}`} aria-hidden="true"></span>${tn(STATUS_KEYS[it.status] || "statusUnknown")}</span>` : null}
       nav=${it && (guest ? trusted : !viewOnly) ? html`<${InstanceSwitch} name=${name} current="view" guest=${guest} />` : null}>${actions}</${PanelHeader}>
     ${body}
@@ -784,3 +792,4 @@ function HelpDialog({ onClose }) {
     <ul class="help-list">${["help1", "help2", "help3", "help4", "help5", "help6"].map((k) => html`<li key=${k}>${tn(k)}</li>`)}</ul>
   </${Dialog}>`;
 }
+ViewPanel.workspaceVersion = 1;

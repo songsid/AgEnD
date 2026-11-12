@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /w
+
+ ✓ tests/hub-company-join-http.test.ts (20 tests | 19 skipped) 16198ms
+     ✓ the10min outer deadline truncates both a late first redemption and its delivery window  12900ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 19 skipped (20)
+   Start at  19:16:50
+   Duration  80.50s (transform 54.40s, setup 1.80s, import 60.60s, tests 16.20s, environment 0ms)
+
