@@ -94,7 +94,25 @@ try {
   }
   if (phone) { await page.locator("#sbOpen").click(); }
   await page.mouse.move(phone ? 380 : 1000, 800); await contrastProbe(); await shot("sidebar-rest");
-  if (retain === "all") { check("control", "exact pre-change UI inputs on current fixture server"); }
+  if (retain === "all") {
+    check("control", "exact pre-change UI inputs on current fixture server");
+    if (!phone) {
+      const target = page.locator(".v-li").filter({ has: page.locator(`a.inst[href$="/${encodeURIComponent(b)}"]`) }).first();
+      await target.locator(".inst-workspace > button").click(); await shot("sidebar-menu-before");
+      await target.getByRole("menuitem", { name: tr("Open beside", "在旁邊開啟"), exact: true }).click();
+      await page.locator('[data-pane="b"] textarea').waitFor();
+      await page.locator('[data-pane="a"] .msg .md').first().evaluate((el: HTMLElement, selected: string) => {
+        const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let node: Text | null = null;
+        while (walk.nextNode()) if (walk.currentNode.textContent?.includes(selected)) { node = walk.currentNode as Text; break; }
+        if (!node) throw new Error("recorded passage missing");
+        const range = document.createRange(), at = node.data.indexOf(selected); range.setStart(node, at); range.setEnd(node, at + selected.length);
+        getSelection()!.removeAllRanges(); getSelection()!.addRange(range);
+      }, passage);
+      await page.locator(".quote-pop").waitFor(); await shot("quote-options-before");
+      await page.locator('[data-pane="b"] textarea').click();
+      await page.locator('[data-pane="b"] .panel-actions > .menu > button').click(); await shot("pane-menu-before");
+    }
+  }
   else {
     const row = (name: string) => page.locator(".v-li").filter({ has: page.locator(`a.inst[href$="/${encodeURIComponent(name)}"]`) }).first();
     if (!retain || ["css", "ui-menu"].includes(retain)) {
