@@ -451,6 +451,18 @@ describe("alpha.2 findings 3/4: a held attempt, a new Start and another session"
     expect(w.client.command.mock.calls.filter((c: any[]) => c[1] === "cancel")).toHaveLength(0);
     w.controller.close();
   });
+  // Fable #3758 r1 (L3): a held attempt that already issued a Fleet credential is never retired — even when the Hub says
+  // it has no such request (cleaned up after issue, a Hub reset): a second enrolment must stay impossible.
+  it("an issued held attempt is never retired, even when the Hub's cancel answers not-found", async () => {
+    const { w, first } = await refused(notFound);
+    const { saveLocalJoin } = await import("../src/hub/join/local-journal.js");
+    saveLocalJoin(w.directory, { ...readLocalJoin(w.directory, first.operationId), issued: true, outcomeKnown: true }, () => true);
+    const before = readLocalJoin(w.directory, first.operationId);
+    await expect(coded(w)).rejects.toMatchObject({ code: "conflict" });
+    expect(readLocalJoin(w.directory, first.operationId)).toEqual(before);
+    expect(readLocalJoin(w.directory, first.operationId)).toMatchObject({ stage: "held", issued: true });
+    w.controller.close();
+  });
   const other = (w: any) => ({ ...w.session, ownerKey: {}, sessionId: "c".repeat(64) });
   it("another admin session sees the blocking held attempt (flagged foreign, no handoff), and nothing once it no longer blocks", async () => {
     const { w, first } = await refused(notFound);
@@ -480,6 +492,17 @@ describe("alpha.2 findings 3/4: a held attempt, a new Start and another session"
     expect(await controller.resume(first.operationId, { ...w.authority, session: s2 })).toMatchObject({ operationId: first.operationId, state: "saved" });
     expect(readLocalJoin(w.directory, first.operationId).sessionId).toBe(s2.sessionId);
     controller.close();
+  });
+  // Fable #3758 r1 (A3): an unconfirmed session's Recover takes nothing over — no re-binding, no hostConfirmed written.
+  it("another session's unconfirmed Recover is refused before any re-binding: the journal's session and host flag are unchanged", async () => {
+    const w = await world(), first = await w.start();
+    const { saveLocalJoin } = await import("../src/hub/join/local-journal.js");
+    saveLocalJoin(w.directory, { ...readLocalJoin(w.directory, first.operationId), stage: "held", reason: "unavailable", hostConfirmed: false }, () => true);
+    const before = readLocalJoin(w.directory, first.operationId), s2 = { ...other(w), hostHere: true, authorityEpoch: 7 };
+    await expect(w.controller.resume(first.operationId, { session: s2, confirmedCurrent: () => false })).rejects.toMatchObject({ code: "denied" });
+    const after = readLocalJoin(w.directory, first.operationId);
+    expect([after.sessionId, after.authorityEpoch, after.hostConfirmed]).toEqual([before.sessionId, before.authorityEpoch, false]);
+    w.controller.close();
   });
   it("an attempt still in flight is never taken from its own tab: another session's cancel and resume are refused", async () => {
     const w = await world(), first = await w.start(), s2 = other(w);

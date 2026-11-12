@@ -234,4 +234,10 @@ describe("company join local wait",()=>{
   expect(p.root.querySelector(".hub-join-foreign")).toBeTruthy();
   expect(btn(p,"Recover this connection")).toBeTruthy();
  });
+ it("another session's attempt in flight: no Reopen link (its sign-in belongs to that tab) and no Cancel",async()=>{
+  fetcher(()=>response({ok:true,bound:false,operation:{...held,state:"awaiting-sign-in",reason:null}}));
+  const p=await mount(false);await settle(10);
+  expect(p.root.querySelector(".hub-join-foreign").textContent).toContain("still in progress in another browser tab or session");
+  expect([...p.root.querySelectorAll("a")].map((a:any)=>a.getAttribute("href")).filter((h:string)=>/bridge/.test(h))).toEqual([]);expect(btn(p,"Cancel")).toBeUndefined();expect(btn(p,"Cancel connection")).toBeUndefined();
+ });
 });
