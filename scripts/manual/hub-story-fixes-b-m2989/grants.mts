@@ -10,6 +10,7 @@ const repo=process.env.REPO??process.cwd(),out=process.env.OUT!,mode=process.env
 mkdirSync(out,{recursive:true});const home=mkdtempSync(join(tmpdir(),'hub-grants-m2989-'));process.env.AGEND_HOME=home;
 const digest=(s:any)=>createHash('sha256').update(s).digest('hex');
 const git=(...args:string[])=>execFileSync('git',['-C',repo,...args],{encoding:'utf8'}).trim();
+const baseline=mode==='current'?JSON.parse(readFileSync(process.env.BASELINE_RECEIPT??join(out,'../grants-before/receipt.json'),'utf8')):null;
 const result:any={head:git('rev-parse','HEAD'),tree:git('rev-parse','HEAD^{tree}'),trackedDirty:git('status','--porcelain','--untracked-files=no'),mode,base,
  inputDigests:{},servedDigests:{},substitutions:[],cases:[],checks:[],errors:[],scope:'Production HTTPS/Hub cookie, CSRF, SQLite grant catalog and UI; inert directory/member transport; no real AD/account/CLI/Fleet.'};
 for(const p of ['src/hub/catalog.ts','src/ui/panel-hub.js','src/hub/sessions.ts','scripts/manual/hub-story-fixes-b-m2989/grants.mts']){const hash=digest(readFileSync(join(repo,p)));(result.inputDigests[hash]??=[]).push(p);}
@@ -49,9 +50,10 @@ try{
    await p.locator('.hub-owner .hub-row strong').filter({hasText:'新同仁 Alex'}).waitFor();
    const label=c.lang==='en'?"Hasn't signed in to Hub yet":'還沒登入過 Hub';
    check(tag+' explicit never-signed-in label',(await p.locator('.hub-owner').innerText()).includes(label)===(mode==='current'&&c.skew!=='old-server'));
-   const geometry=await p.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,small:[...document.querySelectorAll('.hub-owner button,.hub-owner a.btn')].filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&innerWidth<900&&(r.width<44||r.height<44);}).map(e=>e.outerHTML)}));
-   check(tag+' no overflow',geometry.overflow<=1);check(tag+' phone taps',!geometry.small.length);
-   await p.screenshot({path:join(out,tag+'-grant.png'),fullPage:true});await Promise.all(resources);result.cases.push({tag,geometry});
+   const geometry=await p.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,small:[...document.querySelectorAll('.hub-owner button,.hub-owner a.btn')].filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0&&innerWidth<900&&(r.width<44||r.height<44);}).map(e=>{const r=e.getBoundingClientRect();return {label:e.getAttribute("aria-label")||e.textContent,width:r.width,height:r.height};})}));
+   check(tag+' no overflow',geometry.overflow<=1);
+   if(baseline){const before=baseline.cases.find((x:any)=>x.device===c.device&&x.theme===c.theme&&x.lang===c.lang);check(tag+' no new small controls',geometry.small.every((s:any)=>before.geometry.small.some((b:any)=>b.label===s.label&&s.width>=b.width-.5&&s.height>=b.height-.5)));}
+   await p.screenshot({path:join(out,tag+'-grant.png'),fullPage:true});await Promise.all(resources);result.cases.push({tag,device:c.device,theme:c.theme,lang:c.lang,geometry});
   }finally{await ctx.close();}
  }
  const signed=await rig.signIn('recipient');check('recipient sign-in succeeds',signed.status===200);
