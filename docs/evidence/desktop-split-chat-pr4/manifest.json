@@ -2,7 +2,7 @@
   "50e6b72e99a38b9bc3a3d42a217e6a8ab9bb845efb6a48c6ec70fe7f8ce75f13": [
     "OWNER.md"
   ],
-  "982fac55418aeeb030e4b293d0aacb64458f5a1b01da9089eed0511377825af7": [
+  "869e7b0a74c3e33fb6b919ebe341f58561343eb8dd9d0f614ed2405d2f998768": [
     "README.md"
   ],
   "50a8fcff2dbc9f5e2dbc2239a29b35901d0d7a2c617fbe08bb0fdac25d2fa013": [
@@ -305,6 +305,24 @@
   "6e37474ea98bb47fe411120a6d61e8ac674648bbe74e1b09d570383859c5e10e": [
     "checks/changelog.log"
   ],
+  "f565d5fd26412ebcdc7d76951a2ee339e2bdc16eacbe841cf86c8b79c369163d": [
+    "checks/ci-inventory/after.log"
+  ],
+  "55602a338b42c1ebffe7050a7c53da2b3d7bd8c109efbf1bd54647072eb762d4": [
+    "checks/ci-inventory/before.log"
+  ],
+  "c1a0a18f6a5910fcb1f8b8c27236da840850cf493bd9a4ff032b21505c006a32": [
+    "checks/ci-inventory/receipt.json"
+  ],
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
+    "checks/ci-inventory/test-types.log",
+    "checks/source-types.log",
+    "checks/test-types.log"
+  ],
+  "a3dcad4443bb4efb40d47de0a295e2c22e0c99db96dec59da1e998efdaa8b228": [
+    "checks/ci-inventory/verification.json",
+    "checks/verification.json"
+  ],
   "5d462ebba18553d6161ca0fb2e0ec5d2118e2492efe950d0bfe1fb6ea23ad697": [
     "checks/commands.json"
   ],
@@ -403,13 +421,6 @@
   ],
   "e05af94431766e7f3a5e18eaf63cd420550c83828c20fd40a7ff4cb9c82de01a": [
     "checks/mutations-width/width-retired-owner.log"
-  ],
-  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
-    "checks/source-types.log",
-    "checks/test-types.log"
-  ],
-  "a3dcad4443bb4efb40d47de0a295e2c22e0c99db96dec59da1e998efdaa8b228": [
-    "checks/verification.json"
   ],
   "f22130466729fe87956b91a09115ce493ca06828b4443c999192506ab90a6114": [
     "checks/width-before.log"

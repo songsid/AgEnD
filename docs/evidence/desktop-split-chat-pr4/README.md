@@ -28,6 +28,10 @@ The alpha sync resolved five textual/add-add conflicts: every incoming conflicte
 
 Reproduce the real browser campaign with `REPO`, `OUT`, an owned fixture `HP`, `PW_DIR` and `CHROME`, then `npx tsx scripts/manual/smoke/smoke-split-chat-popout-3637.mts`. Cases use `CASE=blocked|auth|changed|cycles|single`, `RETAIN=all|child-css|child-app|child-shell|child-chat|parent-store`, `THEME`, `LANGUAGE`, `SCREEN=phone` or `COARSE=1`. Check/queue host load first and keep these serial. The verifier is `python3 scripts/manual/verify-split-chat-popout-3637.py <output.json>`.
 
+## CI inventory correction
+
+CI `43149964399` found that `web-app-modules-1408` still expected the pre-pop-out exact dynamic-import list. The same assertion reproduces locally (one failure, 37 unselected tests). The test-only correction adds the existing private `chat-popout.js` import, checks its authenticated full-app branch and absence from the Hub-only branch, and verifies HTTP 401 without a session for all three new pop-out modules. No product, harness, design or PNG changes accompany it. All 70 tests in the admission/composition/transport/draft suites and the native test typecheck pass. The existing capture/served-asset verifier also passes on this unchanged product image. `checks/ci-inventory/` records the before/after output, input binding and commands; earlier execution scopes remain unchanged.
+
 ## Limits and rollback
 
 The browser chooses a window or tab and its outer chrome. Popups may be blocked; sign-in/loading may exceed the deadline. An acknowledged child followed by a declined source leave guard can retain a duplicate draft, which is safer than discarding text; neither copy auto-sends. Cross-window quoting remains normal copy/paste. The minimal popup stays one agent/document. A popup adds the normal cost of another document/stream; there is no new cross-window transport or global window manager.
