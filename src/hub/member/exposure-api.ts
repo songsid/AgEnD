@@ -62,6 +62,8 @@ export function createHubMemberExposureApi(deps: {
    * shareable — every row is enforceable:false, reason "delivery_unavailable", and publish is refused (#3146 r1).
    */
   readinessCandidate?(candidate: HubLocalExposure): HubExecutionReadiness;
+  /** M-3007: the Hub refused the last snapshot by policy — a published row is not shared there ("hub_refused"). */
+  refused?(): boolean;
 }): HubMemberExposureApi {
   const agentOf = (name: string) => deps.agents().find((a) => a.name === name) ?? null;
   /** Publish readiness (asked again inside the atomic publish): the exact descriptor of a still-configured agent. */
@@ -73,10 +75,11 @@ export function createHubMemberExposureApi(deps: {
   const viewOf = (a: HubMemberAgent): HubExposureView => {
     const row = deps.store.list().find((r) => r.agent === a.name), c = row?.committed ?? null, e = c?.exposure ?? null;
     const legacy = !!c && !!e && e.state !== "withdrawn" && !isAgentDescriptor(c);
-    const reason = legacy ? "republish_required" : !deps.readinessCandidate ? "delivery_unavailable" : null;
+    const reason = legacy ? "republish_required" : !deps.readinessCandidate ? "delivery_unavailable"
+      : e?.state === "published" && deps.refused?.() ? "hub_refused" : null;
     return { agent: a.name, display: a.display, exposureId: e?.id ?? null, revision: e?.revision ?? 0, state: e?.state ?? "withdrawn",
       policy: e && e.state !== "withdrawn" ? { dataView: e.dataViewId, tools: [...e.allowedTools] } : null,
-      enforceable: !reason, ...(reason ? { reason } : {}),
+      enforceable: !reason || reason === "hub_refused", ...(reason ? { reason } : {}),
       choices: { dataViews: [{ id: HUB_AGENT_MODE, label: a.display }], tools: [] }, pending: deps.pending?.(a.name) ?? null };
   };
   const checked = (raw: unknown) => {

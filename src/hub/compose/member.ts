@@ -241,6 +241,8 @@ export function createMemberReceive(deps: {
   live(): boolean;
   log(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   notices?: { receive: ReturnType<typeof createHubPairingNoticeInbox>["receive"] };
+  /** M-3007: the snapshot sender's record of a policy refusal (what the owner's Settings shows). */
+  publicationRefused?(requestId: string, code: string): void;
 }) {
   return async (frame: Exclude<HubServerFrame, { type: "welcome" }>, l: HubMemberLink): Promise<void> => {
     if (!deps.live() || !l.current()) return;
@@ -256,6 +258,7 @@ export function createMemberReceive(deps: {
       // The Hub may refuse publication independently of the saved member credential.
       // Keep local consent pending; this feedback grants no remote publication or execution.
       deps.log("warn", "Hub publication not accepted", { code: frame.payload.code });
+      deps.publicationRefused?.(frame.requestId, frame.payload.code);
       return;
     }
     if ((frame.type === "pairing.notice" || frame.type === "pairing.notice-v2" || frame.type === "pairing.notice-v3") && deps.notices) return deps.notices.receive(frame.payload, l);
@@ -465,7 +468,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         changed: () => options.pokeAttention() });
       options.attachPairingNotices?.(() => notices.list());
       teardown.add("security notices", () => options.attachPairingNotices?.(null));
-      const receive = createMemberReceive({ admission, journal, live, log: options.log, notices });
+      const receive = createMemberReceive({ admission, journal, live, log: options.log, notices,
+        publicationRefused: (requestId, code) => sender.refused(requestId, code) });
       client = new HubMemberClient({
         home: options.home,
         hubId,
@@ -500,6 +504,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         // P1 representative agent (docs/design/hub-representative-agent.md): the owner shares a configured agent.
         agents: options.agents,
         afterCommit: () => sender.afterCommit(),
+        refused: () => sender.isRefused(),
         // S5's readiness: the agent's lifecycle token, recorded against the consent inside S3c's atomic publish.
         readinessCandidate: (candidate) => service.readinessCandidate(candidate),
       });
