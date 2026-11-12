@@ -24,6 +24,9 @@ try{
  const {s3bRig}=await import(repo+'/tests/helpers/hub-s3b-rig.ts');rig=await s3bRig({webOrigin:origin});
  const owner=rig.addPerson('owner','研究者 Avery'),recipient=rig.addPerson('recipient','新同仁 Alex');
  rig.directory.lookupForGrant=async(login:string)=>{const p=rig.people.get(login);return p?{ok:true,person:{key:p.key,login,displayName:p.name,dn:'fixture only',groups:[]}}:{ok:false,reason:'not-found'};};
+ const eligibility=rig.directory.checkEligibility.bind(rig.directory);
+ rig.directory.checkEligibility=async(key:any)=>{const answer=await eligibility(key);const person=[...rig.people.values()].find((p:any)=>p.key.realm===key.realm&&p.key.objectId===key.objectId) as any;
+   return answer.eligible?{...answer,person:{...answer.person,displayName:person?.name}}:answer;};
  const admin=await rig.signIn('owner'),link=rig.link(randomUUID(),owner),id=randomUUID();
  await rig.http.receive(rig.frame('exposure.snapshot',{revision:1,exposures:[{id,fleetId:link.fleetId,owner,displayName:'研究助手 · Research',revision:1,state:'published',dataViewId:'agent',allowedTools:[],policyDigest:'b'.repeat(64)}]},link),link);
  check('grant succeeds before recipient sign-in',(await rig.call(admin,'POST','/hub/v1/grants',{exposureId:id,exposureRevision:1,login:'recipient',days:7})).status===200);
