@@ -28,7 +28,15 @@ describe("loading and delayed quotation retain their exact navigation intent", (
   });
   it("a current quote opens the captured agent's Chat and inserts plain text only", async () => {
     composerReady = true;
-    const target = entry.quoteTargets("alpha")[0]; await target.insert("Selected passage");
+    const app = await import("/assets/app-store.js") as any;
+    app.applyStatus({ instances: [{ name: "alpha" }, { name: "gamma", display_name: "AgEnD Leader" }] });
+    const target = entry.quoteTargets("alpha")[0];
+    expect(target.label).toBe("Quote into the other pane (AgEnD Leader)");
+    const { setLang } = await import("/assets/app-i18n.js") as any;
+    setLang("zh-TW", { store: false });
+    expect(entry.quoteTargets("alpha")[0].label).toBe("引用到另一格（AgEnD Leader）");
+    setLang("en", { store: false });
+    await target.insert("Selected passage");
     expect(insert).toHaveBeenCalledTimes(1);
     expect(insert).toHaveBeenCalledWith("gamma", "alpha", "Selected passage", expect.any(Function));
     expect(nav.navStore.get().route).toEqual({ panel: "chat", instance: "gamma" });

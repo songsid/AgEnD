@@ -170,7 +170,8 @@ describe("the sidebar", () => {
   });
   it("#2855 a guest: a star is saved (nav.favorites); folding a group (nav.collapsed, not a guest's key) stays on this browser", async () => {
     const { pg } = await sidebar([I("a", 20), I("b", 1)], { guest: true });
-    fire(pg.root.querySelector(".inst-star"), "click"); await settle();
+    fire(pg.root.querySelector(".inst-row-menu > button"), "click"); await settle();
+    fire(pg.root.querySelector('[role="menuitem"]'), "click"); await settle();
     fire(pg.root.querySelector(".v-group-head"), "click"); await settle();
     vi.useRealTimers(); await new Promise((r) => setTimeout(r, 450));
     expect(posts.map((p) => Object.keys(p.set))).toEqual([["nav.favorites"]]);

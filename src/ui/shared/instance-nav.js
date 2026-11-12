@@ -8,11 +8,12 @@
 // - the list is never remounted on navigation, and only its own scrollTop follows the active row (#1515).
 // Public (/assets/): an anonymous View reader gets the same list, fed by View's roster read instead of status frames.
 import { html, useLayoutEffect, useRef, useState } from "./app-html.js";
-import { t } from "./app-i18n.js";
+import { register, t } from "./app-i18n.js";
 import { recordEdit } from "./text-undo.js";
 import { appStore, createStore, guestPage, useStore } from "./app-store.js";
 import { Menu } from "./ui-menu.js";
 import { chatPath, detailsPath, logPath, viewPath } from "./app-route.js";
+import { navigate } from "./app-nav.js";
 import { Icon } from "./ui-icons.js";
 import { Skeleton } from "./ui-states.js";
 import { viewStore } from "./view-roster-store.js";
@@ -21,6 +22,12 @@ import "./view-strings.js";
 import { themesShown, themesStore } from "./app-themes.js";
 import { machineName } from "./machine-name.js";
 import { identityClasses, identityOf, paintIdentity, useIdentityColors } from "./identity-color.js";
+
+// Keep new copy beside its caller: a retained view-strings.js still links and renders the menu.
+register("agentRow", {
+  en: { actions: "Actions for {0}", add: "Add to favorites", remove: "Remove from favorites" },
+  "zh-TW": { actions: "{0} 的操作", add: "加入最愛", remove: "移出最愛" },
+});
 
 /** view.* text with named values. */
 function tn(key, values = {}) {
@@ -495,6 +502,14 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const filterRef = useRef(null);
   const list = useRef(null);
   const drag = useRef(null);
+  const focusRow = useRef(null);
+  useLayoutEffect(() => {
+    if (!focusRow.current) return;
+    const row = [...(list.current?.querySelectorAll("[data-agent-row]") || [])].find(el => el.getAttribute("data-agent-row") === focusRow.current);
+    focusRow.current = null;
+    // Starring moves a row into another group. Return keyboard focus to its new slot, or Edit if its group is folded.
+    (row?.querySelector(".inst-row-menu > button") || list.current?.querySelector(".fav-edit"))?.focus({ preventScroll: true });
+  }, [nav.favorites]);
   // #2179: the reply times and their highlight move on by themselves — the list is drawn again every 30 s.
   const [, setTick] = useState(0);
   useLayoutEffect(() => { const id = setInterval(() => setTick((n) => n + 1), 30000); return () => clearInterval(id); }, []);
@@ -630,13 +645,32 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     const on = name === active;
     const fav = g === FAV_GROUP, starred = favSet.has(name);
     // #1958: its identity colour — the ring, a left bar and/or the name, as resolved; painted through the CSSOM.
-    const id = identityOf(it);
+    const id = identityOf(it, { sidebar: true });
     const full = !starred && favs.length >= MAX_FAVORITES;
     // #2179 (B5, the user's pick): the % (and the ★ beside the row) on the name's line; the time of the last reply at the
     // end of the second line, highlighted for REPLY_FRESH_MIN minutes, fading by itself (a reply under a minute pulses once).
     const mins = ageOf(name), fade = replyFade(mins);
     const two = !!secondary || mins != null;
-    return html`<li key=${name} class=${`v-li${two ? " two-line" : ""}`}><a class=${`inst v-inst${on ? " active" : ""}${fade > 0 ? " replied" : ""}${mins != null && mins < 1 ? " just" : ""} ${identityClasses(id)}`}
+    const menuItems = [
+      canStar ? { key: "favorite", label: t(`agentRow.${starred ? "remove" : "add"}`), icon: "star", disabled: full,
+        iconClass: starred ? "menu-starred" : undefined,
+        title: full ? tn("favFull", { max: MAX_FAVORITES }) : undefined,
+        onSelect: () => { focusRow.current = name; toggleFavorite(name, known); } } : null,
+      workspace && !viewOnly && route?.instance ? { key: "beside", label: workspace.label(name), icon: "sidebar", onSelect: () => workspace.open(name) } : null,
+      canConfigure && supportsInstanceFeature(it, "details") ? { key: "settings", label: t("app.details"), icon: "settings", onSelect: () => {
+        if (workspace && route?.instance) workspace.settings(name);
+        else { navigate(`${detailsPath(name)}?cat=basic`); onPick?.(); }
+      } } : null,
+      ...(fav && editing && canStar ? [
+        { key: "up", label: tn("favUp", { name: label }), icon: "up", disabled: shown.active || favsSorted || i === 0,
+          title: shown.active ? tn("favFiltered") : favsSorted ? tn("favSorted") : tn("favUp", { name: label }),
+          onSelect: () => { if (!shown.active && !favsSorted) { focusRow.current = name; moveFavorite(name, -1, known); } } },
+        { key: "down", label: tn("favDown", { name: label }), icon: "down", disabled: shown.active || favsSorted || i === count - 1,
+          title: shown.active ? tn("favFiltered") : favsSorted ? tn("favSorted") : tn("favDown", { name: label }),
+          onSelect: () => { if (!shown.active && !favsSorted) { focusRow.current = name; moveFavorite(name, 1, known); } } },
+      ] : []),
+    ].filter(Boolean);
+    return html`<li key=${name} data-agent-row=${name} class=${`v-li${two ? " two-line" : ""}`}><a class=${`inst v-inst${on ? " active" : ""}${starred ? " inst-favorite" : ""}${fade > 0 ? " replied" : ""}${mins != null && mins < 1 ? " just" : ""} ${identityClasses(id)}`}
         ref=${(el) => { paintIdentity(el, id); paintReply(el, fade); }} href=${rowPath(name)} title=${instanceTooltip(it)}
         aria-current=${on ? "page" : undefined} onClick=${onPick} ...${dragProps({ type: "instance", name, group: g }, !fav)}>
       <${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} cli=${true} />
@@ -647,19 +681,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
         ${it.machine_id ? html`<span class=${`inst-machine${it.machine_status !== "online" ? " offline" : ""}`} title=${tn("tooltipMachine",{value:machineName(it.machine_id,it.machine_name)})}><span class="inst-machine-name">${machineName(it.machine_id,it.machine_name)}</span>${it.machine_status !== "online" ? html`<span class="inst-machine-status">${tn(it.machine_status === "revoked" ? "machineRevoked" : "machineOffline")}</span>` : null}</span>` : null}
         ${facet === "needs" ? html`<span class="inst-sub"><span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span></span>` : null}
         <span class="sr-only">${tn("tooltipBackend", { value: backendLabel(it.backend) })}</span></span>
-    </a>${fav && editing && canStar ? html`<button type="button" class="icon-btn inst-move" aria-label=${tn("favUp", { name: label })}
-        title=${shown.active ? tn("favFiltered") : favsSorted ? tn("favSorted") : tn("favUp", { name: label })} disabled=${shown.active || favsSorted || i === 0} onClick=${() => { if (!shown.active && !favsSorted) moveFavorite(name, -1, known); }}><${Icon} name="up" size=${14} /></button><button type="button" class="icon-btn inst-move"
-        aria-label=${tn("favDown", { name: label })} title=${shown.active ? tn("favFiltered") : favsSorted ? tn("favSorted") : tn("favDown", { name: label })} disabled=${shown.active || favsSorted || i === count - 1}
-        onClick=${() => { if (!shown.active && !favsSorted) moveFavorite(name, 1, known); }}><${Icon} name="down" size=${14} /></button>` : null}${canStar
-      ? html`<button type="button" class=${`icon-btn inst-star${starred ? " on" : ""}`} aria-pressed=${starred ? "true" : "false"} disabled=${full}
-          aria-label=${tn(starred ? "favRemove" : "favAdd", { name: label })} title=${full ? tn("favFull", { max: MAX_FAVORITES }) : tn(starred ? "favRemove" : "favAdd", { name: label })}
-          onClick=${() => toggleFavorite(name, known)}><${Icon} name="star" size=${14} /></button>` : null}${canConfigure && supportsInstanceFeature(it, "details")
-      // one step to this agent's settings (its Details & settings page, Basic info; a kind with no Basic info — a ClassicBot room — starts at its first category); the row itself still opens the chat.
-      ? html`<a class="icon-btn inst-gear" href=${`${detailsPath(name)}?cat=basic`} aria-label=${tn("gearOpen", { name: label })} title=${tn("gearOpen", { name: label })}
-          onClick=${onPick}><${Icon} name="settings" size=${14} /></a>` : null}
-      ${workspace && !viewOnly && route?.instance ? html`<${Menu} cls="inst-workspace" label=${t("app.more")} items=${[
-        { key: "beside", label: workspace.label(name), onSelect: () => workspace.open(name) },
-        canConfigure && supportsInstanceFeature(it, "details") ? { key: "settings", label: t("app.details"), icon: "settings", onSelect: () => workspace.settings(name) } : null]} />` : null}</li>`;
+    </a>${menuItems.length ? html`<${Menu} cls=${`inst-workspace inst-row-menu agent-menu${starred ? " is-favorite" : ""}`} fit=${true} topLayer=${true}
+      ownerKey=${name} label=${t("agentRow.actions", label)} items=${menuItems}
+      trigger=${html`<span class="inst-menu-star" aria-hidden="true">${starred ? html`<${Icon} name="star" size=${14} />` : null}</span><span class="inst-menu-more" aria-hidden="true"><${Icon} name="more" size=${16} /></span>`} />`
+      : starred ? html`<span class="inst-favorite-mark" aria-hidden="true"><${Icon} name="star" size=${14} /></span>` : null}</li>`;
   };
   // #2401: an open list of two or more lines leaves room under the count for "shown" and Clear (stacked); otherwise compact.
   const facetSet = f.status.length > 0 || f.cli.length > 0;

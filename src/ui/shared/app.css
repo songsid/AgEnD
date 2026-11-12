@@ -497,6 +497,37 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .menu-heading { padding: var(--s-2) var(--s-3) var(--s-1); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); border-top: 1px solid var(--border); margin-top: var(--s-1); }
 .menu-heading:first-child { border-top: 0; margin-top: 0; }
 .menu-radio .menu-tick { width: 16px; display: inline-flex; color: var(--accent); }
+/* M-2959: pane and sidebar actions share the same one-line icon rows. */
+:root { --agent-menu-version: 1; }
+.agent-menu > .menu-list { min-width: min(280px, calc(100vw - 16px)); max-width: min(360px, calc(100vw - 16px)); max-height: min(70vh, calc(100vh - 32px)); overflow-y: auto; transform: translateX(var(--menu-shift, 0px)); }
+.agent-menu > .menu-list.menu-up { top: auto; bottom: calc(100% + var(--s-1)); }
+.agent-menu > .menu-list.menu-compact { max-height: 180px; }
+.agent-menu > .menu-list.menu-short { max-height: 96px; }
+.agent-menu > .menu-list.menu-anchored { position: fixed; margin: 0; border: 0; left: var(--menu-x, 8px); top: var(--menu-y, 8px); right: auto; bottom: auto; transform: none; max-height: min(var(--menu-available, 70vh), calc(100vh - 16px)); }
+.inst-row-menu > .menu-list:not(.menu-anchored) { min-width: min(220px, calc(100vw - 16px)); }
+.agent-menu .menu-item { white-space: nowrap; }
+.agent-menu .menu-item > .icon, .agent-menu .menu-tick { flex: none; }
+.agent-menu .menu-item > span:not(.menu-tick):not(.menu-state) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.agent-menu .menu-state { display: inline-flex; flex: none; color: var(--accent); }
+.agent-menu .menu-starred { fill: currentColor; color: var(--warn); }
+.agent-menu .menu-label-value { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
+.agent-menu .menu-label-value > span:first-child { flex: none; }
+.agent-menu .menu-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); text-align: right; }
+.v-li > .inst-row-menu { position: relative; top: auto; right: auto; flex: none; visibility: visible; }
+.inst-row-menu > .icon-btn { width: 28px; height: 28px; padding: 0; color: var(--text-3); }
+.inst-menu-star { display: inline-flex; color: var(--warn); }
+.inst-menu-star .icon, .inst-favorite-mark .icon { fill: currentColor; }
+.inst-menu-more { display: none; }
+.v-li:is(:hover, :focus-within) .inst-menu-star, .inst-row-menu:has(> button[aria-expanded="true"]) .inst-menu-star { display: none; }
+.v-li:is(:hover, :focus-within) .inst-menu-more, .inst-row-menu:has(> button[aria-expanded="true"]) .inst-menu-more { display: inline-flex; }
+.inst-favorite-mark { flex: none; width: 28px; display: inline-flex; justify-content: center; color: var(--warn); }
+.inst.inst-favorite { position: relative; }
+.inst.inst-favorite::before { content: ""; position: absolute; left: 0; top: var(--s-2); bottom: var(--s-2); width: 4px; background: color-mix(in srgb, var(--id, var(--accent)) 80%, var(--text) 20%); pointer-events: none; }
+@media (max-width: 899px), (pointer: coarse) {
+  .inst-row-menu > .icon-btn { min-width: var(--tap); min-height: var(--tap); }
+  .agent-menu .menu-item { min-width: var(--tap); min-height: var(--tap); }
+}
+@media (hover: none) { .inst-menu-star { display: none; } .inst-menu-more { display: inline-flex; } }
 
 /* ── Dialog: centred on a desktop, a bottom sheet on a phone ── */
 .dlg { border: 0; padding: 0; border-radius: var(--r-lg); background: var(--bg); color: var(--text); box-shadow: var(--shadow-2); width: min(480px, calc(100vw - 32px)); max-height: 85vh; }
@@ -1051,8 +1082,10 @@ img.amb-p { object-fit: contain; }
   box-shadow: var(--shadow-2); display: flex; flex-direction: column; }
 /* M-2789: the 「引用」 pill on a selected passage (chat-quote.js) — the message menu's look, one item, its pointer at the
    passage's end; readable on white and dark alike (the shared border and shadow tokens). A phone's is a 44-px tap. */
-.msg-menu.quote-pop { min-width: 0; padding: 2px; border: 1px solid var(--border-strong); overflow: visible; }
-.quote-pop .quote-pick { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; white-space: nowrap; }
+.msg-menu.quote-pop { min-width: 0; max-width: calc(100vw - 32px); padding: 2px; border: 1px solid var(--border-strong); overflow: visible; }
+.quote-pop .quote-pick { display: flex; align-items: center; gap: var(--s-3); padding: 5px 10px; font-family: inherit; font-size: var(--fs-sm); font-weight: var(--fw-regular); white-space: nowrap; }
+.quote-pop .quote-pick .icon { flex: none; }
+.quote-pop .quote-pick > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .quote-pop.is-phone .quote-pick { min-height: var(--tap); padding: 10px 14px; }
 .quote-pop .quote-tip { position: absolute; width: 10px; height: 10px; background: var(--surface); transform: rotate(45deg); pointer-events: none; }
 .quote-pop .quote-tip.down { bottom: -6px; border-right: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }

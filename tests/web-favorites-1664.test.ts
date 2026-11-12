@@ -215,20 +215,38 @@ describe("the sidebar's Favorites", () => {
   const groups = (pg: AppPage) => [...pg.root.querySelectorAll("#instanceList .v-group")].map((g: any) =>
     [g.querySelector(".v-group-head .grow").textContent, [...g.querySelectorAll(".inst-name")].map((n: any) => n.textContent)]);
   // By label (the mini DOM's selectors split on spaces, so not as an attribute selector).
-  const byLabel = (pg: AppPage, sel: string, label: string) => ([...pg.root.querySelectorAll(sel)] as any[]).find((b) => b.getAttribute("aria-label") === label) ?? null;
-  const star = (pg: AppPage, label: string) => byLabel(pg, "button.inst-star", label);
+  // M-2959: the persisted choices and security contracts are unchanged; drive the one row menu instead of a
+  // separate star/reorder button. Native pointerdown closes any previous menu before the next row opens.
+  async function rowMenu(pg: AppPage, name: string) {
+    const row = [...pg.root.querySelectorAll(".v-li")].find((r: any) => r.querySelector(".inst-name")?.textContent === name) as any;
+    const trigger = row?.querySelector(".inst-row-menu > button");
+    expect(trigger, `actions for ${name}`).toBeTruthy();
+    if (trigger.getAttribute("aria-expanded") !== "true") { fire(trigger, "pointerdown"); fire(trigger, "click"); await settle(); }
+    return row.querySelector('[role="menu"]');
+  }
+  async function star(pg: AppPage, label: string) {
+    const name = /^Add (.*) to favorites$/.exec(label)?.[1] || /^Remove (.*) from favorites$/.exec(label)?.[1]
+      || /^把 (.*) 加入最愛$/.exec(label)?.[1] || /^把 (.*) 從最愛移除$/.exec(label)?.[1];
+    expect(name, label).toBeTruthy();
+    return (await rowMenu(pg, name!)).querySelector('[role="menuitem"]');
+  }
+  async function move(pg: AppPage, label: string) {
+    const name = /^Move (.*) (?:up|down)$/.exec(label)?.[1];
+    expect(name, label).toBeTruthy();
+    return [...(await rowMenu(pg, name!)).querySelectorAll('[role="menuitem"]')].find((b: any) => b.textContent === label) as any;
+  }
   const sent = async () => { await new Promise((r) => setTimeout(r, 450)); return posts; };
 
   it("a Favorites group on top, in starred order; a starred row leaves its group; a deleted favorite is not shown", async () => {
     const pg = await sidebar([I("alpha"), I("beta"), I("gamma", [])], { favorites: ["gamma", "gone", "alpha"] });
     expect(groups(pg)).toEqual([["Favorites", ["gamma", "alpha"]], ["AgEnD", ["beta"]]]);
-    expect([star(pg, "Remove gamma from favorites")?.getAttribute("aria-pressed"), star(pg, "Add beta to favorites")?.getAttribute("aria-pressed")]).toEqual(["true", "false"]);
+    expect([(await star(pg, "Remove gamma from favorites"))?.textContent, (await star(pg, "Add beta to favorites"))?.textContent]).toEqual(["Remove from favorites", "Add to favorites"]);
   });
   it("the star adds a row at the end (sent as nav.favorites, without the deleted one) and moves it up; again removes it", async () => {
     const pg = await sidebar([I("alpha"), I("beta"), I("gamma", [])], { favorites: ["gamma", "gone"] });
-    fire(star(pg, "Add beta to favorites"), "click"); await settle();
+    fire(await star(pg, "Add beta to favorites"), "click"); await settle();
     expect(groups(pg)).toEqual([["Favorites", ["gamma", "beta"]], ["AgEnD", ["alpha"]]]);
-    fire(star(pg, "Remove gamma from favorites"), "click"); await settle();
+    fire(await star(pg, "Remove gamma from favorites"), "click"); await settle();
     expect(groups(pg)).toEqual([["Favorites", ["beta"]], ["AgEnD", ["alpha"]], ["Other", ["gamma"]]]);
     // The last write is the list (a burst is usually one write; a slow machine may make it two).
     expect((await sent()).at(-1)).toEqual({ set: { "nav.favorites": ["beta"] } });
@@ -240,16 +258,15 @@ describe("the sidebar's Favorites", () => {
     expect([!!pg.root.querySelector("#instanceList .inst-head > button.fav-edit"), pg.root.querySelectorAll("#instanceList .side-head").length]).toEqual([true, 0]);
     const edit = pg.root.querySelector("button.fav-edit") as any;
     fire(edit, "click"); await settle();
-    const move = (label: string) => byLabel(pg, "button.inst-move", label);
-    expect([edit.getAttribute("aria-pressed"), move("Move alpha up").disabled, move("Move gamma down").disabled, move("Move beta up").disabled]).toEqual(["true", true, true, false]);
-    fire(move("Move gamma up"), "click"); await settle();
+    expect([edit.getAttribute("aria-pressed"), (await move(pg, "Move alpha up")).disabled, (await move(pg, "Move gamma down")).disabled, (await move(pg, "Move beta up")).disabled]).toEqual(["true", true, true, false]);
+    fire(await move(pg, "Move gamma up"), "click"); await settle();
     expect(groups(pg)[0]).toEqual(["Favorites", ["alpha", "gamma", "beta"]]);
     expect((await sent()).at(-1)).toEqual({ set: { "nav.favorites": ["alpha", "gamma", "beta"] } });
   });
   it(`full at ${MAX_FAVORITES}: another star is disabled and says why`, async () => {
     const names = Array.from({ length: MAX_FAVORITES + 1 }, (_, i) => `i${String(i).padStart(2, "0")}`);
     const pg = await sidebar(names.map((n) => I(n)), { favorites: names.slice(0, MAX_FAVORITES) });
-    const last = star(pg, `Add ${names[MAX_FAVORITES]} to favorites`);
+    const last = await star(pg, `Add ${names[MAX_FAVORITES]} to favorites`);
     expect([last.disabled, last.getAttribute("title")]).toEqual([true, `Favorites are full (${MAX_FAVORITES})`]);
     // And the list itself refuses a 51st, whatever calls it (nothing is sent the host would refuse).
     const nav = await import("/assets/instance-nav.js");
@@ -258,7 +275,7 @@ describe("the sidebar's Favorites", () => {
   it(`deleted favorites do not count toward the ${MAX_FAVORITES}`, async () => {
     const gone = Array.from({ length: MAX_FAVORITES }, (_, i) => `gone${i}`);
     const pg = await sidebar([I("alpha")], { favorites: gone });
-    expect([groups(pg), star(pg, "Add alpha to favorites").disabled]).toEqual([[["AgEnD", ["alpha"]]], false]);
+    expect([groups(pg), (await star(pg, "Add alpha to favorites")).disabled]).toEqual([[["AgEnD", ["alpha"]]], false]);
   });
   it("#1677 r1: in a filtered list Edit's ↑ ↓ are off (as drag is) and say why — the row above may not be the one above", async () => {
     const pg = await sidebar([{ ...I("alpha"), display_name: "Visible A" }, { ...I("hidden"), display_name: "Other" }, { ...I("charlie"), display_name: "Visible C" }],
@@ -266,12 +283,11 @@ describe("the sidebar's Favorites", () => {
     const nav = await import("/assets/instance-nav.js");
     fire(pg.root.querySelector("button.fav-edit") as any, "click");
     nav.setNavFilter({ q: "visible" }); await settle();
-    const move = (label: string) => byLabel(pg, "button.inst-move", label);
-    const filtered = [groups(pg)[0], move("Move Visible C up").disabled, move("Move Visible C up").getAttribute("title"), move("Move Visible A down").disabled];
-    fire(move("Move Visible C up"), "click"); await settle();
+    const filtered = [groups(pg)[0], (await move(pg, "Move Visible C up")).disabled, (await move(pg, "Move Visible C up")).getAttribute("title"), (await move(pg, "Move Visible A down")).disabled];
+    fire(await move(pg, "Move Visible C up"), "click"); await settle();
     const unchanged = nav.navStore.get().favorites;
     nav.setNavFilter({ q: "" }); await settle();
-    expect([filtered, unchanged, move("Move Visible C up").disabled]).toEqual([
+    expect([filtered, unchanged, (await move(pg, "Move Visible C up")).disabled]).toEqual([
       [["Favorites", ["Visible A", "Visible C"]], true, "Clear the filter to reorder favorites", true], ["alpha", "hidden", "charlie"], false]);
     await sent();
   });
@@ -303,7 +319,7 @@ describe("the sidebar's Favorites", () => {
         postGate = ending === "held"
           ? () => new Promise((r) => { release = r; })     // committed on the host (rev+1), its answer held
           : () => Promise.resolve({ ok: false, status: 403, json: async () => ({ error: "prefs_read_only" }) });
-        fire(star(pg, "Remove alpha from favorites"), "click"); await settle();
+        fire(await star(pg, "Remove alpha from favorites"), "click"); await settle();
         await new Promise((r) => setTimeout(r, 450));       // the write is out
         const during = groups(pg)[0]?.[0] === "Favorites" ? groups(pg)[0][1] : [];
         if (ending === "held") {
@@ -353,7 +369,7 @@ describe("the sidebar's Favorites", () => {
     const pg = await sidebar([I("alpha"), I("beta")], { favorites: ["beta"] });
     const { setLang } = await import("/assets/app-i18n.js");
     setLang("zh-TW"); await settle();
-    expect([groups(pg)[0][0], !!star(pg, "把 alpha 加入最愛"), !!star(pg, "把 beta 從最愛移除")]).toEqual(["最愛", true, true]);
+    expect([groups(pg)[0][0], !!(await star(pg, "把 alpha 加入最愛")), !!(await star(pg, "把 beta 從最愛移除"))]).toEqual(["最愛", true, true]);
   });
   it("another device's star shows up here at its next status frame", async () => {
     const pg = await sidebar([I("alpha"), I("beta")], { favorites: [] });
