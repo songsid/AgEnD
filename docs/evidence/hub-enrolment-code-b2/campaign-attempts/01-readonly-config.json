@@ -1,0 +1,29 @@
+{
+  "source": "aae7b873add4eb10f63b675bf67d484af6b46ad2",
+  "goReference": "xmsg-1794454315558-4oi40c",
+  "window": {
+    "from": 1794454900931,
+    "until": 1794462100931
+  },
+  "sourceVersionStamp": "2.3.5-alpha.16",
+  "startedAt": 1794454914666,
+  "phases": [
+    {
+      "name": "build",
+      "startedAt": 1794454914667,
+      "finishedAt": 1794454928576,
+      "exitCode": 0
+    },
+    {
+      "name": "protocol",
+      "startedAt": 1794454928736,
+      "finishedAt": 1794454929827,
+      "exitCode": 1
+    }
+  ],
+  "ready": false,
+  "boundary": "Source build, owned network-none container, synthetic verified LDAPS; five real Fleet web/settings/join/member services per mass wave with Agent lifecycle refused. Not npm/systemd or real accounts/AD/pilot/native Windows.",
+  "error": "Error: protocol did not complete successfully",
+  "finishedAt": 1794454929828,
+  "failureDetail": "Vitest default bundled config loader tried to write /work/node_modules/.vite-temp under a read-only dependency mount. Product build passed; protocol tests and browser/capacity legs did not execute. All owned container/image resources were removed."
+}

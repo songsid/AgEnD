@@ -57,7 +57,7 @@ try {
   await run(phases[0], '/work/node_modules/.bin/vitest', ['run',
     'tests/hub-enrolment-code-store-b1.test.ts','tests/hub-enrolment-code-http-b1.test.ts','tests/hub-enrolment-code-permit-b1.test.ts',
     'tests/hub-enrolment-code-audit-b1.test.ts','tests/hub-enrolment-code-upgrade-b1.test.ts','tests/hub-pairing-api-s3c.test.ts',
-    'tests/hub-enrolment-code-slot-b2.test.ts','tests/hub-pairing-notices.test.ts','tests/hub-pairing-inbox.test.ts','--maxWorkers=1','--cache=false'], { VITEST_CACHE_DIR: '/tmp/vitest-cache' });
+    'tests/hub-enrolment-code-slot-b2.test.ts','tests/hub-pairing-notices.test.ts','tests/hub-pairing-inbox.test.ts','--maxWorkers=1','--cache=false','--configLoader','runner'], { VITEST_CACHE_DIR: '/tmp/vitest-cache' });
   await run(phases[1], process.execPath, ['--import','tsx','scripts/manual/hub-enrolment-code-campaign/capacity.mts']);
   await run('hub-ui-style', process.execPath, ['--import','tsx','scripts/manual/smoke/smoke-hub-ui-gate.mts'], { PW_DIR:'/work', OUT:'/evidence/style', MATRIX:'quick' });
   await run('hub-shell-style', process.execPath, ['--import','tsx','scripts/manual/smoke/smoke-hub-shell-gate.mts'], { PW_DIR:'/work', OUT:'/evidence/style', MATRIX:'quick' });
