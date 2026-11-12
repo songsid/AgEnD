@@ -1,0 +1,564 @@
+{
+  "head": "4a4e6473dcf7353758efb431c884e9f462fd450f",
+  "tree": "2315474c206f2363b3cece501b550c0598e4e2b0",
+  "trackedDirty": "",
+  "mode": "before",
+  "base": "b5514e36dc61482ad5bce6aeea7603f5e9a6be41",
+  "inputDigests": {
+    "996b6c0bb86df8bacc14e936aa4ba63f5d54c69c708df6fd43c2b6b6b5f7c2fb": [
+      "src/hub/catalog.ts"
+    ],
+    "92223873844f3c08eb90e7975154287f7ad23e0bf3bbf6ac53dd2d720910eeb1": [
+      "src/ui/panel-hub.js"
+    ],
+    "64cbeb61a0f68412d48ba844f1099d1600845d5c424da72dd540c7d2ab017f2a": [
+      "src/hub/sessions.ts"
+    ],
+    "b8d672b0579a307ce9336767a61ddc86e0806eddf9663e84f57f56cf9b667175": [
+      "scripts/manual/hub-story-fixes-b-m2989/grants.mts"
+    ]
+  },
+  "servedDigests": {
+    "ffc4f54dd8a2511eeb931a77d25d65ddd0a187e414b9deabe9290184399fe22d": [
+      "/assets/theme.js"
+    ],
+    "cd62669f84666fb16e49cf63ebdc8376d3965106eeaf0531744372bdcf70f3c9": [
+      "/assets/tokens.css"
+    ],
+    "3f7dcf6738210fb8dd31fbf3654fb45ef9500333fe24ab6a6502b6e581e80725": [
+      "/assets/app.css"
+    ],
+    "68dd23194827d7a83f532b1d7b3161fd27a2e696ef14cf6d593b0a65e3ad9ce8": [
+      "/assets/loading.css"
+    ],
+    "ca27cd9ab9bbee60a0ecb427fa05d5322c1eab3606154bf64a8947948ae6154c": [
+      "/assets/app.js"
+    ],
+    "d223ea3ca62d93e8991f3a92efa92de9eb0bb5ad4e72b11ce18f286e372580c2": [
+      "/assets/app-prefs.js"
+    ],
+    "8949e374c68b9252d5ee3ee788ec1b0340d12c4a6999ef8b734fe89562266bd9": [
+      "/assets/app-html.js"
+    ],
+    "5b71d57a353d8e3cde1c178cb1020b2ebda68a463c57ac579d522d6b2ba58c8b": [
+      "/assets/app-shell.js"
+    ],
+    "3c59e5ba9039ad05e18be88b71270c232f6d73bac2dc681cdec70c1825f7027a": [
+      "/assets/text-undo.js"
+    ],
+    "feb36efef72b92a5510f881902c0a08140d6940f62304766e3857d13f5e188fa": [
+      "/assets/app-swipe.js"
+    ],
+    "601074179fe7c9156d05d507f28e3d22f93b49aba43f8d903b40ae4b8b1bba8d": [
+      "/assets/ui-toast.js"
+    ],
+    "49234d50df7b41e005d0221a1a5b5614d30f9b27a9c0d82312c56c694184b58b": [
+      "/assets/app-stream.js"
+    ],
+    "5dfa69d440e16e949c469acbe9945daa6fe65bd41320d18041d6ee9981171d5f": [
+      "/assets/app-nav.js"
+    ],
+    "cc0afbe551e1b5857bcfb79447bc24ce59b7a1988972101718c2994b49a95842": [
+      "/assets/app-store.js"
+    ],
+    "6f7fd589ed235fb3081d3097b4669cee511a16ad3a3b5e363d94ab4b2cefd9e5": [
+      "/assets/app-i18n.js"
+    ],
+    "fa17fa458645e5f9b747163854449c1a5cb0c45d51379fea86ff601dc03e682d": [
+      "/assets/header-tools.js"
+    ],
+    "d89c2578c4f45f9619ddd7529041d7e774474ead7f657c93d1eec335f6fa4bdd": [
+      "/assets/app-route.js"
+    ],
+    "0ad785a7cf88d1d46dc4b747aaebb3e969945e46b9c63a1dbc50f444536832e4": [
+      "/assets/app-needs.js"
+    ],
+    "d38412dd2327ffb4a98248ab8a847eb6abcf18470cd8f5f9635a20df3aace05e": [
+      "/assets/owner-css.js"
+    ],
+    "886b72a54b88f65fbc27a9b86fe786d5a1f2774a24c0cc16dddfd1c6ce1fc2b4": [
+      "/assets/app-themes.js"
+    ],
+    "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8": [
+      "/assets/preact.module.js"
+    ],
+    "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4": [
+      "/assets/htm.module.js"
+    ],
+    "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38": [
+      "/assets/preact-hooks.module.js"
+    ],
+    "c1fe9587644da4bb37524c6dcd1a64c95b6acd9cff4ad5b78eca9844c6f16c5b": [
+      "/assets/ui-confirm.js"
+    ],
+    "6f55664e3748e3837474f252035ba1dccac885385ae57ebea6be5e464deb3f50": [
+      "/assets/ui-icons.js"
+    ],
+    "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec": [
+      "/assets/app-session.js"
+    ],
+    "0d9ae9002f0cf2a8388ea9177430ce382b91abe630ea68f3a7579c80d4c28c31": [
+      "/assets/ui-states.js"
+    ],
+    "25c22c87ff575b89b52ef1ab58ff921d02aaf2744122e064d824a1fa2fd95ff6": [
+      "/assets/ui-dialog.js"
+    ],
+    "e3e03f14648322ac8c159ebc16de5c44ad02be82bd83d79478e71fae91e52c5a": [
+      "/assets/identity-color.js"
+    ],
+    "9d70a93221aa1c0499cd01ead1dd548a465e2388c5c63049457cc4efd65a7b64": [
+      "/assets/instance-nav.js"
+    ],
+    "0b675a3860b2f10a40d9557b18d609cb60ddd0e766b6cf9c1b2f27211d930596": [
+      "/assets/app-update.js"
+    ],
+    "46dc2cb17194565a8ed15d5c3477954c98323bfd4874cdbf6ee69df4b34939e1": [
+      "/assets/settings-width.js"
+    ],
+    "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6": [
+      "/assets/app-ctx.js"
+    ],
+    "8e90812b94bad0b93c744a0daa3fc4fe6e02249106604ca013c9d6df4ef25a43": [
+      "/assets/agent-widget.js"
+    ],
+    "b7cb7d8f4df081e3d514c869cf6f99d8f64b0b730ddecaf955a8d0ccedf3ca43": [
+      "/assets/usage-dialog.js"
+    ],
+    "aefbba84067328f2bb16c86bdbe7328cf125f63f40795ee88b3b87e09c27f946": [
+      "/assets/side-panel.js"
+    ],
+    "80827afbb28969692e1575339c9e4b54a372812653ede0221a361a2c6a14ad56": [
+      "/assets/side-rail.js"
+    ],
+    "3c87a7c99b39adb87e624cd7292b37547e33e418b955466109e178795af927b1": [
+      "/assets/web-authorize.js"
+    ],
+    "ca93209e235040a5ff9ee7f73a39b98fc9412c9a12e46d812a961d6eec95578d": [
+      "/assets/device-roles.js"
+    ],
+    "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48": [
+      "/assets/ui-menu.js"
+    ],
+    "f73502bef7f44e8fe028b1bf9f4ee304af6d6318be61523006e316e38638b4d8": [
+      "/assets/view-roster-store.js"
+    ],
+    "23f03826cec94cb9bd940325b6f4c14d66faaef0473fb34cfad71cb682757d52": [
+      "/assets/view-strings.js"
+    ],
+    "01e6cd78752e902232b60c87fdb5281947dbdc11ae9b1a09b17e9e0241d48c41": [
+      "/assets/read-stream.js"
+    ],
+    "9897ad69ca4983e96ede71578f6b53a47b6f2a6bcb53832aba5d8e1bcc1542ae": [
+      "/assets/machine-name.js"
+    ],
+    "2766db3d5d230dd18fdacdf44719c49ba9e25eff02ffb500c6345dcfee090200": [
+      "/assets/usage-meter.js"
+    ],
+    "6be5920cac22a015015bd8c1606df45255047a0f9549928af7d57219f021a588": [
+      "/ui/js/panel-hub.js"
+    ],
+    "696e5db1efc6388e3059b9651e3e6a9fa8d4f279010eb53152b85d293ad9a112": [
+      "/ui/js/hub-owner-strings.js"
+    ],
+    "c64a487af328109fae7e6f02c8ebed300a34d3b8a00ea89625826a9d9153f2bb": [
+      "/ui/js/hub-company-join.js"
+    ],
+    "3e83c85d14b5135ea0110ae29a01e39bacc8ddaa445411b7a113514e21294bc8": [
+      "/ui/js/hub-company-join-strings.js"
+    ],
+    "5c7a29bb7d47809b61f6a1b49ea0b36388075d80b98c2e6fc670f02709060e00": [
+      "/ui/js/hub-join-approval.js"
+    ],
+    "1d77bb92f1dd6a8636b3621b8ca646c7715aa63964012b64a3dbeea457d68639": [
+      "/ui/js/hub-enrolment-code-strings.js"
+    ],
+    "c4d0a6cf1b12d7fde9bb1e30ab005da1ca9c7916b693cc86e9bf0d28f5a8f9eb": [
+      "/ui/js/hub-directory-notices.js"
+    ],
+    "a65e96967cc72e25e6f14fb286b430c95cf6a9209316982f648a97dba431ac13": [
+      "/ui/js/hub-quick-pairing.js"
+    ],
+    "90f089c96321bdf5a45be4921fb6133f9203f0aa4826e796c02f1dc9dcb8896e": [
+      "/ui/js/hub-directory-notice-strings.js"
+    ],
+    "20b0ec2db04b564054aee01c3b013b45eb318314ea1e9e38826f36efe11d4227": [
+      "/assets/chat-composer.js"
+    ],
+    "1f159b7a9c9e2ed01a7ab1468f2990101c69162f21210b3ca78d2d170a4ae076": [
+      "/assets/preview-panel.js"
+    ],
+    "f12b3db0cc675c4fde91b793641cd43b8bd9ea1d87afe318bbf6c90cb3a737f2": [
+      "/ui/js/hub-strings.js"
+    ],
+    "8f83c3336a56ed2da9fd995e6bdea5e12681e2c37a2350eb1ddb3fb57faf5df4": [
+      "/ui/js/hub-client.js"
+    ],
+    "cc1690aa8931b111e35166fd8f29120c3a7a4ec7a6720108dc7b7ef7e515ac8c": [
+      "/assets/chat-strings.js"
+    ],
+    "7903f0a70ae974c4f562d54efdbf698e4186293db3a2c6067ed1557ece11d76f": [
+      "/ui/js/hub-chat-strings.js"
+    ],
+    "1be8bee71352ed41e8b71592b6acc404829f574327f3ab2aab433c64ace4a046": [
+      "/ui/js/hub-read-strings.js"
+    ],
+    "63d4e7dffad21cb5262d4feb959ed9d04d1c79b68b94dc83a54e9ae2088433c4": [
+      "/ui/js/hub-grant-strings.js"
+    ],
+    "b4cf4c2c4976b3b0ba5d1440579bd89c7b54f1231a33a38b1aef4bd49bdc14d1": [
+      "/ui/js/hub-quota.js"
+    ],
+    "25add8f85a324c042177876f70383a90b8ad4432fc184fe1da0494a7dd8edb8f": [
+      "/ui/js/hub-chat-store.js"
+    ],
+    "e8124f3778fdb4eb70ebf5077e282f01e464a6945dcfd9730d085757dbf3209b": [
+      "/assets/chat-thread.js"
+    ],
+    "42aad7453134784797faa6530e1cdd315fa2056713d38cff1cb0ea2fd231e52d": [
+      "/ui/js/hub-join-steps.js"
+    ],
+    "a9e9e71b8e64b54a69e3265395948d15f512f811a03353ccf3c0fa04e2788f2a": [
+      "/assets/page-head.js"
+    ],
+    "dedbf75e56c51d5a8d22c449a2869bc04e7c5a9e59bda8d5e0c139e856ba5c09": [
+      "/ui/js/hub-attachments.js"
+    ],
+    "b653dd4b49b92b91c1db71d6e652a08da06cc8164db5dfad4bdb46fe6ef711d5": [
+      "/ui/js/hub-preview.js"
+    ],
+    "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764": [
+      "/ui/js/hub-join-queue.js"
+    ],
+    "2419460a300b9aae37024348e9925d7fe142b0e3cd8d20f0c429ab24903e1d22": [
+      "/assets/chat-render.js"
+    ],
+    "0a6b59ad416fe04765c9ec8fcb06aea0d75f1c22cededf746415377fe19c4c35": [
+      "/ui/js/hub-quick-strings.js"
+    ],
+    "45ce6f2b941c6f0d8e154c51e7d6977cea9241a6ddfc03c6bf8b848323448643": [
+      "/assets/html-attachment.js"
+    ],
+    "ca3dacd41ddf8284ce6542f529cdacb9fc333722f41d1ce2beb6fb019e4b8538": [
+      "/assets/chat-time.js"
+    ],
+    "d179862fd1d2535bf1c06776cb20cce601d874d5fa42e47eca0fbd7835023ff1": [
+      "/assets/preview.js"
+    ],
+    "6a1fd446d3200fa3ebebafec1f814c95b365315d1e7553924a2bf587a9553925": [
+      "/assets/preview-pages.js"
+    ],
+    "31a90eea31b3f957965ffce28897cf6fb1571698ecc4a320dd95d310c4c37d3b": [
+      "/assets/chat-md-strings.js"
+    ],
+    "0583433c1027b8ca25410392c623e4f83f92dd1db6f62f46e40be23b71431814": [
+      "/assets/preview-versions.js"
+    ],
+    "8e2665b14f5df60a7698ba5852a5d217257c495bd4c5c4e81b70acda8c65431f": [
+      "/assets/preview-panel-actions.js"
+    ],
+    "0ed438dca5c96bedafd603761e786287a8465a9fc7c6bda1aca1fb6affb65063": [
+      "/ui/js/hub-button-actions.js"
+    ],
+    "2bb084a1cd5999891278413805424624125e3516f2f8e68d40636adb6fa3697c": [
+      "/ui/js/hub-group-search.js"
+    ],
+    "dbb490b50f06f45d538259cad57f5d130ed29c17f4295d8d3c4c848b037190fb": [
+      "/assets/hub-quota.css"
+    ],
+    "06a788df08807cbc7b124add1103b36355ad4f411357cbddb3ca338feb9701be": [
+      "/assets/hub-chat.css"
+    ],
+    "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472": [
+      "/assets/hub.css"
+    ],
+    "e8d9234628f8ac9e1e5a9732d15b6ddefc00fa2eba98d2a32fe52185164264bc": [
+      "/assets/hub-owner.css"
+    ],
+    "bff809d11b0869cfa0b05055fbe80a2190de5cff388d5f13d74bb71aa6e5f5cb": [
+      "/assets/hub-signin.css"
+    ]
+  },
+  "substitutions": [
+    {
+      "ref": "b5514e36dc61482ad5bce6aeea7603f5e9a6be41",
+      "path": "src/ui/panel-hub.js",
+      "digest": "6be5920cac22a015015bd8c1606df45255047a0f9549928af7d57219f021a588"
+    },
+    {
+      "ref": "b5514e36dc61482ad5bce6aeea7603f5e9a6be41",
+      "path": "src/ui/panel-hub.js",
+      "digest": "6be5920cac22a015015bd8c1606df45255047a0f9549928af7d57219f021a588"
+    },
+    {
+      "ref": "b5514e36dc61482ad5bce6aeea7603f5e9a6be41",
+      "path": "src/ui/panel-hub.js",
+      "digest": "6be5920cac22a015015bd8c1606df45255047a0f9549928af7d57219f021a588"
+    },
+    {
+      "ref": "b5514e36dc61482ad5bce6aeea7603f5e9a6be41",
+      "path": "src/ui/panel-hub.js",
+      "digest": "6be5920cac22a015015bd8c1606df45255047a0f9549928af7d57219f021a588"
+    },
+    {
+      "ref": "b5514e36dc61482ad5bce6aeea7603f5e9a6be41",
+      "path": "src/ui/panel-hub.js",
+      "digest": "6be5920cac22a015015bd8c1606df45255047a0f9549928af7d57219f021a588"
+    },
+    {
+      "ref": "b5514e36dc61482ad5bce6aeea7603f5e9a6be41",
+      "path": "src/ui/panel-hub.js",
+      "digest": "6be5920cac22a015015bd8c1606df45255047a0f9549928af7d57219f021a588"
+    },
+    {
+      "ref": "b5514e36dc61482ad5bce6aeea7603f5e9a6be41",
+      "path": "src/ui/panel-hub.js",
+      "digest": "6be5920cac22a015015bd8c1606df45255047a0f9549928af7d57219f021a588"
+    },
+    {
+      "ref": "b5514e36dc61482ad5bce6aeea7603f5e9a6be41",
+      "path": "src/ui/panel-hub.js",
+      "digest": "6be5920cac22a015015bd8c1606df45255047a0f9549928af7d57219f021a588"
+    }
+  ],
+  "cases": [
+    {
+      "tag": "before-desk-light-en",
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "geometry": {
+        "overflow": 0,
+        "small": []
+      }
+    },
+    {
+      "tag": "before-desk-light-zh-TW",
+      "device": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "geometry": {
+        "overflow": 0,
+        "small": []
+      }
+    },
+    {
+      "tag": "before-desk-dark-en",
+      "device": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "geometry": {
+        "overflow": 0,
+        "small": []
+      }
+    },
+    {
+      "tag": "before-desk-dark-zh-TW",
+      "device": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "geometry": {
+        "overflow": 0,
+        "small": []
+      }
+    },
+    {
+      "tag": "before-phone-light-en",
+      "device": "phone",
+      "theme": "light",
+      "lang": "en",
+      "geometry": {
+        "overflow": 0,
+        "small": [
+          {
+            "label": "Allow…",
+            "width": 90.8125,
+            "height": 30
+          },
+          {
+            "label": "Refresh",
+            "width": 70.984375,
+            "height": 30
+          },
+          {
+            "label": "Stop sharing…",
+            "width": 110.875,
+            "height": 30
+          }
+        ]
+      }
+    },
+    {
+      "tag": "before-phone-light-zh-TW",
+      "device": "phone",
+      "theme": "light",
+      "lang": "zh-TW",
+      "geometry": {
+        "overflow": 0,
+        "small": [
+          {
+            "label": "允許提問…",
+            "width": 107.484375,
+            "height": 30
+          },
+          {
+            "label": "重新整理",
+            "width": 74,
+            "height": 30
+          },
+          {
+            "label": "停止分享…",
+            "width": 85.484375,
+            "height": 30
+          }
+        ]
+      }
+    },
+    {
+      "tag": "before-phone-dark-en",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "en",
+      "geometry": {
+        "overflow": 0,
+        "small": [
+          {
+            "label": "Allow…",
+            "width": 90.8125,
+            "height": 30
+          },
+          {
+            "label": "Refresh",
+            "width": 70.984375,
+            "height": 30
+          },
+          {
+            "label": "Stop sharing…",
+            "width": 110.875,
+            "height": 30
+          }
+        ]
+      }
+    },
+    {
+      "tag": "before-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "geometry": {
+        "overflow": 0,
+        "small": [
+          {
+            "label": "允許提問…",
+            "width": 107.484375,
+            "height": 30
+          },
+          {
+            "label": "重新整理",
+            "width": 74,
+            "height": 30
+          },
+          {
+            "label": "停止分享…",
+            "width": 85.484375,
+            "height": 30
+          }
+        ]
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "grant succeeds before recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-en explicit never-signed-in label",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-en no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-zh-TW explicit never-signed-in label",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-en explicit never-signed-in label",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-en no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-zh-TW explicit never-signed-in label",
+      "ok": true
+    },
+    {
+      "name": "before-desk-dark-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-en explicit never-signed-in label",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-en no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-zh-TW explicit never-signed-in label",
+      "ok": true
+    },
+    {
+      "name": "before-phone-light-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-en explicit never-signed-in label",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-en no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-zh-TW explicit never-signed-in label",
+      "ok": true
+    },
+    {
+      "name": "before-phone-dark-zh-TW no overflow",
+      "ok": true
+    },
+    {
+      "name": "recipient sign-in succeeds",
+      "ok": true
+    },
+    {
+      "name": "recipient sign-out succeeds",
+      "ok": true
+    },
+    {
+      "name": "durable witness after sign-out",
+      "ok": true
+    },
+    {
+      "name": "no browser errors",
+      "ok": true
+    },
+    {
+      "name": "all matrix cases ran",
+      "ok": true
+    }
+  ],
+  "errors": [],
+  "scope": "Production HTTPS/Hub cookie, CSRF, SQLite grant catalog and UI; inert directory/member transport; no real AD/account/CLI/Fleet.",
+  "browser": "156.0.8078.4",
+  "status": "PASS",
+  "cleaned": true
+}

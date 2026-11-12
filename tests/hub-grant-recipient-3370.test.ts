@@ -35,8 +35,18 @@ describe("#3370 directory grant recipients", () => {
       expect(w.r.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get()).toEqual({ n });
     expect(w.r.store.read().pairings).toEqual([]);
     const view = await w.r.call(w.browser, "GET", "/hub/v1/exposures");
-    expect(view.json.mine[0].grants[0]).toMatchObject({ subjectLogin: "alex", subjectName: "alex" });
+    expect(view.json.mine[0].grants[0]).toMatchObject({ subjectLogin: "alex", subjectName: "alex", subjectSignedIn: false });
     expect(w.r.db.prepare("SELECT COUNT(*) n FROM hub_people").get()).toEqual({ n: 1 });
+  });
+  it("records successful sign-in by immutable person, even after sign-out and eligibility refresh", async () => {
+    const w = await world(); expect((await w.grant()).status).toBe(200);
+    const view = async () => (await w.r.call(w.browser, "GET", "/hub/v1/exposures")).json.mine[0].grants[0];
+    expect((await view()).subjectSignedIn).toBe(false);
+    const recipient = await w.r.signIn("alex");
+    expect((await view()).subjectSignedIn).toBe(true);
+    expect((await w.r.call(recipient, "DELETE", "/hub/v1/session")).status).toBe(200);
+    expect((await view()).subjectSignedIn).toBe(true);
+    expect(w.r.db.prepare("SELECT COUNT(*) n FROM hub_sessions WHERE state='active'").get()).toEqual({ n: 1 });
   });
   it("serves the fresh refusal dictionary to a cached Hub shell", async () => {
     const w = await world(), response = await w.r.call(w.browser, "GET", "/ui/js/hub-grant-strings.js");

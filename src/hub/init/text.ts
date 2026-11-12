@@ -127,7 +127,7 @@ const en = {
   handoff_unavailable: "The private Hub installation record is missing or unreadable. Setup from an older release may not have one. Check the selected AGEND_HOME and its private permissions; incomplete setup can be resumed with agend hub init. No lifecycle or data changes were made by the handoff display.",
   pairing_title: "Connecting fleets to this Hub",
   pairing_steps:
-    "  1. Sign in as the Hub administrator at {0}/ui/hub. In Administration → Allowed groups and people, allow colleagues and enable company connections.\n  2. In their Fleet's Settings → Hub, colleagues enter {0} and choose Sign in with company account.\n  3. On the Hub, choose Sign in and connect Fleet. Members of an allowed group need no further approval.\nAdvanced: manual pairing codes are in Hub Administration → Advanced; their member address is {1}.\nMembers pin this Hub's certificate key: SHA-256 {2}",
+    "  1. Sign in as the Hub administrator at {0}/ui/hub. In Administration → Let colleagues join, allow colleagues and enable company connections.\n  2. In their Fleet's Settings → Hub, colleagues enter {0} and choose Sign in with company account.\n  3. On the Hub, choose Sign in and connect Fleet. Members of an allowed group need no further approval.\nAdvanced: manual pairing codes are in Hub Administration → Advanced: connect with a pairing code; their member address is {1}.\nMembers pin this Hub's certificate key: SHA-256 {2}",
 };
 
 type Key = keyof typeof en;
@@ -257,7 +257,7 @@ const zhTW: Record<Key, string> = {
   handoff_unavailable: "找不到私人 Hub 安裝紀錄，或無法讀取。較舊版本建立的 Hub 可能沒有這份紀錄。請確認 AGEND_HOME 與私人權限；未完成的初始化可用 agend hub init 繼續。顯示交接資訊沒有變更服務或資料。",
   pairing_title: "讓機群連上這個 Hub",
   pairing_steps:
-    "  1. 以 Hub 管理員身分登入 {0}/ui/hub，在「管理 → 允許的群組與人員」允許同仁，並開啟公司連接。\n  2. 同仁在自己 Fleet 的「設定 → Hub」輸入 {0}，按「以公司帳號登入」。\n  3. 在 Hub 按「登入並連接 Fleet」。允許的群組不需要另外核准。\n進階：手動配對碼位於 Hub 的「管理 → 進階」，使用的成員位址是 {1}。\n成員會釘選這個 Hub 的憑證金鑰：SHA-256 {2}",
+    "  1. 以 Hub 管理員身分登入 {0}/ui/hub，在「管理 → 讓同仁加入」允許同仁，並開啟公司連接。\n  2. 同仁在自己 Fleet 的「設定 → Hub」輸入 {0}，按「以公司帳號登入」。\n  3. 在 Hub 按「登入並連接 Fleet」。允許的群組不需要另外核准。\n進階：手動配對碼位於 Hub 的「管理 → 進階：使用配對碼連接」，使用的成員位址是 {1}。\n成員會釘選這個 Hub 的憑證金鑰：SHA-256 {2}",
 };
 
 export function ht(key: Key, ...args: (string | number)[]): string {

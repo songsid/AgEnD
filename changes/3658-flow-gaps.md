@@ -1,0 +1,4 @@
+---
+section: Fixed
+---
+- Hub setup now checks that the saved Hub is ready before offering sign-in. Shared-agent grants mark colleagues who have never signed in, and the CLI handoff names the current administration menus.

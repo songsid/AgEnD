@@ -6,6 +6,7 @@ import { fire } from "./helpers/mini-dom.js";
 import { directoryCertificates } from "./support/hub-directory-ca-fixture.js";
 let mod:any, section:any, i18n:any;
 const pages:AppPage[]=[],calls:Array<{path:string;init:any}>=[];
+const hubId="90000000-0000-4000-8000-000000000001";
 const ref="a".repeat(32),probeRef="b".repeat(32),pem="-----BEGIN CERTIFICATE-----\nAQID\n-----END CERTIFICATE-----\n";
 const prepared={v:1,ref,expiresAt:Date.now()+300000,administrator:"Avery",webOrigin:"https://hub.example.test:19443",memberOrigin:"https://hub.example.test:19444",certificate:{fingerprint:"AA:BB:PUBLIC",validTo:"2030-01-01"},existingFleet:false};
 const deferred=()=>{let resolve!:(v:any)=>void;const promise=new Promise<any>(r=>{resolve=r;});return {promise,resolve};};
@@ -40,15 +41,81 @@ describe("host-only browser Hub setup",()=>{
     fetcher(()=>view??{});const p=await mount();expect(textButton(p,"Set up on this computer")).toBeUndefined();expect(p.root.querySelector("form")).toBeNull();
   });
   it("tests the exact server draft, clears write-only secrets and creates once with no browser-supplied authority",async()=>{
-    fetcher(path=>path.endsWith("/commit")?{ok:true,webOrigin:prepared.webOrigin}:defaults(path));const p=await mount();await toAdmin(p);await submit(p);
+    fetcher(path=>path.endsWith("/commit")?{ok:true,hubId,webOrigin:prepared.webOrigin}:defaults(path));const p=await mount();await toAdmin(p);await submit(p);
     expect(p.root.textContent).toContain("AA:BB:PUBLIC");expect(p.root.textContent).toContain("Avery");expect(p.root.textContent).toContain("ldaps://directory.example.test:636");expect(p.root.textContent).toContain("CN=Reader,DC=example,DC=test");expect(p.root.textContent).not.toContain("Dummy-service-only");
     const prep=calls.find(c=>c.path.endsWith("/prepare"))!;expect(JSON.parse(prep.init.body)).toMatchObject({directory:{realm:"fictional"},bindPassword:"Dummy-service-only",administratorLogin:"avery",confirmedCa:[]});
     expect(JSON.parse(prep.init.body)).not.toHaveProperty("name");expect(JSON.parse(prep.init.body)).not.toHaveProperty("administrator");
     expect(calls.filter(c=>c.path.endsWith("/test")).map(c=>JSON.parse(c.init.body))).toEqual([{ref}]);
     const button=textButton(p,"Create Hub");fire(button,"click");fire(button,"click");await settle(15);
     expect(calls.filter(c=>c.path.endsWith("/commit")).map(c=>JSON.parse(c.init.body))).toEqual([{ref}]);
-    expect(p.root.textContent).toContain("Hub created");expect(p.root.querySelector("a")?.getAttribute("href")).toBe(prepared.webOrigin+"/ui/hub");
+    expect(p.root.textContent).toContain("Hub created");expect(p.root.querySelector(`a[href="${prepared.webOrigin}/ui/hub"]`)).toBeNull();
     expect(p.root.textContent).not.toContain("Hub is online");expect(p.root.querySelector("input[type=password]")).toBeNull();
+  });
+  it("withholds sign-in until a fresh read confirms the exact created Hub is ready", async () => {
+    const held = deferred(); let committed = false;
+    fetcher(path => path.endsWith("/commit") ? (committed = true, {ok:true,hubId,webOrigin:prepared.webOrigin})
+      : path === "/api/settings/hub/setup" && committed ? held.promise : defaults(path));
+    const p = await mount(); await toAdmin(p); await submit(p); await click(p, "Create Hub");
+    expect(p.root.querySelector(`a[href="${prepared.webOrigin}/ui/hub"]`)).toBeNull();
+    expect(p.root.textContent).toContain("Checking whether the Hub is ready");
+    held.resolve({v:1,initialized:true,runtime:{hubId,webOrigin:prepared.webOrigin,state:"ready"}}); await settle(15);
+    expect(p.root.querySelector(`a[href="${prepared.webOrigin}/ui/hub"]`)?.textContent).toBe("Open Hub sign-in");
+    expect(p.root.querySelector('a[href="/settings/hub"]')).toBeNull();
+    expect(calls.filter(c => c.path.endsWith("/commit"))).toHaveLength(1);
+  });
+  it.each(["different Hub", "different origin", "old server", "unavailable"])("does not open sign-in on %s; checking again never repeats Create", async kind => {
+    let committed = false, good = false;
+    fetcher(path => path.endsWith("/commit") ? (committed = true, {ok:true,hubId,webOrigin:prepared.webOrigin})
+      : path === "/api/settings/hub/setup" && committed ? {v:1,initialized:true,...(kind === "old server" && !good ? {} : {runtime:{
+        hubId:kind === "different Hub" && !good ? "other" : hubId,
+        webOrigin:kind === "different origin" && !good ? "https://other.example.test" : prepared.webOrigin,
+        state:kind === "unavailable" && !good ? "unavailable" : "ready"}})} : defaults(path));
+    const p = await mount(); await toAdmin(p); await submit(p); await click(p, "Create Hub");
+    expect(p.root.querySelector(`a[href="${prepared.webOrigin}/ui/hub"]`)).toBeNull();
+    good = true; await click(p, "Check again");
+    expect(p.root.querySelector(`a[href="${prepared.webOrigin}/ui/hub"]`)).toBeTruthy();
+    expect(calls.filter(c => c.path.endsWith("/commit"))).toHaveLength(1);
+  });
+  it("automatically checks a starting Hub, bounds the reads and keeps Create one-shot", async () => {
+    const later: Array<() => void> = [], original = globalThis.setTimeout;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((cb:any, ms?:number, ...args:any[]) => {
+      if (ms === 2000) { later.push(cb); return 0; }
+      return original(cb, ms, ...args);
+    }) as typeof setTimeout);
+    let committed = false, state = "starting";
+    fetcher(path => path.endsWith("/commit") ? (committed = true, {ok:true,hubId,webOrigin:prepared.webOrigin})
+      : path === "/api/settings/hub/setup" && committed ? {v:1,initialized:true,runtime:{hubId,webOrigin:prepared.webOrigin,state}} : defaults(path));
+    const p = await mount(); await toAdmin(p); await submit(p); await click(p, "Create Hub");
+    for (let i = 0; i < 29; i++) { expect(later).toHaveLength(1); later.shift()!(); await settle(5); }
+    expect(later).toHaveLength(0); expect(textButton(p, "Check again")).toBeTruthy();
+    expect(calls.filter(c => c.path === "/api/settings/hub/setup")).toHaveLength(31);
+    await click(p, "Check again"); expect(later).toHaveLength(1);
+    state = "ready"; later.shift()!(); await settle(12);
+    expect(p.root.querySelector(`a[href="${prepared.webOrigin}/ui/hub"]`)).toBeTruthy();
+    expect(later).toHaveLength(0); expect(calls.filter(c => c.path.endsWith("/commit"))).toHaveLength(1);
+  });
+  it("retires a held readiness read when the page unmounts", async () => {
+    const held = deferred(); let committed = false;
+    fetcher(path => path.endsWith("/commit") ? (committed = true, {ok:true,hubId,webOrigin:prepared.webOrigin})
+      : path === "/api/settings/hub/setup" && committed ? held.promise : defaults(path));
+    const p = await mount(); await toAdmin(p); await submit(p); await click(p, "Create Hub");
+    const reading = calls.at(-1)!; await p.unmount();
+    held.resolve({v:1,initialized:true,runtime:{hubId,webOrigin:prepared.webOrigin,state:"ready"}}); await settle(15);
+    expect(reading.init.signal.aborted).toBe(true); expect(p.root.textContent).toBe("");
+  });
+  it("session end removes the created card and fences a held readiness reply", async () => {
+    const held = deferred(); let committed = false, end!:()=>void, ended = false;
+    fetcher(path => path.endsWith("/commit") ? (committed = true, {ok:true,hubId,webOrigin:prepared.webOrigin})
+      : path === "/api/settings/hub/setup" && committed ? held.promise : defaults(path));
+    const p = await mount(); await p.unmount();
+    (globalThis as any).window.AgendAuth = {sessionEnded:()=>ended,onSessionEnd:(cb:()=>void)=>{end=cb;return ()=>{};}};
+    await p.mount(h(mod.HubSetupSettings,{})); await settle(12); await toAdmin(p); await submit(p); await click(p, "Create Hub");
+    const reading = calls.at(-1)!; ended = true; end();
+    held.resolve({v:1,initialized:true,runtime:{hubId,webOrigin:prepared.webOrigin,state:"ready"}}); await settle(15);
+    expect(reading.init.signal.aborted).toBe(true);
+    expect(p.root.querySelector(`a[href="${prepared.webOrigin}/ui/hub"]`)).toBeNull();
+    expect(p.root.textContent).toContain(i18n.t("hubSetup.denied"));
+    expect(p.root.querySelector("#hub-setup h3")?.textContent).not.toBe("Hub created");
   });
   it("a held prepare after unmount cancels its returned draft and never tests or commits it",async()=>{
     const held=deferred();fetcher(path=>path.endsWith("/prepare")?held.promise:defaults(path));const p=await mount();await toAdmin(p);await submit(p);

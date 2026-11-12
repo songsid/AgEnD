@@ -392,6 +392,22 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     } finally { g.fetch = realFetch; }
   });
 
+  it.each(["en", "zh-TW"])("marks only explicit never-signed-in grant subjects (%s), including an old-server control", async language => {
+    i18n.setLang(language, { store: false });
+    const id = "aaaaaaaa-1111-4222-8333-444444444444";
+    const grants = [{id:"new",subjectName:"New person",subjectLogin:"new",subjectSignedIn:false},
+      {id:"seen",subjectName:"Signed out person",subjectLogin:"seen",subjectSignedIn:true},
+      {id:"old",subjectName:"Old server person",subjectLogin:"old"}].map(g => ({...g,revision:1,expiresAt:2_000_000_000_000}));
+    hubApi({"GET /hub/v1/session":()=>[200,SIGNED],"GET /hub/v1/exposures":()=>[200,{mine:[{id,displayName:"Research",revision:1,state:"published",grants}],askable:[]}],
+      [`GET /hub/v1/exposures/${id}/activity`]:()=>[200,{activity:[]}]});
+    const pg = await pageWith("hub", "/ui/hub/exposures?agent=" + id, "Team Hub");
+    await pg.mount(h(hubPanel.HubPanel, {route:{panel:"hub",tab:"exposures"},navKey:"grant-status|"+language}));
+    await until(() => pg.root.querySelectorAll(".hub-row strong").length === 3);
+    const rows = [...pg.root.querySelectorAll(".hub-row")];
+    const label = language === "en" ? "Hasn't signed in to Hub yet" : "還沒登入過 Hub";
+    expect(rows[0]!.textContent).toContain(label);
+    expect(rows[1]!.textContent).not.toContain(label); expect(rows[2]!.textContent).not.toContain(label);
+  });
   it("an agent's page (#3226 C): who may ask, Allow against the revision shown (a conflict reloads), who asked lately", async () => {
     const mine = [{ id: "aaaaaaaa-1111-4222-8333-444444444444", displayName: "Sales numbers", revision: 3, state: "published", dataViewId: "agent", allowedTools: [],
       grants: [{ id: "g1", revision: 1, subjectName: "Alex", subjectLogin: "alex", expiresAt: 2_000_000_000_000 }] }];

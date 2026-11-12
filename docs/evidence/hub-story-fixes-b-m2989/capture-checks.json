@@ -1,0 +1,103 @@
+[
+  {
+    "run": "grants-before",
+    "head": "f37e808960144f28a446894e37d9b0f0331500ef",
+    "cases": 8,
+    "pngs": 8,
+    "verifiedCaptureInputs": 4,
+    "servedDigests": 86,
+    "unchangedProductBlobs": 6,
+    "verifiedServedTouchedAssets": 1,
+    "productComparisonHead": "6e1745252779f191d4087a6918c274a0761c39d6"
+  },
+  {
+    "run": "grants-current",
+    "head": "f37e808960144f28a446894e37d9b0f0331500ef",
+    "cases": 10,
+    "pngs": 10,
+    "verifiedCaptureInputs": 4,
+    "servedDigests": 86,
+    "unchangedProductBlobs": 6,
+    "verifiedServedTouchedAssets": 1,
+    "productComparisonHead": "6e1745252779f191d4087a6918c274a0761c39d6"
+  },
+  {
+    "run": "setup-before",
+    "head": "74b6581227a064bf154b133409d4a8fa22554482",
+    "cases": 8,
+    "pngs": 8,
+    "verifiedCaptureInputs": 6,
+    "servedDigests": 207,
+    "unchangedProductBlobs": 6,
+    "verifiedServedTouchedAssets": 2,
+    "productComparisonHead": "6e1745252779f191d4087a6918c274a0761c39d6"
+  },
+  {
+    "run": "setup-current",
+    "head": "74b6581227a064bf154b133409d4a8fa22554482",
+    "cases": 8,
+    "pngs": 16,
+    "verifiedCaptureInputs": 6,
+    "servedDigests": 207,
+    "unchangedProductBlobs": 6,
+    "verifiedServedTouchedAssets": 2,
+    "productComparisonHead": "6e1745252779f191d4087a6918c274a0761c39d6"
+  },
+  {
+    "run": "setup-old-server",
+    "head": "74b6581227a064bf154b133409d4a8fa22554482",
+    "cases": 2,
+    "pngs": 4,
+    "verifiedCaptureInputs": 6,
+    "servedDigests": 207,
+    "unchangedProductBlobs": 6,
+    "verifiedServedTouchedAssets": 2,
+    "productComparisonHead": "6e1745252779f191d4087a6918c274a0761c39d6"
+  },
+  {
+    "run": "setup-old-words",
+    "head": "74b6581227a064bf154b133409d4a8fa22554482",
+    "cases": 2,
+    "pngs": 4,
+    "verifiedCaptureInputs": 6,
+    "servedDigests": 207,
+    "unchangedProductBlobs": 6,
+    "verifiedServedTouchedAssets": 2,
+    "productComparisonHead": "6e1745252779f191d4087a6918c274a0761c39d6"
+  },
+  {
+    "run": "setup-phone-actions",
+    "head": "d5e0340b3f7a649e65b06d3dd1a38ad15568f5c9",
+    "cases": 4,
+    "pngs": 12,
+    "verifiedCaptureInputs": 6,
+    "servedDigests": 207,
+    "unchangedProductBlobs": 6,
+    "verifiedServedTouchedAssets": 2,
+    "productComparisonHead": "6e1745252779f191d4087a6918c274a0761c39d6"
+  },
+  {
+    "run": "sync-3750/grants-before",
+    "head": "4a4e6473dcf7353758efb431c884e9f462fd450f",
+    "cases": 8,
+    "pngs": 8,
+    "verifiedCaptureInputs": 4,
+    "productComparisonHead": "4a4e6473dcf7353758efb431c884e9f462fd450f"
+  },
+  {
+    "run": "sync-3750/grants-current",
+    "head": "4a4e6473dcf7353758efb431c884e9f462fd450f",
+    "cases": 10,
+    "pngs": 10,
+    "verifiedCaptureInputs": 4,
+    "productComparisonHead": "4a4e6473dcf7353758efb431c884e9f462fd450f"
+  },
+  {
+    "run": "sync-3750/setup-current",
+    "head": "4a4e6473dcf7353758efb431c884e9f462fd450f",
+    "cases": 8,
+    "pngs": 24,
+    "verifiedCaptureInputs": 6,
+    "productComparisonHead": "4a4e6473dcf7353758efb431c884e9f462fd450f"
+  }
+]

@@ -59,7 +59,7 @@ export function grantApplies(grant: HubGrant, exposure: HubExposure, asker: Pers
 }
 
 export interface HubCatalogView {
-  mine: readonly (HubExposure & { grants: readonly (HubGrant & { subjectName: string; subjectLogin: string })[] })[];
+  mine: readonly (HubExposure & { grants: readonly (HubGrant & { subjectName: string; subjectLogin: string; subjectSignedIn: boolean })[] })[];
   askable: readonly { exposure: HubExposure; grant: HubGrant; ownerName: string }[];
 }
 
@@ -245,14 +245,15 @@ export class HubCatalogService {
       catch (e) { if (!(e instanceof HubProtocolError && (e.code === "denied" || e.code === "revoked"))) throw e; }
     }
     for (const proof of proofs) proof.assertCurrent();
-    // Recheck ordinary grants after all asynchronous group reads too.
+    // Recheck ordinary grants after all asynchronous group reads too. A person row witnesses successful Hub
+    // sign-in permanently; directory eligibility checks and ended sessions cannot manufacture or erase it.
     return this.core.atomic(db => ({ mine: mine.filter(candidate => {
       const row = readExposure(db, candidate.id);
       return row && row.owner === me && row.state !== "withdrawn" && row.revision === candidate.revision;
     }).map(exposure => ({ ...exposure, grants: exposure.grants.filter(grant => {
       const row = readGrant(db, grant.id);
       return row && row.revision === grant.revision && row.state === "active" && row.expires_at > this.core.now();
-    }) })), askable: askable.filter(candidate => {
+    }).map(grant => ({ ...grant, subjectSignedIn: !!db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(personKeyString(grant.subject.person)) })) })), askable: askable.filter(candidate => {
       const e = readExposure(db, candidate.exposure.id), g = readGrant(db, candidate.grant.id);
       return e && g && exposureOf(e).state === "published" && grantOf(g).revision === candidate.grant.revision
         && grantApplies(grantOf(g), exposureOf(e), person, this.core.now());

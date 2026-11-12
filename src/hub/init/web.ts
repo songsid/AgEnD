@@ -60,6 +60,8 @@ export interface HubWebInitDeps {
   audit?(event: Omit<HubWebInitEvent, "v" | "id">): void;
   /** Physical reload after the initializer's enabling decision; never mints a Hub administrator session. */
   committed?(): void | Promise<void>;
+  /** Read-only availability of this exact saved Hub; never starts or probes a listener. */
+  serverHealth?(hub: unknown): import("../runtime.js").HubServerHealth;
 }
 const same = (a: unknown, b: unknown) => canonicalArguments(a) === canonicalArguments(b);
 function applyPatches(raw: unknown, patches: RawConfigPatch[]): unknown {
@@ -242,7 +244,12 @@ export function createHubWebInitializer(deps: HubWebInitDeps) {
         try {
           const view = await initializer.inspect();
           check(j);
-          return { v: 1, initialized: view.existingHub, incomplete: !!view.incomplete, existingFleet: view.existingFleet };
+          const hub = (j.image as { hub?: { hubId?: string; webOrigin?: string } } | null)?.hub;
+          const runtime = view.existingHub && hub?.hubId && hub.webOrigin ? {
+            hubId: hub.hubId, webOrigin: hub.webOrigin, state: deps.serverHealth?.(hub) ?? "unavailable",
+          } : undefined;
+          check(j);
+          return { v: 1, initialized: view.existingHub, incomplete: !!view.incomplete, existingFleet: view.existingFleet, ...(runtime ? { runtime } : {}) };
         }
         finally {
           j.cancelled = true;

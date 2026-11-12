@@ -1,0 +1,48 @@
+{
+  "candidate": "d5e0340b3f7a649e65b06d3dd1a38ad15568f5c9",
+  "baseProduct": "a6557a6b3e328b1586de0f853390aabb8f0ad99f",
+  "testInputs": {
+    "7af4b5fdb1418ac4e7aa9379ab16a80e75df49ff80510a7221cb5ba66f5acfce": [
+      "tests/hub-grant-recipient-3370.test.ts"
+    ],
+    "1f829804dfd0932e7d66228a9abe174158aeb721cc3e615b4015af53ea5048d2": [
+      "tests/hub-init-setup-bugs-2917.test.ts"
+    ],
+    "e068d83ece00cd10efd6acf7c6d8f24e924e00ada4b7d726dcfb7de606b4bc2a": [
+      "tests/hub-web-init.test.ts"
+    ],
+    "a753189527cc33cec940f726fcfcca87bbeb089434f7be227fdb09832d12549f": [
+      "tests/hub-web-setup-ui.test.ts"
+    ],
+    "fa091a75dc6eee562bfc592a00efe1284f1937b10fa7c980058d9e0bbc988f13": [
+      "tests/hub-ui-s3.test.ts"
+    ],
+    "a4b171076348a3497db86444090618c1abbc397931e9383cbd34ac931c87a0ce": [
+      "tests/hub-web-init-http.test.ts"
+    ]
+  },
+  "baseProductInputs": {
+    "7a259cf525a0ef1054a4e56a66f6cd2729d5752b694620a3221a6337249ae044": [
+      "src/fleet-manager.ts"
+    ],
+    "fd5278d9db728ed6dfb36eeea9612698127246a0012e4c5dbdb8697362bb8247": [
+      "src/hub/catalog.ts"
+    ],
+    "9ec1312fadd9d151dd07f393986a71e2454b16562b4a25886ccf24a529cabdcf": [
+      "src/hub/init/text.ts"
+    ],
+    "846f351e97a3408401e96800d2d57e587653d57fe00fbcc9228669f53ea86327": [
+      "src/hub/init/web.ts"
+    ],
+    "8f7b1aec84998b4ed76a4b8b514dd14c1f8b92b7d1c1e9b85449bb4091bfcb6f": [
+      "src/ui/panel-hub.js"
+    ],
+    "456f51d3e0d68974b77fee8d0eaf7c8d1359d1f7ed62877ed4c71738d5c596eb": [
+      "src/ui/settings-hub-setup.js"
+    ]
+  },
+  "exit": 1,
+  "failed": 17,
+  "passed": 157,
+  "restored": true
+}
