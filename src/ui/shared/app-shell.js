@@ -543,6 +543,8 @@ export function PanelHeader({ title, sub, children, headingRef, nav, notice, pag
   const admin = useCanCreate();
   const canCreate = admin && !!newInstanceOpener;
   const pane = paneContext.usePane?.();
+  if (!pane && shell.popout && openInstanceOf(navStore.get().route) && shell.popoutHeader) return html`<${shell.popoutHeader} title=${title} sub=${sub} headingRef=${headingRef} nav=${nav}
+    notice=${notice} pageControls=${pageControls} pageActions=${pageActions} />`;
   if (pane?.Header) return html`<${pane.Header} title=${title} sub=${sub} headingRef=${headingRef} nav=${nav} notice=${notice}
     pageControls=${pageControls} pageActions=${pageActions} />`;
   return html`<header data-trust="header" class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
@@ -1246,10 +1248,11 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
   const guest = guestPage();             // #1920: a guest's page — no operations, pending changes or owner CSS (#2855: usage, yes)
   // AgEnD Hub P1 (S3b): a Hub workspace has none of the fleet's lines, rails, tabs or bars (their endpoints are the fleet's).
   const hub = hubMarks().hub;
-  const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
+  const popout = shell.popout === true && !!openInstanceOf(nav.route);
+  const cls = ["shell", popout ? "chat-popout" : "", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
   return html`<div ref=${root} class=${cls}>
     <a data-trust="navigation" class="skip" href="#main">${t("app.skip")}</a>
-    <${Sidebar} route=${nav.route} onNewInstance=${onNewInstance} viewOnly=${viewOnly} />
+    ${popout ? null : html`<${Sidebar} route=${nav.route} onNewInstance=${onNewInstance} viewOnly=${viewOnly} />`}
     <div class="scrim" onClick=${closeDrawer} aria-hidden="true"></div>
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
@@ -1261,8 +1264,8 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       ${viewOnly || guest || hub || !shell.banner ? null : html`<${shell.banner} />`}
       ${shell.workspaceHost ? html`<${shell.workspaceHost} nav=${nav} panels=${panels} />` : html`<${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />`}
     </main>
-    ${hub ? null : html`<${RightRail} route=${nav.route} />`}
-    ${hub ? null : html`<${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />`}
+    ${hub || popout ? null : html`<${RightRail} route=${nav.route} />`}
+    ${hub || popout ? null : html`<${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />`}
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
     ${viewOnly || guest || hub || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}
     <${ConfirmHost} />
@@ -1271,3 +1274,6 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <${Toasts} />
   </div>`;
 }
+
+// Optional presentation handshake: retained shells keep their ordinary single-chat frame.
+Shell.popoutVersion = 1;

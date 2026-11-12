@@ -1,0 +1,51 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts (16 tests | 2 failed) 30ms
+     × retains the source on timeout, without another popup or effect 5ms
+   × checks the final clock at ACK (15000), before retiring any source 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-transport-3637.test.ts > real pop-out exact-window, one-use handoff > retains the source on timeout, without another popup or effect
+AssertionError: expected undefined to be null
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts:44:97
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-chat-popout-transport-3637.test.ts > checks the final clock at ACK (15000), before retiring any source
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array []
+
+
+Number of calls: 1
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts:69:24
+     67|   win.fire("message", { source: child, origin: win.location.origin, da…
+     68|   win.fire("message", { source: child, origin: win.location.origin, da…
+     69|   expect(complete).not.toHaveBeenCalled(); owner.close();
+       |                        ^
+     70| });
+     71| it.each(["expired", "revoked", "not-ready"])("the child refuses %s off…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 14 passed (16)
+   Start at  11:20:39
+   Duration  373ms (transform 102ms, setup 108ms, import 44ms, tests 30ms, environment 0ms)
+

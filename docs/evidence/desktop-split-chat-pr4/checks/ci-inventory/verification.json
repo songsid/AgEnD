@@ -1,0 +1,49 @@
+{
+  "runs": 19,
+  "checkpoints": 124,
+  "pngs": 105,
+  "inputBindings": 741,
+  "servedBindings": 2756,
+  "substitutions": 105,
+  "omittedAssetBodies": 1,
+  "pixelPairs": [
+    {
+      "before": "browser/before-light/light-zh-TW-single-before.png",
+      "after": "browser/current-light/light-zh-TW-single-before.png",
+      "size": [
+        1600,
+        1000
+      ],
+      "changedPixels": 0
+    },
+    {
+      "before": "browser/phone-before-light/light-zh-TW-single-before.png",
+      "after": "browser/phone-current-light/light-zh-TW-single-before.png",
+      "size": [
+        390,
+        844
+      ],
+      "changedPixels": 0
+    },
+    {
+      "before": "browser/before-dark/dark-zh-TW-single-before.png",
+      "after": "browser/current-dark/dark-zh-TW-single-before.png",
+      "size": [
+        1600,
+        1000
+      ],
+      "changedPixels": 0
+    },
+    {
+      "before": "browser/phone-before-dark/dark-zh-TW-single-before.png",
+      "after": "browser/phone-current-dark/dark-zh-TW-single-before.png",
+      "size": [
+        390,
+        844
+      ],
+      "changedPixels": 0
+    }
+  ],
+  "unknownAssets": [],
+  "currentAssetDeltas": []
+}

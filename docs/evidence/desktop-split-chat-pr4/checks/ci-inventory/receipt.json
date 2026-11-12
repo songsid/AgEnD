@@ -1,0 +1,36 @@
+{
+  "baseline": "c7ea1ee0d71ccdebef27fd3fe64287435b226554",
+  "scope": "Modified test-only tree before the correction commit; product/harness/design unchanged, browser receipts retain their original execution scope.",
+  "productTree": "ce9a801020a1b5ba8de51a766ad2dcbe1d993874",
+  "inputs": {
+    "6d7ee899037ca040589e711e9873f7c4276e8638ced4d1caa865f84d573102dd": [
+      "tests/web-app-modules-1408.test.ts"
+    ]
+  },
+  "commands": [
+    {
+      "command": "npx vitest run tests/web-app-modules-1408.test.ts -t 'public modules reach private'",
+      "exit": 1,
+      "failed": 1,
+      "unselected": 37,
+      "log": "before.log"
+    },
+    {
+      "command": "npx vitest run tests/web-app-modules-1408.test.ts tests/web-chat-popout-composition-3637.test.ts tests/web-chat-popout-transport-3637.test.ts tests/web-chat-popout-draft-3637.test.ts --maxWorkers=1",
+      "exit": 0,
+      "passed": 70,
+      "files": 4,
+      "log": "after.log"
+    },
+    {
+      "command": "npx tsc --noEmit -p tsconfig.test.json",
+      "exit": 0,
+      "log": "test-types.log"
+    },
+    {
+      "command": "python3 scripts/manual/verify-split-chat-popout-3637.py .artifacts/popout-admission-verification.json",
+      "exit": 0,
+      "output": "verification.json"
+    }
+  ]
+}

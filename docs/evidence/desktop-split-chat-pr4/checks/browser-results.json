@@ -1,0 +1,97 @@
+[
+  {
+    "case": "current-light",
+    "exit": 0,
+    "load": 1.45751953125
+  },
+  {
+    "case": "current-dark",
+    "exit": 0,
+    "load": 1.92236328125
+  },
+  {
+    "case": "current-en",
+    "exit": 0,
+    "load": 2.3095703125
+  },
+  {
+    "case": "current-coarse",
+    "exit": 0,
+    "load": 2.20458984375
+  },
+  {
+    "case": "before-light",
+    "exit": 0,
+    "load": 2.5673828125
+  },
+  {
+    "case": "before-dark",
+    "exit": 0,
+    "load": 2.521484375
+  },
+  {
+    "case": "phone-current-light",
+    "exit": 0,
+    "load": 2.64013671875
+  },
+  {
+    "case": "phone-before-light",
+    "exit": 0,
+    "load": 2.64013671875
+  },
+  {
+    "case": "phone-current-dark",
+    "exit": 0,
+    "load": 2.5087890625
+  },
+  {
+    "case": "phone-before-dark",
+    "exit": 0,
+    "load": 2.62841796875
+  },
+  {
+    "case": "blocked",
+    "exit": 0,
+    "load": 5.49462890625
+  },
+  {
+    "case": "auth",
+    "exit": 0,
+    "load": 5.19677734375
+  },
+  {
+    "case": "changed",
+    "exit": 0,
+    "load": 8.76318359375
+  },
+  {
+    "case": "skew-child-css",
+    "exit": 0,
+    "load": 8.123046875
+  },
+  {
+    "case": "skew-child-app",
+    "exit": 0,
+    "load": 6.01416015625
+  },
+  {
+    "case": "skew-child-shell",
+    "exit": 0,
+    "load": 4.890625
+  },
+  {
+    "case": "skew-child-chat",
+    "exit": 0,
+    "load": 4.0283203125
+  },
+  {
+    "case": "skew-parent-store",
+    "exit": 0,
+    "load": 3.69921875
+  },
+  {
+    "case": "cycles",
+    "exit": 0,
+    "load": 3.69921875
+  }
+]
