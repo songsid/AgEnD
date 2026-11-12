@@ -179,7 +179,7 @@ try {
         const appearance = list.locator(".menu-heading", { hasText: tr("Appearance", "外觀") }); if (await appearance.count()) { await appearance.scrollIntoViewIfNeeded(); await shot("pane-appearance"); }
         const deletion = list.locator(".menu-item.danger").last(); if (await deletion.count()) { await deletion.scrollIntoViewIfNeeded(); await shot("pane-delete"); }
         await model.click();
-        await page.locator('[data-pane="b"] [data-agent-category="runtime"]').waitFor(); await shot("model-settings");
+        await page.locator('[data-pane="b"] [data-agent-category="runtime"] [id$="ag-model"]').waitFor(); await shot("model-settings");
         check("settings-only", "model/effort opens the existing focused Agent Settings runtime category; automatic status-emoji preview is inventoried separately, no command or settings write");
       } else { await shot("retained-pane-menu"); check("skew", { retained: retain, linked: true }); }
     }
