@@ -2,14 +2,15 @@
  "meta": {
   "intro": "從三種角色的角度寫下使用者故事，再一步一步對照 alpha 最新版的畫面原始碼與字串：每一步會看到什麼、有哪些按鈕、接著做什麼，以及這一步順不順。全部是讀原始碼得到的，沒有實際執行。",
   "pills": [
-   "原始碼版本：release/2.3.5-alpha @ 8da18b33",
+   "原始碼版本：release/2.3.5-alpha @ 53a08bd7（第二輪）",
+   "第一輪：8da18b33，13 個故事",
    "2026-11-13",
    "只讀原始碼，未實際執行",
-   "撰寫與走查：Argon、GrokCore、Sentinel 兩兩一組",
+   "撰寫與走查：Argon、GrokCore、Sentinel 兩兩一組；加入碼由 Lumen 走查",
    "彙整與查核：Lumen"
   ],
-  "overview": "連接與分享這條主線已經走得通，新的「讓同仁加入」三步驟卡片是最清楚的一段。問題集中在三處：帶 ClassicBot 聊天室的人沒有路可走而且畫面沒說、主管想做的事多半沒有畫面、幾段文字是寫給別的情境的人看的。",
-  "footer": "方法：三個 Agent 兩兩一組，各寫一個角色的故事並對照原始碼走查；每一則引用的檔案與行號都由彙整者在 8da18b33 重新查核。查核時修正了三處：管理員的群組設定原本走的是已不顯示的舊畫面，改為現行的三步驟卡片；兩段引用的文字與原始碼不符，已改為原文。加入碼（#3706）尚未合併，標為「尚未合併」。本頁沒有實際執行任何流程，回答是否真的送達、時間是否在標準內，要等實機走查。"
+  "overview": "連接與分享這條主線已經走得通，「讓同仁加入」三步驟卡片是最清楚的一段，加入碼也已經合併。第二輪新增四個加入碼故事：管理員這一側順，同仁這一側會卡住，因為 Fleet 的頁面沒有提到加入碼、也沒說碼要打在哪裡。第一輪的 13 個故事在新版本重新對照過，判定只有一步改變（加入碼從「沒有畫面」變成順利）。",
+  "footer": "方法：第一輪由三個 Agent 兩兩一組，各寫一個角色的故事並對照原始碼走查（8da18b33）；每一則引用的檔案與行號都由彙整者重新查核。第二輪（53a08bd7）新增加入碼的四個故事，並重新對照第一輪的 13 個故事：這段期間 Hub 與介面的原始碼只有 #3706、#3726、#3732 三個變更，原有故事引用的字串都沒有改動，判定不變；只有管理員故事 A3 的最後一步從「沒有畫面」改為順利。第一輪故事的行號維持 8da18b33 的位置；在 53a08bd7，panel-hub.js 登入表單之後的行號要加 8，settings-hub.js 加 3，hub-company-join.js 最多加 12。M-2988、M-2989、#3744 的修正在這次對照時都還沒合併，所以那些發現仍然存在，已標示派工的卡片。本頁沒有實際執行任何流程。"
  },
  "axes": {
   "channel": [
@@ -35,6 +36,117 @@
  },
  "findings": [
   {
+   "sev": "confusing",
+   "cls": "gap",
+   "owner": "dev-claude2",
+   "title": "同仁的 Fleet 頁面沒有「加入碼」：不知道碼要打在哪裡",
+   "detail": "管理員複製出去的說明是「輸入 hub 位址和這組碼」，但 Fleet 的「設定 → Hub」只有一個「Hub 位址」欄位，整頁沒有提到加入碼。碼其實要接在位址後面、中間空一格。同仁會試的三種做法都失敗：整段貼上（「這不是 Hub 位址」）、只打碼（8 個字元被當成主機名稱，「連不上 abcd-efgh」）、只打位址（到 Hub 才被拒絕）。打對了，畫面也不會說「已帶入加入碼」。",
+   "fix": "提示改成「有加入碼就接在位址後面，中間空一格」；整段貼上時自動取出位址與碼；只打碼時說「這是加入碼，請在前面加上 Hub 位址」；認得碼之後在「找到…」那一行加上「已帶入加入碼」。",
+   "files": "src/ui/hub-join-one-strings.js:36,40,66,91-104、settings-hub-company-join.js:29,250-256。",
+   "stories": [
+    "J3"
+   ],
+   "src": [
+    "src/ui/hub-join-one-strings.js:91-104",
+    "src/ui/settings-hub-company-join.js:250-256",
+    "src/ui/hub-enrolment-code-strings.js:30"
+   ],
+   "isNew": true,
+   "track": "這次新增"
+  },
+  {
+   "sev": "confusing",
+   "cls": "decision",
+   "owner": "使用者決定",
+   "title": "靠加入碼進來的人，連上之後不能分享也不能提問",
+   "detail": "加入碼只給「連接 Fleet」。群組權限開啟時，不在允許群組的人靠碼連上後，沒有分享與對話的權限：Hub 首頁說「你的存取權不包含分享 Agent。」，但 Fleet 的頁面仍然請他「選擇要分享的 Agent」，而且 Fleet 端沒有對應這個情況的訊息。大量加入之後，會有一批連上了卻什麼都不能做的 Fleet。（Fleet 端實際顯示什麼，要實機確認。）",
+   "fix": "請決定：建立加入碼時可以一併勾選「和 Agent 對話」「分享 Agent」（安全代價：拿到碼的人權限變大），或維持只連接、並在 Fleet 頁面明講「你已連接，但還不能分享，請找 Hub 管理員」。",
+   "files": "",
+   "stories": [
+    "J3"
+   ],
+   "src": [
+    "src/ui/hub-enrolment-code-strings.js:29",
+    "src/ui/hub-group-strings.js:97",
+    "src/ui/settings-hub.js:21-22"
+   ],
+   "isNew": true,
+   "track": "這次新增"
+  },
+  {
+   "sev": "confusing",
+   "cls": "gap",
+   "owner": "Ridge",
+   "title": "加入碼到上限時，訊息說「Hub 目前忙碌」",
+   "detail": "最多 8 組有效的碼、每小時最多建立 10 組。超過時伺服器回的是「忙碌」，畫面顯示「Hub 目前忙碌，請稍後再試。」加上重試。8 組的情況等再久也沒用，要先停用一組。",
+   "fix": "伺服器分開回報兩種上限；畫面分別說「最多 8 組有效的加入碼，請先停用一組」與「一小時內建立太多組，請晚點再試」。",
+   "files": "src/hub/enrolment-code.ts:131、src/ui/hub-enrolment-code.js:11、hub-enrolment-code-strings.js。",
+   "stories": [
+    "J1"
+   ],
+   "src": [
+    "src/hub/enrolment-code.ts:131",
+    "src/ui/hub-enrolment-code.js:11,113"
+   ],
+   "isNew": true,
+   "track": "這次新增"
+  },
+  {
+   "sev": "confusing",
+   "cls": "gap",
+   "owner": "Ridge",
+   "title": "「立即停用這組碼」沒有確認，停用後也沒有任何說明",
+   "detail": "一按就停用，不能復原，而且會中斷正在連接的人。Hub 其他的撤銷都有確認框。「加入碼已停用，已連接的 Fleet 不受影響。」這句話已經寫在字串裡，但沒有被顯示。",
+   "fix": "加確認框（寫明：這組碼不能再用、正在連接的 n 台會中斷、已連接的不受影響），停用後顯示那一句。",
+   "files": "src/ui/hub-enrolment-code.js:104-116,136、hub-enrolment-code-strings.js:37。",
+   "stories": [
+    "J2"
+   ],
+   "src": [
+    "src/ui/hub-enrolment-code.js:136",
+    "src/ui/hub-enrolment-code-strings.js:37",
+    "src/hub/join/service.ts:186-190"
+   ],
+   "isNew": true,
+   "track": "這次新增"
+  },
+  {
+   "sev": "confusing",
+   "cls": "gap",
+   "owner": "Ridge",
+   "title": "連接到一半，加入碼被停用：訊息說「本機授權已變更」",
+   "detail": "管理員停用加入碼時，正在連接的請求會以「authority」結束，同仁看到「本機授權已變更，這次連接已停止。請先到 Hub 檢查結果，再重新操作。」，和真正的原因無關。",
+   "fix": "用加入碼自己的結束原因（code-ended），顯示「加入碼已失效或已用完。」。",
+   "files": "src/hub/join/service.ts:189、src/ui/hub-company-join-strings.js:44。",
+   "stories": [
+    "J3"
+   ],
+   "src": [
+    "src/hub/join/service.ts:189",
+    "src/ui/hub-company-join-strings.js:44"
+   ],
+   "isNew": true,
+   "track": "這次新增"
+  },
+  {
+   "sev": "polish",
+   "cls": "polish",
+   "owner": "Ridge",
+   "title": "排隊時沒有進度",
+   "detail": "「目前很多人同時加入，正在排隊…」會持續最長約 50 秒（最多 8 次、每次 2–6 秒），沒有第幾次或大約多久。另有一個沒被使用的字串「再試一次」。",
+   "fix": "加上「第 n 次，共 8 次」或「大約一分鐘內」；刪掉沒用到的字串。",
+   "files": "src/ui/panel-hub.js:240、hub-company-join.js:113、hub-enrolment-code-strings.js:39。",
+   "stories": [
+    "J4"
+   ],
+   "src": [
+    "src/ui/hub-join-queue.js:37-42",
+    "src/ui/hub-enrolment-code-strings.js:39"
+   ],
+   "isNew": true,
+   "track": "這次新增"
+  },
+  {
    "sev": "blocker",
    "title": "帶 ClassicBot 聊天室的人無法分享，畫面也沒說為什麼",
    "detail": "「分享的 Agent」只列出 Fleet 的 Agent，ClassicBot 聊天室不在清單裡。只有聊天室的人會看到「這個 Fleet 還沒有 Agent。」，然後就沒有下一步。情境矩陣有一半因此做不到。",
@@ -47,7 +159,8 @@
    ],
    "cls": "gap",
    "owner": "dev-claude2",
-   "files": "在「分享的 Agent」加一句說明並改空白狀態的文字：src/ui/settings-hub.js:254、hub-strings.js:145、hub-agent-copy.js:14。要不要支援聊天室另外決定。"
+   "files": "在「分享的 Agent」加一句說明並改空白狀態的文字：src/ui/settings-hub.js:254、hub-strings.js:145、hub-agent-copy.js:14。要不要支援聊天室另外決定。",
+   "track": "M-2988（文字）；#3743 第 1 項（支援聊天室）"
   },
   {
    "sev": "missing",
@@ -65,7 +178,8 @@
    ],
    "cls": "decision",
    "owner": "使用者決定",
-   "files": ""
+   "files": "",
+   "track": "#3743 第 2 項：角色與權限設計（M-2990，已決定）"
   },
   {
    "sev": "missing",
@@ -82,7 +196,8 @@
    ],
    "cls": "decision",
    "owner": "使用者決定",
-   "files": ""
+   "files": "",
+   "track": "#3743 第 3 項（已決定要做）"
   },
   {
    "sev": "missing",
@@ -97,7 +212,8 @@
    ],
    "cls": "gap",
    "owner": "Ridge",
-   "files": "已在進行：#3706（feat/hub-enrolment-code-ui-b2）。"
+   "files": "已在進行：#3706（feat/hub-enrolment-code-ui-b2）。",
+   "track": "已解決：#3706 已合併，見 J1–J4"
   },
   {
    "sev": "missing",
@@ -114,7 +230,8 @@
    ],
    "cls": "decision",
    "owner": "使用者決定",
-   "files": ""
+   "files": "",
+   "track": "已決定：維持現狀（#3743 第 4 項）"
   },
   {
    "sev": "confusing",
@@ -131,7 +248,8 @@
    ],
    "cls": "gap",
    "owner": "dev-claude2",
-   "files": "先改文字：src/ui/hub-owner-strings.js:36-37、hub-strings.js:110（含英文）。做成可恢復的暫停另外決定。"
+   "files": "先改文字：src/ui/hub-owner-strings.js:36-37、hub-strings.js:110（含英文）。做成可恢復的暫停另外決定。",
+   "track": "M-2988（文字）；#3743 第 5 項（真正的暫停）"
   },
   {
    "sev": "confusing",
@@ -147,7 +265,8 @@
    ],
    "cls": "gap",
    "owner": "#3562 的作者（網頁登入）",
-   "files": "src/ui/shared/signin.js:66 與英文對應行。"
+   "files": "src/ui/shared/signin.js:66 與英文對應行。",
+   "track": "M-2988"
   },
   {
    "sev": "confusing",
@@ -165,7 +284,8 @@
    ],
    "cls": "gap",
    "owner": "dev-claude2",
-   "files": "src/ui/hub-strings.js:75,147、settings-hub.js:235。"
+   "files": "src/ui/hub-strings.js:75,147、settings-hub.js:235。",
+   "track": "M-2988"
   },
   {
    "sev": "confusing",
@@ -180,7 +300,8 @@
    ],
    "cls": "gap",
    "owner": "dev-claude2",
-   "files": "src/ui/settings-hub-company-join.js:36-39 與英文對應行。"
+   "files": "src/ui/settings-hub-company-join.js:36-39 與英文對應行。",
+   "track": "M-2988"
   },
   {
    "sev": "confusing",
@@ -196,7 +317,8 @@
    ],
    "cls": "gap",
    "owner": "Cairn",
-   "files": "src/hub/init/text.ts:129,259-260。"
+   "files": "src/hub/init/text.ts:129,259-260。",
+   "track": "M-2989"
   },
   {
    "sev": "confusing",
@@ -211,7 +333,8 @@
    ],
    "cls": "gap",
    "owner": "dev-claude2",
-   "files": "src/ui/hub-join-steps.js:32,50。"
+   "files": "src/ui/hub-join-steps.js:32,50。",
+   "track": "M-2988"
   },
   {
    "sev": "confusing",
@@ -228,7 +351,8 @@
    ],
    "cls": "gap",
    "owner": "dev-claude2",
-   "files": "src/ui/panel-hub.js:915-920 加上這個情況的訊息，字串放 hub-strings.js。"
+   "files": "src/ui/panel-hub.js:915-920 加上這個情況的訊息，字串放 hub-strings.js。",
+   "track": "M-2988"
   },
   {
    "sev": "confusing",
@@ -244,7 +368,8 @@
    ],
    "cls": "gap",
    "owner": "dev-claude2",
-   "files": "src/ui/settings-hub-setup-strings.js:38 與英文對應行。"
+   "files": "src/ui/settings-hub-setup-strings.js:38 與英文對應行。",
+   "track": "M-2988"
   },
   {
    "sev": "confusing",
@@ -260,7 +385,8 @@
    ],
    "cls": "gap",
    "owner": "Ridge",
-   "files": "伺服器在授權列回報對方是否登入過（src/hub/catalog.ts:227 附近），畫面加標籤（src/ui/panel-hub.js:821-826）。"
+   "files": "伺服器在授權列回報對方是否登入過（src/hub/catalog.ts:227 附近），畫面加標籤（src/ui/panel-hub.js:821-826）。",
+   "track": "M-2989"
   },
   {
    "sev": "polish",
@@ -276,7 +402,8 @@
    ],
    "cls": "polish",
    "owner": "dev-claude2",
-   "files": "src/ui/hub-company-join.js:139 改用 hub-join-steps.js:53 的字串。"
+   "files": "src/ui/hub-company-join.js:139 改用 hub-join-steps.js:53 的字串。",
+   "track": "#3744"
   },
   {
    "sev": "polish",
@@ -291,7 +418,8 @@
    ],
    "cls": "polish",
    "owner": "dev-claude2",
-   "files": "src/ui/panel-hub.js:923、hub-strings.js:117。"
+   "files": "src/ui/panel-hub.js:923、hub-strings.js:117。",
+   "track": "M-2988"
   },
   {
    "sev": "polish",
@@ -306,7 +434,8 @@
    ],
    "cls": "polish",
    "owner": "dev-claude2",
-   "files": "src/ui/hub-strings.js:99 與英文對應行。"
+   "files": "src/ui/hub-strings.js:99 與英文對應行。",
+   "track": "M-2988"
   },
   {
    "sev": "polish",
@@ -321,7 +450,8 @@
    ],
    "cls": "polish",
    "owner": "#3449 的作者（瀏覽器設定）",
-   "files": "src/ui/settings-hub-setup.js、settings-hub-setup-strings.js:60。"
+   "files": "src/ui/settings-hub-setup.js、settings-hub-setup-strings.js:60。",
+   "track": "M-2989"
   },
   {
    "sev": "polish",
@@ -336,7 +466,8 @@
    ],
    "cls": "polish",
    "owner": "Cairn",
-   "files": "實機走查時計時後再決定：src/hub/init/wizard.ts。"
+   "files": "實機走查時計時後再決定：src/hub/init/wizard.ts。",
+   "track": "等實機走查時計時"
   }
  ],
  "roles": [
@@ -1101,7 +1232,7 @@
      "entry": "Hub 網址 → 登入 → 管理",
      "success": "三個步驟都顯示「已完成」，並複製了給同仁的那句話",
      "cells": "六個 Fleet Agent 情境",
-     "verdict": "新的三步驟卡片是整個 Hub 最清楚的一段。目錄不支援時，卡片卻叫管理員去找管理員。",
+     "verdict": "新的三步驟卡片是整個 Hub 最清楚的一段，加入碼也已經接上。目錄不支援時，卡片卻叫管理員去找管理員。",
      "steps": [
       {
        "screen": "Hub 登入",
@@ -1169,13 +1300,14 @@
       },
       {
        "screen": "步驟 3：加入碼",
-       "text": "（加入碼的位置，功能尚未合併）",
-       "buttons": [],
-       "action": "想發一組加入碼給一整個部門",
-       "src": "src/ui/hub-join-steps.js:64-77（#3706）",
-       "status": "missing",
-       "pending": true,
-       "note": "位置已預留，加入碼的管理畫面在 #3706，還沒合併；alpha 最新版看不到。"
+       "text": "（步驟 3 下方）",
+       "buttons": [
+        "建立加入碼"
+       ],
+       "action": "想發一組加入碼給一整個部門：見故事 J1",
+       "src": "src/ui/hub-join-steps.js:64-77；hub-enrolment-code.js:125（53a08bd7）",
+       "status": "ok",
+       "note": "第二輪更新：#3706 已合併，這一步從「沒有畫面」改為順利。細節在 J1、J2。"
       }
      ]
     },
@@ -1695,6 +1827,437 @@
        "src": "src/ui/hub-quota.js:21；panel-hub.js:828",
        "status": "missing",
        "note": "沒有依同仁或依團隊拆分的用量。Fleet 上的額度是整個帳號的，不能當成每個人的花費。"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "joincode",
+   "name": "加入碼",
+   "pair": "Lumen（2026-11-13 第二輪，對照 53a08bd7）",
+   "lead": "加入碼（#3706）已合併到 alpha。管理員建立一組 8 個字元的碼，同仁在自己的 Fleet 輸入 Hub 位址與這組碼，再用公司帳號登入；很多人同時加入時會自動排隊重試。加入碼只允許連接 Fleet，不給對話或分享的權限。這一組的行號對照 53a08bd7。",
+   "matrix": [
+    {
+     "c": 0,
+     "m": 0,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "J1",
+      "J2",
+      "J3",
+      "J4"
+     ],
+     "note": "Fleet 的設定頁沒有提到加入碼"
+    },
+    {
+     "c": 0,
+     "m": 1,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "J1",
+      "J2",
+      "J3",
+      "J4"
+     ],
+     "note": "同左"
+    },
+    {
+     "c": 1,
+     "m": 0,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "J1",
+      "J2",
+      "J3",
+      "J4"
+     ],
+     "note": "同左"
+    },
+    {
+     "c": 1,
+     "m": 1,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "J1",
+      "J2",
+      "J3",
+      "J4"
+     ],
+     "note": "同左；連接前還要先到 General 確認"
+    },
+    {
+     "c": 2,
+     "m": 0,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "J1",
+      "J2",
+      "J3",
+      "J4"
+     ],
+     "note": "同 Discord"
+    },
+    {
+     "c": 2,
+     "m": 1,
+     "a": 0,
+     "status": "warn",
+     "stories": [
+      "J1",
+      "J2",
+      "J3",
+      "J4"
+     ],
+     "note": "同 Discord"
+    },
+    {
+     "c": 0,
+     "m": 0,
+     "a": 1,
+     "status": "oos",
+     "note": "加入碼只管連接 Fleet，和帶來的 Agent 無關"
+    },
+    {
+     "c": 0,
+     "m": 1,
+     "a": 1,
+     "status": "oos",
+     "note": "同上"
+    },
+    {
+     "c": 1,
+     "m": 0,
+     "a": 1,
+     "status": "oos",
+     "note": "同上"
+    },
+    {
+     "c": 1,
+     "m": 1,
+     "a": 1,
+     "status": "oos",
+     "note": "同上"
+    },
+    {
+     "c": 2,
+     "m": 0,
+     "a": 1,
+     "status": "oos",
+     "note": "同上"
+    },
+    {
+     "c": 2,
+     "m": 1,
+     "a": 1,
+     "status": "oos",
+     "note": "同上"
+    }
+   ],
+   "stories": [
+    {
+     "id": "J1",
+     "title": "管理員建立一組加入碼，傳給整個部門",
+     "who": "Hub 管理員",
+     "goal": "不用一個一個邀請，讓一個部門的同仁今天之內自己連上來",
+     "entry": "Hub → 管理 →「讓同仁加入」步驟 3",
+     "success": "2 分鐘內拿到一組碼與一段可以直接貼到群組的說明",
+     "cells": "六個 Fleet Agent 情境",
+     "verdict": "建立很順，預設值合理。達到上限時的訊息說的是「Hub 忙碌」，其實是碼太多。",
+     "steps": [
+      {
+       "screen": "管理：「讓同仁加入」步驟 2、3",
+       "text": "2 誰可以加入\n加入可以連接 Fleet 的 AD 群組，然後儲存。 有效的加入碼也算完成。\n3 告訴同仁怎麼加入",
+       "buttons": [
+        "複製這段說明",
+        "建立加入碼"
+       ],
+       "action": "按「建立加入碼」（步驟 1 開啟後就能按）",
+       "src": "src/ui/hub-join-steps.js:44,68-77,86,205；hub-enrolment-code.js:125",
+       "status": "ok",
+       "note": "不必先設定群組：有一組有效的加入碼，步驟 2 就算完成。"
+      },
+      {
+       "screen": "建立加入碼對話框",
+       "text": "建立加入碼\n仍須以公司帳號登入。加入碼只允許連接 Fleet，不會授予 Agent 提問或分享權限。\n有效到：1 小時後／今天結束／7 天後\n最多幾台：30\n誰可以用：公司目錄中的任何人／一個公司群組\n更多 → 每人最多幾台：1",
+       "buttons": [
+        "取消",
+        "建立加入碼"
+       ],
+       "action": "用預設值，按「建立加入碼」",
+       "src": "src/ui/hub-enrolment-code.js:41-60；hub-enrolment-code-strings.js:24-29",
+       "status": "ok",
+       "note": "預設：今天結束、30 台、公司目錄中的任何人、每人 1 台。選「一個公司群組」時可以用名稱搜尋。"
+      },
+      {
+       "screen": "加入碼的列",
+       "text": "使用中　已加入 0 / 30\nXXXX-XXXX\n在 AgEnD「設定 → Hub」輸入 hub.acme.example 和這組碼。\n誰可以用: 公司目錄中的任何人 · 每人最多幾台 1\n有效到 {時間}",
+       "buttons": [
+        "複製",
+        "立即停用這組碼"
+       ],
+       "action": "按「複製」，貼到部門群組",
+       "src": "src/ui/hub-enrolment-code.js:117-121,130-136；hub-enrolment-code-strings.js:30-32",
+       "status": "ok",
+       "note": "複製的內容是那一句說明加上碼，共兩行。"
+      },
+      {
+       "screen": "台數超過 Hub 剩餘容量時",
+       "text": "Hub 尚可連接 {n} 台 Fleet。這組碼最多允許 {m} 台，超出的連接會被拒絕。",
+       "buttons": [],
+       "action": "知道實際能進來幾台",
+       "src": "src/ui/hub-enrolment-code.js:111,128；src/hub/join/service.ts:170",
+       "status": "ok",
+       "note": "建立當下就講清楚，不會等到有人被拒絕才知道。"
+      },
+      {
+       "screen": "已有 8 組有效的碼，或一小時內建了 10 組",
+       "text": "Hub 目前忙碌，請稍後再試。",
+       "buttons": [
+        "重試"
+       ],
+       "action": "等一下再按，還是一樣",
+       "src": "src/hub/enrolment-code.ts:131；src/ui/hub-enrolment-code.js:11,113；hub-enrolment-code-strings.js:38",
+       "status": "confusing",
+       "note": "其實是到了上限（最多 8 組有效的碼、每小時最多建 10 組）。訊息說忙碌，管理員會一直重試；該做的是先停用一組。"
+      }
+     ]
+    },
+    {
+     "id": "J2",
+     "title": "管理員查看誰用了加入碼，並停用它",
+     "who": "Hub 管理員",
+     "goal": "看這組碼連進來幾台、是誰；用完就停用",
+     "entry": "Hub → 管理 →「讓同仁加入」步驟 3 的加入碼清單",
+     "success": "看得到已加入的台數與名單；停用後不能再用，已連接的不受影響",
+     "cells": "六個 Fleet Agent 情境",
+     "verdict": "看得清楚。停用是一按就生效，沒有確認，也沒有任何一句話說「已停用、已連接的不受影響」。",
+     "steps": [
+      {
+       "screen": "加入碼的列（每 5 秒更新）",
+       "text": "使用中　已加入 12 / 30\n有效到 {時間} · 3 台正在連接\n最近的連接 ▸ {Fleet 名稱} · {姓名} · {時間}",
+       "buttons": [
+        "複製",
+        "立即停用這組碼"
+       ],
+       "action": "展開「最近的連接」",
+       "src": "src/ui/hub-enrolment-code.js:84-93,131-137；src/hub/join/service.ts:174-184",
+       "status": "ok",
+       "note": "有即時的台數、正在連接的數量、最近 50 筆是誰。"
+      },
+      {
+       "screen": "按「立即停用這組碼」",
+       "text": "（沒有確認對話框）\n已停用　已加入 12 / 30",
+       "buttons": [],
+       "action": "一按就停用；正在連接中的人會被中斷",
+       "src": "src/ui/hub-enrolment-code.js:136；src/hub/join/service.ts:186-190",
+       "status": "confusing",
+       "note": "這是不能復原的動作，而且會中斷正在連接的人。Hub 其他撤銷都有確認框，這裡沒有。"
+      },
+      {
+       "screen": "停用之後",
+       "text": "已停用　已加入 12 / 30\n誰可以用: … · 每人最多幾台 1",
+       "buttons": [],
+       "action": "想確認已連接的 12 台有沒有受影響",
+       "src": "src/ui/hub-enrolment-code-strings.js:37（字串「加入碼已停用，已連接的 Fleet 不受影響。」沒有被使用）",
+       "status": "polish",
+       "note": "那句最該出現的話已經寫好了，但畫面沒有顯示它。"
+      },
+      {
+       "screen": "通知",
+       "text": "已連接新的 Fleet：{名稱}\n由 Hub 管理員透過加入碼核准。",
+       "buttons": [
+        "撤銷此 Fleet"
+       ],
+       "action": "不認得的就撤銷",
+       "src": "src/ui/hub-quick-pairing.js:108；hub-enrolment-code-strings.js:41",
+       "status": "ok",
+       "note": "看得出這台是靠加入碼進來的。"
+      },
+      {
+       "screen": "過期或用完的碼",
+       "text": "已過期／已用完　已加入 30 / 30",
+       "buttons": [],
+       "action": "保留 7 天後自動消失",
+       "src": "src/hub/enrolment-code.ts:99,124,152-153；src/ui/hub-enrolment-code.js:131",
+       "status": "ok",
+       "note": ""
+      }
+     ]
+    },
+    {
+     "id": "J3",
+     "title": "同仁拿到加入碼，連接自己的 Fleet",
+     "who": "不在允許群組裡、從部門群組收到說明的同仁",
+     "goal": "照著那兩行說明連上 Hub",
+     "entry": "收到的訊息 → 自己 Fleet 的「設定 → Hub」",
+     "success": "不問人，3 分鐘內顯示已連接",
+     "cells": "六個 Fleet Agent 情境",
+     "verdict": "照著說明做會卡住：Fleet 的頁面上完全沒有「加入碼」三個字，也沒說碼要打在哪裡。知道訣竅（位址後面空一格再打碼）就走得通。",
+     "steps": [
+      {
+       "screen": "收到的說明",
+       "text": "在 AgEnD「設定 → Hub」輸入 hub.acme.example 和這組碼。\nXXXX-XXXX",
+       "buttons": [],
+       "action": "打開自己 Fleet 的「設定 → Hub」",
+       "src": "src/ui/hub-enrolment-code-strings.js:30；hub-enrolment-code.js:119",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "設定 → Hub：連接卡",
+       "text": "Hub 位址\n請輸入 Hub 位址（例如 hub.example.com），或貼上 Hub 管理員給你的連結。",
+       "buttons": [
+        "以公司帳號登入",
+        "其他方式"
+       ],
+       "action": "找輸入加入碼的地方：沒有",
+       "src": "src/ui/settings-hub-company-join.js:29,250-256；hub-join-one-strings.js:36",
+       "status": "confusing",
+       "note": "只有一個「Hub 位址」欄位，整頁沒有提到加入碼。碼其實要接在位址後面、中間空一格（hub-join-one-strings.js:96-101），但沒有任何地方這樣寫。"
+      },
+      {
+       "screen": "同仁會試的三種輸入",
+       "text": "① 把兩行說明整段貼上 → 這不是 Hub 位址。請輸入像 hub.example.com 的位址。\n② 只打加入碼 → 連不上 abcd-efgh。請確認位址，以及這台電腦連得到公司網路。\n③ 只打位址 → 找到「Acme Hub」… 之後在 Hub 被拒絕：你的公司帳號沒有連接 Fleet 的權限。",
+       "buttons": [],
+       "action": "三種都失敗，去問管理員",
+       "src": "src/ui/hub-join-one-strings.js:40,42,48,91-104",
+       "status": "confusing",
+       "note": "只打碼時，8 個字元被當成主機名稱去連線。三個錯誤訊息都沒有提到加入碼。"
+      },
+      {
+       "screen": "正確的輸入：位址 空格 碼",
+       "text": "hub.acme.example XXXX-XXXX\n找到「Acme Hub」。這台 Fleet 會顯示為「{主機名稱}」",
+       "buttons": [
+        "改名",
+        "以公司帳號登入"
+       ],
+       "action": "按「以公司帳號登入」",
+       "src": "src/ui/hub-join-one-strings.js:101；settings-hub-company-join.js:170,253",
+       "status": "polish",
+       "note": "碼有被帶上，但畫面沒有任何字告訴使用者「已帶入加入碼」，和沒打碼時一模一樣。"
+      },
+      {
+       "screen": "Hub 登入分頁",
+       "text": "登入 Hub\n連接 {Fleet 名稱}\n帳號　密碼",
+       "buttons": [
+        "登入並連接 Fleet"
+       ],
+       "action": "輸入公司帳號與密碼",
+       "src": "src/ui/panel-hub.js:226-238",
+       "status": "ok",
+       "note": "和一般的公司帳號連接相同。"
+      },
+      {
+       "screen": "Hub 分頁：碼不能用時",
+       "text": "你不在這組加入碼允許的範圍。\n或：加入碼已失效或已用完。",
+       "buttons": [
+        "重試"
+       ],
+       "action": "找管理員要新的碼",
+       "src": "src/ui/hub-company-join.js:21-22,94；src/hub/join/service.ts:333,353-356",
+       "status": "ok",
+       "note": "兩種原因分開講。"
+      },
+      {
+       "screen": "連接中被管理員停用",
+       "text": "本機授權已變更，這次連接已停止。請先到 Hub 檢查結果，再重新操作。",
+       "buttons": [],
+       "action": "不知道發生什麼事",
+       "src": "src/hub/join/service.ts:189；src/ui/hub-company-join-strings.js:44",
+       "status": "confusing",
+       "note": "真正的原因是加入碼剛被停用，訊息卻說「本機授權已變更」。"
+      },
+      {
+       "screen": "已連接，想分享 Agent",
+       "text": "Fleet 已連接，你可以在下方選擇要分享的 Agent。\n（Hub 首頁）你的存取權不包含分享 Agent。",
+       "buttons": [
+        "分享 {Agent}（開關）"
+       ],
+       "action": "打開分享開關：不在允許群組的人沒有分享權限",
+       "src": "src/ui/hub-enrolment-code-strings.js:29；hub-group-strings.js:97；settings-hub.js:21-22",
+       "status": "confusing",
+       "note": "加入碼只給「連接」。群組權限開啟時，靠碼進來的人不能分享也不能提問，但 Fleet 的頁面仍然請他「選擇要分享的 Agent」。Fleet 端沒有對應這個情況的訊息；實際顯示什麼要實機確認。"
+      }
+     ]
+    },
+    {
+     "id": "J4",
+     "title": "很多人同時加入：同一個請求自動排隊",
+     "who": "和三十位同事同時按下連接的同仁",
+     "goal": "不用自己一直重按，等一下就連上",
+     "entry": "Hub 登入分頁，按「登入並連接 Fleet」",
+     "success": "一分鐘內自動連上；連不上時知道該做什麼",
+     "cells": "六個 Fleet Agent 情境",
+     "verdict": "會自動重試，不會重複建立連接。排隊時只有一句話，沒有進度；排不到時要自己按重試。",
+     "steps": [
+      {
+       "screen": "Hub 登入分頁：按下之後",
+       "text": "登入 Hub\n帳號　密碼",
+       "buttons": [
+        "登入並連接 Fleet"
+       ],
+       "action": "輸入帳密，按下",
+       "src": "src/ui/panel-hub.js:184,238；hub-join-approval.js:17-28",
+       "status": "ok",
+       "note": ""
+      },
+      {
+       "screen": "Hub 忙碌：排隊中",
+       "text": "目前很多人同時加入，正在排隊…",
+       "buttons": [],
+       "action": "等。頁面每 2 到 6 秒自動再試，最多 8 次",
+       "src": "src/ui/panel-hub.js:240；hub-company-join.js:113；hub-join-queue.js:37-42",
+       "status": "polish",
+       "note": "沒有「第幾次」或「大約還要多久」。最長大約 50 秒，使用者不知道該不該繼續等。"
+      },
+      {
+       "screen": "同時在 Fleet 的設定頁",
+       "text": "已開啟 Acme Hub 的登入分頁… 剩 8:41\nHub 正在處理其他連接，稍後會自動再試。",
+       "buttons": [
+        "重新開啟分頁",
+        "取消"
+       ],
+       "action": "不用做事",
+       "src": "src/ui/hub-join-one-strings.js:50,55,117-119；settings-hub-company-join.js:261-262",
+       "status": "ok",
+       "note": "兩邊說的是同一件事。"
+      },
+      {
+       "screen": "排到了",
+       "text": "已連接。可以關閉這個分頁。",
+       "buttons": [],
+       "action": "分頁自動關閉",
+       "src": "src/ui/hub-join-queue.js:36；hub-company-join.js:19,104",
+       "status": "ok",
+       "note": "重試用的是同一個請求，不會多建一台 Fleet。"
+      },
+      {
+       "screen": "8 次都沒排到",
+       "text": "Hub 目前忙碌，請稍後再次檢查這次連接。",
+       "buttons": [
+        "重試"
+       ],
+       "action": "按「重試」，再排一輪",
+       "src": "src/ui/hub-join-queue.js:38；hub-company-join.js:114；hub-company-join-strings.js:47",
+       "status": "ok",
+       "note": "重試仍是同一個請求。字串裡另有「再試一次」（hub-enrolment-code-strings.js:39）沒有被使用。"
+      },
+      {
+       "screen": "超過 10 分鐘的期限",
+       "text": "目前無法確認結果。請先檢查這次連接，不要另開一次連接。",
+       "buttons": [
+        "重試"
+       ],
+       "action": "回 Fleet 設定頁檢查這次連接",
+       "src": "src/ui/hub-join-queue.js:13,26,35；hub-company-join-strings.js:41",
+       "status": "ok",
+       "note": "期限到了不假設「沒有建立」，要求先檢查，避免重複的 Fleet。"
       }
      ]
     }
