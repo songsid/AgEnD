@@ -1,0 +1,58 @@
+{
+  "source": "38aea69ecb1264854927bba30ab8086867de8a14",
+  "incoming": "a6557a6b3e328b1586de0f853390aabb8f0ad99f",
+  "cleanMerge": true,
+  "productDelta": [
+    {
+      "file": "src/hub/enrolment-code.ts",
+      "sameAddedRemovedLines": true
+    },
+    {
+      "file": "src/hub/http/compose.ts",
+      "sameAddedRemovedLines": true
+    },
+    {
+      "file": "src/hub/join/service.ts",
+      "sameAddedRemovedLines": true
+    },
+    {
+      "file": "src/ui/hub-client.js",
+      "sameAddedRemovedLines": true
+    },
+    {
+      "file": "src/ui/hub-company-join-strings.js",
+      "sameAddedRemovedLines": true
+    },
+    {
+      "file": "src/ui/hub-company-join.js",
+      "sameAddedRemovedLines": true
+    },
+    {
+      "file": "src/ui/hub-enrolment-code-strings.js",
+      "sameAddedRemovedLines": true
+    },
+    {
+      "file": "src/ui/hub-enrolment-code.js",
+      "sameAddedRemovedLines": true
+    },
+    {
+      "file": "src/ui/hub-join-approval.js",
+      "sameAddedRemovedLines": true
+    },
+    {
+      "file": "src/ui/hub-joincode-flow-strings.js",
+      "sameAddedRemovedLines": true
+    },
+    {
+      "file": "src/ui/panel-hub.js",
+      "sameAddedRemovedLines": true
+    },
+    {
+      "file": "src/ui/shared/app.css",
+      "sameAddedRemovedLines": true
+    }
+  ],
+  "focusedFiles": 6,
+  "focusedTests": 174,
+  "note": "Only invitation wording and its vocabulary test gate arrived after the 422-test source. All intended product +/- sequences remain identical across bases."
+}

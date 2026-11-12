@@ -1,4 +1,5 @@
 import { register, t } from "/assets/app-i18n.js";
+import { he } from "./hub-enrolment-code-strings.js";
 export const companyAdminStringsV1 = true;
 register("companyJoin", {
   en: {
@@ -71,6 +72,7 @@ export function joinResponseCode(result) {
   return match ? match[1] : result?.body?.error;
 }
 export function joinError(code) {
+  if (code === "code-ended") return he("codeEnded");
   return hj(code === "separate-hostnames" ? "separateHosts" : code === "identity-changed" ? "changed" : code === "denied" ? "denied" : code === "limit-reached" ? "limit"
     : code === "authority" || code === "revoked" ? "authority" : code === "confirmation-required" ? "confirmationRequired" : code === "expired" ? "expired" : code === "incompatible" ? "incompatible"
     : code === "backpressure" ? "busy" : code === "cancelled" ? "cancelled" : code === "unsaved" ? "unsaved" : "unknown");

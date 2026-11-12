@@ -1,0 +1,263 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995
+
+ ❯ tests/hub-enrolment-code-http-b1.test.ts (24 tests | 2 failed) 43935ms
+     × real revoke retires a pending code request and preserves its specific browser feedback 895ms
+     × code creation returns distinct protected HTTP reasons for the live and hourly caps 1708ms
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts (35 tests | 7 failed) 2522ms
+     × a en/live-code-limit creation limit names its real remedy 68ms
+     × a en/hourly-code-limit creation limit names its real remedy 55ms
+     × a zh-TW/live-code-limit creation limit names its real remedy 56ms
+     × a zh-TW/hourly-code-limit creation limit names its real remedy 54ms
+     × en end-code confirmation names affected joins, supports Cancel and shows success 46ms
+     × zh-TW end-code confirmation names affected joins, supports Cancel and shows success 34ms
+     × sign-out retires an unconfirmed end-code dialog without a write 35ms
+ ❯ tests/hub-join-approval-ui-b2.test.ts (28 tests | 4 failed) 2042ms
+     × en queue shows the current retry out of eight without changing its request 62ms
+     × zh-TW queue shows the current retry out of eight without changing its request 39ms
+     × en terminal status carries the ended-code reason without a preceding approve failure 27ms
+     × zh-TW terminal status carries the ended-code reason without a preceding approve failure 25ms
+ ❯ tests/hub-enrolment-code-store-b1.test.ts (15 tests | 1 failed) 413ms
+     × identifies the live-code cap separately from the hourly cap without creating a row 82ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 14 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-enrolment-code-http-b1.test.ts > B1 enrolment-code protected routes and actual join > real revoke retires a pending code request and preserves its specific browser feedback
+AssertionError: expected { …(11) } to match object { inFlight: 1, …(1) }
+(11 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "inFlight": 1,
+-   "inFlightLabels": [
+-     "Code Fleet",
+-   ],
++   "inFlight": 0,
+  }
+
+ ❯ tests/hub-enrolment-code-http-b1.test.ts:150:20
+    148|     const browser = await a.openBrowser("dan");
+    149|     const listed = (await r.call(admin, "GET", "/hub/v1/admin/enrolmen…
+    150|     expect(listed).toMatchObject({ inFlight: 1, inFlightLabels: ["Code…
+       |                    ^
+    151|     expect((await r.call(admin, "POST", "/hub/v1/admin/enrolment-codes…
+    152|     expect((await a.command("status")).body).toMatchObject({ state: "e…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/14]⎯
+
+ FAIL  tests/hub-enrolment-code-http-b1.test.ts > B1 enrolment-code protected routes and actual join > code creation returns distinct protected HTTP reasons for the live and hourly caps
+AssertionError: expected { code: 'backpressure' } to deeply equal { code: 'backpressure', …(1) }
+
+- Expected
++ Received
+
+  {
+    "code": "backpressure",
+-   "reason": "live-code-limit",
+  }
+
+ ❯ tests/hub-enrolment-code-http-b1.test.ts:163:23
+    161|     const create = () => r.call(admin, "POST", "/hub/v1/admin/enrolmen…
+    162|     const live = await create(); expect(live.status).toBe(429);
+    163|     expect(live.body).toEqual({ code: "backpressure", reason: "live-co…
+       |                       ^
+    164|     expect((await r.call(null, "POST", "/hub/v1/admin/enrolment-codes"…
+    165|     for (const code of codes.slice(0, 2)) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/14]⎯
+
+ FAIL  tests/hub-enrolment-code-store-b1.test.ts > B1 private reusable enrolment-code store > identifies the live-code cap separately from the hourly cap without creating a row
+AssertionError: expected Error: Hub protocol: backpressure { code: '…' } to match object { code: 'backpressure', …(1) }
+
+- Expected
++ Received
+
+- {
++ HubProtocolError {
+    "code": "backpressure",
+-   "reason": "live-code-limit",
+  }
+
+ ❯ tests/hub-enrolment-code-store-b1.test.ts:136:23
+    134|     const r = rig(), live = Array.from({ length: 8 }, () => r.create()…
+    135|     const refused = () => { try { r.create(); } catch (error) { return…
+    136|     expect(refused()).toMatchObject({ code: "backpressure", reason: "l…
+       |                       ^
+    137|     expect(r.db.prepare("SELECT count(*) n FROM hub_enrolment_codes").…
+    138|     r.tx(() => r.store.revoke(live[0]!.id, admin)); const ninth = r.cr…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/14]⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > a en/live-code-limit creation limit names its real remedy
+AssertionError: expected 'Create join codeThe Hub is busy. Try …' to contain 'At most 8 join codes can be live. End…'
+
+Expected: "At most 8 join codes can be live. End one before creating another."
+Received: "Create join codeThe Hub is busy. Try again shortly.Try againNo join codesCreate a code to connect Fleets with company accounts."
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:45:21
+     43|     const p = await mount(c, {}, lang);
+     44|     fire(buttons(p, lang === "en" ? "Create join code" : "建立加入碼")[0], …
+     45|     expect(text(p)).toContain(message); expect(text(p)).not.toContain(…
+       |                     ^
+     46|     expect(c.createEnrolmentCode).toHaveBeenCalledOnce();
+     47|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/14]⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > a en/hourly-code-limit creation limit names its real remedy
+AssertionError: expected 'Create join codeThe Hub is busy. Try …' to contain 'At most 10 join codes can be created …'
+
+Expected: "At most 10 join codes can be created in one hour. Try again later."
+Received: "Create join codeThe Hub is busy. Try again shortly.Try againNo join codesCreate a code to connect Fleets with company accounts."
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:45:21
+     43|     const p = await mount(c, {}, lang);
+     44|     fire(buttons(p, lang === "en" ? "Create join code" : "建立加入碼")[0], …
+     45|     expect(text(p)).toContain(message); expect(text(p)).not.toContain(…
+       |                     ^
+     46|     expect(c.createEnrolmentCode).toHaveBeenCalledOnce();
+     47|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/14]⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > a zh-TW/live-code-limit creation limit names its real remedy
+AssertionError: expected '建立加入碼Hub 目前忙碌，請稍後再試。再試一次尚無加入碼建立加入碼，讓同…' to contain '最多 8 組有效的加入碼，請先停用一組，再建立新的加入碼。'
+
+Expected: "最多 8 組有效的加入碼，請先停用一組，再建立新的加入碼。"
+Received: "建立加入碼Hub 目前忙碌，請稍後再試。再試一次尚無加入碼建立加入碼，讓同仁以公司帳號連接 Fleet。"
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:45:21
+     43|     const p = await mount(c, {}, lang);
+     44|     fire(buttons(p, lang === "en" ? "Create join code" : "建立加入碼")[0], …
+     45|     expect(text(p)).toContain(message); expect(text(p)).not.toContain(…
+       |                     ^
+     46|     expect(c.createEnrolmentCode).toHaveBeenCalledOnce();
+     47|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/14]⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > a zh-TW/hourly-code-limit creation limit names its real remedy
+AssertionError: expected '建立加入碼Hub 目前忙碌，請稍後再試。再試一次尚無加入碼建立加入碼，讓同…' to contain '一小時內最多建立 10 組加入碼，請晚點再試。'
+
+Expected: "一小時內最多建立 10 組加入碼，請晚點再試。"
+Received: "建立加入碼Hub 目前忙碌，請稍後再試。再試一次尚無加入碼建立加入碼，讓同仁以公司帳號連接 Fleet。"
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:45:21
+     43|     const p = await mount(c, {}, lang);
+     44|     fire(buttons(p, lang === "en" ? "Create join code" : "建立加入碼")[0], …
+     45|     expect(text(p)).toContain(message); expect(text(p)).not.toContain(…
+       |                     ^
+     46|     expect(c.createEnrolmentCode).toHaveBeenCalledOnce();
+     47|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/14]⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > en end-code confirmation names affected joins, supports Cancel and shows success
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > zh-TW end-code confirmation names affected joins, supports Cancel and shows success
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "11111111-1111-4111-8111-111111111111",
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:55:39
+     53|     const p = await mount(c, { enabled: false }, lang), end = lang ===…
+     54|     fire(buttons(p, end)[0], "click"); await settle(5);
+     55|     expect(c.revokeEnrolmentCode).not.toHaveBeenCalled();
+       |                                       ^
+     56|     const dialog = p.root.querySelector("dialog"); expect(dialog).not.…
+     57|     expect(dialog.textContent).toContain("1234-ABCD"); expect(dialog.t…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/14]⎯
+
+ FAIL  tests/hub-enrolment-code-ui-b2.test.ts > B2 code management: explicit configured-admin actions > sign-out retires an unconfirmed end-code dialog without a write
+AssertionError: expected null not to be null
+ ❯ tests/hub-enrolment-code-ui-b2.test.ts:70:48
+     68|     const c = fake({ enrolmentCodes: async () => ({ ok: true, codes: […
+     69|     const p = await mount(c); fire(buttons(p, "End this code now")[0],…
+     70|     expect(p.root.querySelector("dialog")).not.toBeNull(); signedOut()…
+       |                                                ^
+     71|     expect(p.root.querySelector("dialog")).toBeNull(); expect(c.revoke…
+     72|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/14]⎯
+
+ FAIL  tests/hub-join-approval-ui-b2.test.ts > B2 actual Hub approval page > en queue shows the current retry out of eight without changing its request
+AssertionError: expected 'Connect My FleetFleet address: https:…' to contain 'Retry 1 of 8'
+
+Expected: "Retry 1 of 8"
+Received: "Connect My FleetFleet address: https://fleet.example.testConnect as CarolMany people are connecting at once. Waiting in the queue…"
+
+ ❯ tests/hub-join-approval-ui-b2.test.ts:30:34
+     28|     const timers = queueTimers(), r = await rig(() => ({ ok: false, co…
+     29|     fire(button(r.p, lang === "en" ? "Connect as Carol" : "以 Carol 的身分…
+     30|     expect(r.p.root.textContent).toContain(lang === "en" ? "Retry 1 of…
+       |                                  ^
+     31|     timers.shift()!(); await settle(8);
+     32|     expect(r.p.root.textContent).toContain(lang === "en" ? "Retry 2 of…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/14]⎯
+
+ FAIL  tests/hub-join-approval-ui-b2.test.ts > B2 actual Hub approval page > zh-TW queue shows the current retry out of eight without changing its request
+AssertionError: expected '連接 My FleetFleet 位址: https://fleet.ex…' to contain '第 1 次重試，共 8 次'
+
+Expected: "第 1 次重試，共 8 次"
+Received: "連接 My FleetFleet 位址: https://fleet.example.test以 Carol 的身分連接目前很多人同時加入，正在排隊…"
+
+ ❯ tests/hub-join-approval-ui-b2.test.ts:30:34
+     28|     const timers = queueTimers(), r = await rig(() => ({ ok: false, co…
+     29|     fire(button(r.p, lang === "en" ? "Connect as Carol" : "以 Carol 的身分…
+     30|     expect(r.p.root.textContent).toContain(lang === "en" ? "Retry 1 of…
+       |                                  ^
+     31|     timers.shift()!(); await settle(8);
+     32|     expect(r.p.root.textContent).toContain(lang === "en" ? "Retry 2 of…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/14]⎯
+
+ FAIL  tests/hub-join-approval-ui-b2.test.ts > B2 actual Hub approval page > en terminal status carries the ended-code reason without a preceding approve failure
+AssertionError: expected 'Use your company account. A successfu…' to contain 'This join code is no longer valid or …'
+
+Expected: "This join code is no longer valid or has been used up."
+Received: "Use your company account. A successful connection enables membership; no Agents are shared.The result could not be verified. Check this same connection before starting another one."
+
+ ❯ tests/hub-join-approval-ui-b2.test.ts:39:32
+     37|     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async …
+     38|     await p.mount(h(ui.HubCompanyJoinPage, { session: { csrf: "owned" …
+     39|     expect(p.root.textContent).toContain(lang === "en" ? "This join co…
+       |                                ^
+     40|     expect(p.root.textContent).not.toContain(lang === "en" ? "Local au…
+     41|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/14]⎯
+
+ FAIL  tests/hub-join-approval-ui-b2.test.ts > B2 actual Hub approval page > zh-TW terminal status carries the ended-code reason without a preceding approve failure
+AssertionError: expected '使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。目前…' to contain '加入碼已失效或已用完。'
+
+Expected: "加入碼已失效或已用完。"
+Received: "使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。目前無法確認結果。請先檢查這次連接，不要另開一次連接。"
+
+ ❯ tests/hub-join-approval-ui-b2.test.ts:39:32
+     37|     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async …
+     38|     await p.mount(h(ui.HubCompanyJoinPage, { session: { csrf: "owned" …
+     39|     expect(p.root.textContent).toContain(lang === "en" ? "This join co…
+       |                                ^
+     40|     expect(p.root.textContent).not.toContain(lang === "en" ? "Local au…
+     41|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/14]⎯
+
+
+ Test Files  4 failed (4)
+      Tests  14 failed | 88 passed (102)
+   Start at  01:46:54
+   Duration  53.36s (transform 3.32s, setup 200ms, import 3.71s, tests 48.91s, environment 0ms)
+

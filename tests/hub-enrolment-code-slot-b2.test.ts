@@ -49,7 +49,14 @@ describe("U2 and B2 compose without an injected stand-in component", () => {
     expect(p.root.querySelector('li[data-step="2"]').classList.contains("done")).toBe(true);
     expect(named(p, copy).disabled).toBe(false);
     expect(p.root.querySelector("#hubEnrolmentCodeSlot").textContent).toContain("1234-ABCD");
-    fire(named(p, end), "click"); await settle(25);
+    fire(named(p, end), "click"); await settle(5);
+    expect(r.client.revokeEnrolmentCode).not.toHaveBeenCalled();
+    let dialog = p.root.querySelector("dialog"); expect(dialog).not.toBeNull();
+    expect(p.root.querySelector('li[data-step="2"]').classList.contains("done")).toBe(true);
+    fire([...dialog.querySelectorAll("button")].find((b: any) => b.textContent === (lang === "en" ? "Cancel" : "取消")), "click"); await settle(5);
+    expect(r.client.revokeEnrolmentCode).not.toHaveBeenCalled(); expect(p.root.querySelector("dialog")).toBeNull();
+    fire(named(p, end), "click"); await settle(5); dialog = p.root.querySelector("dialog");
+    fire(dialog.querySelector(".btn-danger"), "click"); await settle(25);
     expect(r.client.revokeEnrolmentCode).toHaveBeenCalledExactlyOnceWith(ID);
     expect(p.root.querySelector('li[data-step="2"]').classList.contains("done")).toBe(false);
     expect(named(p, copy).disabled).toBe(true);
@@ -70,7 +77,10 @@ describe("U2 and B2 compose without an injected stand-in component", () => {
     fire(named(p, "Create join code"), "click"); await settle(5); fire(p.root.querySelector("form"), "submit"); await settle(15);
     await p.mount(h(r.Harness, { enabled: false })); await settle(10);
     expect(named(p, "Create join code").disabled).toBe(true); expect(named(p, "Copy these instructions").disabled).toBe(true);
-    fire(named(p, "End this code now"), "click"); await settle(15);
+    fire(named(p, "End this code now"), "click"); await settle(5);
+    expect(r.client.revokeEnrolmentCode).not.toHaveBeenCalled();
+    expect(p.root.querySelector("dialog")).not.toBeNull();
+    fire(p.root.querySelector("dialog .btn-danger"), "click"); await settle(15);
     expect(r.client.revokeEnrolmentCode).toHaveBeenCalledExactlyOnceWith(ID); expect(p.root.textContent).not.toContain("1234-ABCD");
   });
   it("the actual module stays inert with a held older client", async () => {

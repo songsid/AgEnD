@@ -27,6 +27,10 @@ export type EnrolmentInput = z.input<typeof enrolmentCreate>;
 export interface EnrolmentCode { id: string; mac: string; sealed: Buffer | null; createdBy: PersonKey; createdAt: number;
   expiresAt: number; maxUses: number; uses: number; perPersonFleets: number; scope: EnrolmentScope; revokedAt: number | null; revokedBy: PersonKey | null; endedAt: number | null }
 interface EnrolmentUse { requestId: string; fleetId: string; owner: PersonKey }
+/** Configured-admin feedback only; the admission limits and generic busy code stay unchanged. */
+export class HubEnrolmentCodeLimit extends HubProtocolError {
+  constructor(readonly reason: "live-code-limit" | "hourly-code-limit") { super("backpressure"); }
+}
 export const HUB_ENROLMENT_CODE_MIGRATION: HubMigration = Object.freeze({ component: "enrolment-code", version: 1, up(db: Database.Database) {
   db.exec(`CREATE TABLE hub_enrolment_codes(id TEXT PRIMARY KEY,mac TEXT UNIQUE NOT NULL,sealed BLOB,created_by TEXT NOT NULL,
     created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,max_uses INTEGER NOT NULL,uses INTEGER NOT NULL DEFAULT 0,
@@ -130,7 +134,10 @@ export class HubEnrolmentCodes {
   create(creator: PersonKey, input: EnrolmentInput) {
     this.transaction(); this.maintain(); const p = validated(enrolmentCreate, input), actor = validated(person, creator), now = this.deps.now();
     const rows = (this.deps.db.prepare("SELECT * FROM hub_enrolment_codes").all()).map(row);
-    if (rows.length >= 4096 || rows.filter(c => this.state(c) === "live").length >= 8 || rows.filter(c => c.createdAt > now - 3600000).length >= 10) throw new HubProtocolError("backpressure");
+    if (rows.length >= 4096) throw new HubProtocolError("backpressure");
+    // Waiting is required when both caps apply; ending a code cannot reset the hourly counter.
+    if (rows.filter(c => c.createdAt > now - 3600000).length >= 10) throw new HubEnrolmentCodeLimit("hourly-code-limit");
+    if (rows.filter(c => this.state(c) === "live").length >= 8) throw new HubEnrolmentCodeLimit("live-code-limit");
     for (const c of rows) this.end(c);
     const expiresAt = p.expires === "today" ? (() => { const d = new Date(now); d.setHours(24, 0, 0, 0); return d.getTime(); })() : now + (p.expires === "1h" ? 3600000 : 7 * 86400000);
     const bytes = randomBytes(5); let n = BigInt("0x" + bytes.toString("hex")), code = "";

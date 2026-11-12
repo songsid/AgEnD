@@ -1,0 +1,16 @@
+{
+  "source": "68d4d0c55a1af0b666ba8377a9a7525dcf612a64",
+  "previous": "49fcc3838813a08ec005a4d10ecee0bf760ff8ad",
+  "productDelta": "Only the existing hub-exposure-name class on confirmation Fleet labels. No new CSS, copy or authority path.",
+  "beforePhone": {
+    "clientWidth": 390,
+    "scrollWidth": 1820
+  },
+  "isolatedReversal": {
+    "pageX": 0,
+    "dialogX": 1340,
+    "semanticNoOverflowFailure": true,
+    "restored": true
+  },
+  "recipe": "Remove only class=\"hub-exposure-name\" from the names list in hub-enrolment-code.js, then LONG_LABEL=1 PHASE=after run the retained accept.mts; finally restore exact source."
+}

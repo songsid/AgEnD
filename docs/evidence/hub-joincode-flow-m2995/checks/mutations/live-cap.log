@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-joincode-flow-m2995
+
+ ❯ tests/hub-enrolment-code-store-b1.test.ts (15 tests | 1 failed | 14 skipped) 683ms
+     × identifies the live-code cap separately from the hourly cap without creating a row 680ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 skipped (15)
+   Start at  02:01:34
+   Duration  1.25s (transform 242ms, setup 146ms, import 245ms, tests 683ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-enrolment-code-store-b1.test.ts > B1 private reusable enrolment-code store > identifies the live-code cap separately from the hourly cap without creating a row
+AssertionError: expected Error: Hub protocol: backpressure { code: '…' } to match object { code: 'backpressure', …(1) }
+
+- Expected
++ Received
+
+- {
++ HubProtocolError {
+    "code": "backpressure",
+-   "reason": "live-code-limit",
+  }
+
+ ❯ tests/hub-enrolment-code-store-b1.test.ts:136:23
+    134|     const r = rig(), live = Array.from({ length: 8 }, () => r.create()…
+    135|     const refused = () => { try { r.create(); } catch (error) { return…
+    136|     expect(refused()).toMatchObject({ code: "backpressure", reason: "l…
+       |                       ^
+    137|     expect(r.db.prepare("SELECT count(*) n FROM hub_enrolment_codes").…
+    138|     r.tx(() => r.store.revoke(live[0]!.id, admin)); const ninth = r.cr…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

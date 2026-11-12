@@ -4,11 +4,14 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { hubClient } from "./hub-client.js";
 import { he } from "./hub-enrolment-code-strings.js";
+import { jf } from "./hub-joincode-flow-strings.js";
 export const enrolmentCodeV1 = true;
 const time = value => new Date(value).toLocaleString();
 const supported = client => client?.enrolmentCodeV1 === true && ["enrolmentCodes", "createEnrolmentCode", "revokeEnrolmentCode"].every(key => typeof client[key] === "function");
 const integer = (value, max) => Number.isSafeInteger(Number(value)) && Number(value) >= 1 && Number(value) <= max;
-const errorText = (result, fallback) => he(result?.code === "backpressure" ? "limited" : result?.status === 403 ? "denied" : fallback);
+const errorText = (result, fallback) => result?.code === "backpressure" && result.reason === "live-code-limit" ? jf("liveLimit")
+  : result?.code === "backpressure" && result.reason === "hourly-code-limit" ? jf("hourlyLimit")
+  : he(result?.code === "backpressure" ? "limited" : result?.status === 403 ? "denied" : fallback);
 
 function CreateCode({ client, busy, enabled, onCreate, onClose }) {
   const [expires, setExpires] = useState("today"), [max, setMax] = useState("30"), [perPerson, setPerPerson] = useState("1");
@@ -65,6 +68,7 @@ export function HubEnrolmentCode({ client = hubClient(), enabled = false, host =
   owner.current = client;
   const [data, setData] = useState(null), [loading, setLoading] = useState(true), [error, setError] = useState(null);
   const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [copied, setCopied] = useState(null), [capacity, setCapacity] = useState(null), [notice, setNotice] = useState(null);
+  const [ending, setEnding] = useState(null), [success, setSuccess] = useState(null);
   const usable = supported(client), current = mine => live.current && owner.current === client && epoch.current === mine;
   const read = async () => {
     if (!live.current || writing.current || reading.current) return;
@@ -79,7 +83,7 @@ export function HubEnrolmentCode({ client = hubClient(), enabled = false, host =
   refresh.current = read;
   useEffect(() => {
     live.current = usable; epoch.current++; writing.current = false; reading.current = null;
-    setData(null); setError(null); setNotice(null); setLoading(true); setOpen(false); setBusy(false); setCapacity(null); setCopied(null);
+    setData(null); setError(null); setNotice(null); setSuccess(null); setEnding(null); setLoading(true); setOpen(false); setBusy(false); setCapacity(null); setCopied(null);
     if (!usable) return undefined;
     let timer = null, visible = true, polling = false;
     const tick = async () => {
@@ -97,18 +101,19 @@ export function HubEnrolmentCode({ client = hubClient(), enabled = false, host =
     if (root.current) observer?.observe(root.current);
     const visibility = () => { if (document.visibilityState !== "hidden") void tick(); };
     document.addEventListener("visibilitychange", visibility);
-    const off = client.onSignedOut?.(() => { live.current = false; epoch.current++; clearTimeout(timer); setData(null); setOpen(false); setLoading(false); setBusy(false); setError(he("denied")); });
+    const off = client.onSignedOut?.(() => { live.current = false; epoch.current++; clearTimeout(timer); setData(null); setOpen(false); setEnding(null); setSuccess(null); setLoading(false); setBusy(false); setError(he("denied")); });
     void tick();
     return () => { live.current = false; epoch.current++; clearTimeout(timer); observer?.disconnect(); document.removeEventListener("visibilitychange", visibility); off?.(); };
   }, [client, usable]);
   const mutate = async (kind, input) => {
-    if (!live.current || writing.current || kind === "create" && !enabled) return;
-    writing.current = true; reading.current = null; const mine = ++epoch.current; setBusy(true); setError(null); setCopied(null);
+    if (!live.current || owner.current !== client || writing.current || kind === "create" && !enabled) return;
+    writing.current = true; reading.current = null; const mine = ++epoch.current; setBusy(true); setError(null); setNotice(null); setSuccess(null); setCopied(null);
     let r; try { r = await (kind === "create" ? client.createEnrolmentCode(input) : client.revokeEnrolmentCode(input)); } catch { r = { ok: false }; }
     if (!current(mine)) return;
-    writing.current = false; setBusy(false); setOpen(false);
+    writing.current = false; setBusy(false); setOpen(false); setEnding(null);
     if (r.ok) {
       setOpen(false); if (kind === "create" && Number.isInteger(r.freeFleetRows) && input.maxUses > r.freeFleetRows) setCapacity({ free: r.freeFleetRows, max: input.maxUses });
+      if (kind === "revoke") setSuccess(he("ended"));
       try { onChanged(); } catch { /* U2 owns its projection refresh. */ }
     } else setNotice(errorText(r, kind === "create" ? "createFailed" : "endFailed"));
     // Never repeat an uncertain write automatically. Inspect the authoritative list instead.
@@ -121,10 +126,14 @@ export function HubEnrolmentCode({ client = hubClient(), enabled = false, host =
   };
   if (!usable) return null;
   const rows = data?.client === client ? data.codes : [];
+  const endingRow = ending?.client === client ? rows.find(row => row.id === ending.id && row.state === "live") : null;
+  const joining = endingRow && Number.isSafeInteger(endingRow.inFlight) && endingRow.inFlight >= 0 ? endingRow.inFlight : 0;
+  const names = Array.isArray(endingRow?.inFlightLabels) ? endingRow.inFlightLabels.filter(name => typeof name === "string").slice(0, 3) : [];
   return html`<div ref=${root} data-enrolment-codes="v1">
-    <div class="n-actions"><button type="button" class="btn btn-primary" disabled=${!enabled || busy || open || loading || !!error || !!notice} onClick=${() => setOpen(true)}>${he("create")}</button></div>
+    <div class="n-actions"><button type="button" class="btn btn-primary" disabled=${!enabled || busy || open || !!endingRow || loading || !!error || !!notice} onClick=${() => setOpen(true)}>${he("create")}</button></div>
     ${error ? html`<${ErrorState} message=${error} onRetry=${read} />` : null}
     ${notice ? html`<${ErrorState} message=${notice} onRetry=${async () => { if (await read()) setNotice(null); }} />` : null}
+    ${success ? html`<p class="note" role="status">${success}</p>` : null}
     ${capacity ? html`<p class="note" role="status">${he("capacity", capacity.free, capacity.max)}</p>` : null}
     ${loading ? html`<${Skeleton} variant="rows" lines=${2} />` : !rows.length && !error ? html`<${Empty} title=${he("empty")} hint=${he("emptyHint")} />` : null}
     ${rows.map(row => html`<section key=${row.id} data-enrolment-code=${row.id}>
@@ -133,10 +142,18 @@ export function HubEnrolmentCode({ client = hubClient(), enabled = false, host =
       <p class="note hub-fp-full">${he("scope")}: ${row.scope?.kind === "group" ? row.scope.dn : he("directory")} · ${he("perPerson")} ${row.perPersonFleets}</p>
       <p class="note">${he("until", time(row.expiresAt))}${row.inFlight ? html` · ${he("pending", row.inFlight)}` : null}</p>
       <div class="n-actions">${row.state === "live" && row.code ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => copy(row)}>${he(copied === row.id ? "copied" : "copy")}</button>
-        <button type="button" class="btn btn-sm btn-danger" disabled=${busy} onClick=${() => mutate("revoke", row.id)}>${he("end")}</button>` : null}</div>
+        <button type="button" class="btn btn-sm btn-danger" disabled=${busy || !!endingRow} onClick=${() => setEnding({ client, id: row.id })}>${he("end")}</button>` : null}</div>
       ${row.recent?.length ? html`<details><summary>${he("recent")}</summary><ul>${row.recent.slice(0, 50).map((use, index) => html`<li key=${index}>${use.label} · ${use.owner?.name || use.owner?.login || ""} · ${time(use.at)}</li>`)}</ul></details>` : null}
     </section>`)}
     ${copied === "failed" ? html`<p class="note" role="status">${he("copyFailed")}</p>` : null}
     ${open ? html`<${CreateCode} client=${client} busy=${busy} enabled=${enabled} onCreate=${input => mutate("create", input)} onClose=${() => { if (!writing.current) setOpen(false); }} />` : null}
+    ${endingRow ? html`<${Dialog} title=${jf("endTitle")} busy=${busy} onClose=${() => { if (!writing.current) setEnding(null); }} actions=${html`
+      <button type="button" class="btn" disabled=${busy} onClick=${() => setEnding(null)}>${he("cancel")}</button>
+      <button type="button" class="btn btn-danger" disabled=${busy} onClick=${() => mutate("revoke", endingRow.id)}>${he("end")}</button>`}>
+      <p><code>${endingRow.code}</code></p><p>${jf("endConfirm")}</p><p>${jf("endPending", joining)}</p>
+      ${names.length ? html`<p class="note">${jf("endNames")}</p><ul>${names.map((name, index) => html`<li key=${index} class="hub-exposure-name">${name}</li>`)}</ul>
+        ${joining > names.length ? html`<p class="note">${jf("endOthers", joining - names.length)}</p>` : null}` : null}
+      <p>${jf("endUnchanged")}</p>
+    </${Dialog}>` : null}
   </div>`;
 }

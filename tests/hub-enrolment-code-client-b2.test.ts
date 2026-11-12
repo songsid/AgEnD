@@ -23,6 +23,17 @@ describe("B2 code management through the Hub's same-origin client", () => {
     expect(calls[2].init.headers["X-AgEnD-Hub-CSRF"]).toBe("inert-current-session");
     expect(calls[3].init.headers["X-AgEnD-Hub-CSRF"]).toBe("inert-current-session");
   });
+  it("only the create-code cap reasons cross the error projection", async () => {
+    let status = 429, code = "backpressure", reason = "live-code-limit";
+    const c = create({ fetchImpl: async () => ({ ok: false, status, headers: new Headers(), json: async () => ({ code, reason }) }) });
+    expect((await c.createEnrolmentCode({})).reason).toBe("live-code-limit");
+    reason = "hourly-code-limit"; expect((await c.createEnrolmentCode({})).reason).toBe("hourly-code-limit");
+    expect((await c.enrolmentCodes()).reason).toBeUndefined();
+    expect((await c.revokeEnrolmentCode("fixture")).reason).toBeUndefined();
+    reason = "untrusted-text"; expect((await c.createEnrolmentCode({})).reason).toBeUndefined();
+    reason = "live-code-limit"; code = "denied"; expect((await c.createEnrolmentCode({})).reason).toBeUndefined();
+    code = "backpressure"; status = 403; expect((await c.createEnrolmentCode({})).reason).toBeUndefined();
+  });
   it("a signed-out read retires the session and cannot leave the prior CSRF on a write", async () => {
     const calls: any[] = [], off = vi.fn(); let n = 0;
     const c = create({ fetchImpl: vi.fn(async (_url: string, init: any) => {

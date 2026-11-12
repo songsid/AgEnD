@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { HubProtocolError, parseStrictJson } from "../validation.js";
 import { personKeyString } from "../identity.js";
+import { HubEnrolmentCodeLimit } from "../enrolment-code.js";
 import type { HubMemberFrame, HubServerFrame } from "../types.js";
 import type { HubLinkContext } from "../server.js";
 import type { HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
@@ -51,7 +52,7 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   // Hub UX U2 (M-2932): the group-search picker (its own words inside), shared with B2's join-code scope.
   "hub-group-search.js", "hub-join-steps.js",
   // B2: code management and the same-request Hub approval queue.
-  "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js"]);
+  "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -467,6 +468,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   }
 
   function fail(res: ServerResponse, e: unknown): void {
+    if (e instanceof HubEnrolmentCodeLimit) return send(res, 429, { code: "backpressure", reason: e.reason });
     if (e instanceof CompanyJoinCodeRefusal) return send(res, 403, { code: "denied", reason: e.reason });
     if (e instanceof CompanyJoinOfferPending) return send(res, 409, { code: "offer-pending" });
     if (e instanceof CompanyJoinLimit) return send(res, 429, { code: "limit-reached" });

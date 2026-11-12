@@ -2,7 +2,7 @@ import * as ownerEntryWords from "./hub-owner-strings.js";
 import * as companyViews from "./hub-company-join.js";
 import { hj, joinError } from "./hub-company-join-strings.js";
 import { useJoinApproval } from "./hub-join-approval.js";
-import { he } from "./hub-enrolment-code-strings.js";
+import { queueMessage } from "./hub-joincode-flow-strings.js";
 import { joinRequest, companyInfoRequest, CompanyJoinInfoPage, useCompanyJoinContext, CompanyJoinLead, approveCompanyJoin, HubCompanyJoinPage, CompanyJoinAdminCard } from "./hub-company-join.js";
 // AgEnD Hub P1, slice 3: the Hub workspace's pages — the chats (/ui/hub, a room at /ui/hub?room=<id>; #3226 B), My
 // exposures and Administration (/ui/hub/exposures, /ui/hub/admin; reached from the session row's menu) — and its session row. Served only by a Hub's own listener at its own origin, over the Hub's /hub/v1/*
@@ -239,7 +239,7 @@ function HubSignIn() {
         value=${form.password} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, password: v })); }} />
       <button type="submit" class="hub-signin-go" disabled=${busy || company.requestId && !company.view?.ok}>${company.requestId ? hj("signInConnect") : hw("signIn")}</button>
     </form>` : company.view?.ok ? html`<p role="status">${joinError(company.view.reason || company.view.state)}</p>` : null}
-    ${approval.queued ? html`<p class="note" role="status">${he("queued")}</p>` : null}
+    ${approval.queued ? html`<p class="note" role="status">${queueMessage(approval.retryAttempt)}</p>` : null}
     <p class="hub-signin-msg" role=${msg ? "alert" : undefined}>${msg || ""}</p>
     ${company.requestId && (msg || company.view?.state !== "pending") && company.view?.returnPath ? html`<a class="btn btn-sm" href=${company.view.returnPath} rel="noreferrer">${hj("return")}</a>` : null}
   </section></main>`;

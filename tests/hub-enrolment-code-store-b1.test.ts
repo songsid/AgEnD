@@ -130,4 +130,18 @@ describe("B1 private reusable enrolment-code store", () => {
     r.tx(() => r.store.revoke(live[1]!.id, admin)); expect(() => r.create()).toThrow("backpressure");
     for (const patch of [{ maxUses: 201 }, { perPersonFleets: 9 }, { expires: "30d" }]) expect(() => r.create(patch)).toThrow();
   });
+  it("identifies the live-code cap separately from the hourly cap without creating a row", () => {
+    const r = rig(), live = Array.from({ length: 8 }, () => r.create());
+    const refused = () => { try { r.create(); } catch (error) { return error; } return null; };
+    expect(refused()).toMatchObject({ code: "backpressure", reason: "live-code-limit" });
+    expect(r.db.prepare("SELECT count(*) n FROM hub_enrolment_codes").get()).toEqual({ n: 8 });
+    r.tx(() => r.store.revoke(live[0]!.id, admin)); const ninth = r.create();
+    r.tx(() => r.store.revoke(ninth.id, admin)); r.create();
+    // Both caps now apply; ending another code cannot solve the hourly limit.
+    expect(refused()).toMatchObject({ code: "backpressure", reason: "hourly-code-limit" });
+    expect(r.db.prepare("SELECT count(*) n FROM hub_enrolment_codes").get()).toEqual({ n: 10 });
+    r.clock.now += 3_600_001;
+    expect(refused()).toMatchObject({ reason: "live-code-limit" });
+    r.tx(() => r.store.revoke(live[1]!.id, admin)); expect(r.create()).toHaveProperty("code");
+  });
 });
