@@ -92,13 +92,16 @@ try {
     if (!retain) for (const m of geometry.menus) assert.equal(m.clipped, false);
     const file = `${theme}-${language}-${label}.png`; await page.screenshot({ path: join(out, file) }); receipt.cases.push({ label, file, geometry });
   }
-  if (phone) { await page.locator("#sbOpen").click(); }
+  if (phone) {
+    await page.locator("#sbOpen").click();
+    await page.waitForFunction(() => document.querySelector("#sidebar")!.getBoundingClientRect().left >= -.5);
+  }
   await page.mouse.move(phone ? 380 : 1000, 800); await contrastProbe(); await shot("sidebar-rest");
   if (retain === "all") {
     check("control", "exact pre-change UI inputs on current fixture server");
     if (!phone) {
       const target = page.locator(".v-li").filter({ has: page.locator(`a.inst[href$="/${encodeURIComponent(b)}"]`) }).first();
-      await target.locator(".inst-workspace > button").click(); await shot("sidebar-menu-before");
+      await target.hover(); await target.locator(".inst-workspace > button").click(); await shot("sidebar-menu-before");
       await target.getByRole("menuitem", { name: tr("Open beside", "在旁邊開啟"), exact: true }).click();
       await page.locator('[data-pane="b"] textarea').waitFor();
       await page.locator('[data-pane="a"] .msg .md').first().evaluate((el: HTMLElement, selected: string) => {
@@ -140,7 +143,7 @@ try {
     if (!phone) {
       // Native sidebar action, using the same production Menu as the pane header.
       const target = row(b), trigger = target.locator(retain === "instance-nav" ? ".inst-workspace > button" : ".inst-row-menu > button");
-      await trigger.click(); await target.getByRole("menuitem", { name: tr("Open beside", "在旁邊開啟"), exact: true }).click();
+      await target.hover(); await trigger.click(); await target.getByRole("menuitem", { name: tr("Open beside", "在旁邊開啟"), exact: true }).click();
       await page.locator('[data-pane="b"] textarea').waitFor(); await page.locator('[data-pane="b"] textarea').fill("保留草稿，不送出。");
       if (narrow) {
         const sash = await page.locator(".ws-sash").boundingBox(), box = await page.locator(".chat-workspace").boundingBox(); assert.ok(sash && box);
@@ -186,5 +189,6 @@ try {
   }
   await Promise.all(jobs); assert.deepEqual(receipt.errors, []); assert.deepEqual(receipt.effects, []); assert.deepEqual(receipt.external, []);
   for (const keys of receipt.preferences) assert.deepEqual(keys, ["nav.favorites"]);
+  receipt.completed = true;
 } finally { await ctx?.close(); await fx.close(); for (const path of sources) assert.ok(inputs[digest(readFileSync(join(repo, path)))]?.includes(path), `source changed: ${path}`); writeFileSync(join(out, "receipt.json"), JSON.stringify(receipt, null, 2) + "\n"); }
 console.log(JSON.stringify({ out, checkpoints: receipt.cases.length, errors: receipt.errors.length }));
