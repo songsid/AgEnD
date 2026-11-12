@@ -1,7 +1,7 @@
 ---
 section: Changed
 ---
-- **Hub: clearer words where people got stuck (#0000).** From the Hub user-story walk-through:
+- **Hub: clearer words where people got stuck (#3750).** From the Hub user-story walk-through:
   - **Stop sharing.** On the Hub, 「Pause questions」 is now **Stop sharing**. Its confirmation says what that means: no one can ask the agent any more, and sharing it again needs its Fleet to share it again and everyone to be allowed again.
   - **Where to confirm.** After you switch on Share, or start a company-account connection, the hint names General only when a General received the confirm card (for example "General on Discord"). On a Fleet without a chat app it points at the confirm card on the page. The company-account wait no longer says "local confirmation": it says to confirm that it's really you connecting this Fleet, and the Hub sign-in opens after that.
   - **Shared agents** says that only Fleet agents can be shared for now; ClassicBot rooms can't be shared yet.

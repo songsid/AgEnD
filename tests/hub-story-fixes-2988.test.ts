@@ -119,6 +119,25 @@ describe("#12 / #16: the Hub administrator's approve and revoke", () => {
     await until(() => c.approvePairing.mock.calls.length && pg.root.textContent!.includes("You're not allowed"));
     expect(pg.root.textContent).not.toContain("can't connect a Fleet right now");
   });
+  // Fable #3750 r1 (P1): a tab still holding the older hub-strings dictionary (no new keys) shows the older sentences, never
+  // a raw "hub.<key>".
+  it("an older hub dictionary without the new keys: the older refusal and revoke sentences", async () => {
+    const keys = ["approveOwnerDenied", "revokeFleetNamedAsk"], saved: Record<string, Record<string, string>> = {};
+    for (const lang of ["en", "zh-TW"]) { saved[lang] = {}; for (const k of keys) saved[lang]![k] = T(lang, `hub.${k}`); }
+    i18n.register("hub", { en: { approveOwnerDenied: undefined, revokeFleetNamedAsk: undefined }, "zh-TW": { approveOwnerDenied: undefined, revokeFleetNamedAsk: undefined } });
+    try {
+      const { pg, c } = await admin(); const said = asked();
+      fire(button(pg, "Approve…"), "click");
+      await until(() => c.approvePairing.mock.calls.length && pg.root.textContent!.includes("You're not allowed"));
+      expect(pg.root.textContent).toContain("You're not allowed to do that (or no longer).");
+      expect(pg.root.textContent).not.toContain("hub.approveOwnerDenied");
+      fire(pg.root.querySelector('[data-fleet="a1"] button[aria-haspopup=menu]') as any, "click");
+      await until(() => pg.root.querySelector('[data-fleet="a1"] [role=menuitem]'));
+      fire(pg.root.querySelector('[data-fleet="a1"] [role=menuitem]') as any, "click");
+      await until(() => c.revokeFleet.mock.calls.length);
+      expect(said.mock.calls.map(x => x[0]).at(-1)).toBe("Revoke Dave's fleet? It disconnects and everything it shares is withdrawn.");
+    } finally { i18n.register("hub", saved); }
+  });
   it.each([["a1", "Revoke Dave's fleet “build-box”? It disconnects and everything it shares is withdrawn."],
     ["a2", "Revoke Erin's fleet? It disconnects and everything it shares is withdrawn."]])("revoking %s names the Fleet as its row does", async (fleet, words) => {
     const { pg, c } = await admin(); const said = asked();
