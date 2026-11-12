@@ -19,7 +19,7 @@ register("hubJoinSteps", {
   en: {
     step3: "Tell colleagues how to join", sentence: "In AgEnD, open Settings → Hub, enter {0}, then sign in with the company account.",
     copy: "Copy these instructions", copied: "Copied", copyFailed: "Copy failed. Select the sentence and copy it.",
-    step3Off: "Finish steps 1 and 2 first.",
+    step3Off: "Finish steps 1 and 2 first.", reading: "Checking the saved Hub settings…", readFailed: "Could not refresh the Hub settings. Try again.", retry: "Try again",
     title: "Let colleagues join", lead: "Three steps. Each one is checked against what the Hub has saved.", done: "Done",
     step1: "Let colleagues connect Fleets with their company account", step1Switch: "Allow company-account Fleet connections",
     step2: "Who can join", step2Hint: "Add the AD groups whose members may connect a Fleet, then save.",
@@ -37,7 +37,7 @@ register("hubJoinSteps", {
   "zh-TW": {
     step3: "告訴同仁怎麼加入", sentence: "在 AgEnD 的「設定 → Hub」輸入 {0}，再用公司帳號登入。",
     copy: "複製這段說明", copied: "已複製", copyFailed: "複製失敗。請選取這段說明再複製。",
-    step3Off: "請先完成步驟 1 和 2。",
+    step3Off: "請先完成步驟 1 和 2。", reading: "正在確認 Hub 已儲存的設定…", readFailed: "目前無法更新 Hub 設定，請再試一次。", retry: "再試一次",
     title: "讓同仁加入", lead: "三個步驟，每一步都依 Hub 已儲存的設定判斷是否完成。", done: "已完成",
     step1: "允許同仁用公司帳號連接 Fleet", step1Switch: "允許以公司帳號連接 Fleet",
     step2: "誰可以加入", step2Hint: "加入可以連接 Fleet 的 AD 群組，然後儲存。",
@@ -76,11 +76,11 @@ export function EnrolmentCodeSlot({ features = [], client = hubClient(), enabled
   return html`<div id="hubEnrolmentCodeSlot">${offered && Code ? html`<${Code} client=${client} enabled=${enabled} host=${host} onChanged=${onChanged} />` : null}</div>`;
 }
 /** Step 3: the one sentence colleagues need, its copy button (only once steps 1 and 2 are done), and the join-code slot. */
-export function JoinStep3({ webOrigin, step1 = false, step2 = false, features = [], client = hubClient(), onChanged, load } = {}) {
+export function JoinStep3({ webOrigin, step1 = false, step2 = false, features = [], client = hubClient(), onChanged, load, pending = false } = {}) {
   const host = displayHost(webOrigin), ready = step1 && step2 && !!host, [copied, setCopied] = useState(null);
   const copy = async () => { try { await navigator.clipboard.writeText(sw("sentence", host)); setCopied("copied"); } catch { setCopied("copyFailed"); } };
   return html`<li class=${ready ? "now" : ""} data-step="3"><div class="hub-step-body"><span><b>${sw("step3")}</b>
-      ${ready ? html`<small class="note hub-join-sentence">${sw("sentence", host)}</small>` : html`<small class="note" id="hubJoinStep3Off">${sw("step3Off")}</small>`}</span>
+      ${ready ? html`<small class="note hub-join-sentence">${sw("sentence", host)}</small>` : html`<small class="note" id="hubJoinStep3Off">${sw(pending ? "reading" : "step3Off")}</small>`}</span>
     <button type="button" class="btn btn-sm" disabled=${!ready} aria-describedby=${ready ? undefined : "hubJoinStep3Off"} onClick=${copy}>${copied === "copied" ? sw("copied") : sw("copy")}</button>
     ${copied === "copyFailed" ? html`<p class="note" role="alert">${sw("copyFailed")}</p>` : null}
     <${EnrolmentCodeSlot} features=${features} client=${client} enabled=${step1} host=${host} onChanged=${onChanged} ...${load ? { load } : {}} />
@@ -112,7 +112,7 @@ export function JoinStep2({ client = hubClient(), onSaved } = {}) {
     if (typeof client.groupPolicy !== "function") { setView({ supported: false, binding: "ready", policy: null }); return; }   // an older client
     let r; try { r = await client.groupPolicy(); } catch { r = { ok: false }; }
     if (!live.current) return;
-    if (!r.ok) { setView({ failed: true }); return; }
+    if (!r.ok) { setView(old => ({ ...old, failed: true })); return; }
     setView(r); setGroups(r.policy ? r.policy.groups.map((g) => ({ ...g, allow: [...g.allow] })) : []); setPreview(null);
   };
   useEffect(() => { void load(); }, []);
@@ -151,7 +151,7 @@ export function JoinStep2({ client = hubClient(), onSaved } = {}) {
     if (r.code === "conflict") await load(); else if (r.code === "stale-preview" || r.code === "expired") setAgain((n) => n + 1);
   };
   if (!view) return html`<p class="note" aria-busy="true">${sw("previewing")}</p>`;
-  if (view.failed) return html`<p class="note" role="alert">${sw("failed")}</p>`;
+  if (view.failed) return html`<div class="hub-join-read-status"><p class="note" role="status">${sw("readFailed")}</p><button type="button" class="btn" onClick=${load}>${sw("retry")}</button></div>`;
   const pv = preview && preview.ok ? preview.impact || {} : null;
   return html`<div class="hub-join-step2">
     ${view.supported !== true ? html`<p class="note" role="status">${sw("unsupported")}</p>` : null}
@@ -186,25 +186,42 @@ export function JoinStep2({ client = hubClient(), onSaved } = {}) {
  */
 export function HubJoinCard({ view, busy = false, error = null, onToggle, onRetry, groups = false, features = [], client = hubClient(), webOrigin, children } = {}) {
   const [policy, setPolicy] = useState(null), [codes, setCodes] = useState(null), [tick, setTick] = useState(0);
-  const live = useRef(true);
-  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  const [reading, setReading] = useState(true), [readError, setReadError] = useState(false);
   useEffect(() => {
-    if (groups && typeof client.groupPolicy === "function") client.groupPolicy().then((r) => { if (live.current) setPolicy(r && r.ok ? r.policy : null); }, () => {});
-    if (typeof client.enrolmentCodes === "function") Promise.resolve(client.enrolmentCodes()).then((r) => { if (live.current) setCodes(r && r.ok && Array.isArray(r.codes) ? r.codes : null); }, () => {});
-  }, [groups, tick]);
+    let live = true;
+    const off = client.onSignedOut?.(() => { live = false; setPolicy(null); setCodes(null); setReading(false); setReadError(true); });
+    setReading(true); setReadError(false);
+    const read = async () => {
+      let failed = false;
+      // These also work with a retained client that has no shared read queue.
+      for (const [enabled, method, save] of [[groups, "groupPolicy", setPolicy], [true, "enrolmentCodes", setCodes]]) {
+        if (!live) return;
+        if (!enabled || typeof client[method] !== "function") continue;
+        let r; try { r = await client[method](); } catch { r = { ok: false }; }
+        if (!live) return;
+        if (r?.ok) save(method === "groupPolicy" ? r.policy : Array.isArray(r.codes) ? r.codes : null);
+        else { failed = true; if (r?.code !== "backpressure") save(null); }
+      }
+      if (live) { setReadError(failed); setReading(false); }
+    };
+    void read();
+    return () => { live = false; off?.(); };
+  }, [client, groups, tick]);
   const changed = () => setTick((n) => n + 1);
   const s1 = !!view && view.enabled === true, s2 = step2Done(policy, codes);
   const origin = webOrigin || (typeof location !== "undefined" ? location.origin : "");
   const mark = (done) => done ? html` <span class="tag ok">${sw("done")}</span>` : null;
   return html`<section class="card hub-company-join hub-join-card" data-entry="let-colleagues-join"><h3>${sw("title")}</h3>
     <p class="note">${sw("lead")}</p>
-    ${error ? html`<p class="err" role="alert">${error}${onRetry ? html` <button type="button" class="btn btn-sm btn-ghost" onClick=${onRetry}>↻</button>` : null}</p>` : null}
+    ${error ? html`<p class="err" role="alert">${error}${onRetry ? html` <button type="button" class="btn btn-sm btn-ghost" onClick=${onRetry}>${sw("retry")}</button>` : null}</p>` : null}
+    ${reading || readError ? html`<div class="hub-join-read-status"><p class="note" role="status" aria-busy=${reading}>${sw(reading ? "reading" : "readFailed")}</p>
+      ${readError ? html`<button type="button" class="btn" onClick=${changed}>${sw("retry")}</button>` : null}</div>` : null}
     <ol class="hub-steps hub-join-steps">
       <li class=${s1 ? "done" : "now"} data-step="1"><div class="hub-step-body"><span><b>${sw("step1")}${mark(s1)}</b></span>
         ${view ? html`<label class="check"><input type="checkbox" role="switch" class="s-ui-toggle" checked=${view.enabled} disabled=${busy || !!error} onChange=${(e) => onToggle?.(e.target.checked)} /><span>${sw("step1Switch")}</span></label>` : null}</div></li>
       <li class=${s2 ? "done" : s1 ? "now" : ""} data-step="2"><div class="hub-step-body"><span><b>${sw("step2")}${mark(s2)}</b><small class="note">${sw("step2Hint")} ${features.includes("enrolment-code-v1") ? sw("step2Code") : ""}</small></span>
         ${groups ? html`<${JoinStep2} client=${client} onSaved=${changed} />` : html`<p class="note" role="status">${sw("unsupported")}</p>`}</div></li>
-      <${JoinStep3} webOrigin=${origin} step1=${s1} step2=${s2} features=${features} client=${client} onChanged=${changed} />
+      <${JoinStep3} webOrigin=${origin} step1=${s1} step2=${s2} features=${features} client=${client} onChanged=${changed} pending=${!view || reading || readError} />
     </ol>
     ${view && view.enabled && view.companyLink ? html`<details class="s-ui-disclosure hub-join-advanced"><summary>${sw("advanced")}</summary><div class="s-disclosure-body"><p class="note">${sw("advancedHint")}</p>
       <label class="field"><span>${sw("advanced")}</span><textarea rows="4" readonly value=${view.companyLink} /></label></div></details>` : null}

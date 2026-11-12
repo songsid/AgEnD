@@ -1,0 +1,143 @@
+{
+  "sha256": {
+    "48786b18eb72f1f004a1c683019892be398b2b9dde6f030a34d38c51b33e8b4e": [
+      "M1-serial.log.gz"
+    ],
+    "73f964e8f86350ddb0a7299f642e698e93b588d19c989ba0b7c945d592a23dcb": [
+      "M2-coalesce.log.gz"
+    ],
+    "b48e1cd9cf153226a17b9781c91fdb7b043cbde01d3252004bb75bcdbf96a72d": [
+      "M3-retry.log.gz"
+    ],
+    "d1095ceb28eac55580c075b833e256e60af59999116f89715e776d8b0d422fe3": [
+      "M4-session.log.gz"
+    ],
+    "f8f3ee330996867943dbffa89dc9f56703a93023017f5b095912a252e806e3f1": [
+      "M5-steps.log.gz"
+    ],
+    "fe470b4fad6b0ef70bbfeb4555d9e58cde70ac33bc05cf0e32919a0c6aaaf8fa": [
+      "M6-company.log.gz"
+    ],
+    "5c9aca3c320094af8d8284ad59653c9dae19c3b649632a365242430f4ee2beee": [
+      "M7-codes.log.gz"
+    ],
+    "082e8bcc2431835de1c8e16d8faf132e724addff4f68ae611dfa1892fa98d211": [
+      "README.md"
+    ],
+    "9ecdaac1582ee44fd97bf9524555d1bfcbbab6cd388542ca68a075c8f368c9cb": [
+      "baseline-final-tests.log.gz"
+    ],
+    "ac9f3ee2a0de2ff2f53f9b5cb83052d20b3f5b0a442838eee83b36b6877418c7": [
+      "checks.json"
+    ],
+    "0a0c7d2e41d12c29295604f18a16fd2172c48e070118ad7a81f39ccfef4be13d": [
+      "fail-first.log.gz"
+    ],
+    "4539c78cc45bcecf9aef9fa72ab9c0e4fe5691b4e4715182ccbe807f7356297d": [
+      "final-focused.log.gz"
+    ],
+    "50a4ba7d91d1e9b22828bd054e7d81c0b605a7b1934af0e93223f2a1dafef15f": [
+      "historical-http/before-light-zh-TW.png",
+      "historical-http/exhausted-light-zh-TW-ready.png",
+      "historical-http/normal-light-zh-TW-ready.png",
+      "historical-http/transient-light-zh-TW-ready.png"
+    ],
+    "5f156b86c4864c64b31d0f05cdd871ae0bb0ba67403a53b819653098b5d20936": [
+      "historical-http/exhausted-dark-en-ready.png",
+      "historical-http/normal-dark-en-ready.png",
+      "historical-http/old-company-dark-en-ready.png",
+      "historical-http/transient-dark-en-ready.png"
+    ],
+    "2d983e2bd095ed707738b6a19d57571f9c6d05b5a6b49939a7cc1007afdd216a": [
+      "historical-http/exhausted-dark-en-retry.png",
+      "https/exhausted-dark-en-retry.png"
+    ],
+    "40b1bd792daf9cdc980414f39b5d8f47e76e03c2e1206f4e5da7213cd6508308": [
+      "historical-http/exhausted-dark-zh-TW-ready.png",
+      "historical-http/normal-dark-zh-TW-ready.png",
+      "historical-http/transient-dark-zh-TW-ready.png"
+    ],
+    "1f71d88a98311ec44801accdc193295a70b9124e21f0f8cc1619432e48314c39": [
+      "historical-http/exhausted-dark-zh-TW-retry.png",
+      "https/exhausted-dark-zh-TW-retry.png"
+    ],
+    "c711880e7b977243a8d558d245fa12517fa2cb8dffa388c6a7b12242c907aabc": [
+      "historical-http/exhausted-light-en-ready.png",
+      "historical-http/normal-light-en-ready.png",
+      "historical-http/old-client-light-en-ready.png",
+      "historical-http/transient-light-en-ready.png"
+    ],
+    "f81ed13da7348b7f5f5a30ab7ccfcc1180afbca10f3ecfda54a210837eb131a7": [
+      "historical-http/exhausted-light-en-retry.png",
+      "https/exhausted-light-en-retry.png"
+    ],
+    "6a0f630ea523f2deada9fa6e51e05b686ae25f8c3059d87c6f764f61fb362748": [
+      "historical-http/exhausted-light-zh-TW-retry.png",
+      "https/exhausted-light-zh-TW-retry.png"
+    ],
+    "f8de2b959f484fa6d0f61a0277f465f385921d7c8172fe7a97b62567b8a42c0c": [
+      "historical-http/receipt.json"
+    ],
+    "094afeb9adf8f29ccc09a4d3dec762b4afd135378e3f3170e2f013f5f6463681": [
+      "https/before-light-zh-TW.png",
+      "https/exhausted-light-zh-TW-ready.png",
+      "https/normal-light-zh-TW-ready.png",
+      "https/transient-light-zh-TW-ready.png"
+    ],
+    "9f66fdb33ddcc28d2ebcb5cdf85f8ef42649551725391573c09f7bfae2fdb3d6": [
+      "https/exhausted-dark-en-ready.png",
+      "https/normal-dark-en-ready.png",
+      "https/old-company-dark-en-ready.png",
+      "https/transient-dark-en-ready.png"
+    ],
+    "b1e1621308767a5910b4b3b54a26a98873f0ce855533c4ddb20c2fe4ee867b23": [
+      "https/exhausted-dark-zh-TW-ready.png",
+      "https/normal-dark-zh-TW-ready.png",
+      "https/transient-dark-zh-TW-ready.png"
+    ],
+    "ae35f11f70001fd00d40931d697e10cd26d9a8587e18b4c8304f08ae4f90bda8": [
+      "https/exhausted-light-en-ready.png",
+      "https/normal-light-en-ready.png",
+      "https/old-client-light-en-ready.png",
+      "https/transient-light-en-ready.png"
+    ],
+    "8d382b194c6e9db2eb7c8a88821700b28c07f397737f1f62c6848bdb22c8ef9b": [
+      "https/receipt.json"
+    ],
+    "4726ea09829898566355d1c64a212ce2b487d9dbcc2a9f3a8ab3ab9bfd8389eb": [
+      "r1-B6.log.gz"
+    ],
+    "f6d89ebe2883c497a46304fc212909b256189af63383ba272343225bcf107bcc": [
+      "r1-B9.log.gz"
+    ],
+    "9f795558a8fd745c587ee70d6d7c2ef4ff4c7daf60dbae10dceececb8e6394b5": [
+      "r1-J3.log.gz"
+    ],
+    "d304992a09fbd01214d93dec7a3c5ea327fc95c29ba433be73dcea6579e8eeaa": [
+      "r1-S3.log.gz"
+    ],
+    "c3d192ea165770c0b34ee4c23543451c375007fb81ec6ec42fbc7ee7402a15b5": [
+      "r1-focused.log.gz"
+    ],
+    "d0730bc298275fab2debc36deadcef4b88f4567b38b7b513f968dda9a1a841fb": [
+      "r1-reversals.json"
+    ],
+    "4b20f77469f631c118b39f84e461b8fb74ed5a42a6790504e1a5246b3c8f8191": [
+      "r1-reversals.py"
+    ],
+    "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64": [
+      "r1-test-types.log.gz",
+      "source-types.log.gz",
+      "test-types.log.gz"
+    ],
+    "914e11d73d322b1128b4fac4ec8678f00f085146ee465b39a377f154c2ad8320": [
+      "reversals.json"
+    ],
+    "a77478e625eb3703e52a9431e37e693979fb18102e6d19d9ad537ec9ba2817ee": [
+      "reversals.py"
+    ],
+    "5ac0c11c340d302bcd42a95f40a8081ce0980809f4f0e4e1c8135cf35ef46e59": [
+      "visual.json"
+    ]
+  }
+}

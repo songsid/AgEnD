@@ -1,0 +1,40 @@
+{
+  "sourceHead": "4abbdaf0a278cb52ba7f99f4bd98c5b8d7b3fa07",
+  "tests": {
+    "files": [
+      "hub-admin-backpressure-a2",
+      "hub-admin-read-http-a2",
+      "hub-admin-entry-ui",
+      "hub-u2-join-steps-2932",
+      "hub-enrolment-code-ui-b2",
+      "hub-company-join-ui",
+      "hub-ui-s3"
+    ],
+    "passed": 143,
+    "failed": 0,
+    "workers": 2
+  },
+  "sourceTypes": 0,
+  "testTypes": 0,
+  "baselineFinalTests": {
+    "assertionFailures": 9,
+    "deliberatelyUnselected": 6,
+    "timeouts": 0
+  },
+  "reversals": {
+    "assertionCaught": 7,
+    "exactRestore": true
+  },
+  "httpsBrowser": {
+    "cases": 15,
+    "checks": 97,
+    "PNGs": 19,
+    "cleaned": true
+  },
+  "historicalHttpBrowser": {
+    "cases": 15,
+    "checks": 83,
+    "PNGs": 19,
+    "limitation": "HTTP origin cannot enable the HTTPS-only colleague instruction; retained as historical, superseded for ready visuals."
+  }
+}
