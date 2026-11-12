@@ -13,8 +13,8 @@ Source (checked 2026-11-12):
 For PR events, `scripts/ci/gitleaks-pr.sh` validates the event's full base/head
 SHAs, refuses shallow, missing, disconnected or ambiguous history, computes the
 unique merge base, and scans `merge-base..head`. It traverses side histories and
-includes merge-resolution diffs (`--diff-merges=first-parent`, which does not
-restrict commit traversal). No GitHub commit-list response determines the range.
+includes merge-resolution diffs (`--diff-merges=remerge`, which does not
+restrict commit traversal or reattribute incoming base content). No GitHub commit-list response determines the range.
 
 The workflow downloads Gitleaks 8.24.3 and verifies its release archive checksum
 before extraction. Push scanning still uses the existing pinned action, explicitly
@@ -42,12 +42,16 @@ little entropy to trigger the default rule; it is not used as the positive proof
   `17f891216a26422aa84330af60f8a66dcff39cbb`, one finding. The extra commit
   installs the new workflow/helper; the synthetic credential history is unchanged.
 
-The final helper additionally includes merge-resolution diffs; the offline
-merge control below checks that behavior with the actual binary.
+The initial replacement above used first-parent merge diffs. Review found that
+those also reattribute incoming base content to a sync merge, defeating exact
+fingerprint ignores. The final helper uses remerge diffs: only deviations from
+Git's automatic merge are scanned. The controls below pin both sides of that
+distinction with the actual binary.
 
 ## Copyable offline controls
 
-Obtain the official 8.24.3 Linux x64 binary and verify its release checksum, then:
+Use Git 2.36 or newer and a writable object directory (the Actions checkout has
+both). Obtain the official 8.24.3 Linux x64 binary, verify its release checksum, then:
 
 ```sh
 python3 scripts/manual/gitleaks-range-3745/prove.py /absolute/path/to/gitleaks
@@ -59,12 +63,19 @@ The Python rig creates and removes its own repository under `.artifacts/`, with
 fixture, the full scan and production helper catch it, the exact fingerprint
 ignore works, and a later occurrence is still caught. A merge-resolution-only
 occurrence must also be detected by both the scanner and production helper.
+A second repository proves a clean base sync containing an exactly ignored
+finding stays at zero, a conflict-resolution secret is detected, and a real
+remerge object-write failure exits nonzero. First-parent merge diffs are retained
+only as a negative control: they incorrectly report the clean sync.
 Only ranges, counts and exit codes are printed, never the fake token.
 
-Local result: 6 real-binary controls pass; 92/92 focused tests pass (16 new).
+Local result: 11 real-binary controls pass (8.24.3 with Git 2.39.5,
+network-disabled node:22-bookworm container, one CPU); 92/92 focused tests pass (16 new).
 Five independent semantic reversals fail the new suite: using the base tip instead
 of the merge base, first-parent traversal, removing the version check, allowing
-shallow history, and dropping merge-resolution diffs. The restored suite passes.
+shallow history, and dropping merge-resolution diffs. Reverting to first-parent merge diffs
+also fails the real clean-sync control. The host's older Git 2.34.1 rejects
+remerge; it was not used to claim the successful remerge controls. The restored suite passes.
 Test-only typecheck, shell syntax, pinned-action and changelog guards pass.
 The local dependency supplier had an older js-yaml; these checks used the
 lockfile's 4.3.2 in an isolated overlay without changing package files.

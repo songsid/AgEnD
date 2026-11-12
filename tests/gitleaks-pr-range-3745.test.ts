@@ -41,14 +41,14 @@ afterAll(() => rmSync(home, { recursive: true, force: true }));
 describe("complete fail-closed PR range", () => {
   it("reaches the exact head beyond commit 30 with explicit shared config and ignores", () => {
     const r = scan(); expect(r.status, r.stderr).toBe(0);
-    expect(r.stdout).toContain("37 commits"); expect(r.stdout).toContain(`--log-opts=--diff-merges=first-parent ${base}..${head}`);
+    expect(r.stdout).toContain("37 commits"); expect(r.stdout).toContain(`--log-opts=--diff-merges=remerge ${base}..${head}`);
     expect(r.stdout).toContain("--config=.gitleaks.toml"); expect(r.stdout).toContain("--gitleaks-ignore-path=.gitleaksignore");
     expect(r.stdout).not.toMatch(/--first-parent|--no-merges/);
   });
   it("uses the merge base, including side history and excluding base-only commits", () => {
     const baseOnly = commit(base); const side = commit(base); const merged = commit(head, side);
     const r = scan({ PR_BASE_SHA: baseOnly, PR_HEAD_SHA: merged });
-    expect(r.status, r.stderr).toBe(0); expect(r.stdout).toContain(`--log-opts=--diff-merges=first-parent ${base}..${merged}`);
+    expect(r.status, r.stderr).toBe(0); expect(r.stdout).toContain(`--log-opts=--diff-merges=remerge ${base}..${merged}`);
   });
   it.each(["", "main", "$(echo unsafe)", "f".repeat(40)])("refuses unknown or unsafe head %s", value => {
     const r = scan({ PR_HEAD_SHA: value }); expect(r.status).not.toBe(0); expect(r.stdout).not.toContain("--log-opts");
