@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClassicChannelManager } from "../src/classic-channel-manager.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
+import { noteSettingsWrite } from "../src/settings-transaction.js";
 
 const dirs: string[] = [];
 const previousHome = process.env.AGEND_HOME;
@@ -46,7 +47,7 @@ function request(fm: unknown, method: string, body: unknown): Promise<{ status: 
 
 async function realFleet(opts: { starts?: Array<"ok" | "fail" | ((fm: any) => void)>; holdHandoff?: Promise<void> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agend-2966-")); dirs.push(dir); process.env.AGEND_HOME = dir;
-  for (const name of ["team"]) {
+  for (const name of ["team", "work"]) {
     const home = join(dir, "credential-profiles", "claude-code", name); mkdirSync(home, { recursive: true });
     writeFileSync(join(home, ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "c".repeat(40), refreshToken: "d".repeat(40), expiresAt: Date.now() + 3_600_000 } }));
     writeFileSync(join(home, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: `u-${name}` } }));
@@ -82,7 +83,7 @@ async function realFleet(opts: { starts?: Array<"ok" | "fail" | ((fm: any) => vo
     ms === 250 ? (fn(), 0 as any) : realTimeout(fn, ms, ...rest)) as any);
   const profileOf = (config: Record<string, unknown> | undefined) => (config?.backend_options as any)?.["claude-code"]?.credential_profile ?? null;
   const saved = () => (yaml.load(readFileSync(path, "utf8")) as any).channels[KEY].backend_options;
-  return { fm, path, stop, started, profileOf, saved };
+  return { fm, path, dir, stop, started, profileOf, saved };
 }
 const TEAM = { backend_options: { "claude-code": { credential_profile: "team" } } };
 
@@ -122,6 +123,30 @@ describe("M-2966: a Settings room save whose restart fails brings the room back"
     expect(r.status).toBe(409);
     expect(f.stop).toHaveBeenCalledOnce();
     expect(f.fm.lifecycle.daemons.get(NAME)).toBe(newer);
+    expect(f.started).toHaveLength(1);
+  });
+});
+
+describe("Prism on #3721: the compensation runs only after a clean rollback", () => {
+  it("a newer valid edit written while the first start fails is kept, and the room is not started onto it", async () => {
+    let file = "";
+    const f = await realFleet({ starts: [() => {
+      const now = yaml.load(readFileSync(file, "utf8")) as any, next = structuredClone(now);
+      next.channels[KEY].backend_options = { "claude-code": { credential_profile: "work" } };
+      noteSettingsWrite(file, now, next); writeFileSync(file, yaml.dump(next));
+    }] });
+    file = f.path;
+    const r = await request(f.fm, "PATCH", TEAM);
+    expect(r.status).toBe(409);
+    expect(f.saved()).toEqual({ "claude-code": { credential_profile: "work" } });
+    expect(f.started.map(f.profileOf)).toEqual(["team"]);                    // no second start, onto "work" or anything
+  });
+  it("a file that can't be read back: nothing is started", async () => {
+    let file = "";
+    const f = await realFleet({ starts: [() => writeFileSync(file, "channels: [unclosed\n")] });
+    file = f.path;
+    const r = await request(f.fm, "PATCH", TEAM);
+    expect(r.status).toBe(409);
     expect(f.started).toHaveLength(1);
   });
 });

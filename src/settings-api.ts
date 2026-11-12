@@ -1897,14 +1897,19 @@ export function handleSettingsRequest(
         }
       } catch (err) {
         // Keep disk and runtime consistent if the requested restart fails.
+        let rolledBack = false;
         try {
           const retained = undoSettingsPaths(classicPath(ctx), readClassic(ctx), undo);
           writeClassicAtomic(ctx, retained.value);
           if (retained.conflicts) throw new Error("concurrent Classic edit retained");
+          rolledBack = true;
         } catch (rollbackErr) {
           ctx.logger.error({ err: rollbackErr, key }, "settings: failed to roll back classic channel update");
         }
-        if (instanceName && ctx.restartClassicInstanceFromSettings) {
+        // M-2966 (Prism on #3721): the owned compensation may start a stopped room, so it runs only on a conflict-free
+        // rollback — never onto a newer edit that undo kept, nor onto a file it couldn't put back (as #3719's tool path).
+        if (op && !rolledBack) ctx.logger.warn({ key, instanceName }, "settings: classic rollback incomplete; the room is not restarted");
+        else if (instanceName && ctx.restartClassicInstanceFromSettings) {
           try {
             if (op) {
               // Never over a runtime someone else stopped or started meanwhile ("superseded"): that one stays as it is.
