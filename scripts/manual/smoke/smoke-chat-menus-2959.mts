@@ -23,7 +23,7 @@ const sources = [...files, "src/web-api.ts", "src/web-session.ts", "src/auth-api
 for (const path of sources) record(inputs, path, readFileSync(join(repo, path)));
 record(inputs, "harness", readFileSync(new URL(import.meta.url))); mkdirSync(out, { recursive: true });
 const receipt: any = { head: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"), dirty, oldRef, retain, theme, language, phone, narrow,
-  scope: "Owned scratch FleetManager, real cookie/HTTP/SSE and production UI; mocked status model/display-name/colour/reply inputs and recorded chat text, no Fleet start/CLI/vendor/AD/live operation", inputs, assets, substitutions, cases: [], errors: [], effects: [], external: [], preferences: [] };
+  scope: "Owned scratch FleetManager, real cookie/HTTP/SSE and production UI; mocked status model/display-name/colour/reply inputs and recorded chat text, no Fleet start/CLI/vendor/AD/live operation", inputs, assets, substitutions, cases: [], errors: [], effects: [], external: [], preferences: [], previews: [] };
 const fx = await bootFixture({ port: Number(process.env.HP || 56042), instances: 6, classic: false });
 let ctx: any;
 const jobs: Promise<unknown>[] = [];
@@ -50,7 +50,7 @@ try {
   const page = await ctx.newPage(); page.setDefaultTimeout(10000);
   page.on("pageerror", (e: Error) => receipt.errors.push(e.message));
   page.on("response", (r: any) => { const u = new URL(r.url()); if (u.origin === fx.base && /\.(js|css)$/.test(u.pathname)) jobs.push(r.body().then((b: Buffer) => record(assets, u.pathname, b)).catch(() => (receipt.omitted ||= []).push(u.pathname))); });
-  ctx.on("request", (r: any) => { const u = new URL(r.url()); if (u.origin !== fx.base && !["data:", "blob:"].includes(u.protocol)) receipt.external.push(u.origin); if (r.method() !== "GET") { if (u.pathname === "/ui/prefs") { const v = r.postDataJSON(); receipt.preferences.push(Object.keys(v.set || {})); } else if (u.pathname !== "/auth/login") receipt.effects.push({ path: u.pathname, method: r.method() }); } });
+  ctx.on("request", (r: any) => { const u = new URL(r.url()); if (u.origin !== fx.base && !["data:", "blob:"].includes(u.protocol)) receipt.external.push(u.origin); if (r.method() !== "GET") { if (u.pathname === "/ui/prefs") { const v = r.postDataJSON(); receipt.preferences.push(Object.keys(v.set || {})); } else if (u.pathname === "/api/settings/status-emojis/preview" && r.method() === "POST") receipt.previews.push({ path: u.pathname, method: r.method() }); else if (u.pathname !== "/auth/login") receipt.effects.push({ path: u.pathname, method: r.method() }); } });
   await page.route("**/*", async (route: any) => {
     const u = new URL(route.request().url());
     if (u.origin !== fx.base && !["data:", "blob:"].includes(u.protocol)) return route.abort();
@@ -161,8 +161,8 @@ try {
         const appearance = list.locator(".menu-heading", { hasText: tr("Appearance", "外觀") }); if (await appearance.count()) { await appearance.scrollIntoViewIfNeeded(); await shot("pane-appearance"); }
         const deletion = list.locator(".menu-item.danger").last(); if (await deletion.count()) { await deletion.scrollIntoViewIfNeeded(); await shot("pane-delete"); }
         await model.click();
-        await page.waitForFunction(() => location.search.includes("cat=runtime")); await shot("model-settings");
-        check("settings-only", "model/effort opens the existing focused Agent Settings category, no command or write");
+        await page.locator('[data-pane="b"] [data-agent-category="runtime"]').waitFor(); await shot("model-settings");
+        check("settings-only", "model/effort opens the existing focused Agent Settings runtime category; automatic status-emoji preview is inventoried separately, no command or settings write");
       } else { await shot("retained-pane-menu"); check("skew", { retained: retain, linked: true }); }
     }
   }
