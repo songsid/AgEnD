@@ -33,7 +33,7 @@ import { SettingsRouteLifetime } from "./settings-route-lifetime.js";
 import { GeneralManagedFileError } from "./runtime-general-protocol.js";
 import { GeneralBindings, generalBindingRevision, parseGeneralSwitchInput, switchGeneralLocation, type GeneralSwitchInput, type GeneralBindingRecord } from "./general-binding.js";
 import { confirmGeneralHostExit } from "./general-host-owner.js";
-import { settingsFingerprint, SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
+import { settingsFingerprint, SettingsExecution, SettingsExecutionError, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
 import { performance } from "node:perf_hooks";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -8012,17 +8012,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Compensation retains this transaction's exact instance owner across its own transitions. */
+  /** A Settings compensation for a ClassicBot room (#1423): throws stale when its receipt no longer owns the room. */
   captureClassicSettingsRestoration(instanceName: string, changedFields: string[], execution?: SettingsExecution): () => Promise<void> {
-    const generation = this.settingsGeneration;
-    const receipt = { instanceName, epoch: this.lifecycle.epochOf(instanceName), daemon: this.daemons.get(instanceName) as object | undefined };
-    if (execution) this.classicSettingsOwners.set(execution, receipt);
-    return async () => {
-      const cleanup = new SettingsExecution({ current: () => !this.shuttingDown && this.settingsGeneration === generation
-        && this.lifecycle.epochOf(instanceName) === receipt.epoch && this.daemons.get(instanceName) === receipt.daemon, snapshot: () => null });
-      this.classicSettingsOwners.set(cleanup, receipt);
-      try { cleanup.assert(); await this.restartClassicInstanceFromSettings(instanceName, changedFields, cleanup); }
-      finally { cleanup.close(); }
-    };
+    const op = this.beginClassicSettingsRestart(instanceName, changedFields, execution);
+    return async () => { if (await op.restore() === "superseded") throw new SettingsExecutionError("settings_execution_stale"); };
   }
 
   /** Apply a Settings edit to a ClassicBot channel without waiting for the poller. */
@@ -8030,14 +8023,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.lifecycle.runTransition(instanceName, transition => this.restartClassicSettingsOwned(instanceName, changedFields, execution, transition, opts));
   }
 
+  /** #3715: update_instance_config's room account switch — an owned restart with no request execution of its own. */
+  beginClassicProfileSwitch(instanceName: string, changedFields: string[]): ReturnType<FleetManager["beginClassicSettingsRestart"]> {
+    return this.beginClassicSettingsRestart(instanceName, changedFields);
+  }
+
   /**
-   * #3715 (Prism on #3719): one owned ClassicBot room account switch. The forward restart and its compensation share one
+   * One owned ClassicBot room restart and its compensation (#1423; #3715, Prism on #3719; M-2966). Both are bound to one
    * receipt — the room's epoch and daemon as this operation last left them — so a Stop or another start queued meanwhile
    * supersedes both: the forward work never launches after it, and the compensation never stops or replaces a newer
-   * runtime. `restore` brings a room that was running before the switch back up (also when the failed start took its
-   * daemon away), and reports what it did.
+   * runtime. A request's own execution (a confirmed continuation) is used for the forward work when there is one; a plain
+   * Save gets an owned one here, so its receipt follows its own stop and start instead of going stale at the first stop.
+   * `restore` brings a room that was running before back up — also when the failed start took its daemon away — and says
+   * what it did.
    */
-  beginClassicProfileSwitch(instanceName: string, changedFields: string[]): {
+  beginClassicSettingsRestart(instanceName: string, changedFields: string[], execution?: SettingsExecution): {
     restart(): Promise<void>; restore(): Promise<"restarted" | "not-running" | "superseded">; close(): void;
   } {
     const generation = this.settingsGeneration;
@@ -8045,10 +8045,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const wasRunning = receipt.daemon !== undefined;
     const owned = (): boolean => !this.shuttingDown && this.settingsGeneration === generation
       && this.lifecycle.epochOf(instanceName) === receipt.epoch && this.daemons.get(instanceName) === receipt.daemon;
-    const forward = new SettingsExecution({ current: owned, snapshot: () => null });
-    this.classicSettingsOwners.set(forward, receipt);
+    if (execution) this.classicSettingsOwners.set(execution, receipt);
+    let forward = execution, ownForward: SettingsExecution | undefined;
     return {
-      restart: () => this.restartClassicInstanceFromSettings(instanceName, changedFields, forward),
+      restart: () => {
+        if (!forward) { forward = ownForward = new SettingsExecution({ current: owned, snapshot: () => null }); this.classicSettingsOwners.set(forward, receipt); }
+        return this.restartClassicInstanceFromSettings(instanceName, changedFields, forward);
+      },
       restore: async () => {
         if (!owned()) return "superseded";
         const cleanup = new SettingsExecution({ current: owned, snapshot: () => null });
@@ -8057,7 +8060,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         finally { cleanup.close(); }
         return wasRunning ? "restarted" : "not-running";
       },
-      close: () => forward.close(),
+      close: () => ownForward?.close(),
     };
   }
 
