@@ -8,7 +8,6 @@ import { routePath } from "/assets/app-route.js";
 import { supportsInstanceFeature } from "/assets/instance-nav.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { Menu } from "/assets/ui-menu.js";
-import { Icon } from "/assets/ui-icons.js";
 import { t } from "/assets/app-i18n.js";
 export function PopoutHeader({ title, sub, headingRef, nav, notice, pageControls, pageActions }) {
   const ref = useRef(null), [width, setWidth] = useState(window.innerWidth);
@@ -31,7 +30,6 @@ export function PopoutHeader({ title, sub, headingRef, nav, notice, pageControls
     <${PaneScope} value=${{ visibleTabs, navigate }}>${nav}</${PaneScope}>
     <div class="panel-actions">${Card ? html`<${Card} card=${pageControls.card} ownerKey=${pageControls.navKey} />` : null}
       <${HeaderTools} navKey=${pageControls?.navKey} usage=${pageControls?.usage !== false} view=${route?.panel === "view"} />
-      <${Menu} items=${items} ownerKey=${pageControls?.navKey} label=${t("app.more")} />
-      ${pageControls?.backToChat ? html`<a class="icon-btn agent-back-chat" href=${pageControls.backToChat.path} aria-label=${pageControls.backToChat.label} title=${pageControls.backToChat.label}><${Icon} name="close" /></a>` : null}</div>${notice || null}
+      <${Menu} items=${items} ownerKey=${pageControls?.navKey} label=${t("app.more")} /></div>${notice || null}
   </header>`;
 }

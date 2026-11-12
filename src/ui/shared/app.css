@@ -635,6 +635,11 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 /* Settings share the available management workspace, independently of the chat's reading width.
    Keep fieldsets as real boxes so disabled forms and their confirmation boundaries stay intact. */
 .p-settings > .panel-body > .col { width: 100%; max-width: var(--settings-width); min-width: 0; margin: 0 auto; container: settings-page / inline-size; }
+/* #3714: Settings return belongs to scrolling content; the pane-header X only closes a pane. */
+.agent-settings-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--s-3); }
+.agent-settings-heading .s-page-head > div { min-width: 0; max-width: 100%; }
+.agent-settings-heading .s-scope { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.agent-settings-index-return { justify-content: flex-end; width: 100%; }
 .s-page-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 0 0 24px; }
 .s-page-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .s-page-head h2 { margin: 0; color: var(--text); font-size: 24px; font-weight: var(--fw-semibold); line-height: 1.35; letter-spacing: -0.02em; }

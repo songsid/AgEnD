@@ -175,18 +175,22 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   }
   const actions = items.filter((i) => i && ["start", "restart", "stop", "pause", "wake"].includes(i.key));
   const backToChat = { path: chatPath(name), label: t("agentNavigation.backToChat") };
+  const followBack = (event) => {
+    if (!pane?.navigate || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    event.preventDefault(); pane.navigate(backToChat.path);
+  };
+  const backLink = () => html`<a class="icon-btn agent-back-chat" href=${backToChat.path} aria-label=${backToChat.label} title=${backToChat.label} onClick=${followBack}><${Icon} name="close" /></a>`;
   const overview = html`<${NativePaneRecovery} name=${name} inst=${inst} lease=${lease} />${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}<${IdentityCard} name=${name} card=${card} />
       <${AgentWidget} slot="details" widget=${widgetFor(name, "details")} binds=${instanceBinds(inst, exec, awaiting)} />${content}
       ${actions.length ? html`<section class="card d-actions"><h3>${pt("actions")}</h3><div class="field-row">${actions.map((i) => html`<button key=${i.key} type="button" class="btn btn-sm" disabled=${i.disabled} onClick=${i.onSelect}>${i.label}</button>`)}</div>
         <p class="note">${pt("actionsNote")}</p></section>` : null}`;
   const Pending = sess.mod && sess.mod.PendingBar, OpCard = sess.mod && sess.mod.OperationCard;
   return html`<div data-effect-panel="details" class="panel p-details p-settings p-agent-page" data-view=${cat ? "section" : "index"}>
-    <${PanelHeader} title=${name} sub=${sub} pageControls=${{ navKey, backToChat }} pageActions=${items} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} />
-      <a class="icon-btn agent-back-chat" href=${backToChat.path} aria-label=${backToChat.label} title=${backToChat.label}><${Icon} name="close" /></a></${PanelHeader}>
-    <${AgentCategoryNav} name=${name} kind=${kind} cat=${shownCat} dirty=${dirty} />
+    <${PanelHeader} title=${name} sub=${sub} pageControls=${{ navKey }} pageActions=${items} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
+    <${AgentCategoryNav} name=${name} kind=${kind} cat=${shownCat} dirty=${dirty}>${!cat ? html`<div class="agent-settings-index-return only-narrow">${backLink()}</div>` : null}</${AgentCategoryNav}>
     <div data-trust="panel-content" class="panel-body"><div class="col" ref=${body}>
       <a class="s-back" href=${detailsPath(name)}><${Icon} name="back" size=${16} /><span>${t("app.details")}</span><span class="s-back-here">${categoryLabel(kind, shownCat)}</span></a>
-      <${AgentPageHead} name=${name} kind=${kind} cat=${shownCat} inst=${null} />
+      <div class="agent-settings-heading"><${AgentPageHead} name=${name} kind=${kind} cat=${shownCat} inst=${null} />${backLink()}</div>
       ${OpCard && sess.op ? html`<${OpCard} op=${sess.op} schema=${sess.data && sess.data.schema} />` : null}
       <div class="s-section-layout" data-agent-category=${shownCat}>
         <div class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-overview` : "ap-panel-overview"} hidden=${shownCat !== "overview"}>${overview}</div>

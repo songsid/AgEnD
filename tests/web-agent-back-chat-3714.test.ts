@@ -80,6 +80,12 @@ describe("#3714 Settings Back to chat", () => {
       off(); fire(back, "click", { button: 0 }); await settle(4); expect(nav.navStore.get().route).toEqual({ panel: "chat", instance: "alpha" });
     } finally { i18n.setLang("en", { store: false }); }
   });
+  it("the phone index return belongs to the category content, outside the header", async () => {
+    nav.navigate("/ui/fleet/agent/alpha"); await p.mount(h(details.DetailsPanel, { route: nav.navStore.get().route, navKey: "alpha-index" })); await settle(6);
+    const back = p.root.querySelector(".s-nav .agent-settings-index-return .agent-back-chat"); expect(back).not.toBeNull();
+    expect(p.root.querySelector(".panel-head .agent-back-chat")).toBeNull();
+    fire(back, "click", { button: 0 }); await settle(4); expect(nav.navStore.get().route.panel).toBe("chat");
+  });
   it("the split Settings X returns its own pane to chat without closing it or changing its peer", async () => {
     await split(true); const peer = controller.current().b;
     const back = p.root.querySelector('[data-pane="a"] .panel-body .agent-back-chat'); expect(back).not.toBeNull();
