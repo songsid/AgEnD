@@ -1809,7 +1809,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const {createHubWebInitializer}=await import("./hub/init/web.js");
       if(this.shuttingDown)throw Error("Fleet is stopping");
       const controller=createHubWebInitializer({home:this.dataDir,readConfig:()=>this.getRawFleetConfig(),
-        writeFleet:patches=>this.saveFleetConfig(patches),committed:()=>this.applyHubSwitches()});
+        writeFleet:patches=>this.saveFleetConfig(patches),committed:()=>this.applyHubSwitches(),
+        serverHealth:hub=>this.shuttingDown?"stopped":this.hubRuntime?.serverHealth(hub)??"unavailable"});
       this.hubSetupController=controller;return controller;
     })();
     try{return await this.hubSetupInit;}catch(error){this.hubSetupInit=null;throw error;}

@@ -1,8 +1,24 @@
 /** First setup only, on this computer's D3 host page. Every effect reauthorizes on the server. */
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
+import { register, t } from "/assets/app-i18n.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { api } from "./settings-confirm.js";
 import { hs, setupError } from "./settings-hub-setup-strings.js";
+// These words travel with the new renderer, even when the tab retains the setup dictionary.
+register("hubSetupReady", {
+  en: {
+    hint: "The settings are saved. This page checks startup automatically; once the Hub is ready, sign in with the designated directory account.",
+    checking: "Checking whether the Hub is ready…", ready: "The Hub is ready. You can open sign-in.",
+    waiting: "The Hub isn't ready yet. Check the Hub's status on this computer, then check again here.",
+    check: "Check again",
+  },
+  "zh-TW": {
+    hint: "設定已儲存。這個頁面會自動檢查啟動狀態；Hub 就緒後，請以指定的目錄帳號登入。",
+    checking: "正在確認 Hub 是否就緒…", ready: "Hub 已就緒，可以開啟登入。",
+    waiting: "Hub 尚未就緒。請檢查這台電腦上的 Hub 狀態，再回到這裡檢查。", check: "再次檢查",
+  },
+});
+const readyText = key => t(`hubSetupReady.${key}`);
 const PREFIX = "/api/settings/hub/setup";
 const REF = /^[A-Za-z0-9_-]{32}$/;
 export function hubSetupMarked(doc = typeof document !== "undefined" ? document : null) {
@@ -51,7 +67,7 @@ function Field({ name, form, update, type = "text", hint, required = true, max =
 export function HubSetupSettings() {
   const [view, setView] = useState(null), [step, setStep] = useState(0), [form, setForm] = useState(defaults), [busy, setBusy] = useState(false), [error, setFailureCode] = useState(""),
     [probe, setProbe] = useState(null), [fingerprints, setFingerprints] = useState([]), [caChecked, setCaChecked] = useState(false), [caError, setCaError] = useState(false),
-    [review, setReview] = useState(null), [created, setCreated] = useState(null), [uncertain, setUncertain] = useState(false);
+    [review, setReview] = useState(null), [created, setCreated] = useState(null), [uncertain, setUncertain] = useState(false), [readiness, setReadiness] = useState("checking"), [readAttempt, setReadAttempt] = useState(0);
   const life = useRef(0), running = useRef(false), requests = useRef(new Set()), draft = useRef(null), probeRef = useRef(null), caGeneration = useRef(0);
   const current = n => n === life.current && hubSetupMarked() && !(typeof window !== "undefined" && window.AgendAuth?.sessionEnded?.());
   const send = async (action, body, signal) => {
@@ -79,7 +95,7 @@ export function HubSetupSettings() {
       setView(v); setForm(f => ({ ...f, coexistence: v.existingFleet ? "" : "dedicated" }));
     }, e => { if (current(n)) setFailureCode(e.code || "unavailable"); }).finally(() => requests.current.delete(abort));
     const off = typeof window !== "undefined" ? window.AgendAuth?.onSessionEnd?.(() => {
-      life.current++; for (const r of requests.current) r.abort(); setForm(defaults()); setReview(null); setProbe(null); setFailureCode("denied");
+      life.current++; for (const r of requests.current) r.abort(); setForm(defaults()); setReview(null); setProbe(null); setCreated(null); setFailureCode("denied");
     }) : null;
     return () => { life.current++; off?.(); for (const r of requests.current) r.abort(); cancelRef(draft.current); cancelRef(probeRef.current); draft.current = null; probeRef.current = null; };
   }, []);
@@ -90,6 +106,26 @@ export function HubSetupSettings() {
     setupCaFingerprints(form.caPem).then(fps => { if (generation === caGeneration.current) setFingerprints(fps); }, () => { if (generation === caGeneration.current) setCaError(true); });
     return () => { caGeneration.current++; };
   }, [form.ca, form.caPem]);
+  useEffect(() => {
+    if (!created) return;
+    const n = life.current, abort = new AbortController();
+    let live = true, timer, attempts = 0;
+    requests.current.add(abort); setReadiness("checking");
+    const checkReady = async () => {
+      if (!live || !current(n)) return;
+      try {
+        const v = await send("", undefined, abort.signal);
+        if (!live || !current(n)) return;
+        const same = v?.v === 1 && v.initialized === true && v.runtime?.hubId === created.hubId && v.runtime?.webOrigin === created.webOrigin;
+        if (same && v.runtime.state === "ready") { setReadiness("ready"); return; }
+        // A finite read-only check. Missing fields on an older server never mean ready.
+        if (same && v.runtime.state === "starting" && ++attempts < 30) timer = setTimeout(checkReady, 2000);
+        else setReadiness("waiting");
+      } catch { if (live && current(n)) setReadiness("waiting"); }
+    };
+    void checkReady();
+    return () => { live = false; clearTimeout(timer); abort.abort(); requests.current.delete(abort); };
+  }, [created, readAttempt]);
   const update = (name, value) => {
     clearDraft(); setFailureCode("");
     if (["url", "ca"].includes(name)) { clearProbe(); setCaChecked(false); setFingerprints([]); }
@@ -139,8 +175,8 @@ export function HubSetupSettings() {
     try {
       const r = await send("/commit", { ref }, signal);
       if (!current(n)) return;
-      if (r?.ok !== true || r.webOrigin !== review.webOrigin) throw { code: "uncertain" };
-      setCreated({ webOrigin: review.webOrigin }); setReview(null); setForm(defaults());
+      if (r?.ok !== true || typeof r.hubId !== "string" || !r.hubId || r.webOrigin !== review.webOrigin) throw { code: "uncertain" };
+      setCreated({ hubId: r.hubId, webOrigin: review.webOrigin }); setReview(null); setForm(defaults());
     } catch { if (current(n)) { setUncertain(true); setReview(null); setForm(defaults()); setFailureCode("uncertain"); } }
   });
   const cancel = () => { clearDraft(); clearProbe(); setForm({ ...defaults(), coexistence: view?.existingFleet ? "" : "dedicated" }); setStep(0); setFailureCode(""); };
@@ -148,11 +184,13 @@ export function HubSetupSettings() {
   const message = error === "unsupported" || error === "caInvalid" || error === "uncertain" ? hs(error) : setupError(error);
   const titles = ["title", "hub", "directory", "administrator", "review"];
   return html`<section class="card s-group hub-setup" id="hub-setup"><h3>${hs(created ? "created" : "title")}</h3>
-    <p class="note">${hs(created ? "createdHint" : "hint")}</p>
+    <p class="note">${created ? readyText("hint") : hs("hint")}</p>
     ${!view && !error ? html`<${Skeleton} variant="form" lines=${2} />` : null}
     ${error ? html`<${ErrorState} message=${message} />` : null}
     ${blocked || uncertain || error === "unsupported" || (!view && error) ? html`<p class="note">${blocked ? hs(blocked) : ""}</p><div class="s-row"><a class="btn" href="/settings/hub">${hs("reload")}</a></div>` : null}
-    ${created ? html`<div class="s-row"><a class="btn btn-primary" href=${created.webOrigin + "/ui/hub"} target="_blank" rel="noopener noreferrer">${hs("open")}</a><a class="btn" href="/settings/hub">${hs("reload")}</a></div>` : null}
+    ${created ? html`<p class="note" role="status">${readyText(readiness)}</p>
+      <div class="s-row">${readiness === "ready" ? html`<a class="btn btn-primary" href=${created.webOrigin + "/ui/hub"} target="_blank" rel="noopener noreferrer">${hs("open")}</a>`
+        : readiness === "waiting" ? html`<button type="button" class="btn" onClick=${() => setReadAttempt(n => n + 1)}>${readyText("check")}</button>` : null}</div>` : null}
     ${view && !blocked && !created && !uncertain && !error?.match(/^(unsupported|denied|host_session_required)$/) ? step === 0 ? html`<div class="s-row"><button class="btn" onClick=${() => setStep(1)}>${hs("start")}</button></div>` : html`
       <p class="note" role="status">${step} / 4 · ${hs(titles[step])}</p>
       <form class="form" onSubmit=${step === 3 ? prepare : step === 4 ? e => e.preventDefault() : next}>

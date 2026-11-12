@@ -47,6 +47,11 @@ register("hubAccess", {
   "zh-TW": { tag: "需要確認權限", refused: "提問遭到拒絕。請先重新檢查權限，再試一次。", check: "重新檢查權限", limited: "提問遭到拒絕，先前的權限資訊需要重新確認。" },
 });
 const ha = key => t(`hubAccess.${key}`);
+// Kept with the fresh renderer: retained owner dictionaries do not know this label.
+register("hubGrantStatus", {
+  en: { grantNeverSignedIn: "Hasn't signed in to Hub yet" },
+  "zh-TW": { grantNeverSignedIn: "還沒登入過 Hub" },
+});
 
 // #3298 S-89 (experimental): the group permissions editor and the signed-in welcome are their own LAZY modules, loaded only
 // when the Hub's session says "group-policy-v1" and this tab's client has the calls — a Hub without them never serves or loads them.
@@ -830,7 +835,7 @@ function HubAgentPage({ x, act, msg }) {
       <section class="card"><div class="hub-card-head"><h3>${ho("whoMayAsk")}</h3>${shared ? html`<button type="button" class="btn btn-sm" onClick=${() => setAllowing(true)}><${Icon} name="plus" size=${14} />${ho("allow")}</button>` : null}</div>
         ${grants.length ? html`<div class="hub-rows">${grants.map((g) => html`<div key=${g.id} class="s-row hub-row">
           <${Avatar} name=${g.subjectName || g.subjectLogin} size="sm" />
-          <span class="hub-row-text"><strong>${g.subjectName || g.subjectLogin}</strong><small class="note">${g.subjectLogin ? html`<code>${g.subjectLogin}</code> · ` : null}${ho("untilLeft", dateOnly(g.expiresAt), DAYS_LEFT(g.expiresAt))}</small></span>
+          <span class="hub-row-text"><strong>${g.subjectName || g.subjectLogin}</strong><small class="note">${g.subjectLogin ? html`<code>${g.subjectLogin}</code> · ` : null}${ho("untilLeft", dateOnly(g.expiresAt), DAYS_LEFT(g.expiresAt))}</small>${g.subjectSignedIn === false ? html`<small class="tag warn">${t("hubGrantStatus.grantNeverSignedIn")}</small>` : null}</span>
           <${Menu} label=${ho("rowMenu", g.subjectName || g.subjectLogin)} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(g) }]} />
         </div>`)}</div>` : html`<p class="note">${hw("noGrants")}</p>`}
       </section>

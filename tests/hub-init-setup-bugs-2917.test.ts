@@ -144,6 +144,8 @@ it.each(["en", "zh-TW"] as const)("leads the completed handoff with the company-
   const company = locale === "en" ? "Sign in with company account" : "以公司帳號登入";
   const manual = locale === "en" ? "pairing code" : "配對碼";
   expect(text).toContain(company);
+  expect(text).toContain(locale === "en" ? "Administration → Let colleagues join" : "管理 → 讓同仁加入");
+  expect(text).toContain(locale === "en" ? "Administration → Advanced: connect with a pairing code" : "管理 → 進階：使用配對碼連接");
   expect(text.indexOf(company)).toBeLessThan(text.indexOf(manual));
   expect(text).not.toContain(bindPassword);
   expect(text).toContain("https://hub.example.test:9443");
