@@ -229,5 +229,5 @@
       }
     ]
   },
-  "failureDetail": "Protocol116/116 and three real desktop PNGs pass; fixture incorrectly requires an always-visible underlying policy picker even when U2 already has a saved group. New assertion verifies actual scoped input/note identity before selection and its retirement after resolution; optional underlying picker remains allowed. No product delta."
+  "failureDetail": "Protocol116/116 passed; three desktop PNGs captured. Image inspection showed the group selection was still pending: a DN on the background page satisfied the old locator before the dialog resolver completed. The initial explanation that the background picker was absent was not established and is superseded. Later kit waits for the dialog input to retire and its own resolved DN."
 }

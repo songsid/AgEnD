@@ -40,18 +40,24 @@ out="$base/$nonce"
 mkdir "$base/ACTIVE" || { echo 'Another owned campaign is active' >&2; exit 2; }
 watch_pid=""
 cleanup() {
+  printf 'Cleanup started for %s\n' "$nonce"
   if [[ -s "$out/cid" ]]; then
     local cid label
     cid="$(cat "$out/cid")"
     label="$(docker --config "$out/docker-config" inspect --format '{{index .Config.Labels "agend.owned-campaign"}}' "$cid" 2>/dev/null || true)"
     if [[ $label == "$nonce" ]]; then docker --config "$out/docker-config" stop --time 10 "$cid" >/dev/null 2>&1 || true; fi
   fi
-  if [[ -n "$watch_pid" ]]; then touch "$out/control/WATCH_DONE"; wait "$watch_pid" || true; fi
+  if [[ -n "$watch_pid" ]]; then
+    touch "$out/control/WATCH_DONE"
+    wait "$watch_pid" || true
+    printf 'Host sampler settled for %s\n' "$nonce"
+  fi
   local image_label
   image_label="$(docker --config "$out/docker-config" image inspect --format '{{index .Config.Labels "agend.owned-campaign"}}' "ridge-code-campaign:$nonce" 2>/dev/null || true)"
   if [[ $image_label == "$nonce" ]]; then docker --config "$out/docker-config" image rm "ridge-code-campaign:$nonce" >/dev/null 2>&1 || true; fi
   rm -f "$base/ACTIVE/output"
   rmdir "$base/ACTIVE" 2>/dev/null || true
+  printf 'Owned cleanup complete for %s\n' "$nonce"
 }
 trap cleanup EXIT
 trap 'touch "$out/control/STOP"; exit 130' INT TERM

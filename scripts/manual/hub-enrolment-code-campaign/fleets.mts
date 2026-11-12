@@ -41,6 +41,8 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     await page.getByRole('button', { name: lang === 'zh-TW' ? '登入' : 'Sign in', exact: true }).click();
     await page.locator('.p-hub-signin').waitFor({ state: 'detached' });
     await page.goto(rig.webOrigin + '/ui/hub/admin'); await page.locator('.hub-join-card').waitFor();
+    if(!overlay.length) { await page.locator('[data-enrolment-codes]').scrollIntoViewIfNeeded();
+      await page.waitForFunction(()=>{const b=document.querySelector('[data-enrolment-codes] .n-actions button') as HTMLButtonElement|null;return b!==null&&!b.disabled;}); }
     return { ctx, page, errors };
   }
   // Actual old bytes, identified per response. Current server headers/CSP remain on the response.
@@ -154,7 +156,7 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
           await page.getByRole('button',{name:lang==='zh-TW'?'取消':'Cancel',exact:true}).click();
         }
         const row = page.locator('[data-enrolment-code="'+created.id+'"]'); await row.locator('code').waitFor(); await shot(page,tag+'-active-code');
-        await page.reload(); await page.locator('[data-enrolment-code="'+created.id+'"] code').waitFor();
+        await page.reload(); await page.locator('[data-enrolment-codes]').scrollIntoViewIfNeeded(); await page.locator('[data-enrolment-code="'+created.id+'"] code').waitFor();
         check(tag+' admin page errors',errors.length===0); captures.push({lang,phone,theme,tag});
       } finally { await ctx.close(); }
     }
