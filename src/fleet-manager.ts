@@ -5022,7 +5022,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       claimedCards: () => this.livenessCards(),
       facts: (name) => this.livenessFacts(name),
       backgroundBusy: (name) => this.livenessBackgroundBusy(name),
-      isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
+      // #3720: a ClassicBot room's agent is an agent too (「ClassicBot 派工作也是 agent 派的」): a card it handed out is told
+      // to it like any instance's. A room that is gone falls to Needs you (not an agent here); one not running is away.
+      isInstance: (name) => this.fleetConfig?.instances?.[name] != null || this.isClassicInstance(name),
       // Not running now: stopped, crashed, paused, or no daemon at all.
       dispatcherAway: (name) => this.instanceProcessStatus.has(name) || this.lifecycle.isPaused(name) || !this.daemons.has(name),
       boardOff: (name) => taskBoardOffIn(this.fleetConfig, name),
