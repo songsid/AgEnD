@@ -54,7 +54,7 @@ const AGENT_KEYS = {
   adv: ["log_level", "resume_interrupted_work", "mcp_proxy_reply", "board_cards_at_once", "dashboard", "office_access", "office_pack_access"],
 };
 const NATIVE_KEYS = { basic: ["display_name", "description", "tags"], runtime: ["model"], work: ["native_sandbox"], adv: ["systemPrompt"] };
-const CLASSIC_KEYS = { runtime: ["backend", "model", "auto_pause_after"], channel: ["tool_progress", "reply_completion_guard", "reply_triggers", "collab", "web_echo", "context_lines"] };
+const CLASSIC_KEYS = { runtime: ["backend", "model", "auto_pause_after", "backend_options"], channel: ["tool_progress", "reply_completion_guard", "reply_triggers", "collab", "web_echo", "context_lines"] };
 export function dirtyCategories(kind, patch) {
   const map = kind === "classic" ? CLASSIC_KEYS : kind === "native" ? NATIVE_KEYS : AGENT_KEYS;
   const keys = Object.keys(patch || {});
@@ -80,6 +80,8 @@ export function changeFor(ctx, kind, name, inst, room, patch) {
 let settingsModule = null;
 /** panel-settings.js — its reader of the configuration, its context and its pending bar — loaded when a settings category first opens. */
 const loadSettingsModule = () => (settingsModule ||= import("./panel-settings.js"));
+// A recovered ambiguous write may reuse its key only for the same request, including after automatic form staging.
+const sameWrite = (a, b) => !!a && !!b && a.method === b.method && a.url === b.url && JSON.stringify(a.body) === JSON.stringify(b.body);
 
 /**
  * The configuration of this page (read the first time `enabled`), the changes staged against it, and the Apply. Staged
@@ -88,18 +90,42 @@ const loadSettingsModule = () => (settingsModule ||= import("./panel-settings.js
 export function useAgentSettings({ name, lease, enabled, navKey }) {
   const pane = paneContext.usePane?.();
   const go = pane?.navigate || navigate;
-  const [mod, setMod] = useState(null);
-  const [data, setData] = useState(null);
-  const [staged, setStaged] = useState(() => new Map());
+  const memory = pane?.retain?.("settings");
+  const state = (key, initial) => paneContext.usePaneState ? paneContext.usePaneState(memory, key, initial) : useState(initial);
+  const [mod, setMod] = state("module", null);
+  const [data, setData] = state("data", null);
+  const [staged, setStaged] = state("staged", () => new Map());
+  const [formMemory] = state("forms", () => ({ state: new Map(), listeners: new Map(), set(key, next) {
+    if (memory && !memory.current()) return;
+    const value = typeof next === "function" ? next(this.state.get(key)) : next;
+    this.state.set(key, value); this.listeners.get(key)?.(value);
+  } }));
   const stagedRef = useRef(staged);
   stagedRef.current = staged;
-  const [epoch, setEpoch] = useState(0);              // moves after a Discard and after a Save: the forms start again from what is saved
+  const [epoch, setEpoch] = state("epoch", 0);              // moves after a Discard and after a Save: the forms start again from what is saved
   const gen = useRef(0);
   const { settingsOp: op } = useStore(appStore);
-  const started = useRef(false);
+  const started = useRef(!!data && !data.error);
   const nameRef = useRef(name);
   nameRef.current = name;
-  const submitted = useRef(new Map());     // the changes as they were when a Save began (what comes back after a failure keeps its confirms)
+  // The runner is page-owned; only its submitting pane may recover leftovers or reset forms.
+  // This record survives compact suspension, but ends with this Details route/session.
+  const [ownership] = state("operation", () => ({ id: null, submitted: new Map(), settledPhase: null }));
+  const [outcome, setOutcome] = state("outcome", null);
+  const captureOutcome = (next) => {
+    if (!(memory ? memory.current() : lease.current()) || !next || next.id !== ownership.id || !["done", "failed"].includes(next.phase)) return;
+    if (ownership.outcome?.id === next.id && ownership.outcome.phase === next.phase) return;
+    // The latest global slot can be replaced by B while A is suspended. Retain only A's terminal result, not a history.
+    const result = { id: next.id, phase: next.phase, leftover: next.leftover || [] };
+    ownership.outcome = result;
+    setOutcome(result);
+  };
+  useEffect(() => {
+    if (memory?.observingOperation) return;
+    if (memory) memory.observingOperation = true;
+    (memory || lease).hold(appStore.subscribe(({ settingsOp }) => captureOutcome(settingsOp)));
+    captureOutcome(appStore.get().settingsOp);
+  }, [lease]);
 
   const reload = async () => {
     const m = await loadSettingsModule();
@@ -109,16 +135,22 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
     setMod(m);
     // A read that fails after a failed Save keeps what was read before: the forms (and the draft in them) stay.
     setData((prev) => (next.error && prev && !prev.error ? prev : next));
+    return !next.error;
   };
   useEffect(() => { if (enabled && !started.current) { started.current = true; reload(); } }, [enabled]);
 
   const stage = (key, change, quiet = true) => {
-    setStaged((s) => { const m = new Map(s); m.set(key, { ...change, stageKey: key }); return m; });
+    setStaged((s) => {
+      const m = new Map(s), previous = s?.get(key);
+      m.set(key, { ...change, ...(previous?.key && sameWrite(previous.request, change.request) ? { key: previous.key } : {}), stageKey: key });
+      return m;
+    });
     if (!quiet) toast(tn("queued", change.label));
     return true;
   };
   const unstage = (key) => setStaged((s) => { if (!s.has(key)) return s; const m = new Map(s); m.delete(key); return m; });
   const clearStaged = () => {
+    formMemory.state.clear();
     // A different pane can still refuse navigation. Keep the rendered state and its guard coherent across rerenders,
     // and reset this pane's forms even when the person remains here after that other pane cancels.
     const empty = new Map();
@@ -130,42 +162,60 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
 
   // Leaving the page with staged changes asks first (the Settings page's question); the same agent's other categories are not leaving.
   useEffect(() => {
+    if (memory?.guarded) return;
+    if (memory) memory.guarded = true;
     let asking = false;
-    const check = (to, path) => {
-      const n = stagedRef.current.size;
-      if (!n || (to && to.panel === "details" && to.instance === nameRef.current)) return true;
+    const current = () => memory ? memory.current() : lease.current();
+    const changes = () => memory ? memory.state.get("staged") : stagedRef.current;
+    const check = (to, path, next) => {
+      const n = changes().size;
+      const remount = next && (!!pane !== !!next.workspace);
+      if (!n || (!remount && to && to.panel === "details" && to.instance === nameRef.current)) return true;
       if (!asking) {
         asking = true;
         ask(tn("discardOnLeave", n), { confirmLabel: tn("discard"), danger: true }).then((yes) => {
           asking = false;
-          if (!yes || !lease.current()) return;
+          if (!yes || !current()) return;
           clearStaged();
           go(path, routing.addLeaveGuard ? { skipGuard: check } : { force: true });
         });
       }
       return false;
     };
-    lease.hold((pane?.addLeaveGuard || routing.addLeaveGuard || setLeaveGuard)(check));
-    lease.on(window, "beforeunload", (e) => { if (stagedRef.current.size) { e.preventDefault(); e.returnValue = ""; } });
+    const hold = off => memory ? memory.hold(off) : lease.hold(off);
+    hold((pane?.addLeaveGuard || routing.addLeaveGuard || setLeaveGuard)(check));
+    const unload = e => { if (changes().size) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", unload);
+    hold(() => window.removeEventListener("beforeunload", unload));
   }, [lease]);
 
   // Changes a failed Apply did not land come back to be staged again.
   useEffect(() => {
-    if (!op || !op.leftover || !op.leftover.length) return;
-    const back = takeLeftover();
-    if (!back.length) return;
-    setStaged((s) => { const m = new Map(s); for (const c of back) { const k = c.stageKey || c.key; if (k && !m.has(k)) m.set(k, { ...(submitted.current.get(k) || {}), ...c, stageKey: k }); } return m; });
-  }, [op && op.leftover]);
+    if (!outcome || outcome.id !== ownership.id || ownership.recovered === outcome || !outcome.leftover.length) return;
+    ownership.recovered = outcome;
+    if (appStore.get().settingsOp?.id === outcome.id) takeLeftover();
+    setStaged((s) => {
+      const m = new Map(s);
+      for (const c of outcome.leftover) {
+        const k = c.stageKey || c.key, existing = m.get(k);
+        if (!k || (existing && !sameWrite(existing.request, c.request))) continue;
+        m.set(k, { ...(ownership.submitted.get(k) || {}), ...c, ...existing, key: c.key, stageKey: k });
+      }
+      return m;
+    });
+  }, [outcome]);
 
-  // An Apply that finished changed the configuration: read it again, and draw the forms from it.
-  const lastPhase = useRef(op ? op.phase : null);
+  // A successful Save redraws only its owner's forms. Another pane's typed/staged edits remain untouched.
   useEffect(() => {
-    const phase = op ? op.phase : null;
-    if (lastPhase.current !== phase && (phase === "done" || phase === "failed") && started.current) {
-      reload().finally(() => { if (phase === "done") setEpoch((n) => n + 1); });
-    }
-    lastPhase.current = phase;
-  }, [op && op.phase]);
+    const phase = outcome?.phase, id = outcome?.id;
+    if (id !== ownership.id || ownership.settledPhase === phase || !["done", "failed"].includes(phase)) return;
+    const finish = () => {
+      if (!lease.current() || ownership.id !== id) return;
+      ownership.settledPhase = phase;
+      if (phase === "done") { ownership.submitted.clear(); formMemory.state.clear(); setEpoch(n => n + 1); }
+    };
+    if (started.current) reload().then(accepted => { if (accepted) finish(); }, () => {}); else finish();
+  }, [outcome]);
 
   const applying = useRef(false);
   const apply = async () => {
@@ -183,13 +233,20 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
     } finally { applying.current = false; }
     if (!lease.current() || operationActive()) return;
     const list = [...stagedRef.current.values()].map(({ label, impact, request, stageKey, key }) => ({ label, impact, request, stageKey, key }));
-    if (startOperation(list)) { submitted.current = new Map(stagedRef.current); setStaged(new Map()); }
+    if (startOperation(list)) {
+      ownership.id = appStore.get().settingsOp?.id;
+      ownership.submitted = new Map(stagedRef.current); ownership.settledPhase = null;
+      ownership.outcome = null; ownership.recovered = null;
+      setStaged(new Map());
+      captureOutcome(appStore.get().settingsOp);
+    }
   };
 
   const ctx = mod && data && !data.error
     ? mod.makeCtx(data, setData, stage, unstage, reload, reload, () => lease.current(), { drafts: new Map(), draftEpoch: epoch, staged, savingDrafts: () => null, savingStaged: () => null })
     : null;
-  return { mod, data, ctx, staged, stage, unstage, discard, apply, op, epoch, reload };
+  if (ctx && memory) ctx.formMemory = formMemory;
+  return { mod, data, ctx, formMemory: memory ? formMemory : null, staged, stage, unstage, discard, apply, op, epoch, reload };
 }
 
 // ── The nav ──
@@ -237,7 +294,7 @@ function AgentForms({ name, kind, cat, sess, inst, room, onDirty, onDelete, dele
   const cats = categoriesOf(kind).slice(1);
   const Fields = kind === "classic" ? ClassicFields : kind === "native" ? NativeFields : AgentFields;
   return cats.map((c) => html`<div key=${c} class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-${c}` : `ap-panel-${c}`} hidden=${c !== cat}>
-    <${Fields} m=${form} cat=${c} onDelete=${kind === "fleet" && c === "adv" ? onDelete : undefined} /></div>`);
+    <${Fields} m=${form} cat=${c} idPrefix=${pane ? `pane-${pane.id}-` : ""} onDelete=${kind === "fleet" && c === "adv" ? onDelete : undefined} /></div>`);
 }
 
 /** The settings categories' bodies: a read of the configuration first, then the forms. */

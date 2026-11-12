@@ -1,0 +1,54 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+x····
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  00:01:26
+   Duration  1.38s (transform 678ms, setup 166ms, import 291ms, tests 486ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-entry-3637.test.ts > loading and delayed quotation retain their exact navigation intent > a navigation during capability loading cannot open the older requested split
+AssertionError: expected { a: { route: { …(2) }, …(3) }, …(5) } to be undefined
+
+- Expected:
+undefined
+
++ Received:
+{
+  "a": {
+    "hash": "",
+    "route": {
+      "instance": "alpha",
+      "panel": "log",
+    },
+    "search": "",
+    "seq": 1,
+  },
+  "b": {
+    "hash": "",
+    "route": {
+      "instance": "beta",
+      "panel": "chat",
+    },
+    "search": "",
+    "seq": 1,
+  },
+  "flipped": false,
+  "focus": "b",
+  "layout": "right",
+  "ratio": 0.5,
+}
+
+ ❯ tests/web-chat-workspace-entry-3637.test.ts:18:42
+     16|   it("a navigation during capability loading cannot open the older req…
+     17|     const pending = entry.open("beta"); nav.navigate("/ui/log/alpha");…
+     18|     expect(nav.navStore.get().workspace).toBeUndefined();
+       |                                          ^
+     19|     await entry.open("beta");
+     20|     expect(nav.navStore.get().workspace.a.route.panel).toBe("log");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

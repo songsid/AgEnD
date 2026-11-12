@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+···x·
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > an owner suspended at completion resets once on return without resetting the other pane
+AssertionError: expected '' to be 'Draft alpha' // Object.is equality
+
+- Expected
++ Received
+
+- Draft alpha
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:58:81
+     56|   rig.data = { fleet: { defaults: {}, instances: { alpha: { descriptio…
+     57|   app.appStore.set({ settingsOp: { ...app.appStore.get().settingsOp, p…
+     58|   controller.focus("a"); await settle(9); expect(models.alpha.inst.des…
+       |                                                                                 ^
+     59|   controller.focus("b"); await settle(5); expect(sessions.beta.epoch).…
+     60|   controller.focus("a"); await settle(7); expect(sessions.alpha.epoch)…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  00:00:06
+   Duration  1.82s (transform 1.04s, setup 119ms, import 162ms, tests 1.36s, environment 0ms)

@@ -1,0 +1,56 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+x
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  03:40:06
+   Duration  354ms (transform 154ms, setup 85ms, import 116ms, tests 24ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-skew-geometry-3637.test.ts > a retained host never restores float through a new topology helper or adapter
+AssertionError: expected { a: { route: { …(2) }, …(3) }, …(7) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "a": {
+    "hash": "",
+    "route": {
+      "instance": "alpha",
+      "panel": "chat",
+    },
+    "search": "",
+    "seq": 1,
+  },
+  "b": {
+    "hash": "",
+    "route": {
+      "instance": "beta",
+      "panel": "chat",
+    },
+    "search": "",
+    "seq": 1,
+  },
+  "flipped": false,
+  "floating": "b",
+  "focus": "b",
+  "layout": "float",
+  "ratio": 0.5,
+  "rect": null,
+}
+
+ ❯ tests/web-chat-workspace-skew-geometry-3637.test.ts:12:36
+     10| it("a retained host never restores float through a new topology helper…
+     11|   const url = new URL("http://127.0.0.1/ui/chat/alpha?compare=beta&lay…
+     12|   expect(model.readWorkspace(url)).toBeNull();
+       |                                    ^
+     13|   expect((model.readWorkspace as any)(url, null, true)?.layout).toBe("…
+     14|   nav.navigate(url.pathname + url.search, { workspace: true }); expect…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

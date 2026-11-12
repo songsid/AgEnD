@@ -1,0 +1,62 @@
+[
+  {
+    "file": "final-controls.log",
+    "originalDigest": "d6aa57d460564e1dc1435ed03260e48f53885ce04608abc66fa4951e67ef4ba4",
+    "retainedDigest": "a4cebf7e9ab5e2aa22c8c4f4289145786caa80273a2bd5642bd231a3437bf86c",
+    "change": "trailing whitespace only"
+  },
+  {
+    "file": "pinned-source-types.log",
+    "originalDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "retainedDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "change": "trailing whitespace only"
+  },
+  {
+    "file": "pinned-test-types.log",
+    "originalDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "retainedDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "change": "trailing whitespace only"
+  },
+  {
+    "file": "pinned-changelog.log",
+    "originalDigest": "5273d50b651ac609448b4598004b5b83bd36a740e1035b19ac547a71fe957b34",
+    "retainedDigest": "5273d50b651ac609448b4598004b5b83bd36a740e1035b19ac547a71fe957b34",
+    "change": "trailing whitespace only"
+  },
+  {
+    "file": "ultrawide-fail-first.log",
+    "originalDigest": "ce8bef97db3a1100da3f91df5eb099e302d3d16ca516791e528cb1505a24d5c7",
+    "retainedDigest": "04b7d16d102f6c8896c56fee62197a585cd8214c0773c528a77591bf8b850e8f",
+    "change": "trailing whitespace only"
+  },
+  {
+    "file": "menu-fail-first.log",
+    "originalDigest": "571064dba3d2d8c0f75c38be3f75715b71a797762c687d9467515d831ef6720c",
+    "retainedDigest": "571064dba3d2d8c0f75c38be3f75715b71a797762c687d9467515d831ef6720c",
+    "change": "trailing whitespace only"
+  },
+  {
+    "file": "overlay-stability-fail-first.log",
+    "originalDigest": "5cb524d2c72c301274a17eb82343495c956790edcb4980aff53bbd02e7595b5a",
+    "retainedDigest": "70f6688f8598fe0b6dfa26bb8cd1bf393752f7cd271d3a20d498389bd3e4f9e6",
+    "change": "trailing whitespace only"
+  },
+  {
+    "file": "retained-host-float-fail-first.log",
+    "originalDigest": "04f23296445505ea964f8fec8b28b42b5e4212a40291634144597c7c1b3bc2ab",
+    "retainedDigest": "28cfb57c71061eb6c205a64505468d4a3d3c1c97d36020b63d60eff73963b1ce",
+    "change": "trailing whitespace only"
+  },
+  {
+    "file": "first-split-preview-fail-first.log",
+    "originalDigest": "9a718989ecef208174500c946f5c9dbc4b706794385a104313c6af3dcf63d55b",
+    "retainedDigest": "69a15e9fffe9ff76903c6560dae82248281042016f3ac66450d1813660cc3975",
+    "change": "trailing whitespace only"
+  },
+  {
+    "file": "post-sync.log",
+    "originalDigest": "6e322966694e68a129953d7c8374dcd7f0e55a0aeef910380b7b9d8d73757895",
+    "retainedDigest": "a0a3fc32c3c1db4afce0112f9942e955054b2dde65fa8e61d442e92629133be2",
+    "change": "trailing whitespace only"
+  }
+]

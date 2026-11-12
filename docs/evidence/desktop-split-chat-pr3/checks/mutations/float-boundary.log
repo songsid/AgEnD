@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+··x·····
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 passed (8)
+   Start at  03:39:48
+   Duration  265ms (transform 68ms, setup 74ms, import 34ms, tests 13ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-geometry-3637.test.ts > one physical geometry for split, dock and float > bounds a restored or resized floating pane to the chat area
+AssertionError: expected { x: -200, y: 340, width: 900, …(1) } to deeply equal { x: +0, y: 340, width: 900, …(1) }
+
+- Expected
++ Received
+
+  {
+    "height": 360,
+    "width": 900,
+-   "x": 0,
++   "x": -200,
+    "y": 340,
+  }
+
+ ❯ tests/web-chat-workspace-geometry-3637.test.ts:14:88
+     12|   });
+     13|   it("bounds a restored or resized floating pane to the chat area", ()…
+     14|     expect(geometry.floatBox(900, 700, { x: -200, y: 900, width: 2000,…
+       |                                                                                        ^
+     15|     const first = geometry.floatBox(1000, 900);
+     16|     expect(first.width).toBe(560); expect(first.height).toBe(460);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

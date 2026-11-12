@@ -53,7 +53,7 @@ const shortValue = (v) => {
 };
 
 /** Export: what to include (left), the file as it would be written (below), secrets stopping the download. */
-export function ExportDialog({ name, pending, onClose }) {
+export function ExportDialog({ name, pending, onClose, idPrefix = "" }) {
   const [groups, setGroups] = useState(() => new Set(DEFAULT_GROUPS));
   const [result, setResult] = useState(null);
   const [failed, setFailed] = useState(false);
@@ -97,14 +97,14 @@ export function ExportDialog({ name, pending, onClose }) {
       ${failed ? html`<p class="feedback error" role="alert">${xt("exportFailed")}</p>` : null}
       ${(result && result.omitted || []).map((o) => html`<p class="feedback warning" role="status" key=${o.field + o.reason} data-export-omitted=${o.reason}>${xt(`o_${o.reason}`)}</p>`)}
       ${result && result.empty && !findings.length ? html`<p class="note">${xt("nothing")}</p>` : null}
-      <div class="field"><label for="ag-export-preview">${xt("previewLabel")}</label>
-        <textarea id="ag-export-preview" rows="14" readonly spellcheck=${false} value=${text === null ? (result ? "" : xt("building")) : text} data-export-preview /></div>
+      <div class="field"><label for=${`${idPrefix}ag-export-preview`}>${xt("previewLabel")}</label>
+        <textarea id=${`${idPrefix}ag-export-preview`} rows="14" readonly spellcheck=${false} value=${text === null ? (result ? "" : xt("building")) : text} data-export-preview /></div>
       <details class="field"><summary>${xt("notExported")}</summary><p class="note">${xt("notExportedBody")}</p></details>
     </div></${Dialog}>`;
 }
 
 /** Load template: choose or paste, see what would be filled and what skipped (with why), then fill the form. */
-export function LoadDialog({ current, onFill, onClose }) {
+export function LoadDialog({ current, onFill, onClose, idPrefix = "" }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState(null);       // the server's reading of `text`, or { error }
@@ -139,8 +139,8 @@ export function LoadDialog({ current, onFill, onClose }) {
     <div class="form">
       <p class="note">${xt("loadLead")}</p>
       <div class="field"><label class="btn btn-sm"><${Icon} name="file" size=${15} /> ${xt("chooseFile")}<input type="file" accept=".yaml,.yml,.txt,text/yaml,text/plain" hidden data-load-file onChange=${onFile} /></label></div>
-      <div class="field"><label for="ag-load-text">${xt("pasteLabel")}</label>
-        <textarea id="ag-load-text" rows="10" spellcheck=${false} placeholder=${xt("pastePlaceholder")} value=${text} data-load-text onInput=${(e) => edit(e.target.value)} /></div>
+      <div class="field"><label for=${`${idPrefix}ag-load-text`}>${xt("pasteLabel")}</label>
+        <textarea id=${`${idPrefix}ag-load-text`} rows="10" spellcheck=${false} placeholder=${xt("pastePlaceholder")} value=${text} data-load-text onInput=${(e) => edit(e.target.value)} /></div>
       ${note ? html`<p class="feedback error" role="alert">${note}</p>` : null}
       ${res && res.error && !note ? html`<p class="feedback error" role="alert" data-load-error>${xt(`e_${res.error}`)}</p>` : null}
       ${ok ? html`<div data-load-preview>
@@ -157,13 +157,14 @@ export function LoadDialog({ current, onFill, onClose }) {
 }
 
 /** The two buttons under the Instructions field, and the dialogs they open. `m`: useAgentForm's result. */
-export function AgentTemplateTools({ name, m }) {
+export function AgentTemplateTools({ name, m, idPrefix = "" }) {
   const [open, setOpen] = useState(null);
   const pending = Object.keys(m.pending()).length > 0;
   return html`<div class="field template-tools"><p class="note">${xt("fieldsHint")}</p>
     <div class="seg-inline" role="group" aria-label=${xt("loadTemplate")}>
       <button type="button" class="btn btn-sm" data-template-load onClick=${() => setOpen("load")}><${Icon} name="file" size=${15} /> ${xt("loadTemplate")}</button>
       <button type="button" class="btn btn-sm" data-template-export onClick=${() => setOpen("export")}><${Icon} name="download" size=${15} /> ${xt("exportBtn")}</button></div>
-    ${open === "export" ? html`<${ExportDialog} name=${name} pending=${pending} onClose=${() => setOpen(null)} />` : null}
-    ${open === "load" ? html`<${LoadDialog} current=${m.f} onFill=${(fill) => applyFill(m.setF, fill)} onClose=${() => setOpen(null)} />` : null}</div>`;
+    ${open === "export" ? html`<${ExportDialog} idPrefix=${idPrefix} name=${name} pending=${pending} onClose=${() => setOpen(null)} />` : null}
+    ${open === "load" ? html`<${LoadDialog} idPrefix=${idPrefix} current=${m.f} onFill=${(fill) => applyFill(m.setF, fill)} onClose=${() => setOpen(null)} />` : null}</div>`;
 }
+AgentTemplateTools.workspaceVersion = 1;

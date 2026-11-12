@@ -97,6 +97,8 @@ const CLASSIC_FIELDS = [
   "quota_notice", "backend", "model", "auto_pause_after", "tool_progress",
   "reply_completion_guard", "reply_triggers", "collab", "context_lines", "pre_task_command",
   "web_echo",
+  // M-2909: the room's AI account (backend_options.<cli>.credential_profile) — read at launch: a restart of that room's agent.
+  "backend_options",
 ] as const;
 
 /**

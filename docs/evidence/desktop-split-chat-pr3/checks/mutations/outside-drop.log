@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+···x····
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 passed (8)
+   Start at  03:39:49
+   Duration  290ms (transform 98ms, setup 99ms, import 50ms, tests 13ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-geometry-3637.test.ts > one physical geometry for split, dock and float > rejects outside drops and previews the exact edge half or center
+AssertionError: expected 'left' to be null
+
+- Expected:
+null
+
++ Received:
+"left"
+
+ ❯ tests/web-chat-workspace-geometry-3637.test.ts:23:46
+     21|     const rect = { left: 100, top: 50, width: 800, height: 600 };
+     22|     for (const [x, y, zone] of [[110, 350, "left"], [890, 350, "right"…
+     23|     expect(geometry.dropZone(rect, 99, 350)).toBeNull(); expect(geomet…
+       |                                              ^
+     24|     expect(geometry.dropBox(rect, "right")).toEqual({ left: 500, top: …
+     25|     expect(geometry.dropBox(rect, "top")).toEqual({ left: 100, top: 50…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

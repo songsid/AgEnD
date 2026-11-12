@@ -1,0 +1,43 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+x·x··
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 passed (5)
+   Start at  02:23:29
+   Duration  1.52s (transform 767ms, setup 92ms, import 125ms, tests 1.16s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-fields-3637.test.ts > the merged Classic account picker has pane IDs and retains each CLI's choices through suspension
+AssertionError: expected null not to be null
+ ❯ tests/web-chat-pane-fields-3637.test.ts:27:84
+     25|   }
+     26|   await p.mount(h("div", null, h(Form, { n: 0 }), h(Form, { n: 1 })));…
+     27|   const input: any = p.root.querySelector("#pane-0-cl-account"); expec…
+       |                                                                                    ^
+     28|   const labels = p.root.querySelectorAll("label[for]"); expect(labels.…
+     29|   for (const label of labels) expect(label.closest("[data-form]")?.que…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-chat-pane-fields-3637.test.ts > two full Settings panes keep label and form ownership > namespaces every classic control and changes only the intended form
+AssertionError: cl-account: expected 29 to be 30 // Object.is equality
+
+- Expected
++ Received
+
+- 30
++ 29
+
+ ❯ tests/web-chat-pane-fields-3637.test.ts:65:88
+     63|     const ids = [...p.root.querySelectorAll("[id]")].map((el: any) => …
+     64|     expect(ids.length).toBeGreaterThan(3);
+     65|     expect(new Set(ids).size, ids.filter((id, n) => ids.indexOf(id) !=…
+       |                                                                                        ^
+     66|     for (const label of p.root.querySelectorAll("label[for]")) {
+     67|       const id = label.getAttribute("for");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯

@@ -10,11 +10,13 @@ import { t } from "./app-i18n.js";
  * open. `active`: the button shows a pressed look (what it controls is on), without changing its role.
  * Optional `trigger` and `triggerClass` customize the button content and styling; `label` remains its accessible name.
  */
-export function Menu({ items, label, icon = "more", cls = "", active = false, trigger, triggerClass = "icon-btn", disabled = false, fit = false }) {
+export function Menu({ items, label, icon = "more", cls = "", active = false, trigger, triggerClass = "icon-btn", disabled = false, fit = false, ownerKey, inactive = false, onOpen, leading }) {
   const [open, setOpen] = useState(false);
   const [placement,setPlacement] = useState("");
   const btn = useRef(null), list = useRef(null);
   const shown = (items || []).filter(Boolean);
+  useLayoutEffect(() => { setOpen(false); }, [ownerKey]);
+  useLayoutEffect(() => { if (inactive) setOpen(false); }, [inactive]);
   useLayoutEffect(() => {
     if (!open || !fit || !btn.current?.getBoundingClientRect || !list.current) return;
     const place = () => {
@@ -40,6 +42,8 @@ export function Menu({ items, label, icon = "more", cls = "", active = false, tr
     return () => document.removeEventListener("pointerdown", outside, true);
   }, [open, disabled]);
   function onKey(e) {
+    if (e.target.closest?.("dialog[open]")) return;
+    if (e.target.closest?.("[role=menu]") !== list.current) return; // a nested card menu owns its own keys
     const all = [...list.current.querySelectorAll("[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled]), [role=menuitemcheckbox]:not([disabled])")];
     const i = all.indexOf(document.activeElement);
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); btn.current && btn.current.focus({ preventScroll: true }); }
@@ -53,9 +57,10 @@ export function Menu({ items, label, icon = "more", cls = "", active = false, tr
   function choose(item) { if (disabled || item.disabled) return; setOpen(false); btn.current && btn.current.focus({ preventScroll: true }); item.onSelect(); }
   return html`<div class=${`menu ${cls}`}>
     <button ref=${btn} type="button" class=${`${triggerClass}${active ? " active" : ""}`} aria-haspopup="menu" aria-expanded=${open ? "true" : "false"} disabled=${disabled}
-      aria-label=${label || t("app.more")} title=${label || t("app.more")} onClick=${() => { if (!disabled) setOpen(!open); }}
-      onKeyDown=${(e) => { if (!disabled && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setOpen(true); } }}>${trigger === undefined ? html`<${Icon} name=${icon} />` : trigger}</button>
+      aria-label=${label || t("app.more")} title=${label || t("app.more")} onClick=${() => { if (!disabled) { if (!open) onOpen?.(); setOpen(!open); } }}
+      onKeyDown=${(e) => { if (!disabled && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); onOpen?.(); setOpen(true); } }}>${trigger === undefined ? html`<${Icon} name=${icon} />` : trigger}</button>
     ${open && !disabled ? html`<div data-trust="menu" ref=${list} class=${`menu-list${fit ? placement : ""}`} role="menu" aria-label=${label || t("app.more")} onKeyDown=${onKey}>
+      ${leading || null}
       ${shown.map(item => item.heading
         ? html`<div key=${item.key} class="menu-heading" role="presentation">${item.label}</div>`
         : item.checkbox
@@ -70,3 +75,4 @@ export function Menu({ items, label, icon = "more", cls = "", active = false, tr
     </div>` : null}
   </div>`;
 }
+Menu.workspaceVersion = 1;

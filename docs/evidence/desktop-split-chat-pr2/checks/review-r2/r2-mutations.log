@@ -1,0 +1,8 @@
+operation-completion-retention assertion-caught
+operation-leftover-retention assertion-caught
+operation-late-owner assertion-caught
+outcome-suspension assertion-caught
+restage-retry-key assertion-caught
+restage-changed-request assertion-caught
+recovery-existing-key assertion-caught
+recovery-definite-refusal assertion-caught
