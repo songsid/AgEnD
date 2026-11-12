@@ -1,5 +1,5 @@
 {
-  "75d9cd06251fb5c44faee45fe96dc2d5a78523a5485bcec9fa61393187d297c1": [
+  "20d8f698aa949cb00f6d9e8b8940ba92d67e2bf937cd417093cfe1b7e2d3617e": [
     "README.md"
   ],
   "eac0399cd494f5aa355d0efef938c69751ff2e4521369d9e39153e0d00126d48": [
@@ -44,13 +44,15 @@
     "browser/grants-current/current-desk-light-zh-TW-grant.png"
   ],
   "5f180701f8d09c6be48db8fadabd0b8319adda11db40dc30b6c6aafd969bdfbc": [
-    "browser/grants-current/current-phone-dark-en-grant.png"
+    "browser/grants-current/current-phone-dark-en-grant.png",
+    "sync-3750/browser/grants-current/current-phone-dark-en-grant.png"
   ],
   "c8aefc99f0739c95ee84ecf144401672a93c3be469c8a636e819097b684324ad": [
     "browser/grants-current/current-phone-dark-zh-TW-grant.png"
   ],
   "429ad4f46bfca1d0fbb10b73c8234afc604200ea9740532f825b8443cc05ad0b": [
-    "browser/grants-current/current-phone-light-en-grant.png"
+    "browser/grants-current/current-phone-light-en-grant.png",
+    "sync-3750/browser/grants-current/current-phone-light-en-grant.png"
   ],
   "2e71cd5f9011558bbd7ec4ca0a8956db033b88c7ecde2180123e9ff49f2e6332": [
     "browser/grants-current/current-phone-light-zh-TW-grant.png"
@@ -177,7 +179,7 @@
   "07063f14233b6fa18363706aefe1cd26f3fe1ba3b5efff274350153e3d61ed34": [
     "browser/setup-phone-actions/receipt.json"
   ],
-  "7d24a699ed2c9e2957c8e4805c3f5c56c55781a995b35672a9b18ab2daa39fff": [
+  "4fd44f08aaab531444c1036dcaf70eed0ca700408706699a7267184ad5e70e96": [
     "capture-checks.json"
   ],
   "2e66e187409dbb9235d213764213e9f780ddaa0e3a34d3d1e9f1204e26b40500": [
@@ -197,7 +199,9 @@
   ],
   "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64": [
     "checks/final-test-types.log.gz",
-    "checks/source-types.log.gz"
+    "checks/source-types.log.gz",
+    "sync-3750/checks/source-types.log.gz",
+    "sync-3750/checks/test-types.log.gz"
   ],
   "ae2f80bfc7e90bbbed6590053c8cc34f5ef852e8266bb36cf9954b6584de75bd": [
     "checks/handoff.log.gz"
@@ -226,7 +230,135 @@
   "402b8ed2061536168ef5001de2379f6943789a0e82f987bfa8dd8b98c74af94e": [
     "checks/witness.log.gz"
   ],
-  "6e51f17aa8ca6c703e3dbfccff525e32eefe8e976db5500cc3fe45ce84108de6": [
+  "1e94fccad939d057b364bdc6733a6cc6d061013f3e5f721fd34ec5619037b886": [
     "checks.json"
+  ],
+  "5f91c0b25ce3e7212b73ee989c8f2af9996744ee43371bad197c4a8112c57393": [
+    "sync-3750/browser/grants-before/before-desk-dark-en-grant.png"
+  ],
+  "acbea80c507d17a718dff2db6845a004ca37467019e57a64c5df66adf29a5a46": [
+    "sync-3750/browser/grants-before/before-desk-dark-zh-TW-grant.png"
+  ],
+  "3b8f4df8c3d90c02bf9144378cbf086fc476f58f9e6f5302bc515f029341f843": [
+    "sync-3750/browser/grants-before/before-desk-light-en-grant.png"
+  ],
+  "733abccb144a4611773a246ddca6d4fc8a79d8a84b9d076393e5143f188fc9fb": [
+    "sync-3750/browser/grants-before/before-desk-light-zh-TW-grant.png"
+  ],
+  "99db585ee8c4736bbd63eb4be6be1f83051c864b12e720f4f84d78152483b86b": [
+    "sync-3750/browser/grants-before/before-phone-dark-en-grant.png"
+  ],
+  "f9cf3018765530f985b16d8c742a8a4edefcebde9897d80bb70046242e474ff0": [
+    "sync-3750/browser/grants-before/before-phone-dark-zh-TW-grant.png",
+    "sync-3750/browser/grants-current/old-server-phone-dark-zh-TW-grant.png"
+  ],
+  "5f1d232a194b941b4d78bc14f2ad0a27472d16069532b0075607876efaecd737": [
+    "sync-3750/browser/grants-before/before-phone-light-en-grant.png"
+  ],
+  "694c93683620ee3b0fb425e7bb84b5e5f62257d9230df3e0adb07ce75a7e50cc": [
+    "sync-3750/browser/grants-before/before-phone-light-zh-TW-grant.png"
+  ],
+  "53133ed5dbbe3831a8bc9896891e4542b437cfc2e54d25ed42240f13ef3dac78": [
+    "sync-3750/browser/grants-before/receipt.json"
+  ],
+  "baac4214a7f785829588d118f9006b6dd111c21ae03dced4e636b65bba01183c": [
+    "sync-3750/browser/grants-current/current-desk-dark-en-grant.png"
+  ],
+  "b69a9db6444ba68701d74281064eb736d167b3c9a4091052184fecd35eaf6e90": [
+    "sync-3750/browser/grants-current/current-desk-dark-zh-TW-grant.png"
+  ],
+  "0d064d10dd7c6b9503c517d392a9dde80d44f6026962a38c6d53b7b531568a02": [
+    "sync-3750/browser/grants-current/current-desk-light-en-grant.png",
+    "sync-3750/browser/grants-current/old-words-desk-light-en-grant.png"
+  ],
+  "c08e39caa12860ae72e55514ee2c66857069157fe43aa44b2dcf5077224dee12": [
+    "sync-3750/browser/grants-current/current-desk-light-zh-TW-grant.png"
+  ],
+  "b56e66c9f70738b2504a2848ddf0b8e49138352868045ff3c6df2e5d76948073": [
+    "sync-3750/browser/grants-current/current-phone-dark-zh-TW-grant.png"
+  ],
+  "057b79181f51933698c2d4e14a82454ba85b712d0cbf8325f942806de9a5d714": [
+    "sync-3750/browser/grants-current/current-phone-light-zh-TW-grant.png"
+  ],
+  "f2fd5f364760dc25f8a26277b682adc959ea647440fce0df2ca00bb2ec54fbd1": [
+    "sync-3750/browser/grants-current/receipt.json"
+  ],
+  "153bca405d54131063dd244db0cfc10d3cae54d1f8d97851b166e5efa76d3fe9": [
+    "sync-3750/browser/setup-current/desk-dark-en-checking.png"
+  ],
+  "b793b55d06cbaf6e9e7b58a5d5b1dad38930fcde41f37bc4f66bb2a4f4d2baed": [
+    "sync-3750/browser/setup-current/desk-dark-en-ready-actions.png",
+    "sync-3750/browser/setup-current/desk-dark-en-ready.png"
+  ],
+  "6791edb014eca73f4fa4ec967216ae1f526cd588ea7f73f63943e1cb9b10a884": [
+    "sync-3750/browser/setup-current/desk-dark-zh-TW-checking.png"
+  ],
+  "79a68a263a8e642b1ca2a5e3d3c9fb28d36b4b016e8ee41f7ffe3d239670f220": [
+    "sync-3750/browser/setup-current/desk-dark-zh-TW-ready-actions.png",
+    "sync-3750/browser/setup-current/desk-dark-zh-TW-ready.png"
+  ],
+  "9f67c1b0e4e39f0af15caa341f66deb3382c767684530103b4569e750f9ab846": [
+    "sync-3750/browser/setup-current/desk-light-en-checking.png"
+  ],
+  "84fa6c93eed3ded438bd9dd8c38adb143c1fa5b1b5f6db59854472e67b54575f": [
+    "sync-3750/browser/setup-current/desk-light-en-ready-actions.png",
+    "sync-3750/browser/setup-current/desk-light-en-ready.png"
+  ],
+  "d2d00b97777e7f7d121d734716e969c95dd1a67df5cfc46e5282e535c0bd26a3": [
+    "sync-3750/browser/setup-current/desk-light-zh-TW-checking.png"
+  ],
+  "b74243c2dcaa561527fd1825385166c42dec24205f5ee913c485df4d38683509": [
+    "sync-3750/browser/setup-current/desk-light-zh-TW-ready-actions.png",
+    "sync-3750/browser/setup-current/desk-light-zh-TW-ready.png"
+  ],
+  "63421e7dd12fe96f1998849fbf597caccd5bd0722fe709d95da472adc35bd268": [
+    "sync-3750/browser/setup-current/phone-dark-en-checking.png",
+    "sync-3750/browser/setup-current/phone-dark-en-ready.png"
+  ],
+  "66d0bf9f730af8dcfca78be2700ce23ef3abb58bec403d157ed981e58de6e3fe": [
+    "sync-3750/browser/setup-current/phone-dark-en-ready-actions.png"
+  ],
+  "b2378b8db060794853530bc9368793e2b9cc8338db5bf5b840088f7c5013e967": [
+    "sync-3750/browser/setup-current/phone-dark-zh-TW-checking.png"
+  ],
+  "a37f53598bfaa889d39ce0db63b247871fc424f58dc6717f7e804261c6195319": [
+    "sync-3750/browser/setup-current/phone-dark-zh-TW-ready-actions.png"
+  ],
+  "b16082691509d45e65edc9b2bc2a9a68d17ebae751a06e0f9ae649754aede839": [
+    "sync-3750/browser/setup-current/phone-dark-zh-TW-ready.png"
+  ],
+  "d0f164aae32199c6ad7675d2622f73037130b9e3237a2b0b3ec915f15f6641b7": [
+    "sync-3750/browser/setup-current/phone-light-en-checking.png",
+    "sync-3750/browser/setup-current/phone-light-en-ready.png"
+  ],
+  "5d2c7922c969e4869ccbdc8188f71f62b6aa05035ff886c98d62263ba311ded9": [
+    "sync-3750/browser/setup-current/phone-light-en-ready-actions.png"
+  ],
+  "3dd24d2b3edd5fc3aa25e2efd5a82bf8569115b8078e2c2bf607e37d6897536a": [
+    "sync-3750/browser/setup-current/phone-light-zh-TW-checking.png"
+  ],
+  "3f0ffb28f2147c663db71b2372d3e5b321cc07182c165a6a013d9a93469bcdde": [
+    "sync-3750/browser/setup-current/phone-light-zh-TW-ready-actions.png"
+  ],
+  "8fd3770329450b2a219ba034a08146dea4cd2bafde42495617cab12e8402535e": [
+    "sync-3750/browser/setup-current/phone-light-zh-TW-ready.png"
+  ],
+  "f6814904d42f60c2741306f6d6cd93056324a703bebadd01106b44d4d325ceb7": [
+    "sync-3750/browser/setup-current/receipt.json"
+  ],
+  "5941f4ff37d7d96f223f3f818bb9dcba542ab96e25d83d6e8c717dee81395ba0": [
+    "sync-3750/checks/final-focused.log.gz"
+  ],
+  "a7d80e25e5215b6b1962bc9e9eabf1aae2a6345bdd90a4db2660ac94e144616e": [
+    "sync-3750/checks/parity.json"
+  ],
+  "7126c3ef6466bd3460be49840b69bf8d6c741dabadb570ff363ec8ed6a90ddb9": [
+    "sync-3750/checks/restored.log.gz"
+  ],
+  "1511bd260351c9846dfc96456fc0786d7aedf31ac3fe77c4e798032024c50454": [
+    "sync-3750/checks/session-created-mutant.json"
+  ],
+  "670cc61efce18008f6c5570a7e28839bfa5076c7187c025cdbf5496161c8e6eb": [
+    "sync-3750/checks/session-created-mutant.log.gz"
   ]
 }

@@ -26,7 +26,7 @@ node scripts/changelog-assemble.mjs --check
 
 ## Browser evidence
 
-One serial Chromium 156 campaign, with load checks at each leg; the other rehearsal owner released the browser slot and was notified when this campaign finished. Only owned scratch HOME/state, in-process fake directory services and loopback listeners were used. No container, live Fleet, real AD/account, model CLI, service install or Mac pilot operation.
+One serial Chromium 156 campaign, with load checks at each leg; the other rehearsal owner released the browser slot and was notified when this campaign finished. Only owned scratch AGEND_HOME/Fleet state, in-process fake directory services and loopback listeners were used. No container, live Fleet, real AD/account, model CLI, service install or Mac pilot operation.
 
 | Run | Cases | PNGs | Scope |
 | --- | ---: | ---: | --- |
@@ -40,7 +40,7 @@ One serial Chromium 156 campaign, with load checks at each leg; the other rehear
 
 All **42 cases / 62 PNGs** pass their declared checks. The before cases substitute exact renderer blobs from `a6557a6b`; they are not full old-server runs. Old-server controls remove only the new response field. CSS is unchanged from that base. There is no claim of a full all-old-assets or native-browser matrix.
 
-Each original receipt records capture-time HEAD/tree, empty tracked-dirty state, source/harness digests, served asset digests and exact substitutions. `capture-checks.json` verifies the input bindings against Git objects. Setup originals bind to `74b658122`; grant originals to `f37e80896`; the phone supplement binds to `d5e0340b3`. These executions retain their original identities. All six product blobs are unchanged across those capture heads and the delivered branch. Later changes are harness/test/evidence or a clean alpha merge of #3749's disjoint CI files.
+Each original receipt records capture-time HEAD/tree, empty tracked-dirty state, source/harness digests, served asset digests and exact substitutions. `capture-checks.json` verifies the input bindings against Git objects. Setup originals bind to `74b658122`; grant originals to `f37e80896`; the phone supplement binds to `d5e0340b3`. These executions retain their original identities. All six product blobs are unchanged across those original capture heads and pre-sync head `6e1745252`. Their comparison head is explicit in `capture-checks.json`; later sync evidence is separate below.
 
 The setup button's 44px phone target is checked numerically, including the supplement. Grant Allow/Refresh/Pause controls are pre-existing 30px phone targets; the receipts compare them to the same baseline and assert no new small controls. The new grant marker is display-only. Those existing controls were not resized in this scoped change.
 
@@ -51,3 +51,13 @@ To repeat, set `PW_DIR` and `CHROME` to an isolated Playwright installation, the
 ## Risk and rollback
 
 The new inspection fields and grant boolean are additive, display-only data. Older clients ignore them; newer clients fail closed when fields are absent. Readiness is a local runtime observation, not a promise about external routing or a person's future sign-in. Reverting this PR restores the prior display behavior without a data downgrade or storage change.
+
+## Sync after #3750
+
+Alpha moved to `b5514e36dc61482ad5bce6aeea7603f5e9a6be41` while review was in progress. Plain merge `2813ba6c6a34fcb14e88d8079514f02cb8045f46` was clean, including the two overlapping files (`panel-hub.js` and `hub-ui-s3.test.ts`). All six of this PR's source patches remain identical, added/removed line for line, against the new base (`sync-3750/checks/parity.json`). The incoming helper/approve/revoke changes are retained.
+
+#3750 changed the denied message. The session-end test now checks the current dictionary rather than its old literal, while retaining the abort/no-link assertions. It also asserts that the created heading is removed: Fable's U6 reversal is now caught by one semantic failure; restoration passes 47/47 in the two changed/related suites. The final combined seven suites pass **193/193**, and both native type checks pass.
+
+Surrounding visible Stop sharing and Fleet connection wording changed, so new captures were taken at clean head `4a4e6473d` rather than relabelling the earlier runs. The sync supplement adds **26 cases / 42 PNGs**: eight current setup cases with visible actions, eight post-3750 baseline grant cases and ten current/SKEW grant cases. All checks pass. Ten selected new originals were visually clear; the full Stop sharing section remains below the phone stills' viewport. Browser resources were cleaned and the slot returned to the rehearsal owner again.
+
+The complete gallery now contains **68 declared cases / 104 original PNGs**, with the original 42/62 scope retained. Latest phone actions: [zh-TW dark](sync-3750/browser/setup-current/phone-dark-zh-TW-ready-actions.png), [EN light](sync-3750/browser/setup-current/phone-light-en-ready-actions.png). Latest grant marker: [zh-TW phone](sync-3750/browser/grants-current/current-phone-dark-zh-TW-grant.png), [EN desktop](sync-3750/browser/grants-current/current-desk-light-en-grant.png).

@@ -69,5 +69,23 @@
     "merge": "0aebc605a084120cf8cf813cec036ed511ec69dd",
     "conflicts": false,
     "scope": "seven disjoint incoming CI/history-scan files"
+  },
+  "sync3750": {
+    "merge": "2813ba6c6a34fcb14e88d8079514f02cb8045f46",
+    "base": "b5514e36dc61482ad5bce6aeea7603f5e9a6be41",
+    "conflicts": false,
+    "ownSourcePatchesUnchanged": 6,
+    "focusedPasses": 193,
+    "focusedFiles": 7,
+    "sourceTypes": "PASS",
+    "testTypes": "PASS",
+    "extraU6AssertionFailures": 1,
+    "restoredPasses": 47,
+    "captureHead": "4a4e6473dcf7353758efb431c884e9f462fd450f",
+    "extraBrowserCases": 26,
+    "extraPngs": 42,
+    "extraVisualReviewOriginals": 10,
+    "combinedCases": 68,
+    "combinedPngs": 104
   }
 }

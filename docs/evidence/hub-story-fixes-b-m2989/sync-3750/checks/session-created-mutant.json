@@ -1,0 +1,9 @@
+{
+  "label": "U6 remove setCreated(null) on session end",
+  "sourceRef": "4a4e6473dcf7353758efb431c884e9f462fd450f",
+  "sourceDigest": "8514207b11c85835e62738e9198caa2060c039df6ca9f883cef7225622ac77bf",
+  "mutantDigest": "26c119ad3b3383dd75b94289163f635d377f4ced4541c856b761309e1697c639",
+  "failedAssertions": 1,
+  "restored": true,
+  "restoredPasses": 47
+}
