@@ -224,7 +224,9 @@ export function AnnotateEditor({ src, name, targets = [], onClose, onError }) {
       if (!current()) return;                        // closed or gone while encoding: nothing is added anywhere
       if (!blob) throw new Error("no image");
       const file = new File([blob], annotatedName(name), { type: "image/png" });
-      if (await target.quote(file) && current()) onClose?.();
+      // The editor's own liveness travels with the file: a target that waits (the other pane's Chat mounting) checks it
+      // at its commit, so closing the editor meanwhile cancels the quote and the attachment there (Prism on #3735 r2).
+      if (await target.quote(file, current) && current()) onClose?.();
     } catch { if (current()) onError?.(t("annotate.failedSave")); }
     finally { if (live.current.alive) setBusy(false); }
   };

@@ -144,8 +144,8 @@ function annotateFor(name, img) {
   const key = img?.closest?.(".msg[data-key]")?.getAttribute("data-key") || "";
   const message = (store.state.msgs[name] || []).find((x) => msgKey(x) === key) || null;
   const field = () => composerField(name);
-  const targets = [{ key: "self", label: t("lbAnnotateQuote.self"), quote: (file) => {
-    if (!field()) return false;
+  const targets = [{ key: "self", label: t("lbAnnotateQuote.self"), quote: (file, live = () => true) => {
+    if (!field() || !live()) return false;
     store.addFiles(name, [file]);
     if (message) store.startReply(name, message);
     field()?.focus();
@@ -159,7 +159,7 @@ function annotateFor(name, img) {
     // Prism on #3735: the picture and its quote go in under the pane's one live check (insert's commit) — a pane
     // replaced or retired meanwhile gets neither, and the editor stays open.
     targets.push({ key: "other", label: t("lbAnnotateQuote.other", other.name),
-      quote: async (file) => (await other.insert(what, () => store.addFiles(other.name, [file]))) === true });
+      quote: async (file, live = () => true) => (await other.insert(what, () => store.addFiles(other.name, [file]), live)) === true });
   }
   return { targets, notice: (text) => toast(text, false) };
 }

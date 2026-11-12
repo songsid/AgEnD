@@ -54,6 +54,24 @@ describe("the other pane gets the picture and its quote together, or neither", (
     expect([insert.mock.calls.length, commit.mock.calls.length]).toEqual([0, 0]);
     composerReady = true;
   }, 10_000);
+  it("Prism on #3735 r2: the editor closed while the Chat mount is awaited: no quote, no file, false", async () => {
+    composerReady = false; insert.mockClear();
+    let editorOpen = true;
+    const commit = vi.fn();
+    const target = entry.quoteTargets("alpha")[0], pending = target.insert("Here is the screen", commit, () => editorOpen);
+    editorOpen = false;                                                      // Esc / ✕ / unmount
+    composerReady = true;                                                    // the same pane becomes ready afterwards
+    expect(await pending).toBe(false);
+    expect([insert.mock.calls.length, commit.mock.calls.length]).toEqual([0, 0]);
+  });
+  it("control: the editor still open through the wait — the quote and the file, true", async () => {
+    composerReady = false; accept = true; insert.mockClear();
+    const commit = vi.fn();
+    const target = entry.quoteTargets("alpha")[0], pending = target.insert("Here is the screen", commit, () => true);
+    composerReady = true;
+    expect(await pending).toBe(true);
+    expect([insert.mock.calls.length, commit.mock.calls.length]).toEqual([1, 1]);
+  });
   it("the session retired while the mount is awaited: no quote, no file, false", async () => {
     composerReady = false; insert.mockClear();
     const commit = vi.fn();
