@@ -1,2 +1,1 @@
-Inert #3745 scan proof, never a credential or a merge candidate.
-github_token = "ghp_mq4HlKPlDwv3FueSo2b5auLtkvY6ZnNG3uxh"
+Inert #3745 security scan proof: fake credential removed; never merge.
