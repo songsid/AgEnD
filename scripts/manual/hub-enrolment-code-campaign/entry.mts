@@ -78,14 +78,23 @@ try {
     const review=JSON.parse(reviewText);
     if(review.source!==source||!['backend','harness','inconclusive'].includes(review.classification))throw Error('Diagnostic review not bound to source');
     receipt.diagnosisReview=review;
-    await run('remaining-acceptance',process.execPath,['--import','tsx','scripts/manual/hub-enrolment-code-campaign/capacity.mts'],{CAMPAIGN_MODE:'remainder'});
+    try { await run('remaining-acceptance',process.execPath,['--import','tsx','scripts/manual/hub-enrolment-code-campaign/capacity.mts'],{CAMPAIGN_MODE:'remainder'}); }
+    catch(e){
+      if(stopping)throw e;
+      const file='/evidence/receipt-remainder.json';
+      if(!existsSync(file)||JSON.parse(readFileSync(file,'utf8')).cleaned!==true)throw e;
+      receipt.remainingError=String(e); // Independent style/rollback still run; readiness remains false.
+    }
   } else {
     await run(phases[1], process.execPath, ['--import','tsx','scripts/manual/hub-enrolment-code-campaign/capacity.mts']);
   }
-  await run('hub-ui-style', process.execPath, ['--import','tsx','scripts/manual/smoke/smoke-hub-ui-gate.mts'], { PW_DIR:'/pw', OUT:'/evidence/style', MATRIX:'quick' });
-  await run('hub-shell-style', process.execPath, ['--import','tsx','scripts/manual/smoke/smoke-hub-shell-gate.mts'], { PW_DIR:'/pw', OUT:'/evidence/style', MATRIX:'quick' });
+  for(const [name,script] of [['hub-ui-style','smoke-hub-ui-gate.mts'],['hub-shell-style','smoke-hub-shell-gate.mts']]) {
+    try { await run(name,process.execPath,['--import','tsx','scripts/manual/smoke/'+script],{PW_DIR:'/pw',OUT:'/evidence/style',MATRIX:'quick'}); }
+    catch(e){if(stopping)throw e;receipt.styleErrors??=[];receipt.styleErrors.push(String(e));}
+  }
   await run(phases[2], process.execPath, ['--import','tsx','scripts/manual/hub-enrolment-code-b1/rollback.mts'], { AGEND_OWNED_CONTAINER: 'hub-enrolment-code-b1' });
   requireWindow(plan, source, Date.now(), existsSync('/control/STOP'));
+  if(receipt.phases.some((phase:any)=>phase.exitCode!==0))throw Error('One or more retained phases failed');
   for(const file of (plan.mode==='diagnose-3713'?['receipt-diagnosis.json','receipt-remainder.json','rollback-receipt.json']:['receipt-runtime.json','rollback-receipt.json'])) {
     if(!existsSync('/evidence/'+file))throw Error('Missing phase receipt: '+file);
     const phase=JSON.parse(readFileSync('/evidence/'+file,'utf8'));

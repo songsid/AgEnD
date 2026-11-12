@@ -25,9 +25,13 @@ const {pkceChallenge}=await import('/tmp/b1-dist/hub/join/protocol.js');
 const {createJoinApprovalQueue}=await import('/tmp/b1-dist/ui/hub-join-queue.js');
 const {createLocalJoin,saveLocalJoin}=await import('/tmp/b1-dist/hub/join/local-journal.js');
 const {syncJoinPrivate}=await import('/tmp/b1-dist/hub/join/private.js');
+const {applyHubMigrations}=await import('/tmp/b1-dist/hub/db.js');
+const {createHubAudit,HUB_AUDIT_MIGRATION}=await import('/tmp/b1-dist/hub/audit/index.js');
+const {createHubPairingNoticeInbox,HUB_PAIRING_INBOX_MIGRATION}=await import('/tmp/b1-dist/hub/member/pairing-notices.js');
+const Database=createRequire(import.meta.url)('better-sqlite3');
 const {companyJoinRig}=await import('../../../tests/support/hub-company-join-rig.js');
 const {chromium}=createRequire((process.env.PW_DIR ?? '/work')+'/')('playwright-core');
-let activeProbe:any=null;let rig:any,browser:any,ui:any;const clients:any[]=[],online=new Set<string>();
+let activeProbe:any=null;let rig:any,browser:any,ui:any;const clients:any[]=[],memberDatabases:any[]=[],online=new Set<string>();
 const group='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 try {
  rig=await companyJoinRig((port:number)=>dc=port);
@@ -47,7 +51,7 @@ try {
  browser=await chromium.launch({args:['--no-sandbox','--no-proxy-server','--host-resolver-rules=MAP *.example.test 127.0.0.1']});
  ui=campaignUi(rig,browser,receipt,check,online);
  if(!remainder)await ui.adminShots();
- const create=async(maxUses:number,scope:any={kind:'directory'})=>{const r=await rig.call(admin,'POST','/hub/v1/admin/enrolment-codes',{expires:'today',maxUses,perPersonFleets:1,scope});check('admin creates '+maxUses+'-use code',r.status===201);return r.body;};
+ const create=async(maxUses:number,scope:any={kind:'directory'},perPersonFleets=1)=>{const r=await rig.call(admin,'POST','/hub/v1/admin/enrolment-codes',{expires:'today',maxUses,perPersonFleets,scope});check('admin creates '+maxUses+'-use code',r.status===201);return r.body;};
  const secrets:string[]=[];
  const rawJson=(client as any).json.bind(client);(client as any).json=async(...args:any[])=>{const began=Date.now();try{return await rawJson(...args);}catch(e:any){const diagnostic={path:String(args[1]).split('?')[0],elapsedMs:Date.now()-began,code:e.code??null,kind:e.kind??null};receipt.machineErrors??=[];receipt.machineErrors.push(diagnostic);console.error(JSON.stringify({machineFailure:diagnostic}));throw e;}};
  let machines=0;const machineWaiters:Array<()=>void>=[];
@@ -162,13 +166,23 @@ try {
  if(!diagnose){
  if(remainder){const live=await create(2);secrets.push(live.code.replace('-',''));}
  await ui.cachedShots();
- const compat=await create(1);secrets.push(compat.code.replace('-',''));const compatPerson=people('compat',1)[0];
+ // Notices target the owner's OTHER existing fleets, never the fleet just enrolled.
+ const compat=await create(2,{kind:'directory'},2);secrets.push(compat.code.replace('-',''));const compatPerson=people('compat',1)[0];
  const retained=await attempt(compat.code,compatPerson,null,async()=>{},()=>{},true);check('B-L9 old v2-only member link connected',retained.issued);
- const target=()=>rig.db.prepare("SELECT state FROM hub_pairing_notice_targets WHERE kind='fleet' AND target=?").get(retained.binding.fleetId)?.state;
+ check('B-L9 actual old member does not negotiate v3',!retained.member.view.features.has('pairing-notices-v3'));
+ const second=await attempt(compat.code,compatPerson);check('B-L9 second same-owner fleet issues through real code route',second.issued);
+ const target=()=>rig.db.prepare("SELECT t.state FROM hub_pairing_notice_targets t JOIN hub_pairing_notices n ON n.id=t.notice_id WHERE t.kind='fleet' AND t.target=? AND n.fleet_id=? AND json_extract(n.body,'$.source')='code'").get(retained.binding.fleetId,second.binding.fleetId)?.state;
  check('B-L9 code notice remains queued for actual old member',target()==='queued');
  await retained.member.close();online.delete(retained.binding.fleetId);
- const upgraded=new HubMemberClient({home:retained.home,hubId:metadata.hub.hubId,memberOrigin:metadata.hub.memberOrigin,current:()=>true,reconcile:async()=>{online.add(retained.binding.fleetId);},receive:async()=>{},hold:()=>{}});
+ const memberDb=new Database(join(retained.home,'notice-upgrade.sqlite'));memberDatabases.push(memberDb);
+ applyHubMigrations(memberDb,[HUB_AUDIT_MIGRATION,HUB_PAIRING_INBOX_MIGRATION]);
+ const memberAudit=createHubAudit({db:memberDb,contentKey:randomBytes(32)});
+ const inbox=createHubPairingNoticeInbox({db:memberDb,audit:memberAudit,current:()=>true,now:()=>Date.now()});
+ const upgraded=new HubMemberClient({home:retained.home,hubId:metadata.hub.hubId,memberOrigin:metadata.hub.memberOrigin,current:()=>true,reconcile:async()=>{online.add(retained.binding.fleetId);},
+  receive:async(frame:any,link:any)=>{if(['pairing.notice','pairing.notice-v2','pairing.notice-v3'].includes(frame.type))await inbox.receive(frame.payload,link);},hold:()=>{}});
  clients.push(upgraded);await upgraded.start();await wait(()=>target()==='delivered',30000);check('B-L9 code notice delivered after actual member upgrade',online.has(retained.binding.fleetId));
+ check('B-L9 upgraded inbox retains exact code provenance before ACK',inbox.list().some((n:any)=>n.fleetId===second.binding.fleetId&&n.source==='code'&&n.codeId===compat.id));
+ check('B-L9 upgraded inbox audit chain verifies',memberAudit.verifyChain().ok===true);
 
  const activeBeforeRevoke=rig.deps.store.read().fleets.filter((f:any)=>f.status==='active').length;
  const revoke=await create(50);secrets.push(revoke.code.replace('-',''));const names=people('revoke',50);
@@ -189,6 +203,7 @@ finally{
  if(activeProbe){await activeProbe.stop();activeProbe=null;}
  const failures:string[]=[];const clean=async(name:string,work:()=>any)=>{try{await work();}catch{failures.push(name);}};
  for(const c of clients.reverse())await clean('member',()=>c.close());await clean('fleets',()=>ui?.closeVisible());await clean('browser',()=>browser?.close());await clean('Hub',()=>rig?.close());
+ for(const db of memberDatabases)await clean('member database',()=>db.close());
  tls.connect=original;syncBuiltinESMExports();rmSync(root,{recursive:true,force:true});receipt.cleaned=failures.length===0;if(failures.length){receipt.cleanupFailures=failures;receipt.ready=false;}
  const files=["src/hub/audit/index.ts", "src/hub/catalog.ts", "src/hub/client.ts", "src/hub/compose/member.ts", "src/hub/compose/server.ts", "src/hub/enrolment-code.ts", "src/hub/group-policy/admin-impact.ts", "src/hub/group-policy/admin-inventory.ts", "src/hub/group-policy/authorization.ts", "src/hub/group-policy/impact-inventory.ts", "src/hub/group-policy/resources.ts", "src/hub/group-policy/store.ts", "src/hub/http/compose.ts", "src/hub/join/receipt.ts", "src/hub/join/service.ts", "src/hub/join/store.ts", "src/hub/member/pairing-notices.ts", "src/hub/pairing-notices.ts", "src/hub/pairing.ts", "src/hub/protocol.ts", "src/hub/server.ts", "src/hub/types.ts", "src/settings-api.ts"];
  files.push('src/fleet-manager.ts','src/ui/hub-join-steps.js','src/ui/hub-enrolment-code.js','src/ui/hub-enrolment-code-strings.js','src/ui/hub-join-approval.js','src/ui/hub-join-queue.js','src/ui/hub-client.js','src/ui/hub-company-join.js','src/ui/settings-hub.js','src/ui/settings-hub-company-join.js');
