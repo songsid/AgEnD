@@ -137,9 +137,13 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
         const create = page.getByRole('button',{name:lang==='zh-TW'?'建立加入碼':'Create join code',exact:true}); await create.waitFor();
         await shot(page,tag+'-admin-before'); await create.click(); await page.locator('#hubEnrolmentCreate').waitFor(); await shot(page,tag+'-create-dialog');
         await page.locator('#hubCodeScope').selectOption('group');await page.locator('#hubEnrolmentScopeSearch').fill('Own');
+        check(tag+' scoped picker input and note are distinct',await page.locator('#hubEnrolmentScopeSearch').count()===1
+          &&await page.locator('#hubEnrolmentScopeSearch').getAttribute('aria-describedby')==='hubEnrolmentScopeSearchNote'
+          &&await page.locator('#hubEnrolmentScopeSearchNote').count()===1
+          &&await page.locator('#hubGroupSearch').count()<=1);
         await page.locator('dialog .hub-group-hits button').first().click();
         await page.getByText('CN=Owners,DC=example,DC=test',{exact:false}).last().waitFor();await shot(page,tag+'-resolved-group');
-        check(tag+' distinct picker IDs',await page.locator('#hubGroupSearch').count()===1&&await page.locator('#hubEnrolmentScopeSearch').count()===0);
+        check(tag+' resolved picker retires its input',await page.locator('#hubEnrolmentScopeSearch').count()===0);
         await page.locator('#hubCodeScope').selectOption('directory');
         if (created === null) {
           const answer = page.waitForResponse((r:any)=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/hub/v1/admin/enrolment-codes');
