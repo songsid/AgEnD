@@ -6,7 +6,7 @@ de65cc27d01c80a5f5f9ae4b62f395edb6e3d960afe821e806dc83b26877d87a  src/ui/hub-enr
 1ae6496f5838934df8008c782b0f249404a3d3dfdff96769c39879f24a2b6324  src/ui/hub-enrolment-code-strings.js
 4c48aed807c6249f2f7695be97cf773ddabb8e4c99a47ce496ad2c3d0d0383e3  src/ui/hub-joincode-flow-strings.js
 abfdaf90a367c11b1c229e6b5d8e00b75ead6b1b799fcfdfcb7d28414616c2e1  src/ui/hub-join-approval.js
-3f222e7eefc71fb1176799499a19eec941d22e43521a87cd0ece0459e12e7acf  src/ui/hub-company-join-strings.js
+630a9f8af5fa65269368cb40b0ebfebcadd1162dbd0dfa698b29d35caf8f01f4  src/ui/hub-company-join-strings.js
 2ec4bab7fd7313e3c188917adfece4abd6f6de7c421e2424a99c824328684460  src/ui/hub-company-join.js
 28c9338604d79d1c5e2ebc8a391d7836e43e21ad93fc28dd3a1a1b4d85ccfd9f  src/ui/panel-hub.js
 db5c3a265b094ac0a85ac059efeee467577696f4eb909626dd1d1dc8ea382c04  src/ui/shared/app.css

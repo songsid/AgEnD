@@ -1,6 +1,6 @@
 # M-2995: join-code flow fixes
 
-Source after the clean alpha merge: `8231fb5e12d5bcb92e6b48e93f9a85f6e51bc1d0`. Before: `332add21fbbc92e716003f9040330eab807a74d3` (production bytes equal the `53a08bd7` task base). The final evidence commit adds no product delta. Each capture has a digest-first `PRODUCTION_SHA256SUMS`; the held assets also have `CACHED_SHA256SUMS`. All 68 PNGs are bound by [PNG_SHA256SUMS](PNG_SHA256SUMS).
+Current capture source after two clean alpha merges: `38aea69ecb1264854927bba30ab8086867de8a14`. The 422-test source was `8231fb5e12d5bcb92e6b48e93f9a85f6e51bc1d0`; the second merge brings only #3744 invitation wording and its vocabulary gate. Its six overlapping UI/vocabulary suites pass 174/174, and all intended product added/removed-line sequences remain identical across bases ([proof](checks/vocabulary-sync.json)). Before: `332add21fbbc92e716003f9040330eab807a74d3` (production bytes equal the `53a08bd7` task base). The final evidence commit adds no product delta. Each capture has a digest-first `PRODUCTION_SHA256SUMS`; the held assets also have `CACHED_SHA256SUMS`. All 68 PNGs are bound by [PNG_SHA256SUMS](PNG_SHA256SUMS).
 
 The [manual script](../../../scripts/manual/hub-joincode-flow-m2995/accept.mts) uses real Hub source HTTP/assets/session sign-in, Preact and shared Dialog. Code CRUD, company-join state and queue replies are browser-routed DTO fixtures, not end-to-end real Fleet joins. The HTTPS unit suite separately exercises real sealed Hub/SQLite/owned synthetic LDAPS, signed machine status and authenticated browser routes.
 
@@ -19,7 +19,7 @@ The before directory also contains the old immediate-end result, generic authori
 ## Validation
 
 - Fail-first: 14 semantic failures in four files against the original implementation. A real-shell capture then found the shared client dropping the cap reason; four real-client/UI tests failed before its narrow correction.
-- Post-sync: 422/422 tests across 19 related files; both native TypeScript 7.0.2 typechecks pass. Changelog 409 fragments pass before adding this report.
+- Post-sync: 422/422 tests across 19 related files; both native TypeScript 7.0.2 typechecks pass. Changelog 411 fragments pass.
 - Eleven isolated reversals all fail intended assertions, then exact restoration and the 422-test run pass. Covers both cap reasons, HTTP/client projection, pending labels, revoke and exhaustion causes, confirmation, success, retry metadata and the sign-in renderer. Recipe: [mutate.py](../../../scripts/manual/hub-joincode-flow-m2995/mutate.py).
 - Browser checks: before 45; after 99; SKEW 89. No horizontal overflow, CSP violations or page errors. Cancel/no-confirm performs no revoke; confirm performs one. Generated browser/listener/keys are closed in `finally`.
 

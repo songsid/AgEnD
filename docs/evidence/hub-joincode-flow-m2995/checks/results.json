@@ -1,9 +1,9 @@
 {
-  "source": "8231fb5e12d5bcb92e6b48e93f9a85f6e51bc1d0",
   "focused": {
     "files": 19,
     "tests": 422,
-    "exit": 0
+    "exit": 0,
+    "source": "8231fb5e12d5bcb92e6b48e93f9a85f6e51bc1d0"
   },
   "nativeTypescript": "7.0.2",
   "sourceTypecheckExit": 0,
@@ -27,5 +27,13 @@
       "pngs": 24
     }
   },
-  "scope": "Owned SQLite/HTTPS/synthetic LDAPS unit rig; source-shell browser with routed join/code DTOs. No real vendor/account/Fleet/pilot/native/packaged/capacity claim."
+  "scope": "Owned SQLite/HTTPS/synthetic LDAPS unit rig; source-shell browser with routed join/code DTOs. No real vendor/account/Fleet/pilot/native/packaged/capacity claim.",
+  "finalTypecheckSource": "38aea69ecb1264854927bba30ab8086867de8a14",
+  "currentCaptureSource": "38aea69ecb1264854927bba30ab8086867de8a14",
+  "vocabularySync": {
+    "source": "38aea69ecb1264854927bba30ab8086867de8a14",
+    "files": 6,
+    "tests": 174,
+    "exit": 0
+  }
 }
