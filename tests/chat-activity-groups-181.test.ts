@@ -127,7 +127,9 @@ describe("grouping: steps above the reply they produced", () => {
 });
 
 describe("grouping: when the exact anchor is not there", () => {
-  const steps = parse(withThinking, true);
+  // Replies that name no id (a call whose result is not seen, or one from before ids were recorded): the only ones the text
+  // and time matches may still serve. A reply that NAMES an id never falls back (Prism #3709 R4, below).
+  const steps = parse(withThinking, true).map((s: LogStep) => (isReplyStep(s) && s.anchor?.messageId ? { ...s, anchor: { replyText: s.anchor.replyText } } : s)) as LogStep[];
   const now = Date.parse("2026-11-11T07:00:00Z");
   const noAnchor = ledger.map(({ anchor: _a, ...r }) => r);
   it("rows from before anchors were kept: the start of the reply's text, rows taken in order", () => {
@@ -305,5 +307,46 @@ describe("AGEND-197: a step must have substance; a turn with none has no block",
     expect([g.groups[0].from, g.groups[0].to]).toEqual([1000, 3000]);
     const live = groupSteps(rows.slice(0, 1), [user("1", "w-u1"), { id: "x", turn: "t1", ts: 1500, kind: "tool", tool: "Read", cat: "read", status: "running", subject: "a.ts" }], { now: 2000, complete: true });
     expect([live.live.from, live.live.to]).toEqual([1000, 0]);
+  });
+});
+
+describe("Prism #3709 R4: an explicit reply id that finds no row never falls back to its words or its time", () => {
+  const rep = (id: string, ts: number, messageId: string | undefined, replyText = "Done."): LogStep =>
+    ({ id, turn: id.startsWith("a") ? "tA" : "tB", ts, kind: "tool", tool: "mcp__agend__reply", status: "done", anchor: { ...(messageId ? { messageId } : {}), replyText } }) as LogStep;
+  const user = (id: string, turn: string, ts: number, messageId: string): LogStep => ({ id, turn, ts, kind: "user", anchor: { messageId } }) as LogStep;
+  const bash = (id: string, turn: string, ts: number): LogStep => ({ id, turn, ts, kind: "tool", tool: "Bash", cat: "run", status: "done" }) as LogStep;
+  // Two real-shaped turns, replies with the same words; A's reply is missing from the ledger, B's is there.
+  const steps = [user("ua", "tA", 100, "web-ua"), bash("a-bash", "tA", 110), rep("a-r", 120, "web-A"), { id: "a-e", turn: "tA", ts: 125, kind: "turn_end" } as LogStep,
+    user("ub", "tB", 200, "web-ub"), bash("b-bash", "tB", 210), rep("b-r", 220, "web-B"), { id: "b-e", turn: "tB", ts: 225, kind: "turn_end" } as LogStep];
+  const rows = (agent: Array<Record<string, any>>) => [
+    { boot: "b", id: 1, role: "user", text: "q1", ts: new Date(99).toISOString(), anchor: "web-ua" }, ...agent.filter((r) => r.id === 2),
+    { boot: "b", id: 3, role: "user", text: "q2", ts: new Date(199).toISOString(), anchor: "web-ub" }, ...agent.filter((r) => r.id === 4),
+  ];
+  const rowB = { boot: "b", id: 4, role: "agent", text: "Done.", ts: new Date(221).toISOString(), anchor: "web-B" };
+  const rowA = { boot: "b", id: 2, role: "agent", text: "Done.", ts: new Date(121).toISOString(), anchor: "web-A" };
+
+  it("control: both rows present — each reply gets its own row by id", () => {
+    const g = groupSteps(rows([rowA, rowB]), steps, { now: 1e12 });
+    expect(g.groups.map((x: any) => [x.turn, x.rowKey, x.level])).toEqual([["tA", "b-2", "id"], ["tB", "b-4", "id"]]);
+  });
+  it("A's row missing, B's present, same words: A stays unattached and B keeps its own activity", () => {
+    const g = groupSteps(rows([rowB]), steps, { now: 1e12 });
+    expect(g.groups.map((x: any) => [x.turn, x.rowKey, x.level])).toEqual([["tA", null, "none"], ["tB", "b-4", "id"]]);
+    expect(shape(g.groups[1].items)).toEqual(["tool:Bash"]);
+  });
+  it("a missing id never claims a differently anchored, differently worded row by time", () => {
+    const other = { boot: "b", id: 2, role: "agent", text: "something else entirely", ts: new Date(121).toISOString(), anchor: "web-other" };
+    const g = groupSteps(rows([other]), steps.slice(0, 4), { now: 1e12 });
+    expect(g.groups.map((x: any) => [x.rowKey, x.level])).toEqual([[null, "none"]]);
+  });
+  it("a recent explicit-id reply whose row has not arrived is live (placed at the end), not matched to another row", () => {
+    const g = groupSteps(rows([rowB]), steps.slice(0, 4), { now: 130 });
+    expect(g.live?.level).toBe("live");
+    expect(g.groups).toEqual([]);
+  });
+  it("a reply that names no id yet is never given a row another call proved to be its own", () => {
+    const s = [user("ub", "tB", 200, "web-ub"), rep("b-r", 220, "web-B"), rep("c-r", 230, undefined), { id: "b-e", turn: "tB", ts: 235, kind: "turn_end" } as LogStep];
+    const g = groupSteps(rows([rowB]), s, { now: 1e12 });
+    expect(g.groups.map((x: any) => [x.n, x.rowKey, x.level])).toEqual([[0, "b-4", "id"], [1, null, "none"]]);
   });
 });

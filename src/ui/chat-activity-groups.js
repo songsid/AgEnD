@@ -10,7 +10,8 @@
 //     group as `trailing` once the turn ended; before that they are the live group at the end of the thread.
 //
 // A segment is placed on its reply's row by the most exact thing that matches, and says which (`level`):
-//   id    the reply call's result `messageId` equals the row's `anchor` (what afterReplyRouted records);
+//   id    the reply call's result `messageId` equals the row's `anchor` (what afterReplyRouted records). A call that names
+//         an id and finds no such row is never matched by text or time (R4): its segment stays unattached (`none`) or live;
 //   text  the start of the call's text equals the start of an agent row's text — rows taken in order, never back (a
 //         monotonic cursor: two replies that say the same short thing each get their own row);
 //   time  an unclaimed agent row written within TIME_SLACK_MS of the call, and inside the call's own turn (from its user
@@ -82,23 +83,30 @@ export function groupSteps(rows, steps, opts = {}) {
   const turns = turnsOf(steps);
   const groups = [];
   let live = null;
+  // Prism #3709 R4: the rows some reply call names by its explicit id. A call that names none yet (its result not seen) may
+  // still be matched by its words or its time — but never onto a row another call has proved to be its own.
+  const named = new Set();
+  for (const s of steps) if (isReplyStep(s) && s.anchor && s.anchor.messageId) named.add(s.anchor.messageId);
+  const free = (c) => !(c.x.anchor && named.has(c.x.anchor));
 
   const claim = (r, level) => { taken.add(r.i); if (r.i + 1 > cursor) cursor = r.i + 1; return { rowKey: rowKeyOf(r.x), level }; };
   /** The agent row a `reply` call produced, by the most exact match that holds. */
   const place = (replyStep, inTurn) => {
     const a = replyStep.anchor || {};
     if (a.messageId) {
+      // An explicit id is the whole answer: a miss means its row is not here (yet, or any more) — it never falls back to
+      // the words or the time, which would hang this turn's work on another reply. Unproved: unattached / live.
       const r = agents.find((c) => !taken.has(c.i) && c.x.anchor === a.messageId);
-      if (r) return claim(r, "id");
+      return r ? claim(r, "id") : null;
     }
     if (a.replyText) {
-      const r = agents.find((c) => c.i >= cursor && !taken.has(c.i) && c.x.text !== undefined && head(c.x.text) === a.replyText);
+      const r = agents.find((c) => c.i >= cursor && !taken.has(c.i) && free(c) && c.x.text !== undefined && head(c.x.text) === a.replyText);
       if (r) return claim(r, "text");
     }
     if (replyStep.ts) {
       let best = null, bestD = TIME_SLACK_MS + 1;
       for (const c of agents) {
-        if (taken.has(c.i) || !inTurn(c)) continue;
+        if (taken.has(c.i) || !free(c) || !inTurn(c)) continue;
         const d = Math.abs(rowTs(c.x) - replyStep.ts);
         if (d < bestD) { best = c; bestD = d; }
       }

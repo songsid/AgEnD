@@ -1411,10 +1411,10 @@ function WebSection({ ctx, staged, part = "all" }) {
     { id: "guests", label: layoutText("accessGuests") },
     { id: "sharing", label: layoutText("accessSharing") },
   ];
-  const toggleRow = (key, id, label, hint, impact, disabled = false) => html`<div class=${fc("s-setting-row", key)}>
+  const toggleRow = (key, id, label, hint, impact, disabled = false, disclosure = true) => html`<div class=${fc("s-setting-row", key)}>
     <div class="s-setting-copy"><label for=${id}>${part === "dashboard" ? layoutText(`revDashboard_${key}`) : tn(label)}<${Impact} schema=${schema} field=${impact} /></label>
       <p class="note" id=${`${id}-hint`}>${part === "dashboard" ? layoutText(`revDashboardHint_${key}`) : tn(hint)}</p>
-      ${part === "dashboard" ? html`<details class="s-setting-details"><summary>${layoutText("revDetails")}</summary><p class="note"><strong>${tn(label)}</strong> ${tn(hint)}</p></details>` : null}
+      ${part === "dashboard" && disclosure ? html`<details class="s-setting-details"><summary>${layoutText("revDetails")}</summary><p class="note"><strong>${tn(label)}</strong> ${tn(hint)}</p></details>` : null}
     </div>
     <input class="s-ui-toggle" id=${id} type="checkbox" checked=${f[key]} disabled=${disabled} aria-describedby=${`${id}-hint`} onChange=${(e) => set(key)(e.target.checked)} />
   </div>`;
@@ -1499,7 +1499,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     </section>`) : null}
     ${has("dashboard") ? lock(html`<section class="card s-dashboard-features"><h3>${layoutText("dashboardFeatures")}</h3>
       ${toggleRow("log", "webLogTab", "webLogTab", "webLogTabHint", "web.log_tab")}
-      ${toggleRow("thinking", "webLogThinking", "webLogThinking", "webLogThinkingHint", "web.log_thinking")}
+      ${toggleRow("thinking", "webLogThinking", "webLogThinking", "webLogThinkingHint", "web.log_thinking", false, false)}
       ${toggleRow("usagePub", "webUsagePublic", "webUsagePublic", "webUsagePublicHint", "web.usage_report_on_public_link")}
       ${toggleRow("levels", "webOfficeLevels", "webOfficeLevels", "webOfficeLevelsHint", "web.office_levels")}
       ${toggleRow("cdn", "webPreviewCdn", "webPreviewCdn", "webPreviewCdnHint", "web.preview_cdn")}

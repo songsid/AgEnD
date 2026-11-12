@@ -2591,7 +2591,8 @@ export function handleWebRequest(
     // AGEND-181: thinking only for an admin session on the local dashboard, decided here — never the public link, a
     // guest or a View projection, whatever the query says. The service makes none otherwise (its parser is not asked).
     // AGEND-197: the chat's activity block (chat=1) is for the same viewer and no other: a refusal here, not a hidden block.
-    const admin = !!adminAdmissionOf(req, url, ctx) && !gatewayRequestContext(req) && !guestRequestOf(req);
+    const admission = adminAdmissionOf(req, url, ctx);
+    const admin = !!admission && !gatewayRequestContext(req) && !guestRequestOf(req);
     const chat = p.get("chat") === "1";
     if (chat && !admin) { json(res, 403, { error: "admin_only" }); return true; }
     const thinking = p.get("thinking") === "1" && admin;
@@ -2602,6 +2603,13 @@ export function handleWebRequest(
       ...(limit !== undefined ? { limit } : {}), ...(key !== null ? { key } : {}),
       skip: p.get("skip") === "1", watch: p.get("watch") === "1",
     }).then(answer => {
+      if (res.destroyed) return;
+      // Prism #3709 R1: the transcript read is asynchronous — an admin session revoked, or the web token rotated, while it
+      // ran must not receive the private steps (the chat's block, thinking) it was admitted for. Asked again here, as
+      // /ui/subagents does; the Log tab's own read (no chat, no thinking) is not private and is left as it was.
+      if ((chat || thinking) && (adminAdmissionOf(req, url, ctx) !== admission || gatewayRequestContext(req) || guestRequestOf(req))) {
+        json(res, 403, { error: "admin_only" }); return;
+      }
       if (answer === null) json(res, 404, { error: `Instance not found: ${instance}` });
       else json(res, 200, answer);
     }).catch(err => {

@@ -134,6 +134,9 @@ function duration(ms) {
 }
 const eventLabel = (type) => { const k = `log.ev_${type}`; const v = t(k); return v === k ? String(type).replace(/_/g, " ") : v; };
 
+/** The `turn` a merged step keeps: the one `first` names, else the one already known (`turn: ""` is "no evidence", not a turn). */
+const kept = (first, known) => { const t = first || known; return t ? { turn: t } : {}; };
+
 /**
  * Merge `incoming` steps into `list` (array, in order): one with an id already there replaces it in place (a result
  * completing its call); a new one is added — at the end, or before everything when `older`. Returns a new array.
@@ -150,16 +153,18 @@ export function mergeSteps(list, incoming, older = false) {
       // newer page knew only by its result (the call's record was older than that page): its tool, subject and input.
       // A newer read that saw only a call's result (the call was before where it read) never unnames the call: its tool,
       // category and start time stay; the outcome is the newer read's.
+      // Prism #3709 R5: a read that saw only a call's result has no turn evidence (`turn: ""`) — it never erases the turn the
+      // call already gave (a fresh parser per cursor range), so a poll-by-poll Log groups exactly as a cold read does.
       if (!older) next[i] = s.kind === "tool" && !s.tool && next[i].tool
-        ? { ...next[i], ...s, tool: next[i].tool, cat: next[i].cat, ts: next[i].ts }
-        : { ...next[i], ...s };
+        ? { ...next[i], ...s, tool: next[i].tool, cat: next[i].cat, ts: next[i].ts, ...kept(s.turn, next[i].turn) }
+        : { ...next[i], ...s, ...kept(s.turn, next[i].turn) };
       else if (next[i].kind === "tool" && !next[i].tool && s.tool) {
         const { tool, cat, subject, input, ts } = s;
-        next[i] = { ...next[i], tool, cat, ...(subject !== undefined ? { subject } : {}), ...(input !== undefined ? { input } : {}), ...(ts ? { ts } : {}) };
+        next[i] = { ...next[i], tool, cat, ...(subject !== undefined ? { subject } : {}), ...(input !== undefined ? { input } : {}), ...(ts ? { ts } : {}), ...kept(next[i].turn, s.turn) };
       }
     } else if (fresh.has(s.id)) {
       // The same step twice in one answer (never from the server's parser, whose ids are unique): the later one wins.
-      added[fresh.get(s.id)] = { ...added[fresh.get(s.id)], ...s };
+      added[fresh.get(s.id)] = { ...added[fresh.get(s.id)], ...s, ...kept(s.turn, added[fresh.get(s.id)].turn) };
     } else { fresh.set(s.id, added.length); added.push(s); }
   }
   return older ? [...added, ...next] : [...next, ...added];

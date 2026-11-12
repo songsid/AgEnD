@@ -131,6 +131,8 @@ export type ReadBack =
   | { backend: string; format: "claude" | "codex" | null; reason: string; key?: undefined; steps?: undefined }
   | { backend: string; format: "claude" | "codex"; key: string; steps: LogStep[]; before: number | null; end: number; reset?: boolean; reason?: undefined };
 
+/** The transcript format whose new chat-activity projection (and thinking) is withheld until it has a real redacted fixture (#3648). */
+const CODEX_ACTIVITY_WITHHELD = "codex";
 const parserFor = (format: "claude" | "codex", thinking = false) => (format === "claude" ? new ClaudeStepParser({ thinking }) : new CodexStepParser({ thinking }));
 /** The long records worth reading whole for a Log (a reply, a turn record); every other long one by its head. */
 const wholeFor = (format: "claude" | "codex") => (head: string) => (format === "claude"
@@ -160,16 +162,37 @@ export class LogService {
       this.unwatch(name, "chat");
       return { enabled: true, instance: name, backend: src.backend, supported: !!src.format, level, thinking: false, steps: [], events: [], ev: q.ev ?? 0, before: null, after: null };
     }
+    // Prism #3709 R6: the new Codex activity projection is withheld until a real, redacted Codex capture proves it (the owner's
+    // #3648 decision: an unproved backend stays as it is today). Codex keeps its Log tab exactly as before; the chat's block
+    // gets "not supported" for it and nothing is read. The parser stays, unreachable from the chat.
+    if (chat && src.format === CODEX_ACTIVITY_WITHHELD) {
+      return { enabled: true, instance: name, backend: src.backend, supported: false, reason: "unsupported", level, thinking: false, steps: [], events: [], ev: q.ev ?? 0, before: null, after: null };
+    }
     const evs = chat ? { events: [] as LogEvent[], ev: q.ev ?? 0 } : this.eventsFor(name, q.ev);
-    // Thinking: only when asked, only for the viewer the route let it through, and only while `web.log_thinking` is ON.
-    const thinking = q.thinking === true && this.deps.thinking?.() === true;
+    // Thinking: only when asked, only for the viewer the route let it through, and only while `web.log_thinking` is ON —
+    // and never for Codex (the same withholding: its reasoning summaries are the new, unproved part).
+    const thinking = q.thinking === true && this.deps.thinking?.() === true && src.format !== CODEX_ACTIVITY_WITHHELD;
     // The OS user name (home) and the working directory are for the viewer the route let the chat's block or thinking
     // through (an admin session on the local dashboard) — never the public link or a guest: the page only shortens paths.
     const named = chat || thinking;
     const cwd = named ? this.deps.cwd?.(name) : undefined;
     const base = { enabled: true as const, instance: name, backend: src.backend, events: evs.events, ev: evs.ev, thinking,
       ...(chat ? { level } : {}), ...(cwd ? { cwd } : {}), ...(named ? { home: homedir() } : {}) };
-    const shape = <T extends { steps: LogStep[] }>(a: T): T => (chat && level !== "off" ? { ...a, steps: a.steps.map((x) => chatStep(x, level)) } : a);
+    const offAnswer = (): LogAnswer => ({ enabled: true, instance: name, backend: src.backend, supported: !!src.format, level: "off", thinking: false, steps: [], events: [], ev: q.ev ?? 0, before: null, after: null });
+    /**
+     * Prism #3709 R2: the policy is the one in force when the answer LEAVES, not when the read began — `tool_progress` and
+     * `web.log_thinking` can change while the transcript is read. Looked at again for every forward / backward result:
+     * thinking gone when it is now off, the summary cut of the level now set, and nothing at all when the chat's is now off.
+     * (A read that began with thinking off never parsed any — the parser stays opt-in; this only ever removes.)
+     */
+    const settle = <T extends { steps: LogStep[] }>(a: T): (T & { thinking: boolean; level?: ToolProgressLevel }) | null => {
+      const now: ToolProgressLevel = chat ? (this.deps.toolProgress?.(name) ?? "off") : "verbose";
+      if (chat && now === "off") return null;
+      const thinkingNow = thinking && this.deps.thinking?.() === true;
+      const kept = thinkingNow ? a.steps : a.steps.filter((x) => x.kind !== "thinking");
+      const steps = chat && now !== "off" ? kept.map((x) => chatStep(x, now)) : kept;
+      return { ...a, steps, thinking: thinkingNow, ...(chat ? { level: now } : {}) };
+    };
     if (!src.format || !src.path) {
       return { ...base, supported: !!src.format, reason: src.reason ?? (src.format ? "no_transcript" : "unsupported"), steps: [], before: null, after: null };
     }
@@ -178,12 +201,16 @@ export class LogService {
     const key = `${st.dev}-${st.ino}`;
     if (q.watch) this.watch(name, src.path, st.size, st.ino, chat);
     const answer = { ...base, supported: true, key };
+    const done = (settled: ReturnType<typeof settle>, rest: object = {}): LogAnswer => {
+      if (!settled) { this.unwatch(name, "chat"); return offAnswer(); }
+      return { ...answer, ...settled, ...rest } as LogAnswer;
+    };
     const fresh = q.key !== undefined && q.key !== key;
     const past = q.after !== undefined && q.after > st.size;
-    if (q.after !== undefined && !fresh && !past) return { ...answer, ...shape(await this.forward(src.path, src.format, q.after, !!q.skip, thinking)) };
-    if (q.before !== undefined && !fresh) return { ...answer, ...shape(await this.backward(src.path, src.format, q.before, Math.min(q.limit ?? LOG_OLDER_LIMIT, LOG_OLDER_LIMIT), thinking)), after: null };
-    const back = shape(await this.backward(src.path, src.format, undefined, Math.min(q.limit ?? LOG_STEPS_LIMIT, LOG_STEPS_LIMIT), thinking));
-    return { ...answer, ...back, ...((fresh || past) && (q.after !== undefined || q.before !== undefined) ? { reset: true } : {}) };
+    if (q.after !== undefined && !fresh && !past) return done(settle(await this.forward(src.path, src.format, q.after, !!q.skip, thinking)));
+    if (q.before !== undefined && !fresh) return done(settle(await this.backward(src.path, src.format, q.before, Math.min(q.limit ?? LOG_OLDER_LIMIT, LOG_OLDER_LIMIT), thinking)), { after: null });
+    return done(settle(await this.backward(src.path, src.format, undefined, Math.min(q.limit ?? LOG_STEPS_LIMIT, LOG_STEPS_LIMIT), thinking)),
+      (fresh || past) && (q.after !== undefined || q.before !== undefined) ? { reset: true } : {});
   }
 
   /**

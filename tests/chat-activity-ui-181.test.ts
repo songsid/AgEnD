@@ -167,7 +167,8 @@ describe("what a block shows", () => {
   it("a match that is not exact says so; the exact one does not; the words said after the last reply are in the same block", async () => {
     const { list, th } = mount();
     const noAnchor = ledger.map(({ anchor: _a, ...r }) => r);
-    draw(th, noAnchor, steps());
+    // replies that name no id (R4: one that names an id never falls back to its words): the text match is the one shown
+    draw(th, noAnchor, steps().map((s) => (s.anchor?.messageId && s.kind === "tool" ? { ...s, anchor: { replyText: s.anchor.replyText } } : s)));
     await settle();
     expect(blocks(list)[0].querySelector(".act-lvl").textContent).toBe(i18n.t("act.noteInferred", tr("act.lvl_text")));
     draw(th, ledger, steps());
@@ -295,5 +296,46 @@ describe("the Log tab's rows are the shared row, unchanged", () => {
     expect(items.map((e: any) => e.className.split(" ").filter((c: string) => c.startsWith("k-")).join())).toEqual(["k-user", "k-tool", "k-error"]);
     expect(host.querySelector(".log-subject").textContent).toBe("/srv/work/proj/a.ts");
     expect(host.textContent).toContain("hello /srv/work/proj");
+  });
+});
+
+describe("Prism #3709 R5: a later read's result with no turn evidence keeps the call's turn", () => {
+  const rec = (o: unknown) => JSON.stringify(o);
+  const read1 = [
+    rec({ type: "user", uuid: "u1", promptId: "p1", message: { role: "user", content: "q (message_id: web-u1 | verification_id: hmsg-1)" } }),
+    rec({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "b1", name: "Bash", input: { command: "ls" } }] } }),
+    rec({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "b1", content: "ok" }] } }),
+    rec({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "r1", name: "mcp__agend__reply", input: { text: "Done." } }] } }),
+  ];
+  const read2 = [rec({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "r1", content: JSON.stringify({ chatId: "1", messageId: "web-r1" }) }] } })];
+  const parse = (records: string[]) => { const p = new ClaudeStepParser(); records.forEach((r, i) => p.push(r, i * 100)); return p.steps; };
+  const rows = [
+    { boot: "b", id: 1, role: "user", text: "q", ts: new Date(1).toISOString(), anchor: "web-u1" },
+    { boot: "b", id: 2, role: "agent", text: "Done.", ts: new Date(2).toISOString(), anchor: "web-r1" },
+  ];
+  const shaped = (g: any) => g.groups.map((x: any) => [x.turn, x.rowKey, x.level, x.items.map((i: any) => i.tool ?? i.kind)]);
+
+  it("the fresh parser's second read really has no turn for the result (the premise)", () => {
+    expect(parse(read2).find((s) => s.id === "r1")?.turn).toBe("");
+  });
+  it("a poll-by-poll Log groups exactly as a cold read does, and the call's turn survives the merge", () => {
+    const cold = parse([...read1, ...read2]);
+    const incremental = row.mergeSteps(parse(read1), parse(read2));
+    expect(incremental.find((s: LogStep) => s.id === "r1").turn).toBe(cold.find((s) => s.id === "r1")!.turn);
+    expect(incremental.find((s: LogStep) => s.id === "r1").turn).not.toBe("");
+    const want = shaped(groups.groupSteps(rows, cold, { now: NOW, complete: true }));
+    expect(want[0][1]).toBe("b-2");                                   // the cold read attaches the tools to the reply
+    expect(shaped(groups.groupSteps(rows, incremental, { now: NOW, complete: true }))).toEqual(want);
+  });
+  it("the older-page direction: a call's turn is filled in when the newer read knew only the result", () => {
+    const newer = parse(read2), older = parse(read1);
+    const merged = row.mergeSteps(newer, older, true);
+    expect(merged.find((s: LogStep) => s.id === "r1")).toMatchObject({ tool: "mcp__agend__reply", turn: parse(read1).find((s) => s.id === "r1")!.turn });
+    expect(merged.find((s: LogStep) => s.id === "r1").turn).not.toBe("");
+  });
+  it("controls: a result that does name a turn still sets it; a step with no turn anywhere stays without one", () => {
+    expect(row.mergeSteps([{ id: "a", kind: "tool", turn: "" }], [{ id: "a", kind: "tool", turn: "t2" }])[0].turn).toBe("t2");
+    expect(row.mergeSteps([{ id: "a", kind: "tool", turn: "t1" }], [{ id: "a", kind: "tool", turn: "t2" }])[0].turn).toBe("t2");
+    expect(row.mergeSteps([{ id: "a", kind: "tool", turn: "" }], [{ id: "a", kind: "tool", turn: "" }])[0].turn).toBe("");
   });
 });

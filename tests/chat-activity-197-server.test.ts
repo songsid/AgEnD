@@ -82,12 +82,57 @@ describe("the whole block is for an admin session on the local dashboard — ref
   });
 });
 
+/** Prism #3709 R1: the read is held; what admitted the request changes while it runs; then the read settles. */
+function askHeld(change: ((c: { sessions: WebSessionStore; sid: string; ctx: { webToken: string } }) => void) | null, query = "instance=w&chat=1&thinking=1"): Promise<{ status: number; wire: string }> {
+  const sessions = new WebSessionStore();
+  const sid = sessions.create({ tier: "admin", surface: "local", label: "t", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
+  const req = Object.assign(new EventEmitter(), { method: "GET", url: `/ui/steps?${query}`, headers: { host: "127.0.0.1:19280", cookie: `agend_session=${sid}` } });
+  return new Promise((resolve) => {
+    let status = 0;
+    const res = { destroyed: false, setHeader() {}, writeHead(n: number) { status = n; return res; }, end(b?: string) { resolve({ status, wire: b ?? "" }); } };
+    let release!: (a: unknown) => void;
+    const ctx = { webToken: TOKEN, webSessions: sessions, fleetConfig: { instances: {} }, logger: { info() {}, warn() {}, error() {}, debug() {} },
+      logSteps: () => new Promise((r) => { release = r; }) };
+    handleWebRequest(req as never, res as never, new URL(req.url, "http://127.0.0.1:19280"), ctx as never);
+    change?.({ sessions, sid, ctx });
+    release({ enabled: true, steps: [{ id: "t", kind: "thinking", body: "PRIVATE-THINKING-BODY" }] });
+  });
+}
+
+describe("Prism #3709 R1: the admission is asked again after the transcript read, before anything private leaves", () => {
+  it("control: a session still valid when the read settles gets its steps", async () => {
+    const r = await askHeld(null);
+    expect(r.status).toBe(200);
+    expect(r.wire).toContain("PRIVATE-THINKING-BODY");
+  });
+  it("a session revoked while the read ran gets 403 admin_only and none of the steps", async () => {
+    const r = await askHeld(({ sessions, sid }) => { sessions.revokeById(sid); });
+    expect(r.status).toBe(403);
+    expect(JSON.parse(r.wire)).toEqual({ error: "admin_only" });
+    expect(r.wire).not.toContain("PRIVATE-THINKING-BODY");
+  });
+  it("the web token rotated while the read ran: the same, for the chat's block and for thinking alone", async () => {
+    for (const query of ["instance=w&chat=1", "instance=w&thinking=1", "instance=w&chat=1&thinking=1"]) {
+      const r = await askHeld(({ ctx }) => { ctx.webToken = "b".repeat(48); }, query);
+      expect(r.status, query).toBe(403);
+      expect(r.wire, query).not.toContain("PRIVATE-THINKING-BODY");
+    }
+  });
+  it("the Log tab's own read (no chat, no thinking) is not private: it is answered as it always was", async () => {
+    const r = await askHeld(({ sessions, sid }) => { sessions.revokeById(sid); }, "instance=w");
+    // (the gate refuses a revoked session on arrival in the real server; here only the route's own post-read recheck is under test)
+    expect(r.status).toBe(200);
+  });
+});
+
 describe("the service: gated by tool_progress, not web.log_tab", () => {
   const rec = (o: unknown) => JSON.stringify(o) + "\n";
+  // Built at run time: a committed `--token=<value>` literal trips the secret scan (gitleaks generic-api-key), and that is the point of it.
+  const FAKE_VALUE = ["abcdef", "123456"].join("");
   const transcript = () => {
     const f = join(temp(), "t.jsonl");
     writeFileSync(f, rec({ type: "user", promptId: "p1", message: { role: "user", content: "the person's own words" } })
-      + rec({ type: "assistant", message: { role: "assistant", content: [{ type: "thinking", thinking: "private reasoning" }, { type: "tool_use", id: "t1", name: "Bash", input: { command: "npm test -- --token=abcdef123456 tests/a.test.ts" } }] } })
+      + rec({ type: "assistant", message: { role: "assistant", content: [{ type: "thinking", thinking: "private reasoning" }, { type: "tool_use", id: "t1", name: "Bash", input: { command: `npm test -- --token=${FAKE_VALUE} tests/a.test.ts` } }] } })
       + rec({ type: "user", promptId: "p1", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ALL 12 TESTS PASSED output-line" }] } })
       + rec({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Grep", input: { pattern: "needle-pattern", path: "src" } }, { type: "tool_use", id: "t3", name: "Read", input: { file_path: "/work/proj/src/a.ts" } }] } }));
     return f;
@@ -127,7 +172,7 @@ describe("the service: gated by tool_progress, not web.log_tab", () => {
     expect(grep).not.toHaveProperty("subject");
     expect(read).toMatchObject({ cat: "read", subject: "/work/proj/src/a.ts" });
     const wire = JSON.stringify(a);
-    for (const leaked of ["--token", "abcdef123456", "tests/a.test.ts", "ALL 12 TESTS PASSED", "needle-pattern"]) expect(wire, leaked).not.toContain(leaked);
+    for (const leaked of ["--token", FAKE_VALUE, "tests/a.test.ts", "ALL 12 TESTS PASSED", "needle-pattern"]) expect(wire, leaked).not.toContain(leaked);
   });
   it("verbose: the same steps with the command, the arguments and the output (still masked, as the Log masks)", async () => {
     const a: any = await svc({ toolProgress: () => "verbose" }).steps("w", { chat: true });
@@ -136,7 +181,7 @@ describe("the service: gated by tool_progress, not web.log_tab", () => {
     expect(bash.subject).toContain("tests/a.test.ts");
     expect(bash.input).toContain("npm test");
     expect(bash.body).toContain("ALL 12 TESTS PASSED");
-    expect(JSON.stringify(a)).not.toContain("abcdef123456");        // the secret shape is masked at every level
+    expect(JSON.stringify(a)).not.toContain(FAKE_VALUE);        // the secret shape is masked at every level
     expect(a.level).toBe("verbose");
   });
   it("a person's own words are never sent in the chat's answer (the chat already shows them): the user step only anchors the turn", async () => {
@@ -180,6 +225,121 @@ describe("the service: gated by tool_progress, not web.log_tab", () => {
     expect(chatStep(step({ cat: "mcp", tool: "mcp__x__y", subject: "x:y" }), "standard")).toMatchObject({ subject: "x:y" });
     const v = step({ subject: "ls -la", input: "{}", body: "out" });
     expect(chatStep(v, "verbose")).toBe(v);
+  });
+});
+
+describe("Prism #3709 R2: the policy in force when an answer leaves is the one it is cut to", () => {
+  const rec = (o: unknown) => JSON.stringify(o) + "\n";
+  const file = () => {
+    const f = join(temp(), "t.jsonl");
+    writeFileSync(f, rec({ type: "user", promptId: "p1", message: { role: "user", content: "hi" } })
+      + rec({ type: "assistant", message: { role: "assistant", content: [{ type: "thinking", thinking: "PRIVATE-REASONING" }, { type: "tool_use", id: "t1", name: "Bash", input: { command: "npm test -- --flag=PRIVATE-ARGUMENT" } }] } })
+      + rec({ type: "user", promptId: "p1", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "PRIVATE-OUTPUT" }] } }));
+    return f;
+  };
+  /** The policy at the start (read), and what it becomes once the read has begun (`cwd` is asked after both level and thinking were taken, before the transcript is read). */
+  const rig = (start: { level: "off" | "standard" | "verbose"; thinking: boolean }, later: Partial<typeof start> | null) => {
+    const policy = { ...start };
+    const f = file();
+    return new LogService({
+      enabled: () => true, toolProgress: () => policy.level, thinking: () => policy.thinking, known: () => true, events: () => [], emit() {},
+      cwd: () => { if (later) Object.assign(policy, later); return "/w"; },
+      source: () => ({ backend: "claude-code", path: f, format: "claude" }),
+    });
+  };
+  const reads: Array<[string, Record<string, unknown>]> = [["the newest page", {}], ["an older page", { before: 100000 }], ["a forward poll", { after: 0 }]];
+  it.each(reads)("control (%s): a policy that does not change is applied as it always was", async (_n, q) => {
+    const a: any = await rig({ level: "verbose", thinking: true }, null).steps("w", { chat: true, thinking: true, ...q });
+    const wire = JSON.stringify(a);
+    expect(wire).toContain("PRIVATE-REASONING");
+    expect(wire).toContain("PRIVATE-ARGUMENT");
+    expect(wire).toContain("PRIVATE-OUTPUT");
+    expect(a).toMatchObject({ level: "verbose", thinking: true });
+  });
+  it.each(reads)("thinking switched off while %s was read: no thinking leaves, and the answer says so", async (_n, q) => {
+    const a: any = await rig({ level: "verbose", thinking: true }, { thinking: false }).steps("w", { chat: true, thinking: true, ...q });
+    expect(JSON.stringify(a)).not.toContain("PRIVATE-REASONING");
+    expect(a.steps.some((x: any) => x.kind === "thinking")).toBe(false);
+    expect(a.thinking).toBe(false);
+    expect(JSON.stringify(a)).toContain("PRIVATE-ARGUMENT");   // the level did not change: the rest stays
+  });
+  it.each(reads)("verbose -> standard while %s was read: cut to the summary — no arguments, no output", async (_n, q) => {
+    const a: any = await rig({ level: "verbose", thinking: false }, { level: "standard" }).steps("w", { chat: true, ...q });
+    const wire = JSON.stringify(a);
+    expect(wire).not.toContain("PRIVATE-ARGUMENT");
+    expect(wire).not.toContain("PRIVATE-OUTPUT");
+    expect(a.level).toBe("standard");
+    expect(a.steps.find((x: any) => x.kind === "tool")).toMatchObject({ tool: "Bash", subject: "npm" });
+  });
+  it.each(reads)("verbose -> off while %s was read: no steps at all, and the chat's own watch is let go", async (_n, q) => {
+    const s = rig({ level: "verbose", thinking: true }, { level: "off" });
+    const a: any = await s.steps("w", { chat: true, thinking: true, watch: true, ...q });
+    expect(a).toMatchObject({ enabled: true, level: "off", steps: [], events: [], thinking: false });
+    expect(JSON.stringify(a)).not.toMatch(/PRIVATE/);
+    expect(s.watched()).toBe(0);
+  });
+  it("the Log tab (not the chat) follows the thinking switch the same way, and is not touched by tool_progress", async () => {
+    const a: any = await rig({ level: "off", thinking: true }, { thinking: false }).steps("w", { thinking: true });
+    expect(JSON.stringify(a)).not.toContain("PRIVATE-REASONING");
+    expect(JSON.stringify(a)).toContain("PRIVATE-ARGUMENT");   // the Log is verbose whatever tool_progress says
+  });
+});
+
+describe("Prism #3709 R3: a wrapper's options are arguments — never the program, so never a standard subject", () => {
+  const step = (subject: string): LogStep => ({ id: "x", turn: "t", ts: 1, kind: "tool", tool: "Bash", cat: "run", status: "done", subject });
+  const subjectOf = (cmd: string) => chatStep(step(cmd), "standard").subject;
+  it.each([
+    ["npx --package=private-customer-package actual-program", "npx"],
+    ["sudo --user=private-customer-account actual-program --flag", "sudo"],
+    ["sudo -u private-customer-account actual-program", "sudo"],
+    ["timeout --signal=KILL 5 actual-program", "timeout"],
+    ["sudo PRIVATE_VAR=value actual-program", "sudo"],
+    ["PRIVATE_VAR=value --weird", undefined],
+  ])("%s -> %s", (cmd, expected) => {
+    expect(subjectOf(cmd)).toBe(expected);
+    expect(JSON.stringify(chatStep(step(cmd), "standard"))).not.toMatch(/private-customer|PRIVATE_VAR|--signal|--user|--package/);
+  });
+  it.each([
+    ["npm test", "npm"], ["npx vitest run", "vitest"], ["sudo systemctl restart x", "systemctl"], ["timeout 30 make all", "make"],
+    ["FOO=1 BAR=2 ./run.sh --flag", "run.sh"], ["/usr/bin/env FOO=1 ./run.sh", "env"], ["git status | head", "git"],
+  ])("control: %s still names its program (%s)", (cmd, expected) => {
+    expect(subjectOf(cmd)).toBe(expected);
+  });
+  it("through the service on a real transcript call, at standard — and verbose is unchanged (it shows the command)", async () => {
+    const f = join(temp(), "t.jsonl");
+    writeFileSync(f, JSON.stringify({ type: "user", promptId: "p", message: { role: "user", content: "x" } }) + "\n"
+      + JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "npx --package=private-customer-package actual-program" } }] } }) + "\n");
+    const mk = (level: "standard" | "verbose") => new LogService({ enabled: () => false, toolProgress: () => level, known: () => true, source: () => ({ backend: "claude-code", path: f, format: "claude" }), events: () => [], emit() {} });
+    const std: any = await mk("standard").steps("w", { chat: true });
+    expect(std.steps.find((x: any) => x.kind === "tool").subject).toBe("npx");
+    expect(JSON.stringify(std)).not.toContain("private-customer-package");
+    const verbose: any = await mk("verbose").steps("w", { chat: true });
+    expect(verbose.steps.find((x: any) => x.kind === "tool").subject).toContain("--package=private-customer-package");
+  });
+});
+
+describe("Prism #3709 R6: the Codex activity projection is withheld until a real redacted capture exists", () => {
+  const rollout = join(import.meta.dirname, "fixtures", "reply-guard-1510", "codex-0.162.0", "rollout.jsonl");
+  const codex = (over: Partial<LogServiceDeps> = {}) => new LogService({ enabled: () => true, toolProgress: () => "verbose", thinking: () => true, cwd: () => "/w", known: () => true, events: () => [], emit() {},
+    source: () => ({ backend: "codex", path: rollout, format: "codex" }), ...over });
+  it("the chat's block on a Codex instance: not supported, no steps, nothing read, no thinking — whatever is asked", async () => {
+    const a: any = await codex({ source: () => ({ backend: "codex", path: "/nonexistent/never-read.jsonl", format: "codex" }) }).steps("w", { chat: true, thinking: true, watch: true });
+    expect(a).toMatchObject({ enabled: true, backend: "codex", supported: false, reason: "unsupported", steps: [], events: [], thinking: false });
+    expect(a).not.toHaveProperty("key");
+  });
+  it("the Log tab on the same Codex transcript is as it was: its steps are shown, and no thinking is made for Codex", async () => {
+    const a: any = await codex().steps("w", { thinking: true });
+    expect(a.supported).toBe(true);
+    expect(a.steps.length).toBeGreaterThan(0);
+    expect(a.steps.some((s: any) => s.kind === "thinking")).toBe(false);
+    expect(a.thinking).toBe(false);
+  });
+  it("control: the same request on a Claude transcript still gets the chat's block", async () => {
+    const f = join(temp(), "t.jsonl");
+    writeFileSync(f, JSON.stringify({ type: "user", promptId: "p", message: { role: "user", content: "x" } }) + "\n" + JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: { file_path: "/w/a.ts" } }] } }) + "\n");
+    const a: any = await codex({ source: () => ({ backend: "claude-code", path: f, format: "claude" }) }).steps("w", { chat: true });
+    expect(a.supported).toBe(true);
+    expect(a.steps.some((s: any) => s.kind === "tool")).toBe(true);
   });
 });
 
