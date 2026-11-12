@@ -59,7 +59,7 @@ try{
    await page.locator(".agent-back-chat").click();await page.locator('dialog[open] [data-confirm="yes"]').click();await page.locator("#msgIn").waitFor();await shot("returned-chat");
   }
   if(!phone){
-   const target=page.locator(".v-li").filter({has:row(b)}).first();await target.hover();await target.locator(".inst-row-menu > button").click();await target.getByRole("menuitem",{name:tr("Open beside","在旁邊開啟"),exact:true}).click();
+   const target=row(b).locator("xpath=..");await target.hover();await target.locator(".inst-row-menu > button").click();await target.getByRole("menuitem",{name:tr("Open beside","在旁邊開啟"),exact:true}).click();
    await page.locator('[data-pane="a"] textarea').fill("Preserved peer draft");await go(details(b)+"?cat=basic");await page.locator('[data-pane="b"] input[id$="ag-desc"]').waitFor();await shot("split-settings");
    const close=page.locator('[data-pane="b"] .ws-pane-close');
    if(retain==="workspace"){assert.equal(await close.getAttribute("aria-label"),tr("Close this pane","收起此格"));await row(b).press("Enter");check("retained-workspace","old header keeps its old Close pane label; new sidebar returns focus to Chat");}
