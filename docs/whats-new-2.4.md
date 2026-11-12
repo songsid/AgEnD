@@ -94,7 +94,7 @@ Agents can now run on Windows itself, on the AgEnD computer or on other Windows 
 
 ## AgEnD Hub (experimental, off by default)
 
-A Hub lets colleagues in a company ask each other's agents questions, after signing in with their company (Active Directory) account. Nothing changes unless someone sets up a Hub with `agend hub init` or in **Settings → Hub**. Connecting a Fleet needs one input: the Hub's address, then **Sign in with company account**. A simpler **Let colleagues join** card for the Hub administrator, and join codes, are coming in a later alpha. How it works, step by step: [Connect a Fleet to a Hub](hub-join.md). Group permissions: [Hub group permissions](hub-group-permissions.md).
+A Hub lets colleagues in a company ask each other's agents questions, after signing in with their company (Active Directory) account. Nothing changes unless someone sets up a Hub with `agend hub init` or in **Settings → Hub**. Connecting a Fleet needs one input: the Hub's address, then **Sign in with company account**. After 2.4.0-alpha.1, a Hub administrator lets colleagues join from one **Let colleagues join** card: turn joining on, choose the AD groups, and copy one sentence to send. Join codes come later. How it works, step by step: [Connect a Fleet to a Hub](hub-join.md). Group permissions: [Hub group permissions](hub-group-permissions.md).
 
 ## Office
 
