@@ -116,7 +116,8 @@ describe("the open Settings page follows a refusal and its clearing (no remount)
     pg.document.body.setAttribute("data-hub", "member");
     await pg.mount(h(card.HubConnectCard, {}));
     for (let i = 0; i < 200 && !pg.root.querySelector(".hub-exposure input"); i++) await settle(5);
-    const tick = async (p: any = pairing) => { pairing = p; for (const fn of [...listeners]) fn(p); await settle(15); };
+    // As the member client's poll does: a freshly read pairing object on every tick (hub-client.js pairingNow()).
+    const tick = async (p: any = pairing) => { pairing = p; for (const fn of [...listeners]) fn(structuredClone(p)); await settle(15); };
     const box = () => pg.root.querySelector(".hub-exposure input") as any;
     const shown = () => ({ checked: box()?.checked, disabled: box()?.disabled, refused: !!pg.root.querySelector(".hub-exposure-refused"),
       grant: [...pg.root.querySelectorAll("a")].some((a: any) => /grant=1/.test(a.getAttribute("href") || "")) });
@@ -151,7 +152,7 @@ describe("the open Settings page follows a refusal and its clearing (no remount)
     const r = await rig(() => answers.length === 0 ? (answers.push(() => {}), Promise.resolve([BASE])) : new Promise<any[]>((ok) => { answers.push(ok); }));
     await r.tick();                                                          // background read #1 (slow)
     const box = r.pg.root.querySelector(".hub-exposure input") as any;
-    r.c.setExposed.mockResolvedValue({ ok: false, error: "conflict" });      // a conflict reloads at once (read #2)
+    r.c.setExposed.mockResolvedValue({ ok: false, error: "conflict" } as never);   // a conflict reloads at once (read #2)
     box.checked = false; fire(box, "change"); await settle(10);
     answers[2]!([{ ...BASE, reason: "hub_refused" }]); await settle(10);   // the newer answer: refused
     answers[1]!([BASE]); await settle(10);                                   // the older answer arrives late
@@ -159,9 +160,8 @@ describe("the open Settings page follows a refusal and its clearing (no remount)
   });
   it("after the connection goes away, a tick reads nothing for the old list", async () => {
     const r = await rig(async () => [BASE]);
-    const withList = r.listeners.size;
+    expect(r.listeners.size).toBe(1);                                        // the card's one poll subscription, none of the list's own
     await r.tick({ state: "unpaired" }); await settle(20);
-    expect(r.listeners.size).toBe(withList - 1);                            // the list's poll listener is gone, not just idle
     const n = r.exposures.mock.calls.length;
     await r.tick({ state: "unpaired" });
     expect(r.exposures.mock.calls.length).toBe(n);

@@ -234,17 +234,17 @@ function HubExposures({ client, pairing }) {
     return client.exposures().then((r) => { if (live.current && n === seq.current) { setRows(r); setReadError(false); } },
       () => { if (live.current && n === seq.current && !background) setReadError(true); });
   };
+  useEffect(() => { live.current = true; load(); return () => { live.current = false; }; }, []);
+  // M-3007 (Prism #3763 r1): a share the Hub refuses (or later accepts) changes the rows with no action on this page, so
+  // they are read again on the card's own visible pairing poll: each poll hands this list a new `pairing` (no second
+  // subscription). One read per tick at most, none while one is in flight or a switch is being saved. This component is
+  // keyed by the binding, so a different connection never sees them, and an unmounted one reads nothing.
+  const first = useRef(true);
   useEffect(() => {
-    live.current = true; load();
-    // M-3007 (Prism #3763 r1): a share the Hub refuses (or later accepts) changes the rows with no action on this page, so
-    // they are read again on the card's own visible pairing poll — one read per tick at most, none while one is in flight
-    // or a switch is being saved. This component is keyed by the binding, so a different connection never sees them.
-    const off = typeof client.subscribe === "function" ? client.subscribe(() => {
-      if (!live.current || polling.current || busyRef.current) return;
-      polling.current = true; load(true).finally(() => { polling.current = false; });
-    }) : null;
-    return () => { live.current = false; if (typeof off === "function") off(); };
-  }, []);
+    if (first.current) { first.current = false; return; }
+    if (!live.current || polling.current || busyRef.current) return;
+    polling.current = true; load(true).finally(() => { polling.current = false; });
+  }, [pairing]);
   const toggle = async (row, on) => {
     if (busy) return;
     setBusy(row.agent); busyRef.current = row.agent; setMsg(null);
