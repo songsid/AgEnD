@@ -193,4 +193,19 @@ describe("company join local wait",()=>{
   const wait=p.root.querySelector(".company-local-wait");expect(wait).toBeTruthy();
   expect(wait.textContent).toContain(words);expect(wait.textContent).not.toContain("ocal confirmation");
  });
+ // M-2988 round 2 #1: a code alone has its own words and no lookup; the administrator's copied text is the address and
+ // the code ("Join code included."), and Start sends that code.
+ it("the join code: alone it is explained; the copied handoff text connects with it",async()=>{
+  fetcher((path)=>path.endsWith("/start")?response({result:"pending_confirmation",pending_change:{id:pendingId,state:"pending",remaining_ms:300000,can_withdraw:true}},202):response({ok:true,operation:null}));
+  vi.stubGlobal("open",vi.fn());
+  const p=await mount(false);const el=p.root.querySelector("#hubCompanyAddress");const line=()=>p.root.querySelector("#hubCompanyLine").textContent;
+  expect(line()).toContain("A join code goes after the address with a space");
+  el.value="ab12-cd34";fire(el,"input");await settle(4);fire(el,"blur");await settle(8);
+  expect(line()).toBe("That is a join code. Put the Hub address before it, with a space: hub.example.com AB12-CD34");
+  expect(calls.some(x=>x.path.endsWith("/probe"))).toBe(false);
+  el.value="In AgEnD Settings → Hub, enter hub.example.test and this code.AB12-CD34";fire(el,"input");await settle(4);fire(el,"blur");await settle(10);
+  expect(line()).toContain("Join code included.");
+  fire(p.root.querySelector("form"),"submit");await settle(12);
+  const post=calls.find(x=>x.path.endsWith("/start"));expect(JSON.parse(post.init.body)).toMatchObject({address:"https://hub.example.test",code:"AB12-CD34"});
+ });
 });

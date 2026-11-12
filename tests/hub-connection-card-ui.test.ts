@@ -144,6 +144,7 @@ describe("M-2921: the connected and held card (spec 1.1 / 1.3)", () => {
     const f = await fixture({ enabled: true, pairing: paired(), display }); await until(() => f.p.root.querySelector(".hub-owner-line"));
     expect(f.p.root.querySelector(".hub-connection-summary").textContent).toContain("Acme Hub");
     expect(f.p.root.querySelector(".hub-owner-line").textContent).toBe("Connected with 王小明's company account \u00b7 This Fleet is called \u201cbuild-box\u201d");
+    expect(f.p.root.querySelector(".hub-rights-line").textContent).toBe("Whether you can share agents or chat depends on what your Hub administrator allows; the Hub's home page shows yours.");   // M-2988 round 2 (option A)
     await click(f.p, "Remove this connection");
     expect(f.p.root.textContent).toContain("Remove the connection to \u201cAcme Hub\u201d? Agents you share will stop answering.");
     expect(f.calls.filter(c => c.path.endsWith("/remove"))).toEqual([]);

@@ -169,3 +169,42 @@ describe("#1 / #6 / #11 / #13 / #17: the words", () => {
     expect(T("zh-TW", "hub.roomNote")).toBe("你是以自己的身分提問：對方會看到是你問的；Agent 用擁有者允許的範圍回答。");
   });
 });
+
+describe("round 2 #1: the join code in the Fleet's one Hub input", () => {
+  let code: any;
+  beforeAll(async () => { const pg = page(); code = await import("/ui/js/hub-join-code-input.js"); pg.restore(); });
+  const handoffEn = "In AgEnD Settings → Hub, enter hub.example.com and this code.\nAB12-CD34";
+  const handoffZh = "在 AgEnD「設定 → Hub」輸入 hub.example.com:8443 和這組碼。\nab12-cd34";
+  it("the administrator's copied text (either language, line break kept or dropped) is the address and the code", () => {
+    expect(code.fromHandoffText(handoffEn)).toBe("hub.example.com AB12-CD34");
+    expect(code.fromHandoffText(handoffEn.replace("\n", ""))).toBe("hub.example.com AB12-CD34");     // a text field drops the break
+    expect(code.fromHandoffText(handoffZh)).toBe("hub.example.com:8443 AB12-CD34");
+    expect(code.fromHandoffText(handoffZh.replace("\n", ""))).toBe("hub.example.com:8443 AB12-CD34");
+    expect(code.classifyJoinInput(handoffEn)).toEqual({ kind: "address", address: "https://hub.example.com", code: "AB12-CD34" });
+  });
+  it("what is not a handoff stays as before: the normal form, two addresses, no code, a pairing code", () => {
+    expect(code.fromHandoffText("hub.example.com AB12-CD34")).toBeNull();
+    expect(code.classifyJoinInput("hub.example.com AB12-CD34")).toEqual({ kind: "address", address: "https://hub.example.com", code: "AB12-CD34" });
+    expect(code.fromHandoffText("enter a.example.com or b.example.com and this code.\nAB12-CD34")).toBeNull();
+    expect(code.fromHandoffText("In AgEnD Settings → Hub, enter hub.example.com")).toBeNull();
+    expect(code.classifyJoinInput("abcd-ef01-2345").kind).toBe("pairing");
+    expect(code.classifyJoinInput("hub.example.com")).toEqual({ kind: "address", address: "https://hub.example.com" });
+  });
+  it("a code typed alone gets its own words, not 'cannot reach abcd-efgh'", () => {
+    expect(code.classifyJoinInput(" ab12-cd34 ")).toEqual({ kind: "error", error: "codeOnly", code: "AB12-CD34" });
+    expect(T("en", "joinCode.codeOnly", "AB12-CD34")).toBe("That is a join code. Put the Hub address before it, with a space: hub.example.com AB12-CD34");
+    expect(T("zh-TW", "joinCode.codeOnly", "AB12-CD34")).toBe("這是加入碼。請在前面加上 Hub 位址，中間空一格：hub.example.com AB12-CD34");
+    expect(T("en", "joinCode.hint")).toContain("A join code goes after the address with a space");
+    expect(T("zh-TW", "joinCode.included")).toBe("已帶入加入碼。");
+  });
+});
+
+describe("round 2 #2 (interim, the leader's option A): the connected card says who decides sharing and chat", () => {
+  it("one neutral line for every connection; the hint no longer sends anyone to pick agents", async () => {
+    const pg = page(); await import("/ui/js/settings-hub-connection.js"); pg.restore();
+    expect(T("en", "hubConnection.rights")).toBe("Whether you can share agents or chat depends on what your Hub administrator allows; the Hub's home page shows yours.");
+    expect(T("zh-TW", "hubConnection.rights")).toBe("連接後能不能分享 Agent、和 Agent 對話，由 Hub 管理員設定；Hub 首頁會顯示你目前的權限。");
+    expect(T("en", "hubConnection.connectedHint")).not.toMatch(/Choose the Agents to share/);
+    expect(T("zh-TW", "hubConnection.connectedHint")).not.toMatch(/請在下方選擇要分享/);
+  });
+});

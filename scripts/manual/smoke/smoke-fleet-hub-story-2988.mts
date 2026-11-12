@@ -6,6 +6,7 @@
 //   #8 / #1  Settings → Hub: the Share card mounted in the connection card's place on a page-local paired client (no
 //       Hub member in this fixture), with the request's live view put in the shell's list as settings-confirm.js would — first as this
 //       fixture's own kind (no General: the confirm card), then as a card in General on Discord.
+//   round 2 #1  the same input with a join code: the hint, a code alone, the administrator's copied text pasted.
 //   #13 the Hub setup card for a session that is not the host's (the server refuses it: `denied`).
 //   #7  the sign-in page (signed out).
 //   PW_DIR=… REPO=<checkout> OUT=<dir> [AFTER=1] [MATRIX=…] npx --prefix <checkout> tsx scripts/manual/smoke/smoke-fleet-hub-story-2988.mts
@@ -44,6 +45,24 @@ try {
       await ctx.addInitScript({ content: "window.open = () => null;" });
       await page.reload();
       await page.locator("#hubCompanyAddress").waitFor({ timeout: 20000 });
+      // Round 2 #1, the join code: the empty hint, a code typed alone, then the administrator's copied text pasted.
+      const line = () => page.evaluate(`document.querySelector("#hubCompanyLine").textContent.trim()`);
+      const hint = await line();
+      await page.locator(".s-company-join").screenshot({ path: shot(`${tag}-r2a-hint`) });
+      await page.fill("#hubCompanyAddress", "ab12-cd34"); await page.locator("#hubCompanyAddress").blur(); await page.waitForTimeout(500);
+      const alone = await line();
+      await page.locator(".s-company-join").screenshot({ path: shot(`${tag}-r2b-code-alone`) });
+      const handoff = (en ? "In AgEnD Settings → Hub, enter synthetic-hub.example.test and this code." : "在 AgEnD「設定 → Hub」輸入 synthetic-hub.example.test 和這組碼。") + "\nAB12-CD34";
+      await page.fill("#hubCompanyAddress", "");
+      await page.locator("#hubCompanyAddress").focus();
+      await page.evaluate((t: string) => { const el = document.querySelector("#hubCompanyAddress")!, dt = new DataTransfer(); dt.setData("text/plain", t);
+        el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); }, handoff);
+      await page.waitForTimeout(300); await page.locator("#hubCompanyAddress").blur(); await page.waitForTimeout(1000);
+      const pasted = await page.inputValue("#hubCompanyAddress"), included = await line();
+      await page.locator(".s-company-join").screenshot({ path: shot(`${tag}-r2c-handoff-pasted`) });
+      if (AFTER) check(`${tag}-r2-code`, (en ? /A join code goes after the address with a space/.test(hint) && /^That is a join code/.test(alone) && /Join code included\./.test(included)
+        : /加入碼接在位址後面/.test(hint) && /^這是加入碼/.test(alone) && /已帶入加入碼/.test(included)) && pasted === "synthetic-hub.example.test AB12-CD34", { hint, alone, pasted, included });
+      r[`${tag}-r2-words`] = { hint, alone, pasted, included };
       await page.fill("#hubCompanyAddress", "https://synthetic-hub.example.test"); await page.locator("#hubCompanyAddress").blur();
       await page.waitForTimeout(800);
       await page.locator(".s-company-join form button[type=submit]").click();

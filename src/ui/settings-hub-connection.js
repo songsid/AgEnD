@@ -8,9 +8,10 @@ import { j1 } from "./hub-join-one-strings.js";
 import { joinError, joinResponseCode } from "./hub-company-join-strings.js";
 register("hubConnection", {
   en: {
+    rights: "Whether you can share agents or chat depends on what your Hub administrator allows; the Hub's home page shows yours.",
     title: "Hub connection", unconnected: "Not connected", connected: "Connected", paused: "Paused", connecting: "Connecting…", attention: "Connection needs attention",
     hub: "Hub", fleet: "Fleet", thisFleet: "This Fleet", open: "Open Hub", pause: "Pause connection", resume: "Resume connection",
-    connectedHint: "This Fleet can use the Hub. Choose the Agents to share below; connecting does not share any Agent automatically.",
+    connectedHint: "This Fleet can use the Hub. Connecting does not share any Agent: each one appears on the Hub only after you share it.",
     pausedHint: "New Hub work and answer delivery are stopped. The saved connection and existing conversations are kept.",
     connectingHint: "The connection is saved. Waiting for the Hub link before reporting Connected.",
     advanced: "Connect with a pairing code (Advanced)", manualHint: "Use this for a Hub with a pairing code. The main sign-in flow enables membership when it succeeds.",
@@ -20,9 +21,10 @@ register("hubConnection", {
     failed: "The connection settings could not be verified. Check again before making another change.", unavailable: "Connection settings could not be read. Check again.",
   },
   "zh-TW": {
+    rights: "連接後能不能分享 Agent、和 Agent 對話，由 Hub 管理員設定；Hub 首頁會顯示你目前的權限。",
     title: "Hub 連接", unconnected: "尚未連接", connected: "已連接", paused: "已暫停", connecting: "正在連接…", attention: "連接需要處理",
     hub: "Hub", fleet: "Fleet", thisFleet: "這個 Fleet", open: "開啟 Hub", pause: "暫停連接", resume: "恢復連接",
-    connectedHint: "這個 Fleet 已可使用 Hub。請在下方選擇要分享的 Agent；連接不會自動分享 Agent。",
+    connectedHint: "這個 Fleet 已可使用 Hub。連接不會自動分享 Agent：每個 Agent 都要你自己分享才會出現在 Hub。",
     pausedHint: "已停止新的 Hub 工作與回答傳送；連接資料和既有對話仍保留。",
     connectingHint: "連接資料已儲存，正在等待與 Hub 的網路連線；尚未顯示為已連接。",
     advanced: "使用配對碼連接（進階）", manualHint: "供使用配對碼的 Hub 使用。上方登入流程成功後會自動啟用成員功能。",
@@ -154,6 +156,7 @@ export function HubConnectionSettings({ onMode } = {}) {
     ${!view && !error ? html`<${Skeleton} variant="form" lines=${4} />` : null}
     ${cardError ? html`<p class="note" role="alert">${cardError}</p>` : null}${cardNotice ? html`<p class="note" role="status">${cardNotice}</p>` : null}
     ${paired ? html`<div class="grid2 hub-connection-summary"><div class="field"><span>${hc("hub")}</span><strong>${hubName}</strong></div><div class="field"><span>${hc("fleet")}</span><strong>${display?.label || hc("thisFleet")}</strong></div></div>${owner}
+      <p class="note hub-rights-line">${hc("rights")}</p>
       <p class="note">${hc(paused ? "pausedHint" : online ? "connectedHint" : "connectingHint")}</p>
       <div class="field-row">${!paused && safeOrigin(p) ? html`<a class="btn btn-primary" href=${safeOrigin(p)} target="_blank" rel="noopener noreferrer">${hc("open")}</a>` : null}
         <button type="button" class=${`btn ${paused ? "btn-primary" : "btn-ghost"}`} disabled=${busy || !!error} onClick=${() => change(paused)}>${hc(paused ? "resume" : "pause")}</button>${removeLink}</div>${removeAsk}

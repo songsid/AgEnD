@@ -5,8 +5,9 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { api, confirmedWrite, confirmWithCode } from "./settings-confirm.js";
 import { hj, joinError, joinResponseCode } from "./hub-company-join-strings.js";
-import { j1, classifyHubInput, probeMessage, waitingMessage, reasonMessage, leftOf } from "./hub-join-one-strings.js";
+import { j1, probeMessage, waitingMessage, reasonMessage, leftOf } from "./hub-join-one-strings.js";
 import { confirmPlace, pendingView } from "./hub-confirm-place.js";
+import { classifyJoinInput, fromHandoffText, jc } from "./hub-join-code-input.js";
 // Own words: a new panel must also work with a cached older company-join dictionary.
 register("companyJoinWait", {
   "en": {
@@ -68,7 +69,8 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   // #3675 r2: every look is bound to the address it was asked for and to its generation; only the newest answer for the
   // address in the input counts. A forced look (after a replaced identity) retires any look still running.
   const probeSeq = useRef(0), inflight = useRef(""), current = useRef("");
-  const kind = classifyHubInput(form.address);
+  // M-2988 round 2: the join code — the administrator's copied text, and a code typed alone — read here (hub-join-code-input.js).
+  const kind = classifyJoinInput(form.address);
   current.current = kind.kind === "address" ? kind.address : "";
   const host = (() => { try { return new URL(kind.address).host; } catch { return ""; } })();
   const runProbe = async (target = current.current, force = false) => {
@@ -213,7 +215,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     finally { if (live.current && gen === token.current) setCodeBusy(false); }
   };
   const fleetLabel = (form.label.trim() || probe?.suggestedLabel || hj("defaultFleet")).slice(0, 120);
-  const problem = kind.kind === "error" ? j1(kind.error) : probe && !probe.none && probe.address === kind.address ? probeMessage(probe, host) : null;
+  const problem = kind.kind === "error" ? kind.error === "codeOnly" ? jc("codeOnly", kind.code) : j1(kind.error) : probe && !probe.none && probe.address === kind.address ? probeMessage(probe, host) : null;
   // Start once the probe for exactly this address has answered without a problem. A probe that could not answer at all
   // (no reason: a network error, an older server) does not block Start: Start makes the same checks itself.
   const ready = kind.kind === "address" && !problem && !probing && probe?.address === kind.address;
@@ -249,12 +251,13 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     </div>` : null}
     ${canStart ? html`<form class="form hub-join-one" onSubmit=${start}>
       <label class="field" for="hubCompanyAddress"><span>${j1("input")}</span><input id="hubCompanyAddress" type="text" value=${form.address} placeholder=${j1("placeholder")} autocomplete="off" spellcheck=${false} autocapitalize="off"
-        aria-describedby="hubCompanyLine" aria-invalid=${problem ? "true" : undefined} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))} onBlur=${() => runProbe()} /></label>
+        aria-describedby="hubCompanyLine" aria-invalid=${problem ? "true" : undefined} onInput=${e => setForm(f => ({ ...f, address: e.target.value }))}
+        onPaste=${e => { const n = fromHandoffText(e.clipboardData?.getData("text")); if (n) { e.preventDefault(); setForm(f => ({ ...f, address: n })); } }} onBlur=${() => runProbe()} /></label>
       <p class="note hub-join-line" id="hubCompanyLine" role=${problem ? "alert" : "status"}>${problem ? problem
         : kind.kind === "pairing" ? j1("otherPairing")
         : probing ? j1("probing")
-        : probe?.ok && probe.address === kind.address ? html`${j1("found", probe.hubName || host, fleetLabel)} ${!renaming ? html`<button type="button" class="btn btn-ghost btn-sm hub-join-rename" onClick=${() => setRenaming(true)}>${j1("rename")}</button>` : null}`
-        : !form.address.trim() ? jw("getLink") : null}</p>
+        : probe?.ok && probe.address === kind.address ? html`${j1("found", probe.hubName || host, fleetLabel)}${kind.code ? ` ${jc("included")}` : ""} ${!renaming ? html`<button type="button" class="btn btn-ghost btn-sm hub-join-rename" onClick=${() => setRenaming(true)}>${j1("rename")}</button>` : null}`
+        : !form.address.trim() ? jc("hint") : null}</p>
       ${renaming ? html`<label class="field" for="hubCompanyFleetName"><span>${j1("label")}</span><input id="hubCompanyFleetName" value=${form.label} maxlength="120" placeholder=${probe?.suggestedLabel || hj("defaultFleet")} onInput=${e => setForm(f => ({ ...f, label: e.target.value }))} /></label>` : null}
       <div class="field-row"><button class="btn btn-primary" type="submit" disabled=${busy || !ready}>${j1("go")}</button></div>
       ${identityChanged || probe?.identity === "changed" && probe.address === kind.address ? html`<p class="note">${hj("repairLead")}</p><button class="btn btn-sm" type="button" disabled=${busy || kind.kind !== "address"} onClick=${repair}>${hj("repair")}</button>` : null}

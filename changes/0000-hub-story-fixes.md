@@ -5,6 +5,8 @@ section: Changed
   - **Stop sharing.** On the Hub, 「Pause questions」 is now **Stop sharing**. Its confirmation says what that means: no one can ask the agent any more, and sharing it again needs its Fleet to share it again and everyone to be allowed again.
   - **Where to confirm.** After you switch on Share, or start a company-account connection, the hint names General only when a General received the confirm card (for example "General on Discord"). On a Fleet without a chat app it points at the confirm card on the page. The company-account wait no longer says "local confirmation": it says to confirm that it's really you connecting this Fleet, and the Hub sign-in opens after that.
   - **Shared agents** says that only Fleet agents can be shared for now; ClassicBot rooms can't be shared yet.
+  - **Joining with a join code.** On Settings → Hub, the empty Hub address field says that a join code goes after the address with a space. Pasting the text your Hub administrator copied (the sentence with the code on the next line) fills in the address and the code. A code typed on its own is explained instead of being looked up as a host name, and "Join code included." shows once it's recognised.
+  - **Connected card:** it no longer asks you to choose agents to share. A line says that whether you can share agents or chat depends on what your Hub administrator allows, and that the Hub's home page shows your current permissions.
   - **Sign-in page:** the first line mentions both ways in: the authenticator app's 6-digit code, or an 8-character device sign-in code.
   - **Hub administrators:**
     - A refused approval names the person: "Carol can't connect a Fleet right now…" instead of "You're not allowed".
