@@ -82,6 +82,17 @@ export function versionBelow(a: string, b: string): boolean {
   return false;
 }
 
+/**
+ * Whether a CLI's probed version is at least `min` (a registry fact, e.g. `host.structuredSignIn.minVersion`: `agy acp --login` exists from agy 1.5.0). No `min` means any version will do;
+ * a version that is not known (not probed yet, or not a version) is NOT enough: the dashboard offers the command only to a CLI known to have it, and an older one keeps "Sign in on the host".
+ * Not a MIN_SUPPORTED_VERSION: an older CLI still runs agents, it only cannot be signed in from the page.
+ */
+export function versionAtLeast(version: string | null | undefined, min: string | undefined): boolean {
+  if (min === undefined) return true;
+  const found = typeof version === "string" ? /(\d+(?:\.\d+)+)/.exec(version) : null;
+  return !!found && !versionBelow(found[1]!, min);
+}
+
 /** The state for what the probes answered. Pure. */
 export function availabilityState(a: { installed: boolean | null; version: string | null; auth: AuthState; minVersion: string | null }): AvailabilityState {
   if (a.installed === false) return "not_installed";

@@ -10,14 +10,16 @@
  * Built-ins and shared Runtime modules only: part of the Runtime bundle.
  */
 import {isNativeProviderId,nativeProvider} from "./windows-cli-providers.js";
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 import { CliInstallError } from "./runtime-cli-install.js";
 import { parseAccountIdentity, type AccountIdentity } from "./claude-auth-status.js";
-import { CredentialProfileRefusal, credentialProfileCaseClash, credentialProfileDirectory, isCredentialProfileCli, rememberCredentialStatus, withCredentialProfile,
+import { CredentialProfileRefusal, PROFILE_CLI_NAMES, credentialProfileCaseClash, credentialProfileDirectory, credentialProfileLaunch, credentialProfileStore, isCredentialProfileCli, rememberCredentialStatus, withCredentialProfile,
   type CredentialProfileCli } from "./runtime-credential-profiles.js";
 import { ProfileOwnershipRefusal, createRuntimeProfile, deleteProfileBackups, removeOwnedProfile, requireOwnedProfile, withIsolatedOwnedProfile, type OwnedProfileOptions } from "./runtime-profile-ownership.js";
 import { AuditLog, RemoteSetupRefusal, readRemoteSwitches, requireRemoteSwitch, validAuditActor, type AuditAction, type AuditEntry, type AuditReason, type RemoteSwitchName } from "./runtime-remote-setup.js";
-import { ProcessNotConfirmedEnded, RuntimeSignIn, RuntimeSignInSlot, SignInRefusal, type SignInDeps, type SignInMethod } from "./runtime-signin.js";
+import { ProcessNotConfirmedEnded, RuntimeSignIn, RuntimeSignInSlot, SignInRefusal, type SignInCli, type SignInDeps, type SignInMethod } from "./runtime-signin.js";
+import { isRuntimeDefaultLoginCli, runtimeFacts, type RuntimeDefaultLoginCli } from "./cli-registry.js";
 import { isRuntimeRemoteOperation, parseRuntimeRemotePayload, type RuntimeRemoteOperation, type RuntimeRemotePayloads, type RuntimeSwitchStates } from "./runtime-protocol.js";
 
 /** What a CLI the server may name stands for here: the CLI's program, its sign-in, and its environment variable. */
@@ -48,11 +50,28 @@ export interface RemoteAccountsDeps {
   /** `claude auth status` under a profile folder, read by the shared parser. */
   models?(cli: string, directory: string | undefined, authorized: () => boolean): Promise<{ models: import("./windows-cli-providers.js").NativeModelOption[]; source: string }>;
   status(cli: CredentialProfileCli, directory: string): Promise<RemoteStatusAnswer>;
-  find(cli: CredentialProfileCli): Promise<RemoteCliExecutable | null>;
+  find(cli: CredentialProfileCli | RuntimeDefaultLoginCli): Promise<RemoteCliExecutable | null>;
+  /**
+   * Antigravity's own login on this computer (`agy models`, by its exit code; never a login, never an e-mail address): true, false, or null when it could not be asked. Absent: this Runtime
+   * cannot say, and a check answers "unknown". Asked only when an administrator's request says so (agy is never started on a timer or a read).
+   */
+  defaultStatus?(cli: RuntimeDefaultLoginCli): Promise<boolean | null>;
   /** The Windows CLI environment (an allowlist), to which the profile's variable is added here. */
   environment(): NodeJS.ProcessEnv;
   /** `claude auth logout` for a profile, with the profile's variable in `env`. Output is discarded by the caller. Resolves with the exit code. */
   runLogout(executable: RemoteCliExecutable, args: string[], env: NodeJS.ProcessEnv): Promise<number | null>;
+  /**
+   * AGEND-124: whether a CLI that is told its account by an argument (Antigravity) really keeps a folder's sign-in in that folder, asked with an EMPTY scratch folder under `scratchRoot` before a named
+   * account's sign-in starts (windows-cli-worker.ts `probeCredentialIsolation`). Absent: this Runtime cannot prove it, so such an account's sign-in is refused.
+   */
+  isolated?(cli: CredentialProfileCli, scratchRoot: string): Promise<boolean>;
+  /**
+   * AGEND-124: removes a Credential Manager entry by its name (`cmdkey /delete:<name>`), for the computer's OWN login of a CLI whose spec says which entry holds it (`runtime.signOut.credential`). Resolves with
+   * the exit code. Absent: this Runtime cannot sign that login out. Only ever asked with the name from the registry, never one from a request.
+   */
+  deleteCredential?(name: string): Promise<number | null>;
+  /** A native task is running on this computer (the computer's own login must not be signed out under it). Absent: unknown, which refuses. */
+  taskRunning?(): boolean | Promise<boolean>;
   /** Whether a task or terminal is running with this profile, which makes sign-out and remove refuse. */
   inUse(name: string): "task" | "pane" | "unknown" | undefined | Promise<"task" | "pane" | "unknown" | undefined>;
   /** The same question with no await (from what is already known in memory and on disk): asked once more, synchronously, immediately before a profile is renamed. */
@@ -67,6 +86,8 @@ export interface RemoteAccountsDeps {
    * switch is still on and the request's connection still the live one. Without it (an install) the report is only started.
    */
   changed(authorized?: () => boolean): void | Promise<void>;
+  /** AGEND-113: a check of a CLI's own login (no profile: Antigravity) was answered with a yes or a no: the inventory's row for that CLI says it from now on. */
+  noteLogin?(cli: string, loggedIn: boolean): void;
   /** A CLI was installed: the caller detects again for real (not from its cache) and sends that inventory before this resolves. */
   installed?(authorized?: () => boolean): void | Promise<void>;
   /** Installs a CLI from the closed table and returns the version that landed. Absent: this Runtime cannot install (and does not claim to). */
@@ -84,6 +105,8 @@ export { ProcessNotConfirmedEnded };
 interface Ctx { alive(): boolean }
 /** The key under which an install that could not be confirmed ended keeps the Runtime busy (no profile name can be this: it holds a NUL). */
 const INSTALL_KEY = "\0cli-install";
+/** What a CLI is called in a refusal (the registry's Runtime name for it). */
+const cliName = (cli: string): string => runtimeFacts(cli, "provider")?.name ?? cli;
 const NOT_AVAILABLE = "This computer's Runtime is stopping or its connection changed, so nothing was done";
 /** At most this many `accounts.check` at a time on the computer: each one can start PowerShell and the CLI. */
 export const MAX_CONCURRENT_CHECKS = 2;
@@ -100,9 +123,21 @@ function reasonOf(error: unknown): AuditReason {
 }
 const NEEDS_ACCOUNTS: readonly RuntimeRemoteOperation[] = ["models.refresh", "signin.start", "signin.capture", "signin.status", "signin.write", "accounts.check", "accounts.signout", "accounts.remove"];
 
-interface Meta { id: string; actor: string; cli: CredentialProfileCli; profile: string; signedIn?: boolean }
+/** `profile` is absent for Antigravity's sign-in: the computer's own default login (there is no profile folder for it). */
+interface Meta { id: string; actor: string; cli: SignInCli; profile?: string; signedIn?: boolean; /** The command ended well but the account's folder holds no sign-in (AGEND-124). */ notIsolated?: true }
+/** The key of "a CLI's own login" in the pace table (no profile name can hold a NUL). */
+const DEFAULT_KEY = "\0default-login:";
+/** Deletes one plain file of an account's folder, by the registry's exact name: not a link, not a folder, and nothing else. A file that is not there is already signed out. */
+function removeSignInFile(directory: string, name: string): void {
+  const path = join(directory, name);
+  let stat; try { stat = lstatSync(path); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return; throw error; }
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new ProfileOwnershipRefusal("The account's sign-in file is not a plain file, so nothing is changed there", "link");
+  unlinkSync(path);
+}
 /** The least time between two sign-outs or removes of one profile. It only slows a server that keeps asking; the switch and its time window are what bound the risk. */
 export const PROFILE_OP_MIN_GAP_MS = 5_000;
+/** Under this pairing's folder (never under a CLI's profile folder, so it is never listed as an account): where the isolation probe's empty scratch folders are made. */
+export const ISOLATION_SCRATCH = "isolation-scratch";
 const SUBSCRIPTION_ONLY = "Signing in with an Anthropic Console account is not supported from AgEnD, because that sign-in is kept outside the profile's folder. On that computer run: agend-runtime login claude-code NAME";
 
 export class RemoteAccounts {
@@ -168,9 +203,9 @@ export class RemoteAccounts {
     requireRemoteSwitch(this.deps.pairingDirectory, switchName, this.now());
   }
   /** The last, synchronous look before a profile is renamed: the switch, the default, tasks and terminals, and a sign-in, all as they are at this instant. */
-  private finalLook(ctx: Ctx, name: string, forRemove: boolean): void {
+  private finalLook(ctx: Ctx, name: string, forRemove: boolean, cli: CredentialProfileCli = "claude-code"): void {
     this.gate(ctx, "accounts");
-    if (forRemove) {
+    if (forRemove && cli === "claude-code") {
       let fallback: string | undefined;
       try { fallback = this.deps.defaultProfile(); } catch { throw new ProfileOwnershipRefusal("This computer could not confirm which credential profile is the default, so nothing was changed. Check that computer's Runtime folder", "unconfirmed"); }
       if (fallback && fallback.toLowerCase() === name.toLowerCase()) throw new ProfileOwnershipRefusal(`Credential profile "${name}" is this computer's default for agents; change it there first: agend-runtime profile default NAME`, "default_profile");
@@ -230,8 +265,22 @@ export class RemoteAccounts {
     } finally { if (key !== undefined) this.busy.delete(key); if (taken !== undefined) this.exclusive.delete(taken); }
   }
   private cliOf(value: string): CredentialProfileCli {
-    if (!isCredentialProfileCli(value)) throw new ProfileOwnershipRefusal("Only Claude Code accounts can be managed on a computer. Codex may keep its sign-in in the Windows Credential Manager, which a profile folder cannot hold or remove, so it is not offered yet", "unsupported");
+    if (!isCredentialProfileCli(value)) throw new ProfileOwnershipRefusal(`Only ${PROFILE_CLI_NAMES()} accounts can be managed on a computer. Codex may keep its sign-in in the Windows Credential Manager, which a profile folder cannot hold or remove, so it is not offered yet`, "unsupported");
     return value;
+  }
+  /** Whether a CLI is told its named account by an argument (Antigravity), which is why its sign-in is proven isolated first and its sign-out removes a file. */
+  private static byArgument(cli: CredentialProfileCli): boolean { const facts = runtimeFacts(cli, "namedAccounts"); return !!facts && "arg" in facts; }
+  /**
+   * AGEND-124: before a NAMED account of a CLI told its account by an argument is signed in, two things that need no change to be refused: the folder has a path the CLI can be given (a relative one: not
+   * across drives), and an empty scratch folder answers "signed out" under that launch (the CLI keeps a folder's sign-in in that folder, not in the Credential Manager that every folder shares). Anything
+   * else is `not_isolated`, and nothing is started. A CLI that moves its home with a variable needs neither.
+   */
+  private async proveIsolated(cli: CredentialProfileCli, directory: string): Promise<void> {
+    if (!RemoteAccounts.byArgument(cli)) return;
+    credentialProfileLaunch(this.deps.environment(), cli, directory);       // throws a refusal of our own when there is no relative path
+    const scratch = join(this.deps.pairingDirectory, ISOLATION_SCRATCH);
+    if (!this.deps.isolated || !(await this.deps.isolated(cli, scratch)))
+      throw new ProfileOwnershipRefusal(`not_isolated: ${cliName(cli)} could not be shown to keep this account's sign-in in its own folder on this computer, so nothing was started (signing in would replace this Windows user's own login)`, "not_isolated");
   }
   private async busyProfile(name: string): Promise<void> {
     if (this.signInProfile()?.toLowerCase() === name.toLowerCase()) throw new SignInRefusal(`A sign-in for "${name}" is running; end it first`, "busy");
@@ -322,7 +371,7 @@ export class RemoteAccounts {
     if (this.slot.current() && !readRemoteSwitches(this.deps.pairingDirectory, this.now()).accounts.on) await this.endSignIn(this.meta!.id, "switch_off").catch(() => {});
     switch (operation) {
       case "signin.capture": { const input = this.parse(operation, payload); this.needSwitch(); return { screen: this.slot.find(input.sessionId).capture() }; }
-      case "signin.status": { const input = this.parse(operation, payload); this.needSwitch(); return this.slot.find(input.sessionId).status(); }
+      case "signin.status": { const input = this.parse(operation, payload); this.needSwitch(); return this.signInStatus(input.sessionId); }
       case "signin.write": return this.writeCode(this.parse(operation, payload), ctx);
       case "signin.start": return this.startSignIn(this.parse(operation, payload), ctx);
       case "models.refresh": return this.models(this.parse(operation, payload), ctx);
@@ -343,9 +392,54 @@ export class RemoteAccounts {
     return actor;
   }
 
-  private async startSignIn(input: { cli: string; profile: string; method: SignInMethod; actor: string }, ctx: Ctx): Promise<{ sessionId: string }> {
-    const actor = this.actorOf(input.actor), cli = this.cliOf(input.cli);
+  /**
+   * The one place that says which sign-in a request is. A request with a profile name is a NAMED account's: a CLI with named accounts here (Claude Code, Antigravity), in a folder this Runtime
+   * creates or created. A request without one is the computer's OWN login, and only a CLI whose spec says it has one (`runtime.signIn` `none` or `both`: Antigravity) is signed in that way; every
+   * other CLI needs a name, and a request without it is refused.
+   */
+  private async startSignIn(input: { cli: string; profile?: string; method: SignInMethod; actor: string }, ctx: Ctx): Promise<{ sessionId: string }> {
+    if (input.profile === undefined && isRuntimeDefaultLoginCli(input.cli)) return this.startDefaultSignIn(input.cli, input, ctx);
+    if (input.profile === undefined) { this.actorOf(input.actor); this.cliOf(input.cli); throw new RemoteSetupRefusal("A sign-in names the credential profile it is for", "invalid_request"); }
+    return this.startProfileSignIn({ ...input, profile: input.profile }, ctx);
+  }
+  /** Common to both: the child is the Runtime's work while it lives, so the update fence waits for it; the watch ends it if the switch goes off. */
+  private holdSignIn(session: RuntimeSignIn, ctx: Ctx): Promise<void> | void {
+    // The sign-in is the Runtime's work for as long as its child lives: the update fence waits for it. If the Runtime stopped or the connection went
+    // while the child was being started, it is ended at once, over the same path as any other end.
+    try { if (!ctx.alive()) throw new RemoteSetupRefusal(NOT_AVAILABLE, "failed"); this.hold = this.deps.enter?.() ?? null; }
+    catch (error) { return this.endSignIn(session.id, "closed").catch(() => {}).then(() => { throw error; }); }
+    this.watchSwitch(session.id);
+  }
+  /**
+   * AGEND-113: Antigravity's default login. `agy acp --login` under the Windows user's own login, with no profile, no folder and no ownership record: the one exception to "named
+   * profiles only", and only for this CLI. Everything else is the same as a profile's sign-in, because it is the same `audited` path: the local `accounts` switch, one sign-in at a
+   * time on this computer (`exclusive` and the slot), the start-rate limit, the ten-minute timeout and the switch watch, and a record in `audit.jsonl` before and after.
+   */
+  private async startDefaultSignIn(cli: RuntimeDefaultLoginCli, input: { cli: string; profile?: string; method: SignInMethod; actor: string }, ctx: Ctx): Promise<{ sessionId: string }> {
+    const actor = this.actorOf(input.actor);
     let executable: RemoteCliExecutable | null = null;
+    return this.audited("signin", "accounts", actor, { cli }, ctx, {
+      exclusive: "signin-start",
+      check: async () => {
+        // A Google account (subscription) only: no Google Cloud project, no API key.
+        if (input.method !== "subscription") throw new ProfileOwnershipRefusal(`Only a subscription sign-in is supported for ${cliName(cli)} from AgEnD`, "unsupported");
+        await this.settleEndedSignIn(); this.slot.check();
+        executable = await this.deps.find(cli);
+        if (!executable) throw new SignInRefusal(`${cliName(cli)} is not installed on this computer`, "failed");
+      },
+      run: async () => {
+        const session = await this.slot.start(() => { this.gate(ctx, "accounts"); return new RuntimeSignIn({ command: executable!.command, args: executable!.args, method: "subscription", cli,
+          env: this.deps.environment() }, { ...this.deps.signIn, now: this.deps.now, onTimeout: () => { this.endWithRetry(session.id, "timeout"); } }); });
+        this.meta = { id: session.id, actor, cli };
+        await this.holdSignIn(session, ctx);
+        return { sessionId: session.id };
+      },
+      openEnded: true,
+    });
+  }
+  private async startProfileSignIn(input: { cli: string; profile: string; method: SignInMethod; actor: string }, ctx: Ctx): Promise<{ sessionId: string }> {
+    const actor = this.actorOf(input.actor), cli = this.cliOf(input.cli);
+    let executable: RemoteCliExecutable | null = null, directory: string;
     // A sign-in begins by creating the profile when it is new: this is "Add account". The record says so. Nothing is created until every refusal
     // that does not need a change has been made (the slot, the profile's state, the CLI), so refused requests leave no folder behind.
     return this.audited("signin", "accounts", actor, { cli, profile: input.profile }, ctx, {
@@ -353,14 +447,14 @@ export class RemoteAccounts {
       exclusive: "signin-start",
       check: async () => {
         // Only a subscription sign-in: a Console sign-in may be kept outside the profile's folder, so a profile could not hold or remove it.
-        if (input.method !== "subscription") throw new ProfileOwnershipRefusal(SUBSCRIPTION_ONLY, "unsupported");
+        if (input.method !== "subscription") throw new ProfileOwnershipRefusal(cli === "claude-code" ? SUBSCRIPTION_ONLY : `Only a subscription sign-in is supported for ${cliName(cli)} from AgEnD`, "unsupported");
         await this.settleEndedSignIn(); this.slot.check();
-        let directory: string;
         try { directory = credentialProfileDirectory(this.deps.credentialRoot, cli, input.profile); } catch { throw new ProfileOwnershipRefusal("That is not a valid credential profile name", "invalid_request"); }
         if (existsSync(directory)) { await requireOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, this.deps.ownership); await this.busyProfile(input.profile); }
         else { const clash = credentialProfileCaseClash(this.deps.credentialRoot, cli, input.profile); if (clash) throw new ProfileOwnershipRefusal(`Credential profile "${input.profile}" would be the same folder as "${clash}" on Windows; use that name or choose another`, "invalid_request"); }
         executable = await this.deps.find(cli);
-        if (!executable) throw new SignInRefusal("Claude Code is not installed on this computer", "failed");
+        if (!executable) throw new SignInRefusal(`${cliName(cli)} is not installed on this computer`, "failed");
+        await this.proveIsolated(cli, directory);
       },
       run: async () => {
         const { credentialRoot, pairingDirectory } = this.deps;
@@ -373,15 +467,13 @@ export class RemoteAccounts {
         }
         const directory = await requireOwnedProfile(pairingDirectory, credentialRoot, cli, input.profile, this.deps.ownership);
         // The switch and the connection once more, in the same synchronous step as the child is started (the slot waits before it calls this).
-        const session = await this.slot.start(() => { this.gate(ctx, "accounts"); return new RuntimeSignIn({ command: executable!.command, args: executable!.args, method: input.method,
-          env: withCredentialProfile(this.deps.environment(), cli, directory) }, { ...this.deps.signIn, now: this.deps.now,
+        // The launch of this account: its variable (Claude Code), or the pin and `--app_data_dir <folder>` that go with the sign-in command (Antigravity).
+        const launch = credentialProfileLaunch(this.deps.environment(), cli, directory);
+        const session = await this.slot.start(() => { this.gate(ctx, "accounts"); return new RuntimeSignIn({ command: executable!.command, args: executable!.args, profileArgs: launch.args, method: input.method, cli,
+          env: launch.env }, { ...this.deps.signIn, now: this.deps.now,
           onTimeout: () => { this.endWithRetry(session.id, "timeout"); } }); });
         this.meta = { id: session.id, actor, cli, profile: input.profile };
-        // The sign-in is the Runtime's work for as long as its child lives: the update fence waits for it. If the Runtime stopped or the connection went
-        // while the child was being started, it is ended at once, over the same path as any other end.
-        try { if (!ctx.alive()) throw new RemoteSetupRefusal(NOT_AVAILABLE, "failed"); this.hold = this.deps.enter?.() ?? null; }
-        catch (error) { await this.endSignIn(session.id, "closed").catch(() => {}); throw error; }
-        this.watchSwitch(session.id);
+        await this.holdSignIn(session, ctx);
         return { sessionId: session.id };
       },
       openEnded: true,
@@ -399,6 +491,21 @@ export class RemoteAccounts {
       check: () => { session.assertWritable(input.input); },
       run: async () => { this.gate(ctx, "accounts"); await session.write(input.input); return { accepted: true as const }; },
     });
+  }
+  /**
+   * `signin.status`, and (AGEND-124) the proof after the fact for a NAMED account of a CLI told its account by an argument: when its command has ended with exit 0, the account's own folder must hold the CLI's
+   * sign-in file as a plain file. The pre-flight probe only shows the pin worked for an EMPTY folder while the Windows user was signed in; a CLI that stopped honouring the pin would have kept this login in the
+   * Credential Manager, as the Windows user's OWN login. Then the answer carries `isolated: false`, the dashboard ends the sign-in as `not_isolated`, and the record says so.
+   */
+  private signInStatus(sessionId: string): { alive: boolean; exitCode?: number; isolated?: false } {
+    const session = this.slot.find(sessionId), status = session.status(), meta = this.meta;
+    if (meta && meta.id === sessionId && meta.profile !== undefined && !status.alive && status.exitCode === 0 && isCredentialProfileCli(meta.cli) && RemoteAccounts.byArgument(meta.cli)) {
+      const store = credentialProfileStore(meta.cli);
+      let kept = false;
+      try { const stat = lstatSync(join(credentialProfileDirectory(this.deps.credentialRoot, meta.cli, meta.profile), store!)); kept = stat.isFile() && !stat.isSymbolicLink(); } catch { kept = false; }
+      if (!kept) { meta.notIsolated = true; meta.signedIn = false; return { ...status, isolated: false }; }
+    }
+    return status;
   }
   /** While a sign-in is open, look at its switch every few seconds: a switch that was turned off, or that ran out, ends it and says so in the record. */
   private watchSwitch(id: string): void {
@@ -429,7 +536,7 @@ export class RemoteAccounts {
     if (meta && meta.id === sessionId) {
       this.meta = null;
       this.record({ actor: meta.actor, action: "signin", cli: meta.cli, profile: meta.profile, outcome: how === "closed" && meta.signedIn === true ? "ok" : "failed",
-        ...(how === "closed" ? (meta.signedIn === true ? {} : { reason: "failed" as const }) : { reason: how === "timeout" ? "timeout" as const : "switch_off" as const }) }, false);
+        ...(how === "closed" ? (meta.signedIn === true ? {} : { reason: meta.notIsolated ? "not_isolated" as const : "failed" as const }) : { reason: how === "timeout" ? "timeout" as const : "switch_off" as const }) }, false);
     }
     return { closed: true };
   }
@@ -476,7 +583,33 @@ export class RemoteAccounts {
     } catch(error) { this.record({actor:input.actor,action:"models.refresh",outcome:"failed",cli:input.cli,...(selected?{profile:selected}:{}),reason:"failed"},false); throw error; } finally { if (key) this.busy.delete(key); this.activeChecks--; }
   }
 
-  private async check(input: { cli: string; profile: string }, ctx: Ctx): Promise<{ loggedIn: boolean | null; identity?: AccountIdentity }> {
+  private async check(input: { cli: string; profile?: string }, ctx: Ctx): Promise<{ loggedIn: boolean | null; identity?: AccountIdentity }> {
+    if (input.profile === undefined && isRuntimeDefaultLoginCli(input.cli)) return this.checkDefault(input.cli, input, ctx);
+    this.gate(ctx, "accounts");
+    this.cliOf(input.cli);
+    if (input.profile === undefined) throw new RemoteSetupRefusal("A check names the credential profile it is for", "invalid_request");
+    return this.checkProfile({ cli: input.cli, profile: input.profile }, ctx);
+  }
+  /**
+   * Antigravity's own login: `agy models` read by its exit code, nothing else (no e-mail, no plan). Not recorded, like a profile's check, and bounded the same way. Asked only
+   * because a person's request says so: the dashboard's page reads the last detection instead (agy is never started on a read).
+   */
+  private async checkDefault(cli: RuntimeDefaultLoginCli, input: { cli: string; profile?: string }, ctx: Ctx): Promise<{ loggedIn: boolean | null }> {
+    this.gate(ctx, "accounts");
+    if (this.activeChecks >= MAX_CONCURRENT_CHECKS) throw new SignInRefusal("Other account checks are running on this computer; try again in a moment", "busy");
+    if (!this.deps.defaultStatus) return { loggedIn: null };
+    this.activeChecks++;
+    try {
+      const loggedIn = await this.deps.defaultStatus(cli);
+      this.gate(ctx, "accounts");
+      if (this.meta && this.meta.cli === cli) this.meta.signedIn = loggedIn === true;
+      // A yes or a no is the newest word on this login: the Runtime's inventory carries it, and is re-sent BEFORE the answer (as for a profile's check), so that a later report of the cached
+      // inventory (a reconnect, another account's change) does not bring back what was true before. "Could not be asked" says nothing and changes nothing.
+      if (loggedIn !== null) { try { this.deps.noteLogin?.(cli, loggedIn); } catch { /* the answer is still given */ } await this.refreshed(ctx); }
+      return { loggedIn };
+    } finally { this.activeChecks--; }
+  }
+  private async checkProfile(input: { cli: string; profile: string }, ctx: Ctx): Promise<{ loggedIn: boolean | null; identity?: AccountIdentity }> {
     this.gate(ctx, "accounts");
     const cli = this.cliOf(input.cli), key = input.profile.toLowerCase();
     if (this.busy.has(key) || this.retained.has(key)) throw new SignInRefusal(`Another operation on "${input.profile}" is in progress; try again in a moment`, "busy");
@@ -490,35 +623,46 @@ export class RemoteAccounts {
       // The shared parser already masked the address; check the masked form once more before anything is stored or sent.
       const identity = answer.loggedIn === true && answer.identity ? parseAccountIdentity(answer.identity) : undefined;
       rememberCredentialStatus(this.deps.credentialRoot, cli, input.profile, { loggedIn: answer.loggedIn, ...(identity ? { identity } : {}) });
-      if (this.meta && this.meta.profile === input.profile) this.meta.signedIn = answer.loggedIn === true;
+      // A sign-in that ended without leaving its file in the account's folder (`notIsolated`) stays failed: a later check that reads "signed in" from a store every folder shares must not turn it into a success.
+      if (this.meta && this.meta.profile === input.profile && !this.meta.notIsolated) this.meta.signedIn = answer.loggedIn === true;
       await this.refreshed(ctx);
       return { loggedIn: answer.loggedIn, ...(identity ? { identity } : {}) };
     } finally { this.activeChecks--; }
   }
   /**
-   * Sign-out. The checks come first (ownership, in use, the CLI, the pace); then, with the folder taken out of reach of a swap (renamed and re-checked, as for a
-   * removal), `claude auth logout` runs against the renamed folder, the folder is verified again, its backups are deleted, and the name is put back. So a
-   * folder replaced by a junction to the user's own sign-in after the checks is found before anything is run against it. The switch and the connection are
-   * looked at again immediately before the logout starts and before the backups go.
+   * Sign-out. A request with a profile name signs that NAMED account out; one without signs the computer's OWN login out (`signOutDefault`).
+   * A named account: the checks come first (ownership, in use, the CLI, the pace); then, with the folder taken out of reach of a swap (renamed and re-checked, as for a
+   * removal), the CLI's own logout runs against the renamed folder (`claude auth logout`) or — for a CLI with none (Antigravity) — the account's token file is removed, the folder is
+   * verified again, and the answer is the CLI's own status probe under that folder. So a folder replaced by a junction to the user's own sign-in after the checks is found before anything is
+   * run against it or deleted in it. The switch and the connection are looked at again immediately before the logout starts and before the backups or the file go.
    */
-  private async signOut(input: { cli: string; profile: string; actor: string }, ctx: Ctx): Promise<{ loggedIn: false }> {
-    const actor = this.actorOf(input.actor), cli = this.cliOf(input.cli), key = input.profile.toLowerCase();
+  private async signOut(input: { cli: string; profile?: string; actor: string }, ctx: Ctx): Promise<{ loggedIn: false }> {
+    if (input.profile === undefined) return this.signOutDefault(input.cli, input.actor, ctx);
+    const profile = input.profile, actor = this.actorOf(input.actor), cli = this.cliOf(input.cli), key = profile.toLowerCase();
+    const facts = runtimeFacts(cli, "signOut");
+    if (!facts) throw new ProfileOwnershipRefusal(`${cliName(cli)} accounts cannot be signed out from AgEnD`, "unsupported");
     let executable: RemoteCliExecutable | null = null;
-    return this.audited("profile.signout", "accounts", actor, { cli, profile: input.profile }, ctx, {
+    return this.audited("profile.signout", "accounts", actor, { cli, profile }, ctx, {
       check: async () => {
-        this.paceCheck(input.profile);
-        await requireOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, this.deps.ownership);
-        await this.busyProfile(input.profile);
+        this.paceCheck(profile);
+        await requireOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, profile, this.deps.ownership);
+        await this.busyProfile(profile);
         executable = await this.deps.find(cli);
-        if (!executable) throw new SignInRefusal("Claude Code is not installed on this computer", "failed");
-        this.paceMark(input.profile);
+        if (!executable) throw new SignInRefusal(`${cliName(cli)} is not installed on this computer`, "failed");
+        this.paceMark(profile);
       },
       run: async () => {
-        const answer = await withIsolatedOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile,
-          { ...this.deps.ownership, ...(this.deps.report ? { report: this.deps.report } : {}), beforeCommit: () => this.finalLook(ctx, input.profile, false) },
+        const answer = await withIsolatedOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, profile,
+          { ...this.deps.ownership, ...(this.deps.report ? { report: this.deps.report } : {}), beforeCommit: () => this.finalLook(ctx, profile, false) },
           async (directory, verify) => {
             this.gate(ctx, "accounts");
-            try { await this.deps.runLogout(executable!, ["auth", "logout"], withCredentialProfile(this.deps.environment(), cli, directory)); }
+            if ("remove" in facts) {
+              // The sign-in is a file in the account's folder: proven to be this folder (verify), then removed (only a plain file of that exact name), and the CLI is asked.
+              await verify(); this.gate(ctx, "accounts");
+              for (const name of facts.remove) removeSignInFile(directory, name);
+              return this.deps.status(cli, directory);
+            }
+            try { await this.deps.runLogout(executable!, [...facts.args], withCredentialProfile(this.deps.environment(), cli, directory)); }
             catch (error) {
               if (error instanceof ProcessNotConfirmedEnded) {
                 // The old logout may still be running: the profile stays busy, and keeps its temporary name, until that process really ends.
@@ -532,9 +676,47 @@ export class RemoteAccounts {
             deleteProfileBackups(directory);
             return this.deps.status(cli, directory);
           });
-        rememberCredentialStatus(this.deps.credentialRoot, cli, input.profile, { loggedIn: answer.loggedIn });
+        rememberCredentialStatus(this.deps.credentialRoot, cli, profile, { loggedIn: answer.loggedIn });
         await this.refreshed(ctx);
-        if (answer.loggedIn !== false) throw new SignInRefusal(`Credential profile "${input.profile}" is still signed in after sign-out`, "failed");
+        if (answer.loggedIn !== false) throw new SignInRefusal(`Credential profile "${profile}" is still signed in after sign-out`, "failed");
+        return { loggedIn: false as const };
+      },
+    });
+  }
+  /**
+   * AGEND-124: the computer's OWN login of a CLI that has one (Antigravity), signed out: the Credential Manager entry the registry names (`runtime.signOut.credential`; `cmdkey /delete:<name>` deletes the
+   * entry agy's own `/logout` does, measured on a decoy entry), then `agy models` says whether it took. Everything a sign-in of that login needs applies: the local `accounts` switch, no sign-in under way on
+   * this computer, one at a time, a pause between two, a record in `audit.jsonl`; and no native task running (it would lose its login under it). The entry's name is the registry's, never the request's.
+   */
+  private async signOutDefault(cliId: string, actorId: string, ctx: Ctx): Promise<{ loggedIn: false }> {
+    const actor = this.actorOf(actorId);
+    if (!isRuntimeDefaultLoginCli(cliId)) { this.cliOf(cliId); throw new RemoteSetupRefusal("A sign-out names the credential profile it is for", "invalid_request"); }
+    const cli = cliId, facts = runtimeFacts(cli, "signOut");
+    if (!facts || !("credential" in facts)) throw new ProfileOwnershipRefusal(`${cliName(cli)}'s own login on a computer cannot be signed out from AgEnD`, "unsupported");
+    const paceKey = `${DEFAULT_KEY}${cli}`;
+    return this.audited("login.signout", "accounts", actor, { cli }, ctx, {
+      exclusive: "signin-start",
+      check: async () => {
+        await this.settleEndedSignIn();
+        if (this.slot.current()) throw new SignInRefusal("A sign-in is running on this computer; end it first", "busy");
+        if (!this.deps.deleteCredential || !this.deps.defaultStatus) throw new ProfileOwnershipRefusal("This Runtime cannot sign this computer's own login out", "unsupported");
+        // Asked with `await`: the Runtime reads the computer's boot identity first, so a terminal recorded under an earlier boot is not counted as running.
+        if ((await this.deps.taskRunning?.()) !== false) throw new ProfileOwnershipRefusal(`A task is running on this computer (or this Runtime could not tell), and it would lose its ${cliName(cli)} login; wait for it to finish`, "in_use");
+        const last = this.lastChange.get(paceKey);
+        if (last !== undefined && this.now() - last < PROFILE_OP_MIN_GAP_MS) throw new SignInRefusal(`${cliName(cli)} was just signed out here; wait a few seconds`, "rate_limited");
+        this.lastChange.set(paceKey, this.now());
+      },
+      run: async () => {
+        this.gate(ctx, "accounts");
+        if (this.slot.current() || (await this.deps.taskRunning?.()) !== false) throw new ProfileOwnershipRefusal("A sign-in or a task started on this computer; nothing was changed", "in_use");
+        // 0: deleted. Any other exit is not by itself a failure (an entry that was not there is already signed out): `agy models` below is what answers.
+        await this.deps.deleteCredential!(facts.credential);
+        this.gate(ctx, "accounts");
+        const loggedIn = await this.deps.defaultStatus!(cli);
+        this.gate(ctx, "accounts");
+        if (loggedIn !== null) { try { this.deps.noteLogin?.(cli, loggedIn); } catch { /* the answer is still given */ } }
+        await this.refreshed(ctx);
+        if (loggedIn !== false) throw new SignInRefusal(`${cliName(cli)} is still signed in on this computer after sign-out`, "failed");
         return { loggedIn: false as const };
       },
     });
@@ -545,9 +727,12 @@ export class RemoteAccounts {
       check: async () => {
         this.paceCheck(input.profile);
         await requireOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, this.deps.ownership);
-        let fallback: string | undefined;
-        try { fallback = this.deps.defaultProfile(); } catch { throw new ProfileOwnershipRefusal("This computer could not confirm which credential profile is the default, so nothing was changed. Check that computer's Runtime folder", "unconfirmed"); }
-        if (fallback && fallback.toLowerCase() === input.profile.toLowerCase()) throw new ProfileOwnershipRefusal(`Credential profile "${input.profile}" is this computer's default for agents; change it there first: agend-runtime profile default NAME`, "default_profile");
+        // The pairing's default profile is Claude Code's (an Antigravity account has none), so only a Claude profile is held back by it.
+        if (cli === "claude-code") {
+          let fallback: string | undefined;
+          try { fallback = this.deps.defaultProfile(); } catch { throw new ProfileOwnershipRefusal("This computer could not confirm which credential profile is the default, so nothing was changed. Check that computer's Runtime folder", "unconfirmed"); }
+          if (fallback && fallback.toLowerCase() === input.profile.toLowerCase()) throw new ProfileOwnershipRefusal(`Credential profile "${input.profile}" is this computer's default for agents; change it there first: agend-runtime profile default NAME`, "default_profile");
+        }
         await this.busyProfile(input.profile);
         this.paceMark(input.profile);
       },
@@ -555,7 +740,7 @@ export class RemoteAccounts {
         this.gate(ctx, "accounts");
         // The protection (the default profile, tasks, terminals, the switch) is asked again, synchronously, immediately before the rename: `beforeCommit`.
         await removeOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile,
-          { ...this.deps.ownership, ...(this.deps.report ? { report: this.deps.report } : {}), beforeCommit: () => this.finalLook(ctx, input.profile, true), beforeDelete: () => this.finalLook(ctx, input.profile, true) });
+          { ...this.deps.ownership, ...(this.deps.report ? { report: this.deps.report } : {}), beforeCommit: () => this.finalLook(ctx, input.profile, true, cli), beforeDelete: () => this.finalLook(ctx, input.profile, true, cli) });
         await this.refreshed(ctx);
         return { removed: true as const };
       },

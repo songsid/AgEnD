@@ -5,7 +5,8 @@ import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { TmuxTerminalBackend, shellQuote, segmentInput, type TerminalBackend } from "./web-terminal.js";
 import type { StructuredSignInLaunch, StructuredSignInTransport } from "./structured-signin.js";
-import { credentialHomeSpec, credentialProfileEnv, credentialProfileHome, isCredentialProfileName, prepareCredentialProfileHome } from "./backend/credential-profile.js";
+import { hostFacts, hostIds } from "./cli-registry.js";
+import { credentialHomeSpec, credentialProfileArgs, credentialProfileEnv, credentialProfileHome, isCredentialProfileName, prepareCredentialProfileHome } from "./backend/credential-profile.js";
 
 /**
  * Whether the account's folder is there, a real directory (never a link), with exactly this spelling (a case-insensitive disk finds `chy` for `CHY`, a case-sensitive one
@@ -20,15 +21,15 @@ function accountFolderThere(dataDir: string, backend: string, profile: string): 
 }
 
 /**
- * The backends whose NAMED accounts the dashboard signs in with the structured controls: Claude Code's only, whose login under a relocated `CLAUDE_CONFIG_DIR` was checked with
- * these controls. Deliberately not `CHAT_PROFILE_LOGIN_BACKENDS` (what chat's `/login <backend> <profile>` can sign in): widening that must not widen what these controls launch.
+ * The backends whose NAMED accounts the dashboard signs in with the structured controls: Claude Code, whose login under a relocated `CLAUDE_CONFIG_DIR` was checked with
+ * these controls, and Antigravity (AGEND-119), whose `agy --app_data_dir <folder> acp --login` was checked to keep the login in that folder (with the registry's `pin`). Deliberately not `CHAT_PROFILE_LOGIN_BACKENDS` (what chat's `/login <backend> <profile>` can sign in): widening that must not widen what these controls launch.
  */
-export const STRUCTURED_PROFILE_BACKENDS: ReadonlySet<string> = new Set(["claude-code"]);
+export const STRUCTURED_PROFILE_BACKENDS: ReadonlySet<string> = new Set(hostIds("structuredSignIn").filter(id => hostFacts(id, "structuredSignIn")!.named));
 
 /** Only host-selected paths/locale enter the dedicated CLI. No fleet/MCP/provider env injection. */
 export function structuredSignInEnvironment(env: NodeJS.ProcessEnv): Record<string, string> {
   const result: Record<string, string> = { TERM: "xterm-256color", BROWSER: "false", EDITOR: "false", VISUAL: "false" };
-  for (const key of ["HOME", "PATH", "LANG", "LC_ALL", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "CODEX_HOME", "CLAUDE_CONFIG_DIR"]) {
+  for (const key of ["HOME", "PATH", "LANG", "LC_ALL", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "GEMINI_HOME"]) {
     const value = env[key];
     if (value && !/[\0\r\n]/.test(value)) result[key] = value;
   }
@@ -68,6 +69,10 @@ export function createStructuredSignInTransport(options: StructuredSignInTranspo
   const native = options.native ?? new TmuxTerminalBackend();
   const socket = `agend-signin-${randomBytes(16).toString("hex")}`;
   let dir: string | null = null, touched = false, closed = false;
+  // AGEND-224 (review P1-2): for a NAMED account of a CLI told its account by an argument, the plain file that holds its sign-in in the account's own folder. After the command has ended with exit 0 the
+  // account is connected only if that file is there (the Runtime's `signInStatus` does the same): a CLI that stopped honouring the pin would have kept the login in the system keyring, i.e. in every
+  // folder's, and `agy models` would still say "connected".
+  let keptIn: (() => boolean) | null = null;
   let chain: Promise<unknown> = Promise.resolve();
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {
     const result = chain.then(fn); chain = result.catch(() => {}); return result;
@@ -80,14 +85,24 @@ export function createStructuredSignInTransport(options: StructuredSignInTranspo
         // A named profile (#3212) is signed in here with that profile's own folder and variable; a transport that was not given its backend and data
         // directory cannot say where that is, so it refuses: a profile is never silently dropped (that would sign the DEFAULT account in).
         const environment = structuredSignInEnvironment(options.env ?? process.env);
+        let argv: readonly string[] = spec.argv;
         if (spec.profile !== undefined) {
           if (!options.backend || !options.dataDir) throw new Error("signin_profile_unsupported");
           Object.assign(environment, structuredSignInProfileEnvironment(options.dataDir, options.backend, spec.profile));
+          // AGEND-119: a CLI told its account by an argument (agy --app_data_dir <folder> acp --login) gets it right after the binary; the folder is the one the check above made.
+          const args = credentialProfileArgs(options.dataDir, options.backend, spec.profile);
+          if (args.length) {
+            argv = [spec.argv[0]!, ...args, ...spec.argv.slice(1)];
+            const facts = hostFacts(options.backend, "namedAccounts"), backend = options.backend, dataDir = options.dataDir, profile = spec.profile;
+            const store = facts && facts.home === "launch-argument" ? facts.store : null;
+            // No store name to look for is "not kept": the proof can only fail closed.
+            keptIn = () => { try { const st = lstatSync(join(credentialProfileHome(dataDir, backend, profile), store ?? "")); return !!store && st.isFile() && !st.isSymbolicLink(); } catch { return false; } };
+          }
         }
         const envArgs = Object.entries(environment).map(([key, value]) => shellQuote(`${key}=${value}`)).join(" ");
         // Exec closes the shell boundary after the fixed login command exits.
         // Neither this spec nor env values come from browser-provided bytes.
-        const login = "exec " + spec.argv.map(shellQuote).join(" ");
+        const login = "exec " + argv.map(shellQuote).join(" ");
         const command = spec.logoutArgv ? spec.logoutArgv.map(shellQuote).join(" ") + " && " + login : login;
         dir = mkdtempSync(join(tmpdir(), "agend-signin-"));
         touched = true;
@@ -100,6 +115,7 @@ export function createStructuredSignInTransport(options: StructuredSignInTranspo
     status() { return serial(async () => {
       guard(); const status = await native.paneStatus(socket);
       if (!status) throw new Error("signin_status_unknown");
+      if (keptIn && !status.alive && status.exitCode === 0 && !keptIn()) return { ...status, isolated: false as const };
       return status;
     }); },
     write(input, signal) { return serial(async () => {

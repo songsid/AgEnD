@@ -49,7 +49,10 @@ export interface SignInTarget {
   install?: string;
   /** Too old: the command that installs the current version over it. */
   update?: string;
-  /** Which account this sign-in is (a masked e-mail and a plan), Claude Code only, from the host's own `claude auth status`. Local administrators only: this list is never served to anyone else. */
+  /**
+   * Which account this sign-in is (a masked e-mail and a plan), from the host's own `claude auth status` (Claude Code) or, for Antigravity, the masked `id_token_email` of agy's token file
+   * (an e-mail only, no plan; AGEND-113). Local administrators only: this list is never served to anyone else.
+   */
   identity?: AccountIdentity;
   /** M-2825: the sign-in's file says it is over (its end date passed, or blanked after a refused refresh): reconnect it. */
   reconnect?: true;

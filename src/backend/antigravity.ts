@@ -1,4 +1,6 @@
 import { ensureAgendHome } from "../agend-home.js";
+import { seedFirstRun } from "../antigravity-first-run.js";
+import { credentialHomeSpec, credentialProfileHome, credentialProfileLaunch, prepareCredentialProfileHome, resolveCredentialProfile } from "./credential-profile.js";
 import { CANONICAL_EFFORT, EFFORT_CAPABILITIES, agyEffortLevels, readAgyCliEnv } from "./effort-metadata.js";
 import { flagEffort, readHelpText, resolveAgyLaunch } from "./launch-effort.js";
 import { dirname, join } from "node:path";
@@ -214,6 +216,19 @@ export class AntigravityBackend implements CliBackend {
     return warning;
   }
 
+  /**
+   * AGEND-119: the named account this instance runs as (`backend_options.antigravity.credential_profile`), or null for the default sign-in (nothing added, nothing created: the command is exactly what it was).
+   * A named account's folder is made here as a sign-in makes it (a real directory, no link, seeded from the default's first run), and agy is told where it is.
+   */
+  private profileLaunch(config: CliBackendConfig): { env: string; args: string } | null {
+    const profile = resolveCredentialProfile(config.backendOptions);
+    if (!profile) return null;
+    this.preparedAccountFolder(config, profile);
+    const launch = credentialProfileLaunch(this.agendHome, "antigravity", profile);
+    if (!launch) return null;
+    return { env: Object.entries(launch.env).map(([name, value]) => `${name}=${shellQuote(value)} `).join(""), args: launch.args.map(arg => ` ${shellQuote(arg)}`).join("") };
+  }
+
   buildCommand(config: CliBackendConfig): string {
     // agy 1.1.17+ has no per-workspace MCP config and no --mcp-config flag. Its
     // global MCP child does inherit the CLI process environment, so MCP-mode
@@ -222,7 +237,9 @@ export class AntigravityBackend implements CliBackend {
     const prefix = config.agentMode === "mcp" && existsSync(this.mcpWrapperPath)
       ? `${shellQuote(this.mcpWrapperPath)} `
       : "";
-    let cmd = `${prefix}${this.binaryPath}`;
+    // A named account: its variables come before the wrapper (which is `exec "$@"`, so it takes a command, not an assignment) and its folder right after the binary.
+    const profile = this.profileLaunch(config);
+    let cmd = `${profile?.env ?? ""}${prefix}${this.binaryPath}${profile?.args ?? ""}`;
     if (config.skipPermissions !== false) cmd += " --dangerously-skip-permissions";
     if (!config.skipResume) cmd += " --continue";
     if (config.model) warnIfModelMismatch("antigravity", config.model);
@@ -273,7 +290,28 @@ export class AntigravityBackend implements CliBackend {
       try { unlinkSync(this.mcpWrapperPath); } catch { /* absent */ }
     }
 
-    this.enableStatusLine();
+    this.enableStatusLine(this.accountFolder(config));
+  }
+
+  /**
+   * The named account's folder, prepared: a real folder (no link), and — only for the files it does not have yet — the first-run files GENERATED for this instance (antigravity-first-run.ts: nothing is
+   * read from the default account's folder, nothing is copied). The trust written is this instance's own working directory.
+   */
+  private preparedAccountFolder(config: CliBackendConfig, profile: string): string {
+    const folder = credentialProfileHome(this.agendHome, "antigravity", profile);
+    prepareCredentialProfileHome(credentialHomeSpec("antigravity")!, folder);
+    seedFirstRun(folder, config.workingDirectory, join(this.agendHome, "agy-statusline.sh"));
+    return folder;
+  }
+
+  /**
+   * The folder agy keeps this instance's settings in: its named account's own, or the default sign-in's. A named account's is prepared first (a real folder, no link, seeded from the default's first run): the
+   * settings are written into it, and a folder that is a link to another account's must be refused before anything is written through it.
+   */
+  private accountFolder(config: CliBackendConfig): string {
+    const profile = resolveCredentialProfile(config.backendOptions);
+    if (!profile) return join(this.userHome, ".gemini", "antigravity-cli");
+    return this.preparedAccountFolder(config, profile);
   }
 
   private writeMcpEnvWrapper(config: CliBackendConfig): void {
@@ -387,7 +425,7 @@ export class AntigravityBackend implements CliBackend {
    * ~/.gemini/antigravity-cli/settings.json. A user's OWN statusLine.command is
    * never overwritten. Best-effort — never blocks launch.
    */
-  private enableStatusLine(): void {
+  private enableStatusLine(agyDir: string): void {
     try {
       // (Re)write our statusline script each launch so it stays current. agy
       // pipes JSON telemetry on stdin; we emit "Context N% used" (matches
@@ -405,7 +443,6 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
         chmodSync(scriptPath, 0o755);  // writeFileSync mode only applies on create
       } catch { /* best effort — a bad script write shouldn't block settings */ }
 
-      const agyDir = join(this.userHome, ".gemini", "antigravity-cli");
       const settingsPath = join(agyDir, "settings.json");
       let settings: Record<string, unknown> = {};
       try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")) ?? {}; } catch { /* new/empty/corrupt → start fresh */ }

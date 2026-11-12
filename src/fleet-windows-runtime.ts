@@ -9,7 +9,7 @@ import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches
 /** M-2255: the switch for where this agent runs — this PC's Windows CLIs, or the other Windows computers. */
 const switchedOn = (agent: { machineId?: string }): boolean => agent.machineId ? remoteRuntimeEnabled() : localWindowsCliEnabled();
 import { isWindowsInstance, isNativeExecInstance, nativeAgentId, nativeCredentialProfile, nativeInstanceConfig, nativeInstanceName, registerWindowsProfiles, previewWindowsProfile, syncWindowsProfile } from "./native-instance-registry.js";
-import { assertCredentialProfileName } from "./runtime-credential-profiles.js";
+import { PROFILE_CLI_NAMES, assertCredentialProfileName, isCredentialProfileCli } from "./runtime-credential-profiles.js";
 import { validWindowsAgentId } from "./windows-cli-worker.js";
 import type { NativeHistoryMessage, WebChatHistory } from "./web-chat-history.js";
 import type { SettingsExecution } from "./settings-transaction.js";
@@ -130,9 +130,9 @@ export class FleetWindowsRuntime {
       native_sandbox:agent.sandbox,working_directory:agent.cwd,backend:agent.cli,model:agent.model||"",agent_mode:"cli"};
       if(agent.machineId)config.machine_id=agent.machineId;else delete config.machine_id;
       // A Windows Agent has no Linux shell hook and no Linux credential home; #3036's General move drops the same three fields. The one thing
-      // that does carry over is a NAME the target computer resolves itself: Claude Code's credential profile on a paired Runtime.
+      // that does carry over is a NAME the target computer resolves itself: the credential profile of the agent's own CLI (Claude Code's, Antigravity's) on a paired Runtime.
       for(const key of ["backend_options","credential_profile","pre_task_command"] as const)delete (config as unknown as Record<string,unknown>)[key];
-      if(target.credentialProfile)config.backend_options={"claude-code":{credential_profile:assertCredentialProfileName(target.credentialProfile)}};
+      if(target.credentialProfile)config.backend_options={[agent.cli]:{credential_profile:assertCredentialProfileName(target.credentialProfile)}};
       nativeCredentialProfile(config);
       if(before.backend!==target.backend)config.model_failover=[];
       return {config,discard,current:targetCurrent};}
@@ -153,7 +153,7 @@ export class FleetWindowsRuntime {
     if (addsSecondGeneral(fleet as never)) throw new Error("one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true");
     const {tags,credentialProfile,...profile} = input;
     if (credentialProfile !== undefined) {
-      if (profile.machineId === undefined || profile.cli !== "claude-code") throw new Error("A credential profile is a Claude Code sign-in kept on a paired Runtime computer; choose that computer and Claude Code");
+      if (profile.machineId === undefined || !isCredentialProfileCli(profile.cli)) throw new Error(`A credential profile is a ${PROFILE_CLI_NAMES()} sign-in kept on a paired Runtime computer; choose that computer and ${PROFILE_CLI_NAMES()}`);
       assertCredentialProfileName(credentialProfile);
     }
     if (profile.machineId !== undefined) {
@@ -168,7 +168,7 @@ export class FleetWindowsRuntime {
         // #3021 review r2: asked again at the commit, after the profile's await — a create made meanwhile counts.
         if (addsSecondGeneral(fleet as never)) throw new Error("one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true");
         fleet.instances[name] = {...nativeInstanceConfig(agent),...binding,...(Array.isArray(tags) ? {tags:tags as string[]} : {}),
-          ...(credentialProfile ? {backend_options:{"claude-code":{credential_profile:credentialProfile as string}}} : {})};
+          ...(credentialProfile ? {backend_options:{[agent.cli]:{credential_profile:credentialProfile as string}}} : {})};
         this.host.save();
       };
       if(transaction)transaction.mutate(persist);else persist();

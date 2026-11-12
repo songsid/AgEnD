@@ -3,7 +3,7 @@ import type { FleetConfig, InstanceConfig } from "./types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { validWindowsAgentId } from "./windows-cli-worker.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
-import { assertCredentialProfileCli, assertCredentialProfileName } from "./runtime-credential-profiles.js";
+import { PROFILE_CLI_NAMES, assertCredentialProfileName, isCredentialProfileCli } from "./runtime-credential-profiles.js";
 import type { WindowsAgent, WindowsAgents, WindowsAgentPatch } from "./windows-agents.js";
 
 /** M-2239 P1-1: why create_instance (and every path through handleCreate) refuses a Windows agent. */
@@ -29,21 +29,22 @@ export function nativeAgentId(config: Partial<InstanceConfig> | null | undefined
   return isWindowsInstance(config) && validWindowsAgentId(config.native_agent_id) ? config.native_agent_id.toLowerCase() : null;
 }
 /**
- * The credential profile NAME a Windows agent runs under, from `backend_options["claude-code"].credential_profile`; undefined means "the
- * computer's own sign-in". Only a name: the Runtime on that computer owns the folder it stands for. Fail closed: a malformed name, a
- * profile on a CLI other than Claude Code, or a profile on this PC's own (non-Runtime) Windows CLIs is an error, never ignored.
+ * The credential profile NAME a Windows agent runs under, from `backend_options[<its own CLI>].credential_profile` (Claude Code's, or — AGEND-124 — Antigravity's); undefined means "the
+ * computer's own sign-in". Only a name: the Runtime on that computer owns the folder it stands for. Fail closed: a malformed name, a profile under another CLI than the agent's own, a profile for
+ * a CLI that has no named accounts on a computer, or a profile on this PC's own (non-Runtime) Windows CLIs is an error, never ignored.
  */
 export function nativeCredentialProfile(config: Partial<InstanceConfig> | null | undefined): string | undefined {
   const options = config?.backend_options;
   if (!options || typeof options !== "object") return undefined;
-  const raw = options["claude-code"]?.credential_profile;
-  const other = Object.entries(options).find(([backend, row]) => backend !== "claude-code" && row && typeof row === "object" && (row as Record<string, unknown>).credential_profile !== undefined);
-  if (other) throw new Error("A Windows agent can choose a credential profile for Claude Code only");
+  const backend = config?.backend;
+  const refused = (): Error => new Error(`A Windows agent can choose a credential profile for ${PROFILE_CLI_NAMES()} only, under its own CLI`);
+  const other = Object.entries(options).find(([name, row]) => name !== backend && row && typeof row === "object" && (row as Record<string, unknown>).credential_profile !== undefined);
+  if (other) throw refused();
+  const raw = typeof backend === "string" && Object.hasOwn(options, backend) ? options[backend]?.credential_profile : undefined;
   if (raw === undefined || raw === null || raw === "") return undefined;
   const name = assertCredentialProfileName(raw);
-  if (config?.backend !== "claude-code") throw new Error("A Windows agent can choose a credential profile for Claude Code only");
+  if (!isCredentialProfileCli(backend)) throw refused();
   if (!config?.machine_id) throw new Error("A credential profile is a sign-in kept on a paired Runtime computer; choose that computer for this agent");
-  assertCredentialProfileCli(config.backend);
   return name;
 }
 export function nativeInstanceConfig(agent: Omit<WindowsAgent,"turns"|"instructions"> & {instructions?:string}): NativeInstanceConfig {

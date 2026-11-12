@@ -60,6 +60,8 @@ button.s-account-used { display: inline-flex; align-items: center; gap: var(--s-
 .s-account-usage.is-stale .u-cm-pct { color: var(--text-3); }
 .s-account-usage.is-stale .u-cm-fill { background: var(--text-3); }
 .s-usage-stale { grid-column: 1 / -1; color: var(--text-3); font-size: var(--fs-xs); }
+/* AGEND-119: the reset cell is as wide as its words. The Usage panel's meter gives it a fixed 3.7em, which cuts a week's "↻ 47小時" in zh-TW (a CJK character is a full em); here the bar gives way instead. */
+.s-account-usage .u-cm { grid-template-columns: 2.2em minmax(2em, 1fr) 2.9em minmax(3.7em, max-content); }
 
 .s-account-default { margin: 0; }
 .s-accounts .s-account-default { padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--bg); }

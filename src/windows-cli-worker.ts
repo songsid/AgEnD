@@ -4,17 +4,19 @@
  */
 import { execFile, spawn } from "./child-process.js";
 import type { ChildProcess } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, hostname, tmpdir } from "node:os";
 import { dirname, join, resolve, win32 } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { randomBytes } from "node:crypto";
+import { runtimeFacts, type RuntimeDefaultLoginCli } from "./cli-registry.js";
 import { nativeUpdateGuard, boundNativeModelOptions, buildNativeInvocation, isNativeProviderId, nativeMcpServerConfig, nativeProvider, NATIVE_PROVIDER_IDS, parseNativeAuthResult, parseNativeModels, validateNativeMcpConnection, validateNativeModel, type NativeMcpLaunch, type NativeModelOption, type NativeProviderDescriptor, type NativeProviderId } from "./windows-cli-providers.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
 import { identityOf, parseClaudeAuthStatus, type AccountIdentity } from "./claude-auth-status.js";
-import { isCredentialProfileCli, withCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
+import { credentialProfileLaunch, credentialProfileStore, isCredentialProfileCli, type CredentialProfileCli } from "./runtime-credential-profiles.js";
+import { readAntigravityIdentityIn } from "./antigravity-identity.js";
 import { MANAGED_CLI_ROOT_ENV, managedCliExecutable } from "./runtime-cli-install.js";
 
 const exec = promisify(execFile);
@@ -29,6 +31,19 @@ export interface NativeCliRow {
   modelsSource?: "cli-cache" | "official-catalog" | "cli-list" | "unavailable";
   /** Claude Code only: the masked e-mail and plan of the default sign-in, taken from the same `auth status` answer as `authenticated`. */
   identity?: AccountIdentity;
+}
+const SIGN_IN_FIRST = "Sign in to this Windows CLI before running a task";
+/**
+ * AGEND-113: a row with a newer word on its sign-in (a check the computer was just asked for, see `WindowsCliBridge.noteAuthenticated`). What follows from `authenticated` is derived again the way
+ * the probe derives it: runnable unless signed out, and the "sign in first" reason only for a row that has no other reason.
+ */
+export function withAuthenticated(row: NativeCliRow, authenticated: boolean): NativeCliRow {
+  if (row.authenticated === authenticated) return row;
+  const { reason, ...rest } = row;
+  const next: NativeCliRow = { ...rest, authenticated, runnable: row.supports.execution && authenticated !== false };
+  const kept = reason === SIGN_IN_FIRST ? undefined : reason;
+  const why = kept ?? (authenticated === false ? SIGN_IN_FIRST : undefined);
+  return why ? { ...next, reason: why } : next;
 }
 export interface NativeTaskInput { requestId: string; cli: NativeProviderId; cwd: string; prompt: string; sandbox: "read-only" | "workspace-write"; model?: string }
 
@@ -143,6 +158,41 @@ async function output(file: string, args: string[], timeout = 5000, env: NodeJS.
     const e = error as { stdout?: string; stderr?: string };
     return { ok: false, text: `${e.stdout ?? ""}\n${e.stderr ?? ""}`.trim() };
   }
+}
+/**
+ * AGEND-113: what a command ended with, as an exit code. `null` is "could not be asked" (it did not start, or ran out of time): never "signed out". Output is not returned at all, so
+ * nothing the CLI prints (an account name, a path) can travel with it.
+ */
+async function exitCodeOf(file: string, args: string[], timeout: number, env: NodeJS.ProcessEnv): Promise<number | null> {
+  try { await exec(file, args, { env, encoding: "utf8", timeout, maxBuffer: 64 * 1024, windowsHide: true, shell: false }); return 0; }
+  catch (error) {
+    const e = error as { code?: unknown; killed?: boolean };
+    return !e.killed && typeof e.code === "number" ? e.code : null;
+  }
+}
+/**
+ * A CLI's own login on this computer, for one whose login is the computer's (cli-registry.ts: `runtime.signIn.profile === "none"`; Antigravity): its registry `authStatus` command (`agy models`: a
+ * listing, never a login and never a model request) read by its exit code, as the host's `authCheck` reads it. Windows keeps that login in the Credential Manager under one fixed name, so there is
+ * one answer per Windows user and no profile to ask about. true = exit 0, false = the CLI said no, null = it could not be asked. Started only because an administrator's request asked (a
+ * sign-in's own checks): never on a timer or a read.
+ */
+export async function probeDefaultLogin(cli: RuntimeDefaultLoginCli, find: (id: NativeCliId) => Promise<NativeCliExecutable | null> = findCli,
+  run: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<number | null> = (entry, args, env) => exitCodeOf(entry.command, [...entry.args, ...args], 20_000, env)): Promise<boolean | null> {
+  const status = runtimeFacts(cli, "authStatus");
+  if (!status) return null;
+  const executable = await find(cli);
+  if (!executable) return null;
+  const code = await run(executable, [...nativeUpdateGuard(cli), ...status.argv], nativeCliEnvironment());
+  return code === null ? null : code === 0;
+}
+/**
+ * AGEND-124: removes one Windows Credential Manager entry by name (`cmdkey /delete:<name>`), the entry a CLI keeps the computer's OWN login in (`runtime.signOut.credential`: `gemini:antigravity`, the one agy's own
+ * `/logout` deletes). The name is the registry's, and is checked to be a plain target name (letters, digits and `:._-`) before it is put in an argument. The exit code is returned and nothing it prints: 0 deleted
+ * it, 1 is "no such entry" (already signed out), null is "could not run". The caller asks the CLI whether it took.
+ */
+export async function deleteWindowsCredential(name: string, env: NodeJS.ProcessEnv = nativeCliEnvironment()): Promise<number | null> {
+  if (!/^[A-Za-z0-9][A-Za-z0-9:._-]{0,63}$/.test(name)) throw new Error("Invalid credential entry name");
+  return exitCodeOf(join(process.env.SystemRoot || "C:\\Windows", "System32", "cmdkey.exe"), [`/delete:${name}`], 15_000, env);
 }
 const NPM_CLI_TARGETS: Partial<Record<NativeCliId, readonly string[]>> = {
   codex: ["node_modules/@openai/codex/bin/codex.js"],
@@ -273,16 +323,62 @@ export interface CredentialProfileAnswer { loggedIn: boolean | null; /** Masked 
 export async function probeCredentialProfileStatus(cli: CredentialProfileCli, directory: string, find: (id: NativeCliId) => Promise<NativeCliExecutable | null> = findCli,
   run: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<NativeCommandOutput> = (entry, args, env) => output(entry.command, [...entry.args, ...args], 15_000, env),
   /** The requester's live check (an install's consent and connection): asked before the CLI is looked for and again before its status program is started. */
-  authorized?: () => boolean): Promise<CredentialProfileAnswer> {
+  authorized?: () => boolean,
+  /** The account's masked e-mail is read from its folder when it is signed in (a NAMED account of a CLI that keeps its sign-in in a file). The isolation probe's scratch folder never is. */
+  withIdentity = true): Promise<CredentialProfileAnswer> {
   const provider = nativeProvider(cli);
-  if (!provider.authProbe || !isCredentialProfileCli(cli)) return { loggedIn: null };
+  if (!isCredentialProfileCli(cli)) return { loggedIn: null };
+  // A CLI that has no status command and answers with its model listing (Antigravity, `runtime.authStatus.source`): the listing's exit code and words, read by the shared parser, under the account's own launch.
+  const listing = runtimeFacts(cli, "authStatus")?.source === "model-listing" ? runtimeFacts(cli, "authStatus")!.argv : null;
+  if (!provider.authProbe && !listing) return { loggedIn: null };
   if (authorized && !authorized()) throw new Error("Authorization expired during CLI discovery");
   const executable = await find(cli);
   if (authorized && !authorized()) throw new Error("Authorization expired during CLI discovery");
   if (!executable) return { loggedIn: null };
-  const result = await run(executable, [...nativeUpdateGuard(cli), ...provider.authProbe], withCredentialProfile(nativeCliEnvironment(), cli, directory));
+  const launch = credentialProfileLaunch(nativeCliEnvironment(), cli, directory);
+  if (listing) {
+    // The arguments that name the account go right after the program (`agy --app_data_dir <folder> models`); the answer is asked once more when it says nothing (an empty reply), as the inventory's does.
+    const args = [...launch.args, ...nativeUpdateGuard(cli), ...listing];
+    let answer = await run(executable, args, launch.env);
+    if (answer.ok && !answer.text.trim()) answer = await run(executable, args, launch.env);
+    let loggedIn = parseNativeAuthResult(cli, answer.ok, answer.text);
+    // A CLI that keeps a folder's sign-in in a file (the registry's `store`): "signed in" needs that plain file in the folder as evidence. Without it the CLI read the login from a store every folder shares (the Windows user's
+    // own), which is not this account's, so the answer is "could not confirm" (never "signed in", and not "signed out" either).
+    const store = credentialProfileStore(cli);
+    if (loggedIn === true && store !== undefined) { try { const stat = lstatSync(join(directory, store)); if (!stat.isFile() || stat.isSymbolicLink()) loggedIn = null; } catch { loggedIn = null; } }
+    // AGEND-124: the one field of the account's own token file that names the account, masked here (agy has no command that does): only for a folder the CLI just said is signed in, only when asked.
+    const identity = withIdentity && loggedIn === true && store !== undefined ? readAntigravityIdentityIn(directory) : undefined;
+    return { loggedIn, ...(identity ? { identity } : {}) };
+  }
+  const result = await run(executable, [...launch.args, ...nativeUpdateGuard(cli), ...provider.authProbe!], launch.env);
   const status = parseClaudeAuthStatus(result.text), identity = status.loggedIn === true && result.ok ? identityOf(status) : undefined;
   return { loggedIn: status.loggedIn, ...(identity ? { identity } : {}) };
+}
+/**
+ * AGEND-124, before an Antigravity account's sign-in starts: whether the CLI really keeps a folder's sign-in in that folder. Antigravity keeps it in the Credential Manager unless the registry's `pin` makes it use the
+ * folder's file, and the Credential Manager's entry is one for every folder: a sign-in run where the pin does not hold REPLACES the Windows user's own login. So the CLI is asked (`agy --app_data_dir <scratch> models`,
+ * with the pin) about a SCRATCH folder that is empty by construction, under the Runtime's own folder (so a relative path to the CLI's home exists exactly when it does for an account's folder): only "signed out" proves the
+ * pin holds. Never the account's own folder (one that has a token file already proves nothing about a CLI that stopped honouring the pin). An answer that could not be read is asked once more; still none: not proven.
+ * The scratch folder is removed when the probe is over, and again a moment later (the CLI's background updater can write into it after it has answered).
+ */
+export async function probeCredentialIsolation(cli: CredentialProfileCli, scratchRoot: string, find?: Parameters<typeof probeCredentialProfileStatus>[2], run?: Parameters<typeof probeCredentialProfileStatus>[3],
+  authorized?: () => boolean): Promise<boolean> {
+  let scratch: string | null = null;
+  try {
+    mkdirSync(scratchRoot, { recursive: true, mode: 0o700 });
+    scratch = mkdtempSync(join(scratchRoot, ".isolation-"));
+    // The scratch folder is not an account: it never has its identity read (`withIdentity` false).
+    let answer = (await probeCredentialProfileStatus(cli, scratch, find, run, authorized, false)).loggedIn;
+    if (answer === null) answer = (await probeCredentialProfileStatus(cli, scratch, find, run, authorized, false)).loggedIn;
+    return answer === false;
+  } catch { return false; }
+  finally {
+    if (scratch) {
+      const folder = scratch, remove = (): void => { try { rmSync(folder, { recursive: true, force: true }); } catch { /* a scratch folder */ } };
+      remove();
+      const again = setTimeout(remove, 3_000); again.unref?.();
+    }
+  }
 }
 /** Signed in or not, nothing else (the launch gate). */
 export async function probeCredentialProfileLogin(cli: CredentialProfileCli, directory: string, find?: Parameters<typeof probeCredentialProfileStatus>[2], run?: Parameters<typeof probeCredentialProfileStatus>[3]): Promise<boolean | null> {
@@ -441,7 +537,9 @@ async function probeNativeCli(id: NativeCliId, options: NativeProbeOptions, incl
   const help = await nonempty(helpProbe.args);
   const auth = provider.authProbe ? await nonempty([...provider.authProbe]) : null;
   const listing = includeModels && provider.modelProbe ? await nonempty([...provider.modelProbe]) : null;
-  const authenticated = auth ? parseNativeAuthResult(id, auth.ok, auth.text) : null;
+  // A CLI whose registry `authStatus.source` is `model-listing` (Antigravity) has no status command, but the model listing it is asked for anyway says whether it is signed in: "Please sign in to view available models" with a failing exit. Read from that
+  // one answer (no extra process); a listing that fails for any other reason (the network) says nothing, and is never "signed out".
+  const authenticated = auth ? parseNativeAuthResult(id, auth.ok, auth.text) : runtimeFacts(id, "authStatus")?.source === "model-listing" && listing ? parseNativeAuthResult(id, listing.ok, listing.text) : null;
   // The same answer says which account it is (Claude Code only; an API key or a signed-out answer has none). Masked here, before it is stored or sent.
   const identity = id === "claude-code" && auth?.ok && authenticated === true ? identityOf(parseClaudeAuthStatus(auth.text)) : undefined;
   const compatible = help.ok && helpProbe.required.every(flag => help.text.includes(flag));
@@ -450,7 +548,7 @@ async function probeNativeCli(id: NativeCliId, options: NativeProbeOptions, incl
   const versionText = versionAvailable ? version.text.split(/\r?\n/)[0].slice(0, 120) : null;
   const models = boundNativeModelOptions(!includeModels ? [] : listing?.ok ? parseNativeModels(id, listing.text) : (options.readModels ?? readNativeModels)(id, versionText));
   const reason = !versionAvailable ? "The Windows CLI version check returned no usable output" : !help.ok || !help.text.trim() ? "The Windows CLI help check returned no usable output" : !compatible ? "Update this Windows CLI: the installed version lacks the required headless JSON protocol"
-    : !provider.supports.execution ? provider.reason : authenticated === false ? "Sign in to this Windows CLI before running a task" : undefined;
+    : !provider.supports.execution ? provider.reason : authenticated === false ? SIGN_IN_FIRST : undefined;
   const row: NativeCliRow = {
     ...base, path: executable.path, version: versionText,
     authenticated, readOnlySupport, supports: { ...base.supports, execution: base.supports.execution && compatible && versionAvailable,
@@ -508,7 +606,7 @@ async function workerMain(): Promise<void> {
       // Set only by this computer's own Runtime after it turned a profile NAME into a folder under its profile root; AgEnD never sends it.
       let credentialHome: string | undefined;
       if (request.credentialHome !== undefined) {
-        if (input.cli !== "claude-code" || !validWindowsDirectory(request.credentialHome)) throw new Error("Invalid credential profile folder");
+        if (!isCredentialProfileCli(input.cli) || !validWindowsDirectory(request.credentialHome)) throw new Error("Invalid credential profile folder");
         if (!existsSync(request.credentialHome) || !statSync(request.credentialHome).isDirectory()) throw new Error("The credential profile folder does not exist on this computer");
         credentialHome = request.credentialHome;
       }
@@ -541,8 +639,9 @@ async function workerMain(): Promise<void> {
           createdFiles.push(mcpConfigFile);
         }
         const invocation = buildNativeInvocation({...input,prompt}, { resumeSessionId: request.resumeSessionId, promptFile,mcp:launch });
-        const baseEnvironment = credentialHome ? withCredentialProfile(nativeCliEnvironment(), input.cli, credentialHome) : nativeCliEnvironment();
-        child = spawn(executable.command, [...executable.args, ...invocation.args], { cwd: input.cwd, env: { ...baseEnvironment, ...invocation.env }, shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+        // A named account's launch: its variable (Claude Code), or the pin and the folder argument that go right after the program (Antigravity).
+        const profile = credentialHome ? credentialProfileLaunch(nativeCliEnvironment(), input.cli, credentialHome) : { env: nativeCliEnvironment(), args: [] as string[] };
+        child = spawn(executable.command, [...executable.args, ...profile.args, ...invocation.args], { cwd: input.cwd, env: { ...profile.env, ...invocation.env }, shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
         child.stdin!.on("error", () => stop());
         child.stdout!.on("error", () => stop());
         child.stderr!.on("error", () => stop());

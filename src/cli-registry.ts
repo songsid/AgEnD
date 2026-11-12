@@ -72,8 +72,8 @@ export function hostFacts<K extends keyof HostCapabilities>(id: unknown, key: K)
   return cap && (cap as { support: string }).support === "yes" ? cap as unknown as Extract<HostCapabilities[K], { support: "yes" }> : null;
 }
 export function runtimeFacts<K extends keyof RuntimeCapabilities>(id: unknown, key: K): Extract<RuntimeCapabilities[K], { support: "yes" }> | null {
-  const cap = runtimeCap(id, key);
-  return cap && isYes(cap as Cap) ? cap as Extract<RuntimeCapabilities[K], { support: "yes" }> : null;
+  const cap: unknown = runtimeCap(id, key);
+  return cap !== null && isYes(cap as Cap) ? cap as Extract<RuntimeCapabilities[K], { support: "yes" }> : null;
 }
 
 type RankedHost = { [K in keyof HostCapabilities]: Extract<HostCapabilities[K], { support: "yes" }> extends { rank: number } ? K : never }[keyof HostCapabilities];
@@ -94,3 +94,24 @@ export function hostIdsByRank(key: RankedHost): CliId[] {
 export function runtimeProviderIds(): CliId[] {
   return runtimeIds("provider").sort((a, b) => runtimeFacts(a, "provider")!.rank - runtimeFacts(b, "provider")!.rank);
 }
+
+/**
+ * AGEND-113: the CLIs a Runtime signs in as the computer's OWN login, with no profile (`runtime.signIn.profile` `none` or `both`; Antigravity). Signing in REPLACES that Windows user's login, so
+ * this is the one list the Runtime and the server both ask before they allow a sign-in or a status check without a profile: nothing else is hand-written.
+ */
+export type RuntimeDefaultLoginCli = { [I in CliId]: typeof CLI_SPECS[I]["runtime"]["signIn"] extends { readonly support: "yes"; readonly profile: "none" | "both" } ? I : never }[CliId];
+export function isRuntimeDefaultLoginCli(id: unknown): id is RuntimeDefaultLoginCli { const profile = runtimeFacts(id, "signIn")?.profile; return profile === "none" || profile === "both"; }
+export function runtimeDefaultLoginIds(): RuntimeDefaultLoginCli[] { return runtimeIds("signIn").filter(isRuntimeDefaultLoginCli); }
+/**
+ * What a Runtime reports (in its capabilities) for a CLI it can sign in as the computer's own login: `signin-<id>`, derived from the registry (never written out per CLI). A Runtime
+ * built before that CLI's spec says `none` does not report it, and the server does not offer the sign-in to it. Named-profile sign-ins stay behind the one `remote-signin` capability.
+ */
+export function runtimeSignInCapability(id: RuntimeDefaultLoginCli): string { return `signin-${id}`; }
+export function runtimeSignInCapabilities(): string[] { return runtimeDefaultLoginIds().map(runtimeSignInCapability); }
+/**
+ * AGEND-124: what a Runtime reports for a CLI other than Claude Code whose NAMED accounts it manages on the computer (`runtime.namedAccounts`, `runtime.signOut`): `accounts-<id>`, derived from the registry.
+ * A Runtime built before that does not report it, and the server shows that CLI's rows on its computer read-only ("update the Runtime") instead of sending requests it would refuse. Claude Code's are
+ * the `credential-profiles` and `remote-signin` capabilities every Runtime with accounts already has.
+ */
+export function runtimeAccountsCapability(id: string): string { return `accounts-${id}`; }
+export function runtimeAccountsCapabilities(): string[] { return runtimeIds("namedAccounts").filter(id => id !== "claude-code").map(runtimeAccountsCapability); }

@@ -6,6 +6,7 @@ import type { NativeMcpConnection } from "./windows-cli-providers.js";
 import type { RuntimeInfo, RuntimeOperation } from "./runtime-protocol.js";
 import { RUNTIME_CREDENTIAL_CAPABILITY, assertCredentialProfileCli, assertCredentialProfileName } from "./runtime-credential-profiles.js";
 import type { RuntimeCoordinatorEvent } from "./runtime-coordinator.js";
+import { runtimeAccountsCapability, runtimeFacts } from "./cli-registry.js";
 
 export interface RuntimeExecutionCoordinator {
   machine(id: string): {status: string; platform: string; inventory?: WindowsCliProbe; runtimeInfo?: RuntimeInfo} | null;
@@ -74,7 +75,10 @@ export class RuntimeWindowsBridge implements WindowsCliExecutor {
     if (options.credentialProfile!==undefined) {
       // Fail closed: a Runtime that does not report the capability would ignore the field and run the default account.
       assertCredentialProfileName(options.credentialProfile);assertCredentialProfileCli(input.cli);
-      if (!remote.machine(machineId)?.runtimeInfo?.capabilities.includes(RUNTIME_CREDENTIAL_CAPABILITY)) throw new Error("This computer's Runtime is too old to choose a Claude account. Update the Runtime on that computer, then try again.");
+      const capabilities = remote.machine(machineId)?.runtimeInfo?.capabilities;
+      if (!capabilities?.includes(RUNTIME_CREDENTIAL_CAPABILITY)) throw new Error("This computer's Runtime is too old to choose a Claude account. Update the Runtime on that computer, then try again.");
+      // A CLI other than Claude Code (Antigravity) needs the capability of its own: an older Runtime would run the task without the account's folder, on the Windows user's own login.
+      if (input.cli !== "claude-code" && !capabilities.includes(runtimeAccountsCapability(input.cli))) throw new Error(`This computer's Runtime is too old to choose a ${runtimeFacts(input.cli, "provider")?.name ?? input.cli} account. Update the Runtime on that computer, then try again.`);
     }
     const existing=remote.task(input.requestId) ?? this.pending.get(input.requestId)?.task;
     // The coordinator journal validates the complete payload digest as well as task identity.

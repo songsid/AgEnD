@@ -245,6 +245,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "access-overview.css": { file: join("shared", "access-overview.css"), type: "text/css; charset=utf-8" },
   // #3292: Keep sign-in alive's line on an Accounts row (linked by accounts-keepalive.js; an older accounts.css lacks it).
   "accounts-keepalive.css": { file: join("shared", "accounts-keepalive.css"), type: "text/css; charset=utf-8" },
+  // AGEND-113: the quota pool named under an Accounts usage window (linked by usage-pool.js; an older accounts.css lacks it).
+  "accounts-usage-pool.css": { file: join("shared", "accounts-usage-pool.css"), type: "text/css; charset=utf-8" },
   // #3160: Follow agent's stylesheet (linked by workspace-panel.js; an older workspace.css or app.css lacks it).
   "workspace-follow.css": { file: join("shared", "workspace-follow.css"), type: "text/css; charset=utf-8" },
   // #3727: the image viewer's annotation editor (linked by image-annotate.js; an older app.css lacks it).
