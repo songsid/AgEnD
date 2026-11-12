@@ -1,0 +1,10 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol/.worktrees/import-budget-3667-main
+
+(node:3275148) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 32 skipped (33)
+   Start at  20:22:42
+   Duration  70.74s (transform 48.71s, setup 1.08s, import 67.54s, tests 174ms, environment 0ms)

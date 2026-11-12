@@ -1,0 +1,142 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+·xxxxxx
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 1 passed (7)
+   Start at  23:21:57
+   Duration  1.39s (transform 537ms, setup 255ms, import 281ms, tests 201ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-navigation-3637.test.ts > workspace shares the existing router and guarded history > an unchanged Details pane does not guard another pane's navigation
+AssertionError: expected last "vi.fn()" call to have been called with [ ObjectContaining{…}, …(2) ]
+
+- Expected
++ Received
+
+@@ -1,9 +1,9 @@
+  [
+    {
+-     "instance": "gamma",
+-     "panel": "details",
++     "instance": "beta",
++     "panel": "log",
+    },
+    "/ui/fleet/agent/gamma?compare=beta&paneB=log&layout=right&focus=b&catA=basic",
+    {
+      "path": "/ui/fleet/agent/gamma?compare=beta&paneB=log&layout=right&focus=b&catA=basic",
+      "route": {
+
+ ❯ tests/web-chat-workspace-navigation-3637.test.ts:31:21
+     29|     const off = controller.pane("a").addLeaveGuard(guarded);
+     30|     controller.pane("b").navigate("/ui/log/beta");
+     31|     expect(guarded).toHaveBeenLastCalledWith(expect.objectContaining({…
+       |                     ^
+     32|       expect.objectContaining({ workspace: expect.objectContaining({ f…
+     33|     expect(nav.navStore.get().workspace.b.route.panel).toBe("log");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/web-chat-workspace-navigation-3637.test.ts > workspace shares the existing router and guarded history > accepted guarded close resumes the entire intent and checks the other guard
+TypeError: resume is not a function
+ ❯ tests/web-chat-workspace-navigation-3637.test.ts:45:5
+     43|     expect(nav.navStore.get().workspace).not.toBeNull();
+     44|     expect(second).not.toHaveBeenCalled();
+     45|     resume!();
+       |     ^
+     46|     expect(nav.navStore.get().workspace).toBeNull();
+     47|     expect(nav.navStore.get().route).toEqual({ panel: "log", instance:…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/web-chat-workspace-navigation-3637.test.ts > workspace shares the existing router and guarded history > global pages leave the workspace and an explicit ordinary deep link remains single
+AssertionError: expected { a: { route: { …(2) }, …(3) }, …(5) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "a": {
+    "hash": "",
+    "route": {
+      "instance": "gamma",
+      "panel": "details",
+    },
+    "search": "?cat=basic",
+    "seq": 3,
+  },
+  "b": {
+    "hash": "",
+    "route": {
+      "instance": "beta",
+      "panel": "view",
+    },
+    "search": "",
+    "seq": 2,
+  },
+  "flipped": false,
+  "focus": "a",
+  "layout": "right",
+  "ratio": 0.5,
+}
+
+ ❯ tests/web-chat-workspace-navigation-3637.test.ts:53:69
+     51|   it("global pages leave the workspace and an explicit ordinary deep l…
+     52|     controller.open("alpha");
+     53|     nav.navigate("/ui/needs"); expect(nav.navStore.get().workspace).to…
+       |                                                                     ^
+     54|     nav.navigate("/ui/chat/alpha"); expect(nav.navStore.get().workspac…
+     55|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/web-chat-workspace-navigation-3637.test.ts > workspace shares the existing router and guarded history > Back/Forward decodes the explicit URL instead of replacing the old focused pane
+AssertionError: expected 'details' to be 'log' // Object.is equality
+
+Expected: "log"
+Received: "details"
+
+ ❯ tests/web-chat-workspace-navigation-3637.test.ts:61:56
+     59|     p.window.dispatchEvent({ type: "popstate" } as any);
+     60|     expect(nav.navStore.get().route.instance).toBe("gamma");
+     61|     expect(nav.navStore.get().workspace.a.route.panel).toBe("log");
+       |                                                        ^
+     62|   });
+     63|   it("retires suspended drafts and their guard resources on a real pan…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  tests/web-chat-workspace-navigation-3637.test.ts > workspace shares the existing router and guarded history > retires suspended drafts and their guard resources on a real pane replacement
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/web-chat-workspace-navigation-3637.test.ts:69:30
+     67|     controller.focus("b"); expect(memory.current()).toBe(true);
+     68|     controller.pane("a").navigate("/ui/log/beta");
+     69|     expect(memory.current()).toBe(false); expect(cleanup).toHaveBeenCa…
+       |                              ^
+     70|     expect(memory.state.size).toBe(0); memory.set("draft", "late"); ex…
+     71|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  tests/web-chat-workspace-navigation-3637.test.ts > workspace shares the existing router and guarded history > retires preview before a layout is published, including a restored history entry
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ tests/web-chat-workspace-navigation-3637.test.ts:75:55
+     73|     const before = nav.navStore.get().workspace;
+     74|     retirePreview.mockImplementationOnce(() => expect(nav.navStore.get…
+     75|     controller.layout("stack"); expect(retirePreview).toHaveBeenCalled…
+       |                                                       ^
+     76|     controller.focus("a"); expect(retirePreview).toHaveBeenCalledTimes…
+     77|     p.window.history.replaceState(null, "", "/ui/log/beta?compare=gamm…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯

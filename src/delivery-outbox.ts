@@ -655,6 +655,19 @@ export class DeliveryOutbox extends EventEmitter {
     return done;
   }
 
+  /** #3647: the state of AgEnD's notice with this key (delivered, queued, cancelled…), or null when there is none. */
+  noticeStateByKey(sourceKey: string): string | null {
+    const row = this.db.prepare("SELECT state FROM deliveries WHERE source_key=?").get(sourceKey) as { state: string } | undefined;
+    return row?.state ?? null;
+  }
+
+  /** #3647: when `source` last sent anyone a message through the outbox (epoch ms), or null. */
+  latestSentAt(source: string): number | null {
+    const row = this.db.prepare("SELECT MAX(created_at) AS at FROM deliveries WHERE source_instance=?").get(source) as { at: string | null } | undefined;
+    const at = row?.at ? Date.parse(row.at) : NaN;
+    return Number.isFinite(at) ? at : null;
+  }
+
   private noteWorkingReferences(instances: string[]): void {
     // The transaction has committed. Telemetry must not change its result.
     try { this.emit("working_references", [...new Set(instances)]); } catch { /* observation only */ }

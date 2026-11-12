@@ -1,0 +1,86 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+ ↓ tests/web-chat-workspace-operation-3637.test.ts > an A-only successful operation resets A while preserving B's staged and typed edits
+ ↓ tests/web-chat-workspace-operation-3637.test.ts > only the initiating pane consumes its failed leftovers (suspended=false)
+ ↓ tests/web-chat-workspace-operation-3637.test.ts > only the initiating pane consumes its failed leftovers (suspended=true)
+ ↓ tests/web-chat-workspace-operation-3637.test.ts > an owner suspended at completion resets once on return without resetting the other pane
+ ↓ tests/web-chat-workspace-operation-3637.test.ts > a late completion from the previous owned operation cannot reset the next draft
+ × tests/web-chat-workspace-operation-3637.test.ts > a suspended owner recovers done after another pane's later operation finishes 91ms
+   → expected '' to be 'Draft alpha' // Object.is equality
+ × tests/web-chat-workspace-operation-3637.test.ts > a suspended owner recovers failed after another pane's later operation finishes 72ms
+   → expected undefined to match object { …(2) }
+ × tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is none 213ms
+   → expected { label: 'Update alpha', …(3) } to match object { …(2) }
+(3 matching properties omitted from actual)
+ × tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is writing 174ms
+   → expected { label: 'Update alpha', …(3) } to match object { …(2) }
+(3 matching properties omitted from actual)
+ × tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is done 160ms
+   → expected { label: 'Update alpha', …(3) } to match object { …(2) }
+(3 matching properties omitted from actual)
+ ↓ tests/web-chat-workspace-operation-3637.test.ts > an actual form refreshes its successful baseline after another pane replaces the global outcome
+ ↓ tests/web-chat-workspace-operation-3637.test.ts > recovered retry metadata is not reused when its request is edited
+ ↓ tests/web-chat-workspace-operation-3637.test.ts > recovered retry metadata is not reused when its request is refused
+ ↓ tests/web-chat-workspace-operation-3637.test.ts > retained outcome observers do not accumulate across suspension and are released when the workspace closes
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 9 skipped (14)
+   Start at  00:32:51
+   Duration  3.85s (transform 2.27s, setup 170ms, import 260ms, tests 3.23s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > a suspended owner recovers done after another pane's later operation finishes
+AssertionError: expected '' to be 'Draft alpha' // Object.is equality
+
+- Expected
++ Received
+
+- Draft alpha
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:104:65
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > a suspended owner recovers failed after another pane's later operation finishes
+AssertionError: expected undefined to match object { …(2) }
+
+- Expected:
+{
+  "confirms": [],
+  "key": "original-ambiguous-write",
+}
+
++ Received:
+undefined
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:105:59
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is none
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is writing
+ FAIL  tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is done
+AssertionError: expected { label: 'Update alpha', …(3) } to match object { …(2) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+@@ -1,7 +1,6 @@
+  {
+-   "key": "original-ambiguous-write",
+    "request": {
+      "body": {
+        "description": "Draft alpha",
+      },
+      "method": "PATCH",
+
+ ❯ tests/web-chat-workspace-operation-3637.test.ts:115:52
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯

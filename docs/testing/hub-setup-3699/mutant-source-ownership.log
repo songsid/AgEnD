@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 <owned checkout>
+
+ ❯ tests/hub-company-join-http.test.ts (20 tests | 1 failed | 19 skipped) 927ms
+     × is off by default and only the exact configured admin can enable it with Origin/CSRF and current revision 736ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-company-join-http.test.ts > company-join actual Hub boundary > is off by default and only the exact configured admin can enable it with Origin/CSRF and current revision
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/hub-company-join-http.test.ts:38:45
+     36|   finally { rig = undefined; vi.restoreAllMocks(); }
+     37|   // Closing a case owns its Hub and peer, not the shared source certi…
+     38|   expect(existsSync(certificates.web.cert)).toBe(true);
+       |                                             ^
+     39| });
+     40| async function world(r: Awaited<ReturnType<typeof companyJoinRig>>) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 19 skipped (20)
+   Start at  03:19:57
+   Duration  4.26s (transform 2.42s, setup 79ms, import 3.11s, tests 927ms, environment 0ms)
+

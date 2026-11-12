@@ -1,0 +1,32 @@
+{
+  "comparisons": [
+    {
+      "theme": "light",
+      "before": "browser/before-light/light-zh-TW-single.png",
+      "after": "browser/review-r1-light/light-zh-TW-single.png",
+      "differentPixels": 588,
+      "differenceBounds": [
+        804,
+        74,
+        895,
+        85
+      ],
+      "visibleChange": "下午04:00 → 昨天 下午04:00; captures crossed midnight",
+      "scope": "Historical cross-date comparison. All differences are inside the timestamp label; no fresh full-frame zero-pixel claim. Original R0 paired zero-pixel proof is unchanged."
+    },
+    {
+      "theme": "dark",
+      "before": "browser/before-dark/dark-zh-TW-single.png",
+      "after": "browser/review-r1-dark/dark-zh-TW-single.png",
+      "differentPixels": 579,
+      "differenceBounds": [
+        804,
+        74,
+        895,
+        85
+      ],
+      "visibleChange": "下午04:00 → 昨天 下午04:00; captures crossed midnight",
+      "scope": "Historical cross-date comparison. All differences are inside the timestamp label; no fresh full-frame zero-pixel claim. Original R0 paired zero-pixel proof is unchanged."
+    }
+  ]
+}

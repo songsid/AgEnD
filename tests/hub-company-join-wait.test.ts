@@ -13,8 +13,10 @@ afterEach(async () => {
  confirmations.resetConfirmations(); vi.restoreAllMocks(); vi.unstubAllGlobals(); calls.length = 0;
 });
 function response(body: any, status = 200) { return { ok: status < 400, status, json: async () => body }; }
+// M-2921: the one input probes the Hub (read only) before Start is offered; this Hub answers as joinable.
+const probeAnswer = { ok: true, hubName: "Acme Hub", webOrigin: "https://hub.example.test", companyJoin: true, identity: "new", separateHosts: true, suggestedLabel: "QA Fleet", features: [] };
 function fetcher(fn: (path: string, init: any) => any) {
- vi.stubGlobal("fetch", vi.fn(async (path: string, init: any = {}) => { calls.push({path,init}); return fn(path,init); }));
+ vi.stubGlobal("fetch", vi.fn(async (path: string, init: any = {}) => { calls.push({path,init}); return path.endsWith("/company-join/probe") ? response(probeAnswer) : fn(path,init); }));
 }
 async function mount(waiting = true) {
  const p = page({url:"http://127.0.0.1:19290/settings/hub"+(waiting?"?joinWait="+handoff:""),storage:{agend_lang:"en"}});mounted.push(p);
@@ -31,8 +33,8 @@ function clock() {
 }
 async function start(p: AppPage) {
  vi.stubGlobal("open",vi.fn());
- for(const [id,value]of [["hubCompanyAddress","https://hub.example.test"],["hubCompanyFleetName","QA Fleet"]]){const el=p.root.querySelector("#"+id);el.value=value;fire(el,"input");}
- await settle(4);fire(p.root.querySelector("form"),"submit");await settle(12);
+ const el=p.root.querySelector("#hubCompanyAddress");el.value="https://hub.example.test";fire(el,"input");await settle(4);fire(el,"blur");
+ await settle(8);fire(p.root.querySelector("form"),"submit");await settle(12);
 }
 function heldFetch(deleteResult = true) {
  fetcher((path,init)=> {
@@ -160,7 +162,7 @@ describe("company join local wait",()=>{
   const withdraw=[...exact.querySelectorAll("button")].find((el:any)=>el.textContent==="Withdraw");expect(withdraw).toBeTruthy();
   fire(withdraw,"click");await settle(14);
   expect(calls.filter(x=>x.init.method==="DELETE")).toMatchObject([{path:"/api/settings/pending/"+pendingId}]);
-  expect(calls.filter(x=>x.init.method==="POST")).toHaveLength(1);
+  expect(calls.filter(x=>x.init.method==="POST"&&!x.path.endsWith("/probe"))).toHaveLength(1);
   expect(p.root.textContent).toContain("Local confirmation was withdrawn");
   expect(p.root.textContent).not.toContain("could not be verified");
   expect(p.root.textContent).not.toContain("Fleet connected");
@@ -171,12 +173,12 @@ describe("company join local wait",()=>{
   const withdraw=[...exact.querySelectorAll("button")].find((el:any)=>el.textContent==="Withdraw");fire(withdraw,"click");await settle(12);
   expect(exact.className).toContain("pending");expect(p.root.textContent).not.toContain("Local confirmation was withdrawn");
   expect(btn(p,"Sign in with company account").disabled).toBe(true);
-  expect(calls.filter(x=>x.init.method==="POST")).toHaveLength(1);
+  expect(calls.filter(x=>x.init.method==="POST"&&!x.path.endsWith("/probe"))).toHaveLength(1);
  });
  it("a local pending timeout does not apply, silently withdraw or retry the held change",async()=>{
   const c=clock();heldFetch();const p=await mount(false);await start(p);await c.next(300000);
   expect(p.root.textContent).toContain("The local confirmation wait has ended");
   expect(p.root.querySelector('.pending-card[data-pending="'+pendingId+'"] .pending-actions button')).toBeTruthy();expect(btn(p,"Sign in with company account").disabled).toBe(true);
-  expect(calls.filter(x=>x.init.method==="POST")).toHaveLength(1);expect(calls.filter(x=>x.init.method==="DELETE")).toHaveLength(0);
+  expect(calls.filter(x=>x.init.method==="POST"&&!x.path.endsWith("/probe"))).toHaveLength(1);expect(calls.filter(x=>x.init.method==="DELETE")).toHaveLength(0);
  });
 });

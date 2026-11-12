@@ -145,7 +145,9 @@ export class SettingsHttpConfirmation {
     const method = req.method ?? "POST", raw = method === "DELETE" ? Buffer.from("{}") : await readBoundedWebBody(req, isCliInstallPath(url.pathname) ? 1024 : 512 * 1024);
     if (res.destroyed || req.aborted) return;
     let body: unknown; try { body = JSON.parse(raw.toString("utf8") || "{}"); } catch { throw new SettingsConfirmationError(400, "invalid_json"); }
-    const companyStart = this.options.directCompanyJoin === true && method === "POST" && url.pathname === "/api/hub/member/company-join/start";
+    // M-2921 (O1): a reconnect is a start (for the saved address) — the same private-session rule, presentation and direct consent.
+    const companyStart = this.options.directCompanyJoin === true && method === "POST"
+      && (url.pathname === "/api/hub/member/company-join/start" || url.pathname === "/api/hub/member/company-join/reconnect");
     const principal = this.options.principal(req);
     if (installPrincipal && (!installPrincipal.current() || !principal?.current())) throw new SettingsConfirmationError(401, "session_required");
     if (installPrincipal && (principal!.id !== installPrincipal.id || principal!.requester?.handle !== installPrincipal.requester?.handle))

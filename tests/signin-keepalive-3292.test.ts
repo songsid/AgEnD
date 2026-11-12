@@ -8,7 +8,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  CLAUDE_REFRESH_WINDOW_MS, CODEX_REFRESH_AFTER_MS, END_WARNING_MS, SETTINGS_FILE, SignInKeepAlive, attentionOf, claudeDue, codexDue, nextRecord,
+  CLAUDE_REFRESH_WINDOW_MS, CODEX_REFRESH_AFTER_MS, SETTINGS_FILE, SignInKeepAlive, attentionOf, claudeDue, codexDue, nextRecord,
   readClaudeMeta, readCodexMeta, readEntries, type KeepAliveDeps, type KeepAliveRunners,
 } from "../src/signin-keepalive.js";
 
@@ -90,13 +90,9 @@ describe("failures into Needs you", () => {
     expect(nextRecord(a, "needs_sign_in", NOW + DAY).attentionSince).toBe(NOW);
     expect(nextRecord(a, "not_renewed", NOW + DAY).attentionSince).toBe(NOW + DAY);
   });
-  it("the end date: from ten days before, whatever else is fine; ended once past; only for a switched-on sign-in", () => {
+  it("M-2932: no line from the stored end date (it renews: not a deadline), near or past; a refused refresh still asks", () => {
     const e = (endsAt: number, outcome = "refreshed" as const, enabled = true) => ({ backend: "claude-code" as const, profile: "work", enabled, record: { outcome, endsAt } });
-    expect(attentionOf([e(NOW + END_WARNING_MS + 1)], NOW)).toEqual([]);
-    expect(attentionOf([e(NOW + END_WARNING_MS)], NOW)).toEqual([{ backend: "claude-code", profile: "work", kind: "ending", since: NOW, endsAt: NOW + END_WARNING_MS }]);
-    expect(attentionOf([e(NOW + 3 * DAY)], NOW)[0]).toMatchObject({ kind: "ending", since: NOW + 3 * DAY - END_WARNING_MS });
-    expect(attentionOf([e(NOW - 1)], NOW)[0]).toMatchObject({ kind: "ended" });
-    expect(attentionOf([e(NOW + DAY, "refreshed", false)], NOW)).toEqual([]);
+    expect(attentionOf([e(NOW + 3 * DAY), e(NOW - 1), e(NOW + DAY, "refreshed", false)], NOW)).toEqual([]);
     expect(attentionOf([{ ...e(NOW + DAY, "needs_sign_in" as never), record: { outcome: "needs_sign_in", endsAt: NOW + DAY, attentionSince: NOW } }], NOW).map(a => a.kind)).toEqual(["needs_sign_in"]);
   });
 });
@@ -134,7 +130,7 @@ describe("Claude Code runs", () => {
     expect(readEntries(f.data)[0]!.record).toMatchObject({ outcome: "refreshed" });
     const text = JSON.stringify(f.logs) + readFileSync(join(f.data, SETTINGS_FILE), "utf8");
     expect(text).not.toMatch(/ccccc|ddddd/);
-    expect(f.logs.at(-1)![2]).toEqual({ backend: "claude-code", profile: "work", outcome: "refreshed", expiresAt: new Date(NOW + 8 * 3600e3).toISOString(), endsAt: new Date(NOW + 11 * DAY).toISOString() });
+    expect(f.logs.at(-1)![2]).toEqual({ backend: "claude-code", profile: "work", outcome: "refreshed", expiresAt: new Date(NOW + 8 * 3600e3).toISOString() });   // M-2932: no endsAt in the log
   });
   it("not due: nothing runs", async () => {
     const f = fixture("claude-code");
@@ -306,7 +302,7 @@ describe("the service", () => {
   it("view(): the setting, the last run and the dates read now from the sign-in's own file", async () => {
     const f = fixture("claude-code");
     claudeCreds(f.home, { expiresAt: NOW + 3600e3, refreshTokenExpiresAt: NOW + 11 * DAY });
-    expect(f.ka.view("claude-code", "work")).toEqual({ enabled: true, fallback: false, endsAt: new Date(NOW + 11 * DAY).toISOString(), expiresAt: new Date(NOW + 3600e3).toISOString() });
+    expect(f.ka.view("claude-code", "work")).toEqual({ enabled: true, fallback: false, expiresAt: new Date(NOW + 3600e3).toISOString() });   // M-2932: no end date
     expect(f.ka.view("kiro-cli", "work")).toBeUndefined();
     expect(f.ka.view("claude-code", "other")).toMatchObject({ enabled: false });
   });

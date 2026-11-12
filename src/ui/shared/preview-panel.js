@@ -573,3 +573,4 @@ function PageList({ pages, current, pick }) {
       <span class="pv-page-meta">${p.versions > 1 ? t("chat.pvPagesVersions", p.versions) : ""}${p.versions > 1 ? " · " : ""}${timeOf(p.latest.ts)}</span>
     </button></li>`)}</ul>`;
 }
+PreviewPanel.workspaceVersion = 1;

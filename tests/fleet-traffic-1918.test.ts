@@ -8,6 +8,7 @@
  *   snapshot is the pending rows plus the recent finished ones, bounded, visibility as of now, worked out at most once
  *   every two seconds. No probe: only the outbox's own events and one indexed read.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -127,7 +128,7 @@ describe("the outbox's consumed event", () => {
 describe("FleetManager: SSE traffic and GET /ui/traffic", () => {
   async function fleet() {
     const dir = scratch();
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm: any = new FleetManager(dir);
     const q = () => {}; fm.logger = { info: q, warn: q, error: q, debug: q, trace: q, fatal: q, child: () => fm.logger };
     fm.fleetConfig = { defaults: {}, instances: { atlas: {}, quill: {}, sage: {}, shy: { cross_instance_visibility: "hidden" } } };

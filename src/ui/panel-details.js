@@ -177,7 +177,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
         <p class="note">${pt("actionsNote")}</p></section>` : null}`;
   const Pending = sess.mod && sess.mod.PendingBar, OpCard = sess.mod && sess.mod.OperationCard;
   return html`<div data-effect-panel="details" class="panel p-details p-settings p-agent-page" data-view=${cat ? "section" : "index"}>
-    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
+    <${PanelHeader} title=${name} sub=${sub} pageControls=${{ navKey }} pageActions=${items} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
     <${AgentCategoryNav} name=${name} kind=${kind} cat=${shownCat} dirty=${dirty} />
     <div data-trust="panel-content" class="panel-body"><div class="col" ref=${body}>
       <a class="s-back" href=${detailsPath(name)}><${Icon} name="back" size=${16} /><span>${t("app.details")}</span><span class="s-back-here">${categoryLabel(kind, shownCat)}</span></a>
@@ -190,3 +190,4 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
     ${sess.staged.size && Pending ? html`<${Pending} staged=${sess.staged} busy=${!!sess.op && ["writing", "posting", "watching"].includes(sess.op.phase)} onApply=${sess.apply} onDiscard=${sess.discard} section="agents" />` : null}
   </div>`;
 }
+DetailsPanel.workspaceVersion = 1;

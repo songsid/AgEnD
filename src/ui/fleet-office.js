@@ -68,7 +68,7 @@ import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, custom
 import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, pixelSkin, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint } from "./fleet-office-skin.js";
 import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
-import { badgeOf, fixedOf } from "./fleet-office-levels.js";
+import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
 import { OfficeCard, cardModel } from "./fleet-office-card.js";
 import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
@@ -520,7 +520,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const says = sp.look.night ? "paused" : sp.look.state;                // asleep at night: its "Zzz…" lines
     // What an agent says itself (office_set, #2578): whole, kept over the area's thinning like a call.
     const act = p.acts && p.acts.get(sp.look.name), own = actLive(act, says, Date.now(), p.actSeen) && act.say ? act.say : null;
-    const b = own ? { text: own, shown: [...own].length } : bubbleAt(sp.look.name, says, ms, linesFor(says, p.lang, sk.pack, p.lines));
+    const b = own ? { text: own, shown: [...own].length } : bubbleAt(sp.look.name, says, ms, linesFor(says, p.lang, sk.pack, p.lines, sp.look.name));   // #3681: theirs, their set's, the pack's
     if (b) bubbles.push({ key: sp.look.name, area: sp.area, state: sp.look.state, calling: CALLING.has(sp.look.state), rank: own ? 0 : bubbleRank(sp.look.state), shown: b.shown,
       box: bubbleBox(ctx, sp.x, sp.y, b.text), tail: { x: sp.x, y: sp.y }, sp, b });
   }
@@ -533,10 +533,11 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
 }
 /**
  * #2661: an NPC's name tag (a furniture item's label) — with the title a pack pins on it (`levels.fixed` by its id),
- * while levels are on: "label · title", and a mark for a badge (an NPC has no level).
+ * while levels are on: "label · title", and a mark for a badge (an NPC has no level). #3679: `p.levels` is the part's
+ * words, the fleet's under its pack's (mergeLevels).
  */
 function npcLook(p, f) {
-  const fx = p.levelsOn ? fixedOf(f.id, p.skin.pack && p.skin.pack.levels) : null;
+  const fx = p.levelsOn ? fixedOf(f.id, p.levels !== undefined ? p.levels : p.skin.pack && p.skin.pack.levels) : null;
   return fx ? { label: `${f.label} · ${fx.title}`, badge: { mark: true, tier: 0 } } : { label: f.label };
 }
 /**
@@ -638,6 +639,17 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // #2716: the whole-fleet office's style — the host's (for everyone) and this browser's own pick. An admin sees the
   // host's (their own pick only while the host keeps none) and picks for everyone; anyone else's own pick, else the host's.
   const [hostStyle, setHostStyle] = useState(undefined);            // undefined: not read yet; null: none kept
+  // #3679: the fleet's own level titles (every office), or null; a style's pack `levels` win over them (wordsOf).
+  const [fleetWords, setFleetWords] = useState(null);
+  const wordsOf = useMemo(() => {
+    const memo = new WeakMap(), none = mergeLevels(fleetWords, null);
+    return (sk) => {
+      const own = sk && sk.pack ? sk.pack.levels || null : null;
+      if (!own) return none;
+      if (!memo.has(own)) memo.set(own, mergeLevels(fleetWords, own));
+      return memo.get(own);
+    };
+  }, [fleetWords]);
   const [ownStyle, setOwnStyle] = useState(() => store.skinChosen());
   const [styleErr, setStyleErr] = useState("");
   const style = canEdit ? hostStyle ?? ownStyle ?? "cozy" : ownStyle ?? hostStyle ?? "cozy";
@@ -703,6 +715,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (cur && d.rev < cur.rev && askedAt <= cur.arrived) return cur;
     shown.current = { rev: d.rev, offices: d.offices, arrived: ++asked.current };
     setStored(d.offices); setStoredRev(d.rev); setHostStyle(d.autoSkin || null);
+    setFleetWords((was) => (JSON.stringify(was) === JSON.stringify(d.levels || null) ? was : d.levels || null));
     return shown.current;
   };
   // #2716: an admin's own pick from before the host kept one (or since an older host's save dropped it) goes up once.
@@ -966,10 +979,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     });
   }, [overview, stored, view, packs, packSkins, cozyRev, hideAsleep, lobbyOn, lobbyAll, style, night]);
   const arranged = useMemo(() => tileLayout(tiles.map((tl) => ({ key: tl.key, w: tl.L.width, h: tl.L.height })), size), [tiles, size.w, size.h]);
-  const tileLooks = useMemo(() => { const work = workOn(traffic); return tiles.map((tl) => looksOf(tl.L, work, q, mode, tl.zones, (n) => badgeOf(n, lv, tl.skin.pack && tl.skin.pack.levels))); }, [tiles, traffic, q, mode, themeRev, lv]);
+  const tileLooks = useMemo(() => { const work = workOn(traffic); return tiles.map((tl) => looksOf(tl.L, work, q, mode, tl.zones, (n) => badgeOf(n, lv, wordsOf(tl.skin)))); }, [tiles, traffic, q, mode, themeRev, lv, wordsOf]);
   // The scene the view pans and zooms: the office's, or the overview of every tile.
   const L = useMemo(() => (overview ? { mode: "overview", rooms: [], width: arranged.width, height: arranged.height } : single), [overview, single, arranged]);
-  const looks = useMemo(() => looksOf(L, workOn(traffic), q, mode, zones, (n) => badgeOf(n, lv, skin.pack && skin.pack.levels)), [L, traffic, q, mode, themeRev, lv, skin]);
+  const looks = useMemo(() => looksOf(L, workOn(traffic), q, mode, zones, (n) => badgeOf(n, lv, wordsOf(skin))), [L, traffic, q, mode, themeRev, lv, skin, wordsOf]);
   // #2564: what comes in from other offices — one office's and style's own: a letter's door and drop are that layout's,
   // so another office (or style) starts with none (one shown meanwhile is not carried over to a different room).
   // #2578: the acts of the people in this stored office (by name); none elsewhere. On a desks style (review: accepted
@@ -980,12 +993,16 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   useEffect(() => { flights.sync(traffic || [], now(), still); if (zones && !overview && mail.sync(traffic || [], now(), L, still)) loop.current?.wake(); }, [traffic, mail]);
   // Zones: everyone's seat is where they walk to — an idle person now and then strolls near it and back (#2560; not
   // with reduced motion, nor while Edit layout is open: the seats are being placed); someone with mail from another
-  // office walks to it first (#2564). An NPC drawn as furniture with a `walk` strolls near its spot alike (#2596).
+  // office walks to it first (#2564). An NPC drawn as furniture with a `walk` strolls near its spot alike (#2596). A
+  // pack's `idleVisits` (#3685) now and then sends an idle person to a free seat in another area instead, for a while.
   const wander = zones && !overview && !still && !layout;
+  // #3685: who sits where on a visit, kept between ticks (the layout is rebuilt on every state change; the style's
+  // seats are not): someone who turns idle later never moves a visitor already there. A new style starts afresh.
+  const visitMemo = useMemo(() => ({ claims: new Map(), idle: null }), [skin]);
   useEffect(() => {
     if (!zones || overview) return undefined;
     const go = () => {
-      const t = now(), to = walkTargets(desksOf(L), L, t, wander, skin.pack.furniture, night);
+      const t = now(), to = walkTargets(desksOf(L), L, t, wander, skin.pack.furniture, night, visitMemo);
       // An act's walk; not someone in bed for the night (#2568: bedtime wins, as for mail).
       for (const d of desksOf(L)) { const a = actsHere.get(d.node.name), at = !d.night && actLive(a, d.node.state, Date.now(), actSeen.current) ? actTarget(a, L, walkers, t) : null; if (at) to.set(d.node.name, at); }
       for (const [name, at] of mail.targets(L, t)) to.set(name, at);
@@ -997,7 +1014,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (still) return undefined;
     const h = setInterval(go, WANDER.TICK);
     return () => clearInterval(h);
-  }, [L, wander, mail, skin, night, actsHere]);
+  }, [L, wander, mail, skin, night, actsHere, visitMemo]);
   // …and in each tile on a zones style; the traffic within a tile is its own, between tiles the overview's.
   useEffect(() => {
     for (const tl of tiles) if (tl.zones) tl.walkers.sync(new Map(desksOf(tl.L).map((d) => [d.node.name, d.seat])), now(), tl.L, still);
@@ -1260,13 +1277,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const base = { ctx, ratio, BW, BH, matte, env, dirty: true };
     if (overview) {
       // Each tile a scene of its own, where the overview puts it (arranged.tiles, in the same order).
-      const parts = tiles.map((tl, i) => ({ ...partOf(tl.L, tileLooks[i], tl.skin, tl.zones, tl.walkers, tl.flights), night, key: tl.key, prefix: tl.prefix, tile: arranged.tiles[i], ups: ups.current, levelsOn: !!(lv && lv.enabled) }));
+      const parts = tiles.map((tl, i) => ({ ...partOf(tl.L, tileLooks[i], tl.skin, tl.zones, tl.walkers, tl.flights), night, key: tl.key, prefix: tl.prefix, tile: arranged.tiles[i], ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(tl.skin) }));
       scene.current = { ...base, overview: true, parts, lay: arranged };
     } else {
-      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled) } };
+      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(skin) } };
     }
     if (still) draw(0); else loop.current?.wake();
-  }, [L, looks, skin, pal, size.w, size.h, ratio, matte, overview, tiles, tileLooks, arranged, ghosts, night, mail, actsHere, lv]);
+  }, [L, looks, skin, pal, size.w, size.h, ratio, matte, overview, tiles, tileLooks, arranged, ghosts, night, mail, actsHere, lv, wordsOf]);
 
   /** One frame at `ms` (0: still); whether anything is moving (in the air, or someone walking). */
   function draw(ms) {
@@ -1683,7 +1700,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         ${tipDesk.office ? html`<div class="muted oo-tip-office">${tipDesk.office}</div>` : null}
       </div>` : null}
       ${cardOf ? html`<${OfficeCard} key=${cardOf.key}
-        model=${cardModel({ node: cardOf.node, lv, levels: cardOf.skin && cardOf.skin.pack ? cardOf.skin.pack.levels : null, share: !onOpen,
+        model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen,
           state: stateWords(cardOf.node), now: caption(officePose(cardOf.node.state), cardOf.node.state),
           where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
         avatar=${drawAvatar} sheet=${size.w < SHEET_W} place=${(el) => { cardEl.current = el; placeCard(); }}

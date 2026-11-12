@@ -1,6 +1,6 @@
-# 桌面雙對話：VS Code 精簡版（#3637，r2）
+# 桌面雙對話：VS Code 精簡版（#3637，原有文字分頁版）
 
-狀態：**設計提案，尚未實作，等使用者同意才建置**。目標：alpha／2.4。原始碼調查與圖稿基準：1066a85a2c48cae18e700b207adba1cdb450cf5a；r1 提案：ff2d1d59c28b6488827d9372428178c18c4fc850。
+狀態：**使用者已同意 d6735f99 的文字分頁設計，依文末四階段建置，僅 alpha／2.4**。PR1 #3671 已落地，保持單格外觀。PR2 提供左右／上下完整路徑；拖曳、分隔線、自訂移動及 pop-out 留在 PR3／PR4，不提前顯示未完成入口。原始碼調查與靜態圖稿基準：1066a85a2c48cae18e700b207adba1cdb450cf5a；r1 提案：ff2d1d59c28b6488827d9372428178c18c4fc850。
 
 ## 給使用者的摘要
 
@@ -12,7 +12,7 @@
 
 最多兩個不同 Agent；一般點側欄只換**有焦點的那格**。引用到另一格只放入草稿，**絕不自動送出**。關格子或彈出視窗不停止 Agent。手機與窄畫面一次只顯示一格。
 
-[最新原有文字分頁圖稿](../screenshots/desktop-split-chat-m2889/r2/text-tabs/README.md)；[r2 其他操作圖稿](../screenshots/desktop-split-chat-m2889/r2/README.md)。圖稿使用本機假資料與真正 app shell；全部是靜態提案，不是功能驗收。
+[最新原有文字分頁圖稿](https://github.com/songsid/AgEnD/blob/d6735f99/docs/screenshots/desktop-split-chat-m2889/r2/text-tabs/README.md)；[r2 其他操作圖稿](https://github.com/songsid/AgEnD/blob/d6735f99/docs/screenshots/desktop-split-chat-m2889/r2/README.md)。圖稿使用本機假資料與真正 app shell；全部是靜態提案，不是功能驗收。
 
 ## r1 → r2
 
@@ -56,7 +56,7 @@
 
 切換焦點時關閉舊 menu／卡片 popup，未完成的舊 Agent 動作不改綁到另一個 Agent；送出仍驗當初擷取的 Agent／lease。pop-out 是另一個 document，自有一組工具；不是在同頁重複。單格保留今天的標頭，不額外加 workspace bar。
 
-[原有 top bar 基準、左右、紀錄、浮窗、360px overflow 與彈出原圖](../screenshots/desktop-split-chat-m2889/r2/text-tabs/README.md)。先前 icon tabs 圖只作歷史，本次提案已取代它們。
+[原有 top bar 基準、左右、紀錄、浮窗、360px overflow 與彈出原圖](https://github.com/songsid/AgEnD/blob/d6735f99/docs/screenshots/desktop-split-chat-m2889/r2/text-tabs/README.md)。先前 icon tabs 圖只作歷史，本次提案已取代它們。
 
 ## VS Code 手勢對照與開啟規則
 
@@ -111,17 +111,17 @@
 
 新 pane host、字串、CSS 都 ready 才顯示入口；舊 server／缺模組／舊 CSS 退原單格且保草稿。保留舊 exports／re-export，不靜態 import 舊快取不存在的名字。新 CSS 限新 workspace class。舊版不識 pop-out presentation 時，完整單格仍可用，不白頁。
 
-使用者同意後按順序做：
+依使用者已同意的設計按順序做：
 
 1. **所有權整理，單格不變**：拆 page／pane，Chat／View／Log／Details 可局部切換，唯一 refs／id、visible-agent／gap、preview ownership；Hub 舊介面不變。
 2. **左右／上下完整路徑**：側欄／標頭開格、四分頁、焦點、取代／交換／收起、引用、URL／記憶／窄幅、鍵盤／a11y；此 slice 完整才顯入口。
 3. **拖曳與自訂移動**：共用幾何／sash，邊緣／中央落點、Esc、50:50、鍵盤移動／縮放。
 4. **pop-out**：同步開窗、被擋／ready／草稿交接／失敗留原格、opener／origin、獨立登入生命週期，不擴權。
 
-每段 fail-first 與真操作；SKEW 含新 JS＋舊 app.css、舊 JS＋新 CSS、舊 server、新舊 pane/tab／popup 模組交錯、載入失敗時草稿。驗雙 composer IME／附件隔離、遲到結果不串格、Esc 不雙停、50 次 close/reopen 資源回基線、同頁 SSE 不變、live preview ≤1，同訊息量比記憶體。圖稿不代替這些驗收。
+每段 fail-first 與真操作；SKEW 含新 JS＋舊 app.css、舊 JS＋新 CSS、舊 server、新舊 pane/tab／popup 模組交錯、載入失敗時草稿。驗雙 composer IME／附件隔離、遲到結果不串格、Esc 不雙停、50 次 close/reopen 資源回基線、同頁 SSE 不變、live preview ≤1，同訊息量比記憶體。圖稿不代替這些驗收。PR2–PR4 各自附 PNG 並直接送單雙號審查，不逐段請使用者看圖；PR4 完成時，一次提交涵蓋所有排列與手勢的桌面繁中明／暗整組，供使用者審閱。
 
 ## 對照與來源
 
 [VS Code editor groups／Alt 分割](https://code.visualstudio.com/docs/editing/getting-started/userinterface)、[layout／獨立視窗](https://code.visualstudio.com/docs/configure/custom-layout)、[快捷鍵](https://code.visualstudio.com/docs/reference/default-keybindings) 提供分組操作；[Chrome 快捷鍵](https://support.google.com/chrome/answer/157179?hl=en) 確認數字鍵留給瀏覽器。Slack [separate windows](https://slack.com/intl/en-gb/help/articles/4403608802963-Open-separate-windows-in-Slack) 適合明確旁開／開窗入口；[Edge split screen](https://www.microsoft.com/en-us/edge/features/split-screen) 是同分頁雙頁參考。AgEnD 採 VS Code 排列手勢，保留 Agent／權限／草稿邊界。
 
-[MDN window.open](https://developer.mozilla.org/en-US/docs/Web/API/Window/open) 說明 popup、手勢與 handle 限制。現況接點：[app shell](../../src/ui/shared/app-shell.js)、[lease](../../src/ui/shared/app-ctx.js)、[ChatPanel](../../src/ui/panel-chat.js)、[InstanceSwitch](../../src/ui/shared/instance-switch.js)、[store](../../src/ui/chat-store.js)、[preview](../../src/ui/shared/preview-panel.js)、[workspace](../../src/ui/workspace-panel.js)、[quote](../../src/ui/chat-quote.js)。這些是調查依據，新操作仍待批准。
+[MDN window.open](https://developer.mozilla.org/en-US/docs/Web/API/Window/open) 說明 popup、手勢與 handle 限制。現況接點：[app shell](../../src/ui/shared/app-shell.js)、[lease](../../src/ui/shared/app-ctx.js)、[ChatPanel](../../src/ui/panel-chat.js)、[InstanceSwitch](../../src/ui/shared/instance-switch.js)、[store](../../src/ui/chat-store.js)、[preview](../../src/ui/shared/preview-panel.js)、[workspace](../../src/ui/workspace-panel.js)、[quote](../../src/ui/chat-quote.js)。這些是調查依據；各段完成後另附實作驗證。

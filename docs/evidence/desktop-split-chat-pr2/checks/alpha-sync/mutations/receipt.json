@@ -1,0 +1,37 @@
+{
+  "head": "3bfa962766958314ef58e73a799b75c333486dc3",
+  "tree": "4a0a4711575e87b7a367a735a843573d86e6ab29",
+  "cases": [
+    {
+      "id": "classic-account-memory",
+      "file": "src/ui/settings-dialogs.js",
+      "test": "web-chat-pane-fields-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "classic-account-id",
+      "file": "src/ui/settings-dialogs.js",
+      "test": "web-chat-pane-fields-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    },
+    {
+      "id": "classic-model-profile",
+      "file": "src/ui/settings-dialogs.js",
+      "test": "web-chat-pane-fields-3637",
+      "exit": 1,
+      "assertionCaught": true,
+      "redundant": false
+    }
+  ],
+  "inputs": {
+    "8c0b5b4c3bea9b1cdb52aecdc402dd56445c4c9604f2fb6531a3a0c0303e951a": [
+      "src/ui/settings-dialogs.js",
+      "src/ui/settings-dialogs.js",
+      "src/ui/settings-dialogs.js"
+    ]
+  }
+}

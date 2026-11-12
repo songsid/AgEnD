@@ -159,7 +159,8 @@ describe("#1673: a wide screen shows usage as a rail beside the page", () => {
   it("what keeps those sizes in the stylesheet: the names share one cell; each tab reserves its label in the current tab's weight; one gap on every page; the slot is unseen", async () => {
     const { readFileSync } = await import("node:fs");
     const css = readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
-    const rule = (sel: string) => { const i = css.indexOf(`${sel} {`); return i < 0 ? null : css.slice(i + sel.length + 2, css.indexOf("}", i)).trim(); };
+    // Match the whole selector: a pane's scoped override must not shadow the ordinary header rule in this probe.
+    const rule = (sel: string) => new RegExp(`^${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`, "m").exec(css)?.[1]?.trim() ?? null;
     expect(rule(".hd-text-names")).toBe("display: inline-grid;");
     expect(rule(".hd-text-names > span")).toBe("grid-area: 1 / 1; visibility: hidden;");
     expect(rule(".hd-text-names > .on")).toBe("visibility: visible;");

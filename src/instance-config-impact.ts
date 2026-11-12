@@ -97,6 +97,8 @@ const CLASSIC_FIELDS = [
   "quota_notice", "backend", "model", "auto_pause_after", "tool_progress",
   "reply_completion_guard", "reply_triggers", "collab", "context_lines", "pre_task_command",
   "web_echo",
+  // M-2909: the room's AI account (backend_options.<cli>.credential_profile) — read at launch: a restart of that room's agent.
+  "backend_options",
 ] as const;
 
 /**
@@ -105,6 +107,8 @@ const CLASSIC_FIELDS = [
  */
 const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "defaults.tips": "now",
+  // #3647: the dispatcher-liveness thresholds — read at every 30 s sweep.
+  "defaults.task_board": "now",
   "web.notify_login": "now",
   "web.notice_delivery": "now",
   "defaults.reply_triggers": "now",

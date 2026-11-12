@@ -290,7 +290,10 @@ desk. Hover a desk for its name, state and backend; a click or tap (or Enter in 
 person's profile card (#2661: a 320 px popover beside them, following them; Esc, a press elsewhere or the same person
 again closes it; on a phone a bottom sheet): level and XP, office and area, model, backend, today, first seen, the
 activity line, **Find in office** and **Chat**. A double-click opens the chat directly. Each name tag has a level badge
-(lifetime work, docs/office.md § Levels; **Settings → Web dashboard → Office levels**, `web.office_levels`). **Find** dims
+(lifetime work, docs/office.md § Levels; **Settings → Web dashboard → Office levels**, `web.office_levels`; #3679: the
+fleet's own titles for every office in **Settings → Web dashboard → Level titles for every office**, a pack's `levels`
+JSON shape, admin only, kept in `web-offices.json` — a pack's own titles still win in its offices, its pinned titles
+name by name). **Find** dims
 the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
 **Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`). An admin session
 (never a read-only one, a guest or the public link) gets **Edit offices**: add, rename and delete offices, pick who is
@@ -322,7 +325,9 @@ office's overrides (the pack stays as uploaded), **Reset** goes back to the pack
 saved the offices meanwhile, Save says so and keeps your layout — Save again puts it on the current list. A crowded area packs extra people into a tighter grid, then shows "+N" in its corner; there
 only calls and work get bubbles (a few at most) and name tags show on hover or focus. **Hide paused and stopped**
 (per browser, off by default) leaves the sleepers out. Now and then someone says a short line for their state in a
-bubble (never message content). Reduced motion: still poses, nothing in the air, bubbles shown whole.
+bubble (never message content): a pack's lines for that instance (`bubblesByInstance`), else its character set's
+(`characters.<set>.bubbles`), else the pack's `bubbles`, else the page's own (#3681). Reduced motion: still poses,
+nothing in the air, bubbles shown whole.
 **All offices** (in the switcher once two or more offices are stored, kept per device) shows every stored office as
 a tile on one canvas, each exactly as its own view (its style, members, seats, bubbles, walking), labelled with its
 name and head count, each as large as its office's content, packed to fill the panel; **Lobby tile** (on by
@@ -365,6 +370,11 @@ changes); `"hides": true` (needs `activeFor`) stops drawing those people while i
 puts their name tags (one row at the item's tag point) and bubbles on it, and makes hovering or clicking it hit them.
 A pack may set `"straight": true` (#2634): each diagonal leg of a walk becomes an L (across, then up or down), so the
 three walking strips always fit; lay its graph out with horizontal and vertical edges and the corners land on the aisles.
+A pack may list `idleVisits` (#3685, with `stateZones`): `[{ "area", "weight" 1–100, "minSeconds" 5–600, "maxSeconds"
+minSeconds–600 }]`, up to 8 — now and then an idle person walks to a free seat in one of those areas (not their own;
+not one someone sits on, another visitor's, or reserved for someone else unless lent), stays minSeconds–maxSeconds and
+walks back. At each turn they could stroll, the weights are weighed against 100 for the usual stroll (weight 20: 20 of
+every 120 turns); no free seat: a stroll. Same switches as strolls (one office, no reduced motion, not in Edit layout).
 
 **Live traffic** (**Live** switch, on by default; **Key** in the toolbar explains it, as a strip above the canvas): a line for each message between instances.
 Colour by kind — task (delegate_task) purple, send/query/update teal, report pink, broadcast orange; between teams

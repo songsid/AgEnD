@@ -157,10 +157,10 @@ describe("the pairing routes", async () => {
   const { bindGatewayRequest } = await import("../src/web-request-context.js");
   const { isSettingsMutation, prepareSettingsEffect } = await import("../src/settings-effect.js");
   const { pairingSummary } = await import("../src/hub-pairing-summary.js");
-  async function call(o: { method: string; path: string; json?: unknown; replay?: boolean; admin?: boolean; gateway?: boolean; api: unknown }) {
+  async function call(o: { method: string; path: string; json?: unknown; replay?: boolean; admin?: boolean; gateway?: boolean; api: unknown; localAdmin?: () => boolean }) {
     const raw = Buffer.from(JSON.stringify(o.json ?? {}));
     const cap = new SettingsExecution({ current: () => true, snapshot: () => null });
-    const req: any = o.replay ? createSettingsReplay({ method: o.method, url: o.path, body: raw, binding: "owned", localAdmin: () => o.admin !== false }, cap)
+    const req: any = o.replay ? createSettingsReplay({ method: o.method, url: o.path, body: raw, binding: "owned", localAdmin: o.localAdmin ?? (() => o.admin !== false) }, cap)
       : Object.assign(new EventEmitter(), { method: o.method, url: o.path, headers: o.admin === false ? {} : { "x-agend-token": "tok" } });
     if (o.gateway) bindGatewayRequest(req, { surface: "gateway", exposureId: "scratch", expectedOrigin: "https://scratch.invalid", isCurrent: () => true });
     const ctx = { webToken: "tok", webSessions: null, fleetConfig: { instances: {} }, logger: { warn: vi.fn() }, hubMemberPairing: () => o.api };
@@ -209,6 +209,23 @@ describe("the pairing routes", async () => {
       expect(result.status).toBe(200); expect(result.body.notices.map((n: any) => n.source)).toEqual(expected);
     }
     expect(notices.map(n => n.source)).toEqual(["group", "manual", "code"]);
+  });
+  it("#3675 r2 P2: the pairing-code Disconnect route asks the replay's authority again after member.leave's wait — withdrawn meanwhile: 409, nothing fenced, withdrawn or tombstoned", async () => {
+    for (const withdraw of [true, false]) {
+      let admin = true;
+      const r = rig({ leave: async () => { if (withdraw) admin = false; return true; } });
+      await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+      r.answers.push("paired"); await r.api.confirmFingerprint(r.digest, yes); await r.flush();
+      const out = await call({ method: "POST", path: "/api/hub/member/pairing/disconnect", json: shownOf(r.api), replay: true, api: r.api, localAdmin: () => admin });
+      if (withdraw) {
+        expect(out).toMatchObject({ status: 409, body: { ok: false, error: "conflict" } });
+        expect([r.fence, r.withdrawAll].map((f) => f.mock.calls.length)).toEqual([0, 0]);
+        expect(r.api.view().state).toBe("paired");
+      } else {                                                                              // control: authority kept → disconnected
+        expect(out).toMatchObject({ status: 200, body: { ok: true, remote: "pending", left: true } });
+        expect(r.api.view()).toMatchObject({ state: "held", hold: "disconnected" });
+      }
+    }
   });
 });
 
@@ -404,4 +421,75 @@ describe("currentBinding: each unfinished marker on its own", () => {
       const prof = () => ({ readProfile: () => ({}) as any, profileDigest: () => "p1" });
       expect(currentBinding(home, prof as any)).toEqual(o.pending || o.receipt ? null : { hubId });
     });
+});
+
+describe("M-2921: member.leave before a disconnect fences the link", () => {
+  async function paired(over: Record<string, unknown> = {}) {
+    const r = rig(over);
+    await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    r.answers.push("paired"); await r.api.confirmFingerprint(r.digest, yes); await r.flush();
+    expect(r.api.view().state).toBe("paired");
+    return r;
+  }
+  it("sent for exactly the pairing shown, before the fence and the tombstone; its answer is reported", async () => {
+    const order: string[] = [];
+    const leave = vi.fn(async () => { order.push("leave"); return true; });
+    const r = await paired({ leave, fence: () => order.push("fence") });
+    const shown = shownOf(r.api);
+    expect(await r.api.disconnect(shown)).toEqual({ ok: true, remote: "pending", left: true });
+    expect(leave).toHaveBeenCalledWith(shown);
+    expect(order).toEqual(["leave", "fence"]);
+  });
+  it("not sent, refused or throwing: the disconnect goes on all the same", async () => {
+    for (const leave of [vi.fn(async () => false), vi.fn(async () => { throw Error("socket"); }), vi.fn(() => { throw Error("sync"); })]) {
+      const r = await paired({ leave });
+      expect(await r.api.disconnect(shownOf(r.api))).toEqual({ ok: true, remote: "pending", left: false });
+      expect(r.api.view()).toMatchObject({ state: "held", hold: "disconnected" });
+    }
+  });
+  it("waited on at most 2 s: a leave that never settles does not hold the disconnect", async () => {
+    vi.useFakeTimers();
+    try {
+      const r = await paired({ leave: () => new Promise<boolean>(() => {}) });
+      const done = r.api.disconnect(shownOf(r.api));
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(r.fence).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await done).toEqual({ ok: true, remote: "pending", left: false });
+      expect(r.fence).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+  it("a second disconnect during the wait is refused; a Start over during the wait means the old disconnect tombstones nothing", async () => {
+    let release!: (v: boolean) => void;
+    const r = await paired({ leave: () => new Promise<boolean>(y => { release = y; }) });
+    const shown = shownOf(r.api), first = r.api.disconnect(shown);
+    expect(await r.api.disconnect(shown)).toEqual({ ok: false, error: "conflict" });
+    r.api.cancel();                                                                     // the pairing changes under the wait
+    release(true);
+    expect(await first).toEqual({ ok: false, error: "conflict" });
+    expect(r.fence).not.toHaveBeenCalled();
+    expect(r.withdrawAll).not.toHaveBeenCalled();
+  });
+  it("#3675 r1 P2: the caller's authority, asked again after the wait — revoked meanwhile: nothing is fenced, tombstoned or withdrawn", async () => {
+    let allowed = true;
+    const r = await paired({ leave: async () => { allowed = false; return true; } });
+    expect(await r.api.disconnect(shownOf(r.api), () => allowed)).toEqual({ ok: false, error: "conflict" });
+    expect(r.fence).not.toHaveBeenCalled(); expect(r.withdrawAll).not.toHaveBeenCalled();
+    expect(r.api.view().state).toBe("paired");
+    const t = await paired({ leave: async () => true });
+    expect(await t.api.disconnect(shownOf(t.api), () => { throw Error("gone"); })).toEqual({ ok: false, error: "conflict" });   // a throwing check is a no
+    expect(t.fence).not.toHaveBeenCalled();
+  });
+  it("the saved profile changes during the wait (here: it is gone): the older disconnect tombstones nothing", async () => {
+    let release!: (v: boolean) => void;
+    const r = await paired({ leave: () => new Promise<boolean>(y => { release = y; }) });
+    const shown = shownOf(r.api), first = r.api.disconnect(shown);
+    await r.flush();
+    unlinkSync(join(r.home, "hub-member", r.hubId, "pairing.json"));
+    expect(shownOf(r.api).binding).not.toBe(shown.binding);
+    release(true);
+    expect(await first).toEqual({ ok: false, error: "conflict" });
+    expect(r.fence).not.toHaveBeenCalled();
+    expect(r.withdrawAll).not.toHaveBeenCalled();
+  });
 });

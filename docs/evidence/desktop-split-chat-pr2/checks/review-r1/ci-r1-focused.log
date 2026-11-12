@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+···················(node:4131202) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+··········································································
+
+ Test Files  3 passed (3)
+      Tests  93 passed (93)
+   Start at  23:49:49
+   Duration  14.12s (transform 7.09s, setup 185ms, import 7.17s, tests 6.31s, environment 0ms)

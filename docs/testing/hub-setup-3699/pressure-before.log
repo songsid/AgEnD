@@ -1,0 +1,46 @@
+
+ RUN  v4.1.12 /w
+
+ ❯ tests/hub-company-join-http.test.ts (20 tests | 1 failed | 19 skipped) 10102ms
+     ↓ a genuinely unissued cancellation releases its reservation without creating a Fleet
+     ↓ Hub admission independently refuses a key binding that shares the Fleet browser hostname
+     ↓ issued cancel keeps mixed legacy/company admission headroom until its original outer deadline
+     ↓ issued expiry keeps mixed legacy/company admission headroom until its original outer deadline
+     ↓ a directory epoch change fences the held browser authority and pinned redemption before any new credential
+     ↓ is off by default and only the exact configured admin can enable it with Origin/CSRF and current revision
+     ↓ refuses an attacker key advertising another Fleet origin before cookie/state/AD, without broadening Hub session CSRF
+     ↓ issues once after one identity-submit, recovers exactly the same result, and refuses replay/wrong verifier
+     ↓ outsider and unknown membership cannot borrow manual fallback or create a Fleet
+     ↓ an exact retained manual Fleet consumes the later automatic quota with a limit-specific refusal
+     ↓ legacy quick pairing and a company browser wait share the same one-person reservation
+     ↓ first redemption expires at60s without issuance and never restarts the operation clock
+     ↓ same-result retrieval outlives the old60s redeem window but stops at exactly2min delivery
+     × the10min outer deadline truncates both a late first redemption and its delivery window 10099ms
+     ↓ post-commit cancellation erases delivery, keeps the exact retained result and cannot issue again
+     ↓ revocation and group suspension refuse recovery even while a transport row still looks active
+     ↓ fresh AD membership loss closes delivery despite an unchanged active transport row
+     ↓ sign-out of the exact identity-submit session fences a later key-authenticated redemption
+     ↓ an outbox failure rolls back credentials, provenance and receipt rather than publishing a partial grant
+     ↓ two browser tabs cannot approve a different request than the Fleet shown in that tab
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-company-join-http.test.ts > company-join actual Hub boundary > the10min outer deadline truncates both a late first redemption and its delivery window
+Error: Test timed out in 10000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/hub-company-join-http.test.ts:179:3
+    177|     expect(r.deps.store.read().fleets).toHaveLength(1);
+    178|   });
+    179|   it("the10min outer deadline truncates both a late first redemption a…
+       |   ^
+    180|     const { r } = await world(); let clock = Date.now(); vi.spyOn(Date…
+    181|     const a = await attempt(r), carol = await a.browser(); clock += 59…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 19 skipped (20)
+   Start at  19:14:50
+   Duration  76.00s (transform 55.07s, setup 1.80s, import 61.90s, tests 10.10s, environment 0ms)
+

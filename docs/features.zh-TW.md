@@ -312,7 +312,7 @@ Instance 可看到自己送出、收到，或經 `forwards` 明確授權的紀�
 - `task(action: "claim")` — 把一個 `open` 的任務指派給自己。相依的任務還沒全部 `done` 的話，就不能認領。
 - `task(action: "done")` — 把自己認領的任務標成完成，可附上 `result`。只有 `claimed` 的任務能完成。需要確認的任務會改成 `review`（見下方）；負責確認的人（派工者）可用 `done` 把 `review` 的卡完成。
 - `task(action: "update")` — 變更 `status`（`open` / `claimed` / `review` / `done` / `blocked` / `cancelled`）、`priority`、`assignee` 或 `result`。
-- `task(action: "list")` — 列出所有任務，最緊急的排最前面；可用 `filter_assignee` 和 `filter_status` 縮小範圍。不加篩選時列出還沒完成的（`open`、`claimed`、`blocked`、`review`）。
+- `task(action: "list")` — 列出所有任務，最緊急的排最前面；可用 `filter_assignee` 和 `filter_status` 縮小範圍。不加篩選時列出還沒完成的（`open`、`claimed`、`blocked`、`review`）。加上 `stale: true` 會列出接手者停下來的已領取卡片（當掉、暫停、卡住、卡在提示上，或沒有動靜），也就是已通知過派工者的那些（#3647）。
 
 `id` 可以是任務 id、8 位 hex 前綴，或網頁上的卡號（`M-3`）；清單的每一列會帶卡號 `code`。
 

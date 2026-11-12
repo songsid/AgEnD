@@ -55,10 +55,10 @@ beforeEach(async () => {
   A.accountsStore.set({ loaded: false, failed: false, view: null });
   S.signInStore.set({ loaded: false, login: null, targets: [], structured: null }); shell.shellStore.set({ dialog: null });
 });
-const opened: string[] = [];
+const opened: string[] = [], openedRooms: string[] = [];
 async function mount() {
-  opened.length = 0;
-  await p.mount(h(A.AccountsView, { instances: { dev: {} }, stageAgent: () => {}, stageDefault: () => {}, openAgent: (n: string) => opened.push(n) }));
+  opened.length = 0; openedRooms.length = 0;
+  await p.mount(h(A.AccountsView, { instances: { dev: {} }, stageAgent: () => {}, stageDefault: () => {}, openAgent: (n: string) => opened.push(n), openRoom: (k: string) => openedRooms.push(k) }));
   await settle(8);
 }
 const card = (backend: string) => p.root.querySelector(`.s-account-card[data-backend="${backend}"]`);
@@ -210,8 +210,12 @@ describe("Remove (#3212 PR 2)", () => {
     expect(text(d)).toContain("its connection and its own copies of conversations");
     expect([...d.querySelectorAll(".s-account-inuse li")].map((li: any) => text(li.querySelector("span")))).toEqual(["Agent dev", "The fleet default for Claude Code agents", "ClassicBot room room1"]);
     expect([d.querySelector("#acctRemoveName"), btn(d, "Remove").disabled]).toEqual([null, true]);
-    expect(text(d.querySelector(".s-account-inuse li:last-child small"))).toContain("ClassicBot settings");
-    d.querySelector(".s-account-inuse li button").click(); await settle(6);
+    // M-2909: a room says where its account is chosen — its own settings — and its Move… opens them.
+    expect(text(d.querySelector(".s-account-inuse li:last-child small"))).toBe("In that room's settings: Runtime & model → Account.");
+    ([...d.querySelectorAll(".s-account-inuse li")] as any[])[2].querySelector("button").click(); await settle(6);
+    expect(openedRooms).toEqual(["room1"]);
+    rowOf("claude-code", "work").querySelector(".s-account-remove").click(); await settle(6);
+    dialog().querySelector(".s-account-inuse li button").click(); await settle(6);
     expect(opened).toEqual(["dev"]);
     expect(calls).toEqual([]);
   });

@@ -1,3 +1,4 @@
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { t } from "../src/locale.js";
 import { KIRO_AMBIGUOUS_RESUME_SCREEN } from "../src/backend/kiro.js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -217,24 +218,24 @@ describe("giving up is bounded and never silent (through spawnClaudeWindow)", ()
  */
 describe("startup concurrency respects cores, not just memory", () => {
   it("clamps to the core count on a small host", async () => {
-    const { deriveSpawnConcurrency } = await import("../src/fleet-manager.js");
+    const { deriveSpawnConcurrency } = fleetManagerModule;
     // 16GB free would have said 10 under the memory-only rule.
     expect(deriveSpawnConcurrency(16_384, 3), "three cores cannot run ten cold starts").toBe(3);
   });
 
   it("still lets memory bind when cores are plentiful", async () => {
-    const { deriveSpawnConcurrency } = await import("../src/fleet-manager.js");
+    const { deriveSpawnConcurrency } = fleetManagerModule;
     expect(deriveSpawnConcurrency(900, 32)).toBe(3);
   });
 
   it("keeps a floor of 2 and a ceiling of 10", async () => {
-    const { deriveSpawnConcurrency } = await import("../src/fleet-manager.js");
+    const { deriveSpawnConcurrency } = fleetManagerModule;
     expect(deriveSpawnConcurrency(1, 1), "never zero").toBe(2);
     expect(deriveSpawnConcurrency(64_000, 64), "never unbounded").toBe(10);
   });
 
   it("spawnConcurrency actually delegates to it (wiring, not just the formula)", async () => {
-    const { FleetManager, deriveSpawnConcurrency } = await import("../src/fleet-manager.js");
+    const { FleetManager, deriveSpawnConcurrency } = fleetManagerModule;
     const { effectiveCpuCount } = await import("../src/cpu-quota.js");
     const { freemem } = await import("node:os");
     const fm = new FleetManager(dir) as any;
@@ -245,7 +246,7 @@ describe("startup concurrency respects cores, not just memory", () => {
   });
 
   it("an explicit setting still wins", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir) as any;
     fm.fleetConfig = { defaults: { startup: { concurrency: 8 } }, instances: {} };
     expect(fm.spawnConcurrency()).toBe(8);

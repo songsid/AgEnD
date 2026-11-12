@@ -1,0 +1,24 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+·x
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  23:22:44
+   Duration  893ms (transform 318ms, setup 207ms, import 214ms, tests 142ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-session-3637.test.ts > workspace display memory follows the existing sign-out result > sign-out status 200 clears memory only on success, before leaving
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ tests/web-chat-workspace-session-3637.test.ts:23:21
+     21|     const button = p.root.querySelector(".pop .row button")!;
+     22|     fire(button, "click"); await settle(5);
+     23|     expect(cleanup).toHaveBeenCalledTimes(code === 200 ? 1 : 0);
+       |                     ^
+     24|     expect(p.root.querySelector("[role=alert]") !== null).toBe(code !=…
+     25|     expect(redirected).toBe(code === 200 ? "/signin" : null);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

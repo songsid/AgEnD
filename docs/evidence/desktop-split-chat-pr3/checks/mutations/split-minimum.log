@@ -1,0 +1,50 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+x···x···
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 6 passed (8)
+   Start at  03:39:47
+   Duration  275ms (transform 80ms, setup 94ms, import 32ms, tests 14ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-geometry-3637.test.ts > one physical geometry for split, dock and float > clamps right at both real pane minimums, not just a percentage
+AssertionError: expected 89.2 to be 360 // Object.is equality
+
+- Expected
++ Received
+
+- 360
++ 89.2
+
+ ❯ tests/web-chat-workspace-geometry-3637.test.ts:9:23
+      7|     const min = layout === "stack" ? 320 : 360, total = layout === "st…
+      8|     const low = geometry.splitSize(900, 700, layout, .1), high = geome…
+      9|     expect(low.first).toBe(min); expect(high.second).toBe(min);
+       |                       ^
+     10|     expect(low.first + low.second + geometry.SASH).toBe(total);
+     11|     expect(geometry.splitSize(900, 700, layout, NaN).first).toBe((tota…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-chat-workspace-geometry-3637.test.ts > float URLs and preferences stay topology-only > retains a physical minimum on an ultra-wide screen rather than imposing a second percentage minimum
+AssertionError: expected 359.99999999999994 to be 360 // Object.is equality
+
+- Expected
++ Received
+
+- 360
++ 359.99999999999994
+
+ ❯ tests/web-chat-workspace-geometry-3637.test.ts:33:82
+     31|     const w: any = { ...model.openBeside(null, { panel: "chat", instan…
+     32|     const restored: any = model.readWorkspace(new URL(model.workspaceP…
+     33|     expect(geometry.splitSize(5000, 900, restored.layout, restored.rat…
+       |                                                                                  ^
+     34|     expect(geometry.splitSize(5000, 900, "right", 0).first).toBe(360);
+     35|     expect(geometry.splitSize(5000, 900, "right", 1).second).toBe(360);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯

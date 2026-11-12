@@ -4,6 +4,8 @@
  * the bytes that came; a stalled or endless upload dropped with its part file; the public link's per-file cap; and
  * every other request keeping its old bound on arriving.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
+import * as webApiModule from "../src/web-api.js";
 import { EventEmitter } from "node:events";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -30,7 +32,7 @@ vi.mock("../src/web-upload.js", async original => {
 });
 
 const U = await import("../src/web-upload.js");
-const { handleWebRequest, serveAppShell } = await import("../src/web-api.js");
+const { handleWebRequest, serveAppShell } = webApiModule;
 const { bindGatewayRequest } = await import("../src/web-request-context.js");
 const { WebSessionStore, csrfTokenFor, tokenEpoch } = await import("../src/web-session.js");
 const { validateFleetConfig } = await import("../src/config-validator.js");
@@ -459,7 +461,7 @@ describe("receiving a request: the upload's own clocks, the old bound for everyt
     vi.advanceTimersByTime(10_000); expect(closed.socket.destroy).not.toHaveBeenCalled();
   });
   it("the fleet's dispatch: no bound for an upload; 10 s for any other public-link request; Node's old 300 s here", async () => {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir) as any;
     fm.fleetConfig = { instances: { w: { working_directory: dir } }, defaults: {} };
     fm.initializeWebAuthTokens();

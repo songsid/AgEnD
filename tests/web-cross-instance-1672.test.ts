@@ -8,6 +8,7 @@
  * The real handlers run against a recording adapter and a recording durable admission: no daemon, CLI, tmux or real
  * fleet (bd0c88aa).
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -204,7 +205,7 @@ describe("#1672: it is in the web chat history, and there again after a restart"
     const h = mkdtempSync(join(tmpdir(), "agend-test-1672-")); homes.push(h);
     vi.stubEnv("AGEND_HOME", h);
     for (const name of ["alice", "bob"]) mkdirSync(join(h, "workspaces", name), { recursive: true });
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fleet = { defaults: {}, instances: { alice: { working_directory: "/w/a" }, bob: { working_directory: "/w/b" } } };
     const start = () => { const fm = new FleetManager(h) as any; clearInterval(fm.sessionPruneTimer); fm.fleetConfig = fleet; fm.restoreWebChat(fleet); return fm; };
     const fm1 = start();

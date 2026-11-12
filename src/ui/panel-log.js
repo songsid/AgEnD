@@ -380,7 +380,7 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
       ${["all", "tools", "errors"].map((k) => html`<button key=${k} type="button" class=${`chip-btn${filter === k ? " on" : ""}`} aria-pressed=${filter === k ? "true" : "false"} onClick=${() => setFilter(k)}>${tl(k)}</button>`)}
       <span class="grow"></span><span class="log-live" title=${tl("live")}><span class="dot running" aria-hidden="true"></span>${tl("live")}</span></div>` : null;
   return html`<div data-effect-panel="log" class="panel p-log">
-    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="log" />`}><${HeaderTools} navKey=${navKey} /><${HeaderSlot} /></${PanelHeader}>
+    <${PanelHeader} title=${name} sub=${sub} pageControls=${{ navKey }} nav=${html`<${InstanceSwitch} name=${name} current="log" />`}><${HeaderTools} navKey=${navKey} /><${HeaderSlot} /></${PanelHeader}>
     ${tools}
     <div data-trust="panel-content" class="panel-body log-body" ref=${scroller} onScroll=${onScroll}><div class="col log-col">${content}</div></div>
   </div>`;
@@ -434,3 +434,4 @@ function Row({ x, prev }) {
   }
   return html`<li class=${`log-item k-${x.kind}${x.status ? ` s-${x.status}` : ""}${newTurn ? " turn-start" : ""}`}>${row}</li>`;
 }
+LogPanel.workspaceVersion = 1;

@@ -1,0 +1,22 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-workspace-3637
+
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > an A-only successful operation resets A while preserving B's staged and typed edits 50ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > only the initiating pane consumes its failed leftovers (suspended=false) 40ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > only the initiating pane consumes its failed leftovers (suspended=true) 56ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > an owner suspended at completion resets once on return without resetting the other pane 75ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > a late completion from the previous owned operation cannot reset the next draft 70ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > a suspended owner recovers done after another pane's later operation finishes 70ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > a suspended owner recovers failed after another pane's later operation finishes 73ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is none 221ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is writing 196ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > actual forms retain a suspended owner's retry key when the second operation is done 168ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > an actual form refreshes its successful baseline after another pane replaces the global outcome 126ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > recovered retry metadata is not reused when its request is edited 145ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > recovered retry metadata is not reused when its request is refused 153ms
+ ✓ tests/web-chat-workspace-operation-3637.test.ts > retained outcome observers do not accumulate across suspension and are released when the workspace closes 81ms
+
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+   Start at  00:34:25
+   Duration  3.96s (transform 1.68s, setup 125ms, import 177ms, tests 3.47s, environment 0ms)

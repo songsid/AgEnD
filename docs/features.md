@@ -312,7 +312,7 @@ A fleet-wide task list, kept in the fleet's SQLite database, through one `task` 
 - `task(action: "claim")` — assign an `open` task to yourself. A task whose dependencies are not all `done` cannot be claimed.
 - `task(action: "done")` — mark a task you claimed as done, with an optional `result`. Only a `claimed` task can be completed. A task that waits for confirmation goes to `review` instead (see below); the one who confirms it (its dispatcher) finishes it from `review` with `done`.
 - `task(action: "update")` — change `status` (`open` / `claimed` / `review` / `done` / `blocked` / `cancelled`), `priority`, `assignee` or `result`.
-- `task(action: "list")` — every task, most urgent first; narrow it with `filter_assignee` and `filter_status`. Without a filter it lists what is not finished (`open`, `claimed`, `blocked`, `review`).
+- `task(action: "list")` — every task, most urgent first; narrow it with `filter_assignee` and `filter_status`. Without a filter it lists what is not finished (`open`, `claimed`, `blocked`, `review`). `stale: true` lists the claimed cards whose assignee stopped (crashed, paused, stuck, waiting on a prompt, or quiet), the same ones their dispatchers were told about (#3647).
 
 `id` takes a task id, an 8-hex prefix, or a card number from the dashboard (`M-3`); list rows carry the card number as `code`.
 
@@ -577,7 +577,7 @@ The daemon notifies you in Telegram when a failover occurs and switches back to 
 
 ## Graceful restart
 
-`/restart` in the chat (without `full`) restarts the instances inside the running fleet process: it waits for all instances to go idle (no transcript activity for 10s), then restarts them one by one. A 5-minute timeout prevents hanging on stuck instances. The CLI's whole-fleet restart is `agend restart`, which goes through the service manager (#2356); `agend fleet restart` only runs `agend restart` now and goes away in 2.4.
+`/restart` in the chat (without `full`) restarts the instances inside the running fleet process: it waits for all instances to go idle (no transcript activity for 10s), then restarts them one by one. A 5-minute timeout prevents hanging on stuck instances. The CLI's whole-fleet restart is `agend restart`, which goes through the service manager (#2356); `agend fleet restart` only runs `agend restart` now and goes away in a later 2.4 release.
 
 ## Topic icon + idle archive
 

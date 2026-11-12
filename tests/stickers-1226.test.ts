@@ -5,6 +5,7 @@
  * answered by its own api middleware, and picture downloads go to a stubbed global fetch that records each URL.
  * No fleet or tmux is started. Expectations are written out by hand.
  */
+import * as fleetManagerModule from "../src/fleet-manager.js";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -314,7 +315,7 @@ describe("reply.stickers through routeToolCall", () => {
 // ── the fleet ───────────────────────────────────────────────────────────────────────────────────────────────────
 
 async function fleet(platform: "discord" | "telegram") {
-  const { FleetManager } = await import("../src/fleet-manager.js");
+  const { FleetManager } = fleetManagerModule;
   const fm = new FleetManager(scratch("fleet"));
   const any = fm as any;
   const listCalls: unknown[] = [];
@@ -472,7 +473,7 @@ describe("the reply path: a refused sticker is the reply's error, and nothing is
 
 describe("list_emojis: lighter by default (#1226)", () => {
   async function emojiFleet() {
-    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(scratch("emoji"));
     const any = fm as any;
     any.fleetConfig = { channels: [{ id: "dc", type: "discord", group_id: G1, bot_token_env: "X" }], instances: { w: { working_directory: "/tmp", topic_id: "42" } } };

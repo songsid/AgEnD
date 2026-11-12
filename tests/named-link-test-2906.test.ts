@@ -417,6 +417,9 @@ describe("#2906 wording (the user: never 公司 / company)", () => {
     // Other network/help/settings copy retains #2906; "corporate" has no exception.
     // #3511 localizes only this existing Hub connection sentence in the shared confirmation card.
     // Exact whole-line exceptions do not permit other company/network copy in the shell.
+    // M-2921 (Hub UX U1, decision 428768a0): the one-input form's own dictionary (spec 1.1 messages E3/E9, the owner line) is
+    // the same company sign-in wording, in a module of its own for upgrade skew.
+    const COMPANY_DICTIONARIES = new Set(["src/ui/hub-company-join-strings.js", "src/ui/hub-join-one-strings.js", "src/ui/hub-join-steps.js"]);   // + U2's step-3 sentence
     const hubSummary = new Set([
       "Connect this Fleet to Hub {0} using your company account. Agent sharing stays separate.",
       "以公司帳號將這個 Fleet 連接到 Hub {0}。分享 Agent 需另外選擇。",
@@ -424,7 +427,7 @@ describe("#2906 wording (the user: never 公司 / company)", () => {
     const hits = files.flatMap(f => {
       const source = readFileSync(f, "utf8").replace(/^\s*"hub\.companyJoin\.(?:confirm|repair)":.*$/gm, "")
         .replace(/^\s*\["hub\.company-(?:address|name)".*$/gm, "");
-      return literalCopy(source).filter(s => !(f === "src/ui/shared/app-shell.js" && hubSummary.has(s)) && (/\bcorporate\b/i.test(s) || f !== "src/ui/hub-company-join-strings.js" && /公司|\bcompany\b/i.test(s))).map(s => `${f}: ${s.slice(0, 80)}`);
+      return literalCopy(source).filter(s => !(f === "src/ui/shared/app-shell.js" && hubSummary.has(s)) && (/\bcorporate\b/i.test(s) || !COMPANY_DICTIONARIES.has(f) && /公司|\bcompany\b/i.test(s))).map(s => `${f}: ${s.slice(0, 80)}`);
     });
     expect(hits).toEqual([]);
   });

@@ -1,0 +1,2382 @@
+{
+  "scope": "Baseline HEAD e0aa4448f544a467cb92353c2c6964ab6d7b43ad; raw inventory AST runtime import expressions only",
+  "summary": {
+    "files": 108,
+    "runtimeImports": 171,
+    "byContext": {
+      "test_or_helper_body": 116,
+      "top_level": 48,
+      "beforeAll": 6,
+      "collection": 1
+    },
+    "byModule": {
+      "../src/fleet-manager.js": 134,
+      "../src/web-api.js": 16,
+      "../src/daemon.js": 21
+    },
+    "fileGroupCounts": {
+      "safe_static": 58,
+      "intentional_reset": 2,
+      "already_outside_test_budget": 48
+    }
+  },
+  "notes": [
+    "FleetManager imports daemon and web-api; daemon/web-api do not import FleetManager.",
+    "All 60 candidate files can first import the target during a test/helper; per-test selection can change which dynamic occurrence is cold.",
+    "UI resetModules calls in web-chat-c3/c4/web-mods occur after target imports; retain UI reset semantics while capturing server class exports once.",
+    "Alpha hub-company-join-http and support rig inspected separately: no target dynamic import; do not attribute its failure to this mechanism.",
+    "Review promoted all 22 environment flags to static-safe for exercised behavior: per-test AGEND_HOME remains runtime configuration; caches, credentials, web files, and profiles call getAgendHome dynamically. Logger transports are mocked; NOTIFY_SOCKET is not manipulated; tests do not depend on channel/tool-router module-captured STATE_DIR.",
+    "The 3 UI-reset files can use captured static server class/module references while retaining UI resetModules calls. If retaining dynamic server imports instead, use a scoped beforeAll after earlier UI reset tests.",
+    "No runtime CLI target imports were found; 134 FleetManager, 21 daemon, 16 web-api."
+  ],
+  "fileGroups": {
+    "safe_static": [
+      "tests/agent-managed-files-2026.test.ts",
+      "tests/agy-model-effort-1825.test.ts",
+      "tests/binary-probe-1490.test.ts",
+      "tests/cli-audit-login-trust-effort-1328.test.ts",
+      "tests/cli-env-probe-guard.test.ts",
+      "tests/context-lost-749.test.ts",
+      "tests/critical-coverage.test.ts",
+      "tests/dashboard-permissions.test.ts",
+      "tests/discord-permissions-1519.test.ts",
+      "tests/fleet-traffic-1918.test.ts",
+      "tests/hot-cold-parity.test.ts",
+      "tests/kiro-default-tui-2598.test.ts",
+      "tests/kiro-migrate-2598.test.ts",
+      "tests/log-service-1218.test.ts",
+      "tests/login-tunnel-wiring-1137.test.ts",
+      "tests/mcp-auto-restart.test.ts",
+      "tests/model-stale-refresh.test.ts",
+      "tests/muse-background-work-1716-1717.test.ts",
+      "tests/output-log-tail.test.ts",
+      "tests/profile-aware-usage.test.ts",
+      "tests/quickstart-discord-general-1552.test.ts",
+      "tests/resume-timeout-keeps-session.test.ts",
+      "tests/search-fleet-2293.test.ts",
+      "tests/settings-apply-fields-2346.test.ts",
+      "tests/settings-quickstart-wizard.test.ts",
+      "tests/setup-host-tunnel.test.ts",
+      "tests/signin-glossary-s117.test.ts",
+      "tests/steer-consumed-1201.test.ts",
+      "tests/stickers-1226.test.ts",
+      "tests/sysinfo-backend-versions.test.ts",
+      "tests/tmux-control-grace-slow-read-1490.test.ts",
+      "tests/tmux-kill-window-confirmed.test.ts",
+      "tests/token-env-name-1519.test.ts",
+      "tests/tool-permissions.test.ts",
+      "tests/update-final-step-2175.test.ts",
+      "tests/update-notification-suppression.test.ts",
+      "tests/web-ambient-2117.test.ts",
+      "tests/web-appearance-tools-1629.test.ts",
+      "tests/web-banner-focus-2086.test.ts",
+      "tests/web-card-1629.test.ts",
+      "tests/web-chat-c2.test.ts",
+      "tests/web-chat-c3.test.ts",
+      "tests/web-chat-c4.test.ts",
+      "tests/web-chat-persist-1565.test.ts",
+      "tests/web-cross-instance-1672.test.ts",
+      "tests/web-favorites-1664.test.ts",
+      "tests/web-identity-color-1958.test.ts",
+      "tests/web-mentions-1682.test.ts",
+      "tests/web-mods-1629.test.ts",
+      "tests/web-office-acts-2578.test.ts",
+      "tests/web-office-pack-tools-2692.test.ts",
+      "tests/web-react-2305.test.ts",
+      "tests/web-reply-snapshots-1770.test.ts",
+      "tests/web-session-policy-1620.test.ts",
+      "tests/web-theme-tools-1629.test.ts",
+      "tests/web-upload-caps-1937.test.ts",
+      "tests/web-upload-sweep-1273.test.ts",
+      "tests/web-widgets-1629.test.ts"
+    ],
+    "intentional_reset": [
+      "tests/test-logger-guard-2725.test.ts",
+      "tests/claude-carry-1753.test.ts"
+    ],
+    "already_outside_test_budget": [
+      "tests/office-share-api-2636.test.ts",
+      "tests/quota-background-boot-3066.test.ts",
+      "tests/yaml-shared-nodes-2208.test.ts",
+      "tests/fleet-delegations-1918.test.ts",
+      "tests/web-chat-sending-server.test.ts",
+      "tests/supervision-ended.test.ts",
+      "tests/web-offices-api.test.ts",
+      "tests/web-settings-tools-2056.test.ts",
+      "tests/auth-pause-reconfirm-1044.test.ts",
+      "tests/early-dashboard-2398.test.ts",
+      "tests/instance-identity-n1.test.ts",
+      "tests/web-chat-c1.test.ts",
+      "tests/receive-reactions.test.ts",
+      "tests/web-guest-stream-1920.test.ts",
+      "tests/web-guest-scope-1920.test.ts",
+      "tests/web-guest-history-1920.test.ts",
+      "tests/web-guest-chat-1920.test.ts",
+      "tests/web-update-2738.test.ts",
+      "tests/model-menu-refresh.test.ts",
+      "tests/classic-start-with-fleet-2642.test.ts",
+      "tests/web-themes-ui-1629.test.ts",
+      "tests/web-office-pack-limits-2632.test.ts",
+      "tests/web-guest-access-1920.test.ts",
+      "tests/web-guest-rooms-1920.test.ts",
+      "tests/yaml-shared-nodes-guard-2208.test.ts",
+      "tests/startup-slow-chat-connection-2642.test.ts",
+      "tests/status-emojis-1005.test.ts",
+      "tests/events-db-abi-1490.test.ts",
+      "tests/web-compact-status-003648ac.test.ts",
+      "tests/web-avatars-fleet-1630.test.ts",
+      "tests/web-reply-native-2281.test.ts",
+      "tests/guest-grants-enforcement-2348.test.ts",
+      "tests/web-send-dedupe.test.ts",
+      "tests/switch-drops-model-1808.test.ts",
+      "tests/web-guest-trusted-2855.test.ts",
+      "tests/statusline-once-1956.test.ts",
+      "tests/sse-status-tick-1956.test.ts",
+      "tests/guest-upload-race-2366.test.ts",
+      "tests/web-reply-files-1774.test.ts",
+      "tests/web-chat-reply-2272.test.ts",
+      "tests/page-share-2911.test.ts",
+      "tests/web-update-boot-2738.test.ts",
+      "tests/reply-polls-1823.test.ts",
+      "tests/backend-command-1806.test.ts",
+      "tests/owner-css-routes-1629.test.ts",
+      "tests/web-office-skins-2513.test.ts",
+      "tests/view-history-claude.test.ts",
+      "tests/conditional-enter-retry.test.ts"
+    ]
+  },
+  "imports": [
+    {
+      "file": "tests/web-react-2305.test.ts",
+      "line": 99,
+      "column": 34,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-upload-caps-1937.test.ts",
+      "line": 33,
+      "column": 51,
+      "module": "../src/web-api.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-upload-caps-1937.test.ts",
+      "line": 462,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-favorites-1664.test.ts",
+      "line": 29,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-favorites-1664.test.ts",
+      "line": 74,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-favorites-1664.test.ts",
+      "line": 93,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-favorites-1664.test.ts",
+      "line": 112,
+      "column": 38,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-identity-color-1958.test.ts",
+      "line": 232,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/cli-audit-login-trust-effort-1328.test.ts",
+      "line": 191,
+      "column": 38,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-upload-sweep-1273.test.ts",
+      "line": 251,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-upload-sweep-1273.test.ts",
+      "line": 268,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/search-fleet-2293.test.ts",
+      "line": 22,
+      "column": 34,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/agy-model-effort-1825.test.ts",
+      "line": 136,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/profile-aware-usage.test.ts",
+      "line": 217,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/profile-aware-usage.test.ts",
+      "line": 242,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/profile-aware-usage.test.ts",
+      "line": 255,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-chat-c2.test.ts",
+      "line": 575,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-chat-c2.test.ts",
+      "line": 598,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-cross-instance-1672.test.ts",
+      "line": 207,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/kiro-default-tui-2598.test.ts",
+      "line": 74,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/log-service-1218.test.ts",
+      "line": 314,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-chat-persist-1565.test.ts",
+      "line": 344,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-banner-focus-2086.test.ts",
+      "line": 79,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-session-policy-1620.test.ts",
+      "line": 153,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/cli-env-probe-guard.test.ts",
+      "line": 74,
+      "column": 34,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/update-final-step-2175.test.ts",
+      "line": 490,
+      "column": 38,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/update-final-step-2175.test.ts",
+      "line": 577,
+      "column": 38,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/update-final-step-2175.test.ts",
+      "line": 604,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/update-final-step-2175.test.ts",
+      "line": 646,
+      "column": 38,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/update-final-step-2175.test.ts",
+      "line": 674,
+      "column": 38,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/model-stale-refresh.test.ts",
+      "line": 55,
+      "column": 34,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/model-stale-refresh.test.ts",
+      "line": 114,
+      "column": 49,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/model-stale-refresh.test.ts",
+      "line": 175,
+      "column": 49,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/model-stale-refresh.test.ts",
+      "line": 294,
+      "column": 49,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/web-reply-snapshots-1770.test.ts",
+      "line": 238,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/sysinfo-backend-versions.test.ts",
+      "line": 85,
+      "column": 34,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/sysinfo-backend-versions.test.ts",
+      "line": 220,
+      "column": 49,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/kiro-migrate-2598.test.ts",
+      "line": 265,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "env_sensitive_review",
+      "rationale": "Per-test environment is consumed at runtime by tested paths; logger sink/mocks avoid import-time log-file behavior; no resetModules dependency."
+    },
+    {
+      "file": "tests/office-share-api-2636.test.ts",
+      "line": 21,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/office-share-api-2636.test.ts",
+      "line": 25,
+      "column": 36,
+      "module": "../src/web-api.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/quota-background-boot-3066.test.ts",
+      "line": 29,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/yaml-shared-nodes-2208.test.ts",
+      "line": 31,
+      "column": 51,
+      "module": "../src/fleet-manager.js",
+      "context": "beforeAll",
+      "function_ancestry": [
+        "beforeAll"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/fleet-delegations-1918.test.ts",
+      "line": 112,
+      "column": 33,
+      "module": "../src/fleet-manager.js",
+      "context": "beforeAll",
+      "function_ancestry": [
+        "beforeAll",
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/fleet-delegations-1918.test.ts",
+      "line": 115,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-chat-sending-server.test.ts",
+      "line": 16,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/supervision-ended.test.ts",
+      "line": 18,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-offices-api.test.ts",
+      "line": 26,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-offices-api.test.ts",
+      "line": 31,
+      "column": 36,
+      "module": "../src/web-api.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-settings-tools-2056.test.ts",
+      "line": 14,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/auth-pause-reconfirm-1044.test.ts",
+      "line": 207,
+      "column": 40,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/auth-pause-reconfirm-1044.test.ts",
+      "line": 231,
+      "column": 40,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/early-dashboard-2398.test.ts",
+      "line": 29,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/instance-identity-n1.test.ts",
+      "line": 24,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-chat-c1.test.ts",
+      "line": 508,
+      "column": 53,
+      "module": "../src/fleet-manager.js",
+      "context": "beforeAll",
+      "function_ancestry": [
+        "beforeAll",
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/receive-reactions.test.ts",
+      "line": 304,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-guest-stream-1920.test.ts",
+      "line": 24,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-guest-stream-1920.test.ts",
+      "line": 26,
+      "column": 47,
+      "module": "../src/web-api.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-guest-stream-1920.test.ts",
+      "line": 82,
+      "column": 40,
+      "module": "../src/web-api.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-guest-stream-1920.test.ts",
+      "line": 123,
+      "column": 40,
+      "module": "../src/web-api.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-guest-scope-1920.test.ts",
+      "line": 25,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-guest-history-1920.test.ts",
+      "line": 197,
+      "column": 34,
+      "module": "../src/fleet-manager.js",
+      "context": "collection",
+      "function_ancestry": [
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-guest-chat-1920.test.ts",
+      "line": 27,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-update-2738.test.ts",
+      "line": 33,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-update-2738.test.ts",
+      "line": 36,
+      "column": 36,
+      "module": "../src/web-api.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/model-menu-refresh.test.ts",
+      "line": 33,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/classic-start-with-fleet-2642.test.ts",
+      "line": 29,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-themes-ui-1629.test.ts",
+      "line": 26,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-themes-ui-1629.test.ts",
+      "line": 30,
+      "column": 36,
+      "module": "../src/web-api.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-office-pack-limits-2632.test.ts",
+      "line": 24,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-guest-access-1920.test.ts",
+      "line": 24,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-guest-rooms-1920.test.ts",
+      "line": 24,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/yaml-shared-nodes-guard-2208.test.ts",
+      "line": 20,
+      "column": 51,
+      "module": "../src/fleet-manager.js",
+      "context": "beforeAll",
+      "function_ancestry": [
+        "beforeAll"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/startup-slow-chat-connection-2642.test.ts",
+      "line": 30,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/status-emojis-1005.test.ts",
+      "line": 352,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/events-db-abi-1490.test.ts",
+      "line": 18,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-compact-status-003648ac.test.ts",
+      "line": 31,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-compact-status-003648ac.test.ts",
+      "line": 32,
+      "column": 26,
+      "module": "../src/daemon.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-avatars-fleet-1630.test.ts",
+      "line": 22,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-avatars-fleet-1630.test.ts",
+      "line": 23,
+      "column": 36,
+      "module": "../src/web-api.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-reply-native-2281.test.ts",
+      "line": 150,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/guest-grants-enforcement-2348.test.ts",
+      "line": 22,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-send-dedupe.test.ts",
+      "line": 20,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/switch-drops-model-1808.test.ts",
+      "line": 21,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-guest-trusted-2855.test.ts",
+      "line": 24,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/statusline-once-1956.test.ts",
+      "line": 27,
+      "column": 51,
+      "module": "../src/fleet-manager.js",
+      "context": "beforeAll",
+      "function_ancestry": [
+        "beforeAll"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/sse-status-tick-1956.test.ts",
+      "line": 16,
+      "column": 36,
+      "module": "../src/web-api.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/guest-upload-race-2366.test.ts",
+      "line": 32,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-reply-files-1774.test.ts",
+      "line": 23,
+      "column": 29,
+      "module": "../src/fleet-manager.js",
+      "context": "beforeAll",
+      "function_ancestry": [
+        "beforeAll"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-chat-reply-2272.test.ts",
+      "line": 26,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-chat-reply-2272.test.ts",
+      "line": 32,
+      "column": 36,
+      "module": "../src/web-api.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/page-share-2911.test.ts",
+      "line": 26,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-update-boot-2738.test.ts",
+      "line": 31,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/reply-polls-1823.test.ts",
+      "line": 739,
+      "column": 37,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/reply-polls-1823.test.ts",
+      "line": 747,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/backend-command-1806.test.ts",
+      "line": 24,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/owner-css-routes-1629.test.ts",
+      "line": 22,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/owner-css-routes-1629.test.ts",
+      "line": 25,
+      "column": 36,
+      "module": "../src/web-api.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-office-skins-2513.test.ts",
+      "line": 35,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/web-office-skins-2513.test.ts",
+      "line": 41,
+      "column": 36,
+      "module": "../src/web-api.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/view-history-claude.test.ts",
+      "line": 25,
+      "column": 32,
+      "module": "../src/fleet-manager.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/conditional-enter-retry.test.ts",
+      "line": 26,
+      "column": 26,
+      "module": "../src/daemon.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "already_outside_test_budget",
+      "initial_file_group": "already_outside_test_budget"
+    },
+    {
+      "file": "tests/token-env-name-1519.test.ts",
+      "line": 54,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/resume-timeout-keeps-session.test.ts",
+      "line": 220,
+      "column": 46,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/resume-timeout-keeps-session.test.ts",
+      "line": 226,
+      "column": 46,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/resume-timeout-keeps-session.test.ts",
+      "line": 231,
+      "column": 46,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/resume-timeout-keeps-session.test.ts",
+      "line": 237,
+      "column": 60,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/resume-timeout-keeps-session.test.ts",
+      "line": 248,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-chat-c4.test.ts",
+      "line": 26,
+      "column": 34,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-chat-c4.test.ts",
+      "line": 391,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/mcp-auto-restart.test.ts",
+      "line": 385,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/mcp-auto-restart.test.ts",
+      "line": 417,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-mentions-1682.test.ts",
+      "line": 120,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/discord-permissions-1519.test.ts",
+      "line": 88,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/settings-quickstart-wizard.test.ts",
+      "line": 245,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/settings-quickstart-wizard.test.ts",
+      "line": 533,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/tmux-control-grace-slow-read-1490.test.ts",
+      "line": 214,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/dashboard-permissions.test.ts",
+      "line": 89,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/dashboard-permissions.test.ts",
+      "line": 118,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-office-acts-2578.test.ts",
+      "line": 119,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-office-acts-2578.test.ts",
+      "line": 325,
+      "column": 34,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/steer-consumed-1201.test.ts",
+      "line": 502,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/steer-consumed-1201.test.ts",
+      "line": 561,
+      "column": 32,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-mods-1629.test.ts",
+      "line": 468,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-mods-1629.test.ts",
+      "line": 573,
+      "column": 40,
+      "module": "../src/web-api.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/context-lost-749.test.ts",
+      "line": 169,
+      "column": 60,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/setup-host-tunnel.test.ts",
+      "line": 581,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/login-tunnel-wiring-1137.test.ts",
+      "line": 39,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/login-tunnel-wiring-1137.test.ts",
+      "line": 60,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/update-notification-suppression.test.ts",
+      "line": 232,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/update-notification-suppression.test.ts",
+      "line": 245,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/update-notification-suppression.test.ts",
+      "line": 255,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/fleet-traffic-1918.test.ts",
+      "line": 130,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-card-1629.test.ts",
+      "line": 214,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-card-1629.test.ts",
+      "line": 321,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/hot-cold-parity.test.ts",
+      "line": 209,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/output-log-tail.test.ts",
+      "line": 281,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/critical-coverage.test.ts",
+      "line": 97,
+      "column": 40,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/agent-managed-files-2026.test.ts",
+      "line": 176,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it.each([[\"general\", \"general\"], [\"general-telegram\", \"general-telegram\"], [\"alpha\", \"workspaces/alpha-home\"]])",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/settings-apply-fields-2346.test.ts",
+      "line": 154,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/muse-background-work-1716-1717.test.ts",
+      "line": 514,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/muse-background-work-1716-1717.test.ts",
+      "line": 543,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/muse-background-work-1716-1717.test.ts",
+      "line": 594,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/muse-background-work-1716-1717.test.ts",
+      "line": 621,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-theme-tools-1629.test.ts",
+      "line": 200,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-theme-tools-1629.test.ts",
+      "line": 231,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it.each([false, true])",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-theme-tools-1629.test.ts",
+      "line": 249,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/signin-glossary-s117.test.ts",
+      "line": 173,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-chat-c3.test.ts",
+      "line": 127,
+      "column": 34,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-chat-c3.test.ts",
+      "line": 296,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/stickers-1226.test.ts",
+      "line": 317,
+      "column": 34,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/stickers-1226.test.ts",
+      "line": 475,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-office-pack-tools-2692.test.ts",
+      "line": 136,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/web-office-pack-tools-2692.test.ts",
+      "line": 712,
+      "column": 34,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/tool-permissions.test.ts",
+      "line": 293,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/tool-permissions.test.ts",
+      "line": 650,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/tool-permissions.test.ts",
+      "line": 754,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/tool-permissions.test.ts",
+      "line": 797,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/tool-permissions.test.ts",
+      "line": 828,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/tool-permissions.test.ts",
+      "line": 988,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/tmux-kill-window-confirmed.test.ts",
+      "line": 115,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe.skipIf(!have(\"tmux\"))"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/binary-probe-1490.test.ts",
+      "line": 32,
+      "column": 36,
+      "module": "../src/web-api.js",
+      "context": "top_level",
+      "function_ancestry": [],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/binary-probe-1490.test.ts",
+      "line": 468,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/quickstart-discord-general-1552.test.ts",
+      "line": 135,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "safe_static"
+    },
+    {
+      "file": "tests/test-logger-guard-2725.test.ts",
+      "line": 39,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "intentional_reset",
+      "initial_file_group": "intentional_reset",
+      "rationale": "Keep fresh-module semantics: test-logger-guard resets after scratchHome setup; claude-carry resets inside restart/rig helpers. Move setup/reset/heavy import into an explicit-budget scoped hook if removing cold work from test budget."
+    },
+    {
+      "file": "tests/claude-carry-1753.test.ts",
+      "line": 143,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "intentional_reset",
+      "initial_file_group": "intentional_reset",
+      "rationale": "Keep fresh-module semantics: test-logger-guard resets after scratchHome setup; claude-carry resets inside restart/rig helpers. Move setup/reset/heavy import into an explicit-budget scoped hook if removing cold work from test budget."
+    },
+    {
+      "file": "tests/claude-carry-1753.test.ts",
+      "line": 188,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "intentional_reset",
+      "initial_file_group": "intentional_reset",
+      "rationale": "Keep fresh-module semantics: test-logger-guard resets after scratchHome setup; claude-carry resets inside restart/rig helpers. Move setup/reset/heavy import into an explicit-budget scoped hook if removing cold work from test budget."
+    },
+    {
+      "file": "tests/web-appearance-tools-1629.test.ts",
+      "line": 106,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "scoped_beforeAll_after_UI_resets",
+      "rationale": "Capture static server exports once; preserve UI resetModules calls. A dynamic preload would need server-describe scope after earlier UI resets."
+    },
+    {
+      "file": "tests/web-appearance-tools-1629.test.ts",
+      "line": 266,
+      "column": 30,
+      "module": "../src/daemon.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it.each([false, true])",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "scoped_beforeAll_after_UI_resets",
+      "rationale": "Capture static server exports once; preserve UI resetModules calls. A dynamic preload would need server-describe scope after earlier UI resets."
+    },
+    {
+      "file": "tests/web-widgets-1629.test.ts",
+      "line": 426,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "helper",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "scoped_beforeAll_after_UI_resets",
+      "rationale": "Capture static server exports once; preserve UI resetModules calls. A dynamic preload would need server-describe scope after earlier UI resets."
+    },
+    {
+      "file": "tests/web-widgets-1629.test.ts",
+      "line": 461,
+      "column": 40,
+      "module": "../src/web-api.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "scoped_beforeAll_after_UI_resets",
+      "rationale": "Capture static server exports once; preserve UI resetModules calls. A dynamic preload would need server-describe scope after earlier UI resets."
+    },
+    {
+      "file": "tests/web-ambient-2117.test.ts",
+      "line": 625,
+      "column": 36,
+      "module": "../src/fleet-manager.js",
+      "context": "test_or_helper_body",
+      "function_ancestry": [
+        "it",
+        "describe"
+      ],
+      "file_group": "safe_static",
+      "initial_file_group": "scoped_beforeAll_after_UI_resets",
+      "rationale": "Capture static server exports once; preserve UI resetModules calls. A dynamic preload would need server-describe scope after earlier UI resets."
+    }
+  ],
+  "initialFileGroups": {
+    "env_sensitive_review": [
+      "tests/web-react-2305.test.ts",
+      "tests/web-upload-caps-1937.test.ts",
+      "tests/web-favorites-1664.test.ts",
+      "tests/web-identity-color-1958.test.ts",
+      "tests/cli-audit-login-trust-effort-1328.test.ts",
+      "tests/web-upload-sweep-1273.test.ts",
+      "tests/search-fleet-2293.test.ts",
+      "tests/agy-model-effort-1825.test.ts",
+      "tests/profile-aware-usage.test.ts",
+      "tests/web-chat-c2.test.ts",
+      "tests/web-cross-instance-1672.test.ts",
+      "tests/kiro-default-tui-2598.test.ts",
+      "tests/log-service-1218.test.ts",
+      "tests/web-chat-persist-1565.test.ts",
+      "tests/web-banner-focus-2086.test.ts",
+      "tests/web-session-policy-1620.test.ts",
+      "tests/cli-env-probe-guard.test.ts",
+      "tests/update-final-step-2175.test.ts",
+      "tests/model-stale-refresh.test.ts",
+      "tests/web-reply-snapshots-1770.test.ts",
+      "tests/sysinfo-backend-versions.test.ts",
+      "tests/kiro-migrate-2598.test.ts"
+    ],
+    "already_outside_test_budget": [
+      "tests/office-share-api-2636.test.ts",
+      "tests/quota-background-boot-3066.test.ts",
+      "tests/yaml-shared-nodes-2208.test.ts",
+      "tests/fleet-delegations-1918.test.ts",
+      "tests/web-chat-sending-server.test.ts",
+      "tests/supervision-ended.test.ts",
+      "tests/web-offices-api.test.ts",
+      "tests/web-settings-tools-2056.test.ts",
+      "tests/auth-pause-reconfirm-1044.test.ts",
+      "tests/early-dashboard-2398.test.ts",
+      "tests/instance-identity-n1.test.ts",
+      "tests/web-chat-c1.test.ts",
+      "tests/receive-reactions.test.ts",
+      "tests/web-guest-stream-1920.test.ts",
+      "tests/web-guest-scope-1920.test.ts",
+      "tests/web-guest-history-1920.test.ts",
+      "tests/web-guest-chat-1920.test.ts",
+      "tests/web-update-2738.test.ts",
+      "tests/model-menu-refresh.test.ts",
+      "tests/classic-start-with-fleet-2642.test.ts",
+      "tests/web-themes-ui-1629.test.ts",
+      "tests/web-office-pack-limits-2632.test.ts",
+      "tests/web-guest-access-1920.test.ts",
+      "tests/web-guest-rooms-1920.test.ts",
+      "tests/yaml-shared-nodes-guard-2208.test.ts",
+      "tests/startup-slow-chat-connection-2642.test.ts",
+      "tests/status-emojis-1005.test.ts",
+      "tests/events-db-abi-1490.test.ts",
+      "tests/web-compact-status-003648ac.test.ts",
+      "tests/web-avatars-fleet-1630.test.ts",
+      "tests/web-reply-native-2281.test.ts",
+      "tests/guest-grants-enforcement-2348.test.ts",
+      "tests/web-send-dedupe.test.ts",
+      "tests/switch-drops-model-1808.test.ts",
+      "tests/web-guest-trusted-2855.test.ts",
+      "tests/statusline-once-1956.test.ts",
+      "tests/sse-status-tick-1956.test.ts",
+      "tests/guest-upload-race-2366.test.ts",
+      "tests/web-reply-files-1774.test.ts",
+      "tests/web-chat-reply-2272.test.ts",
+      "tests/page-share-2911.test.ts",
+      "tests/web-update-boot-2738.test.ts",
+      "tests/reply-polls-1823.test.ts",
+      "tests/backend-command-1806.test.ts",
+      "tests/owner-css-routes-1629.test.ts",
+      "tests/web-office-skins-2513.test.ts",
+      "tests/view-history-claude.test.ts",
+      "tests/conditional-enter-retry.test.ts"
+    ],
+    "safe_static": [
+      "tests/token-env-name-1519.test.ts",
+      "tests/resume-timeout-keeps-session.test.ts",
+      "tests/web-chat-c4.test.ts",
+      "tests/mcp-auto-restart.test.ts",
+      "tests/web-mentions-1682.test.ts",
+      "tests/discord-permissions-1519.test.ts",
+      "tests/settings-quickstart-wizard.test.ts",
+      "tests/tmux-control-grace-slow-read-1490.test.ts",
+      "tests/dashboard-permissions.test.ts",
+      "tests/web-office-acts-2578.test.ts",
+      "tests/steer-consumed-1201.test.ts",
+      "tests/web-mods-1629.test.ts",
+      "tests/context-lost-749.test.ts",
+      "tests/setup-host-tunnel.test.ts",
+      "tests/login-tunnel-wiring-1137.test.ts",
+      "tests/update-notification-suppression.test.ts",
+      "tests/fleet-traffic-1918.test.ts",
+      "tests/web-card-1629.test.ts",
+      "tests/hot-cold-parity.test.ts",
+      "tests/output-log-tail.test.ts",
+      "tests/critical-coverage.test.ts",
+      "tests/agent-managed-files-2026.test.ts",
+      "tests/settings-apply-fields-2346.test.ts",
+      "tests/muse-background-work-1716-1717.test.ts",
+      "tests/web-theme-tools-1629.test.ts",
+      "tests/signin-glossary-s117.test.ts",
+      "tests/web-chat-c3.test.ts",
+      "tests/stickers-1226.test.ts",
+      "tests/web-office-pack-tools-2692.test.ts",
+      "tests/tool-permissions.test.ts",
+      "tests/tmux-kill-window-confirmed.test.ts",
+      "tests/binary-probe-1490.test.ts",
+      "tests/quickstart-discord-general-1552.test.ts"
+    ],
+    "intentional_reset": [
+      "tests/test-logger-guard-2725.test.ts",
+      "tests/claude-carry-1753.test.ts"
+    ],
+    "scoped_beforeAll_after_UI_resets": [
+      "tests/web-appearance-tools-1629.test.ts",
+      "tests/web-widgets-1629.test.ts",
+      "tests/web-ambient-2117.test.ts"
+    ]
+  }
+}

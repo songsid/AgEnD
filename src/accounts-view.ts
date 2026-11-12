@@ -68,13 +68,15 @@ export interface AccountRow {
   reconnect?: true;
 }
 /** Dates are ISO strings; `lastOutcome` is signin-keepalive.ts's Outcome. No token, path or output is in it. */
-export interface AccountKeepAlive { enabled: boolean; fallback?: boolean; endsAt?: string; expiresAt?: string; lastAt?: string; lastOutcome?: string; planType?: string }
+export interface AccountKeepAlive { enabled: boolean; fallback?: boolean; expiresAt?: string; lastAt?: string; lastOutcome?: string; planType?: string }
 export interface CliUpdateInfo extends CliUpdateView { via: "dashboard" | "self" }
 export interface AccountsCli {
   backend: string; profiles: boolean; installed: boolean;
   /** AGEND-133: a CLI with no account card of its own (OpenCode) is listed only to be installed (or while its install is shown); it has no sign-in rows. */
   installOnly?: boolean;
-  fleetDefault: string | null; agents: Array<{ name: string; profile: string | null }>; rows: AccountRow[];
+  fleetDefault: string | null; agents: Array<{ name: string; profile: string | null }>;
+  /** M-2909: the ClassicBot rooms on this CLI (their key in classicBot.yaml), each with its account — Move lists them. */
+  rooms: Array<{ key: string; profile: string | null }>; rows: AccountRow[];
 }
 export interface AccountsView { clis: AccountsCli[] }
 
@@ -213,7 +215,7 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
     }
     // A paired computer's rows come after the host's, each computer's together (the page groups them by scope).
     for (const m of machines) rows.push(...machineRows(backend, m));
-    clis.push({ backend, profiles: PROFILE_CLIS.has(backend), installed, ...(installOnly ? { installOnly: true } : {}), fleetDefault, agents: agents.map(a => ({ name: a.name, profile: a.profile })), rows });
+    clis.push({ backend, profiles: PROFILE_CLIS.has(backend), installed, ...(installOnly ? { installOnly: true } : {}), fleetDefault, agents: agents.map(a => ({ name: a.name, profile: a.profile })), rooms: classic.map(c => ({ key: c.key, profile: c.profile })), rows });
   }
   return { clis };
 }

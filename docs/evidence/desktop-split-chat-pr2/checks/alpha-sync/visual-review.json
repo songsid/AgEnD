@@ -1,0 +1,31 @@
+{
+  "scope": "Read-only static review of exactly eight new originals by built-in image agent; no browser rerun by reviewer.",
+  "originals": {
+    "e3764de5dd70fd8639c4062341d6dab4f545e9fcf49ed2ccffe1cfbf2fa32c3e": [
+      "browser/sync-classic-light/light-zh-TW-single.png"
+    ],
+    "d02c09e06c8f03e1c19321e36983857f28c4978de5f568f119e02fc7f4cbb4da": [
+      "browser/sync-classic-light/light-zh-TW-right.png"
+    ],
+    "fce53d8b782eb92f5b5a670ff504cc39aa4d29e291e450f350b87fd3d8c804c7": [
+      "browser/sync-classic-light/light-zh-TW-stack.png"
+    ],
+    "81f66692a7771dc9cf0b20db07d2875c8b62873a8535afc44c8c3fce41d2e6fb": [
+      "browser/sync-classic-light/light-zh-TW-restored-settings.png"
+    ],
+    "b16a621be970a6f073a8c235998e97798e7aae6d9ad93f94bc2cef1a110aad88": [
+      "browser/sync-classic-dark/dark-zh-TW-single.png"
+    ],
+    "0c709e4c7cb04c8b9c79fe57f627982dddd508598234cd8cf94fdc514c39a8a4": [
+      "browser/sync-classic-dark/dark-zh-TW-right.png"
+    ],
+    "972baeef2074a500c6db742f2b6d6118a68b87c06c943e25d9afab49aef9a416": [
+      "browser/sync-classic-dark/dark-zh-TW-stack.png"
+    ],
+    "3ad31ca1d5bc71e84a774238c927777b8c3f648d41e53af01e13fc6ebf404c00": [
+      "browser/sync-classic-dark/dark-zh-TW-restored-settings.png"
+    ]
+  },
+  "result": "No blocking visual finding: one-row text tabs, readable name/status, pane controls and Settings save bars unobstructed; no observed clipping/overlap.",
+  "limits": "No visual emoji-glyph verification or Classic-room account UI coverage. Browser fixture has no Classic rooms; actual-form controls prove the new account compatibility."
+}
