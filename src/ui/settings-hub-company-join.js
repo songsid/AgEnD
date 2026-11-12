@@ -112,7 +112,10 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     request.finally(() => { if (reading.current === request) reading.current = null; });
     return request;
   };
-  const unmatched = !!waiting && view?.handoffId !== waiting;
+  // alpha.2 findings 3/4: an attempt that blocks this one (refused, held, or another session's) is shown even in a waiting
+  // tab whose own handoff never started, instead of "Opening Hub sign-in…" until the deadline.
+  const blocking = !!view && (view.foreign === true || view.state === "held");
+  const unmatched = !!waiting && view?.handoffId !== waiting && !blocking;
   useEffect(() => { live.current = true; read(); return () => { live.current = false; token.current++; }; }, []);
   useEffect(() => {
     if (!pending && !unmatched) { setTimedOut(false); return; }
@@ -176,7 +179,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
       if (!live.current || gen !== token.current) return;
       if (!result.ok || !result.body?.operation) { await read();
         if (result.confirmed?.state === "rejected" && result.confirmed.outcome?.reason_code === "withdrawn") { setError(null); setNotice(jw("localWithdrawn")); return; }
-        const code = joinResponseCode(result); setError(result.confirmed?.state === "expired" ? jw("localExpired") : joinError(code)); setIdentityChanged(code === "identity-changed"); return; }
+        const code = joinResponseCode(result); setError(result.confirmed?.state === "expired" ? jw("localExpired") : code === "conflict" ? jc("blocked") : joinError(code)); setIdentityChanged(code === "identity-changed"); return; }
       const operation = result.body.operation; setView(operation); setError(null);
 
     } catch { if (live.current && gen === token.current) setError(hj("unknown")); }
@@ -200,7 +203,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
       const options = { body: { operationId: view.operationId }, label: hj("title") };
       const result = step === "resume" ? await confirmedWrite(root + "/resume", options) : await api(root + "/cancel", { method: "POST", body: JSON.stringify(options.body) });
       if (!live.current || gen !== token.current) return;
-      if (result.ok) setView(result.body.operation); else setError(joinError(joinResponseCode(result)));
+      if (result.ok) setView(result.body.operation); else { setError(joinError(joinResponseCode(result))); await read(); }
     } catch { if (live.current && gen === token.current) setError(hj("unknown")); }
     finally { if (live.current && gen === token.current) setBusy(false); }
   };
@@ -222,7 +225,9 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
   const target = (() => { try { return pending?.target || (view && (!waiting || view.handoffId === waiting) ? view.hubOrigin : "") || (waiting ? new URLSearchParams(location.hash.slice(1)).get("target") || "" : new URL(kind.address).origin); } catch { return ""; } })();
   const inlineWait = consentWait || pending?.inline;
   const retired = embedded && !bound && view?.state === "saved" && view.outcomeKnown;
-  const canStart = !pending?.inline && !waiting && (retired || view === null || view && ["ended", "cancelled"].includes(view.state) && !view.issued && view.outcomeKnown);
+  const canStart = !pending?.inline && !waiting && (retired || view === null || view && ["ended", "cancelled", "held"].includes(view.state) && !view.issued && view.outcomeKnown);
+  // (alpha.2 finding 3: under a held attempt that issued nothing, a new Start is offered — the Fleet retires the held one
+  // first, only when the Hub confirms it can't issue; otherwise the Start is refused and says so.)
   // The existing connection card owns ready status, sharing and disconnect. Do not duplicate it after handoff.
   if (!waiting && bound && view === null || !retired && view?.state === "saved" && (memberEnabled || view.link === "online") && onSaved) return null;
   const Frame = embedded ? "div" : "section";
@@ -262,13 +267,14 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
       <div class="field-row"><button class="btn btn-primary" type="submit" disabled=${busy || !ready}>${j1("go")}</button></div>
       ${identityChanged || probe?.identity === "changed" && probe.address === kind.address ? html`<p class="note">${hj("repairLead")}</p><button class="btn btn-sm" type="button" disabled=${busy || kind.kind !== "address"} onClick=${repair}>${hj("repair")}</button>` : null}
     </form>` : null}
-    ${view && !retired && (!waiting || view.handoffId === waiting) ? html`<div role="status"><strong>${hj(view.state === "saved" ? view.link === "online" ? "saved" : "joining" : view.state === "awaiting-sign-in" ? "awaiting" : view.state === "cancelled" ? "cancelled" : view.state === "held" || view.state === "ended" ? "held" : "joining")}</strong>
+    ${view && !retired && (!waiting || view.handoffId === waiting || blocking) ? html`<div role="status" class=${view.foreign ? "hub-join-foreign" : undefined}><strong>${hj(view.state === "saved" ? view.link === "online" ? "saved" : "joining" : view.state === "awaiting-sign-in" ? "awaiting" : view.state === "cancelled" ? "cancelled" : view.state === "held" || view.state === "ended" ? "held" : "joining")}</strong>
       ${view.state === "awaiting-sign-in" ? html`<p class="note hub-join-opened">${j1("opened", probe?.ok && probe.hubName || (() => { try { return new URL(view.hubOrigin).host; } catch { return view.hubOrigin || ""; } })())}${Number.isFinite(view.expiresAt) ? html` <span class="hub-join-left">${j1("left", leftOf(view.expiresAt, now))}</span>` : null}</p>` : null}
       ${view.state === "awaiting-sign-in" && waitingMessage(view.waiting) ? html`<p class="note" role="alert">${waitingMessage(view.waiting)}</p>` : null}
-      ${view.state === "saved" ? html`<p class="note">${hj(view.link === "online" ? "fleetDone" : "offline")}</p>` : view.reason && view.reason !== "cancelled" ? html`<p class="note">${reasonMessage(view) || joinError(view.reason)}</p>` : null}
+      ${view.state === "saved" ? html`<p class="note">${hj(view.link === "online" ? "fleetDone" : "offline")}</p>` : view.reason && view.reason !== "cancelled" ? html`<p class="note">${view.reason === "code-denied" ? jc("codeDenied") : reasonMessage(view) || joinError(view.reason)}</p>` : null}
+      ${view.foreign ? html`<p class="note">${jc(view.state === "held" ? "foreignHeld" : "foreignBusy", Number.isFinite(view.expiresAt) ? leftOf(view.expiresAt, now) : "")}</p>` : null}
       ${view.issued && view.state !== "saved" ? html`<p class="note">${hj("issued")}</p>` : null}
-      <div class="field-row">${view.state === "awaiting-sign-in" ? html`<a class="btn btn-sm" href=${root + "/bridge?operationId=" + encodeURIComponent(view.operationId)} target="_blank" rel="noopener">${j1("reopen")}</a>` : null}${view.state === "held" && !["authority", "expired"].includes(view.reason) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("resume")}>${hj("resume")}</button>` : null}
-        ${!["saved", "cancelled", "ended"].includes(view.state) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("cancel")}>${view.state === "awaiting-sign-in" ? j1("cancel") : hj("stop")}</button>` : null}
+      <div class="field-row">${view.state === "awaiting-sign-in" && !view.foreign ? html`<a class="btn btn-sm" href=${root + "/bridge?operationId=" + encodeURIComponent(view.operationId)} target="_blank" rel="noopener">${j1("reopen")}</a>` : null}${view.state === "held" && !["authority", "expired", "denied", "code-denied"].includes(view.reason) ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("resume")}>${hj("resume")}</button>` : null}
+        ${!["saved", "cancelled", "ended"].includes(view.state) && (!view.foreign || view.state === "held") ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action("cancel")}>${view.state === "awaiting-sign-in" ? j1("cancel") : hj("stop")}</button>` : null}
         ${view.hubOrigin ? html`<a class="btn btn-sm" href=${view.hubOrigin + "/ui/hub"} target="_blank" rel="noopener noreferrer">${hj("inspect")}</a>` : null}</div>
     </div>` : null}
   </${Frame}>`;
