@@ -1,0 +1,12 @@
+# before
+- source: 317df43b8b271057ed30a553d577975e6146fd22 (clean)
+- fleet: named tunnel (web.public_link.hostname set), defaults otherwise
+- view: Settings → Access & security → Sign-in, scrolled to the public-link block (after) / the public-session note (before)
+- before-light-en-desk.png
+- before-light-en-phone.png
+- before-light-zh-TW-desk.png
+- before-light-zh-TW-phone.png
+- before-dark-en-desk.png
+- before-dark-en-phone.png
+- before-dark-zh-TW-desk.png
+- before-dark-zh-TW-phone.png
