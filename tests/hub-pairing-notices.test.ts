@@ -89,6 +89,26 @@ describe("durable quick-pairing security notice outbox",()=>{
    await vi.advanceTimersByTimeAsync(5000);expect(links.map(link=>link.current.mock.calls.length)).toEqual([1,1,1]);
   }finally{w.notices.close();vi.useRealTimers();}
  });
+ it("does not schedule idle members whose retained notice targets are all delivered (#3713)",async()=>{
+  const w=fixture();w.enable();await quick(w);
+  const noticeId=(w.db.prepare("SELECT id FROM hub_pairing_notices").get() as {id:string}).id;
+  const links=Array.from({length:120},()=>({fleetId:randomUUID(),owner:w.owner,linkEpoch:1,
+   features:new Set(["welcome-caps-v1","pairing-notices-v1"]),current:vi.fn(()=>true)}));
+  w.db.transaction(()=>{
+   for(const link of links)w.db.prepare("INSERT INTO hub_pairing_notice_targets VALUES(?,'fleet',?,'delivered')").run(noticeId,link.fleetId);
+  }).immediate();
+  expect(w.db.prepare("SELECT count(*) n FROM hub_pairing_notice_targets WHERE kind='fleet' AND state='delivered'").get()).toEqual({n:120});
+  links.forEach(link=>w.notices.noteLink(link));links.forEach(link=>link.current.mockClear());
+  const flush=vi.spyOn(w.notices,"flushFleet");w.eligible.mockClear();
+  vi.useFakeTimers();
+  try{
+   w.notices.start();await vi.advanceTimersByTimeAsync(1000);
+   expect(flush).not.toHaveBeenCalled();
+   expect(links.reduce((n,link)=>n+link.current.mock.calls.length,0)).toBeLessThanOrEqual(1);
+   expect(w.eligible).not.toHaveBeenCalled();expect(w.send).not.toHaveBeenCalled();
+   expect(w.db.prepare("SELECT count(*) n FROM hub_pairing_notice_targets WHERE kind='fleet' AND state='delivered'").get()).toEqual({n:120});
+  }finally{w.notices.close();vi.useRealTimers();}
+ });
  it("finds a retained recipient on the timer even without a committed notification (#3713)",async()=>{
   const w=fixture();w.enable(2);const old=await w.approved();await w.service.claim(old.input);await quick(w);
   const link:HubLinkContext={fleetId:old.fleetId,owner:w.owner,linkEpoch:1,
