@@ -17,7 +17,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram, Discord or browser int
   <code>You → Telegram/Discord/Web → AgEnD → Fleet of AI Agents → Results back to you</code>
 </p>
 
-[繁體中文](README.zh-TW.md) · [Documentation](docs/features.md) · [CLI Reference](docs/cli.md) · [2.3 what’s new](docs/whats-new-2.3.md) · [Upgrading to 2.3](docs/upgrade-2.3.md)
+[繁體中文](README.zh-TW.md) · [Documentation](docs/features.md) · [CLI Reference](docs/cli.md) · [2.3 what’s new](docs/whats-new-2.3.md) · [Upgrading to 2.3](docs/upgrade-2.3.md) · [2.4 preview (alpha)](docs/whats-new-2.4.md)
 
 ---
 

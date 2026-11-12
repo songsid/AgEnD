@@ -333,6 +333,32 @@ Instance 可看到自己送出、收到，或經 `forwards` 明確授權的紀�
 
 建立、認領和完成任務都會寫進活動日誌。除了 `minimal` 以外，每種工具權限組合都有 `task`。
 
+### 接手者停下來時
+
+卡片的接手者停止處理這張卡時，派出這張卡的 Agent 會收到通知（#3647）：
+
+- 接手者當掉，5 分鐘後還沒恢復；
+- 它被暫停了：登入到期、用量達到上限，或一直出錯；
+- 它看起來卡住了；
+- 它卡在沒人回答的提示上 10 分鐘；
+- 它接了卡，卻 60 分鐘都沒有動靜。長時間的背景工作（subagent、背景任務）和等待回覆不算沒有動靜。
+
+每次停下來，派工者會收到一則 `[Task board]` 通知；接手者恢復工作時，再收到一行「恢復工作」。計畫中的重啟和更新不會發通知。如果卡是人派出的，沒有動靜的接手者會出現在那個人的「等你回應」。`task(action: "list", stale: true)` 會列出接手者已停下來的卡。
+
+AgEnD 只通知，不會重啟接手者，也不會把卡改派給別人；怎麼處理由派工者決定。
+
+在「設定 → Agent 共用設定 → 進階設定 → 接手者停下來時」調整：「通知派工者」（預設開啟），以及每種情況的分鐘數（1 到 1440）。在 `fleet.yaml` 裡：
+
+```yaml
+defaults:
+  task_board:
+    liveness:
+      enabled: true
+      quiet_minutes: 60          # 接了卡卻沒有動靜
+      prompt_minutes: 10         # 卡在提示上
+      crash_grace_minutes: 5     # 當掉沒恢復
+```
+
 ### 在網頁上（Fleet › Tasks）
 
 Tasks 分頁就是看板本身（設計：[task-board](design/task-board.md)，從任務會所 taskhall 移植）：
@@ -541,7 +567,7 @@ instances:
 
 ## 平順重啟 (Graceful restart)
 
-聊天裡的 `/restart`（不加 `full`）會在執行中的 fleet 進程內重啟各 instance：它會等所有 instance 都進入閒置（對話紀錄 10 秒沒有活動），再逐一重啟。另有 5 分鐘的逾時，避免被卡住的 instance 拖住。CLI 的整個 fleet 重啟是 `agend restart`，會透過服務管理器執行（#2356）；`agend fleet restart` 現在只是改執行 `agend restart`，2.4 會移除。
+聊天裡的 `/restart`（不加 `full`）會在執行中的 fleet 進程內重啟各 instance：它會等所有 instance 都進入閒置（對話紀錄 10 秒沒有活動），再逐一重啟。另有 5 分鐘的逾時，避免被卡住的 instance 拖住。CLI 的整個 fleet 重啟是 `agend restart`，會透過服務管理器執行（#2356）；`agend fleet restart` 現在只是改執行 `agend restart`，之後的 2.4 版本會移除。
 
 ## Topic 圖示與閒置封存 (Topic icon + idle archive)
 
@@ -813,9 +839,19 @@ instances:
 
 profile 存放在 fleet 底下的 `~/.agend/credential-profiles/<backend>/<profile>`，所以好幾個 agent 可以指向同一份訂閱。沒有指定 profile 的 instance 不受影響。只有登入資訊會分開：kiro 龐大的執行期快取會連回共用的那一份，Codex 則只有 `auth.json` 不同。切換 profile 就是改設定再重啟（`update_instance_config` 會兩件事一起做）；切換到從未登入過的 profile 會被拒絕，並附上登入它的指令。fleet 管理員可以在聊天用 `/login <backend> <profile>`，或從網頁設定的 **AI 帳號** 選 **連接帳號**，連接 Claude Code、Codex（授權碼，`CODEX_HOME` 指向該 profile）或 Kiro（`XDG_DATA_HOME` 指向該 profile）帳號（#3212）。在 kiro 上切換會開始新的對話，因為 kiro 把對話和登入資訊存在同一個地方（AgEnD 會把最近的 context 交接過去）。在 Codex 上，對話會保留。在 Claude Code 上，AgEnD 會把對話複製到新 profile 並在那裡接續（#1753），舊 profile 保留自己的那一份。
 
-**ClassicBot 頻道（#1220）。** `classicBot.yaml` 裡的頻道也接受同樣的 `backend_options.<backend>.credential_profile`，而且優先於從 fleet defaults 繼承來的 profile（值為空或 `null` 代表用共用的登入）。頻道的 agent 會以這個 profile 啟動，`/usage` 會把它算在那份訂閱的那一列（例如 `Codex (personal)`），`kiro_engine_status` 也會回報它。profile 名稱無法使用時，這個頻道的 agent 會直接不啟動，而不是改用別的登入執行。更改 profile 會重啟該頻道的 agent。
+**ClassicBot 頻道（#1220）。** `classicBot.yaml` 裡的頻道也接受同樣的 `backend_options.<backend>.credential_profile`，而且優先於從 fleet defaults 繼承來的 profile（值為空或 `null` 代表用共用的登入）。頻道的 agent 會以這個 profile 啟動，`/usage` 會把它算在那份訂閱的那一列（例如 `Codex (personal)`），`kiro_engine_status` 也會回報它。profile 名稱無法使用時，這個頻道的 agent 會直接不啟動，而不是改用別的登入執行。更改 profile 會重啟該頻道的 agent。也可以在網頁上選：房間的設定 →「Runtime 與模型」→「帳號」（#3690）。在那裡儲存只會改 `classicBot.yaml` 裡這個房間的那幾行，你的註解都會保留。
 
 `/usage`、`get_usage` 和儀表板都是每份訂閱各一列，絕不加總。完整說明見英文版 [configuration](configuration.md#credential-profiles-multiple-subscriptions-of-one-backend)。
+
+## 推理強度 (Reasoning effort)
+
+很多 CLI 可以讓模型想得更深或更快，也就是推理強度（`low`、`medium`、`high`，部分模型還有 `xhigh` 或 `max`）。
+
+- **等級跟著模型。** 每個模型只列它接受的等級，從 CLI 自己的模型清單讀取：Claude 讀帳號的模型清單，Grok 讀它的模型快取。沒有強度設定的模型就不帶強度。讀不到清單時（例如 `opus` 這類別名，或還沒有快取），提供一般的等級。
+- **聊天標題上。** CLI 有強度設定的 Agent 一律顯示強度標籤，沒設定時顯示 **auto**（CLI 自己的預設）。點它或傳 `/effort` 就能改。執行中的 Agent 會立刻用新的等級；少數 CLI（例如 Codex）會重啟 Agent 才生效。
+- **手機上。** `/model` 在每個模型旁列出強度和 **›**。點 **›** 打開該模型的等級；選了之後，如果那不是目前用的模型，會先換模型。
+- **設定頁。** Agent 的「設定 → Runtime 與模型」在模型下方有「推理強度」，選項是上方所選模型的等級。「模型預設」代表沒有設定，也不會寫入任何值。模型欄有尚未儲存的變更時，強度欄要等儲存後才能選。Windows Agent 和沒有強度設定的模型不顯示這個欄位。
+- 設定過等級後，強度標籤和設定頁都不提供選回 **auto**／「模型預設」。
 
 ## 後端可用性與模型清單 (Backend availability and model lists, 2.2.5)
 
