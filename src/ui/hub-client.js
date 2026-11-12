@@ -205,9 +205,42 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
  * Every answer is { ok: true, ...body } or { ok: false, status, code }; a 401 also tells the page the session ended.
  */
 export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
-  let csrf = null, codeNotices = false;
-  const ended = new Set();
-  async function call(method, path, body, signal) {
+  let csrf = null, codeNotices = false, generation = 0;
+  const ended = new Set(), pendingReads = new Map(), waits = new Set();
+  let readTail = Promise.resolve();
+  const retired = () => ({ ok: false, status: 401, code: "unauthenticated" });
+  const retireReads = () => { generation++; pendingReads.clear(); for (const wake of waits) wake(); };
+  const pause = ms => new Promise(resolve => {
+    const wake = () => { clearTimeout(timer); waits.delete(wake); resolve(); };
+    const timer = setTimeout(wake, ms); waits.add(wake);
+  });
+  // Private reads share fresh directory eligibility admission. One read per client, with only simultaneous identical
+  // reads shared (never an allow-cache). Other tabs/writes can still fill the server pool, so back off at most 3 times.
+  function call(method, path, body, signal) {
+    if (method !== "GET") { pendingReads.clear(); return request(method, path, body, signal); }
+    if (!signal && pendingReads.has(path)) return pendingReads.get(path);
+    const mine = generation;
+    const run = async () => {
+      for (let attempt = 0; ; attempt++) {
+        if (mine !== generation) return retired();
+        if (signal?.aborted) return { ok: false, status: 0, code: "unreachable" };
+        const result = await request(method, path, body, signal);
+        if (mine !== generation) return retired();
+        if (result.ok || result.status !== 429 || result.code !== "backpressure" || attempt === 3) return result;
+        await pause(Math.min(2000, Math.max(500 * 2 ** attempt, Number(result.retryAfter) * 1000 || 0)));
+      }
+    };
+    const result = readTail.then(run, run);
+    readTail = result.then(() => {}, () => {});
+    if (!signal) {
+      pendingReads.set(path, result);
+      const forget = () => { if (pendingReads.get(path) === result) pendingReads.delete(path); };
+      void result.then(forget, forget);
+    }
+    return result;
+  }
+  async function request(method, path, body, signal) {
+    const mine = generation;
     const headers = { Accept: "application/json" };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (method !== "GET" && csrf) headers["X-AgEnD-Hub-CSRF"] = csrf;
@@ -216,7 +249,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     catch { return { ok: false, status: 0, code: "unreachable" }; }
     let json = null;
     try { json = await r.json(); } catch { json = null; }
-    if (r.status === 401) { csrf = null; codeNotices = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
+    if (r.status === 401 && mine === generation) { retireReads(); csrf = null; codeNotices = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
     if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0,
       ...(method === "POST" && path === "/hub/v1/admin/enrolment-codes" && r.status === 429 && json?.code === "backpressure"
         && ["live-code-limit", "hourly-code-limit"].includes(json.reason) ? { reason: json.reason } : {}) };
@@ -228,8 +261,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     /** Hear the session end (a 401 anywhere). @returns {() => void} */
     onSignedOut(fn) { ended.add(fn); return () => ended.delete(fn); },
     async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) { csrf = r.signedIn ? r.csrf || null : null; codeNotices = r.signedIn === true && r.features?.includes("enrolment-code-v1") === true; } return r; },
-    async signIn(login, password) { const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; } return r; },
-    async signOut() { const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; return r; },
+    async signIn(login, password) { retireReads(); const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; } return r; },
+    async signOut() { retireReads(); const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; return r; },
     catalog() { return call("GET", "/hub/v1/exposures"); },
     grant(input) { return call("POST", "/hub/v1/grants", input); },
     revokeGrant(grantId, revision) { return call("DELETE", `/hub/v1/grants/${id(grantId)}?revision=${id(revision)}`); },
@@ -247,6 +280,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     /** #3226 D: one file for a later question in this room, sent as is (the server types it by its name, images by
      * their bytes). → { ok: true, file: { id, name, size, mime, url } } or { ok: false, status, code }. */
     async upload(roomId, file) {
+      const mine = generation;
       const headers = { Accept: "application/json", "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(String(file && file.name || "")) };
       if (csrf) headers["X-AgEnD-Hub-CSRF"] = csrf;
       let r;
@@ -254,7 +288,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
       catch { return { ok: false, status: 0, code: "unreachable" }; }
       let json = null;
       try { json = await r.json(); } catch { json = null; }
-      if (r.status === 401) { csrf = null; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
+      if (r.status === 401 && mine === generation) { retireReads(); csrf = null; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
       if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed" };
       return { ok: true, ...(json && typeof json === "object" ? json : {}) };
     },
@@ -290,6 +324,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
       return () => { live = false; events.close(); };
     },
     confirmPairing(pairingId, fingerprint) { return call("POST", `/hub/v1/pairings/${id(pairingId)}/confirm`, { fingerprint }); },
+    companyJoinSettings() { return call("GET", "/hub/v1/admin/company-join"); },
     adminOverview() { return call("GET", "/hub/v1/admin/overview"); },
     /** B2 capability, not permission: the server still checks the configured administrator on every call. */
     enrolmentCodeV1: true,

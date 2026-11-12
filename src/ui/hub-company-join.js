@@ -123,26 +123,33 @@ const guide = (key, ...args) => t(`companyJoin.guide.${key}`, ...args);
 export const companyJoinAdminEntryV1 = entryWords.companyAdminStringsV1 === true;
 export function CompanyJoinAdminCard({ entry = false, groups = false } = {}) {
   const [view, setView] = useState(null), [error, setError] = useState(null), [busy, setBusy] = useState(false), [copied, setCopied] = useState(false);
-  const live = useRef(true), csrf = useRef(null);
+  const live = useRef(true), csrf = useRef(null), readEpoch = useRef(0);
   const [inviteLogin, setInviteLogin] = useState(""), [invitation, setInvitation] = useState(null);
   const [invitationCopied, setInvitationCopied] = useState(false), [features, setFeatures] = useState([]);
   const read = async () => {
-    const session = await hubClient().session();
-    if (!live.current) return;
+    const mine = ++readEpoch.current, client = hubClient();
+    const current = () => live.current && mine === readEpoch.current && hubClient() === client;
+    const session = await client.session();
+    if (!current()) return;
     if (!session.ok || !session.admin) { setError(hj("denied")); return; }
     csrf.current = session.csrf; setFeatures(Array.isArray(session.features) ? session.features : []);
-    const r = await call("/hub/v1/admin/company-join"); if (!live.current) return;
+    // A retained client lacks the queued read; keep its existing route as the compatibility fallback.
+    const r = await (typeof client.companyJoinSettings === "function" ? client.companyJoinSettings() : call("/hub/v1/admin/company-join")); if (!current()) return;
     if (r.ok) { setView(r); setError(null); } else setError(joinError(r.code));
   };
-  useEffect(() => { live.current = true; read(); return () => { live.current = false; }; }, []);
+  useEffect(() => {
+    live.current = true;
+    const off = hubClient().onSignedOut?.(() => { live.current = false; readEpoch.current++; setView(null); setFeatures([]); setError(hj("denied")); });
+    read(); return () => { live.current = false; readEpoch.current++; off?.(); };
+  }, []);
   const change = async enabled => {
-    if (busy || !view) return; setBusy(true); setError(null);
+    if (!live.current || busy || !view) return; readEpoch.current++; setBusy(true); setError(null);
     const r = await call("/hub/v1/admin/company-join", "PUT", { enabled, expectedRevision: view.revision }, csrf.current);
     if (!live.current) return;
     setBusy(false); if (r.ok) setView(r); else setError(joinError(r.code));
   };
   const makeInvitation = async e => {
-    e.preventDefault(); if (busy || !inviteLogin.trim()) return; setBusy(true); setError(null);
+    e.preventDefault(); if (!live.current || busy || !inviteLogin.trim()) return; setBusy(true); setError(null);
     const r = await call("/hub/v1/admin/company-join/invitations", "POST", { login: inviteLogin.trim() }, csrf.current);
     if (!live.current) return; setBusy(false);
     if (r.ok) { setInvitation(r.url); setInvitationCopied(false); } else setError(joinError(r.code === "not-found" ? "denied" : r.code));
