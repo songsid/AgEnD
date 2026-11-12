@@ -217,7 +217,10 @@ export let store = null;
  * anything: each one's tool_progress, the feed's answer.)
  */
 const activityShown = () => activityOffered() && activityPrefs.get().on;
-const rowsOf = (name) => (activityShown() ? composeActivity(name, store.threadRows(name)) : store.threadRows(name));
+const agentBusy = (name) => R().isBusy(store.state.exec[name]);
+/** Epoch ms the agent began working, by the working bar's own clock (a monotonic one), or null. */
+const agentSince = (name) => { const t = store.state.workingSince[name]; return t == null ? null : Date.now() - (performance.now() - t); };
+const rowsOf = (name) => (activityShown() ? composeActivity(name, store.threadRows(name), Date.now(), { busy: agentBusy(name), since: agentSince(name) }) : store.threadRows(name));
 /** What a chat's activity blocks need to draw: its paths to shorten, and whether thinking is shown. */
 const activityCtx = (name) => () => {
   const info = activityInfo(name);
@@ -666,6 +669,7 @@ function follow(name, thread) {
         streamOn: appStore.get().streamOn,
         polling: () => globalThis.document?.body?.dataset?.webTransport === "poll" || appStore.get().connection === "polling",
         wantThinking: () => activityPrefs.get().thinking,
+        working: () => agentBusy(name),
       });
       feed.start();
     } else if (!activityShown() && feed) { feed.stop(); feed = null; }
@@ -674,7 +678,15 @@ function follow(name, thread) {
   if (activityShown()) sync();
   offs.push(activityPrefs.subscribe(sync));
   offs.push(() => { if (feed) { feed.stop(); feed = null; } });
+  // the agent starting or stopping work redraws the live line (a turn with nothing to show yet is only a "Working…"
+  // line, and the reply row that ends it may come first); a status poll that changes nothing here draws nothing.
+  let wasBusy = agentBusy(name);
   offs.push(store.subscribe((instance, kind) => {
+    // A fleet-wide status poll says `null`; an activity event, the instance.
+    if ((instance === null || instance === name) && wasBusy !== agentBusy(name)) {
+      wasBusy = !wasBusy;
+      if (feed) { thread.render(rowsOf(name)); feed.nudge(); }
+    }
     if (instance !== name) return;
     if (kind === "msgs") { thread.render(rowsOf(name)); wantEmojis(store.state.msgs[name]); if (feed) feed.nudge(); }   // a message came or went: read the steps now
     else if (kind === "progress") thread.progress();                       // an upload moved: its bar, in place
