@@ -1,0 +1,30 @@
+{"check":"company join enabled","pass":true}
+{"check":"built strict discovery advertises code","pass":true}
+{"check":"admin creates 2-use code","pass":true}
+{"check":"desk-dark-en-cached-shell-client-css no horizontal overflow","pass":true}
+{"check":"desk-dark-en-cached-shell-client-css no raw i18n keys","pass":true}
+{"check":"cached client safely omits code manager","pass":true}
+{"check":"cached shell no script errors","pass":true}
+{"check":"desk-dark-zh-TW-cached-shell-client-css no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-cached-shell-client-css no raw i18n keys","pass":true}
+{"check":"cached client safely omits code manager","pass":true}
+{"check":"cached shell no script errors","pass":true}
+{"check":"phone-dark-en-cached-shell-client-css no horizontal overflow","pass":true}
+{"check":"phone-dark-en-cached-shell-client-css no raw i18n keys","pass":true}
+{"check":"cached client safely omits code manager","pass":true}
+{"check":"cached shell no script errors","pass":true}
+{"check":"phone-dark-zh-TW-cached-shell-client-css no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-cached-shell-client-css no raw i18n keys","pass":true}
+{"check":"cached client safely omits code manager","pass":true}
+{"check":"cached shell no script errors","pass":true}
+{"check":"admin creates 2-use code","pass":true}
+{"check":"Origin-bound browser handoff compat0","pass":true}
+{"check":"B-L9 old v2-only member link connected","pass":true}
+{"check":"B-L9 actual old member does not negotiate v3","pass":true}
+{"check":"Origin-bound browser handoff compat0","pass":true}
+{"check":"B-L9 second same-owner fleet issues through real code route","pass":true}
+{"check":"B-L9 code notice remains queued for actual old member","pass":true}
+Error: Owned fixture deadline
+    at wait (/work/scripts/manual/hub-enrolment-code-campaign/capacity.mts:15:151)
+    at async <anonymous> (/work/scripts/manual/hub-enrolment-code-campaign/capacity.mts:183:48)
+{"ready":false,"checks":26,"error":"Error: Owned fixture deadline"}

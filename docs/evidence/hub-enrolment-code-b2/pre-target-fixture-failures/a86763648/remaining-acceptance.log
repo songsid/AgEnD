@@ -1,0 +1,28 @@
+{"check":"company join enabled","pass":true}
+{"check":"built strict discovery advertises code","pass":true}
+{"check":"admin creates 2-use code","pass":true}
+{"check":"desk-dark-en-cached-shell-client-css no horizontal overflow","pass":true}
+{"check":"desk-dark-en-cached-shell-client-css no raw i18n keys","pass":true}
+{"check":"cached client safely omits code manager","pass":true}
+{"check":"cached shell no script errors","pass":true}
+{"check":"desk-dark-zh-TW-cached-shell-client-css no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-cached-shell-client-css no raw i18n keys","pass":true}
+{"check":"cached client safely omits code manager","pass":true}
+{"check":"cached shell no script errors","pass":true}
+{"check":"phone-dark-en-cached-shell-client-css no horizontal overflow","pass":true}
+{"check":"phone-dark-en-cached-shell-client-css no raw i18n keys","pass":true}
+{"check":"cached client safely omits code manager","pass":true}
+{"check":"cached shell no script errors","pass":true}
+{"check":"phone-dark-zh-TW-cached-shell-client-css no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-cached-shell-client-css no raw i18n keys","pass":true}
+{"check":"cached client safely omits code manager","pass":true}
+{"check":"cached shell no script errors","pass":true}
+{"check":"admin creates 1-use code","pass":true}
+{"check":"Origin-bound browser handoff compat0","pass":true}
+{"check":"B-L9 old v2-only member link connected","pass":true}
+{"check":"B-L9 code notice remains queued for actual old member","pass":false}
+Error: B-L9 code notice remains queued for actual old member
+    at check (/work/scripts/manual/hub-enrolment-code-campaign/capacity.mts:14:137)
+    at <anonymous> (/work/scripts/manual/hub-enrolment-code-campaign/capacity.mts:168:2)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+{"ready":false,"checks":23,"error":"Error: B-L9 code notice remains queued for actual old member"}

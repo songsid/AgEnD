@@ -1,0 +1,41 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.12 [39m[90m/work[39m
+
+ [32m✓[39m tests/hub-pairing-api-s3c.test.ts [2m([22m[2m30 tests[22m[2m)[22m[32m 163[2mms[22m[39m
+ [32m✓[39m tests/hub-enrolment-code-http-b1.test.ts [2m([22m[2m23 tests[22m[2m)[22m[33m 39261[2mms[22m[39m
+     [33m[2m✓[22m[39m configured admin creates/reloads a sealed code; eligible outsider joins without turning group policy on [33m 1682[2mms[22m[39m
+     [33m[2m✓[22m[39m non-admin/unauthenticated calls and code-plus-invitation refuse without creating an offer [33m 1226[2mms[22m[39m
+     [33m[2m✓[22m[39m maxUses includes unissued reservations, while per-person quota counts existing fleets of every source [33m 2978[2mms[22m[39m
+     [33m[2m✓[22m[39m concurrent last-slot approvals and redemption issue exactly one Fleet and one use [33m 1530[2mms[22m[39m
+     [33m[2m✓[22m[39m revoking between approve/issue ends only unissued requests, and an issued receipt still redelivers [33m 1782[2mms[22m[39m
+     [33m[2m✓[22m[39m eleven wrong codes pause even valid pushes for a minute, with no request rows and no group starvation [33m 1981[2mms[22m[39m
+     [33m[2m✓[22m[39m code admission uses its per-code and global 120 budgets independently of quick/group 48 [33m 3096[2mms[22m[39m
+     [33m[2m✓[22m[39m an exact resolved group scope admits members and refuses an eligible non-member [33m 2464[2mms[22m[39m
+     [33m[2m✓[22m[39m an expired code gives authenticated browser feedback without changing the generic machine answer [33m 848[2mms[22m[39m
+     [33m[2m✓[22m[39m real revoke retires a pending code request and preserves its specific browser feedback [33m 1010[2mms[22m[39m
+     [33m[2m✓[22m[39m an issued code request keeps conflict/recovery even after its code ends [33m 1315[2mms[22m[39m
+     [33m[2m✓[22m[39m policy retirement with a live code keeps ordinary conflict [33m 1599[2mms[22m[39m
+     [33m[2m✓[22m[39m a last required audit cannot revoke the code and still publish a credential [33m 1184[2mms[22m[39m
+     [33m[2m✓[22m[39m expired redemption reservations release code capacity without any Fleet status poll [33m 1459[2mms[22m[39m
+     [33m[2m✓[22m[39m the approval audit cannot retire the code and leave an approved reservation [33m 916[2mms[22m[39m
+     [33m[2m✓[22m[39m losing owner eligibility after approval issues no credential, code use or provenance [33m 1087[2mms[22m[39m
+     [33m[2m✓[22m[39m code notices are hidden from v2 browsers and visible to v3 without changing ownership [33m 1265[2mms[22m[39m
+     [33m[2m✓[22m[39m the merged web-address writer retires code reservations and protects the original issued window [33m 1387[2mms[22m[39m
+     [33m[2m✓[22m[39m a real admin exclusion saved before first enable blocks code admission [33m 1937[2mms[22m[39m
+     [33m[2m✓[22m[39m real policy preview/apply accepts retained code provenance after fleet revoked=false [33m 1736[2mms[22m[39m
+     [33m[2m✓[22m[39m real policy preview/apply accepts retained code provenance after fleet revoked=true [33m 1884[2mms[22m[39m
+     [33m[2m✓[22m[39m real never-enabled preview names and atomically suspends an excluded retained code Fleet [33m 2037[2mms[22m[39m
+     [33m[2m✓[22m[39m real never-enabled admin resume recovers a code Fleet after removing its exclusion [33m 2851[2mms[22m[39m
+ [32m✓[39m tests/hub-enrolment-code-permit-b1.test.ts [2m([22m[2m30 tests[22m[2m)[22m[32m 229[2mms[22m[39m
+ [32m✓[39m tests/hub-pairing-notices.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 348[2mms[22m[39m
+ [32m✓[39m tests/hub-enrolment-code-store-b1.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 257[2mms[22m[39m
+ [32m✓[39m tests/hub-enrolment-code-slot-b2.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 644[2mms[22m[39m
+ [32m✓[39m tests/hub-pairing-inbox.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 95[2mms[22m[39m
+ [32m✓[39m tests/hub-enrolment-code-upgrade-b1.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m tests/hub-enrolment-code-audit-b1.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 23[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m9 passed[39m[22m[90m (9)[39m
+[2m      Tests [22m [1m[32m119 passed[39m[22m[90m (119)[39m
+[2m   Start at [22m 06:13:21
+[2m   Duration [22m 49.52s[2m (transform 3.97s, setup 474ms, import 6.59s, tests 41.04s, environment 1ms)[22m
+

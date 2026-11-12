@@ -1,0 +1,7 @@
+{
+  "attempt": "cf41841f-7ab4-4ef1-b4d3-84590a7ba98b",
+  "checkedAt": "2026-11-12T06:51:52.250640+00:00",
+  "ownedContainerAbsent": true,
+  "ownedImageAbsent": true,
+  "scope": "Only these exact owned resources; subsequent campaign reservation is separate."
+}

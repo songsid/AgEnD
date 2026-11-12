@@ -1,0 +1,161 @@
+{"check":"company join enabled","pass":true}
+{"check":"built strict discovery advertises code","pass":true}
+{"check":"desk-light-en-admin-before no horizontal overflow","pass":true}
+{"check":"desk-light-en-admin-before no raw i18n keys","pass":true}
+{"check":"desk-light-en-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-light-en-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-light-en scoped picker input and note are distinct","pass":true}
+{"check":"desk-light-en-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-light-en-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-light-en resolved picker retires its input","pass":true}
+{"check":"desk-light-en-active-code no horizontal overflow","pass":true}
+{"check":"desk-light-en-active-code no raw i18n keys","pass":true}
+{"check":"desk-light-en admin page errors","pass":true}
+{"check":"desk-dark-en-admin-before no horizontal overflow","pass":true}
+{"check":"desk-dark-en-admin-before no raw i18n keys","pass":true}
+{"check":"desk-dark-en-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-dark-en-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-dark-en scoped picker input and note are distinct","pass":true}
+{"check":"desk-dark-en-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-dark-en-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-dark-en resolved picker retires its input","pass":true}
+{"check":"desk-dark-en-active-code no horizontal overflow","pass":true}
+{"check":"desk-dark-en-active-code no raw i18n keys","pass":true}
+{"check":"desk-dark-en admin page errors","pass":true}
+{"check":"desk-light-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"desk-light-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW resolved picker retires its input","pass":true}
+{"check":"desk-light-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW admin page errors","pass":true}
+{"check":"desk-dark-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"desk-dark-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW resolved picker retires its input","pass":true}
+{"check":"desk-dark-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW admin page errors","pass":true}
+{"check":"phone-light-en-admin-before no horizontal overflow","pass":true}
+{"check":"phone-light-en-admin-before no raw i18n keys","pass":true}
+{"check":"phone-light-en-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-light-en-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-light-en scoped picker input and note are distinct","pass":true}
+{"check":"phone-light-en-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-light-en-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-light-en resolved picker retires its input","pass":true}
+{"check":"phone-light-en-active-code no horizontal overflow","pass":true}
+{"check":"phone-light-en-active-code no raw i18n keys","pass":true}
+{"check":"phone-light-en admin page errors","pass":true}
+{"check":"phone-dark-en-admin-before no horizontal overflow","pass":true}
+{"check":"phone-dark-en-admin-before no raw i18n keys","pass":true}
+{"check":"phone-dark-en-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-dark-en-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-dark-en scoped picker input and note are distinct","pass":true}
+{"check":"phone-dark-en-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-dark-en-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-dark-en resolved picker retires its input","pass":true}
+{"check":"phone-dark-en-active-code no horizontal overflow","pass":true}
+{"check":"phone-dark-en-active-code no raw i18n keys","pass":true}
+{"check":"phone-dark-en admin page errors","pass":true}
+{"check":"phone-light-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"phone-light-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW resolved picker retires its input","pass":true}
+{"check":"phone-light-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW admin page errors","pass":true}
+{"check":"phone-dark-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"phone-dark-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW resolved picker retires its input","pass":true}
+{"check":"phone-dark-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW admin page errors","pass":true}
+{"check":"desk-light-en ended code is not redisplayed","pass":true}
+{"check":"desk-light-en-ended-code no horizontal overflow","pass":true}
+{"check":"desk-light-en-ended-code no raw i18n keys","pass":true}
+{"check":"desk-light-en ended page errors","pass":true}
+{"check":"desk-dark-en ended code is not redisplayed","pass":true}
+{"check":"desk-dark-en-ended-code no horizontal overflow","pass":true}
+{"check":"desk-dark-en-ended-code no raw i18n keys","pass":true}
+{"check":"desk-dark-en ended page errors","pass":true}
+{"check":"desk-light-zh-TW ended code is not redisplayed","pass":true}
+{"check":"desk-light-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW ended page errors","pass":true}
+{"check":"desk-dark-zh-TW ended code is not redisplayed","pass":true}
+{"check":"desk-dark-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW ended page errors","pass":true}
+{"check":"phone-light-en ended code is not redisplayed","pass":true}
+{"check":"phone-light-en-ended-code no horizontal overflow","pass":true}
+{"check":"phone-light-en-ended-code no raw i18n keys","pass":true}
+{"check":"phone-light-en ended page errors","pass":true}
+{"check":"phone-dark-en ended code is not redisplayed","pass":true}
+{"check":"phone-dark-en-ended-code no horizontal overflow","pass":true}
+{"check":"phone-dark-en-ended-code no raw i18n keys","pass":true}
+{"check":"phone-dark-en ended page errors","pass":true}
+{"check":"phone-light-zh-TW ended code is not redisplayed","pass":true}
+{"check":"phone-light-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW ended page errors","pass":true}
+{"check":"phone-dark-zh-TW ended code is not redisplayed","pass":true}
+{"check":"phone-dark-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW ended page errors","pass":true}
+{"check":"admin creates 8-use code","pass":true}
+{"check":"scope-0-code-scope no horizontal overflow","pass":true}
+{"check":"scope-0-code-scope no raw i18n keys","pass":true}
+{"check":"scope-0 refusal saves no credential","pass":true}
+{"check":"scope-1-code-scope no horizontal overflow","pass":true}
+{"check":"scope-1-code-scope no raw i18n keys","pass":true}
+{"check":"scope-1 refusal saves no credential","pass":true}
+{"check":"scope-2-code-scope no horizontal overflow","pass":true}
+{"check":"scope-2-code-scope no raw i18n keys","pass":true}
+{"check":"scope-2 refusal saves no credential","pass":true}
+{"check":"scope-3-code-scope no horizontal overflow","pass":true}
+{"check":"scope-3-code-scope no raw i18n keys","pass":true}
+{"check":"scope-3 refusal saves no credential","pass":true}
+{"check":"admin creates 4-use code","pass":true}
+{"check":"end pending code before actual sign-in","pass":true}
+{"check":"ended-3-code-ended no horizontal overflow","pass":true}
+{"check":"ended-1-code-ended no horizontal overflow","pass":true}
+{"check":"ended-2-code-ended no horizontal overflow","pass":true}
+{"check":"ended-0-code-ended no horizontal overflow","pass":true}
+{"check":"ended-3-code-ended no raw i18n keys","pass":true}
+{"check":"ended-2-code-ended no raw i18n keys","pass":true}
+{"check":"ended-1-code-ended no raw i18n keys","pass":true}
+{"check":"ended-0-code-ended no raw i18n keys","pass":true}
+{"check":"ended-3 refusal saves no credential","pass":true}
+{"check":"ended-1 refusal saves no credential","pass":true}
+{"check":"ended-0 refusal saves no credential","pass":true}
+{"check":"ended-2 refusal saves no credential","pass":true}
+locator.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator('.s-company-join').getByRole('button', { name: /^(取消|取消連接)$/ }).first()
+
+    at Object.finishRefusal (/work/scripts/manual/hub-enrolment-code-campaign/fleets.mts:185:53)
+    at async <anonymous> (/work/scripts/manual/hub-enrolment-code-campaign/capacity.mts:156:2) {
+  log: [
+    "  - waiting for locator('.s-company-join').getByRole('button', { name: /^(取消|取消連接)$/ }).first()"
+  ],
+  name: 'TimeoutError'
+}
+{"ready":false,"checks":149,"error":"TimeoutError: locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('.s-company-join').getByRole('button', { name: /^(取消|取消連接)$/ }).first()\n"}

@@ -1,0 +1,48 @@
+ 14:13:05 up 2 days,  5:17,  0 users,  load average: 4.16, 7.93, 8.07
+               total        used        free      shared  buff/cache   available
+Mem:           36082       17580        4271         158       14230       17940
+Swap:           8192        1868        6323
+{"hostPreflight":{"at":1794463985060,"load1":4.16,"availableMiB":17938.21875,"swapTotalMiB":8192}}
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 341B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
+#2 DONE 0.1s
+
+#3 [internal] load metadata for mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f
+#3 DONE 0.1s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 2B done
+#4 DONE 0.0s
+
+#5 [stage-1 1/3] FROM mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f
+#5 resolve mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f 0.0s done
+#5 DONE 0.0s
+
+#6 [node22 1/1] FROM docker.io/library/node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
+#6 resolve docker.io/library/node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d 0.0s done
+#6 DONE 0.0s
+
+#7 [stage-1 2/3] COPY --from=node22 /usr/local/bin/node /usr/local/bin/node
+#7 CACHED
+
+#8 [stage-1 3/3] WORKDIR /work
+#8 CACHED
+
+#9 exporting to image
+#9 exporting layers done
+#9 exporting manifest sha256:e3bc5ff549a6571710eeff6f37c2f2c80ca6eb907ea12eec4d7ffda38834263d 0.0s done
+#9 exporting config sha256:ca0c4e605146ff1f53f5d7e8d6b953ff7d378bc38c8e8726d256d679d7707f2e 0.0s done
+#9 exporting attestation manifest sha256:008c5e0a94f634aae1b348b870b2b56a82d70629cdb26187eb28913acb68c81c 0.0s done
+#9 exporting manifest list sha256:834eb64b20b93362076baec052d64f892550972f70e5cdc63acf1c21a8fe495d
+#9 exporting manifest list sha256:834eb64b20b93362076baec052d64f892550972f70e5cdc63acf1c21a8fe495d 0.0s done
+#9 naming to docker.io/library/ridge-code-campaign:cf41841f-7ab4-4ef1-b4d3-84590a7ba98b done
+#9 unpacking to docker.io/library/ridge-code-campaign:cf41841f-7ab4-4ef1-b4d3-84590a7ba98b 0.0s done
+#9 DONE 0.2s
+Cleanup started for cf41841f-7ab4-4ef1-b4d3-84590a7ba98b
+Host sampler settled for cf41841f-7ab4-4ef1-b4d3-84590a7ba98b
+Owned cleanup complete for cf41841f-7ab4-4ef1-b4d3-84590a7ba98b
