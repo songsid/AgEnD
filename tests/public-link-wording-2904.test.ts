@@ -13,13 +13,14 @@ beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19280/ui/settings" });
   i18n = await import("/assets/app-i18n.js");
   await import("/ui/js/settings-strings.js");
+  await import("/ui/js/settings-public-session-strings.js");
   await import("/assets/web-authorize.js");
 });
 afterAll(() => { i18n.setLang("en"); p.restore(); });
 const both = (key: string): [string, string] => { i18n.setLang("en"); const en = i18n.t(key); i18n.setLang("zh-TW"); const zh = i18n.t(key); i18n.setLang("en"); return [en, zh]; };
 
 describe("#2904: a page over a public link never calls a permanent link temporary", () => {
-  it.each(["settings.webPublicRefused", "settings.cssPublicLink", "settings.webSessionHint", "webauth.reason_public_link"])("%s says nothing about 'temporary' for either kind", (key) => {
+  it.each(["settings.webPublicRefused", "settings.cssPublicLink", "settings.publicSessionHint", "settings.publicSessionCeiling", "settings.publicSessionLimitNote", "webauth.reason_public_link"])("%s says nothing about 'temporary' for either kind", (key) => {
     const [en, zh] = both(key);
     expect([en, zh].every(s => s && s !== key)).toBe(true);
     expect([/temporary public link/i.test(en), /臨時公開連結/.test(zh)]).toEqual([false, false]);
@@ -32,12 +33,18 @@ describe("#2904: a page over a public link never calls a permanent link temporar
   });
   // #2905 review (Prism P2): these settings cap an ADMIN's session over the link; a guest's follows the guest settings
   // (web-session.ts policyFor: shorter(gateway, local) for an admin, shorter(gateway, guestPolicy()) for a guest).
-  it("the session hint gives the gateway policy in force (8 h, 30 min idle) for both kinds, the link's end, and these settings for an admin only", () => {
+  // #3708: the gateway policy is configurable now; the words give its defaults (8 h, 30 min) and the account ceiling.
+  it("the session words give the gateway defaults (8 h, 30 min idle), the link's end, and these settings for an admin only", () => {
     const g = DEFAULT_SESSION_POLICY.gateway, hours = g.absoluteMs / 3_600_000, minutes = g.idleMs / 60_000;
     expect([hours, minutes]).toEqual([8, 30]);
-    const [en, zh] = both("settings.webSessionHint");
-    expect(en).toContain(`Over a public link (a temporary one or your permanent link), a session lasts at most ${hours} h, ends after ${minutes} min idle and never outlives the link; an admin's also never lasts longer than these settings (a guest's follows the guest settings).`);
-    expect(zh).toContain(`透過公開連結（臨時連結或你的固定網域）的 session 最長 ${hours} 小時、閒置 ${minutes} 分鐘就結束，也不會超過連結本身；管理員的 session 也不會超過這裡的設定（訪客依訪客設定）。`);
-    expect([/\b4 h\b/.test(en), /4 小時/.test(zh)]).toEqual([false, false]);
+    const [en, zh] = both("settings.publicSessionHint");
+    expect(en).toContain("An admin's session over the public link also never lasts longer than these settings (a guest's follows the guest settings).");
+    expect(zh).toContain("管理員透過公開連結的 session 也不會超過這裡的設定（訪客依訪客設定）。");
+    const [enNote, zhNote] = both("settings.publicSessionLimitNote");
+    expect(enNote).toContain(`(${hours} hours, ${minutes} minutes unused by default)`);
+    expect(enNote).toContain("never outlive the link");
+    expect(zhNote).toContain(`預設 ${hours} 小時、閒置 ${minutes} 分鐘`);
+    expect(zhNote).toContain("不會超過連結期限");
+    expect([/\b4 h\b/.test(en + enNote), /4 小時/.test(zh + zhNote)]).toEqual([false, false]);
   });
 });
