@@ -131,7 +131,7 @@ describe("one Hub connection card", () => {
     expect(f.p.root.querySelector("#hub-connection").getAttribute("data-state")).toBe("paused"); expect(f.calls.filter(c => c.init.method === "PUT")).toHaveLength(1);
     const exact = f.p.root.querySelector('.pending-card[data-pending="'+pendingId+'"]'), scroll = vi.fn(), focus = vi.fn();
     exact.scrollIntoView = scroll; exact.querySelector("button,input,a").focus = focus;
-    await click(f.p, "Review local confirmation"); expect(scroll).toHaveBeenCalledWith({ block: "center" }); expect(focus).toHaveBeenCalledOnce();
+    await click(f.p, "Go to the confirm card"); expect(scroll).toHaveBeenCalledWith({ block: "center" }); expect(focus).toHaveBeenCalledOnce();
     await click(f.p, "Apply now"); await until(() => f.p.document.body.dataset.hub === "member");
     expect(f.calls.filter(c => c.init.method === "POST").map(c => c.path)).toEqual(["/api/settings/pending/"+pendingId+"/confirm"]); expect(f.c.setExposed).not.toHaveBeenCalled();
   });

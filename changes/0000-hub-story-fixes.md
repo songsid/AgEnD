@@ -1,0 +1,14 @@
+---
+section: Changed
+---
+- **Hub: clearer words where people got stuck (#0000).** From the Hub user-story walk-through:
+  - **Stop sharing.** On the Hub, 「Pause questions」 is now **Stop sharing**. Its confirmation says what that means: no one can ask the agent any more, and sharing it again needs its Fleet to share it again and everyone to be allowed again.
+  - **Where to confirm.** After you switch on Share, or start a company-account connection, the hint names General only when a General received the confirm card (for example "General on Discord"). On a Fleet without a chat app it points at the confirm card on the page. The company-account wait no longer says "local confirmation": it says to confirm that it's really you connecting this Fleet, and the Hub sign-in opens after that.
+  - **Shared agents** says that only Fleet agents can be shared for now; ClassicBot rooms can't be shared yet.
+  - **Sign-in page:** the first line mentions both ways in: the authenticator app's 6-digit code, or an 8-character device sign-in code.
+  - **Hub administrators:**
+    - A refused approval names the person: "Carol can't connect a Fleet right now…" instead of "You're not allowed".
+    - Revoking a Fleet names the Fleet as the list does.
+    - A directory that can't list groups says why (Active Directory over LDAPS) and what to do: check "Edit AD connection", or send individual invitations. It no longer says to ask the Hub administrator.
+  - **Setting up a Hub from another device** says how: on the computer running AgEnD, run `agend web` and set it up on the page it opens.
+  - **The ask page** says the owner sees that you asked, and the agent answers within what its owner allows.

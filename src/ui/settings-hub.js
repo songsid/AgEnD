@@ -13,6 +13,8 @@ import { hw, linkHubCss } from "./hub-strings.js";
 import { guidanceFor } from "./hub-provider-guidance.js";
 import { AGENT_CHOICE } from "./hub-agent-copy.js";
 import { PairingNotices } from "./hub-quick-pairing.js";
+import { appStore, useStore } from "/assets/app-store.js";
+import { confirmPlace, pendingView } from "./hub-confirm-place.js";
 import { hq } from "./hub-quick-strings.js";
 import { hp } from "./hub-pairing-progress-strings.js";
 
@@ -215,6 +217,7 @@ export function HubConnectCard({ embedded = false, onPairing, labels = {}, prefi
  * shared under the older restricted mode says so and offers "Share again" (a new, confirmed revision).
  */
 function HubExposures({ client, pairing }) {
+  const store = useStore(appStore);
   const [rows, setRows] = useState(null);
   const [readError, setReadError] = useState(false);
   const [busy, setBusy] = useState(null);
@@ -231,7 +234,7 @@ function HubExposures({ client, pairing }) {
       if (!r.ok) { setMsg({ error: true, text: hw(PUBLISH_ERRORS[r.error] || "errUnsaved") }); if (r.error === "conflict") await load(); return; }
       if (!on && r.remote === "pending") setMsg({ error: false, text: hw("withdrawPending") });
       if (r.pending) {
-        const pending = { agent: row.agent, revision: row.revision, on };
+        const pending = { agent: row.agent, revision: row.revision, on, id: r.pending.id || null };
         setMsg({ error: false, text: hw("pendingSent"), pending });
         const settled = () => { if (live.current) { setMsg(current => current?.pending === pending ? null : current); load(); } };
         if (r.settled?.then) r.settled.then(settled, settled);
@@ -271,6 +274,6 @@ function HubExposures({ client, pairing }) {
       ${row.state === "published" && !row.pending && /^[a-f0-9-]{36}$/.test(row.exposureId || "") && safeWebOrigin(pairing)
         ? html`<div class="field-row"><a class="btn btn-sm" href=${`${safeWebOrigin(pairing)}/ui/hub/exposures?agent=${encodeURIComponent(row.exposureId)}&grant=1`} target="_blank" rel="noopener noreferrer">${allowOnHubLabel()}</a></div>` : null}
     </li>`)}</ul>` : null}
-    ${msg ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.text}</p>` : null}
+    ${msg ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.pending ? confirmPlace("share", pendingView(store, msg.pending.id)) : msg.text}</p>` : null}
   </div>`;
 }

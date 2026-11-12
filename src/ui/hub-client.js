@@ -406,7 +406,7 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
         body: JSON.stringify({ agent, dataViewId: choice.dataViewId, tools: choice.tools, expectedRevision }) });
       if (confirm.isPendingResponse(r)) {
         const p = r.body.pending_change;
-        return { ok: true, pending: { expiresAt: p.expires_at }, view: { ...row, pending: { expiresAt: p.expires_at } }, settled: confirm.track(p, "hub") };
+        return { ok: true, pending: { id: p.id, expiresAt: p.expires_at }, view: { ...row, pending: { expiresAt: p.expires_at } }, settled: confirm.track(p, "hub") };
       }
       return r.ok && r.body && r.body.ok ? { ok: true, view: r.body.view } : fail(r);
     },

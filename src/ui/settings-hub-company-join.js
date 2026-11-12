@@ -6,6 +6,7 @@ import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { api, confirmedWrite, confirmWithCode } from "./settings-confirm.js";
 import { hj, joinError, joinResponseCode } from "./hub-company-join-strings.js";
 import { j1, classifyHubInput, probeMessage, waitingMessage, reasonMessage, leftOf } from "./hub-join-one-strings.js";
+import { confirmPlace, pendingView } from "./hub-confirm-place.js";
 // Own words: a new panel must also work with a cached older company-join dictionary.
 register("companyJoinWait", {
   "en": {
@@ -16,12 +17,12 @@ register("companyJoinWait", {
     codeLabel: "Your 6-digit authenticator code", codeGo: "Continue", codeWrong: "That code was not accepted. Try a current code.",
     codeBusy: "Too many attempts. Wait and try again.", codeUnavailable: "This request cannot be verified now. Check the same connection again.",
     codeInOriginal: "Enter your authenticator code here if requested. This tab continues automatically.",
-    checking: "Checking this connection’s status. Review any local confirmation before continuing.",
-    pending: "Local confirmation is required. Hub sign-in has not started.",
-    pendingNext: "Choose Review local confirmation and complete the next step shown on that card. This connection then continues here.",
-    localWithdrawn: "Local confirmation was withdrawn. Hub sign-in did not start.",
-    reviewConfirmation: "Review local confirmation",
-    localExpired: "The local confirmation wait has ended without a verified connection result. Check this request before starting another connection.",
+    checking: "Checking this connection’s status…",
+    pending: "First confirm on the confirm card that it's really you connecting this Fleet. The Hub sign-in opens after that.",
+    pendingNext: "Once you confirm, this connection continues here.",
+    localWithdrawn: "The confirmation was withdrawn. The Hub sign-in did not start.",
+    reviewConfirmation: "Go to the confirm card",
+    localExpired: "The wait for the confirmation has ended without a verified connection result. Check this request before starting another connection.",
     leaveWait: "Returning to Settings does not withdraw a submitted confirmation. Use Withdraw on its confirmation card to cancel it.",
   },
   "zh-TW": {
@@ -32,12 +33,12 @@ register("companyJoinWait", {
     codeLabel: "你的 6 位數驗證碼", codeGo: "繼續", codeWrong: "驗證碼未通過，請輸入目前的驗證碼。",
     codeBusy: "嘗試次數過多，請稍候再試。", codeUnavailable: "目前無法驗證這次請求，請再次檢查同一個連接。",
     codeInOriginal: "若你的帳號要求驗證碼，請在這裡輸入。這個分頁會自動繼續。",
-    checking: "正在確認這次連接的狀態；請先檢視待完成的本機確認。",
-    pending: "需要先完成本機確認，Hub 登入尚未開始。",
-    pendingNext: "請按「開啟本機確認」，完成確認卡顯示的下一步，這次連接就會繼續。",
-    localWithdrawn: "已撤回本機確認，尚未開始 Hub 登入。",
-    reviewConfirmation: "開啟本機確認",
-    localExpired: "等候本機確認的時間已到，目前仍未確認這次連接的結果。請先檢查這次請求，再開始其他連接。",
+    checking: "正在確認這次連接的狀態…",
+    pending: "請先在確認卡上確認是你本人要連接這個 Fleet；之後才會開啟 Hub 登入。",
+    pendingNext: "確認後，這次連接會在這裡繼續。",
+    localWithdrawn: "已撤回確認，尚未開始 Hub 登入。",
+    reviewConfirmation: "前往確認卡",
+    localExpired: "等候確認的時間已到，目前仍未確認這次連接的結果。請先檢查這次請求，再開始其他連接。",
     leaveWait: "返回設定不會撤回已送出的確認；若要取消，請在該確認卡按「撤回」。",
   },
 });
@@ -47,7 +48,8 @@ const LOCAL_WAIT_MS = 5 * 60_000; // matches the Settings confirmation ceiling; 
 export const companyJoinEmbedV1 = true;
 export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded = false, onPairingCode } = {}) {
   const notified = useRef(null), submittedTarget = useRef(""), submittedHandoff = useRef(null);
-  const { hubJoinChanges = [] } = useStore(appStore);
+  const shellState = useStore(appStore);
+  const { hubJoinChanges = [] } = shellState;
   const waiting = (() => { try { return new URLSearchParams(location.search).get("joinWait"); } catch { return null; } })();
   const consentWait = (() => { try { return new URLSearchParams(location.search).get("joinConsent") === "1"; } catch { return false; } })();
   const [code, setCode] = useState(""), [codeBusy, setCodeBusy] = useState(false), [codeError, setCodeError] = useState(null);
@@ -238,7 +240,7 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
       ${timedOut ? html`<button type="button" class="btn" onClick=${read}>${hj("retry")}</button>` : null}
     </div>` : null}
     ${(pending || unmatched) && !inlineWait ? html`<div role="status" class="company-local-wait">
-      <p class="note">${jw(timedOut ? "localExpired" : !pending && (view === undefined || error) ? "checking" : "pending")}</p>
+      <p class="note">${timedOut ? jw("localExpired") : !pending && (view === undefined || error) ? jw("checking") : pending ? confirmPlace("join", pendingView(shellState, pending.id)) : jw("pending")}</p>
       <p class="note">${jw("pendingNext")}</p>
       <div class="field-row"><button type="button" class="btn btn-sm btn-primary" onClick=${reviewConfirmation}>${jw("reviewConfirmation")}</button>
         ${timedOut ? html`<button type="button" class="btn btn-sm" onClick=${read}>${hj("retry")}</button>` : null}

@@ -103,6 +103,8 @@ function useSession() {
   return s;
 }
 const when = (ms) => new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+// M-2988: words added after a release; a tab holding the older hub-strings dictionary falls back to the older sentence.
+const newer = (key, args, older) => { const s = hw(key, ...args); return s === `hub.${key}` ? older() : s; };
 const errText = (r) => hw(r.code === "conflict" || r.code === "stale" ? "errConflictHub" : r.code === "not-found" ? "errNotFound"
   : r.code === "backpressure" ? "errBusyHub" : r.code === "revoked" || r.code === "denied" ? "errDenied" : r.code === "unreachable" ? "errUnreachableHub" : "errFailed");
 
@@ -916,11 +918,15 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
     if (!(await confirmDialog({ message: hw("approveAsk", compareGroups(p.fingerprint)), confirmLabel: hw("approve") }))) return;
     setMsg(null);
     const r = await hubClient().approvePairing(p.id, p.fingerprint);
-    if (!r.ok) setMsg(errText(r));
+    // M-2988 #12: "denied" here is the owner — no longer eligible in the directory, or blocked from connecting a Fleet — not you.
+    if (!r.ok) setMsg(r.code === "denied" && p.owner && p.owner.name ? newer("approveOwnerDenied", [p.owner.name], () => errText(r)) : errText(r));
     reload();
   };
   const revoke = async (f) => {
-    if (!(await confirmDialog({ message: hw("revokeFleetAsk", f.owner ? f.owner.name : f.id), confirmLabel: hw("revoke"), danger: true }))) return;
+    // M-2988 #16: name the Fleet as the list does, so one owner's two Fleets can be told apart.
+    const who = f.owner ? f.owner.name : f.id;
+    const message = typeof f.label === "string" && f.label ? newer("revokeFleetNamedAsk", [f.label, who], () => hw("revokeFleetAsk", who)) : hw("revokeFleetAsk", who);
+    if (!(await confirmDialog({ message, confirmLabel: hw("revoke"), danger: true }))) return;
     setMsg(null);
     const r = await hubClient().revokeFleet(f.id);
     if (!r.ok) setMsg(errText(r));

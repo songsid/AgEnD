@@ -16,7 +16,7 @@ register("hubConnection", {
     advanced: "Connect with a pairing code (Advanced)", manualHint: "Use this for a Hub with a pairing code. The main sign-in flow enables membership when it succeeds.",
     enabled: "Allow this Fleet to use a Hub", pair: "Connect with pairing code", settings: "Connection settings", disconnect: "Revoke connection",
     pausedSettings: "Resume the connection to use its existing connection settings or revoke it.",
-    pending: "Waiting for local confirmation…", review: "Review local confirmation", retry: "Check again",
+    pending: "Waiting for your confirmation…", review: "Go to the confirm card", retry: "Check again",
     failed: "The connection settings could not be verified. Check again before making another change.", unavailable: "Connection settings could not be read. Check again.",
   },
   "zh-TW": {
@@ -28,7 +28,7 @@ register("hubConnection", {
     advanced: "使用配對碼連接（進階）", manualHint: "供使用配對碼的 Hub 使用。上方登入流程成功後會自動啟用成員功能。",
     enabled: "允許這個 Fleet 使用 Hub", pair: "以配對碼連接", settings: "連接設定", disconnect: "撤銷連接",
     pausedSettings: "恢復連接後，可使用既有連接設定或撤銷連接。",
-    pending: "等待本機確認…", review: "開啟本機確認", retry: "再次檢查",
+    pending: "等待你的確認…", review: "前往確認卡", retry: "再次檢查",
     failed: "無法確認連接設定。請再次檢查，再嘗試其他變更。", unavailable: "無法讀取連接設定，請再次檢查。",
   },
 });

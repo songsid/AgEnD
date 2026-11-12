@@ -3,7 +3,7 @@ import { register, t } from "/assets/app-i18n.js";
 register("hubSetup", {
   en: {
     provided: "Provided (not shown)", title: "Set up a Hub", hint: "Run a team Hub on this computer. Your directory checks sign-ins; the administrator you choose claims administration when they first sign in.",
-    start: "Set up on this computer", local: "Open this computer's own dashboard with its host sign-in to set up a Hub.",
+    start: "Set up on this computer", local: "To set up a Hub, go to the computer running AgEnD, run agend web in a terminal there, and set it up on the page it opens.",
     unsupported: "This page and server don't support the same setup flow. Reload to continue.",
     initialized: "A Hub is already set up. Reload Settings to see its controls.", incomplete: "An earlier setup did not finish. Keep its existing files and finish it with the CLI fallback before starting another setup.",
     hub: "Hub and addresses", directory: "Directory connection", administrator: "Administrator and retention", review: "Review and create",
@@ -35,7 +35,7 @@ register("hubSetup", {
   },
   "zh-TW": {
     provided: "已提供（不顯示）", title: "設定 Hub", hint: "在這台電腦執行團隊 Hub。目錄會驗證登入；你指定的管理員第一次登入時，才會取得管理權限。",
-    start: "在這台電腦設定", local: "請在這台電腦開啟自己的儀表板，使用主機登入後設定 Hub。",
+    start: "在這台電腦設定", local: "要設定 Hub，請到執行 AgEnD 的那台電腦，在終端機執行 agend web，再用它開啟的頁面設定。",
     unsupported: "這個網頁和伺服器的設定流程版本不同。請重新整理後繼續。",
     initialized: "Hub 已設定。請重新整理設定頁以查看控制項。", incomplete: "先前的設定尚未完成。請保留現有檔案，用 CLI 備援流程完成後，再開始新的設定。",
     hub: "Hub 與成員傳輸位址", directory: "目錄連線", administrator: "管理員與保留天數", review: "檢查並建立",
