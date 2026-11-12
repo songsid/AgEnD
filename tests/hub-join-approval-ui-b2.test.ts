@@ -76,6 +76,28 @@ describe("B2 actual Hub approval page", () => {
     fire(p.root.querySelector("form"), "submit"); await settle(20);
     expect(signIn).toHaveBeenCalledOnce(); expect(p.root.textContent).toContain(message);
   });
+  it.each([ ["en", false], ["en", true], ["zh-TW", false], ["zh-TW", true] ] as const)("ended-code feedback owns the unissued terminal explanation: %s/sign-in=%s", async (lang, afterSignIn) => {
+    const p = page({ url: "https://hub.example.test/ui/hub?join=" + ID, storage: { agend_lang: lang } }); mounted.push(p); i18n.setLang(lang, { store: false });
+    let approved = afterSignIn;
+    const failure = { requestId: ID, code: "denied", reason: "code-ended" };
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path.includes("/approve")) { approved = true; return { ok: false, json: async () => ({ ok: false, ...failure }) }; }
+      return { ok: true, json: async () => ({ ok: true, state: approved ? "ended" : "pending", reason: "revoked", issued: false, outerDeadline: Date.now() + 60_000 }) };
+    }));
+    await p.mount(h(ui.HubCompanyJoinPage, { session: { csrf: "owned", displayName: "Carol", ...(afterSignIn ? { companyJoinFailure: failure } : {}) } })); await settle(15);
+    if (!afterSignIn) { fire(button(p, lang === "en" ? "Connect as Carol" : "以 Carol 的身分連接"), "click"); await settle(15); }
+    expect(p.root.textContent).toContain(lang === "en" ? "This join code is no longer valid or has been used up." : "加入碼已失效或已用完。");
+    expect(p.root.textContent).not.toContain(lang === "en" ? "Local authorization changed" : "本機授權已變更");
+    fire(button(p, lang === "en" ? "Try again" : "再試一次"), "click"); await settle(15);
+    expect(p.root.textContent).toContain(lang === "en" ? "This join code is no longer valid or has been used up." : "加入碼已失效或已用完。");
+    expect(p.root.textContent).not.toContain(lang === "en" ? "Local authorization changed" : "本機授權已變更");
+  });
+  it.each([["en", true], ["zh-TW", true], ["en", false], ["zh-TW", false]] as const)("ordinary or issued terminal requests keep their recovery warning: %s/issued=%s", async (lang, issued) => {
+    const p = page({ url: "https://hub.example.test/ui/hub?join=" + ID, storage: { agend_lang: lang } }); mounted.push(p); i18n.setLang(lang, { store: false });
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, state: "ended", reason: "revoked", issued }) })));
+    await p.mount(h(ui.HubCompanyJoinPage, { session: { csrf: "owned", companyJoinFailure: { requestId: ID, code: issued ? "denied" : "unavailable", reason: issued ? "code-ended" : undefined } } })); await settle(15);
+    expect(p.root.textContent).toContain(lang === "en" ? "Local authorization changed" : "本機授權已變更");
+  });
   it("an unrelated failure cannot adopt a code-specific reason", async () => {
     const r = await rig(() => ({ ok: false, code: "limit-reached", reason: "code-scope" }));
     fire(button(r.p, "Connect as Carol"), "click"); await settle(15);

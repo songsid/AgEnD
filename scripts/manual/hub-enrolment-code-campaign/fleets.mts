@@ -141,7 +141,7 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     } finally { await page.close(); }
   }
   async function joinFleet(f: any, code: string, login: string, beforeSignIn: () => Promise<void> = async()=>{}, onQueued: () => void = ()=>{}) {
-    const started = Date.now(); if(f.preSigned)await beforeSignIn(); await f.page.locator('#hubCompanyAddress').fill(rig.webOrigin + ' ' + code); await f.page.locator('#hubCompanyAddress').blur();
+    const started = Date.now(); await f.page.locator('#hubCompanyAddress').fill(rig.webOrigin + ' ' + code); await f.page.locator('#hubCompanyAddress').blur();
     const rename = f.page.getByRole('button',{name:f.lang==='zh-TW'?'改名':'Rename',exact:true}); await rename.waitFor(); await rename.click();
     await f.page.locator('#hubCompanyFleetName').fill(f.label);
     await shot(f.page,f.label+'-01-fleet-start');
@@ -154,7 +154,7 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     } else {
       // An existing company session still explicitly consents to this new Fleet; sign-in is not approval.
       const consent=hub.getByRole('button',{name:f.lang==='zh-TW'?/^以 .+ 的身分連接$/:/^Connect as .+$/});
-      await consent.waitFor();await shot(hub,f.label+'-02-existing-account-consent');await consent.click();
+      await consent.waitFor();await shot(hub,f.label+'-02-existing-account-consent');await beforeSignIn();await consent.click();
     }
 
     const queued = hub.getByText(f.lang==='zh-TW'?'目前很多人同時加入，正在排隊…':'Many people are connecting at once. Waiting in the queue…',{exact:true});

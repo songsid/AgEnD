@@ -79,18 +79,19 @@ export function CompanyJoinLead({ context }) {
 }
 export function HubCompanyJoinPage({ session }) {
   const { requestId, view, retry } = useCompanyJoinContext(), [error, setError] = useState(() => session.companyJoinFailure?.requestId === joinRequest() ? approveError(session.companyJoinFailure) : null), [busy, setBusy] = useState(false), gen = useRef(0);
-  const [failure, setFailure] = useState(session.companyJoinFailure?.code || null);
+  const [failure, setFailure] = useState(() => session.companyJoinFailure?.requestId === joinRequest() ? session.companyJoinFailure : null);
   const approval = useJoinApproval({ requestId, deadline: view?.outerDeadline, sessionKey: session.csrf, approve: approveCompanyJoin, current: () => joinRequest() === requestId });
-  useEffect(() => { setBusy(false); setError(session.companyJoinFailure?.requestId === requestId ? approveError(session.companyJoinFailure) : null); setFailure(session.companyJoinFailure?.requestId === requestId ? session.companyJoinFailure.code : null);
+  useEffect(() => { setBusy(false); setError(session.companyJoinFailure?.requestId === requestId ? approveError(session.companyJoinFailure) : null); setFailure(session.companyJoinFailure?.requestId === requestId ? session.companyJoinFailure : null);
     return () => { gen.current++; }; }, [requestId, session.csrf]);
   const connect = async () => {
     if (busy || !view?.ok || view.state !== "pending") return;
     const token = ++gen.current; setBusy(true); setError(null); setFailure(null);
     const r = await approval.run(session.csrf);
     if (gen.current !== token || r.code === "retired") return;
-    setBusy(false); if (!r.ok) { setError(approveError(r)); setFailure(r.code); } retry();
+    setBusy(false); if (!r.ok) { setError(approveError(r)); setFailure(r); } retry();
   };
   const terminal = view?.ok && !["pending", "identity-approved", "issued"].includes(view.state);
+  const codeFailure = failure?.code === "denied" && ["code-scope", "code-ended"].includes(failure.reason);
   // Connected: say so, close this tab; a tab the browser keeps open (one it did not open by script) offers the way back after 300 ms.
   const done = view?.ok && view.state === "acknowledged" && view.connected === true, [stayed, setStayed] = useState(false);
   useEffect(() => {
@@ -106,11 +107,11 @@ export function HubCompanyJoinPage({ session }) {
   return html`<div class="col hub-owner"><div class="s-section-layout"><section class="card hub-company-join">
     ${view === undefined ? html`<${Skeleton} variant="form" lines=${3} label=${hj("loading")} />` : null}
     ${view?.ok ? html`<${CompanyJoinLead} context=${view} />
-      ${view.state === "pending" ? !error ? html`<div class="field-row"><button class="btn btn-primary" type="button" disabled=${busy} onClick=${connect}>${hj("connectAs", session.displayName || session.login)}</button></div>` : null : html`<p role="status">${view.state === "acknowledged" ? hj(view.connected ? "done" : "offline") : terminal ? joinError(view.reason || view.state) : hj("approved")}</p>`}
+      ${view.state === "pending" ? !error ? html`<div class="field-row"><button class="btn btn-primary" type="button" disabled=${busy} onClick=${connect}>${hj("connectAs", session.displayName || session.login)}</button></div>` : null : terminal && !view.issued && codeFailure && error ? null : html`<p role="status">${view.state === "acknowledged" ? hj(view.connected ? "done" : "offline") : terminal ? joinError(view.reason || view.state) : hj("approved")}</p>`}
       ${view.issued && terminal && view.state !== "acknowledged" ? html`<p class="note">${hj("issued")}</p>` : null}
       ${view.returnPath ? html`<div class="field-row"><a class="btn btn-sm" href=${view.returnPath} rel="noreferrer">${hj("return")}</a></div>` : null}` : view ? html`<${ErrorState} message=${joinError(view.code)} onRetry=${retry} />` : null}
     ${approval.queued ? html`<p class="note" role="status">${he("queued")}</p>` : null}
-    ${error ? html`<${ErrorState} message=${error} onRetry=${failure === "backpressure" ? connect : () => { setError(null); retry(); }} />` : null}
+    ${error ? html`<${ErrorState} message=${error} onRetry=${failure?.code === "backpressure" ? connect : () => { if (!codeFailure) setError(null); retry(); }} />` : null}
   </section></div></div>`;
 }
 register("companyJoin", {

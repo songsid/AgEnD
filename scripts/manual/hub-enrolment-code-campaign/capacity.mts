@@ -49,7 +49,7 @@ try {
  const secrets:string[]=[];
  const rawJson=(client as any).json.bind(client);(client as any).json=async(...args:any[])=>{const began=Date.now();try{return await rawJson(...args);}catch(e:any){const diagnostic={path:String(args[1]).split('?')[0],elapsedMs:Date.now()-began,code:e.code??null,kind:e.kind??null};receipt.machineErrors??=[];receipt.machineErrors.push(diagnostic);console.error(JSON.stringify({machineFailure:diagnostic}));throw e;}};
  let machines=0;const machineWaiters:Array<()=>void>=[];
- const enterMachine=async()=>{if(machines<4){machines++;return;}await new Promise<void>(resolve=>machineWaiters.push(resolve));};
+ const enterMachine=async()=>{if(machines<5){machines++;return;}await new Promise<void>(resolve=>machineWaiters.push(resolve));};
  const leaveMachine=()=>{const next=machineWaiters.shift();if(next)next();else machines--;};
 
  const signedPeople=new Map<string,any>();
@@ -107,23 +107,30 @@ try {
   const gate=new Promise<void>(resolve=>{release=()=>{released=true;resolve();};}),seedJobs:Promise<unknown>[]=[];
   rig.directory.checkEligibility=async(key:any,...args:any[])=>{const answer=await original(key,...args);if(seedIds.has(key.objectId)&&!released){held++;await gate;}return answer;};
   let deadline:ReturnType<typeof setTimeout>|null=null;
+  let readyForConsent=0,allowConsent!:()=>void;const consentReady=new Promise<void>(resolve=>{allowConsent=resolve;});
+  const beforeSignIn=async()=>{if(withGroups){readyForConsent++;await consentReady;}};
+  const visibleJobs=withGroups?visible.map((f:any,i:number)=>attempt(code.code,persons[i],f,beforeSignIn,()=>{receipt.visibleQueueReleasedPool=true;release();})):[];
+  for(const job of visibleJobs)void job.catch(()=>release());
   const queueBefore=receipt.queueTextObserved??0;
   let result:any[];
   try{
+   if(withGroups)await wait(()=>readyForConsent===5||released,30_000);
    if(withGroups)for(let offset=0;offset<32;offset+=4){
     for(const login of seedPeople.slice(offset,offset+4)){const p=rig.people.find((p:any)=>p.login===login);const job=rig.deps.groups.prepareOwnerEligibility({realm:'corp',objectId:p.id},{requestId:randomUUID(),current:()=>true});seedJobs.push(job);void job.catch(()=>release());}
     await wait(()=>held===offset+4||released,10_000);if(released)throw Error('Controlled physical pool setup refused');
    }
-   deadline=setTimeout(release,12000);const beforeSignIn=async()=>{if(withGroups)await wait(()=>held===32||released,11000);};
-   result=await Promise.all([...persons.map((p,i)=>attempt(code.code,p,i<5?visible[i]:null,beforeSignIn,release)),...groupPeople.map(p=>attempt(null,p))]);
+   deadline=setTimeout(()=>{if(!released)receipt.poolReleaseFallback=true;release();},12000);if(withGroups)receipt.poolReadyAt=Date.now();allowConsent();
+   const machineJobs=withGroups?[...groupPeople.map(p=>attempt(null,p)),...persons.slice(5).map(p=>attempt(code.code,p))]:persons.map((p,i)=>attempt(code.code,p,i<5?visible[i]:null));
+   result=await Promise.all(withGroups?[...visibleJobs,...machineJobs]:machineJobs);
   }
-  finally{release();if(deadline)clearTimeout(deadline);await Promise.allSettled(seedJobs);rig.directory.checkEligibility=original;}
+  finally{release();allowConsent();if(deadline)clearTimeout(deadline);await Promise.allSettled([...seedJobs,...visibleJobs]);rig.directory.checkEligibility=original;}
   const uses=rig.db.prepare('SELECT uses FROM hub_enrolment_codes WHERE id=?').get(code.id).uses;
   check(prefix+' all issued and pinned member links reconciled',result.every(r=>r.issued));check(prefix+' uses counted once',uses===n);
   await wait(()=>result.every((r,i)=>i<5?visible[i].fm.hubMemberLink==='online':r.member?.ready===true&&r.member?.view?.current()===true),30_000);
   check(prefix+' all member links current together',result.every((r,i)=>i<5?visible[i].fm.hubMemberLink==='online':r.member?.ready===true&&r.member?.view?.current()===true));
   const pushed=result.map(r=>rig.deps.companyJoin.records.get(r.binding.requestId).createdAt);
   const span=Math.max(...pushed)-Math.min(...pushed),elapsed=Date.now()-start;
+  receipt.lastWaveMetrics={prefix,n,groups:groupPeople.length,startSpanMs:span,elapsedMs:elapsed,queueTextObserved:receipt.queueTextObserved??0};
   check(prefix+' starts inside 60 seconds',span<60000);check(prefix+' connected within five minutes',elapsed<300000);
   if(withGroups)check(prefix+' queue text appeared on a real Hub page',(receipt.queueTextObserved??0)>queueBefore);
   const list=await rig.call(admin,'GET','/hub/v1/admin/enrolment-codes');check(prefix+' recent labels and owners',list.body.codes.find((c:any)=>c.id===code.id).recent.length===n);

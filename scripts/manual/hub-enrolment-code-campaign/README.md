@@ -65,7 +65,7 @@ Dependency modules are mounted read-only. Images are unchanged from B1's kit.
    (including five browser sessions) is completed before starting the connection
    burst and its time is included in wave elapsed. Assert actual push timestamps
    span under60 seconds and all connect within five minutes without manual retry.
-   Harness machine exchanges have at most4 concurrent complete push/approve/redeem/ACK/connect flows, plus five real UI flows; this is a ramp
+   Harness machine exchanges have at most5 concurrent complete push/approve/redeem/ACK/connect flows, plus five real UI flows; this is a ramp
    within the specified60 seconds, not a50-at-once machine-RPC claim. Each wave also requires all links to be current together at its end. Existing
    five-second sign-in and machine deadlines stay unchanged.
 6. B-L13: a separate50-person repetition with three group joins adds a deliberate
@@ -73,7 +73,7 @@ Dependency modules are mounted read-only. Images are unchanged from B1's kit.
    eligibility reads in groups of4. Each real LDAPS answer/close completes before
    its declared operation promise is held. User sign-in/approve calls are not
    held; they receive real pool backpressure immediately. The control releases
-   after visible queue text, with a12-second fallback. No HTTP429, permit,
+   after visible queue text, with a12-second fallback. Five real browsers reach their explicit consent buttons before pool filling; only then do they press together with the group and code client ramp. Group clients enter the ramp first, alongside the visible code joins. This avoids spending the controlled hold on browser setup. No HTTP429, permit,
    credential or directory answer is fabricated. This is a controlled queue
    proof, distinct from the natural B-L12 ramp. Real60-second quiet intervals
    between independent waves respect the120/min budget without resetting it.
