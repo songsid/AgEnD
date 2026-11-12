@@ -151,7 +151,7 @@ export function HubEnrolmentCode({ client = hubClient(), enabled = false, host =
       <button type="button" class="btn" disabled=${busy} onClick=${() => setEnding(null)}>${he("cancel")}</button>
       <button type="button" class="btn btn-danger" disabled=${busy} onClick=${() => mutate("revoke", endingRow.id)}>${he("end")}</button>`}>
       <p><code>${endingRow.code}</code></p><p>${jf("endConfirm")}</p><p>${jf("endPending", joining)}</p>
-      ${names.length ? html`<p class="note">${jf("endNames")}</p><ul>${names.map((name, index) => html`<li key=${index}>${name}</li>`)}</ul>
+      ${names.length ? html`<p class="note">${jf("endNames")}</p><ul>${names.map((name, index) => html`<li key=${index} class="hub-exposure-name">${name}</li>`)}</ul>
         ${joining > names.length ? html`<p class="note">${jf("endOthers", joining - names.length)}</p>` : null}` : null}
       <p>${jf("endUnchanged")}</p>
     </${Dialog}>` : null}

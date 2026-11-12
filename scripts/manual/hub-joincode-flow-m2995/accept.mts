@@ -10,6 +10,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { listenLoopback } from "../smoke-fixture/listen-loopback.mts";
 const REPO = resolve(process.env.REPO ?? process.cwd()), OUT = resolve(process.env.OUT ?? ".artifacts/m2995/browser");
+const LONG_LABEL = process.env.LONG_LABEL === "1";
 const BEFORE = process.env.PHASE === "before", SKEW = process.env.SKEW_REPO ? resolve(process.env.SKEW_REPO) : null;
 mkdirSync(OUT, { recursive: true });
 const ID = "11111111-1111-4111-8111-111111111111", NOW = Date.now();
@@ -24,7 +25,7 @@ const check = (name: string, ok: boolean, detail?: unknown) => { checks.push({ n
 const production = ["src/hub/enrolment-code.ts", "src/hub/http/compose.ts", "src/hub/join/service.ts", "src/ui/hub-client.js", "src/ui/hub-enrolment-code.js", "src/ui/hub-enrolment-code-strings.js", "src/ui/hub-joincode-flow-strings.js", "src/ui/hub-join-approval.js", "src/ui/hub-company-join-strings.js", "src/ui/hub-company-join.js", "src/ui/panel-hub.js", "src/ui/shared/app.css"];
 writeFileSync(join(OUT, "PRODUCTION_SHA256SUMS"), production.flatMap(file => { try { return [createHash("sha256").update(readFileSync(join(REPO, file))).digest("hex") + "  " + file]; } catch { if (BEFORE && file.endsWith("hub-joincode-flow-strings.js")) return []; throw Error("source missing: " + file); } }).join("\n") + "\n");
 const receipt: any = { sourceDirty: execFileSync("git", ["status", "--porcelain", "--", "src"], { cwd: REPO, encoding: "utf8" }).trim().length > 0, productBinding: "PRODUCTION_SHA256SUMS", phase: BEFORE ? "before" : "after", source: execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8" }).trim(),
-  skew: SKEW, boundary: "Production Hub HTTP shell/assets/Preact/Dialog and real dummy-directory sign-in; company-join/code/queue API DTOs are browser-routed fixtures. No directory, real Fleet, capacity, packaged-runtime or Docker claim." };
+  longLabel: LONG_LABEL, skew: SKEW, boundary: "Production Hub HTTP shell/assets/Preact/Dialog and real dummy-directory sign-in; company-join/code/queue API DTOs are browser-routed fixtures. No directory, real Fleet, capacity, packaged-runtime or Docker claim." };
 if (SKEW) {
   const held = ["src/ui/hub-enrolment-code-strings.js", "src/ui/hub-join-approval.js", "src/ui/shared/app-shell.js", "src/ui/shared/app.css", "src/ui/shared/tokens.css"];
   receipt.cachedSource = execFileSync("git", ["rev-parse", "HEAD"], { cwd: SKEW, encoding: "utf8" }).trim();
@@ -50,6 +51,7 @@ try {
     await ctx.route("**/*", (route: any) => new URL(route.request().url()).origin === origin ? route.fallback() : route.abort());
     let mode = "live", ended = false, revokes = 0, approvals = 0;
     const names = lang === "en" ? ["Design laptop", "QA laptop", "Support laptop"] : ["設計組筆電", "測試組筆電", "客服組筆電"];
+    if (LONG_LABEL) names[0] = "W".repeat(120);
     const code = (n: number, state = "live") => ({ id: `11111111-1111-4111-8111-${String(n).padStart(12, "0")}`, code: state === "live" ? `2345-ABC${n + 1}` : null,
       state, uses: 2, maxUses: 30, inFlight: state === "live" ? 3 : 0, inFlightLabels: state === "live" ? names : [], createdAt: NOW - n * 1000, expiresAt: NOW + 3600000, scope: { kind: "directory" }, perPersonFleets: 1, recent: [] });
     const rows = () => mode === "live-limit" ? Array.from({ length: 8 }, (_, i) => code(i + 1)) : mode === "hourly-code-limit" ? Array.from({ length: 10 }, (_, i) => code(i + 1, i ? "revoked" : "live")) : [code(1, ended ? "revoked" : "live")];
@@ -77,9 +79,9 @@ try {
     const shot = async (name: string) => {
       await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(100);
       const file = `${tag}-${name}.png`; await page.screenshot({ path: join(OUT, file) }); images.push(file);
-      const shape = await page.evaluate(() => ({ x: document.documentElement.scrollWidth - innerWidth, csp: (window as any).__csp,
+      const shape = await page.evaluate(() => ({ x: document.documentElement.scrollWidth - innerWidth, dialogX: Math.max(0, ...[...document.querySelectorAll("dialog .dlg-body")].map(e => e.scrollWidth - e.clientWidth)), csp: (window as any).__csp,
         small: [...document.querySelectorAll("dialog button")].filter(e => { const b = e.getBoundingClientRect();return b.width > 0 && b.height > 0 && (b.height < 43 || b.width < 43); }).map(e => ({ text: e.textContent, close: e.classList.contains("dlg-x"), width: e.getBoundingClientRect().width, height: e.getBoundingClientRect().height })) }));
-      check(`${tag}:${name}:no-overflow`, shape.x <= 0, shape); check(`${tag}:${name}:csp`, !shape.csp.length, shape.csp);
+      check(`${tag}:${name}:no-overflow`, shape.x <= 0 && shape.dialogX <= 0, shape); check(`${tag}:${name}:csp`, !shape.csp.length, shape.csp);
       if (phone) {
         // Held CSS retains the shared Dialog's historical 36px close icon; new action buttons must still meet --tap.
         const small = SKEW ? shape.small.filter((e: any) => !e.close) : shape.small;
@@ -91,7 +93,7 @@ try {
       const start = page.locator("[data-enrolment-codes] > .n-actions button"); await start.scrollIntoViewIfNeeded(); await start.waitFor({ state: "visible" }); await page.waitForFunction(() => !(document.querySelector("[data-enrolment-codes] > .n-actions button") as HTMLButtonElement)?.disabled); };
     const create = lang === "en" ? "Create join code" : "建立加入碼", end = lang === "en" ? "End this code now" : "立即停用這組碼";
     await signIn();
-    for (const limit of BEFORE ? ["live-limit"] : ["live-limit", "hourly-code-limit"]) {
+    for (const limit of LONG_LABEL ? [] : BEFORE ? ["live-limit"] : ["live-limit", "hourly-code-limit"]) {
       mode = limit; ended = false; await manager(); await page.getByRole("button", { name: create, exact: true }).click();
       await page.locator("dialog").getByRole("button", { name: create, exact: true }).click();
       await page.locator("dialog").waitFor({ state: "detached" }); await page.locator("[data-enrolment-codes]").getByRole("alert").waitFor();
@@ -100,7 +102,8 @@ try {
     mode = "live"; ended = false; await manager(); await page.getByRole("button", { name: end, exact: true }).click();
     if (!BEFORE) {
       await page.locator("dialog").waitFor(); check(`${tag}:confirm:no-write`, revokes === 0);
-      check(`${tag}:confirm:names`, (await page.locator("dialog").innerText()).includes(names[0])); await shot("end-confirm");
+      check(`${tag}:confirm:names`, (await page.locator("dialog").innerText()).includes(names[0])); await shot(LONG_LABEL ? "long-label" : "end-confirm");
+      if (LONG_LABEL) { await ctx.close(); continue; }
       await page.locator("dialog").getByRole("button", { name: lang === "en" ? "Cancel" : "取消", exact: true }).click(); check(`${tag}:cancel:no-write`, revokes === 0);
       await page.getByRole("button", { name: end, exact: true }).click(); await page.locator("dialog").getByRole("button", { name: end, exact: true }).click();
       await page.locator("dialog").waitFor({ state: "detached" }); check(`${tag}:end:one-write`, revokes === 1);
