@@ -119,3 +119,41 @@ describe("closing the default account's dialog ends the run it started (BrowserS
     expect(reqs.filter(r => r.method === "POST")).toEqual([]);
   });
 });
+
+describe("AGEND-215: with two sign-ins at once, every web cancel names the backend it is for", () => {
+  const grokRun = (over: Record<string, unknown> = {}) => ({ id: "c".repeat(32), backend: "grok", phase: "running", mine: true, hint: { url: "https://x.ai/device", code: "ABCD-EFGH", linkable: true }, ...over });
+  const claudeStructured = { selected: ["claude-code"], pending: ["claude-code"], skipped: [], states: {}, login: waitingForCode, ready: false };
+  it("Cancel sign-in in the Grok dialog ends Grok by name — Claude Code's structured sign-in beside it is not asked to end", async () => {
+    answer = r => r.url === CANCEL ? { message: "🛑 Connecting your grok account was cancelled." } : {};
+    S.signInStore.set({ loaded: true, login: grokRun(), targets: [], structured: claudeStructured });
+    await p.mount(h(S.SignInDialog, { backend: "grok", resume: true, onClose: closing() })); await settle(6);
+    reqs = [];
+    fire(btn("Cancel connecting"), "click"); await settle(8);
+    expect(posts(CANCEL).map(r => r.body)).toEqual([{ backend: "grok" }]);
+  });
+  it("the same button on a sign-in another session started (not mine) also names its backend", async () => {
+    answer = r => r.url === CANCEL ? { message: "ok" } : {};
+    S.signInStore.set({ loaded: true, login: grokRun({ mine: false, startedOn: "Other browser" }), targets: [], structured: claudeStructured });
+    await p.mount(h(S.SignInDialog, { backend: "grok", resume: true, onClose: closing() })); await settle(6);
+    reqs = [];
+    fire(btn("Cancel connecting"), "click"); await settle(8);
+    expect(posts(CANCEL).map(r => r.body)).toEqual([{ backend: "grok" }]);
+  });
+  it("a controller sign-in of Claude Code names claude-code, whatever dialog shows it", async () => {
+    answer = r => r.url === CANCEL ? { message: "ok" } : {};
+    S.signInStore.set({ loaded: true, login: grokRun({ backend: "claude-code" }), targets: [], structured: null });
+    await p.mount(h(S.SignInDialog, { backend: "claude-code", resume: true, onClose: closing() })); await settle(6);
+    reqs = [];
+    fire(btn("Cancel connecting"), "click"); await settle(8);
+    expect(posts(CANCEL).map(r => r.body)).toEqual([{ backend: "claude-code" }]);
+  });
+  it("the Claude Code dialog's console fallback, with no run of its own, ends a structured run on claude-code only — it names the backend", async () => {
+    answer = r => r.url === DEFAULT_ENDPOINT ? snapshot({ login: waitingForCode }) : {};
+    await p.mount(h(S.BrowserSignInDialog, { backend: "claude-code", onClose: closing() })); await settle(8);
+    reqs = [];
+    const fallback = p.root.querySelectorAll("button").find((b: any) => /console/i.test(b.textContent)) as any;
+    expect(fallback).toBeDefined();
+    fire(fallback, "click"); await settle(8);
+    expect(posts(DEFAULT_ENDPOINT, "cancel").map(r => r.body)).toEqual([{ operation: "cancel", backend: "claude-code" }]);
+  });
+});

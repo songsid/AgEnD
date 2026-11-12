@@ -148,11 +148,14 @@ export class BrowserBackendSignIns {
     if (result !== "accepted") throw new Error(`signin_action_${result}`);
     return this.snapshot(owner);
   }
-  /** `id` (AGEND-203): only the run with that id — a dialog that is closed ends the run IT started, never one another tab began since. */
-  async cancel(owner: object, id?: string): Promise<BrowserBackendSignInSnapshot> {
+  /**
+   * `id` (AGEND-203): only the run with that id — a dialog that is closed ends the run IT started, never one another tab began since.
+   * `backend` (AGEND-215): only a run on that backend — a dialog that has no run id of its own (it never started one) still never ends another backend's.
+   */
+  async cancel(owner: object, id?: string, backend?: string): Promise<BrowserBackendSignInSnapshot> {
     if (!this.current(owner)) throw new Error("signin_session_expired");
     const run = this.run;
-    if (run && (id === undefined || run.session.view(run.owner).id === id)) await run.session.cancel();
+    if (run && (id === undefined || run.session.view(run.owner).id === id) && (backend === undefined || run.backend === backend)) await run.session.cancel();
     if (run?.session.view(owner).reason === "cleanup_failed") throw new Error("signin_cleanup_failed");
     return this.snapshot(owner);
   }

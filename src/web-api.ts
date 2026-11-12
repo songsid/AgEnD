@@ -1353,7 +1353,7 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
           z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
         ]) }),
         z.strictObject({ operation: z.literal("skip"), backend: z.enum(ONBOARDING_BACKENDS as unknown as [typeof ONBOARDING_BACKENDS[number], ...typeof ONBOARDING_BACKENDS]) }),
-        z.strictObject({ operation: z.literal("cancel"), id: z.string().regex(/^[0-9a-f]{32}$/).optional() }), z.strictObject({ operation: z.literal("refresh") }),
+        z.strictObject({ operation: z.literal("cancel"), id: z.string().regex(/^[0-9a-f]{32}$/).optional(), backend: z.enum(ONBOARDING_BACKENDS as unknown as [typeof ONBOARDING_BACKENDS[number], ...typeof ONBOARDING_BACKENDS]).optional() }), z.strictObject({ operation: z.literal("refresh") }),
       ]).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "invalid_signin_action" }); return; }
       const action = parsed.data;
@@ -1361,7 +1361,7 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
       else if (action.operation === "start") result = await service.begin(owner, action.backend, action.relogin === true);
       else if (action.operation === "input") result = await service.input(owner, action.id, action.revision, action.action);
       else if (action.operation === "skip") result = await service.skip(owner, action.backend);
-      else if (action.operation === "cancel") result = await service.cancel(owner, action.id);
+      else if (action.operation === "cancel") result = await service.cancel(owner, action.id, action.backend);
       else result = await service.refresh(owner, true);
     }
     if (!permitWebContinuation(req, res, ctx)) return;

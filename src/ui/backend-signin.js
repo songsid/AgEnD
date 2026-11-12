@@ -271,7 +271,8 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
     // account's: only the run this dialog started is ended (none started here: nothing to end, and one another tab runs is left alone); the default account's, as before.
     const own = profile ? run.current : null;
     if (!profile || own) {
-      const result = await post(endpoint, own ? { operation: "cancel", id: own } : { operation: "cancel" });
+      // AGEND-215: with no run id of its own, only a run on the backend this dialog is for (the one chosen) — never whichever structured run another backend has.
+      const result = await post(endpoint, own ? { operation: "cancel", id: own } : { operation: "cancel", ...(profile ? {} : { backend: chosen }) });
       if (!result.ok) { toast(tn("failed")); return; }
       run.current = null;   // ended here: closing this dialog has nothing left to end
     }
@@ -341,9 +342,11 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
     void refreshSignIn();
     await check();
   };
+  // AGEND-215: the sign-in THIS dialog shows — by its own backend. Two sign-ins can run at once (structured Claude Code beside a terminal Grok); a body without one ends
+  // whichever the server finds first, which is not necessarily the one on screen. (Without a sign-in on screen there is no backend: this dialog's own.)
   const cancelRun = async () => {
     setBusy(true);
-    const r = await post("/ui/backend-login/cancel", {});
+    const r = await post("/ui/backend-login/cancel", { backend: (login && login.backend) || backend });
     setBusy(false);
     toast((r.body && r.body.message) || tn("cancelled"));
     void refreshSignIn();

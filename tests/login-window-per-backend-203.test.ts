@@ -128,6 +128,59 @@ describe("FleetManager: an unfinished sign-in of one backend does not stop anoth
   });
 });
 
+describe("AGEND-215: two sign-ins at once (structured Claude Code beside a terminal Grok) — a cancel by backend ends that one only", () => {
+  /** Claude Code's structured sign-in and Grok's controller session, both running; Grok's fake session really releases its window when cancelled (as the engine does). */
+  async function both() {
+    const h = rig();
+    await h.service.begin(h.owner, "claude-code");
+    const grokEnded = vi.fn();
+    h.web.deps.createSession = (_spec: unknown, events: { onDone(r: unknown): Promise<void> }) => {
+      const session = { state: "running", start: async () => {}, peekAccessToken: () => null, on() {}, once() {}, off() {},
+        cancel: vi.fn(async () => { session.state = "finished"; grokEnded(); await events.onDone({ ok: false, reason: "cancel", detail: "cancelled" }); }) };
+      return session;
+    };
+    const { chat } = webChat(h.owner.handle);
+    await h.web.start("grok", chat, { skipAuthCheck: true, tokenPresent: false });
+    expect(h.fm.loginWindow.heldFor("grok")).not.toBeNull();
+    expect(h.fm.loginWindow.heldFor("claude-code")).not.toBeNull();
+    return { h, grokEnded };
+  }
+  it("cancel by grok (the Grok dialog's) ends Grok and leaves Claude Code's sign-in running", async () => {
+    const { h, grokEnded } = await both();
+    expect(await h.fm.cancelLoginSession("grok")).toBe(t("login.cancelled", "grok"));
+    expect(grokEnded).toHaveBeenCalledOnce();
+    expect(h.fm.loginWindow.heldFor("grok")).toBeNull();
+    expect(h.fm.loginWindow.heldFor("claude-code"), "Claude Code is still signing in").not.toBeNull();
+    expect(h.transport.close).not.toHaveBeenCalled();
+    expect(h.service.activeBackend).toBe("claude-code");
+  });
+  it("cancel by claude-code ends Claude Code and leaves Grok's session running", async () => {
+    const { h, grokEnded } = await both();
+    expect(await h.fm.cancelLoginSession("claude-code")).toBe(t("login.cancelled", "claude-code"));
+    expect(h.transport.close).toHaveBeenCalledOnce();
+    expect(h.fm.loginWindow.heldFor("claude-code")).toBeNull();
+    expect(grokEnded, "Grok is still signing in").not.toHaveBeenCalled();
+    expect(h.fm.loginWindow.heldFor("grok")).not.toBeNull();
+    expect(h.fm.loginController.isActive()).toBe(true);
+  });
+  it("chat's /login cancel (no backend) is the one that picks by priority — it ends one of them, not both", async () => {
+    const { h } = await both();
+    await h.fm.cancelLoginSession();
+    const held = ["claude-code", "grok"].filter(b => h.fm.loginWindow.heldFor(b) !== null);
+    expect(held).toHaveLength(1);
+  });
+  it("the structured endpoint's cancel by backend: another backend's run is left alone, its own is ended", async () => {
+    const h = rig();
+    await h.service.begin(h.owner, "claude-code");
+    await h.service.cancel(h.owner, undefined, "codex");
+    expect(h.service.activeBackend, "a cancel for codex does not end Claude Code's run").toBe("claude-code");
+    expect(h.transport.close).not.toHaveBeenCalled();
+    await h.service.cancel(h.owner, undefined, "claude-code");
+    expect(h.service.activeBackend).toBeNull();
+    expect(h.transport.close).toHaveBeenCalledOnce();
+  });
+});
+
 describe("a sign-in nobody finishes does not stay: the dialog's close (by run id), and the ten minutes", () => {
   it("cancel with the run's id ends it and frees the backend; another run's id leaves it alone", async () => {
     const h = rig();
