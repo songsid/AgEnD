@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
+import { loadavg } from "node:os";
 import { bootFixture } from "../smoke-fixture/index.mts";
 const repo = resolve(process.env.REPO!), out = resolve(process.env.OUT!);
 const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
@@ -176,7 +177,10 @@ try {
           assert.equal(await page.locator(".ws-pane").count(), 2); assert.equal(await page.locator('[data-pane="b"] .file-chip').count(), 1);
           assert.equal(await page.locator("#pane-b-msgIn").inputValue(), scenario === "changed" ? "載入期間繼續輸入，留在原本窗格。" : "這份草稿移到獨立視窗，還沒有送出。");
           await shot(page, `${scenario || retained}-keeps-source`, 2);
-          if (scenario === "auth") assert.ok(new URL(child.url()).pathname.startsWith("/signin"));
+          if (scenario === "auth") {
+            assert.ok(receipt.cases.some((c: any) => c.label === "unauthenticated-child-navigation" && c.status === 401));
+            assert.equal(await child.locator('.composer-box textarea').count(), 0);
+          }
           check("retained-exit", { scenario, retained, childPath: new URL(child.url()).pathname });
         } else {
           await page.locator("#msgIn").waitFor(); await child.locator("#msgIn").waitFor();
@@ -196,6 +200,7 @@ try {
         await child.close();
         if (scenario === "cycles") {
           for (let n = 1; n < 50; n++) {
+            assert.ok(loadavg()[0] <= 12, "PAUSED: host load exceeds leader's campaign limit");
             await page.evaluate(async (name: string) => { const { appStore } = await import("/assets/app-store.js"); await appStore.get().chatWorkspace.open(name); }, b);
             await page.locator("#pane-b-msgIn").waitFor();
             await page.locator('[data-pane="b"] .ws-pane-head .menu > button').click();
