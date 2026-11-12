@@ -27,6 +27,7 @@ export class HubPairingNotices {
   private readonly sending = new Set<string>();
   private readonly sentAt = new Map<string, number>();
   private timer: ReturnType<typeof setInterval> | undefined;
+  private idleSweep: MapIterator<[string, HubLinkContext]> | undefined;
   constructor(private readonly options: {
     db: Database.Database; store: HubTransportStore; administrator: PersonKey; directory: HubDirectory;
     audit: Pick<HubAuditStore, "appendInTransaction">; current(): boolean;
@@ -78,7 +79,7 @@ export class HubPairingNotices {
   /** Called after commit, or when a ready member reconnects. Queue retention never depends on this callback. */
   committed = (): void => {
     for (const listener of this.listeners) { try { listener(); } catch { /* its authenticated read retries */ } }
-    for (const link of this.links.values()) void this.flushFleet(link).catch(() => undefined);
+    this.flushQueued();
   };
   subscribe(listener: () => void): () => void {
     this.check(); if (this.listeners.size >= 64) throw new HubProtocolError("backpressure");
@@ -177,21 +178,37 @@ export class HubPairingNotices {
       if (!link.current()) throw new HubProtocolError("revoked");
     }).immediate();
   }
+  /** Queue lookup schedules work only; flushFleet retains every disclosure/epoch/eligibility fence. */
+  private flushQueued(): void {
+    if (this.closed) return;
+    try {
+      const targets = this.options.db.prepare(`SELECT DISTINCT target FROM hub_pairing_notice_targets
+        WHERE kind='fleet' AND state<>'delivered'`).all() as Array<{ target: string }>;
+      for (const { target } of targets) {
+        const link = this.links.get(target);
+        if (link) void this.flushFleet(link).catch(() => undefined);
+      }
+    } catch { /* Delivery is post-commit; the retained queue retries on the next tick. */ }
+  }
   start(): void {
     this.check(); if (this.timer) return;
     this.timer = setInterval(() => {
-      for (const [id, link] of this.links) {
-        if (!link.current()) {
+      // Idle links have nothing to disclose. Sweep one per tick rather than
+      // re-reading/validating the entire transport and mount image for every link.
+      const next = (this.idleSweep ??= this.links.entries()).next();
+      if (next.done) this.idleSweep = undefined;
+      else {
+        const [id, link] = next.value;
+        if (!link.current() && this.links.get(id) === link) {
           this.links.delete(id);
           for (const key of this.sentAt.keys()) if (key.startsWith(`${id}/`)) this.sentAt.delete(key);
-          continue;
         }
-        void this.flushFleet(link).catch(() => undefined);
       }
+      this.flushQueued();
     }, 1000); this.timer.unref();
   }
   close(): void {
     this.closed = true; if (this.timer) clearInterval(this.timer);
-    this.listeners.clear(); this.links.clear(); this.sentAt.clear();
+    this.listeners.clear(); this.links.clear(); this.sentAt.clear(); this.idleSweep = undefined;
   }
 }
