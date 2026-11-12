@@ -12,7 +12,7 @@
   const T = {
     en: {
       signout_unsaved: "Signed out for now, but the change could not be saved: a restart may bring the session back. This page cannot repair session storage.",
-      checking: "Checking your session…", title: "Sign in to AgEnD", lead: "Enter your authenticator app’s 6-digit code to sign in automatically.",
+      checking: "Checking your session…", title: "Sign in to AgEnD", lead: "Enter the 6-digit code from your authenticator app, or an 8-character device sign-in code, to sign in.",
       label: "Authenticator or device sign-in code", submit: "Sign in", working: "Signing in…",
       hint: "Paste an 8-character device sign-in code",
       nobot: "No chat bot?", nobot_body: "Ask the operator to run agend web --code on the AgEnD computer.",
@@ -63,7 +63,7 @@
     },
     "zh-TW": {
       signout_unsaved: "暫時登出了，但變更沒能儲存：重新啟動後這個工作階段可能會回來。這個頁面無法修復工作階段的儲存問題。",
-      checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "填入驗證器 App 的 6 位數驗證碼，即可自動登入。",
+      checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "填入驗證器 App 的 6 位數驗證碼，或 8 字元的裝置登入碼，即可登入。",
       label: "驗證碼或裝置登入碼", submit: "登入", working: "登入中…",
       hint: "也可以貼上 8 字元裝置登入碼",
       nobot: "沒有聊天 bot？", nobot_body: "請管理員在 AgEnD 電腦執行 agend web --code。",

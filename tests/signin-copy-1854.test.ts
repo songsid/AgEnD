@@ -13,7 +13,7 @@ const HTML = readFileSync(join(process.cwd(), "src", "ui", "signin.html"), "utf8
 
 const COPY = {
   en: {
-    lead: "Enter your authenticator app’s 6-digit code to sign in automatically.",
+    lead: "Enter the 6-digit code from your authenticator app, or an 8-character device sign-in code, to sign in.",
     hint: "Paste an 8-character device sign-in code",
     nobot: "No chat bot?",
     nobot_body: "Ask the operator to run agend web --code on the AgEnD computer.",
@@ -21,7 +21,7 @@ const COPY = {
     unconfirmed: "Sign-in could not be confirmed. Get a new code and try again; if it keeps failing, contact the operator.",
   },
   "zh-TW": {
-    lead: "填入驗證器 App 的 6 位數驗證碼，即可自動登入。",
+    lead: "填入驗證器 App 的 6 位數驗證碼，或 8 字元的裝置登入碼，即可登入。",
     hint: "也可以貼上 8 字元裝置登入碼",
     nobot: "沒有聊天 bot？",
     nobot_body: "請管理員在 AgEnD 電腦執行 agend web --code。",
