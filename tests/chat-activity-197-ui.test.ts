@@ -218,18 +218,23 @@ describe("live before the reply — the feed", () => {
     };
     pg = page(); (pg.document as any).body.dataset.chatActivity = "1";
     let tick: ((d: unknown) => void) | null = null;
-    const feed = act.observeActivity("w", { fetcher, changed() {}, streamOn: (_n: string, fn: (d: unknown) => void) => { tick = fn; return () => {}; }, setTimer: () => 0, clearTimer() {} });
-    feed.start(); await settle();
+    // The feed reports each finished read with changed(). Wait for that (not a fixed number of turns): the read goes
+    // through LogService to the file, and on a loaded CI runner it can outlast settle()'s four turns — the composed
+    // rows were then read from the previous answer (alpha run 43288627091: "user agent act:live:2").
+    let reads = 0;
+    const answered = async (run: () => void) => { const was = reads; run(); await vi.waitFor(() => expect(reads).toBeGreaterThan(was), { timeout: 5000 }); };
+    const feed = act.observeActivity("w", { fetcher, changed() { reads++; }, streamOn: (_n: string, fn: (d: unknown) => void) => { tick = fn; return () => {}; }, setTimer: () => 0, clearTimer() {} });
+    await answered(() => feed.start());
     const shape = (r: Mod[]) => r.map((x: any) => (x.role === "activity" ? `act:${x.group.level}:${x.group.items.length}` : x.role)).join(" ");
     const user1 = rows(false);
     expect(shape(feed.compose(user1))).toBe("user");                           // nothing done yet: no block (the work bar says "working")
     appendFileSync(f, rec({ type: "assistant", timestamp: stamp(2), message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: { file_path: "/srv/w/a.ts" } }] } }));
-    tick!({ instance: "w" }); await settle();
+    await answered(() => tick!({ instance: "w" }));
     expect(shape(feed.compose(user1))).toBe("user act:live:1");                // the first step, long before any reply
     const key = feed.compose(user1)[1].group.key;
     appendFileSync(f, rec({ type: "user", promptId: "p1", timestamp: stamp(3), message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "x" }] } })
       + rec({ type: "assistant", timestamp: stamp(4), message: { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Bash", input: { command: "npm test" } }] } }));
-    tick!({ instance: "w" }); await settle();
+    await answered(() => tick!({ instance: "w" }));
     expect(shape(feed.compose(user1))).toBe("user act:live:2");
     expect(feed.compose(user1)[1].group.key).toBe(key);
     // the reply: its row arrives (by anchor), the same key above it
@@ -237,7 +242,7 @@ describe("live before the reply — the feed", () => {
       + rec({ type: "user", promptId: "p1", timestamp: stamp(6.5), message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t3", content: "{\"chatId\":\"web\",\"messageId\":\"w-r1\"}" }] } })
       + rec({ type: "assistant", timestamp: stamp(7), message: { role: "assistant", content: [{ type: "text", text: "." }] } })
       + rec({ type: "system", subtype: "turn_duration", durationMs: 7000, timestamp: stamp(7.5) }));
-    tick!({ instance: "w" }); await settle();
+    await answered(() => tick!({ instance: "w" }));
     const rowsDone = rows(true).map((r) => (r.role === "agent" ? { ...r, ts: stamp(6.6) } : { ...r, ts: stamp(-1) }));
     expect(shape(feed.compose(rowsDone))).toBe("user act:id:2 agent");        // the `.` is not a step: two tools, one block, above the reply
     expect(feed.compose(rowsDone)[1].group.key).toBe(key);                      // the same group the live block was
