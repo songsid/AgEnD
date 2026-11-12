@@ -284,7 +284,7 @@ import { shapeWebModelCatalog } from "./web-model-groups.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED, nativeCredentialProfile } from "./native-instance-registry.js";
 import { createNativeWindowsInstance, updateNativeWindowsInstance } from "./native-instance-api.js";
 import { NativeInstanceConfigEdit, parseNativeInstanceCreate, type NativeInstanceCreateInput } from "./native-instance-input.js";
-import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
+import { LogService, thinkingOn, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { viewHistory, type ViewHistoryAnswer, type ViewHistoryQuery } from "./view-history.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
@@ -6600,11 +6600,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private get log(): LogService {
     return this.logService ??= new LogService({
       enabled: () => this.fleetConfig?.web?.log_tab === true,
+      cwd: (name) => { const dir = this.fleetConfig?.instances?.[name]?.working_directory; return typeof dir === "string" && dir ? dir : undefined; },
+      thinking: () => thinkingOn(this.fleetConfig?.web),   // AGEND-181/197: off unless turned on
+      toolProgress: (name) => this.chatToolProgress(name),
       known: (name) => Object.prototype.hasOwnProperty.call(this.fleetConfig?.instances ?? {}, name) || this.classicRoomFor(name) !== null,
       source: (name) => this.logSource(name),
       events: (name, limit) => (this.eventLog?.query({ instance: name, limit }) ?? []) as Array<{ id: number; event_type: string; payload: unknown; created_at: string }>,
       emit: (event, data) => this.emitSseEvent(event, data),
     });
+  }
+
+  /**
+   * AGEND-197: an instance's effective `tool_progress` — what its chat's activity block is gated by: its own setting, else
+   * the fleet default, else off (a ClassicBot room: its channel's, as the daemon reads it). Junk values are off.
+   */
+  private chatToolProgress(name: string): "off" | "standard" | "verbose" {
+    const defaults = this.fleetConfig?.defaults?.tool_progress;
+    const own = Object.prototype.hasOwnProperty.call(this.fleetConfig?.instances ?? {}, name) ? this.fleetConfig?.instances?.[name]?.tool_progress : undefined;
+    const level = own ?? (this.classicRoomFor(name) ? this.classicChannels?.getToolProgressByInstance(name, defaults) : undefined) ?? defaults;
+    return level === "standard" || level === "verbose" ? level : "off";
   }
 
   /** Board 003648ac: a web /compact followed to its end, from the transcript the Log reads (none: nothing to follow). */
@@ -13627,6 +13641,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.emitSseEvent("message", {
       instance, sender: msg.username, role: "user", text: text.slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
       channel: true, from: webChatFrom(msg.adapterId, msg.userId), ...(posts ? { posts } : {}),
+      ...(msg.messageId ? { anchor: msg.messageId } : {}),   // AGEND-181: the transcript names it `(message_id: <platform id>)`
     });
   }
 
@@ -13937,7 +13952,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               inChannel = outAdapter !== WEB_ONLY_REPLY_SINK
                 && this.landedInOwnChannel(instanceName, replyAdapterId, result);
             } catch { /* not known: not the channel's (fail closed), and the bookkeeping below still runs */ }
-            void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView, inChannel, replyAdapterId ? { adapterId: replyAdapterId, result } : undefined, replyIdentity);
+            void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView, inChannel, replyAdapterId ? { adapterId: replyAdapterId, result } : undefined, replyIdentity, result);
           } catch (err) {
             this.logger.warn({ err, instanceName }, "Reply delivered but post-delivery bookkeeping failed");
           }
@@ -14016,7 +14031,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { return this.landedInOwnChannel(set.instance, set.adapterId, { chatId: set.chatId, threadId: set.threadId || undefined }); } catch { return false; }
   }
 
-  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false, sentAs?: { adapterId: string; result: unknown }, identity: WebChatIdentity = this.webChatIdentity(instanceName)): Promise<void> {
+  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false, sentAs?: { adapterId: string; result: unknown }, identity: WebChatIdentity = this.webChatIdentity(instanceName), replyResult: unknown = sentAs?.result): Promise<void> {
+    // AGEND-181: the id the reply call returned (also on a fleet with no adapter: web-only), the row's anchor.
+    const returned = replyResult && typeof replyResult === "object" ? (replyResult as { messageId?: unknown }).messageId : undefined;
     // #2281: where the reply is, when it landed in the instance's own place — a web reply to it is then a native reply
     // there. A reply elsewhere (another chat, the web-only sink) records none.
     const sent = (sentAs?.result && typeof sentAs.result === "object" ? sentAs.result : {}) as { messageId?: unknown; chatId?: unknown; threadId?: unknown };
@@ -14064,6 +14081,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(buttons ? { buttons } : {}),                 // #1266
         ...(inChannel ? { channel: true } : {}),         // #1920 §5.2
         ...(post ? { posts: [post] } : {}),              // #2281
+        ...(typeof returned === "string" && returned ? { anchor: returned } : {}),   // AGEND-181: what the reply call returned
         ...(reserved !== undefined ? { reserved } : {}), // #1774
       });
     };
@@ -22934,11 +22952,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2861: an Office share's dialogue box hears that someone talked to an instance (never what was said).
       this.officeTalk.noteMessage(data);
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
         messageId: typeof m.messageId === "string" ? m.messageId : undefined,
+        anchor: typeof m.anchor === "string" ? m.anchor : undefined,
         role: typeof m.role === "string" ? m.role : undefined,
         buttons: m.buttons,
         click: m.click,

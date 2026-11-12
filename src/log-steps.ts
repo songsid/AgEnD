@@ -14,9 +14,9 @@
  */
 import { open, stat } from "node:fs/promises";
 import { LINE_MAX_BYTES, LONG_HEAD_BYTES, lastLineBoundary, type LongLine } from "./transcript-jsonl.js";
-import { redactSecrets } from "./tool-progress.js";
+import { redactSecrets, shellProgramName, type ToolProgressLevel } from "./tool-progress.js";
 
-export type StepKind = "user" | "assistant" | "tool" | "error" | "turn_end" | "state";
+export type StepKind = "user" | "assistant" | "thinking" | "tool" | "error" | "turn_end" | "state";
 /** What a tool call does, for its icon and words on the page. */
 export type StepCat = "read" | "edit" | "search" | "run" | "web" | "mcp" | "agent" | "plan" | "message" | "other";
 export type StepStatus = "running" | "done" | "failed" | "interrupted";
@@ -51,7 +51,18 @@ export interface LogStep {
   bodyBytes?: number;
   /** state: what happened ("compacted"); error: a status code. */
   note?: string;
+  /** AGEND-181: what ties this step to a row of the chat ledger (see StepAnchor). Only user steps and `reply` calls carry one. */
+  anchor?: StepAnchor;
 }
+
+/**
+ * AGEND-181: the anchors a transcript already holds for the chat (no timing needed). A user step carries the ids AgEnD
+ * wrote into the delivered prompt (`[agend-human-id:…]`, `(message_id: … | verification_id: …)`); a `reply` tool call
+ * carries the start of its text (masked, ≤ ANCHOR_TEXT) and — once its result is seen — the `messageId` the reply was
+ * given. The page joins steps to chat rows by these, exact id first (chat-activity-groups.js).
+ */
+export interface StepAnchor { messageId?: string; humanId?: string; replyText?: string }
+export const ANCHOR_TEXT = 200;
 
 export const SUBJECT_MAX = 300;
 export const INPUT_MAX = 2000;
@@ -224,6 +235,47 @@ function bodyOf(step: LogStep, text: string, max: number): void {
 }
 const tsOf = (v: unknown): number => { const t = typeof v === "string" ? Date.parse(v) : NaN; return Number.isFinite(t) ? t : 0; };
 
+/* ------------------------------------------------------------------ anchors (AGEND-181) */
+
+/** AgEnD's `reply` tool as each backend names it: `mcp__agend__reply`, `mcp__agend-x__reply`, codex's `agend:reply`, kiro's bare `reply`. */
+const REPLY_TOOL = /^(?:mcp__agend[\w-]*__|agend[\w-]*:)?reply$/;
+export const isReplyTool = (name: string): boolean => REPLY_TOOL.test(name);
+const HUMAN_ID = /^\s*(?:<pasted_content[^>]*>\s*)?\[agend-human-id:(hmsg-[A-Za-z0-9-]{1,80})\]/;
+const MESSAGE_ID = /\(message_id:\s*([A-Za-z0-9._:-]{1,80})(?:\s*\|[^)\n]{0,200})?\)/g;
+/** The ids in a delivered prompt's text (the last `(message_id: …)` — the trailer AgEnD appends — wins), or undefined. */
+export function promptAnchor(text: string): StepAnchor | undefined {
+  const humanId = HUMAN_ID.exec(text)?.[1];
+  let messageId: string | undefined;
+  for (const m of text.matchAll(MESSAGE_ID)) messageId = m[1];
+  return humanId || messageId ? { ...(messageId ? { messageId } : {}), ...(humanId ? { humanId } : {}) } : undefined;
+}
+/** The `messageId` a `reply` call's result names (`{"chatId":"web","messageId":"web-…"}`), or undefined. */
+export function replyResultId(text: string): string | undefined {
+  return /"messageId"\s*:\s*"([^"\\]{1,80})"/.exec(text)?.[1];
+}
+/** A `reply` call's anchor from its arguments: the masked start of its text. */
+function replyAnchor(input: unknown): StepAnchor | undefined {
+  let v = input;
+  if (typeof v === "string" && /^\s*[[{]/.test(v)) { try { v = JSON.parse(v); } catch { return undefined; } }
+  const text = v && typeof v === "object" ? (v as Record<string, unknown>).text : undefined;
+  return typeof text === "string" && text ? { replyText: bounded(text, ANCHOR_TEXT).text } : undefined;
+}
+/** A reply's own result, whole: `{"chatId":"web","messageId":"web-…"}` — the shape that tells it from another tool's result. */
+const REPLY_RESULT_SHAPE = /\{\s*"chatId"\s*:\s*"[^"\\]{1,80}"\s*,\s*"messageId"\s*:\s*"([^"\\]{1,80})"\s*\}/;
+/**
+ * `step` is a `reply` call whose result `text` has been seen: its anchor gains the delivered messageId. A result read
+ * without its call (the Log's live read started after it: `step.tool` is "") is anchored by the result alone only when
+ * it is a reply's complete result (`REPLY_RESULT_SHAPE`) — another tool's result that merely mentions a `chatId` is not —
+ * and the page merges it into the call it already shows, by id.
+ */
+function replyResult(step: LogStep, text: string): void {
+  if (step.kind !== "tool") return;
+  let id: string | undefined;
+  if (step.tool) { if (!isReplyTool(step.tool)) return; id = replyResultId(text); }
+  else id = REPLY_RESULT_SHAPE.exec(text)?.[1];
+  if (id) step.anchor = { ...step.anchor, messageId: id };
+}
+
 /* ------------------------------------------------------------------ tool calls: what they do */
 
 const MCP = /^mcp__(.+?)__(.+)$/;
@@ -287,7 +339,14 @@ export function describeTool(name: string, input: unknown): { cat: StepCat; subj
 /** What a parser gives back for one record: the steps it created or changed (each a complete, latest copy). */
 export type Emission = LogStep[];
 
+/** What a parser is asked for beyond the always-shown kinds. */
+export interface ParserOpts {
+  /** AGEND-181: also emit the model's thinking as `thinking` steps (admin-only: the service sets it per request). */
+  thinking?: boolean;
+}
+
 abstract class StepParser {
+  constructor(protected readonly opts: ParserOpts = {}) {}
   protected turn = "";
   private open = new Map<string, LogStep>();
   private n = 0;
@@ -317,6 +376,11 @@ abstract class StepParser {
     return s;
   }
   protected openTool(id: string): LogStep | undefined { return this.open.get(id); }
+  /**
+   * The running call `id`, now answered (undefined: its call lay before the range parsed). A result with no call makes its
+   * own step — `this.close(id) ?? this.add({ …, status: "done" })` — which is born done, so it is never in `open`:
+   * a step left there was re-emitted as `interrupted` at the turn's end, undoing the result.
+   */
   protected close(id: string): LogStep | undefined { const s = this.open.get(id); this.open.delete(id); return s; }
   /** A new turn (`key`: the transcript's id for it): every tool still running in the last one is interrupted. */
   protected newTurn(key: string): Emission {
@@ -389,7 +453,8 @@ export class ClaudeStepParser extends StepParser {
         if (!content.trim()) return [];
         const out = this.newTurn(String(e.promptId ?? e.uuid ?? (this.at >= 0 ? `o${this.at}` : "")));
         const cmd = /<command-name>([^<]{1,100})<\/command-name>/.exec(content);
-        const s = this.add({ kind: "user", ts });
+        const anchor = promptAnchor(content);
+        const s = this.add({ kind: "user", ts, ...(anchor ? { anchor } : {}) });
         bodyOf(s, cmd ? cmd[1]!.trim() : content, TEXT_MAX);
         out.push(s);
         return out;
@@ -399,7 +464,8 @@ export class ClaudeStepParser extends StepParser {
         const blk = b as Record<string, unknown>;
         if (blk.type === "tool_result" && typeof blk.tool_use_id === "string") out.push(this.result(blk.tool_use_id, resultText(blk.content), blk.is_error === true, ts));
         else if (blk.type === "text" && typeof blk.text === "string" && blk.text.trim()) {
-          const s = this.add({ kind: "user", ts }); bodyOf(s, blk.text, TEXT_MAX); out.push(s);
+          const anchor = promptAnchor(blk.text);
+          const s = this.add({ kind: "user", ts, ...(anchor ? { anchor } : {}) }); bodyOf(s, blk.text, TEXT_MAX); out.push(s);
         }
       }
       return out;
@@ -409,9 +475,13 @@ export class ClaudeStepParser extends StepParser {
       const blk = b as Record<string, unknown>;
       if (blk.type === "text" && typeof blk.text === "string" && blk.text.trim()) {
         const s = this.add({ kind: "assistant", ts }); bodyOf(s, blk.text, TEXT_MAX); out.push(s);
+      } else if (blk.type === "thinking" && this.opts.thinking && typeof blk.thinking === "string" && blk.thinking.trim()) {
+        // AGEND-181: the summary Claude Code writes when `showThinkingSummaries` is on (empty otherwise: no step).
+        const s = this.add({ kind: "thinking", ts }); bodyOf(s, blk.thinking, TEXT_MAX); out.push(s);
       } else if (blk.type === "tool_use" && typeof blk.id === "string") {
         const name = String(blk.name ?? "tool");
-        const s = this.add({ id: blk.id, kind: "tool", ts, tool: name, ...describeTool(name, blk.input), status: "running" });
+        const anchor = isReplyTool(name) ? replyAnchor(blk.input) : undefined;
+        const s = this.add({ id: blk.id, kind: "tool", ts, tool: name, ...describeTool(name, blk.input), status: "running", ...(anchor ? { anchor } : {}) });
         inputOf(s, blk.input);
         if (ts) this.started.set(blk.id, ts);
         out.push(s);
@@ -421,12 +491,12 @@ export class ClaudeStepParser extends StepParser {
   }
 
   private result(id: string, text: string, isError: boolean, ts: number, bytes?: number): LogStep {
-    const s = this.close(id) ?? this.add({ id, kind: "tool", ts, tool: "", cat: "other", status: "running" });
+    const s = this.close(id) ?? this.add({ id, kind: "tool", ts, tool: "", cat: "other", status: "done" });
     s.status = isError ? "failed" : "done";
     const t0 = this.started.get(id); this.started.delete(id);
     if (t0 && ts >= t0) s.durationMs = ts - t0;
     if (bytes !== undefined) { s.bodyBytes = bytes; }
-    if (text) bodyOf(s, text, RESULT_MAX);
+    if (text) { bodyOf(s, text, RESULT_MAX); replyResult(s, text); }
     return { ...s };
   }
 
@@ -451,13 +521,16 @@ const CODEX_WALL = /Wall time: ([\d.]+) seconds/;
  */
 export class CodexStepParser extends StepParser {
   private started = new Map<string, number>();
+  /** The reasoning texts of this turn already shown: `reasoning` and `agent_reasoning` say the same thing twice. */
+  private reasoned = new Set<string>();
   protected record(e: Record<string, unknown>): Emission {
     const ts = tsOf(e.timestamp);
     const p = e.payload as Record<string, unknown> | undefined;
     if (!p) return [];
     if (e.type === "compacted") return [this.add({ kind: "state", ts, note: "compacted" })];
     if (e.type === "event_msg") {
-      if (p.type === "task_started") return this.newTurn(String(p.turn_id ?? ""));
+      if (p.type === "task_started") { this.reasoned.clear(); return this.newTurn(String(p.turn_id ?? "")); }
+      if (p.type === "agent_reasoning" && typeof p.text === "string") return this.reasoning(p.text, ts);
       if (p.type === "task_complete" || p.type === "turn_aborted") {
         const out = this.endOpen("interrupted");
         const s = this.add({ kind: "turn_end", ts, ...(typeof p.duration_ms === "number" ? { durationMs: p.duration_ms } : {}) });
@@ -478,8 +551,14 @@ export class CodexStepParser extends StepParser {
         const text = resultText(p.content);
         if (!text.trim() || (role === "user" && /^<(environment_context|user_instructions|permissions)/.test(text.trim()))) return [];
         const out: LogStep[] = [];
-        const s = this.add({ kind: role, ts }); bodyOf(s, text, TEXT_MAX); out.push(s);
+        const anchor = role === "user" ? promptAnchor(text) : undefined;
+        const s = this.add({ kind: role, ts, ...(anchor ? { anchor } : {}) }); bodyOf(s, text, TEXT_MAX); out.push(s);
         return out;
+      }
+      case "reasoning": {
+        // The summary parts (`summary: [{ type: "summary_text", text }]`); `encrypted_content` is not readable and not read.
+        const parts = Array.isArray(p.summary) ? p.summary : [];
+        return this.reasoning(parts.map((x) => (x && typeof (x as Record<string, unknown>).text === "string" ? (x as { text: string }).text : "")).filter(Boolean).join("\n\n"), ts);
       }
       case "function_call": case "custom_tool_call": case "local_shell_call": {
         const id = String(p.call_id ?? p.id ?? "");
@@ -490,14 +569,15 @@ export class CodexStepParser extends StepParser {
           const cmd = (input as { command: unknown[] }).command;
           input = { ...(input as object), command: cmd.map(String).join(" ") };
         }
-        const s = this.add({ ...(id ? { id } : {}), kind: "tool", ts, tool: name, ...describeTool(name, input), status: "running" });
+        const anchor = isReplyTool(name) ? replyAnchor(input) : undefined;
+        const s = this.add({ ...(id ? { id } : {}), kind: "tool", ts, tool: name, ...describeTool(name, input), status: "running", ...(anchor ? { anchor } : {}) });
         inputOf(s, input);
         if (ts && id) this.started.set(id, ts);
         return [s];
       }
       case "function_call_output": case "custom_tool_call_output": {
         const id = String(p.call_id ?? "");
-        const s = this.close(id) ?? this.add({ id: id || undefined, kind: "tool", ts, tool: "", cat: "other", status: "running" });
+        const s = this.close(id) ?? this.add({ id: id || undefined, kind: "tool", ts, tool: "", cat: "other", status: "done" });
         const text = resultText(p.output);
         const exit = CODEX_EXIT.exec(text), wall = CODEX_WALL.exec(text);
         s.status = (exit && exit[1] !== "0") || /^failed to /.test(text) ? "failed" : "done";
@@ -506,11 +586,19 @@ export class CodexStepParser extends StepParser {
         if (wall) s.durationMs = Math.round(Number(wall[1]) * 1000);
         else if (t0 && ts >= t0) s.durationMs = ts - t0;
         const out = /\nOutput:\n([\s\S]*)$/.exec(text);
-        if (text) bodyOf(s, out ? out[1]! : text, RESULT_MAX);
+        if (text) { bodyOf(s, out ? out[1]! : text, RESULT_MAX); replyResult(s, text); }
         return [{ ...s }];
       }
     }
     return [];
+  }
+
+  /** AGEND-181: a reasoning summary as a `thinking` step (none unless asked for, empty, or already shown this turn). */
+  private reasoning(text: string, ts: number): Emission {
+    if (!this.opts.thinking || !text.trim() || this.reasoned.has(text)) return [];
+    this.reasoned.add(text);
+    const s = this.add({ kind: "thinking", ts }); bodyOf(s, text, TEXT_MAX);
+    return [s];
   }
 
   private item(it: Record<string, unknown> | undefined, ts: number): Emission {
@@ -528,10 +616,12 @@ export class CodexStepParser extends StepParser {
         return [s];
       }
       case "McpToolCall": {
-        const s = this.add({ ...base, tool: `${it.server}:${it.tool}`, cat: /^agend/.test(String(it.server)) ? "message" : "mcp", subject: subjectOf(`${it.server}:${it.tool}`) });
+        const tool = `${it.server}:${it.tool}`;
+        const anchor = isReplyTool(tool) ? replyAnchor(it.arguments) : undefined;
+        const s = this.add({ ...base, tool, cat: /^agend/.test(String(it.server)) ? "message" : "mcp", subject: subjectOf(tool), ...(anchor ? { anchor } : {}) });
         inputOf(s, it.arguments);
         const text = resultText((it.result as Record<string, unknown> | undefined)?.content);
-        if (text) bodyOf(s, text, RESULT_MAX);
+        if (text) { bodyOf(s, text, RESULT_MAX); replyResult(s, text); }
         return [s];
       }
       case "FileChange": {
@@ -553,7 +643,7 @@ export class CodexStepParser extends StepParser {
     if (!type || !id) return [];
     const ts = tsOf(/"timestamp":"([^"]{10,40})"/.exec(head)?.[1]);
     if (type.endsWith("_output")) {
-      const s = this.close(id) ?? this.add({ id, kind: "tool", ts, tool: "", cat: "other", status: "running" });
+      const s = this.close(id) ?? this.add({ id, kind: "tool", ts, tool: "", cat: "other", status: "done" });
       s.status = "done"; s.bodyBytes = bytes;
       const text = headString(head, "text") ?? headString(head, "output");
       if (text) bodyOf(s, text, RESULT_MAX);
@@ -633,7 +723,7 @@ export class KiroV2StepParser extends StepParser {
         const r = b.data as Record<string, unknown>;
         const id = String(r.toolUseId ?? "");
         if (this.skipped.has(id)) continue;                                   // a thinking "tool": its result is thinking too
-        const s = this.close(id) ?? this.add({ id: id || undefined, kind: "tool", ts: 0, tool: "", cat: "other", status: "running" });
+        const s = this.close(id) ?? this.add({ id: id || undefined, kind: "tool", ts: 0, tool: "", cat: "other", status: "done" });
         const { text, exit } = kiroResultText(r.content);
         s.status = r.status === "error" || (exit !== undefined && exit !== 0) ? "failed" : "done";
         if (exit !== undefined) s.exitCode = exit;
@@ -652,7 +742,7 @@ export class KiroV2StepParser extends StepParser {
     if (!/^\{"version":"[^"]{1,20}","kind":"ToolResults"/.test(head)) return [];
     const id = /"toolUseId":"([^"]{1,200})"/.exec(head)?.[1];
     if (!id || this.skipped.has(id)) return [];
-    const s = this.close(id) ?? this.add({ id, kind: "tool", ts: 0, tool: "", cat: "other", status: "running" });
+    const s = this.close(id) ?? this.add({ id, kind: "tool", ts: 0, tool: "", cat: "other", status: "done" });
     // The result's own status comes after its content (past the head): the exit code, near the start, decides. A long
     // result without one is an output, not an error message (those are short).
     const exit = /"exit_status":(?:"[^"\d-]{0,20})?(-?\d+)/.exec(head)?.[1];
@@ -696,7 +786,7 @@ class KiroClassicParser extends StepParser {
     for (const r of Array.isArray(results) ? results as Array<Record<string, unknown>> : []) {
       const id = String(r.tool_use_id ?? "");
       if (this.skipped.has(id)) continue;
-      const s = this.close(id) ?? this.add({ id: id || `h${i}.r`, kind: "tool", ts, tool: "", cat: "other", status: "running" });
+      const s = this.close(id) ?? this.add({ id: id || `h${i}.r`, kind: "tool", ts, tool: "", cat: "other", status: "done" });
       const { text, exit } = kiroResultText(r.content);
       s.status = cancelled ? "interrupted" : r.status === "Error" || r.status === "error" || (exit !== undefined && exit !== 0) ? "failed" : "done";
       if (exit !== undefined) s.exitCode = exit;
@@ -801,4 +891,31 @@ function toRecord(piece: Buffer, bytes: number, offset: number): string | LongLi
 export function stepsOf(parser: { push(item: string | LongLine, at?: number): Emission; steps: LogStep[] }, records: readonly TailRecord[], max = 200): LogStep[] {
   for (const r of records) parser.push(r.record, r.at);
   return parser.steps.slice(-max);
+}
+
+/* ------------------------------------------------------------------ the chat's view of a step (AGEND-197) */
+
+/**
+ * AGEND-197: what the chat's activity block may show of a step, by the agent's own `tool_progress` — decided HERE, on the
+ * server, so a level below `verbose` never sends what only `verbose` shows (the page cannot "hide" what it was never given):
+ *
+ * - `standard`: the summary. A tool call keeps its kind, tool, status and time; its subject only where it is the thing
+ *   itself worth naming — a path (read / edit), `server:tool` (mcp), the program of a shell command (never its arguments).
+ *   A search's pattern, a web address, a sub-agent's task, a plan, the arguments (`input`) and the result (`body`) are dropped.
+ * - `verbose`: the same step as the Log shows it (masked and cut as ever): the command, the arguments, the output.
+ *
+ * Every level: a person's prompt text is dropped (the chat already shows it; the step only anchors the turn).
+ */
+export function chatStep(step: LogStep, level: Exclude<ToolProgressLevel, "off">): LogStep {
+  if (step.kind === "user") { const { body: _body, bodyCut: _cut, ...rest } = step; void _body; void _cut; return rest; }
+  if (step.kind !== "tool" || level === "verbose") return step;
+  const { input: _input, inputCut: _inputCut, body: _body, bodyCut: _bodyCut, bodyBytes: _bytes, subject, ...rest } = step;
+  void _input; void _inputCut; void _body; void _bodyCut; void _bytes;
+  let keep: string | undefined;
+  switch (step.cat) {
+    case "read": case "edit": case "mcp": keep = subject; break;
+    case "run": { const prog = subject && step.tool !== "exec" ? shellProgramName(subject).replace(/^.*[\\/]/, "") : ""; keep = prog || undefined; break; }
+    default: keep = undefined;                       // search, web, agent, plan, message, other: the label alone
+  }
+  return { ...rest, ...(keep ? { subject: keep } : {}) };
 }

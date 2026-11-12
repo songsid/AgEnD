@@ -384,6 +384,18 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。�
 - 預設關閉，要由 fleet admin 開啟：`web.log_tab`（**設定 → 網頁儀表板 → Log tab: each agent's steps**），或在分頁上按 **Turn on the Log**，需等 fleet admin 確認。
 - Claude Code 全部顯示，instance 停止後也看得到；Codex 在執行中時顯示；kiro 只顯示 fleet 事件。其他 CLI 會說明沒有 AgEnD 能讀的 transcript。秘密值會被遮蔽。
 
+### 聊天裡的活動（#3648）
+
+Claude Code instance 的聊天可以在它每則回覆上方顯示它做了什麼——只給在這個儀表板登入的 admin（訪客、公開連結和唯讀 session 一律看不到：伺服器直接拒絕讀取，不是只在頁面上藏起來）。由**各 agent 自己的 `tool_progress`** 決定開不開（設定 → 該 agent，或 `defaults.tool_progress`）；`web.log_tab` 是紀錄分頁的開關，在這裡不起作用，因為這個區塊不會送給紀錄分頁面向的那些人。
+
+- **`off`**（預設）：完全不顯示，也不讀對話紀錄。**`standard`**：每則回覆一個區塊，列出每一步的摘要——這一步是什麼、指向什麼（檔案路徑、指令的程式名稱、`server:tool`）、狀態和時間；不含指令的參數、搜尋的關鍵字，也不含任何工具輸出。**`verbose`**：同樣的步驟再加上指令、參數與輸出（**Show output**），機密值遮蔽的方式和紀錄分頁相同。步驟在送出前就由伺服器依這個等級裁剪。
+- **外觀**：Agent 工作時是一行收合的即時摘要——目前步驟 · N 個工具 · 已經過的時間——點開是步驟列表（最新一步加粗）；回覆送出後縮成一行「工具歷程 · 用了 N 個工具」和這段工作花的時間，放在回覆上方。展開後兩者列出同樣交錯的步驟：思考、中途說的話和工具呼叫。重新載入後每則回覆仍只有一個區塊。沒有可顯示步驟的回合沒有區塊，只有標點的文字——例如 Claude Code 呼叫 `reply` 之後留下的單獨一個 `.`——不算步驟。
+- **即時**：靠串流的步驟通知；頁面的串流退回輪詢時，每 4 秒輪詢一次；有新訊息也會立刻讀一次。沒有聊天開著就不讀。
+- **步驟屬於哪一則回覆**，是依對話紀錄裡既有的 id 判斷（開啟這一輪的訊息 id，以及每次 `reply` 呼叫回傳的 id），不靠時間推測。需要靠回覆文字、時間，或只能靠回合對應的區塊，會在區塊裡標明；完全對不上的回合會獨立顯示，不會亂猜。只保留最新 800 個步驟，較早的回覆可能沒有區塊。歷程是從對話紀錄讀出來的，所以不受頻道進度訊息只保留最近 8 行的限制（該訊息和它的 `tool_progress` 設定維持原樣）。
+- **思考**有自己的開關 `web.log_thinking`，**預設關閉**（**設定 → 網頁儀表板**；開啟需 fleet admin 確認）。關閉時完全不讀，AgEnD 也不會動 Claude 的設定。開啟後，在這個儀表板登入的 admin 會在區塊裡看到（在伺服器端過濾，公開連結和訪客一律不會收到），AgEnD 會在該 instance 產生的 Claude 設定加入 `showThinkingSummaries`，該 instance 下次啟動時生效，並可能改變每一輪的花費。紀錄分頁本身仍然不顯示思考。
+- Agent 工作目錄內的路徑以相對路徑顯示，家目錄顯示為 `~`（只改顯示：把游標移到列的路徑上可看完整路徑；紀錄分頁仍顯示完整路徑）。機密值的遮蔽和紀錄分頁相同。
+- 聊天的 **⋯** 選單有 **顯示活動** 與 **顯示思考**，只影響這個瀏覽器。Codex 還沒有這個區塊：要等有真實、已遮罩的 Codex 對話紀錄證明後才會開（擁有者在 #3648 的決定——未證明的 backend 維持現狀），在那之前聊天不會有東西，紀錄分頁對 Codex 的顯示和以前一樣；antigravity 與 grok 的 instance 還沒有這個區塊。
+
 ## `/view`
 
 `/view` 會列出每個 agent：即時終端畫面、包含狀態與 context 的名單，以及 AI 訂閱用量。每個 agent 都有自己的網址 `/view/<name>`；只開 `/view` 會回到這個瀏覽器上次看的那一個。
@@ -720,6 +732,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `web.public_link.protocol` | `http2` | cloudflared 的 `http2`、`quic` 或 `auto` |
 | `web.echo_to_channel` | `true` | 將 web chat 訊息複製到 instance 自己的 Telegram 或 Discord 主題 |
 | `web.log_tab` | `false` | 在 **紀錄** 分頁顯示每個 agent 的步驟 |
+| `web.log_thinking` | `false` | 也在聊天的活動區塊顯示 agent 的思考，只給在這個儀表板登入的 admin（公開連結與訪客一律不會）；會請 Claude Code 寫出思考摘要 |
 | `web.upload_max_file_mb` | `50` | web chat 訊息中單一檔案的上限，整數 MB，1–500 |
 | `web.upload_max_total_mb` | `100` | 一則訊息所有檔案合計的上限，整數 MB，1–500 |
 | `web.session.local.absolute_hours` | `48` | 從 dashboard 本身網址登入後可維持多久，1–720 小時 |
@@ -729,7 +742,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `web_terminal.enabled` | `true` | `false`：`/login` 會拒絕（沒有瀏覽器終端機） |
 | `web_terminal.ttl_minutes` | `10` | `/login` 的瀏覽器終端機開啟多久，1–20 分鐘 |
 
-**設定 → 存取與安全** 可編輯 `web.public_link.*`、`web.session.local.*` 與 `web_terminal.enabled` / `ttl_minutes`，**聊天與連線** 可編輯 `web.echo_to_channel`，**網頁儀表板** 可編輯 `web.log_tab`；其他設定（包含 `web.provider_secrets`、`web_terminal.bind`、`web_terminal.tunnel`）在 **進階** 只列出、不能修改。
+**設定 → 存取與安全** 可編輯 `web.public_link.*`、`web.session.local.*` 與 `web_terminal.enabled` / `ttl_minutes`，**聊天與連線** 可編輯 `web.echo_to_channel`，**網頁儀表板** 可編輯 `web.log_tab` 與 `web.log_thinking`；其他設定（包含 `web.provider_secrets`、`web_terminal.bind`、`web_terminal.tunnel`）在 **進階** 只列出、不能修改。
 
 完整設定說明：[configuration.zh-TW.md](configuration.zh-TW.md)；CLI 指令：[cli.zh-TW.md](cli.zh-TW.md)。
 

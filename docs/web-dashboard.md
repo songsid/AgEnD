@@ -385,6 +385,18 @@ What an agent did, step by step: what it was asked, its replies (never its think
 - It is off until a fleet admin turns it on: `web.log_tab` (**Settings → Web dashboard → Log tab: each agent's steps**), or **Turn on the Log** on the tab itself, which waits for a fleet admin's confirmation.
 - Claude Code shows everything, also after the instance stopped; Codex while it runs; kiro shows the fleet events only. Other CLIs say they have no transcript AgEnD can read. Secret values are masked.
 
+### Activity in the chat (#3648)
+
+The chat of a Claude Code instance can show what the agent did above each of its replies — to a signed-in admin on this dashboard only (a guest, the public link and a read-only session never get it: the server refuses the read, the page does not merely hide it). It is **each agent's own `tool_progress`** that turns it on (Settings → the agent, or `defaults.tool_progress`); `web.log_tab` is the Log tab's switch and plays no part here, because this block is not sent to the people the Log tab is.
+
+- **`off`** (the default): nothing is shown, and nothing is read from the transcript. **`standard`**: one block per reply with each step's summary — what kind of step it was and what it named (a file path, the program of a command, `server:tool`), its status and time; never a command's arguments, a search's pattern, or any tool output. **`verbose`**: the same steps with the command, the arguments and the output (**Show output**), masked as in the Log. The server cuts the steps to the level before they are sent.
+- **The look**: while the agent works, one shut line — the current step · N tools · the time so far — which opens to the steps (the newest in bold); when its reply arrives it shrinks to one line, "Tool history · used N tools", with how long the work took, above the reply. Opened, either one lists the same interleaved steps: thinking, the text it said on the way, and its tool calls. A reload draws the same single block per reply. A turn with no step to show has no block, and a text of only punctuation — such as the lone `.` Claude Code writes after it calls `reply` — is not a step.
+- **Live**: the stream's steps tick, and a poll every 4 s when the page's stream has fallen back to polling; a new message also reads at once. Nothing is read until a chat is open.
+- **Which reply a step belongs to** is read from ids the transcript already holds (the id of the message that started the turn, and the id each `reply` call returned), not from timing. A block that had to be matched by the reply's text, by time, or only by the turn says so inside it; a turn with nothing to match is shown on its own, never on a guess. Only the newest 800 steps are kept, so an older reply may have no block. The history comes from the transcript, so it is not limited to the last 8 lines the channel's progress message keeps (that message, and its `tool_progress` setting, are as before).
+- **Thinking** has its own switch, `web.log_thinking`, **off by default** (**Settings → Web dashboard**; turning it on waits for a fleet admin's confirmation). While it is off nothing of it is read and AgEnD does not touch Claude's settings. On, a signed-in admin on this dashboard sees it in the block (filtered on the server, never sent over the public link or to a guest), and AgEnD adds `showThinkingSummaries` to the instance's generated Claude settings, which applies the next time that instance starts and can change what a turn costs. The Log tab itself still never shows thinking.
+- Paths inside the agent's working directory are shown relative and the home directory as `~` (display only: hover a row's path for the full one; the Log tab shows paths in full). Secret values are masked as in the Log.
+- The chat's **⋯** menu has **Show activity** and **Show thinking** for this browser. Codex has no block yet: it opens only once a real, redacted Codex capture has proved it (the owner's #3648 decision — an unproved backend stays as it is), and until then its chat gets nothing and the Log tab shows Codex exactly as before; antigravity and grok instances have no block yet.
+
 ## `/view`
 
 `/view` shows every agent: the live terminal capture, the roster with each one's state and context, and AI subscription usage. Each agent has its own address, `/view/<name>`; `/view` alone opens the one this browser looked at last.
@@ -721,6 +733,7 @@ Show the live Office to people outside the fleet for a while: a link they open i
 | `web.public_link.protocol` | `http2` | cloudflared `http2`, `quic` or `auto` |
 | `web.echo_to_channel` | `true` | Copy web chat messages to the instance's own Telegram or Discord topic |
 | `web.log_tab` | `false` | Show each agent's steps in its **Log** tab |
+| `web.log_thinking` | `false` | Also show the agent's thinking, to a signed-in admin on this dashboard only (never the public link or a guest), in the chat's activity block; asks Claude Code for thinking summaries |
 | `web.upload_max_file_mb` | `50` | Largest file in a web chat message, whole MB 1–500 |
 | `web.upload_max_total_mb` | `100` | Largest message (all its files), whole MB 1–500 |
 | `web.session.local.absolute_hours` | `48` | How long a sign-in at the dashboard's own address lasts, 1–720 hours |
@@ -730,7 +743,7 @@ Show the live Office to people outside the fleet for a while: a link they open i
 | `web_terminal.enabled` | `true` | `false`: `/login` refuses (no browser terminal) |
 | `web_terminal.ttl_minutes` | `10` | How long a `/login` browser terminal stays open, 1–20 minutes |
 
-**Settings → Access & security** edits `web.public_link.*`, `web.session.local.*` and `web_terminal.enabled` / `ttl_minutes`, **Chat & connections** `web.echo_to_channel` and **Web dashboard** `web.log_tab`; **Advanced** lists the others read-only (with `web.provider_secrets`, `web_terminal.bind` and `web_terminal.tunnel`).
+**Settings → Access & security** edits `web.public_link.*`, `web.session.local.*` and `web_terminal.enabled` / `ttl_minutes`, **Chat & connections** `web.echo_to_channel` and **Web dashboard** `web.log_tab` and `web.log_thinking`; **Advanced** lists the others read-only (with `web.provider_secrets`, `web_terminal.bind` and `web_terminal.tunnel`).
 
 Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli.md).
 

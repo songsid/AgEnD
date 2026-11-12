@@ -2589,11 +2589,28 @@ export function handleWebRequest(
       return true;
     }
     if (!ctx.logSteps) { json(res, 404, { error: "not available" }); return true; }
+    // AGEND-181: thinking only for an admin session on the local dashboard, decided here — never the public link, a
+    // guest or a View projection, whatever the query says. The service makes none otherwise (its parser is not asked).
+    // AGEND-197: the chat's activity block (chat=1) is for the same viewer and no other: a refusal here, not a hidden block.
+    const admission = adminAdmissionOf(req, url, ctx);
+    const admin = !!admission && !gatewayRequestContext(req) && !guestRequestOf(req);
+    const chat = p.get("chat") === "1";
+    if (chat && !admin) { json(res, 403, { error: "admin_only" }); return true; }
+    const thinking = p.get("thinking") === "1" && admin;
     ctx.logSteps(instance, {
+      ...(chat ? { chat: true } : {}),
+      ...(thinking ? { thinking: true } : {}),
       ...(after !== undefined ? { after } : {}), ...(before !== undefined ? { before } : {}), ...(ev !== undefined ? { ev } : {}),
       ...(limit !== undefined ? { limit } : {}), ...(key !== null ? { key } : {}),
       skip: p.get("skip") === "1", watch: p.get("watch") === "1",
     }).then(answer => {
+      if (res.destroyed) return;
+      // Prism #3709 R1: the transcript read is asynchronous — an admin session revoked, or the web token rotated, while it
+      // ran must not receive the private steps (the chat's block, thinking) it was admitted for. Asked again here, as
+      // /ui/subagents does; the Log tab's own read (no chat, no thinking) is not private and is left as it was.
+      if ((chat || thinking) && (adminAdmissionOf(req, url, ctx) !== admission || gatewayRequestContext(req) || guestRequestOf(req))) {
+        json(res, 403, { error: "admin_only" }); return;
+      }
       if (answer === null) json(res, 404, { error: `Instance not found: ${instance}` });
       else json(res, 200, answer);
     }).catch(err => {
@@ -4544,7 +4561,7 @@ export interface AppShellContext {
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
-  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { public_link?: boolean } } } | null;
+  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; log_thinking?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { public_link?: boolean } } } | null;
   /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
   readonly webPrefs?: WebPrefsStore;
   /** #1629 r4 §3: which owner CSS this load's person has in force (data-owner-css), for a signed-in human session only. */
@@ -4774,6 +4791,13 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}"`   // #2855: guests' too
     // #1218: whether the Log tab is on (web.log_tab; off by default): the tab says so and offers to turn it on.
     + ` data-log-tab="${ctx.fleetConfig?.web?.log_tab === true ? "1" : "0"}"`
+    // AGEND-181: whether thinking may be asked for (web.log_thinking; OFF by default, AGEND-197). The server answers
+    // `thinking: true` only to an admin session on the local dashboard (GET /ui/steps), whatever this says.
+    + ` data-log-thinking="${ctx.fleetConfig?.web?.log_thinking === true ? "1" : "0"}"`
+    // AGEND-197: whether this page may ask for the chat's activity block at all — an admin session on the local dashboard
+    // only (a guest, the public link and a read-only session are never offered it, and the server refuses them anyway).
+    // Each agent's own tool_progress decides whether there is anything to show (the answer's `level`).
+    + ` data-chat-activity="${childMark ? "1" : "0"}"`
     // #1937: the upload limits in force for this page (the config's; the public link's own cap on it) — what the chat
     // checks before sending a file, and the numbers its words say. The server checks again on every upload.
     + ` data-upload-limits="${attr(JSON.stringify(uploadLimits(ctx.fleetConfig?.web, { publicLink: gatewayRequestContext(req) !== undefined })))}"`

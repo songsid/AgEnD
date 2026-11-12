@@ -13,9 +13,18 @@
  * Nothing here runs in the daemon, and nothing reads a CLI's file on a tool call.
  */
 import { stat } from "node:fs/promises";
-import { ClaudeStepParser, CodexStepParser, bounded, readTailRecords, type LogStep } from "./log-steps.js";
+import { homedir } from "node:os";
+import { ClaudeStepParser, CodexStepParser, bounded, chatStep, readTailRecords, type LogStep } from "./log-steps.js";
+import type { ToolProgressLevel } from "./tool-progress.js";
 import { SCREEN_MAX_BYTES } from "./dialog-screen-text.js";
 import { LOOKS_PER_POLL, isClaudeAssistantHead, readNewLines, readWholeLine, type LongLine } from "./transcript-jsonl.js";
+
+/**
+ * AGEND-197: whether thinking is switched on — `web.log_thinking` is exactly `true` (OFF by default: unset, false and junk
+ * are all off). The one test every use shares: the service's thinking steps, and AgEnD's asking Claude Code for thinking
+ * summaries at launch (which writes `showThinkingSummaries` into Claude's settings — never while this is off).
+ */
+export const thinkingOn = (web: { log_thinking?: unknown } | null | undefined): boolean => web?.log_thinking === true;
 
 export const LOG_STEPS_LIMIT = 200;
 export const LOG_OLDER_LIMIT = 100;
@@ -39,6 +48,15 @@ export interface LogEventRow { id: number; event_type: string; payload: unknown;
 
 export interface LogServiceDeps {
   enabled(): boolean;
+  /** AGEND-181: `web.log_thinking` (default OFF, AGEND-197): only `true` lets a request have thinking, whatever the route says. */
+  thinking?(): boolean;
+  /**
+   * AGEND-197: an instance's own `tool_progress` (its setting, else the fleet default, else off) — what the chat's activity
+   * block is gated by, instead of `web.log_tab`. Not given: the chat's block is never offered.
+   */
+  toolProgress?(name: string): ToolProgressLevel;
+  /** AGEND-181: an instance's working directory — the page shows paths under it relative (display only). */
+  cwd?(name: string): string | undefined;
   /** An instance the Log may show (a fleet instance or a ClassicBot room). */
   known(name: string): boolean;
   source(name: string): LogSource;
@@ -51,7 +69,20 @@ export interface LogServiceDeps {
   clearInterval?(handle: unknown): void;
 }
 
-export interface LogQuery { after?: number; before?: number; key?: string; skip?: boolean; limit?: number; watch?: boolean; ev?: number }
+export interface LogQuery {
+  /**
+   * AGEND-197: this is the chat's activity block asking (not the Log tab), and this viewer may have it. Set by the route
+   * only for an admin session on the local dashboard. It is gated by the instance's `tool_progress` — not `web.log_tab` —
+   * and the steps are cut to that level (chatStep): `off` answers no steps and reads nothing.
+   */
+  chat?: boolean;
+  after?: number; before?: number; key?: string; skip?: boolean; limit?: number; watch?: boolean; ev?: number;
+  /**
+   * AGEND-181: the thinking steps are wanted AND this viewer may have them. Set by the route only for an admin session
+   * on the local dashboard, and only with `web.log_thinking` on (off by default); absent: the parser does not make them,
+   * so they are never in an answer for anyone else (filtered here on the server, not hidden by the page).
+   */
+  thinking?: boolean }
 
 /** A fleet event as the page shows it: its type (the page words it) and its details, masked. */
 export interface LogEvent { id: number; ts: number; type: string; detail?: string;
@@ -73,6 +104,13 @@ export type LogAnswer =
   | { enabled: false }
   | {
     enabled: true; instance: string; backend: string; supported: boolean; reason?: string;
+    /** AGEND-181: whether this answer may hold `thinking` steps (the request asked and was allowed). */
+    thinking: boolean;
+    /** AGEND-197: for the chat's block, the level its steps were cut to (`off`: none were read). Absent: the Log's answer. */
+    level?: ToolProgressLevel;
+    /** AGEND-181: where paths are shortened from — the instance's working directory and the server's home (display only).
+     *  Present only for the chat's block and a thinking answer (an admin session on the local dashboard): they name the OS user. */
+    cwd?: string; home?: string;
     /** The transcript's identity (device-inode): a cursor of another one is reset. */
     key?: string;
     steps: LogStep[]; events: LogEvent[];
@@ -93,7 +131,9 @@ export type ReadBack =
   | { backend: string; format: "claude" | "codex" | null; reason: string; key?: undefined; steps?: undefined }
   | { backend: string; format: "claude" | "codex"; key: string; steps: LogStep[]; before: number | null; end: number; reset?: boolean; reason?: undefined };
 
-const parserFor = (format: "claude" | "codex") => (format === "claude" ? new ClaudeStepParser() : new CodexStepParser());
+/** The transcript format whose new chat-activity projection (and thinking) is withheld until it has a real redacted fixture (#3648). */
+const CODEX_ACTIVITY_WITHHELD = "codex";
+const parserFor = (format: "claude" | "codex", thinking = false) => (format === "claude" ? new ClaudeStepParser({ thinking }) : new CodexStepParser({ thinking }));
 /** The long records worth reading whole for a Log (a reply, a turn record); every other long one by its head. */
 const wholeFor = (format: "claude" | "codex") => (head: string) => (format === "claude"
   ? isClaudeAssistantHead(head)
@@ -102,32 +142,75 @@ const wholeFor = (format: "claude" | "codex") => (head: string) => (format === "
 const dbTime = (s: string): number => { const t = Date.parse(s.replace(" ", "T") + "Z"); return Number.isFinite(t) ? t : 0; };
 
 export class LogService {
-  private readonly watches = new Map<string, { until: number; path: string; size: number; ino: number; timer: unknown }>();
+  /** `chat` / `log`: who holds the watch (the chat's block: gated by tool_progress; the Log tab: by log_tab) — either keeps it. */
+  private readonly watches = new Map<string, { until: number; path: string; size: number; ino: number; timer: unknown; chat: boolean; log: boolean }>();
   constructor(private readonly deps: LogServiceDeps) {}
 
   private now(): number { return this.deps.now ? this.deps.now() : performance.now(); }
 
   /** GET /ui/steps — null: no such instance. */
   async steps(name: string, q: LogQuery): Promise<LogAnswer | null> {
-    if (!this.deps.enabled()) { this.unwatchAll(); return { enabled: false }; }
+    const chat = q.chat === true;
+    // The Log tab is `web.log_tab`'s. The chat's block is the instance's own `tool_progress`'s (AGEND-197): with log_tab off it
+    // still works, and with log_tab on but tool_progress off it shows nothing.
+    if (!chat && !this.deps.enabled()) { this.unwatchAll(false); return { enabled: false }; }
     if (!this.deps.known(name)) return null;
+    const level: ToolProgressLevel = chat ? (this.deps.toolProgress?.(name) ?? "off") : "verbose";
     const src = this.deps.source(name);
-    const evs = this.eventsFor(name, q.ev);
-    const base = { enabled: true as const, instance: name, backend: src.backend, events: evs.events, ev: evs.ev };
+    if (chat && level === "off") {
+      // Only the chat's own hold on the watch ends — the Log tab, when it is watching this instance, keeps its (AGEND-210).
+      this.unwatch(name, "chat");
+      return { enabled: true, instance: name, backend: src.backend, supported: !!src.format, level, thinking: false, steps: [], events: [], ev: q.ev ?? 0, before: null, after: null };
+    }
+    // Prism #3709 R6: the new Codex activity projection is withheld until a real, redacted Codex capture proves it (the owner's
+    // #3648 decision: an unproved backend stays as it is today). Codex keeps its Log tab exactly as before; the chat's block
+    // gets "not supported" for it and nothing is read. The parser stays, unreachable from the chat.
+    if (chat && src.format === CODEX_ACTIVITY_WITHHELD) {
+      return { enabled: true, instance: name, backend: src.backend, supported: false, reason: "unsupported", level, thinking: false, steps: [], events: [], ev: q.ev ?? 0, before: null, after: null };
+    }
+    const evs = chat ? { events: [] as LogEvent[], ev: q.ev ?? 0 } : this.eventsFor(name, q.ev);
+    // Thinking: only when asked, only for the viewer the route let it through, and only while `web.log_thinking` is ON —
+    // and never for Codex (the same withholding: its reasoning summaries are the new, unproved part).
+    const thinking = q.thinking === true && this.deps.thinking?.() === true && src.format !== CODEX_ACTIVITY_WITHHELD;
+    // The OS user name (home) and the working directory are for the viewer the route let the chat's block or thinking
+    // through (an admin session on the local dashboard) — never the public link or a guest: the page only shortens paths.
+    const named = chat || thinking;
+    const cwd = named ? this.deps.cwd?.(name) : undefined;
+    const base = { enabled: true as const, instance: name, backend: src.backend, events: evs.events, ev: evs.ev, thinking,
+      ...(chat ? { level } : {}), ...(cwd ? { cwd } : {}), ...(named ? { home: homedir() } : {}) };
+    const offAnswer = (): LogAnswer => ({ enabled: true, instance: name, backend: src.backend, supported: !!src.format, level: "off", thinking: false, steps: [], events: [], ev: q.ev ?? 0, before: null, after: null });
+    /**
+     * Prism #3709 R2: the policy is the one in force when the answer LEAVES, not when the read began — `tool_progress` and
+     * `web.log_thinking` can change while the transcript is read. Looked at again for every forward / backward result:
+     * thinking gone when it is now off, the summary cut of the level now set, and nothing at all when the chat's is now off.
+     * (A read that began with thinking off never parsed any — the parser stays opt-in; this only ever removes.)
+     */
+    const settle = <T extends { steps: LogStep[] }>(a: T): (T & { thinking: boolean; level?: ToolProgressLevel }) | null => {
+      const now: ToolProgressLevel = chat ? (this.deps.toolProgress?.(name) ?? "off") : "verbose";
+      if (chat && now === "off") return null;
+      const thinkingNow = thinking && this.deps.thinking?.() === true;
+      const kept = thinkingNow ? a.steps : a.steps.filter((x) => x.kind !== "thinking");
+      const steps = chat && now !== "off" ? kept.map((x) => chatStep(x, now)) : kept;
+      return { ...a, steps, thinking: thinkingNow, ...(chat ? { level: now } : {}) };
+    };
     if (!src.format || !src.path) {
       return { ...base, supported: !!src.format, reason: src.reason ?? (src.format ? "no_transcript" : "unsupported"), steps: [], before: null, after: null };
     }
     let st: { dev: number; ino: number; size: number };
     try { st = await stat(src.path); } catch { return { ...base, supported: true, reason: "no_transcript", steps: [], before: null, after: null }; }
     const key = `${st.dev}-${st.ino}`;
-    if (q.watch) this.watch(name, src.path, st.size, st.ino);
+    if (q.watch) this.watch(name, src.path, st.size, st.ino, chat);
     const answer = { ...base, supported: true, key };
+    const done = (settled: ReturnType<typeof settle>, rest: object = {}): LogAnswer => {
+      if (!settled) { this.unwatch(name, "chat"); return offAnswer(); }
+      return { ...answer, ...settled, ...rest } as LogAnswer;
+    };
     const fresh = q.key !== undefined && q.key !== key;
     const past = q.after !== undefined && q.after > st.size;
-    if (q.after !== undefined && !fresh && !past) return { ...answer, ...(await this.forward(src.path, src.format, q.after, !!q.skip)) };
-    if (q.before !== undefined && !fresh) return { ...answer, ...(await this.backward(src.path, src.format, q.before, Math.min(q.limit ?? LOG_OLDER_LIMIT, LOG_OLDER_LIMIT))), after: null };
-    const back = await this.backward(src.path, src.format, undefined, Math.min(q.limit ?? LOG_STEPS_LIMIT, LOG_STEPS_LIMIT));
-    return { ...answer, ...back, ...((fresh || past) && (q.after !== undefined || q.before !== undefined) ? { reset: true } : {}) };
+    if (q.after !== undefined && !fresh && !past) return done(settle(await this.forward(src.path, src.format, q.after, !!q.skip, thinking)));
+    if (q.before !== undefined && !fresh) return done(settle(await this.backward(src.path, src.format, q.before, Math.min(q.limit ?? LOG_OLDER_LIMIT, LOG_OLDER_LIMIT), thinking)), { after: null });
+    return done(settle(await this.backward(src.path, src.format, undefined, Math.min(q.limit ?? LOG_STEPS_LIMIT, LOG_STEPS_LIMIT), thinking)),
+      (fresh || past) && (q.after !== undefined || q.before !== undefined) ? { reset: true } : {});
   }
 
   /**
@@ -154,9 +237,9 @@ export class LogService {
   }
 
   /** The steps before `end` (the newest when undefined), at most `limit`, and where older ones start. */
-  private async backward(path: string, format: "claude" | "codex", end: number | undefined, limit: number): Promise<{ steps: LogStep[]; before: number | null; after: number }> {
+  private async backward(path: string, format: "claude" | "codex", end: number | undefined, limit: number, thinking = false): Promise<{ steps: LogStep[]; before: number | null; after: number }> {
     const tail = await readTailRecords(path, { maxLines: 4000, ...(end !== undefined ? { end } : {}) });
-    const parser = parserFor(format);
+    const parser = parserFor(format, thinking);
     const whole = wholeFor(format);
     const firstAt = new Map<string, number>();
     for (const r of tail.records) {
@@ -184,8 +267,8 @@ export class LogService {
   }
 
   /** The steps after `from` (≤ LOOKS_PER_POLL looks), and the cursor after them. */
-  private async forward(path: string, format: "claude" | "codex", from: number, skip: boolean): Promise<{ steps: LogStep[]; before: null; after: number; skip?: boolean; more?: boolean }> {
-    const parser = parserFor(format);
+  private async forward(path: string, format: "claude" | "codex", from: number, skip: boolean, thinking = false): Promise<{ steps: LogStep[]; before: null; after: number; skip?: boolean; more?: boolean }> {
+    const parser = parserFor(format, thinking);
     const whole = wholeFor(format);
     let offset = from, skipping = skip, more = false;
     for (let look = 0; look < LOOKS_PER_POLL; look++) {
@@ -238,13 +321,13 @@ export class LogService {
   }
 
   /** Hold (or renew) the watch on `name`: its transcript's size is looked at while the lease lasts. */
-  private watch(name: string, path: string, size: number, ino: number): void {
+  private watch(name: string, path: string, size: number, ino: number, chat = false): void {
     const until = this.now() + WATCH_LEASE_MS;
     const held = this.watches.get(name);
-    if (held && held.path === path) { held.until = until; return; }
-    if (held) this.unwatch(name);
+    if (held && held.path === path) { held.until = until; held.chat ||= chat; held.log ||= !chat; return; }
+    if (held) this.unwatch(name, "all");
     const setI = this.deps.setInterval ?? ((fn: () => void, ms: number) => { const t = setInterval(fn, ms); (t as { unref?: () => void }).unref?.(); return t; });
-    const w = { until, path, size, ino, timer: null as unknown };
+    const w = { until, path, size, ino, timer: null as unknown, chat, log: !chat };
     w.timer = setI(() => { void this.look(name); }, WATCH_POLL_MS);
     this.watches.set(name, w);
   }
@@ -252,7 +335,11 @@ export class LogService {
   private async look(name: string): Promise<void> {
     const w = this.watches.get(name);
     if (!w) return;
-    if (this.now() > w.until || !this.deps.enabled()) { this.unwatch(name); return; }
+    // Each holder is checked on its own switch: one whose switch went off lets go, the other keeps the watch.
+    const logOk = w.log && this.deps.enabled();
+    const chatOk = w.chat && (this.deps.toolProgress?.(name) ?? "off") !== "off";
+    if (this.now() > w.until || (!logOk && !chatOk)) { this.unwatch(name, "all"); return; }
+    w.log = logOk; w.chat = chatOk;
     let st: { size: number; ino: number };
     try { st = await stat(w.path); } catch { return; }
     if (this.watches.get(name) !== w) return;
@@ -262,15 +349,25 @@ export class LogService {
     }
   }
 
-  private unwatch(name: string): void {
+  /**
+   * Let go of `name`'s watch: `all` ends it; `log` / `chat` release only that holder's part (AGEND-210) — the watch goes
+   * when no holder is left, and stays while the other still holds it (the chat reading `tool_progress` off must not end
+   * the Log tab's live view, nor the Log being switched off the chat's).
+   */
+  private unwatch(name: string, part: "all" | "log" | "chat" = "all"): void {
     const w = this.watches.get(name);
     if (!w) return;
+    if (part === "chat") w.chat = false; else if (part === "log") w.log = false;
+    if (part !== "all" && (w.chat || w.log)) return;
     (this.deps.clearInterval ?? ((h: unknown) => clearInterval(h as ReturnType<typeof setInterval>)))(w.timer);
     this.watches.delete(name);
   }
 
-  /** Every watch ends (the Log was turned off, the fleet stops). */
-  unwatchAll(): void { for (const name of [...this.watches.keys()]) this.unwatch(name); }
+  /**
+   * Every watch ends (the fleet stops). `all` false: the Log was turned off — only what the Log held ends, and a chat's
+   * block (gated by tool_progress, not log_tab) keeps its watch.
+   */
+  unwatchAll(all = true): void { for (const name of [...this.watches.keys()]) this.unwatch(name, all ? "all" : "log"); }
 
   /** How many instances are watched now (for tests and diagnostics). */
   watched(): number { return this.watches.size; }
