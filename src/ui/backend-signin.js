@@ -58,6 +58,7 @@ register("signin", {
     listTitle: "AI accounts",
     browserRunning: "Connecting your {0} account on this machine",
     consoleFallback: "Use console fallback",
+    consoleFallbackNote: "Using the console takes the only terminal sign-in. Until it finishes or you cancel it, Grok and any other AI that connects through the terminal has to wait.",
     defaultAccount: "Default connection",
     listHint: "Connect AI accounts: each AI account connected on this machine, and each credential profile an agent uses. Connecting finishes on the provider's official website.",
     stUsable: "connected",
@@ -112,6 +113,7 @@ register("signin", {
     listTitle: "AI 帳號",
     browserRunning: "正在這台機器連接 {0} 帳號",
     consoleFallback: "改用主控台備援",
+    consoleFallbackNote: "改用主控台會佔用唯一的終端登入。在它完成或你取消之前，Grok 和其他走終端登入的 AI 都要等。",
     defaultAccount: "預設連接",
     listHint: "連接 AI 帳號：這台機器上連接的每個 AI 帳號，以及 Agent 使用的每個憑證設定檔。連接時會前往供應商官方網站完成授權。",
     stUsable: "已連接",
@@ -285,6 +287,7 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
   return html`<${Dialog} title=${backends ? tn("listTitle") : tn("title", account)} onClose=${close} actions=${actions}>
     <div class="signin-browser" ref=${root}></div>
     ${single ? html`<p class="note"><button type="button" class="btn btn-sm btn-ghost" onClick=${() => fallback(backend)}>${tn("consoleFallback")}</button></p>` : null}
+    ${single ? html`<p class="note" data-signin-console-note>${tn("consoleFallbackNote")}</p>` : null}
   </${Dialog}>`;
 }
 

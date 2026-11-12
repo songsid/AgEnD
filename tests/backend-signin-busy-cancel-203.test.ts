@@ -157,3 +157,27 @@ describe("AGEND-215: with two sign-ins at once, every web cancel names the backe
     expect(posts(DEFAULT_ENDPOINT, "cancel").map(r => r.body)).toEqual([{ operation: "cancel", backend: "claude-code" }]);
   });
 });
+
+describe("AGEND-216: the console fallback says what it costs", () => {
+  const mountDefault = async () => {
+    answer = r => r.url === DEFAULT_ENDPOINT ? snapshot({ login: waitingForCode }) : {};
+    await p.mount(h(S.BrowserSignInDialog, { backend: "claude-code", onClose: closing() })); await settle(8);
+  };
+  it("a single-account dialog carries a plain line under the fallback: it takes the only terminal sign-in, so Grok waits", async () => {
+    await mountDefault();
+    expect(text()).toContain("Using the console takes the only terminal sign-in. Until it finishes or you cancel it, Grok and any other AI that connects through the terminal has to wait.");
+    const note = p.root.querySelectorAll("p").find((n: any) => /only terminal sign-in/.test(n.textContent)) as any;
+    expect(note.className).toBe("note");   // the dialog's own hint style, not a one-off
+  });
+  it("in Traditional Chinese", async () => {
+    i18n.setLang("zh-TW", { store: false });
+    await mountDefault();
+    expect(text()).toContain("改用主控台會佔用唯一的終端登入。在它完成或你取消之前，Grok 和其他走終端登入的 AI 都要等。");
+    expect(text()).not.toContain("only terminal sign-in");
+  });
+  it("the installer's list (several backends) does not carry it", async () => {
+    answer = r => r.url === DEFAULT_ENDPOINT ? snapshot() : {};
+    await p.mount(h(S.BrowserSignInDialog, { backends: ["claude-code", "codex"], onClose: closing() })); await settle(8);
+    expect(text()).not.toContain("only terminal sign-in");
+  });
+});

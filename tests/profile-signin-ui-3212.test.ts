@@ -100,9 +100,11 @@ describe("the named account's dialog", () => {
     const fallback = btn("Use console fallback") as any;
     expect(fallback.className.split(" ").sort()).toEqual(["btn", "btn-ghost", "btn-sm"]);   // the shared button, its small ghost form: no class of its own
     expect(fallback.parentElement.className).toBe("note");
-    // It is below the cards, last in the body.
+    // It is below the cards, at the end of the body — followed only by its own one-line explanation (AGEND-216), in the same small-text style.
     const body = p.root.querySelector(".signin-browser").parentElement;
-    expect(body.children[body.children.length - 1]).toBe(fallback.parentElement);
+    expect(body.children[body.children.length - 2]).toBe(fallback.parentElement);
+    expect(body.children[body.children.length - 1].className).toBe("note");
+    expect(body.children[body.children.length - 1].textContent).toContain("only terminal sign-in");
   });
   it("the default account's dialog is the same screen: its text equals the named one's once the account's name is swapped, and so are its buttons", async () => {
     answer = r => r.url === DEFAULT_ENDPOINT ? snapshot({ target: undefined }) : {};
