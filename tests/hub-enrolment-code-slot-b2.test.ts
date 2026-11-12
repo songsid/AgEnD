@@ -34,10 +34,15 @@ describe("U2 and B2 compose without an injected stand-in component", () => {
     const groupPolicy = vi.fn(async () => ({ ok: true, supported: true, binding: "ready", policy }));
     const client = { ...r.client, groupPolicy, searchGroups: vi.fn() };
     const p = await mount(steps.HubJoinCard, { client, groups: true, features: ["enrolment-code-v1"], view: { enabled: true }, webOrigin: "https://hub.example.test:443" }, lang);
+    // The real slot lazy-imports B2. Wait for that observable boundary, rather
+    // than assuming a fixed number of render turns also completes module I/O.
+    await vi.waitFor(() => expect(named(p, create)).toBeDefined());
     expect(p.root.querySelector('li[data-step="2"]').classList.contains("done")).toBe(false);
     expect(named(p, copy).disabled).toBe(true);
     const reads = r.client.enrolmentCodes.mock.calls.length, policies = groupPolicy.mock.calls.length;
-    fire(named(p, create), "click"); await settle(10); fire(p.root.querySelector("#hubEnrolmentCreate"), "submit"); await settle(25);
+    fire(named(p, create), "click");
+    await vi.waitFor(() => expect(p.root.querySelector("#hubEnrolmentCreate")).not.toBeNull());
+    fire(p.root.querySelector("#hubEnrolmentCreate"), "submit"); await settle(25);
     expect(r.client.createEnrolmentCode).toHaveBeenCalledExactlyOnceWith({ expires: "today", maxUses: 30, perPersonFleets: 1, scope: { kind: "directory" } });
     expect(r.client.enrolmentCodes.mock.calls.length).toBeGreaterThan(reads);
     expect(groupPolicy.mock.calls.length).toBeGreaterThan(policies);
