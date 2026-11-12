@@ -31,3 +31,9 @@ d51e4bc0c6a46cd5fedb9baccd50f1b047bad4d2:docs/screenshots/subagent-row/review-fi
 # no rule, path, future commit or other finding is exempted.
 2cca5b736232b5519abb6240b899df0bd436a8bf:docs/screenshots/authenticator-signin-s118/receipt.json:generic-api-key:207
 2cca5b736232b5519abb6240b899df0bd436a8bf:docs/screenshots/authenticator-signin-s118/receipt.json:generic-api-key:211
+
+# PR #3709 (AGEND-197): a synthetic placeholder value the test redacts and asserts is absent (obviously fake, not a real secret).
+# The current tree builds it at run time and contains no such literal; commit 37ee49537 added it and no later commit can remove it from the
+# per-commit scan. Exact historical commit/path/rule/line only; no rule, path, future commit or other finding is exempted. Delete with the PR's squash.
+37ee49537faa1a68f4c9dd51e7aeae359ac7fd94:tests/chat-activity-197-server.test.ts:generic-api-key:90
+37ee49537faa1a68f4c9dd51e7aeae359ac7fd94:tests/chat-activity-197-server.test.ts:generic-api-key:130
