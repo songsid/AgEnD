@@ -105,12 +105,54 @@ export class CompanyJoinController {
     if (prior.issued) return !(prior.outcomeKnown && prior.stage === "active" && prior.profileDigest && this.retiredProfile(prior.binding.hub.hubId) === prior.profileDigest);
     return !this.expiredUnissued(prior) && (!prior.outcomeKnown || !["cancelled", "ended"].includes(prior.stage));
   }
+  /**
+   * alpha.2 findings 3/4: a HELD attempt another private admin session started (another tab, a new browser session, a
+   * restart's new cookie) is taken over by this one: its journal is re-bound to this session, so Recover (a confirmed
+   * resume) and Cancel work from any admin session, not only the tab that started it. An attempt still in flight
+   * (preparing / pending / durable) is never taken: its own tab is mid-sign-in. Re-binding adds no authority — resume still
+   * needs this session's confirmation, and cancel only withdraws.
+   */
+  private adopt(id: string, session: JoinLocalSession, hostConfirmed: boolean): void {
+    const r = readLocalJoin(this.options.home, id);
+    if (r.sessionId === session.sessionId && r.authorityEpoch === session.authorityEpoch) return;
+    if (this.closed || !session.current() || currentLocalJoinId(this.options.home) !== id || r.stage !== "held" || !this.priorBlocks(r))
+      throw new HubProtocolError("denied");
+    if (this.active?.record.operationId === id) this.active = null;
+    ++this.generation;
+    saveLocalJoin(this.options.home, { ...r, sessionId: session.sessionId, authorityEpoch: session.authorityEpoch, hostConfirmed },
+      () => !this.closed && session.current());
+  }
+  /**
+   * alpha.2 finding 3: a new Start retires a held attempt that never issued a credential — only when the Hub confirms it
+   * cannot: its cancel answers issued:false, or the Hub has no such request (its push was refused, e.g. an ended join code).
+   * Any other answer (unreachable, issued, unknown) keeps the fence: no second enrolment while one may still complete.
+   */
+  private async retireRefused(prior: LocalJoinJournal, current: () => boolean): Promise<boolean> {
+    if (prior.stage !== "held" || prior.issued || !prior.outcomeKnown) return false;
+    let patch: Partial<LocalJoinJournal>;
+    try {
+      const result = validated(remoteSchema, await this.client.command(prior.binding, "cancel", {}, createPrivateKey(prior.privateKey), current));
+      if (result.issued) return false;
+      patch = { stage: "cancelled", reason: "superseded", outcomeKnown: true, remoteState: result.state };
+    } catch (error) {
+      if (!(error instanceof CompanyJoinRemoteError && error.code === "not-found")) return false;
+      patch = { stage: "cancelled", reason: "superseded" };
+    }
+    if (!current() || currentLocalJoinId(this.options.home) !== prior.operationId) return false;
+    if (this.active?.record.operationId === prior.operationId) this.active = null;
+    ++this.generation;
+    saveLocalJoin(this.options.home, { ...prior, ...patch }, current);
+    return !this.priorBlocks(readLocalJoin(this.options.home, prior.operationId));
+  }
   current(session: JoinLocalSession) {
     if (this.closed || !session.current()) throw new HubProtocolError("denied");
     const id = currentLocalJoinId(this.options.home); if (!id) return null;
     const r = readLocalJoin(this.options.home, id);
-    // The no-handle discovery route reveals only this session's operation. Exact handles still require own().
-    if (r.sessionId !== session.sessionId || r.authorityEpoch !== session.authorityEpoch) return null;
+    // The no-handle discovery route reveals this session's operation. Another session's attempt is shown only while it
+    // blocks a new one (alpha.2 rehearsal findings 3/4: a new tab saw an empty box and every Start refused "conflict"):
+    // flagged foreign, without its handoff. Acting on it still goes through adopt() (held only) or a new Start.
+    if (r.sessionId !== session.sessionId || r.authorityEpoch !== session.authorityEpoch)
+      return this.priorBlocks(r) ? { ...this.view(r), handoffId: null, foreign: true } : null;
     this.own(r, session); return this.view(r);
   }
   async repairTrust(addressInput: string, authority: JoinLocalAuthority): Promise<void> {
@@ -248,7 +290,15 @@ export class CompanyJoinController {
     const priorId = currentLocalJoinId(this.options.home);
     if (priorId) {
       const prior = readLocalJoin(this.options.home, priorId);
-      if (this.priorBlocks(prior)) throw new HubProtocolError("conflict");
+      if (this.priorBlocks(prior)) {
+        this.starting = true;
+        try {
+          const retired = await this.retireRefused(prior, () => !this.closed && authority.session.current() && authority.confirmedCurrent());
+          if (!retired) throw new HubProtocolError("conflict");
+        } finally { this.starting = false; }
+        if (this.closed || this.starting || !authority.session.current() || !authority.confirmedCurrent()) throw new HubProtocolError("denied");
+        this.assertUnbound();
+      }
     }
     this.starting = true; const gen = ++this.generation, snapshot = this.options.snapshot(), started = this.now();
     const current = () => !this.closed && gen === this.generation && sameSnapshot(snapshot, this.options.snapshot())
@@ -289,7 +339,10 @@ export class CompanyJoinController {
           ...(internal.supersedes && metadata.features.includes("join-supersedes-v1") ? { supersedes: internal.supersedes } : {}) }, key.privateKey, () => this.live(op)));
         if (pushed.requestId !== record.binding.requestId || pushed.browserAction !== metadata.hub.webOrigin + "/hub/join/open" || pushed.expiresAt <= this.now()) throw new HubProtocolError("denied");
         this.persist(op, { stage: "pending", deadline: Math.min(record.deadline, pushed.expiresAt) });
-      } catch (error) { this.hold(op, error); }
+      } catch (error) {
+        // alpha.2 finding 3: the Hub refusing the push of a join code is about the code (ended, mistyped) as much as the account.
+        this.hold(op, code && op.record.stage === "preparing" && error instanceof CompanyJoinRemoteError && error.code === "denied" ? new CompanyJoinRemoteError("code-denied") : error);
+      }
       return this.view(op.record);
     } finally { this.starting = false; }
   }
@@ -345,6 +398,8 @@ export class CompanyJoinController {
     return { action: op.record.binding.hub.webOrigin + "/hub/join/open", requestId: op.record.binding.requestId, state: op.record.browserState };
   }
   async resume(id: string, authority: JoinLocalAuthority) {
+    if (!authority.confirmedCurrent()) throw new HubProtocolError("denied");
+    this.adopt(id, authority.session, authority.session.hostHere);
     const r = readLocalJoin(this.options.home, id); this.own(r, authority.session);
     if (!authority.confirmedCurrent() || r.reason === "authority"
       || ["cancelled", "ended"].includes(r.stage) || this.now() >= r.deadline) throw new HubProtocolError("denied");
@@ -423,6 +478,7 @@ export class CompanyJoinController {
     this.options.activate();
   }
   async cancel(id: string, session: JoinLocalSession) {
+    this.adopt(id, session, false);
     const op = this.restore(id, session); this.own(op.record, session);
     if (op.record.stage === "active") throw new HubProtocolError("conflict");
     op.generation = ++this.generation;

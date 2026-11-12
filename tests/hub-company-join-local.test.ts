@@ -8,6 +8,7 @@ import { signCompanyInvitation } from "../src/hub/join/invitation.js";
 import { parseCompanyAddress } from "../src/hub/join/descriptor.js";
 import { createPrivateKey } from "node:crypto";
 import { ENROLMENT_CODE, normalEnrolmentCode, CompanyJoinController } from "../src/hub/join/local.js";
+import { CompanyJoinRemoteError } from "../src/hub/join/client.js";
 import { currentLocalJoinId, readLocalJoin } from "../src/hub/join/local-journal.js";
 import { currentBinding, createHubMemberPairingApi } from "../src/hub/member/pairing-api.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
@@ -394,3 +395,98 @@ describe("M-2921: the Hub's refusals of a pending request show on the Fleet card
   });
 });
 
+
+// alpha.2 rehearsal (pass 2) findings 3 and 4: a refused or held attempt no longer blocks every new one for its 10 minutes
+// with no word, and another admin session can see it and recover or cancel it. The fences stay: no Start while an attempt
+// may still issue, and nothing in flight is taken from its own tab.
+describe("alpha.2 findings 3/4: a held attempt, a new Start and another session", () => {
+  const coded = (w: any, authority = w.authority) => w.controller.start({ address: w.metadata.hub.webOrigin, label: "Coded", fleetOrigin: "http://127.0.0.1:4444", code: "C43Z-G5XW" }, authority);
+  async function refused(cancel: (original: any, args: any[]) => unknown) {
+    const w = await world(); w.metadata.features.push("enrolment-code-v1");
+    const original = w.client.command.getMockImplementation()!;
+    let refuse = true;
+    w.client.command.mockImplementation(async (...args: any[]) => {
+      if (args[1] === "push" && refuse) { refuse = false; throw new CompanyJoinRemoteError("denied"); }
+      if (args[1] === "cancel") return cancel(original, args);
+      return (original as any)(...args);
+    });
+    const first = await coded(w);
+    return { w, first };
+  }
+  const notFound = () => { throw new CompanyJoinRemoteError("not-found"); };
+  it("an ended join code: the attempt is held with its own reason (code-denied), issued nothing", async () => {
+    const { w, first } = await refused(notFound);
+    expect(first).toMatchObject({ state: "held", reason: "code-denied", issued: false, outcomeKnown: true });
+    w.controller.close();
+  });
+  it("a new Start retires the refused attempt when the Hub has no such request, then pushes once more", async () => {
+    const { w, first } = await refused(notFound);
+    const next = await coded(w);
+    expect(next).toMatchObject({ state: "awaiting-sign-in" }); expect(next.operationId).not.toBe(first.operationId);
+    expect(readLocalJoin(w.directory, first.operationId)).toMatchObject({ stage: "cancelled", reason: "superseded", issued: false });
+    expect(w.client.command.mock.calls.filter((c: any[]) => c[1] === "cancel")).toHaveLength(1);
+    w.controller.close();
+  });
+  it("…and when the Hub's cancel answers issued:false", async () => {
+    const { w, first } = await refused((original, args) => (original as any)(...args));
+    expect(await coded(w)).toMatchObject({ state: "awaiting-sign-in" });
+    expect(readLocalJoin(w.directory, first.operationId)).toMatchObject({ stage: "cancelled", reason: "superseded", outcomeKnown: true });
+    w.controller.close();
+  });
+  it.each([["the Hub says it issued", (original: any, args: any[]) => (original as any)(...args).then((v: any) => ({ ...v, state: "issued", issued: true }))],
+    ["the Hub can't be reached", () => { throw new Error("unreachable"); }],
+    ["the Hub answers another refusal", () => { throw new CompanyJoinRemoteError("unavailable"); }]])("the fence stays when %s: Start refused, the held attempt unchanged", async (_n, cancel) => {
+    const { w, first } = await refused(cancel as never);
+    const before = readLocalJoin(w.directory, first.operationId);
+    await expect(coded(w)).rejects.toMatchObject({ code: "conflict" });
+    expect(readLocalJoin(w.directory, first.operationId)).toEqual(before);
+    expect(currentLocalJoinId(w.directory)).toBe(first.operationId);
+    w.controller.close();
+  });
+  it("an issued or unknown-outcome held attempt is never retired by a Start (no cancel is even asked)", async () => {
+    const { w, first } = await refused(notFound);
+    const { saveLocalJoin } = await import("../src/hub/join/local-journal.js");
+    saveLocalJoin(w.directory, { ...readLocalJoin(w.directory, first.operationId), outcomeKnown: false }, () => true);
+    await expect(coded(w)).rejects.toMatchObject({ code: "conflict" });
+    expect(w.client.command.mock.calls.filter((c: any[]) => c[1] === "cancel")).toHaveLength(0);
+    w.controller.close();
+  });
+  const other = (w: any) => ({ ...w.session, ownerKey: {}, sessionId: "c".repeat(64) });
+  it("another admin session sees the blocking held attempt (flagged foreign, no handoff), and nothing once it no longer blocks", async () => {
+    const { w, first } = await refused(notFound);
+    expect(w.controller.current(other(w))).toMatchObject({ operationId: first.operationId, state: "held", reason: "code-denied", foreign: true, handoffId: null });
+    expect(w.controller.current(w.session)).toMatchObject({ operationId: first.operationId, handoffId: first.handoffId });
+    expect(w.controller.current(w.session).foreign).toBeUndefined();
+    await w.controller.cancel(first.operationId, w.session);
+    expect(w.controller.current(other(w))).toBeNull();
+    w.controller.close();
+  });
+  it("another session cancels the held attempt (it is re-bound to that session); a new session's Start then proceeds", async () => {
+    const { w, first } = await refused(() => { throw new Error("unreachable"); });
+    const s2 = other(w);
+    expect(await w.controller.cancel(first.operationId, s2)).toMatchObject({ state: "cancelled" });
+    expect(readLocalJoin(w.directory, first.operationId)).toMatchObject({ stage: "cancelled", sessionId: s2.sessionId });
+    expect(await coded(w, { ...w.authority, session: s2 })).toMatchObject({ state: "awaiting-sign-in" });
+    w.controller.close();
+  });
+  it("another confirmed session can Recover a held attempt (finding 4: completion failed, unavailable)", async () => {
+    const w = await world(), first = await w.start();
+    const { saveLocalJoin } = await import("../src/hub/join/local-journal.js");
+    saveLocalJoin(w.directory, { ...readLocalJoin(w.directory, first.operationId), stage: "held", reason: "unavailable" }, () => true);
+    w.controller.close();
+    const controller = new CompanyJoinController(w.options), s2 = other(w);
+    expect(controller.current(s2)).toMatchObject({ state: "held", reason: "unavailable", foreign: true });
+    w.ready();
+    expect(await controller.resume(first.operationId, { ...w.authority, session: s2 })).toMatchObject({ operationId: first.operationId, state: "saved" });
+    expect(readLocalJoin(w.directory, first.operationId).sessionId).toBe(s2.sessionId);
+    controller.close();
+  });
+  it("an attempt still in flight is never taken from its own tab: another session's cancel and resume are refused", async () => {
+    const w = await world(), first = await w.start(), s2 = other(w);
+    expect(w.controller.current(s2)).toMatchObject({ state: "awaiting-sign-in", foreign: true, handoffId: null });
+    await expect(w.controller.cancel(first.operationId, s2)).rejects.toMatchObject({ code: "denied" });
+    await expect(w.controller.resume(first.operationId, { ...w.authority, session: s2 })).rejects.toMatchObject({ code: "denied" });
+    expect(readLocalJoin(w.directory, first.operationId)).toMatchObject({ stage: "pending", sessionId: w.session.sessionId });
+    w.controller.close();
+  });
+});

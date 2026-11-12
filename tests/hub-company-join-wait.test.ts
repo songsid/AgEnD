@@ -208,4 +208,30 @@ describe("company join local wait",()=>{
   fire(p.root.querySelector("form"),"submit");await settle(12);
   const post=calls.find(x=>x.path.endsWith("/start"));expect(JSON.parse(post.init.body)).toMatchObject({address:"https://hub.example.test",code:"AB12-CD34"});
  });
+ // alpha.2 rehearsal findings 3/4: a held attempt (here another session's, refused by the Hub) is shown with why and its
+ // Recover/Cancel; a Start the Fleet refuses ("conflict") says so; a waiting tab whose own start never began shows the
+ // blocking attempt instead of "Opening Hub sign-in…".
+ const held={operationId:"5d2c1a0b-9e8f-4a7b-8c6d-5e4f3a2b1c0d",handoffId:null,state:"held",reason:"code-denied",hubOrigin:"https://hub.example.test",expiresAt:Date.now()+300000,issued:false,outcomeKnown:true,fleetId:null,waiting:null,foreign:true};
+ it("another session's held attempt: why, where it came from, Recover/Cancel, and a Start that names the block",async()=>{
+  fetcher((path,init)=>path.endsWith("/start")?response({ok:false,error:"conflict"},409):path.includes("/settings/pending")?response({id:pendingId,state:"applied",outcome:{state:"applied"}}):response({ok:true,bound:false,operation:held}));
+  vi.stubGlobal("open",vi.fn());
+  const p=await mount(false);await settle(10);
+  const text=p.root.querySelector(".hub-join-foreign").textContent;
+  expect(text).toContain("The Hub did not accept this join code");
+  expect(text).toContain("This attempt was started in another browser tab or session. You can recover or cancel it here.");
+  expect(btn(p,"Cancel connection")).toBeTruthy();
+  expect(btn(p,"Recover this connection")).toBeUndefined();          // a refusal: recovering would only retry the refused code
+  expect(p.root.querySelector("#hubCompanyAddress")).toBeTruthy();   // a new Start is offered (the Fleet retires the refused one first)
+  await start(p);
+  expect(p.root.textContent).toContain("Another connection attempt is still open (shown above). Use “Recover this connection” or “Cancel connection” on it, then start again.");
+  fire(btn(p,"Cancel connection"),"click");await settle(10);
+  const cancel=calls.find(x=>x.path.endsWith("/cancel"));expect(JSON.parse(cancel.init.body)).toEqual({operationId:held.operationId});
+ });
+ it("a waiting tab whose start never began shows the attempt that blocks it, not an endless \"Opening Hub sign-in…\"",async()=>{
+  fetcher(()=>response({ok:true,bound:false,operation:{...held,reason:"unavailable"}}));
+  const p=await mount(true);await settle(10);
+  expect(p.root.textContent).not.toContain("Opening Hub sign-in");
+  expect(p.root.querySelector(".hub-join-foreign")).toBeTruthy();
+  expect(btn(p,"Recover this connection")).toBeTruthy();
+ });
 });
