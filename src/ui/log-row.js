@@ -47,18 +47,29 @@ export const THINK_PREVIEW = 150;
  * AGEND-200 (the preview feedback, read against Multica's own transcript): what a step shows in the block is its one most
  * informative thing, once. Display only — the step still holds the full text, which the row's title and the Log tab show.
  */
-const SHELL_WRAPPER = /^(?:\/[\w./-]*\/)?(?:zsh|bash|sh|fish)\s+(?:-[a-z]+\s+)*(['"])([\s\S]+)\1$/;
+/**
+ * `<shell> [-flags] '<script>'` or `"<script>"`, then optionally plain word arguments (`bash -lc 'cmd' name arg` — $0, $1…).
+ * The quoted script ends at ITS closing quote (not the last quote of the line: `bash -c 'a' && echo 'b'` is two commands, and is
+ * not unwrapped). Anything but plain words after it (`&&`, `;`, a pipe, a redirect, `$x`) leaves the command as it was.
+ */
+const SHELL_WRAPPER = /^(?:\/[\w./-]*\/)?(?:zsh|bash|sh|fish)\s+(?:-[a-z]+\s+)*(?:'([^']*)'|"((?:[^"\\]|\\[\s\S])*)")((?:\s+[^\s;&|<>$`()'"\\]+)*)$/;
 /** `bash -lc '<cmd>'` (what Codex runs every command through) is the command: the wrapper is noise in a one-line summary. */
 export function stripShellWrapper(command) {
   const m = SHELL_WRAPPER.exec(String(command || "").trim());
-  return m ? m[2] : String(command || "");
+  if (!m) return String(command || "");
+  return m[1] !== undefined ? m[1] : m[2].replace(/\\(["\\$`])/g, "$1");
 }
-/** A path with more than three parts as `.../parent/leaf`, so a row stays one line (a path inside the working directory is already relative). */
+/**
+ * A path with more than three parts as `.../parent/leaf`, so a row stays one line (a path inside the working directory is
+ * already relative). A Windows path (`C:\Users\me\proj\src\a.ts`, or a mix of both slashes) is cut the same way, and
+ * keeps its own separator.
+ */
 export function shortPath(p) {
   const text = String(p || "");
   if (/\s/.test(text) || text.includes(",")) return text;      // not one path (a Grep's "pattern  in  dir", several files)
-  const parts = text.split("/");
-  return parts.length <= 3 ? text : `.../${parts.slice(-2).join("/")}`;
+  const parts = text.split(/[\\/]/);
+  if (parts.length <= 3) return text;
+  return `...${text.includes("/") ? "/" : "\\"}${parts.slice(-2).join(text.includes("/") ? "/" : "\\")}`;
 }
 const NAMED_BY_SUBJECT = new Set(["file_path", "path", "notebook_path", "pattern", "url", "query", "description", "command", "cmd", "offset", "limit",
   "timeout", "run_in_background", "replace_all", "output_mode", "glob", "type", "head_limit", "max_results", "subagent_type"]);
@@ -167,13 +178,21 @@ export function timeline(steps, events) {
   return out;
 }
 
-/** Consecutive identical finished tool steps (same tool, subject and status) as one row with a count: a loop shows. */
+/** A step with an output to read (its text, or a result too large to keep). */
+const hasOutput = (x) => !!(x.body || x.bodyBytes);
+/**
+ * Consecutive identical finished tool steps (same tool, subject and status) as one row with a count: a loop shows. Only
+ * steps with nothing more to see are merged (AGEND-210): at `verbose` each run has its own output and arguments, and
+ * folding the later ones into the first would hide them — those stay one row each. At `standard` a step holds no output
+ * or arguments, so a loop still reads as one row.
+ */
 export function collapse(items) {
   const out = [];
   for (const x of items) {
     const prev = out[out.length - 1];
     if (prev && x.kind === "tool" && prev.kind === "tool" && x.status !== "running" && prev.status === x.status
-      && prev.tool === x.tool && (prev.subject || "") === (x.subject || "") && prev.turn === x.turn) {
+      && prev.tool === x.tool && (prev.subject || "") === (x.subject || "") && prev.turn === x.turn
+      && !hasOutput(x) && !hasOutput(prev) && (prev.input || "") === (x.input || "")) {
       prev.repeat = (prev.repeat || 1) + 1;
       continue;
     }

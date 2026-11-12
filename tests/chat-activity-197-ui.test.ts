@@ -295,4 +295,36 @@ describe("live before the reply — the feed", () => {
     expect(f.feed.compose(rows(false)).filter((r: any) => r.role === "activity")).toHaveLength(1);
     expect(f.calls[0]).toContain("chat=1");
   });
+  it("AGEND-210: tool_progress moves from standard to verbose — the steps held (cut at standard) are dropped and the window is read again", async () => {
+    pg = page();
+    const std = tool("a", { tool: "Bash", cat: "run", subject: "git" });                                  // what standard keeps: no output
+    const full = tool("a", { tool: "Bash", cat: "run", subject: "git status", body: "On branch main", input: '{"command":"git status"}' });
+    const f = fakeFeed({}, [
+      { enabled: true, supported: true, level: "standard", thinking: false, key: "1-1", steps: [user(), std], events: [], before: null, after: 50, ev: 0 },
+      // the next read (after=50) was answered at the new level: only what is new, and the old step is not in it
+      { enabled: true, supported: true, level: "verbose", thinking: false, key: "1-1", steps: [tool("b", { subject: "/srv/w/b.ts" })], events: [], before: null, after: 80, ev: 0 },
+      // the window, read again at verbose: the old step now with its output
+      { enabled: true, supported: true, level: "verbose", thinking: false, key: "1-1", steps: [user(), full, tool("b", { subject: "/srv/w/b.ts" })], events: [], before: null, after: 80, ev: 0 },
+    ]);
+    f.feed.start(); await settle();
+    for (const fn of f.ticks) fn({ instance: "w" }); await settle();
+    expect(f.calls).toHaveLength(3);
+    expect(f.calls[1]).toContain("after=50");                                                           // the incremental read
+    expect(f.calls[2]).not.toContain("after=");                                                         // then the window again
+    expect(f.feed.info().level).toBe("verbose");
+    const items = (f.feed.compose(rows(false)).find((r: any) => r.role === "activity") as any).group.items;
+    expect(items.find((x: any) => x.id === "a")).toMatchObject({ subject: "git status", body: "On branch main" });   // not the standard step kept
+  });
+  it("AGEND-210 (counter): the level unchanged keeps the steps and the cursor — only a change reopens the window", async () => {
+    pg = page();
+    const f = fakeFeed({}, [
+      { enabled: true, supported: true, level: "standard", thinking: false, key: "1-1", steps: [user(), tool("a")], events: [], before: null, after: 50, ev: 0 },
+      { enabled: true, supported: true, level: "standard", thinking: false, key: "1-1", steps: [tool("b")], events: [], before: null, after: 80, ev: 0 },
+    ]);
+    f.feed.start(); await settle();
+    for (const fn of f.ticks) fn({ instance: "w" }); await settle();
+    expect(f.calls).toHaveLength(2);
+    const items = (f.feed.compose(rows(false)).find((r: any) => r.role === "activity") as any).group.items;
+    expect(items.map((x: any) => x.id)).toEqual(["a", "b"]);
+  });
 });

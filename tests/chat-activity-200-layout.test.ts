@@ -45,12 +45,26 @@ describe("what a step shows", () => {
     expect(row.stripShellWrapper("npm run build")).toBe("npm run build");
     expect(row.stripShellWrapper("bash script.sh")).toBe("bash script.sh");
   });
+  it("AGEND-210: the wrapper ends at its own closing quote — extra words after it are arguments, a second command is not unwrapped", () => {
+    expect(row.stripShellWrapper("bash -lc 'echo hi' name arg1")).toBe("echo hi");           // $0 and $1: the script is still the command
+    expect(row.stripShellWrapper(`sh -c "echo \\"hi\\"" x`)).toBe('echo "hi"');
+    expect(row.stripShellWrapper("bash -c 'a' && echo 'b'")).toBe("bash -c 'a' && echo 'b'");   // two commands: left as they are (greedy matching gave `a' && echo 'b`)
+    expect(row.stripShellWrapper("bash -lc 'a'; rm -rf x")).toBe("bash -lc 'a'; rm -rf x");
+    expect(row.stripShellWrapper("bash -c 'a' | tee out")).toBe("bash -c 'a' | tee out");
+    expect(row.stripShellWrapper("bash -lc 'cd x && ls'")).toBe("cd x && ls");                  // && inside the quotes is the script's own
+  });
   it("a long path is `.../parent/leaf`; a short one, a list or a pattern is not touched", () => {
     expect(row.shortPath("/home/me/deep/er/file.png")).toBe(".../er/file.png");
     expect(row.shortPath("src/a.ts")).toBe("src/a.ts");
     expect(row.shortPath("a/b/c")).toBe("a/b/c");
     expect(row.shortPath("a/b/c/d.ts, e/f/g/h.ts")).toBe("a/b/c/d.ts, e/f/g/h.ts");
     expect(row.shortPath("TODO  in  /a/b/c/d")).toBe("TODO  in  /a/b/c/d");
+  });
+  it("AGEND-210: a Windows path (backslashes) is shortened too, with its own separator; a short one is left", () => {
+    expect(row.shortPath("C:\\Users\\me\\proj\\src\\a.ts")).toBe("...\\src\\a.ts");
+    expect(row.shortPath("src\\a.ts")).toBe("src\\a.ts");
+    expect(row.shortPath("a\\b\\c")).toBe("a\\b\\c");
+    expect(row.shortPath("C:\\a/b/c/d.ts")).toBe(".../c/d.ts");                                // a mix: the forward slash wins
   });
   it("the arguments: a command once as code; an edit as old / new; nothing the title already says; the rest as JSON", () => {
     const v = (x: object, cat: string) => row.inputView(x, cat);

@@ -49,11 +49,11 @@ function capLine(s: string): string {
   return flat.length > LABEL_MAX_CHARS ? `${flat.slice(0, LABEL_MAX_CHARS - 1)}…` : flat;
 }
 
-/** Shorten an absolute path to something readable in a bubble line. */
+/** Shorten an absolute path to something readable in a bubble line (a Windows path, with backslashes, too). */
 function shortPath(p: string): string {
   const clean = String(p).trim();
   if (clean.length <= 48) return clean;
-  const parts = clean.split("/");
+  const parts = clean.split(/[\\/]/);
   if (parts.length <= 3) return clean;
   return `…/${parts.slice(-3).join("/")}`;
 }
@@ -113,11 +113,11 @@ export function shellProgramName(cmd: string): string {
 /** Search programs: their arguments are what is being searched for, which can be a literal secret. */
 const SEARCH_PROGRAMS = new Set(["grep", "egrep", "fgrep", "rg", "ag", "ack", "find", "fd", "fdfind", "locate", "git-grep"]);
 /** A search program, given by name or path (`/usr/bin/grep`). */
-export function isSearchProgram(program: string): boolean { return SEARCH_PROGRAMS.has(program.replace(/^.*\//, "")); }
+export function isSearchProgram(program: string): boolean { return SEARCH_PROGRAMS.has(program.replace(/^.*[\\/]/, "")); }
 /** A search anywhere in the command (any pipeline or chain segment, `git grep` included). */
 function isSearchCommand(cmd: string): boolean {
   return cmd.split(/\s*(?:&&|\|\||\||;|\n)\s*/).some(segment => {
-    const prog = shellProgramName(segment).replace(/^.*\//, "");
+    const prog = shellProgramName(segment).replace(/^.*[\\/]/, "");
     // git grep, git -C dir grep, git log --grep=…
     return isSearchProgram(prog) || (prog === "git" && /\bgrep\b/.test(segment));
   });

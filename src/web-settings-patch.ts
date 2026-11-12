@@ -18,7 +18,7 @@ export type WebSettingsBody = {
   notifyLogin?: WebConfig["notify_login"];
   /** #1218: the Log tab on (true) or off (false). */
   logTab?: boolean;
-  /** AGEND-181: thinking in the chat timeline (web.log_thinking; default on). */
+  /** AGEND-181: thinking in the chat timeline (web.log_thinking; default off). */
   logThinking?: boolean;
   /** #2122: the usage report over the temporary public link (web.usage_report_on_public_link). */
   usageOnPublicLink?: boolean;

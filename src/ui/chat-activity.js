@@ -239,6 +239,12 @@ export function observeActivity(name, opts) {
     if (was !== s.info.thinking || wasLevel !== s.info.level) activityInfoStore.set((x) => ({ v: x.v + 1 }));
     // tool_progress off: nothing to hold, no cursor (the next read opens again, and sees the setting turned on).
     if (s.info.level === "off") { s.steps = []; s.key = null; s.after = null; s.before = null; s.complete = false; return; }
+    // The level moved between standard and verbose (AGEND-210): the steps held were cut for the old one — a verbose step
+    // read at standard has no output, a standard one at verbose has none yet — and this answer only brings what is new.
+    // Drop them and the cursor: the next read opens the window again at the new level (a `replace` answer already is one).
+    if (!replace && wasLevel && wasLevel !== "off" && wasLevel !== s.info.level && s.steps.length) {
+      s.steps = []; s.key = null; s.after = null; s.before = null; s.complete = false; s.skip = false; return;
+    }
     if (j.key) s.key = j.key;
     if (j.after !== null && j.after !== undefined) { s.after = j.after; s.skip = !!j.skip; }
     if (replace) { s.before = j.before ?? null; s.complete = (j.before ?? null) === null; }
@@ -283,6 +289,7 @@ export function observeActivity(name, opts) {
       const j = await read(params, false);
       if (j && j.reset) { take(j, true); }
       if (j) changed();
+      if (j && s.after === null && s.key === null && s.info.level !== "off") again = true;     // dropped for a level change: read the window now
     } catch { /* the next tick or poll tries again */ }
     finally { busy = false; if (again && running && !s.dead) { again = false; void pull(); } }
   }

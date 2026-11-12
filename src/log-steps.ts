@@ -914,7 +914,7 @@ export function chatStep(step: LogStep, level: Exclude<ToolProgressLevel, "off">
   let keep: string | undefined;
   switch (step.cat) {
     case "read": case "edit": case "mcp": keep = subject; break;
-    case "run": { const prog = subject && step.tool !== "exec" ? shellProgramName(subject).replace(/^.*\//, "") : ""; keep = prog || undefined; break; }
+    case "run": { const prog = subject && step.tool !== "exec" ? shellProgramName(subject).replace(/^.*[\\/]/, "") : ""; keep = prog || undefined; break; }
     default: keep = undefined;                       // search, web, agent, plan, message, other: the label alone
   }
   return { ...rest, ...(keep ? { subject: keep } : {}) };

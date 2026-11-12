@@ -156,7 +156,8 @@ export class LogService {
     const level: ToolProgressLevel = chat ? (this.deps.toolProgress?.(name) ?? "off") : "verbose";
     const src = this.deps.source(name);
     if (chat && level === "off") {
-      this.unwatch(name, true);
+      // Only the chat's own hold on the watch ends — the Log tab, when it is watching this instance, keeps its (AGEND-210).
+      this.unwatch(name, "chat");
       return { enabled: true, instance: name, backend: src.backend, supported: !!src.format, level, thinking: false, steps: [], events: [], ev: q.ev ?? 0, before: null, after: null };
     }
     const evs = chat ? { events: [] as LogEvent[], ev: q.ev ?? 0 } : this.eventsFor(name, q.ev);
@@ -297,7 +298,7 @@ export class LogService {
     const until = this.now() + WATCH_LEASE_MS;
     const held = this.watches.get(name);
     if (held && held.path === path) { held.until = until; held.chat ||= chat; held.log ||= !chat; return; }
-    if (held) this.unwatch(name, true);
+    if (held) this.unwatch(name, "all");
     const setI = this.deps.setInterval ?? ((fn: () => void, ms: number) => { const t = setInterval(fn, ms); (t as { unref?: () => void }).unref?.(); return t; });
     const w = { until, path, size, ino, timer: null as unknown, chat, log: !chat };
     w.timer = setI(() => { void this.look(name); }, WATCH_POLL_MS);
@@ -307,8 +308,11 @@ export class LogService {
   private async look(name: string): Promise<void> {
     const w = this.watches.get(name);
     if (!w) return;
-    const allowed = (w.log && this.deps.enabled()) || (w.chat && (this.deps.toolProgress?.(name) ?? "off") !== "off");
-    if (this.now() > w.until || !allowed) { this.unwatch(name, true); return; }
+    // Each holder is checked on its own switch: one whose switch went off lets go, the other keeps the watch.
+    const logOk = w.log && this.deps.enabled();
+    const chatOk = w.chat && (this.deps.toolProgress?.(name) ?? "off") !== "off";
+    if (this.now() > w.until || (!logOk && !chatOk)) { this.unwatch(name, "all"); return; }
+    w.log = logOk; w.chat = chatOk;
     let st: { size: number; ino: number };
     try { st = await stat(w.path); } catch { return; }
     if (this.watches.get(name) !== w) return;
@@ -318,11 +322,16 @@ export class LogService {
     }
   }
 
-  /** End `name`'s watch — with `all` false, only the Log tab's part of it (a chat holding it too keeps it). */
-  private unwatch(name: string, all = false): void {
+  /**
+   * Let go of `name`'s watch: `all` ends it; `log` / `chat` release only that holder's part (AGEND-210) — the watch goes
+   * when no holder is left, and stays while the other still holds it (the chat reading `tool_progress` off must not end
+   * the Log tab's live view, nor the Log being switched off the chat's).
+   */
+  private unwatch(name: string, part: "all" | "log" | "chat" = "all"): void {
     const w = this.watches.get(name);
     if (!w) return;
-    if (!all && w.chat) { w.log = false; return; }
+    if (part === "chat") w.chat = false; else if (part === "log") w.log = false;
+    if (part !== "all" && (w.chat || w.log)) return;
     (this.deps.clearInterval ?? ((h: unknown) => clearInterval(h as ReturnType<typeof setInterval>)))(w.timer);
     this.watches.delete(name);
   }
@@ -331,7 +340,7 @@ export class LogService {
    * Every watch ends (the fleet stops). `all` false: the Log was turned off — only what the Log held ends, and a chat's
    * block (gated by tool_progress, not log_tab) keeps its watch.
    */
-  unwatchAll(all = true): void { for (const name of [...this.watches.keys()]) this.unwatch(name, all); }
+  unwatchAll(all = true): void { for (const name of [...this.watches.keys()]) this.unwatch(name, all ? "all" : "log"); }
 
   /** How many instances are watched now (for tests and diagnostics). */
   watched(): number { return this.watches.size; }

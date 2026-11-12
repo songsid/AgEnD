@@ -216,6 +216,39 @@ describe("the watch: a chat's block keeps its live ticks without log_tab, and st
     await r.tick();
     expect(r.s.watched()).toBe(0);
   });
+  it("AGEND-210: the chat reading tool_progress off lets go of its own hold only — the Log tab's watch stays live", async () => {
+    const level = { v: "standard" as "off" | "standard" | "verbose" };
+    const r = rig(level, { v: true });
+    await r.s.steps("w", { watch: true });                 // the Log tab is watching
+    await r.s.steps("w", { chat: true, watch: true });     // a chat too, on the same transcript
+    level.v = "off";
+    const off = await r.s.steps("w", { chat: true, watch: true });
+    expect(off).toMatchObject({ enabled: true, level: "off", steps: [] });
+    expect(r.s.watched()).toBe(1);                         // before the fix: 0 — the Log's watch was torn down with it
+    writeFileSync(r.f, readFileSync(r.f, "utf8") + JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "more" }] } }) + "\n");
+    await r.tick();
+    expect(r.emits).toContain("steps_tick");               // and it still ticks for the Log
+    r.s.unwatchAll(false);                                  // the Log tab lets go: now nobody holds it
+    expect(r.s.watched()).toBe(0);
+  });
+  it("AGEND-210 (the counter-proof): a chat alone reading off ends the watch; the Log's watch is not kept by a chat that left", async () => {
+    const level = { v: "standard" as "off" | "standard" | "verbose" };
+    const r = rig(level, { v: true });
+    await r.s.steps("w", { chat: true, watch: true });
+    expect(r.s.watched()).toBe(1);
+    level.v = "off";
+    await r.s.steps("w", { chat: true, watch: true });
+    expect(r.s.watched()).toBe(0);                         // nobody else held it
+    // Log + chat: the chat leaves, then the Log is switched off — the chat's gone flag does not keep the watch alive.
+    level.v = "standard";
+    const r2 = rig(level, { v: true });
+    await r2.s.steps("w", { watch: true });
+    await r2.s.steps("w", { chat: true, watch: true });
+    level.v = "off";
+    await r2.s.steps("w", { chat: true, watch: true });
+    r2.s.unwatchAll(false);
+    expect(r2.s.watched()).toBe(0);
+  });
 });
 
 describe("an instance's effective tool_progress: its own, else the fleet default, else off", () => {

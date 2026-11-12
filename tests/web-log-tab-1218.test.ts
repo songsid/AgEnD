@@ -345,4 +345,16 @@ describe("the page's helpers", () => {
     const t = (id: string, status = "done") => ({ id, kind: "tool", tool: "Bash", subject: "git push", status, turn: "t" });
     expect(logp.collapse([t("1"), t("2"), t("3"), t("4", "running"), t("5", "failed")]).map((x: any) => [x.id, x.repeat ?? 1])).toEqual([["1", 3], ["4", 1], ["5", 1]]);
   });
+  it("AGEND-210 collapse: steps with an output (verbose) stay one row each — only a loop with nothing more to see folds", () => {
+    const t = (id: string, over: object = {}) => ({ id, kind: "tool", tool: "Bash", subject: "npm test", status: "done", turn: "t", ...over });
+    // verbose: three runs, three outputs — none is swallowed by the first
+    const verbose = [t("1", { body: "pass" }), t("2", { body: "FAIL 3" }), t("3", { body: "pass" })];
+    expect(logp.collapse(verbose).map((x: any) => [x.id, x.body, x.repeat ?? 1])).toEqual([["1", "pass", 1], ["2", "FAIL 3", 1], ["3", "pass", 1]]);
+    // an output too large to keep still counts as one to read
+    expect(logp.collapse([t("1", { bodyBytes: 9e6 }), t("2", { bodyBytes: 9e6 })]).map((x: any) => x.id)).toEqual(["1", "2"]);
+    // the same file edited twice with different changes: both stay
+    expect(logp.collapse([t("1", { input: '{"new_string":"a"}' }), t("2", { input: '{"new_string":"b"}' })]).map((x: any) => x.id)).toEqual(["1", "2"]);
+    // standard (nothing to read): a loop still folds; the counter-proof of the above
+    expect(logp.collapse([t("1"), t("2"), t("3", { input: undefined })]).map((x: any) => [x.id, x.repeat ?? 1])).toEqual([["1", 3]]);
+  });
 });
