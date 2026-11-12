@@ -105,7 +105,7 @@ Hub 現在只有兩種人：
 
 1. **「編輯角色」「Hub 設定」不能授予。** 只有內建的管理員角色有，自訂角色的編輯畫面上是鎖住的。所以沒有人能做出一個「幾乎是管理員」的角色再指派給自己。
 2. **只能指派自己權限以內的角色。** 逐項比對，不是合起來比：每一項權限，指派者自己都要在**同一個範圍**（同一個 AD 群組，或自己是整個 Hub）有這一項，連接 Fleet 的台數也不能超過自己的。在「RD 一部」能看名單、在「RD 二部」能看用量的人，不能把兩項一起指派在「RD 一部」。Hub 無法證明「群組 A 是群組 B 的一部分」，所以不做這種推論。指派的到期日不能晚於指派者自己那一項權限的到期日。
-3. **不能改自己的指派。** 新增、移除、延長自己的角色都要另一位有權限的人來做。
+3. **不能改自己的指派。** 新增、移除、延長自己的角色都要另一位有權限的人來做。唯一的例外是第 8 節那一次：第一位管理員替自己開啟對話、分享、連接這三項預設；只限這三項、只限他本人，會留稽核並通知所有管理員。
 4. **第一位管理員拿不掉。** 設定檔裡指定的那一位（今天的 `config.administrator`）永遠是管理員，只有在 Hub 主機上才能更換。這是救援用的：就算角色全被改壞，仍有一個人進得來。
 5. **一定有一位管理員。** 第 4 點的第一位管理員永遠在，所以其他管理員的指派都可以移除，包括最後一筆。第一位管理員仍然要通過 AD 的帳號檢查（帳號停用就進不來），只是不看群組。
 6. **伺服器每次重新判斷。** 權限不放在登入階段裡。每個要求都重新查一次角色與 AD 成員資格，和今天的 `requireAdmin()`、`requirePerson()` 一樣；被移除的人下一個要求就失效。
@@ -229,7 +229,7 @@ Not a route rename. Each protected operation captures: actor and session, the ex
 - Role loss invalidates in-flight operations, member leases and protected SSE emissions, including notice streams that are already open. `isCurrent` on the session checks the cookie only and is not role authority.
 - Inventory to convert, beyond `requireAdmin()`: `group-policy/admin-context.ts:31`, `group-policy/authorization.ts:116` and its manual-enrolment path (`:285`), the code and invitation controls in `join/service.ts`, `session-directory-transition.ts:36,57,102`, `settings-commit.ts:329`.
 - The actual approver's identity is kept. Never rewrite `approvedBy` to the root to satisfy an old proof.
-- Codes and invitations issued by someone who later loses `join.manage`: they stop being redeemable at the moment of role loss (each redemption re-proves the issuer's current permission), and are listed as "issuer no longer permitted" until an admin revokes or re-issues them.
+- Codes and invitations issued by someone who later loses `join.manage`: the issuer's current permission is proved **before first issuance** of each admission, so no new Fleet is admitted after the role is lost; the code or invitation is listed as "issuer no longer permitted" until an admin revokes or re-issues it. What is already committed is not touched: `redeem()`'s re-delivery of an already committed, exact key / owner / credential-bound result still succeeds, and Fleets already joined through that code keep their provenance and stay connected until someone revokes them explicitly, exactly as code expiry and code revocation behave today. No issued Fleet is silently turned into released capacity.
 - The final synchronous and audit-required fences of the current code stay as they are.
 
 ### A.4 Invariants (each needs a test)
@@ -237,7 +237,7 @@ Not a route rename. Each protected operation captures: actor and session, the ex
 1. `hub.admin` exists only in the built-in admin role; the writer refuses it elsewhere.
 2. All five Hub-management permissions (`fleets.manage`, `join.manage`, `roles.assign`, `audit.view`, `hub.admin`) are persons-only. The writer checks this when assigning, and when editing a role that group assignments already reference.
 3. Delegation is compared per permission with its own scope and limit, never on flattened unions: the actor must hold that permission on the identical scope (same realm + GUID) or hub-wide; `maxFleets` granted ≤ the actor's; `expiresAt` granted ≤ the expiry of the actor's authority for that permission. No subset inference between groups.
-4. No self-increase: an actor cannot create, extend or widen an assignment naming themself, nor a group assignment that would add permissions to themself. Unknown self-membership refuses the write.
+4. No self-increase: an actor cannot create, extend or widen an assignment naming themself, nor a group assignment that would add permissions to themself. Unknown self-membership refuses the write. One named exception, not a general bypass: the configured root may activate the three self-use defaults for itself (A.5), once, through its own operation with its own audit action and admin notice; no other permission, scope or subject can pass through it.
 5. The root administrator is counted as an effective admin. Any auxiliary admin assignment may be removed, including the last one.
 6. Every write and every refused write produces one audit record in the same transaction (audit unavailable → refuse).
 
@@ -249,7 +249,7 @@ Losslessness, tested on a matrix of all three old states × overlapping rules ×
 
 - each group rule → one assignment to the role with that capability set, its `maxFleets` on the assignment;
 - `suspended`, the ever-enabled latch, retained resource state and explicit Resume are carried unchanged;
-- the configured administrator → root admin, with **no** self-use permissions added (today it has no automatic ask / publish / pair exception). The D7 defaults (member 1, manager 2, admin 8) apply to assignments made after migration, or to the root when it explicitly applies them through a previewed save.
+- the configured administrator → root admin, with **no** self-use permissions added (today it has no automatic ask / publish / pair exception). In `can()` the root's management permissions are evaluated separately from the self-use bits: a blanket "built-in admin has everything" evaluation would re-add them by accident and is not allowed. The D7 defaults (member 1, manager 2, admin 8) apply to assignments made after migration. The root gets them only through the configured-root-only activation named in A.4.4 (`role.root-self-use-activated`, previewed, audited, notified), or when another admin assigns them.
 
 Switching roles off is a new monotone transition, not a snapshot restore: it keeps current denies, revocations and suspensions. Restoring a saved pre-migration snapshot could resurrect removed permissions or revoked resources, so it is not offered. A binary downgrade is a separate schema and backup operation. Crash points and repeated disable are pinned like the migration.
 
@@ -273,5 +273,5 @@ Disclosure boundary: authorize the requested scope first; then apply a fresh tar
 - **Q1 storage.** One canonical document in the existing SQL / CAS transaction; expiry against an injected clock (A.1, A.2).
 - **Q2 directory cost.** Bounded admission as in A.6; no relaxed freshness for anything that discloses.
 - **Q3 member listing.** A bounded member reader is feasible new work; a Hub-known-only list is a valid, explicitly partial first delivery (A.6).
-- **Q4 join codes.** `join.manage` covers create, list (including the sealed-code reveal), revoke and invitations, and carries through to redemption and retained approval with the recorded actor (A.3).
+- **Q4 join codes.** `join.manage` covers create, list (including the sealed-code reveal), revoke and invitations. The issuer's current permission gates first issuance only; committed results and joined Fleets follow the existing provenance and explicit-revocation rules, with the recorded approver kept (A.3).
 - **Q5 member link.** Phases 1 and 2 stay server-side on the existing authorization epochs, leases and link refresh; no role names cross the member link.
