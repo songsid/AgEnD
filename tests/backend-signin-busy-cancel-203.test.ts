@@ -58,7 +58,7 @@ describe("a start refused because another sign-in runs (SignInDialog)", () => {
       return {};
     };
     await p.mount(h(S.SignInDialog, { backend: "grok" })); await settle(8);
-    expect(text()).toContain("already being connected");
+    expect(text()).toContain("Your claude-code account is already being connected. Cancel that connection first");
     expect(text()).not.toContain("/login");
     expect(btn("Close")).toBeDefined(); expect(btn("Cancel that connection and continue")).toBeDefined();
     fire(btn("Cancel that connection and continue"), "click"); await settle(10);
@@ -69,9 +69,12 @@ describe("a start refused because another sign-in runs (SignInDialog)", () => {
   });
   it("in Traditional Chinese", async () => {
     i18n.setLang("zh-TW", { store: false });
-    answer = r => r.url === CHECK ? { ...BUSY, message: "⚠️ 正在連接 claude-code 帳號。請先取消那個連接，再重試。" } : {};
+    // The server's sentence follows the HOST's language; the dialog words it in the page's own.
+    answer = r => r.url === CHECK ? BUSY : {};
     await p.mount(h(S.SignInDialog, { backend: "grok" })); await settle(8);
     expect(btn("取消那個連接並繼續")).toBeDefined();
+    expect(text()).toContain("正在連接 claude-code 帳號。請先取消那個連接，再重試。");
+    expect(text()).not.toContain("already being connected");
     expect(text()).not.toContain("/login");
   });
   it("a refusal that is not 'busy' (not installed, unsupported…) keeps only Close — nothing offers to cancel", async () => {

@@ -47,6 +47,7 @@ register("signin", {
     cancelSignIn: "Cancel connecting",
     cancelled: "Connecting cancelled.",
     cancelOther: "Cancel that connection and continue",
+    busy: "Your {0} account is already being connected. Cancel that connection first, then try again.",
     running: "Connecting your {0} account (started on {1}).",
     open: "Open",
     expired: "That took too long — start again.",
@@ -100,6 +101,7 @@ register("signin", {
     cancelSignIn: "取消連接",
     cancelled: "已取消連接。",
     cancelOther: "取消那個連接並繼續",
+    busy: "正在連接 {0} 帳號。請先取消那個連接，再重試。",
     running: "正在連接 {0} 帳號（從 {1} 啟動）。",
     open: "開啟",
     expired: "等太久了——請重新開始。",
@@ -361,7 +363,8 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
       ${c.publicLink ? html`<button type="button" class="btn" onClick=${() => start(true)}>${tn("goPublic")}</button>` : null}
       <button type="button" class="btn btn-primary" onClick=${() => start(false)}>${tn("go")}</button>`;
   } else if (step.kind === "message") {
-    body = html`<p class="signin-message">${step.text}</p>`;
+    // A refusal because another sign-in runs is worded here, in the page's language (the server's sentence follows ITS language, not this browser's).
+    body = html`<p class="signin-message">${step.busy ? tn("busy", shownOf(step.busy)) : step.text}</p>`;
     actions = step.busy
       ? html`<button type="button" class="btn" disabled=${busy} onClick=${close}>${tn("close")}</button>
         <button type="button" class="btn btn-danger" disabled=${busy} onClick=${cancelOther}>${tn("cancelOther")}</button>`
