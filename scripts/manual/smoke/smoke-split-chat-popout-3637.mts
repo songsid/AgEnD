@@ -24,7 +24,7 @@ mkdirSync(out, { recursive: true });
 const fx = await bootFixture({ port: Number(process.env.HP || 55896), instances: 3, classic: false });
 const receipt: any = { head: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"), dirty: !!dirty,
   scope: "Owned scratch FleetManager; actual browser/server/session/stream; fixture terminal and step reads; no CLI or live fleet", inputs, assets, cases: [] };
-const errors: string[] = [], blocked: string[] = [], jobs: Promise<unknown>[] = [];
+const errors: string[] = [], blocked: string[] = [], effects: string[] = [], jobs: Promise<unknown>[] = [];
 const theme = process.env.THEME || "light";
 const language = process.env.LANGUAGE || "zh-TW";
 const retained = process.env.RETAIN || "", oldRef = process.env.OLD_REF || "73c338516002d7be511948ed4c729b3f7255aa80";
@@ -42,6 +42,7 @@ const watch = (tab: any) => {
   tab.on("response", (response: any) => { const url = new URL(response.url()); if (url.origin === fx.base && /^\/(assets|ui\/js)\//.test(url.pathname)) jobs.push(response.body().then((bytes: Buffer) => record(assets, url.pathname, bytes))); });
 };
 ctx.on("page", watch);
+ctx.on("request", (request: any) => { const url = new URL(request.url()); if (/\/(send|command|upload|answer)/.test(url.pathname) && request.method() !== "GET") effects.push(url.pathname); });
 const page = await ctx.newPage();
 page.setDefaultTimeout(10000);
 try {
@@ -110,9 +111,11 @@ try {
       sidebar: !!document.querySelector("#sidebar"), streams: (window as any).__streams,
       controls: document.querySelectorAll("#main .hd-text").length,
       headerOverflow: [...document.querySelectorAll("#main .panel-head")].some(el => el.scrollWidth > el.clientWidth),
+      touch: [...document.querySelectorAll('.popup-pane-head button, .popup-pane-head .seg-item')].map(el => { const r = el.getBoundingClientRect(); return { width: r.width, height: r.height, coarse: matchMedia('(pointer: coarse)').matches }; }).filter(r => r.width && r.height),
       oneRow: [...document.querySelectorAll(".popup-pane-head")].every(el => { const title = el.querySelector(".panel-title")!.getBoundingClientRect(), tabs = el.querySelector(".inst-switch")!.getBoundingClientRect(), actions = el.querySelector(".panel-actions")!.getBoundingClientRect(); return Math.abs(title.top + title.height / 2 - tabs.top - tabs.height / 2) < 2 && Math.abs(actions.top + actions.height / 2 - tabs.top - tabs.height / 2) < 2; }),
       panes: [...document.querySelectorAll(".ws-pane")].map(el => { const r = el.getBoundingClientRect(); return { id: el.getAttribute("data-pane"), rect: [r.x, r.y, r.width, r.height], tabs: [...el.querySelectorAll(".inst-switch a")].map(a => a.textContent) }; }) }));
     assert.equal(geometry.headers, panes); assert.equal(geometry.controls, 1); assert.equal(geometry.overflow, false); assert.equal(geometry.headerOverflow, false); assert.equal(geometry.oneRow, true);
+    for (const r of geometry.touch) if (r.coarse) assert.ok(r.width >= 44 && r.height >= 44, JSON.stringify(r));
     assert.equal(geometry.streams.active, 1); assert.equal(geometry.streams.max, 1);
     const file = `${theme}-${language}-${label}.png`; await tab.screenshot({ path: join(out, file) }); receipt.cases.push({ label, file, geometry });
   }
@@ -204,8 +207,8 @@ try {
     }
     const writes = await page.evaluate(() => (window as any).__popoutWrites || []); assert.deepEqual(writes, []);
   }
-  assert.deepEqual(errors, []); assert.deepEqual(blocked, []);
-  receipt.errors = errors; receipt.external = blocked; receipt.scenario = scenario;
+  assert.deepEqual(errors, []); assert.deepEqual(blocked, []); assert.deepEqual(effects, []);
+  receipt.effects = effects; receipt.errors = errors; receipt.external = blocked; receipt.scenario = scenario;
 } finally {
   releaseChild!(); await ctx.close(); await fx.close(); await Promise.allSettled(jobs);
   for (const path of sources) assert.equal(hash(readFileSync(join(repo, path))), initial.get(path), "source changed during capture");
