@@ -1,0 +1,78 @@
+{
+  "source": "c10905984857e2e94e992acb14fcac4d11e282c8",
+  "ready": false,
+  "phases": [
+    {
+      "name": "build",
+      "startedAt": 1794469705283,
+      "finishedAt": 1794469715739,
+      "exitCode": 0
+    },
+    {
+      "name": "protocol",
+      "startedAt": 1794469715833,
+      "finishedAt": 1794469767599,
+      "exitCode": 0
+    },
+    {
+      "name": "member-fixture-preflight",
+      "startedAt": 1794469767600,
+      "finishedAt": 1794469776867,
+      "exitCode": 0
+    },
+    {
+      "name": "diagnose-3713",
+      "startedAt": 1794469776868,
+      "finishedAt": 1794470174227,
+      "exitCode": 1
+    },
+    {
+      "name": "remaining-acceptance",
+      "startedAt": 1794470414438,
+      "finishedAt": 1794470548798,
+      "exitCode": 1
+    }
+  ],
+  "diagnosisCleaned": true,
+  "remainderCleaned": true,
+  "remainderCleanupFailures": null,
+  "waves": [
+    {
+      "n": 20,
+      "groups": 0,
+      "authenticationMs": null,
+      "startSpanMs": 12439,
+      "elapsedMs": 30073,
+      "uses": 20,
+      "everConnected": 20,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 496054272,
+      "databaseBytes": 745472,
+      "walBytes": 4152992
+    },
+    {
+      "n": 50,
+      "groups": 0,
+      "authenticationMs": 8883,
+      "startSpanMs": 53747,
+      "elapsedMs": 68347,
+      "uses": 50,
+      "everConnected": 70,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 611786752,
+      "databaseBytes": 1437696,
+      "walBytes": 4223032
+    }
+  ],
+  "queueTextObserved": null,
+  "poolReadyAt": null,
+  "visibleCombinedConnected": [
+    "withgroups-3",
+    "withgroups-4",
+    "withgroups-1"
+  ],
+  "images": 101,
+  "maxHostLoad": 12.04,
+  "minAvailableMiB": 17668.73046875,
+  "maxContainerBytes": 1852612608
+}

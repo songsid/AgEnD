@@ -1,0 +1,293 @@
+{"check":"company join enabled","pass":true}
+{"check":"built strict discovery advertises code","pass":true}
+{"check":"desk-light-en-admin-before no horizontal overflow","pass":true}
+{"check":"desk-light-en-admin-before no raw i18n keys","pass":true}
+{"check":"desk-light-en-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-light-en-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-light-en scoped picker input and note are distinct","pass":true}
+{"check":"desk-light-en-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-light-en-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-light-en resolved picker retires its input","pass":true}
+{"check":"desk-light-en-active-code no horizontal overflow","pass":true}
+{"check":"desk-light-en-active-code no raw i18n keys","pass":true}
+{"check":"desk-light-en admin page errors","pass":true}
+{"check":"desk-dark-en-admin-before no horizontal overflow","pass":true}
+{"check":"desk-dark-en-admin-before no raw i18n keys","pass":true}
+{"check":"desk-dark-en-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-dark-en-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-dark-en scoped picker input and note are distinct","pass":true}
+{"check":"desk-dark-en-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-dark-en-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-dark-en resolved picker retires its input","pass":true}
+{"check":"desk-dark-en-active-code no horizontal overflow","pass":true}
+{"check":"desk-dark-en-active-code no raw i18n keys","pass":true}
+{"check":"desk-dark-en admin page errors","pass":true}
+{"check":"desk-light-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"desk-light-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW resolved picker retires its input","pass":true}
+{"check":"desk-light-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW admin page errors","pass":true}
+{"check":"desk-dark-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"desk-dark-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW resolved picker retires its input","pass":true}
+{"check":"desk-dark-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW admin page errors","pass":true}
+{"check":"phone-light-en-admin-before no horizontal overflow","pass":true}
+{"check":"phone-light-en-admin-before no raw i18n keys","pass":true}
+{"check":"phone-light-en-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-light-en-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-light-en scoped picker input and note are distinct","pass":true}
+{"check":"phone-light-en-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-light-en-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-light-en resolved picker retires its input","pass":true}
+{"check":"phone-light-en-active-code no horizontal overflow","pass":true}
+{"check":"phone-light-en-active-code no raw i18n keys","pass":true}
+{"check":"phone-light-en admin page errors","pass":true}
+{"check":"phone-dark-en-admin-before no horizontal overflow","pass":true}
+{"check":"phone-dark-en-admin-before no raw i18n keys","pass":true}
+{"check":"phone-dark-en-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-dark-en-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-dark-en scoped picker input and note are distinct","pass":true}
+{"check":"phone-dark-en-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-dark-en-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-dark-en resolved picker retires its input","pass":true}
+{"check":"phone-dark-en-active-code no horizontal overflow","pass":true}
+{"check":"phone-dark-en-active-code no raw i18n keys","pass":true}
+{"check":"phone-dark-en admin page errors","pass":true}
+{"check":"phone-light-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"phone-light-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW resolved picker retires its input","pass":true}
+{"check":"phone-light-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW admin page errors","pass":true}
+{"check":"phone-dark-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"phone-dark-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW resolved picker retires its input","pass":true}
+{"check":"phone-dark-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW admin page errors","pass":true}
+{"check":"desk-light-en ended code is not redisplayed","pass":true}
+{"check":"desk-light-en-ended-code no horizontal overflow","pass":true}
+{"check":"desk-light-en-ended-code no raw i18n keys","pass":true}
+{"check":"desk-light-en ended page errors","pass":true}
+{"check":"desk-dark-en ended code is not redisplayed","pass":true}
+{"check":"desk-dark-en-ended-code no horizontal overflow","pass":true}
+{"check":"desk-dark-en-ended-code no raw i18n keys","pass":true}
+{"check":"desk-dark-en ended page errors","pass":true}
+{"check":"desk-light-zh-TW ended code is not redisplayed","pass":true}
+{"check":"desk-light-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW ended page errors","pass":true}
+{"check":"desk-dark-zh-TW ended code is not redisplayed","pass":true}
+{"check":"desk-dark-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW ended page errors","pass":true}
+{"check":"phone-light-en ended code is not redisplayed","pass":true}
+{"check":"phone-light-en-ended-code no horizontal overflow","pass":true}
+{"check":"phone-light-en-ended-code no raw i18n keys","pass":true}
+{"check":"phone-light-en ended page errors","pass":true}
+{"check":"phone-dark-en ended code is not redisplayed","pass":true}
+{"check":"phone-dark-en-ended-code no horizontal overflow","pass":true}
+{"check":"phone-dark-en-ended-code no raw i18n keys","pass":true}
+{"check":"phone-dark-en ended page errors","pass":true}
+{"check":"phone-light-zh-TW ended code is not redisplayed","pass":true}
+{"check":"phone-light-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW ended page errors","pass":true}
+{"check":"phone-dark-zh-TW ended code is not redisplayed","pass":true}
+{"check":"phone-dark-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW ended page errors","pass":true}
+{"check":"admin creates 8-use code","pass":true}
+AggregateError: Owned Fleet release failed
+    at releaseFleet (/work/scripts/manual/hub-enrolment-code-campaign/fleets.mts:32:30)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Object.prepareFleet (/work/scripts/manual/hub-enrolment-code-campaign/fleets.mts:154:24)
+    at async refusalChecks (/work/scripts/manual/hub-enrolment-code-campaign/capacity.mts:176:31)
+    at async <anonymous> (/work/scripts/manual/hub-enrolment-code-campaign/capacity.mts:190:15) {
+  [errors]: [
+    browserContext.close: Target page, context or browser has been closed
+    Browser logs:
+    
+    [pid=1716][err] [1112/080205.295779:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080205.325696:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080205.337757:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080205.365466:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080205.499009:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080205.529335:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080205.569704:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080205.920876:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080205.984959:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080206.030270:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080211.894351:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080211.936704:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080211.945776:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080211.962029:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080211.963408:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080212.032240:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080212.044819:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080212.074215:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080212.083501:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080212.088888:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080212.114141:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080212.178753:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080212.326697:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080212.361041:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.039573:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.050057:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.061745:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.153864:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.177876:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.178522:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.181733:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.212448:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.219327:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.227146:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.235013:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.246175:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.282661:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080213.314301:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.572147:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.596240:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.601591:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.601755:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.601859:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.664312:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.670012:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.679126:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.689630:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.692799:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.698535:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.713677:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.721638:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.724335:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.743077:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.872244:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.909518:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080214.918339:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.328964:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.345996:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.350870:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.369698:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.371494:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.380581:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.388377:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.396077:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.403807:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.405451:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.413701:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.437725:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.479581:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.502360:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.513674:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.523655:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.639650:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.668340:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.680954:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.724813:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.760535:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.795474:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080215.849032:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080216.086265:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080216.088648:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080216.909398:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080216.944770:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080216.956897:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080216.957105:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080216.969932:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080217.016005:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080217.044467:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080217.082120:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080217.118818:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080217.197918:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080217.219184:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080217.267170:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080217.808999:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080217.859278:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080217.862453:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080217.879870:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080217.914861:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.095997:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.115606:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.273121:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.280498:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.340930:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.341207:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.440048:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.440205:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.510344:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.523547:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.678766:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.735961:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080218.772009:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080219.961042:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.027324:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.027605:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.027835:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.028061:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.085933:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.094227:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.106785:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.115182:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.120700:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.130737:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.138283:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.153518:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.164706:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080220.175964:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.082443:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.085371:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.093780:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.116859:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.121833:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.122035:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.122744:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.131274:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.139176:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.144896:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.148045:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.186159:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.186993:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.198353:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080221.202479:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080223.321651:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080223.400880:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080223.405190:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080223.416148:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080223.750128:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080223.821010:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080223.841262:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716][err] [1112/080223.870341:ERROR:net/socket/ssl_client_socket_impl.cc:949] handshake failed; returned -1, SSL error code 1, net_error -202
+    [pid=1716] <gracefully close start>
+        at async release (/work/scripts/manual/hub-enrolment-code-campaign/fleets.mts:24:45)
+        at async releaseFleet (/work/scripts/manual/hub-enrolment-code-campaign/fleets.mts:25:5)
+        at async Object.prepareFleet (/work/scripts/manual/hub-enrolment-code-campaign/fleets.mts:154:24)
+        at async refusalChecks (/work/scripts/manual/hub-enrolment-code-campaign/capacity.mts:176:31)
+        at async <anonymous> (/work/scripts/manual/hub-enrolment-code-campaign/capacity.mts:190:15) {
+      log: []
+    }
+  ]
+}
+{"ready":false,"checks":123,"error":"AggregateError: Owned Fleet release failed"}

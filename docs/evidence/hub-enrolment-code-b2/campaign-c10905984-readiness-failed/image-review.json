@@ -1,0 +1,11 @@
+{
+  "source": "c10905984857e2e94e992acb14fcac4d11e282c8",
+  "inspected": 101,
+  "method": "Existing image-check subagent, original-size static viewing.",
+  "limits": [
+    "Only withgroups1/3/4 consent and connected images exist.",
+    "No queue/combinedroster/machineoverlap proof.",
+    "Secondary placeholders/Chats errors retained.",
+    "No refusal/SKEW/style/rollback frames in this run."
+  ]
+}
