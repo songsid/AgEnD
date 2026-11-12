@@ -333,6 +333,32 @@ Working together on the board:
 
 Creating, claiming and completing a task are written to the activity log. Every tool profile except `minimal` has `task`.
 
+### When an assignee stops
+
+The agent that handed out a card is told when the card's assignee stops working on it (#3647):
+
+- the assignee crashed and is not back after 5 minutes;
+- it is paused: its sign-in ended, it hit a usage limit, or it kept failing;
+- it looks stuck;
+- it has waited on a prompt nobody answered for 10 minutes;
+- it has been quiet with the card claimed for 60 minutes. Long background work (subagents, background tasks) and waiting for a reply do not count as quiet.
+
+The dispatcher gets one `[Task board]` notice per stop, and one "working again" line when the assignee recovers. Planned restarts and updates send nothing. When a person handed out the card, a quiet assignee shows in that person's **Needs you** instead. `task(action: "list", stale: true)` lists the cards whose assignee has stopped.
+
+AgEnD only tells. It never restarts the assignee or gives the card to someone else; the dispatcher decides what to do.
+
+Change it in **Settings → Shared agent settings → Advanced → When an assignee stops**: **Tell the dispatcher** (on by default), and the minutes for each case (1 to 1440). In `fleet.yaml`:
+
+```yaml
+defaults:
+  task_board:
+    liveness:
+      enabled: true
+      quiet_minutes: 60          # quiet with a claimed card
+      prompt_minutes: 10         # waiting on a prompt
+      crash_grace_minutes: 5     # crashed and not back
+```
+
 ### On the dashboard (Fleet › Tasks)
 
 The Tasks tab is the board itself (design: [task-board](design/task-board.md), ported from taskhall):
@@ -849,9 +875,19 @@ instances:
 
 Profiles live in `~/.agend/credential-profiles/<backend>/<profile>`, under the fleet, so several agents can point at one subscription. An instance without a profile is unaffected. Only the login is separated: kiro's large runtime caches are linked back to the shared copy, and for Codex only `auth.json` differs. Switching profiles is a config change plus a restart (`update_instance_config` does both); switching to a profile that was never logged in is refused with the command to log it in. A fleet admin signs a profile in from chat with `/login <backend> <profile>`, or from the web dashboard (**AI accounts** in Settings, **Connect account**): for Claude Code, Codex (device code, `CODEX_HOME` set to the profile) and Kiro (`XDG_DATA_HOME` set to the profile) alike (#3212). On kiro a switch starts a new conversation, because kiro keeps conversations in the same store as its login (AgEnD hands the recent context over). On Codex the conversation stays. On Claude Code AgEnD copies the conversation into the new profile and resumes it there (#1753); the old profile keeps its own copy.
 
-**ClassicBot channels (#1220).** A channel in `classicBot.yaml` takes the same `backend_options.<backend>.credential_profile`, over any profile inherited from the fleet defaults (an empty or `null` value means the shared login). Its agent launches on that profile, `/usage` counts it under that subscription's row (for example `Codex (personal)`), and `kiro_engine_status` reports it. An unusable profile name stops that channel's agent from starting rather than running it on another login. Changing the profile restarts the channel's agent.
+**ClassicBot channels (#1220).** A channel in `classicBot.yaml` takes the same `backend_options.<backend>.credential_profile`, over any profile inherited from the fleet defaults (an empty or `null` value means the shared login). Its agent launches on that profile, `/usage` counts it under that subscription's row (for example `Codex (personal)`), and `kiro_engine_status` reports it. An unusable profile name stops that channel's agent from starting rather than running it on another login. Changing the profile restarts the channel's agent. You can also choose it on the dashboard: the room's settings → **Runtime & model** → **Account** (#3690). Saving there changes only that room's lines in `classicBot.yaml` and keeps your comments.
 
 `/usage`, `get_usage` and the dashboard show one row per subscription, never added together. Full reference: [configuration](configuration.md#credential-profiles-multiple-subscriptions-of-one-backend).
+
+## Reasoning effort
+
+Many CLIs let a model think harder or faster: its reasoning effort (`low`, `medium`, `high`, and on some models `xhigh` or `max`).
+
+- **The levels follow the model.** Each model offers only the levels it takes, read from the CLI's own model list: for Claude, the account's model list; for Grok, its model cache. Some models have no effort setting; they get none. When the list can't be read (an alias such as `opus`, or no cache yet), the usual levels are offered.
+- **In the chat header.** An agent whose CLI has an effort setting always shows an effort chip, **auto** when none is set (the CLI's own default). Click it, or send `/effort`, to change it. A running agent uses the new level at once; a few CLIs, such as Codex, restart the agent for it.
+- **On a phone.** `/model` lists each model with its effort and a **›**. **›** opens that model's levels; choosing one switches to that model first if it is not the one in use.
+- **In Settings.** An agent's **Settings → Runtime & model** has **Reasoning effort** under the model. It offers the levels of the model chosen above it. **Model default** means nothing is set and nothing is written. While the model field has an unsaved change, the effort field waits until you save. It is not shown for a Windows agent or a model without an effort setting.
+- Neither the chip nor the Settings field offers going back to **auto** / **Model default** once a level is set.
 
 ## Backend availability and model lists (2.2.5)
 
