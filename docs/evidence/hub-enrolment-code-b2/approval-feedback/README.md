@@ -1,0 +1,7 @@
+# Specific code-refusal guidance
+
+The authenticated browser approval answer already distinguishes denied/code-scope and denied/code-ended. B2 had lost that reason in the existing-session renderer and in the sign-in-to-page handoff. Both paths now map those closed reasons to the spec's EN/zh-TW code guidance, while other failures retain their own meaning. No server route or authority is added by this presentation change. The companion B1 correction869fe51bd preserves code-ended feedback after normal pending-request retirement; it is merged here and needs its own fresh Prism verdict.
+
+Eight mounted production-PReact cases fail first, across two reasons, both languages and both entry paths. The corrected four suites pass137/137; both native typechecks pass. Three isolated compiling mutations (scope mapping, ended mapping, sign-in reason propagation) each produce four intended semantic failures and keep the other four feedback cases green, then restore exact source. The later English ended wording was made accurate for revocation too; the final137-test run includes that wording. Hashes and fixture limits are in receipt.json. This is inert-client/session evidence, separate from real-browser/container acceptance.
+
+The next immutable campaign adds actual scoped and ended refusals through production Fleet/browser/Hub routes in EN/zh, desktop/phone. It also uses U2's existing explicit read-only retry when its initial setting read fails; it never repeats an administrative write, bypasses a bucket, changes a setting or fabricates a directory result.

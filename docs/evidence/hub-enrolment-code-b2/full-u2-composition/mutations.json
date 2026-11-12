@@ -1,0 +1,26 @@
+[
+  {
+    "guard": "page-queue",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "signin-queue",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "slot-capability",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "code-step-refresh",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  }
+]

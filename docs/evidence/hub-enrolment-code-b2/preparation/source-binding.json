@@ -1,0 +1,42 @@
+{
+  "phase": "preparation, not acceptance",
+  "dependency": "fb3d858755af7f55a5d8226679c8a00f33604749",
+  "product": {
+    "src/hub/http/compose.ts": "4b859f632de7068072e1c499a9302a58b7a2f3b809bef1cd279f41cbe0cd2d99",
+    "src/ui/hub-client.js": "1e02f55ecf878303765618b182a29c97dbfc8e80cea43547a57d1cf40b10908a",
+    "src/ui/hub-company-join.js": "05e0a9b3525d996753c6a87ea13ce4c9487491c9b21628bc4a1c44ee75595a6b",
+    "src/ui/hub-quick-pairing.js": "6487a900d980a8abbfaf6a8bed5c00f80b74a80e87b331707dfada93638db16d",
+    "src/ui/panel-hub.js": "28a32d6d288eb8d720aa5f2a608592c7d72e6873d6eed80cc6cd2654addab9fc",
+    "src/ui/hub-enrolment-code.js": "17cb6e1d424a503688598b704e6439a9ae141b56131263a3284f1816b63351c3",
+    "src/ui/hub-enrolment-code-strings.js": "7333fa5ba74235731124fc954927a20834724417961f9b67059ee42473561304",
+    "src/ui/hub-join-queue.js": "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764",
+    "src/ui/hub-join-approval.js": "3fd57606ac482707fa7cd3d47778adff6ed7c8a778c98f7ed81f70cb500ee39b"
+  },
+  "tests": {
+    "tests/hub-enrolment-code-client-b2.test.ts": "89862bc214027a768ad5b143ab572c39cf96ffa809a7af56e97575576b26d8d1",
+    "tests/hub-enrolment-code-session-b2.test.ts": "0cdb34549c858dbbf2c7627213cfeba6a67b34b5796e6f3e21d2edc020294af7",
+    "tests/hub-enrolment-code-ui-b2.test.ts": "0399fd30934e9016519da8e4f4c24fc6f904f1bfecce636437a5cdc92db1b38a",
+    "tests/hub-join-queue-b2.test.ts": "7206ef229c5c9b6bd4be92c952d165a2821309b714767b1c81befa1723316946",
+    "tests/hub-join-approval-ui-b2.test.ts": "679744707ca143233d3261992492840dab94ac96a71871a7f2fecc688ca3c00b"
+  },
+  "verification": {
+    "focused": {
+      "passed": 143,
+      "files": 10,
+      "finalMarkupComponentRecheck": 26
+    },
+    "nativeSourceTypes": "pass",
+    "nativeTestTypes": "pass",
+    "changelogFragments": 380,
+    "sourceReversals": 17
+  },
+  "pending": [
+    "U2/B1 landed plain sync",
+    "actual picker and slot",
+    "U1 closing/refusal integration",
+    "member v3 UI opt-in",
+    "PNG and real-browser SKEW",
+    "combined B-L* container acceptance"
+  ],
+  "runtimeBoundary": "inert UI fetch/client plus owned synthetic HTTPS/LDAPS session test; no live or account operation"
+}

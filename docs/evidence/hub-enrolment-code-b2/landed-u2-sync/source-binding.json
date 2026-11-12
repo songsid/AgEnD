@@ -1,0 +1,221 @@
+{
+  "phase": "landed U2/B1 composition before combined campaign",
+  "u2": "4f82fc4e3d2a02d893d44345b42de19bba839d0f",
+  "b1": "fcc9ebbce38af53521eccc14eace00a2da75c16a",
+  "merge": "44e096122176301162d07977a644433ae1d68af1",
+  "production": {
+    "src/hub/http/compose.ts": "f9e77708ab88d838a826504849615bb734c48cc7c7b1e4af58f16f3b76918131",
+    "src/settings-api.ts": "9bb16cb61de425eb9c6bfa19890c0404eddd63e0fafb0f59c85c16176c8a29e6",
+    "src/ui/hub-client.js": "6d15110dd27b2e3da883f78116a94d1525df45676474084c891987ee1dfd0d60",
+    "src/ui/hub-company-join.js": "9328ce5542f9e9b2d561af5f2d1b5bf8809f6f13274e8761aeb9c556b67b4e93",
+    "src/ui/hub-quick-pairing.js": "a65e96967cc72e25e6f14fb286b430c95cf6a9209316982f648a97dba431ac13",
+    "src/ui/panel-hub.js": "400396d5b20803593b5b29e4788d4eed2ab78b59cd1d612f3f9f5ee9b0676a30",
+    "src/ui/settings-hub.js": "639c3da643f95b6f8a5ea45fe8f3e8c8ed7db2c74841141e385211c0bc4648a2",
+    "src/ui/hub-enrolment-code.js": "966c7613113455af0e3efe40b4efd546f33b86037b13ce2df38d25cdfce16ded",
+    "src/ui/hub-enrolment-code-strings.js": "9ac95651460b6ba0f981ccc953f26a5dec1ad7c001235e36795a7457a6fc7819",
+    "src/ui/hub-join-queue.js": "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764",
+    "src/ui/hub-join-approval.js": "5c7a29bb7d47809b61f6a1b49ea0b36388075d80b98c2e6fc670f02709060e00"
+  },
+  "inherited": {
+    "src/ui/hub-group-search.js": "2bb084a1cd5999891278413805424624125e3516f2f8e68d40636adb6fa3697c",
+    "src/ui/hub-join-steps.js": "ce7af483d340b980d38e71df9d39720605234a9186ea4d8431c47074b9ab9fe2",
+    "src/ui/settings-hub-company-join.js": "dc9b60e9421c6f058a921d0ff8fb941434a860ddb78e6b17fc3cd0faa3364905",
+    "src/hub/join/client.ts": "f4551ceb36bca5bcb24a30d8bcf7b34c9b9de593fc166e7e6eee7d62c5eec287",
+    "src/hub/join/descriptor.ts": "e41887bb1a24ef2fe17d12d93efba7a29e4a7d930a3cff92c8dd651c1ae24215",
+    "src/hub/join/display.ts": "73fc62f832259830bb2eaa039530c8e801f1bc4dc3b6b2896225adcb4e5d972b",
+    "src/hub/join/local.ts": "0787bada8de263da0f9c0de8e1617a90fd3ac975876e817184cff358f4280514",
+    "src/hub/join/trust.ts": "32e8715e0cfed07dbdb214faf462b51f2c82c963ea1218414eebfcf98f011a57",
+    "src/hub/member/pairing-api.ts": "e3c7da96751d85332492b3f923150e2fd72667943a863854de137367f862bcc0",
+    "src/ui/hub-welcome.js": "85fdb004cc647322367e635ee6289564e0fcf4385a17ab4e8223f5a9d957d355",
+    "src/ui/shared/hub-owner.css": "e8d9234628f8ac9e1e5a9732d15b6ddefc00fa2eba98d2a32fe52185164264bc"
+  },
+  "tests": {
+    "tests/hub-enrolment-code-client-b2.test.ts": "3bbcd0c7c039c712a37c22204917599527b99354b6da3596fcb0d18a969f89ae",
+    "tests/hub-enrolment-code-session-b2.test.ts": "0cdb34549c858dbbf2c7627213cfeba6a67b34b5796e6f3e21d2edc020294af7",
+    "tests/hub-enrolment-code-ui-b2.test.ts": "e3abc52f9ba71fc3a365378764bc0ac9e25e8d680ee9c5c0835d1212b59c80e9",
+    "tests/hub-enrolment-code-picker-b2.test.ts": "14e5d901bcf508854e74b58e393e797b75bab5fff9e75e1a94dc136f4279e4d4",
+    "tests/hub-enrolment-code-member-ui-b2.test.ts": "e743d37baea0dbf4728ece3e1c7131bb86bf4f9f448a7053d5accb0fb9b71c3f",
+    "tests/hub-enrolment-code-slot-b2.test.ts": "07dbd5aa229f7d182b790131511d1434cb8f04c3bfde60eeb686a209d07feac4",
+    "tests/hub-join-queue-b2.test.ts": "7206ef229c5c9b6bd4be92c952d165a2821309b714767b1c81befa1723316946",
+    "tests/hub-join-approval-ui-b2.test.ts": "a31e6995e1a161b963085242cdc74baf19a3e81486fabb07ecd281c0ef72ccc7",
+    "tests/hub-u2-group-search-2932.test.ts": "43548e41da6b29e821bacf6c51a30743e564d079b6be0ca4095b43aefc3c086e",
+    "tests/hub-u2-join-steps-2932.test.ts": "ee8763d36ffb27f6c5dbc357c9e253023661c023d29fcf1b3097aef0291eb32c",
+    "tests/hub-company-join-ui.test.ts": "989900dda350ce06b8e9654092f4e9d3233433d2de012463af1787fd0e555e7e",
+    "tests/hub-u1-one-input-2921.test.ts": "2e61b03371d9ff118b2a4e12a1ff5a4383c6fddf3e3b724537a5ab2b3dd8fca9",
+    "tests/hub-u1-routes-2921.test.ts": "7c9ae5bd093c25cb8d2a5fb9ac23cd06eb8cbb808810ce71a6673a821a2fca45",
+    "tests/hub-u1-probe-2921.test.ts": "95d3a98eac9a739e40fb61f3535a06dfe4212a0326178db046a238cb7fa5a520",
+    "tests/hub-u1-setup-order-2921.test.ts": "5e749c32a5697ceff6f2a14b18944f6b5af6f9cf6cea6d1506f8350e99118166",
+    "tests/hub-pairing-api-s3c.test.ts": "506a48e72e7b0055473b11190372a1da4ec8bc9b801e088cb03b25f838cf67e0",
+    "tests/hub-ui-s3c.test.ts": "fc9c8346dbeed78a1868c2ba763341dc3e5f7c272568409cab79601a5f379d7c",
+    "tests/hub-shared-modules-a.test.ts": "fd858f7ea041f93ce32c4f53acff21a80c60388894f61f0bff0aa9465df66f77",
+    "tests/web-csp-1300.test.ts": "33dd087ebe09303ce33f95bd1ad31e6476a7d4b53cd646a203a92d9fe43111eb",
+    "tests/hub-u2-welcome-2932.test.ts": "c047e161a8392a78dbeb040aed10b7ca37d49e20da1dca2fa0a3ae3ce5d393c3",
+    "tests/hub-admin-entry-ui.test.ts": "f69c727092c312eeeef520508261d2348c748ee63551d2af4b2ed04736c8ab0c",
+    "tests/hub-enrolment-campaign-guard.test.ts": "5c1261771fe6ef03717d9f90edc893ee14a51d8c18b47c7d6120067fbccec209"
+  },
+  "scriptChanges": {
+    "scripts/manual/hub-enrolment-code-campaign/fleets.mts": "810aa1a681fb71f108138e0f074fa0dba7b13e681c606bc3252b24901e023bb2",
+    "scripts/manual/hub-enrolment-code-campaign/run.sh": "71ef646ea72e7d2c787ad7eeaec22e6235ae071182a0bcff3ad49fe4c0e59ad9",
+    "scripts/manual/hub-enrolment-code-campaign/capacity.mts": "7069e9da41d70afa990d00bbfe59ac3bf4721e9f4246d54224ad138ed8fbd09e",
+    "scripts/manual/hub-enrolment-code-campaign/entry.mts": "9ffe46703c52366bd0edda517ec3ce9c952bc7421c8cfd813b1004dbd00ab5db",
+    "scripts/manual/hub-enrolment-code-campaign/README.md": "e6114333f45393caca7eadb9c4e0a6ca77f7235b4d2804c6f370169596161f16",
+    "scripts/manual/hub-enrolment-code-campaign/guard.mjs": "d9eb3b602f5432cb2bf8f0cf31736586919faa27618c6fc10b92b1f525e37764",
+    "scripts/manual/hub-enrolment-code-campaign/host-watch.mjs": "5fef1a99e119ad87acb66e59ef03fd69c5dfd06562664f8bc1d64bd4f2ada3c1",
+    "scripts/manual/hub-enrolment-code-campaign/guard.d.mts": "d05fd79949759e71f814f96ae67971e8f87033f9da6598eb202fe65706109ce4",
+    "scripts/manual/hub-enrolment-code-campaign/Dockerfile": "bd7bf2395de32d270c6265619ad35b50e2830b5800af44e0ec78f4dec9feebf1"
+  },
+  "verification": {
+    "focusedTests": 301,
+    "files": 22,
+    "zeroSkips": true,
+    "sourceTypes": "pass",
+    "testTypes": "pass",
+    "changelog": "pass",
+    "productDeltaParity": [
+      {
+        "path": "src/hub/audit/index.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/catalog.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/client.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/compose/member.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/compose/server.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/enrolment-code.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/group-policy/admin-impact.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/group-policy/admin-inventory.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/group-policy/authorization.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/group-policy/impact-inventory.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/group-policy/resources.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/group-policy/store.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/http/compose.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/join/receipt.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/join/service.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/join/store.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/member/pairing-notices.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/pairing-notices.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/pairing.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/protocol.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/server.ts",
+        "same": true
+      },
+      {
+        "path": "src/hub/types.ts",
+        "same": true
+      },
+      {
+        "path": "src/settings-api.ts",
+        "same": true
+      },
+      {
+        "path": "src/ui/hub-client.js",
+        "same": true
+      },
+      {
+        "path": "src/ui/hub-company-join.js",
+        "same": true
+      },
+      {
+        "path": "src/ui/hub-enrolment-code-strings.js",
+        "same": true
+      },
+      {
+        "path": "src/ui/hub-enrolment-code.js",
+        "same": true
+      },
+      {
+        "path": "src/ui/hub-join-approval.js",
+        "same": true
+      },
+      {
+        "path": "src/ui/hub-join-queue.js",
+        "same": true
+      },
+      {
+        "path": "src/ui/hub-quick-pairing.js",
+        "same": true
+      },
+      {
+        "path": "src/ui/panel-hub.js",
+        "same": true
+      },
+      {
+        "path": "src/ui/settings-hub.js",
+        "same": true
+      }
+    ]
+  },
+  "hostGuardReversals": {
+    "mutants": [
+      {
+        "name": "host-load",
+        "exit": 1,
+        "semanticAssertion": true
+      },
+      {
+        "name": "host-memory",
+        "exit": 1,
+        "semanticAssertion": true
+      }
+    ],
+    "restoredSha256": "d9eb3b602f5432cb2bf8f0cf31736586919faa27618c6fc10b92b1f525e37764"
+  },
+  "boundary": "Light source verification only. No current container/browser/capacity result yet. Earlier source reversals and preparation evidence remain historical."
+}

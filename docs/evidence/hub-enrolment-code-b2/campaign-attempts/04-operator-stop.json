@@ -1,0 +1,36 @@
+{
+  "source": "42922d92824e92ad1e5f88330763a7c1055e8a53",
+  "goReference": "xmsg-1794454315558-4oi40c",
+  "window": {
+    "from": 1794454900931,
+    "until": 1794462100931
+  },
+  "sourceVersionStamp": "2.3.5-alpha.16",
+  "startedAt": 1794455251042,
+  "phases": [
+    {
+      "name": "build",
+      "startedAt": 1794455251044,
+      "finishedAt": 1794455261331,
+      "exitCode": 0
+    },
+    {
+      "name": "protocol",
+      "startedAt": 1794455261363,
+      "finishedAt": 1794455307702,
+      "exitCode": 0
+    },
+    {
+      "name": "ui-capacity",
+      "startedAt": 1794455307703,
+      "finishedAt": 1794455309126,
+      "exitCode": null
+    }
+  ],
+  "ready": false,
+  "boundary": "Source build, owned network-none container, synthetic verified LDAPS; five real Fleet web/settings/join/member services per mass wave with Agent lifecycle refused. Not npm/systemd or real accounts/AD/pilot/native Windows.",
+  "stopped": "Error: Campaign stopped: overlap or operator stop",
+  "error": "Error: ui-capacity did not complete successfully",
+  "finishedAt": 1794455309127,
+  "failureDetail": "Operator STOP before browser execution after image inspection found an imprecise resolved-DN wait. Protocol116/116 passed; resources cleaned. No capacity/UI pass."
+}
