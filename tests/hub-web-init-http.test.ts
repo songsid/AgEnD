@@ -97,6 +97,9 @@ describe("initial setup from the actual host launch session",()=>{
     expect(existsSync(join(r.home,"hub/keys/identity.json"))).toBe(false);
     expect((await r.call("/test",{ref:prepared.body.ref})).body).toEqual({ok:true});
     const committed=await r.call("/commit",{ref:prepared.body.ref});expect(committed.status).toBe(200);expect(committed.body.ok).toBe(true);
+    // Saving a seal on this non-started Fleet fixture does not imply a listening Hub.
+    expect((await r.call("")).body).toMatchObject({ initialized:true, runtime:{
+      hubId:committed.body.hubId,webOrigin:r.input.webOrigin,state:"unavailable"} });
     const runtime=await r.mount();expect(runtime.currentHolds()).toEqual([]);expect(runtime.serverHealth(r.fm.getRawFleetConfig().hub)).toBe("ready");
     // Expose this fixture's physically mounted HTTPS runtime through the production FleetManager read seam.
     r.internal.hubRuntime = runtime;

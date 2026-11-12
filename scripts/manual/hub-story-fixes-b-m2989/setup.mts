@@ -87,6 +87,14 @@ try{for(const c of matrix()){
     check(r,"geometry-"+step,geometry.page<=1&&geometry.over.length===0&&geometry.small.length===0,geometry);
     await page.evaluate(()=>{const e=document.querySelector(".p-settings>.panel-body");if(e)e.scrollTop=0;});
     await page.screenshot({path:join(OUT,`${name}-${step}.png`),fullPage:true});
+    if(step === "ready" || step === "waiting") {
+      const action=page.locator('#hub-setup a[target="_blank"], #hub-setup button').last();
+      await action.scrollIntoViewIfNeeded();
+      const box=await action.boundingBox();r["target-"+step]=box;
+      check(r,"target-visible-"+step,!!box&&box.y>=0&&box.y+box.height<=VIEWPORTS[c.device].height+1,box);
+      if(c.device==="phone")check(r,"target-tap-"+step,!!box&&box.width>=44&&box.height>=44,box);
+      await page.screenshot({path:join(OUT,`${name}-${step}-actions.png`),fullPage:true});
+    }
 
   };
   await shot("before");await page.locator("#hub-setup button").first().click();
