@@ -34,6 +34,6 @@ CI `43149964399` found that `web-app-modules-1408` still expected the pre-pop-ou
 
 ## Limits and rollback
 
-The browser chooses a window or tab and its outer chrome. Popups may be blocked; sign-in/loading may exceed the deadline. An acknowledged child followed by a declined source leave guard can retain a duplicate draft, which is safer than discarding text; neither copy auto-sends. Cross-window quoting remains normal copy/paste. The minimal popup stays one agent/document. A popup adds the normal cost of another document/stream; there is no new cross-window transport or global window manager.
+The browser chooses a window or tab and its outer chrome. Popups may be blocked; sign-in/loading may exceed the deadline. An acknowledged child followed by a declined source leave guard can retain a duplicate draft, which is safer than discarding text; neither copy auto-sends. Cross-window quoting remains normal copy/paste. The minimal popup stays one agent/document. A popup adds the normal cost of another document/stream; its bounded draft handoff creates no persistent cross-window bus or global window manager.
 
 Revert this PR to remove the entry and presentation flag. No database/config migration or new write endpoint is involved. Older tabs ignore the presentation and render the existing single chat; failed capability checks keep the source draft. Coordinator merge and release gates remain separate from browser/source acceptance.
