@@ -1,0 +1,13 @@
+{
+  "productHead": "6a39f3d1e8245df47839470c73e47957b7900bd4",
+  "testSnapshot": "41764dc52",
+  "testPath": "tests/web-agent-back-chat-3714.test.ts",
+  "inputs": {
+    "83e10d750724d6b84f2a4ecad01190201b68d76b60dc188efa5d6f9f7f4d2464": [
+      "tests/web-agent-back-chat-3714.test.ts"
+    ]
+  },
+  "assertionFailures": 11,
+  "passingControls": 8,
+  "scope": "Preimplementation19-case test snapshot; final adds the category-list control."
+}
