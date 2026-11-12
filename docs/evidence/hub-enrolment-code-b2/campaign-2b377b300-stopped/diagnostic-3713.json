@@ -1,0 +1,82 @@
+{
+  "source": "2b377b300b511d4e054255ff0f3aeeedf40cf0a2",
+  "observed": "Only the combined wave; profiling/timing overhead is disclosed, no product code or deadlines changed.",
+  "elapsedMs": 67521.071902,
+  "cpu": {
+    "user": 29554544,
+    "system": 3563131
+  },
+  "eventLoop": {
+    "idle": 10396.17718899998,
+    "active": 57124.8556339964,
+    "utilization": 0.8460305366439946
+  },
+  "delay": {
+    "maxMs": 393.478143,
+    "p99Ms": 118.358015,
+    "meanMs": 17.560891254849857
+  },
+  "gc": {
+    "count": 288,
+    "totalMs": 2110.92752712965,
+    "maxMs": 91.20878899097443
+  },
+  "sqlFs": [
+    {
+      "name": "fs.readFileSync",
+      "calls": 22585,
+      "totalMs": 1334.746795997955,
+      "maxMs": 53.38832099997671
+    },
+    {
+      "name": "fs.lstatSync",
+      "calls": 26753,
+      "totalMs": 372.3745640059933,
+      "maxMs": 27.915600000007544
+    },
+    {
+      "name": "fs.openSync",
+      "calls": 7403,
+      "totalMs": 202.1148560018628,
+      "maxMs": 51.61568899999838
+    },
+    {
+      "name": "fs.fstatSync",
+      "calls": 20,
+      "totalMs": 0.08091300021624193,
+      "maxMs": 0.007442999980412424
+    },
+    {
+      "name": "db1.prepare",
+      "calls": 25131,
+      "totalMs": 2089.4521429997403,
+      "maxMs": 14.609060000046156
+    },
+    {
+      "name": "db1.statement.get",
+      "calls": 24633,
+      "totalMs": 1508.3525689983508,
+      "maxMs": 31.833511000033468
+    },
+    {
+      "name": "fs.fsyncSync",
+      "calls": 618,
+      "totalMs": 1.359368999430444,
+      "maxMs": 0.042467999970540404
+    },
+    {
+      "name": "db1.statement.all",
+      "calls": 87,
+      "totalMs": 5.960512000427116,
+      "maxMs": 0.23580899997614324
+    },
+    {
+      "name": "db1.statement.run",
+      "calls": 411,
+      "totalMs": 20.378630999824964,
+      "maxMs": 2.909617999976035
+    }
+  ],
+  "cpuStatBefore": "usage_usec 226580675\nuser_usec 195538170\nsystem_usec 31042504\nnr_periods 2994\nnr_throttled 305\nthrottled_usec 27954494\nnr_bursts 0\nburst_usec 0\n",
+  "cpuStatAfter": "usage_usec 290138858\nuser_usec 248768898\nsystem_usec 41369959\nnr_periods 3669\nnr_throttled 422\nthrottled_usec 37812591\nnr_bursts 0\nburst_usec 0\n"
+}

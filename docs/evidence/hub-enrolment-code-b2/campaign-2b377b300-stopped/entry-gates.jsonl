@@ -1,0 +1,4 @@
+{"attempt": "23-final-observed", "at": 1794470617265, "load1": 10.48, "load5": 9.73, "canStart": false}
+{"attempt": "23-final-observed", "at": 1794470677331, "load1": 6.84, "load5": 8.86, "canStart": false}
+{"attempt": "23-final-observed", "at": 1794470737399, "load1": 7.0, "load5": 8.51, "canStart": false}
+{"attempt": "23-final-observed", "at": 1794470797472, "load1": 5.37, "load5": 7.8, "canStart": true}

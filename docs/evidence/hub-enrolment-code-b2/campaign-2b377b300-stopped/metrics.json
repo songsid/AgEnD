@@ -1,0 +1,53 @@
+{
+  "source": "2b377b300b511d4e054255ff0f3aeeedf40cf0a2",
+  "nonce": "65893adf-8d1a-4b1a-8916-05b00952856d",
+  "ready": false,
+  "waves": [
+    {
+      "n": 20,
+      "groups": 0,
+      "authenticationMs": null,
+      "startSpanMs": 9413,
+      "elapsedMs": 22663,
+      "uses": 20,
+      "everConnected": 20,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 525811712,
+      "databaseBytes": 745472,
+      "walBytes": 4173592
+    },
+    {
+      "n": 50,
+      "groups": 0,
+      "authenticationMs": 6619,
+      "startSpanMs": 43394,
+      "elapsedMs": 55416,
+      "uses": 50,
+      "everConnected": 70,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 684044288,
+      "databaseBytes": 1437696,
+      "walBytes": 4284832
+    }
+  ],
+  "checks": 229,
+  "pngs": 55,
+  "protocol": "123 checks, 9 tests passed",
+  "actualLegacyUpgradePreflightChecks": 12,
+  "maxHostLoad1": 12.29,
+  "minHostAvailableMiB": 18298.75,
+  "maxContainerBytes": 1675943936,
+  "poolReadyAt": null,
+  "queueTextObserved": 0,
+  "outerCleanup": {
+    "at": 1794471331682,
+    "nonce": "65893adf-8d1a-4b1a-8916-05b00952856d",
+    "source": "2b377b300b511d4e054255ff0f3aeeedf40cf0a2",
+    "ownedContainerAbsent": true,
+    "ownedImageAbsent": true,
+    "samplerSettled": true,
+    "conditionalLauncherExited": true,
+    "activeRemoved": true,
+    "futureRerun": false
+  }
+}

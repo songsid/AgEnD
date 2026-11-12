@@ -1,0 +1,11 @@
+# Final window attempt: stopped before the combined workload
+
+Source **2b377b300b511d4e054255ff0f3aeeedf40cf0a2** (manual observability only; product bytes equal c10905984857e2e94e992acb14fcac4d11e282c8). Backend follow-up #3726 is included. Owned 2 CPU / 3 GiB network-none source fixture, synthetic LDAPS, source version stamp 2.3.5-alpha.16. No packaged/systemd/native/pilot/real-account claim.
+
+The run started after load1/load5 gates were 5.37/7.8. Protocol checks 123/123 (9 tests) and the actual old-member upgrade preflight 12/12 passed. The 20 and natural 50 waves passed, with five real Fleet web joins per wave. Their start spans were 9.413 s and 43.394 s, and elapsed times 22.663 s and 55.416 s. Shared Hub+Fleet/harness RSS reached 684,044,288 bytes in the 50 wave; that is not isolated Hub RSS. The 50-wave DB was 1,437,696 bytes and WAL 4,284,832 bytes.
+
+The host then reached the unchanged stop ceiling (load 12.29), closing the browser workers while the combined workload was still preparing. The retained diagnostic failure is `Controlled physical pool setup refused`; control settlement records show interrupted page navigation. `poolReadyAt` was never recorded, no queue text was observed, and no 50-code+3-group overlap pass is claimed. This does not establish either a fix or a reproduction of the earlier 3/5 consent-readiness issue #3730. The 67 s CPU profile describes this different, incomplete workload and must not be used as a before/after overlap speedup.
+
+No independent SKEW/revoke/style/rollback phase ran after the global STOP. Earlier source-bound style/rollback passes remain in their own packets and do not establish a pass on this SHA. Original redeem-timeout issue #3713 remains open; #3706 and #3726 remain draft/HOLD.
+
+All 55 PNGs and source hashes are retained. See image-review.md for actual inspected states and their limits. No screenshot proves capacity or cleanup. Inner cleanup reports true, and outer-cleanup.json independently records the owned container/image absent, sampler settled, conditional launcher exited, ACTIVE removed and no planned rerun. Maximum container memory was 1,675,943,936 bytes; minimum host available memory was 18,298.75 MiB. No memory-ceiling breach is claimed.

@@ -1,0 +1,1110 @@
+{
+  "sampleCount": 47420,
+  "wallMs": 67212.083,
+  "self": [
+    {
+      "ms": 29846.26,
+      "function": "(idle)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 2390.15,
+      "function": "(garbage collector)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1343.36,
+      "function": "(program)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 651.23,
+      "function": "",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 40864
+    },
+    {
+      "ms": 454.94,
+      "function": "writev",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 451.51,
+      "function": "spawn",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 392.89,
+      "function": "spawn",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 381.21,
+      "function": "post",
+      "url": "node:inspector",
+      "line": 118
+    },
+    {
+      "ms": 343.24,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 278.96,
+      "function": "writev",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 249.02,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 248.82,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 231.54,
+      "function": "_addHeaderLine",
+      "url": "node:_http_incoming",
+      "line": 382
+    },
+    {
+      "ms": 220.59,
+      "function": "spawn",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 198.69,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 195.14,
+      "function": "",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 40856
+    },
+    {
+      "ms": 191.64,
+      "function": "writev",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 181.71,
+      "function": "runMicrotasks",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 180.71,
+      "function": "addRequest",
+      "url": "node:_http_agent",
+      "line": 373
+    },
+    {
+      "ms": 166.42,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 163.43,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 159.75,
+      "function": "writeLatin1String",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 158.83,
+      "function": "callbackTrampoline",
+      "url": "node:internal/async_hooks",
+      "line": 118
+    },
+    {
+      "ms": 150.55,
+      "function": "readFileSync",
+      "url": "node:fs",
+      "line": 433
+    },
+    {
+      "ms": 148.07,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 147.07,
+      "function": "processTicksAndRejections",
+      "url": "node:internal/process/task_queues",
+      "line": 71
+    },
+    {
+      "ms": 139.37,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 138.4,
+      "function": "start",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 133.59,
+      "function": "wrap",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 133.09,
+      "function": "dispatchWebHttp",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 29909
+    },
+    {
+      "ms": 131.53,
+      "function": "",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 30330
+    },
+    {
+      "ms": 127.07,
+      "function": "parse",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 126.05,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 124.33,
+      "function": "execute",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 122.69,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 114.15,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 109.75,
+      "function": "writevGeneric",
+      "url": "node:internal/stream_base_commons",
+      "line": 121
+    },
+    {
+      "ms": 109.04,
+      "function": "socketOnData",
+      "url": "node:_http_client",
+      "line": 608
+    },
+    {
+      "ms": 102.99,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 102.09,
+      "function": "writevGeneric",
+      "url": "node:internal/stream_base_commons",
+      "line": 121
+    },
+    {
+      "ms": 101.05,
+      "function": "parserOnIncoming",
+      "url": "node:_http_server",
+      "line": 1073
+    },
+    {
+      "ms": 100.26,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 97.86,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 95.16,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 94.49,
+      "function": "readFileUtf8",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 94.15,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 90.58,
+      "function": "shutdown",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 89.62,
+      "function": "prepare",
+      "url": "file:///work/node_modules/better-sqlite3/lib/methods/wrappers.js",
+      "line": 4
+    },
+    {
+      "ms": 85.09,
+      "function": "ClientRequest",
+      "url": "node:_http_client",
+      "line": 191
+    },
+    {
+      "ms": 84.28,
+      "function": "getPeerCertificate",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 83.65,
+      "function": "readFileUtf8",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 83.11,
+      "function": "parserOnHeadersComplete",
+      "url": "node:_http_common",
+      "line": 77
+    },
+    {
+      "ms": 80.5,
+      "function": "endReadableNT",
+      "url": "node:internal/streams/readable",
+      "line": 1692
+    },
+    {
+      "ms": 77.63,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 77.14,
+      "function": "_onMessage",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 36299
+    },
+    {
+      "ms": 73.99,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 73.51,
+      "function": "_createResponse",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 37632
+    },
+    {
+      "ms": 71.55,
+      "function": "writev",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 68.67,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 68.44,
+      "function": "writeBuffer",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 66.27,
+      "function": "ServerResponse",
+      "url": "node:_http_server",
+      "line": 197
+    },
+    {
+      "ms": 65.72,
+      "function": "inst._zod.check",
+      "url": "file:///work/node_modules/zod/v4/core/checks.js",
+      "line": 362
+    },
+    {
+      "ms": 65.32,
+      "function": "onStreamRead",
+      "url": "node:internal/stream_base_commons",
+      "line": 166
+    },
+    {
+      "ms": 63.52,
+      "function": "authorize",
+      "url": "file:///tmp/b1-dist/web-auth.js",
+      "line": 295
+    },
+    {
+      "ms": 63.33,
+      "function": "emit",
+      "url": "node:events",
+      "line": 466
+    },
+    {
+      "ms": 62.7,
+      "function": "runMicrotasks",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 60.94,
+      "function": "_onResponseReceived",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 37696
+    },
+    {
+      "ms": 58.14,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 57.85,
+      "function": "lstat",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 57.81,
+      "function": "scalarString",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 57.4,
+      "function": "Response2",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 14442
+    },
+    {
+      "ms": 57.05,
+      "function": "shutdown",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 54.65,
+      "function": "hostnameOf",
+      "url": "file:///tmp/b1-dist/web-host-guard.js",
+      "line": 13
+    },
+    {
+      "ms": 54.17,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 54.05,
+      "function": "get",
+      "url": "node:internal/streams/duplex",
+      "line": 161
+    },
+    {
+      "ms": 54.03,
+      "function": "run",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 53.83,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 52.59,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 52.42,
+      "function": "prepare",
+      "url": "file:///work/node_modules/better-sqlite3/lib/methods/wrappers.js",
+      "line": 4
+    },
+    {
+      "ms": 52.1,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    }
+  ],
+  "inclusive": [
+    {
+      "ms": 67211.36,
+      "function": "(root)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 29846.26,
+      "function": "(idle)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 12394.92,
+      "function": "parserOnHeadersComplete",
+      "url": "node:_http_common",
+      "line": 77
+    },
+    {
+      "ms": 12232.17,
+      "function": "parserOnIncoming",
+      "url": "node:_http_server",
+      "line": 1073
+    },
+    {
+      "ms": 11663.4,
+      "function": "emit",
+      "url": "node:events",
+      "line": 466
+    },
+    {
+      "ms": 6888.18,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 6429.0,
+      "function": "callbackTrampoline",
+      "url": "node:internal/async_hooks",
+      "line": 118
+    },
+    {
+      "ms": 5761.07,
+      "function": "processTicksAndRejections",
+      "url": "node:internal/process/task_queues",
+      "line": 71
+    },
+    {
+      "ms": 4486.34,
+      "function": "handle",
+      "url": "file:///work/src/hub/http/compose.ts",
+      "line": 7
+    },
+    {
+      "ms": 4363.15,
+      "function": "processTimers",
+      "url": "node:internal/timers",
+      "line": 506
+    },
+    {
+      "ms": 4255.16,
+      "function": "listOnTimeout",
+      "url": "node:internal/timers",
+      "line": 526
+    },
+    {
+      "ms": 3633.38,
+      "function": "",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 30330
+    },
+    {
+      "ms": 3491.39,
+      "function": "dispatchWebHttp",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 29909
+    },
+    {
+      "ms": 3406.88,
+      "function": "processImmediate",
+      "url": "node:internal/timers",
+      "line": 436
+    },
+    {
+      "ms": 3321.48,
+      "function": "",
+      "url": "file:///work/src/hub/http/compose.ts",
+      "line": 1
+    },
+    {
+      "ms": 3319.69,
+      "function": "live",
+      "url": "file:///work/src/hub/http/core.ts",
+      "line": 1
+    },
+    {
+      "ms": 3312.36,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 3265.01,
+      "function": "runMicrotasks",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 3087.77,
+      "function": "",
+      "url": "file:///work/src/hub/settings-directory-mount.ts",
+      "line": 1
+    },
+    {
+      "ms": 3077.32,
+      "function": "inspect",
+      "url": "file:///work/src/hub/settings-directory-decision.ts",
+      "line": 7
+    },
+    {
+      "ms": 2390.15,
+      "function": "(garbage collector)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 2370.47,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 2190.72,
+      "function": "read",
+      "url": "file:///work/src/hub/store.ts",
+      "line": 1
+    },
+    {
+      "ms": 2079.11,
+      "function": "",
+      "url": "file:///work/src/hub/settings-directory-mount.ts",
+      "line": 1
+    },
+    {
+      "ms": 2064.79,
+      "function": "inspect",
+      "url": "file:///work/src/hub/settings-directory-decision.ts",
+      "line": 7
+    },
+    {
+      "ms": 1944.9,
+      "function": "runNextTicks",
+      "url": "node:internal/process/task_queues",
+      "line": 62
+    },
+    {
+      "ms": 1942.64,
+      "function": "runMicrotasks",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1892.03,
+      "function": "",
+      "url": "file:///work/src/hub/socket.ts",
+      "line": 1
+    },
+    {
+      "ms": 1821.79,
+      "function": "current",
+      "url": "file:///work/src/hub/socket.ts",
+      "line": 1
+    },
+    {
+      "ms": 1820.66,
+      "function": "",
+      "url": "file:///work/src/hub/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 1609.47,
+      "function": "settingsNext",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 30292
+    },
+    {
+      "ms": 1594.18,
+      "function": "",
+      "url": "file:///work/src/hub/join/http.ts",
+      "line": 1
+    },
+    {
+      "ms": 1464.98,
+      "function": "read",
+      "url": "file:///work/src/hub/store.ts",
+      "line": 1
+    },
+    {
+      "ms": 1423.83,
+      "function": "handleWebRequest",
+      "url": "file:///tmp/b1-dist/web-api.js",
+      "line": 2572
+    },
+    {
+      "ms": 1377.02,
+      "function": "",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 5405
+    },
+    {
+      "ms": 1374.68,
+      "function": "measureSyncWork",
+      "url": "file:///tmp/b1-dist/sync-work-attribution.js",
+      "line": 13
+    },
+    {
+      "ms": 1371.22,
+      "function": "",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 5408
+    },
+    {
+      "ms": 1358.61,
+      "function": "runDeliveryOutboxPump",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 5412
+    },
+    {
+      "ms": 1343.36,
+      "function": "(program)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1305.87,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 1251.82,
+      "function": "onStreamRead",
+      "url": "node:internal/stream_base_commons",
+      "line": 166
+    },
+    {
+      "ms": 1248.4,
+      "function": "endReadableNT",
+      "url": "node:internal/streams/readable",
+      "line": 1692
+    },
+    {
+      "ms": 1134.91,
+      "function": "emit",
+      "url": "node:events",
+      "line": 466
+    },
+    {
+      "ms": 1105.34,
+      "function": "Readable.push",
+      "url": "node:internal/streams/readable",
+      "line": 387
+    },
+    {
+      "ms": 1096.25,
+      "function": "readableAddChunkPushByteMode",
+      "url": "node:internal/streams/readable",
+      "line": 463
+    },
+    {
+      "ms": 1083.97,
+      "function": "addChunk",
+      "url": "node:internal/streams/readable",
+      "line": 550
+    },
+    {
+      "ms": 1046.61,
+      "function": "emit",
+      "url": "node:events",
+      "line": 466
+    },
+    {
+      "ms": 1046.59,
+      "function": "bindingCurrent",
+      "url": "file:///work/src/hub/pairing.ts",
+      "line": 1
+    },
+    {
+      "ms": 1037.65,
+      "function": "",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 36376
+    },
+    {
+      "ms": 1018.9,
+      "function": "emit",
+      "url": "node:events",
+      "line": 466
+    },
+    {
+      "ms": 956.7,
+      "function": "onceWrapper",
+      "url": "node:events",
+      "line": 628
+    },
+    {
+      "ms": 948.75,
+      "function": "onend",
+      "url": "node:internal/streams/readable",
+      "line": 946
+    },
+    {
+      "ms": 945.29,
+      "function": "end",
+      "url": "node:_http_outgoing",
+      "line": 1087
+    },
+    {
+      "ms": 908.08,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 881.94,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 871.99,
+      "function": "clearBuffer",
+      "url": "node:internal/streams/writable",
+      "line": 744
+    },
+    {
+      "ms": 871.99,
+      "function": "Writable.uncork",
+      "url": "node:internal/streams/writable",
+      "line": 520
+    },
+    {
+      "ms": 866.53,
+      "function": "doWrite",
+      "url": "node:internal/streams/writable",
+      "line": 587
+    },
+    {
+      "ms": 859.24,
+      "function": "signIn",
+      "url": "file:///work/src/hub/sessions.ts",
+      "line": 1
+    },
+    {
+      "ms": 845.21,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 840.86,
+      "function": "atomic",
+      "url": "file:///work/src/hub/http/core.ts",
+      "line": 1
+    },
+    {
+      "ms": 776.11,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 772.68,
+      "function": "",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 40864
+    },
+    {
+      "ms": 769.83,
+      "function": "current",
+      "url": "file:///work/src/hub/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 767.83,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 727.8,
+      "function": "wave",
+      "url": "file:///work/scripts/manual/hub-enrolment-code-campaign/capacity.mts",
+      "line": 1
+    },
+    {
+      "ms": 718.27,
+      "function": "prepareFleet",
+      "url": "file:///work/scripts/manual/hub-enrolment-code-campaign/fleets.mts",
+      "line": 1
+    },
+    {
+      "ms": 718.27,
+      "function": "",
+      "url": "file:///work/scripts/manual/hub-enrolment-code-campaign/capacity.mts",
+      "line": 1
+    },
+    {
+      "ms": 688.28,
+      "function": "",
+      "url": "file:///work/src/hub/settings-directory-mount.ts",
+      "line": 1
+    },
+    {
+      "ms": 686.1,
+      "function": "inspect",
+      "url": "file:///work/src/hub/settings-directory-decision.ts",
+      "line": 7
+    },
+    {
+      "ms": 684.37,
+      "function": "makeTestCerts",
+      "url": "file:///work/tests/support/hub-init-fixtures.ts",
+      "line": 1
+    },
+    {
+      "ms": 683.73,
+      "function": "challenge",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 657.51,
+      "function": "policyRow",
+      "url": "file:///work/src/hub/settings-directory-decision.ts",
+      "line": 7
+    },
+    {
+      "ms": 637.95,
+      "function": "socketOnData",
+      "url": "node:_http_client",
+      "line": 608
+    },
+    {
+      "ms": 630.08,
+      "function": "_onResponseReceived",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 37696
+    },
+    {
+      "ms": 611.99,
+      "function": "Socket._writev",
+      "url": "node:net",
+      "line": 973
+    },
+    {
+      "ms": 606.29,
+      "function": "Socket._writeGeneric",
+      "url": "node:net",
+      "line": 936
+    },
+    {
+      "ms": 578.24,
+      "function": "writevGeneric",
+      "url": "node:internal/stream_base_commons",
+      "line": 121
+    },
+    {
+      "ms": 572.78,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 566.25,
+      "function": "",
+      "url": "file:///work/src/hub/server.ts",
+      "line": 1
+    }
+  ],
+  "files": [
+    {
+      "url": "(idle)",
+      "selfMs": 29846.26
+    },
+    {
+      "url": "file:///work/src/hub/validation.ts",
+      "selfMs": 5060.16
+    },
+    {
+      "url": "",
+      "selfMs": 3743.67
+    },
+    {
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "selfMs": 2927.87
+    },
+    {
+      "url": "(garbage collector)",
+      "selfMs": 2390.15
+    },
+    {
+      "url": "(program)",
+      "selfMs": 1343.36
+    },
+    {
+      "url": "file:///work/node_modules/zod/v4/core/schemas.js",
+      "selfMs": 1202.01
+    },
+    {
+      "url": "writev",
+      "selfMs": 1199.21
+    },
+    {
+      "url": "spawn",
+      "selfMs": 1064.98
+    },
+    {
+      "url": "file:///work/node_modules/zod/v4/core/checks.js",
+      "selfMs": 731.0
+    },
+    {
+      "url": "file:///work/node_modules/better-sqlite3/lib/methods/wrappers.js",
+      "selfMs": 649.73
+    },
+    {
+      "url": "node:events",
+      "selfMs": 593.52
+    },
+    {
+      "url": "node:internal/stream_base_commons",
+      "selfMs": 564.94
+    },
+    {
+      "url": "node:fs",
+      "selfMs": 551.69
+    },
+    {
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "selfMs": 536.69
+    },
+    {
+      "url": "node:internal/streams/readable",
+      "selfMs": 516.11
+    },
+    {
+      "url": "file:///work/scripts/manual/hub-enrolment-code-campaign/diagnostics.mts",
+      "selfMs": 475.0
+    },
+    {
+      "url": "node:_http_incoming",
+      "selfMs": 403.9
+    },
+    {
+      "url": "file:///work/node_modules/better-sqlite3/lib/database.js",
+      "selfMs": 403.32
+    },
+    {
+      "url": "init",
+      "selfMs": 400.12
+    },
+    {
+      "url": "node:inspector",
+      "selfMs": 381.21
+    },
+    {
+      "url": "node:net",
+      "selfMs": 374.21
+    },
+    {
+      "url": "node:_http_server",
+      "selfMs": 367.94
+    },
+    {
+      "url": "node:_http_agent",
+      "selfMs": 363.25
+    },
+    {
+      "url": "node:internal/async_hooks",
+      "selfMs": 361.97
+    },
+    {
+      "url": "node:_http_outgoing",
+      "selfMs": 353.47
+    },
+    {
+      "url": "node:_http_client",
+      "selfMs": 321.99
+    },
+    {
+      "url": "readFileUtf8",
+      "selfMs": 305.06
+    },
+    {
+      "url": "lstat",
+      "selfMs": 297.99
+    },
+    {
+      "url": "file:///tmp/b1-dist/web-auth.js",
+      "selfMs": 275.54
+    },
+    {
+      "url": "node:_http_common",
+      "selfMs": 272.72
+    },
+    {
+      "url": "runMicrotasks",
+      "selfMs": 260.37
+    },
+    {
+      "url": "node:internal/tls/wrap",
+      "selfMs": 250.65
+    },
+    {
+      "url": "export",
+      "selfMs": 237.37
+    },
+    {
+      "url": "node:internal/process/task_queues",
+      "selfMs": 228.16
+    }
+  ]
+}
