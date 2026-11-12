@@ -28,6 +28,9 @@ register("act", {
     lvl_text: "Matched by the reply's text", lvl_time: "Matched by time", lvl_turn: "Shown above the last reply of this turn", lvl_none: "Not tied to a reply",
     partial: "Earlier steps of this turn are not loaded.", earlier: "Show {0} earlier steps", calls: "{0} calls",
     menuActivity: "Show activity", menuThinking: "Show thinking",
+    quiet: "no new record for {0}",
+    statusOnly: "This agent's steps are not shown in the chat; this line only says it is working.",
+    waiting: "Nothing written yet. The agent records each thought and tool call as it finishes, so they show up here one by one.",
   },
   "zh-TW": {
     working: "處理中…", history: "工具歷程", activity: "活動歷程", usedTools: "用了 {0} 個工具", usedTool: "用了 1 個工具",
@@ -35,10 +38,15 @@ register("act", {
     lvl_text: "依回覆的文字對應", lvl_time: "依時間對應", lvl_turn: "顯示在這一輪最後一則回覆上方", lvl_none: "沒有對應到回覆",
     partial: "這一輪較早的步驟尚未載入。", earlier: "顯示更早的 {0} 個步驟", calls: "{0} 次呼叫",
     menuActivity: "顯示活動", menuThinking: "顯示思考",
+    quiet: "{0} 沒有新紀錄",
+    statusOnly: "這個 agent 的步驟不會顯示在對話裡；這一行只表示它正在處理。",
+    waiting: "目前還沒有紀錄。Agent 會在每個思考或工具呼叫完成時才寫入，完成後會一個一個出現在這裡。",
   },
 });
 const ta = (key, ...a) => t(`act.${key}`, ...a);
 
+/** A live group whose newest step is this old (and nothing is running) says so: still thinking, not stuck. */
+export const QUIET_MS = 15000;
 /** A group shows this many rows, the newest; "Show N earlier steps" adds EARLIER_STEP more each time. */
 export const SHOWN_MAX = 30;
 /** This many consecutive calls of one tool (Read, Grep…) are folded into one line that opens to them (Multica's rule: two are worth two lines, five are one act). */
@@ -146,8 +154,11 @@ export function ActivityBlock({ group, ctx, now: clock }) {
   const span = live ? (start ? now - start : 0) : (start && end ? end - start : 0);
   const dur = elapsed(span);
   const inferred = group.level !== "id" && group.level !== "live" ? ta(`lvl_${group.level}`) : "";
+  // (Paperclip's "no output for 40s - still running"): the newest step is old and no call is running — the agent is
+  // still thinking (the CLIs write a thought only when it ends), not stuck. Said, so a long silence does not look like a hang.
+  const quiet = live && last && last.ts && !(last.kind === "tool" && last.status === "running") ? now - last.ts : 0;
   const summary = live
-    ? { icon: null, title: last ? stepLine(last, ctx.paths) : ta("working"), meta: [tools ? ta(tools === 1 ? "tool" : "tools", tools) : "", dur].filter(Boolean).join(" · ") }
+    ? { icon: null, title: last ? stepLine(last, ctx.paths) : ta("working"), meta: [tools ? ta(tools === 1 ? "tool" : "tools", tools) : "", dur, quiet >= QUIET_MS ? ta("quiet", elapsed(quiet)) : ""].filter(Boolean).join(" · ") }
     : { icon: "tasks", title: tools ? `${ta("history")} · ${tools === 1 ? ta("usedTool") : ta("usedTools", tools)}` : `${ta("activity")} · ${rows.length === 1 ? ta("stepN") : ta("stepsN", countOf(rows))}`, meta: dur };
   const list = (items) => {
     const newest = live ? rows[all - 1] : null;
@@ -168,12 +179,13 @@ export function ActivityBlock({ group, ctx, now: clock }) {
       ${group.partial ? html`<p class="note act-partial">${ta("partial")}</p>` : null}
       ${inferred ? html`<p class="note act-lvl">${ta("noteInferred", inferred)}</p>` : null}
       ${skipped ? html`<button type="button" class="btn btn-sm act-earlier" onClick=${() => setMore(more + EARLIER_STEP)}>${ta("earlier", Math.min(skipped, EARLIER_STEP))}</button>` : null}
-      ${shown.length ? list(shown) : null}
+      ${shown.length ? list(shown) : live ? html`<p class="note act-waiting">${ta(group.statusOnly ? "statusOnly" : "waiting")}</p>` : null}
     </div></details>`;
 }
 
 /** Nothing worth a block: no row of the kinds shown once thinking is hidden (a turn with no step shows no block). */
 export function isEmptyGroup(group, ctx) {
+  if (group.busy && !group.ended) return false;   // the agent is working: the live line ("Working…") is shown, even with no step to show yet
   const shown = (s) => ctx.thinking || s.kind !== "thinking";
   return !group.items.some(shown) && !group.trailing.some(shown);
 }
@@ -204,10 +216,29 @@ export const activityInfo = (name) => memory.get(name)?.info ?? null;
  * The thread's rows with each turn's group put in, from what this page already knows of `name` — also for a chat shown
  * again from memory, before its feed reads anything. No steps (or a server that does not offer them): the rows as they are.
  */
-export function composeActivity(name, rows, now = Date.now()) {
+export function composeActivity(name, rows, now = Date.now(), opts = {}) {
   const s = memory.get(name);
-  if (!s || s.dead || s.info.level === "off" || !s.steps.length) return rows;
-  return composeRows(rows, groupSteps(rows, s.steps, { now, complete: s.complete }));
+  if (!s || s.info.level === "off") return rows;
+  const busy = opts.busy === true;
+  // a backend whose steps are not shown in the chat (the server said `supported: false`: Codex until its real fixture
+  // (#3709 R6), muse, opencode, kiro), or a transcript with no step yet, still has the "Working…" line while the agent is working.
+  // It comes from the page's busy state alone — nothing is read from a transcript or the pane. Not busy, or the first answer not
+  // in yet (`supported` null): nothing.
+  if (s.info.supported === false || (s.info.supported !== null && !s.dead && !s.steps.length)) return busy ? statusRows(rows, opts.since, s.info.supported === false) : rows;
+  if (s.dead || !s.steps.length) return rows;
+  return composeRows(rows, groupSteps(rows, s.steps, { now, complete: s.complete, busy }));
+}
+
+/**
+ * The thread's rows with ONE live group that holds no step: the "Working…" line and how long, for an agent whose steps the chat
+ * does not show (`statusOnly`) or whose transcript has none yet. `since`: epoch ms the agent began working, as this page saw it
+ * (the working bar's own clock), else the last prompt's time; none known: no elapsed time.
+ */
+function statusRows(rows, since, statusOnly) {
+  let from = Number.isFinite(since) ? since : 0;
+  if (!from) { for (let i = rows.length - 1; i >= 0; i--) if (rows[i].role === "user") { const t = Date.parse(rows[i].ts); if (Number.isFinite(t)) from = t; break; } }
+  const live = { key: "act:status", turn: "status", n: 0, level: "live", rowKey: null, items: [], trailing: [], ts: from, from, to: 0, ended: false, turnEnded: false, busy: true, ...(statusOnly ? { statusOnly: true } : {}) };
+  return composeRows(rows, { groups: [], live });
 }
 
 /**
@@ -217,12 +248,14 @@ export function composeActivity(name, rows, now = Date.now()) {
  * (a 403/404, `enabled: false`, a backend with no transcript) ends it for good for this page; an agent whose tool_progress
  * is off answers `level: "off"` and no steps — not for good: the setting may be turned on, and the next read sees it.
  *
+ * `working()`: the page knows the agent is working now — a turn with nothing to show yet then has its "Working…" line.
+ *
  * Live: the stream's `steps_tick`; and a poll of POLL_MS while `polling()` — the public link's, AND a page whose stream has
  * fallen back to polling (SSE silent behind a relay or tunnel): the poll answers carry no `steps_tick`, so without this the
  * block only caught up on the renewal, after the reply.
  */
 export function observeActivity(name, opts) {
-  const { fetcher = (u, o) => fetch(u, o), changed, streamOn, polling: pollingOpt = false, wantThinking = () => true, setTimer = setInterval, clearTimer = clearInterval, shown = () => !globalThis.document?.hidden, now = Date.now } = opts;
+  const { fetcher = (u, o) => fetch(u, o), changed, streamOn, polling: pollingOpt = false, wantThinking = () => true, working = () => false, setTimer = setInterval, clearTimer = clearInterval, shown = () => !globalThis.document?.hidden, now = Date.now } = opts;
   let s = memory.get(name);
   if (!s) memory.set(name, s = { steps: [], key: null, after: null, skip: false, before: null, ev: 0, complete: false, asked: null, info: { supported: null, thinking: false }, dead: false });
   let running = false, busy = false, again = false;
@@ -305,7 +338,7 @@ export function observeActivity(name, opts) {
   }
   function stop() { running = false; while (offs.length) offs.pop()(); }
   /** The thread's rows with each turn's group put in (the rows themselves untouched). */
-  const compose = (rows) => composeActivity(name, rows, now());
+  const compose = (rows) => composeActivity(name, rows, now(), { busy: !!working() });
   /** Read what is new now (a message came or went): once, serialized with every other read. */
   const nudge = () => { if (running && !s.dead) void pull(); };
   return { start, stop, nudge, compose, info: () => s.info, dead: () => s.dead };

@@ -68,7 +68,8 @@ function turnsOf(steps) {
  * @param rows  ledger rows in order
  * @param steps steps in file order
  * @param opts  { now?: ms, complete?: boolean — the steps reach back to the transcript's start (false: the first turn may
- *              lack its beginning), instance? }
+ *              lack its beginning), busy?: boolean — the page knows the agent is working now (a turn with no step
+ *              to show yet still gets its live line), instance? }
  * @returns { groups: Group[], live: Group|null }
  *   Group = { key, turn, n, level, rowKey: string|null, items: Step[], trailing: Step[], ts: number, from, to (ms: when the
  *   work for the reply began — the turn's start, or the previous reply's call — and when it ended; `to` 0 while live), partial?: true,
@@ -165,7 +166,18 @@ export function groupSteps(rows, steps, opts = {}) {
       if (live) groups.push({ ...live, level: "none", ended: true });
       live = { ...base, level: "live", rowKey: null, ended: false };
     });
-    if (!tail.length) return;
+    if (!tail.length) {
+      // nothing shown yet, but the agent is working on this turn (the page says so: `busy`). Some CLIs write a
+      // thought only when it ends — grok's first record of a turn is the prompt, and a long thought leaves no other record
+      // for minutes — so without this the chat showed no block at all while the agent was plainly thinking. An EMPTY live
+      // group: the "Working…" line and its elapsed time, nothing guessed. Same key as the group the first step will make
+      // (no remount). Only the newest turn, only while it has not ended, only while the page knows the agent is busy: a
+      // turn that never wrote its end (a crash, an interrupt) is never a spinner on its own.
+      if (opts.busy && !ended && lastTurn && !live && first) {
+        live = { key: `act:${tkey}:${n}`, turn: turn.turn, n, level: "live", rowKey: null, items: [], trailing: [], ts: from, from, to: 0, ended: false, turnEnded: false };
+      }
+      return;
+    }
     // What came after the last reply.
     if (!ended && lastTurn) {
       // Still going. A reply whose row has not arrived yet is the live group, and this is more work after it.
@@ -184,6 +196,7 @@ export function groupSteps(rows, steps, opts = {}) {
     if (lastPlaced) { lastPlaced.trailing = tail; lastPlaced.to = tail[tail.length - 1].ts || lastPlaced.to; return; }
     groups.push({ key: `act:${tkey}:${n}`, turn: turn.turn, n, level: "none", rowKey: null, items: tail, trailing: [], ts: tail[0].ts || 0, from, to: tail[tail.length - 1].ts || 0, ended: true, turnEnded: ended, ...(partial && !segs.length ? { partial: true } : {}) });
   });
+  if (live && opts.busy) live.busy = true;               // the page knows the agent is working: this live group is shown even when it holds nothing to show yet
   return { groups, live };
 }
 
