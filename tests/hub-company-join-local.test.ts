@@ -456,7 +456,7 @@ describe("alpha.2 findings 3/4: a held attempt, a new Start and another session"
     const { w, first } = await refused(notFound);
     expect(w.controller.current(other(w))).toMatchObject({ operationId: first.operationId, state: "held", reason: "code-denied", foreign: true, handoffId: null });
     expect(w.controller.current(w.session)).toMatchObject({ operationId: first.operationId, handoffId: first.handoffId });
-    expect(w.controller.current(w.session).foreign).toBeUndefined();
+    expect((w.controller.current(w.session) as { foreign?: boolean } | null)?.foreign).toBeUndefined();
     await w.controller.cancel(first.operationId, w.session);
     expect(w.controller.current(other(w))).toBeNull();
     w.controller.close();
