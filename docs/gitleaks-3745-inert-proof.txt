@@ -1,2 +1,1 @@
-Inert #3745 security scan proof: commit 31; never merge this branch.
-github_token = "ghp_cccccccccccccccccccccccccccccccccccc"
+Inert #3745 security scan proof: commit 32; never merge this branch.
