@@ -138,10 +138,10 @@ describe("the card's agent share and pending rows", () => {
       const setExposed = vi.fn(async () => ({ ok: true, pending: { expiresAt: 9 }, view: legacy, settled: new Promise(() => {}) }));
       const pg = await cardWith(fakeClient([legacy], setExposed));
       const why = pg.root.querySelector(".hub-exposure-republish")!;
-      expect(why.textContent).toContain(lang === "en" ? "Hub questions are refused until you share this agent again" : "重新公開這個 Agent 之前");
+      expect(why.textContent).toContain(lang === "en" ? "Hub questions are refused until you share this agent again" : "重新分享這個 Agent 之前");
       expect((pg.root.querySelector(".hub-exposure input") as any).disabled).toBe(false);          // withdraw stays possible
       const again = why.querySelector("button") as any;
-      expect(again.textContent).toBe(lang === "en" ? "Share again" : "重新公開");
+      expect(again.textContent).toBe(lang === "en" ? "Share again" : "重新分享");
       again.click();
       await until(() => setExposed.mock.calls.length > 0);
       expect(setExposed).toHaveBeenCalledWith("atlas", true, 3, { dataViewId: "agent", tools: [] });

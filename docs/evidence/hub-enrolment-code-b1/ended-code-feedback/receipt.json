@@ -1,0 +1,47 @@
+{
+  "reviewedBase": "fcc9ebbce38af53521eccc14eace00a2da75c16a",
+  "scope": "Authenticated browser feedback only, before the unchanged pending admission branch. No grant, consume, issue, replay, quota, audit or machine-answer expansion.",
+  "failFirst": {
+    "failed": 1,
+    "unselected": 20,
+    "actual": "conflict",
+    "expected": {
+      "code": "denied",
+      "reason": "code-ended"
+    },
+    "fixture": "Browser Origin/state/open and company sign-in occur before actual administrator revoke."
+  },
+  "restored": {
+    "passed": 69,
+    "files": 5,
+    "skipped": 0,
+    "nativeSourceTypes": "pass",
+    "nativeTestTypes": "pass"
+  },
+  "selectedControls": {
+    "passed": 3,
+    "unselected": 20,
+    "cases": [
+      "normal revoke of unissued pending flow",
+      "issued flow still conflict/recovery",
+      "policy retirement with a still-live code remains conflict"
+    ]
+  },
+  "mutations": [
+    {
+      "mutation": "classification",
+      "exit": 1,
+      "semanticFailure": true
+    },
+    {
+      "mutation": "live-code-fence",
+      "exit": 1,
+      "semanticFailure": true
+    }
+  ],
+  "sourceHashes": {
+    "src/hub/join/service.ts": "6be7c842c050783b9c5d49417ce53609a0e681b46470325912d0a142495c915d",
+    "tests/hub-enrolment-code-http-b1.test.ts": "fee3a2736c0955c085121b0d6e9d54fc567f96f079e992fd71b5142b6938be5c"
+  },
+  "boundary": "Owned initialized Hub/SQLite/HTTPS and synthetic LDAPS, not a new container/packaged/live directory/Fleet/UI run. Historical B1 evidence retains its original SHA and limits."
+}

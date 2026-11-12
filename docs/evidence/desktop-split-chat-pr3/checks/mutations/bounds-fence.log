@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+·····x····
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  03:39:55
+   Duration  437ms (transform 172ms, setup 104ms, import 122ms, tests 56ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-gestures-3637.test.ts > a changed chat boundary or modal cancels instead of committing stale coordinates
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      Object {
+        "ratio": 0.6370967741935484,
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/web-chat-workspace-gestures-3637.test.ts:56:90
+     54|   manager.sashDown(event()); p.window.dispatchEvent({ type: "pointermo…
+     55|   root.getBoundingClientRect = () => ({ left: 120, top: 50, width: 980…
+     56|   p.window.dispatchEvent({ type: "pointerup", pointerId: 7 } as any); …
+       |                                                                                          ^
+     57|   manager.sashDown(event()); p.window.dispatchEvent({ type: "pointermo…
+     58|   const dialog = p.document.createElement("dialog"); dialog.setAttribu…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

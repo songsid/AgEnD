@@ -108,9 +108,9 @@ export type HubMemberFrame =
   | HubFrame<"attachment.put", HubAttachmentChunk>
   | HubFrame<"exposure.quota", HubExposureQuota>
   | HubFrame<"pairing.notice-ack", { id: string }>;
-export interface HubPairingNotice {
-  id: string; fleetId: string; generation: number; label: string; at: number; source: "group" | "manual"; revoked: boolean;
-}
+export type HubPairingNotice = {
+  id: string; fleetId: string; generation: number; label: string; at: number;  revoked: boolean;
+} & ({ source: "group" | "manual"; codeId?: never } | { source: "code"; codeId: string });
 export type HubServerFrame =
   | HubFrame<"welcome", HubWelcome>
   | HubFrame<"question", HubQuestion>
@@ -122,7 +122,8 @@ export type HubServerFrame =
   | HubFrame<"attachment.chunk", HubAttachmentChunk>
   | HubFrame<"attachment.ack", { id: string; offset: number }>
   | HubFrame<"pairing.notice", HubPairingNotice & { source: "group" }>
-  | HubFrame<"pairing.notice-v2", HubPairingNotice>;
+  | HubFrame<"pairing.notice-v2", Exclude<HubPairingNotice, { source: "code" }>>
+  | HubFrame<"pairing.notice-v3", HubPairingNotice>;
 export interface HubServerTransport {
   start(): Promise<void>;
   send(fleetId: FleetId, frame: HubServerFrame): Promise<void>;
@@ -183,7 +184,7 @@ export interface HubAuditRecord {
   action: string; result: "allowed" | "denied" | "held" | "completed";
   messageId?: MessageId; roomId?: RoomId; fleetId?: FleetId; exposureId?: ExposureId;
   ownerAtEvent?: PersonKey; grantId?: GrantId; grantRevision?: Epoch;
-  policyVersion: Epoch; contentRef?: string; reasonCode?: string;
+  policyVersion: Epoch; contentRef?: string; reasonCode?: string; codeId?: string;
 }
 
 export interface HubMode {

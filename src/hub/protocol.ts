@@ -9,7 +9,7 @@ export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] a
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending. */
-export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "member-leave-v1"];
+export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1", "quota-band-v1", "pairing-notices-v1", "pairing-notices-v2", "pairing-notices-v3", "member-leave-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;
 /** Raw bytes per attachment chunk: base64 (4/3) plus the frame envelope stays under HUB_LIMITS.frame (256 KiB). */
@@ -66,6 +66,7 @@ const errorSchema = z.strictObject({ code: reason, retryable: z.boolean() });
 export const pairingNoticeSchema = z.strictObject({ id: uuid, fleetId: uuid, generation: epoch.min(1), label: plain(120),
   at: epoch, source: z.literal("group"), revoked: z.boolean() });
 export const pairingNoticeV2Schema = pairingNoticeSchema.extend({ source: z.enum(["group", "manual"]) });
+export const pairingNoticeV3Schema = z.union([pairingNoticeV2Schema, pairingNoticeSchema.extend({ source: z.literal("code"), codeId: uuid })]);
 const frame = <T extends string, P extends z.ZodType>(type: T, payload: P) => z.strictObject({ v: z.literal(1), type: z.literal(type), requestId: uuid, linkEpoch: epoch, payload });
 const hello = z.strictObject({ supportedVersions: z.array(epoch.min(1)).min(1).max(8), capabilities: z.array(identifier).max(16), memberBootId: uuid });
 const welcome = z.strictObject({ selectedVersion: z.literal(1), hubId: uuid, fleetId: uuid, linkEpoch: epoch.min(1), revocationVersion: epoch,
@@ -94,6 +95,7 @@ export const serverFrameSchema = z.union([
   frame("attachment.chunk", attachmentChunk), frame("attachment.ack", z.strictObject({ id: uuid, offset: epoch })),
   frame("pairing.notice", pairingNoticeSchema),
   frame("pairing.notice-v2", pairingNoticeV2Schema),
+  frame("pairing.notice-v3", pairingNoticeV3Schema),
 ]);
 export const parseMemberFrame = (input: string | Buffer): HubMemberFrame => validated(memberFrameSchema, parseStrictJson(input));
 export const parseServerFrame = (input: string | Buffer): HubServerFrame => validated(serverFrameSchema, parseStrictJson(input));

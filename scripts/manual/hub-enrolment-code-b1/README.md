@@ -1,0 +1,7 @@
+# Owned B1 backend rehearsal
+
+Run `bash scripts/manual/hub-enrolment-code-b1/run.sh` from an owned checkout with its locked dependencies available. Docker images are digest-pinned; the base images must already be cached and no package install occurs in the runner. It builds source in a read-only, network-none container with writable private tmpfs/evidence only, and compiles the actual Fleet join/member clients into scratch. The source snapshot includes uncommitted owned changes, so run only after all mutations are restored. Do not share a snapshot with a mutation process.
+
+This is a backend capacity/protocol rig, not the full Fleet Settings or B2 queue UI. Four AD sign-ins run concurrently under the unchanged eight-sign-in limit. Every person has a distinct directory identity and Fleet origin. It drives 20, 50 plus three group joins, and a revoke-at-25 wave; five sign-ins use Chromium. Profile and local-journal durability is real; local host consent is a declared fixture boundary. No Agent or backend CLI starts. See the committed receipt and evidence README for limits and results.
+
+For the previous/current Hub bootstrap and full private backup/restore leg, run `B1_LEG=rollback OUT="$PWD/.artifacts/hub-enrolment-code-b1/rollback" bash scripts/manual/hub-enrolment-code-b1/run.sh`. It checks out only the exact public pre-B1 source d2440106a and never touches another instance. Backup uses tar after all Hub/SQLite handles close so private modes are retained.

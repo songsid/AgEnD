@@ -49,6 +49,8 @@ const ha = key => t(`hubAccess.${key}`);
 // #3298 S-89 (experimental): the group permissions editor and the signed-in welcome are their own LAZY modules, loaded only
 // when the Hub's session says "group-policy-v1" and this tab's client has the calls — a Hub without them never serves or loads them.
 // The one group-permissions sentence this module draws itself (shown when the lazy modules are NOT loaded: this Hub lacks them).
+// Hub UX U2 (spec 1.2): the fleet list's own words (an older cached owner dictionary has none of them).
+register("hubFleetList", { en: { revoked: "Revoked ({0})" }, "zh-TW": { revoked: "已撤銷（{0}）" } });
 register("hubGroupsNote", {
   en: { unavailable: "Group permissions aren't available on this Hub yet. Update the Hub, then try again." },
   "zh-TW": { unavailable: "這個 Hub 還沒有群組權限。請更新 Hub 後再試。" },
@@ -477,7 +479,7 @@ function HubChats() {
   return html`<${PanelHeader} title=${hc("chats")} />
   <div class=${`hub-home${groupPolicyOn(s, hubClient()) ? " has-welcome" : ""}`}>
     <div class="hub-home-list"><${HubHomeList} /></div>
-    ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true) }} /></div>`
+    ${groupPolicyOn(s, hubClient()) ? html`<div class="hub-home-pick hub-home-welcome"><${LazyGroups} pick=${(m) => m.HubWelcome} props=${{ name: s.displayName, quick: s.features.includes("quick-pairing-v1"), onChats: () => setPicking(true), admin: s.admin === true, features: s.features }} /></div>`
       : html`<div class="hub-home-pick center">${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : rs.error && !rs.rooms.length ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : !rs.rooms.length
       ? html`<${Empty} icon="chat" title=${hc("noChats")} />`
       : html`<${Empty} icon="chat" title=${hc("choose")} hint=${hc("chooseHint")} />`}</div>`}
@@ -958,13 +960,20 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
             : html`<span class="tag warn">${ho("waitingOwner")}</span>`}
         </div>`)}</div>` : null}
       </section></${ManualFrame}>
-      <section class="card"><h3>${ho("pairedFleets", fleets.length)}</h3>
-        ${fleets.length ? html`<div class="hub-rows">${fleets.map((f) => html`<div key=${f.id} class="s-row hub-row">
-          <${Avatar} name=${f.owner ? f.owner.name : "?"} size="sm" />
-          <span class="hub-row-text"><strong>${ho("fleetOf", f.owner ? f.owner.name : "—")}</strong>${f.owner ? html`<small class="note"><code>${f.owner.login}</code></small>` : null}</span>
-          ${f.status === "active" ? html`<span class="tag ok">${ho("active")}</span><${Menu} label=${ho("rowMenu", f.owner ? f.owner.name : f.id)} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(f) }]} />`
-            : html`<span class="tag">${ho("revokedTag")}</span>`}
-        </div>`)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
+      <section class="card hub-fleet-list"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
+        ${fleets.length ? (() => {
+          // Spec 1.2: the row's title is the Fleet's label (S1 overview), its subtitle the owner; active first, revoked folded.
+          const row = (f) => html`<div key=${f.id} class="s-row hub-row" data-fleet=${f.id}>
+            <${Avatar} name=${f.owner ? f.owner.name : "?"} size="sm" />
+            <span class="hub-row-text"><strong>${typeof f.label === "string" && f.label ? f.label : ho("fleetOf", f.owner ? f.owner.name : "—")}</strong>${f.owner ? html`<small class="note">${f.owner.name}${f.owner.login ? html` · <code>${f.owner.login}</code>` : null}</small>` : null}</span>
+            ${f.status === "active" ? html`<span class="tag ok">${ho("active")}</span><${Menu} label=${ho("rowMenu", f.label || (f.owner ? f.owner.name : f.id))} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(f) }]} />`
+              : html`<span class="tag">${ho("revokedTag")}</span>`}
+          </div>`;
+          const current = fleets.filter((f) => f.status !== "revoked").sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1));
+          const revoked = fleets.filter((f) => f.status === "revoked");
+          return html`${current.length ? html`<div class="hub-rows">${current.map(row)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
+            ${revoked.length ? html`<details class="s-ui-disclosure hub-fleets-revoked"><summary>${t("hubFleetList.revoked", revoked.length)}</summary><div class="hub-rows">${revoked.map(row)}</div></details>` : null}`;
+        })() : html`<p class="note">${ho("noFleets")}</p>`}
       </section>
       <${LazyThisHub} directory=${directory} />
     </div></div>`;

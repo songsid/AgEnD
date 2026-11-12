@@ -340,8 +340,8 @@ export function signInHref() {
 
 // ── AgEnD Hub P1 (docs/design/hub-ui-client.md): the page's mark, set by the listener that served it ──
 register("hubShell", {
-  en: { brand: "AgEnD Hub", ask: "Ask", exposures: "My exposures", admin: "Administration" },
-  "zh-TW": { brand: "AgEnD Hub", ask: "提問", exposures: "我的公開 Agent", admin: "管理" },
+  en: { brand: "AgEnD Hub", ask: "Ask", exposures: "My shared agents", admin: "Administration" },
+  "zh-TW": { brand: "AgEnD Hub", ask: "提問", exposures: "我分享的 Agent", admin: "管理" },
 });
 function hubMarks() {
   const tokens = String((typeof document !== "undefined" && document.body?.dataset?.hub) || "").split(/\s+/);
@@ -543,6 +543,8 @@ export function PanelHeader({ title, sub, children, headingRef, nav, notice, pag
   const admin = useCanCreate();
   const canCreate = admin && !!newInstanceOpener;
   const pane = paneContext.usePane?.();
+  if (!pane && shell.popout && openInstanceOf(navStore.get().route) && shell.popoutHeader) return html`<${shell.popoutHeader} title=${title} sub=${sub} headingRef=${headingRef} nav=${nav}
+    notice=${notice} pageControls=${pageControls} pageActions=${pageActions} />`;
   if (pane?.Header) return html`<${pane.Header} title=${title} sub=${sub} headingRef=${headingRef} nav=${nav} notice=${notice}
     pageControls=${pageControls} pageActions=${pageActions} />`;
   return html`<header data-trust="header" class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
@@ -669,7 +671,7 @@ register("pendingSummary", {
     "hub.run.stop": "Stop this fleet's Hub and pause chats with shared agents. Valid sign-ins can resume when it runs again. Nothing is deleted.",
     "hub.preview.on": "Serve HTML previews on this Hub at port {0}.",
     "hub.preview.off": "Stop serving HTML previews on this Hub.",
-    "hub.membership.enable": "Enable this fleet's Hub membership. Pairing and sharing an agent are separate choices.",
+    "hub.membership.enable": "Enable this fleet's Hub membership. Connecting and sharing an agent are separate choices.",
     "hub.membership.disable": "Disable this fleet's Hub membership. New Hub work and answer disclosure stop; existing agent conversations remain.",
     "hub.companyJoin.confirm": "Connect this Fleet to Hub {0} using your company account. Agent sharing stays separate.",
     "hub.companyJoin.repair": "Replace the saved identity of Hub {0} using the new company link. This does not connect a Fleet.",
@@ -682,7 +684,7 @@ register("pendingSummary", {
     "hub.pairing.summary.connect": "Connect this fleet to the Hub at {0}",
     "hub.pairing.summary.approval": "It asks the Hub's owner and administrator to approve it",
     "hub.pairing.summary.confirm": "Confirm the pairing fingerprint for {0}",
-    "hub.pairing.summary.disconnect": "Disconnect this fleet from the Hub at {0} ({1}, pairing {2})",
+    "hub.pairing.summary.disconnect": "Remove this fleet's connection to the Hub at {0} ({1}, connection {2})",
     "hub.pairing.summary.withdraw": "Every agent shared there is withdrawn; the Hub's administrator revokes the fleet there",
     "settings_confirm.summary.default": "default", "settings_confirm.summary.absent": "absent", "settings_confirm.summary.fingerprint": "fingerprint",
     "settings_confirm.summary.text_chars": "{0} characters", "settings_confirm.summary.text_none": "not set",
@@ -710,7 +712,7 @@ register("pendingSummary", {
     "hub.run.stop": "停止這個 Fleet 的 Hub，暫停與分享的 Agent 的對話。再次執行後，仍有效的登入狀態可以恢復。不會刪除任何資料。",
     "hub.preview.on": "在這個 Hub 的連接埠 {0} 提供 HTML 預覽。",
     "hub.preview.off": "停止在這個 Hub 提供 HTML 預覽。",
-    "hub.membership.enable": "啟用這個 Fleet 的 Hub 成員功能。配對與分享 Agent 需另外選擇。",
+    "hub.membership.enable": "啟用這個 Fleet 的 Hub 成員功能。連接與分享 Agent 需另外選擇。",
     "hub.membership.disable": "停用這個 Fleet 的 Hub 成員功能。停止新的 Hub 工作與回答傳送；既有 Agent 對話會保留。",
     "hub.companyJoin.confirm": "以公司帳號將這個 Fleet 連接到 Hub {0}。分享 Agent 需另外選擇。",
     "hub.companyJoin.repair": "使用新的公司連結，更換 Hub {0} 已儲存的身分。這項操作不會連接 Fleet。",
@@ -723,7 +725,7 @@ register("pendingSummary", {
     "hub.pairing.summary.connect": "將這個 Fleet 連接到 {0} 的 Hub",
     "hub.pairing.summary.approval": "需要 Hub 的擁有者與管理員核准",
     "hub.pairing.summary.confirm": "確認 {0} 的配對指紋",
-    "hub.pairing.summary.disconnect": "中斷這個 Fleet 與 {0} 的 Hub 連接（{1}，配對 {2}）",
+    "hub.pairing.summary.disconnect": "移除這個 Fleet 與 {0} 的 Hub 連接（{1}，連接 {2}）",
     "hub.pairing.summary.withdraw": "撤下所有分享到該 Hub 的 Agent；由 Hub 管理員在該處撤銷這個 Fleet",
     "settings_confirm.summary.default": "預設", "settings_confirm.summary.absent": "未設定", "settings_confirm.summary.fingerprint": "指紋",
     "settings_confirm.summary.text_chars": "{0} 字", "settings_confirm.summary.text_none": "未設定",
@@ -1246,10 +1248,11 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
   const guest = guestPage();             // #1920: a guest's page — no operations, pending changes or owner CSS (#2855: usage, yes)
   // AgEnD Hub P1 (S3b): a Hub workspace has none of the fleet's lines, rails, tabs or bars (their endpoints are the fleet's).
   const hub = hubMarks().hub;
-  const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
+  const popout = shell.popout === true && !!openInstanceOf(nav.route);
+  const cls = ["shell", popout ? "chat-popout" : "", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
   return html`<div ref=${root} class=${cls}>
     <a data-trust="navigation" class="skip" href="#main">${t("app.skip")}</a>
-    <${Sidebar} route=${nav.route} onNewInstance=${onNewInstance} viewOnly=${viewOnly} />
+    ${popout ? null : html`<${Sidebar} route=${nav.route} onNewInstance=${onNewInstance} viewOnly=${viewOnly} />`}
     <div class="scrim" onClick=${closeDrawer} aria-hidden="true"></div>
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
@@ -1261,8 +1264,8 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       ${viewOnly || guest || hub || !shell.banner ? null : html`<${shell.banner} />`}
       ${shell.workspaceHost ? html`<${shell.workspaceHost} nav=${nav} panels=${panels} />` : html`<${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />`}
     </main>
-    ${hub ? null : html`<${RightRail} route=${nav.route} />`}
-    ${hub ? null : html`<${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />`}
+    ${hub || popout ? null : html`<${RightRail} route=${nav.route} />`}
+    ${hub || popout ? null : html`<${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />`}
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
     ${viewOnly || guest || hub || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}
     <${ConfirmHost} />
@@ -1271,3 +1274,6 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <${Toasts} />
   </div>`;
 }
+
+// Optional presentation handshake: retained shells keep their ordinary single-chat frame.
+Shell.popoutVersion = 1;

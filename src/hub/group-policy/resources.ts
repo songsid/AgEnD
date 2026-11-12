@@ -7,7 +7,7 @@ import type { HubAuditStore } from "../audit/index.js";
 import type { PersonKey } from "../types.js";
 import type { Eligibility, HubDirectory } from "../directory/types.js";
 import { personKeyString } from "../identity.js";
-import { identifier, person, parseStrictJson, validated } from "../validation.js";
+import { identifier, person, uuid, parseStrictJson, validated } from "../validation.js";
 import { HubGroupPolicyError, type GroupCheckContext, type HubGroupPolicyStore } from "./store.js";
 import type { GroupCapability, HubGroupDecision } from "./model.js";
 
@@ -15,8 +15,16 @@ const resourceSchema = z.strictObject({ kind: z.enum(["fleet", "exposure", "aske
   revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), owner: person });
 export type HubGroupResource = z.infer<typeof resourceSchema>;
 export function parseHubGroupResource(input: unknown): HubGroupResource { return validated(resourceSchema, input); }
+const codeResourceSchema = resourceSchema.extend({ codeId: uuid, approvedBy: person });
+export function parseStoredHubGroupResource(input: unknown, source: string) {
+  if (source !== "code") return { resource: parseHubGroupResource(input) };
+  const { codeId, approvedBy, ...resource } = validated(codeResourceSchema, input);
+  if (resource.kind !== "fleet" || resource.owner.realm !== approvedBy.realm) throw new HubGroupPolicyError("unavailable");
+  return { resource: parseHubGroupResource(resource), code: { codeId, approvedBy } };
+}
+const storedBody = (view: HubGroupResourceView) => JSON.stringify({ ...view.resource, ...view.code });
 export interface HubGroupResourceView {
-  resource: HubGroupResource; source: "manual" | "group"; state: "active" | "suspended"; revision: number;
+  resource: HubGroupResource; code?: { codeId: string; approvedBy: PersonKey }; source: "manual" | "group" | "code"; state: "active" | "suspended"; revision: number;
 }
 export interface HubGroupResourceDecision {
   outcome: "allow" | "deny" | "held" | "resume-required";
@@ -26,11 +34,14 @@ export interface HubGroupResourceDecision {
 export class HubGroupEnrollmentRefusal extends HubGroupPolicyError {
   constructor(readonly outcome: "denied" | "held") { super("unavailable"); }
 }
-export const HUB_GROUP_RESOURCES_MIGRATION: HubMigration = Object.freeze({ component: "s5-group-resources", version: 1, up(db: Database.Database) {
-  db.exec(`CREATE TABLE hub_group_resources(resource_key TEXT PRIMARY KEY, body TEXT NOT NULL,
-    source TEXT NOT NULL CHECK(source IN ('manual','group')), state TEXT NOT NULL CHECK(state IN ('active','suspended')),
+export const HUB_GROUP_RESOURCES_MIGRATION: HubMigration = Object.freeze({ component: "s5-group-resources", version: 2, up(db: Database.Database) {
+  const old = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='hub_group_resources'").get() as { sql: string } | undefined;
+  if (old && !old.sql.includes("'code'")) db.exec("ALTER TABLE hub_group_resources RENAME TO hub_group_resources_v1");
+  db.exec(`CREATE TABLE IF NOT EXISTS hub_group_resources(resource_key TEXT PRIMARY KEY, body TEXT NOT NULL,
+    source TEXT NOT NULL CHECK(source IN ('manual','group','code')), state TEXT NOT NULL CHECK(state IN ('active','suspended')),
     revision INTEGER NOT NULL CHECK(revision>0));
-    CREATE TABLE hub_group_resource_events(id TEXT PRIMARY KEY REFERENCES hub_audit(id) ON DELETE CASCADE, body TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS hub_group_resource_events(id TEXT PRIMARY KEY REFERENCES hub_audit(id) ON DELETE CASCADE, body TEXT NOT NULL);`);
+  if (old && !old.sql.includes("'code'")) db.exec("INSERT INTO hub_group_resources SELECT * FROM hub_group_resources_v1; DROP TABLE hub_group_resources_v1");
 } });
 const capability = (r: HubGroupResource): GroupCapability => r.kind === "fleet" ? "pair_fleet" : r.kind === "exposure" ? "publish_agents" : "ask_agents";
 const keyOf = (r: HubGroupResource) => JSON.stringify([r.kind, r.id, r.revision]);
@@ -50,12 +61,12 @@ export function createHubGroupResources(options: {
   const capture = parseHubGroupResource;
   const row = (r: HubGroupResource): HubGroupResourceView | null => {
     const raw = db.prepare("SELECT body, source, state, revision FROM hub_group_resources WHERE resource_key=?").get(keyOf(r)) as
-      { body: string; source: "manual" | "group"; state: "active" | "suspended"; revision: number } | undefined;
+      { body: string; source: "manual" | "group" | "code"; state: "active" | "suspended"; revision: number } | undefined;
     if (!raw) return null;
-    const resource = capture(parseStrictJson(raw.body) as HubGroupResource);
-    if (JSON.stringify(resource) !== JSON.stringify(r) || !["manual", "group"].includes(raw.source)
+    const { resource, code } = parseStoredHubGroupResource(parseStrictJson(raw.body), raw.source);
+    if (JSON.stringify(resource) !== JSON.stringify(r) || !["manual", "group", "code"].includes(raw.source)
       || !["active", "suspended"].includes(raw.state) || !Number.isSafeInteger(raw.revision) || raw.revision < 1) throw new HubGroupPolicyError("unavailable");
-    return { resource, source: raw.source, state: raw.state, revision: raw.revision };
+    return { resource, ...(code ? { code } : {}), source: raw.source, state: raw.state, revision: raw.revision };
   };
   const record = (r: HubGroupResource, actor: PersonKey, action: string, ctx: ReturnType<typeof snapshotContext>, payload: unknown) => {
     const p = policy.read(), id = randomUUID(), body = JSON.stringify({ resource: r, generation: p.generation, policyRevision: p.revision, payload });
@@ -75,7 +86,7 @@ export function createHubGroupResources(options: {
     const policyRevision = policy.read().revision;
     record(before.resource, actor, `group-resource.${state === "active" ? "resumed" : "suspended"}`, ctx, { from: before.state, to: state });
     const changed = db.prepare("UPDATE hub_group_resources SET state=?, revision=revision+1 WHERE resource_key=? AND body=? AND revision=? AND source=? AND state=?")
-      .run(state, keyOf(before.resource), JSON.stringify(before.resource), before.revision, before.source, before.state);
+      .run(state, keyOf(before.resource), storedBody(before), before.revision, before.source, before.state);
     if (changed.changes !== 1) throw new HubGroupPolicyError("conflict");
     const invalidated: unknown = invalidate?.(db, before.resource);
     if (invalidated && typeof (invalidated as { then?: unknown }).then === "function") {
@@ -92,14 +103,15 @@ export function createHubGroupResources(options: {
     const r = capture(input), ctx = snapshotContext(incoming), actor = resumeActor === undefined ? undefined : validated(person, resumeActor);
     assert(ctx); const p = policy.read(), before = row(r);
     if (!before || r.owner.realm !== p.realm || (actor && actor.realm !== p.realm)) throw new HubGroupPolicyError("invalid");
-    const explicitlyDenied = p.state !== "never-enabled" && p.denies.some(d => d.person.objectId === r.owner.objectId && d.deny.includes(capability(r)));
+    const explicitlyDenied = (before.source === "code" || p.state !== "never-enabled")
+      && p.denies.some(d => d.person.objectId === r.owner.objectId && d.deny.includes(capability(r)));
     let eligibility: Eligibility | undefined;
-    if (before.source === "manual" && !explicitlyDenied && r.kind === "fleet" && options.directory) {
+    if ((before.source === "manual" || before.source === "code") && !explicitlyDenied && r.kind === "fleet" && options.directory) {
       try {
         eligibility = await policy.withDirectoryRead(r.owner, () => options.directory!.checkEligibility(Object.freeze({ ...r.owner })));
       } catch { eligibility = { eligible: false, reason: "unavailable" }; }
     }
-    if (before.source === "manual") return db.transaction((): HubGroupResourceDecision => {
+    if ((before.source === "manual" || before.source === "code")) return db.transaction((): HubGroupResourceDecision => {
       assert(ctx);
       if (policy.read().revision !== p.revision || JSON.stringify(row(r)) !== JSON.stringify(before)) throw new HubGroupPolicyError("conflict");
       // Grandfathering exempts membership, never an explicit person deny or ordinary account/resource revocation.
@@ -193,6 +205,21 @@ export function createHubGroupResources(options: {
         assert(ctx);
       } };
     },
+    prepareCodeRegistration(input: HubGroupResource, grant: { codeId: string; approvedBy: PersonKey }, incoming: GroupCheckContext) {
+      const r = capture(input), code = { codeId: validated(uuid, grant.codeId), approvedBy: validated(person, grant.approvedBy) }, ctx = snapshotContext(incoming);
+      assert(ctx); const p = policy.read(), image = JSON.stringify(p);
+      if (r.kind !== "fleet" || r.owner.realm !== p.realm || code.approvedBy.realm !== p.realm) throw new HubGroupPolicyError("invalid");
+      if (p.denies.some(d => personKeyString(d.person) === personKeyString(r.owner) && d.deny.includes("pair_fleet"))) throw new HubGroupEnrollmentRefusal("denied");
+      let used = false;
+      return { commit(database: Database.Database): void {
+        if (database !== db || !db.inTransaction || used) throw new HubGroupPolicyError("invalid");
+        used = true; assert(ctx);
+        if (JSON.stringify(policy.read()) !== image || row(r)) throw new HubGroupPolicyError("conflict");
+        record(r, code.approvedBy, "group-resource.code-granted", ctx, { source: "code", ...code });
+        db.prepare("INSERT INTO hub_group_resources VALUES(?,?,'code','active',1)").run(keyOf(r), JSON.stringify({ ...r, ...code }));
+        assert(ctx);
+      } };
+    },
     check(input: HubGroupResource, incoming: GroupCheckContext) { return check(input, incoming); },
     /** Caller must freshly authenticate the configured administrator and confirm the exact resource. */
     resume(input: HubGroupResource, actor: PersonKey, incoming: GroupCheckContext) { return check(input, incoming, actor); },
@@ -201,7 +228,8 @@ export function createHubGroupResources(options: {
       const r = capture(input), who = validated(person, actor), ctx = snapshotContext(incoming);
       if (!db.inTransaction) throw new HubGroupPolicyError("invalid");
       assert(ctx); const p = policy.read(), before = row(r);
-      if (!before || p.state === "never-enabled" || who.realm !== p.realm || r.owner.realm !== p.realm) throw new HubGroupPolicyError("invalid");
+      if (!before || who.realm !== p.realm || r.owner.realm !== p.realm || p.state === "never-enabled"
+        && (before.source !== "code" || !p.denies.some(d => personKeyString(d.person) === personKeyString(r.owner) && d.deny.includes(capability(r))))) throw new HubGroupPolicyError("invalid");
       update(before, "suspended", who, ctx);
     },
     /** Same outer transaction as a confirmed switch-off: policy off/on never silently resumes group resources. */

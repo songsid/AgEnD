@@ -1,0 +1,1284 @@
+{
+  "head": "8b91082781af42e70f96d20b12a630d46ccf960b",
+  "tree": "853725242a15869af620fe42912ace05b042561e",
+  "dirty": false,
+  "scope": "Owned scratch FleetManager; actual browser/server/session/stream; fixture terminal and step reads; no CLI or live fleet",
+  "inputs": {
+    "10a1618449b4abdb432af8285eb9f3dd191384a123a08d6759c25c70f3a0dc7f": [
+      "src/web-api.ts"
+    ],
+    "abef2ba894e1d9bfa98ffa95dc62b497c286dbd8d090fa7907136a7116d7eddb": [
+      "src/auth-api.ts"
+    ],
+    "6925661b2b26e840d5fc21998eb68c6acfbd127f544309fbff2402232e9a2ce0": [
+      "src/ui/chat-workspace.js"
+    ],
+    "2d0b56caa793f2c5a2d22ea7459795d10209acbb328eec63badaae8248cc58bf": [
+      "src/ui/chat-workspace-navigation.js"
+    ],
+    "f4bad49945f1c7143209a165554adc332d80411f36aabea9943719b16bc34517": [
+      "src/ui/chat-workspace-gestures.js"
+    ],
+    "0a64d95da54984160a87ffd67ae1b9842b0ff0947f84bc1a1f230bce937b2d33": [
+      "src/ui/panel-chat.js"
+    ],
+    "441ad2dd999d5d83dbbdcaee168ccf86bbf29363800da847493d0d66e8f1a439": [
+      "src/ui/chat-store.js"
+    ],
+    "31f4b91d32853d829d7f60ae64df4fea750350cd258bae42ed402fd03183cf3e": [
+      "src/ui/chat-popout.js"
+    ],
+    "e9da3bab63ae54a394d313c9580752df06ccd8fa089ffa43bc370e57641df383": [
+      "src/ui/chat-popout-header.js"
+    ],
+    "3891b33bd411723fc41d3bccf74ab0f7df5b2174385be1c6d9e0735303f9e652": [
+      "src/ui/chat-popout-transport.js"
+    ],
+    "44b61dd0c2b47338e9648c300fdf5e130fc9649548a6fde4a4f338ba1da2c502": [
+      "src/ui/panel-details.js"
+    ],
+    "0165f9c071365d1872cfe62b997cef1b96865734e43af9c871921f17947ffd4b": [
+      "src/ui/panel-log.js"
+    ],
+    "8c0b5b4c3bea9b1cdb52aecdc402dd56445c4c9604f2fb6531a3a0c0303e951a": [
+      "src/ui/settings-dialogs.js"
+    ],
+    "fcaef6b3d0c90cfcf90f4bf8144f2201e80243504680887fed27137cba5ae09f": [
+      "src/ui/native-instance-settings.js"
+    ],
+    "64f8796f79bdd85f5608d71e39d64864b354de77074340f173ae3b28965f04da": [
+      "src/ui/agent-details-settings.js"
+    ],
+    "cccacd373fb99cb532e072fdd25e96483ee1caf5bb845eaf84e249758842b571": [
+      "src/ui/chat-quote.js"
+    ],
+    "386de26c1678b881b13b3342b23c7385bf56811cd3c33448eed74000d7a0971e": [
+      "src/ui/agent-export-dialog.js"
+    ],
+    "31cbb08824343cf2d5ab7c0a1acbd4d0a6742442d485cfb0ab73e3dff2a021e5": [
+      "src/ui/agent-runtime-settings.js"
+    ],
+    "9c6f589ef34599a977d3a3f0876948b7ad363735d0432b668e4008bb858107f3": [
+      "src/ui/image-lightbox.js"
+    ],
+    "ca27cd9ab9bbee60a0ecb427fa05d5322c1eab3606154bf64a8947948ae6154c": [
+      "src/ui/shared/app.js"
+    ],
+    "5dfa69d440e16e949c469acbe9945daa6fe65bd41320d18041d6ee9981171d5f": [
+      "src/ui/shared/app-nav.js"
+    ],
+    "8ab386766862e880058c83de50fe58026e322b7da60e514b58fefae5c5cf0aa0": [
+      "src/ui/shared/app-shell.js"
+    ],
+    "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6": [
+      "src/ui/shared/app-ctx.js"
+    ],
+    "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec": [
+      "src/ui/shared/app-session.js"
+    ],
+    "2f8bb393fd11319a16ef867bc4f75988cd31ff4b3c5bb4a7acbf43f7f73a3dca": [
+      "src/ui/shared/app.css"
+    ],
+    "c93687c356d5260b679bf69922c1125167eb87b60500cc50adcf51d5dc157b8e": [
+      "src/ui/shared/instance-switch.js"
+    ],
+    "b0b9cfe9e190caf60ea47f6ecfe9570ab8260908362c8e26efa3caa0d48ffb73": [
+      "src/ui/shared/instance-nav.js"
+    ],
+    "bfddb6dbf8b2222d73f5d6165ef0197276399f44165018a66d5187d37c9a6b6a": [
+      "src/ui/shared/ui-menu.js"
+    ],
+    "517f1a39668ce6b1e11b0a6490eedb8832bbc9a4f33ab6fe87c0e68f6522ff7d": [
+      "src/ui/shared/panel-view.js"
+    ],
+    "f73502bef7f44e8fe028b1bf9f4ee304af6d6318be61523006e316e38638b4d8": [
+      "src/ui/shared/view-roster-store.js"
+    ],
+    "1f159b7a9c9e2ed01a7ab1468f2990101c69162f21210b3ca78d2d170a4ae076": [
+      "src/ui/shared/preview-panel.js"
+    ],
+    "20b0ec2db04b564054aee01c3b013b45eb318314ea1e9e38826f36efe11d4227": [
+      "src/ui/shared/chat-composer.js"
+    ],
+    "a87cd5ec9abf85ed67ddb099efb115c1b1003f99ae5b2e11a1a031dad7a647fa": [
+      "src/ui/shared/chat-workspace-model.js"
+    ],
+    "55d3770b84f3c321165796e032a0f131a5678c4a1ce1ac456be612cf5c2c0dc7": [
+      "src/ui/shared/chat-workspace-memory.js"
+    ],
+    "967603a35628503ff4323a4dc7e9ad19b7d42b6fb8963de38f991cd7dd578582": [
+      "src/ui/shared/pane-geometry.js"
+    ],
+    "333248244d4651b1419a4c2ee32bae7c4d5d930019d9ffafcf94daaa7ee3ee3c": [
+      "scripts/manual/smoke-fixture/index.mts"
+    ],
+    "840ce8054b28b2f52332ba68d38f681bbe30559fbcbcbc3de6f983fd302ff792": [
+      "scripts/manual/smoke-fixture/data.mts"
+    ],
+    "d0d047dcec19607ec20a3d119e46bee19cee4311fdc7cf3724f76103487a0cf3": [
+      "scripts/manual/smoke-fixture/from-defaults.mts"
+    ],
+    "25429d1a51b59f500fcde0a782d06dddf5c5687d204a72b76b424b70bd15bdea": [
+      "harness"
+    ]
+  },
+  "assets": {
+    "0dd6c6e9665402a62a2f5f3c37ce323900024835f856de88518f28c4091df64b": [
+      "/assets/tokens.css"
+    ],
+    "ffc4f54dd8a2511eeb931a77d25d65ddd0a187e414b9deabe9290184399fe22d": [
+      "/assets/theme.js"
+    ],
+    "68dd23194827d7a83f532b1d7b3161fd27a2e696ef14cf6d593b0a65e3ad9ce8": [
+      "/assets/loading.css"
+    ],
+    "037b6bbd28264d4d6a9ad23d6efef95d7bf4671d427adf7a6a4d5d60c48e1c67": [
+      "/assets/signin.js"
+    ],
+    "6dc9db6cb53e6ce9c82b760d5c94c3a773003abac2c8efa2cb535a9d87c7ecea": [
+      "/assets/inter.woff2"
+    ],
+    "2f8bb393fd11319a16ef867bc4f75988cd31ff4b3c5bb4a7acbf43f7f73a3dca": [
+      "/assets/app.css"
+    ],
+    "88c5aff39e736ab0a2c9993b056e6bff7c39eda88de7ce226908027c5715441f": [
+      "/assets/agend-auth.js"
+    ],
+    "ca27cd9ab9bbee60a0ecb427fa05d5322c1eab3606154bf64a8947948ae6154c": [
+      "/assets/app.js"
+    ],
+    "d223ea3ca62d93e8991f3a92efa92de9eb0bb5ad4e72b11ce18f286e372580c2": [
+      "/assets/app-prefs.js"
+    ],
+    "8949e374c68b9252d5ee3ee788ec1b0340d12c4a6999ef8b734fe89562266bd9": [
+      "/assets/app-html.js"
+    ],
+    "8ab386766862e880058c83de50fe58026e322b7da60e514b58fefae5c5cf0aa0": [
+      "/assets/app-shell.js"
+    ],
+    "feb36efef72b92a5510f881902c0a08140d6940f62304766e3857d13f5e188fa": [
+      "/assets/app-swipe.js"
+    ],
+    "49234d50df7b41e005d0221a1a5b5614d30f9b27a9c0d82312c56c694184b58b": [
+      "/assets/app-stream.js"
+    ],
+    "cc0afbe551e1b5857bcfb79447bc24ce59b7a1988972101718c2994b49a95842": [
+      "/assets/app-store.js"
+    ],
+    "0ad785a7cf88d1d46dc4b747aaebb3e969945e46b9c63a1dbc50f444536832e4": [
+      "/assets/app-needs.js"
+    ],
+    "d89c2578c4f45f9619ddd7529041d7e774474ead7f657c93d1eec335f6fa4bdd": [
+      "/assets/app-route.js"
+    ],
+    "3c59e5ba9039ad05e18be88b71270c232f6d73bac2dc681cdec70c1825f7027a": [
+      "/assets/text-undo.js"
+    ],
+    "601074179fe7c9156d05d507f28e3d22f93b49aba43f8d903b40ae4b8b1bba8d": [
+      "/assets/ui-toast.js"
+    ],
+    "d38412dd2327ffb4a98248ab8a847eb6abcf18470cd8f5f9635a20df3aace05e": [
+      "/assets/owner-css.js"
+    ],
+    "fa17fa458645e5f9b747163854449c1a5cb0c45d51379fea86ff601dc03e682d": [
+      "/assets/header-tools.js"
+    ],
+    "886b72a54b88f65fbc27a9b86fe786d5a1f2774a24c0cc16dddfd1c6ce1fc2b4": [
+      "/assets/app-themes.js"
+    ],
+    "5dfa69d440e16e949c469acbe9945daa6fe65bd41320d18041d6ee9981171d5f": [
+      "/assets/app-nav.js"
+    ],
+    "6f7fd589ed235fb3081d3097b4669cee511a16ad3a3b5e363d94ab4b2cefd9e5": [
+      "/assets/app-i18n.js"
+    ],
+    "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8": [
+      "/assets/preact.module.js"
+    ],
+    "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4": [
+      "/assets/htm.module.js"
+    ],
+    "6f55664e3748e3837474f252035ba1dccac885385ae57ebea6be5e464deb3f50": [
+      "/assets/ui-icons.js"
+    ],
+    "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38": [
+      "/assets/preact-hooks.module.js"
+    ],
+    "c1fe9587644da4bb37524c6dcd1a64c95b6acd9cff4ad5b78eca9844c6f16c5b": [
+      "/assets/ui-confirm.js"
+    ],
+    "452d8ad48b3e0ab8732f882cdf112e416772ab56831d918f3a9b3a938e1585ab": [
+      "/assets/identity-color.js"
+    ],
+    "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec": [
+      "/assets/app-session.js"
+    ],
+    "0d9ae9002f0cf2a8388ea9177430ce382b91abe630ea68f3a7579c80d4c28c31": [
+      "/assets/ui-states.js"
+    ],
+    "25c22c87ff575b89b52ef1ab58ff921d02aaf2744122e064d824a1fa2fd95ff6": [
+      "/assets/ui-dialog.js"
+    ],
+    "aefbba84067328f2bb16c86bdbe7328cf125f63f40795ee88b3b87e09c27f946": [
+      "/assets/side-panel.js"
+    ],
+    "0b675a3860b2f10a40d9557b18d609cb60ddd0e766b6cf9c1b2f27211d930596": [
+      "/assets/app-update.js"
+    ],
+    "b0b9cfe9e190caf60ea47f6ecfe9570ab8260908362c8e26efa3caa0d48ffb73": [
+      "/assets/instance-nav.js"
+    ],
+    "46dc2cb17194565a8ed15d5c3477954c98323bfd4874cdbf6ee69df4b34939e1": [
+      "/assets/settings-width.js"
+    ],
+    "8e90812b94bad0b93c744a0daa3fc4fe6e02249106604ca013c9d6df4ef25a43": [
+      "/assets/agent-widget.js"
+    ],
+    "b7cb7d8f4df081e3d514c869cf6f99d8f64b0b730ddecaf955a8d0ccedf3ca43": [
+      "/assets/usage-dialog.js"
+    ],
+    "80827afbb28969692e1575339c9e4b54a372812653ede0221a361a2c6a14ad56": [
+      "/assets/side-rail.js"
+    ],
+    "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6": [
+      "/assets/app-ctx.js"
+    ],
+    "ca93209e235040a5ff9ee7f73a39b98fc9412c9a12e46d812a961d6eec95578d": [
+      "/assets/device-roles.js"
+    ],
+    "3c87a7c99b39adb87e624cd7292b37547e33e418b955466109e178795af927b1": [
+      "/assets/web-authorize.js"
+    ],
+    "f73502bef7f44e8fe028b1bf9f4ee304af6d6318be61523006e316e38638b4d8": [
+      "/assets/view-roster-store.js"
+    ],
+    "bfddb6dbf8b2222d73f5d6165ef0197276399f44165018a66d5187d37c9a6b6a": [
+      "/assets/ui-menu.js"
+    ],
+    "9897ad69ca4983e96ede71578f6b53a47b6f2a6bcb53832aba5d8e1bcc1542ae": [
+      "/assets/machine-name.js"
+    ],
+    "23f03826cec94cb9bd940325b6f4c14d66faaef0473fb34cfad71cb682757d52": [
+      "/assets/view-strings.js"
+    ],
+    "01e6cd78752e902232b60c87fdb5281947dbdc11ae9b1a09b17e9e0241d48c41": [
+      "/assets/read-stream.js"
+    ],
+    "2766db3d5d230dd18fdacdf44719c49ba9e25eff02ffb500c6345dcfee090200": [
+      "/assets/usage-meter.js"
+    ],
+    "0a64d95da54984160a87ffd67ae1b9842b0ff0947f84bc1a1f230bce937b2d33": [
+      "/ui/js/panel-chat.js"
+    ],
+    "d3e66e73af1eaa000aeb54999dc30446aa426b844e4ea7301eb7345564efe4bf": [
+      "/ui/js/agent-proposals.js"
+    ],
+    "cd84e403aed09e714c86bb2655b56699746ad1671f12c61d121bbdae0a8767d8": [
+      "/ui/js/backend-signin.js"
+    ],
+    "6925661b2b26e840d5fc21998eb68c6acfbd127f544309fbff2402232e9a2ce0": [
+      "/ui/js/chat-workspace.js"
+    ],
+    "c93687c356d5260b679bf69922c1125167eb87b60500cc50adcf51d5dc157b8e": [
+      "/assets/instance-switch.js"
+    ],
+    "efa13d68f9acb5b6cc4bd0981026c1a1610b04ec49a2b6a8308f17593edaa185": [
+      "/ui/js/general-location.js"
+    ],
+    "5ff624498e70183f5d37aaccb3ad729524e281a32109e030a9d143bfe18cb202": [
+      "/ui/js/native-pane-recovery.js"
+    ],
+    "54f332742818dbb03e9306e5c476ba421c925a991b0047743cf6fac3b5e2d64d": [
+      "/ui/js/model-picker.js"
+    ],
+    "0e6cc7eebbfa1bb22a0dc417084756c82b75d641bfc34e065db6e34cfc5ae631": [
+      "/assets/identity-card.js"
+    ],
+    "fc1668d8faab616f7c76ed4e0692e7f323a4882618d148b22e4b677454b1657f": [
+      "/ui/js/chat-msg-actions.js"
+    ],
+    "20b0ec2db04b564054aee01c3b013b45eb318314ea1e9e38826f36efe11d4227": [
+      "/assets/chat-composer.js"
+    ],
+    "535dc835a85f53e843b9dc709c3659f891f547efc09f5c12cf0dad74b6590907": [
+      "/assets/chat-thread.js"
+    ],
+    "441ad2dd999d5d83dbbdcaee168ccf86bbf29363800da847493d0d66e8f1a439": [
+      "/ui/js/chat-store.js"
+    ],
+    "cc1690aa8931b111e35166fd8f29120c3a7a4ec7a6720108dc7b7ef7e515ac8c": [
+      "/assets/chat-strings.js"
+    ],
+    "db54c674121a4603bab3f7758951f3ece288cc2fcbd6e731259af899020c5f87": [
+      "/ui/js/settings-confirm.js"
+    ],
+    "cccacd373fb99cb532e072fdd25e96483ee1caf5bb845eaf84e249758842b571": [
+      "/ui/js/chat-quote.js"
+    ],
+    "8c5f81e4b455c521c27a568e2ca55a9f067eccc7f0f2f5b01adfa3e7ed2bc5f5": [
+      "/ui/js/chat-emojis.js"
+    ],
+    "b1ab5fccfb378b0575f8e7d7f39a312f9a9e6c925ee40fe4bc7cd0afdc85c7a9": [
+      "/ui/js/preview-status.js"
+    ],
+    "aab4e32c1471943c02e88f70623420e87da6f6cfa31df88ccac4502ca5d6c03c": [
+      "/ui/js/preview-panel-actions.js"
+    ],
+    "f631da1206454d72a6a40dcbd008e722e1178b941506d092312938904f501ea1": [
+      "/ui/js/chat-mentions.js"
+    ],
+    "0314fc1ec9b2eaab85bda1c9f2816bd151745dbb12db1fec92799832376c4a23": [
+      "/ui/js/preview-panel.js"
+    ],
+    "39d0ee496042450e92bc41a300a8ac7e628a09662c64146dcdcee3fe5ee705e3": [
+      "/ui/js/chat-commands.js"
+    ],
+    "ad13236e469f8d2098fc94e338479e9c059758fcb8b3580c66eff8eb0c796cd6": [
+      "/ui/js/chat-tour.js"
+    ],
+    "9c6f589ef34599a977d3a3f0876948b7ad363735d0432b668e4008bb858107f3": [
+      "/ui/js/image-lightbox.js"
+    ],
+    "6a839e3b81b44c1a0edb21f0e3aab9e7ea414344ea44c0676504ea3d9884cce8": [
+      "/ui/js/chat-ambient.js"
+    ],
+    "11913661d9152528a417edd79514e021ae12e7d4429c3ea1e7c15379bd4a912c": [
+      "/ui/js/structured-signin.js"
+    ],
+    "9bfa2f309181d2905c0a106d05e0283324099344f58e45b9d91e6be2891a458b": [
+      "/ui/js/cli-picker.js"
+    ],
+    "58c5adde8ba05b8a801b81721c55fe10e7e1d0bf7ae8cdb8b84018550c3772ac": [
+      "/ui/js/account-identity.js"
+    ],
+    "6d47437e2342f42ca646b8b297b45cc89c392d3a40ef5a153dc39b2df41986a4": [
+      "/ui/js/cli-caps.js"
+    ],
+    "55d3770b84f3c321165796e032a0f131a5678c4a1ce1ac456be612cf5c2c0dc7": [
+      "/assets/chat-workspace-memory.js"
+    ],
+    "a87cd5ec9abf85ed67ddb099efb115c1b1003f99ae5b2e11a1a031dad7a647fa": [
+      "/assets/chat-workspace-model.js"
+    ],
+    "2d0b56caa793f2c5a2d22ea7459795d10209acbb328eec63badaae8248cc58bf": [
+      "/ui/js/chat-workspace-navigation.js"
+    ],
+    "967603a35628503ff4323a4dc7e9ad19b7d42b6fb8963de38f991cd7dd578582": [
+      "/assets/pane-geometry.js"
+    ],
+    "f4bad49945f1c7143209a165554adc332d80411f36aabea9943719b16bc34517": [
+      "/ui/js/chat-workspace-gestures.js"
+    ],
+    "bd1118ec2ebec1eba6553e5c8fd4d7ed6ba4d724e5e8caa1f21652ae3c339662": [
+      "/ui/js/settings-catalog.js"
+    ],
+    "8c0b5b4c3bea9b1cdb52aecdc402dd56445c4c9604f2fb6531a3a0c0303e951a": [
+      "/ui/js/settings-dialogs.js"
+    ],
+    "31f4b91d32853d829d7f60ae64df4fea750350cd258bae42ed402fd03183cf3e": [
+      "/ui/js/chat-popout.js"
+    ],
+    "8b831695aa0b6ed5cb28251fd65f7b1f7e6d6e7402dfcf59dfe5e31bcfb926f0": [
+      "/assets/card-strings.js"
+    ],
+    "80d27c7b6ca39b27132e8967628dadc4606dae76192c3823a96e92b0905a128e": [
+      "/assets/chat-render.js"
+    ],
+    "45ce6f2b941c6f0d8e154c51e7d6977cea9241a6ddfc03c6bf8b848323448643": [
+      "/assets/html-attachment.js"
+    ],
+    "d179862fd1d2535bf1c06776cb20cce601d874d5fa42e47eca0fbd7835023ff1": [
+      "/assets/preview.js"
+    ],
+    "ca3dacd41ddf8284ce6542f529cdacb9fc333722f41d1ce2beb6fb019e4b8538": [
+      "/assets/chat-time.js"
+    ],
+    "d2441422fa50cf67a7d5cc8451e1441864dfc1f739baf5fb18c2fd56f50abbcc": [
+      "/ui/js/chat-live-replies.js"
+    ],
+    "cdedf76f46cb8362626b5629c63505aecb2e2bbe6f216c63fe17a976e1b28f0f": [
+      "/ui/js/workspace-panel.js"
+    ],
+    "fb83df8a590f4da061a93662d9382c78195a9ecc4b82a1c82e1964dd9c966aa0": [
+      "/ui/js/page-share-dialog.js"
+    ],
+    "8e2665b14f5df60a7698ba5852a5d217257c495bd4c5c4e81b70acda8c65431f": [
+      "/assets/preview-panel-actions.js"
+    ],
+    "1f159b7a9c9e2ed01a7ab1468f2990101c69162f21210b3ca78d2d170a4ae076": [
+      "/assets/preview-panel.js"
+    ],
+    "bda66cdd70fe0450fcd3d3bf787e8c30420d66e59e01ac46dcd2eafca8214a93": [
+      "/assets/fx-motion.js"
+    ],
+    "2b1261dc8cab528b0a1fd6192bdd0ece37db96bcd7eb776ed2e1475c3ec3c088": [
+      "/ui/js/image-zoom.js"
+    ],
+    "0872a64d18b5e4c753d28d09314a00a95603d07a6f8d26b0fd52c122de713c01": [
+      "/ui/js/provider-marks.js"
+    ],
+    "e487caa2269d950f21591ff5306c6eef26b21705bacc8f9f9b7941bd71b3ac4e": [
+      "/ui/js/settings-token.js"
+    ],
+    "64e93dcb107b47e2bfd7161b88da5315fd4bbc9af9ad7d578e5b0c7be5ae0e19": [
+      "/ui/js/settings-discord.js"
+    ],
+    "31cbb08824343cf2d5ab7c0a1acbd4d0a6742442d485cfb0ab73e3dff2a021e5": [
+      "/ui/js/agent-runtime-settings.js"
+    ],
+    "d7d3fded9860c2d4688a60939f0f021797b26437bb78b096fb611cbde1b73b63": [
+      "/ui/js/settings-apply.js"
+    ],
+    "161537a2aa099b1abd37d8f9691bca0efdfd60139f1cd1f7025fae4e68e51527": [
+      "/ui/js/settings-registry.js"
+    ],
+    "a245f400b3e63bf50bceb715aaafe8eef744526ec01852e0bf79603052fa2df6": [
+      "/ui/js/settings-strings.js"
+    ],
+    "4dd67ce6e7179c9cf69151859d63d50804a8bdb660a71f9afe2a1919bcb2b35e": [
+      "/ui/js/settings-shared-strings.js"
+    ],
+    "ea85752c693a3bb2c558e37ae39c1a2a8706a0bc680bd51a7f0d139404c504ef": [
+      "/ui/js/effort-field-strings.js"
+    ],
+    "c877087c844c08e25d0af08c56029c7c76b8954c1db537b6c7dfb0878e886453": [
+      "/ui/js/agent-page-strings.js"
+    ],
+    "3f85b759b782dd979f7fc3f5cb1574dd7a4909838a3a8efb13156d5e32491446": [
+      "/ui/js/agent-instructions-field.js"
+    ],
+    "70b6695af30bfaaca58b9d889a579d31a3ce68174e768d8da1a892df9a02894a": [
+      "/ui/js/settings-shared.js"
+    ],
+    "386de26c1678b881b13b3342b23c7385bf56811cd3c33448eed74000d7a0971e": [
+      "/ui/js/agent-export-dialog.js"
+    ],
+    "f5bb5a1d7718cb8db4f1396765f18fcfdab67a7fa5532049b3e159dd09a4443c": [
+      "/ui/js/settings-model.js"
+    ],
+    "ba3a3b9f6c40d57fb1e4d1b4714c2b2ac555a351fed426793f943fe3b0423add": [
+      "/ui/js/settings-codex-copy.js"
+    ],
+    "e9da3bab63ae54a394d313c9580752df06ccd8fa089ffa43bc370e57641df383": [
+      "/ui/js/chat-popout-header.js"
+    ],
+    "2f13ed2c921d7b54762637c582c2ff5b79fd00dbbd320e8169fe6c37e6994a7f": [
+      "/ui/js/accounts-view.js"
+    ],
+    "3891b33bd411723fc41d3bccf74ab0f7df5b2174385be1c6d9e0735303f9e652": [
+      "/ui/js/chat-popout-transport.js"
+    ],
+    "df4dbbf44d65daab82d7958631127a49acafb5323db528618088eaaae7a8fa4d": [
+      "/ui/js/workspace-strings.js"
+    ],
+    "0583433c1027b8ca25410392c623e4f83f92dd1db6f62f46e40be23b71431814": [
+      "/assets/preview-versions.js"
+    ],
+    "880aa89650dc8feb5328a51682ed5a12e6ae784047fa4457483b64939de29d7e": [
+      "/ui/js/workspace-follow-strings.js"
+    ],
+    "6a1fd446d3200fa3ebebafec1f814c95b365315d1e7553924a2bf587a9553925": [
+      "/assets/preview-pages.js"
+    ],
+    "31a90eea31b3f957965ffce28897cf6fb1571698ecc4a320dd95d310c4c37d3b": [
+      "/assets/chat-md-strings.js"
+    ],
+    "d59e74569219d9d80b6f5191114ddd3c1e7ae098390f5ddbf9aa92c2eba3322f": [
+      "/assets/setup-host-text.js"
+    ],
+    "ba23352a73106b9dcaddb6107c4f0ea12603a65682344121bb71070ed5e34302": [
+      "/ui/js/windows-cli-catalog.js"
+    ],
+    "8dcd449764b70e87d74655688574c68fb4fbe7d7f85472745518ca16f261a404": [
+      "/ui/js/runtime-catalog.js"
+    ],
+    "213ca747dc5c502e4fd26047b4fe5242623def7731955a8ad5cbd34523805042": [
+      "/ui/js/credential-profile-select.js"
+    ],
+    "8fd357ee1b2c38241d710a118c2b46f6d5bde9efb23f7c93a36382669eb5c237": [
+      "/ui/js/agent-runtime.js"
+    ],
+    "e2be5b57b659784dc78e53e46d9b380365cd2548fe75bf90ed019bb59697dd5a": [
+      "/ui/js/settings-agent-filters.js"
+    ],
+    "d24399ef367450948e2c152ce44b413b271a5157f337b9c6a15199b693b51e6f": [
+      "/ui/js/settings-revoke-strings.js"
+    ],
+    "c9ddaa923d255d2e5b286cec02ecaa587ab64f37f8e122e7777ba3e0aecccac9": [
+      "/ui/js/settings-access-strings.js"
+    ],
+    "7e902bc960da79cae34da2de4716247ee0702f1526155887bdeaff189e0e4f5e": [
+      "/ui/js/settings-guests.js"
+    ],
+    "6c51eeb259a515ddc1239d9e4f8665dc3ce6be2de9a99e6b7fccb46a984d6920": [
+      "/ui/js/agent-export-strings.js"
+    ],
+    "6b1dda6bb01fc5c34be6fa72a2470a664c222075f0f2bc32befbace4801596c2": [
+      "/ui/js/accounts-manage.js"
+    ],
+    "884c226f7fd9ae5fe21bc9505160355afb58c23821dc97bc74b77c15afbaf233": [
+      "/ui/js/machine-signin.js"
+    ],
+    "d99061a01c082e7abc918622b0167cf2d5c5e6c48f5b7f6636ba6c19da957d29": [
+      "/ui/js/accounts-keepalive.js"
+    ],
+    "18a6da06ecfef4b973d6e1413d8dac278eaff9e9eb694270ad84df52b8ba250e": [
+      "/ui/js/host-install.js"
+    ],
+    "af0c4fd37f8dfec1b0737f373c7c8565f06808052da275db6e4411b290582498": [
+      "/ui/js/settings-layout.js"
+    ],
+    "a9e9e71b8e64b54a69e3265395948d15f512f811a03353ccf3c0fa04e2788f2a": [
+      "/assets/page-head.js"
+    ],
+    "2d0effca0e9f44df142ce8f0c9d4c434b16bc39743c6a08b3c991d95356483a7": [
+      "/assets/chat-work-bar.css"
+    ],
+    "af1684da912b22573ae68abbd049e4758e024cf3aee2ff2de8f2e046727857ed": [
+      "/assets/model-picker.css"
+    ],
+    "5578156bf7f288c2aa1be77b16e05ff6eb593c3186ff85b087fe5f0e99b47ef1": [
+      "/ui/js/subagent-row.js"
+    ],
+    "91ebc191891ec01bb4460c22e53c85c60f92c7419b498b85d10d4102437c99b8": [
+      "/assets/subagent-row.css"
+    ],
+    "44b61dd0c2b47338e9648c300fdf5e130fc9649548a6fde4a4f338ba1da2c502": [
+      "/ui/js/panel-details.js"
+    ],
+    "0165f9c071365d1872cfe62b997cef1b96865734e43af9c871921f17947ffd4b": [
+      "/ui/js/panel-log.js"
+    ],
+    "517f1a39668ce6b1e11b0a6490eedb8832bbc9a4f33ab6fe87c0e68f6522ff7d": [
+      "/assets/panel-view.js"
+    ],
+    "690045dcd796cb58f7b2a0003b82706bbc89bc8506f8f4354d80c43283946f94": [
+      "/ui/js/fleet-task-work.js"
+    ],
+    "64f8796f79bdd85f5608d71e39d64864b354de77074340f173ae3b28965f04da": [
+      "/ui/js/agent-details-settings.js"
+    ],
+    "4292df7a24d06a152f1c461c85e35f4b0aa2fac000fd901cec611ff5a35cc285": [
+      "/ui/js/fleet-task-common.js"
+    ],
+    "00f5e28fe0a0a58d907015205bfeb3d3b13ba4ebc3c8dadb1ce0d8a547c2db83": [
+      "/ui/js/settings-restart-strings.js"
+    ],
+    "fcaef6b3d0c90cfcf90f4bf8144f2201e80243504680887fed27137cba5ae09f": [
+      "/ui/js/native-instance-settings.js"
+    ]
+  },
+  "cases": [
+    {
+      "label": "single-before",
+      "file": "light-zh-TW-single-before.png",
+      "geometry": {
+        "headers": 1,
+        "overflow": false,
+        "popout": false,
+        "sidebar": true,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": []
+      }
+    },
+    {
+      "label": "right",
+      "file": "light-zh-TW-right.png",
+      "geometry": {
+        "headers": 2,
+        "overflow": false,
+        "popout": false,
+        "sidebar": true,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": [
+          {
+            "id": "a",
+            "rect": [
+              260,
+              0,
+              666,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄"
+            ]
+          },
+          {
+            "id": "b",
+            "rect": [
+              934,
+              0,
+              666,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "label": "log",
+      "file": "light-zh-TW-log.png",
+      "geometry": {
+        "headers": 2,
+        "overflow": false,
+        "popout": false,
+        "sidebar": true,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": [
+          {
+            "id": "a",
+            "rect": [
+              260,
+              0,
+              666,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄"
+            ]
+          },
+          {
+            "id": "b",
+            "rect": [
+              934,
+              0,
+              666,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "label": "sash-keyboard",
+      "file": "light-zh-TW-sash-keyboard.png",
+      "geometry": {
+        "headers": 2,
+        "overflow": false,
+        "popout": false,
+        "sidebar": true,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": [
+          {
+            "id": "a",
+            "rect": [
+              260,
+              0,
+              682,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄"
+            ]
+          },
+          {
+            "id": "b",
+            "rect": [
+              950,
+              0,
+              650,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "label": "narrow360",
+      "file": "light-zh-TW-narrow360.png",
+      "geometry": {
+        "headers": 2,
+        "overflow": false,
+        "popout": false,
+        "sidebar": true,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": [
+          {
+            "id": "a",
+            "rect": [
+              260,
+              0,
+              360,
+              1000
+            ],
+            "tabs": [
+              "聊天"
+            ]
+          },
+          {
+            "id": "b",
+            "rect": [
+              628,
+              0,
+              972,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄",
+              "設定"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "label": "stacked",
+      "file": "light-zh-TW-stacked.png",
+      "geometry": {
+        "headers": 2,
+        "overflow": false,
+        "popout": false,
+        "sidebar": true,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": [
+          {
+            "id": "a",
+            "rect": [
+              260,
+              0,
+              1340,
+              496
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄",
+              "設定"
+            ]
+          },
+          {
+            "id": "b",
+            "rect": [
+              260,
+              504,
+              1340,
+              496
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄",
+              "設定"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "label": "drag-edge-preview",
+      "file": "light-zh-TW-drag-edge-preview.png",
+      "geometry": {
+        "headers": 2,
+        "overflow": false,
+        "popout": false,
+        "sidebar": true,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": [
+          {
+            "id": "a",
+            "rect": [
+              260,
+              0,
+              666,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄"
+            ]
+          },
+          {
+            "id": "b",
+            "rect": [
+              934,
+              0,
+              666,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "label": "float",
+      "file": "light-zh-TW-float.png",
+      "geometry": {
+        "headers": 2,
+        "overflow": false,
+        "popout": false,
+        "sidebar": true,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": [
+          {
+            "id": "a",
+            "rect": [
+              260,
+              0,
+              1340,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄",
+              "設定"
+            ]
+          },
+          {
+            "id": "b",
+            "rect": [
+              1024,
+              444,
+              560,
+              460
+            ],
+            "tabs": [
+              "聊天",
+              "檢視"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "label": "float-move-resize",
+      "file": "light-zh-TW-float-move-resize.png",
+      "geometry": {
+        "headers": 2,
+        "overflow": false,
+        "popout": false,
+        "sidebar": true,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": [
+          {
+            "id": "a",
+            "rect": [
+              260,
+              0,
+              1340,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄",
+              "設定"
+            ]
+          },
+          {
+            "id": "b",
+            "rect": [
+              919,
+              401,
+              615,
+              505
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "label": "layout-menu",
+      "file": "light-zh-TW-layout-menu.png",
+      "geometry": {
+        "headers": 2,
+        "overflow": false,
+        "popout": false,
+        "sidebar": true,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": [
+          {
+            "id": "a",
+            "rect": [
+              260,
+              0,
+              666,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄"
+            ]
+          },
+          {
+            "id": "b",
+            "rect": [
+              934,
+              0,
+              666,
+              1000
+            ],
+            "tabs": [
+              "聊天",
+              "檢視",
+              "紀錄"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "label": "popout-main",
+      "file": "light-zh-TW-popout-main.png",
+      "geometry": {
+        "headers": 1,
+        "overflow": false,
+        "popout": false,
+        "sidebar": true,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": []
+      }
+    },
+    {
+      "label": "popout-window",
+      "file": "light-zh-TW-popout-window.png",
+      "geometry": {
+        "headers": 1,
+        "overflow": false,
+        "popout": true,
+        "sidebar": false,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 32,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 32,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 44,
+            "height": 44,
+            "coarse": false
+          }
+        ],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": []
+      }
+    },
+    {
+      "label": "popout-narrow360",
+      "file": "light-zh-TW-popout-narrow360.png",
+      "geometry": {
+        "headers": 1,
+        "overflow": false,
+        "popout": true,
+        "sidebar": false,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 32,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 32,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 44,
+            "height": 44,
+            "coarse": false
+          }
+        ],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": []
+      }
+    },
+    {
+      "label": "popout-log",
+      "file": "light-zh-TW-popout-log.png",
+      "geometry": {
+        "headers": 1,
+        "overflow": false,
+        "popout": true,
+        "sidebar": false,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 32,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 32,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 44,
+            "height": 44,
+            "coarse": false
+          }
+        ],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": []
+      }
+    },
+    {
+      "label": "popout-reload",
+      "file": "light-zh-TW-popout-reload.png",
+      "geometry": {
+        "headers": 1,
+        "overflow": false,
+        "popout": true,
+        "sidebar": false,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "controls": 1,
+        "headerOverflow": false,
+        "touch": [
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 50,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 32,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 32,
+            "height": 44,
+            "coarse": false
+          },
+          {
+            "width": 44,
+            "height": 44,
+            "coarse": false
+          }
+        ],
+        "composerClipped": false,
+        "oneRow": true,
+        "panes": []
+      }
+    },
+    {
+      "label": "independent-windows",
+      "value": {
+        "oneStreamPerDocument": true,
+        "cookieSignInReused": true,
+        "draftAndFileMoved": true,
+        "noSend": true
+      }
+    }
+  ],
+  "retained": "",
+  "oldRef": "73c338516002d7be511948ed4c729b3f7255aa80",
+  "substitutions": {},
+  "effects": [],
+  "errors": [],
+  "external": [],
+  "scenario": "current",
+  "finalPages": [
+    "/ui/chat/agend-leader-t1503382358143799511"
+  ]
+}

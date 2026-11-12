@@ -45,7 +45,7 @@ function rig() {
                 publicKey: pem, fleetOrigin: "http://127.0.0.1:8080", requestId: randomUUID(), operationId: randomUUID(), fleetId: randomUUID(), verifierS256: randomBytes(32).toString("base64url") },
             version: 1, label: "Owned fixture", stateHash: "b".repeat(64), stage, createdAt: clock.now, outerDeadline: clock.now + 600000, retainUntil: clock.now + 1200000,
             browserHash: "c".repeat(64), browserOrigin: "http://127.0.0.1:8080", owner: null, sessionId: null, approvedAt: null, redeemDeadline: null, deliveryDeadline: 121000,
-            issuedHash: issued ? "d".repeat(64) : null, reason: null, delivery: null, receipt: null, invitationId: null, approvedBy: null, supersedesFleetId: null };
+            issuedHash: issued ? "d".repeat(64) : null, reason: null, delivery: null, receipt: null, invitationId: null, approvedBy: null, supersedesFleetId: null, enrolmentCodeId: null };
         db.transaction(() => records.insert(record)).immediate();
         return record;
     };

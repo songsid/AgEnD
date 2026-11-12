@@ -4,12 +4,12 @@ import type { HubMigration } from "../db.js";
 import type { HubAuditStore } from "../audit/index.js";
 import type { HubPairingNotice } from "../types.js";
 import type { HubMemberLink } from "../client.js";
-import { pairingNoticeV2Schema } from "../protocol.js";
+import { pairingNoticeV3Schema } from "../protocol.js";
 import { HubProtocolError, parseStrictJson, validated } from "../validation.js";
 import { randomUUID } from "node:crypto";
 
-export const HUB_PAIRING_INBOX_MIGRATION: HubMigration = Object.freeze({ component: "s90-pairing-inbox", version: 1, up(db: Database.Database) {
-  db.exec("CREATE TABLE hub_pairing_notice_inbox(id TEXT PRIMARY KEY, body TEXT NOT NULL)");
+export const HUB_PAIRING_INBOX_MIGRATION: HubMigration = Object.freeze({ component: "s90-pairing-inbox", version: 2, up(db: Database.Database) {
+  db.exec("CREATE TABLE IF NOT EXISTS hub_pairing_notice_inbox(id TEXT PRIMARY KEY, body TEXT NOT NULL)");
 } });
 export function createHubPairingNoticeInbox(options: {
   db: Database.Database; audit: Pick<HubAuditStore, "appendInTransaction">; current(): boolean; now(): number;
@@ -21,17 +21,18 @@ export function createHubPairingNoticeInbox(options: {
     list(): HubPairingNotice[] {
       // Matches the retention cap: an acknowledged retained notice must remain reachable in Settings history.
       check(); return (options.db.prepare("SELECT body FROM hub_pairing_notice_inbox ORDER BY rowid DESC LIMIT 1024").all() as { body: string }[])
-        .map(row => validated(pairingNoticeV2Schema, parseStrictJson(row.body)));
+        .map(row => validated(pairingNoticeV3Schema, parseStrictJson(row.body)));
     },
     async receive(input: HubPairingNotice, link: HubMemberLink): Promise<void> {
-      const notice = validated(pairingNoticeV2Schema, input); check();
+      const notice = validated(pairingNoticeV3Schema, input); check();
       if (!link.current() || !link.features.has("welcome-caps-v1") || !link.features.has("pairing-notices-v1")) throw new HubProtocolError("incompatible");
+      if (notice.source === "code" && !link.features.has("pairing-notices-v3")) throw new HubProtocolError("incompatible");
       if (notice.source === "manual" && !link.features.has("pairing-notices-v2")) throw new HubProtocolError("incompatible");
       options.db.transaction(() => {
         check(); if (!link.current()) throw new HubProtocolError("stale");
         const prior = options.db.prepare("SELECT body FROM hub_pairing_notice_inbox WHERE id=?").get(notice.id) as { body: string } | undefined;
         if (prior) {
-          const retained = validated(pairingNoticeV2Schema, parseStrictJson(prior.body));
+          const retained = validated(pairingNoticeV3Schema, parseStrictJson(prior.body));
           // A lost ACK can be replayed after the named fleet was revoked. Only that monotonic projection may change.
           if (JSON.stringify({ ...retained, revoked: notice.revoked }) !== JSON.stringify(notice)
             || (retained.revoked && !notice.revoked)) throw new HubProtocolError("conflict");

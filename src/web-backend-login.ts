@@ -74,8 +74,8 @@ export interface WebBackendLoginDeps {
    * terminal has not been opened (the controller reads that as it cancels).
    */
   cancelFor(sink: WebLoginSink, opts?: { unopenedTerminalOnly?: boolean }): Promise<boolean>;
-  /** `/login cancel`: whatever sign-in or install is running. */
-  cancel(): Promise<string>;
+  /** `/login cancel`: whatever sign-in or install is running — or, with `backend`, only the one on that backend (AGEND-203: windows are per backend). */
+  cancel(backend?: string): Promise<string>;
   /** A sign-in started from the dashboard: said where a chat login would be seen (General, or the Log). */
   notice(info: { shown: string; label: string; handle: string }): void;
   /** The current sign-in started, changed phase or went: the pages are told to read it again (no details in the event). */
@@ -160,17 +160,18 @@ export class WebBackendLogins {
   private now(): number { return (this.deps.now ?? Date.now)(); }
 
   /** The pre-check: the dialog's question, or the controller's answer (a refusal, "busy", "unsupported"…). */
-  async check(who: WebLoginRequester, backendArg: string, profile?: string): Promise<{ confirm: WebLoginConfirm } | { message: string }> {
+  async check(who: WebLoginRequester, backendArg: string, profile?: string): Promise<{ confirm: WebLoginConfirm } | { message: string; busy?: { backend: string } }> {
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
-    const asked: { info: Omit<Pending, "id" | "backend" | "profile" | "handle" | "expiresAt"> | null } = { info: null };
+    const asked: { info: Omit<Pending, "id" | "backend" | "profile" | "handle" | "expiresAt"> | null; busy: string | null } = { info: null, busy: null };
     const sink: WebLoginSink = {
       isAdmin: () => this.deps.isLocalAdmin(who.handle),
       confirm: info => { asked.info = info; },
       hint: () => {}, terminal: () => {}, ended: () => {},
+      busy: backend => { asked.busy = backend; },
     };
     const lines: string[] = [];
     const message = await this.deps.start(backend, this.chatFor(who, sink, lines), profile !== undefined ? { profile } : {});
-    if (!asked.info) return { message: message ?? lines.join("\n") };
+    if (!asked.info) return { message: message ?? lines.join("\n"), ...(asked.busy ? { busy: { backend: asked.busy } } : {}) };
     this.sweep();
     for (const [id, p] of this.pending) if (p.handle === who.handle) this.pending.delete(id);   // one question per session
     const id = randomBytes(16).toString("hex");
@@ -181,7 +182,7 @@ export class WebBackendLogins {
   }
 
   /** The go-ahead for a pre-check this session was given; `tunnel` only where it offered a public link. */
-  async begin(who: WebLoginRequester, confirmId: string, tunnel: boolean): Promise<{ login: WebLoginView } | { message: string } | { error: "confirm_expired" | "tunnel_not_offered" }> {
+  async begin(who: WebLoginRequester, confirmId: string, tunnel: boolean): Promise<{ login: WebLoginView } | { message: string; busy?: { backend: string } } | { error: "confirm_expired" | "tunnel_not_offered" }> {
     this.sweep();
     const asked = this.pending.get(confirmId);
     if (!asked || asked.handle !== who.handle) return { error: "confirm_expired" };
@@ -192,9 +193,11 @@ export class WebBackendLogins {
       handle: who.handle, label: who.label, startedAt: this.now(), phase: "running", ok: null, endedAt: null,
       hint: null, terminal: null, lines: [], sink: null as unknown as WebLoginSink,
     };
+    const busyFor: { backend: string | null } = { backend: null };
     run.sink = {
       isAdmin: () => this.deps.isLocalAdmin(who.handle),
       confirm: () => {},
+      busy: backend => { busyFor.backend = backend; },
       hint: (url, code) => { run.hint = { url, code, linkable: linkableLoginUrl(run.backend, url) }; },
       terminal: info => { run.terminal = { ...info }; },
       ended: result => {
@@ -219,7 +222,7 @@ export class WebBackendLogins {
     if (!running && run.phase !== "ended") {                                     // refused: nothing ran
       this.live.delete(run);
       if (!this.live.size) this.stopWatch();
-      return { message: message ?? "" };
+      return { message: message ?? "", ...(busyFor.backend ? { busy: { backend: busyFor.backend } } : {}) };
     }
     if (message && !running) pushLine(run.lines, message);                       // ended while starting: why
     // A start that took longer than a later one (its listener held, then cancelled) never replaces what that one shows.
@@ -241,7 +244,7 @@ export class WebBackendLogins {
   }
 
   /** Any local admin may stop it (it only takes something away); a chat-started sign-in or install included. */
-  cancel(): Promise<string> { return this.deps.cancel(); }
+  cancel(backend?: string): Promise<string> { return this.deps.cancel(backend); }
 
   /**
    * #3321 review: the dialog's own Close, for the one sign-in it was closed on — never "whatever is current". It ends run `runId` only when that run is

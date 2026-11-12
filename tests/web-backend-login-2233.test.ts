@@ -75,7 +75,8 @@ async function fixture(over: { checkAuth?: LoginControllerDeps["checkAuth"]; con
     claimWindow: backend => lock.tryClaim("web", backend),
     releaseWindow: c => { lock.release(c); },
     isClaimCurrent: c => lock.isCurrent(c),
-    windowBusyMessage: () => lock.busyMessage(),
+    windowBusyMessage: backend => lock.busyMessage(backend),
+    windowHolder: backend => lock.holderFor(backend),
     checkAuth: over.checkAuth ?? (async () => "invalid"),
     createSession: (spec, ev) => { const s = new FakeSession(spec, ev); terminals.push(s); return s as never; },
     createHttp: (s, _l, o) => new FakeHttp(s as unknown as FakeSession, o) as never,
@@ -97,7 +98,7 @@ async function fixture(over: { checkAuth?: LoginControllerDeps["checkAuth"]; con
     accessToken: sink => controller.webAccessToken(sink),
     isActiveFor: sink => controller.isActiveFor(sink),
     cancelFor: sink => controller.cancelFor(sink),
-    cancel: () => controller.isActive() ? controller.cancel() : Promise.resolve(t("login.no_session")),
+    cancel: backend => controller.isActive() && (backend === undefined || controller.pendingBackend === backend) ? controller.cancel() : Promise.resolve(t("login.no_session")),
     notice: info => { notices.push(info); },
     changed: () => { changes.n++; },
     now: () => wall,
@@ -350,9 +351,38 @@ describe("#2233 a terminal sign-in (claude-code) from the dashboard", () => {
     const idB = (await f.check(b, "claude-code")).body.confirm.id;
     await f.start(a, (await f.check(a, "claude-code")).body.confirm.id);
     const refused = await f.start(b, idB);
-    expect(refused.body).toEqual({ message: f.lock.busyMessage() });
+    // The dashboard is not told to type a chat command: it gets a plain sentence and the backend whose sign-in the dialog can end.
+    expect(refused.body).toEqual({ message: t("login.busy_web", "claude-code"), busy: { backend: "claude-code" } });
+    expect(refused.body.message).not.toContain("/login");
     expect((await f.view(a)).body.login).toMatchObject({ mine: true, phase: "running", accessCode: TOKEN });
     expect(f.terminals).toHaveLength(1);
+  });
+
+  it("AGEND-203: connecting Grok while Claude Code's sign-in is held is not refused by it; while this controller runs Claude Code's, Grok is told whose it is and the dialog's cancel (by backend) frees it", async () => {
+    // Claude Code's window held by something else (an unfinished dashboard sign-in of the structured kind): Grok asks and is confirmed.
+    const f = await fixture(), a = f.session();
+    const claude = f.lock.tryClaim("web", "claude-code");
+    expect((await f.check(a, "grok")).body.confirm).toMatchObject({ backend: "grok" });
+    const started = await f.start(a, (await f.check(a, "grok")).body.confirm.id);
+    expect(started.body.login).toMatchObject({ backend: "grok", mine: true, phase: "running" });
+    f.lock.release(claude);
+    await f.call("POST", "/ui/backend-login/cancel", a.headers, {});
+
+    // The controller's own session on Claude Code: Grok is refused with the web sentence, and cancelling THAT backend (not "whatever runs") frees it.
+    const g = await fixture(), b = g.session(), c = g.session();
+    await g.start(b, (await g.check(b, "claude-code")).body.confirm.id);
+    const refused = await g.check(c, "grok");
+    expect(refused.body).toEqual({ message: t("login.busy_web", "claude-code"), busy: { backend: "claude-code" } });
+    // A cancel that names another backend ends nothing.
+    expect((await g.call("POST", "/ui/backend-login/cancel", c.headers, { backend: "grok" })).body).toEqual({ message: t("login.no_session") });
+    expect(g.terminals[0]!.state).toBe("running");
+    expect((await g.call("POST", "/ui/backend-login/cancel", c.headers, { backend: "claude-code" })).status).toBe(200);
+    expect(g.terminals[0]!.state).toBe("finished");
+    expect(g.lock.isHeld).toBe(false);
+    expect((await g.check(c, "grok")).body.confirm).toMatchObject({ backend: "grok" });
+    // The body is validated: a backend name that is not one is refused, and so is anything else next to it.
+    expect((await g.call("POST", "/ui/backend-login/cancel", c.headers, { backend: "../x" })).status).toBe(400);
+    expect((await g.call("POST", "/ui/backend-login/cancel", c.headers, { backend: "grok", extra: 1 })).status).toBe(400);
   });
 
   it("not installed and unsupported (agy) are answered with words, and nothing runs; a codex profile (#3212 PR 4) is asked like any sign-in", async () => {
@@ -424,5 +454,151 @@ describe("#2233 a device-code sign-in (codex) from the dashboard", () => {
     expect(linkableLoginUrl("grok", "https://x.ai.example/device")).toBe(false);
     expect(linkableLoginUrl("kiro-cli", "https://view.awsapps.com/start/#/device")).toBe(true);
     expect(linkableLoginUrl("opencode", "https://opencode.ai/")).toBe(false);
+  });
+});
+
+describe("AGEND-207: POST /ui/backend-login/cancel {backend} — who may end a sign-in, and what it ends", () => {
+  const CANCEL = "/ui/backend-login/cancel";
+  /** A Claude Code sign-in running in the controller (started by `owner`); every refusal below must leave it running. */
+  async function running() {
+    const f = await fixture(), owner = f.session();
+    await f.start(owner, (await f.check(owner, "claude-code")).body.confirm.id);
+    expect(f.terminals[0]!.state).toBe("running");
+    return { f, owner };
+  }
+
+  it("a local admin session only: no credential 401, the CLI's header token 403, a read or guest session 403, no CSRF header 401 — the sign-in keeps running", async () => {
+    const { f, owner } = await running();
+    expect((await f.call("POST", CANCEL, { origin: f.origin, "content-type": "application/json" }, { backend: "claude-code" })).status).toBe(401);
+    expect((await f.call("POST", CANCEL, { "x-agend-token": f.token, origin: f.origin, "content-type": "application/json" }, { backend: "claude-code" })))
+      .toMatchObject({ status: 403, body: { error: "sign_in_needs_a_local_admin" } });
+    for (const tier of ["read", "guest"] as const) {
+      expect(await f.call("POST", CANCEL, f.session(tier).headers, { backend: "claude-code" })).toMatchObject({ status: 403, body: { error: "sign_in_needs_a_local_admin" } });
+    }
+    const { "x-agend-csrf": _csrf, ...noCsrf } = owner.headers;
+    expect((await f.call("POST", CANCEL, noCsrf, { backend: "claude-code" })).status).toBe(401);
+    expect(f.terminals[0]!.state, "nothing was ended by any of them").toBe("running");
+    expect(f.lock.heldFor("claude-code")).not.toBeNull();
+    // …and the admin's own request does end it.
+    expect((await f.call("POST", CANCEL, owner.headers, { backend: "claude-code" })).body).toEqual({ message: t("login.cancelled", "claude-code") });
+    expect(f.terminals[0]!.state).toBe("finished");
+    expect(f.lock.isHeld).toBe(false);
+  });
+
+  it("the public link: a bound gateway request is refused even as an admin, and the sign-in keeps running", async () => {
+    const { f } = await running();
+    const made = f.sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(f.token) });
+    let status = 0;
+    const res: any = { headersSent: false, setHeader() {}, writeHead(n: number) { status = n; this.headersSent = true; }, end() {} };
+    const req = Object.assign(new EventEmitter(), { method: "POST", url: CANCEL, headers: { host: "x.trycloudflare.com", origin: "https://x.trycloudflare.com", cookie: `__Host-agend_session=${made.sessionId}`, "x-agend-csrf": csrfTokenFor(made.sessionId) }, destroy() {}, resume() {} });
+    bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
+    expect(handleWebRequest(req as never, res, new URL(`https://x.trycloudflare.com${CANCEL}`), f.ctx)).toBe(true);
+    expect(status).toBe(403);
+    expect(f.terminals[0]!.state).toBe("running");
+  });
+
+  it("strictObject: `backend` next to `run`/`ifUnopened` or any other field is refused (400), as is a non-backend name — nothing is ended", async () => {
+    const { f, owner } = await running();
+    for (const body of [
+      { backend: "claude-code", run: "a".repeat(32), ifUnopened: true }, { backend: "claude-code", extra: 1 }, { backend: "claude-code", backend2: "grok" },
+      { backend: 1 }, { backend: "../x" }, { backend: "" }, { run: "a".repeat(32) }, [], "claude-code",
+    ]) expect((await f.call("POST", CANCEL, owner.headers, body)).status, JSON.stringify(body)).toBe(400);
+    expect(f.terminals[0]!.state).toBe("running");
+  });
+
+  it("it ends only the named backend's sign-in: another backend's name, and the install's backend, end nothing; the alias is not a backend name", async () => {
+    const { f, owner } = await running();
+    expect((await f.call("POST", CANCEL, owner.headers, { backend: "grok" })).body).toEqual({ message: t("login.no_session") });
+    expect((await f.call("POST", CANCEL, owner.headers, { backend: "claude" })).body, "the aliases are the chat's: the dialog sends the real name").toEqual({ message: t("login.no_session") });
+    expect(f.terminals[0]!.state).toBe("running");
+    expect((await f.call("POST", CANCEL, owner.headers, { backend: "Claude-Code" })).body).toEqual({ message: t("login.cancelled", "claude-code") });
+    expect(f.terminals[0]!.state).toBe("finished");
+  });
+});
+
+describe("AGEND-207: a refused start offers the cancel button only when something can be cancelled", () => {
+  it("a sign-out, Remove or keep-alive refresh holding the backend: plain words, no `busy` (no button); an install: its own sentence, no `busy`; a sign-in: `busy`", async () => {
+    const f = await fixture(), a = f.session();
+    for (const kind of ["account", "keepalive"] as const) {
+      const held = f.lock.tryClaim(kind, "claude-code")!;
+      const refused = await f.check(a, "claude-code");
+      expect(refused.body, kind).toEqual({ message: t("login.busy_wait", "claude-code") });
+      expect(refused.body.message).not.toContain("/login");
+      f.lock.release(held);
+    }
+    const install = f.lock.tryClaim("install", "claude-code")!;
+    expect((await f.check(a, "claude-code")).body).toEqual({ message: t("install.busy") });
+    f.lock.release(install);
+    const signIn = f.lock.tryClaim("web", "claude-code")!;
+    expect((await f.check(a, "claude-code")).body).toEqual({ message: t("login.busy_web", "claude-code"), busy: { backend: "claude-code" } });
+    f.lock.release(signIn);
+  });
+
+  it("the Chinese sentence is wired too", () => {
+    setLocale("zh-TW");
+    expect(t("login.busy_wait", "claude-code")).toContain("claude-code");
+    expect(t("login.busy_wait", "claude-code")).not.toBe("login.busy_wait");
+    expect(t("login.busy_wait", "claude-code")).toMatch(/[一-鿿]/);
+  });
+});
+
+describe("AGEND-207: two backends starting together — the second is refused while the first is starting, and cancelling reaches the first", () => {
+  it("claude-code's public-link start is still getting its cloudflared: Grok is refused naming claude-code; cancel {backend: claude-code} aborts it, frees the window, and Grok is then asked", async () => {
+    let aborted = false;
+    const f = await fixture({ ensureCloudflared: (_on, signal) => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => { aborted = true; reject(Object.assign(new Error("aborted"), { kind: "download-failed" })); });
+    }) }), a = f.session(), b = f.session();
+    const asked = (await f.check(a, "claude-code")).body.confirm;
+    const startA = f.start(a, asked.id, true);
+    await vi.waitFor(() => expect(f.controller.pendingBackend).toBe("claude-code"));
+    expect(f.controller.signingIn("claude-code", null)).toBe(true);
+    // The second backend: its own window is free, but the controller is busy with the first — refused, and the dialog is told which backend to end.
+    expect((await f.check(b, "grok")).body).toEqual({ message: t("login.busy_web", "claude-code"), busy: { backend: "claude-code" } });
+    expect(f.lock.heldFor("grok"), "the refused start left no window behind").toBeNull();
+    expect((await f.call("POST", "/ui/backend-login/cancel", b.headers, { backend: "grok" })).body).toEqual({ message: t("login.no_session") });
+    expect(aborted).toBe(false);
+    expect((await f.call("POST", "/ui/backend-login/cancel", b.headers, { backend: "claude-code" })).status).toBe(200);
+    expect(aborted).toBe(true);
+    await startA;
+    expect(f.terminals).toHaveLength(0);
+    expect(f.lock.isHeld).toBe(false);
+    expect((await f.check(b, "grok")).body.confirm).toMatchObject({ backend: "grok" });
+  });
+
+  it("a start between its claim and its session (the controller's `starting`): it counts as pending, the second backend is refused, and cancel ends it by releasing its window", async () => {
+    const f = await fixture(), b = f.session();
+    // The state a confirmed start is in until it publishes its session (no await separates them for a local start, so it is set up directly).
+    const claim = f.lock.tryClaim("web", "claude-code")!;
+    (f.controller as any).starting.set(claim.id, { backend: "claude-code", claim });
+    expect(f.controller.isActive()).toBe(true);
+    expect(f.controller.pendingBackend).toBe("claude-code");
+    expect((await f.check(b, "grok")).body).toEqual({ message: t("login.busy_web", "claude-code"), busy: { backend: "claude-code" } });
+    expect(f.lock.heldFor("grok")).toBeNull();
+    // Another backend's cancel leaves it; its own ends it — the window is released, so the start that owns the claim sees it was lost (`stale`) and stops.
+    expect((await f.call("POST", "/ui/backend-login/cancel", b.headers, { backend: "grok" })).body).toEqual({ message: t("login.no_session") });
+    expect(f.lock.isCurrent(claim)).toBe(true);
+    expect((await f.call("POST", "/ui/backend-login/cancel", b.headers, { backend: "claude-code" })).body).toEqual({ message: t("login.cancelled", "claude-code") });
+    expect(f.lock.isCurrent(claim)).toBe(false);
+    expect(f.controller.pendingBackend, "a start whose claim is gone no longer counts").toBeNull();
+    expect(f.controller.isActive()).toBe(false);
+    (f.controller as any).starting.delete(claim.id);
+    expect((await f.check(b, "grok")).body.confirm).toMatchObject({ backend: "grok" });
+  });
+
+  it("two confirmed starts for different backends at once: the first runs, the second is refused (no second session, no window held for it); after the first ends the second starts", async () => {
+    const f = await fixture(), a = f.session(), b = f.session();
+    const idA = (await f.check(a, "claude-code")).body.confirm.id, idB = (await f.check(b, "grok")).body.confirm.id;
+    const held = hold();
+    FakeHttp.gate = held.gate;                                          // claude-code's listener is slow: its start is mid-flight when grok's arrives
+    const startA = f.start(a, idA);
+    await vi.waitFor(() => expect(f.terminals).toHaveLength(1));
+    const refused = await f.start(b, idB);
+    expect(refused.body).toEqual({ message: t("login.busy_web", "claude-code"), busy: { backend: "claude-code" } });
+    expect(f.terminals, "the second backend got no session").toHaveLength(1);
+    expect(f.lock.heldFor("grok")).toBeNull();
+    held.release();
+    expect((await startA).status).toBe(200);
+    await f.terminals[0]!.finish({ ok: true, reason: "exit", detail: "success reported" });
+    expect((await f.check(b, "grok")).body.confirm).toMatchObject({ backend: "grok" });
   });
 });

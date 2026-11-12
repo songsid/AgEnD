@@ -1,0 +1,46 @@
+{
+  "head": "65c36376ce6b3fc5bbbfa7b028a8ec44ee0c1848",
+  "tree": "c9d9e907c214bd58d7ad8395475e1915c1f83495",
+  "inputs": {
+    "0a64d95da54984160a87ffd67ae1b9842b0ff0947f84bc1a1f230bce937b2d33": [
+      "src/ui/panel-chat.js",
+      "src/ui/panel-chat.js",
+      "src/ui/panel-chat.js",
+      "src/ui/panel-chat.js"
+    ]
+  },
+  "cases": [
+    {
+      "label": "scoped-width-observer",
+      "path": "src/ui/panel-chat.js",
+      "test": "tests/web-chat-pane-ownership-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "width-ime",
+      "path": "src/ui/panel-chat.js",
+      "test": "tests/web-chat-pane-ownership-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "width-height-cap",
+      "path": "src/ui/panel-chat.js",
+      "test": "tests/web-chat-pane-ownership-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "width-retired-owner",
+      "path": "src/ui/panel-chat.js",
+      "test": "tests/web-chat-pane-ownership-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    }
+  ]
+}

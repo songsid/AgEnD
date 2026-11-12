@@ -1,0 +1,636 @@
+{
+  "checks": [
+    {
+      "name": "company join enabled",
+      "pass": true
+    },
+    {
+      "name": "built strict discovery advertises code",
+      "pass": true
+    },
+    {
+      "name": "admin creates 20-use code",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small0",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small1",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small2",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small3",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small4",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small5",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small6",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small7",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small8",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small9",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small10",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small11",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small12",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small13",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small14",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small15",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small16",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small17",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small18",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small19",
+      "pass": true
+    },
+    {
+      "name": "small all issued and pinned member links online",
+      "pass": true
+    },
+    {
+      "name": "small uses counted once",
+      "pass": true
+    },
+    {
+      "name": "small starts inside 60 seconds",
+      "pass": true
+    },
+    {
+      "name": "small connected within five minutes",
+      "pass": true
+    },
+    {
+      "name": "small recent labels and owners",
+      "pass": true
+    },
+    {
+      "name": "small next push refuses after exhaustion",
+      "pass": true
+    },
+    {
+      "name": "admin creates 50-use code",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass0",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass1",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass2",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass3",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass4",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass5",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass6",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass7",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass8",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass9",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass10",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass11",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass12",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass13",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass14",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass15",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass16",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass17",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass18",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass19",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass20",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass21",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass22",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass23",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass24",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass25",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass26",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass27",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass28",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass29",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass30",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass31",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass32",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass33",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass34",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass35",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass36",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass37",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass38",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass39",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass40",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass41",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass42",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass43",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass44",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass45",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass46",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass47",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass48",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass49",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff massgroup0",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff massgroup1",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff massgroup2",
+      "pass": true
+    },
+    {
+      "name": "mass all issued and pinned member links online",
+      "pass": true
+    },
+    {
+      "name": "mass uses counted once",
+      "pass": true
+    },
+    {
+      "name": "mass starts inside 60 seconds",
+      "pass": true
+    },
+    {
+      "name": "mass connected within five minutes",
+      "pass": true
+    },
+    {
+      "name": "mass recent labels and owners",
+      "pass": true
+    },
+    {
+      "name": "mass next push refuses after exhaustion",
+      "pass": true
+    },
+    {
+      "name": "admin creates 50-use code",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke0",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke1",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke2",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke3",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke4",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke5",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke6",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke7",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke8",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke9",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke10",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke11",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke12",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke13",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke14",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke15",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke16",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke17",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke18",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke19",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke20",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke21",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke22",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke23",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff revoke24",
+      "pass": true
+    },
+    {
+      "name": "revoke first 25 issued",
+      "pass": true
+    },
+    {
+      "name": "admin revokes mid-wave",
+      "pass": true
+    },
+    {
+      "name": "nothing issues after revocation",
+      "pass": true
+    },
+    {
+      "name": "revoked counter stops at 25",
+      "pass": true
+    },
+    {
+      "name": "issued fleets stay active after code revocation",
+      "pass": true
+    },
+    {
+      "name": "no join expired",
+      "pass": true
+    },
+    {
+      "name": "no plain code anywhere in Hub home",
+      "pass": true
+    },
+    {
+      "name": "audit hash chain",
+      "pass": true
+    }
+  ],
+  "waves": [
+    {
+      "n": 20,
+      "groups": 0,
+      "startSpanMs": 39,
+      "elapsedMs": 13670,
+      "uses": 20,
+      "online": 20,
+      "hubRss": 319430656,
+      "databaseBytes": 684032
+    },
+    {
+      "n": 50,
+      "groups": 3,
+      "startSpanMs": 61,
+      "elapsedMs": 41843,
+      "uses": 50,
+      "online": 73,
+      "hubRss": 349458432,
+      "databaseBytes": 1499136
+    }
+  ],
+  "screenshots": [
+    "small0.en-US.png",
+    "small1.zh-TW.png",
+    "small2.en-US.png",
+    "small3.en-US.png",
+    "small4.en-US.png"
+  ],
+  "boundary": "Read-only network-none owned container. Production source Hub/SQLite/verified fake LDAPS. Built dist/hub/join/client.js and dist/hub/client.js, real pinned WSS. Five Chromium AD handoffs; harness persists member profiles directly after real redemption. Not five full Fleet services or Settings UI, not packaged/systemd; B-L11/12 UI and queue text remain B2/U2 acceptance.",
+  "ready": true,
+  "cleaned": true,
+  "production": [
+    {
+      "path": "src/hub/audit/index.ts",
+      "sha256": "612067f991c33f6350b939129f75479a98b465ba0cb922ebc4eb259400641d1e"
+    },
+    {
+      "path": "src/hub/catalog.ts",
+      "sha256": "fd5278d9db728ed6dfb36eeea9612698127246a0012e4c5dbdb8697362bb8247"
+    },
+    {
+      "path": "src/hub/client.ts",
+      "sha256": "f07eb24c1ee94365f04b26c06ff07b195d9de2f3f06b47e88ce141a72523098e"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "aa73a789e0d32b4a6eba759610cf5f59f57e639bcf4be52a18987f6b4e782719"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "5da38a22d6d82a795e2d04ba449100190f1f7906fc9b43d4b92cead18f5d1108"
+    },
+    {
+      "path": "src/hub/enrolment-code.ts",
+      "sha256": "0af0dd5f23ac0ba59d5132033ec4aedd8710169a9d884da85df9da04ba5af1f7"
+    },
+    {
+      "path": "src/hub/group-policy/admin-impact.ts",
+      "sha256": "b272bc27668a43f885cfc4b14072b5ab7caec1ea6a7847e9dfc3082dc9873f1e"
+    },
+    {
+      "path": "src/hub/group-policy/admin-inventory.ts",
+      "sha256": "7d6eb02454c2aa31c86d893211dc7244cff2a2e1ac9d31461f16b1dc52c9238c"
+    },
+    {
+      "path": "src/hub/group-policy/authorization.ts",
+      "sha256": "8311bbebb43d0bbe67fb6bba025f6a08707067c9b1844115fbcd8e5cf4c124fc"
+    },
+    {
+      "path": "src/hub/group-policy/resources.ts",
+      "sha256": "b23f6e53fdb856313fc22b4e0f3b803d5afa8e53a4bc0ad9c6c8987d3c3d3b28"
+    },
+    {
+      "path": "src/hub/group-policy/store.ts",
+      "sha256": "5d387e27514a106c65b8973590e901d81376fdb1eb027b636e3c979f66f6412d"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "b1fd65454f9da7c7f2dd47834f11dd9d311762a66d5d2aefe6e46d68b3ddd485"
+    },
+    {
+      "path": "src/hub/join/receipt.ts",
+      "sha256": "3358a9ace8ba6a0e89f5acfffe7fe69ae954d96abb42b6b72171732b22cef2a5"
+    },
+    {
+      "path": "src/hub/join/service.ts",
+      "sha256": "3a67e889c0ba6929bd286c9f969d8530126b1093844f3a923888b87711167e47"
+    },
+    {
+      "path": "src/hub/join/store.ts",
+      "sha256": "b84b57eea359c0ef4dbf8bc25d5c679618007ad16566f0c65d7ef6978e6e3b63"
+    },
+    {
+      "path": "src/hub/member/pairing-notices.ts",
+      "sha256": "6020790d4a44bfdd006681cc4e673fa4826e1901846994d89322138631b638d3"
+    },
+    {
+      "path": "src/hub/pairing-notices.ts",
+      "sha256": "a304fdf4a90d792b3b7663ad1fe7a2d6faec37604e466f15cbd0c4fcb4b17c73"
+    },
+    {
+      "path": "src/hub/pairing.ts",
+      "sha256": "53db89c0eaf72d8091377d74580997fc1705c87d6c7494d4a0243481ae9b067e"
+    },
+    {
+      "path": "src/hub/protocol.ts",
+      "sha256": "0050902484371d58fd55b7e80befd090b2e549f898dadaa095646b17fb8209fc"
+    },
+    {
+      "path": "src/hub/server.ts",
+      "sha256": "8375e750126fabaa4597347098500b97d2814c5c5fee7194bc5a691c9adcf0a3"
+    },
+    {
+      "path": "src/hub/types.ts",
+      "sha256": "8ef10112ca8523eff85ba84652a059b383602e5b94b07dc8fb7add40dc129429"
+    }
+  ],
+  "images": [
+    {
+      "path": "small0.en-US.png",
+      "sha256": "f31ebf12076e86850f76f2619876133df379ab658a17f277c2e509c5b79186e4"
+    },
+    {
+      "path": "small1.zh-TW.png",
+      "sha256": "24cea9441eb3192cb20f00594a59b1eca5f7dce911bd0152d3a9d813f7ad3632"
+    },
+    {
+      "path": "small2.en-US.png",
+      "sha256": "f83e4ca7712065bdf7e2800986a21b6e3ff89f145d2b03de26782a9bb669bf01"
+    },
+    {
+      "path": "small3.en-US.png",
+      "sha256": "a9b97e0d79ee10ee5c4a7f53f0e5c6d70f8b5d02f36fcd0bb62d0ba5ec2bbe80"
+    },
+    {
+      "path": "small4.en-US.png",
+      "sha256": "2aa1ab274022aa4a45f5f8c3dbbc24ca37ad682c92642c614ecd97f3c4360e6d"
+    }
+  ]
+}

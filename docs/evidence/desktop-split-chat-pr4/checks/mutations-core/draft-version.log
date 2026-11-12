@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-draft-3637.test.ts (5 tests | 1 failed) 14ms
+     × keeps edits made during startup, even when typing returns to the same text 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-draft-3637.test.ts > a pop-out moves only a captured, still-current local composer > keeps edits made during startup, even when typing returns to the same text
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/web-chat-popout-draft-3637.test.ts:23:35
+     21|     const a = make(); a.setDraft("alpha", "first"); const draft = a.ca…
+     22|     a.setDraft("alpha", "new"); a.setDraft("alpha", "first");
+     23|     expect(a.draftCurrent(draft)).toBe(false); expect(a.clearCapturedD…
+       |                                   ^
+     24|     expect(make().clearCapturedDraft(draft)).toBe(false);
+     25|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  11:20:44
+   Duration  380ms (transform 134ms, setup 94ms, import 93ms, tests 14ms, environment 0ms)
+

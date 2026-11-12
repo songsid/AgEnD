@@ -48,6 +48,13 @@ describe("group enrollment with actual publication snapshots", () => {
     const w = await world({ enable: false }), e = w.exposure(); await w.send(1, [e]);
     expect(w.rows()).toHaveLength(1); expect(w.read).not.toHaveBeenCalled(); expect(w.resources.read(w.resource(e))).toBeNull();
   });
+  it("a code-granted Fleet gets no legacy publication allowance, but can use an independent fresh group allowance", async () => {
+    const w = await world({ enable: false, manualFleet: false });
+    const permit = await w.actions.prepareCodeEnrollment(w.fleetResource, { codeId: randomUUID(), approvedBy: w.r.admin, perPersonFleets: 1, scope: { kind: "directory" } }, w.ctx);
+    w.r.db.transaction(() => permit.commit(w.r.db)).immediate();
+    await expect(w.send(1, [w.exposure()])).rejects.toThrow("denied"); expect(w.rows()).toEqual([]);
+    w.enable(); const e = w.exposure(); await w.send(2, [e]); expect(w.rows()).toHaveLength(1); expect(w.resources.read(w.resource(e))).toMatchObject({ source: "group" });
+  });
   it("commits a batch's actual publications and provenance together with source-correlated audit", async () => {
     const w = await world(), a = w.exposure(), b = w.exposure(), frame = w.r.frame("exposure.snapshot", { revision: 1, exposures: [a, b] }, w.link);
     await w.r.http.receive(frame as never, w.link);

@@ -206,6 +206,19 @@ describe("AGEND-153: the named exception (Antigravity — update to the latest, 
     expect(line("antigravity").getAttribute("data-latest")).toBe("1");
     expect(line("antigravity").getAttribute("data-via")).toBe("dashboard");
   });
+  it("AGEND-223: Antigravity with a version that could not be read says so — never \"? is installed\" — in both languages, and offers no button", async () => {
+    const unknown = { ...AGY("unknown", "1.5.3"), rows: [hostRow("antigravity", "usable", { signIn: true, cliUpdate: { state: "unknown", installed: null, audited: "1.5.3", button: false, latest: true, via: "dashboard" } })] };
+    view = { clis: [unknown] };
+    await mount();
+    expect(text(line("antigravity"))).toContain("could not be read");
+    expect(text(line("antigravity"))).toContain("1.5.3");
+    expect(text(line("antigravity"))).not.toContain("?");
+    expect(updateBtn("antigravity")).toBeUndefined();
+    await p.unmount(); i18n.setLang("zh-TW", { store: false }); A.accountsStore.set({ loaded: false, failed: false, view: null });
+    await mount();
+    expect(text(line("antigravity"))).toContain("讀不到已安裝的版本");
+    expect(text(line("antigravity"))).not.toMatch(/[?？]/);
+  });
   it("another CLI's button is the audited release as before, and says nothing about 'latest'", async () => {
     await mount();
     expect(text(updateBtn("grok"))).toBe("Update to 1.0.77");

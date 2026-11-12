@@ -1,0 +1,437 @@
+{
+  "78afa59c4159dd73b9136c04dfc9476bba3afcfbf3c7a4bfef1800e6beb53081": [
+    "README.md"
+  ],
+  "fae8e97c08d3dfc5696558d9512b1d7957dfe406a2ab21688db8bb6f12b52132": [
+    "browser/before-dark/dark-zh-TW-retained-all-float-refused.png"
+  ],
+  "e15bf3f45177fbd53b6caa3b868444a02ca8cd0b177361ecb3cf76a9dcfde487": [
+    "browser/before-dark/dark-zh-TW-retained-all.png"
+  ],
+  "b16a621be970a6f073a8c235998e97798e7aae6d9ad93f94bc2cef1a110aad88": [
+    "browser/before-dark/dark-zh-TW-single.png",
+    "browser/current-dark/dark-zh-TW-single.png"
+  ],
+  "af359caea2dbe7c748ee2df3dd1c0ef54ec31468e9e7039a05539f6f014d080f": [
+    "browser/before-dark/receipt.json"
+  ],
+  "8a6c5d356ab41f8819db6fcdd84a1245ed1ceb315d20281d79808a050a070df9": [
+    "browser/before-light/light-zh-TW-retained-all-float-refused.png",
+    "browser/skew-host/light-zh-TW-retained-host-float-refused.png",
+    "browser/skew-js/light-zh-TW-retained-js-float-refused.png"
+  ],
+  "4ec7599c0efdf44e587ddced30fb8d2841185717813ec636f0817c581767789c": [
+    "browser/before-light/light-zh-TW-retained-all.png",
+    "browser/skew-host/light-zh-TW-retained-host.png",
+    "browser/skew-js/light-zh-TW-retained-js.png"
+  ],
+  "e3764de5dd70fd8639c4062341d6dab4f545e9fcf49ed2ccffe1cfbf2fa32c3e": [
+    "browser/before-light/light-zh-TW-single.png",
+    "browser/current-light/light-zh-TW-single.png",
+    "browser/skew-css/light-zh-TW-single.png",
+    "browser/skew-css-old-app/light-zh-TW-single.png",
+    "browser/skew-host/light-zh-TW-single.png",
+    "browser/skew-js/light-zh-TW-single.png",
+    "browser/skew-model/light-zh-TW-single.png",
+    "browser/skew-navigation/light-zh-TW-single.png",
+    "browser/skew-server/light-zh-TW-single.png",
+    "browser/skew-sidebar/light-zh-TW-single.png"
+  ],
+  "dfdf95c8b9cd045aa984c482eaba91f02b1e3b2af477ca99737792b2cf472f88": [
+    "browser/before-light/receipt.json"
+  ],
+  "687f285fe0647fd068bac7062c7b118484dc3b645abba1f63f59805e7b262a7b": [
+    "browser/current-coarse/dark-zh-TW-center-swap.png"
+  ],
+  "8c826f9e456468cd87c39f29f4065835b8e6cdd3556fc82f1048a89c23977f5d": [
+    "browser/current-coarse/dark-zh-TW-float-dock-preview.png"
+  ],
+  "38712b0b0b6b3e7398b962b722f2314ee800f0ef5553983fc9223e81a9f552f0": [
+    "browser/current-coarse/dark-zh-TW-float-docked.png"
+  ],
+  "bb2ed5963a1acb69fa25463fc0f0180e8a241278fccbd03502c3f426b8716c49": [
+    "browser/current-coarse/dark-zh-TW-float-keyboard-applied.png"
+  ],
+  "0149c43dcab191e3cfc06bb24e16c32e2ad5e6be2598ea2707a420c41cf99872": [
+    "browser/current-coarse/dark-zh-TW-float-keyboard-preview.png"
+  ],
+  "92f38c8004b5288472e4098186d4c34e644cdd813f5de0362e53d8da2061d28b": [
+    "browser/current-coarse/dark-zh-TW-float-menu.png"
+  ],
+  "da647b712d685c91179ec7caa9586565644abc2a7e513163979294f4684a5e87": [
+    "browser/current-coarse/dark-zh-TW-float-moved.png"
+  ],
+  "6daa929cdf5278af36f98d4c2748383b6527b9182f47da1b484c03d8242271fa": [
+    "browser/current-coarse/dark-zh-TW-float-reload.png"
+  ],
+  "ff2e2019690bc402ab899ee69078e360269e8c7f4417edb8166e6bf148d328a0": [
+    "browser/current-coarse/dark-zh-TW-float-resized.png"
+  ],
+  "7e84c71677458c7d0084e2164c319d4d95486cd2e8b7f3eb0bc25918007bfda7": [
+    "browser/current-coarse/dark-zh-TW-float.png"
+  ],
+  "d543872b3b71eacc2c35afaf2e509e6b593935e0b1761b4aa00dda0a783c2a8d": [
+    "browser/current-coarse/dark-zh-TW-header-drop-preview.png"
+  ],
+  "38773f1b9b152c049de6e87164faecac796fb9e9b918501d7a8cc710aaf66a84": [
+    "browser/current-coarse/dark-zh-TW-minimum-pane.png"
+  ],
+  "78693728e02c9839f7e809be28f34060bb6d0108039d5c99a11a9e04d21fe2d0": [
+    "browser/current-coarse/dark-zh-TW-narrow.png"
+  ],
+  "a9fc8f941406af33150b3d1878b4ca2061cdfa659263c2a1fd73bf698f4c2258": [
+    "browser/current-coarse/dark-zh-TW-phone.png"
+  ],
+  "95d313f0a02b5c79d254ddca1be8bf7f17dbc81026433859748c42b0a12cf7a8": [
+    "browser/current-coarse/dark-zh-TW-right.png"
+  ],
+  "41a0fbdf25d6b0c90d73e701b8ecc7c9d1711b26c2944cebc33f6bbb4b59c773": [
+    "browser/current-coarse/dark-zh-TW-sash-cancel.png"
+  ],
+  "c63053af11995a4825f661c196f882c2c98b8f54f667bad694f325505b1617f6": [
+    "browser/current-coarse/dark-zh-TW-sash-drag.png"
+  ],
+  "88944ba2d79693118b893d902e3d6cdbc2c6cd77443d247049573a3170abab63": [
+    "browser/current-coarse/dark-zh-TW-sash-keyboard.png"
+  ],
+  "cdb4fe38a388fe279448711e347716d0e4ff6585f7cbd3a11a82ac5731a5b120": [
+    "browser/current-coarse/dark-zh-TW-single.png"
+  ],
+  "3f4d07d0d8b684e45e0485636d901485938d6658adf30ed276ef1031faa46f79": [
+    "browser/current-coarse/dark-zh-TW-stacked.png"
+  ],
+  "2b9b44622b823468ae18e75d828b0232d1b2a7d3e938f5535df495c80c4b19d5": [
+    "browser/current-coarse/dark-zh-TW-ultrawide-minimum.png"
+  ],
+  "ccd1f77e17c49805e8a2034e455959919a7adb74c48dbf7d82010fdd05ee74b2": [
+    "browser/current-coarse/receipt.json"
+  ],
+  "a558bb4a5de025791152ce5fe74b139132039dbc9d4b205c36ad79f6be11b4c9": [
+    "browser/current-dark/dark-zh-TW-center-swap.png"
+  ],
+  "08936d05391d2e2b6f95cde50bbaac05a069b7923b03a74cda16f64ae55df49f": [
+    "browser/current-dark/dark-zh-TW-float-dock-preview.png"
+  ],
+  "250366203bede4993b49756186081eb0c2d2eafe387d94538668945a1ab378a3": [
+    "browser/current-dark/dark-zh-TW-float-docked.png"
+  ],
+  "5321b6bb3b2861d2efe58ca51a6c39fd03fb6c87e3b02ac13bc98dc36220082c": [
+    "browser/current-dark/dark-zh-TW-float-keyboard-applied.png"
+  ],
+  "9d47bc85cc90cece112d2c7d2fd9cb091e7dda357efdee2e2a4ae2968d58ba81": [
+    "browser/current-dark/dark-zh-TW-float-keyboard-preview.png"
+  ],
+  "dad43b88aa2a15550d5fa69fc5e38a439989cb7c199194bf7ff60559d0ba8dbb": [
+    "browser/current-dark/dark-zh-TW-float-menu.png"
+  ],
+  "8e910284c09d9fadd486dc706dbd443b72d38311c13f3a0605931d491d9f59cd": [
+    "browser/current-dark/dark-zh-TW-float-moved.png"
+  ],
+  "a04d5787c337ee2ca028934577319c8ebca06622b14f40c33aba48239d8aa8db": [
+    "browser/current-dark/dark-zh-TW-float-reload.png"
+  ],
+  "18ace146e609d8b2e9fc9fdcbc37e7169327a1ade454130ec37a6422e6030788": [
+    "browser/current-dark/dark-zh-TW-float-resized.png"
+  ],
+  "2d8f8375708530f6b0a09cded6cb889b1668419d68ab2a69869ce5f25bdfa9dc": [
+    "browser/current-dark/dark-zh-TW-float.png"
+  ],
+  "211af03bb1e8c305f2fadf8780b8b771becd051236cad762dff345973e674c52": [
+    "browser/current-dark/dark-zh-TW-header-drop-preview.png"
+  ],
+  "fc99bac7620dee378c5b7dd66576c4d3bbf37c1aa069e830a321245a7a5253b3": [
+    "browser/current-dark/dark-zh-TW-minimum-pane.png"
+  ],
+  "f2d359918a888daea9d47b96e20e6eed2c1f96f8a8906c526380cab4a9633d68": [
+    "browser/current-dark/dark-zh-TW-narrow.png"
+  ],
+  "1b05ce38ad342d319c925df29a8c5763794db5db1c0478f6402edf5fb2749562": [
+    "browser/current-dark/dark-zh-TW-phone.png"
+  ],
+  "95a5d83ff6dce47bae6dc0f115a0da37586f7d033be9d40983ddbcc1a862c31f": [
+    "browser/current-dark/dark-zh-TW-right.png"
+  ],
+  "3ef9190f7f7410f341a3970c800893e0307731aeeef99e3b896d6de7e8e68e65": [
+    "browser/current-dark/dark-zh-TW-sash-cancel.png"
+  ],
+  "b57865c84091830dfed18086f1067f84ad378039530ccc2d8ce1340d0425e645": [
+    "browser/current-dark/dark-zh-TW-sash-drag.png"
+  ],
+  "e03baefc6a1109202d23900413be8cf8ef17fc6a8f8945f9f0ccc01556c40273": [
+    "browser/current-dark/dark-zh-TW-sash-keyboard.png"
+  ],
+  "8a6ddec84dc93909025d95413545d58246fce282a175b2a27e881f052fe04a4c": [
+    "browser/current-dark/dark-zh-TW-stacked.png"
+  ],
+  "76c68296ee0fb53d5ba891ee78cf0562b24a447f5122f42ca11a5e92c502c921": [
+    "browser/current-dark/dark-zh-TW-ultrawide-minimum.png"
+  ],
+  "c197565ca796c868687fb21dd8f95db3878bb68ad6d419fb51cb4085ec940ee2": [
+    "browser/current-dark/receipt.json"
+  ],
+  "467e1b83b01f48dc4951fd543028b13ca57b5c9c9c67bee0023ad81720c918b9": [
+    "browser/current-en/light-en-center-swap.png"
+  ],
+  "a26c4a5f87f1b47c204c226c4a8f13fafe2fba63dc30013ec74471d597a0642c": [
+    "browser/current-en/light-en-float-dock-preview.png"
+  ],
+  "db6f475155487d754ac6c8718e0ae6d2d75b5ad505883968b930a9494b1a1394": [
+    "browser/current-en/light-en-float-docked.png"
+  ],
+  "524b696be4254833e4233b0e499c439a50d3385fd1a8d49eea43ee62c4170f8c": [
+    "browser/current-en/light-en-float-keyboard-applied.png"
+  ],
+  "82d4f546dc1e7a2a8dee2f6421f87d912403e04b1bb1ab7c55fb219130ce27c7": [
+    "browser/current-en/light-en-float-keyboard-preview.png"
+  ],
+  "568106e7571cf8f30e9f307d77edddfc4a86533be83ebd0e02a803d2ec6dc9c7": [
+    "browser/current-en/light-en-float-menu.png"
+  ],
+  "63e6784217afeef5555def1f21522f048d67e4edf2f2cb026189b3634c04ae92": [
+    "browser/current-en/light-en-float-moved.png"
+  ],
+  "bac538fb63d7abad1732df1a0022c1a1015215f175985a5ce3fe7d9b46c9d4b6": [
+    "browser/current-en/light-en-float-reload.png"
+  ],
+  "6a3755d482e8ec3eff1a865e7cbcb2a0da0e71838834ea230ddfe76c9bccb4c0": [
+    "browser/current-en/light-en-float-resized.png"
+  ],
+  "042e936cb24f5bd51f04157f90c4c4dec41ee42f72fc32f9288d1f79bb30a7a8": [
+    "browser/current-en/light-en-float.png"
+  ],
+  "6324201b8efaa77440c521308f3163b05da08b338489be860f264276a8c477ca": [
+    "browser/current-en/light-en-header-drop-preview.png"
+  ],
+  "50329e333b46792d7e22db79c928cb22a6c2d59acd8bf255e7dd6873a128f164": [
+    "browser/current-en/light-en-minimum-pane.png"
+  ],
+  "9c6583979f4ebb3eb25a194a400cbd174752629aa6666b8ad8e01bf1f4314107": [
+    "browser/current-en/light-en-narrow.png"
+  ],
+  "41fda0ddafbab050980b8f509d1a8dc4339f600e7321691871e8e58c1dfc709f": [
+    "browser/current-en/light-en-phone.png"
+  ],
+  "70507f5f888909ce5afb5647b20ba2490f9be6d64b30516b8c152b98bb61c859": [
+    "browser/current-en/light-en-right.png"
+  ],
+  "a421b75cbccc4bd401bb9398ea0484404b3ec26c25267a7e70866216d76768b1": [
+    "browser/current-en/light-en-sash-cancel.png"
+  ],
+  "5313f41220743b316669c7dd3def36972677a17f3fbc2229543440a71fcca46e": [
+    "browser/current-en/light-en-sash-drag.png"
+  ],
+  "ec89621c2f32b8184c05aacb4ff20de3a3e88278b2b66b5588375210ebca3aa1": [
+    "browser/current-en/light-en-sash-keyboard.png"
+  ],
+  "ce4fbdd849e6e1687bdd16dd686a475ebea4c62549d91892f737d3f76aebc74a": [
+    "browser/current-en/light-en-single.png"
+  ],
+  "d6e83830c2bd6451e775f49c385106b0526a39de0f06d74c6147e212ea9fe012": [
+    "browser/current-en/light-en-stacked.png"
+  ],
+  "e12298852b85cea20a21a2300b2d826c5af1ac89e53ebb63efbc520a3cdd4f3f": [
+    "browser/current-en/light-en-ultrawide-minimum.png"
+  ],
+  "6dd0f5b3145c0b741cc188e240496dc05407f76b6642ab64e93d95746ae12da9": [
+    "browser/current-en/receipt.json"
+  ],
+  "f87d12ad4b0132075a17c2f59be0f45a444ed89bfc8acc42f186ce9536fc8e78": [
+    "browser/current-light/light-zh-TW-center-swap.png"
+  ],
+  "d304e78e426da03002cfdfe86394eb340fa9fe832df151ae8ab8d7d25d357d91": [
+    "browser/current-light/light-zh-TW-float-dock-preview.png"
+  ],
+  "ff3d4da22f5246f6b6315b8e088a349cd17f9266837b0421c7bc7783d8f30dcb": [
+    "browser/current-light/light-zh-TW-float-docked.png"
+  ],
+  "529f366d66b237f9d9df57bee00d3696ed1e09fb489018975093db9aa2703bac": [
+    "browser/current-light/light-zh-TW-float-keyboard-applied.png"
+  ],
+  "40fc08587b2da81171edbba7afa1e4fecefed4305f56fbb757798f60f4c8a7ed": [
+    "browser/current-light/light-zh-TW-float-keyboard-preview.png"
+  ],
+  "14c75175962f754654aac5faecc2c8e724177b4211564d895abcdc07fde974c0": [
+    "browser/current-light/light-zh-TW-float-menu.png"
+  ],
+  "13eba60aa5d2a007a5ffffb8b523748aa21a2ee58a606aee953bd92c722595e3": [
+    "browser/current-light/light-zh-TW-float-moved.png"
+  ],
+  "8269d50020164b05fc8fdd575b1ae1b4a2d1f8137ca4302faf7de65bb58841bd": [
+    "browser/current-light/light-zh-TW-float-reload.png"
+  ],
+  "e29fbcfc1853e438a152f0d290883f35ecfa8a25001ca273e24fa3c0a787b224": [
+    "browser/current-light/light-zh-TW-float-resized.png"
+  ],
+  "7bb40b961ea223b7348f5bfd8535ce0cc8ea604ac37bfc611f7833d3cbdcfa55": [
+    "browser/current-light/light-zh-TW-float.png"
+  ],
+  "0f6d913380c752f5df8ad9b142152ba3684f7f38756e942092786d05229dc9e9": [
+    "browser/current-light/light-zh-TW-header-drop-preview.png"
+  ],
+  "922cfac33a9bf71fae966c4219f1f5cf15551ba61bb1a349bc6a14708e803934": [
+    "browser/current-light/light-zh-TW-minimum-pane.png"
+  ],
+  "67d7965e417f837e098df5f1db34448afe9d196eaf4d9b5eaca588bbb5f764b3": [
+    "browser/current-light/light-zh-TW-narrow.png"
+  ],
+  "55be2f652c665827ab81d6e494983a70544481afc9113a983bb86071b5cdb4e4": [
+    "browser/current-light/light-zh-TW-phone.png"
+  ],
+  "d44197a71a6073c759f408c5e0a70557a1c8de23cd2f461f9944295265d94155": [
+    "browser/current-light/light-zh-TW-right.png",
+    "browser/skew-sidebar/light-zh-TW-retained-sidebar.png"
+  ],
+  "cdeea8a95e8b715746649f302d90533b54b58ff0648c823306bf6cb85b3510f5": [
+    "browser/current-light/light-zh-TW-sash-cancel.png"
+  ],
+  "e33cce7ad2c40f168f8d18dfae1cf83ab8299aee6bcd7a29425598fbf077d91a": [
+    "browser/current-light/light-zh-TW-sash-drag.png"
+  ],
+  "cf1edfa9254957263d1d42ef647f346df69291ad384c8e5bdcf62c7fbd451d85": [
+    "browser/current-light/light-zh-TW-sash-keyboard.png"
+  ],
+  "b4bb0ca277c7e368ead265669ea76de906c5125554e135e52b41890d20e51a9d": [
+    "browser/current-light/light-zh-TW-stacked.png"
+  ],
+  "6d19c25c1eaa48b3a10f77de5e6f08d618c550523d788a7739dc250519e3b1ae": [
+    "browser/current-light/light-zh-TW-ultrawide-minimum.png"
+  ],
+  "abd029c12465774f02ae63439dee3569c021ff5919822e2e4305a77bb7f94234": [
+    "browser/current-light/receipt.json"
+  ],
+  "7e36780005edc1f1517eb712f1f8291a7a61f5ecccf3dde80fc4d90408b387d6": [
+    "browser/skew-css/light-zh-TW-retained-css.png",
+    "browser/skew-model/light-zh-TW-retained-model.png",
+    "browser/skew-server/light-zh-TW-retained-server.png"
+  ],
+  "d3efa6e4f43e39af19199a6b8794ef649a41c2b8653038580fbdbe316967bc5a": [
+    "browser/skew-css/receipt.json"
+  ],
+  "e9bdefbec49b784b5acbbe6978f0d2bba7033270473d8fd62afc25e96b06acd4": [
+    "browser/skew-css-old-app/light-zh-TW-retained-css-old-app.png"
+  ],
+  "22d98bdf7cb7e4ee27b67ed063e70ea81e6c2f90fc7df92eb46f5ee2dff05ca3": [
+    "browser/skew-css-old-app/receipt.json"
+  ],
+  "21a86188ac3dd92dbe693b32eb7951b82f1793027e6e5a97e6d6241df0e1e9de": [
+    "browser/skew-host/receipt.json"
+  ],
+  "e8340f64ca2a10d8ed7c958e82344b3c25e1e0dd0da64225f3156d5f99faf8a4": [
+    "browser/skew-js/receipt.json"
+  ],
+  "c1189e4e8888850ca71e089aad8cef630de6503eaee8c8de6329aeb806d5c2bf": [
+    "browser/skew-model/receipt.json"
+  ],
+  "98d2cb6f516462ca7464b77df034939357771d0ef17c30b0b1de4ce6470a755f": [
+    "browser/skew-navigation/light-zh-TW-retained-navigation.png"
+  ],
+  "2d084b7b846c3180e00812d3078d9f75e2d8b017afc37c3101f010885a28eb4f": [
+    "browser/skew-navigation/receipt.json"
+  ],
+  "87a59aa997c312329fddbed73266098d029b155ac73c8d1bc0eb205f3d0e3684": [
+    "browser/skew-server/receipt.json"
+  ],
+  "ff63b488e2258261c30dfc34e8addc833e5cf55380e4c70f12d049b147040a08": [
+    "browser/skew-sidebar/receipt.json"
+  ],
+  "04142b657e1b577d29d384b9a4a618eea38912e288444bfefb90dc37bc1b9b00": [
+    "checks/capture-provenance.json"
+  ],
+  "a4cebf7e9ab5e2aa22c8c4f4289145786caa80273a2bd5642bd231a3437bf86c": [
+    "checks/final-controls.log"
+  ],
+  "69a15e9fffe9ff76903c6560dae82248281042016f3ac66450d1813660cc3975": [
+    "checks/first-split-preview-fail-first.log"
+  ],
+  "9740ca48634c328507f50b5a127b8091b37eeeece3fe7fb9a69875cd736dd501": [
+    "checks/log-normalization.json"
+  ],
+  "571064dba3d2d8c0f75c38be3f75715b71a797762c687d9467515d831ef6720c": [
+    "checks/menu-fail-first.log"
+  ],
+  "bfa5f33c26da5a0a4ba294c862d93cab73feb51ff283e06916a87ca03536c9e2": [
+    "checks/mutations/bounds-fence.log"
+  ],
+  "84dd6b37dfbdd14ab7352031b766dcfd8c61aae657ac6dd27fd40876c130d1fa": [
+    "checks/mutations/drop-leave-guard.log"
+  ],
+  "0be6cb414e488a6ac7a8a039ceb19000b872a54871c271de17a30b769693aada": [
+    "checks/mutations/escape-cancel.log"
+  ],
+  "6954223985e60885adda01597670fa21ed118674b227460499981962b3b283cc": [
+    "checks/mutations/float-boundary.log"
+  ],
+  "92d1ac8f09007a308bc730c0af350174da7d422dd7b55318abe063ffe4e3e1e0": [
+    "checks/mutations/keyboard-browser-keys.log"
+  ],
+  "5f9b2e69485e3e3a4b202d2894fa53f06975dc549a635e619e148edd1c98825a": [
+    "checks/mutations/native-domrect.log"
+  ],
+  "694328e10dc3be41f5e3349f26b78c8101e5333279fc0b7170b9abe37557078d": [
+    "checks/mutations/native-target.log"
+  ],
+  "e04d3994495a7ee312f38b526b5c598890e2a6197484cc174c925991bab85788": [
+    "checks/mutations/outside-drop.log"
+  ],
+  "b7221261228119421bfeda8d9bee007ebd74397a0dc22e25ed5f48a9f17f8217": [
+    "checks/mutations/pane-dom-identity.log"
+  ],
+  "f16010dbbc212ba697a3601accf5571c6a02aa10ec1f800c7ea28371d906d1fe": [
+    "checks/mutations/pointer-owner.log"
+  ],
+  "7b4b8b9ebe6e0ae5fdc52044a965629388d0859eece1fcdd5fafe986b1ee500d": [
+    "checks/mutations/preview-stop.log"
+  ],
+  "0c72b0912b0eed30ddc26d7425ae5df535697e361dbb8f4b213b488f9f63a4d2": [
+    "checks/mutations/receipt.json"
+  ],
+  "a953035ba4ac430fd02786a9e4a8c4b4dab6d4445b8c75ce0b31812659a21bfe": [
+    "checks/mutations/retained-float-layout.log"
+  ],
+  "66ca595ccc7125037395369b1c79a09ee665f76d8ade871d3883f614e99a3104": [
+    "checks/mutations/retained-float-model.log"
+  ],
+  "1062ba0af7fb13e42ae469ddef3729e699c795425f62b5deb72b5bd87f594e63": [
+    "checks/mutations/revoked-incarnation.log"
+  ],
+  "86457b005e6d98cad3b99d9a68dae72ccae0ccdbf68900e3f1669b656189dc33": [
+    "checks/mutations/sidebar-dock.log"
+  ],
+  "eca05c6ea217798b3e9ba284ba4e8d3995413ff6043d32fd61156e70c48c3a8f": [
+    "checks/mutations/split-minimum.log"
+  ],
+  "12879b9a003ff4ac5890588910aa6886ab4162f5389abf590d63d6b9020645cc": [
+    "checks/mutations/unique-dock.log"
+  ],
+  "70f6688f8598fe0b6dfa26bb8cd1bf393752f7cd271d3a20d498389bd3e4f9e6": [
+    "checks/overlay-stability-fail-first.log"
+  ],
+  "5273d50b651ac609448b4598004b5b83bd36a740e1035b19ac547a71fe957b34": [
+    "checks/pinned-changelog.log"
+  ],
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
+    "checks/pinned-source-types.log",
+    "checks/pinned-test-types.log"
+  ],
+  "a0a3fc32c3c1db4afce0112f9942e955054b2dde65fa8e61d442e92629133be2": [
+    "checks/post-sync.log"
+  ],
+  "305ec30f36bad4eaba0a3fb118f808cde7257984838f30452a39cb76284a94b9": [
+    "checks/results.json"
+  ],
+  "28cfb57c71061eb6c205a64505468d4a3d3c1c97d36020b63d60eff73963b1ce": [
+    "checks/retained-host-float-fail-first.log"
+  ],
+  "a68160ad4e8d10c9effd02e46703065ee0d253291b67097f7bfea6c18e30406a": [
+    "checks/single-pixel-comparison.json"
+  ],
+  "04b7d16d102f6c8896c56fee62197a585cd8214c0773c528a77591bf8b850e8f": [
+    "checks/ultrawide-fail-first.log"
+  ],
+  "4ee2d5e69f8a91c5be8fcde2978a6cf2c8d630a2b0a5df7ed594b822f5bc9476": [
+    "checks/verify.py"
+  ],
+  "e23efb392fa82ff37c278e0360fb0b68cb37e78a6ad53b116601c3c7822a4dbf": [
+    "checks/visual-review.md"
+  ]
+}

@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-draft-3637.test.ts (5 tests | 1 failed) 20ms
+     × only the store that issued the original ticket can consume it 11ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-draft-3637.test.ts > a pop-out moves only a captured, still-current local composer > only the store that issued the original ticket can consume it
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/web-chat-popout-draft-3637.test.ts:7:80
+      5|   it("only the store that issued the original ticket can consume it", …
+      6|     const a = make(), b = make(); a.setDraft("alpha", "same"); b.setDr…
+      7|     const draft = a.captureDraft("alpha"); expect(b.clearCapturedDraft…
+       |                                                                                ^
+      8|     expect(a.clearCapturedDraft({ ...draft })).toBe(false); expect(a.c…
+      9|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  11:20:45
+   Duration  451ms (transform 174ms, setup 133ms, import 114ms, tests 20ms, environment 0ms)
+

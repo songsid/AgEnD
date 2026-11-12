@@ -1,0 +1,34 @@
+{
+  "head": "f9f84f06c36629404efe3989aa93e512f04876dc",
+  "tree": "253a495020efc526af332cacf9152f16f5ee9d9c",
+  "scope": "Post-sync local controls; evidence-only commit follows. No post-sync browser execution claimed.",
+  "commands": [
+    {
+      "command": "npx vitest run <23 workspace/popout/ownership/reply/i18n/skew files> <3 incoming hub-u2 files> --maxWorkers=1",
+      "exit": 0,
+      "files": 26,
+      "passed": 225,
+      "log": "focused.log"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "exit": 0,
+      "log": "source-types.log"
+    },
+    {
+      "command": "npx tsc --noEmit -p tsconfig.test.json",
+      "exit": 0,
+      "log": "test-types.log"
+    },
+    {
+      "command": "node scripts/changelog-assemble.mjs --check",
+      "exit": 0,
+      "log": "changelog.log"
+    },
+    {
+      "command": "python3 scripts/manual/verify-split-chat-popout-3637.py checks/verification.json",
+      "exit": 0,
+      "log": "verification.json"
+    }
+  ]
+}

@@ -36,7 +36,7 @@ describe("company join UI", () => {
   });
   it("opening Settings or a prefilled link never starts a join", async () => {
     fetcher(() => ({ ok: true, operation: null })); const p = await mount(fleet.CompanyJoinSettings);
-    expect(p.root.textContent).toContain("Copy colleague connection link"); expect(p.root.querySelector("#hubCompanyAddress")).not.toBeNull(); expect(button(p, "Sign in with company account")).toBeTruthy();
+    expect(p.root.textContent).toContain("Enter the Hub address (for example hub.example.com)"); expect(p.root.querySelector("#hubCompanyAddress")).not.toBeNull(); expect(button(p, "Sign in with company account")).toBeTruthy();
     expect(calls.every(c => !c.init.method || c.init.method === "GET")).toBe(true);
   });
   it("M-2921: one input — Start waits for the Hub's read-only probe; the line names the Hub and this computer; no Fleet name field until 改名", async () => {

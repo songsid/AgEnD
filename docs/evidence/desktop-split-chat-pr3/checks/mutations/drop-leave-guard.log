@@ -1,0 +1,43 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+···xx
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 passed (5)
+   Start at  03:39:53
+   Duration  445ms (transform 189ms, setup 90ms, import 141ms, tests 46ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-docking-navigation-3637.test.ts > a drop consults the existing leave guard and cannot overwrite an edited target
+AssertionError: expected "vi.fn()" to be called at least once
+ ❯ tests/web-chat-workspace-docking-navigation-3637.test.ts:27:57
+     25| it("a drop consults the existing leave guard and cannot overwrite an e…
+     26|   const check = vi.fn(() => false), off = controller.pane("a").addLeav…
+     27|   controller.dock("gamma", "a", "right"); expect(check).toHaveBeenCall…
+       |                                                         ^
+     28|   controller.dock("gamma", "a", "right"); expect(controller.current().…
+     29| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-chat-workspace-docking-navigation-3637.test.ts > sidebar docking opens a single pane's second agent at the requested edge without losing its category
+AssertionError: expected undefined to be '?cat=runtime' // Object.is equality
+
+- Expected:
+"?cat=runtime"
+
++ Received:
+undefined
+
+ ❯ tests/web-chat-workspace-docking-navigation-3637.test.ts:32:42
+     30| it("sidebar docking opens a single pane's second agent at the requeste…
+     31|   nav.navigate("/ui/fleet/agent/alpha?cat=runtime", { workspace: true,…
+     32|   expect(controller.current()?.a.search).toBe("?cat=runtime"); expect(…
+       |                                          ^
+     33| });
+     34|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
