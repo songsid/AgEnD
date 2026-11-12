@@ -1,0 +1,115 @@
+{
+  "source": "e4b018d36d3a19dc431109f4504a02700725d125",
+  "backend": "fe489fa9810ef4fa33ebbf65ff6e4b7c7ad7c2da",
+  "startedAt": 1794499414721,
+  "finishedAt": 1794500306265,
+  "phases": [
+    {
+      "name": "build",
+      "startedAt": 1794499414723,
+      "finishedAt": 1794499421701,
+      "exitCode": 0
+    },
+    {
+      "name": "protocol",
+      "startedAt": 1794499421777,
+      "finishedAt": 1794499461011,
+      "exitCode": 0
+    },
+    {
+      "name": "member-fixture-preflight",
+      "startedAt": 1794499461011,
+      "finishedAt": 1794499468275,
+      "exitCode": 0
+    },
+    {
+      "name": "diagnose-3713",
+      "startedAt": 1794499468275,
+      "finishedAt": 1794499848071,
+      "exitCode": 0
+    },
+    {
+      "name": "remaining-acceptance",
+      "startedAt": 1794499875088,
+      "finishedAt": 1794500265131,
+      "exitCode": 0
+    },
+    {
+      "name": "hub-ui-style",
+      "startedAt": 1794500265131,
+      "finishedAt": 1794500283584,
+      "exitCode": 0
+    },
+    {
+      "name": "hub-shell-style",
+      "startedAt": 1794500283584,
+      "finishedAt": 1794500303930,
+      "exitCode": 0
+    },
+    {
+      "name": "rollback",
+      "startedAt": 1794500303930,
+      "finishedAt": 1794500306264,
+      "exitCode": 0
+    }
+  ],
+  "diagnosticChecks": 345,
+  "remainderChecks": 211,
+  "waves": [
+    {
+      "n": 20,
+      "groups": 0,
+      "authenticationMs": null,
+      "startSpanMs": 8335,
+      "elapsedMs": 17055,
+      "uses": 20,
+      "everConnected": 20,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 514912256,
+      "databaseBytes": 684032,
+      "walBytes": 4169472
+    },
+    {
+      "n": 50,
+      "groups": 0,
+      "authenticationMs": 5477,
+      "startSpanMs": 33853,
+      "elapsedMs": 42790,
+      "uses": 50,
+      "everConnected": 70,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 637734912,
+      "databaseBytes": 1441792,
+      "walBytes": 4280712
+    },
+    {
+      "n": 50,
+      "groups": 3,
+      "authenticationMs": 7317,
+      "startSpanMs": 57888,
+      "elapsedMs": 68665,
+      "uses": 50,
+      "everConnected": 123,
+      "controlledHeldEligibility": 32,
+      "hubAndFleetsRss": 727855104,
+      "databaseBytes": 2355200,
+      "walBytes": 4280712
+    }
+  ],
+  "remainderWaves": [
+    {
+      "kind": "revoke-at-25",
+      "started": 1794500252658,
+      "startSpanMs": 11813,
+      "uses": 25,
+      "hubAndFleetsRss": 564678656,
+      "databaseBytes": 933888
+    }
+  ],
+  "images": 163,
+  "hostSamples": 896,
+  "hostMaxLoad1": 3.68,
+  "hostMinAvailableMiB": 19987.43359375,
+  "maxContainerBytes": 1848676352,
+  "scope": "Shared Hub/Fleet/harness Node RSS; capped container memory is separate. Source build with synthetic directory and inert Agent lifecycle, not a packaged/systemd/native/vendor/pilot test."
+}

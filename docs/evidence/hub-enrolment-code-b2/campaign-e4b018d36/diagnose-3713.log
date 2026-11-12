@@ -1,0 +1,349 @@
+{"check":"company join enabled","pass":true}
+{"check":"built strict discovery advertises code","pass":true}
+{"check":"admin creates 20-use code","pass":true}
+{"check":"Origin-bound browser handoff small5","pass":true}
+{"check":"Origin-bound browser handoff small6","pass":true}
+{"check":"Origin-bound browser handoff small7","pass":true}
+{"check":"Origin-bound browser handoff small8","pass":true}
+{"check":"Origin-bound browser handoff small9","pass":true}
+{"check":"small-1-01-fleet-start no horizontal overflow","pass":true}
+{"check":"small-4-01-fleet-start no horizontal overflow","pass":true}
+{"check":"small-4-01-fleet-start no raw i18n keys","pass":true}
+{"check":"small-1-01-fleet-start no raw i18n keys","pass":true}
+{"check":"small-0-01-fleet-start no horizontal overflow","pass":true}
+{"check":"small-0-01-fleet-start no raw i18n keys","pass":true}
+{"check":"small-2-01-fleet-start no horizontal overflow","pass":true}
+{"check":"small-3-01-fleet-start no horizontal overflow","pass":true}
+{"check":"small-2-01-fleet-start no raw i18n keys","pass":true}
+{"check":"small-3-01-fleet-start no raw i18n keys","pass":true}
+{"check":"Origin-bound browser handoff small10","pass":true}
+{"check":"Origin-bound browser handoff small11","pass":true}
+{"check":"Origin-bound browser handoff small12","pass":true}
+{"check":"Origin-bound browser handoff small13","pass":true}
+{"check":"Origin-bound browser handoff small14","pass":true}
+{"check":"Origin-bound browser handoff small15","pass":true}
+{"check":"Origin-bound browser handoff small16","pass":true}
+{"check":"Origin-bound browser handoff small17","pass":true}
+{"check":"Origin-bound browser handoff small18","pass":true}
+{"check":"Origin-bound browser handoff small19","pass":true}
+{"check":"small-1-02-hub-signin no horizontal overflow","pass":true}
+{"check":"small-1-02-hub-signin no raw i18n keys","pass":true}
+{"check":"small-4-02-hub-signin no horizontal overflow","pass":true}
+{"check":"small-4-02-hub-signin no raw i18n keys","pass":true}
+{"check":"small-0-02-hub-signin no horizontal overflow","pass":true}
+{"check":"small-0-02-hub-signin no raw i18n keys","pass":true}
+{"check":"small-2-02-hub-signin no horizontal overflow","pass":true}
+{"check":"small-2-02-hub-signin no raw i18n keys","pass":true}
+{"check":"small-3-02-hub-signin no horizontal overflow","pass":true}
+{"check":"small-3-02-hub-signin no raw i18n keys","pass":true}
+{"check":"small-1 current production join is durably active","pass":true}
+{"check":"small-1 no per-Fleet admin approval","pass":true}
+{"check":"small-1 no page errors","pass":true}
+{"check":"small-4 current production join is durably active","pass":true}
+{"check":"small-4 no per-Fleet admin approval","pass":true}
+{"check":"small-4 no page errors","pass":true}
+{"check":"small-0 current production join is durably active","pass":true}
+{"check":"small-0 no per-Fleet admin approval","pass":true}
+{"check":"small-0 no page errors","pass":true}
+{"check":"small-1-04-connected no horizontal overflow","pass":true}
+{"check":"small-1-04-connected no raw i18n keys","pass":true}
+{"check":"small-2 current production join is durably active","pass":true}
+{"check":"small-2 no per-Fleet admin approval","pass":true}
+{"check":"small-2 no page errors","pass":true}
+{"check":"small-3 current production join is durably active","pass":true}
+{"check":"small-3 no per-Fleet admin approval","pass":true}
+{"check":"small-3 no page errors","pass":true}
+{"check":"small-3-04-connected no horizontal overflow","pass":true}
+{"check":"small-3-04-connected no raw i18n keys","pass":true}
+{"check":"small-0-04-connected no horizontal overflow","pass":true}
+{"check":"small-0-04-connected no raw i18n keys","pass":true}
+{"check":"small-2-04-connected no horizontal overflow","pass":true}
+{"check":"small-2-04-connected no raw i18n keys","pass":true}
+{"check":"small-4-04-connected no horizontal overflow","pass":true}
+{"check":"small-4-04-connected no raw i18n keys","pass":true}
+{"check":"small all issued and pinned member links reconciled","pass":true}
+{"check":"small uses counted once","pass":true}
+{"check":"small all member links current together","pass":true}
+{"check":"small starts inside 60 seconds","pass":true}
+{"check":"small connected within five minutes","pass":true}
+{"check":"small recent labels and owners","pass":true}
+{"check":"small labelled admin row small-0","pass":true}
+{"check":"small-admin-row-small-0 no horizontal overflow","pass":true}
+{"check":"small-admin-row-small-0 no raw i18n keys","pass":true}
+{"check":"small labelled admin row small-1","pass":true}
+{"check":"small-admin-row-small-1 no horizontal overflow","pass":true}
+{"check":"small-admin-row-small-1 no raw i18n keys","pass":true}
+{"check":"small labelled admin row small-2","pass":true}
+{"check":"small-admin-row-small-2 no horizontal overflow","pass":true}
+{"check":"small-admin-row-small-2 no raw i18n keys","pass":true}
+{"check":"small labelled admin row small-3","pass":true}
+{"check":"small-admin-row-small-3 no horizontal overflow","pass":true}
+{"check":"small-admin-row-small-3 no raw i18n keys","pass":true}
+{"check":"small labelled admin row small-4","pass":true}
+{"check":"small-admin-row-small-4 no horizontal overflow","pass":true}
+{"check":"small-admin-row-small-4 no raw i18n keys","pass":true}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":13,"code":"denied","kind":null}}
+{"check":"small next push refuses after exhaustion","pass":true}
+{"check":"admin creates 50-use code","pass":true}
+{"check":"mass-2-00-company-session no horizontal overflow","pass":true}
+{"check":"mass-4-00-company-session no horizontal overflow","pass":true}
+{"check":"mass-0-00-company-session no horizontal overflow","pass":true}
+{"check":"mass-2-00-company-session no raw i18n keys","pass":true}
+{"check":"mass-4-00-company-session no raw i18n keys","pass":true}
+{"check":"mass-0-00-company-session no raw i18n keys","pass":true}
+{"check":"mass-3-00-company-session no horizontal overflow","pass":true}
+{"check":"mass-1-00-company-session no horizontal overflow","pass":true}
+{"check":"mass-3-00-company-session no raw i18n keys","pass":true}
+{"check":"mass-1-00-company-session no raw i18n keys","pass":true}
+{"check":"Origin-bound browser handoff mass5","pass":true}
+{"check":"Origin-bound browser handoff mass6","pass":true}
+{"check":"Origin-bound browser handoff mass7","pass":true}
+{"check":"Origin-bound browser handoff mass8","pass":true}
+{"check":"Origin-bound browser handoff mass9","pass":true}
+{"check":"mass-2-01-fleet-start no horizontal overflow","pass":true}
+{"check":"mass-2-01-fleet-start no raw i18n keys","pass":true}
+{"check":"mass-0-01-fleet-start no horizontal overflow","pass":true}
+{"check":"mass-1-01-fleet-start no horizontal overflow","pass":true}
+{"check":"mass-0-01-fleet-start no raw i18n keys","pass":true}
+{"check":"mass-1-01-fleet-start no raw i18n keys","pass":true}
+{"check":"mass-3-01-fleet-start no horizontal overflow","pass":true}
+{"check":"mass-4-01-fleet-start no horizontal overflow","pass":true}
+{"check":"mass-3-01-fleet-start no raw i18n keys","pass":true}
+{"check":"mass-4-01-fleet-start no raw i18n keys","pass":true}
+{"check":"Origin-bound browser handoff mass10","pass":true}
+{"check":"Origin-bound browser handoff mass11","pass":true}
+{"check":"Origin-bound browser handoff mass12","pass":true}
+{"check":"Origin-bound browser handoff mass13","pass":true}
+{"check":"Origin-bound browser handoff mass14","pass":true}
+{"check":"Origin-bound browser handoff mass15","pass":true}
+{"check":"Origin-bound browser handoff mass16","pass":true}
+{"check":"Origin-bound browser handoff mass17","pass":true}
+{"check":"Origin-bound browser handoff mass18","pass":true}
+{"check":"Origin-bound browser handoff mass19","pass":true}
+{"check":"mass-1-02-existing-account-consent no horizontal overflow","pass":true}
+{"check":"mass-1-02-existing-account-consent no raw i18n keys","pass":true}
+{"check":"Origin-bound browser handoff mass20","pass":true}
+{"check":"Origin-bound browser handoff mass21","pass":true}
+{"check":"Origin-bound browser handoff mass22","pass":true}
+{"check":"Origin-bound browser handoff mass23","pass":true}
+{"check":"Origin-bound browser handoff mass24","pass":true}
+{"check":"mass-0-02-existing-account-consent no horizontal overflow","pass":true}
+{"check":"mass-0-02-existing-account-consent no raw i18n keys","pass":true}
+{"check":"mass-4-02-existing-account-consent no horizontal overflow","pass":true}
+{"check":"mass-2-02-existing-account-consent no horizontal overflow","pass":true}
+{"check":"mass-4-02-existing-account-consent no raw i18n keys","pass":true}
+{"check":"mass-2-02-existing-account-consent no raw i18n keys","pass":true}
+{"check":"mass-3-02-existing-account-consent no horizontal overflow","pass":true}
+{"check":"mass-3-02-existing-account-consent no raw i18n keys","pass":true}
+{"check":"Origin-bound browser handoff mass25","pass":true}
+{"check":"Origin-bound browser handoff mass26","pass":true}
+{"check":"Origin-bound browser handoff mass27","pass":true}
+{"check":"Origin-bound browser handoff mass28","pass":true}
+{"check":"Origin-bound browser handoff mass29","pass":true}
+{"check":"mass-1 current production join is durably active","pass":true}
+{"check":"mass-1 no per-Fleet admin approval","pass":true}
+{"check":"mass-1 no page errors","pass":true}
+{"check":"mass-1-04-connected no horizontal overflow","pass":true}
+{"check":"mass-1-04-connected no raw i18n keys","pass":true}
+{"check":"mass-2 current production join is durably active","pass":true}
+{"check":"mass-2 no per-Fleet admin approval","pass":true}
+{"check":"mass-2 no page errors","pass":true}
+{"check":"mass-4 current production join is durably active","pass":true}
+{"check":"mass-4 no per-Fleet admin approval","pass":true}
+{"check":"mass-4 no page errors","pass":true}
+{"check":"mass-4-04-connected no horizontal overflow","pass":true}
+{"check":"mass-2-04-connected no horizontal overflow","pass":true}
+{"check":"mass-4-04-connected no raw i18n keys","pass":true}
+{"check":"mass-2-04-connected no raw i18n keys","pass":true}
+{"check":"mass-3 current production join is durably active","pass":true}
+{"check":"mass-3 no per-Fleet admin approval","pass":true}
+{"check":"mass-3 no page errors","pass":true}
+{"check":"mass-0 current production join is durably active","pass":true}
+{"check":"mass-0 no per-Fleet admin approval","pass":true}
+{"check":"mass-0 no page errors","pass":true}
+{"check":"mass-3-04-connected no horizontal overflow","pass":true}
+{"check":"mass-3-04-connected no raw i18n keys","pass":true}
+{"check":"mass-0-04-connected no horizontal overflow","pass":true}
+{"check":"mass-0-04-connected no raw i18n keys","pass":true}
+{"check":"Origin-bound browser handoff mass30","pass":true}
+{"check":"Origin-bound browser handoff mass31","pass":true}
+{"check":"Origin-bound browser handoff mass32","pass":true}
+{"check":"Origin-bound browser handoff mass33","pass":true}
+{"check":"Origin-bound browser handoff mass34","pass":true}
+{"check":"Origin-bound browser handoff mass35","pass":true}
+{"check":"Origin-bound browser handoff mass36","pass":true}
+{"check":"Origin-bound browser handoff mass37","pass":true}
+{"check":"Origin-bound browser handoff mass38","pass":true}
+{"check":"Origin-bound browser handoff mass39","pass":true}
+{"check":"Origin-bound browser handoff mass40","pass":true}
+{"check":"Origin-bound browser handoff mass41","pass":true}
+{"check":"Origin-bound browser handoff mass42","pass":true}
+{"check":"Origin-bound browser handoff mass43","pass":true}
+{"check":"Origin-bound browser handoff mass44","pass":true}
+{"check":"Origin-bound browser handoff mass45","pass":true}
+{"check":"Origin-bound browser handoff mass46","pass":true}
+{"check":"Origin-bound browser handoff mass47","pass":true}
+{"check":"Origin-bound browser handoff mass48","pass":true}
+{"check":"Origin-bound browser handoff mass49","pass":true}
+{"check":"mass all issued and pinned member links reconciled","pass":true}
+{"check":"mass uses counted once","pass":true}
+{"check":"mass all member links current together","pass":true}
+{"check":"mass starts inside 60 seconds","pass":true}
+{"check":"mass connected within five minutes","pass":true}
+{"check":"mass recent labels and owners","pass":true}
+{"check":"mass labelled admin row mass-0","pass":true}
+{"check":"mass-admin-row-mass-0 no horizontal overflow","pass":true}
+{"check":"mass-admin-row-mass-0 no raw i18n keys","pass":true}
+{"check":"mass labelled admin row mass-1","pass":true}
+{"check":"mass-admin-row-mass-1 no horizontal overflow","pass":true}
+{"check":"mass-admin-row-mass-1 no raw i18n keys","pass":true}
+{"check":"mass labelled admin row mass-2","pass":true}
+{"check":"mass-admin-row-mass-2 no horizontal overflow","pass":true}
+{"check":"mass-admin-row-mass-2 no raw i18n keys","pass":true}
+{"check":"mass labelled admin row mass-3","pass":true}
+{"check":"mass-admin-row-mass-3 no horizontal overflow","pass":true}
+{"check":"mass-admin-row-mass-3 no raw i18n keys","pass":true}
+{"check":"mass labelled admin row mass-4","pass":true}
+{"check":"mass-admin-row-mass-4 no horizontal overflow","pass":true}
+{"check":"mass-admin-row-mass-4 no raw i18n keys","pass":true}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":19,"code":"denied","kind":null}}
+{"check":"mass next push refuses after exhaustion","pass":true}
+{"check":"admin creates 50-use code","pass":true}
+{"check":"withgroups-0-00-company-session no horizontal overflow","pass":true}
+{"check":"withgroups-1-00-company-session no horizontal overflow","pass":true}
+{"check":"withgroups-2-00-company-session no horizontal overflow","pass":true}
+{"check":"withgroups-0-00-company-session no raw i18n keys","pass":true}
+{"check":"withgroups-1-00-company-session no raw i18n keys","pass":true}
+{"check":"withgroups-2-00-company-session no raw i18n keys","pass":true}
+{"check":"withgroups-3-00-company-session no horizontal overflow","pass":true}
+{"check":"withgroups-3-00-company-session no raw i18n keys","pass":true}
+{"check":"withgroups-4-00-company-session no horizontal overflow","pass":true}
+{"check":"withgroups-4-00-company-session no raw i18n keys","pass":true}
+{"check":"withgroups-2-01-fleet-start no horizontal overflow","pass":true}
+{"check":"withgroups-2-01-fleet-start no raw i18n keys","pass":true}
+{"check":"withgroups-0-01-fleet-start no horizontal overflow","pass":true}
+{"check":"withgroups-4-01-fleet-start no horizontal overflow","pass":true}
+{"check":"withgroups-1-01-fleet-start no horizontal overflow","pass":true}
+{"check":"withgroups-0-01-fleet-start no raw i18n keys","pass":true}
+{"check":"withgroups-4-01-fleet-start no raw i18n keys","pass":true}
+{"check":"withgroups-1-01-fleet-start no raw i18n keys","pass":true}
+{"check":"withgroups-3-01-fleet-start no horizontal overflow","pass":true}
+{"check":"withgroups-3-01-fleet-start no raw i18n keys","pass":true}
+{"check":"withgroups-2-02-existing-account-consent no horizontal overflow","pass":true}
+{"check":"withgroups-2-02-existing-account-consent no raw i18n keys","pass":true}
+{"check":"withgroups-4-02-existing-account-consent no horizontal overflow","pass":true}
+{"check":"withgroups-4-02-existing-account-consent no raw i18n keys","pass":true}
+{"check":"withgroups-1-02-existing-account-consent no horizontal overflow","pass":true}
+{"check":"withgroups-1-02-existing-account-consent no raw i18n keys","pass":true}
+{"check":"withgroups-3-02-existing-account-consent no horizontal overflow","pass":true}
+{"check":"withgroups-0-02-existing-account-consent no horizontal overflow","pass":true}
+{"check":"withgroups-3-02-existing-account-consent no raw i18n keys","pass":true}
+{"check":"withgroups-0-02-existing-account-consent no raw i18n keys","pass":true}
+{"check":"Origin-bound browser handoff withgroupsgroup0","pass":true}
+{"check":"Origin-bound browser handoff withgroupsgroup1","pass":true}
+{"check":"Origin-bound browser handoff withgroupsgroup2","pass":true}
+{"check":"Origin-bound browser handoff withgroups5","pass":true}
+{"check":"Origin-bound browser handoff withgroups6","pass":true}
+{"check":"withgroups-2-03-queued no horizontal overflow","pass":true}
+{"check":"withgroups-1-03-queued no horizontal overflow","pass":true}
+{"check":"withgroups-3-03-queued no horizontal overflow","pass":true}
+{"check":"withgroups-4-03-queued no horizontal overflow","pass":true}
+{"check":"withgroups-0-03-queued no horizontal overflow","pass":true}
+{"check":"withgroups-2-03-queued no raw i18n keys","pass":true}
+{"check":"withgroups-1-03-queued no raw i18n keys","pass":true}
+{"check":"withgroups-3-03-queued no raw i18n keys","pass":true}
+{"check":"withgroups-0-03-queued no raw i18n keys","pass":true}
+{"check":"withgroups-4-03-queued no raw i18n keys","pass":true}
+{"check":"withgroups-1 current production join is durably active","pass":true}
+{"check":"withgroups-1 no per-Fleet admin approval","pass":true}
+{"check":"withgroups-1 no page errors","pass":true}
+{"check":"withgroups-0 current production join is durably active","pass":true}
+{"check":"withgroups-0 no per-Fleet admin approval","pass":true}
+{"check":"withgroups-0 no page errors","pass":true}
+{"check":"Origin-bound browser handoff withgroups7","pass":true}
+{"check":"withgroups-1-04-connected no horizontal overflow","pass":true}
+{"check":"withgroups-1-04-connected no raw i18n keys","pass":true}
+{"check":"withgroups-0-04-connected no horizontal overflow","pass":true}
+{"check":"withgroups-3 current production join is durably active","pass":true}
+{"check":"withgroups-3 no per-Fleet admin approval","pass":true}
+{"check":"withgroups-3 no page errors","pass":true}
+{"check":"withgroups-0-04-connected no raw i18n keys","pass":true}
+{"check":"withgroups-2 current production join is durably active","pass":true}
+{"check":"withgroups-2 no per-Fleet admin approval","pass":true}
+{"check":"withgroups-2 no page errors","pass":true}
+{"check":"withgroups-3-04-connected no horizontal overflow","pass":true}
+{"check":"withgroups-3-04-connected no raw i18n keys","pass":true}
+{"check":"withgroups-2-04-connected no horizontal overflow","pass":true}
+{"check":"withgroups-2-04-connected no raw i18n keys","pass":true}
+{"check":"withgroups-4 current production join is durably active","pass":true}
+{"check":"withgroups-4 no per-Fleet admin approval","pass":true}
+{"check":"withgroups-4 no page errors","pass":true}
+{"check":"Origin-bound browser handoff withgroups8","pass":true}
+{"check":"Origin-bound browser handoff withgroups9","pass":true}
+{"check":"Origin-bound browser handoff withgroups10","pass":true}
+{"check":"Origin-bound browser handoff withgroups11","pass":true}
+{"check":"withgroups-4-04-connected no horizontal overflow","pass":true}
+{"check":"withgroups-4-04-connected no raw i18n keys","pass":true}
+{"check":"Origin-bound browser handoff withgroups12","pass":true}
+{"check":"Origin-bound browser handoff withgroups13","pass":true}
+{"check":"Origin-bound browser handoff withgroups14","pass":true}
+{"check":"Origin-bound browser handoff withgroups15","pass":true}
+{"check":"Origin-bound browser handoff withgroups16","pass":true}
+{"check":"Origin-bound browser handoff withgroups17","pass":true}
+{"check":"Origin-bound browser handoff withgroups18","pass":true}
+{"check":"Origin-bound browser handoff withgroups19","pass":true}
+{"check":"Origin-bound browser handoff withgroups20","pass":true}
+{"check":"Origin-bound browser handoff withgroups21","pass":true}
+{"check":"Origin-bound browser handoff withgroups22","pass":true}
+{"check":"Origin-bound browser handoff withgroups23","pass":true}
+{"check":"Origin-bound browser handoff withgroups24","pass":true}
+{"check":"Origin-bound browser handoff withgroups25","pass":true}
+{"check":"Origin-bound browser handoff withgroups26","pass":true}
+{"check":"Origin-bound browser handoff withgroups27","pass":true}
+{"check":"Origin-bound browser handoff withgroups28","pass":true}
+{"check":"Origin-bound browser handoff withgroups29","pass":true}
+{"check":"Origin-bound browser handoff withgroups30","pass":true}
+{"check":"Origin-bound browser handoff withgroups31","pass":true}
+{"check":"Origin-bound browser handoff withgroups32","pass":true}
+{"check":"Origin-bound browser handoff withgroups33","pass":true}
+{"check":"Origin-bound browser handoff withgroups34","pass":true}
+{"check":"Origin-bound browser handoff withgroups35","pass":true}
+{"check":"Origin-bound browser handoff withgroups36","pass":true}
+{"check":"Origin-bound browser handoff withgroups37","pass":true}
+{"check":"Origin-bound browser handoff withgroups38","pass":true}
+{"check":"Origin-bound browser handoff withgroups39","pass":true}
+{"check":"Origin-bound browser handoff withgroups40","pass":true}
+{"check":"Origin-bound browser handoff withgroups41","pass":true}
+{"check":"Origin-bound browser handoff withgroups42","pass":true}
+{"check":"Origin-bound browser handoff withgroups43","pass":true}
+{"check":"Origin-bound browser handoff withgroups44","pass":true}
+{"check":"Origin-bound browser handoff withgroups45","pass":true}
+{"check":"Origin-bound browser handoff withgroups46","pass":true}
+{"check":"Origin-bound browser handoff withgroups47","pass":true}
+{"check":"Origin-bound browser handoff withgroups48","pass":true}
+{"check":"Origin-bound browser handoff withgroups49","pass":true}
+{"check":"withgroups all issued and pinned member links reconciled","pass":true}
+{"check":"withgroups uses counted once","pass":true}
+{"check":"withgroups all member links current together","pass":true}
+{"check":"withgroups starts inside 60 seconds","pass":true}
+{"check":"withgroups connected within five minutes","pass":true}
+{"check":"withgroups queue text appeared on a real Hub page","pass":true}
+{"check":"withgroups recent labels and owners","pass":true}
+{"check":"withgroups labelled admin row withgroups-0","pass":true}
+{"check":"withgroups-admin-row-withgroups-0 no horizontal overflow","pass":true}
+{"check":"withgroups-admin-row-withgroups-0 no raw i18n keys","pass":true}
+{"check":"withgroups labelled admin row withgroups-1","pass":true}
+{"check":"withgroups-admin-row-withgroups-1 no horizontal overflow","pass":true}
+{"check":"withgroups-admin-row-withgroups-1 no raw i18n keys","pass":true}
+{"check":"withgroups labelled admin row withgroups-2","pass":true}
+{"check":"withgroups-admin-row-withgroups-2 no horizontal overflow","pass":true}
+{"check":"withgroups-admin-row-withgroups-2 no raw i18n keys","pass":true}
+{"check":"withgroups labelled admin row withgroups-3","pass":true}
+{"check":"withgroups-admin-row-withgroups-3 no horizontal overflow","pass":true}
+{"check":"withgroups-admin-row-withgroups-3 no raw i18n keys","pass":true}
+{"check":"withgroups labelled admin row withgroups-4","pass":true}
+{"check":"withgroups-admin-row-withgroups-4 no horizontal overflow","pass":true}
+{"check":"withgroups-admin-row-withgroups-4 no raw i18n keys","pass":true}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":28,"code":"denied","kind":null}}
+{"check":"withgroups next push refuses after exhaustion","pass":true}
+{"ready":true,"checks":345}

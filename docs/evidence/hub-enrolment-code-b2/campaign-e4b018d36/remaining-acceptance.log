@@ -1,0 +1,237 @@
+{"check":"company join enabled","pass":true}
+{"check":"built strict discovery advertises code","pass":true}
+{"check":"desk-light-en-admin-before no horizontal overflow","pass":true}
+{"check":"desk-light-en-admin-before no raw i18n keys","pass":true}
+{"check":"desk-light-en-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-light-en-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-light-en scoped picker input and note are distinct","pass":true}
+{"check":"desk-light-en-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-light-en-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-light-en resolved picker retires its input","pass":true}
+{"check":"desk-light-en-active-code no horizontal overflow","pass":true}
+{"check":"desk-light-en-active-code no raw i18n keys","pass":true}
+{"check":"desk-light-en admin page errors","pass":true}
+{"check":"desk-dark-en-admin-before no horizontal overflow","pass":true}
+{"check":"desk-dark-en-admin-before no raw i18n keys","pass":true}
+{"check":"desk-dark-en-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-dark-en-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-dark-en scoped picker input and note are distinct","pass":true}
+{"check":"desk-dark-en-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-dark-en-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-dark-en resolved picker retires its input","pass":true}
+{"check":"desk-dark-en-active-code no horizontal overflow","pass":true}
+{"check":"desk-dark-en-active-code no raw i18n keys","pass":true}
+{"check":"desk-dark-en admin page errors","pass":true}
+{"check":"desk-light-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"desk-light-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW resolved picker retires its input","pass":true}
+{"check":"desk-light-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW admin page errors","pass":true}
+{"check":"desk-dark-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"desk-dark-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW resolved picker retires its input","pass":true}
+{"check":"desk-dark-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW admin page errors","pass":true}
+{"check":"phone-light-en-admin-before no horizontal overflow","pass":true}
+{"check":"phone-light-en-admin-before no raw i18n keys","pass":true}
+{"check":"phone-light-en-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-light-en-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-light-en scoped picker input and note are distinct","pass":true}
+{"check":"phone-light-en-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-light-en-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-light-en resolved picker retires its input","pass":true}
+{"check":"phone-light-en-active-code no horizontal overflow","pass":true}
+{"check":"phone-light-en-active-code no raw i18n keys","pass":true}
+{"check":"phone-light-en admin page errors","pass":true}
+{"check":"phone-dark-en-admin-before no horizontal overflow","pass":true}
+{"check":"phone-dark-en-admin-before no raw i18n keys","pass":true}
+{"check":"phone-dark-en-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-dark-en-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-dark-en scoped picker input and note are distinct","pass":true}
+{"check":"phone-dark-en-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-dark-en-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-dark-en resolved picker retires its input","pass":true}
+{"check":"phone-dark-en-active-code no horizontal overflow","pass":true}
+{"check":"phone-dark-en-active-code no raw i18n keys","pass":true}
+{"check":"phone-dark-en admin page errors","pass":true}
+{"check":"phone-light-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"phone-light-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW resolved picker retires its input","pass":true}
+{"check":"phone-light-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW admin page errors","pass":true}
+{"check":"phone-dark-zh-TW-admin-before no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-admin-before no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW-create-dialog no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-create-dialog no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW scoped picker input and note are distinct","pass":true}
+{"check":"phone-dark-zh-TW-resolved-group no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-resolved-group no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW resolved picker retires its input","pass":true}
+{"check":"phone-dark-zh-TW-active-code no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-active-code no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW admin page errors","pass":true}
+{"check":"desk-light-en ended code is not redisplayed","pass":true}
+{"check":"desk-light-en-ended-code no horizontal overflow","pass":true}
+{"check":"desk-light-en-ended-code no raw i18n keys","pass":true}
+{"check":"desk-light-en ended page errors","pass":true}
+{"check":"desk-dark-en ended code is not redisplayed","pass":true}
+{"check":"desk-dark-en-ended-code no horizontal overflow","pass":true}
+{"check":"desk-dark-en-ended-code no raw i18n keys","pass":true}
+{"check":"desk-dark-en ended page errors","pass":true}
+{"check":"desk-light-zh-TW ended code is not redisplayed","pass":true}
+{"check":"desk-light-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"desk-light-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"desk-light-zh-TW ended page errors","pass":true}
+{"check":"desk-dark-zh-TW ended code is not redisplayed","pass":true}
+{"check":"desk-dark-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"desk-dark-zh-TW ended page errors","pass":true}
+{"check":"phone-light-en ended code is not redisplayed","pass":true}
+{"check":"phone-light-en-ended-code no horizontal overflow","pass":true}
+{"check":"phone-light-en-ended-code no raw i18n keys","pass":true}
+{"check":"phone-light-en ended page errors","pass":true}
+{"check":"phone-dark-en ended code is not redisplayed","pass":true}
+{"check":"phone-dark-en-ended-code no horizontal overflow","pass":true}
+{"check":"phone-dark-en-ended-code no raw i18n keys","pass":true}
+{"check":"phone-dark-en ended page errors","pass":true}
+{"check":"phone-light-zh-TW ended code is not redisplayed","pass":true}
+{"check":"phone-light-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"phone-light-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"phone-light-zh-TW ended page errors","pass":true}
+{"check":"phone-dark-zh-TW ended code is not redisplayed","pass":true}
+{"check":"phone-dark-zh-TW-ended-code no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-ended-code no raw i18n keys","pass":true}
+{"check":"phone-dark-zh-TW ended page errors","pass":true}
+{"check":"admin creates 8-use code","pass":true}
+{"check":"scope-0-code-scope no horizontal overflow","pass":true}
+{"check":"scope-0-code-scope no raw i18n keys","pass":true}
+{"check":"scope-0 refusal saves no credential","pass":true}
+{"check":"scope-1-code-scope no horizontal overflow","pass":true}
+{"check":"scope-1-code-scope no raw i18n keys","pass":true}
+{"check":"scope-1 refusal saves no credential","pass":true}
+{"check":"scope-2-code-scope no horizontal overflow","pass":true}
+{"check":"scope-2-code-scope no raw i18n keys","pass":true}
+{"check":"scope-2 refusal saves no credential","pass":true}
+{"check":"scope-3-code-scope no horizontal overflow","pass":true}
+{"check":"scope-3-code-scope no raw i18n keys","pass":true}
+{"check":"scope-3 refusal saves no credential","pass":true}
+{"check":"admin creates 4-use code","pass":true}
+{"check":"end pending code before actual sign-in","pass":true}
+{"check":"ended-1-code-ended no horizontal overflow","pass":true}
+{"check":"ended-3-code-ended no horizontal overflow","pass":true}
+{"check":"ended-2-code-ended no horizontal overflow","pass":true}
+{"check":"ended-1-code-ended no raw i18n keys","pass":true}
+{"check":"ended-3-code-ended no raw i18n keys","pass":true}
+{"check":"ended-2-code-ended no raw i18n keys","pass":true}
+{"check":"ended-0-code-ended no horizontal overflow","pass":true}
+{"check":"ended-0-code-ended no raw i18n keys","pass":true}
+{"check":"ended-3 refusal saves no credential","pass":true}
+{"check":"ended-1 refusal saves no credential","pass":true}
+{"check":"ended-2 refusal saves no credential","pass":true}
+{"check":"ended-0 refusal saves no credential","pass":true}
+{"check":"admin creates 2-use code","pass":true}
+{"check":"desk-dark-en-cached-shell-client-css no horizontal overflow","pass":true}
+{"check":"desk-dark-en-cached-shell-client-css no raw i18n keys","pass":true}
+{"check":"cached client safely omits code manager","pass":true}
+{"check":"cached shell no script errors","pass":true}
+{"check":"desk-dark-zh-TW-cached-shell-client-css no horizontal overflow","pass":true}
+{"check":"desk-dark-zh-TW-cached-shell-client-css no raw i18n keys","pass":true}
+{"check":"cached client safely omits code manager","pass":true}
+{"check":"cached shell no script errors","pass":true}
+{"check":"phone-dark-en-cached-shell-client-css no horizontal overflow","pass":true}
+{"check":"phone-dark-en-cached-shell-client-css no raw i18n keys","pass":true}
+{"check":"cached client safely omits code manager","pass":true}
+{"check":"cached shell no script errors","pass":true}
+{"check":"phone-dark-zh-TW-cached-shell-client-css no horizontal overflow","pass":true}
+{"check":"phone-dark-zh-TW-cached-shell-client-css no raw i18n keys","pass":true}
+{"check":"cached client safely omits code manager","pass":true}
+{"check":"cached shell no script errors","pass":true}
+{"check":"admin creates 2-use code","pass":true}
+{"check":"Origin-bound browser handoff compat0","pass":true}
+{"check":"B-L9 old v2-only member link connected","pass":true}
+{"check":"B-L9 actual old member does not negotiate v3","pass":true}
+{"check":"Origin-bound browser handoff compat0","pass":true}
+{"check":"B-L9 second same-owner fleet issues through real code route","pass":true}
+{"check":"B-L9 code notice remains queued for actual old member","pass":true}
+{"check":"B-L9 code notice delivered after actual member upgrade","pass":true}
+{"check":"B-L9 upgraded inbox retains exact code provenance before ACK","pass":true}
+{"check":"B-L9 upgraded inbox audit chain verifies","pass":true}
+{"check":"admin creates 50-use code","pass":true}
+{"check":"Origin-bound browser handoff revoke0","pass":true}
+{"check":"Origin-bound browser handoff revoke1","pass":true}
+{"check":"Origin-bound browser handoff revoke2","pass":true}
+{"check":"Origin-bound browser handoff revoke3","pass":true}
+{"check":"Origin-bound browser handoff revoke4","pass":true}
+{"check":"Origin-bound browser handoff revoke5","pass":true}
+{"check":"Origin-bound browser handoff revoke6","pass":true}
+{"check":"Origin-bound browser handoff revoke7","pass":true}
+{"check":"Origin-bound browser handoff revoke8","pass":true}
+{"check":"Origin-bound browser handoff revoke9","pass":true}
+{"check":"Origin-bound browser handoff revoke10","pass":true}
+{"check":"Origin-bound browser handoff revoke11","pass":true}
+{"check":"Origin-bound browser handoff revoke12","pass":true}
+{"check":"Origin-bound browser handoff revoke13","pass":true}
+{"check":"Origin-bound browser handoff revoke14","pass":true}
+{"check":"Origin-bound browser handoff revoke15","pass":true}
+{"check":"Origin-bound browser handoff revoke16","pass":true}
+{"check":"Origin-bound browser handoff revoke17","pass":true}
+{"check":"Origin-bound browser handoff revoke18","pass":true}
+{"check":"Origin-bound browser handoff revoke19","pass":true}
+{"check":"Origin-bound browser handoff revoke20","pass":true}
+{"check":"Origin-bound browser handoff revoke21","pass":true}
+{"check":"Origin-bound browser handoff revoke22","pass":true}
+{"check":"Origin-bound browser handoff revoke23","pass":true}
+{"check":"Origin-bound browser handoff revoke24","pass":true}
+{"check":"revoke first 25 issued","pass":true}
+{"check":"admin revokes mid-wave","pass":true}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":53,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":61,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":60,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":67,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":74,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":54,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":58,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":62,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":66,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":69,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":48,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":50,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":55,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":56,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":56,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":51,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":54,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":53,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":49,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":48,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":40,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":39,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":35,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":35,"code":"denied","kind":null}}
+{"machineFailure":{"path":"/hub/v1/join/push","elapsedMs":37,"code":"denied","kind":null}}
+{"check":"nothing issues after revocation","pass":true}
+{"check":"revoke wave starts within 60 seconds","pass":true}
+{"check":"revoked counter stops at 25","pass":true}
+{"check":"issued fleets stay active after code revocation","pass":true}
+{"check":"no join expired","pass":true}
+{"check":"no plain code anywhere in Hub home","pass":true}
+{"check":"audit hash chain","pass":true}
+{"ready":true,"checks":211}

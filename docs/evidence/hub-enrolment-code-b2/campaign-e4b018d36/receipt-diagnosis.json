@@ -1,0 +1,2478 @@
+{
+  "mode": "diagnose",
+  "source": "e4b018d36d3a19dc431109f4504a02700725d125",
+  "checks": [
+    {
+      "name": "company join enabled",
+      "pass": true
+    },
+    {
+      "name": "built strict discovery advertises code",
+      "pass": true
+    },
+    {
+      "name": "admin creates 20-use code",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small5",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small6",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small7",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small8",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small9",
+      "pass": true
+    },
+    {
+      "name": "small-1-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-4-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-4-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-1-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-0-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-0-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-2-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-3-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-2-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-3-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small10",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small11",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small12",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small13",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small14",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small15",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small16",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small17",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small18",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff small19",
+      "pass": true
+    },
+    {
+      "name": "small-1-02-hub-signin no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-1-02-hub-signin no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-4-02-hub-signin no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-4-02-hub-signin no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-0-02-hub-signin no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-0-02-hub-signin no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-2-02-hub-signin no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-2-02-hub-signin no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-3-02-hub-signin no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-3-02-hub-signin no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-1 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "small-1 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "small-1 no page errors",
+      "pass": true
+    },
+    {
+      "name": "small-4 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "small-4 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "small-4 no page errors",
+      "pass": true
+    },
+    {
+      "name": "small-0 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "small-0 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "small-0 no page errors",
+      "pass": true
+    },
+    {
+      "name": "small-1-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-1-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-2 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "small-2 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "small-2 no page errors",
+      "pass": true
+    },
+    {
+      "name": "small-3 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "small-3 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "small-3 no page errors",
+      "pass": true
+    },
+    {
+      "name": "small-3-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-3-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-0-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-0-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-2-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-2-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small-4-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-4-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small all issued and pinned member links reconciled",
+      "pass": true
+    },
+    {
+      "name": "small uses counted once",
+      "pass": true
+    },
+    {
+      "name": "small all member links current together",
+      "pass": true
+    },
+    {
+      "name": "small starts inside 60 seconds",
+      "pass": true
+    },
+    {
+      "name": "small connected within five minutes",
+      "pass": true
+    },
+    {
+      "name": "small recent labels and owners",
+      "pass": true
+    },
+    {
+      "name": "small labelled admin row small-0",
+      "pass": true
+    },
+    {
+      "name": "small-admin-row-small-0 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-admin-row-small-0 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small labelled admin row small-1",
+      "pass": true
+    },
+    {
+      "name": "small-admin-row-small-1 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-admin-row-small-1 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small labelled admin row small-2",
+      "pass": true
+    },
+    {
+      "name": "small-admin-row-small-2 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-admin-row-small-2 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small labelled admin row small-3",
+      "pass": true
+    },
+    {
+      "name": "small-admin-row-small-3 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-admin-row-small-3 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small labelled admin row small-4",
+      "pass": true
+    },
+    {
+      "name": "small-admin-row-small-4 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "small-admin-row-small-4 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "small next push refuses after exhaustion",
+      "pass": true
+    },
+    {
+      "name": "admin creates 50-use code",
+      "pass": true
+    },
+    {
+      "name": "mass-2-00-company-session no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-4-00-company-session no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-0-00-company-session no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-2-00-company-session no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-4-00-company-session no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-0-00-company-session no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-3-00-company-session no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-1-00-company-session no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-3-00-company-session no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-1-00-company-session no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass5",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass6",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass7",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass8",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass9",
+      "pass": true
+    },
+    {
+      "name": "mass-2-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-2-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-0-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-1-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-0-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-1-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-3-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-4-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-3-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-4-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass10",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass11",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass12",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass13",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass14",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass15",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass16",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass17",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass18",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass19",
+      "pass": true
+    },
+    {
+      "name": "mass-1-02-existing-account-consent no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-1-02-existing-account-consent no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass20",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass21",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass22",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass23",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass24",
+      "pass": true
+    },
+    {
+      "name": "mass-0-02-existing-account-consent no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-0-02-existing-account-consent no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-4-02-existing-account-consent no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-2-02-existing-account-consent no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-4-02-existing-account-consent no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-2-02-existing-account-consent no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-3-02-existing-account-consent no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-3-02-existing-account-consent no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass25",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass26",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass27",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass28",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass29",
+      "pass": true
+    },
+    {
+      "name": "mass-1 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "mass-1 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "mass-1 no page errors",
+      "pass": true
+    },
+    {
+      "name": "mass-1-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-1-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-2 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "mass-2 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "mass-2 no page errors",
+      "pass": true
+    },
+    {
+      "name": "mass-4 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "mass-4 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "mass-4 no page errors",
+      "pass": true
+    },
+    {
+      "name": "mass-4-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-2-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-4-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-2-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-3 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "mass-3 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "mass-3 no page errors",
+      "pass": true
+    },
+    {
+      "name": "mass-0 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "mass-0 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "mass-0 no page errors",
+      "pass": true
+    },
+    {
+      "name": "mass-3-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-3-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass-0-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-0-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass30",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass31",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass32",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass33",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass34",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass35",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass36",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass37",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass38",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass39",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass40",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass41",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass42",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass43",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass44",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass45",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass46",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass47",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass48",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff mass49",
+      "pass": true
+    },
+    {
+      "name": "mass all issued and pinned member links reconciled",
+      "pass": true
+    },
+    {
+      "name": "mass uses counted once",
+      "pass": true
+    },
+    {
+      "name": "mass all member links current together",
+      "pass": true
+    },
+    {
+      "name": "mass starts inside 60 seconds",
+      "pass": true
+    },
+    {
+      "name": "mass connected within five minutes",
+      "pass": true
+    },
+    {
+      "name": "mass recent labels and owners",
+      "pass": true
+    },
+    {
+      "name": "mass labelled admin row mass-0",
+      "pass": true
+    },
+    {
+      "name": "mass-admin-row-mass-0 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-admin-row-mass-0 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass labelled admin row mass-1",
+      "pass": true
+    },
+    {
+      "name": "mass-admin-row-mass-1 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-admin-row-mass-1 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass labelled admin row mass-2",
+      "pass": true
+    },
+    {
+      "name": "mass-admin-row-mass-2 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-admin-row-mass-2 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass labelled admin row mass-3",
+      "pass": true
+    },
+    {
+      "name": "mass-admin-row-mass-3 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-admin-row-mass-3 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass labelled admin row mass-4",
+      "pass": true
+    },
+    {
+      "name": "mass-admin-row-mass-4 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "mass-admin-row-mass-4 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "mass next push refuses after exhaustion",
+      "pass": true
+    },
+    {
+      "name": "admin creates 50-use code",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0-00-company-session no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1-00-company-session no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2-00-company-session no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0-00-company-session no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1-00-company-session no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2-00-company-session no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3-00-company-session no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3-00-company-session no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4-00-company-session no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4-00-company-session no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3-01-fleet-start no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3-01-fleet-start no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2-02-existing-account-consent no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2-02-existing-account-consent no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4-02-existing-account-consent no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4-02-existing-account-consent no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1-02-existing-account-consent no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1-02-existing-account-consent no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3-02-existing-account-consent no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0-02-existing-account-consent no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3-02-existing-account-consent no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0-02-existing-account-consent no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroupsgroup0",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroupsgroup1",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroupsgroup2",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups5",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups6",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2-03-queued no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1-03-queued no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3-03-queued no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4-03-queued no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0-03-queued no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2-03-queued no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1-03-queued no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3-03-queued no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0-03-queued no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4-03-queued no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1 no page errors",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0 no page errors",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups7",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-1-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3 no page errors",
+      "pass": true
+    },
+    {
+      "name": "withgroups-0-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2 no page errors",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-3-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-2-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4 current production join is durably active",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4 no per-Fleet admin approval",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4 no page errors",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups8",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups9",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups10",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups11",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4-04-connected no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-4-04-connected no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups12",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups13",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups14",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups15",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups16",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups17",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups18",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups19",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups20",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups21",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups22",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups23",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups24",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups25",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups26",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups27",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups28",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups29",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups30",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups31",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups32",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups33",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups34",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups35",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups36",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups37",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups38",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups39",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups40",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups41",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups42",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups43",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups44",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups45",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups46",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups47",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups48",
+      "pass": true
+    },
+    {
+      "name": "Origin-bound browser handoff withgroups49",
+      "pass": true
+    },
+    {
+      "name": "withgroups all issued and pinned member links reconciled",
+      "pass": true
+    },
+    {
+      "name": "withgroups uses counted once",
+      "pass": true
+    },
+    {
+      "name": "withgroups all member links current together",
+      "pass": true
+    },
+    {
+      "name": "withgroups starts inside 60 seconds",
+      "pass": true
+    },
+    {
+      "name": "withgroups connected within five minutes",
+      "pass": true
+    },
+    {
+      "name": "withgroups queue text appeared on a real Hub page",
+      "pass": true
+    },
+    {
+      "name": "withgroups recent labels and owners",
+      "pass": true
+    },
+    {
+      "name": "withgroups labelled admin row withgroups-0",
+      "pass": true
+    },
+    {
+      "name": "withgroups-admin-row-withgroups-0 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-admin-row-withgroups-0 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups labelled admin row withgroups-1",
+      "pass": true
+    },
+    {
+      "name": "withgroups-admin-row-withgroups-1 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-admin-row-withgroups-1 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups labelled admin row withgroups-2",
+      "pass": true
+    },
+    {
+      "name": "withgroups-admin-row-withgroups-2 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-admin-row-withgroups-2 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups labelled admin row withgroups-3",
+      "pass": true
+    },
+    {
+      "name": "withgroups-admin-row-withgroups-3 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-admin-row-withgroups-3 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups labelled admin row withgroups-4",
+      "pass": true
+    },
+    {
+      "name": "withgroups-admin-row-withgroups-4 no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "withgroups-admin-row-withgroups-4 no raw i18n keys",
+      "pass": true
+    },
+    {
+      "name": "withgroups next push refuses after exhaustion",
+      "pass": true
+    }
+  ],
+  "waves": [
+    {
+      "n": 20,
+      "groups": 0,
+      "authenticationMs": null,
+      "startSpanMs": 8335,
+      "elapsedMs": 17055,
+      "uses": 20,
+      "everConnected": 20,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 514912256,
+      "databaseBytes": 684032,
+      "walBytes": 4169472
+    },
+    {
+      "n": 50,
+      "groups": 0,
+      "authenticationMs": 5477,
+      "startSpanMs": 33853,
+      "elapsedMs": 42790,
+      "uses": 50,
+      "everConnected": 70,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 637734912,
+      "databaseBytes": 1441792,
+      "walBytes": 4280712
+    },
+    {
+      "n": 50,
+      "groups": 3,
+      "authenticationMs": 7317,
+      "startSpanMs": 57888,
+      "elapsedMs": 68665,
+      "uses": 50,
+      "everConnected": 123,
+      "controlledHeldEligibility": 32,
+      "hubAndFleetsRss": 727855104,
+      "databaseBytes": 2355200,
+      "walBytes": 4280712
+    }
+  ],
+  "screenshots": [
+    "small-1-01-fleet-start.png",
+    "small-4-01-fleet-start.png",
+    "small-0-01-fleet-start.png",
+    "small-2-01-fleet-start.png",
+    "small-3-01-fleet-start.png",
+    "small-1-02-hub-signin.png",
+    "small-4-02-hub-signin.png",
+    "small-0-02-hub-signin.png",
+    "small-2-02-hub-signin.png",
+    "small-3-02-hub-signin.png",
+    "small-1-04-connected.png",
+    "small-3-04-connected.png",
+    "small-0-04-connected.png",
+    "small-2-04-connected.png",
+    "small-4-04-connected.png",
+    "small-admin-row-small-0.png",
+    "small-admin-row-small-1.png",
+    "small-admin-row-small-2.png",
+    "small-admin-row-small-3.png",
+    "small-admin-row-small-4.png",
+    "mass-2-00-company-session.png",
+    "mass-4-00-company-session.png",
+    "mass-0-00-company-session.png",
+    "mass-3-00-company-session.png",
+    "mass-1-00-company-session.png",
+    "mass-2-01-fleet-start.png",
+    "mass-1-01-fleet-start.png",
+    "mass-0-01-fleet-start.png",
+    "mass-3-01-fleet-start.png",
+    "mass-4-01-fleet-start.png",
+    "mass-1-02-existing-account-consent.png",
+    "mass-0-02-existing-account-consent.png",
+    "mass-2-02-existing-account-consent.png",
+    "mass-4-02-existing-account-consent.png",
+    "mass-3-02-existing-account-consent.png",
+    "mass-1-04-connected.png",
+    "mass-2-04-connected.png",
+    "mass-4-04-connected.png",
+    "mass-3-04-connected.png",
+    "mass-0-04-connected.png",
+    "mass-admin-row-mass-0.png",
+    "mass-admin-row-mass-1.png",
+    "mass-admin-row-mass-2.png",
+    "mass-admin-row-mass-3.png",
+    "mass-admin-row-mass-4.png",
+    "withgroups-0-00-company-session.png",
+    "withgroups-1-00-company-session.png",
+    "withgroups-2-00-company-session.png",
+    "withgroups-3-00-company-session.png",
+    "withgroups-4-00-company-session.png",
+    "withgroups-2-01-fleet-start.png",
+    "withgroups-0-01-fleet-start.png",
+    "withgroups-1-01-fleet-start.png",
+    "withgroups-4-01-fleet-start.png",
+    "withgroups-3-01-fleet-start.png",
+    "withgroups-2-02-existing-account-consent.png",
+    "withgroups-4-02-existing-account-consent.png",
+    "withgroups-1-02-existing-account-consent.png",
+    "withgroups-3-02-existing-account-consent.png",
+    "withgroups-0-02-existing-account-consent.png",
+    "withgroups-1-03-queued.png",
+    "withgroups-2-03-queued.png",
+    "withgroups-4-03-queued.png",
+    "withgroups-3-03-queued.png",
+    "withgroups-0-03-queued.png",
+    "withgroups-1-04-connected.png",
+    "withgroups-0-04-connected.png",
+    "withgroups-3-04-connected.png",
+    "withgroups-2-04-connected.png",
+    "withgroups-4-04-connected.png",
+    "withgroups-admin-row-withgroups-0.png",
+    "withgroups-admin-row-withgroups-1.png",
+    "withgroups-admin-row-withgroups-2.png",
+    "withgroups-admin-row-withgroups-3.png",
+    "withgroups-admin-row-withgroups-4.png"
+  ],
+  "boundary": "Owned network-none source build. Five independent production Fleet web/settings/join/member services per mass wave, no Agent lifecycle or backend CLI. Remaining clients use shipped compiled join/member code and explicit harness-side durable profiles. Synthetic LDAP; owned HTTPS proxies; deliberate eligibility-delay control for real admission backpressure. Not packaged/systemd/native/pilot/real AD.",
+  "visibleFleets": [
+    {
+      "label": "small-1",
+      "login": "small1",
+      "origin": "https://fleet-1.example.test:41139",
+      "fleetId": "98b7c477-67fa-490c-8ecb-d80185f5c57a",
+      "lang": "zh-TW",
+      "phone": true,
+      "started": 1794499507223,
+      "connected": 1794499523512,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "small-3",
+      "login": "small3",
+      "origin": "https://fleet-3.example.test:34137",
+      "fleetId": "c9380eb7-1cbb-409b-b8ae-6f6c25025f4d",
+      "lang": "zh-TW",
+      "phone": true,
+      "started": 1794499507223,
+      "connected": 1794499524042,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "small-0",
+      "login": "small0",
+      "origin": "https://fleet-0.example.test:44497",
+      "fleetId": "09e3b31f-e35b-41fb-92b2-c9ad172f34b6",
+      "lang": "en",
+      "phone": false,
+      "started": 1794499507222,
+      "connected": 1794499524156,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "small-2",
+      "login": "small2",
+      "origin": "https://fleet-2.example.test:43983",
+      "fleetId": "21e8d132-e31e-460b-9a08-561e6b8b5707",
+      "lang": "en",
+      "phone": false,
+      "started": 1794499507223,
+      "connected": 1794499524159,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "small-4",
+      "login": "small4",
+      "origin": "https://fleet-4.example.test:35531",
+      "fleetId": "a0c42816-2f06-4900-86dc-9dbbb29411f1",
+      "lang": "en",
+      "phone": false,
+      "started": 1794499507223,
+      "connected": 1794499524269,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "mass-1",
+      "login": "mass1",
+      "origin": "https://fleet-6.example.test:40137",
+      "fleetId": "df046454-3980-49db-a598-f794c0aa4728",
+      "lang": "zh-TW",
+      "phone": true,
+      "started": 1794499627943,
+      "connected": 1794499649965,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "mass-2",
+      "login": "mass2",
+      "origin": "https://fleet-7.example.test:44145",
+      "fleetId": "d7df626c-378c-4be0-a1f4-986788c9f769",
+      "lang": "en",
+      "phone": false,
+      "started": 1794499627943,
+      "connected": 1794499650638,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "mass-4",
+      "login": "mass4",
+      "origin": "https://fleet-9.example.test:45467",
+      "fleetId": "c04a0c9c-b9ab-421f-aa2d-53b3c6aa6043",
+      "lang": "en",
+      "phone": false,
+      "started": 1794499627943,
+      "connected": 1794499650638,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "mass-3",
+      "login": "mass3",
+      "origin": "https://fleet-8.example.test:41965",
+      "fleetId": "4f6f9bc8-c1cf-4204-997b-8d605500a383",
+      "lang": "zh-TW",
+      "phone": true,
+      "started": 1794499627943,
+      "connected": 1794499651213,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "mass-0",
+      "login": "mass0",
+      "origin": "https://fleet-5.example.test:38327",
+      "fleetId": "20f71da1-d2bd-4166-827d-af30f86a487a",
+      "lang": "en",
+      "phone": false,
+      "started": 1794499627942,
+      "connected": 1794499651355,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "withgroups-1",
+      "login": "withgroups1",
+      "origin": "https://fleet-11.example.test:39769",
+      "fleetId": "7e1dbc77-b22d-42a5-a6e2-669584c5f6fc",
+      "lang": "zh-TW",
+      "phone": true,
+      "started": 1794499776988,
+      "connected": 1794499795364,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "withgroups-0",
+      "login": "withgroups0",
+      "origin": "https://fleet-10.example.test:34641",
+      "fleetId": "13ff81bf-93d4-4241-9fcd-d6ee50cbe880",
+      "lang": "en",
+      "phone": false,
+      "started": 1794499776988,
+      "connected": 1794499796451,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "withgroups-3",
+      "login": "withgroups3",
+      "origin": "https://fleet-13.example.test:41073",
+      "fleetId": "a65a63bb-b353-4dd6-92fa-39ea9f3b2b2e",
+      "lang": "zh-TW",
+      "phone": true,
+      "started": 1794499776989,
+      "connected": 1794499797557,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "withgroups-2",
+      "login": "withgroups2",
+      "origin": "https://fleet-12.example.test:43031",
+      "fleetId": "7868311e-2683-4033-972e-a545ebbbaf61",
+      "lang": "en",
+      "phone": false,
+      "started": 1794499776989,
+      "connected": 1794499797655,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    },
+    {
+      "label": "withgroups-4",
+      "login": "withgroups4",
+      "origin": "https://fleet-14.example.test:36729",
+      "fleetId": "cf76ef53-f61d-4bd4-b2b6-cc2e082f312d",
+      "lang": "en",
+      "phone": false,
+      "started": 1794499776989,
+      "connected": 1794499800241,
+      "agentLifecycle": "refused",
+      "transport": "owned HTTPS proxy to production Fleet HTTP"
+    }
+  ],
+  "controlSettlements": [],
+  "lastResults": [
+    {
+      "issued": true,
+      "fleetId": "13ff81bf-93d4-4241-9fcd-d6ee50cbe880",
+      "started": 1794499776988,
+      "connected": 1794499796451
+    },
+    {
+      "issued": true,
+      "fleetId": "7e1dbc77-b22d-42a5-a6e2-669584c5f6fc",
+      "started": 1794499776988,
+      "connected": 1794499795364
+    },
+    {
+      "issued": true,
+      "fleetId": "7868311e-2683-4033-972e-a545ebbbaf61",
+      "started": 1794499776989,
+      "connected": 1794499797655
+    },
+    {
+      "issued": true,
+      "fleetId": "a65a63bb-b353-4dd6-92fa-39ea9f3b2b2e",
+      "started": 1794499776989,
+      "connected": 1794499797557
+    },
+    {
+      "issued": true,
+      "fleetId": "cf76ef53-f61d-4bd4-b2b6-cc2e082f312d",
+      "started": 1794499776989,
+      "connected": 1794499800242
+    },
+    {
+      "issued": true,
+      "fleetId": "7d89cc87-8a12-4d6a-be61-b4500f0c4545",
+      "started": 1794499786901,
+      "connected": 1794499797446
+    },
+    {
+      "issued": true,
+      "fleetId": "7dc90181-9bc2-4279-aead-fa7196e14e81",
+      "started": 1794499786902,
+      "connected": 1794499798151
+    },
+    {
+      "issued": true,
+      "fleetId": "d317cf7b-dd34-42db-abea-c59cd8948718",
+      "started": 1794499786903,
+      "connected": 1794499798577
+    },
+    {
+      "issued": true,
+      "fleetId": "e127727d-5cac-4a16-b09c-2fc3d555f3d1",
+      "started": 1794499786904,
+      "connected": 1794499792612
+    },
+    {
+      "issued": true,
+      "fleetId": "24abd1e7-9d5c-41ee-befd-9a14df6b0905",
+      "started": 1794499786905,
+      "connected": 1794499796756
+    },
+    {
+      "issued": true,
+      "fleetId": "302e0271-42ee-4380-a920-a5c5ea949180",
+      "started": 1794499792612,
+      "connected": 1794499798154
+    },
+    {
+      "issued": true,
+      "fleetId": "e3b7d35c-9bc0-471e-b451-91b511e57c6b",
+      "started": 1794499796756,
+      "connected": 1794499800894
+    },
+    {
+      "issued": true,
+      "fleetId": "e5aa5d7d-5217-4d2c-8473-e5f2f638a671",
+      "started": 1794499797446,
+      "connected": 1794499801590
+    },
+    {
+      "issued": true,
+      "fleetId": "8678c958-0901-4d84-885c-3b0e89b340db",
+      "started": 1794499798151,
+      "connected": 1794499802437
+    },
+    {
+      "issued": true,
+      "fleetId": "5444b853-620a-4fa3-b141-c36d7c927cbd",
+      "started": 1794499798155,
+      "connected": 1794499802441
+    },
+    {
+      "issued": true,
+      "fleetId": "78cd9ae6-3793-40cd-91bb-4db9eb49ac1b",
+      "started": 1794499798577,
+      "connected": 1794499802884
+    },
+    {
+      "issued": true,
+      "fleetId": "80486f59-72a2-4a8a-adb7-468f8abdb5dd",
+      "started": 1794499800894,
+      "connected": 1794499805047
+    },
+    {
+      "issued": true,
+      "fleetId": "609c28c0-3a12-4025-beb0-abef96d46f6d",
+      "started": 1794499801590,
+      "connected": 1794499805665
+    },
+    {
+      "issued": true,
+      "fleetId": "ac7e9223-732b-4607-a818-ab3797c99a8b",
+      "started": 1794499802437,
+      "connected": 1794499806734
+    },
+    {
+      "issued": true,
+      "fleetId": "cfe88ab2-db6b-4f8c-a2d8-62a8b9ff3560",
+      "started": 1794499802441,
+      "connected": 1794499806916
+    },
+    {
+      "issued": true,
+      "fleetId": "54eb5619-1123-4d21-a794-e5307238d52a",
+      "started": 1794499802884,
+      "connected": 1794499806918
+    },
+    {
+      "issued": true,
+      "fleetId": "52e0cdaa-1879-4fc6-a336-4f0cea27e5d1",
+      "started": 1794499805047,
+      "connected": 1794499809093
+    },
+    {
+      "issued": true,
+      "fleetId": "43c7f308-d8f1-4e67-af37-b04339378915",
+      "started": 1794499805665,
+      "connected": 1794499810351
+    },
+    {
+      "issued": true,
+      "fleetId": "c4fbb289-febc-4d13-a2a0-47f39cd580cb",
+      "started": 1794499806734,
+      "connected": 1794499811902
+    },
+    {
+      "issued": true,
+      "fleetId": "7494c169-42f2-485e-a359-040e3307b407",
+      "started": 1794499806916,
+      "connected": 1794499811900
+    },
+    {
+      "issued": true,
+      "fleetId": "61442217-d7fb-4552-9293-88b52b23b704",
+      "started": 1794499806918,
+      "connected": 1794499811904
+    },
+    {
+      "issued": true,
+      "fleetId": "fa6fba1f-fa5b-4f5f-8d08-c734bcb71ffd",
+      "started": 1794499809093,
+      "connected": 1794499813423
+    },
+    {
+      "issued": true,
+      "fleetId": "00217a34-98c5-418a-b42e-7d3a8c1e195f",
+      "started": 1794499810351,
+      "connected": 1794499814403
+    },
+    {
+      "issued": true,
+      "fleetId": "30431dc1-1e05-4d08-a5f6-238f2a880ac9",
+      "started": 1794499811900,
+      "connected": 1794499816051
+    },
+    {
+      "issued": true,
+      "fleetId": "3d817a26-03d6-4b87-90ac-e5f5fee92fed",
+      "started": 1794499811902,
+      "connected": 1794499816219
+    },
+    {
+      "issued": true,
+      "fleetId": "194be782-cd57-4e1b-95fd-1d66356da5bd",
+      "started": 1794499811904,
+      "connected": 1794499815908
+    },
+    {
+      "issued": true,
+      "fleetId": "d8bd4fc0-872c-49ad-b795-415b6078eb9d",
+      "started": 1794499813423,
+      "connected": 1794499817248
+    },
+    {
+      "issued": true,
+      "fleetId": "e9e6afe0-f1b5-4c72-87eb-826372f0957f",
+      "started": 1794499814403,
+      "connected": 1794499818681
+    },
+    {
+      "issued": true,
+      "fleetId": "e09674ec-cead-456a-b0ed-a14b25083c47",
+      "started": 1794499815908,
+      "connected": 1794499820693
+    },
+    {
+      "issued": true,
+      "fleetId": "1d343e7c-f1d2-44d1-9fe1-675a006e805d",
+      "started": 1794499816051,
+      "connected": 1794499820695
+    },
+    {
+      "issued": true,
+      "fleetId": "3a64b073-d2a2-485e-913a-c0355fa239af",
+      "started": 1794499816219,
+      "connected": 1794499821100
+    },
+    {
+      "issued": true,
+      "fleetId": "2bbd1eea-61b9-4042-81ce-6b466b7f1be8",
+      "started": 1794499817248,
+      "connected": 1794499822321
+    },
+    {
+      "issued": true,
+      "fleetId": "25dda55b-d22b-4d0a-bb3c-b3aece61df5f",
+      "started": 1794499818681,
+      "connected": 1794499823881
+    },
+    {
+      "issued": true,
+      "fleetId": "4206d5ba-73ba-4830-b7dd-391e51e261be",
+      "started": 1794499820693,
+      "connected": 1794499825931
+    },
+    {
+      "issued": true,
+      "fleetId": "1a2110b7-a751-4e8f-a3f5-bd3a6cc62a18",
+      "started": 1794499820695,
+      "connected": 1794499825928
+    },
+    {
+      "issued": true,
+      "fleetId": "1900d80e-7250-4427-8953-e6f772b5dde7",
+      "started": 1794499821100,
+      "connected": 1794499825922
+    },
+    {
+      "issued": true,
+      "fleetId": "72a12f4d-000b-4c9d-af34-37cb5fa02b96",
+      "started": 1794499822321,
+      "connected": 1794499827593
+    },
+    {
+      "issued": true,
+      "fleetId": "8906f4ca-611f-4cfb-9eb0-64fbaecc391f",
+      "started": 1794499823881,
+      "connected": 1794499829479
+    },
+    {
+      "issued": true,
+      "fleetId": "03360daa-915e-4217-9d99-4fa9030d4b71",
+      "started": 1794499825922,
+      "connected": 1794499831288
+    },
+    {
+      "issued": true,
+      "fleetId": "3b0e1462-85c2-4267-aaa0-fe65dc167816",
+      "started": 1794499825928,
+      "connected": 1794499831290
+    },
+    {
+      "issued": true,
+      "fleetId": "c2c286ad-4c60-4c9e-89cf-26c20f2516a8",
+      "started": 1794499825931,
+      "connected": 1794499831292
+    },
+    {
+      "issued": true,
+      "fleetId": "0f0e8697-8556-441d-931a-af1b3ce4807d",
+      "started": 1794499827593,
+      "connected": 1794499833007
+    },
+    {
+      "issued": true,
+      "fleetId": "3e49b6a6-681a-4d37-991b-9e1d384889eb",
+      "started": 1794499829479,
+      "connected": 1794499835142
+    },
+    {
+      "issued": true,
+      "fleetId": "aedcd8bc-bbe7-44f8-b5a8-935083254d3e",
+      "started": 1794499831288,
+      "connected": 1794499836812
+    },
+    {
+      "issued": true,
+      "fleetId": "ed1f8822-f8cf-4272-8ca8-553e9d48a88d",
+      "started": 1794499831290,
+      "connected": 1794499836811
+    },
+    {
+      "issued": true,
+      "fleetId": "a72bce1c-508f-4ce6-a633-50469a7f5b4a",
+      "started": 1794499831292,
+      "connected": 1794499836812
+    },
+    {
+      "issued": true,
+      "fleetId": "2eb9547c-c382-47da-b0e8-d03196d2b03e",
+      "started": 1794499833007,
+      "connected": 1794499837541
+    },
+    {
+      "issued": true,
+      "fleetId": "9a8dc810-5c91-40c7-8368-7155c8764a0b",
+      "started": 1794499835142,
+      "connected": 1794499837904
+    }
+  ],
+  "lastWaveMetrics": {
+    "prefix": "withgroups",
+    "n": 50,
+    "groups": 3,
+    "startSpanMs": 57888,
+    "elapsedMs": 68665,
+    "queueTextObserved": 5
+  },
+  "machineErrors": [
+    {
+      "path": "/hub/v1/join/push",
+      "elapsedMs": 13,
+      "code": "denied",
+      "kind": null
+    },
+    {
+      "path": "/hub/v1/join/push",
+      "elapsedMs": 19,
+      "code": "denied",
+      "kind": null
+    },
+    {
+      "path": "/hub/v1/join/push",
+      "elapsedMs": 28,
+      "code": "denied",
+      "kind": null
+    }
+  ],
+  "poolReadyAt": 1794499786900,
+  "clientQueueRetries": 5,
+  "queueTextObserved": 5,
+  "visibleQueueReleasedPool": true,
+  "ready": true,
+  "cleaned": true,
+  "production": [
+    {
+      "path": "src/hub/audit/index.ts",
+      "sha256": "612067f991c33f6350b939129f75479a98b465ba0cb922ebc4eb259400641d1e"
+    },
+    {
+      "path": "src/hub/catalog.ts",
+      "sha256": "fd5278d9db728ed6dfb36eeea9612698127246a0012e4c5dbdb8697362bb8247"
+    },
+    {
+      "path": "src/hub/client.ts",
+      "sha256": "f07eb24c1ee94365f04b26c06ff07b195d9de2f3f06b47e88ce141a72523098e"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "aa73a789e0d32b4a6eba759610cf5f59f57e639bcf4be52a18987f6b4e782719"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "5da38a22d6d82a795e2d04ba449100190f1f7906fc9b43d4b92cead18f5d1108"
+    },
+    {
+      "path": "src/hub/enrolment-code.ts",
+      "sha256": "0af0dd5f23ac0ba59d5132033ec4aedd8710169a9d884da85df9da04ba5af1f7"
+    },
+    {
+      "path": "src/hub/group-policy/admin-impact.ts",
+      "sha256": "0405cdcd06fee88f52d13965f10993e9aa721227260f65b3b6ef38127df06599"
+    },
+    {
+      "path": "src/hub/group-policy/admin-inventory.ts",
+      "sha256": "7d6eb02454c2aa31c86d893211dc7244cff2a2e1ac9d31461f16b1dc52c9238c"
+    },
+    {
+      "path": "src/hub/group-policy/authorization.ts",
+      "sha256": "9adadbae8688085832484f762ac96537ee7ba409cb9b0f53934680dcd1b83262"
+    },
+    {
+      "path": "src/hub/group-policy/impact-inventory.ts",
+      "sha256": "185c44308de5de3bd035ab24e924bfc2d39ca2b0e59e9382022cd978db53375b"
+    },
+    {
+      "path": "src/hub/group-policy/resources.ts",
+      "sha256": "84fe8587c0c0d2f9135022dcb64b77343d3f9fbeb47caf0601db7318a9dce51d"
+    },
+    {
+      "path": "src/hub/group-policy/store.ts",
+      "sha256": "5d387e27514a106c65b8973590e901d81376fdb1eb027b636e3c979f66f6412d"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "f9e77708ab88d838a826504849615bb734c48cc7c7b1e4af58f16f3b76918131"
+    },
+    {
+      "path": "src/hub/join/receipt.ts",
+      "sha256": "3358a9ace8ba6a0e89f5acfffe7fe69ae954d96abb42b6b72171732b22cef2a5"
+    },
+    {
+      "path": "src/hub/join/service.ts",
+      "sha256": "6be7c842c050783b9c5d49417ce53609a0e681b46470325912d0a142495c915d"
+    },
+    {
+      "path": "src/hub/join/store.ts",
+      "sha256": "b84b57eea359c0ef4dbf8bc25d5c679618007ad16566f0c65d7ef6978e6e3b63"
+    },
+    {
+      "path": "src/hub/member/pairing-notices.ts",
+      "sha256": "6020790d4a44bfdd006681cc4e673fa4826e1901846994d89322138631b638d3"
+    },
+    {
+      "path": "src/hub/pairing-notices.ts",
+      "sha256": "187707c1d4513aa58a11084239c2160dc093b8abf2f845f98512aafc20296d7c"
+    },
+    {
+      "path": "src/hub/pairing.ts",
+      "sha256": "53db89c0eaf72d8091377d74580997fc1705c87d6c7494d4a0243481ae9b067e"
+    },
+    {
+      "path": "src/hub/protocol.ts",
+      "sha256": "0050902484371d58fd55b7e80befd090b2e549f898dadaa095646b17fb8209fc"
+    },
+    {
+      "path": "src/hub/server.ts",
+      "sha256": "8375e750126fabaa4597347098500b97d2814c5c5fee7194bc5a691c9adcf0a3"
+    },
+    {
+      "path": "src/hub/types.ts",
+      "sha256": "8ef10112ca8523eff85ba84652a059b383602e5b94b07dc8fb7add40dc129429"
+    },
+    {
+      "path": "src/settings-api.ts",
+      "sha256": "e3dd71dd2066f13959c9928ab53dd4a1adae376bc81712cf519831359a2931b7"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "abc277d3c26704be3242ad06aa1e32d3db3f936802511c6d0cbd2996f5ce8b75"
+    },
+    {
+      "path": "src/ui/hub-join-steps.js",
+      "sha256": "ce7af483d340b980d38e71df9d39720605234a9186ea4d8431c47074b9ab9fe2"
+    },
+    {
+      "path": "src/ui/hub-enrolment-code.js",
+      "sha256": "966c7613113455af0e3efe40b4efd546f33b86037b13ce2df38d25cdfce16ded"
+    },
+    {
+      "path": "src/ui/hub-enrolment-code-strings.js",
+      "sha256": "1d77bb92f1dd6a8636b3621b8ca646c7715aa63964012b64a3dbeea457d68639"
+    },
+    {
+      "path": "src/ui/hub-join-approval.js",
+      "sha256": "5c7a29bb7d47809b61f6a1b49ea0b36388075d80b98c2e6fc670f02709060e00"
+    },
+    {
+      "path": "src/ui/hub-join-queue.js",
+      "sha256": "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "6d15110dd27b2e3da883f78116a94d1525df45676474084c891987ee1dfd0d60"
+    },
+    {
+      "path": "src/ui/hub-company-join.js",
+      "sha256": "c64a487af328109fae7e6f02c8ebed300a34d3b8a00ea89625826a9d9153f2bb"
+    },
+    {
+      "path": "src/ui/settings-hub.js",
+      "sha256": "639c3da643f95b6f8a5ea45fe8f3e8c8ed7db2c74841141e385211c0bc4648a2"
+    },
+    {
+      "path": "src/ui/settings-hub-company-join.js",
+      "sha256": "efe0f4d565cd425a48bc9183357d876212a391cbaca086b664f224fd0efc595b"
+    }
+  ],
+  "images": [
+    {
+      "path": "small-1-01-fleet-start.png",
+      "sha256": "aff487722e5ed6bc30b31a582e139c7f896083e74415410d3672f0e8682ad696"
+    },
+    {
+      "path": "small-4-01-fleet-start.png",
+      "sha256": "9ab24742fe9a64a59b7aecea7186519dfeded0cbfe87d5c1d186d847b4306e71"
+    },
+    {
+      "path": "small-0-01-fleet-start.png",
+      "sha256": "7007c9728440b112f7c120aaf715a2cedc87753c9329b5989207dc2c7d0e4027"
+    },
+    {
+      "path": "small-2-01-fleet-start.png",
+      "sha256": "1e8b4a321a376553aa03bdf68023c80d7a4c2a4f2d6553b806d78727eb96d799"
+    },
+    {
+      "path": "small-3-01-fleet-start.png",
+      "sha256": "4cc927c6b5801520cb692c5e14ffc4b5fd6dea65a42d081ae6a393b24399a6e0"
+    },
+    {
+      "path": "small-1-02-hub-signin.png",
+      "sha256": "f9055f91b6ef94ae86b4603723101491a63719ede42e7ad8c922c42c79af3d96"
+    },
+    {
+      "path": "small-4-02-hub-signin.png",
+      "sha256": "3b28e71ab00061d7486615ece7fb78c933e1b134152b9089898670a26cab35af"
+    },
+    {
+      "path": "small-0-02-hub-signin.png",
+      "sha256": "de08febdf072f5074a463bb0769e9c542caaf792543613637f311b81a4766a27"
+    },
+    {
+      "path": "small-2-02-hub-signin.png",
+      "sha256": "9755e8bdc780e72dbb3bf3ce445f338882e615912ed52070abe66a008604faf9"
+    },
+    {
+      "path": "small-3-02-hub-signin.png",
+      "sha256": "3f6a96db75cadd2618b203dd5b7a7db5dedad06d9d89916d2f2047c5040cbfa5"
+    },
+    {
+      "path": "small-1-04-connected.png",
+      "sha256": "46dcfe8ceed2a39f406fffe5ae38c1cdc9d5c2bd6a1b777d17465b3c7dfb49f0"
+    },
+    {
+      "path": "small-3-04-connected.png",
+      "sha256": "95421c77df69bca19a1c05f7815ed9d5720572ad12f0d92a39c3742249274cce"
+    },
+    {
+      "path": "small-0-04-connected.png",
+      "sha256": "9e3f932165fdcf9c83ba30e3c56465585ab035a84ee8319bef4cd06ac5f4a45d"
+    },
+    {
+      "path": "small-2-04-connected.png",
+      "sha256": "ed4a82fa7158c9174d3bc12f67482e55390952b367974ed02819ceadff569843"
+    },
+    {
+      "path": "small-4-04-connected.png",
+      "sha256": "8896cac7c3cd079331a004f53e7133bc5f3d6702818b03a9eb944328e1015562"
+    },
+    {
+      "path": "small-admin-row-small-0.png",
+      "sha256": "34c6459ff7e2c7e96e45defcec093a356868ed75f76650ac4f6ed542ab1a63d3"
+    },
+    {
+      "path": "small-admin-row-small-1.png",
+      "sha256": "34c6459ff7e2c7e96e45defcec093a356868ed75f76650ac4f6ed542ab1a63d3"
+    },
+    {
+      "path": "small-admin-row-small-2.png",
+      "sha256": "34c6459ff7e2c7e96e45defcec093a356868ed75f76650ac4f6ed542ab1a63d3"
+    },
+    {
+      "path": "small-admin-row-small-3.png",
+      "sha256": "34c6459ff7e2c7e96e45defcec093a356868ed75f76650ac4f6ed542ab1a63d3"
+    },
+    {
+      "path": "small-admin-row-small-4.png",
+      "sha256": "34c6459ff7e2c7e96e45defcec093a356868ed75f76650ac4f6ed542ab1a63d3"
+    },
+    {
+      "path": "mass-2-00-company-session.png",
+      "sha256": "234436b349ba969101d4297fec2b18f410135845d602ce3e00cc833b951d47f5"
+    },
+    {
+      "path": "mass-4-00-company-session.png",
+      "sha256": "4bd63dfb82a392ece5d6b523d250572085312ec6276592267915d00f7e2f15fe"
+    },
+    {
+      "path": "mass-0-00-company-session.png",
+      "sha256": "fe27b192746a1487d4db5fbc262b0a8ae0420e53b00939f326385b394393fb4f"
+    },
+    {
+      "path": "mass-3-00-company-session.png",
+      "sha256": "ae0015387a2126889f13990b63d78c5a26980defec1aece368d3c2b67e52097e"
+    },
+    {
+      "path": "mass-1-00-company-session.png",
+      "sha256": "817f9e68043d0ba66d62687af9fe16e8d6715399b0e3233c2566b26dcb5362d6"
+    },
+    {
+      "path": "mass-2-01-fleet-start.png",
+      "sha256": "07881985a9a92e2c4228524292e61247e086bc006c6b297b5e861d7c22dd4adf"
+    },
+    {
+      "path": "mass-1-01-fleet-start.png",
+      "sha256": "43f7f980cdde4709ada09f0cb04693dc8c0b3637065ab526ad0e2131865b0220"
+    },
+    {
+      "path": "mass-0-01-fleet-start.png",
+      "sha256": "88c4129a50e3cf0250775c6e2e63874b66d5010e7b8e9a9e66889f46172836f3"
+    },
+    {
+      "path": "mass-3-01-fleet-start.png",
+      "sha256": "336fd7080a976fb5b955890853e38a53c537325c7d7d43917998390bdfe29ecf"
+    },
+    {
+      "path": "mass-4-01-fleet-start.png",
+      "sha256": "f1e9c43a67f4073ecc235f1b9d33c9b17ca7d738fa9ebcd951879a64c195f057"
+    },
+    {
+      "path": "mass-1-02-existing-account-consent.png",
+      "sha256": "84f7186c2fc9e5fcd591441011ee3c5bacc7d66d0cc2469080ad7c5ba6632c3e"
+    },
+    {
+      "path": "mass-0-02-existing-account-consent.png",
+      "sha256": "53a0a2ec3bbd2ed3b67e5827c18edb60f86b02ebf5a4e5efdb5eea84dd87c6f4"
+    },
+    {
+      "path": "mass-2-02-existing-account-consent.png",
+      "sha256": "11f64900c481132baeb2a89c01269f9c2d73cd767bdbb382324a0668dd5546f9"
+    },
+    {
+      "path": "mass-4-02-existing-account-consent.png",
+      "sha256": "cb4dcade906155eaf670e8bff5515f30382e4239afe8b8f8969a059799c2613e"
+    },
+    {
+      "path": "mass-3-02-existing-account-consent.png",
+      "sha256": "a3ec1ddf3842ea5b405d7862ec643865ec0f6c7613f0d2864ce639a33366d0be"
+    },
+    {
+      "path": "mass-1-04-connected.png",
+      "sha256": "449fcd5d4e9f03fbb9e7fcecfdb13297bfa9d86cbc3988480e1937f4d697ed55"
+    },
+    {
+      "path": "mass-2-04-connected.png",
+      "sha256": "622722dde3d567c81b4c5b79046860517d08b55432fb3684e3780d932d4704a1"
+    },
+    {
+      "path": "mass-4-04-connected.png",
+      "sha256": "28c2e27e2267c41ab64b9836f08d09788ec909ce17976aeb1ee6ad5ec4089dbe"
+    },
+    {
+      "path": "mass-3-04-connected.png",
+      "sha256": "9189893bed4de2be3dab097aa79aa55d9ac4bc979abd96f36460bedacaf79529"
+    },
+    {
+      "path": "mass-0-04-connected.png",
+      "sha256": "43bed1c83b529c4af37bf285198164bde499f770cfb8c0846ae2260b62d567b5"
+    },
+    {
+      "path": "mass-admin-row-mass-0.png",
+      "sha256": "25d0c83d0759151cbad7de40ec34ee1a448080ac2c37a722df1754c3b2a8f77f"
+    },
+    {
+      "path": "mass-admin-row-mass-1.png",
+      "sha256": "25d0c83d0759151cbad7de40ec34ee1a448080ac2c37a722df1754c3b2a8f77f"
+    },
+    {
+      "path": "mass-admin-row-mass-2.png",
+      "sha256": "25d0c83d0759151cbad7de40ec34ee1a448080ac2c37a722df1754c3b2a8f77f"
+    },
+    {
+      "path": "mass-admin-row-mass-3.png",
+      "sha256": "25d0c83d0759151cbad7de40ec34ee1a448080ac2c37a722df1754c3b2a8f77f"
+    },
+    {
+      "path": "mass-admin-row-mass-4.png",
+      "sha256": "25d0c83d0759151cbad7de40ec34ee1a448080ac2c37a722df1754c3b2a8f77f"
+    },
+    {
+      "path": "withgroups-0-00-company-session.png",
+      "sha256": "02093117da8a10daceb8039853de76e270eb92c919b0ebc6f5892a82327f13b9"
+    },
+    {
+      "path": "withgroups-1-00-company-session.png",
+      "sha256": "79f33d7ac3e45c47f3abcdd9edacd83889683c2b8c75b8932d5950cf56eeb07f"
+    },
+    {
+      "path": "withgroups-2-00-company-session.png",
+      "sha256": "9ae39fa7d191d0bc77236981171d36199bfd468867738ab6fe6663c45c527412"
+    },
+    {
+      "path": "withgroups-3-00-company-session.png",
+      "sha256": "47b0da00bdb81cfd09b64e78fd1b1fa775001f9a6440c238623a7b92714bc1d9"
+    },
+    {
+      "path": "withgroups-4-00-company-session.png",
+      "sha256": "f0b782411576e9dce6922358ed47da8f62d1a7622cbd2bf7134c3627f189e406"
+    },
+    {
+      "path": "withgroups-2-01-fleet-start.png",
+      "sha256": "78f3f2de783057fd3d80b93cee1ea886549f74682c67de074b3e03e499804b9d"
+    },
+    {
+      "path": "withgroups-0-01-fleet-start.png",
+      "sha256": "d30d01d506497465a3b93901b48e10bdf7bd43259ed5bddd12a8392090936d9c"
+    },
+    {
+      "path": "withgroups-1-01-fleet-start.png",
+      "sha256": "a23db1b272f1aa07546fe4af659b6c46f003bf520c96d65e0ca6299b238d70d3"
+    },
+    {
+      "path": "withgroups-4-01-fleet-start.png",
+      "sha256": "7b01947e24bc5da6101e86853d1f9638e8874dbf662421b9c712e7fc3de3b4f2"
+    },
+    {
+      "path": "withgroups-3-01-fleet-start.png",
+      "sha256": "6ef8735f8f9737f54608f408bd7ea93f0a335daab9b1d4cd6295c1e5e28b1af8"
+    },
+    {
+      "path": "withgroups-2-02-existing-account-consent.png",
+      "sha256": "86b20ee225e0b18c1904229340783afb4407fb3db2b433be16c90e4b2d016089"
+    },
+    {
+      "path": "withgroups-4-02-existing-account-consent.png",
+      "sha256": "95a3bab61f90c54e4583807aa9d389154c74eea6ea83c7f2f886258e0d6aa575"
+    },
+    {
+      "path": "withgroups-1-02-existing-account-consent.png",
+      "sha256": "8c946b826dde8b4a895d206212f5fd657f613576d8ff269a374c413fc41ccd96"
+    },
+    {
+      "path": "withgroups-3-02-existing-account-consent.png",
+      "sha256": "0064b90dafd76d7227e78a1f0cf0ced4b53ec4d8a4ca07441d7ccf775c96f753"
+    },
+    {
+      "path": "withgroups-0-02-existing-account-consent.png",
+      "sha256": "ebaa45b3e1c1581225b80ab738cd2a1d426cee0ab237b7649952b2aabe30c493"
+    },
+    {
+      "path": "withgroups-1-03-queued.png",
+      "sha256": "549cd893cb4c444449498e646f3a46386a974a61675c098389f055438f7c7398"
+    },
+    {
+      "path": "withgroups-2-03-queued.png",
+      "sha256": "0abb6ed89a78963bc3cebb533b1f348ab0e27c057a9bee6906a48b290ae840c8"
+    },
+    {
+      "path": "withgroups-4-03-queued.png",
+      "sha256": "02b123bbc5108f6a9adb33e9bd086d7a6dc25b990382c10e5ca5563d4fee65fa"
+    },
+    {
+      "path": "withgroups-3-03-queued.png",
+      "sha256": "0c88a2b629d1845c7f6ceb5015da8c25e0b54fb65c144529d0794c8c3f2d3d0a"
+    },
+    {
+      "path": "withgroups-0-03-queued.png",
+      "sha256": "9b8dcde60ec359f346960530a46e3a42c2fdd4d552dc7bd01ce2e693e8764c5f"
+    },
+    {
+      "path": "withgroups-1-04-connected.png",
+      "sha256": "5a35902aeb87806818c7904251cb19c4881a1e42423283bc62821b76c7020fc7"
+    },
+    {
+      "path": "withgroups-0-04-connected.png",
+      "sha256": "55ad6f0ee1d85d90b0258217cb0b7f78c729dd245f1e0ef79275db700b5d3c38"
+    },
+    {
+      "path": "withgroups-3-04-connected.png",
+      "sha256": "bd86bbfcd2de541880441c529bdfb87570a64bd8a05277322592bcd910de3790"
+    },
+    {
+      "path": "withgroups-2-04-connected.png",
+      "sha256": "354153552a7ed240ed9bc525b589c76131b74310728d646455eb6faecddc30af"
+    },
+    {
+      "path": "withgroups-4-04-connected.png",
+      "sha256": "34e4112fca1f1d762dc8f81b76106aace4503102b15da5cd22fede0522c5d4ef"
+    },
+    {
+      "path": "withgroups-admin-row-withgroups-0.png",
+      "sha256": "e5431c47c2041e173bc17c1678dd185176aab2cba3c8fa9734bcb2ff6c9b4e2f"
+    },
+    {
+      "path": "withgroups-admin-row-withgroups-1.png",
+      "sha256": "e5431c47c2041e173bc17c1678dd185176aab2cba3c8fa9734bcb2ff6c9b4e2f"
+    },
+    {
+      "path": "withgroups-admin-row-withgroups-2.png",
+      "sha256": "e5431c47c2041e173bc17c1678dd185176aab2cba3c8fa9734bcb2ff6c9b4e2f"
+    },
+    {
+      "path": "withgroups-admin-row-withgroups-3.png",
+      "sha256": "e5431c47c2041e173bc17c1678dd185176aab2cba3c8fa9734bcb2ff6c9b4e2f"
+    },
+    {
+      "path": "withgroups-admin-row-withgroups-4.png",
+      "sha256": "e5431c47c2041e173bc17c1678dd185176aab2cba3c8fa9734bcb2ff6c9b4e2f"
+    }
+  ]
+}

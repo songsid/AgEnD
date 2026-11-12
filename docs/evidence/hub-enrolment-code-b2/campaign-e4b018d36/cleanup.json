@@ -1,0 +1,25 @@
+{
+  "source": "e4b018d36d3a19dc431109f4504a02700725d125",
+  "nonce": "01263510-e4fe-4a18-83b8-2bb1a6acad59",
+  "checkedAt": 1794500374621,
+  "containerAbsent": true,
+  "ownedLabelAbsent": true,
+  "imageAbsent": true,
+  "samplerSettled": true,
+  "activeAbsent": true,
+  "stopAbsent": true,
+  "ownedProcesses": [
+    {
+      "pattern": "[h]ost-watch.mjs .*01263510-e4fe-4a18-83b8-2bb1a6acad59",
+      "present": false
+    },
+    {
+      "pattern": "[r]un.sh --run .*night16-window/go24.json",
+      "present": false
+    }
+  ],
+  "futureLauncher": false,
+  "allPhaseExitCodesZero": true,
+  "launcherToolSessionExit": 143,
+  "launcherLimit": "The exec-session result reported143 after the source supervisor had written ready:true and the launch log had completed owned cleanup. Cause not established; no outer exit0 claim. Raw phase results and cleanup are independently verified."
+}

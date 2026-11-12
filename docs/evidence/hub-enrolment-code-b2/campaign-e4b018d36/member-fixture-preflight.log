@@ -1,0 +1,13 @@
+{"check":"company join enabled","pass":true}
+{"check":"built strict discovery advertises code","pass":true}
+{"check":"admin creates 2-use code","pass":true}
+{"check":"Origin-bound browser handoff compat0","pass":true}
+{"check":"B-L9 old v2-only member link connected","pass":true}
+{"check":"B-L9 actual old member does not negotiate v3","pass":true}
+{"check":"Origin-bound browser handoff compat0","pass":true}
+{"check":"B-L9 second same-owner fleet issues through real code route","pass":true}
+{"check":"B-L9 code notice remains queued for actual old member","pass":true}
+{"check":"B-L9 code notice delivered after actual member upgrade","pass":true}
+{"check":"B-L9 upgraded inbox retains exact code provenance before ACK","pass":true}
+{"check":"B-L9 upgraded inbox audit chain verifies","pass":true}
+{"ready":true,"checks":12}

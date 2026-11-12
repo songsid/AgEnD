@@ -1,0 +1,1110 @@
+{
+  "sampleCount": 86948,
+  "wallMs": 104773.09,
+  "self": [
+    {
+      "ms": 32366.12,
+      "function": "(idle)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 5114.51,
+      "function": "(garbage collector)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1507.23,
+      "function": "(program)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 478.45,
+      "function": "post",
+      "url": "node:inspector",
+      "line": 118
+    },
+    {
+      "ms": 464.76,
+      "function": "",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 40864
+    },
+    {
+      "ms": 423.04,
+      "function": "shutdown",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 349.29,
+      "function": "spawn",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 348.54,
+      "function": "writev",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 336.28,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 231.81,
+      "function": "start",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 222.08,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 211.24,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 195.98,
+      "function": "readFileUtf8",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 165.8,
+      "function": "connect",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 162.58,
+      "function": "spawn",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 144.53,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 144.38,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 143.69,
+      "function": "run",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 142.78,
+      "function": "_addHeaderLine",
+      "url": "node:_http_incoming",
+      "line": 382
+    },
+    {
+      "ms": 140.31,
+      "function": "parseStrictJson",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 139.98,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 133.82,
+      "function": "callbackTrampoline",
+      "url": "node:internal/async_hooks",
+      "line": 118
+    },
+    {
+      "ms": 133.48,
+      "function": "",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 30330
+    },
+    {
+      "ms": 132.07,
+      "function": "spawn",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 129.29,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 127.25,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 126.85,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 118.87,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 114.2,
+      "function": "wrap",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 113.4,
+      "function": "parserOnHeadersComplete",
+      "url": "node:_http_common",
+      "line": 77
+    },
+    {
+      "ms": 108.41,
+      "function": "nextTick",
+      "url": "node:internal/process/task_queues",
+      "line": 111
+    },
+    {
+      "ms": 107.33,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 106.31,
+      "function": "onStreamRead",
+      "url": "node:internal/stream_base_commons",
+      "line": 166
+    },
+    {
+      "ms": 105.31,
+      "function": "getPeerCertificate",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 98.65,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 95.58,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 95.55,
+      "function": "processTicksAndRejections",
+      "url": "node:internal/process/task_queues",
+      "line": 71
+    },
+    {
+      "ms": 92.84,
+      "function": "socketOnData",
+      "url": "node:_http_client",
+      "line": 608
+    },
+    {
+      "ms": 88.18,
+      "function": "",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 40856
+    },
+    {
+      "ms": 87.93,
+      "function": "ClientRequest",
+      "url": "node:_http_client",
+      "line": 191
+    },
+    {
+      "ms": 84.41,
+      "function": "parse",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 83.94,
+      "function": "_addHeaderLine",
+      "url": "node:_http_incoming",
+      "line": 382
+    },
+    {
+      "ms": 83.29,
+      "function": "writevGeneric",
+      "url": "node:internal/stream_base_commons",
+      "line": 121
+    },
+    {
+      "ms": 82.86,
+      "function": "runMicrotasks",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 82.77,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 81.17,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 80.7,
+      "function": "destroySSL",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 79.59,
+      "function": "writevGeneric",
+      "url": "node:internal/stream_base_commons",
+      "line": 121
+    },
+    {
+      "ms": 79.5,
+      "function": "init",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 77.86,
+      "function": "handleWebRequest",
+      "url": "file:///tmp/b1-dist/web-api.js",
+      "line": 2572
+    },
+    {
+      "ms": 76.58,
+      "function": "addRequest",
+      "url": "node:_http_agent",
+      "line": 373
+    },
+    {
+      "ms": 76.04,
+      "function": "_onResponseReceived",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 37696
+    },
+    {
+      "ms": 75.44,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 74.55,
+      "function": "scalarString",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 73.5,
+      "function": "afterWrite",
+      "url": "node:internal/streams/writable",
+      "line": 699
+    },
+    {
+      "ms": 72.55,
+      "function": "scalarString",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 71.4,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 70.82,
+      "function": "_createResponse",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 37632
+    },
+    {
+      "ms": 69.56,
+      "function": "measureSyncWork",
+      "url": "file:///tmp/b1-dist/sync-work-attribution.js",
+      "line": 13
+    },
+    {
+      "ms": 69.11,
+      "function": "_dispatch",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 40848
+    },
+    {
+      "ms": 68.35,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 68.09,
+      "function": "processResponse",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 37934
+    },
+    {
+      "ms": 67.68,
+      "function": "init",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 67.55,
+      "function": "writev",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 64.99,
+      "function": "deprecate",
+      "url": "node:internal/util",
+      "line": 175
+    },
+    {
+      "ms": 64.3,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 64.28,
+      "function": "removeListener",
+      "url": "node:events",
+      "line": 681
+    },
+    {
+      "ms": 63.85,
+      "function": "emitInitScript",
+      "url": "node:internal/async_hooks",
+      "line": 503
+    },
+    {
+      "ms": 63.85,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 62.45,
+      "function": "",
+      "url": "file:///tmp/b1-dist/auth-api.js",
+      "line": 535
+    },
+    {
+      "ms": 62.38,
+      "function": "setStreamTimeout",
+      "url": "node:internal/stream_base_commons",
+      "line": 236
+    },
+    {
+      "ms": 62.25,
+      "function": "_Response",
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "line": 61478
+    },
+    {
+      "ms": 61.87,
+      "function": "asyncResetHandle",
+      "url": "node:_http_agent",
+      "line": 707
+    },
+    {
+      "ms": 61.27,
+      "function": "settingsNext",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 30292
+    },
+    {
+      "ms": 59.68,
+      "function": "",
+      "url": "file:///work/src/hub/validation.ts",
+      "line": 1
+    },
+    {
+      "ms": 59.5,
+      "function": "parserOnIncomingClient",
+      "url": "node:_http_client",
+      "line": 686
+    },
+    {
+      "ms": 59.42,
+      "function": "destroySSL",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 59.14,
+      "function": "",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 59.02,
+      "function": "Socket._destroy",
+      "url": "node:net",
+      "line": 809
+    },
+    {
+      "ms": 58.99,
+      "function": "processHeader",
+      "url": "node:_http_outgoing",
+      "line": 591
+    }
+  ],
+  "inclusive": [
+    {
+      "ms": 104772.75,
+      "function": "(root)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 32366.12,
+      "function": "(idle)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 17290.0,
+      "function": "processTicksAndRejections",
+      "url": "node:internal/process/task_queues",
+      "line": 71
+    },
+    {
+      "ms": 15265.8,
+      "function": "runMicrotasks",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 10002.44,
+      "function": "parserOnHeadersComplete",
+      "url": "node:_http_common",
+      "line": 77
+    },
+    {
+      "ms": 9872.28,
+      "function": "parserOnIncoming",
+      "url": "node:_http_server",
+      "line": 1073
+    },
+    {
+      "ms": 9539.74,
+      "function": "emit",
+      "url": "node:events",
+      "line": 466
+    },
+    {
+      "ms": 8425.17,
+      "function": "redeem",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 6866.73,
+      "function": "callbackTrampoline",
+      "url": "node:internal/async_hooks",
+      "line": 118
+    },
+    {
+      "ms": 5950.83,
+      "function": "atomic",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 5907.96,
+      "function": "",
+      "url": "file:///work/src/hub/join/http.ts",
+      "line": 1
+    },
+    {
+      "ms": 5895.25,
+      "function": "sqliteTransaction",
+      "url": "file:///work/node_modules/better-sqlite3/lib/methods/transaction.js",
+      "line": 52
+    },
+    {
+      "ms": 5884.3,
+      "function": "",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 5753.49,
+      "function": "",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 5352.6,
+      "function": "admit",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 5225.94,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 5114.51,
+      "function": "(garbage collector)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 4877.02,
+      "function": "processTimers",
+      "url": "node:internal/timers",
+      "line": 506
+    },
+    {
+      "ms": 4820.3,
+      "function": "listOnTimeout",
+      "url": "node:internal/timers",
+      "line": 526
+    },
+    {
+      "ms": 3476.17,
+      "function": "atomic",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 3406.62,
+      "function": "sqliteTransaction",
+      "url": "file:///work/node_modules/better-sqlite3/lib/methods/transaction.js",
+      "line": 52
+    },
+    {
+      "ms": 3402.29,
+      "function": "",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 3368.51,
+      "function": "handle",
+      "url": "file:///work/src/hub/http/compose.ts",
+      "line": 7
+    },
+    {
+      "ms": 3352.7,
+      "function": "",
+      "url": "file:///work/src/hub/socket.ts",
+      "line": 1
+    },
+    {
+      "ms": 3293.48,
+      "function": "",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 2824.62,
+      "function": "receive",
+      "url": "file:///work/src/hub/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 2824.62,
+      "function": "",
+      "url": "file:///work/src/hub/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 2664.88,
+      "function": "",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 30330
+    },
+    {
+      "ms": 2572.17,
+      "function": "processImmediate",
+      "url": "node:internal/timers",
+      "line": 436
+    },
+    {
+      "ms": 2558.37,
+      "function": "approve",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 2522.48,
+      "function": "dispatchWebHttp",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 29909
+    },
+    {
+      "ms": 2408.24,
+      "function": "",
+      "url": "file:///work/src/hub/http/compose.ts",
+      "line": 1
+    },
+    {
+      "ms": 2404.98,
+      "function": "live",
+      "url": "file:///work/src/hub/http/core.ts",
+      "line": 1
+    },
+    {
+      "ms": 2401.7,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 2337.27,
+      "function": "commit",
+      "url": "file:///work/src/hub/group-policy/authorization.ts",
+      "line": 1
+    },
+    {
+      "ms": 2262.7,
+      "function": "",
+      "url": "file:///work/src/hub/settings-directory-mount.ts",
+      "line": 1
+    },
+    {
+      "ms": 2256.27,
+      "function": "inspect",
+      "url": "file:///work/src/hub/settings-directory-decision.ts",
+      "line": 7
+    },
+    {
+      "ms": 2172.77,
+      "function": "receive",
+      "url": "file:///work/src/hub/http/compose.ts",
+      "line": 7
+    },
+    {
+      "ms": 2172.77,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 1919.25,
+      "function": "",
+      "url": "file:///work/src/hub/socket.ts",
+      "line": 1
+    },
+    {
+      "ms": 1844.7,
+      "function": "current",
+      "url": "file:///work/src/hub/socket.ts",
+      "line": 1
+    },
+    {
+      "ms": 1839.77,
+      "function": "",
+      "url": "file:///work/src/hub/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 1815.72,
+      "function": "",
+      "url": "file:///work/src/hub/compose/server.ts",
+      "line": 1
+    },
+    {
+      "ms": 1814.54,
+      "function": "acknowledge",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1813.47,
+      "function": "atomic",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1810.7,
+      "function": "admit",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1805.73,
+      "function": "reveal",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1804.65,
+      "function": "atomic",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1788.09,
+      "function": "read",
+      "url": "file:///work/src/hub/store.ts",
+      "line": 1
+    },
+    {
+      "ms": 1758.34,
+      "function": "prepareCodeEnrollment",
+      "url": "file:///work/src/hub/group-policy/authorization.ts",
+      "line": 1
+    },
+    {
+      "ms": 1751.73,
+      "function": "sqliteTransaction",
+      "url": "file:///work/node_modules/better-sqlite3/lib/methods/transaction.js",
+      "line": 52
+    },
+    {
+      "ms": 1747.21,
+      "function": "",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1736.24,
+      "function": "sqliteTransaction",
+      "url": "file:///work/node_modules/better-sqlite3/lib/methods/transaction.js",
+      "line": 52
+    },
+    {
+      "ms": 1733.98,
+      "function": "",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1661.05,
+      "function": "onStreamRead",
+      "url": "node:internal/stream_base_commons",
+      "line": 166
+    },
+    {
+      "ms": 1641.48,
+      "function": "",
+      "url": "file:///work/src/hub/settings-directory-mount.ts",
+      "line": 1
+    },
+    {
+      "ms": 1638.11,
+      "function": "inspect",
+      "url": "file:///work/src/hub/settings-directory-decision.ts",
+      "line": 7
+    },
+    {
+      "ms": 1629.07,
+      "function": "resourcePermit",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1628.43,
+      "function": "",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1614.98,
+      "function": "",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1572.81,
+      "function": "runNextTicks",
+      "url": "node:internal/process/task_queues",
+      "line": 62
+    },
+    {
+      "ms": 1566.99,
+      "function": "runMicrotasks",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1520.03,
+      "function": "readableAddChunkPushByteMode",
+      "url": "node:internal/streams/readable",
+      "line": 463
+    },
+    {
+      "ms": 1520.03,
+      "function": "Readable.push",
+      "url": "node:internal/streams/readable",
+      "line": 387
+    },
+    {
+      "ms": 1507.23,
+      "function": "(program)",
+      "url": "",
+      "line": 0
+    },
+    {
+      "ms": 1487.56,
+      "function": "addChunk",
+      "url": "node:internal/streams/readable",
+      "line": 550
+    },
+    {
+      "ms": 1481.34,
+      "function": "commit",
+      "url": "file:///work/src/hub/group-policy/resources.ts",
+      "line": 4
+    },
+    {
+      "ms": 1387.39,
+      "function": "challenge",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1364.97,
+      "function": "emit",
+      "url": "node:events",
+      "line": 466
+    },
+    {
+      "ms": 1358.99,
+      "function": "acknowledge",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1336.0,
+      "function": "prepareCodeEnrollment",
+      "url": "file:///work/src/hub/group-policy/authorization.ts",
+      "line": 1
+    },
+    {
+      "ms": 1332.92,
+      "function": "assertCurrent",
+      "url": "file:///work/src/hub/group-policy/authorization.ts",
+      "line": 1
+    },
+    {
+      "ms": 1314.31,
+      "function": "measureSyncWork",
+      "url": "file:///tmp/b1-dist/sync-work-attribution.js",
+      "line": 13
+    },
+    {
+      "ms": 1314.31,
+      "function": "",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 5405
+    },
+    {
+      "ms": 1304.34,
+      "function": "redeem",
+      "url": "file:///work/src/hub/join/service.ts",
+      "line": 1
+    },
+    {
+      "ms": 1291.4,
+      "function": "read",
+      "url": "file:///work/src/hub/store.ts",
+      "line": 1
+    },
+    {
+      "ms": 1280.7,
+      "function": "receiveSnapshot",
+      "url": "file:///work/src/hub/catalog.ts",
+      "line": 1
+    },
+    {
+      "ms": 1242.49,
+      "function": "",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 5408
+    },
+    {
+      "ms": 1188.79,
+      "function": "runDeliveryOutboxPump",
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "line": 5412
+    },
+    {
+      "ms": 1128.71,
+      "function": "bindingCurrent",
+      "url": "file:///work/src/hub/pairing.ts",
+      "line": 1
+    }
+  ],
+  "files": [
+    {
+      "url": "(idle)",
+      "selfMs": 32366.12
+    },
+    {
+      "url": "file:///work/src/hub/validation.ts",
+      "selfMs": 22549.14
+    },
+    {
+      "url": "",
+      "selfMs": 7475.98
+    },
+    {
+      "url": "(garbage collector)",
+      "selfMs": 5114.51
+    },
+    {
+      "url": "file:///work/node_modules/zod/v4/core/schemas.js",
+      "selfMs": 3742.86
+    },
+    {
+      "url": "file:///work/node_modules/zod/v4/core/checks.js",
+      "selfMs": 3217.37
+    },
+    {
+      "url": "file:///pw/node_modules/playwright-core/lib/coreBundle.js",
+      "selfMs": 2274.72
+    },
+    {
+      "url": "(program)",
+      "selfMs": 1507.23
+    },
+    {
+      "url": "file:///work/node_modules/better-sqlite3/lib/methods/wrappers.js",
+      "selfMs": 1415.58
+    },
+    {
+      "url": "file:///work/scripts/manual/hub-enrolment-code-campaign/diagnostics.mts",
+      "selfMs": 1047.3
+    },
+    {
+      "url": "lstat",
+      "selfMs": 1016.79
+    },
+    {
+      "url": "export",
+      "selfMs": 992.87
+    },
+    {
+      "url": "init",
+      "selfMs": 935.51
+    },
+    {
+      "url": "file:///work/node_modules/better-sqlite3/lib/database.js",
+      "selfMs": 835.92
+    },
+    {
+      "url": "writev",
+      "selfMs": 773.36
+    },
+    {
+      "url": "node:events",
+      "selfMs": 747.55
+    },
+    {
+      "url": "spawn",
+      "selfMs": 643.94
+    },
+    {
+      "url": "shutdown",
+      "selfMs": 535.64
+    },
+    {
+      "url": "file:///work/src/hub/store.ts",
+      "selfMs": 528.98
+    },
+    {
+      "url": "node:internal/stream_base_commons",
+      "selfMs": 493.61
+    },
+    {
+      "url": "node:inspector",
+      "selfMs": 478.45
+    },
+    {
+      "url": "node:internal/process/task_queues",
+      "selfMs": 453.64
+    },
+    {
+      "url": "node:fs",
+      "selfMs": 426.07
+    },
+    {
+      "url": "node:net",
+      "selfMs": 401.09
+    },
+    {
+      "url": "file:///tmp/b1-dist/fleet-manager.js",
+      "selfMs": 394.98
+    },
+    {
+      "url": "node:_http_outgoing",
+      "selfMs": 394.62
+    },
+    {
+      "url": "set filename",
+      "selfMs": 390.65
+    },
+    {
+      "url": "file:///work/src/hub/identity.ts",
+      "selfMs": 386.46
+    },
+    {
+      "url": "node:internal/async_hooks",
+      "selfMs": 377.94
+    },
+    {
+      "url": "node:internal/streams/readable",
+      "selfMs": 372.68
+    },
+    {
+      "url": "readFileUtf8",
+      "selfMs": 367.72
+    },
+    {
+      "url": "node:_http_incoming",
+      "selfMs": 365.38
+    },
+    {
+      "url": "node:internal/source_map/source_map_cache",
+      "selfMs": 360.46
+    },
+    {
+      "url": "node:_http_client",
+      "selfMs": 351.12
+    },
+    {
+      "url": "file:///work/src/hub/private-files.ts",
+      "selfMs": 320.02
+    }
+  ]
+}

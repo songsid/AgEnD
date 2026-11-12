@@ -1,0 +1,11 @@
+{
+  "source": "e4b018d36d3a19dc431109f4504a02700725d125",
+  "nonce": "01263510-e4fe-4a18-83b8-2bb1a6acad59",
+  "nanoCpus": 2000000000,
+  "memory": 3221225472,
+  "memorySwap": 3221225472,
+  "networkMode": "none",
+  "privileged": false,
+  "readOnlyRoot": true,
+  "pidsLimit": 256
+}
