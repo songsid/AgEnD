@@ -1,0 +1,12 @@
+{
+  "head": "5130193a0aedd0495c32d55b56c87aa26632bcd1",
+  "argv": [
+    "npx",
+    "vitest",
+    "run",
+    "tests/web-instance-nav-n1.test.ts",
+    "--maxWorkers=1"
+  ],
+  "exit": 1,
+  "scope": "one stale signed-in View href assertion fails;22 controls pass"
+}
