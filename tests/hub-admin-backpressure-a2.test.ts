@@ -2,14 +2,14 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
-let clients: any, panel: any, steps: any, words: any;
+let clients: any, panel: any, steps: any, words: any, codeUI: any, company: any;
 const pages: AppPage[] = [];
 const session = { signedIn: true, admin: true, csrf: "owned-session", displayName: "Ada", features: ["company-join-v1", "group-policy-v1", "enrolment-code-v1"] };
 const policy = { realm: "example", generation: "g1", revision: 1, state: "enabled", groups: [{ group: { realm: "example", objectId: "g" }, dn: "CN=Colleagues,DC=test", allow: ["pair_fleet"], maxFleets: 1 }], denies: [] };
 const response = (body: any, status = 200, after = "0") => ({ ok: status === 200, status, headers: new Headers({ "Retry-After": after }), json: async () => body });
 const busy = () => response({ code: "backpressure" }, 429);
 const until = async (fn: () => unknown) => { for (let i = 0; i < 150 && !fn(); i++) await settle(3); expect(fn()).toBeTruthy(); };
-beforeAll(async () => { const p = page(); clients = await import("/ui/js/hub-client.js"); panel = await import("/ui/js/panel-hub.js"); steps = await import("/ui/js/hub-join-steps.js"); words = await import("/assets/app-i18n.js"); p.restore(); });
+beforeAll(async () => { const p = page(); clients = await import("/ui/js/hub-client.js"); panel = await import("/ui/js/panel-hub.js"); steps = await import("/ui/js/hub-join-steps.js"); words = await import("/assets/app-i18n.js"); codeUI = await import("/ui/js/hub-enrolment-code.js"); company = await import("/ui/js/hub-company-join.js"); p.restore(); });
 afterEach(async () => { vi.useRealTimers(); for (const p of pages.splice(0)) { await p.unmount(); p.restore(); } panel.resetHubSession(); clients.setHubClient(null); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("Hub read admission and bounded recovery", () => {
@@ -82,7 +82,8 @@ describe("Hub read admission and bounded recovery", () => {
   });
   it("aborting a queued directory read does not start it", async () => {
     let done!: (v: any) => void;
-    const fetchImpl = vi.fn(() => new Promise(r => { done = r; }));
+    const held = new Promise(r => { done = r; });
+    const fetchImpl = vi.fn(() => held);
     const c = clients.createHubWebClient({ fetchImpl }), first = c.adminOverview(), abort = new AbortController();
     const next = c.directorySettings(abort.signal); await Promise.resolve(); await Promise.resolve(); abort.abort(); done(response({}));
     await Promise.all([first, next]); expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -132,6 +133,23 @@ describe("mounted Administration", () => {
     const retry = [...p.root.querySelectorAll("button")].find((b: any) => b.textContent === "Try again" && b.closest(".hub-join-read-status"));
     expect(retry).toBeTruthy(); fire(retry, "click"); await settle(12);
     expect(p.root.querySelector('li[data-step="2"]').classList.contains("done")).toBe(false); expect(c.createEnrolmentCode).toHaveBeenCalledTimes(1);
+  });
+  it("a backpressured code-list refresh retains known rows and Retry clears the error without a write", async () => {
+    let fail = false;
+    const timers: Array<() => void> = [], original = globalThis.setTimeout;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => ms === 5000 ? (timers.push(fn), 123 as any) : original(fn, ms, ...args));
+    const c = { enrolmentCodeV1: true, enrolmentCodes: vi.fn(async () => fail ? { ok: false, code: "backpressure", status: 429 } : { ok: true, codes: [{ id: "owned", code: "1234-ABCD", state: "live", scope: { kind: "directory" }, expiresAt: Date.now() + 60000 }] }), createEnrolmentCode: vi.fn(), revokeEnrolmentCode: vi.fn() };
+    const p = await mount(h(codeUI.HubEnrolmentCode, { client: c, enabled: true })); expect(p.root.textContent).toContain("1234-ABCD");
+    fail = true; timers.shift()!(); await settle(10); expect(p.root.textContent).toContain("1234-ABCD"); expect(button(p, "Try again")).toBeTruthy();
+    fail = false; fire(button(p, "Try again"), "click"); await settle(10); expect(button(p, "Create join code").disabled).toBe(false);
+    expect(c.createEnrolmentCode).not.toHaveBeenCalled(); expect(c.revokeEnrolmentCode).not.toHaveBeenCalled();
+  });
+  it("a held company-settings read cannot restore the card after session end", async () => {
+    let end!: () => void, finish!: (v: any) => void;
+    const c = { session: async () => ({ ok: true, ...session }), companyJoinSettings: () => new Promise(r => { finish = r; }), onSignedOut: (fn: () => void) => { end = fn; return () => {}; } };
+    clients.setHubClient(c); const p = await mount(h(company.CompanyJoinAdminCard)); end(); await settle(5);
+    finish({ ok: true, enabled: true, companyLink: "https://hub.example.test/owned" }); await settle(10);
+    expect(p.root.querySelector('input[role="switch"]')).toBeNull(); expect(p.root.querySelector("textarea")).toBeNull();
   });
   it("an initial group-list failure offers read retry, not the misleading save error", async () => {
     let fail = true; const c = { groupPolicy: vi.fn(async () => fail ? { ok: false, status: 429, code: "backpressure" } : { ok: true, supported: true, binding: "ready", policy }) };

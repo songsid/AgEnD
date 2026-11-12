@@ -1,5 +1,5 @@
 /** Full production Hub shell and client; recorded API DTOs with controlled read admission. No live Fleet/AD/account. */
-import { createServer } from 'node:http';
+import { createServer } from 'node:https';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir, loadavg } from 'node:os';
 import { join } from 'node:path';
@@ -39,7 +39,9 @@ const server=createServer(async(req,res)=>{
 });
 try{
  await new Promise<void>((done,fail)=>{server.once('error',fail);server.listen(0,'127.0.0.1',()=>{server.removeListener('error',fail);done();});});
- const origin='http://127.0.0.1:'+(server.address() as any).port;
+ const origin='https://127.0.0.1:'+(server.address() as any).port;
+ const {createBrowserCertificate}=await import(repo+'/src/hub/init/browser-certificate.ts');const cert=await createBrowserCertificate(home,origin);
+ server.setSecureContext({cert:readFileSync(cert.certFile),key:readFileSync(cert.keyFile)});
  const {s3bRig}=await import(repo+'/tests/helpers/hub-s3b-rig.ts');rig=await s3bRig({webOrigin:origin});
  const pw=createRequire(process.env.PW_DIR+'/')('playwright-core');browser=await pw.chromium.launch({executablePath:process.env.CHROME,args:['--no-sandbox']});result.browser=browser.version();
  const cases:any[]=[];
@@ -48,7 +50,7 @@ try{
  for(const spec of cases){
   if(loadavg()[0]>10)throw Error('Paused: host load above 10');
   const r:any={...spec,peak:0,counts:{},requests:[],writes:[],errors:[]};activeCase=r;result.cases.push(r);
-  const ctx=await browser.newContext({viewport:{width:1366,height:1000},colorScheme:spec.theme});
+  const ctx=await browser.newContext({viewport:{width:1366,height:1000},colorScheme:spec.theme,ignoreHTTPSErrors:true});
   try{
    await ctx.addInitScript(({lang,theme}:any)=>{(window as any).__name=(fn:any)=>fn;localStorage.setItem('agend_lang',lang);localStorage.setItem('agend_theme',theme);localStorage.setItem('agend_tour_done','1');},{lang:spec.lang,theme:spec.theme});
    const replaced=spec.mode==='before'?input.filter(p=>p.startsWith('src/ui/')):spec.mode==='old-company'?['src/ui/hub-company-join.js']:spec.mode==='old-client'?['src/ui/hub-client.js']:[];
@@ -70,6 +72,7 @@ try{
      await p.locator('.hub-join-card [role=alert] button').click();
     }
     await create.waitFor();await p.waitForFunction((label:string)=>[...document.querySelectorAll('button')].some(b=>b.textContent===label&&!b.disabled),spec.lang==='en'?'Create join code':'建立加入碼');
+    check(tag+' instructions enabled',await p.locator('[data-step="3"]>div>button').isEnabled());
     check(tag+' steps1and2 done',await p.locator('[data-step="1"].done').count()===1&&await p.locator('[data-step="2"].done').count()===1);
     if(!spec.mode.startsWith('old-'))check(tag+' peak1',r.peak===1);
     check(tag+' no horizontal overflow',await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
