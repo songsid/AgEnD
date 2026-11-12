@@ -155,9 +155,14 @@ describe("#1 / #6 / #11 / #13 / #17: the words", () => {
       expect(s).toMatch(lang === "en" ? /Edit AD connection.*individual invitations/ : /編輯 AD 連線.*個別邀請/);
     }
   });
-  it("#13: a non-host setup says how to get to the host's own page", () => {
-    expect(T("en", "hubSetup.local")).toContain("run agend web in a terminal");
-    expect(T("zh-TW", "hubSetup.local")).toContain("在終端機執行 agend web");
+  it("#13: a setup the server refuses to a session that is not the host's says how to get to the host's own page", async () => {
+    const { setupError } = await import("/ui/js/settings-hub-setup-strings.js");
+    for (const code of ["denied", "host_session_required"]) {
+      i18n.setLang("en", { store: false });
+      expect(setupError(code)).toBe("Only this computer's own sign-in can set up a Hub. On the computer running AgEnD, run agend web in a terminal and set it up on the page it opens.");
+      i18n.setLang("zh-TW", { store: false });
+      expect(setupError(code)).toBe("只有這台電腦自己的登入能設定 Hub。請到執行 AgEnD 的那台電腦，在終端機執行 agend web，再用它開啟的頁面設定。");
+    }
   });
   it("#17: the ask page says the owner sees who asked and the agent answers within the owner's allowance", () => {
     expect(T("en", "hub.roomNote")).toBe("You're asking as yourself: the owner sees that you asked. The agent answers within what its owner allows.");
