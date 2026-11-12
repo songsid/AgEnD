@@ -1,0 +1,21 @@
+{
+  "head": "1629f5c5808c75c488ca6e9194c17b3552239dd3",
+  "runner": "6c480cf60fd2ebda8d0031eb52deb91782f7c8ccc2c0b6d176edc7d8c7e7e06b",
+  "cases": [
+    {
+      "label": "separate-back-row",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "duplicate-section-label",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "missing-index-title",
+      "exit": 1,
+      "assertionCaught": true
+    }
+  ]
+}

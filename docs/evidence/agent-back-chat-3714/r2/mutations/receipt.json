@@ -1,0 +1,25 @@
+{
+  "head": "a133e1ac3fd858c6e10b8c9cafbf2572ae52fd12",
+  "tree": "af03d7def1d45bf750f430e334b26e341969f7aa",
+  "runner": "38dafedb17d9ff9e1bc162d4b07bde4585d27282c517026369bd441824b05adb",
+  "cases": [
+    {
+      "label": "selected",
+      "test": "tests/sidebar-instance-identity.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "other",
+      "test": "tests/sidebar-instance-identity.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "settings-x",
+      "test": "tests/web-usage-rail-1673.test.ts",
+      "exit": 1,
+      "assertionCaught": true
+    }
+  ]
+}

@@ -1,0 +1,806 @@
+{
+  "head": "985a47ce5d5d561be64f778c73a77c749f370f19",
+  "tree": "a88b0f99fd1989d3af234b41b02f434cb69fd056",
+  "dirty": false,
+  "theme": "dark",
+  "language": "zh-TW",
+  "phone": false,
+  "retain": "",
+  "oldRef": "8ac895063b4309b83b5d847e529c585a244b6d80",
+  "inputs": {
+    "9d70a93221aa1c0499cd01ead1dd548a465e2388c5c63049457cc4efd65a7b64": [
+      "src/ui/shared/instance-nav.js"
+    ],
+    "f71ed1c755110357fcf31dee9a013147c89e91672b84f62b385dbf819904efc0": [
+      "src/ui/panel-details.js"
+    ],
+    "fd102877074c12077fb79c8fbfe7cdef765b4d2c35d4d2bf9ff78ddcb5153f86": [
+      "src/ui/chat-workspace.js"
+    ],
+    "9a2a711f07812f0e2e321d3f542768970e65caa508848ef31315f613cf664399": [
+      "src/ui/chat-popout-header.js"
+    ],
+    "5b71d57a353d8e3cde1c178cb1020b2ebda68a463c57ac579d522d6b2ba58c8b": [
+      "src/ui/shared/app-shell.js"
+    ],
+    "5dfa69d440e16e949c469acbe9945daa6fe65bd41320d18041d6ee9981171d5f": [
+      "src/ui/shared/app-nav.js"
+    ],
+    "d89c2578c4f45f9619ddd7529041d7e774474ead7f657c93d1eec335f6fa4bdd": [
+      "src/ui/shared/app-route.js"
+    ],
+    "cc0afbe551e1b5857bcfb79447bc24ce59b7a1988972101718c2994b49a95842": [
+      "src/ui/shared/app-store.js"
+    ],
+    "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6": [
+      "src/ui/shared/app-ctx.js"
+    ],
+    "6f7fd589ed235fb3081d3097b4669cee511a16ad3a3b5e363d94ab4b2cefd9e5": [
+      "src/ui/shared/app-i18n.js"
+    ],
+    "20d19effd357c8415fedc16241deb70124574d2f9d54c45083b3731d4472f57a": [
+      "src/ui/shared/app.css"
+    ],
+    "0dd6c6e9665402a62a2f5f3c37ce323900024835f856de88518f28c4091df64b": [
+      "src/ui/shared/tokens.css"
+    ],
+    "64f8796f79bdd85f5608d71e39d64864b354de77074340f173ae3b28965f04da": [
+      "src/ui/agent-details-settings.js"
+    ],
+    "8c0b5b4c3bea9b1cdb52aecdc402dd56445c4c9604f2fb6531a3a0c0303e951a": [
+      "src/ui/settings-dialogs.js"
+    ],
+    "10a1618449b4abdb432af8285eb9f3dd191384a123a08d6759c25c70f3a0dc7f": [
+      "src/web-api.ts"
+    ],
+    "a3c1a370760744a98e55d1905b9f0d3f67ecf62b40816f6737521f4c45c8ff3d": [
+      "src/fleet-manager.ts"
+    ],
+    "333248244d4651b1419a4c2ee32bae7c4d5d930019d9ffafcf94daaa7ee3ee3c": [
+      "scripts/manual/smoke-fixture/index.mts"
+    ],
+    "840ce8054b28b2f52332ba68d38f681bbe30559fbcbcbc3de6f983fd302ff792": [
+      "scripts/manual/smoke-fixture/data.mts"
+    ],
+    "02edca644e41c1f124174f47552a8ea53c7d1b7007d59f8d38f13b302be74701": [
+      "harness"
+    ]
+  },
+  "assets": {
+    "0dd6c6e9665402a62a2f5f3c37ce323900024835f856de88518f28c4091df64b": [
+      "/assets/tokens.css"
+    ],
+    "ffc4f54dd8a2511eeb931a77d25d65ddd0a187e414b9deabe9290184399fe22d": [
+      "/assets/theme.js"
+    ],
+    "68dd23194827d7a83f532b1d7b3161fd27a2e696ef14cf6d593b0a65e3ad9ce8": [
+      "/assets/loading.css"
+    ],
+    "037b6bbd28264d4d6a9ad23d6efef95d7bf4671d427adf7a6a4d5d60c48e1c67": [
+      "/assets/signin.js"
+    ],
+    "20d19effd357c8415fedc16241deb70124574d2f9d54c45083b3731d4472f57a": [
+      "/assets/app.css"
+    ],
+    "88c5aff39e736ab0a2c9993b056e6bff7c39eda88de7ce226908027c5715441f": [
+      "/assets/agend-auth.js"
+    ],
+    "ca27cd9ab9bbee60a0ecb427fa05d5322c1eab3606154bf64a8947948ae6154c": [
+      "/assets/app.js"
+    ],
+    "d223ea3ca62d93e8991f3a92efa92de9eb0bb5ad4e72b11ce18f286e372580c2": [
+      "/assets/app-prefs.js"
+    ],
+    "8949e374c68b9252d5ee3ee788ec1b0340d12c4a6999ef8b734fe89562266bd9": [
+      "/assets/app-html.js"
+    ],
+    "feb36efef72b92a5510f881902c0a08140d6940f62304766e3857d13f5e188fa": [
+      "/assets/app-swipe.js"
+    ],
+    "3c59e5ba9039ad05e18be88b71270c232f6d73bac2dc681cdec70c1825f7027a": [
+      "/assets/text-undo.js"
+    ],
+    "5b71d57a353d8e3cde1c178cb1020b2ebda68a463c57ac579d522d6b2ba58c8b": [
+      "/assets/app-shell.js"
+    ],
+    "49234d50df7b41e005d0221a1a5b5614d30f9b27a9c0d82312c56c694184b58b": [
+      "/assets/app-stream.js"
+    ],
+    "d89c2578c4f45f9619ddd7529041d7e774474ead7f657c93d1eec335f6fa4bdd": [
+      "/assets/app-route.js"
+    ],
+    "cc0afbe551e1b5857bcfb79447bc24ce59b7a1988972101718c2994b49a95842": [
+      "/assets/app-store.js"
+    ],
+    "5dfa69d440e16e949c469acbe9945daa6fe65bd41320d18041d6ee9981171d5f": [
+      "/assets/app-nav.js"
+    ],
+    "0ad785a7cf88d1d46dc4b747aaebb3e969945e46b9c63a1dbc50f444536832e4": [
+      "/assets/app-needs.js"
+    ],
+    "601074179fe7c9156d05d507f28e3d22f93b49aba43f8d903b40ae4b8b1bba8d": [
+      "/assets/ui-toast.js"
+    ],
+    "6f7fd589ed235fb3081d3097b4669cee511a16ad3a3b5e363d94ab4b2cefd9e5": [
+      "/assets/app-i18n.js"
+    ],
+    "d38412dd2327ffb4a98248ab8a847eb6abcf18470cd8f5f9635a20df3aace05e": [
+      "/assets/owner-css.js"
+    ],
+    "fa17fa458645e5f9b747163854449c1a5cb0c45d51379fea86ff601dc03e682d": [
+      "/assets/header-tools.js"
+    ],
+    "886b72a54b88f65fbc27a9b86fe786d5a1f2774a24c0cc16dddfd1c6ce1fc2b4": [
+      "/assets/app-themes.js"
+    ],
+    "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4": [
+      "/assets/htm.module.js"
+    ],
+    "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8": [
+      "/assets/preact.module.js"
+    ],
+    "6f55664e3748e3837474f252035ba1dccac885385ae57ebea6be5e464deb3f50": [
+      "/assets/ui-icons.js"
+    ],
+    "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38": [
+      "/assets/preact-hooks.module.js"
+    ],
+    "c1fe9587644da4bb37524c6dcd1a64c95b6acd9cff4ad5b78eca9844c6f16c5b": [
+      "/assets/ui-confirm.js"
+    ],
+    "e3e03f14648322ac8c159ebc16de5c44ad02be82bd83d79478e71fae91e52c5a": [
+      "/assets/identity-color.js"
+    ],
+    "25c22c87ff575b89b52ef1ab58ff921d02aaf2744122e064d824a1fa2fd95ff6": [
+      "/assets/ui-dialog.js"
+    ],
+    "0d9ae9002f0cf2a8388ea9177430ce382b91abe630ea68f3a7579c80d4c28c31": [
+      "/assets/ui-states.js"
+    ],
+    "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec": [
+      "/assets/app-session.js"
+    ],
+    "aefbba84067328f2bb16c86bdbe7328cf125f63f40795ee88b3b87e09c27f946": [
+      "/assets/side-panel.js"
+    ],
+    "9d70a93221aa1c0499cd01ead1dd548a465e2388c5c63049457cc4efd65a7b64": [
+      "/assets/instance-nav.js"
+    ],
+    "0b675a3860b2f10a40d9557b18d609cb60ddd0e766b6cf9c1b2f27211d930596": [
+      "/assets/app-update.js"
+    ],
+    "8e90812b94bad0b93c744a0daa3fc4fe6e02249106604ca013c9d6df4ef25a43": [
+      "/assets/agent-widget.js"
+    ],
+    "46dc2cb17194565a8ed15d5c3477954c98323bfd4874cdbf6ee69df4b34939e1": [
+      "/assets/settings-width.js"
+    ],
+    "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6": [
+      "/assets/app-ctx.js"
+    ],
+    "80827afbb28969692e1575339c9e4b54a372812653ede0221a361a2c6a14ad56": [
+      "/assets/side-rail.js"
+    ],
+    "b7cb7d8f4df081e3d514c869cf6f99d8f64b0b730ddecaf955a8d0ccedf3ca43": [
+      "/assets/usage-dialog.js"
+    ],
+    "3c87a7c99b39adb87e624cd7292b37547e33e418b955466109e178795af927b1": [
+      "/assets/web-authorize.js"
+    ],
+    "ca93209e235040a5ff9ee7f73a39b98fc9412c9a12e46d812a961d6eec95578d": [
+      "/assets/device-roles.js"
+    ],
+    "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48": [
+      "/assets/ui-menu.js"
+    ],
+    "f73502bef7f44e8fe028b1bf9f4ee304af6d6318be61523006e316e38638b4d8": [
+      "/assets/view-roster-store.js"
+    ],
+    "9897ad69ca4983e96ede71578f6b53a47b6f2a6bcb53832aba5d8e1bcc1542ae": [
+      "/assets/machine-name.js"
+    ],
+    "01e6cd78752e902232b60c87fdb5281947dbdc11ae9b1a09b17e9e0241d48c41": [
+      "/assets/read-stream.js"
+    ],
+    "23f03826cec94cb9bd940325b6f4c14d66faaef0473fb34cfad71cb682757d52": [
+      "/assets/view-strings.js"
+    ],
+    "2766db3d5d230dd18fdacdf44719c49ba9e25eff02ffb500c6345dcfee090200": [
+      "/assets/usage-meter.js"
+    ],
+    "5be64f9e3b90bd4368c945585c08d0da4dcdfe3a989325ef390ba1df94a3d905": [
+      "/ui/js/panel-chat.js"
+    ],
+    "cd84e403aed09e714c86bb2655b56699746ad1671f12c61d121bbdae0a8767d8": [
+      "/ui/js/backend-signin.js"
+    ],
+    "d3e66e73af1eaa000aeb54999dc30446aa426b844e4ea7301eb7345564efe4bf": [
+      "/ui/js/agent-proposals.js"
+    ],
+    "fd102877074c12077fb79c8fbfe7cdef765b4d2c35d4d2bf9ff78ddcb5153f86": [
+      "/ui/js/chat-workspace.js"
+    ],
+    "5ff624498e70183f5d37aaccb3ad729524e281a32109e030a9d143bfe18cb202": [
+      "/ui/js/native-pane-recovery.js"
+    ],
+    "c93687c356d5260b679bf69922c1125167eb87b60500cc50adcf51d5dc157b8e": [
+      "/assets/instance-switch.js"
+    ],
+    "efa13d68f9acb5b6cc4bd0981026c1a1610b04ec49a2b6a8308f17593edaa185": [
+      "/ui/js/general-location.js"
+    ],
+    "54f332742818dbb03e9306e5c476ba421c925a991b0047743cf6fac3b5e2d64d": [
+      "/ui/js/model-picker.js"
+    ],
+    "0e6cc7eebbfa1bb22a0dc417084756c82b75d641bfc34e065db6e34cfc5ae631": [
+      "/assets/identity-card.js"
+    ],
+    "db54c674121a4603bab3f7758951f3ece288cc2fcbd6e731259af899020c5f87": [
+      "/ui/js/settings-confirm.js"
+    ],
+    "cc1690aa8931b111e35166fd8f29120c3a7a4ec7a6720108dc7b7ef7e515ac8c": [
+      "/assets/chat-strings.js"
+    ],
+    "441ad2dd999d5d83dbbdcaee168ccf86bbf29363800da847493d0d66e8f1a439": [
+      "/ui/js/chat-store.js"
+    ],
+    "20b0ec2db04b564054aee01c3b013b45eb318314ea1e9e38826f36efe11d4227": [
+      "/assets/chat-composer.js"
+    ],
+    "535dc835a85f53e843b9dc709c3659f891f547efc09f5c12cf0dad74b6590907": [
+      "/assets/chat-thread.js"
+    ],
+    "fc1668d8faab616f7c76ed4e0692e7f323a4882618d148b22e4b677454b1657f": [
+      "/ui/js/chat-msg-actions.js"
+    ],
+    "8c5f81e4b455c521c27a568e2ca55a9f067eccc7f0f2f5b01adfa3e7ed2bc5f5": [
+      "/ui/js/chat-emojis.js"
+    ],
+    "96fab0875460eaabfb5d0ea245b40b078a5c0fa395a9a076db167865be0948da": [
+      "/ui/js/chat-quote.js"
+    ],
+    "aab4e32c1471943c02e88f70623420e87da6f6cfa31df88ccac4502ca5d6c03c": [
+      "/ui/js/preview-panel-actions.js"
+    ],
+    "f631da1206454d72a6a40dcbd008e722e1178b941506d092312938904f501ea1": [
+      "/ui/js/chat-mentions.js"
+    ],
+    "0314fc1ec9b2eaab85bda1c9f2816bd151745dbb12db1fec92799832376c4a23": [
+      "/ui/js/preview-panel.js"
+    ],
+    "b1ab5fccfb378b0575f8e7d7f39a312f9a9e6c925ee40fe4bc7cd0afdc85c7a9": [
+      "/ui/js/preview-status.js"
+    ],
+    "39d0ee496042450e92bc41a300a8ac7e628a09662c64146dcdcee3fe5ee705e3": [
+      "/ui/js/chat-commands.js"
+    ],
+    "ad13236e469f8d2098fc94e338479e9c059758fcb8b3580c66eff8eb0c796cd6": [
+      "/ui/js/chat-tour.js"
+    ],
+    "9c6f589ef34599a977d3a3f0876948b7ad363735d0432b668e4008bb858107f3": [
+      "/ui/js/image-lightbox.js"
+    ],
+    "6a839e3b81b44c1a0edb21f0e3aab9e7ea414344ea44c0676504ea3d9884cce8": [
+      "/ui/js/chat-ambient.js"
+    ],
+    "9bfa2f309181d2905c0a106d05e0283324099344f58e45b9d91e6be2891a458b": [
+      "/ui/js/cli-picker.js"
+    ],
+    "58c5adde8ba05b8a801b81721c55fe10e7e1d0bf7ae8cdb8b84018550c3772ac": [
+      "/ui/js/account-identity.js"
+    ],
+    "11913661d9152528a417edd79514e021ae12e7d4429c3ea1e7c15379bd4a912c": [
+      "/ui/js/structured-signin.js"
+    ],
+    "6d47437e2342f42ca646b8b297b45cc89c392d3a40ef5a153dc39b2df41986a4": [
+      "/ui/js/cli-caps.js"
+    ],
+    "f4bad49945f1c7143209a165554adc332d80411f36aabea9943719b16bc34517": [
+      "/ui/js/chat-workspace-gestures.js"
+    ],
+    "2d0b56caa793f2c5a2d22ea7459795d10209acbb328eec63badaae8248cc58bf": [
+      "/ui/js/chat-workspace-navigation.js"
+    ],
+    "967603a35628503ff4323a4dc7e9ad19b7d42b6fb8963de38f991cd7dd578582": [
+      "/assets/pane-geometry.js"
+    ],
+    "31f4b91d32853d829d7f60ae64df4fea750350cd258bae42ed402fd03183cf3e": [
+      "/ui/js/chat-popout.js"
+    ],
+    "a87cd5ec9abf85ed67ddb099efb115c1b1003f99ae5b2e11a1a031dad7a647fa": [
+      "/assets/chat-workspace-model.js"
+    ],
+    "55d3770b84f3c321165796e032a0f131a5678c4a1ce1ac456be612cf5c2c0dc7": [
+      "/assets/chat-workspace-memory.js"
+    ],
+    "bd1118ec2ebec1eba6553e5c8fd4d7ed6ba4d724e5e8caa1f21652ae3c339662": [
+      "/ui/js/settings-catalog.js"
+    ],
+    "8c0b5b4c3bea9b1cdb52aecdc402dd56445c4c9604f2fb6531a3a0c0303e951a": [
+      "/ui/js/settings-dialogs.js"
+    ],
+    "8b831695aa0b6ed5cb28251fd65f7b1f7e6d6e7402dfcf59dfe5e31bcfb926f0": [
+      "/assets/card-strings.js"
+    ],
+    "ca3dacd41ddf8284ce6542f529cdacb9fc333722f41d1ce2beb6fb019e4b8538": [
+      "/assets/chat-time.js"
+    ],
+    "d2441422fa50cf67a7d5cc8451e1441864dfc1f739baf5fb18c2fd56f50abbcc": [
+      "/ui/js/chat-live-replies.js"
+    ],
+    "45ce6f2b941c6f0d8e154c51e7d6977cea9241a6ddfc03c6bf8b848323448643": [
+      "/assets/html-attachment.js"
+    ],
+    "d179862fd1d2535bf1c06776cb20cce601d874d5fa42e47eca0fbd7835023ff1": [
+      "/assets/preview.js"
+    ],
+    "2419460a300b9aae37024348e9925d7fe142b0e3cd8d20f0c429ab24903e1d22": [
+      "/assets/chat-render.js"
+    ],
+    "8e2665b14f5df60a7698ba5852a5d217257c495bd4c5c4e81b70acda8c65431f": [
+      "/assets/preview-panel-actions.js"
+    ],
+    "1f159b7a9c9e2ed01a7ab1468f2990101c69162f21210b3ca78d2d170a4ae076": [
+      "/assets/preview-panel.js"
+    ],
+    "fb83df8a590f4da061a93662d9382c78195a9ecc4b82a1c82e1964dd9c966aa0": [
+      "/ui/js/page-share-dialog.js"
+    ],
+    "cdedf76f46cb8362626b5629c63505aecb2e2bbe6f216c63fe17a976e1b28f0f": [
+      "/ui/js/workspace-panel.js"
+    ],
+    "2b1261dc8cab528b0a1fd6192bdd0ece37db96bcd7eb776ed2e1475c3ec3c088": [
+      "/ui/js/image-zoom.js"
+    ],
+    "bda66cdd70fe0450fcd3d3bf787e8c30420d66e59e01ac46dcd2eafca8214a93": [
+      "/assets/fx-motion.js"
+    ],
+    "0872a64d18b5e4c753d28d09314a00a95603d07a6f8d26b0fd52c122de713c01": [
+      "/ui/js/provider-marks.js"
+    ],
+    "f71ed1c755110357fcf31dee9a013147c89e91672b84f62b385dbf819904efc0": [
+      "/ui/js/panel-details.js"
+    ],
+    "9a2a711f07812f0e2e321d3f542768970e65caa508848ef31315f613cf664399": [
+      "/ui/js/chat-popout-header.js"
+    ],
+    "3891b33bd411723fc41d3bccf74ab0f7df5b2174385be1c6d9e0735303f9e652": [
+      "/ui/js/chat-popout-transport.js"
+    ],
+    "e487caa2269d950f21591ff5306c6eef26b21705bacc8f9f9b7941bd71b3ac4e": [
+      "/ui/js/settings-token.js"
+    ],
+    "64e93dcb107b47e2bfd7161b88da5315fd4bbc9af9ad7d578e5b0c7be5ae0e19": [
+      "/ui/js/settings-discord.js"
+    ],
+    "c6d403d464a10f2e0670b1133b516585ba30383287e31acb19db5a4b76233ba3": [
+      "/ui/js/settings-registry.js"
+    ],
+    "31cbb08824343cf2d5ab7c0a1acbd4d0a6742442d485cfb0ab73e3dff2a021e5": [
+      "/ui/js/agent-runtime-settings.js"
+    ],
+    "d7d3fded9860c2d4688a60939f0f021797b26437bb78b096fb611cbde1b73b63": [
+      "/ui/js/settings-apply.js"
+    ],
+    "8ca1e703c30cee31f749b877c82e1a84ed5b08c6c24433a8d579b926b39ad627": [
+      "/ui/js/settings-strings.js"
+    ],
+    "4dd67ce6e7179c9cf69151859d63d50804a8bdb660a71f9afe2a1919bcb2b35e": [
+      "/ui/js/settings-shared-strings.js"
+    ],
+    "ea85752c693a3bb2c558e37ae39c1a2a8706a0bc680bd51a7f0d139404c504ef": [
+      "/ui/js/effort-field-strings.js"
+    ],
+    "c877087c844c08e25d0af08c56029c7c76b8954c1db537b6c7dfb0878e886453": [
+      "/ui/js/agent-page-strings.js"
+    ],
+    "70b6695af30bfaaca58b9d889a579d31a3ce68174e768d8da1a892df9a02894a": [
+      "/ui/js/settings-shared.js"
+    ],
+    "3f85b759b782dd979f7fc3f5cb1574dd7a4909838a3a8efb13156d5e32491446": [
+      "/ui/js/agent-instructions-field.js"
+    ],
+    "386de26c1678b881b13b3342b23c7385bf56811cd3c33448eed74000d7a0971e": [
+      "/ui/js/agent-export-dialog.js"
+    ],
+    "ba3a3b9f6c40d57fb1e4d1b4714c2b2ac555a351fed426793f943fe3b0423add": [
+      "/ui/js/settings-codex-copy.js"
+    ],
+    "2f13ed2c921d7b54762637c582c2ff5b79fd00dbbd320e8169fe6c37e6994a7f": [
+      "/ui/js/accounts-view.js"
+    ],
+    "f5bb5a1d7718cb8db4f1396765f18fcfdab67a7fa5532049b3e159dd09a4443c": [
+      "/ui/js/settings-model.js"
+    ],
+    "0583433c1027b8ca25410392c623e4f83f92dd1db6f62f46e40be23b71431814": [
+      "/assets/preview-versions.js"
+    ],
+    "31a90eea31b3f957965ffce28897cf6fb1571698ecc4a320dd95d310c4c37d3b": [
+      "/assets/chat-md-strings.js"
+    ],
+    "6a1fd446d3200fa3ebebafec1f814c95b365315d1e7553924a2bf587a9553925": [
+      "/assets/preview-pages.js"
+    ],
+    "df4dbbf44d65daab82d7958631127a49acafb5323db528618088eaaae7a8fa4d": [
+      "/ui/js/workspace-strings.js"
+    ],
+    "64f8796f79bdd85f5608d71e39d64864b354de77074340f173ae3b28965f04da": [
+      "/ui/js/agent-details-settings.js"
+    ],
+    "690045dcd796cb58f7b2a0003b82706bbc89bc8506f8f4354d80c43283946f94": [
+      "/ui/js/fleet-task-work.js"
+    ],
+    "880aa89650dc8feb5328a51682ed5a12e6ae784047fa4457483b64939de29d7e": [
+      "/ui/js/workspace-follow-strings.js"
+    ],
+    "d59e74569219d9d80b6f5191114ddd3c1e7ae098390f5ddbf9aa92c2eba3322f": [
+      "/assets/setup-host-text.js"
+    ],
+    "d24399ef367450948e2c152ce44b413b271a5157f337b9c6a15199b693b51e6f": [
+      "/ui/js/settings-revoke-strings.js"
+    ],
+    "859f6ea067a2230a075d6910f8bbfec8dc34382276e58456d2bdfa9dc166bc09": [
+      "/ui/js/settings-public-session-strings.js"
+    ],
+    "c9ddaa923d255d2e5b286cec02ecaa587ab64f37f8e122e7777ba3e0aecccac9": [
+      "/ui/js/settings-access-strings.js"
+    ],
+    "7e902bc960da79cae34da2de4716247ee0702f1526155887bdeaff189e0e4f5e": [
+      "/ui/js/settings-guests.js"
+    ],
+    "8fd357ee1b2c38241d710a118c2b46f6d5bde9efb23f7c93a36382669eb5c237": [
+      "/ui/js/agent-runtime.js"
+    ],
+    "6b1dda6bb01fc5c34be6fa72a2470a664c222075f0f2bc32befbace4801596c2": [
+      "/ui/js/accounts-manage.js"
+    ],
+    "213ca747dc5c502e4fd26047b4fe5242623def7731955a8ad5cbd34523805042": [
+      "/ui/js/credential-profile-select.js"
+    ],
+    "8dcd449764b70e87d74655688574c68fb4fbe7d7f85472745518ca16f261a404": [
+      "/ui/js/runtime-catalog.js"
+    ],
+    "ba23352a73106b9dcaddb6107c4f0ea12603a65682344121bb71070ed5e34302": [
+      "/ui/js/windows-cli-catalog.js"
+    ],
+    "e2be5b57b659784dc78e53e46d9b380365cd2548fe75bf90ed019bb59697dd5a": [
+      "/ui/js/settings-agent-filters.js"
+    ],
+    "6c51eeb259a515ddc1239d9e4f8665dc3ce6be2de9a99e6b7fccb46a984d6920": [
+      "/ui/js/agent-export-strings.js"
+    ],
+    "884c226f7fd9ae5fe21bc9505160355afb58c23821dc97bc74b77c15afbaf233": [
+      "/ui/js/machine-signin.js"
+    ],
+    "d99061a01c082e7abc918622b0167cf2d5c5e6c48f5b7f6636ba6c19da957d29": [
+      "/ui/js/accounts-keepalive.js"
+    ],
+    "18a6da06ecfef4b973d6e1413d8dac278eaff9e9eb694270ad84df52b8ba250e": [
+      "/ui/js/host-install.js"
+    ],
+    "a9e9e71b8e64b54a69e3265395948d15f512f811a03353ccf3c0fa04e2788f2a": [
+      "/assets/page-head.js"
+    ],
+    "00f5e28fe0a0a58d907015205bfeb3d3b13ba4ebc3c8dadb1ce0d8a547c2db83": [
+      "/ui/js/settings-restart-strings.js"
+    ],
+    "4292df7a24d06a152f1c461c85e35f4b0aa2fac000fd901cec611ff5a35cc285": [
+      "/ui/js/fleet-task-common.js"
+    ],
+    "fcaef6b3d0c90cfcf90f4bf8144f2201e80243504680887fed27137cba5ae09f": [
+      "/ui/js/native-instance-settings.js"
+    ],
+    "9a67dd2166fa85024800c5576f01e347a5abc5919fab627181b05791bcdfc7cc": [
+      "/ui/js/settings-layout.js"
+    ],
+    "2d0effca0e9f44df142ce8f0c9d4c434b16bc39743c6a08b3c991d95356483a7": [
+      "/assets/chat-work-bar.css"
+    ],
+    "ca2a4a6e14878be5353c2748350cfa20b105f1378dfe22d1759c0156e967365d": [
+      "/ui/js/panel-settings.js"
+    ],
+    "5e683e041a904b580dee39b2dd4641b591abb61f3950435e07f7ea39506b5e63": [
+      "/ui/js/settings-build-version.js"
+    ],
+    "68be77c7b0530f6079328b4a458e3c909df174480efafbe33ba76b73dc283757": [
+      "/ui/js/settings-update.js"
+    ],
+    "0b363c12046deb6766d4592aaf7aa53c136c134d89035323a323896e6f46e739": [
+      "/ui/js/first-run.js"
+    ],
+    "202f66647d8881a0febac4c2e35b8f12da007eb24bbb7abbb65215ab25001023": [
+      "/ui/js/settings-wizard.js"
+    ],
+    "f99db2286485bc785cf9085778612da4f88ee924b36f9f0a5645e297eb33eb39": [
+      "/ui/js/settings-quota-notice.js"
+    ],
+    "34d9d1f3be90b9d2f23ae6255772138903ab4547e17d649aef73b5b8e5cc05e7": [
+      "/ui/js/panel-fleet.js"
+    ],
+    "484771b55207fcb99a54c2adbd5d3606462a7acd4c059a24a74fc2b9c442cb8d": [
+      "/ui/js/panel-runtimes.js"
+    ],
+    "167c40e22dc73fb0bdc983fe48f0938e2563fd8cde3de771bf1ddf670586760e": [
+      "/ui/js/settings-appearance.js"
+    ],
+    "eaff2462b280b0f0f0704375fdf330a109b22df208e257564a029d0281af8350": [
+      "/ui/js/settings-web-authority.js"
+    ],
+    "13d340d3e8c6d36b7eb0b2acd70560e26e059bdf20f0e15112b20dc31c1ccd2f": [
+      "/ui/js/settings-level-titles.js"
+    ],
+    "3506cd35f00f2e147fda59f900a2334f42232a80353fb0b8efb70833536bd47e": [
+      "/ui/js/office-share-dialog.js"
+    ],
+    "9a5b3a07613152dc8b031f1777bd4cb16fadfb2563cdd5016bdb15b414fc8f47": [
+      "/ui/js/settings-draft.js"
+    ],
+    "7a93e505f558ecb8f1874630ee86da888ef0618b8c6d4e03515458b5edf6ecef": [
+      "/ui/js/settings-outside.js"
+    ],
+    "8f388533381376b37bac053ac59fab42b28f3ad1f5247382afa1b30db1f2416b": [
+      "/ui/js/settings-request.js"
+    ],
+    "36bcf9207b8225476391aaafd0814d983aaa00e770a40d0ec38ce678d6462816": [
+      "/ui/js/settings-devices.js"
+    ],
+    "5030bd888b999d0ed2b88fdda25632a8da9c5380e63548a48ba3b8b3849d8296": [
+      "/ui/js/settings-access-overview.js"
+    ],
+    "78ca0519668c22ceb15a99cbb54964844db0ab4dfc863431fb3f52516a1a0910": [
+      "/ui/js/settings-hub-section.js"
+    ],
+    "c6c18ee3d3734eb48066d7ac8f9fe5fdd67aca4d26bbb527e3ecaab0e30d2103": [
+      "/ui/js/settings-shortcuts.js"
+    ],
+    "633ccbc6e06947c8781634965bfa6eaf3b962f5410c0db2eb3c3ca9466078bcd": [
+      "/ui/js/settings-named-test.js"
+    ],
+    "9065419622518d77f5f2f4978c60547d4d18281993b95d84e800726b3c08effa": [
+      "/ui/js/fleet-canvas.js"
+    ],
+    "dbc8f97c59b6e61cd8dae6cc9cbaedded4137319d6fe1cd5b97de22d985fc895": [
+      "/ui/js/fleet-cache.js"
+    ],
+    "7940c7360ffe55379a0213a3fe1d8c2a24d339f4ebb71190b1cefe781dae3961": [
+      "/ui/js/fleet-usage.js"
+    ],
+    "17be536947fc7a1c455d5e7fc5b9dab733c1dfa8a218856291e35f05b79dcb3c": [
+      "/ui/js/fleet-tasks.js"
+    ],
+    "a9336bd72c3db37e2e6b3282eafcf71481c7579be78b1efa7cd07f99ce1cc67c": [
+      "/ui/js/panel-windows-cli.js"
+    ],
+    "49144d03b0527b71032b1a8bce8efea48aa5b63583ea35598758e487eb9109e0": [
+      "/ui/js/runtime-commands.js"
+    ],
+    "60ffcec9989db3e2edd193f0ee357cd3bd894744c801a899997f17003cad956f": [
+      "/ui/js/runtime-update-status.js"
+    ],
+    "91e78717871978fdebed44815a2f2b554419d279b97b01edaca8b90619a41981": [
+      "/ui/js/runtime-cli-install.js"
+    ],
+    "55423f1135549c664a5c189bcb4dc008607b2a884366ac28e459f4eedf86898d": [
+      "/ui/js/settings-mods.js"
+    ],
+    "c1930acc2898d93d02a6dca9d673add3d2aa2f8e69389a50045b7e59d5560f04": [
+      "/ui/js/settings-learn.js"
+    ],
+    "a49aa2542176e7e70bd297310fb2a706a175b1668cd23b7856ff459392465f63": [
+      "/ui/js/fleet-office-pack.js"
+    ],
+    "ff3fc8fd14a56002693a67c66319781791ec417517864daaf743e6302ccacac7": [
+      "/ui/js/fleet-org.js"
+    ],
+    "890afa65d44d9dd6f86376064be60bc42878cbd27153f15a1f19938bef7c1a01": [
+      "/ui/js/fleet-canvas-layout.js"
+    ],
+    "457a93993784b22985f470981c0b3cb333259620c504949c894178047f692bb0": [
+      "/ui/js/fleet-office.js"
+    ],
+    "edb43159ad2e81f2685bfe66a7b51bb3869f2e85e1c1e6859b5f086cdecccb22": [
+      "/ui/js/fleet-traffic.js"
+    ],
+    "145c671fb47f8eb1a912ddb524a3bf50faaa85f7a9595e3a00ddfccb6bc52230": [
+      "/ui/js/fleet-route-scene.js"
+    ],
+    "199c0c33490bf43eb320ac75494cdb9810ceec72859d99393410ce2a1dbd7569": [
+      "/ui/js/fleet-canvas-view.js"
+    ],
+    "089e17faa09f8173b130f241d72ac5df16c6c4f53ee82374e70747797e455010": [
+      "/ui/js/fleet-route.js"
+    ],
+    "26df41bad8a952084aaa99423fd2cc70962f8bbf44afaba5297f309cac1ad995": [
+      "/ui/js/fleet-task-menu.js"
+    ],
+    "d02fe51120935ca4d02ab707cf6f3d22c600c136992dea697a57953f9f698dfe": [
+      "/ui/js/fleet-task-card.js"
+    ],
+    "1016c4e4854446215862a1294669c8862c24b9a8ebb25e6e173c2d18cde090dd": [
+      "/ui/js/fleet-task-stats.js"
+    ],
+    "30ae50ddd599f8500cd8a126f4a229487ba3a1d4522b56d1d0045f151cfb3548": [
+      "/ui/js/fleet-task-view.js"
+    ],
+    "b6f19d48e1c3259cc6b90b0b33fd31b942aee537d188a489fbf301a0cd0ad6c9": [
+      "/ui/js/runtime-update-commands.js"
+    ],
+    "3889e0f7da85459721a570423add1d71980dfd1cfcff79dbb447b95673e00d5d": [
+      "/ui/js/fleet-office-model.js"
+    ],
+    "e342d56992a572baa92447ba112a67ce04eaa32fb4a60762db4064b571093611": [
+      "/ui/js/fleet-office-levels.js"
+    ],
+    "0a739503e2167336df77567832d7589a06c5ab5cb8b8859d50b13e54467f3d64": [
+      "/ui/js/fleet-office-zones.js"
+    ],
+    "43f40ca042956104da120cf48fa9717818990d6e5986166ba10ebd7e1e38200a": [
+      "/ui/js/fleet-office-skin.js"
+    ],
+    "a567b66c775f83dd79a0eb39bd4c717e7d5f4c2386843f4cd097b0820706bd61": [
+      "/ui/js/fleet-office-store.js"
+    ],
+    "fdcfaab4872a1d18ac38c2a6228bf83c750a3bb0d3d3344dde5d4d917a5fbbb1": [
+      "/ui/js/fleet-office-card.js"
+    ],
+    "82767b783b244090c76e35c1274e3a1d9c2ee76ab80a9eb13a143cf0880db130": [
+      "/ui/js/fleet-office-editor.js"
+    ],
+    "1e5efd6267b2062df29bb47c66092e1ac2dad982a8d6950d2e2c7340fb0f9ed7": [
+      "/ui/js/fleet-office-view.js"
+    ],
+    "1528d5da20006de5073377b8ff92839841ac1e115c2102d2acb60df7015f5c0d": [
+      "/ui/js/fleet-office-dialogue.js"
+    ],
+    "a96ac0d5e6df964f4d07256884b573cf5adbceac4caa9d7ca205ce16affa2952": [
+      "/ui/js/fleet-office-overview.js"
+    ],
+    "3ade469e3f62c9d1d4d2f5f0e9a08e588250c354b307483852a350edd9aec2ca": [
+      "/ui/js/fleet-office-layout.js"
+    ],
+    "8788201aad76b78b71fc9a0bd9119d85a59cd6da816bf2206d4e9ca1814b1420": [
+      "/assets/task-board.css"
+    ],
+    "b0990ff3d911cccd3ad093789e14c56ea7d419c29eea6713eb69aeab0c2b7df7": [
+      "/assets/runtime-install.css"
+    ],
+    "24e87e3a9db59f4f421aa79b74926095bbcc06eedefb404e310d8b6bd33a6ca2": [
+      "/assets/access-overview.css"
+    ],
+    "af1684da912b22573ae68abbd049e4758e024cf3aee2ff2de8f2e046727857ed": [
+      "/assets/model-picker.css"
+    ],
+    "5578156bf7f288c2aa1be77b16e05ff6eb593c3186ff85b087fe5f0e99b47ef1": [
+      "/ui/js/subagent-row.js"
+    ],
+    "91ebc191891ec01bb4460c22e53c85c60f92c7419b498b85d10d4102437c99b8": [
+      "/assets/subagent-row.css"
+    ],
+    "0165f9c071365d1872cfe62b997cef1b96865734e43af9c871921f17947ffd4b": [
+      "/ui/js/panel-log.js"
+    ],
+    "517f1a39668ce6b1e11b0a6490eedb8832bbc9a4f33ab6fe87c0e68f6522ff7d": [
+      "/assets/panel-view.js"
+    ]
+  },
+  "substitutions": {},
+  "cases": [
+    {
+      "label": "settings",
+      "file": "dark-zh-TW-settings.png",
+      "geometry": {
+        "overflow": false,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "buttons": [
+          {
+            "label": "回到聊天",
+            "x": 1552,
+            "y": 8,
+            "width": 36,
+            "height": 36,
+            "visible": true
+          }
+        ]
+      }
+    },
+    {
+      "label": "native-enter",
+      "value": "real Enter opens the selected agent Chat"
+    },
+    {
+      "label": "second-click",
+      "value": "first click changes agent and keeps Settings; second click opens Chat"
+    },
+    {
+      "label": "cancel-preserves-draft",
+      "value": "Back to chat asks the existing unsaved-settings guard; Cancel keeps the draft"
+    },
+    {
+      "label": "returned-chat",
+      "file": "dark-zh-TW-returned-chat.png",
+      "geometry": {
+        "overflow": false,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "buttons": []
+      }
+    },
+    {
+      "label": "split-settings",
+      "file": "dark-zh-TW-split-settings.png",
+      "geometry": {
+        "overflow": false,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "buttons": [
+          {
+            "label": "收起此格",
+            "x": 886,
+            "y": 8,
+            "width": 32,
+            "height": 36,
+            "visible": true
+          },
+          {
+            "label": "回到聊天",
+            "x": 1560,
+            "y": 8,
+            "width": 32,
+            "height": 36,
+            "visible": true
+          }
+        ]
+      }
+    },
+    {
+      "label": "split-back",
+      "value": "own pane returns to Chat, peer draft and two-pane layout preserved"
+    },
+    {
+      "label": "split-returned-chat",
+      "file": "dark-zh-TW-split-returned-chat.png",
+      "geometry": {
+        "overflow": false,
+        "streams": {
+          "active": 1,
+          "max": 1
+        },
+        "buttons": [
+          {
+            "label": "收起此格",
+            "x": 886,
+            "y": 8,
+            "width": 32,
+            "height": 36,
+            "visible": true
+          },
+          {
+            "label": "收起此格",
+            "x": 1560,
+            "y": 8,
+            "width": 32,
+            "height": 36,
+            "visible": true
+          }
+        ]
+      }
+    }
+  ],
+  "errors": [],
+  "effects": [],
+  "previews": [
+    "/api/settings/status-emojis/preview",
+    "/api/settings/status-emojis/preview"
+  ],
+  "external": [],
+  "scope": "Owned scratch FleetManager with real cookie/HTTP/SSE/UI; fixture status and names, no Fleet start/CLI/account/AD/live work; edit unsaved description only, never Apply",
+  "browserVersion": "140.0.7339.16",
+  "completed": true
+}
