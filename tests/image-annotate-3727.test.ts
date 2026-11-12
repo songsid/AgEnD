@@ -118,6 +118,14 @@ describe("the viewer offers 標註 only from a chat that can quote, and loads th
     const hub = readFileSync(join(ROOT, "src/ui/panel-hub.js"), "utf8");
     expect(hub).not.toContain("annotateFor");
   });
+  it("the media tokens are theme-independent: one block after the themes, never redefined by a theme, same as the canvas", () => {
+    const tokens = readFileSync(join(ROOT, "src/ui/shared/tokens.css"), "utf8");
+    const at = tokens.indexOf("--media-ink:");
+    expect(tokens.lastIndexOf(":root[data-theme=\"light\"] {")).toBeLessThan(at);           // after every theme block
+    expect(tokens.match(/--media-ink:/g)).toHaveLength(1);                                      // defined once, never per theme
+    for (const [k, v] of mod.COLOURS) expect(tokens).toContain(`--mark-${k}: ${v};`);           // swatch = what is drawn
+    for (const [k, v] of mod.MEDIA_TOKENS) expect(tokens.replace(/\s+/g, " ")).toContain(`${k}: ${v}`);   // the editor's fallback = the token
+  });
   it("no style attribute in the new module (#1300)", () => {
     const editor = readFileSync(join(ROOT, "src/ui/image-annotate.js"), "utf8");
     expect(editor).not.toMatch(/\sstyle=/);
