@@ -28,6 +28,14 @@
 .hub-steps > li.done::before { content: "✓"; background: var(--ok-bg, var(--surface)); color: var(--ok); }
 .hub-steps > li.now::before { background: var(--text); color: var(--bg); }
 .hub-step-body > span { display: flex; flex-direction: column; gap: 2px; }
+/* Hub UX U2 (M-2932): 「讓同仁加入」 — the done mark beside its step's title; each group's row (its Fleet limit inline); the search hits. */
+.hub-join-steps .hub-step-body > span > b .tag { margin-inline-start: var(--s-2); vertical-align: middle; }
+.hub-join-step2, .hub-join-groups, .hub-group-search, .hub-group-hits { width: 100%; }
+.hub-join-groups, .hub-group-hits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.hub-join-groups > .s-row, .hub-group-hits > .s-row { flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); }
+.hub-join-groups .hub-row-text, .hub-group-hits .hub-row-text { flex: 1 1 12em; min-width: 0; }
+.hub-join-fleets { flex-direction: row; align-items: center; gap: var(--s-2); margin: 0; }
+.hub-join-fleets input { width: 4.5em; }
 .hub-step-form { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; width: 100%; }
 .hub-step-form .field { margin: 0; flex: 1 1 14em; min-width: 14em; }   /* a phone: the button wraps under the field, never squeezing it */
 .hub-steps .hub-offer { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start; margin: 0; padding: 0; }

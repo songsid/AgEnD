@@ -11,6 +11,8 @@ import { hubClient, hubName } from "./hub-client.js";
 import { hg } from "./hub-group-strings.js";
 import { hr } from "./hub-read-strings.js";
 import { OwnedFleetRevoke, QuickPairingGuide } from "./hub-quick-pairing.js";
+import { joinSentence, otherWaysLabel } from "./hub-join-steps.js";
+import { CompanyJoinAdminCard } from "./hub-company-join.js";
 
 const FLEET_STATUS = { active: "fleetActive", suspended: "fleetPaused", revoked: "fleetRevoked", unknown: "fleetUnknown" };
 
@@ -26,7 +28,7 @@ export function reasonText(entry, fallback) {
  * `onChats` opens the chat list (the caller's own navigation). `askable` is how many agents are shared with this person
  * (the catalog's own count), so a new owner with nothing shared reads "No agents have been shared with you yet".
  */
-export function HubWelcome({ name, quick = false, onChats = () => navigate("/ui/hub?chats=1") }) {
+export function HubWelcome({ name, quick = false, onChats = () => navigate("/ui/hub?chats=1"), admin = false, features = [] }) {
   const c = hubClient();
   const [w, setW] = useState(null), [askable, setAskable] = useState(null), [error, setError] = useState(null);
   const live = useRef(true), generation = useRef(0), retry = useRef(null);
@@ -57,6 +59,21 @@ export function HubWelcome({ name, quick = false, onChats = () => navigate("/ui/
     live.current = false; generation.current++; clearTimeout(retry.current);
   }; }, []);
   const refresh = async () => { const r = await c.welcome(); if (live.current && r.ok) setW(r); };
+  // Hub UX U2 (spec 1.2): an administrator, while no Fleet is connected to this Hub, sees 「讓同仁加入」 here — never the
+  // "your Hub admin pairs fleets for you" line. An older panel passes no `admin`: the person view, as before.
+  const companyJoin = Array.isArray(features) && features.includes("company-join-v1");
+  const [hubEmpty, setHubEmpty] = useState(false);
+  // #3698 r1 (Fable): the session's company-join-v1 says joining is composed, not that it is switched on. The sentence follows the
+  // switch as a Fleet sees it — the public metadata's features — and until that says on (or on an older client), the earlier line.
+  const [joinOn, setJoinOn] = useState(false);
+  useEffect(() => {
+    if (!companyJoin || typeof c.joinMetadata !== "function") return;
+    c.joinMetadata().then((r) => { if (live.current) setJoinOn(!!r && r.ok === true && Array.isArray(r.features) && r.features.includes("company-join-v1")); }, () => {});
+  }, [companyJoin]);
+  useEffect(() => {
+    if (!admin || !companyJoin || typeof c.adminOverview !== "function") return;
+    c.adminOverview().then((r) => { if (live.current && r && r.ok) setHubEmpty(!(r.fleets || []).some((f) => f.status === "active")); }, () => {});
+  }, [admin, companyJoin]);
   // The chats' panel header already names the page ("Chats"): the welcome greets in its lead, not with a second title
   // stacked under the first (Argon #7). The Hub's name stays beside the greeting.
   const head = html`<p class="s-page-lead hub-page-lead hub-welcome-lead"><strong>${hg("welcomeTitle", name || "")}</strong>${hubName() ? html` <span class="s-scope">${hubName()}</span>` : null}<br />${hg("welcomeLead")}</p>`;
@@ -90,13 +107,17 @@ export function HubWelcome({ name, quick = false, onChats = () => navigate("/ui/
         ${connectOk && max > 0 ? html`<p class="note" data-welcome="fleets">${hg("connectFleets", used, max)}</p>` : null}
         ${fleets.length ? html`<ul class="hub-welcome-fleets">${fleets.map((f) => html`<li key=${f.id}><span class="hub-fp-full">${f.label || f.id}</span> <span class=${`tag${f.status === "active" ? " ok" : f.status === "suspended" || f.status === "unknown" ? " warn" : ""}`} data-fleet-status=${f.status}>${hg(FLEET_STATUS[f.status] || "fleetUnknown")}</span>
           ${quickOn ? html`<${OwnedFleetRevoke} fleet=${f} onRevoked=${load} />` : null}</li>`)}</ul>` : null}
-        ${legacy ? html`<p class="note">${hg("connectManual")}</p>`
-          : !connectOk ? html`<p class="note">${chat.state === "allow" && connect.reason === "no-group" ? hg("connectNotIncluded") : reasonText(connect, "contactAdmin")}</p>`
+        ${!legacy && !connectOk ? html`<p class="note">${chat.state === "allow" && connect.reason === "no-group" ? hg("connectNotIncluded") : reasonText(connect, "contactAdmin")}</p>`
           : atLimit ? html`<p class="note" data-welcome="limit">${hg("connectLimit")}</p>`
-          : !quick || !c.quickPairingV1 ? html`<p class="note">${hg("connectManual")}</p>` : null}
-        ${quickOn ? html`<${QuickPairingGuide} allowed=${connectOk && !atLimit} publishAllowed=${w.publish?.state === "allow"} onConnected=${refresh} />` : null}
+          // Spec 1.2: the primary text is step 3's sentence (company join on this Hub); without it, the pairing-code line as before —
+          // never to an administrator.
+          : companyJoin && joinOn && joinSentence(location.origin) ? html`<p class="note hub-join-sentence" data-welcome="sentence">${joinSentence(location.origin)}</p>`
+          : !admin && (legacy || !quickOn) ? html`<p class="note">${hg("connectManual")}</p>` : null}
+        ${quickOn ? html`<details class="s-ui-disclosure hub-welcome-other"><summary>${otherWaysLabel()}</summary><div class="s-disclosure-body">
+          <${QuickPairingGuide} allowed=${connectOk && !atLimit} publishAllowed=${w.publish?.state === "allow"} onConnected=${refresh} /></div></details>` : null}
       </section>
     </div>
     ${!legacy && w.publish && w.publish.state !== "allow" && connectOk ? html`<p class="note" data-welcome="publish">${hg("publishNot")}</p>` : null}
+    ${admin && companyJoin && hubEmpty ? html`<div class="hub-welcome-admin"><${CompanyJoinAdminCard} entry=${true} groups=${true} /></div>` : null}
   </div>`;
 }
