@@ -55,8 +55,8 @@ export const DEFAULT_SESSION_POLICY: Readonly<Record<SessionSurface, SessionPoli
 };
 
 /**
- * #1620: the bounds an operator may set the LOCAL policy within (`web.session.local.*`, in hours). The gateway's
- * policy is never configurable: a session there is reachable from the internet.
+ * #1620: the bounds an operator may set the LOCAL policy within (`web.session.local.*`, in hours). The gateway's own
+ * bounds are PUBLIC_LINK_SESSION_BOUNDS (#3708), and they apply only with a fixed hostname.
  */
 export const LOCAL_SESSION_HOURS = { min: 1, max: 720 } as const;
 
@@ -88,6 +88,27 @@ export function guestSessionPolicy(cfg: { absolute_hours?: unknown; idle_minutes
     typeof v !== "number" || !Number.isFinite(v) || v > max ? fallback : Math.max(v, min) * unit;
   const absoluteMs = ms(cfg?.absolute_hours, a.min, a.max, HOUR, GUEST_SESSION_POLICY.absoluteMs);
   return { absoluteMs, idleMs: Math.min(ms(cfg?.idle_minutes, i.min, i.max, MINUTE, GUEST_SESSION_POLICY.idleMs), absoluteMs) };
+}
+
+/**
+ * #3708: the public link's (gateway) limits, `web.session.public_link`: idle 5 min–24 h, absolute 1 h–7 days. They take
+ * effect only with a fixed hostname (a named tunnel, `web.public_link.hostname`); on a quick tunnel a value can only
+ * shorten the defaults (30 min / 8 h), never lengthen them. Never longer than the account's own policy either
+ * (policyFor: `web.session.local` for an admin, `web.guests.session` for a guest).
+ */
+export const PUBLIC_LINK_SESSION_BOUNDS = { idleMinutes: { min: 5, max: 1440 }, absoluteHours: { min: 1, max: 168 } } as const;
+
+/**
+ * #3708: the public-link policy `web.session.public_link` asks for, defensive as localSessionPolicy: below the minimum is
+ * the minimum, above the maximum or not a number is the default, idle cut to absolute. `named` false (a quick tunnel):
+ * the defaults are a ceiling.
+ */
+export function publicLinkSessionPolicy(cfg: { absolute_hours?: unknown; idle_minutes?: unknown } | undefined, named: boolean): SessionPolicy {
+  const def = DEFAULT_SESSION_POLICY.gateway, { absoluteHours: a, idleMinutes: i } = PUBLIC_LINK_SESSION_BOUNDS;
+  const ms = (v: unknown, min: number, max: number, unit: number, fallback: number): number =>
+    typeof v !== "number" || !Number.isFinite(v) || v > max ? fallback : Math.max(v, min) * unit;
+  const asked = { absoluteMs: ms(cfg?.absolute_hours, a.min, a.max, HOUR, def.absoluteMs), idleMs: ms(cfg?.idle_minutes, i.min, i.max, MINUTE, def.idleMs) };
+  return shorter(asked, named ? asked : def);
 }
 
 /** The tighter of two policies, its idle window never past its absolute one. */
@@ -282,6 +303,8 @@ export interface WebSessionStoreOptions {
   readonly localPolicy?: () => SessionPolicy;
   /** #1920: a guest's policy, read at every check (`web.guests.session`); never longer than the surface's. */
   readonly guestPolicy?: () => SessionPolicy;
+  /** #3708: the public link's policy in force now (`web.session.public_link`, named tunnel only); absent: `policy.gateway`. */
+  readonly gatewayPolicy?: () => SessionPolicy;
   /** The wall-clock end of the public link a session is made over (null: none, or not that link): it never outlives it. */
   readonly exposureEnd?: (exposureId: string) => number | null;
   readonly maxSessions?: number;
@@ -327,6 +350,7 @@ export class WebSessionStore {
   private readonly policy: Record<SessionSurface, SessionPolicy>;
   private readonly localPolicy: (() => SessionPolicy) | null;
   private readonly guestPolicy: () => SessionPolicy;
+  private readonly gatewayPolicy: (() => SessionPolicy) | null;
   private readonly exposureEnd: (exposureId: string) => number | null;
   private readonly maxSessions: number;
   private readonly path: string | null;
@@ -348,6 +372,7 @@ export class WebSessionStore {
     };
     this.localPolicy = opts.localPolicy ?? null;
     this.guestPolicy = opts.guestPolicy ?? (() => GUEST_SESSION_POLICY);
+    this.gatewayPolicy = opts.gatewayPolicy ?? null;
     this.exposureEnd = opts.exposureEnd ?? (() => null);
     this.maxSessions = opts.maxSessions ?? MAX_WEB_SESSIONS;
     this.path = opts.dataDir ? join(opts.dataDir, "web-sessions.json") : null;
@@ -367,14 +392,15 @@ export class WebSessionStore {
   idleWindowMs(surface: SessionSurface, tier: SessionTier = "admin"): number { return this.policyFor(surface, tier).idleMs; }
 
   /**
-   * The policy in force for a surface now (#1620: the local one as configured at this moment; the gateway's fixed).
+   * The policy in force for a surface now (#1620: the local one as configured at this moment; #3708: the gateway's too).
    * #1920: a guest's is its own policy, never longer than the surface's. An admin's on the public link is never longer
    * than its own `web.session.local` either (2026-10-29: the link's cap rose to 8 h).
    */
   private policyFor(surface: SessionSurface, tier: SessionTier): SessionPolicy {
     const local = this.localPolicy ? this.localPolicy() : this.policy.local;
     if (surface === "local") return tier === "guest" ? shorter(local, this.guestPolicy()) : local;
-    return shorter(this.policy.gateway, tier === "guest" ? this.guestPolicy() : local);
+    const gateway = this.gatewayPolicy ? this.gatewayPolicy() : this.policy.gateway;
+    return shorter(gateway, tier === "guest" ? this.guestPolicy() : local);
   }
 
   /**
