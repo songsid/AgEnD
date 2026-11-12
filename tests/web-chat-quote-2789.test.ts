@@ -160,6 +160,21 @@ describe("the pill", () => {
     p.select("rehearsal"); p.pill()?.querySelector(".quote-other")?.click();
     expect(target).toHaveBeenCalledWith("rehearsal"); expect(p.insert).not.toHaveBeenCalled();
   });
+  it("both quote actions have the same icon and one-line label structure, without heading markup", async () => {
+    const target = vi.fn(), label = "引用到另一格（AgEnD Leader）";
+    const p = await mounted({ lang: "zh-TW", targets: [{ label, insert: target }] });
+    p.select("只放進另一格的草稿，不送出");
+    const rows = p.pill().querySelectorAll("button");
+    expect(rows).toHaveLength(2);
+    expect(rows.map((el: any) => el.querySelector("span")?.textContent)).toEqual(["引用", label]);
+    for (const el of rows) {
+      expect(el.classList.contains("quote-pick")).toBe(true);
+      expect(el.querySelector("svg path")?.getAttribute("d")).toBe(rows[0].querySelector("svg path")?.getAttribute("d"));
+      expect(el.querySelector("svg")).not.toBeNull(); expect(el.querySelector("strong, b, h1, h2, h3")).toBeNull();
+    }
+    rows[1].click(); expect(target).toHaveBeenCalledExactlyOnceWith("只放進另一格的草稿，不送出");
+    expect(p.insert).not.toHaveBeenCalled();
+  });
   it("desktop: anchored to the passage's end with its pointer; phone: 「引用選取的文字」 above the composer, in the 16-px gutter, no pointer", async () => {
     const d = await mounted({ lang: "zh-TW" });
     d.select("rehearsal", { left: 100, right: 300, top: 200, bottom: 220, width: 200, height: 20 });

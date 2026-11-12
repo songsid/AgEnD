@@ -11,7 +11,8 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { register, t } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 import { routePath, detailsPath } from "/assets/app-route.js";
-import { supportsInstanceFeature } from "/assets/instance-nav.js";
+import { labelOf, modelText, supportsInstanceFeature } from "/assets/instance-nav.js";
+import { modelLabel } from "./model-picker.js";
 import { agentRoute, PANE_VIEWS, twoPaneFits } from "/assets/chat-workspace-model.js";
 import { workspaceMemory } from "/assets/chat-workspace-memory.js";
 import * as workspaceNavigation from "./chat-workspace-navigation.js";
@@ -22,10 +23,12 @@ import { createPanePopout, popoutText } from "./chat-popout.js";
 register("chatWorkspace", {
   en: { beside: "Open beside", replace: "Replace: {0}", split: "Split chat", choose: "Choose a second agent", current: "Focused pane", currentShort: "Active",
     right: "Side by side", stack: "Top and bottom", swap: "Swap positions", close: "Close this pane", other: "Focus the other pane",
-    unavailable: "Split chat could not load. Your current chat is unchanged. Reload this page to try again.", pane: "{0} · {1}", quote: "Quote into the other pane: {0}", quoteAgain: "Finish or discard the other pane's settings, then quote again." },
+    paneGroup: "Pane", agentGroup: "Agent", appearanceGroup: "Appearance", deleteGroup: "Delete", modelEffort: "Model and effort…",
+    unavailable: "Split chat could not load. Your current chat is unchanged. Reload this page to try again.", pane: "{0} · {1}", quote: "Quote into the other pane ({0})", quoteAgain: "Finish or discard the other pane's settings, then quote again." },
   "zh-TW": { beside: "在旁邊開啟", replace: "取代：{0}", split: "分割對話", choose: "選擇第二個 Agent", current: "目前窗格", currentShort: "目前",
     right: "左右排列", stack: "上下排列", swap: "交換位置", close: "收起此格", other: "切換到另一窗格",
-    unavailable: "未能載入分割對話。目前對話不變；請重新整理頁面再試。", pane: "{0}・{1}", quote: "引用到另一窗格：{0}", quoteAgain: "請先完成或放棄另一窗格的設定變更，再次引用。" },
+    paneGroup: "窗格", agentGroup: "Agent", appearanceGroup: "外觀", deleteGroup: "刪除", modelEffort: "模型與強度…",
+    unavailable: "未能載入分割對話。目前對話不變；請重新整理頁面再試。", pane: "{0}・{1}", quote: "引用到另一格（{0}）", quoteAgain: "請先完成或放棄另一窗格的設定變更，再次引用。" },
 });
 export const tw = (key, ...values) => t(`chatWorkspace.${key}`, ...values);
 const viewLabel = view => t(`app.${view === "details" ? "details" : view}`);
@@ -93,20 +96,31 @@ export function PaneHeader({ title, sub, headingRef, nav, notice, pageControls, 
   }, [pane.focused, pageControls, foldTools]);
   useLayoutEffect(() => () => pane.controls.release(token.current), []);
   const tabs = pane.tabs.filter(tab => !pane.visibleTabs.includes(tab));
+  const app = useStore(appStore), inst = app.instances.find(it => it.name === pane.name);
+  const inherited = (pane.focused ? pageActions || [] : []).filter(item => item && !item.heading
+    && !["splitChat", "split", "pane-backend", "pane-model", "pane-effort"].includes(item.key) && item.label !== tw("split"));
+  const appearance = item => /^(identity-color|theme-|page-|widget-|ambient-|fullWidth)/.test(item.key || "");
+  const group = (key, actions) => actions.length ? [{ key: `${key}-heading`, heading: true, label: tw(`${key}Group`) }, ...actions.map(item => ({ ...item, icon: item.icon || "settings" }))] : [];
+  const value = inst && [modelLabel(inst.model || modelText(inst) || ""), inst.effort || (inst.effort_supported ? "auto" : "")].filter(Boolean).join(" · ");
   const items = [
-    ...tabs.map(view => ({ key: `tab-${view}`, label: viewLabel(view), onSelect: () => pane.navigate(routePath({ panel: view, instance: pane.name })) })),
-    { key: "right", label: tw("right"), checked: pane.layout === "right", onSelect: () => pane.controller.layout("right") },
-    { key: "stack", label: tw("stack"), checked: pane.layout === "stack", onSelect: () => pane.controller.layout("stack") },
-    { key: "float", label: geometryText("float"), checked: pane.floating, onSelect: () => pane.controller.layout("float", pane.id) },
-    ...(pane.floating ? [{ key: "move-float", label: geometryText("move"), onSelect: () => pane.gestures.keyboard("move", pane.id) },
-      { key: "resize-float", label: geometryText("resize"), onSelect: () => pane.gestures.keyboard("resize", pane.id) }] : []),
-    ...(pane.layout !== "float" ? [{ key: "halves", label: geometryText("reset"), onSelect: () => pane.controller.geometry({ ratio: .5 }) }] : []),
-    { key: "swap", label: tw("swap"), onSelect: () => pane.controller.swap() },
-    { key: "other", label: tw("other"), onSelect: () => pane.controller.focus(pane.id === "a" ? "b" : "a", { moveFocus: true }) },
+    ...group("pane", [
+    ...tabs.map(view => ({ key: `tab-${view}`, label: viewLabel(view), icon: view === "details" ? "settings" : view === "log" ? "file" : view, onSelect: () => pane.navigate(routePath({ panel: view, instance: pane.name })) })),
+    { key: "right", label: tw("right"), icon: "sidebar", checked: pane.layout === "right", onSelect: () => pane.controller.layout("right") },
+    { key: "stack", label: tw("stack"), icon: "down", checked: pane.layout === "stack", onSelect: () => pane.controller.layout("stack") },
+    { key: "float", label: geometryText("float"), icon: "external", checked: pane.floating, onSelect: () => pane.controller.layout("float", pane.id) },
+    ...(pane.floating ? [{ key: "move-float", label: geometryText("move"), icon: "fullscreen", onSelect: () => pane.gestures.keyboard("move", pane.id) },
+      { key: "resize-float", label: geometryText("resize"), icon: "fitwidth", onSelect: () => pane.gestures.keyboard("resize", pane.id) }] : []),
+    ...(pane.layout !== "float" ? [{ key: "halves", label: geometryText("reset"), icon: "restart", onSelect: () => pane.controller.geometry({ ratio: .5 }) }] : []),
+    { key: "swap", label: tw("swap"), icon: "restart", onSelect: () => pane.controller.swap() },
+    { key: "other", label: tw("other"), icon: "sidebar", onSelect: () => pane.controller.focus(pane.id === "a" ? "b" : "a", { moveFocus: true }) },
     { key: "split", label: tw("split"), icon: "sidebar", onSelect: () => choose(pane.controller, undefined, pane.id) },
-    ...(pane.popout ? [{ key: "popout", label: popoutText("open"), onSelect: () => pane.popout.open(pane.controller, pane.id) }] : []),
-    { key: "close", label: tw("close"), icon: "close", onSelect: () => pane.controller.closePane(pane.id) },
-    ...(pane.focused ? (pageActions || []).filter(item => item?.key !== "splitChat") : []),
+    ...(pane.popout ? [{ key: "popout", label: popoutText("open"), icon: "external", onSelect: () => pane.popout.open(pane.controller, pane.id) }] : []),
+    { key: "close", label: tw("close"), icon: "close", onSelect: () => pane.controller.closePane(pane.id) }]),
+    ...group("agent", [
+      ...(pane.focused && inst && supportsInstanceFeature(inst, "details") ? [{ key: "model-effort", icon: "settings", label: html`<span class="menu-label-value"><span>${tw("modelEffort")}</span><span class="menu-value" title=${value}>${value}</span></span>`, onSelect: () => pane.navigate(`${detailsPath(pane.name)}?cat=runtime`) }] : []),
+      ...inherited.filter(item => !appearance(item) && item.key !== "delete")]),
+    ...group("appearance", inherited.filter(appearance)),
+    ...group("delete", inherited.filter(item => item.key === "delete")),
   ];
   const interactive = event => event.target.closest("a,button,input,textarea,select,[contenteditable],.ws-page-tools");
   return html`<header data-trust="header" class="panel-head ws-pane-head" draggable=${!pane.floating}
@@ -119,7 +133,7 @@ export function PaneHeader({ title, sub, headingRef, nav, notice, pageControls, 
     ${nav}
     <div class="panel-actions"><span class=${`ws-tools-slot${foldTools ? " ws-tools-folded" : ""}`} ref=${slot}></span>
       <button type="button" class="icon-btn ws-pane-split" title=${tw("split")} aria-label=${tw("split")} onClick=${event => choose(pane.controller, event, pane.id)}><${Icon} name="sidebar" /></button>
-      <${Menu} ownerKey=${`${pane.name}:${pane.route.panel}`} inactive=${!pane.focused} onOpen=${() => pane.controller.focus(pane.id)} items=${items} label=${t("app.more")}
+      <${Menu} cls="agent-menu" fit=${true} ownerKey=${`${pane.name}:${pane.route.panel}`} inactive=${!pane.focused} onOpen=${() => pane.controller.focus(pane.id)} items=${items} label=${t("app.more")}
         leading=${foldTools && pane.focused ? html`<div class="ws-menu-tools" role="presentation" ref=${el => { menuSlot.current = el; pane.controls.move(token.current, el || slot.current, !!el); }}></div>` : null} />
       <button type="button" class="icon-btn ws-pane-close" title=${tw("close")} aria-label=${tw("close")} onClick=${() => pane.controller.closePane(pane.id)}><${Icon} name="close" /></button>
     </div>${notice || null}
@@ -260,11 +274,12 @@ export function installWorkspaceEntry({ nav, ready, landing = false, scope = "",
       const w = controller?.current(); if (!w) return [];
       const from = ["a", "b"].find(id => w[id].route.instance === source); if (!from) return [];
       const id = from === "a" ? "b" : "a", name = w[id].route.instance, sourcePane = w[from];
+      const targetName = labelOf(appStore.get().instances.find(it => it.name === name) || { name });
       // #3727: `commit` (optional) runs right after the quote went in, in the same turn and under the same fence — the
       // annotated picture's attachment — so both land in this exact pane or neither does. True when they did. `live`
       // (optional): the caller's own validity (the annotation editor still open), part of the same fence throughout the
       // wait for the Chat mount and at the commit.
-      return [{ name, label: tw("quote", name), async insert(text, commit, live) {
+      return [{ name, label: tw("quote", targetName), async insert(text, commit, live) {
         const callerLive = () => typeof live !== "function" || live() === true;
         const current = () => { const now = controller.current(); return alive && callerLive() && !!now && now[from] === sourcePane && now[id].route.instance === name; };
         if (!current()) return false;

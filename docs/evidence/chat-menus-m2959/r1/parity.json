@@ -1,0 +1,19 @@
+{
+  "reviewedHead": "ca82794ca07e5c27e3667955b31cb99205fab690",
+  "testInputHead": "d49637616e6b6e72f6bc4676027bea9b80ca4b56",
+  "identicalGitObjects": {
+    "195010508f795e3f91f8da4726f206d063de4a4e": [
+      "src"
+    ],
+    "161110ba9b5d33192ece45aa3289a8629db98e73": [
+      "scripts"
+    ],
+    "457377d24796e5be7f86ddc9ea1261f32e4f1d80": [
+      "docs/evidence/chat-menus-m2959/browser"
+    ]
+  },
+  "delta": [
+    "tests/web-chat-menus-2959.test.ts"
+  ],
+  "driver": "8cac6cd274cdd739fce88ed23ba2a07d0c8549b9904bd83984bde906282e6f23"
+}

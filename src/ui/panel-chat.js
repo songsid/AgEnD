@@ -565,9 +565,6 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
     <${PanelHeader} title=${inst.runtime === "windows" ? inst.display_name || name : headerName(namesOf(inst || { name }, names.primary))} sub=${sub}
       pageControls=${{ CardMenu, card, navKey, usage: supportsInstanceFeature(inst,"usage") }} pageActions=${[
-        pane && !guest && supportsInstanceFeature(inst,"commands") ? { key: "pane-backend", label: `${mw("backend")}: ${backendLabel(inst.backend)}`, onSelect: () => inst.runtime === "windows" ? navigate(sectionPath("agents")) : pick("backend") } : null,
-        pane && !guest && supportsInstanceFeature(inst,"commands") ? { key: "pane-model", label: t("chat.chipModel", modelText(inst)), onSelect: () => pick("model") } : null,
-        pane && effortChip(inst) && supportsInstanceFeature(inst,"effort") ? { key: "pane-effort", label: t("chat.chipEffort", effortChip(inst)), onSelect: () => pick("effort") } : null,
         ...items]}
       nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />

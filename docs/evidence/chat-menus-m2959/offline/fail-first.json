@@ -1,0 +1,49 @@
+{
+  "baseline": "3f02d04404f40596e9ee25b908f3bb9c793d70dd",
+  "source": {
+    "6925661b2b26e840d5fc21998eb68c6acfbd127f544309fbff2402232e9a2ce0": [
+      "src/ui/chat-workspace.js"
+    ],
+    "cccacd373fb99cb532e072fdd25e96483ee1caf5bb845eaf84e249758842b571": [
+      "src/ui/chat-quote.js"
+    ],
+    "0a64d95da54984160a87ffd67ae1b9842b0ff0947f84bc1a1f230bce937b2d33": [
+      "src/ui/panel-chat.js"
+    ],
+    "b0b9cfe9e190caf60ea47f6ecfe9570ab8260908362c8e26efa3caa0d48ffb73": [
+      "src/ui/shared/instance-nav.js"
+    ],
+    "bfddb6dbf8b2222d73f5d6165ef0197276399f44165018a66d5187d37c9a6b6a": [
+      "src/ui/shared/ui-menu.js"
+    ],
+    "452d8ad48b3e0ab8732f882cdf112e416772ab56831d918f3a9b3a938e1585ab": [
+      "src/ui/shared/identity-color.js"
+    ],
+    "2f8bb393fd11319a16ef867bc4f75988cd31ff4b3c5bb4a7acbf43f7f73a3dca": [
+      "src/ui/shared/app.css"
+    ]
+  },
+  "tests": {
+    "abb56c56a54275e58d1d82ce11c93d68ea0e78f6161f8107f51735daf292de73": [
+      "tests/web-chat-menus-2959.test.ts"
+    ],
+    "8d0c38388b2d81b71b01e60123b3d5d1fc86cc4ce9c9c382c992cfffbd60c33f": [
+      "tests/web-chat-workspace-entry-3637.test.ts"
+    ],
+    "af22cc3f8ae41bef527b3cb3496a777e5fd4667ce84f7613fdb09f994b2e50dd": [
+      "tests/web-chat-quote-2789.test.ts"
+    ]
+  },
+  "command": [
+    "npx",
+    "vitest",
+    "run",
+    "tests/web-chat-menus-2959.test.ts",
+    "tests/web-chat-workspace-entry-3637.test.ts",
+    "tests/web-chat-quote-2789.test.ts",
+    "--maxWorkers=1",
+    "-t",
+    "keeps one Split|uses one sidebar|darkens light|both quote actions|a navigation during|a changed destination|a current quote opens"
+  ],
+  "exit": 1
+}

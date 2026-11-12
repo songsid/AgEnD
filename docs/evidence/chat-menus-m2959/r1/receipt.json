@@ -1,0 +1,78 @@
+{
+  "head": "d49637616e6b6e72f6bc4676027bea9b80ca4b56",
+  "tree": "ea252ffa72f479c26a394f32d7e68e92b27f2b42",
+  "inputs": {
+    "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48": [
+      "src/ui/shared/ui-menu.js"
+    ],
+    "c9acedac46f214d5a948f0f56cde47e5ce4bb16c008e0fd1024713ca81abe9bc": [
+      "tests/web-chat-menus-2959.test.ts"
+    ]
+  },
+  "checks": [
+    {
+      "label": "both",
+      "command": [
+        "npx",
+        "vitest",
+        "run",
+        "tests/web-chat-menus-2959.test.ts",
+        "--maxWorkers=1",
+        "-t",
+        "keeps a visible selection check"
+      ],
+      "exit": 1,
+      "assertionCaught": true,
+      "startLoad": 4.31787109375,
+      "uncompressedLog": "ac90fa44f1e899d5e696b32c061e505b473e91d3a10d52944ab235249d73a1c0"
+    },
+    {
+      "label": "checkbox",
+      "command": [
+        "npx",
+        "vitest",
+        "run",
+        "tests/web-chat-menus-2959.test.ts",
+        "--maxWorkers=1",
+        "-t",
+        "keeps a visible selection check"
+      ],
+      "exit": 1,
+      "assertionCaught": true,
+      "startLoad": 4.2119140625,
+      "uncompressedLog": "55581d98ff036f7446c237753ecd172721d0cbf51eb818a7b9162afb33aad25b"
+    },
+    {
+      "label": "radio",
+      "command": [
+        "npx",
+        "vitest",
+        "run",
+        "tests/web-chat-menus-2959.test.ts",
+        "--maxWorkers=1",
+        "-t",
+        "keeps a visible selection check"
+      ],
+      "exit": 1,
+      "assertionCaught": true,
+      "startLoad": 4.2119140625,
+      "uncompressedLog": "458de7b00082d596b099b34683884f70d459b4e30c5db8014828a85a0d8b6027"
+    },
+    {
+      "label": "restored",
+      "command": [
+        "npx",
+        "vitest",
+        "run",
+        "tests/web-chat-menus-2959.test.ts",
+        "--maxWorkers=1",
+        "tests/web-chat-workspace-entry-3637.test.ts",
+        "tests/web-favorites-1664.test.ts"
+      ],
+      "exit": 0,
+      "assertionCaught": false,
+      "startLoad": 4.2119140625,
+      "uncompressedLog": "48720de8a35316daad6968abb7f225ca91e80c7834a437c170987774d1ddb185"
+    }
+  ]
+}

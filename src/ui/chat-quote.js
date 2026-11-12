@@ -171,7 +171,9 @@ export function installQuoteSelection(list, deps) {
     const label = pop.querySelector(".quote-pick span"); label.textContent = tq(phone ? "quotePhone" : "quote");
     for (const old of pop.querySelectorAll(".quote-other")) old.remove();
     for (const target of deps.targets?.() || []) {
-      const b = doc.createElement("button"); b.type = "button"; b.className = "menu-item quote-other"; b.textContent = target.label;
+      const b = doc.createElement("button"); b.type = "button"; b.className = "menu-item quote-pick quote-other";
+      b.append(iconEl(doc));
+      const span = doc.createElement("span"); span.textContent = target.label; b.append(span); b.title = target.label;
       b.addEventListener("pointerdown", e => e.preventDefault()); b.addEventListener("mousedown", e => e.preventDefault());
       b.addEventListener("click", e => { e.preventDefault(); const text = drawnFor; hide(); if (text) target.insert(text); });
       pop.append(b);

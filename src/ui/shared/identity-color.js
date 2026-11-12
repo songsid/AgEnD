@@ -67,8 +67,8 @@ export function contrast(a, b) {
  * The shade of `hex` name text uses: itself if readable, else the nearest step toward black (light) or white (dark).
  * `page` (#2196): an agent's colours on the page now — names must read on its background and sidebar instead.
  */
-export function readableShade(hex, mode, page = null) {
-  const backgrounds = page ? [page.bg, page.sidebar] : BG[mode], text = page ? page.text : TEXT[mode];
+export function readableShade(hex, mode, page = null, extra = []) {
+  const backgrounds = [...(page ? [page.bg, page.sidebar] : BG[mode]), ...extra], text = page ? page.text : TEXT[mode];
   if (!HEX.test(hex)) return text;
   const toward = mode === "light" ? 0 : 255;
   const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -137,9 +137,15 @@ export function identityOf(it, opts = {}) {
   const c = resolveColor(it && it.color, showThemes);
   const p = resolvePlaces(it && it.color_show, showThemes, opts.hostDefault ?? defaultPlaces());
   const light = colorValue(c.color, "light"), dark = colorValue(c.color, "dark");
+  const page = pageNow("light");
+  // Sidebar text also sits on selected/hovered rows and the strongest fresh-reply tint. Keep the existing dark
+  // shades and non-sidebar consumers unchanged. Mixing toward black changes brightness without changing hue.
+  const mix = (a, b, amount) => `#${[1, 3, 5].map(i => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - amount) + parseInt(b.slice(i, i + 2), 16) * amount).toString(16).padStart(2, "0")).join("")}`;
+  const rowBackgrounds = opts.sidebar ? [page ? mix(page.surface, page.text, .08) : "#ececec",
+    mix(page?.sidebar || "#f9f9f9", page?.accent || "#0a62c2", .22)] : [];
   return {
     color: c.color, source: c.source, show: p.show, showSource: p.source, off: opts.off ?? colorsOff(),
-    light, dark, nameLight: readableShade(light, "light", pageNow("light")), nameDark: readableShade(dark, "dark", pageNow("dark")),
+    light, dark, nameLight: readableShade(light, "light", page, rowBackgrounds), nameDark: readableShade(dark, "dark", pageNow("dark")),
   };
 }
 /** The row's classes for its identity colour ("" when colours are off or shown nowhere). */
