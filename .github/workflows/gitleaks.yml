@@ -25,8 +25,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+      - name: Install pinned Gitleaks for PR scan
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          install_dir="$(mktemp -d)"
+          curl --fail --silent --show-error --location --retry 2 \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \
+            -o "$install_dir/gitleaks.tar.gz"
+          echo "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c  $install_dir/gitleaks.tar.gz" | sha256sum --check --strict
+          tar -xzf "$install_dir/gitleaks.tar.gz" -C "$install_dir" gitleaks
+          echo "$install_dir" >> "$GITHUB_PATH"
+      - name: Scan complete PR history
+        if: github.event_name == 'pull_request'
         env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash scripts/ci/gitleaks-pr.sh
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        if: github.event_name == 'push'
+        env:
+          GITLEAKS_VERSION: 8.24.3
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Tell Discord how this run ended, whichever way it ended.
