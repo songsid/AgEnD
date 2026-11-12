@@ -1,0 +1,25 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-pane-ownership-3637.test.ts (19 tests | 1 failed) 3132ms
+     × resizes only scoped composers when their physical width changes, without touching an IME 104ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-pane-ownership-3637.test.ts > pane scope adds no DOM and retains legacy defaults > resizes only scoped composers when their physical width changes, without touching an IME
+AssertionError: expected '96px' to be '240px' // Object.is equality
+
+Expected: "240px"
+Received: "96px"
+
+ ❯ tests/web-chat-pane-ownership-3637.test.ts:98:99
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 passed (19)
+   Start at  11:31:12
+   Duration  3.57s (transform 1.40s, setup 103ms, import 147ms, tests 3.13s, environment 0ms)
+

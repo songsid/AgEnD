@@ -16,7 +16,7 @@ import type { HubAuditContent, HubAuditRecord, HubAuditSink, HubRequestContext, 
 
 export const HUB_AUDIT_MIGRATION: HubMigration = Object.freeze({
   component: "s5-audit",
-  version: 1,
+  version: 2,
   up(db: Database.Database) {
     db.exec(`
       CREATE TABLE IF NOT EXISTS hub_audit (
@@ -46,6 +46,7 @@ export const HUB_AUDIT_MIGRATION: HubMigration = Object.freeze({
       CREATE INDEX IF NOT EXISTS hub_audit_content_created ON hub_audit_content(created_at);
       CREATE TABLE IF NOT EXISTS hub_auditors (person_id TEXT PRIMARY KEY, assigned_at INTEGER NOT NULL, assigned_by TEXT NOT NULL);
     `);
+    if (!(db.prepare("PRAGMA table_info(hub_audit)").all() as { name: string }[]).some(c => c.name === "code_id")) db.exec("ALTER TABLE hub_audit ADD COLUMN code_id TEXT");
   },
 });
 
@@ -89,6 +90,7 @@ interface AuditRow {
   policy_version: number;
   content_ref: string | null;
   reason_code: string | null;
+  code_id: string | null;
   component_sequence: number | null;
   prev_hash: string;
   hash: string;
@@ -96,8 +98,9 @@ interface AuditRow {
 
 /** The fields the hash covers: everything stored except the hash itself. */
 function hashedFields(row: Omit<AuditRow, "hash">): Record<string, unknown> {
-  const { prev_hash: _prev, ...rest } = row;
-  return rest;
+  const { prev_hash: _prev, code_id, ...rest } = row;
+  // Old chain rows predate code attribution. Null extension bytes must not rewrite their hash.
+  return code_id == null ? rest : { ...rest, code_id };
 }
 
 function chainHash(prevHash: string, row: Omit<AuditRow, "hash">): string {
@@ -130,6 +133,7 @@ function toRecord(row: AuditRow): HubAuditRecord {
     ...(row.grant_revision !== null ? { grantRevision: row.grant_revision } : {}),
     ...(row.content_ref ? { contentRef: row.content_ref } : {}),
     ...(row.reason_code ? { reasonCode: row.reason_code } : {}),
+    ...(row.code_id ? { codeId: row.code_id } : {}),
   };
 }
 
@@ -176,9 +180,9 @@ export function createHubAudit(options: HubAuditOptions): HubAuditStore {
   const now = options.now ?? Date.now;
 
   const insert = db.prepare(`INSERT INTO hub_audit (sequence, id, at, request_id, actor, action, result, message_id, room_id, fleet_id,
-    exposure_id, owner_at_event, grant_id, grant_revision, policy_version, content_ref, reason_code, component_sequence, prev_hash, hash)
+    exposure_id, owner_at_event, grant_id, grant_revision, policy_version, content_ref, reason_code, code_id, component_sequence, prev_hash, hash)
     VALUES (@sequence, @id, @at, @request_id, @actor, @action, @result, @message_id, @room_id, @fleet_id, @exposure_id, @owner_at_event,
-    @grant_id, @grant_revision, @policy_version, @content_ref, @reason_code, @component_sequence, @prev_hash, @hash)`);
+    @grant_id, @grant_revision, @policy_version, @content_ref, @reason_code, @code_id, @component_sequence, @prev_hash, @hash)`);
 
   const head = (): { sequence: number; hash: string } => {
     const row = db.prepare("SELECT sequence, hash FROM hub_audit_head WHERE singleton = 1").get() as { sequence: number; hash: string } | undefined;
@@ -188,6 +192,7 @@ export function createHubAudit(options: HubAuditOptions): HubAuditStore {
   /** The one write path. Caller guarantees we are inside a transaction on `db`. */
   const write = (record: HubAuditRecord): number => {
     if (!db.inTransaction) throw new Error("Hub audit is written only inside a transaction");
+    if (record.codeId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(record.codeId)) throw new Error("Hub audit: invalid code id");
     if (!ACTION.test(record.action ?? "")) throw new Error("Hub audit: invalid action");
     if (!RESULTS.has(record.result)) throw new Error("Hub audit: invalid result");
     if (!Number.isSafeInteger(record.at) || !Number.isSafeInteger(record.policyVersion) || record.policyVersion < 0) throw new Error("Hub audit: invalid time or policy version");
@@ -211,6 +216,7 @@ export function createHubAudit(options: HubAuditOptions): HubAuditStore {
       policy_version: record.policyVersion,
       content_ref: record.contentRef ?? null,
       reason_code: record.reasonCode ?? null,
+      code_id: record.codeId ?? null,
       component_sequence: Number.isSafeInteger(record.sequence) ? record.sequence : null,
       prev_hash: prev.hash,
     };

@@ -1,0 +1,7 @@
+# A single truthful terminal explanation
+
+Actual EN/zh desktop/phone revoked-code captures on98c86bd9f showed the correct invalid-code error alongside the older generic local-authorization-changed status. The browser had a specific authenticated refusal, but its terminal projection retained the generic retirement reason. B2 now retains the structured failure and uses that specific explanation for an unissued code refusal. Ordinary terminal states and issued-credential recovery still show their existing warnings. An explicit read retry keeps the code explanation visible instead of clearing it into the generic message. Request/session reset behavior and all core routes remain unchanged.
+
+Four mounted cases reproduce the duplicate/wrong-cause status before the change (18 controls pass). Final related suites pass145/145 across four files, zero skips; both native typechecks pass. Three isolated compiling reversals are caught: remove suppression (4 failures/4 controls), widen suppression to ordinary errors (2/6), or clear code feedback on reread (4/4). Sixteen unrelated cases are deliberately unselected in each focused mutation run. Exact source is restored, then the entire24-case mounted suite passes. Source, tests and local-log hashes are in receipt.json.
+
+The previous full campaign's source remains98c86bd9f; it is historical evidence, including the visible copy defect. The corrected source requires its own final browser/capacity/SKEW receipt. No previous result is relabelled as this head's runtime evidence.

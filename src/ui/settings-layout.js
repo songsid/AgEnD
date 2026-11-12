@@ -168,6 +168,8 @@ register("settingsLayout", {
   "en": {
     "revDashboard_log": "Agent log tab",
     "revDashboardHint_log": "Show prompts, replies, tool steps and fleet events. Secrets are masked; public links can also see it. Enabling needs confirmation.",
+    "revDashboard_thinking": "Show thinking (admin only, off by default)",
+    "revDashboardHint_thinking": "Add the model's thinking to an agent's chat activity block and the Log. Only a signed-in admin receives it; never the public link or a guest. Also asks Claude Code to write thinking summaries, which can change what a turn costs.",
     "revDashboard_usagePub": "Usage over the public link",
     "revDashboardHint_usagePub": "Offer the fleet usage report over the temporary public link. Guests never see it.",
     "revDashboard_levels": "Office levels",
@@ -177,7 +179,6 @@ register("settingsLayout", {
     "revDetails": "Details",
     "revAccessPolicy": "Loosening access needs fleet administrator confirmation. Tightening applies at once.",
     "revLoginSessions": "Sign-in sessions",
-    "revPublicSessionLimit": "Public-link sessions are capped at 8 hours, end after 30 minutes idle and never outlive the link.",
     "revSessionDetails": "Session rules and notifications",
     "revRelatedAccess": "Other access settings",
     "revRelatedGuests": "Choose who can sign in and which agents they see.",
@@ -207,6 +208,8 @@ register("settingsLayout", {
   "zh-TW": {
     "revDashboard_log": "Agent 紀錄分頁",
     "revDashboardHint_log": "顯示提示、回覆、工具步驟與 Fleet 事件；機密值會遮蔽，公開連結也看得到。開啟需確認。",
+    "revDashboard_thinking": "顯示思考（僅 admin，預設關閉）",
+    "revDashboardHint_thinking": "把模型的思考加進 Agent 聊天裡的活動區塊與紀錄分頁；只有登入的 admin 會收到，公開連結和訪客一律不會。同時會請 Claude Code 寫出思考摘要，這可能改變每一輪的花費。",
     "revDashboard_usagePub": "公開連結提供用量報告",
     "revDashboardHint_usagePub": "透過臨時公開連結提供 Fleet 用量報告；訪客一律看不到。",
     "revDashboard_levels": "辦公室等級",
@@ -216,7 +219,6 @@ register("settingsLayout", {
     "revDetails": "詳細說明",
     "revAccessPolicy": "放寬存取需要 Fleet 管理員確認；收緊的變更立即生效。",
     "revLoginSessions": "登入工作階段",
-    "revPublicSessionLimit": "公開連結的工作階段最長 8 小時、閒置 30 分鐘登出，也不會超過連結期限。",
     "revSessionDetails": "工作階段與通知規則",
     "revRelatedAccess": "其他存取設定",
     "revRelatedGuests": "管理可登入的訪客與可見 Agent。",

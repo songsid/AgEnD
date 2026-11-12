@@ -1,0 +1,41 @@
+{
+  "localHead": "537ffc7c03e770f73e528d746aef58aa5025b90f",
+  "ciHead": "50826808cfca325db5437874501c45d7e37d5fd6",
+  "run": 43187101842,
+  "url": "https://github.com/songsid/AgEnD/actions/runs/43187101842",
+  "conclusion": "success",
+  "setup": {
+    "id": 131078536426,
+    "conclusion": "success",
+    "url": "https://github.com/songsid/AgEnD/actions/runs/43187101842/job/131078536426"
+  },
+  "commands": [
+    "npx tsc --noEmit",
+    "npm run typecheck:tests",
+    "npm run build"
+  ],
+  "identicalGitObjects": {
+    "195010508f795e3f91f8da4726f206d063de4a4e": [
+      "src"
+    ],
+    "a0ac030d568a9331be317c39cccd904c632bc05b": [
+      "tests"
+    ],
+    "d597315aeef1f10e8133d44176150b0f5bb731af": [
+      "tsconfig.json"
+    ],
+    "9e2105289e44700cd343f1751f23cc5ba87796da": [
+      "tsconfig.test.json"
+    ],
+    "276647ba2b69e73f8302bc2a11373d4c12e3b2cb": [
+      "package.json"
+    ],
+    "05ed5512813e12d908a29d30953c974370644d8f": [
+      "package-lock.json"
+    ],
+    "1ab3e15ca4f990171a4fa0e133a762321ca1dbf3": [
+      ".github/workflows/ci.yml"
+    ]
+  },
+  "localScope": "253 focused tests on localHead; final local native type checks were not started because load exceeded10. CI type checks/build succeeded at ciHead; all src/tests/config/package/workflow Git objects listed above match exactly. Final packaged head still needs its own required CI."
+}

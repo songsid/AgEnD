@@ -430,6 +430,14 @@ export interface WebConfig {
    */
   log_tab?: boolean;
   /**
+   * AGEND-181/197: show the model's thinking in the chat's activity block (and the Log tab) — default OFF. Only a local
+   * dashboard's admin session is ever sent it (filtered on the server; never the public link or a guest), and only for an
+   * agent whose `tool_progress` is not off. On: AgEnD also asks Claude Code to write its thinking summaries at its next
+   * launch (`showThinkingSummaries`, which can change what a turn costs — see the PR). Off: none is read and Claude's
+   * settings are not touched.
+   */
+  log_thinking?: boolean;
+  /**
    * #2293: the dashboard's global search (Ctrl+K) over chat messages, cross-instance messages and Task Board tasks — an
    * index of its own (search.db; `retention_days` unset or 0 = no age limit, ROW_CAP 300,000 still applies;
    * search/search-index.ts). `enabled: false`: no index from the next fleet start (the file is left as it is), and
@@ -468,7 +476,8 @@ export interface WebConfig {
    * tailnet) is configurable; a public-link session's limits stay fixed. Hours, 1 ≤ idle_hours ≤ absolute_hours ≤ 720;
    * defaults 48 (absolute, from sign-in) and 48 (idle, since the last use; #1670). Shortening applies to existing sessions.
    */
-  session?: { local?: { absolute_hours?: number; idle_hours?: number } };
+  /** #3708: `public_link` — the public link's own limits; longer than 30 min / 8 h only with `public_link.hostname`. */
+  session?: { local?: { absolute_hours?: number; idle_hours?: number }; public_link?: { absolute_hours?: number; idle_minutes?: number } };
   /**
    * #1306: HTML previews in the web chat (default true). false: no preview listener; cards show Source and
    * Download only. Even when true, a browser runs a preview only after that device opted in.

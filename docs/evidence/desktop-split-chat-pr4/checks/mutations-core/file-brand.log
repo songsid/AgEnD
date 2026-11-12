@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-draft-3637.test.ts (5 tests | 1 failed) 12ms
+     × refuses an occupied child and validates all attachments before changing anything 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-draft-3637.test.ts > a pop-out moves only a captured, still-current local composer > refuses an occupied child and validates all attachments before changing anything
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/web-chat-popout-draft-3637.test.ts:30:107
+     28|     expect(a.acceptDraft("alpha", { text: "incoming", files: [], reply…
+     29|     a.setDraft("alpha", "");
+     30|     expect(a.acceptDraft("alpha", { text: "incoming", files: [{ name: …
+       |                                                                                                           ^
+     31|     expect(a.acceptDraft("alpha", { text: "incoming", files: Array.fro…
+     32|     expect(a.state.drafts.alpha).toBe(""); expect(a.state.pendingFiles…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  11:20:49
+   Duration  333ms (transform 117ms, setup 91ms, import 75ms, tests 12ms, environment 0ms)
+

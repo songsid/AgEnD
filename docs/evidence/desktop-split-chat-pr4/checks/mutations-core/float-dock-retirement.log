@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-workspace-geometry-3637.test.ts (9 tests | 1 failed) 18ms
+     × retiring a floating layout removes its stale rectangle and floating owner 7ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-geometry-3637.test.ts > a dock remains a two-agent topology > retiring a floating layout removes its stale rectangle and floating owner
+AssertionError: expected { a: { route: { …(2) }, …(3) }, …(7) } to not have property "floating"
+
+- Expected:
+undefined
+
++ Received:
+"b"
+
+ ❯ tests/web-chat-workspace-geometry-3637.test.ts:53:24
+     51|     for (const zone of ["left", "right", "top", "bottom"]) {
+     52|       const dock: any = model.dockWorkspace(w, "a", zone, "beta");
+     53|       expect(dock).not.toHaveProperty("floating"); expect(dock).not.to…
+       |                        ^
+     54|       expect(dock.a).toBe(w.a); expect(dock.b).toBe(w.b);
+     55|     }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 passed (9)
+   Start at  11:20:57
+   Duration  395ms (transform 117ms, setup 114ms, import 65ms, tests 18ms, environment 0ms)
+

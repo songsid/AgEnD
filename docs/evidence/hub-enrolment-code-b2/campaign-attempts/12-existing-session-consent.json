@@ -1,0 +1,38 @@
+{
+  "source": "1b4614ad67cb5e4e1442384960f04a9761958cbc",
+  "goReference": "xmsg-1794454315558-4oi40c",
+  "window": {
+    "from": 1794454900931,
+    "until": 1794462100931
+  },
+  "sourceVersionStamp": "2.3.5-alpha.16",
+  "startedAt": 1794457930459,
+  "phases": [
+    {
+      "name": "build",
+      "startedAt": 1794457930461,
+      "finishedAt": 1794457939080,
+      "exitCode": 0
+    },
+    {
+      "name": "protocol",
+      "startedAt": 1794457939115,
+      "finishedAt": 1794457977262,
+      "exitCode": 0
+    },
+    {
+      "name": "ui-capacity",
+      "startedAt": 1794457977263,
+      "finishedAt": 1794458350033,
+      "exitCode": null
+    }
+  ],
+  "ready": false,
+  "boundary": "Source build, owned network-none container, synthetic verified LDAPS; five real Fleet web/settings/join/member services per mass wave with Agent lifecycle refused. Not npm/systemd or real accounts/AD/pilot/native Windows.",
+  "chineseFont": "WenQuanYi Zen Hei,\u6587\u6cc9\u9a5b\u6b63\u9ed1,\u6587\u6cc9\u9a7f\u6b63\u9ed1 aa|af|av|ay|be|bg|bi|br|ca|ce|ch|co|da|de|el|en|es|eu|fj|fo|fr|fur|fy|gd|gl|gv|ho|ia|id|ie|ik|io|is|it|ja|ko|kum|lb|lez|mg|nb|nds|nl|nn|no|nr|ny|oc|om|os|pt|rm|ru|sel|sm|sma|smj|so|sq|sr|ss|st|sv|sw|tl|to|ts|uz|vo|wa|wo|xh|yap|zh-cn|zh-sg|zh-tw|zu|an|fil|ht|jv|kj|kwm|lg|li|ms|ng|pap-an|pap-aw|rn|rw|sc|sg|sn|su|za|agr|ayc|bem|cmn|hak|lij|lzh|mfe|mhr|mjw|nan|nhn|niu|tpi|unm|wae|yuw",
+  "stopped": "Error: Campaign stopped: overlap or operator stop",
+  "error": "Error: ui-capacity did not complete successfully",
+  "finishedAt": 1794458350033,
+  "disposition": "Operator stopped, not passed.116 protocol tests and20-person/current-link checks passed. Machine ramp reached mass49 without a recorded5s failure, but five already-signed-in browser paths stayed pending because the driver omitted the real Connect as consent button. Driver now captures and presses that button. Product admission/consent/deadlines unchanged. No50-wave pass claimed.",
+  "cleanup": "Supervisor honored STOP; container auto-removed. Launcher session ended143 before its trap log; owned image/ACTIVE cleanup performed after verifying the matching nonce and absence of launcher/host watcher."
+}

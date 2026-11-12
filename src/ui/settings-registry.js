@@ -8,6 +8,7 @@ import { navigate } from "/assets/app-nav.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // search shows these labels from outside Settings (dailyTips, hangEnabled, crossInstanceVisibility)
 import "./settings-revoke-strings.js";   // settings.vaRevokeOthers, the revoke button's label (a file of its own: PR #3553 review)
+import "./settings-public-session-strings.js";   // #3708: publicSessionAbsolute / publicSessionIdle (a file of its own)
 import "./settings-access-strings.js";   // …and this one (webLoginQr), added by Access & security (#3061)
 import "/assets/chat-strings.js";
 import { GUESTS_SETTINGS } from "./settings-guests.js";
@@ -85,6 +86,7 @@ const ROWS = [
   ["chat.classic-guilds", "chat", "#g-guilds", "settings.allowedGuilds", "classic.allowed_guilds", ["discord server", "guild", "allowed servers"], ["Discord 伺服器", "伺服器"]],
   // Fleet · Web dashboard
   ["dash.log-tab", "web-dashboard", "#webLogTab", "settings.webLogTab", "web.log_tab", ["log tab", "steps", "log"], ["Log 分頁", "紀錄", "步驟"]],
+  ["dash.log-thinking", "web-dashboard", "#webLogThinking", "settings.webLogThinking", "web.log_thinking", ["thinking", "activity", "chat timeline", "reasoning"], ["思考", "活動", "聊天時間軸"]],
   ["dash.usage-public", "web-dashboard", "#webUsagePublic", "settings.webUsagePublic", "web.usage_report_on_public_link", ["usage", "public link", "cost", "tokens"], ["用量", "公開連結", "費用"]],
   ["dash.preview-cdn", "web-dashboard", "#webPreviewCdn", "settings.webPreviewCdn", "web.preview_cdn", ["cdn", "libraries", "html preview", "chart", "jsdelivr", "cdnjs"], ["CDN", "函式庫", "HTML 預覽", "圖表"]],
   ["dash.office-levels", "web-dashboard", "#webOfficeLevels", "settings.webOfficeLevels", "web.office_levels", ["office", "level", "badge", "profile card"], ["辦公室", "等級", "徽章", "名片"]],
@@ -94,6 +96,8 @@ const ROWS = [
   // Fleet · Access & security
   ["access.session-absolute", "access", "#webSessionAbsolute", "settings.sessionAbsolute", "web.session.local.absolute_hours", ["session", "sign in", "hours", "expire", "logout"], ["session", "登入", "時數", "到期"]],
   ["access.session-idle", "access", "#webSessionIdle", "settings.sessionIdle", "web.session.local.idle_hours", ["session", "idle", "unused", "hours"], ["session", "閒置", "時數"]],
+  ["access.public-session-absolute", "access", "#webPublicSessionAbsolute", "settings.publicSessionAbsolute", "web.session.public_link.absolute_hours", ["session", "public link", "tunnel", "hours", "expire"], ["session", "公開連結", "登入時效", "時數"]],
+  ["access.public-session-idle", "access", "#webPublicSessionIdle", "settings.publicSessionIdle", "web.session.public_link.idle_minutes", ["session", "public link", "idle", "unused", "minutes", "phone"], ["session", "公開連結", "閒置", "分鐘", "手機"]],
   ["access.terminal", "access", "#webTerminalEnabled", "settings.webTerminalEnabled", "web_terminal.enabled", ["browser terminal", "terminal", "login", "shell"], ["瀏覽器終端機", "終端機", "登入"]],
   ["access.terminal-ttl", "access", "#webTerminalTtl", "settings.webTerminalTtl", "web_terminal.ttl_minutes", ["terminal minutes", "terminal", "ttl"], ["終端機", "分鐘"]],
   ["access.public-link", "access", "#publicWebLink", "settings.publicLink", "web.public_link.allow_public", ["public link", "share", "tunnel", "cloudflare", "trycloudflare"], ["公開連結", "分享", "tunnel"]],

@@ -7,12 +7,14 @@ import type { HubAuditStore } from "../audit/index.js";
 import type { HubAuditRecord, PersonKey } from "../types.js";
 import type { HubDirectory } from "../directory/types.js";
 import type { PolicyGroupFacts } from "../directory/groups.js";
-import { identifier, parseStrictJson, person, validated } from "../validation.js";
+import { identifier, parseStrictJson, person, uuid, validated } from "../validation.js";
 import { GROUP_CAPABILITIES, evaluateGroupPolicy, initialGroupPolicy, parseGroupCapability, parseGroupPolicy, type GroupCapability, type HubGroupDecision, type HubGroupPolicy } from "./model.js";
 
 export class HubGroupPolicyError extends Error {
   constructor(readonly code: "unavailable" | "conflict" | "unsupported" | "invalid" | "audit") { super(`group_policy_${code}`); }
 }
+/** Capacity pressure is retryable; malformed/unknown directory authority remains a separate refusal. */
+export class HubGroupReadOverload extends HubGroupPolicyError { constructor() { super("unavailable"); } }
 export function groupPolicyMigration(hubId: string, realm: string, generation: string): HubMigration {
   const initial = JSON.stringify(initialGroupPolicy(realm, generation)), hub = validated(identifier, hubId);
   return { component: "s5-group-policy", version: 1, up(db) {
@@ -55,6 +57,8 @@ export interface GroupCheckContext {
 }
 export interface HubGroupPolicyStore {
   read(): HubGroupPolicy;
+  resolveEnrolmentGroup?(subject: PersonKey, group: PersonKey, dn: string, context: GroupCheckContext): Promise<boolean>;
+  checkEnrolmentGroup?(subject: PersonKey, group: PersonKey, context: GroupCheckContext): Promise<boolean>;
   /** Admission only, never an allowance. Shares membership/welcome limits until the physical read settles. */
   withDirectoryRead<T>(subject: PersonKey, read: () => Promise<T>): Promise<T>;
   /** Caller must freshly require the configured Hub admin and confirm the exact effective-access preview first. */
@@ -104,7 +108,7 @@ export function createHubGroupPolicyStore(options: {
   return { read, async withDirectoryRead<T>(subject: PersonKey, read: () => Promise<T>): Promise<T> {
     const who = validated(person, subject); assert();
     const key = `${who.realm}/${who.objectId}`, count = inflight.get(key) ?? 0;
-    if (count >= 4 || total >= 32) throw new HubGroupPolicyError("unavailable");
+    if (count >= 4 || total >= 32) throw new HubGroupReadOverload();
     inflight.set(key, count + 1); total++;
     try { return await read(); }
     finally {
@@ -112,6 +116,28 @@ export function createHubGroupPolicyStore(options: {
       if (left) inflight.set(key, left); else inflight.delete(key);
       total--;
     }
+  }, async resolveEnrolmentGroup(subject, group, dn, incoming) {
+    const target = validated(person, group), who = validated(person, subject), ctx = context(incoming), before = read(); assert(ctx.current);
+    if (target.realm !== binding.realm || directory.groupPolicy !== "ad-direct-guid" || !directory.resolvePolicyGroup) return false;
+    return this.withDirectoryRead(who, async () => {
+      let result; try { result = await directory.resolvePolicyGroup!(dn); } catch { return false; }
+      assert(ctx.current); if (JSON.stringify(read()) !== JSON.stringify(before)) throw new HubGroupPolicyError("conflict");
+      return result.ok && result.group.key.realm === target.realm && result.group.key.objectId === target.objectId && result.group.dn.toLowerCase() === dn.toLowerCase();
+    });
+  }, async checkEnrolmentGroup(subject, group, incoming) {
+    const who = validated(person, subject), target = validated(person, group), ctx = context(incoming), before = read();
+    assert(ctx.current);
+    if (who.realm !== binding.realm || target.realm !== binding.realm || directory.groupPolicy !== "ad-direct-guid") return false;
+    // withDirectoryRead owns physical admission. An overload remains retryable, not an authoritative scope refusal.
+    return this.withDirectoryRead(who, async () => {
+      const started = now(); let facts: PolicyGroupFacts;
+      try { facts = await directory.readPolicyGroups?.(Object.freeze({ ...who })) ?? { kind: "unknown" }; } catch { facts = { kind: "unknown" }; }
+      assert(ctx.current); if (JSON.stringify(read()) !== JSON.stringify(before)) throw new HubGroupPolicyError("conflict");
+      return facts.kind === "complete" && facts.person.realm === who.realm && facts.person.objectId === who.objectId
+        && Number.isSafeInteger(facts.observedAt) && facts.observedAt >= started && facts.observedAt <= now()
+        && Array.isArray(facts.groups) && facts.groups.length <= 256 && facts.groups.every(id => uuid.safeParse(id).success)
+        && facts.groups.includes(target.objectId);
+    });
   }, replace(input, actor, incoming) {
     const next = parseGroupPolicy(input), who = validated(person, actor), ctx = context(incoming);
     if (who.realm !== binding.realm || next.realm !== binding.realm || next.generation !== binding.generation) throw new HubGroupPolicyError("invalid");
@@ -135,7 +161,7 @@ export function createHubGroupPolicyStore(options: {
     const before = read();
     if (before.state === "never-enabled") return evaluateGroupPolicy(before, who, cap, { kind: "unknown" });
     const key = `${who.realm}/${who.objectId}`, count = inflight.get(key) ?? 0;
-    if (count >= 4 || total >= 32) throw new HubGroupPolicyError("unavailable");
+    if (count >= 4 || total >= 32) throw new HubGroupReadOverload();
     inflight.set(key, count + 1); total++;
     try {
       const started = now(); let facts: PolicyGroupFacts = { kind: "unknown" };
@@ -166,7 +192,7 @@ export function createHubGroupPolicyStore(options: {
     const all = (p: HubGroupPolicy, facts: PolicyGroupFacts) => Object.freeze(Object.fromEntries(GROUP_CAPABILITIES.map((cap) => [cap, evaluateGroupPolicy(p, who, cap, facts)]))) as Readonly<Record<GroupCapability, HubGroupDecision>>;
     if (before.state === "never-enabled") return Object.freeze({ policy: before, decisions: all(before, { kind: "unknown" }) });
     const key = `${who.realm}/${who.objectId}`, count = inflight.get(key) ?? 0;
-    if (count >= 4 || total >= 32) throw new HubGroupPolicyError("unavailable");
+    if (count >= 4 || total >= 32) throw new HubGroupReadOverload();
     inflight.set(key, count + 1); total++;
     try {
       const started = now(); let facts: PolicyGroupFacts = { kind: "unknown" };

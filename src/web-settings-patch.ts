@@ -11,13 +11,15 @@ import type { WebConfig, WebGuestsConfig, WebVerifiedAuthorityConfig } from "./t
 
 export const WEB_TERMINAL_TTL_MINUTES = { min: 1, max: 20 } as const;
 /** What Settings → Web may write; everything else under web: / web_terminal: is fleet.yaml's. */
-export const WEB_SETTINGS_BODY_KEYS = ["notify_login", "experimental", "echo_to_channel", "log_tab", "usage_report_on_public_link", "office_levels", "preview_cdn", "login_qr", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
+export const WEB_SETTINGS_BODY_KEYS = ["notify_login", "experimental", "echo_to_channel", "log_tab", "log_thinking", "usage_report_on_public_link", "office_levels", "preview_cdn", "login_qr", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
 
 export type WebSettingsBody = {
   echo?: boolean;
   notifyLogin?: WebConfig["notify_login"];
   /** #1218: the Log tab on (true) or off (false). */
   logTab?: boolean;
+  /** AGEND-181: thinking in the chat timeline (web.log_thinking; default off). */
+  logThinking?: boolean;
   /** #2122: the usage report over the temporary public link (web.usage_report_on_public_link). */
   usageOnPublicLink?: boolean;
   /** #2661: Office levels (web.office_levels). */
@@ -28,6 +30,8 @@ export type WebSettingsBody = {
   loginQr?: boolean;
   publicLink?: NonNullable<WebConfig["public_link"]>;
   session: Record<string, number | null> | null;
+  /** #3708: `session.public_link` — the public link's own limits (idle_minutes, absolute_hours). */
+  publicLinkSession?: Record<string, number | null> | null;
   terminal: Record<string, boolean | number | null> | null;
   /** #1920 phase 3: guest sign-in (Settings → Web sign-ins → Guests). */
   guests?: GuestsPatch;
@@ -42,6 +46,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   if (patch.notify_login !== undefined && typeof patch.notify_login !== "boolean" && patch.notify_login !== "dm") return { error: "notify_login must be a boolean" };
   if (patch.echo_to_channel !== undefined && typeof patch.echo_to_channel !== "boolean") return { error: "echo_to_channel must be a boolean" };
   if (patch.log_tab !== undefined && typeof patch.log_tab !== "boolean") return { error: "log_tab must be a boolean" };
+  if (patch.log_thinking !== undefined && typeof patch.log_thinking !== "boolean") return { error: "log_thinking must be a boolean" };
   if (patch.usage_report_on_public_link !== undefined && typeof patch.usage_report_on_public_link !== "boolean") return { error: "usage_report_on_public_link must be a boolean" };
   if (patch.office_levels !== undefined && typeof patch.office_levels !== "boolean") return { error: "office_levels must be a boolean" };
   if (patch.preview_cdn !== undefined && typeof patch.preview_cdn !== "boolean") return { error: "preview_cdn must be a boolean" };
@@ -52,7 +57,8 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   // #2793: its one feature, Canvas Worker effects, was removed; a stale page's switch is refused, not stored.
   if (patch.experimental !== undefined) return { error: "Canvas Worker effects were removed; experimental has nothing to set" };
   const session = webSessionPatch(patch.session);
-  if (session === "invalid") return { error: "session must be { local: { absolute_hours?, idle_hours? } } with numbers or null" };
+  const publicLinkSession = webPublicLinkSessionPatch(patch.session);
+  if (session === "invalid" || publicLinkSession === "invalid") return { error: "session must be { local?: { absolute_hours?, idle_hours? }, public_link?: { absolute_hours?, idle_minutes? } } with numbers or null" };
   const terminal = webTerminalPatch(patch.web_terminal);
   if (terminal === "invalid") return { error: "web_terminal must be { enabled?: boolean|null, ttl_minutes?: 1..20|null }" };
   const guests = guestsPatch(patch.guests);
@@ -63,6 +69,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
     ...(patch.notify_login !== undefined ? { notifyLogin: patch.notify_login as WebConfig["notify_login"] } : {}),
     ...(patch.echo_to_channel !== undefined ? { echo: patch.echo_to_channel as boolean } : {}),
     ...(patch.log_tab !== undefined ? { logTab: patch.log_tab as boolean } : {}),
+    ...(patch.log_thinking !== undefined ? { logThinking: patch.log_thinking as boolean } : {}),
     ...(patch.usage_report_on_public_link !== undefined ? { usageOnPublicLink: patch.usage_report_on_public_link as boolean } : {}),
     ...(patch.office_levels !== undefined ? { officeLevels: patch.office_levels as boolean } : {}),
     ...(patch.preview_cdn !== undefined ? { previewCdn: patch.preview_cdn as boolean } : {}),
@@ -70,6 +77,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
     ...(patch.public_link !== undefined ? { publicLink: patch.public_link as NonNullable<WebConfig["public_link"]> } : {}),
     ...(guests ? { guests } : {}),
     ...(verifiedAuthority ? { verifiedAuthority } : {}),
+    ...(publicLinkSession ? { publicLinkSession } : {}),
     session, terminal,
   };
 }
@@ -226,17 +234,24 @@ export function applyVerifiedAuthorityPatch(current: WebVerifiedAuthorityConfig 
   return { next: Object.keys(next).length ? next : undefined, changes };
 }
 
-/** `session`: `{ local: { absolute_hours?, idle_hours? } }` with numbers or null — the local limits only. */
+/** `session`: `{ local?: {…}, public_link?: {…} }` — its `local` part, `{ absolute_hours?, idle_hours? }` with numbers or null. */
 export function webSessionPatch(raw: unknown): Record<string, number | null> | null | "invalid" {
+  return sessionPart(raw, "local", ["absolute_hours", "idle_hours"]);
+}
+/** #3708: its `public_link` part, `{ absolute_hours?, idle_minutes? }` with numbers or null (bounds: the validator's). */
+export function webPublicLinkSessionPatch(raw: unknown): Record<string, number | null> | null | "invalid" {
+  return sessionPart(raw, "public_link", ["absolute_hours", "idle_minutes"]);
+}
+function sessionPart(raw: unknown, part: "local" | "public_link", keys: readonly string[]): Record<string, number | null> | null | "invalid" {
   if (raw === undefined) return null;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "invalid";
-  if (Object.keys(raw).some(k => k !== "local")) return "invalid";
-  const local = (raw as { local?: unknown }).local;
-  if (local === undefined) return null;
-  if (!local || typeof local !== "object" || Array.isArray(local)) return "invalid";
+  if (Object.keys(raw).some(k => k !== "local" && k !== "public_link")) return "invalid";
+  const value = (raw as Record<string, unknown>)[part];
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "invalid";
   const out: Record<string, number | null> = {};
-  for (const [k, v] of Object.entries(local)) {
-    if ((k !== "absolute_hours" && k !== "idle_hours") || !(v === null || (typeof v === "number" && Number.isFinite(v)))) return "invalid";
+  for (const [k, v] of Object.entries(value)) {
+    if (!keys.includes(k) || !(v === null || (typeof v === "number" && Number.isFinite(v)))) return "invalid";
     out[k] = v as number | null;
   }
   return Object.keys(out).length ? out : null;

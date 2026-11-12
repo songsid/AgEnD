@@ -1,0 +1,33 @@
+{
+  "phase": "rig preparation only; unlaunched",
+  "productSourceBase": "3f874faefe185dc45e16a906f9eb4c3049dc3136",
+  "target": "alpha.16, after alpha.15 rehearsal and explicit timed GO",
+  "files": {
+    "scripts/manual/hub-enrolment-code-campaign/Dockerfile": "bd7bf2395de32d270c6265619ad35b50e2830b5800af44e0ec78f4dec9feebf1",
+    "scripts/manual/hub-enrolment-code-campaign/README.md": "af40d6efd46fa70ae67c103dcba4a9a6a6a8d951c90b68fede2c11fdb1a0f768",
+    "scripts/manual/hub-enrolment-code-campaign/capacity.mts": "7069e9da41d70afa990d00bbfe59ac3bf4721e9f4246d54224ad138ed8fbd09e",
+    "scripts/manual/hub-enrolment-code-campaign/entry.mts": "9ffe46703c52366bd0edda517ec3ce9c952bc7421c8cfd813b1004dbd00ab5db",
+    "scripts/manual/hub-enrolment-code-campaign/fleets.mts": "67145693f8273b1dca39425b5e8841322b1da8246be4255d1c576977299a2e7d",
+    "scripts/manual/hub-enrolment-code-campaign/guard.d.mts": "9e6e64873bed34f89d0b56c7fb7675b16354f59113c906cc1f8e0afef6f919cd",
+    "scripts/manual/hub-enrolment-code-campaign/guard.mjs": "4ae1084e17f4aff9fc0d73734b490820c8c2fd4cc68b846d1a6792e2e814ab4a",
+    "scripts/manual/hub-enrolment-code-campaign/run.sh": "71307d757dda833805cc59096bef5cf92b2938e54304c53dac10d5756088bf91",
+    "tests/hub-enrolment-campaign-guard.test.ts": "4698c7b520eaa63233f2722bf0896eb14e8dcdb58b3f190912e021c1d5406a09"
+  },
+  "verification": {
+    "interlockTests": 5,
+    "isolatedGuardReversals": 5,
+    "shellSyntax": "pass",
+    "mjsSyntax": "pass",
+    "mtsStaticParse": 3,
+    "nativeSourceTypes": "pass",
+    "nativeTestTypes": "pass",
+    "changelogFragments": 387
+  },
+  "executedHeavyCampaign": false,
+  "runtimeScriptsExecuted": false,
+  "pending": [
+    "landed dependency sync and current candidate",
+    "explicit timed Leader GO",
+    "all browser/container/runtime/capacity assertions and PNG inspection"
+  ]
+}

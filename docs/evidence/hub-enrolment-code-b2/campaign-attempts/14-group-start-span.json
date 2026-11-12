@@ -1,0 +1,46 @@
+{
+  "source": "98c86bd9f378ee646310a6e1ead2199b47954142",
+  "attempt": "dacd6ee4-3fa9-4375-8b7b-8201d15a835e",
+  "verdict": "failed",
+  "error": "Error: withgroups starts inside 60 seconds",
+  "checks": 463,
+  "waves": [
+    {
+      "n": 20,
+      "groups": 0,
+      "authenticationMs": null,
+      "startSpanMs": 10756,
+      "elapsedMs": 17622,
+      "uses": 20,
+      "everConnected": 20,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 548933632,
+      "databaseBytes": 847872,
+      "walBytes": 4243632
+    },
+    {
+      "n": 50,
+      "groups": 0,
+      "authenticationMs": 6824,
+      "startSpanMs": 47576,
+      "elapsedMs": 56148,
+      "uses": 50,
+      "everConnected": 70,
+      "controlledHeldEligibility": 0,
+      "hubAndFleetsRss": 569749504,
+      "databaseBytes": 1548288,
+      "walBytes": 4243632
+    }
+  ],
+  "queueTextObserved": 0,
+  "clientQueueRetries": 12,
+  "cleaned": true,
+  "scope": "119 protocol tests passed; all8 actual refusal views;20 and natural50 passed. All53 combined group-wave links current, but push span exceeded60s and no visible queue proof. Style/rollback not reached. Ended-code screenshots also retain a misleading generic local-authorization status, corrected separately.",
+  "logs": {
+    "protocol.log": "7c02ef046c957879c666e5e9a45efb4d83b9b6bcebe3b395ef81b7b9ebc5bebc",
+    "ui-capacity.log": "dbd73768d2a8e192bf9d69dc1802bb0ca39eaecf67ba86908a0652362c350a39",
+    "receipt-runtime.json": "997789e9ac44f3838abd907b5822eae85fbbf5821ca0042d581c299cf5f4c443",
+    "receipt.json": "4e060b6ecabe6aba1b95b0cd7abd5875ceae3d23384c6e7a969ef295edd84eb5"
+  },
+  "next": "Presentation-only terminal-priority fix. Harness uses5 complete machine flights; all5 browser consents are ready before controlled pool hold; group machines enter before other machines. Limits, deadlines,60s start criterion and host thresholds unchanged."
+}

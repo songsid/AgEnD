@@ -1,0 +1,43 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-composition-3637.test.ts (11 tests | 1 failed) 352ms
+   × a child navigation A → B → A cannot revive the original handoff 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-composition-3637.test.ts > a child navigation A → B → A cannot revive the original handoff
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "beta",
+      Object {
+        "files": Array [],
+        "reply": null,
+        "text": "unsent",
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/web-chat-popout-composition-3637.test.ts:70:36
+     68|   nav.navigate("/ui/log/beta"); nav.navigate("/ui/chat/beta");
+     69|   fire(p.window, "message", { source: parent, origin: "https://fleet.e…
+     70|   expect(chat.acceptPaneDraft).not.toHaveBeenCalled();
+       |                                    ^
+     71| });
+     72|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 passed (11)
+   Start at  11:20:51
+   Duration  735ms (transform 395ms, setup 99ms, import 124ms, tests 352ms, environment 0ms)
+

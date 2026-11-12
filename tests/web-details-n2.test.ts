@@ -353,12 +353,14 @@ describe("the Settings tab of an agent (Details & settings)", () => {
     expect(pg.root.querySelector("#ap-panel-channel #cl-tp")).not.toBeNull();
     expect(pg.root.querySelector("#ap-panel-runtime #cl-be")).not.toBeNull();
   });
-  it("the sidebar's ⚙ goes to Basic info in one step, and the row itself still opens the chat", async () => {
+  it("the sidebar's Settings action goes to Basic info, and the row itself still opens the chat", async () => {
     const pg = await app("/ui/chat/web-dev");
     const row = pg.root.querySelectorAll(".inst-nav .v-li").find((li: any) => li.querySelector(".inst-name")?.textContent === "web-dev");
     expect(row.querySelector("a.inst").getAttribute("href")).toBe("/ui/chat/web-dev");
-    expect(row.querySelector("a.inst-gear").getAttribute("href")).toBe("/ui/fleet/agent/web-dev?cat=basic");
-    expect(row.querySelector("a.inst-gear").getAttribute("aria-label")).toBe("Settings of web-dev");
+    fire(row.querySelector(".inst-row-menu > button"), "click"); await settle();
+    const settings = row.querySelectorAll('[role="menuitem"]').find((item: any) => item.textContent === "Settings");
+    expect(settings.querySelector(".icon")).not.toBeNull(); fire(settings, "click"); await settle();
+    expect(pg.window.location.pathname + pg.window.location.search).toBe("/ui/fleet/agent/web-dev?cat=basic");
   });
 });
 

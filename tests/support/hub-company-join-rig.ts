@@ -121,7 +121,7 @@ export async function companyJoinRig(directoryListening: (port: number) => void,
           resolve({ status: res.statusCode!, body, text, cookie: (res.headers["set-cookie"]?.[0] ?? "").split(";")[0]!, headers: res.headers });
         });
       });
-      req.setTimeout(5000, () => req.destroy(new Error("Owned Hub fixture request timed out")));
+      req.setTimeout(5000, () => req.destroy(new Error(`Owned Hub fixture ${method} ${path.split("?")[0]} request timed out`)));
       req.on("error", reject); req.end(bytes);
     });
     const signIn = async (login: string): Promise<JoinBrowser> => {

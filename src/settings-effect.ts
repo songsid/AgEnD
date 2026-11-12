@@ -312,6 +312,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (parsed.notifyLogin !== undefined) setNoticeMode(after.fleet, "login", parsed.notifyLogin);
     if (parsed.echo !== undefined) after.fleet.web.echo_to_channel = parsed.echo;
     if (parsed.logTab !== undefined) after.fleet.web.log_tab = parsed.logTab;
+    if (parsed.logThinking !== undefined) after.fleet.web.log_thinking = parsed.logThinking;
     if (parsed.usageOnPublicLink !== undefined) after.fleet.web.usage_report_on_public_link = parsed.usageOnPublicLink;
     if (parsed.officeLevels !== undefined) after.fleet.web.office_levels = parsed.officeLevels;
     if (parsed.previewCdn !== undefined) after.fleet.web.preview_cdn = parsed.previewCdn;
@@ -321,6 +322,13 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       const local: Record<string, any> = { ...cfg.web?.session?.local, ...sessionPatch };
       for (const k of Object.keys(local)) if (local[k] === null) delete local[k];
       after.fleet.web.session = { ...cfg.web?.session, local };
+    }
+    if (parsed.publicLinkSession) {
+      const pl: Record<string, any> = { ...cfg.web?.session?.public_link, ...parsed.publicLinkSession };
+      for (const k of Object.keys(pl)) if (pl[k] === null) delete pl[k];
+      const session: Record<string, any> = { ...after.fleet.web.session ?? cfg.web?.session };
+      if (Object.keys(pl).length) session.public_link = pl; else delete session.public_link;
+      after.fleet.web.session = session;
     }
     if (terminalPatch) {
       const wt: Record<string, any> = { ...cfg.web_terminal, ...terminalPatch };

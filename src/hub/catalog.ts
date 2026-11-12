@@ -157,7 +157,9 @@ export class HubCatalogService {
         if (fleetPermit.source !== "legacy" && (fleet.status !== "active" || !fleet.credentialHash)) throw new HubProtocolError("revoked");
         // A legacy fleet permit already binds the never-enabled/repair policy and epoch. It creates no provenance.
         if (fleetPermit.source !== "legacy") for (const exposure of publishing) {
-          prepared.push(await groups.prepareEnrollment({ kind: "exposure", id: exposure.id, revision: exposure.revision, owner: exposure.owner }, ctx));
+          const permit = await groups.prepareEnrollment({ kind: "exposure", id: exposure.id, revision: exposure.revision, owner: exposure.owner }, ctx);
+          if (fleetPermit.source === "code" && permit.source === "legacy") throw new HubGroupAuthorizationError("denied");
+          prepared.push(permit);
         }
       }
       preparedAll = true;

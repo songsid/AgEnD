@@ -46,6 +46,14 @@ describe("float URLs and preferences stay topology-only", () => {
 });
 
 describe("a dock remains a two-agent topology", () => {
+  it("retiring a floating layout removes its stale rectangle and floating owner", () => {
+    const w: any = { ...model.openBeside(null, { panel: "chat", instance: "alpha" }, "beta"), layout: "float", floating: "b", rect: { x: 20, y: 30, width: 560, height: 460 } };
+    for (const zone of ["left", "right", "top", "bottom"]) {
+      const dock: any = model.dockWorkspace(w, "a", zone, "beta");
+      expect(dock).not.toHaveProperty("floating"); expect(dock).not.toHaveProperty("rect");
+      expect(dock.a).toBe(w.a); expect(dock.b).toBe(w.b);
+    }
+  });
   it("re-docks or swaps the existing pane without duplicating or remounting either agent", () => {
     const w: any = model.openBeside(null, { panel: "log", instance: "alpha" }, "beta");
     const dock: any = model.dockWorkspace(w, "a", "left", "beta");

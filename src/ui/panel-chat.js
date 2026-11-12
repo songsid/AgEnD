@@ -130,9 +130,42 @@ export function linkWorkBarCss(doc = typeof document !== "undefined" ? document 
 }
 linkWorkBarCss();
 
+import { activityInfo, activityInfoStore, activityOffered, activityPrefs, composeActivity, mountActivity, observeActivity, setActivityOn, setActivityThinking } from "./chat-activity.js";
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composers = new Map(); // agent → current mounted refs, never a retained thread's stale closure
 const composerField = (name) => composers.get(name)?.input.current || null;
+/**
+ * #3727 (M-2973): where the viewer's 「引用給 Agent」 can put a marked-up picture — this chat's composer (the new PNG as an
+ * attachment, and a reply to the message the picture is in), and in split chat the other pane's (the PNG, and a quote
+ * line naming the original, since a reply can only point into its own chat). Null when this chat has no composer to put
+ * it in (nothing to annotate for).
+ */
+function annotateFor(name, img) {
+  if (!store || typeof File !== "function") return null;
+  const key = img?.closest?.(".msg[data-key]")?.getAttribute("data-key") || "";
+  const message = (store.state.msgs[name] || []).find((x) => msgKey(x) === key) || null;
+  const field = () => composerField(name);
+  const targets = [{ key: "self", label: t("lbAnnotateQuote.self"), quote: (file, live = () => true) => {
+    if (!field() || !live()) return false;
+    store.addFiles(name, [file]);
+    if (message) store.startReply(name, message);
+    field()?.focus();
+    return true;
+  } }];
+  const other = (appStore.get().chatWorkspace?.quoteTargets?.(name) || [])[0];
+  if (other && other.name) {
+    // insertPaneQuote heads the quote with the source chat's name itself: this is only what the message said (or the
+    // picture's name, for a message with no words).
+    const what = String(message?.text || "").replace(/\s+/g, " ").trim().slice(0, 160) || img?.querySelector?.("img")?.getAttribute("alt") || "📷";
+    // Prism on #3735: the picture and its quote go in under the pane's one live check (insert's commit) — a pane
+    // replaced or retired meanwhile gets neither, and the editor stays open.
+    targets.push({ key: "other", label: t("lbAnnotateQuote.other", other.name),
+      quote: async (file, live = () => true) => (await other.insert(what, () => store.addFiles(other.name, [file]), live)) === true });
+  }
+  return { targets, notice: (text) => toast(text, false) };
+}
+// #3727: the two quote targets' words, here so a page with an older chat dictionary still has them.
+register("lbAnnotateQuote", { en: { self: "Quote to agent", other: "Quote to {0}" }, "zh-TW": { self: "引用給 Agent", other: "引用到 {0}" } });
 /** Cross-pane quote is plain draft text. It never copies a message id, executes a command or submits the composer. */
 export function insertPaneQuote(name, source, text, current = () => true) {
   const binding = composers.get(name), field = binding?.input.current;
@@ -159,11 +192,72 @@ export function insertPaneQuote(name, source, text, current = () => true) {
 }
 export const paneComposerReady = name => !!composerField(name);
 
+/** A scoped pane can change width without changing text. Keep its existing 240px composer cap and IME ownership. */
+function observeComposerWidth(field, current, composing) {
+  if (!field || typeof ResizeObserver !== "function") return () => {};
+  let alive = true, width = -1, deferred = false;
+  const resize = () => {
+    if (!alive || !current()) return;
+    const next = field.getBoundingClientRect().width;
+    if (next === width && !deferred) return;
+    if (composing()) { deferred = true; return; }
+    width = next; deferred = false;
+    field.style.height = "auto";
+    if (field.value) field.style.height = `${Math.min(field.scrollHeight, 240)}px`;
+  };
+  let frame = null;
+  const schedule = () => {
+    if (frame !== null || (field.getBoundingClientRect().width === width && !deferred)) return;
+    // Height writes happen outside ResizeObserver delivery, avoiding a self-generated resize loop.
+    frame = setTimeout(() => { frame = null; resize(); }, 0);
+  };
+  const ended = () => queueMicrotask(resize);
+  const observer = new ResizeObserver(schedule); observer.observe(field);
+  field.addEventListener("compositionend", ended); field.addEventListener("blur", ended); resize();
+  return () => { alive = false; clearTimeout(frame); observer.disconnect(); field.removeEventListener("compositionend", ended); field.removeEventListener("blur", ended); };
+}
+
+
+/** #3637: private, write-only local draft handoff; never send, upload or share an outgoing queue. */
+export const popoutDraftVersion = 1;
+export const popoutDraftReady = () => !!store && ["captureDraft", "draftCurrent", "clearCapturedDraft", "acceptDraft"].every(key => typeof store[key] === "function");
+export function capturePaneDraft(name) {
+  const owner = store;
+  if (!popoutDraftReady() || guestPage() || composers.get(name)?.composing) return null;
+  const ticket = owner.captureDraft(name);
+  const sameField = () => !composers.get(name)?.composing && (!composerField(name) || composerField(name).value === ticket.payload.text);
+  if (!sameField()) return null;
+  return { payload: ticket.payload, current: () => store === owner && owner.draftCurrent(ticket) && sameField(),
+    clear: () => store === owner && owner.clearCapturedDraft(ticket) };
+}
+export function acceptPaneDraft(name, data) {
+  const field = composerField(name);
+  if (!popoutDraftReady() || guestPage() || composers.get(name)?.composing || !field || field.disabled || field.readOnly || field.isConnected === false) return false;
+  return store.acceptDraft(name, data);
+}
+
+
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
 
 /** The page's chat store (boot creates it). Exported for the tests. */
 export let store = null;
+
+/**
+ * AGEND-181/197: the thread's rows with the activity block put in — each turn's steps above the reply they produced, the
+ * turn in progress at the end — for an admin session, when this browser shows activity. Else the rows. (Which agents have
+ * anything: each one's tool_progress, the feed's answer.)
+ */
+const activityShown = () => activityOffered() && activityPrefs.get().on;
+const agentBusy = (name) => R().isBusy(store.state.exec[name]);
+/** Epoch ms the agent began working, by the working bar's own clock (a monotonic one), or null. */
+const agentSince = (name) => { const t = store.state.workingSince[name]; return t == null ? null : Date.now() - (performance.now() - t); };
+const rowsOf = (name) => (activityShown() ? composeActivity(name, store.threadRows(name), Date.now(), { busy: agentBusy(name), since: agentSince(name) }) : store.threadRows(name));
+/** What a chat's activity blocks need to draw: its paths to shorten, and whether thinking is shown. */
+const activityCtx = (name) => () => {
+  const info = activityInfo(name);
+  return { paths: info ? { cwd: info.cwd, home: info.home } : null, thinking: activityPrefs.get().thinking && !!info && info.thinking === true };
+};
 
 // ── Announcements: one polite, visually hidden line for the coarse events only (a reply arrived, the agent started,
 // finished, or waits on you). Messages themselves are not read out as they arrive; the list is a log to browse.
@@ -342,12 +436,21 @@ function useResolvedMode(lease) {
 
 function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const pane = paneContext.usePane?.(), paneNow = useRef(pane); paneNow.current = pane;
-  const bindings = useRef({ input: { current: null }, box: { current: null } }).current;
+  const bindings = useRef({ input: { current: null }, box: { current: null }, composing: false }).current;
   const ids = pane ? Object.fromEntries(["msgIn", "attachBtn", "stopBtn", "sendBtn", "cmdPalette"].map(key => [key, `pane-${pane.id}-${key}`])) : {};
   useLayoutEffect(() => {
     composers.set(name, bindings);
-    return () => { if (composers.get(name) === bindings) composers.delete(name); };
+    const field = bindings.input.current, start = () => { bindings.composing = true; }, end = () => { bindings.composing = false; };
+    field?.addEventListener("compositionstart", start); field?.addEventListener("compositionend", end); field?.addEventListener("blur", end);
+    return () => {
+      field?.removeEventListener("compositionstart", start); field?.removeEventListener("compositionend", end); field?.removeEventListener("blur", end);
+      if (composers.get(name) === bindings) composers.delete(name);
+    };
   }, [name]);
+  useLayoutEffect(() => {
+    if (!pane && new URLSearchParams(location.search).get("presentation") !== "popout") return;
+    return observeComposerWidth(bindings.input.current, () => composers.get(name) === bindings, () => bindings.composing);
+  }, [name, !!pane]);
   const attachmentsSupported = supportsInstanceFeature(inst,"attachments");
   const names = useStore(namesStore);   // #1722: which name leads (the title)
   // #1629: this agent's theme, on this surface only; redrawn when the themes, the viewer's switch or the mode move.
@@ -370,6 +473,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   };
   const [wrap, setWrap] = useState(codeWrap);
   const wide = useStore(chatWide).on;
+  useStore(activityPrefs); useStore(activityInfoStore);          // AGEND-181: the ⋯ menu's Show activity / Show thinking
   const view = useRef(null), split = useRef(null), thread = useRef(null), bg = useRef(null), effectSurface = useRef(null);
   useLayoutEffect(() => { applyTheme(view.current, theme, mode); }, [themeKey, mode]);
   useLayoutEffect(() => {
@@ -436,6 +540,11 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ...themeMenuItems(name),
     // #2117: its ambient — why it is not showing here (with the way to change that), and a person's Clear.
     ...ambientMenuItems(name, { publicLink: document.body.dataset.publicLink === "1", clear: clearAmbient }),
+    // AGEND-181: the activity timeline above each reply (this browser's choice), when the Log is on.
+    ...(activityOffered() && activityInfo(name)?.level !== "off" ? [
+      { key: "activity", checkbox: true, checked: activityPrefs.get().on, label: t("act.menuActivity"), onSelect: () => setActivityOn(!activityPrefs.get().on) },
+      ...(activityInfo(name)?.thinking ? [{ key: "thinking", checkbox: true, checked: activityPrefs.get().thinking, disabled: !activityPrefs.get().on, label: t("act.menuThinking"), onSelect: () => setActivityThinking(!activityPrefs.get().thinking) }] : []),
+    ] : []),
     narrowScreen() ? null : { key: "fullWidth", checkbox: true, checked: wide, label: t("chat.fullWidth"), onSelect: () => setChatWide(!wide) },
     { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: () => setDialog("delete") },
   ];
@@ -456,9 +565,6 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
     <${PanelHeader} title=${inst.runtime === "windows" ? inst.display_name || name : headerName(namesOf(inst || { name }, names.primary))} sub=${sub}
       pageControls=${{ CardMenu, card, navKey, usage: supportsInstanceFeature(inst,"usage") }} pageActions=${[
-        pane && !guest && supportsInstanceFeature(inst,"commands") ? { key: "pane-backend", label: `${mw("backend")}: ${backendLabel(inst.backend)}`, onSelect: () => inst.runtime === "windows" ? navigate(sectionPath("agents")) : pick("backend") } : null,
-        pane && !guest && supportsInstanceFeature(inst,"commands") ? { key: "pane-model", label: t("chat.chipModel", modelText(inst)), onSelect: () => pick("model") } : null,
-        pane && effortChip(inst) && supportsInstanceFeature(inst,"effort") ? { key: "pane-effort", label: t("chat.chipEffort", effortChip(inst)), onSelect: () => pick("effort") } : null,
         ...items]}
       nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
@@ -564,9 +670,10 @@ function threadEntry(name, doc) {
     serverNow: () => Date.now() + store.state.clockSkew,                   // #1823: the deadline is the server's
     panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims,   // #1481, #1704
       openMarkdown: (spec) => openMarkdown(spec) },   // M-2448: a Markdown file in the side panel
-    openImage: openLightbox,                                               // an image, full size, in the page
+    openImage: (links, img) => openLightbox(links, img, annotateFor(name, img)),   // an image, full size, in the page (#3727: with 標註)
     emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
     mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names
+    activity: { mount: (node, group) => mountActivity(node, group, activityCtx(name)) },   // AGEND-181: the timeline's blocks
   });
   e.thread = thread;
   return e;
@@ -577,12 +684,40 @@ function follow(name, thread) {
   // #1682: the same for mention names — asked for the ids the messages carry; when names arrive, drawn again.
   const wantEmojis = (msgs) => { if (emojiIndex && emojiIndex.wants(msgs)) emojiIndex.ensure(); if (mentionIndex) mentionIndex.ensure(msgs); };
   const offs = [];
-  if (emojiIndex) offs.push(emojiIndex.subscribe(() => thread.render(store.threadRows(name))));
-  if (mentionIndex) offs.push(mentionIndex.subscribe(() => thread.render(store.threadRows(name))));
+  if (emojiIndex) offs.push(emojiIndex.subscribe(() => thread.render(rowsOf(name))));
+  if (mentionIndex) offs.push(mentionIndex.subscribe(() => thread.render(rowsOf(name))));
   wantEmojis(store.state.msgs[name]);
+  // AGEND-181/197: the activity feed — this instance's steps while the chat is shown (the Log's own read, live by steps_tick,
+  // or by a poll when the stream has fallen back to polling); switched by this browser's Show activity / Show thinking.
+  // Nothing is read for anyone but an admin session on the local dashboard.
+  let feed = null;
+  const sync = () => {
+    if (activityShown() && !feed) {
+      feed = observeActivity(name, {
+        changed: () => thread.render(rowsOf(name)),
+        streamOn: appStore.get().streamOn,
+        polling: () => globalThis.document?.body?.dataset?.webTransport === "poll" || appStore.get().connection === "polling",
+        wantThinking: () => activityPrefs.get().thinking,
+        working: () => agentBusy(name),
+      });
+      feed.start();
+    } else if (!activityShown() && feed) { feed.stop(); feed = null; }
+    thread.render(rowsOf(name));
+  };
+  if (activityShown()) sync();
+  offs.push(activityPrefs.subscribe(sync));
+  offs.push(() => { if (feed) { feed.stop(); feed = null; } });
+  // the agent starting or stopping work redraws the live line (a turn with nothing to show yet is only a "Working…"
+  // line, and the reply row that ends it may come first); a status poll that changes nothing here draws nothing.
+  let wasBusy = agentBusy(name);
   offs.push(store.subscribe((instance, kind) => {
+    // A fleet-wide status poll says `null`; an activity event, the instance.
+    if ((instance === null || instance === name) && wasBusy !== agentBusy(name)) {
+      wasBusy = !wasBusy;
+      if (feed) { thread.render(rowsOf(name)); feed.nudge(); }
+    }
     if (instance !== name) return;
-    if (kind === "msgs") { thread.render(store.threadRows(name)); wantEmojis(store.state.msgs[name]); }
+    if (kind === "msgs") { thread.render(rowsOf(name)); wantEmojis(store.state.msgs[name]); if (feed) feed.nudge(); }   // a message came or went: read the steps now
     else if (kind === "progress") thread.progress();                       // an upload moved: its bar, in place
     else if (kind === "sent") thread.jumpLatest();
   }));
@@ -618,7 +753,7 @@ function Thread({ name, label = name, th, bindings }) {
     thread.attach(sc);
     th.current = thread;
     // Up to date, at the reader's place (the bottom unless they had scrolled up); a kept one's cards say what they can do.
-    thread.render(store.threadRows(name), { restore: store.state.scrollMemo[name] ?? null });
+    thread.render(rowsOf(name), { restore: store.state.scrollMemo[name] ?? null });
     if (kept) thread.refreshCards();
     const unfollow = follow(name, thread);
     const onScroll = () => { store.state.scrollMemo[name] = thread.onScroll(); };
@@ -820,7 +955,11 @@ function PromptText({ p, action }) {
   </form>`;
 }
 
-/** "<name> is working… 0:42", "looks stuck", "Stopping…", or what it waits on at its terminal. Text only. */
+/**
+ * "<name> is working… 0:42", "looks stuck", "Stopping…", or what it waits on at its terminal. Text only.
+ * #3724: the strip is always there — idle it keeps its height and shows nothing (no button), so a state change only changes
+ * what is inside it and never moves the thread or the composer (chat-work-bar.css fixes the height; long text stays one line).
+ */
 function WorkBar({ name, lease, exec, awaiting, workingLabel, ids }) {
   const s = store.state;
   const busy = R().isBusy(exec) ? exec : "";
@@ -831,7 +970,7 @@ function WorkBar({ name, lease, exec, awaiting, workingLabel, ids }) {
     const h = lease.interval(() => tick(n => n + 1), 1000);      // ticks only while it shows, cleared with the lease
     return () => lease.clear(h);
   }, [kind, lease]);
-  if (!kind) return null;
+  if (!kind) return html`<div class="work-bar idle" aria-hidden="true"></div>`;
   // #1629: the agent's own working label (its theme), shown as text — only for "working", never for the other states.
   const label = kind === "working" && workingLabel ? workingLabel
     : t(kind === "stuck" ? "chat.stuck" : kind === "stopping" ? "chat.stopping" : kind === "awaiting" ? "chat.awaiting" : "chat.working", name);

@@ -224,7 +224,7 @@ export function guestSeesMessage(m: WebChatMessage, guest: GuestRequest, scope: 
  * guest may see the message it quotes — otherwise just that it replies to an earlier message (`hidden`).
  */
 export function guestMessage(m: WebChatMessage, guest: GuestRequest, scope?: ReadonlySet<string>): Record<string, unknown> {
-  const { from, channel: _channel, messageId, delivery, seenSeq: _seen, replyTo, ...rest } = m;
+  const { from, channel: _channel, messageId, anchor, delivery, seenSeq: _seen, replyTo, ...rest } = m;
   void _channel; void _seen;
   const mine = from === accountOf(guest.owner);
   // #2085 review: a click's `text` is what the agent was given — the button's value too, which the platform never
@@ -233,7 +233,7 @@ export function guestMessage(m: WebChatMessage, guest: GuestRequest, scope?: Rea
   const quotedRow = replyTo && scope ? guest.history?.()?.find(m.instance, replyTo.boot, replyTo.id) : undefined;
   const quote = !replyTo ? {} : quotedRow && scope && guestSeesMessage(quotedRow, guest, scope)
     ? { replyTo } : { replyTo: { boot: replyTo.boot, id: replyTo.id, hidden: true } };
-  return { ...rest, ...click, ...quote, ...(mine ? { mine: true } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && delivery ? { delivery } : {}) };
+  return { ...rest, ...click, ...quote, ...(mine ? { mine: true } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && anchor ? { anchor } : {}), ...(mine && delivery ? { delivery } : {}) };
 }
 const visibleList = (rows: readonly WebChatMessage[], guest: GuestRequest, scope: ReadonlySet<string>) =>
   rows.filter((m) => guestSeesMessage(m, guest, scope)).map((m) => guestMessage(m, guest, scope));

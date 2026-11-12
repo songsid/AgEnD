@@ -6,7 +6,7 @@ import { settingsFingerprint } from "./settings-transaction.js";
 import { STATUS_EMOJI_CONFIG_KEYS } from "./status-emojis.js";
 import { quickLinkEffective } from "./authority/web-authority.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
-import { LOCAL_SESSION_HOURS, localSessionPolicy } from "./web-session.js";
+import { LOCAL_SESSION_HOURS, localSessionPolicy, PUBLIC_LINK_SESSION_BOUNDS, publicLinkSessionPolicy } from "./web-session.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS } from "./web-appearance-limits.js";
 import { DASHBOARD_FEATURES, SEPARATE_FEATURE_KEYS, dashboardFeatureDefault, featureConfigKey, separateAccessValue, type DashboardFeature } from "./dashboard-permissions.js";
 import { isCodexSpeed } from "./backend/codex-speed.js";
@@ -103,6 +103,9 @@ const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolea
   { path: ["fleet", "web_terminal", "ttl_minutes"], def: 10, looser: (a, b) => b > a },
   // #1218: the Log tab shows each agent's steps on the web (the public link included): turning it on is confirmed.
   { path: ["fleet", "web", "log_tab"], def: false, looser: (a, b) => b === true && a !== true },
+  // AGEND-181/197: thinking in the chat's activity block is OFF unless turned on (and shown only to an admin session, for an
+  // agent whose tool_progress is on). Turning it on is confirmed like the Log itself; turning it off never is.
+  { path: ["fleet", "web", "log_thinking"], def: false, looser: (a, b) => b === true && a !== true },
   // #2122: the usage report over the public link applies at once either way. The default (off) is the gate — a link may
   // be shared with people who should not see 400 days of usage; the switch is reached only from a signed-in session on
   // the dashboard reached directly, and it shows counts and amounts, not content: a second confirmation stops nothing more.
@@ -164,6 +167,27 @@ function sessionChange(old: unknown, next: unknown): Array<[string, unknown, unk
   if (!odd.length && !looser.absolute_hours && !looser.idle_hours) return [];
   // Each key names its own loosening: the absolute limit never depends on idle_hours, and the idle window a longer
   // absolute limit lifts (it was cut to it) is named by absolute_hours, which grew.
+  return changed.filter(k => looser[k] || odd.includes(k)).map(k => [k, a[k], b[k]]);
+}
+const SESSION_PUBLIC_LINK = ["fleet", "web", "session", "public_link"] as const;
+/**
+ * #3708: the public link's limits, judged as sessionChange judges the local ones — by the policy they GIVE with a fixed
+ * hostname (the longest they can give: a quick tunnel only caps them more), so lengthening is always confirmed, even
+ * while no hostname is set (adding one later lets them take effect). Shortening applies directly.
+ */
+function publicLinkSessionChange(old: unknown, next: unknown): Array<[string, unknown, unknown]> | null {
+  if ((old !== undefined && old !== null && !object(old)) || (next !== undefined && next !== null && !object(next))) return null;
+  const a: Record<string, unknown> = object(old) ? old : {}, b: Record<string, unknown> = object(next) ? next : {};
+  const changed = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !same(a[k], b[k]));
+  if (changed.some(k => k !== "absolute_hours" && k !== "idle_minutes")) return null;
+  const before = publicLinkSessionPolicy(a, true), after = publicLinkSessionPolicy(b, true);
+  const looser: Record<string, boolean> = { absolute_hours: after.absoluteMs > before.absoluteMs, idle_minutes: after.idleMs > before.idleMs };
+  const { absoluteHours: ah, idleMinutes: im } = PUBLIC_LINK_SESSION_BOUNDS;
+  const range: Record<string, { min: number; max: number }> = { absolute_hours: ah, idle_minutes: im };
+  const taken = (k: string, v: unknown) => v === undefined || v === null
+    || (typeof v === "number" && Number.isFinite(v) && v >= range[k]!.min && v <= range[k]!.max);
+  const odd = changed.filter(k => !taken(k, b[k]));
+  if (!odd.length && !looser.absolute_hours && !looser.idle_minutes) return [];
   return changed.filter(k => looser[k] || odd.includes(k)).map(k => [k, a[k], b[k]]);
 }
 const GUESTS = ["fleet", "web", "guests"] as const;
@@ -430,6 +454,14 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     if (path.at(-2) === "instances" && old !== undefined && next === undefined) { add(summaryLine(`${settingsDisplay(path.join("."))}: deleted`, settingsDisplay(path.join(".")), ": ", word("deleted"))); return; }
     if (path.length === SESSION_LOCAL.length && SESSION_LOCAL.every((k, i) => path[i] === k)) {
       const looser = sessionChange(old, next);
+      if (looser) {
+        if (looser.length && section !== "secret") section = "access";
+        for (const [key, a, b] of looser) add(changeLine(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`, [settingsDisplay([...path, key].join("."))], a, b, true));
+        return;
+      }
+    }
+    if (path.length === SESSION_PUBLIC_LINK.length && SESSION_PUBLIC_LINK.every((k, i) => path[i] === k)) {
+      const looser = publicLinkSessionChange(old, next);
       if (looser) {
         if (looser.length && section !== "secret") section = "access";
         for (const [key, a, b] of looser) add(changeLine(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`, [settingsDisplay([...path, key].join("."))], a, b, true));

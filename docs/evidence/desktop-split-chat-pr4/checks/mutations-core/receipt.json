@@ -1,0 +1,216 @@
+{
+  "head": "bade66b2261da9c4856f7671fac6ae7f841726b7",
+  "tree": "8ec4c6fa202ca7e3e9461647343ff8b7f1338c37",
+  "inputs": {
+    "3891b33bd411723fc41d3bccf74ab0f7df5b2174385be1c6d9e0735303f9e652": [
+      "src/ui/chat-popout-transport.js",
+      "src/ui/chat-popout-transport.js",
+      "src/ui/chat-popout-transport.js",
+      "src/ui/chat-popout-transport.js",
+      "src/ui/chat-popout-transport.js",
+      "src/ui/chat-popout-transport.js",
+      "src/ui/chat-popout-transport.js",
+      "src/ui/chat-popout-transport.js",
+      "src/ui/chat-popout-transport.js",
+      "src/ui/chat-popout-transport.js",
+      "src/ui/chat-popout-transport.js"
+    ],
+    "441ad2dd999d5d83dbbdcaee168ccf86bbf29363800da847493d0d66e8f1a439": [
+      "src/ui/chat-store.js",
+      "src/ui/chat-store.js",
+      "src/ui/chat-store.js",
+      "src/ui/chat-store.js",
+      "src/ui/chat-store.js"
+    ],
+    "31f4b91d32853d829d7f60ae64df4fea750350cd258bae42ed402fd03183cf3e": [
+      "src/ui/chat-popout.js",
+      "src/ui/chat-popout.js",
+      "src/ui/chat-popout.js",
+      "src/ui/chat-popout.js"
+    ],
+    "2d0b56caa793f2c5a2d22ea7459795d10209acbb328eec63badaae8248cc58bf": [
+      "src/ui/chat-workspace-navigation.js"
+    ],
+    "a87cd5ec9abf85ed67ddb099efb115c1b1003f99ae5b2e11a1a031dad7a647fa": [
+      "src/ui/shared/chat-workspace-model.js"
+    ]
+  },
+  "cases": [
+    {
+      "label": "parent-origin",
+      "path": "src/ui/chat-popout-transport.js",
+      "test": "tests/web-chat-popout-transport-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "parent-window",
+      "path": "src/ui/chat-popout-transport.js",
+      "test": "tests/web-chat-popout-transport-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "viewer-scope",
+      "path": "src/ui/chat-popout-transport.js",
+      "test": "tests/web-chat-popout-transport-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "nonce",
+      "path": "src/ui/chat-popout-transport.js",
+      "test": "tests/web-chat-popout-transport-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "one-use-ack",
+      "path": "src/ui/chat-popout-transport.js",
+      "test": "tests/web-chat-popout-transport-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "parent-detach",
+      "path": "src/ui/chat-popout-transport.js",
+      "test": "tests/web-chat-popout-transport-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "child-detach",
+      "path": "src/ui/chat-popout-transport.js",
+      "test": "tests/web-chat-popout-transport-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "deadline",
+      "path": "src/ui/chat-popout-transport.js",
+      "test": "tests/web-chat-popout-transport-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "child-window",
+      "path": "src/ui/chat-popout-transport.js",
+      "test": "tests/web-chat-popout-transport-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "child-current",
+      "path": "src/ui/chat-popout-transport.js",
+      "test": "tests/web-chat-popout-transport-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "child-ready",
+      "path": "src/ui/chat-popout-transport.js",
+      "test": "tests/web-chat-popout-transport-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "draft-version",
+      "path": "src/ui/chat-store.js",
+      "test": "tests/web-chat-popout-draft-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "ticket-owner",
+      "path": "src/ui/chat-store.js",
+      "test": "tests/web-chat-popout-draft-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "bounded-shape",
+      "path": "src/ui/chat-store.js",
+      "test": "tests/web-chat-popout-draft-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "child-occupied",
+      "path": "src/ui/chat-store.js",
+      "test": "tests/web-chat-popout-draft-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "file-brand",
+      "path": "src/ui/chat-store.js",
+      "test": "tests/web-chat-popout-draft-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "source-pane",
+      "path": "src/ui/chat-popout.js",
+      "test": "tests/web-chat-popout-composition-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "child-navigation-ticket",
+      "path": "src/ui/chat-popout.js",
+      "test": "tests/web-chat-popout-composition-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "old-css",
+      "path": "src/ui/chat-popout.js",
+      "test": "tests/web-chat-popout-composition-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "old-store",
+      "path": "src/ui/chat-popout.js",
+      "test": "tests/web-chat-popout-composition-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    },
+    {
+      "label": "float-menu-retirement",
+      "path": "src/ui/chat-workspace-navigation.js",
+      "test": "tests/web-chat-workspace-docking-navigation-3637.test.ts",
+      "caught": false,
+      "semantic": false,
+      "redundant": true
+    },
+    {
+      "label": "float-dock-retirement",
+      "path": "src/ui/shared/chat-workspace-model.js",
+      "test": "tests/web-chat-workspace-geometry-3637.test.ts",
+      "caught": true,
+      "semantic": true,
+      "redundant": false
+    }
+  ]
+}

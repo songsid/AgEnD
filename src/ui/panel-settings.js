@@ -29,6 +29,7 @@ import "./settings-strings.js";
 import "./settings-shared-strings.js";   // see settings-shared.js: the words Shared agent settings added, which an older settings-strings.js in an open tab lacks
 import "./agent-page-strings.js";   // the confirmation text of the MCP proxy reply
 import "./settings-restart-strings.js";   // S-92: the restart words for a fleet with no chat connection (a file of its own: an open tab may hold an old settings-strings.js)
+import "./settings-public-session-strings.js";   // #3708: the public link's session limits (a file of its own: an open tab may hold the older string files)
 import "./settings-access-strings.js";   // the words Access & security added (settings.webLoginQr…): an older settings-strings.js from a tab that visited Fleet first lacks them (#3061)
 import { UpdatePillMark, UpdateSection } from "./settings-update.js";
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
@@ -43,7 +44,7 @@ import {
   AgentDialog, BackendSelect, BotDialog, ChipList, ClassicDialog, DefaultMark, Feedback, Impact, InEffect, Inherited, Label,
   NewBotDialog, Override, Select, ask, impactText, inAgentDefaults, valueText,
 } from "./settings-dialogs.js";
-import { SharedAgentSettings, sharedNotes } from "./settings-shared.js";
+import { InfoTip, SharedAgentSettings, sharedNotes } from "./settings-shared.js";
 import { QuotaNoticeSettings, quotaNoticeText } from "./settings-quota-notice.js";
 import { SetupWizard } from "./settings-wizard.js";
 import { CreateInstanceDialog } from "./panel-fleet.js";
@@ -1266,6 +1267,7 @@ function WebSection({ ctx, staged, part = "all" }) {
   const { schema } = ctx;
   const [accessTab, setAccessTab] = useSettingsTabs("access", "overview");
   const web = ctx.fleet.web || {}, local = (web.session && web.session.local) || {}, term = ctx.fleet.web_terminal || {};
+  const plSession = (web.session && web.session.public_link) || {};   // #3708
   // Over the public link the fields read only; the Guests and Web authority cards are not offered (the server never
   // serves their reads there).
   const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
@@ -1273,34 +1275,38 @@ function WebSection({ ctx, staged, part = "all" }) {
     notify: noticeMode(web.notify_login),
     echo: web.echo_to_channel ?? true,
     log: web.log_tab === true,                                                  // #1218: off by default
+    thinking: web.log_thinking === true,                                        // AGEND-197: off by default
     usagePub: web.usage_report_on_public_link === true,                         // #2122: off by default
     levels: web.office_levels !== false,                                        // #2661: on by default
     cdn: web.preview_cdn === true,                                              // #2911 (7): off by default
     loginQr: web.login_qr === true,                                             // #3061 (P2b): off by default
     pub: { allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2", hostname: (web.public_link && web.public_link.hostname) ?? "", tunnel_token_env: (web.public_link && web.public_link.tunnel_token_env) ?? "", origin_port: (web.public_link && web.public_link.origin_port) ?? 19282, auto_open: (web.public_link && web.public_link.auto_open) ?? false },
     session: { absolute_hours: local.absolute_hours ?? null, idle_hours: local.idle_hours ?? null },
+    plSession: { absolute_hours: plSession.absolute_hours ?? null, idle_minutes: plSession.idle_minutes ?? null },
     terminal: { enabled: term.enabled ?? null, ttl_minutes: term.ttl_minutes ?? null },
   }), []);
   const text = (v) => (v === null || v === undefined ? "" : String(v));
   /** #2347: a field's row class: `s-dirty` while it differs from what is saved (the draft may come from before). */
-  const savedForm = useMemo(() => ({ notify: String(original.notify), echo: original.echo, log: original.log, usagePub: original.usagePub, levels: original.levels, cdn: original.cdn, loginQr: original.loginQr, pub: original.pub.allow_public,
+  const savedForm = useMemo(() => ({ notify: String(original.notify), echo: original.echo, log: original.log, thinking: original.thinking, usagePub: original.usagePub, levels: original.levels, cdn: original.cdn, loginQr: original.loginQr, pub: original.pub.allow_public,
     ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port),
-    abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours), termOn: original.terminal.enabled !== false,
+    abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours),
+    plAbs: text(original.plSession.absolute_hours), plIdle: text(original.plSession.idle_minutes), termOn: original.terminal.enabled !== false,
     termTtl: text(original.terminal.ttl_minutes), autoOpen: original.pub.auto_open }), []);
   const [f, setF] = useDraft(ctx, "web", () => savedForm, () => {
     // Settings sections share one draft. Reopening Web must show it as well as preserve it in the Apply bar, so a
     // subsequent field edit keeps earlier edits. The original disk values remain the diff/confirmation baseline.
     const request = staged.get("web")?.request;
     const pending = request?.method === "PUT" && request.url === "/api/settings/fleet/web" ? request.body || {} : {};
-    const pub = pending.public_link || {}, session = pending.session?.local || {}, terminal = pending.web_terminal || {};
+    const pub = pending.public_link || {}, session = pending.session?.local || {}, plPending = pending.session?.public_link || {}, terminal = pending.web_terminal || {};
     const pick = (obj, key, fallback) => Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : fallback;
     return {
       notify: String(pick(pending, "notify_login", original.notify)),
-      echo: pick(pending, "echo_to_channel", original.echo), log: pick(pending, "log_tab", original.log), usagePub: pick(pending, "usage_report_on_public_link", original.usagePub),
+      echo: pick(pending, "echo_to_channel", original.echo), log: pick(pending, "log_tab", original.log), thinking: pick(pending, "log_thinking", original.thinking), usagePub: pick(pending, "usage_report_on_public_link", original.usagePub),
       levels: pick(pending, "office_levels", original.levels), cdn: pick(pending, "preview_cdn", original.cdn), loginQr: pick(pending, "login_qr", original.loginQr),
       pub: pick(pub, "allow_public", original.pub.allow_public), ttl: String(pick(pub, "ttl_minutes", original.pub.ttl_minutes)), protocol: pick(pub, "protocol", original.pub.protocol),
       hostname: pick(pub, "hostname", original.pub.hostname), originPort: String(pick(pub, "origin_port", original.pub.origin_port)), autoOpen: pick(pub, "auto_open", original.pub.auto_open),
       abs: text(pick(session, "absolute_hours", original.session.absolute_hours)), idle: text(pick(session, "idle_hours", original.session.idle_hours)),
+      plAbs: text(pick(plPending, "absolute_hours", original.plSession.absolute_hours)), plIdle: text(pick(plPending, "idle_minutes", original.plSession.idle_minutes)),
       termOn: pick(terminal, "enabled", original.terminal.enabled) !== false, termTtl: text(pick(terminal, "ttl_minutes", original.terminal.ttl_minutes)),
     };
   });
@@ -1314,6 +1320,13 @@ function WebSection({ ctx, staged, part = "all" }) {
   const abs = value(f.abs) ?? 48, idle = value(f.idle) ?? Math.min(48, abs);
   // Named mode: a hostname is typed (the server judges the merged result the same way).
   const named = String(f.hostname || "").trim() !== "";
+  // #3708: the public link's own limits (PUBLIC_LINK_SESSION_BOUNDS): idle 5–1440 min, absolute 1–168 h, idle ≤ absolute.
+  // What applies (publicLinkSessionPolicy): a quick tunnel caps them at 8 h / 30 min, and an admin's never outlasts the
+  // local limits above (a guest's follows the guest settings).
+  const outOf = (v, lo, hi) => { const n = value(v); return n !== null && (!Number.isFinite(n) || n < lo || n > hi); };
+  const plAbsAsked = value(f.plAbs) ?? 8, plIdleAsked = value(f.plIdle) ?? Math.min(30, plAbsAsked * 60);
+  const plAbsQuick = named ? plAbsAsked : Math.min(plAbsAsked, 8), plIdleQuick = named ? plIdleAsked : Math.min(plIdleAsked, 30);
+  const plAbsNow = Math.min(plAbsQuick, abs), plIdleNow = Math.min(plIdleQuick, plAbsNow * 60, idle * 60);
   const errors = {
     hostname: f.hostname && !/^(?:https:\/\/)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+\/?$/.test(f.hostname) ? "namedHostnameInvalid" : "",
     originPort: !Number.isInteger(Number(f.originPort)) || Number(f.originPort) < 1024 || Number(f.originPort) > 65535 ? "namedPortInvalid" : "",
@@ -1323,6 +1336,8 @@ function WebSection({ ctx, staged, part = "all" }) {
     autoOpen: f.autoOpen && !named ? "publicAutoOpenNeedsHostname" : "",
     abs: hours(f.abs),
     idle: hours(f.idle) || (!hours(f.abs) && idle > abs ? "sessionIdleOver" : ""),
+    plAbs: outOf(f.plAbs, 1, 168) ? "publicSessionAbsoluteRange" : "",
+    plIdle: outOf(f.plIdle, 5, 1440) ? "publicSessionIdleRange" : !outOf(f.plAbs, 1, 168) && value(f.plIdle) !== null && plIdleAsked > plAbsAsked * 60 ? "publicSessionIdleOver" : "",
     termTtl: value(f.termTtl) !== null && (!Number.isInteger(value(f.termTtl)) || value(f.termTtl) < 1 || value(f.termTtl) > 20) ? "webTerminalTtlRange" : "",
   };
   const ready = !overPublicLink && !Object.values(errors).some(Boolean);
@@ -1331,6 +1346,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     if (overPublicLink) return;
     if (!ready) {
       const at = { hostname: "#publicWebHostname", originPort: "#publicWebOriginPort", ttl: "#publicWebTtl", abs: "#webSessionAbsolute", idle: "#webSessionIdle",
+        plAbs: "#webPublicSessionAbsolute", plIdle: "#webPublicSessionIdle",
         termTtl: "#webTerminalTtl" }[Object.keys(errors).find((k) => errors[k])];
       syncStage(ctx, "web", { label: tn("webSettingsLabel"), invalid: tn(Object.values(errors).find(Boolean)), section: "access", target: at });
       return;
@@ -1341,6 +1357,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       : f.hostname ? original.pub.tunnel_token_env || "AGEND_CLOUDFLARE_TUNNEL_TOKEN" : "";
     const publicPatch = changedFields({ allow_public: f.pub, ttl_minutes: Number(f.ttl), protocol: f.protocol, hostname: f.hostname, tunnel_token_env: tokenEnv, origin_port: Number(f.originPort), auto_open: f.autoOpen }, original.pub);
     const sessionPatch = changedFields({ absolute_hours: value(f.abs), idle_hours: value(f.idle) }, original.session);
+    const plSessionPatch = changedFields({ absolute_hours: value(f.plAbs), idle_minutes: value(f.plIdle) }, original.plSession);
     // The checkbox shows the default (on) for an unset key: only a real toggle is written; on again = back to the default.
     const terminalPatch = changedFields({ enabled: f.termOn === (original.terminal.enabled !== false) ? original.terminal.enabled : f.termOn ? null : false,
       ttl_minutes: value(f.termTtl) }, original.terminal);
@@ -1348,24 +1365,29 @@ function WebSection({ ctx, staged, part = "all" }) {
       ...(noticeMode(f.notify) !== original.notify ? { notify_login: noticeMode(f.notify) } : {}),
       ...(f.echo !== original.echo ? { echo_to_channel: f.echo } : {}),
       ...(f.log !== original.log ? { log_tab: f.log } : {}),
+      ...(f.thinking !== original.thinking ? { log_thinking: f.thinking } : {}),
       ...(f.usagePub !== original.usagePub ? { usage_report_on_public_link: f.usagePub } : {}),
       ...(f.levels !== original.levels ? { office_levels: f.levels } : {}),
       ...(f.cdn !== original.cdn ? { preview_cdn: f.cdn } : {}),
       ...(f.loginQr !== original.loginQr ? { login_qr: f.loginQr } : {}),
       ...(Object.keys(publicPatch).length ? { public_link: publicPatch } : {}),
-      ...(Object.keys(sessionPatch).length ? { session: { local: sessionPatch } } : {}),
+      ...(Object.keys(sessionPatch).length || Object.keys(plSessionPatch).length ? { session: {
+        ...(Object.keys(sessionPatch).length ? { local: sessionPatch } : {}),
+        ...(Object.keys(plSessionPatch).length ? { public_link: plSessionPatch } : {}) } } : {}),
       ...(Object.keys(terminalPatch).length ? { web_terminal: terminalPatch } : {}),
     };
     const fields = [
       ...(body.notify_login !== undefined ? ["web.notify_login"] : []),
       ...(body.echo_to_channel !== undefined ? ["web.echo_to_channel"] : []),
       ...(body.log_tab !== undefined ? ["web.log_tab"] : []),
+      ...(body.log_thinking !== undefined ? ["web.log_thinking"] : []),
       ...(body.usage_report_on_public_link !== undefined ? ["web.usage_report_on_public_link"] : []),
       ...(body.office_levels !== undefined ? ["web.office_levels"] : []),
       ...(body.preview_cdn !== undefined ? ["web.preview_cdn"] : []),
       ...(body.login_qr !== undefined ? ["web.login_qr"] : []),
       ...Object.keys(publicPatch).map((k) => `web.public_link.${k}`),
       ...Object.keys(sessionPatch).map((k) => `web.session.local.${k}`),
+      ...Object.keys(plSessionPatch).map((k) => `web.session.public_link.${k}`),
       ...Object.keys(terminalPatch).map((k) => `web_terminal.${k}`),
     ];
     if (fields.length) {
@@ -1408,12 +1430,12 @@ function WebSection({ ctx, staged, part = "all" }) {
     { id: "guests", label: layoutText("accessGuests") },
     { id: "sharing", label: layoutText("accessSharing") },
   ];
-  const toggleRow = (key, id, label, hint, impact) => html`<div class=${fc("s-setting-row", key)}>
+  const toggleRow = (key, id, label, hint, impact, disabled = false, disclosure = true) => html`<div class=${fc("s-setting-row", key)}>
     <div class="s-setting-copy"><label for=${id}>${part === "dashboard" ? layoutText(`revDashboard_${key}`) : tn(label)}<${Impact} schema=${schema} field=${impact} /></label>
       <p class="note" id=${`${id}-hint`}>${part === "dashboard" ? layoutText(`revDashboardHint_${key}`) : tn(hint)}</p>
-      ${part === "dashboard" ? html`<details class="s-setting-details"><summary>${layoutText("revDetails")}</summary><p class="note"><strong>${tn(label)}</strong> ${tn(hint)}</p></details>` : null}
+      ${part === "dashboard" && disclosure ? html`<details class="s-setting-details"><summary>${layoutText("revDetails")}</summary><p class="note"><strong>${tn(label)}</strong> ${tn(hint)}</p></details>` : null}
     </div>
-    <input class="s-ui-toggle" id=${id} type="checkbox" checked=${f[key]} aria-describedby=${`${id}-hint`} onChange=${(e) => set(key)(e.target.checked)} />
+    <input class="s-ui-toggle" id=${id} type="checkbox" checked=${f[key]} disabled=${disabled} aria-describedby=${`${id}-hint`} onChange=${(e) => set(key)(e.target.checked)} />
   </div>`;
   const configured = (path) => { const [top, key] = path.split("."); return (top === "web" ? web : term)[key] !== undefined; };
   return html`<div class=${`form s-web s-part-${part}`}>
@@ -1440,11 +1462,25 @@ function WebSection({ ctx, staged, part = "all" }) {
           class=${errors.idle ? "invalid" : ""} value=${f.idle} onInput=${(e) => set("idle")(e.target.value)} /><${Feedback} error=${errors.idle} />
           ${value(f.idle) === null && !errors.abs ? html`<${InEffect} text=${tn("hoursValue", idle)} why=${idle < 48 ? tn("cappedBySession") : null} />` : null}</div>
       </div>
-    <p class="note s-session-ceiling">${layoutText("revPublicSessionLimit")}</p>
+    <p class="note s-session-ceiling">${tn("publicSessionLimitNote")}</p>
+    ${/* #3708: the public link's own limits — longer than 8 h / 30 min only with a fixed hostname (a named tunnel). */ ""}
+    <div class="s-public-session" id="webPublicSession">
+      <div class="s-lab"><h4>${tn("publicSessionTitle")}</h4><${InfoTip} text=${tn("publicSessionTip")} name=${tn("publicSessionTitle")} /></div>
+      <div class="grid2">
+        <div class=${fc("field", "plAbs")}><label for="webPublicSessionAbsolute">${tn("publicSessionAbsolute")}<${Impact} schema=${schema} field="web.session.public_link.absolute_hours" /></label><input id="webPublicSessionAbsolute" type="number" min="1" max="168" step="any"
+          class=${errors.plAbs ? "invalid" : ""} value=${f.plAbs} onInput=${(e) => set("plAbs")(e.target.value)} /><${Feedback} error=${errors.plAbs} />
+          ${!errors.plAbs && !errors.abs && (value(f.plAbs) === null || plAbsNow < plAbsAsked) ? html`<${InEffect} text=${tn("hoursValue", plAbsNow)} why=${plAbsNow < plAbsAsked ? (plAbsQuick < plAbsAsked ? tn("publicSessionQuick") : tn("cappedBySession")) : null} />` : null}</div>
+        <div class=${fc("field", "plIdle")}><label for="webPublicSessionIdle">${tn("publicSessionIdle")}<${Impact} schema=${schema} field="web.session.public_link.idle_minutes" /></label><input id="webPublicSessionIdle" type="number" min="5" max="1440" step="any"
+          class=${errors.plIdle ? "invalid" : ""} value=${f.plIdle} onInput=${(e) => set("plIdle")(e.target.value)} /><${Feedback} error=${errors.plIdle} />
+          ${!errors.plIdle && !errors.plAbs && !errors.abs && !errors.idle && (value(f.plIdle) === null || plIdleNow < plIdleAsked) ? html`<${InEffect} text=${tn("minutesValue", Math.round(plIdleNow))} why=${plIdleNow < plIdleAsked ? (plIdleQuick < plIdleAsked ? tn("publicSessionQuick") : tn("cappedBySession")) : null} />` : null}</div>
+      </div>
+      ${!named ? html`<p class="note s-public-session-quick" id="webPublicSessionQuick">${tn("publicSessionNeedsHostname")}</p>` : null}
+      <p class="note">${tn("publicSessionCeiling")}</p>
+    </div>
       ${/* Refs #3061 (P2b): the QR code on a new device's sign-in page (a web-only fleet's "Sign in with another device"). */ ""}
       <label class=${fc("check", "loginQr")}><input id="webLoginQr" type="checkbox" checked=${f.loginQr} aria-describedby="webLoginQr-hint" onChange=${(e) => set("loginQr")(e.target.checked)} /><span>${tn("webLoginQr")}</span><${Impact} schema=${schema} field="web.login_qr" /></label>
       <p class="note" id="webLoginQr-hint">${tn("webLoginQrHint")}</p>
-      <details class="s-setting-details"><summary>${layoutText("revSessionDetails")}</summary><p class="note">${tn("webSessionHint")}</p><p class="note">${tn("webNotifyLoginHint")}</p></details>
+      <details class="s-setting-details"><summary>${layoutText("revSessionDetails")}</summary><p class="note">${tn("publicSessionHint")}</p><p class="note">${tn("webNotifyLoginHint")}</p></details>
     </section>`)}
           ${!overPublicLink ? html`<${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
           ${/* A tab whose shell is from before Settings → Hub (its app-route.js has no "hub"): the Hub cards stay here. */ ""}
@@ -1496,6 +1532,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     </section>`) : null}
     ${has("dashboard") ? lock(html`<section class="card s-dashboard-features"><h3>${layoutText("dashboardFeatures")}</h3>
       ${toggleRow("log", "webLogTab", "webLogTab", "webLogTabHint", "web.log_tab")}
+      ${toggleRow("thinking", "webLogThinking", "webLogThinking", "webLogThinkingHint", "web.log_thinking", false, false)}
       ${toggleRow("usagePub", "webUsagePublic", "webUsagePublic", "webUsagePublicHint", "web.usage_report_on_public_link")}
       ${toggleRow("levels", "webOfficeLevels", "webOfficeLevels", "webOfficeLevelsHint", "web.office_levels")}
       ${toggleRow("cdn", "webPreviewCdn", "webPreviewCdn", "webPreviewCdnHint", "web.preview_cdn")}

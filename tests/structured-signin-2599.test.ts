@@ -166,9 +166,14 @@ describe("#2599 structured login: authority, episode and cleanup", () => {
     const h = harness(); const probe = defer<"invalid">(); h.checkAuth.mockReturnValue(probe.promise);
     const starting = h.session.start();
     expect(h.lock.isHeld).toBe(true);
-    const second = harness("claude-code", h.lock); await second.session.start();
-    expect(second.transport.start).not.toHaveBeenCalled();
-    expect(h.lock.current?.backend).toBe("codex");
+    // AGEND-203: one window per backend — the same backend is refused, another backend's sign-in is not held up by it.
+    const same = harness("codex", h.lock); await same.session.start();
+    expect(same.transport.start).not.toHaveBeenCalled();
+    expect(same.view().reason).toBe("busy");
+    expect(h.lock.heldFor("codex")?.backend).toBe("codex");
+    const other = harness("claude-code", h.lock); await other.session.start();
+    expect(other.transport.start).toHaveBeenCalled();
+    expect(h.lock.heldFor("claude-code")?.backend).toBe("claude-code");
     probe.resolve("invalid"); await starting;
   });
   it("wrong owner, attempt id and revision never write", async () => {

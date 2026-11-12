@@ -839,7 +839,7 @@ instances:
 
 profile 存放在 fleet 底下的 `~/.agend/credential-profiles/<backend>/<profile>`，所以好幾個 agent 可以指向同一份訂閱。沒有指定 profile 的 instance 不受影響。只有登入資訊會分開：kiro 龐大的執行期快取會連回共用的那一份，Codex 則只有 `auth.json` 不同。切換 profile 就是改設定再重啟（`update_instance_config` 會兩件事一起做）；切換到從未登入過的 profile 會被拒絕，並附上登入它的指令。fleet 管理員可以在聊天用 `/login <backend> <profile>`，或從網頁設定的 **AI 帳號** 選 **連接帳號**，連接 Claude Code、Codex（授權碼，`CODEX_HOME` 指向該 profile）或 Kiro（`XDG_DATA_HOME` 指向該 profile）帳號（#3212）。在 kiro 上切換會開始新的對話，因為 kiro 把對話和登入資訊存在同一個地方（AgEnD 會把最近的 context 交接過去）。在 Codex 上，對話會保留。在 Claude Code 上，AgEnD 會把對話複製到新 profile 並在那裡接續（#1753），舊 profile 保留自己的那一份。
 
-**ClassicBot 頻道（#1220）。** `classicBot.yaml` 裡的頻道也接受同樣的 `backend_options.<backend>.credential_profile`，而且優先於從 fleet defaults 繼承來的 profile（值為空或 `null` 代表用共用的登入）。頻道的 agent 會以這個 profile 啟動，`/usage` 會把它算在那份訂閱的那一列（例如 `Codex (personal)`），`kiro_engine_status` 也會回報它。profile 名稱無法使用時，這個頻道的 agent 會直接不啟動，而不是改用別的登入執行。更改 profile 會重啟該頻道的 agent。也可以在網頁上選：房間的設定 →「Runtime 與模型」→「帳號」（#3690）。在那裡儲存只會改 `classicBot.yaml` 裡這個房間的那幾行，你的註解都會保留。
+**ClassicBot 頻道（#1220）。** `classicBot.yaml` 裡的頻道也接受同樣的 `backend_options.<backend>.credential_profile`，而且優先於從 fleet defaults 繼承來的 profile（值為空或 `null` 代表用共用的登入）。頻道的 agent 會以這個 profile 啟動，`/usage` 會把它算在那份訂閱的那一列（例如 `Codex (personal)`），`kiro_engine_status` 也會回報它。profile 名稱無法使用時，這個頻道的 agent 會直接不啟動，而不是改用別的登入執行。更改 profile 會重啟該頻道的 agent。也可以在網頁上選：房間的設定 →「Runtime 與模型」→「帳號」（#3690）。在那裡儲存只會改 `classicBot.yaml` 裡這個房間的那幾行，你的註解都會保留。General 等 Agent 也可以用 `update_instance_config` 做同樣的事（#3715）：對房間只接受 `backend_options.<backend>.credential_profile`，用同樣的方式寫入、重啟房間，並回報房間實際重啟後用的帳號（`launched_profile`）。
 
 `/usage`、`get_usage` 和儀表板都是每份訂閱各一列，絕不加總。完整說明見英文版 [configuration](configuration.md#credential-profiles-multiple-subscriptions-of-one-backend)。
 
@@ -1406,7 +1406,7 @@ fleet 在單一事件迴圈上運作，迴圈上任何慢的事都會拖住其�
 - **篩選側欄時**（2.2.5，#1936）：你正在看的 instance 會留在最上面的**目前**底下，不論是否符合篩選。
 - **可以點開 instance 的名稱**（2.2.5，#1990）：聊天裡跨 instance 的狀態行中，對方的名稱會打開它的聊天；提示卡片裡的 instance 名稱會打開它的 View。agent 或人寫的訊息永遠不會有這種連結。
 - **聊天的指令與快速動作**（#1269）：打 `/` 即可透過相同的處理程式與指令表，執行 instance 自己 topic 的指令。超過 4,000 字元的貼上會改成文字檔附加，內容變長時聊天會停在最新訊息。
-- **紀錄分頁**（#1218）：每個 instance 有一個「紀錄」面板，逐步顯示每一則提示、agent 的回覆（不含思考過程）、每次工具呼叫的參數與結果、錯誤，以及 fleet 事件如當機或重啟。分頁開著時才從 agent 的 transcript 按需讀取，有人在看時即時更新；機密值會遮蔽，長文字截斷。預設關閉（`web.log_tab`）；fleet admin 在「設定 → 網頁儀表板」開啟後，公開連結也看得到。claude-code 與 codex 完整支援；其他 backend 只顯示 fleet 事件；kiro 會另外說明原因，待確認所在對話後才能顯示它自己的步驟。
+- **紀錄分頁**（#1218）：每個 instance 有一個「紀錄」面板，逐步顯示每一則提示、agent 的回覆（不含思考過程）、每次工具呼叫的參數與結果、錯誤，以及 fleet 事件如當機或重啟。分頁開著時才從 agent 的 transcript 按需讀取，有人在看時即時更新；機密值會遮蔽，長文字截斷。預設關閉（`web.log_tab`）；fleet admin 在「設定 → 網頁儀表板」開啟後，公開連結也看得到。另外，claude-code 與 codex instance 的聊天會依各 agent 的 `tool_progress`，在每則回覆上方向登入的 admin 顯示它的步驟（#3648；思考預設關閉，`web.log_thinking`）。claude-code 與 codex 完整支援；其他 backend 只顯示 fleet 事件；kiro 會另外說明原因，待確認所在對話後才能顯示它自己的步驟。
 - **輸入框下方的一列**（2.3，#2215）：輸入框下方靠左只有一列：先是這個瀏覽器的網頁授權，接著是按鍵提示（`✓ 已驗證 · Enter 送出 · Shift+Enter 換行`）。「已驗證」到何時在它的提示框裡（觸控螢幕上點一下即可看到）；未驗證時顯示 `未驗證 · 授權`。訪客的說明與公開連結的說明也在同一列。
 - **聊天中的身分卡**（2.3，#2217）：卡片上不再放任何按鈕。聊天標題列上一個卡片按鈕會開一個選單，有 **顯示卡片** 與 **顯示小圖和介紹**（取消勾選就只留下橫幅）；兩個選擇都保存在這台裝置上。訪客與公開連結也有同一個按鈕。
 - **在已驗證的瀏覽器上套用**（2.3，#2170）：通過網頁驗證的瀏覽器，帳號和變更在同一平台、又是變更影響到的每個連線的 fleet admin 時，按 **套用** 本身就能確認等待中的設定變更。不會送出聊天卡片，General 會收到通知，執行時所有檢查再做一次。訪客、公開連結、未驗證的瀏覽器，以及需要 host CLI 確認的變更都照舊。
