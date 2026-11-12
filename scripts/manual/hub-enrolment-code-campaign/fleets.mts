@@ -41,17 +41,23 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     await page.getByRole('button', { name: lang === 'zh-TW' ? '登入' : 'Sign in', exact: true }).click();
     await page.locator('.p-hub-signin').waitFor({ state: 'detached' });
     await page.goto(rig.webOrigin + '/ui/hub/admin'); await page.locator('.hub-join-card').waitFor();
-    if(!overlay.length) {
-      // Target the action itself, not the middle of a card whose height changes after its first read.
-      const action=page.locator('[data-enrolment-codes] > .n-actions button');await action.scrollIntoViewIfNeeded();
-      try { await page.waitForFunction(()=>{const b=document.querySelector('[data-enrolment-codes] > .n-actions button') as HTMLButtonElement|null;return b!==null&&!b.disabled;}); }
-      catch(error) {
-        await page.screenshot({path:join(out,'admin-entry-failed-'+lang+'-'+(phone?'phone':'desk')+'-'+theme+'.png'),fullPage:true});
-        const diagnostic=await page.locator('[data-enrolment-codes]').evaluate((el:HTMLElement)=>({text:el.innerText,rect:el.getBoundingClientRect().toJSON(),viewport:{width:innerWidth,height:innerHeight},visible:document.visibilityState}));
-        writeFileSync(join(out,'admin-entry-failed.json'),JSON.stringify({lang,phone,theme,diagnostic,errors},null,2));throw error;
-      }
-    }
+    if(!overlay.length) await showManager(page,lang,phone,theme,errors);
     return { ctx, page, errors };
+  }
+  async function showManager(page:any,lang:string,phone:boolean,theme:string,errors:string[]=[]) {
+    const action=page.locator('[data-enrolment-codes] > .n-actions button');await action.waitFor({state:'attached'});
+    const deadline=Date.now()+30_000;
+    // Real U2 policy reads resize the steps after initial paint. Keep the action in the viewport,
+    // as a person would, so the unchanged IntersectionObserver/visible-only read can recover.
+    do {
+      await action.evaluate((el:HTMLElement)=>el.scrollIntoView({block:'center'}));
+      if(await action.isEnabled())return;
+      await page.waitForTimeout(500);
+    } while(Date.now()<deadline);
+    await page.screenshot({path:join(out,'admin-entry-failed-'+lang+'-'+(phone?'phone':'desk')+'-'+theme+'.png'),fullPage:true});
+    const diagnostic=await page.locator('[data-enrolment-codes]').evaluate((el:HTMLElement)=>({text:el.innerText,rect:el.getBoundingClientRect().toJSON(),viewport:{width:innerWidth,height:innerHeight},visible:document.visibilityState}));
+    writeFileSync(join(out,'admin-entry-failed.json'),JSON.stringify({lang,phone,theme,diagnostic,errors},null,2));
+    throw Error('Owned visible code-manager readiness deadline');
   }
   // Actual old bytes, identified per response. Current server headers/CSP remain on the response.
   const legacyIndex = new Map<string,string>();
@@ -177,7 +183,7 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
           await page.getByRole('button',{name:lang==='zh-TW'?'取消':'Cancel',exact:true}).click();
         }
         const row = page.locator('[data-enrolment-code="'+created.id+'"]'); await row.locator('code').waitFor(); await shot(page,tag+'-active-code');
-        await page.reload(); await page.locator('[data-enrolment-codes]').scrollIntoViewIfNeeded(); await page.locator('[data-enrolment-code="'+created.id+'"] code').waitFor();
+        await page.reload(); await showManager(page,lang,phone,theme,errors); await page.locator('[data-enrolment-code="'+created.id+'"] code').waitFor();
         check(tag+' admin page errors',errors.length===0); captures.push({lang,phone,theme,tag});
       } finally { await ctx.close(); }
     }
