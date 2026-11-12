@@ -47,6 +47,23 @@ describe("the pane menu uses the same icon rows as the sidebar", () => {
     expect(model).toBeTruthy(); expect(model.querySelector(".menu-value").textContent).toContain("auto");
     fire(model, "click"); expect(pane.navigate).toHaveBeenCalledWith("/ui/fleet/agent/alpha?cat=runtime");
   });
+  it.each(["radio", "checkbox"] as const)("keeps a visible selection check beside an icon on checked %s rows only", async (kind) => {
+    const { Menu } = await import("/assets/ui-menu.js") as any;
+    await p.mount(h(Menu, { label: "Layout", items: [
+      { key: "checked", label: "Checked", icon: "sidebar", checkbox: kind === "checkbox", checked: true, onSelect() {} },
+      { key: "unchecked", label: "Unchecked", icon: "down", checkbox: kind === "checkbox", checked: false, onSelect() {} },
+    ] }));
+    fire(p.root.querySelector("button")!, "click"); await settle(4);
+    const rows = [...p.root.querySelectorAll(`[role="menuitem${kind}"]`)];
+    expect(rows).toHaveLength(2);
+    const [checked, unchecked] = rows;
+    expect(checked.getAttribute("aria-checked")).toBe("true");
+    expect(unchecked.getAttribute("aria-checked")).toBe("false");
+    for (const row of rows) expect(row.querySelector(".menu-tick .icon")).not.toBeNull();
+    expect(checked.querySelectorAll(".menu-state")).toHaveLength(1);
+    expect(checked.querySelector(".menu-state .icon")).not.toBeNull();
+    expect(unchecked.querySelector(".menu-state")).toBeNull();
+  });
   it("uses one sidebar action slot whose first item toggles favourites, with keyboard return", async () => {
     roster.navStore.set({ favorites: ["alpha"], filter: { q: "", status: [], cli: [] } });
     await p.mount(h(roster.InstanceNav, { route: pane.route, items: [inst], loaded: true })); await settle(4);
