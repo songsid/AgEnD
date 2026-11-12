@@ -62,7 +62,7 @@ On a computer with a wide window (1200 px or more), you can talk to two agents a
 - **Choose an account** for an agent in its **Account** field, or for several at once with **Move agents here** on an account. **Fleet default** is the account agents use when they name none.
 - **A ClassicBot room's account.** A room's settings → **Runtime & model** now has the same **Account** field. Saving restarts that room on the new account. Only that room's lines in `classicBot.yaml` change; your comments and the other rooms stay as they were. **Move agents here** lists the rooms too.
 - **Keep connection alive.** An account no agent uses goes stale, because a CLI renews its sign-in only while it runs. Tick **Keep connection alive** and AgEnD checks it about once a day and renews it with the CLI's own tools. **Needs you** tells you when it must be signed in again.
-- **Install or update a CLI from the page.** A CLI that is not installed has **Install**. An installed one that is older than the version AgEnD has checked has **Update to *version***. Both run the CLI's official installer, pinned to that version.
+- **Install or update a CLI from the page.** A CLI that is not installed has **Install**. An installed one that is older than the version AgEnD has checked has **Update to *version***. Both run the CLI's official installer, pinned to that version. **Antigravity is the exception:** it has no pinned version, so its button is **Update to latest (not audited by AgEnD)** and installs the newest release Google serves, which AgEnD has not checked. CLIs that update themselves (Muse) show the versions and no button.
 - **No false "sign-in ended" warnings.** A Claude sign-in's stored end date is not a real deadline, so AgEnD no longer warns from it. It warns only when a sign-in really cannot be renewed.
 
 ## Task board
@@ -89,12 +89,12 @@ Agents can now run on Windows itself, on the AgEnD computer or on other Windows 
 - **Switch it on in Settings → Runtime:** **Use this PC's Windows CLIs** and **Allow other Windows PCs to pair**. Both are off by default.
 - **Connect a computer with one command.** **Settings → Runtime → Connect a computer** shows a PowerShell command that works once, for 15 minutes. Paste it on the other PC (or give it to an AI agent there): it installs the Runtime and connects that PC, with no pairing code. Treat the command like a password while it is valid. The Runtime keeps running in the background and reconnects when you sign in to Windows. A pairing code is still under **Manual options**.
 - **Windows agents** use the same chat, settings, teams and schedules as the others. Claude Code and Codex agents can keep their own Windows terminal and conversation. General can run on a paired Windows PC too.
-- **Accounts and installs on the PC.** Settings can list a paired PC's Claude Code accounts, and install or update Claude Code, Codex, OpenCode or Antigravity there, once that PC's owner allows it on the PC itself.
+- **Accounts and installs on the PC.** Settings can list a paired PC's Claude Code accounts, and install or update Claude Code, Codex, OpenCode or Antigravity there, once that PC's owner allows it on the PC itself. Updates are pinned to the versions AgEnD checked, except Antigravity's, which goes to the latest release (not audited by AgEnD).
 - **Runtime updates.** A paired Runtime can update itself from your AgEnD, and waits until it is idle to switch.
 
 ## AgEnD Hub (experimental, off by default)
 
-A Hub lets colleagues in a company ask each other's agents questions, after signing in with their company (Active Directory) account. Nothing changes unless someone sets up a Hub with `agend hub init` or in **Settings → Hub**. Connecting a Fleet needs one input: the Hub's address, then **Sign in with company account**. A Hub administrator turns joining on with the **Let colleagues join** card. How it works, step by step: [Connect a Fleet to a Hub](hub-join.md). Group permissions: [Hub group permissions](hub-group-permissions.md).
+A Hub lets colleagues in a company ask each other's agents questions, after signing in with their company (Active Directory) account. Nothing changes unless someone sets up a Hub with `agend hub init` or in **Settings → Hub**. Connecting a Fleet needs one input: the Hub's address, then **Sign in with company account**. A simpler **Let colleagues join** card for the Hub administrator, and join codes, are coming in a later alpha. How it works, step by step: [Connect a Fleet to a Hub](hub-join.md). Group permissions: [Hub group permissions](hub-group-permissions.md).
 
 ## Office
 
@@ -105,7 +105,7 @@ A Hub lets colleagues in a company ask each other's agents questions, after sign
 ## Install and commands
 
 - **`agend tmux <command>`** runs a tmux command on AgEnD's own tmux, for example `agend tmux ls`.
-- **`agend web`** signs this computer's browser in by itself. On a new install the first code lasts an hour.
+- **`agend web`** signs this computer's browser in by itself (its code lasts five minutes, as before). On WSL it opens the sign-in page and you type the code it prints. On a new install, the first code that `agend web --code` prints in a terminal (not on WSL) lasts an hour, and works only from this computer.
 - **`agend build-info`** shows which build is installed.
 - **Desktop shortcuts.** `agend shortcuts` adds the dashboard and restart launchers on a Linux desktop too. The Windows shortcuts show the AgEnD icon.
 - `agend rollback` finds the npm that manages this install. The installer no longer stops at system package questions.

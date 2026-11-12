@@ -62,7 +62,7 @@
 - **選帳號：** 在 Agent 的「帳號」欄位選；或在帳號上按「移入 Agent」，一次移好幾個。「Fleet 預設」是沒有指定帳號的 Agent 用的帳號。
 - **ClassicBot 房間的帳號。** 房間的設定 →「Runtime 與模型」現在也有同樣的「帳號」欄位。儲存後，該房間會用新帳號重新啟動。`classicBot.yaml` 只改這個房間的那幾行，你的註解和其他房間都不變。「移入 Agent」也會列出房間。
 - **保持連接。** 沒有 Agent 在用的帳號會慢慢失效，因為 CLI 只在執行時才會續期登入。勾選「保持連接」後，AgEnD 大約每天檢查一次，用 CLI 自己的工具續期。需要重新登入時，「等你回應」會告訴你。
-- **在頁面上安裝或更新 CLI。** 沒安裝的 CLI 有「安裝」。已安裝、但比 AgEnD 檢查過的版本舊的，有「更新到 *版本*」。兩者都執行 CLI 官方的安裝程式，並固定在那個版本。
+- **在頁面上安裝或更新 CLI。** 沒安裝的 CLI 有「安裝」。已安裝、但比 AgEnD 檢查過的版本舊的，有「更新到 *版本*」。兩者都執行 CLI 官方的安裝程式，並固定在那個版本。**Antigravity 是例外：**它沒有固定的版本，按鈕是「更新到最新版（未經盤點）」，會安裝 Google 提供的最新版，AgEnD 沒有檢查過。會自己更新的 CLI（Muse）只顯示版本，沒有按鈕。
 - **不再誤報「登入已到期」。** Claude 登入檔裡的到期日不是真正的期限，AgEnD 不再依它提醒，只有登入真的無法續期時才提醒。
 
 ## 任務看板
@@ -89,12 +89,12 @@ Agent 現在可以直接在 Windows 上跑，不論是 AgEnD 這台電腦，還�
 - **在「設定 → Runtime」打開：**「使用這台電腦 Windows 上的 CLI」和「允許其他 Windows 電腦配對」。兩個預設都關閉。
 - **一行指令連接電腦。** 「設定 → Runtime →連接電腦」會給一行 PowerShell 指令，只能用一次，15 分鐘內有效。貼到另一台電腦上執行（或交給那台電腦上的 AI Agent），它就會安裝 Runtime 並連接那台電腦，不需要配對碼。指令有效期間請把它當密碼保管。Runtime 連上後會在背景執行，登入 Windows 時自動重新連線。配對碼還在「手動選項」裡。
 - **Windows 上的 Agent** 和其他 Agent 共用聊天、設定、團隊和排程。Claude Code 和 Codex 的 Agent 可以保有自己的 Windows 終端機和對話。General 也可以在配對的 Windows 電腦上執行。
-- **那台電腦上的帳號與安裝。** 那台電腦的擁有者在電腦上允許之後，設定頁可以列出它的 Claude Code 帳號，並在那裡安裝或更新 Claude Code、Codex、OpenCode 或 Antigravity。
+- **那台電腦上的帳號與安裝。** 那台電腦的擁有者在電腦上允許之後，設定頁可以列出它的 Claude Code 帳號，並在那裡安裝或更新 Claude Code、Codex、OpenCode 或 Antigravity。更新會固定在 AgEnD 檢查過的版本；Antigravity 例外，會更新到最新版（未經 AgEnD 盤點）。
 - **Runtime 自動更新。** 配對的 Runtime 可以從你的 AgEnD 取得更新，等閒置時才切換。
 
 ## AgEnD Hub（實驗功能，預設關閉）
 
-Hub 讓公司裡的同仁用公司帳號（Active Directory）登入後，向彼此的 Agent 提問。沒有人用 `agend hub init` 或「設定 → Hub」建立 Hub，就不會有任何變化。Fleet 要連接 Hub，只要一個輸入框：輸入 Hub 位址，按「以公司帳號登入」。Hub 管理員在「讓同仁加入」卡片上開放加入。完整步驟見 [把 Fleet 連接到 Hub](hub-join.zh-TW.md)；群組權限見 [Hub 群組權限](hub-group-permissions.zh-TW.md)。
+Hub 讓公司裡的同仁用公司帳號（Active Directory）登入後，向彼此的 Agent 提問。沒有人用 `agend hub init` 或「設定 → Hub」建立 Hub，就不會有任何變化。Fleet 要連接 Hub，只要一個輸入框：輸入 Hub 位址，按「以公司帳號登入」。給 Hub 管理員的更簡單的「讓同仁加入」卡片，以及加入碼，會在之後的 alpha 推出。完整步驟見 [把 Fleet 連接到 Hub](hub-join.zh-TW.md)；群組權限見 [Hub 群組權限](hub-group-permissions.zh-TW.md)。
 
 ## 辦公室
 
@@ -105,7 +105,7 @@ Hub 讓公司裡的同仁用公司帳號（Active Directory）登入後，向彼
 ## 安裝與指令
 
 - **`agend tmux <指令>`** 在 AgEnD 自己的 tmux 上執行 tmux 指令，例如 `agend tmux ls`。
-- **`agend web`** 會自動讓這台電腦的瀏覽器登入。新安裝時，第一組碼一小時內有效。
+- **`agend web`** 會自動讓這台電腦的瀏覽器登入（碼和以前一樣 5 分鐘內有效）。在 WSL 上它會打開登入頁，由你輸入它印出的碼。新安裝時，在終端機（不是 WSL）用 `agend web --code` 印出的第一組碼一小時內有效，而且只能在這台電腦上使用。
 - **`agend build-info`** 顯示安裝的是哪個 build。
 - **桌面捷徑。** `agend shortcuts` 在 Linux 桌面上也會加上儀表板和重新啟動的捷徑。Windows 的捷徑改用 AgEnD 圖示。
 - `agend rollback` 會找到管理這份安裝的 npm。安裝程式不會再被系統套件的問答卡住。

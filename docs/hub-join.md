@@ -13,16 +13,15 @@ This page has two parts:
 
 ## For everyone: connect your Fleet
 
-You need the **Hub address** from your Hub administrator, for example `hub.example.com`. Sometimes they also give you a **join code**, for example `K7QF-3M9P`.
+You need the **Hub address** from your Hub administrator, for example `hub.example.com`.
 
 1. On your AgEnD dashboard, open **Settings → Hub**.
-2. If **Allow this fleet to connect to a Hub** is off, turn it on and save. Turning it on does not connect anything yet.
-3. In **Hub address**, type the address. `hub.example.com` is enough; you don't need `https://`. If you were given a join code, type it after the address, with a space: `hub.example.com K7QF-3M9P`.
-4. Wait a moment. The page looks the Hub up and shows **Found "*Hub name*". This Fleet will appear as "*name*".** The name is this computer's name. To use another one, choose **Rename**.
-5. Press **Sign in with company account**. A new tab opens on the Hub. Sign in there with your company account.
-6. When it is done, the Hub tab says it is connected and closes by itself. Your Fleet's page updates on its own and shows the Hub's name and **Connected with *your name*'s company account · This Fleet is called "*name*"**.
+2. In **Hub address**, type the address. `hub.example.com` is enough; you don't need `https://`. There is no switch to turn on first: connecting turns on this Fleet's Hub membership by itself.
+3. Wait a moment. The page looks the Hub up and shows **Found "*Hub name*". This Fleet will appear as "*name*".** The name is this computer's name. To use another one, choose **Rename**.
+4. Press **Sign in with company account**. A new tab opens on the Hub. Sign in there with your company account.
+5. When it is done, the Hub tab says it is connected and closes by itself. Your Fleet's page updates on its own and shows the Hub's name and **Connected with *your name*'s company account · This Fleet is called "*name*"**.
 
-A pasted link from an older invitation (`https://…/join-info#…`) still works in the same box.
+A company link your administrator copied for you (`https://…/join-info#…`) works in the same box.
 
 ### If it does not connect
 
@@ -52,11 +51,23 @@ The page says what happened and what to do. The most common messages:
 
 ### Other ways
 
-Under **Other ways** there is the older **pairing code** method, for a Hub that cannot use company sign-in. If you paste a pairing code into the Hub address box, the page opens **Other ways** for you with it filled in.
+Under **Other ways** there is the older **pairing code** method, for a Hub that cannot use company sign-in. If you paste a pairing code into the Hub address box, the page opens **Other ways** for you with it filled in. Its switch, **Allow this fleet to connect to a Hub**, applies as soon as you change it (there is no Save).
 
 ## For the Hub administrator: let colleagues join
 
-On the Hub, **Administration** opens with the **Let colleagues join** card. While no Fleet is connected yet, the same card is also on your Chats page. It has three steps; each one is marked **Done** from what the Hub has saved.
+### In this release
+
+On the Hub, **Administration → Company sign-in joining**:
+
+1. Turn on **Allow company-account Fleet connections**.
+2. Under **Allowed groups and people**, choose the AD groups whose members may connect a Fleet (**Manage group permissions**; see [Hub group permissions](hub-group-permissions.md)), or invite one person under **Invitation exceptions**.
+3. Tell colleagues your Hub address, for example `hub.example.com`. They follow [the steps above](#for-everyone-connect-your-fleet). **Copy colleague connection link** gives a link that also carries the Hub's identity; colleagues can paste it into the same box.
+
+### Coming in a later alpha: the Let colleagues join card
+
+> Not in this release yet. This part describes the simpler card that is in review; the controls below are not on the Hub until it ships.
+
+**Administration** will open with the **Let colleagues join** card. While no Fleet is connected yet, the same card is also on your Chats page. It has three steps. Steps 1 and 2 are marked **Done** from what the Hub has saved.
 
 1. **Let colleagues connect Fleets with their company account.** Turn on **Allow company-account Fleet connections**.
 2. **Who can join.** Search for the AD groups whose members may connect a Fleet (type the start of a group's name), and add them. For each group, set **Each person up to *N* Fleets**, and whether its members may also **Chat with agents** and **Share agents**. The page then shows what the change does (who gains or loses something) before you press **Save**. A group the search doesn't find can be added under **Add by distinguished name**. All group settings are also on the **Group permissions** page: see [Hub group permissions](hub-group-permissions.md).
@@ -64,14 +75,16 @@ On the Hub, **Administration** opens with the **Let colleagues join** card. Whil
 
 The **Connected fleets** list shows each Fleet's name and its owner. Revoked Fleets are folded under their own heading. **Revoke** ends a Fleet's connection from the Hub.
 
-A link that includes the Hub's key fingerprint is still under **Link with key fingerprint (Advanced)** in step 3, for a colleague who must check the fingerprint by hand. **Individual invitations** for one named person are folded under the card.
+The link that includes the Hub's key fingerprint moves to **Link with key fingerprint (Advanced)** in step 3, for a colleague who must check the fingerprint by hand. **Individual invitations** for one named person are folded under the card.
 
-### Join codes
+### Coming later: join codes
 
-A join code lets a group of people connect at once, for example everyone at a workshop, without adding a group first.
+> Not in this release yet. A Fleet given a code for a Hub that does not offer join codes refuses it and sends nothing.
 
-- Create one in step 3 with **Create join code**. Choose how long it lasts (1 hour, until the end of today, or 7 days at most), how many Fleets it may connect (up to 200; 30 by default), and who may use it: anyone in the company directory, or the members of one group. Under **More**, set how many Fleets each person may connect with it (1 by default).
+A join code will let a group of people connect at once, for example everyone at a workshop, without adding a group first.
+
+- The administrator creates one in step 3 of the card. They choose how long it lasts (1 hour, until the end of today, or 7 days at most), how many Fleets it may connect (up to 200; 30 by default), and who may use it: anyone in the company directory, or the members of one group. Under **More** they set how many Fleets each person may connect with it (1 by default).
 - The code is 8 characters, shown as `XXXX-XXXX`. Colleagues type the Hub address and the code in the same box: `hub.example.com K7QF-3M9P`.
-- The card shows how many Fleets have joined with it and who they are. You can turn a code off at once. Fleets that already joined stay connected; revoke them one by one if needed.
-- A code only stands in for your approval. Each person still presses **Sign in with company account** on their own Fleet and signs in on the Hub with their own company account. Without a company account a code is useless.
+- The card shows how many Fleets have joined with it and who they are. A code can be turned off at once. Fleets that already joined stay connected; revoke them one by one if needed.
+- A code only stands in for the administrator's approval. Each person still presses **Sign in with company account** on their own Fleet and signs in on the Hub with their own company account. Without a company account a code is useless.
 - Treat a live code like a key to a meeting room: anyone in the company who gets it can connect a Fleet under their own name until it ends or runs out. Make it short-lived, and turn it off when you are done.
