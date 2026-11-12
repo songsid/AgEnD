@@ -1,0 +1,6 @@
+[
+  { "boot": "a1b2", "id": 1, "instance": "master", "role": "user", "sender": "web-user", "text": "hi", "ts": "2026-11-11T06:12:30.250Z", "anchor": "web-mwbq2a8v-5a701907" },
+  { "boot": "a1b2", "id": 2, "instance": "master", "role": "agent", "sender": "master", "text": "Hi! 👋 I'm master, the coordinator for this fleet. What can I help you with?", "ts": "2026-11-11T06:12:33.200Z", "anchor": "web-mwbq2d2z-8c41f302" },
+  { "boot": "a1b2", "id": 3, "instance": "master", "role": "user", "sender": "web-user", "text": "Please check which instances are running, then set up a small team for this project.", "ts": "2026-11-11T06:16:27.500Z", "anchor": "web-mwbq7dle-648c7ccb" },
+  { "boot": "a1b2", "id": 4, "instance": "master", "role": "agent", "sender": "master", "text": "I looked at the fleet: one team with one member, and two other instances running. I can set up the team once you pick one of the two options below.", "ts": "2026-11-11T06:16:41.900Z", "anchor": "web-mwbq7p0l-17a474c2" }
+]

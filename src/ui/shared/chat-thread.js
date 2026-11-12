@@ -755,7 +755,7 @@ export function createThread(list, scroller, opts) {
     const stick = pinned || nearBottom();
     msgs = next || [];
     if (!msgs.length) {
-      for (const v of nodes.values()) stopIn(v.node);
+      for (const v of nodes.values()) { stopIn(v.node); v.handle?.unmount(); }
       nodes.clear();
       firstKey = null;
       armDay();
@@ -778,13 +778,29 @@ export function createThread(list, scroller, opts) {
   }
   /** Put the messages from startIndex() on in the list (nodes reused when unchanged). Returns how many are new. */
   function draw(drawOpts) {
-    const shown = msgs.slice(startIndex());
+    // AGEND-181: activity rows (a turn's thinking and tool steps above its reply) are drawn only when the page gave a
+    // way to (opts.activity) — never part of a message: not copied, replied to, counted as unread or reached by ↑/↓.
+    const shown = msgs.slice(startIndex()).filter((x) => x.role !== "activity" || opts.activity);
     const keep = new Set(shown.map(msgKey));
-    for (const [k, v] of nodes) if (!keep.has(k)) { stopIn(v.node); v.node.remove(); nodes.delete(k); }
+    for (const [k, v] of nodes) if (!keep.has(k)) { stopIn(v.node); v.handle?.unmount(); v.node.remove(); nodes.delete(k); }
     let prev = null, added = 0;
     for (const x of shown) {
       const key = msgKey(x);
       let have = nodes.get(key);
+      if (x.role === "activity") {
+        // One node for the life of the group (a live turn, then the reply it becomes): its island is updated in place,
+        // so what the reader opened stays open and nothing remounts or jumps.
+        if (!have) {
+          const node = list.ownerDocument.createElement("div");
+          node.className = "activity-row";
+          have = { html: "activity", node, x, handle: opts.activity.mount(node, x.group) };
+          nodes.set(key, have);
+        } else if (have.x !== x) { have.x = x; have.handle.update(x.group); }
+        const want = prev ? prev.nextSibling : list.firstChild;
+        if (have.node !== want) list.insertBefore(have.node, want);
+        prev = have.node;
+        continue;
+      }
       // Filling in older messages: a node drawn from this very message object is current — not drawn again.
       if (drawOpts.older && have && have.x === x) { prev = have.node; continue; }
       const html = msgHtml(x);
@@ -960,6 +976,7 @@ export function createThread(list, scroller, opts) {
     if (!parked) watchReader(scroller, false);
     if (ro) ro.disconnect();
     if (P()) { if (own) P().stopIn(list); else P().stopAll("leave"); }
+    for (const v of nodes.values()) v.handle?.unmount();
     nodes.clear();
     armDay();
     armPolls();

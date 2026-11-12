@@ -156,7 +156,7 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
         // data-mode: the app's entry reads it (#1408 step 1); the signed-in local page is "full".
         "data-chat-workspace": "1", "data-chat-layout-scope": expect.stringMatching(/^[a-f0-9]{64}$/),
         "data-mode": "full", "data-subagents": "1", "data-dashboard-origin": `http://127.0.0.1:${h.port}`, "data-preview-origin": `http://127.0.0.1:${h.pport.port}`,
-        "data-preview-boot": h.any.previewListener!.bootId, "data-preview-reason": "", "data-preview-reason-code": "", "data-usage-panel": "1", "data-log-tab": "0",
+        "data-preview-boot": h.any.previewListener!.bootId, "data-preview-reason": "", "data-preview-reason-code": "", "data-usage-panel": "1", "data-log-tab": "0", "data-log-thinking": "0", "data-chat-activity": "1",
         // #1937: the upload limits in force (the defaults here).
         "data-upload-limits": "{&#34;maxFileBytes&#34;:52428800,&#34;maxFiles&#34;:5,&#34;maxTotalBytes&#34;:104857600}",
         // #1770: the fleet's zone, which the chat reads its times and days in.

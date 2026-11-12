@@ -275,17 +275,25 @@ export function installWorkspaceEntry({ nav, ready, landing = false, scope = "",
       const from = ["a", "b"].find(id => w[id].route.instance === source); if (!from) return [];
       const id = from === "a" ? "b" : "a", name = w[id].route.instance, sourcePane = w[from];
       const targetName = labelOf(appStore.get().instances.find(it => it.name === name) || { name });
-      return [{ label: tw("quote", targetName), async insert(text) {
-        const current = () => { const now = controller.current(); return alive && !!now && now[from] === sourcePane && now[id].route.instance === name; };
-        if (!current()) return;
+      // #3727: `commit` (optional) runs right after the quote went in, in the same turn and under the same fence — the
+      // annotated picture's attachment — so both land in this exact pane or neither does. True when they did. `live`
+      // (optional): the caller's own validity (the annotation editor still open), part of the same fence throughout the
+      // wait for the Chat mount and at the commit.
+      return [{ name, label: tw("quote", targetName), async insert(text, commit, live) {
+        const callerLive = () => typeof live !== "function" || live() === true;
+        const current = () => { const now = controller.current(); return alive && callerLive() && !!now && now[from] === sourcePane && now[id].route.instance === name; };
+        if (!current()) return false;
         if (controller.current()[id].route.panel !== "chat") controller.pane(id).navigate(routePath({ panel: "chat", instance: name }));
-        if (!current() || controller.current()[id].route.panel !== "chat") { toast(tw("quoteAgain"), false); return; }
+        if (!current() || controller.current()[id].route.panel !== "chat") { toast(tw("quoteAgain"), false); return false; }
         const target = controller.current()[id];
         const valid = () => current() && controller.current()[id] === target;
         // B may have been on Log. Wait only for that exact Chat mount; a changed destination permanently cancels.
         const start = performance.now();
         while (valid() && !chat.paneComposerReady(name) && performance.now() - start < 2000) await new Promise(resolve => setTimeout(resolve, 16));
-        if (valid() && performance.now() - start < 2000 && chat.insertPaneQuote(name, source, text, valid)) controller.focus(id);
+        if (!(valid() && performance.now() - start < 2000 && chat.insertPaneQuote(name, source, text, valid))) return false;
+        if (typeof commit === "function") commit();
+        controller.focus(id);
+        return true;
       } }];
     },
     label(name) { const w = controller?.current(); return w && ![w.a.route.instance, w.b.route.instance].includes(name)

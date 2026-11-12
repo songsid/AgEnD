@@ -175,6 +175,10 @@ export interface SettingsApiContext extends AppShellContext {
   explicitWake?(name: string, timeoutMs?: number, retryStoppedSession?: boolean): Promise<void>;
   restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[], execution?: SettingsExecution): Promise<void>;
   captureClassicSettingsRestoration?(instanceName: string, changedFields: string[], execution?: SettingsExecution): () => Promise<void>;
+  /** M-2966: an owned room restart (a Settings save's) and its compensation, bound to one receipt (FleetManager). */
+  beginClassicSettingsRestart?(instanceName: string, changedFields: string[], execution?: SettingsExecution): {
+    restart(): Promise<void>; restore(): Promise<"restarted" | "not-running" | "superseded">; close(): void;
+  };
   /** #3715: an owned room account switch — the forward restart and its compensation bound to one receipt (FleetManager). */
   beginClassicProfileSwitch?(instanceName: string, changedFields: string[]): {
     restart(): Promise<void>; restore(): Promise<"restarted" | "not-running" | "superseded">; close(): void;
@@ -1468,6 +1472,7 @@ export function handleSettingsRequest(
       }
       if (parsed.echo !== undefined) { web.echo_to_channel = parsed.echo; changes.push({ path: ["web", "echo_to_channel"], value: parsed.echo }); }
       if (parsed.logTab !== undefined) { web.log_tab = parsed.logTab; changes.push({ path: ["web", "log_tab"], value: parsed.logTab }); }
+      if (parsed.logThinking !== undefined) { web.log_thinking = parsed.logThinking; changes.push({ path: ["web", "log_thinking"], value: parsed.logThinking }); }
       if (parsed.usageOnPublicLink !== undefined) { web.usage_report_on_public_link = parsed.usageOnPublicLink; changes.push({ path: ["web", "usage_report_on_public_link"], value: parsed.usageOnPublicLink }); }
       if (parsed.officeLevels !== undefined) { web.office_levels = parsed.officeLevels; changes.push({ path: ["web", "office_levels"], value: parsed.officeLevels }); }
       if (parsed.previewCdn !== undefined) { web.preview_cdn = parsed.previewCdn; changes.push({ path: ["web", "preview_cdn"], value: parsed.previewCdn }); }
@@ -1889,29 +1894,47 @@ export function handleSettingsRequest(
       const undo = settingsUndo(classicPath(ctx), previous, classic, Object.keys(body).map(field => ["channels", key, field]));
       const execution = settingsRequestExecution(req);
       const instanceName = typeof merged.instanceName === "string" ? merged.instanceName : undefined;
-      const restore = instanceName ? ctx.captureClassicSettingsRestoration?.(instanceName, Object.keys(body), execution) : undefined;
+      // M-2966: the restart and its compensation are one owned operation (as #3719's tool switch): a plain Save's restart is
+      // owned too, so after a failed start the compensation still owns the room and brings it back on what it had.
+      const op = instanceName ? ctx.beginClassicSettingsRestart?.(instanceName, Object.keys(body), execution) : undefined;
+      const restore = !op && instanceName ? ctx.captureClassicSettingsRestoration?.(instanceName, Object.keys(body), execution) : undefined;
       try {
         if (instanceName && ctx.restartClassicInstanceFromSettings) {
-          if (execution) await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body), execution);
+          if (op) await op.restart();
+          else if (execution) await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body), execution);
           else await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body));
           execution?.assert();
         }
       } catch (err) {
         // Keep disk and runtime consistent if the requested restart fails.
+        let rolledBack = false;
         try {
           const retained = undoSettingsPaths(classicPath(ctx), readClassic(ctx), undo);
           writeClassicAtomic(ctx, retained.value);
           if (retained.conflicts) throw new Error("concurrent Classic edit retained");
+          rolledBack = true;
         } catch (rollbackErr) {
           ctx.logger.error({ err: rollbackErr, key }, "settings: failed to roll back classic channel update");
         }
-        if (instanceName && ctx.restartClassicInstanceFromSettings) {
-          try { if (restore) await restore(); else await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body)); }
+        // M-2966 (Prism on #3721): the owned compensation may start a stopped room, so it runs only on a conflict-free
+        // rollback — never onto a newer edit that undo kept, nor onto a file it couldn't put back (as #3719's tool path).
+        if (op && !rolledBack) ctx.logger.warn({ key, instanceName }, "settings: classic rollback incomplete; the room is not restarted");
+        else if (instanceName && ctx.restartClassicInstanceFromSettings) {
+          try {
+            if (op) {
+              // Never over a runtime someone else stopped or started meanwhile ("superseded"): that one stays as it is.
+              const outcome = await op.restore();
+              if (outcome === "superseded") ctx.logger.warn({ key, instanceName }, "settings: classic room changed meanwhile; not restarted after rollback");
+            } else if (restore) await restore();
+            else await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body));
+          }
           catch (recoveryErr) { ctx.logger.error({ err: recoveryErr, key, instanceName }, "settings: failed to restore classic instance after rollback"); }
         }
+        op?.close();
         ctx.logger.warn({ err, key, instanceName }, "settings: classic channel restart failed; config rolled back");
         return json(res, 409, { error: `classic instance restart failed: ${(err as Error).message}` });
       }
+      op?.close();
       execution?.complete();
       ctx.logger.info({ key, instanceName }, "settings: updated classic channel");
       const hotOnly = Object.keys(body).length > 0

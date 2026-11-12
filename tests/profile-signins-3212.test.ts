@@ -167,7 +167,7 @@ describe("ProfileSignIns", () => {
     expect(h.transportFor).toHaveBeenCalledWith({ backend: "claude-code", profile: "CHY" });
     expect(h.transport.start).toHaveBeenCalledTimes(1);
     expect(h.transport.start.mock.calls[0]![0]).toEqual({ argv: ["claude", "auth", "login"], profile: "CHY" });
-    expect(h.lock.current).toMatchObject({ kind: "web", backend: "claude-code" });
+    expect(h.lock.heldFor("claude-code")).toMatchObject({ kind: "web", backend: "claude-code" });
     expect(login(h)).toMatchObject({ backend: "claude-code", phase: "code", mine: true, canAct: true, url: URL_OK });
     const v = login(h);
     await h.c.input(h.owner, h.target(), v.id, v.revision, { kind: "code", value: CODE });
@@ -207,6 +207,7 @@ describe("ProfileSignIns", () => {
     const h = rig();
     const a = await h.c.begin(h.owner, h.target()), b = await h.c.begin(h.owner, h.target("chy"));
     expect(b.login!.id).toBe(a.login!.id); expect(h.transport.start).toHaveBeenCalledTimes(1);
+    expect(a.started).toBe(a.login!.id); expect(b.started, "#3725 review: a start that joined the run names none — nobody may end it as theirs").toBeUndefined();
     await expect(h.c.begin(h.owner, h.target("home"))).rejects.toThrow("signin_busy");
     expect(h.c.signingIn("claude-code", "CHY")).toBe(true); expect(h.c.signingIn("claude-code", "chy")).toBe(true); expect(h.c.signingIn("claude-code", "home")).toBe(false);
     expect(h.c.signingIn("codex", "CHY")).toBe(false);
@@ -214,10 +215,15 @@ describe("ProfileSignIns", () => {
     // The snapshot of another account shows no login of this one.
     expect(h.c.snapshot(h.owner, h.target("home")).login).toBeNull();
   });
-  it("the host's login window is shared: a sign-in anywhere else on the host (the default account, chat, an install) makes this one busy and starts nothing", async () => {
-    const h = rig(); const claim = h.lock.tryClaim("install", "codex");
+  it("the backend's login window is shared: a sign-in on the same backend anywhere else on the host (the default account, chat, an install) makes this one busy and starts nothing; another backend's does not", async () => {
+    const h = rig();
+    // AGEND-203: a window held on ANOTHER backend (here codex's install) does not hold this one up.
+    const elsewhere = h.lock.tryClaim("install", "codex");
+    const free = await h.c.begin(h.owner, h.target()); expect(free.login).toMatchObject({ phase: "code" }); expect(h.transport.start).toHaveBeenCalledTimes(1);
+    await h.c.cancel(h.owner, h.target()); h.lock.release(elsewhere);
+    const claim = h.lock.tryClaim("install", "claude-code");
     const snapshot = await h.c.begin(h.owner, h.target());
-    expect(snapshot.login).toMatchObject({ phase: "failed", reason: "busy" }); expect(h.transport.start).not.toHaveBeenCalled();
+    expect(snapshot.login).toMatchObject({ phase: "failed", reason: "busy" }); expect(h.transport.start).toHaveBeenCalledTimes(1);
     h.lock.release(claim);
     // …and the other way round: while this one runs nobody else gets the window.
     await h.c.begin(h.owner, h.target()); expect(h.lock.tryClaim("web", "claude-code")).toBeNull();

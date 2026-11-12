@@ -114,7 +114,7 @@ describe("#2233 the Sign in dialog", () => {
     expect(text()).toContain("Connecting your claude-code account (started on Safari on iPhone)");
     expect(text()).not.toContain(CODE);
     fire(btn("Cancel connecting"), "click"); await settle(6);
-    expect(reqs.find(r => r.url === "/ui/backend-login/cancel")).toEqual({ method: "POST", url: "/ui/backend-login/cancel", body: {} });
+    expect(reqs.find(r => r.url === "/ui/backend-login/cancel")).toEqual({ method: "POST", url: "/ui/backend-login/cancel", body: { backend: "claude-code" } });
   });
 
   it("the end: signed in, with the recovery lines", async () => {

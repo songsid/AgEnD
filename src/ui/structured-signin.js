@@ -94,10 +94,12 @@ const pageLang = doc => /^zh/i.test(doc?.documentElement?.lang || "") ? "zh-TW" 
  * themselves every second) and no "Sign in later" (nothing would remember it). `focus` (a backend id) then shows only that backend's card: the default account's checklist may
  * hold others. The setup page and the installer's `?backend_signins=` list do not pass `dialog`, and look as they did.
  *
- * `started` (run id → void): called with the id of the run a press of Sign in in THESE cards started (not one that was already running when they were drawn). The account dialog
- * keeps it, to end exactly that run when it closes.
+ * `started` (run id → void): called with the id of the run a press of Sign in in THESE cards started — the id the server names as created by that very request (`started` in its
+ * answer), never one it joined that was already running (another tab's, another backend's, a double click). The account dialog keeps it, to end exactly that run when it closes.
+ * `abandoned` (run id → void): the same id, when the cards were disposed (the dialog closed) while that request was still in flight: nobody is left to show or keep the run, so
+ * whoever mounted the cards ends it by this id. Nothing is drawn, and no other run is touched.
  */
-export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask, dashboard = false, dialog = false, focus, started = () => {} } = {}) {
+export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, changed = () => {}, lang, machine = false, ask, dashboard = false, dialog = false, focus, started = () => {}, abandoned = () => {} } = {}) {
   const doc = root.ownerDocument;
   let view = null, busy = false, disposed = false, timer = null, generation = 0, message = "", rendered = "";
   const language = () => (lang ? lang() : pageLang(doc)) === "zh-TW" ? "zh-TW" : "en";
@@ -119,7 +121,12 @@ export function mountStructuredSignIns(root, { endpoint, fetcher = fetch, change
   async function perform(data) {
     if (busy || disposed) return;
     busy = true; generation++; message = ""; render();
-    try { const next = await request(data); if (!disposed) { accept(next); if (data?.operation === "start" && typeof next?.login?.id === "string") started(next.login.id); } }
+    try {
+      const next = await request(data);
+      const created = data?.operation === "start" && typeof next?.started === "string" ? next.started : null;   // a start that joined a run already there names none
+      if (disposed) { if (created) abandoned(created); }
+      else { if (created) started(created); accept(next); }
+    }
     catch (error) { if (!disposed) message = String(error?.message || "error"); }
     finally { busy = false; if (!disposed) render(); }
   }

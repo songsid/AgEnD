@@ -49,11 +49,11 @@ function capLine(s: string): string {
   return flat.length > LABEL_MAX_CHARS ? `${flat.slice(0, LABEL_MAX_CHARS - 1)}…` : flat;
 }
 
-/** Shorten an absolute path to something readable in a bubble line. */
+/** Shorten an absolute path to something readable in a bubble line (a Windows path, with backslashes, too). */
 function shortPath(p: string): string {
   const clean = String(p).trim();
   if (clean.length <= 48) return clean;
-  const parts = clean.split("/");
+  const parts = clean.split(/[\\/]/);
   if (parts.length <= 3) return clean;
   return `…/${parts.slice(-3).join("/")}`;
 }
@@ -98,26 +98,35 @@ function isLowSignalCommand(cmd: string): boolean {
   return /^(rg|grep|find|fd|ls|cat|head|tail|wc|which|pwd|echo|sed|awk|cut|sort|uniq)\b/.test(cmd.trim());
 }
 
-/** First program name of a shell command, pipelines/chains reduced to the head. */
-function shellProgramName(cmd: string): string {
+/**
+ * First program name of a shell command, pipelines/chains reduced to the head.
+ * Prism #3709 R3: a wrapper's own options (`npx --package=…`, `sudo --user=…`, `timeout -s KILL`) and their values are
+ * ARGUMENTS, never a program: when what follows a wrapper is an option (or an assignment) the program cannot be named
+ * safely, so only the wrapper itself is returned — never the option string, which standard progress must not send.
+ */
+export function shellProgramName(cmd: string): string {
   const head = cmd.trim().split(/\s*(?:&&|\|\||\||;)\s*/)[0] ?? "";
   const tokens = head.trim().split(/\s+/);
+  const assignment = /^[A-Za-z_][A-Za-z0-9_]*=/;
   // Skip env assignments and common wrappers
   let i = 0;
-  while (i < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])) i++;
-  if (tokens[i] === "sudo" || tokens[i] === "npx" || tokens[i] === "timeout") i++;
+  while (i < tokens.length && assignment.test(tokens[i])) i++;
+  let wrapper = "";
+  if (tokens[i] === "sudo" || tokens[i] === "npx" || tokens[i] === "timeout") { wrapper = tokens[i]!; i++; }
   if (tokens[i] && /^\d+[smh]?$/.test(tokens[i])) i++; // timeout's duration arg
-  return tokens[i] ?? "";
+  const next = tokens[i] ?? "";
+  if (wrapper && (next.startsWith("-") || assignment.test(next))) return wrapper;
+  return next.startsWith("-") || assignment.test(next) ? "" : next;
 }
 
 /** Search programs: their arguments are what is being searched for, which can be a literal secret. */
 const SEARCH_PROGRAMS = new Set(["grep", "egrep", "fgrep", "rg", "ag", "ack", "find", "fd", "fdfind", "locate", "git-grep"]);
 /** A search program, given by name or path (`/usr/bin/grep`). */
-export function isSearchProgram(program: string): boolean { return SEARCH_PROGRAMS.has(program.replace(/^.*\//, "")); }
+export function isSearchProgram(program: string): boolean { return SEARCH_PROGRAMS.has(program.replace(/^.*[\\/]/, "")); }
 /** A search anywhere in the command (any pipeline or chain segment, `git grep` included). */
 function isSearchCommand(cmd: string): boolean {
   return cmd.split(/\s*(?:&&|\|\||\||;|\n)\s*/).some(segment => {
-    const prog = shellProgramName(segment).replace(/^.*\//, "");
+    const prog = shellProgramName(segment).replace(/^.*[\\/]/, "");
     // git grep, git -C dir grep, git log --grep=…
     return isSearchProgram(prog) || (prog === "git" && /\bgrep\b/.test(segment));
   });

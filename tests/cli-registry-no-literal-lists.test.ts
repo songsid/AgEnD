@@ -25,6 +25,8 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
   { why: "delivery, turn resume, transcripts and usage reports: which CLIs write which kind of transcript or report", files: {
     "src/daemon.ts": 8, "src/delivery-reconciliation.ts": 2, "src/turn-resume.ts": 2, "src/backend/session-signals.ts": 1, "src/cache-ledger.ts": 1, "src/cache-service.ts": 5,
     "src/transcript-sources.ts": 1, "src/usage-report.ts": 2, "src/usage-rollup.ts": 1,
+    // AGEND-181: where agy's and grok's own records lie for the Log (one table keyed by CLI id).
+    "src/log-transcript-paths.ts": 1,
     // Exact structured subagent formats supported by this reader, not CLI account/install capabilities.
     "src/subagent-records.ts": 2, "src/subagent-service.ts": 1,
   } },
