@@ -23,7 +23,7 @@ async function sidebar(instances: Array<Record<string, unknown>>, path = "/ui") 
   await pg.mount(h(Shell, { panels: new Map(), onNewInstance() {} }));
   return pg;
 }
-/** The sidebar's list on View (alpha.2, N1: the shell's one list, fed by the status frames; the rows link to View). */
+/** The sidebar's list on View (alpha.2, N1: the shell's one list, fed by the status frames; other rows keep View, the selected signed-in row returns to Chat). */
 async function viewSidebar(roster: Array<Record<string, unknown>>, path = "/view") {
   const pg = page({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1" } });
   mounted.push(pg);
@@ -170,12 +170,13 @@ describe("sidebar instance identity", () => {
     expect(same!.querySelector(".inst-name")!.textContent).toBe("same-name");
   });
 
-  it("the View roster row is a link to /view/<name>, its tooltip leads with the identity, and the open one is the active row", async () => {
-    const { viewPath } = await import("/assets/app-route.js");
+  it("the signed-in View roster links its selected row to Chat and other rows to View, preserving tooltip identity and the active marker", async () => {
+    const { chatPath, viewPath } = await import("/assets/app-route.js");
     const pg = await viewSidebar([viewPayload, { ...viewPayload, instance_name: "other", display_name: "" }], `/view/${viewPayload.instance_name}`);
     const [active, other] = pg.root.querySelectorAll("a.v-inst");
     expect(active!.tagName.toLowerCase()).toBe("a");
-    expect(active!.getAttribute("href")).toBe(viewPath(viewPayload.instance_name));
+    expect(active!.getAttribute("href")).toBe(chatPath(viewPayload.instance_name));
+    expect(other!.getAttribute("href")).toBe(viewPath("other"));
     expect(active!.getAttribute("class")).toContain("active");
     expect(active!.getAttribute("aria-current")).toBe("page");
     expect(other!.getAttribute("class")).not.toContain("active");
