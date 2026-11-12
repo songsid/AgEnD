@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 <owned checkout>
+
+ ❯ tests/hub-compose.test.ts (113 tests | 1 failed | 111 skipped) 94ms
+     × does not mistake a TCP self-connection for a listening Hub 23ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-compose.test.ts > owned TCP refusal probe > does not mistake a TCP self-connection for a listening Hub
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/hub-compose.test.ts:151:20
+    149|     });
+    150|     expect(tuple).toEqual({ localAddress: "127.0.0.1", localPort: port…
+    151|     expect(answer).toBe(true);
+       |                    ^
+    152|   });
+    153|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 111 skipped (113)
+   Start at  03:19:52
+   Duration  2.48s (transform 1.62s, setup 105ms, import 2.11s, tests 94ms, environment 0ms)
+

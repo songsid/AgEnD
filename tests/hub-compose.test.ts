@@ -3,9 +3,9 @@
  * a scratch home), with a fake S3 entry. Local listeners on 127.0.0.1 only; no directory is contacted (S2's client is
  * built but never signs in), nothing outside the scratch home is touched.
  */
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { request, Server as HttpsServer } from "node:https";
-import { connect, createServer as createNetServer } from "node:net";
+import { connect, createServer as createNetServer, type Socket } from "node:net";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { verify, createPublicKey, randomUUID, createHash } from "node:crypto";
@@ -18,7 +18,7 @@ import { createHubServerFactory, hubServerDatabasePlan, type HubHttp, type HubHt
 import { HubDirectoryResponseOwner, type HubDirectoryResponse } from "../src/hub/directory-response-owner.js";
 import { HubServer } from "../src/hub/server.js";
 import type { HubMountedService } from "../src/hub/mount.js";
-import { ADMIN, makeTestCerts } from "./support/hub-init-fixtures.js";
+import { ADMIN, makeTestCerts, type TestCerts } from "./support/hub-init-fixtures.js";
 import { freeHubPort } from "./helpers/hub-rig.js";
 import { readHubSecretFile } from "../src/hub/init/secret-file.js";
 import { readPrivateFile } from "../src/hub/private-files.js";
@@ -37,7 +37,12 @@ import { createHubDirectorySettingsControl, type HubDirectorySettingsControl } f
 import type { HubDirectoryProofContext } from "../src/hub/settings-directory-proof.js";
 
 const roots: string[] = [];
-beforeAll(() => mkdirSync(".artifacts", { recursive: true }));
+let sourceCerts: TestCerts;
+beforeAll(() => {
+  mkdirSync(".artifacts", { recursive: true });
+  sourceCerts = makeTestCerts();
+}, 120_000);
+afterAll(() => { if (sourceCerts) rmSync(sourceCerts.dir, { recursive: true, force: true }); });
 afterEach(() => {
   for (const p of roots.splice(0)) rmSync(p, { recursive: true, force: true });
 });
@@ -49,7 +54,7 @@ async function initializedHub(bindPassword = BIND) {
   const home = mkdtempSync(join(process.cwd(), ".artifacts/hub-compose-"));
   chmodSync(home, 0o700);
   roots.push(home);
-  const certs = makeTestCerts();
+  const certs = sourceCerts;
   // Two probes in a row may get the same just-freed port from the OS (a flake: "must use different addresses"): ask again.
   const memberPort = await freeHubPort();
   let webPort = await freeHubPort();
@@ -118,13 +123,41 @@ function get(port: number, path: string, ca: string): Promise<{ status: number; 
   });
 }
 
-function refused(port: number): Promise<boolean> {
+function refused(port: number, dial: (port: number, host: string) => Socket = connect): Promise<boolean> {
   return new Promise((resolve) => {
-    const s = connect(port, "127.0.0.1");
-    s.once("connect", () => { s.destroy(); resolve(false); });
-    s.once("error", () => resolve(true));
+    const s = dial(port, "127.0.0.1");
+    let answer = true;
+    s.once("connect", () => {
+      // Linux can assign the target ephemeral port to this client: that socket talks to itself, not a Hub.
+      answer = s.localAddress === s.remoteAddress && s.localPort === s.remotePort;
+      s.destroy();
+    });
+    s.once("error", () => { answer = true; s.destroy(); });
+    s.once("close", () => resolve(answer));
   });
 }
+
+describe.skipIf(process.platform !== "linux")("owned TCP refusal probe", () => {
+  it("does not mistake a TCP self-connection for a listening Hub", async () => {
+    const port = await freeHubPort();
+    let tuple: { localAddress?: string; localPort?: number; remoteAddress?: string; remotePort?: number } | undefined;
+    const answer = await refused(port, (target, host) => {
+      const socket = connect({ host, port: target, localAddress: host, localPort: target });
+      socket.once("connect", () => { tuple = { localAddress: socket.localAddress, localPort: socket.localPort,
+        remoteAddress: socket.remoteAddress, remotePort: socket.remotePort }; });
+      return socket;
+    });
+    expect(tuple).toEqual({ localAddress: "127.0.0.1", localPort: port, remoteAddress: "127.0.0.1", remotePort: port });
+    expect(answer).toBe(true);
+  });
+
+  it("still reports a genuine owned listener as connected", async () => {
+    const listener = createNetServer(socket => socket.destroy());
+    await new Promise<void>((resolve, reject) => { listener.once("error", reject); listener.listen(0, "127.0.0.1", resolve); });
+    try { expect(await refused((listener.address() as { port: number }).port)).toBe(false); }
+    finally { await new Promise<void>((resolve, reject) => listener.close(error => error ? reject(error) : resolve())); }
+  });
+});
 
 function factory(home: string, http?: HubHttpEntry, extra: Partial<Pick<import("../src/hub/compose/server.js").HubServerFactoryOptions, "retentionReady" | "retentionEveryMs" | "browserCertificateReady" | "createDirectory" | "directoryReady">> = {}) {
   const reports: { code: string; detail: string }[] = [];

@@ -1,0 +1,14 @@
+[
+  {
+    "file": "tests/hub-compose.test.ts",
+    "beforeExpectCalls": 515,
+    "afterExpectCalls": 518,
+    "missingOriginalExpectCalls": []
+  },
+  {
+    "file": "tests/hub-company-join-http.test.ts",
+    "beforeExpectCalls": 131,
+    "afterExpectCalls": 134,
+    "missingOriginalExpectCalls": []
+  }
+]
