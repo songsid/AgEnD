@@ -130,7 +130,8 @@ export function installWorkspaceNavigation(nav, { beforeLayout = () => {}, onWor
     },
     layout(layout, floating = "b") {
       const w = current(); if (!w || !["right", "stack", "float"].includes(layout) || (layout === "float" && !geometry) || (w.layout === layout && (layout !== "float" || w.floating === floating))) return;
-      go({ ...w, layout, ...(layout === "float" ? { floating: floating === "a" ? "a" : "b", rect: w.rect || null } : {}) });
+      const { floating: oldFloating, rect, ...docked } = w;
+      go({ ...docked, layout, ...(layout === "float" ? { floating: floating === "a" ? "a" : "b", rect: rect || null } : {}) });
     },
     swap() { const w = current(); if (w) go({ ...w, ...(w.layout === "float" ? { floating: w.floating === "a" ? "b" : "a" } : { flipped: !w.flipped }) }); },
     closePane(id) {

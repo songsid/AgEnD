@@ -159,6 +159,25 @@ export function insertPaneQuote(name, source, text, current = () => true) {
 }
 export const paneComposerReady = name => !!composerField(name);
 
+/** #3637: private, write-only local draft handoff; never send, upload or share an outgoing queue. */
+export const popoutDraftVersion = 1;
+export const popoutDraftReady = () => !!store && ["captureDraft", "draftCurrent", "clearCapturedDraft", "acceptDraft"].every(key => typeof store[key] === "function");
+export function capturePaneDraft(name) {
+  const owner = store;
+  if (!popoutDraftReady() || guestPage() || composers.get(name)?.composing) return null;
+  const ticket = owner.captureDraft(name);
+  const sameField = () => !composers.get(name)?.composing && (!composerField(name) || composerField(name).value === ticket.payload.text);
+  if (!sameField()) return null;
+  return { payload: ticket.payload, current: () => store === owner && owner.draftCurrent(ticket) && sameField(),
+    clear: () => store === owner && owner.clearCapturedDraft(ticket) };
+}
+export function acceptPaneDraft(name, data) {
+  const field = composerField(name);
+  if (!popoutDraftReady() || guestPage() || composers.get(name)?.composing || !field || field.disabled || field.readOnly || field.isConnected === false) return false;
+  return store.acceptDraft(name, data);
+}
+
+
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
 
@@ -342,11 +361,16 @@ function useResolvedMode(lease) {
 
 function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const pane = paneContext.usePane?.(), paneNow = useRef(pane); paneNow.current = pane;
-  const bindings = useRef({ input: { current: null }, box: { current: null } }).current;
+  const bindings = useRef({ input: { current: null }, box: { current: null }, composing: false }).current;
   const ids = pane ? Object.fromEntries(["msgIn", "attachBtn", "stopBtn", "sendBtn", "cmdPalette"].map(key => [key, `pane-${pane.id}-${key}`])) : {};
   useLayoutEffect(() => {
     composers.set(name, bindings);
-    return () => { if (composers.get(name) === bindings) composers.delete(name); };
+    const field = bindings.input.current, start = () => { bindings.composing = true; }, end = () => { bindings.composing = false; };
+    field?.addEventListener("compositionstart", start); field?.addEventListener("compositionend", end); field?.addEventListener("blur", end);
+    return () => {
+      field?.removeEventListener("compositionstart", start); field?.removeEventListener("compositionend", end); field?.removeEventListener("blur", end);
+      if (composers.get(name) === bindings) composers.delete(name);
+    };
   }, [name]);
   const attachmentsSupported = supportsInstanceFeature(inst,"attachments");
   const names = useStore(namesStore);   // #1722: which name leads (the title)

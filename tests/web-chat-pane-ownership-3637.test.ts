@@ -80,6 +80,18 @@ describe("visible chats are distinct from page focus", () => {
 });
 
 describe("pane scope adds no DOM and retains legacy defaults", () => {
+  it("hands a local draft to the real composer and refuses IME or later source edits without sending", async () => {
+    await p.mount(h("div", null, pane("a", true, panel("alpha")), pane("b", false, panel("beta"))));
+    const a: any = p.document.getElementById("pane-a-msgIn"), b: any = p.document.getElementById("pane-b-msgIn");
+    a.value = "move this"; fire(a, "input"); b.value = ""; fire(b, "input"); await settle(3);
+    const ticket = chat.capturePaneDraft("alpha"); expect(ticket.current()).toBe(true);
+    fire(b, "compositionstart"); expect(chat.acceptPaneDraft("beta", ticket.payload)).toBe(false); fire(b, "compositionend");
+    expect(chat.acceptPaneDraft("beta", ticket.payload)).toBe(true); await settle(3); expect(b.value).toBe("move this");
+    fire(a, "compositionstart"); expect(chat.capturePaneDraft("alpha")).toBeNull(); expect(ticket.current()).toBe(false);
+    a.value = "later typing"; fire(a, "compositionend"); expect(ticket.current()).toBe(false);
+    expect(requests.filter(path => /send|upload|command/.test(path))).toEqual([]);
+  });
+
   it("cross-pane quote edits only B's draft, records undo and never sends or copies A's reply identity", async () => {
     await p.mount(h("div", null, pane("a", true, panel("alpha")), pane("b", false, panel("beta"))));
     const undo = await import("/assets/text-undo.js") as any;

@@ -31,3 +31,8 @@ it("sidebar docking opens a single pane's second agent at the requested edge wit
   nav.navigate("/ui/fleet/agent/alpha?cat=runtime", { workspace: true, force: true }); controller.dock("beta", "a", "left");
   expect(controller.current()?.a.search).toBe("?cat=runtime"); expect(controller.current()?.flipped).toBe(true); expect(controller.current()?.b.route.instance).toBe("beta");
 });
+
+it("leaving float for a menu layout removes the old floating owner and rectangle", () => {
+  controller.layout("float", "a"); controller.geometry({ rect: { x: 15, y: 20, width: 500, height: 400 } });
+  controller.layout("right"); expect(controller.current()).not.toHaveProperty("floating"); expect(controller.current()).not.toHaveProperty("rect");
+});
