@@ -48,9 +48,9 @@ try {
  const create=async(maxUses:number)=>{const r=await rig.call(admin,'POST','/hub/v1/admin/enrolment-codes',{expires:'today',maxUses,perPersonFleets:1,scope:{kind:'directory'}});check('admin creates '+maxUses+'-use code',r.status===201);return r.body;};
  const secrets:string[]=[];
  const rawJson=(client as any).json.bind(client);(client as any).json=async(...args:any[])=>{const began=Date.now();try{return await rawJson(...args);}catch(e:any){const diagnostic={path:String(args[1]).split('?')[0],elapsedMs:Date.now()-began,code:e.code??null,kind:e.kind??null};receipt.machineErrors??=[];receipt.machineErrors.push(diagnostic);console.error(JSON.stringify({machineFailure:diagnostic}));throw e;}};
- let pushing=0;const pushWaiters:Array<()=>void>=[];
- const enterPush=async()=>{if(pushing<8){pushing++;return;}await new Promise<void>(resolve=>pushWaiters.push(resolve));};
- const leavePush=()=>{const next=pushWaiters.shift();if(next)next();else pushing--;};
+ let machines=0;const machineWaiters:Array<()=>void>=[];
+ const enterMachine=async()=>{if(machines<4){machines++;return;}await new Promise<void>(resolve=>machineWaiters.push(resolve));};
+ const leaveMachine=()=>{const next=machineWaiters.shift();if(next)next();else machines--;};
 
  const signedPeople=new Map<string,any>();
  let signins=0;const signinWaiters:Array<()=>void>=[];
@@ -58,10 +58,14 @@ try {
  const leaveSignin=()=>{const next=signinWaiters.shift();if(next)next();else signins--;};
  async function attempt(code:string|null,login:string,visible:any=null,beforeSignIn=async()=>{},onQueued=()=>{},legacy=false) {
   if(visible)return ui.joinFleet(visible,code,login,beforeSignIn,onQueued);
+  // Keep the complete machine exchange in the ramp, not just push followed by unbounded redeem/ACK work.
+  await enterMachine();try{return await machineAttempt(code,login,legacy);}finally{leaveMachine();}
+ }
+ async function machineAttempt(code:string|null,login:string,legacy:boolean){
   const started=Date.now(), key=generateKeyPairSync('ed25519'), verifier=randomBytes(32).toString('base64url'), state=randomBytes(32).toString('hex');
   const binding={hub:metadata.hub,requestId:randomUUID(),operationId:randomUUID(),fleetId:randomUUID(),publicKey:key.publicKey.export({type:'spki',format:'pem'}).toString(),fleetOrigin:'https://'+login+'.example.test:43210',verifierS256:pkceChallenge(verifier)};
   const command=(purpose:any,payload:any={})=>client.command(binding,purpose,payload,key.privateKey,()=>true);
-  await enterPush();try{await command('push',{label:'Owned '+login,stateHash:createHash('sha256').update(state).digest('hex'),invitation:null,...(code?{code}:{})});}finally{leavePush();}
+  await command('push',{label:'Owned '+login,stateHash:createHash('sha256').update(state).digest('hex'),invitation:null,...(code?{code}:{})});
   const open=await rig.call(null,'POST','/hub/join/open',new URLSearchParams({requestId:binding.requestId,state}).toString(),{'Content-Type':'application/x-www-form-urlencoded',Origin:binding.fleetOrigin});
   check('Origin-bound browser handoff '+login,open.status===303);
   let signed:any=signedPeople.get(login);
@@ -115,7 +119,9 @@ try {
   }
   finally{release();if(deadline)clearTimeout(deadline);await Promise.allSettled(seedJobs);rig.directory.checkEligibility=original;}
   const uses=rig.db.prepare('SELECT uses FROM hub_enrolment_codes WHERE id=?').get(code.id).uses;
-  check(prefix+' all issued and pinned member links online',result.every(r=>r.issued));check(prefix+' uses counted once',uses===n);
+  check(prefix+' all issued and pinned member links reconciled',result.every(r=>r.issued));check(prefix+' uses counted once',uses===n);
+  await wait(()=>result.every((r,i)=>i<5?visible[i].fm.hubMemberLink==='online':r.member?.ready===true&&r.member?.view?.current()===true),30_000);
+  check(prefix+' all member links current together',result.every((r,i)=>i<5?visible[i].fm.hubMemberLink==='online':r.member?.ready===true&&r.member?.view?.current()===true));
   const pushed=result.map(r=>rig.deps.companyJoin.records.get(r.binding.requestId).createdAt);
   const span=Math.max(...pushed)-Math.min(...pushed),elapsed=Date.now()-start;
   check(prefix+' starts inside 60 seconds',span<60000);check(prefix+' connected within five minutes',elapsed<300000);

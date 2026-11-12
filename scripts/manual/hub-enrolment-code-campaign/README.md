@@ -65,8 +65,8 @@ Dependency modules are mounted read-only. Images are unchanged from B1's kit.
    (including five browser sessions) is completed before starting the connection
    burst and its time is included in wave elapsed. Assert actual push timestamps
    span under60 seconds and all connect within five minutes without manual retry.
-   Harness proof exchanges have at most8 concurrent pushes; this is a ramp
-   within the specified60 seconds, not a50-at-once machine-RPC claim. Existing
+   Harness machine exchanges have at most4 concurrent complete push/approve/redeem/ACK/connect flows, plus five real UI flows; this is a ramp
+   within the specified60 seconds, not a50-at-once machine-RPC claim. Each wave also requires all links to be current together at its end. Existing
    five-second sign-in and machine deadlines stay unchanged.
 6. B-L13: a separate50-person repetition with three group joins adds a deliberate
    overload control. Thirty-two separate fixture identities make actual shared-pool
