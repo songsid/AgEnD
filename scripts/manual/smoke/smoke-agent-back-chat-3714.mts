@@ -53,7 +53,7 @@ try{
   if(!retain){
    await settings(a);await showSidebar();await row(b).click();await page.waitForURL(fx.base+details(b));await page.locator('.p-details .panel-title h1').filter({hasText:b}).waitFor();
    assert.equal(await row(b).getAttribute("href"),chat(b));await showSidebar();await row(b).click();await page.locator("#msgIn").waitFor();check("second-click","first click changes agent and keeps Settings; second click opens Chat");
-   await settings(a);const field=page.locator('.p-details input[id$="ag-desc"]');await field.fill("Unsent M-2960 note");await page.locator(".pending-bar").waitFor();
+   await settings(a);const field=page.locator('.p-details input[id$="ag-desc"]');await field.fill("Unsent M-2960 note");await page.locator(".s-pending").waitFor();
    await page.locator(".agent-back-chat").click();await page.locator('dialog[open] [data-confirm="yes"]').waitFor();await page.locator('dialog[open]').getByRole("button",{name:tr("Cancel","取消"),exact:true}).click();
    assert.equal(await field.inputValue(),"Unsent M-2960 note");assert.ok(page.url().includes(details(a)));check("cancel-preserves-draft","Back to chat asks the existing unsaved-settings guard; Cancel keeps the draft");
    await page.locator(".agent-back-chat").click();await page.locator('dialog[open] [data-confirm="yes"]').click();await page.locator("#msgIn").waitFor();await shot("returned-chat");
