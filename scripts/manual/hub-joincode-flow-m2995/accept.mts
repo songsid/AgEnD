@@ -45,7 +45,7 @@ try {
     let mode = "live", ended = false, revokes = 0, approvals = 0;
     const names = lang === "en" ? ["Design laptop", "QA laptop", "Support laptop"] : ["設計組筆電", "測試組筆電", "客服組筆電"];
     const code = (n: number, state = "live") => ({ id: `11111111-1111-4111-8111-${String(n).padStart(12, "0")}`, code: state === "live" ? `2345-ABC${n + 1}` : null,
-      state, uses: 2, maxUses: 30, inFlight: 3, inFlightLabels: names, createdAt: NOW - n * 1000, expiresAt: NOW + 3600000, scope: { kind: "directory" }, perPersonFleets: 1, recent: [] });
+      state, uses: 2, maxUses: 30, inFlight: state === "live" ? 3 : 0, inFlightLabels: state === "live" ? names : [], createdAt: NOW - n * 1000, expiresAt: NOW + 3600000, scope: { kind: "directory" }, perPersonFleets: 1, recent: [] });
     const rows = () => mode === "live-limit" ? Array.from({ length: 8 }, (_, i) => code(i + 1)) : mode === "hourly-code-limit" ? Array.from({ length: 10 }, (_, i) => code(i + 1, i ? "revoked" : "live")) : [code(1, ended ? "revoked" : "live")];
     await ctx.route(/\/hub\/v1\/session$/, async (route: any) => {
       const res = await route.fetch(), data = await res.json();
