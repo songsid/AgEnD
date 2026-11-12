@@ -14,7 +14,7 @@ receipt = {'head': git('rev-parse', 'HEAD'), 'tree': git('rev-parse', 'HEAD^{tre
 test = 'tests/web-agent-back-chat-3714.test.ts'
 cases = [
     ('selected-row', 'src/ui/shared/instance-nav.js', '!viewOnly && name === active', 'false', test),
-    ('different-agent', 'src/ui/shared/instance-nav.js', 'name === active', 'true', test),
+    ('different-agent', 'src/ui/shared/instance-nav.js', '!viewOnly && name === active', '!viewOnly', test),
     ('public-view', 'src/ui/shared/instance-nav.js', '!viewOnly && name === active', 'name === active', test),
     ('pane-return', 'src/ui/chat-workspace.js', 'backToChat ? pane.navigate(backToChat.path) : pane.controller.closePane(pane.id)', 'pane.controller.closePane(pane.id)', test),
     ('settings-handoff', 'src/ui/panel-details.js', 'pageControls=${{ navKey, backToChat }}', 'pageControls=${{ navKey }}', test),
