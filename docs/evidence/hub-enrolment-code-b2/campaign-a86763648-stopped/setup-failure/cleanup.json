@@ -1,0 +1,10 @@
+{
+  "checkedAt": "2026-11-12T06:01:51.825527+00:00",
+  "attempt": "871cd35a-cb9c-4ddf-851a-6368ee5c94a8",
+  "containerAbsent": true,
+  "labelledImageAbsent": true,
+  "watcherAbsent": true,
+  "activeLockAbsent": true,
+  "diagnosticReceiptAbsent": true,
+  "scope": "Read-only verification of exact owned CID/image/watcher only; no other process or container touched."
+}

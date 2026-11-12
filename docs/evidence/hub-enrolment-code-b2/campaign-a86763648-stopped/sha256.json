@@ -1,0 +1,17 @@
+{
+  "README.md": "eec47f05b37b7764e0f1c8cb4e0eecaf7864580a451f9afb70ce573a3006ec3a",
+  "slot-readiness.log": "10f8542151d8d8d080079ce3ad53cb1afd09beb28a265b945f7584735bd35e59",
+  "setup-failure/launch.log": "9feb2e28a875e2114a01b83c4a5b25cccac4b1df319d2fb6740a5d6e1a879953",
+  "setup-failure/host-resources.jsonl": "a37bc3bc58982bd82a5446140b8730ea80207356153c7fb87541d4b39bda34aa",
+  "setup-failure/build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "setup-failure/receipt.json": "30b93a7907bec43a0b44a2a6924716ce9fbb023e962e2caa73136c7362cac386",
+  "setup-failure/cleanup.json": "b20b3ebdebad7457e7e07038ffe37e429deaaaf429cbb5daecce281d91e8a3be",
+  "setup-failure/protocol.log": "f77f1da455bfb080a8f0fc8bcd010e20ac64e79c2ebfde1954a7d1b7c8f06e2e",
+  "host-stop/launch.log": "a91337b11ded5441995ea9fd416c0c317c6f0201d4c35918b65d665aeafe3fd7",
+  "host-stop/host-resources.jsonl": "9cc10b2b02a30e15e071bfd5ee5f0698ef4c4ed4b6b6e946abd088ebc8e17e59",
+  "host-stop/build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "host-stop/receipt.json": "34d0480c2e8b9c9feac2021da6b7ea06f4da86b356321ad7e26fa6a02df622e2",
+  "host-stop/cleanup.json": "1813905ab30b68724f11db66af577ec2adcc63fd5057554e26362ac5c0c8f59d",
+  "host-stop/STOP.txt": "5999ac5104aba990d251f8a0017b713a734530bc6de6701fffc44ad55cc05a5b",
+  "host-stop/protocol.log": "f23d1a4743c1a09b9fad7a2fc599520ed331330e70efc5f54dd8f8394b10d8b5"
+}

@@ -1,0 +1,4 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.12 [39m[90m/work[39m
+
+ [32m✓[39m tests/hub-pairing-api-s3c.test.ts [2m([22m[2m30 tests[22m[2m)[22m[33m 325[2mms[22m[39m

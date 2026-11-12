@@ -1,0 +1,62 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.12 [39m[90m/work[39m
+
+ [32m✓[39m tests/hub-pairing-api-s3c.test.ts [2m([22m[2m30 tests[22m[2m)[22m[32m 169[2mms[22m[39m
+ [32m✓[39m tests/hub-enrolment-code-http-b1.test.ts [2m([22m[2m23 tests[22m[2m)[22m[33m 39895[2mms[22m[39m
+     [33m[2m✓[22m[39m configured admin creates/reloads a sealed code; eligible outsider joins without turning group policy on [33m 1837[2mms[22m[39m
+     [33m[2m✓[22m[39m non-admin/unauthenticated calls and code-plus-invitation refuse without creating an offer [33m 1230[2mms[22m[39m
+     [33m[2m✓[22m[39m maxUses includes unissued reservations, while per-person quota counts existing fleets of every source [33m 2739[2mms[22m[39m
+     [33m[2m✓[22m[39m concurrent last-slot approvals and redemption issue exactly one Fleet and one use [33m 1452[2mms[22m[39m
+     [33m[2m✓[22m[39m revoking between approve/issue ends only unissued requests, and an issued receipt still redelivers [33m 1667[2mms[22m[39m
+     [33m[2m✓[22m[39m eleven wrong codes pause even valid pushes for a minute, with no request rows and no group starvation [33m 1900[2mms[22m[39m
+     [33m[2m✓[22m[39m code admission uses its per-code and global 120 budgets independently of quick/group 48 [33m 2829[2mms[22m[39m
+     [33m[2m✓[22m[39m an exact resolved group scope admits members and refuses an eligible non-member [33m 2856[2mms[22m[39m
+     [33m[2m✓[22m[39m an expired code gives authenticated browser feedback without changing the generic machine answer [33m 899[2mms[22m[39m
+     [33m[2m✓[22m[39m real revoke retires a pending code request and preserves its specific browser feedback [33m 914[2mms[22m[39m
+     [33m[2m✓[22m[39m an issued code request keeps conflict/recovery even after its code ends [33m 1289[2mms[22m[39m
+     [33m[2m✓[22m[39m policy retirement with a live code keeps ordinary conflict [33m 1499[2mms[22m[39m
+     [33m[2m✓[22m[39m a last required audit cannot revoke the code and still publish a credential [33m 971[2mms[22m[39m
+     [33m[2m✓[22m[39m expired redemption reservations release code capacity without any Fleet status poll [33m 1410[2mms[22m[39m
+     [33m[2m✓[22m[39m the approval audit cannot retire the code and leave an approved reservation [33m 837[2mms[22m[39m
+     [33m[2m✓[22m[39m losing owner eligibility after approval issues no credential, code use or provenance [33m 967[2mms[22m[39m
+     [33m[2m✓[22m[39m code notices are hidden from v2 browsers and visible to v3 without changing ownership [33m 1333[2mms[22m[39m
+     [33m[2m✓[22m[39m the merged web-address writer retires code reservations and protects the original issued window [33m 1465[2mms[22m[39m
+     [33m[2m✓[22m[39m a real admin exclusion saved before first enable blocks code admission [33m 1763[2mms[22m[39m
+     [33m[2m✓[22m[39m real policy preview/apply accepts retained code provenance after fleet revoked=false [33m 1748[2mms[22m[39m
+     [33m[2m✓[22m[39m real policy preview/apply accepts retained code provenance after fleet revoked=true [33m 2000[2mms[22m[39m
+     [33m[2m✓[22m[39m real never-enabled preview names and atomically suspends an excluded retained code Fleet [33m 2582[2mms[22m[39m
+     [33m[2m✓[22m[39m real never-enabled admin resume recovers a code Fleet after removing its exclusion [33m 3703[2mms[22m[39m
+ [32m✓[39m tests/hub-enrolment-code-permit-b1.test.ts [2m([22m[2m30 tests[22m[2m)[22m[33m 488[2mms[22m[39m
+ [32m✓[39m tests/hub-pairing-notices.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 695[2mms[22m[39m
+ [32m✓[39m tests/hub-enrolment-code-store-b1.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 334[2mms[22m[39m
+ [31m❯[39m tests/hub-enrolment-code-slot-b2.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 683[2mms[22m[39m
+[31m     [31m×[31m the complete U2 card re-reads saved codes after create and revoke (en)[39m[32m 124[2mms[22m[39m
+     [32m✓[39m the complete U2 card re-reads saved codes after create and revoke (zh-TW)[32m 188[2mms[22m[39m
+     [32m✓[39m the first live code enables step 2 through onChanged and unlocks the outer instructions[32m 107[2mms[22m[39m
+     [32m✓[39m company join off disables creation and outer instructions, while an existing code can still be ended[32m 118[2mms[22m[39m
+     [32m✓[39m the actual module stays inert with a held older client[32m 47[2mms[22m[39m
+ [32m✓[39m tests/hub-pairing-inbox.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 71[2mms[22m[39m
+ [32m✓[39m tests/hub-enrolment-code-upgrade-b1.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m tests/hub-enrolment-code-audit-b1.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 15[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m tests/hub-enrolment-code-slot-b2.test.ts[2m > [22mU2 and B2 compose without an injected stand-in component[2m > [22mthe complete U2 card re-reads saved codes after create and revoke (en)
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'dispatchEvent')[39m
+[36m [2m❯[22m fire tests/helpers/mini-dom.ts:[2m400:6[22m[39m
+    [90m398|[39m export function fire(el: MiniNode, type: string, init: Record<string, …
+    [90m399|[39m   [35mconst[39m e [33m=[39m [35mnew[39m [33mMiniEvent[39m(type[33m,[39m { bubbles[33m:[39m [35mtrue[39m[33m,[39m [33m...[39minit })[33m;[39m
+    [90m400|[39m   el[33m.[39m[34mdispatchEvent[39m(e)[33m;[39m
+    [90m   |[39m      [31m^[39m
+    [90m401|[39m   [35mreturn[39m e[33m;[39m
+    [90m402|[39m }
+[90m [2m❯[22m tests/hub-enrolment-code-slot-b2.test.ts:[2m40:5[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m8 passed[39m[22m[90m (9)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m118 passed[39m[22m[90m (119)[39m
+[2m   Start at [22m 05:55:08
+[2m   Duration [22m 56.05s[2m (transform 7.02s, setup 1.01s, import 10.50s, tests 42.37s, environment 3ms)[22m
+

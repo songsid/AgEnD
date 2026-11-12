@@ -1,0 +1,942 @@
+{
+  "source": "ddcf18132388f3ef5985b16762993e81e970bf75",
+  "goReference": "xmsg-1794462409324-414vur",
+  "window": {
+    "from": 1794462888056,
+    "until": 1794469800000
+  },
+  "sourceVersionStamp": "2.3.5-alpha.16",
+  "startedAt": 1794462895495,
+  "phases": [
+    {
+      "name": "build",
+      "startedAt": 1794462895496,
+      "finishedAt": 1794462907226,
+      "exitCode": 0
+    },
+    {
+      "name": "protocol",
+      "startedAt": 1794462907351,
+      "finishedAt": 1794462964414,
+      "exitCode": 1
+    }
+  ],
+  "samples": [
+    {
+      "at": 1794462896496,
+      "phase": "build",
+      "childPid": 25,
+      "childStatus": [
+        "VmHWM:\t  225060 kB",
+        "VmRSS:\t  225060 kB",
+        "Threads:\t7"
+      ],
+      "containerMemoryBytes": "314949632",
+      "containerPeakBytes": "314949632",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462897497,
+      "phase": "build",
+      "childPid": 25,
+      "childStatus": [
+        "VmHWM:\t  442528 kB",
+        "VmRSS:\t  442528 kB",
+        "Threads:\t7"
+      ],
+      "containerMemoryBytes": "534818816",
+      "containerPeakBytes": "534818816",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462898498,
+      "phase": "build",
+      "childPid": 25,
+      "childStatus": [
+        "VmHWM:\t  659848 kB",
+        "VmRSS:\t  659848 kB",
+        "Threads:\t7"
+      ],
+      "containerMemoryBytes": "757186560",
+      "containerPeakBytes": "757186560",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462899499,
+      "phase": "build",
+      "childPid": 25,
+      "childStatus": [
+        "VmHWM:\t  733752 kB",
+        "VmRSS:\t  733752 kB",
+        "Threads:\t7"
+      ],
+      "containerMemoryBytes": "833302528",
+      "containerPeakBytes": "833302528",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462900500,
+      "phase": "build",
+      "childPid": 25,
+      "childStatus": [
+        "VmHWM:\t  956772 kB",
+        "VmRSS:\t  956772 kB",
+        "Threads:\t7"
+      ],
+      "containerMemoryBytes": "1061912576",
+      "containerPeakBytes": "1061912576",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462901504,
+      "phase": "build",
+      "childPid": 25,
+      "childStatus": [
+        "VmHWM:\t 1159140 kB",
+        "VmRSS:\t 1159140 kB",
+        "Threads:\t7"
+      ],
+      "containerMemoryBytes": "1269161984",
+      "containerPeakBytes": "1269161984",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462902503,
+      "phase": "build",
+      "childPid": 25,
+      "childStatus": [
+        "VmHWM:\t 1253136 kB",
+        "VmRSS:\t 1253136 kB",
+        "Threads:\t7"
+      ],
+      "containerMemoryBytes": "1365913600",
+      "containerPeakBytes": "1365913600",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462903505,
+      "phase": "build",
+      "childPid": 25,
+      "childStatus": [
+        "VmHWM:\t 1327064 kB",
+        "VmRSS:\t 1327064 kB",
+        "Threads:\t7"
+      ],
+      "containerMemoryBytes": "1441783808",
+      "containerPeakBytes": "1441783808",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462904505,
+      "phase": "build",
+      "childPid": 25,
+      "childStatus": [
+        "VmHWM:\t 1401692 kB",
+        "VmRSS:\t 1401692 kB",
+        "Threads:\t7"
+      ],
+      "containerMemoryBytes": "1511534592",
+      "containerPeakBytes": "1511534592",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462905506,
+      "phase": "build",
+      "childPid": 25,
+      "childStatus": [
+        "VmHWM:\t 1442992 kB",
+        "VmRSS:\t 1442992 kB",
+        "Threads:\t7"
+      ],
+      "containerMemoryBytes": "1555128320",
+      "containerPeakBytes": "1555128320",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462906508,
+      "phase": "build",
+      "childPid": 25,
+      "childStatus": [
+        "VmHWM:\t 1550684 kB",
+        "VmRSS:\t 1550684 kB",
+        "Threads:\t7"
+      ],
+      "containerMemoryBytes": "1673187328",
+      "containerPeakBytes": "1673187328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462907226,
+      "phase": "build",
+      "childPid": null,
+      "childStatus": null,
+      "containerMemoryBytes": "108974080",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462907508,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t   60720 kB",
+        "VmRSS:\t   60720 kB",
+        "Threads:\t7"
+      ],
+      "containerMemoryBytes": "134098944",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462908509,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  137996 kB",
+        "VmRSS:\t  137996 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "212066304",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462909511,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  171172 kB",
+        "VmRSS:\t  171172 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "266399744",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462910514,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  274996 kB",
+        "VmRSS:\t  271792 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "389054464",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462911517,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  279992 kB",
+        "VmRSS:\t  279672 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "421842944",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462912521,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  296928 kB",
+        "VmRSS:\t  296740 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "449409024",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462913524,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  356704 kB",
+        "VmRSS:\t  356704 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "529100800",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462914525,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  364276 kB",
+        "VmRSS:\t  361780 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "556425216",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462915526,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  379556 kB",
+        "VmRSS:\t  376320 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "591450112",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462916528,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  387456 kB",
+        "VmRSS:\t  387380 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "517566464",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462917528,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  400968 kB",
+        "VmRSS:\t  396540 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "601747456",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462918530,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "647467008",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462919530,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "657555456",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462920531,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "659341312",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462921532,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "660930560",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462922533,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "666095616",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462923535,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "672169984",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462924537,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "674455552",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462925537,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "679612416",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462926538,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "680628224",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462927540,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "680218624",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462928540,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "681234432",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462929541,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "680493056",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462930542,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "681574400",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462931543,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  377616 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "682754048",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462932546,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  317780 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "621285376",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462933547,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  315992 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "618094592",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462934546,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316008 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "619053056",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462935548,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316044 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "620007424",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462936548,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316076 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "620576768",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462937549,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316096 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "619749376",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462938551,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316132 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "619888640",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462939552,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316164 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "619601920",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462940553,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316196 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "620584960",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462941554,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316204 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "620847104",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462942554,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316236 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "620830720",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462943556,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316268 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "621457408",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462944556,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316288 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "621940736",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462945557,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316324 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "621862912",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462946558,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316356 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "621551616",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462947558,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316356 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "622354432",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462948559,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316388 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "622071808",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462949561,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316388 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "619905024",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462950562,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316420 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "620756992",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462951562,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316420 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "621420544",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462952564,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316452 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "621785088",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462953565,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316452 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "622084096",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462954566,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316460 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "622358528",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462955566,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316480 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "621920256",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462956570,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316480 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "622284800",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462957575,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  316480 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "622424064",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462958575,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  322456 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "463654912",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462959577,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  322864 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "455655424",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462960577,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  327248 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "514699264",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462961578,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  328284 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "493092864",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462962579,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  337444 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "485224448",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462963581,
+      "phase": "protocol",
+      "childPid": 39,
+      "childStatus": [
+        "VmHWM:\t  405376 kB",
+        "VmRSS:\t  339756 kB",
+        "Threads:\t15"
+      ],
+      "containerMemoryBytes": "486678528",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462964414,
+      "phase": "protocol",
+      "childPid": null,
+      "childStatus": null,
+      "containerMemoryBytes": "144752640",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    },
+    {
+      "at": 1794462964415,
+      "phase": "protocol",
+      "childPid": null,
+      "childStatus": null,
+      "containerMemoryBytes": "144748544",
+      "containerPeakBytes": "1744867328",
+      "memoryEvents": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+    }
+  ],
+  "ready": false,
+  "boundary": "Source build, owned network-none container, synthetic verified LDAPS; five real Fleet web/settings/join/member services per mass wave with Agent lifecycle refused. Not npm/systemd or real accounts/AD/pilot/native Windows.",
+  "chineseFont": "WenQuanYi Zen Hei,文泉驛正黑,文泉驿正黑 aa|af|av|ay|be|bg|bi|br|ca|ce|ch|co|da|de|el|en|es|eu|fj|fo|fr|fur|fy|gd|gl|gv|ho|ia|id|ie|ik|io|is|it|ja|ko|kum|lb|lez|mg|nb|nds|nl|nn|no|nr|ny|oc|om|os|pt|rm|ru|sel|sm|sma|smj|so|sq|sr|ss|st|sv|sw|tl|to|ts|uz|vo|wa|wo|xh|yap|zh-cn|zh-sg|zh-tw|zu|an|fil|ht|jv|kj|kwm|lg|li|ms|ng|pap-an|pap-aw|rn|rw|sc|sg|sn|su|za|agr|ayc|bem|cmn|hak|lij|lzh|mfe|mhr|mjw|nan|nhn|niu|tpi|unm|wae|yuw",
+  "error": "Error: protocol did not complete successfully",
+  "finishedAt": 1794462964415
+}
