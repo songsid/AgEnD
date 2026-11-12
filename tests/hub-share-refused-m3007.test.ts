@@ -27,6 +27,7 @@ describe("the sender's record of a policy refusal", () => {
     await s.afterCommit(); expect(s.isRefused()).toBe(false);
     s.refused(first, "denied"); expect(s.isRefused()).toBe(false);              // a late answer for an older snapshot
     s.refused(a.sent[1].requestId, "denied"); expect(s.isRefused()).toBe(true);
+    s.refused(first, "denied"); expect(s.isRefused()).toBe(true);               // a late older answer never hides the current refusal
   });
   it("the member's receive hands the error frame's requestId and code to it", async () => {
     const refused = vi.fn();
