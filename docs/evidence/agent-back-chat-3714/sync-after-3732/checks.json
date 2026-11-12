@@ -17,7 +17,7 @@
         "--maxWorkers=1"
       ],
       "exit": 0,
-      "log": "focused.log"
+      "log": "focused.log.gz"
     },
     {
       "argv": [
@@ -25,7 +25,7 @@
         "--noEmit"
       ],
       "exit": 0,
-      "log": "source-types.log"
+      "log": "source-types.log.gz"
     },
     {
       "argv": [
@@ -35,7 +35,7 @@
         "tsconfig.test.json"
       ],
       "exit": 0,
-      "log": "test-types.log"
+      "log": "test-types.log.gz"
     }
   ]
 }

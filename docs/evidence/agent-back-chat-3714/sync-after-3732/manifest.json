@@ -1,16 +1,16 @@
 {
-  "ceda9524b001fde70e4ff2f0aff734bbe629f0f7c1a24ee9f592e452f83f549a": [
+  "df1012c810222709145706949629c17a5c9f99ca6bfca9db49a1abcf35ee3c00": [
     "README.md"
   ],
-  "527bd22d63e31f15f89bf6b0da0f73c00630d4c0194fd2a7fb5f72c0c117673d": [
+  "2c42f73cad416abcfb599eb7ec3d5e742aba3e2fa07407bd869f15ba32dd57bf": [
     "checks.json"
   ],
-  "151bfc957d7559323ea988fde1b667650c7ac8e9cfba2027e9581179f3445e6f": [
-    "focused.log"
+  "dd39ae4c24d022ffa9387cc8f83572ab220e03f1342e8557b6331f431cac4e57": [
+    "focused.log.gz"
   ],
-  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
-    "source-types.log",
-    "test-types.log"
+  "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64": [
+    "source-types.log.gz",
+    "test-types.log.gz"
   ],
   "46703c358b5bd74b279890309c62662ef4061d329ac438052ca3a243b1f895b9": [
     "source.json"
