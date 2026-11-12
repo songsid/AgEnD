@@ -1,0 +1,4 @@
+9c08a52c3d6c5fbd92e7fa43d550975ecb6badca24b2ff9119ea61c0ed1ad494  src/hub/catalog.ts
+373869b41df79043fba5b724af353c949897a9092c03231ba83bff9ccd1f8f90  src/hub/server.ts
+232fa18ebbaa2a6be0758c7e933cb17e814416f1dd3fe4d766053e17f157f604  src/hub/compose/member.ts
+308e2b9f415839c57f0bd88832c454c1c8667d6d2a9ec238d095226d9fcda062  tests/hub-code-member-link-a2.test.ts

@@ -29,6 +29,10 @@ import { personFromString, type HubCore, type HubOperationPermit } from "./http/
 
 /** P1 grants last at most this long; the owner chooses within it. */
 export const GRANT_MAX_MS = 365 * 24 * 60 * 60_000;
+/** Valid publication consent refused by policy; it does not revoke the member's connection. */
+export class HubPublicationRefusal extends HubProtocolError {
+  constructor(code: "denied" | "unavailable") { super(code); }
+}
 const PERMISSIONS = ["ask", "read-own-room"] as const;
 const snapshotSchema = z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) });
 
@@ -199,7 +203,8 @@ export class HubCatalogService {
     } catch (error) {
       if (!preparedAll && error instanceof HubGroupPolicyError) narrowRefused();
       if ((error instanceof HubGroupAuthorizationError && ["denied", "resume-required"].includes(error.reason))
-        || (error instanceof HubGroupEnrollmentRefusal && error.outcome === "denied")) throw new HubProtocolError("denied");
+        || (error instanceof HubGroupEnrollmentRefusal && error.outcome === "denied")) throw new HubPublicationRefusal("denied");
+      if (error instanceof HubGroupAuthorizationError || error instanceof HubGroupEnrollmentRefusal) throw new HubPublicationRefusal("unavailable");
       if (error instanceof HubGroupPolicyError) throw new HubProtocolError("unavailable");
       throw error;
     }

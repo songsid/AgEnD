@@ -252,6 +252,12 @@ export function createMemberReceive(deps: {
     }
     if (frame.type === "revoke") return deps.admission.fence(frame.payload);
     if (frame.type === "receipt") return deps.journal.acknowledge(frame.payload);
+    if (frame.type === "error" && (frame.payload.code === "denied" || frame.payload.code === "unavailable")) {
+      // The Hub may refuse publication independently of the saved member credential.
+      // Keep local consent pending; this feedback grants no remote publication or execution.
+      deps.log("warn", "Hub publication not accepted", { code: frame.payload.code });
+      return;
+    }
     if ((frame.type === "pairing.notice" || frame.type === "pairing.notice-v2" || frame.type === "pairing.notice-v3") && deps.notices) return deps.notices.receive(frame.payload, l);
     deps.log("warn", "Hub frame not expected on the member", { type: frame.type });
     throw new HubStateError("service-unavailable", `unexpected ${frame.type} frame`);

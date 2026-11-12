@@ -15,6 +15,7 @@ import { readHubIdentity } from "./tls.js";
 import { personKeyString } from "./identity.js";
 import { handleCompanyJoin } from "./join/http.js";
 import type { HubCompanyJoin } from "./join/service.js";
+import { HubPublicationRefusal } from "./catalog.js";
 /** `features`: the optional features both ends listed (the member's hello ∩ this Hub's), set once at hello. */
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
 interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout }
@@ -136,7 +137,15 @@ export class HubServer {
     if (frame.type === "exposure.quota" && (!context.features.has("quota-band-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-ack" && (!context.features.has("pairing-notices-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "exposure.snapshot" && frame.payload.exposures.some(e => e.fleetId !== context.fleetId || personKeyString(e.owner) !== personKeyString(context.owner))) throw new HubProtocolError("denied");
-    const result = await this.options.receive(frame, context);
+    let result: HubServerFrame | void;
+    try { result = await this.options.receive(frame, context); }
+    catch (error) {
+      // Only a valid snapshot's classified policy refusal is application feedback.
+      // Foreign/malformed/stale consent, credential refusal and failed writes still close the link.
+      if (frame.type !== "exposure.snapshot" || !(error instanceof HubPublicationRefusal)) throw error;
+      result = { v: 1, type: "error", requestId: frame.requestId, linkEpoch: context.linkEpoch,
+        payload: { code: error.code, retryable: error.code === "unavailable" } };
+    }
     if (!context.current()) return;
     if (result) {
       if (result.requestId !== frame.requestId || result.linkEpoch !== context.linkEpoch) throw new HubProtocolError("invalid");
