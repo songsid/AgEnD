@@ -99,6 +99,20 @@ export function annotatedName(name) {
   return `${base}-annotated.png`;
 }
 
+/**
+ * Prism on #3735: the editor's colours are tokens (tokens.css). A tab whose cached tokens.css predates them would draw
+ * transparent swatches and lose the selected tool, so the editor's root sets any of them that resolve to nothing —
+ * CSSOM on its own element (#1300), the same values as tokens.css; a current tokens.css wins (nothing is set).
+ */
+export const MEDIA_TOKENS = [["--media-ink", "#ffffff"], ["--media-bar", "rgba(0, 0, 0, 0.75)"], ["--media-panel", "rgba(0, 0, 0, 0.6)"],
+  ["--media-btn", "rgba(255, 255, 255, 0.12)"], ["--media-btn-on", "rgba(255, 255, 255, 0.32)"], ["--media-line", "rgba(255, 255, 255, 0.35)"],
+  ...COLOURS.map(([k, v]) => [`--mark-${k}`, v])];
+export function fillMissingTokens(el) {
+  if (!el || typeof getComputedStyle !== "function") return;
+  const computed = getComputedStyle(el);
+  for (const [name, value] of MEDIA_TOKENS) if (!computed.getPropertyValue(name).trim()) el.style.setProperty(name, value);
+}
+
 /** The stylesheet, once per document. */
 export function linkAnnotateCss(doc = typeof document !== "undefined" ? document : null) {
   if (!doc || !doc.head || doc.querySelector('link[data-annotate-css="1"]')) return;
@@ -123,6 +137,11 @@ export function AnnotateEditor({ src, name, targets = [], onClose, onError }) {
   const [, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
   const refresh = () => setTick(n => n + 1);
+  // Prism on #3735: an export (toBlob is asynchronous) belongs to the live editor. Closing it, or the editor going
+  // away, retires one in flight: its file is never handed to a composer afterwards.
+  const live = useRef({ alive: true, op: 0 });
+  const close = () => { live.current.op++; onClose?.(); };
+  useEffect(() => () => { live.current.alive = false; live.current.op++; }, []);
   useEffect(() => { linkAnnotateCss(); }, []);
   useEffect(() => {
     const img = new Image();
@@ -197,15 +216,17 @@ export function AnnotateEditor({ src, name, targets = [], onClose, onError }) {
   const quote = async (target) => {
     const c = canvas.current;
     if (!c || busy) return;
+    const op = ++live.current.op, current = () => live.current.alive && live.current.op === op;
     setBusy(true);
     try {
       paint(null, true);                             // without the text cross
       const blob = await new Promise((resolve) => c.toBlob(resolve, "image/png"));
+      if (!current()) return;                        // closed or gone while encoding: nothing is added anywhere
       if (!blob) throw new Error("no image");
       const file = new File([blob], annotatedName(name), { type: "image/png" });
-      if (await target.quote(file)) onClose?.();
-    } catch { onError?.(t("annotate.failedSave")); }
-    finally { setBusy(false); }
+      if (await target.quote(file) && current()) onClose?.();
+    } catch { if (current()) onError?.(t("annotate.failedSave")); }
+    finally { if (live.current.alive) setBusy(false); }
   };
   useEffect(() => {
     const onKey = (e) => {
@@ -223,7 +244,7 @@ export function AnnotateEditor({ src, name, targets = [], onClose, onError }) {
     return () => document.removeEventListener("keydown", onKey);
   });
   const label = name ? t("annotate.title", name) : t("annotate.titleNoName");
-  return html`<div class="an" data-trust="annotate" role="group" aria-label=${label}>
+  return html`<div class="an" data-trust="annotate" role="group" aria-label=${label} ref=${fillMissingTokens}>
     <div class="an-bar">
       <span class="an-name" title=${name}>${label}</span>
       <span class="an-tools" role="radiogroup" aria-label=${t("annotate.tools")}>
@@ -231,15 +252,15 @@ export function AnnotateEditor({ src, name, targets = [], onClose, onError }) {
           title=${t(`annotate.${k}`)} aria-label=${t(`annotate.${k}`)} onClick=${() => { setTool(k); if (k !== "text") setTextAt(null); }}><span class="an-glyph" aria-hidden="true">${{ pen: "✎", box: "▭", arrow: "↗", text: "T" }[k]}</span></button>`)}
       </span>
       <span class="an-colours" role="radiogroup" aria-label=${t("annotate.colours")}>
-        ${COLOURS.map(([k, v], i) => html`<button type="button" role="radio" aria-checked=${colour === v ? "true" : "false"} class=${`an-colour an-colour-${k}${colour === v ? " on" : ""}`}
-          title=${`${t(`annotate.${k}`)} (${i + 1})`} aria-label=${t(`annotate.${k}`)} onClick=${() => setColour(v)}></button>`)}
+        ${COLOURS.map(([k, v], i) => html`<button type="button" role="radio" aria-checked=${colour === v ? "true" : "false"} class=${`an-colour${colour === v ? " on" : ""}`}
+          title=${`${t(`annotate.${k}`)} (${i + 1})`} aria-label=${t(`annotate.${k}`)} onClick=${() => setColour(v)}><span class=${`an-dot an-colour-${k}`} aria-hidden="true"></span></button>`)}
       </span>
       <span class="an-history">
         <button type="button" class="btn btn-sm an-undo" disabled=${!hist.current.canUndo} title=${t("annotate.undo")} aria-label=${t("annotate.undo")} onClick=${undo}>↶</button>
         <button type="button" class="btn btn-sm an-redo" disabled=${!hist.current.canRedo} title=${t("annotate.redo")} aria-label=${t("annotate.redo")} onClick=${redo}>↷</button>
         <button type="button" class="btn btn-sm an-clear" disabled=${!hist.current.visible().length} onClick=${clear}>${t("annotate.clear")}</button>
       </span>
-      <button type="button" class="icon-btn an-close" title=${t("annotate.close")} aria-label=${t("annotate.close")} onClick=${() => onClose?.()}><${Icon} name="close" /></button>
+      <button type="button" class="icon-btn an-close" title=${t("annotate.close")} aria-label=${t("annotate.close")} onClick=${close}><${Icon} name="close" /></button>
     </div>
     ${tool === "text" ? html`<form class="an-text" onSubmit=${(e) => { e.preventDefault(); addText(); }}>
       <label class="an-text-label"><span>${t("annotate.textField")}</span>

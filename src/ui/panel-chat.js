@@ -155,12 +155,11 @@ function annotateFor(name, img) {
   if (other && other.name) {
     // insertPaneQuote heads the quote with the source chat's name itself: this is only what the message said (or the
     // picture's name, for a message with no words).
-    const what = String(message?.text || "").replace(/\s+/g, " ").trim().slice(0, 160) || img?.querySelector?.("img")?.getAttribute("alt") || "";
-    targets.push({ key: "other", label: t("lbAnnotateQuote.other", other.name), quote: async (file) => {
-      store.addFiles(other.name, [file]);
-      if (what) await other.insert(what);
-      return true;
-    } });
+    const what = String(message?.text || "").replace(/\s+/g, " ").trim().slice(0, 160) || img?.querySelector?.("img")?.getAttribute("alt") || "📷";
+    // Prism on #3735: the picture and its quote go in under the pane's one live check (insert's commit) — a pane
+    // replaced or retired meanwhile gets neither, and the editor stays open.
+    targets.push({ key: "other", label: t("lbAnnotateQuote.other", other.name),
+      quote: async (file) => (await other.insert(what, () => store.addFiles(other.name, [file]))) === true });
   }
   return { targets, notice: (text) => toast(text, false) };
 }

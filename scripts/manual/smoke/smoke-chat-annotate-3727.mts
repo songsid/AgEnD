@@ -76,6 +76,21 @@ const att = publicAttachment(fm.webFiles.registerServed({ path: original, instan
 fm.emitSseEvent("message", { instance: A, sender: A, role: "agent", text: "Here is the screen", ts: new Date().toISOString(), attachments: [att] });
 const old = (path: string) => { try { return execFileSync("git", ["-C", REPO, "show", `${BASE_REF}:${path}`], { encoding: "utf8", maxBuffer: 16 << 20 }); } catch { return null; } };
 
+/** Prism on #3735: an export held mid-encoding — toBlob's answer waits for window.__blobRelease() while __holdBlob is set. */
+const HOLD_BLOB = `(() => { const orig = HTMLCanvasElement.prototype.toBlob;
+  HTMLCanvasElement.prototype.toBlob = function (cb, ...rest) {
+    if (!window.__holdBlob) return orig.call(this, cb, ...rest);
+    orig.call(this, (b) => { window.__blobRelease = () => cb(b); }, ...rest);
+  }; })();`;
+/** Every control of the editor and its size (a phone's must be at least 44 × 44, style guide §7). */
+const CONTROLS = `[...document.querySelectorAll("dialog.lb .an button")].map((b) => { const r = b.getBoundingClientRect();
+  return { cls: b.className, w: Math.round(r.width), h: Math.round(r.height) }; })`;
+/** The editor's colours as drawn: the four swatches' discs, the selected tool, the bar. */
+const COLOURS_SHOWN = `(() => { const bg = (el) => el ? getComputedStyle(el).backgroundColor : null;
+  return { dots: [...document.querySelectorAll("dialog.lb .an-dot")].map(bg), tool: bg(document.querySelector("dialog.lb .an-tool.on")),
+    bar: bg(document.querySelector("dialog.lb .an-bar")) }; })()`;
+const TRANSPARENT = "rgba(0, 0, 0, 0)";
+
 /** The canvas: its size and a coarse digest of its pixels (to tell a drawn canvas from the bare picture). Read after
  *  two frames, so the editor's paint (an effect after the render a click caused) has run. */
 const CANVAS = `new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done((() => { const c = document.querySelector("dialog.lb .an-canvas"); if (!c) return null;
@@ -106,6 +121,8 @@ try {
     const cn = caseName(c), zh = c.lang === "zh-TW", phone = c.device === "phone";
     const L = (en: string, z: string) => zh ? z : en;
     const { ctx, page, csp } = await fx.page(c, { path: `/ui/chat/${encodeURIComponent(A)}` });
+    await page.addInitScript({ content: HOLD_BLOB });
+    await page.goto(`${fx.base}/ui/chat/${encodeURIComponent(A)}`);
     const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
     const uploads: Buffer[] = [], sends: any[] = [];
     await page.route("**/ui/upload**", async (route: any) => { uploads.push(route.request().postDataBuffer() ?? Buffer.alloc(0)); await route.continue(); });
@@ -125,6 +142,10 @@ try {
     const bare = await page.evaluate(CANVAS);
     check(`${cn}:canvas`, bare?.w === 1200 && bare?.h === 800, bare);
     await shot("2-editor");
+    if (phone) {                                                             // style guide §7: 44 × 44 on touch
+      const small = ((await page.evaluate(CONTROLS)) as any[]).filter((b) => b.w < 44 || b.h < 44);
+      check(`${cn}:touch44`, small.length === 0, small);
+    }
     // 2. Draw: pen, box, arrow, another colour, text; undo then redo.
     await drag(page, cdp, phone, [0.1, 0.2], [0.35, 0.3]);
     await page.locator("dialog.lb .an-tool-box").click();
@@ -176,7 +197,59 @@ try {
     await page.keyboard.press("Escape");
     await page.locator("dialog.lb").waitFor({ state: "detached", timeout: 5000 });
     check(`${cn}:esc`, (await page.locator(".file-chip").count()) === 0);
+    // 5b. Prism on #3735: an export still encoding when the editor closes (Esc, then ✕) adds nothing when it finishes.
+    for (const how of ["Escape", "close"] as const) {
+      await openViewer(page, phone);
+      await page.locator("dialog.lb .lb-annotate").click();
+      await page.locator("dialog.lb .an-canvas").waitFor();
+      await drag(page, cdp, phone, [0.2, 0.2], [0.5, 0.5]);
+      await page.evaluate("window.__holdBlob = true; window.__blobRelease = null");
+      await page.locator('dialog.lb .an-quote[data-target="self"]').click();
+      await page.waitForFunction(() => typeof (window as any).__blobRelease === "function", null, { timeout: 5000 });   // a function: the page's CSP has no unsafe-eval
+      if (how === "Escape") await page.keyboard.press("Escape"); else await page.locator("dialog.lb .an-close").click();
+      await page.locator("dialog.lb").waitFor({ state: "detached", timeout: 5000 });
+      await page.evaluate("window.__blobRelease(); window.__holdBlob = false");
+      await page.waitForTimeout(500);
+      check(`${cn}:heldExport:${how}`, (await page.locator(".file-chip").count()) === 0 && (await page.locator(".reply-bar").count()) === 0);
+    }
     check(`${cn}:noErrors`, errs.length === 0 && (await csp()).length === 0, { errs });
+    await ctx.close();
+  }
+  // 5c. Prism on #3735: this editor with the tokens.css from before (no --media-*/--mark-*): distinct visible swatches,
+  //     a visible selected tool and bar (the editor supplies the missing tokens on its own element).
+  {
+    const c = { device: "desk", theme: "light", lang: "en" } as MatrixCase;
+    const oldTokens = old("src/ui/shared/tokens.css");
+    const { ctx, page } = await fx.page(c, { path: `/ui/chat/${encodeURIComponent(A)}` });
+    if (oldTokens) await page.route("**/assets/tokens.css*", (route: any) => route.fulfill({ status: 200, contentType: "text/css", body: oldTokens }));
+    await page.goto(`${fx.base}/ui/chat/${encodeURIComponent(A)}`); await page.locator("#msgIn").waitFor({ timeout: 20000 });
+    await openViewer(page, false);
+    await page.locator("dialog.lb .lb-annotate").click();
+    await page.locator("dialog.lb .an-canvas").waitFor();
+    const shown: any = await page.evaluate(COLOURS_SHOWN);
+    const ok = !!oldTokens && !oldTokens.includes("--media-ink") && shown.dots.length === 4 && new Set(shown.dots).size === 4
+      && !shown.dots.includes(TRANSPARENT) && shown.tool !== TRANSPARENT && shown.bar !== TRANSPARENT;
+    check("skew:oldTokens", ok, shown);
+    await page.screenshot({ path: join(OUT, "skew-old-tokens-editor.png") });
+    await ctx.close();
+  }
+  // 5d. Before (the base's viewer, chat and stylesheets): the viewer with no 「標註」, and the reply bar, per case.
+  for (const c of cases) {
+    const cn = caseName(c), phone = c.device === "phone";
+    const files: Array<[string, string, string]> = [["**/ui/js/image-lightbox.js", "src/ui/image-lightbox.js", "application/javascript"],
+      ["**/ui/js/panel-chat.js", "src/ui/panel-chat.js", "application/javascript"], ["**/ui/js/chat-workspace.js", "src/ui/chat-workspace.js", "application/javascript"],
+      ["**/assets/app.css*", "src/ui/shared/app.css", "text/css"], ["**/assets/tokens.css*", "src/ui/shared/tokens.css", "text/css"]];
+    const { ctx, page } = await fx.page(c, { path: `/ui/chat/${encodeURIComponent(A)}` });
+    for (const [url, path, type] of files) { const body = old(path); if (body) await page.route(url, (route: any) => route.fulfill({ status: 200, contentType: type, body })); }
+    await page.goto(`${fx.base}/ui/chat/${encodeURIComponent(A)}`); await page.locator("#msgIn").waitFor({ timeout: 20000 });
+    await openViewer(page, phone);
+    check(`${cn}:before:noButton`, (await page.locator("dialog.lb .lb-annotate").count()) === 0);
+    await page.screenshot({ path: join(OUT, `before-${cn}-1-viewer.png`) });
+    await page.keyboard.press("Escape");
+    await page.locator("dialog.lb").waitFor({ state: "detached", timeout: 5000 });
+    await page.locator('.msg.agent [data-act="reply"]').last().dispatchEvent("click");
+    await page.locator(".reply-bar").waitFor({ timeout: 5000 });
+    await page.screenshot({ path: join(OUT, `before-${cn}-2-reply.png`) });
     await ctx.close();
   }
   // 6. Split chat (desktop): quote to the other pane.

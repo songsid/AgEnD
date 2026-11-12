@@ -10,8 +10,12 @@
 .lb .an .an-tool.on { background: var(--media-btn-on); border-color: var(--media-ink); }
 .lb .an .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .lb .an-glyph { font-size: 1.1em; line-height: 1; }
-.lb .an-colour { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--media-line); padding: 0; cursor: pointer; }
-.lb .an-colour.on { border-color: var(--media-ink); outline: 2px solid var(--media-ink); outline-offset: 2px; }
+/* A swatch: a button (36 px; 44 px on touch) holding its colour disc. */
+.lb .an-colour { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; cursor: pointer; }
+.lb .an-dot { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--media-line); box-sizing: border-box; }
+.lb .an-colour.on .an-dot { border-color: var(--media-ink); outline: 2px solid var(--media-ink); outline-offset: 2px; }
+.lb .an-colour:focus-visible { outline: 2px solid var(--media-ink); outline-offset: 1px; }
 .lb .an-colour-red { background: var(--mark-red); }
 .lb .an-colour-yellow { background: var(--mark-yellow); }
 .lb .an-colour-blue { background: var(--mark-blue); }
@@ -37,5 +41,5 @@
 }
 @media (pointer: coarse) {
   .lb .an .btn, .lb .an .icon-btn { min-width: 44px; min-height: 44px; }
-  .lb .an-colour { width: 36px; height: 36px; }
+  .lb .an-colour { width: 44px; height: 44px; }
 }
