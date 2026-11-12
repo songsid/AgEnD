@@ -21,7 +21,7 @@
     "5c9aca3c320094af8d8284ad59653c9dae19c3b649632a365242430f4ee2beee": [
       "M7-codes.log.gz"
     ],
-    "b3228a651070c0ba8f0d3c581b7b6c674eb8da6288d55939ba9cfcea72207c30": [
+    "082e8bcc2431835de1c8e16d8faf132e724addff4f68ae611dfa1892fa98d211": [
       "README.md"
     ],
     "9ecdaac1582ee44fd97bf9524555d1bfcbbab6cd388542ca68a075c8f368c9cb": [
@@ -104,15 +104,37 @@
     "8d382b194c6e9db2eb7c8a88821700b28c07f397737f1f62c6848bdb22c8ef9b": [
       "https/receipt.json"
     ],
+    "4726ea09829898566355d1c64a212ce2b487d9dbcc2a9f3a8ab3ab9bfd8389eb": [
+      "r1-B6.log.gz"
+    ],
+    "f6d89ebe2883c497a46304fc212909b256189af63383ba272343225bcf107bcc": [
+      "r1-B9.log.gz"
+    ],
+    "9f795558a8fd745c587ee70d6d7c2ef4ff4c7daf60dbae10dceececb8e6394b5": [
+      "r1-J3.log.gz"
+    ],
+    "d304992a09fbd01214d93dec7a3c5ea327fc95c29ba433be73dcea6579e8eeaa": [
+      "r1-S3.log.gz"
+    ],
+    "c3d192ea165770c0b34ee4c23543451c375007fb81ec6ec42fbc7ee7402a15b5": [
+      "r1-focused.log.gz"
+    ],
+    "d0730bc298275fab2debc36deadcef4b88f4567b38b7b513f968dda9a1a841fb": [
+      "r1-reversals.json"
+    ],
+    "4b20f77469f631c118b39f84e461b8fb74ed5a42a6790504e1a5246b3c8f8191": [
+      "r1-reversals.py"
+    ],
+    "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64": [
+      "r1-test-types.log.gz",
+      "source-types.log.gz",
+      "test-types.log.gz"
+    ],
     "914e11d73d322b1128b4fac4ec8678f00f085146ee465b39a377f154c2ad8320": [
       "reversals.json"
     ],
     "a77478e625eb3703e52a9431e37e693979fb18102e6d19d9ad537ec9ba2817ee": [
       "reversals.py"
-    ],
-    "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64": [
-      "source-types.log.gz",
-      "test-types.log.gz"
     ],
     "5ac0c11c340d302bcd42a95f40a8081ce0980809f4f0e4e1c8135cf35ef46e59": [
       "visual.json"

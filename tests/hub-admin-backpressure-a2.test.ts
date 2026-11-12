@@ -56,6 +56,27 @@ describe("Hub read admission and bounded recovery", () => {
     expect(await first).toMatchObject({ ok: false }); expect(await queued).toMatchObject({ ok: false });
     expect(fetchImpl).toHaveBeenCalledTimes(2); expect(ended).toHaveBeenCalledTimes(1);
   });
+  it.each(["signIn", "signOut", "other401"])("B6: a held successful GET is retired after %s", async method => {
+    let finish!: (value: any) => void;
+    const fetchImpl = vi.fn(async (_path: string, init: any) => init.method === "GET"
+      ? await new Promise(r => { finish = r; })
+      : method === "other401" ? response({ code: "denied" }, 401) : response({ csrf: "successor" }));
+    const c = clients.createHubWebClient({ fetchImpl }), held = c.adminOverview();
+    await Promise.resolve(); await Promise.resolve();
+    if (method === "signIn") await c.signIn("admin", "fixture-only");
+    else if (method === "signOut") await c.signOut();
+    else await c.createPairing("colleague");
+    finish(response({ fleets: [{ id: "old-session-data" }] }));
+    expect(await held).toMatchObject({ ok: false, status: 401, code: "unauthenticated" });
+    expect(await held).not.toHaveProperty("fleets");
+  });
+  it("B9: a different 429 code is not retried", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn(async () => response({ code: "limit-reached" }, 429));
+    const c = clients.createHubWebClient({ fetchImpl }), held = c.adminOverview();
+    await vi.advanceTimersByTimeAsync(20000); expect(await held).toMatchObject({ code: "limit-reached" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
   it("a late old-session 401 cannot revoke a newly signed-in client", async () => {
     let finish!: (value: any) => void;
     const fetchImpl = vi.fn(async (path: string, init: any) => {
@@ -150,6 +171,34 @@ describe("mounted Administration", () => {
     clients.setHubClient(c); const p = await mount(h(company.CompanyJoinAdminCard)); end(); await settle(5);
     finish({ ok: true, enabled: true, companyLink: "https://hub.example.test/owned" }); await settle(10);
     expect(p.root.querySelector('input[role="switch"]')).toBeNull(); expect(p.root.querySelector("textarea")).toBeNull();
+  });
+  it("J3: a retained-card Retry read cannot overwrite a later successful PUT", async () => {
+    let n = 0, finish!: (value: any) => void;
+    const c = { session: async () => ({ ok: true, ...session }), onSignedOut: () => () => {},
+      companyJoinSettings: vi.fn(async () => ++n === 1 ? { ok: true, enabled: true, revision: 1 }
+        : await new Promise(r => { finish = r; })) };
+    clients.setHubClient(c);
+    const fetchImpl = vi.fn(async (_path: string, init: any) => JSON.parse(init.body).enabled
+      ? response({ enabled: true, revision: 2 }) : response({ code: "backpressure" }, 429));
+    vi.stubGlobal("fetch", fetchImpl);
+    // The default presentation is still used by retained shells. Its toggle remains available after an error.
+    const p = await mount(h(company.CompanyJoinAdminCard)); const toggle = p.root.querySelector('input[role="switch"]');
+    expect(toggle.checked).toBe(true); toggle.checked = false; fire(toggle, "change"); await settle(10);
+    expect(button(p, "Try again")).toBeTruthy(); fire(button(p, "Try again"), "click"); await settle(6);
+    expect(c.companyJoinSettings).toHaveBeenCalledTimes(2); expect(toggle.disabled).toBe(false);
+    toggle.checked = true; fire(toggle, "change"); await settle(10);
+    expect(fetchImpl).toHaveBeenCalledTimes(2); expect(JSON.parse(fetchImpl.mock.calls[1][1].body)).toEqual({ enabled: true, expectedRevision: 1 });
+    finish({ ok: true, enabled: false, revision: 1 }); await settle(10);
+    expect(p.root.querySelector('input[role="switch"]').checked).toBe(true);
+  });
+  it.each(["held", "failed"])("S3: unresolved %s settings show Checking, never the incomplete-step instruction", async state => {
+    let finish!: (value: any) => void;
+    const held = new Promise(r => { finish = r; });
+    const c = { groupPolicy: () => state === "failed" ? Promise.resolve({ ok: false, code: "backpressure" }) : held };
+    const p = await mount(h(steps.HubJoinCard, { view: { enabled: true }, groups: true, client: c }));
+    const instruction = () => p.root.querySelector('[data-step="3"]').textContent;
+    expect(instruction()).toContain("Checking the saved Hub settings…"); expect(instruction()).not.toContain("Finish steps 1 and 2 first.");
+    if (state === "held") { finish({ ok: true, policy }); await settle(8); expect(instruction()).toContain("In AgEnD, open Settings"); }
   });
   it("an initial group-list failure offers read retry, not the misleading save error", async () => {
     let fail = true; const c = { groupPolicy: vi.fn(async () => fail ? { ok: false, status: 429, code: "backpressure" } : { ok: true, supported: true, binding: "ready", policy }) };

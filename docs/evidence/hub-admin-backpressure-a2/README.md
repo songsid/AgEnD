@@ -36,3 +36,16 @@ Each receipt records HEAD/tree, tracked cleanliness, digest-first source/served 
 ## Risk and rollback
 
 GETs from this client can wait behind another GET; other tabs and writes still share the original server limits. Exhausted backpressure needs the visible Retry (or the code card's existing polling). Server admission and fresh authority remain unchanged. Roll back this PR to restore the previous client behavior; no migration or configuration change is involved. Coordinator owns merge; leader authorized this alpha.2 freeze exception.
+
+## R1 — fence and pending-text pins
+
+Test-only delta over `a8ac11ce730269a137112a0bc4b0ab72fdcd578a`; all product blobs, the browser harness, receipts and PNGs are unchanged.
+
+- B6: an already-sent successful GET released after signIn, signOut, or a401 elsewhere returns retired401/unauthenticated without the old data.
+- J3: the retained/default company card has a known view, a failed PUT, and an in-flight Retry GET. Its still-available toggle then succeeds; the older read cannot undo that PUT result. This drives the actual mounted production controls, with no account/server effect.
+- S3: held and backpressured checklist reads say “Checking the saved Hub settings…” in step3, without the incomplete-step instruction; a completed held read produces the colleague instructions.
+- B9 (optional): a429 with another code is returned once rather than retried.
+
+All four isolated reversals compile and fail assertions, then restore exactly. The restored seven suites pass **150/150**; native test TypeScript exits0. R0 source/type/browser/visual evidence retains its original scope; no R1 browser execution is claimed.
+
+Follow-up limitation acknowledged: an individual fetch has no timeout. A GET that never settles can hold later reads in this tab until reload. A per-read abort/deadline belongs to a separate change; no timeout or authority policy is altered in this release-blocker fix.
