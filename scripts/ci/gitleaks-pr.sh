@@ -15,9 +15,10 @@ bases="$(git merge-base --all "$PR_BASE_SHA" "$PR_HEAD_SHA")" || fail "merge bas
 [[ "$(gitleaks version)" == 8.24.3 ]] || fail "expected pinned Gitleaks 8.24.3"
 range="$bases..$PR_HEAD_SHA"
 echo "Gitleaks PR range: $range ($(git rev-list --count "$range") commits)"
-# Traverse side histories too; show merge-resolution changes against the first parent.
+# Traverse side histories too; show only changes beyond Git’s automatic remerge.
 # --diff-merges changes diffs, unlike --first-parent which drops side commits.
+# Git >=2.36 and writable objects are required; Git/scanner errors must fail.
 exec gitleaks detect --redact --exit-code=2 \
   --config=.gitleaks.toml --gitleaks-ignore-path=.gitleaksignore \
   --report-format=sarif --report-path=results.sarif \
-  "--log-opts=--diff-merges=first-parent $range"
+  "--log-opts=--diff-merges=remerge $range"
