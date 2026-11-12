@@ -107,7 +107,11 @@ describe("antigravity: grouping above the reply it produced (real ledger)", () =
   });
   it("without ids on the ledger rows it falls back to the reply's text (and says so)", () => {
     const bare = ledger.map(({ anchor: _a, ...r }) => r);
-    expect(groupSteps(bare, steps, { now }).groups.map((g: any) => g.level)).toEqual(["text", "text", "text"]);
+    // Replies that name no id (Prism #3709 R4: a reply that NAMES an id never falls back to its words or time).
+    const noIds = steps.map((s: any) => (s.kind === "tool" && s.anchor?.messageId ? { ...s, anchor: { replyText: s.anchor.replyText } } : s));
+    expect(groupSteps(bare, noIds, { now }).groups.map((g: any) => g.level)).toEqual(["text", "text", "text"]);
+    // And one that names an id the rows do not carry stays unattached (not matched by its words).
+    expect(groupSteps(bare, steps, { now }).groups.every((g: any) => g.level === "none" && g.rowKey === null)).toBe(true);
   });
 });
 
