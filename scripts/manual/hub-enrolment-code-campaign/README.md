@@ -51,7 +51,7 @@ Dependency modules are mounted read-only. Images are unchanged from B1's kit.
 3. Capture actual Administration create/group-scope/live/reloaded/ended views in
    EN/zh-TW, desktop/phone, light/dark. All requests use the real session/CSRF API.
    One code is created and reused across the eight capture contexts, then ended
-   once; captures do not bypass the ten-creations/hour limit. Group suggestions
+   once; captures do not bypass the ten-creations/hour limit. U2's explicit read-only retry may be pressed up to3times on a failed prerequisite read; this is recorded, with no repeated writes. Four real scoped-refusal and four real ended-code views also cover EN/zh, desktop/phone, using two additional codes (eight creations total). Group suggestions
    use the committed synthetic LDAP wire's prefix/extensible
    filter support; there is no private fake-AD patch.
 4. B-L11: 20 people, including five separate Fleet homes, accounts and HTTPS

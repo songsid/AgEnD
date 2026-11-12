@@ -12,8 +12,8 @@ function queueTimers() {
   vi.spyOn(globalThis, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => ms >= 2000 && ms <= 6000 ? (timers.push(fn), 123 as any) : original(fn, ms, ...args));
   return timers;
 }
-async function rig(answer: (n: number) => any) {
-  const p = page({ url: "https://hub.example.test/ui/hub?join=" + ID, storage: { agend_lang: "en" } }); mounted.push(p); i18n.setLang("en", { store: false });
+async function rig(answer: (n: number) => any, lang = "en") {
+  const p = page({ url: "https://hub.example.test/ui/hub?join=" + ID, storage: { agend_lang: lang } }); mounted.push(p); i18n.setLang(lang, { store: false });
   const deadline = Date.now() + 60_000, calls: any[] = []; let approvals = 0;
   vi.stubGlobal("fetch", vi.fn(async (path: string, init: any = {}) => {
     calls.push({ path, init }); const result = path.includes("/approve") ? await answer(++approvals)
@@ -45,6 +45,41 @@ describe("B2 actual Hub approval page", () => {
     const timers = queueTimers(), r = await rig(() => ({ ok: false, code: "limit-reached" }));
     fire(button(r.p, "Connect as Carol"), "click"); await settle(15);
     expect(r.posts()).toHaveLength(1); expect(timers).toHaveLength(0); expect(r.p.root.textContent).toContain("Fleet limit is reached");
+  });
+  it.each([
+    ["en", "code-scope", "You are outside the scope of this join code."],
+    ["en", "code-ended", "This join code is no longer valid or has been used up."],
+    ["zh-TW", "code-scope", "你不在這組加入碼允許的範圍。"],
+    ["zh-TW", "code-ended", "加入碼已失效或已用完。"],
+  ])("existing company session shows %s/%s feedback", async (lang, reason, message) => {
+    const timers = queueTimers(), r = await rig(() => ({ ok: false, code: "denied", reason }), lang);
+    fire(button(r.p, "Connect as Carol") || button(r.p, "以 Carol 的身分連接"), "click"); await settle(15);
+    expect(r.p.root.textContent).toContain(message); expect(r.posts()).toHaveLength(1); expect(timers).toHaveLength(0);
+  });
+  it.each([
+    ["en", "code-scope", "You are outside the scope of this join code."],
+    ["en", "code-ended", "This join code is no longer valid or has been used up."],
+    ["zh-TW", "code-scope", "你不在這組加入碼允許的範圍。"],
+    ["zh-TW", "code-ended", "加入碼已失效或已用完。"],
+  ])("company sign-in preserves %s/%s feedback into its Hub page", async (lang, reason, message) => {
+    const p = page({ url: "https://hub.example.test/ui/hub?join=" + ID, storage: { agend_lang: lang } }); mounted.push(p); i18n.setLang(lang, { store: false });
+    const deadline = Date.now() + 60_000;
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      const r = path.includes("/approve") ? { ok: false, code: "denied", reason } : { ok: true, state: "pending", label: "My Fleet", outerDeadline: deadline };
+      return { ok: r.ok !== false, json: async () => r };
+    }));
+    const signIn = vi.fn(async () => ({ ok: true, signedIn: true, csrf: "new-session", login: "carol", displayName: "Carol", features: [] }));
+    clients.setHubClient({ session: async () => ({ ok: true, signedIn: false }), signIn, rooms: async () => ({ ok: true, rooms: [] }) }); panel.resetHubSession();
+    await p.mount(h(panel.HubPanel, { route: { tab: "ask" } })); await settle(20);
+    const login = p.root.querySelector("#hubLogin"), password = p.root.querySelector("#hubPassword");
+    login.value = "carol"; fire(login, "input"); password.value = "inert-fixture"; fire(password, "input"); await settle(3);
+    fire(p.root.querySelector("form"), "submit"); await settle(20);
+    expect(signIn).toHaveBeenCalledOnce(); expect(p.root.textContent).toContain(message);
+  });
+  it("an unrelated failure cannot adopt a code-specific reason", async () => {
+    const r = await rig(() => ({ ok: false, code: "limit-reached", reason: "code-scope" }));
+    fire(button(r.p, "Connect as Carol"), "click"); await settle(15);
+    expect(r.p.root.textContent).toContain("Fleet limit is reached"); expect(r.p.root.textContent).not.toContain("outside the scope");
   });
   it("retiring the page during a held approval aborts its signal and publishes no late result", async () => {
     let release!: (value: any) => void; const r = await rig(() => new Promise(resolve => { release = resolve; }));

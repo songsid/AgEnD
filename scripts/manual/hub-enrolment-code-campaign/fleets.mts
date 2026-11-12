@@ -46,17 +46,25 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
   }
   async function showManager(page:any,lang:string,phone:boolean,theme:string,errors:string[]=[]) {
     const action=page.locator('[data-enrolment-codes] > .n-actions button');await action.waitFor({state:'attached'});
-    const deadline=Date.now()+30_000;
+    const deadline=Date.now()+30_000;let readRetries=0,lastReadRetry=0;
     // Real U2 policy reads resize the steps after initial paint. Keep the action in the viewport,
     // as a person would, so the unchanged IntersectionObserver/visible-only read can recover.
     do {
       await action.evaluate((el:HTMLElement)=>el.scrollIntoView({block:'center'}));
       if(await action.isEnabled())return;
+      // U2 exposes an explicit read-only retry when its initial company-setting read fails.
+      // This retries no write/approval and changes no account, pool, bucket or server state.
+      const retry=page.locator('.hub-join-card > p.err > button');
+      if(readRetries<3&&Date.now()-lastReadRetry>=5000&&await retry.count()) {
+        await retry.click();readRetries++;lastReadRetry=Date.now();receipt.readOnlyAdminRetries=(receipt.readOnlyAdminRetries??0)+1;
+      }
       await page.waitForTimeout(500);
     } while(Date.now()<deadline);
     await page.screenshot({path:join(out,'admin-entry-failed-'+lang+'-'+(phone?'phone':'desk')+'-'+theme+'.png'),fullPage:true});
     const diagnostic=await page.locator('[data-enrolment-codes]').evaluate((el:HTMLElement)=>({text:el.innerText,rect:el.getBoundingClientRect().toJSON(),viewport:{width:innerWidth,height:innerHeight},visible:document.visibilityState}));
-    writeFileSync(join(out,'admin-entry-failed.json'),JSON.stringify({lang,phone,theme,diagnostic,errors},null,2));
+    const prerequisiteError=await page.locator('.hub-join-card > p.err').allTextContents();
+    const toggles=page.locator('.hub-join-card [data-step="1"] input');const enabled=await toggles.count()?await toggles.first().isChecked():null;
+    writeFileSync(join(out,'admin-entry-failed.json'),JSON.stringify({lang,phone,theme,diagnostic,errors,prerequisiteError,enabled,readRetries},null,2));
     throw Error('Owned visible code-manager readiness deadline');
   }
   // Actual old bytes, identified per response. Current server headers/CSP remain on the response.
@@ -83,7 +91,7 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
       return route.fulfill({ response, body: bytes, ...(cached ? {headers:{...response.headers(),...cached.headers}} : {}) });
     });
   }
-  async function prepareFleet(index: number, prefix: string) {
+  async function prepareFleet(index: number, prefix: string, variant: any = null) {
     const number = sequence++, host = 'fleet-' + number + '.example.test', dir = mkdtempSync(join(tmpdir(),'campaign-fleet-'));
     process.env.AGEND_HOME = dir;
     const port = 55100 + number * 2, certs = makeTestCerts(host);
@@ -106,7 +114,7 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     fm.hubEffectsReady = true;
     const controller = await fm.hubCompanyJoin();
     controller.client = new CompanyJoinClient({ ca:readFileSync(rig.certs.caCert),lookup:(_h:any,o:any,done:any)=>o.all?done(null,[{address:'127.0.0.1',family:4}]):done(null,'127.0.0.1',4) });
-    const lang = index % 2 ? 'zh-TW' : 'en', phone = index % 2 === 1, theme = index % 3 ? 'dark' : 'light';
+    const lang = variant?.lang ?? (index % 2 ? 'zh-TW' : 'en'), phone = variant?.phone ?? (index % 2 === 1), theme = variant?.theme ?? (index % 3 ? 'dark' : 'light');
     fm.webPrefs.write('operator',new Map([['lang',lang],['theme',theme]]));
     const ctx = await context(lang,phone,theme), page = await ctx.newPage(), errors: string[] = [];
     page.on('pageerror',(e:Error)=>errors.push(e.message));
@@ -159,6 +167,23 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     await shot(f.page,f.label+'-04-connected');
     receipt.visibleFleets ??= []; receipt.visibleFleets.push({label:f.label,login,origin:f.base,fleetId:journal.binding.fleetId,lang:f.lang,phone:f.phone,started,connected:Date.now(),agentLifecycle:'refused',transport:'owned HTTPS proxy to production Fleet HTTP'});
     return { started,issued:true,binding:journal.binding,connected:Date.now() };
+  }
+  async function pendingRefusal(f:any,code:string,login:string) {
+    await f.page.locator('#hubCompanyAddress').fill(rig.webOrigin+' '+code);await f.page.locator('#hubCompanyAddress').blur();
+    await f.page.getByRole('button',{name:f.lang==='zh-TW'?'改名':'Rename',exact:true}).click();await f.page.locator('#hubCompanyFleetName').fill(f.label);
+    const opened=f.ctx.waitForEvent('page');await f.page.getByRole('button',{name:f.lang==='zh-TW'?'以公司帳號登入':'Sign in with company account',exact:true}).click();
+    const hub=await opened;await hub.waitForURL(rig.webOrigin+'/ui/hub?join=*');await hub.locator('#hubLogin').fill(login);await hub.locator('#hubPassword').fill('Dummy-'+login+'-only');
+    return {f,hub};
+  }
+  async function finishRefusal(pending:any,reason:'code-scope'|'code-ended') {
+    const {f,hub}=pending;await hub.getByRole('button',{name:f.lang==='zh-TW'?'登入並連接 Fleet':'Sign in and connect Fleet',exact:true}).click();
+    const message=f.lang==='zh-TW'?(reason==='code-scope'?'你不在這組加入碼允許的範圍。':'加入碼已失效或已用完。')
+      :(reason==='code-scope'?'You are outside the scope of this join code.':'This join code is no longer valid or has been used up.');
+    await hub.getByText(message,{exact:true}).waitFor();await shot(hub,f.label+'-'+reason);
+    check(f.label+' refusal saves no credential',!existsSync(join(f.dir,'hub-member',rig.deps.companyJoin.metadata().hub.hubId,'pairing.json')));
+    const cancel=f.page.locator('.s-company-join').getByRole('button',{name:f.lang==='zh-TW'?/^(取消|取消連接)$/:/^(Cancel|Cancel connection)$/});
+    if(await cancel.count()) { await cancel.first().click();await wait(()=>readLocalJoin(f.dir,currentLocalJoinId(f.dir)!)?.stage==='cancelled'); }
+    receipt.refusalViews??=[];receipt.refusalViews.push({label:f.label,reason,lang:f.lang,phone:f.phone});
   }
   async function adminShots() {
     // Reuse one real code across locales: captures must not bypass the ten-creations/hour policy.
@@ -213,5 +238,5 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
       } finally { await ctx.close(); }
     }
   }
-  return { adminShots,cachedShots,prepareFleet,signInFleet,joinFleet,shot,adminPage,closeVisible:async()=>{ const failures:unknown[]=[];try{for(const f of active.splice(0).reverse()){try{await f.close();}catch(e){failures.push(e);}}}finally{process.env.AGEND_HOME=environmentHome;}if(failures.length)throw new AggregateError(failures,'Owned Fleet cleanup failed'); } };
+  return { adminShots,cachedShots,prepareFleet,signInFleet,joinFleet,pendingRefusal,finishRefusal,shot,adminPage,closeVisible:async()=>{ const failures:unknown[]=[];try{for(const f of active.splice(0).reverse()){try{await f.close();}catch(e){failures.push(e);}}}finally{process.env.AGEND_HOME=environmentHome;}if(failures.length)throw new AggregateError(failures,'Owned Fleet cleanup failed'); } };
 }

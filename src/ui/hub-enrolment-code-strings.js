@@ -17,6 +17,7 @@ register("enrolmentCode", {
     endFailed: "The result could not be verified. Check this code again.", ended: "The code has ended. Fleets already connected are unchanged.",
     limited: "The Hub is busy. Try again shortly.", denied: "Only the configured Hub administrator can manage join codes.",
     queued: "Many people are connecting at once. Waiting in the queue…", queueRetry: "Try again",
+    scopeDenied: "You are outside the scope of this join code.", codeEnded: "This join code is no longer valid or has been used up.",
     byCode: "Approved with a join code by your Hub administrator.",
   },
   "zh-TW": {
@@ -36,6 +37,7 @@ register("enrolmentCode", {
     endFailed: "目前無法確認結果，請再次檢查這組碼。", ended: "加入碼已停用，已連接的 Fleet 不受影響。",
     limited: "Hub 目前忙碌，請稍後再試。", denied: "只有指定的 Hub 管理員可以管理加入碼。",
     queued: "目前很多人同時加入，正在排隊…", queueRetry: "再試一次",
+    scopeDenied: "你不在這組加入碼允許的範圍。", codeEnded: "加入碼已失效或已用完。",
     byCode: "由 Hub 管理員透過加入碼核准。",
   },
 });

@@ -215,7 +215,7 @@ function HubSignIn() {
       if (company.requestId) {
         const joined = await approval.run(r.csrf);
         if (mine !== generation.current || joined.code === "retired") return;
-        if (!joined.ok) { setBusy(false); setSession({ ...r, companyJoinFailure: { requestId: company.requestId, code: joined.code } }); return; }
+        if (!joined.ok) { setBusy(false); setSession({ ...r, companyJoinFailure: { requestId: company.requestId, code: joined.code, reason: joined.reason } }); return; }
       }
       setBusy(false); setSession(r); return;
     }

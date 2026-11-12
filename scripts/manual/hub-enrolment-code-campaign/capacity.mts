@@ -45,7 +45,7 @@ try {
  browser=await chromium.launch({args:['--no-sandbox','--no-proxy-server','--host-resolver-rules=MAP *.example.test 127.0.0.1']});
  ui=campaignUi(rig,browser,receipt,check,online);
  await ui.adminShots();
- const create=async(maxUses:number)=>{const r=await rig.call(admin,'POST','/hub/v1/admin/enrolment-codes',{expires:'today',maxUses,perPersonFleets:1,scope:{kind:'directory'}});check('admin creates '+maxUses+'-use code',r.status===201);return r.body;};
+ const create=async(maxUses:number,scope:any={kind:'directory'})=>{const r=await rig.call(admin,'POST','/hub/v1/admin/enrolment-codes',{expires:'today',maxUses,perPersonFleets:1,scope});check('admin creates '+maxUses+'-use code',r.status===201);return r.body;};
  const secrets:string[]=[];
  const rawJson=(client as any).json.bind(client);(client as any).json=async(...args:any[])=>{const began=Date.now();try{return await rawJson(...args);}catch(e:any){const diagnostic={path:String(args[1]).split('?')[0],elapsedMs:Date.now()-began,code:e.code??null,kind:e.kind??null};receipt.machineErrors??=[];receipt.machineErrors.push(diagnostic);console.error(JSON.stringify({machineFailure:diagnostic}));throw e;}};
  let machines=0;const machineWaiters:Array<()=>void>=[];
@@ -133,6 +133,15 @@ try {
    databaseBytes:statSync(join(rig.home,'hub/hub.sqlite')).size,walBytes:existsSync(join(rig.home,'hub/hub.sqlite-wal'))?statSync(join(rig.home,'hub/hub.sqlite-wal')).size:0});
   await ui.closeVisible();
  }
+ // Code-specific authenticated refusals: actual fresh-company sign-in and real server reasons.
+ const variants=[{lang:'en',phone:false},{lang:'en',phone:true},{lang:'zh-TW',phone:false},{lang:'zh-TW',phone:true}];
+ const scopeCode=await create(8,{kind:'group',realm:'corp',objectId:group,dn:'CN=Owners,DC=example,DC=test'});secrets.push(scopeCode.code.replace('-',''));
+ const outside=people('outsidecode',4);
+ for(let i=0;i<4;i++){const f=await ui.prepareFleet(i,'scope',variants[i]);const pending=await ui.pendingRefusal(f,scopeCode.code,outside[i]);await ui.finishRefusal(pending,'code-scope');await ui.closeVisible();}
+ const endedCode=await create(4);secrets.push(endedCode.code.replace('-',''));const endPeople=people('endedcode',4),pendingEnds=[];
+ for(let i=0;i<4;i++){const f=await ui.prepareFleet(i,'ended',variants[i]);pendingEnds.push(await ui.pendingRefusal(f,endedCode.code,endPeople[i]));}
+ check('end pending code before actual sign-in',(await rig.call(admin,'POST','/hub/v1/admin/enrolment-codes/'+endedCode.id+'/revoke',{})).status===200);
+ await Promise.all(pendingEnds.map(p=>ui.finishRefusal(p,'code-ended')));await ui.closeVisible();
  await wave(20,'small');
  // Respect the120/min bucket across independent acceptance waves; never reset or bypass it.
  await new Promise(r=>setTimeout(r,60_000));await wave(50,'mass');
