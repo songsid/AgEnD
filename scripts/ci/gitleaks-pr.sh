@@ -14,6 +14,9 @@ bases="$(git merge-base --all "$PR_BASE_SHA" "$PR_HEAD_SHA")" || fail "merge bas
 [[ -f .gitleaks.toml && -f .gitleaksignore ]] || fail "scan configuration or fingerprint ignore file is missing"
 [[ "$(gitleaks version)" == 8.24.3 ]] || fail "expected pinned Gitleaks 8.24.3"
 range="$bases..$PR_HEAD_SHA"
+# Git remerge omits >2-parent merge results. Never report a partial scan as green.
+octopus="$(git rev-list --min-parents=3 "$range")" || fail "unable to inspect PR merge topology"
+[[ -z "$octopus" ]] || fail "PR range contains a merge with more than two parents; remerge cannot inspect it"
 echo "Gitleaks PR range: $range ($(git rev-list --count "$range") commits)"
 # Traverse side histories too; show only changes beyond Git’s automatic remerge.
 # --diff-merges changes diffs, unlike --first-parent which drops side commits.
