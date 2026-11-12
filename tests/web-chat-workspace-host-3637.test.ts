@@ -16,7 +16,7 @@ beforeAll(async () => {
   nav = await import("/assets/app-nav.js"); app = await import("/assets/app-store.js"); shell = await import("/assets/app-shell.js");
   ctx = await import("/assets/app-ctx.js"); tabs = await import("/assets/instance-switch.js");
   host = await import("/ui/js/chat-workspace.js");
-  nav.startRouter(p.window); controller = (await import("/ui/js/chat-workspace-navigation.js") as any).installWorkspaceNavigation(nav);
+  nav.startRouter(p.window); controller = (await import("/ui/js/chat-workspace-navigation.js") as any).installWorkspaceNavigation(nav, { geometry: true });
   app.applyStatus({ instances: ["alpha", "beta"].map(name => ({ name, backend: "claude-code", status: "running", state: "idle" })) });
 });
 afterEach(async () => { await p.unmount(); nav.navigate("/ui/chat/alpha", { workspace: true }); leases.clear(); width = 900; });
@@ -32,6 +32,30 @@ async function mount() {
   await p.mount(h(App)); await settle(6);
 }
 describe("the real panel host is additive to the single pane", () => {
+  it("dock, swap and float keep each existing composer DOM and lease", async () => {
+    controller.open("beta"); await mount();
+    const inputs = ["alpha", "beta"].map(name => p.root.querySelector(`textarea[data-agent="${name}"]`) as any);
+    const original = [leases.get("alpha"), leases.get("beta")]; inputs[0].value = "Unsent alpha";
+    for (const change of [() => controller.swap(), () => controller.layout("float", "a"), () => controller.dock("alpha", "b", "top")]) {
+      change(); await settle(4);
+      expect(p.root.querySelector('textarea[data-agent="alpha"]')).toBe(inputs[0]);
+      expect(p.root.querySelector('textarea[data-agent="beta"]')).toBe(inputs[1]);
+      expect(inputs[0].value).toBe("Unsent alpha");
+      expect(leases.get("alpha")).toBe(original[0]); expect(leases.get("beta")).toBe(original[1]);
+    }
+  });
+  it("renders a keyboard sash from the saved ratio without remounting either composer", async () => {
+    controller.open("beta"); await mount(); const input: any = p.root.querySelector('textarea[data-agent="alpha"]'), a = leases.get("alpha"); input.value = "Keep draft";
+    const sash = p.root.querySelector('.ws-sash[role="separator"]'); expect(sash).not.toBeNull(); expect(sash?.getAttribute("aria-orientation")).toBe("vertical");
+    fire(sash!, "keydown", { key: "ArrowRight" }); await settle(4); expect(controller.current().ratio).toBeGreaterThan(.5);
+    expect(p.root.querySelector('textarea[data-agent="alpha"]')).toBe(input); expect(input.value).toBe("Keep draft"); expect(leases.get("alpha")).toBe(a);
+    fire(sash!, "dblclick"); await settle(4); expect(controller.current().ratio).toBe(.5);
+  });
+  it("keeps both full panes in float mode with a bounded resize handle and one page-tools root", async () => {
+    controller.open("beta"); controller.layout("float", "b"); await mount();
+    expect(p.root.querySelectorAll(".ws-pane")).toHaveLength(2); expect(p.root.querySelector('.ws-pane.ws-floating[data-pane="b"]')).not.toBeNull();
+    expect(p.root.querySelector(".ws-float-resize")).not.toBeNull(); expect(p.root.querySelectorAll(".ws-page-tools")).toHaveLength(1); expect(p.root.querySelector(".ws-sash")).toBeNull();
+  });
   it("leaves the normal header/IDs alone without a workspace", async () => {
     await mount(); expect(p.root.querySelector(".chat-workspace")).toBeNull();
     expect(p.root.querySelector("#sbOpen")).not.toBeNull(); expect(p.root.querySelectorAll(".panel-head")).toHaveLength(1);

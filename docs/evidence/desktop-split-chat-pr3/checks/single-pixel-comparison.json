@@ -1,0 +1,24 @@
+{
+  "comparisons": [
+    {
+      "theme": "light",
+      "before": "browser/before-light/light-zh-TW-single.png",
+      "after": "browser/current-light/light-zh-TW-single.png",
+      "size": [
+        1600,
+        1000
+      ],
+      "differentPixels": 0
+    },
+    {
+      "theme": "dark",
+      "before": "browser/before-dark/dark-zh-TW-single.png",
+      "after": "browser/current-dark/dark-zh-TW-single.png",
+      "size": [
+        1600,
+        1000
+      ],
+      "differentPixels": 0
+    }
+  ]
+}

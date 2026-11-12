@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+···x······
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  03:39:56
+   Duration  424ms (transform 173ms, setup 90ms, import 129ms, tests 58ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-gestures-3637.test.ts > one pointer owns a sash; cancellation restores and release commits once
+AssertionError: expected { ratio: 0.6370967741935484 } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "ratio": 0.6370967741935484,
+}
+
+ ❯ tests/web-chat-workspace-gestures-3637.test.ts:43:139
+     41| it("one pointer owns a sash; cancellation restores and release commits…
+     42|   manager.sashDown(event());
+     43|   p.window.dispatchEvent({ type: "pointermove", pointerId: 8, clientX:…
+       |                                                                                                                                           ^
+     44|   p.window.dispatchEvent({ type: "pointermove", pointerId: 7, clientX:…
+     45|   p.window.dispatchEvent({ type: "pointercancel", pointerId: 7 } as an…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

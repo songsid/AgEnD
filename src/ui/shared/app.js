@@ -151,7 +151,8 @@ if (hubPage) {
   };
   setNewInstanceOpener(onNewInstance);
   // Optional alpha feature: an old server/CSS/module set keeps the original single-panel path and drafts.
-  if (!guest && boot.chatWorkspace === "1" && getComputedStyle(document.documentElement).getPropertyValue("--chat-workspace-version").trim() === "1") {
+  if (!guest && boot.chatWorkspace === "1" && getComputedStyle(document.documentElement).getPropertyValue("--chat-workspace-version").trim() === "1"
+    && getComputedStyle(document.documentElement).getPropertyValue("--chat-workspace-geometry-version").trim() === "1") {
     Promise.all([import("/ui/js/chat-workspace.js"), chatBoot]).then(([workspace, chat]) => {
       workspace.installWorkspaceEntry({ nav: navigation, chat, landing: workspaceLanding, scope: boot.chatLayoutScope,
         ready: async () => {

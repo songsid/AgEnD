@@ -1,0 +1,24 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-docking-3637
+
+x----
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-workspace-docking-navigation-3637.test.ts > stops the old preview on first split and final collapse, before the next host can render
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ tests/web-chat-workspace-docking-navigation-3637.test.ts:10:48
+      8| it("stops the old preview on first split and final collapse, before th…
+      9|   nav.navigate("/ui/chat/alpha", { workspace: true, force: true }); st…
+     10|   controller.open("beta"); expect(stopPreview).toHaveBeenCalledTimes(1…
+       |                                                ^
+     11|   controller.closePane("b"); expect(stopPreview).toHaveBeenCalledTimes…
+     12| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  03:39:36
+   Duration  350ms (transform 154ms, setup 84ms, import 103ms, tests 35ms, environment 0ms)
