@@ -134,6 +134,38 @@ import { activityInfo, activityInfoStore, activityOffered, activityPrefs, compos
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composers = new Map(); // agent → current mounted refs, never a retained thread's stale closure
 const composerField = (name) => composers.get(name)?.input.current || null;
+/**
+ * #3727 (M-2973): where the viewer's 「引用給 Agent」 can put a marked-up picture — this chat's composer (the new PNG as an
+ * attachment, and a reply to the message the picture is in), and in split chat the other pane's (the PNG, and a quote
+ * line naming the original, since a reply can only point into its own chat). Null when this chat has no composer to put
+ * it in (nothing to annotate for).
+ */
+function annotateFor(name, img) {
+  if (!store || typeof File !== "function") return null;
+  const key = img?.closest?.(".msg[data-key]")?.getAttribute("data-key") || "";
+  const message = (store.state.msgs[name] || []).find((x) => msgKey(x) === key) || null;
+  const field = () => composerField(name);
+  const targets = [{ key: "self", label: t("lbAnnotateQuote.self"), quote: (file, live = () => true) => {
+    if (!field() || !live()) return false;
+    store.addFiles(name, [file]);
+    if (message) store.startReply(name, message);
+    field()?.focus();
+    return true;
+  } }];
+  const other = (appStore.get().chatWorkspace?.quoteTargets?.(name) || [])[0];
+  if (other && other.name) {
+    // insertPaneQuote heads the quote with the source chat's name itself: this is only what the message said (or the
+    // picture's name, for a message with no words).
+    const what = String(message?.text || "").replace(/\s+/g, " ").trim().slice(0, 160) || img?.querySelector?.("img")?.getAttribute("alt") || "📷";
+    // Prism on #3735: the picture and its quote go in under the pane's one live check (insert's commit) — a pane
+    // replaced or retired meanwhile gets neither, and the editor stays open.
+    targets.push({ key: "other", label: t("lbAnnotateQuote.other", other.name),
+      quote: async (file, live = () => true) => (await other.insert(what, () => store.addFiles(other.name, [file]), live)) === true });
+  }
+  return { targets, notice: (text) => toast(text, false) };
+}
+// #3727: the two quote targets' words, here so a page with an older chat dictionary still has them.
+register("lbAnnotateQuote", { en: { self: "Quote to agent", other: "Quote to {0}" }, "zh-TW": { self: "引用給 Agent", other: "引用到 {0}" } });
 /** Cross-pane quote is plain draft text. It never copies a message id, executes a command or submits the composer. */
 export function insertPaneQuote(name, source, text, current = () => true) {
   const binding = composers.get(name), field = binding?.input.current;
@@ -641,7 +673,7 @@ function threadEntry(name, doc) {
     serverNow: () => Date.now() + store.state.clockSkew,                   // #1823: the deadline is the server's
     panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims,   // #1481, #1704
       openMarkdown: (spec) => openMarkdown(spec) },   // M-2448: a Markdown file in the side panel
-    openImage: openLightbox,                                               // an image, full size, in the page
+    openImage: (links, img) => openLightbox(links, img, annotateFor(name, img)),   // an image, full size, in the page (#3727: with 標註)
     emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
     mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names
     activity: { mount: (node, group) => mountActivity(node, group, activityCtx(name)) },   // AGEND-181: the timeline's blocks
