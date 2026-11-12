@@ -205,7 +205,7 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
  * Every answer is { ok: true, ...body } or { ok: false, status, code }; a 401 also tells the page the session ended.
  */
 export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
-  let csrf = null;
+  let csrf = null, codeNotices = false;
   const ended = new Set();
   async function call(method, path, body, signal) {
     const headers = { Accept: "application/json" };
@@ -216,7 +216,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     catch { return { ok: false, status: 0, code: "unreachable" }; }
     let json = null;
     try { json = await r.json(); } catch { json = null; }
-    if (r.status === 401) { csrf = null; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
+    if (r.status === 401) { csrf = null; codeNotices = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
     if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0 };
     return { ok: true, ...(json && typeof json === "object" ? json : {}) };
   }
@@ -225,9 +225,9 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     stub: false, web: true,
     /** Hear the session end (a 401 anywhere). @returns {() => void} */
     onSignedOut(fn) { ended.add(fn); return () => ended.delete(fn); },
-    async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) csrf = r.signedIn ? r.csrf || null : null; return r; },
-    async signIn(login, password) { const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) csrf = r.csrf || null; return r; },
-    async signOut() { const r = await call("DELETE", "/hub/v1/session"); csrf = null; return r; },
+    async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) { csrf = r.signedIn ? r.csrf || null : null; codeNotices = r.signedIn === true && r.features?.includes("enrolment-code-v1") === true; } return r; },
+    async signIn(login, password) { const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; } return r; },
+    async signOut() { const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; return r; },
     catalog() { return call("GET", "/hub/v1/exposures"); },
     grant(input) { return call("POST", "/hub/v1/grants", input); },
     revokeGrant(grantId, revision) { return call("DELETE", `/hub/v1/grants/${id(grantId)}?revision=${id(revision)}`); },
@@ -264,7 +264,9 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     quickPairing(pairingId) { return call("GET", `/hub/v1/quick-pairing${pairingId ? `?id=${id(pairingId)}` : ""}`); },
     stopQuickPairing(pairingId) { return call("POST", `/hub/v1/quick-pairing/${id(pairingId)}/stop`); },
     revokeOwnFleet(fleetId, generation) { return call("POST", `/hub/v1/fleets/${id(fleetId)}/revoke`, { generation }); },
-    pairingNotices() { return call("GET", "/hub/v1/notices?v=2"); },
+    // A cached notice renderer calls with no version and must never receive a code row it would label as group approval.
+    pairingNoticesV3: true,
+    pairingNotices(version = 2) { return call("GET", `/hub/v1/notices?v=${version === 3 && codeNotices ? 3 : 2}`); },
     directorySecurityNoticesV1: true,
     directorySecurityNotices({ before, limit = 25 } = {}) {
       const query = new URLSearchParams({ limit: String(limit) });
@@ -275,9 +277,9 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     /** The Hub's stream begins with the complete current snapshot; no bootstrap GET is needed. */
     pairingNoticeSnapshotV1: typeof EventSource !== "undefined",
     acknowledgePairingNotice(noticeId) { return call("POST", `/hub/v1/notices/${id(noticeId)}/ack`); },
-    subscribePairingNotices(fn, onClosed = () => {}) {
+    subscribePairingNotices(fn, onClosed = () => {}, version = 2) {
       if (typeof EventSource === "undefined") return () => {};
-      const events = new EventSource("/hub/v1/notices/events?v=2"); let live = true;
+      const events = new EventSource(`/hub/v1/notices/events?v=${version === 3 && codeNotices ? 3 : 2}`); let live = true;
       events.addEventListener("notices", (event) => { if (!live) return; try { const value = JSON.parse(event.data); if (Array.isArray(value.notices)) fn(value.notices); } catch { /* bounded server DTO only */ } });
       events.addEventListener("error", () => {
         // A refused handshake is CLOSED, unlike a transient disconnect that EventSource itself reconnects.
@@ -287,6 +289,11 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     },
     confirmPairing(pairingId, fingerprint) { return call("POST", `/hub/v1/pairings/${id(pairingId)}/confirm`, { fingerprint }); },
     adminOverview() { return call("GET", "/hub/v1/admin/overview"); },
+    /** B2 capability, not permission: the server still checks the configured administrator on every call. */
+    enrolmentCodeV1: true,
+    enrolmentCodes() { return call("GET", "/hub/v1/admin/enrolment-codes"); },
+    createEnrolmentCode(input) { return call("POST", "/hub/v1/admin/enrolment-codes", input); },
+    revokeEnrolmentCode(codeId) { return call("POST", `/hub/v1/admin/enrolment-codes/${id(codeId)}/revoke`, {}); },
     createPairing(login) { return call("POST", "/hub/v1/admin/pairings", { login }); },
     approvePairing(pairingId, fingerprint) { return call("POST", `/hub/v1/admin/pairings/${id(pairingId)}/approve`, { fingerprint }); },
     revokeFleet(fleetId) { return call("POST", `/hub/v1/admin/fleets/${id(fleetId)}/revoke`); },
@@ -334,7 +341,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
  * `confirm` is settings-confirm.js (loaded with the card): { api, isPendingResponse, track, newKey }.
  */
 export function createMemberClient({ confirm, pollMs = 5000, doc = typeof document !== "undefined" ? document : null, timers = globalThis }) {
-  let pairingNotices = [];
+  let pairingNotices = [], noticeEpoch = 0;
+  const noticeReaders = new Set();
   const listed = async () => {
     const r = await confirm.api("/api/hub/member/exposures");
     return r.ok && r.body && Array.isArray(r.body.exposures) ? r.body.exposures : r.status === 404 ? null : [];
@@ -343,9 +351,14 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
   // Pairing (S3c PR B): GET the projection; connect / confirm / disconnect go through the Settings confirmation (a 202:
   // "sent for confirmation", followed in the background; the poll shows the result); cancel at once.
   const pairingNow = async () => {
-    const r = await confirm.api("/api/hub/member/pairing?v=2");
-    if (r.ok && r.body && r.body.pairing) { pairingNotices = Array.isArray(r.body.notices) ? r.body.notices : []; return r.body.pairing; }
-    pairingNotices = [];
+    const mine = noticeEpoch, version = noticeReaders.size ? 3 : 2;
+    const r = await confirm.api(`/api/hub/member/pairing?v=2${version === 3 ? "&notices=3" : ""}`);
+    if (r.ok && r.body && r.body.pairing) {
+      if (mine === noticeEpoch) pairingNotices = Array.isArray(r.body.notices) ? r.body.notices.filter(n => n && typeof n === "object"
+        && (n.source === undefined || n.source === "group" || n.source === "manual" || n.source === "code" && version === 3)) : [];
+      return r.body.pairing;
+    }
+    if (mine === noticeEpoch) pairingNotices = [];
     return { state: "held", hold: r.status === 404 ? "unavailable" : "unsaved" };
   };
   const step = async (name, body) => {
@@ -374,6 +387,12 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
     stub: false, member: true,
     pairing: pairingNow,
     pairingNotices: () => pairingNotices,
+    /** Presentation lease only. Cached renderers never call this and continue to receive v2. */
+    usePairingNoticeVersion(version) {
+      if (version !== 3) return () => {};
+      const reader = {}; if (!noticeReaders.size) noticeEpoch++; noticeReaders.add(reader);
+      return () => { if (noticeReaders.delete(reader) && !noticeReaders.size) { noticeEpoch++; pairingNotices = pairingNotices.filter(n => n.source !== "code"); } };
+    },
     async connect({ address, code }) {
       const a = String(address || "").trim(), c = String(code || "").trim();
       if (!ADDRESS_HINT.test(a)) return { ok: false, error: "address" };

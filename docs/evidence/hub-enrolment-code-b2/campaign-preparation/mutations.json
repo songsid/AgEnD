@@ -1,0 +1,27 @@
+[
+  {
+    "guard": "go",
+    "syntax": "pass",
+    "assertionCaught": true
+  },
+  {
+    "guard": "source",
+    "syntax": "pass",
+    "assertionCaught": true
+  },
+  {
+    "guard": "overlap",
+    "syntax": "pass",
+    "assertionCaught": true
+  },
+  {
+    "guard": "clock",
+    "syntax": "pass",
+    "assertionCaught": true
+  },
+  {
+    "guard": "bounded",
+    "syntax": "pass",
+    "assertionCaught": true
+  }
+]

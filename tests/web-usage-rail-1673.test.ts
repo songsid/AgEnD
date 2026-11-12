@@ -135,7 +135,7 @@ describe("#1673: a wide screen shows usage as a rail beside the page", () => {
     expect([rail(pg), pg.storage.get("agend_usage_rail")]).toEqual([true, "1"]);
   });
 
-  it("the header's controls have one shape on every tab: Aa (every size's name in one cell, the current one shown), ◔, then one 36 px control — Log keeps that room empty", async () => {
+  it("the common header controls keep their shape on every tab, and Log keeps its slot empty", async () => {
     const { pg } = await app("/ui/chat/web-dev");
     const shapes: string[] = [];
     for (const path of ["/ui/chat/web-dev", "/view/web-dev", "/ui/log/web-dev", "/ui/fleet/agent/web-dev"]) {

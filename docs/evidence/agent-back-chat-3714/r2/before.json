@@ -1,0 +1,13 @@
+{
+  "head": "7930de51ad1aee53bbc45bc5a8e1ef8c1c439502",
+  "argv": [
+    "npx",
+    "vitest",
+    "run",
+    "tests/web-usage-rail-1673.test.ts",
+    "tests/sidebar-instance-identity.test.ts",
+    "--maxWorkers=1"
+  ],
+  "exit": 1,
+  "scope": "Two assertion failures/36 controls; stale selected-row href and missing extra Settings control in exact shape."
+}

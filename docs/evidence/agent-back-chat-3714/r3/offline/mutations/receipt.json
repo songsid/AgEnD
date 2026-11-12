@@ -1,0 +1,32 @@
+{
+  "head": "ab86d1eafe8436eed90a0cec081116ad8b63af67",
+  "tree": "0372f662b1e66b6b3ec2d04029a92dc3f3b8d874",
+  "runner": "d50f0b8fb23f9ddfee0d34fd1efa62b6a3a8d7fe2d871607da75fe5928cc5beb",
+  "cases": [
+    {
+      "label": "header-return",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "header-navigates",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "wrong-target",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "modified-click",
+      "exit": 1,
+      "assertionCaught": true
+    },
+    {
+      "label": "index-return",
+      "exit": 1,
+      "assertionCaught": true
+    }
+  ]
+}

@@ -82,6 +82,28 @@ describe("quick-pairing guide preserves each proof and user intent", () => {
 });
 
 describe("security notices and exact owner narrowing", () => {
+  it.each([true, false])("B2 notice renderer requests the snapshot version supported by its client (v3=%s)", async v3 => {
+    const codeNotice = { ...notice, label: "Code-joined Fleet", source: "code", codeId: ID };
+    const subscribe = vi.fn((receive: (rows: unknown[]) => void, _closed: () => void, version?: number) => {
+      queueMicrotask(() => receive([version === 3 ? codeNotice : notice])); return vi.fn();
+    });
+    const c = fake({ ...(v3 ? { pairingNoticesV3: true } : {}), pairingNoticeSnapshotV1: true, subscribePairingNotices: subscribe });
+    const p = await mount(c, ui.PairingNotices, {});
+    expect(subscribe.mock.calls.map(call => call.slice(2))).toEqual([v3 ? [3] : []]);
+    expect(c.pairingNotices).not.toHaveBeenCalled();
+    expect(txt(p)).toContain(v3 ? codeNotice.label : notice.label);
+  });
+  it.each([true, false])("B2 notice renderer requests the load version supported by its client (v3=%s)", async v3 => {
+    const codeNotice = { ...notice, label: "Code-joined Fleet", source: "code", codeId: ID };
+    const read = vi.fn(async (version?: number) => ({ ok: true, notices: [version === 3 ? codeNotice : notice] }));
+    const subscribe = vi.fn(() => vi.fn());
+    const c = fake({ ...(v3 ? { pairingNoticesV3: true } : {}), pairingNoticeSnapshotV1: false,
+      pairingNotices: read, subscribePairingNotices: subscribe });
+    const p = await mount(c, ui.PairingNotices, {});
+    expect(read.mock.calls).toEqual([v3 ? [3] : []]);
+    expect(subscribe.mock.calls.map(call => call.slice(2))).toEqual([v3 ? [3] : []]);
+    expect(txt(p)).toContain(v3 ? codeNotice.label : notice.label);
+  });
   it("uses a snapshot-capable notice stream for bootstrap without a duplicate authenticated GET", async () => {
     const off = vi.fn(), subscribe = vi.fn((fn: (rows: unknown[]) => void) => { queueMicrotask(() => fn([notice])); return off; });
     const c = fake({ pairingNoticeSnapshotV1: true, subscribePairingNotices: subscribe });

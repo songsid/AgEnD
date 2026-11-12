@@ -1,0 +1,46 @@
+{
+  "base": "98c86bd9f378ee646310a6e1ead2199b47954142",
+  "production": {
+    "src/ui/hub-company-join.js": "c64a487af328109fae7e6f02c8ebed300a34d3b8a00ea89625826a9d9153f2bb"
+  },
+  "tests": {
+    "tests/hub-join-approval-ui-b2.test.ts": "9530fbde5bc024c2c345265fbdcfddb11810f4bd2fd09e4f8e62dd559feb5ff5"
+  },
+  "failFirst": {
+    "semanticFailures": 4,
+    "controlsPassed": 18
+  },
+  "focused": {
+    "files": 4,
+    "passed": 145,
+    "skipped": 0
+  },
+  "mutations": [
+    {
+      "name": "terminal-hide",
+      "semanticFailures": 4,
+      "controlsPassed": 4
+    },
+    {
+      "name": "terminal-narrow",
+      "semanticFailures": 2,
+      "controlsPassed": 6
+    },
+    {
+      "name": "terminal-reread",
+      "semanticFailures": 4,
+      "controlsPassed": 4
+    }
+  ],
+  "logs": {
+    "terminal-copy-before.log": "544d5926a1c97752097b2258bc90f76e0f64ebb132e68f5085d0a7e193faef01",
+    "terminal-copy-final.log": "d515ea54a5767e75f49215efbd44bb06c468091f9bf9c049547b2417b1e25baf",
+    "terminal-hide-mutant.log": "ae7a984972a8e57f540214817391e32d18a97ce2a12d02b4a492afc3db60cd8f",
+    "terminal-narrow-mutant.log": "81dfb5fcc57d020ca8d022a791c5ff517ca2671a4d71ef08e74c9d468920b458",
+    "terminal-reread-mutant.log": "174da768863d1a434bee88d7ea796097030895d5a5378073795aed0488e972da",
+    "terminal-copy-restored.log": "7bbe258027bc3abe82c5260663c8286650c28e304513359bc22809d077a3aedd",
+    "terminal-copy-source-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "terminal-copy-test-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "boundary": "Mounted real Preact/shared UI; inert HTTP/session projections, no account or process. Exact-head browser campaign remains separate."
+}

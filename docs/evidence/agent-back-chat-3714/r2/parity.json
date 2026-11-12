@@ -1,0 +1,60 @@
+{
+  "before": "7930de51ad1aee53bbc45bc5a8e1ef8c1c439502",
+  "checked": "a133e1ac3fd858c6e10b8c9cafbf2572ae52fd12",
+  "equalGitObjects": {
+    "src": "8588dd054124b8ad3e6079a2c5ef7a367967bb2d",
+    "scripts": "2f4451d872c379ec10685644f49a03828d037426",
+    "changes": "cd698557da343dea4c93824bbfa580d5ebdd3237",
+    "docs/evidence/agent-back-chat-3714/browser": "b16b860f39f5db959d37165b390b0bd2af2c163b"
+  },
+  "originalSettingsXGeometry": {
+    "after-desktop-dark-zh-TW": [
+      [
+        36,
+        36
+      ]
+    ],
+    "after-phone-dark-en": [
+      [
+        44,
+        44
+      ]
+    ],
+    "after-desktop-dark-en": [
+      [
+        36,
+        36
+      ]
+    ],
+    "after-phone-dark-zh-TW": [
+      [
+        44,
+        44
+      ]
+    ],
+    "after-phone-light-en": [
+      [
+        44,
+        44
+      ]
+    ],
+    "after-phone-light-zh-TW": [
+      [
+        44,
+        44
+      ]
+    ],
+    "after-desktop-light-en": [
+      [
+        36,
+        36
+      ]
+    ],
+    "after-desktop-light-zh-TW": [
+      [
+        36,
+        36
+      ]
+    ]
+  }
+}

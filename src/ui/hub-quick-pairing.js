@@ -1,4 +1,5 @@
 import { hj } from "./hub-company-join-strings.js";
+import { he } from "./hub-enrolment-code-strings.js";
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { ErrorState, Skeleton } from "/assets/ui-states.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
@@ -7,6 +8,8 @@ import { compareGroups, hubClient, safeWebOrigin } from "./hub-client.js";
 import { hq } from "./hub-quick-strings.js";
 import { hr } from "./hub-read-strings.js";
 import { linkHubOwnerCss } from "./hub-owner-strings.js";
+/** A member Settings reader opts into code rows only alongside this renderer. */
+export const pairingNoticesV3 = true;
 
 const reason = (r) => hq(r.code === "expired" ? "expired" : r.code === "conflict" ? "conflict" : r.code === "backpressure" ? "limit"
   : r.code === "denied" || r.code === "revoked" ? "denied" : r.code === "unavailable" || r.code === "unreachable" ? "unavailable" : "failed");
@@ -102,7 +105,7 @@ function Notice({ notice, admin = false, memberOrigin = null, after = () => {} }
   };
   let href = null;
   if (memberOrigin) { try { const origin = new URL(memberOrigin); if (origin.protocol === "https:") href = `${origin.origin}/ui/hub?securityNotice=${encodeURIComponent(notice.id)}`; } catch { /* no link */ } }
-  return html`<div data-pairing-notice=${notice.id}><p><b>${hq("notice", notice.label)}</b></p><p class="note">${notice.source === "manual" ? hj("manualApproved") : hq("approved")} ${time(notice.at)}</p>
+  return html`<div data-pairing-notice=${notice.id}><p><b>${hq("notice", notice.label)}</b></p><p class="note">${notice.source === "code" ? he("byCode") : notice.source === "manual" ? hj("manualApproved") : hq("approved")} ${time(notice.at)}</p>
     <p class="note">${hq("fleetId")} <code class="hub-fp-full">${notice.fleetId}</code></p>
     <p class="note">${hq("revokeHint")}</p>
     ${notice.revoked ? html`<span class="tag">${hq("revoked")}</span>` : href ? html`<a class="btn" target="_blank" rel="noopener noreferrer" href=${href}>${hq("review")}</a>`
@@ -133,7 +136,7 @@ export function PairingNotices({ admin = false, memberNotices = null, memberOrig
   const [historyOpen, setHistoryOpen] = useState(false), [historyCount, setHistoryCount] = useState(99);
   const load = async () => {
     const mine = epoch.current;
-    let r; try { r = await c.pairingNotices(); } catch { r = { ok: false, code: "unreachable" }; }
+    let r; try { r = await (c.pairingNoticesV3 === true ? c.pairingNotices(3) : c.pairingNotices()); } catch { r = { ok: false, code: "unreachable" }; }
     if (live.current && mine === epoch.current) {
       if (r.ok) { setNotices(r.notices || []); setNoticeError(null); }
       else { setNotices([]); setNoticeError(r.code === "backpressure" ? "busy" : "noticesUnavailable"); }
@@ -160,8 +163,9 @@ export function PairingNotices({ admin = false, memberNotices = null, memberOrig
     };
     const subscribe = () => {
       if (!current()) return;
-      off(); off = c.subscribePairingNotices(rows => { if (current()) { setNotices(rows); setNoticeError(null); } },
-        () => { if (current()) { setNoticeError("noticesRetry"); void recover(); } });
+      const receive = rows => { if (current()) { setNotices(rows); setNoticeError(null); } },
+        closed = () => { if (current()) { setNoticeError("noticesRetry"); void recover(); } };
+      off(); off = c.pairingNoticesV3 === true ? c.subscribePairingNotices(receive, closed, 3) : c.subscribePairingNotices(receive, closed);
     };
     if (c.pairingNoticeSnapshotV1 === true) subscribe();
     else void load().then(r => { if (current()) { if (r.ok) subscribe(); else later(recover, r); } });

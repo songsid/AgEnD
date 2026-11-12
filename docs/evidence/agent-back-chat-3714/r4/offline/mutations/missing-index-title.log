@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/agent-back-to-chat-m2960
+
+ ❯ tests/web-agent-back-chat-3714.test.ts (22 tests | 1 failed) 2614ms
+     × the phone index return belongs to the category content, outside the header 33ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-agent-back-chat-3714.test.ts > #3714 Settings Back to chat > the phone index return belongs to the category content, outside the header
+AssertionError: expected null not to be null
+ ❯ tests/web-agent-back-chat-3714.test.ts:98:73
+     96|     const back = p.root.querySelector(".s-nav .agent-settings-index-re…
+     97|     expect(p.root.querySelector(".panel-head .agent-back-chat")).toBeN…
+     98|     expect(p.root.querySelector(".agent-settings-index-return h2")).no…
+       |                                                                         ^
+     99|     expect(p.root.querySelector(".agent-settings-index-return h2").tex…
+    100|     fire(back, "click", { button: 0 }); await settle(4); expect(nav.na…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 21 passed (22)
+   Start at  23:49:25
+   Duration  3.08s (transform 1.96s, setup 99ms, import 152ms, tests 2.61s, environment 0ms)
+
