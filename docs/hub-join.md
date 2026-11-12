@@ -45,9 +45,11 @@ The page says what happened and what to do. The most common messages:
 | This attempt timed out and nothing was created. | Press **Sign in with company account** again. |
 | Another connection with a pairing code is still in progress for you. | Finish or stop it on the Hub first. |
 | The result could not be confirmed. | Choose **Check this connection**. Do not start again. |
+| The Hub did not accept this join code… | It may have ended or been mistyped, or your account may not connect a Fleet. Ask your Hub administrator for a current code, then start again. |
 | This join code is no longer valid or has been used up. | Ask your Hub administrator for a new code. |
+| Another connection attempt is still open (shown above). | Use **Recover this connection** or **Cancel connection** on it, then start again. |
 | You are outside the scope of this join code. | The code is for one group you're not in. Ask your Hub administrator. |
-| Many people are connecting at once. Waiting in the queue… | Nothing to do; the Hub tab keeps trying by itself. |
+| Many people are connecting at once. Waiting in the queue… (or Waiting in the queue… Retry *n* of 8.) | Nothing to do; the Hub tab keeps trying by itself. |
 
 ### Reconnect or remove the connection
 
@@ -84,9 +86,9 @@ A join code lets a group of people connect at once, for example everyone at a wo
    - Under **More**, **Fleets per person** (1 by default, at most 8).
 2. The card shows the code in large type (8 characters, `XXXX-XXXX`) and one sentence: "In AgEnD Settings → Hub, enter *hub.example.com* and this code." **Copy** it and send it to your colleagues. They type the address and the code in the same box: `hub.example.com K7QF-3M9P`, or paste the whole message.
 3. While it is live, the card shows **Connected *n* / *max***, how many connections are in progress, and **Recent connections**. If the Hub has fewer free Fleet places than the code allows, the card says so.
-4. **End this code now** ends it at once. Fleets that already connected stay connected (revoke them one by one if needed); connections still in progress with it stop.
+4. **End this code now** asks first (**End this join code?**): the code can't be used again, and the dialog lists the Fleet connections still in progress with it, which stop. Fleets that already connected stay connected (revoke them one by one if needed).
 
-A Hub keeps at most 8 live codes and creates at most 10 in an hour.
+A Hub keeps at most 8 live codes and creates at most 10 in an hour; past either limit the card says so.
 
 - A code only stands in for your approval. Each person still presses **Sign in with company account** on their own Fleet and signs in on the Hub with their own company account. Without a company account a code is useless, and it never lets anyone ask or share agents.
 - Treat a live code like a key to a meeting room: anyone in the company who gets it can connect a Fleet under their own name until it ends or runs out. Make it short-lived, and end it when you are done.
