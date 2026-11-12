@@ -67,13 +67,6 @@ try{for(const c of matrix()){
     afterCommit=true;await route.fulfill({response});
   });
   await page.goto(origin+"/settings/hub");
-  if(process.env.BEFORE==="1"||skew){
-    await page.locator("#hub-membership").waitFor();await page.screenshot({path:join(OUT,`${name}-baseline.png`),fullPage:true});
-    await page.waitForTimeout(350);
-    check(r,"baseline-has-no-setup",await page.locator("#hub-setup").count()===0);
-    check(r,"no-setup-request",wire.length===0,wire);check(r,"no-directory-bind",peer.bindRecords.length===0);check(r,"no-hub-config",fm.getRawFleetConfig().hub===undefined);
-    continue;
-  }
   await page.locator("#hub-setup").waitFor();await page.locator("#hub-setup button").first().waitFor();
   check(r,"real-shell",await page.locator("#sidebar").count()===1&&await page.locator('.s-nav a[href="/settings/hub"], .s-nav [data-section="hub"], .s-nav a.active').count()>0);
   check(r,"host-mark",await page.evaluate(()=>document.body.dataset.hubSetup==="1"));

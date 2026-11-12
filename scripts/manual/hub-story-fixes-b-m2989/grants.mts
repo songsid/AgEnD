@@ -36,7 +36,7 @@ try{
   try{
    await ctx.addInitScript(({lang,theme}:any)=>{localStorage.setItem('agend_lang',lang);localStorage.setItem('agend_theme',theme);localStorage.setItem('agend_tour_done','1');localStorage.setItem('agend_firstrun_dismissed','1');},{lang:c.lang,theme:c.theme});
    const substitutions=mode==='before'?['panel-hub.js']:c.skew==='old-words'?['hub-owner-strings.js','hub-strings.js']:[];
-   for(const file of substitutions){const body=git('show',base+':src/ui/'+file);result.substitutions.push({ref:base,path:'src/ui/'+file,digest:digest(body)});await ctx.route('**/ui/js/'+file,(route:any)=>route.fulfill({status:200,contentType:'text/javascript',body}));}
+   for(const file of substitutions){const body=execFileSync('git',['-C',repo,'show',base+':src/ui/'+file],{encoding:'utf8'});result.substitutions.push({ref:base,path:'src/ui/'+file,digest:digest(body)});await ctx.route('**/ui/js/'+file,(route:any)=>route.fulfill({status:200,contentType:'text/javascript',body}));}
    if(c.skew==='old-server')await ctx.route('**/hub/v1/exposures',async(route:any)=>{const response=await route.fetch(),body=await response.json();for(const x of body.mine)for(const g of x.grants)delete g.subjectSignedIn;await route.fulfill({response,json:body});});
    const p=await ctx.newPage(),resources:Promise<void>[]=[];
    p.on('pageerror',(e:any)=>result.errors.push(String(e)));
