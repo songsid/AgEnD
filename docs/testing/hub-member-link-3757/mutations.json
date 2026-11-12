@@ -1,0 +1,27 @@
+[
+  {
+    "name": "denied-classification",
+    "exit": 1,
+    "semantic_failure": true
+  },
+  {
+    "name": "unknown-classification",
+    "exit": 1,
+    "semantic_failure": true
+  },
+  {
+    "name": "only-classified-refusal",
+    "exit": 1,
+    "semantic_failure": true
+  },
+  {
+    "name": "member-feedback",
+    "exit": 1,
+    "semantic_failure": true
+  },
+  {
+    "name": "no-code-share-authority",
+    "exit": 1,
+    "semantic_failure": true
+  }
+]
