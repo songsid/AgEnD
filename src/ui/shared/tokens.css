@@ -83,6 +83,16 @@
   --scrim: rgba(0, 0, 0, 0.55);
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.5);
+  /* #3727: the image viewer's chrome is dark in either theme (its picture sits on black), so these are set once here
+     and not per theme: the annotation editor's text, bars, buttons and fields, and its four marker colours (the same
+     values the editor draws with on the canvas, image-annotate.js COLOURS). */
+  --media-ink: #ffffff;
+  --media-bar: rgba(0, 0, 0, 0.75);
+  --media-panel: rgba(0, 0, 0, 0.6);
+  --media-btn: rgba(255, 255, 255, 0.12);
+  --media-btn-on: rgba(255, 255, 255, 0.32);
+  --media-line: rgba(255, 255, 255, 0.35);
+  --mark-red: #e5484d; --mark-yellow: #ffc53d; --mark-blue: #3e8eff; --mark-white: #ffffff;
 }
 
 @media (prefers-color-scheme: light) {

@@ -260,7 +260,7 @@ export function installWorkspaceEntry({ nav, ready, landing = false, scope = "",
       const w = controller?.current(); if (!w) return [];
       const from = ["a", "b"].find(id => w[id].route.instance === source); if (!from) return [];
       const id = from === "a" ? "b" : "a", name = w[id].route.instance, sourcePane = w[from];
-      return [{ label: tw("quote", name), async insert(text) {
+      return [{ name, label: tw("quote", name), async insert(text) {
         const current = () => { const now = controller.current(); return alive && !!now && now[from] === sourcePane && now[id].route.instance === name; };
         if (!current()) return;
         if (controller.current()[id].route.panel !== "chat") controller.pane(id).navigate(routePath({ panel: "chat", instance: name }));

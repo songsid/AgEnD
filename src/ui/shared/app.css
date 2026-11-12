@@ -874,11 +874,14 @@ html.lb-open .scroller { overflow: hidden; }
 .lb .icon-btn { color: #fff; }
 .lb .icon-btn:hover { background: rgba(255, 255, 255, 0.15); }
 .lb .lb-orig { color: #fff; background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.3); }
+/* #3727: 「標註」 beside Open original (tokens only; the editor's own sheet is image-annotate.css). */
+.lb .lb-annotate { color: var(--media-ink); background: var(--media-btn); border-color: var(--media-line); }
+.lb .lb-annotate:hover, .lb .lb-annotate:focus-visible, .lb .lb-annotate:active { color: var(--media-ink); background: var(--media-btn-on); border-color: var(--media-ink); }
 .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; background: rgba(0, 0, 0, 0.4); }
 .lb-prev { left: var(--s-2); }
 .lb-next { right: var(--s-2); }
 /* A phone: the arrows sit below the image's middle band, out of its way, still reachable with a thumb. */
-@media (max-width: 480px) { .lb .lb-orig .lbl { display: none; } .lb-nav { top: auto; bottom: var(--s-4); transform: none; } .lb-stage { padding-bottom: 72px; } }
+@media (max-width: 480px) { .lb .lb-orig .lbl, .lb .lb-annotate .lbl { display: none; } .lb-nav { top: auto; bottom: var(--s-4); transform: none; } .lb-stage { padding-bottom: 72px; } }
 .msg .att-file { font-size: var(--fs-sm); color: var(--accent); }
 .msg .att-size { color: var(--text-3); }
 .msg .md p { margin: 0 0 var(--s-3); } .msg .md p:last-child { margin-bottom: 0; }
@@ -1240,7 +1243,7 @@ img.amb-p { object-fit: contain; }
 .reply-bar { display: flex; align-items: center; gap: var(--s-2); min-width: 0; margin: var(--s-2) var(--s-2) 0; padding: 4px var(--s-2) 4px calc(var(--s-3) + 3px);
   --lbar-color: var(--accent); border-radius: var(--r-sm); background: var(--surface-2); font-size: var(--fs-sm); }
 .reply-bar .reply-mark { color: var(--accent); }
-.reply-bar .reply-label { font-weight: var(--fw-semibold); white-space: nowrap; }
+.reply-bar .reply-label { font-weight: var(--fw-semibold); white-space: nowrap; min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }   /* #3727: a long sender never pushes ✕ off a phone */
 .reply-bar .reply-text { flex: 1; min-width: 0; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reply-bar .reply-cancel { flex: none; width: 28px; height: 28px; }
 .file-chip { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); padding: 4px var(--s-2); border-radius: var(--r-md); background: var(--bg); max-width: 320px; }
