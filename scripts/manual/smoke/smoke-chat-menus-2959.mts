@@ -12,7 +12,7 @@ const git = (...a: string[]) => execFileSync("git", a, { cwd: repo, encoding: "u
 const digest = (s: string | Buffer) => createHash("sha256").update(s).digest("hex");
 const dirty = !!git("status", "--porcelain", "--untracked-files=no");
 assert.ok(!dirty || process.env.DIAGNOSTIC_DIRTY === "1", "capture requires clean tracked inputs");
-assert.ok(loadavg()[0] < 6, "browser campaign waits for 1-min load <6 and Ridge RELEASED");
+assert.ok(loadavg()[0] <= 10, "browser campaign waits for 1-min load <=10 and its owned serial slot");
 const oldRef = "3f02d04404f40596e9ee25b908f3bb9c793d70dd", retain = process.env.RETAIN || "";
 const theme = process.env.THEME || "light", language = process.env.LANGUAGE || "zh-TW", phone = process.env.SCREEN === "phone";
 const narrow = process.env.NARROW === "1";
