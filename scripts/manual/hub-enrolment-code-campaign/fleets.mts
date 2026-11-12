@@ -41,8 +41,16 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     await page.getByRole('button', { name: lang === 'zh-TW' ? '登入' : 'Sign in', exact: true }).click();
     await page.locator('.p-hub-signin').waitFor({ state: 'detached' });
     await page.goto(rig.webOrigin + '/ui/hub/admin'); await page.locator('.hub-join-card').waitFor();
-    if(!overlay.length) { await page.locator('[data-enrolment-codes]').scrollIntoViewIfNeeded();
-      await page.waitForFunction(()=>{const b=document.querySelector('[data-enrolment-codes] .n-actions button') as HTMLButtonElement|null;return b!==null&&!b.disabled;}); }
+    if(!overlay.length) {
+      // Target the action itself, not the middle of a card whose height changes after its first read.
+      const action=page.locator('[data-enrolment-codes] > .n-actions button');await action.scrollIntoViewIfNeeded();
+      try { await page.waitForFunction(()=>{const b=document.querySelector('[data-enrolment-codes] > .n-actions button') as HTMLButtonElement|null;return b!==null&&!b.disabled;}); }
+      catch(error) {
+        await page.screenshot({path:join(out,'admin-entry-failed-'+lang+'-'+(phone?'phone':'desk')+'-'+theme+'.png'),fullPage:true});
+        const diagnostic=await page.locator('[data-enrolment-codes]').evaluate((el:HTMLElement)=>({text:el.innerText,rect:el.getBoundingClientRect().toJSON(),viewport:{width:innerWidth,height:innerHeight},visible:document.visibilityState}));
+        writeFileSync(join(out,'admin-entry-failed.json'),JSON.stringify({lang,phone,theme,diagnostic,errors},null,2));throw error;
+      }
+    }
     return { ctx, page, errors };
   }
   // Actual old bytes, identified per response. Current server headers/CSP remain on the response.
