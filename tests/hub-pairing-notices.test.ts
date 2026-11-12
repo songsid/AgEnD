@@ -67,6 +67,71 @@ async function quick(w:ReturnType<typeof fixture>,label="Lab"){
  const result=await w.service.claim({pairingId:p.pairingId,fleetId:p.fleetId,claimSecret:p.claimSecret});if(result.status!=="approved")throw Error("quick not approved");return result;
 }
 describe("durable quick-pairing security notice outbox",()=>{
+ it("does not revalidate every idle member on commit or on each notice timer tick (#3713)",async()=>{
+  vi.useFakeTimers();const w=fixture();
+  try {
+   const links=Array.from({length:120},()=>({fleetId:randomUUID(),owner:w.owner,linkEpoch:1,
+    features:new Set(["welcome-caps-v1","pairing-notices-v1"]),current:vi.fn(()=>true)}));
+   links.forEach(link=>w.notices.noteLink(link));w.notices.start();links.forEach(link=>link.current.mockClear());
+   w.notices.committed();await vi.advanceTimersByTimeAsync(1000);
+   expect(links.reduce((n,link)=>n+link.current.mock.calls.length,0)).toBeLessThanOrEqual(1);
+   expect(w.eligible).not.toHaveBeenCalled();expect(w.send).not.toHaveBeenCalled();
+  }finally{w.notices.close();vi.useRealTimers();}
+ });
+ it("still sweeps idle retired bindings without retaining or rechecking them forever (#3713)",async()=>{
+  vi.useFakeTimers();const w=fixture();let live=true;
+  try{
+   const links=Array.from({length:3},()=>({fleetId:randomUUID(),owner:w.owner,linkEpoch:1,
+    features:new Set(["welcome-caps-v1","pairing-notices-v1"]),current:vi.fn(()=>live)}));
+   links.forEach(link=>w.notices.noteLink(link));w.notices.start();links.forEach(link=>link.current.mockClear());live=false;
+   await vi.advanceTimersByTimeAsync(5000);
+   expect(links.map(link=>link.current.mock.calls.length)).toEqual([1,1,1]);
+   await vi.advanceTimersByTimeAsync(5000);expect(links.map(link=>link.current.mock.calls.length)).toEqual([1,1,1]);
+  }finally{w.notices.close();vi.useRealTimers();}
+ });
+ it("does not schedule idle members whose retained notice targets are all delivered (#3713)",async()=>{
+  const w=fixture();w.enable();await quick(w);
+  const noticeId=(w.db.prepare("SELECT id FROM hub_pairing_notices").get() as {id:string}).id;
+  const links=Array.from({length:120},()=>({fleetId:randomUUID(),owner:w.owner,linkEpoch:1,
+   features:new Set(["welcome-caps-v1","pairing-notices-v1"]),current:vi.fn(()=>true)}));
+  w.db.transaction(()=>{
+   for(const link of links)w.db.prepare("INSERT INTO hub_pairing_notice_targets VALUES(?,'fleet',?,'delivered')").run(noticeId,link.fleetId);
+  }).immediate();
+  expect(w.db.prepare("SELECT count(*) n FROM hub_pairing_notice_targets WHERE kind='fleet' AND state='delivered'").get()).toEqual({n:120});
+  links.forEach(link=>w.notices.noteLink(link));links.forEach(link=>link.current.mockClear());
+  const flush=vi.spyOn(w.notices,"flushFleet");w.eligible.mockClear();
+  vi.useFakeTimers();
+  try{
+   w.notices.start();await vi.advanceTimersByTimeAsync(1000);
+   expect(flush).not.toHaveBeenCalled();
+   expect(links.reduce((n,link)=>n+link.current.mock.calls.length,0)).toBeLessThanOrEqual(1);
+   expect(w.eligible).not.toHaveBeenCalled();expect(w.send).not.toHaveBeenCalled();
+   expect(w.db.prepare("SELECT count(*) n FROM hub_pairing_notice_targets WHERE kind='fleet' AND state='delivered'").get()).toEqual({n:120});
+  }finally{w.notices.close();vi.useRealTimers();}
+ });
+ it("finds a retained recipient on the timer even without a committed notification (#3713)",async()=>{
+  const w=fixture();w.enable(2);const old=await w.approved();await w.service.claim(old.input);await quick(w);
+  const link:HubLinkContext={fleetId:old.fleetId,owner:w.owner,linkEpoch:1,
+   features:new Set(["welcome-caps-v1","pairing-notices-v1"]),current:()=>true};
+  w.notices.noteLink(link);vi.useFakeTimers();
+  try{w.notices.start();await vi.advanceTimersByTimeAsync(1000);expect(w.send).toHaveBeenCalledOnce();
+   expect(w.db.prepare("SELECT state FROM hub_pairing_notice_targets WHERE kind='fleet'").get()).toEqual({state:"queued"});
+  }finally{w.notices.close();vi.useRealTimers();}
+ });
+ it("dispatches a queued target among idle members but keeps the post-eligibility binding fence (#3713)",async()=>{
+  const w=fixture();w.enable(2);const old=await w.approved();await w.service.claim(old.input);await quick(w);
+  let live=true;const link:HubLinkContext={fleetId:old.fleetId,owner:w.owner,linkEpoch:1,
+   features:new Set(["welcome-caps-v1","pairing-notices-v1"]),current:()=>live};
+  w.notices.noteLink(link);w.eligible.mockClear();const held=gate<Awaited<ReturnType<typeof w.eligible>>>();w.eligible.mockImplementationOnce(()=>held.promise);
+  w.notices.committed();expect(w.eligible).toHaveBeenCalledOnce();live=false;
+  held.resolve({eligible:true,person:{key:w.owner,login:"morgan",dn:"CN=Morgan,DC=example,DC=test",groups:[]}});
+  await new Promise(resolve=>setImmediate(resolve));expect(w.send).not.toHaveBeenCalled();
+  expect(w.db.prepare("SELECT state FROM hub_pairing_notice_targets WHERE kind='fleet'").get()).toEqual({state:"queued"});
+  live=true;w.notices.committed();await new Promise(resolve=>setImmediate(resolve));expect(w.send).toHaveBeenCalledOnce();
+  expect(w.db.prepare("SELECT state FROM hub_pairing_notice_targets WHERE kind='fleet'").get()).toEqual({state:"queued"});
+  w.notices.close();
+ });
+
  it("keeps history beyond the first hundred reachable and authorizes an exact older ACK independently",async()=>{
   const w=fixture(),ids:string[]=[];
   w.db.transaction(()=>{for(let i=0;i<101;i++){

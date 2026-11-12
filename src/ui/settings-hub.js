@@ -13,6 +13,7 @@ import { hw, linkHubCss } from "./hub-strings.js";
 import { guidanceFor } from "./hub-provider-guidance.js";
 import { AGENT_CHOICE } from "./hub-agent-copy.js";
 import { PairingNotices } from "./hub-quick-pairing.js";
+import * as noticeViews from "./hub-quick-pairing.js";
 import { hq } from "./hub-quick-strings.js";
 import { hp } from "./hub-pairing-progress-strings.js";
 
@@ -90,9 +91,11 @@ export function HubConnectCard({ embedded = false, onPairing, labels = {}, prefi
   useEffect(() => {
     linkHubCss();
     live.current = true;
+    const releaseNotices = noticeViews.pairingNoticesV3 === true && typeof client.usePairingNoticeVersion === "function"
+      ? client.usePairingNoticeVersion(3) : () => {};
     readPairing();
     const off = client.subscribe((p) => { if (live.current) setPairing(p); });
-    return () => { live.current = false; generation.current++; activePending.current = null; off(); };
+    return () => { live.current = false; generation.current++; activePending.current = null; off(); if (typeof releaseNotices === "function") releaseNotices(); };
   }, []);
   const act = async (fn) => {
     if (busy) return;

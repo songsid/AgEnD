@@ -1,0 +1,25 @@
+{
+  "merge": "d27317e3c113759cdbf62613fc9310796149bf4a",
+  "parents": [
+    "4545c30f652cd589b889e2ee143902c8fa751999",
+    "8c4b4a34b91b5b47251b78684c23587bb003eb00"
+  ],
+  "conflicts": [
+    "src/settings-api.ts",
+    "tests/hub-pairing-api-s3c.test.ts"
+  ],
+  "srcAndTestsByteIdenticalToPreviousHeadAfterMerge": true,
+  "focused": {
+    "files": 4,
+    "passed": 65,
+    "skipped": 0
+  },
+  "preparation": "Owned in-memory SQLite/owned-file observation and exact fs/DB method restoration passed. Native source/test typechecks pass. The new mode refusal has a semantic reversal and restored8-case guard suite. Manual scripts parse; actual diagnostic/remaining runtime is pending.",
+  "files": {
+    "scripts/manual/hub-enrolment-code-campaign/entry.mts": "ddeb3f67143396b70046ad1a7335c0bdaabb90df78ec853427a180268a82a1f6",
+    "scripts/manual/hub-enrolment-code-campaign/capacity.mts": "8c03c21d8ed0919569701e695da188f7e6a3d88175f6fe41fdae6fcb64ab5fb0",
+    "scripts/manual/hub-enrolment-code-campaign/diagnostics.mts": "fb2f8776307a0a2b530cff9eecc24109f22f633035a1544883e9e28f85fb5b29",
+    "scripts/manual/hub-enrolment-code-campaign/guard.mjs": "45c993377d1bf2ee731576ce1f9431f47d1d66c56d266d5cb57e31c5277a930b",
+    "tests/hub-enrolment-campaign-guard.test.ts": "bfc1e7bb0e89964a89f6e789f29d266ff655b097a993c83588595b980a489b94"
+  }
+}

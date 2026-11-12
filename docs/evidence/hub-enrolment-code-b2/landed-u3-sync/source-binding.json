@@ -1,0 +1,164 @@
+{
+  "merge": "2c8280a096aad5eeaa3ea3537f239a78d841ec1b",
+  "parents": [
+    "ac498d1b923dda17e7b37f3c80121d825c27a829",
+    "53be111cca7ea00a7af2487def895527d6c597fc"
+  ],
+  "cleanMerge": true,
+  "deltaParity": [
+    {
+      "path": "src/hub/audit/index.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/catalog.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/client.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/enrolment-code.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/group-policy/admin-impact.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/group-policy/admin-inventory.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/group-policy/authorization.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/group-policy/impact-inventory.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/group-policy/resources.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/group-policy/store.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/join/receipt.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/join/service.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/join/store.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/member/pairing-notices.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/pairing-notices.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/pairing.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/protocol.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/server.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/types.ts",
+      "same": true
+    },
+    {
+      "path": "src/settings-api.ts",
+      "same": true
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "same": true
+    },
+    {
+      "path": "src/ui/hub-company-join.js",
+      "same": true
+    },
+    {
+      "path": "src/ui/hub-enrolment-code-strings.js",
+      "same": true
+    },
+    {
+      "path": "src/ui/hub-enrolment-code.js",
+      "same": true
+    },
+    {
+      "path": "src/ui/hub-join-approval.js",
+      "same": true
+    },
+    {
+      "path": "src/ui/hub-join-queue.js",
+      "same": true
+    },
+    {
+      "path": "src/ui/hub-quick-pairing.js",
+      "same": true
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "same": true
+    },
+    {
+      "path": "src/ui/settings-hub.js",
+      "same": true
+    }
+  ],
+  "verification": {
+    "tests": 356,
+    "files": 23,
+    "skips": 0,
+    "sourceTypes": "pass",
+    "testTypes": "pass",
+    "changelogFragments": 392,
+    "diff": "pass"
+  },
+  "sourceHashes": {
+    "src/ui/hub-enrolment-code.js": "966c7613113455af0e3efe40b4efd546f33b86037b13ce2df38d25cdfce16ded",
+    "src/ui/hub-enrolment-code-strings.js": "f57f8986e74e00d952190eec739f264c87671b87796320490fc1c94c66ba2aeb",
+    "src/ui/hub-company-join.js": "35c0fbc928a5c2c75e37be6c420db314554308b70c4f85a86c6d4e248d33fd8e",
+    "src/ui/hub-quick-pairing.js": "a65e96967cc72e25e6f14fb286b430c95cf6a9209316982f648a97dba431ac13",
+    "src/ui/hub-client.js": "6d15110dd27b2e3da883f78116a94d1525df45676474084c891987ee1dfd0d60",
+    "src/ui/panel-hub.js": "400396d5b20803593b5b29e4788d4eed2ab78b59cd1d612f3f9f5ee9b0676a30",
+    "src/ui/settings-hub.js": "639c3da643f95b6f8a5ea45fe8f3e8c8ed7db2c74841141e385211c0bc4648a2",
+    "src/ui/hub-join-queue.js": "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764",
+    "src/ui/hub-join-approval.js": "5c7a29bb7d47809b61f6a1b49ea0b36388075d80b98c2e6fc670f02709060e00",
+    "src/ui/settings-hub-company-join.js": "efe0f4d565cd425a48bc9183357d876212a391cbaca086b664f224fd0efc595b",
+    "src/ui/settings-hub-connection.js": "f9d15e2a4f939db6afb7c27f3f2ad2407089b65742b632db65d95d2c5bafaef2",
+    "src/ui/hub-join-steps.js": "ce7af483d340b980d38e71df9d39720605234a9186ea4d8431c47074b9ab9fe2",
+    "src/ui/hub-group-search.js": "2bb084a1cd5999891278413805424624125e3516f2f8e68d40636adb6fa3697c",
+    "src/ui/shared/app-shell.js": "c60a24b8e68291d05b9848e93ed2e2f0112baaa4ecd4d6193ffbd63233d88677"
+  },
+  "boundary": "Light verification only; final combined campaign separately binds its SHA and source hashes."
+}

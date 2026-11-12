@@ -49,7 +49,9 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   // #3298 S-89 (lazy; loaded only when the session says "group-policy-v1"): the welcome, Group permissions and their words.
   "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js",
   // Hub UX U2 (M-2932): the group-search picker (its own words inside), shared with B2's join-code scope.
-  "hub-group-search.js", "hub-join-steps.js"]);
+  "hub-group-search.js", "hub-join-steps.js",
+  // B2: code management and the same-request Hub approval queue.
+  "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -144,7 +146,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     const m = (re: RegExp) => re.exec(path);
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
     const offered = [...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
-      ...(deps.companyJoin ? ["company-join-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []),
+      ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     const features = offered.length ? { features: offered } : {};
     let r: RegExpExecArray | null;

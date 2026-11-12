@@ -1,0 +1,104 @@
+[
+  {
+    "guard": "single-flight",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "retry-bound",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "jitter-floor",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "live-owner",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "hard-deadline",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "honest-deadline",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "semantic-refusal",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "maximum-input",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "group-resolve",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "ended-code",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "read-owner",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "uncertain-write",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "code-notice-label",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "notice-default-version",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "page-queue",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "signin-queue",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  },
+  {
+    "guard": "lease-retirement",
+    "syntax": "pass",
+    "assertionCaught": true,
+    "exit": 1
+  }
+]

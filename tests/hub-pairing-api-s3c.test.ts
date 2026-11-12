@@ -204,11 +204,18 @@ describe("the pairing routes", async () => {
     const base = { id: randomUUID(), fleetId: randomUUID(), generation: 1, label: "Owned Fleet", at: 100, revoked: false };
     const notices = [{ ...base, source: "group" }, { ...base, id: randomUUID(), source: "manual" }, { ...base, id: randomUUID(), source: "code", codeId: randomUUID() }];
     const api = { view: () => ({ state: "unpaired" }), notices: () => notices };
-    for (const [query, expected] of [["", ["group"]], ["?v=2", ["group", "manual"]], ["?v=3", ["group", "manual", "code"]], ["?v=99", ["group"]]] as const) {
+    for (const [query, expected] of [["", ["group"]], ["?v=2", ["group", "manual"]], ["?v=2&notices=3", ["group", "manual", "code"]], ["?v=3", ["group", "manual", "code"]], ["?v=99", ["group"]], ["?v=99&notices=3", ["group"]], ["?notices=3", ["group"]], ["?v=2&notices=4", ["group", "manual"]]] as const) {
       const result = await call({ method: "GET", path: "/api/hub/member/pairing" + query, api });
       expect(result.status).toBe(200); expect(result.body.notices.map((n: any) => n.source)).toEqual(expected);
     }
     expect(notices.map(n => n.source)).toEqual(["group", "manual", "code"]);
+  });
+  it("the code-aware notice query keeps public-link and local-admin gates before reading notices", async () => {
+    for (const caller of [{ gateway: true }, { admin: false }]) {
+      const notices = vi.fn(() => []), api = { view: () => ({ state: "unpaired" }), notices };
+      const result = await call({ method: "GET", path: "/api/hub/member/pairing?v=2&notices=3", api, ...caller });
+      expect(result.status).toBe(403); expect(notices).not.toHaveBeenCalled();
+    }
   });
   it("#3675 r2 P2: the pairing-code Disconnect route asks the replay's authority again after member.leave's wait — withdrawn meanwhile: 409, nothing fenced, withdrawn or tombstoned", async () => {
     for (const withdraw of [true, false]) {
