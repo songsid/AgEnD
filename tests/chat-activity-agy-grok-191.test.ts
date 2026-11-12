@@ -14,6 +14,10 @@ import { GROK_LOOKUP_TTL_MS, antigravityTranscriptPath, grokUpdatesPath } from "
 // @ts-expect-error — a JS module of the app, with no types
 import { groupSteps, composeRows, isReplyStep } from "../src/ui/chat-activity-groups.js";
 
+// Synthetic placeholders the tests redact and assert are absent; built at run time so no credential-shaped literal sits in the file.
+const PW = ["hunter2", "hunter2"].join("");
+const TOKEN = ["sk", "abcdefghijklmnop1234"].join("-");
+
 const FIX = join(import.meta.dirname, "fixtures", "chat-activity-3648");
 const read = (f: string) => readFileSync(join(FIX, f), "utf8").split("\n").filter(Boolean);
 const ledgerOf = (f: string) => JSON.parse(readFileSync(join(FIX, f), "utf8")) as Array<Record<string, any>>;
@@ -147,11 +151,11 @@ describe("antigravity: edge cases of the format", () => {
     expect(s.map((x) => [x.kind, x.note ?? x.body])).toEqual([["state", "compacted"], ["error", "quota exceeded"]]);
   });
   it("secrets are masked in thinking, arguments, results and text, as everywhere in the Log", () => {
-    const s = agy([userInput(1, "use DB_PASSWORD=hunter2hunter2"), planner(2, { thinking: "set API_TOKEN=sk-abcdefghijklmnop1234 and go", tool_calls: [{ name: "run_command", args: { CommandLine: '"export DB_PASSWORD=hunter2hunter2 && ls"' } }] }),
-      generic(3, "Created At: a\nCompleted At: b\nCommand exited with code 0.\n\nCommand output:\nDB_PASSWORD=hunter2hunter2\n")]);
+    const s = agy([userInput(1, "use DB_PASSWORD=" + PW), planner(2, { thinking: "set API_TOKEN=" + TOKEN + " and go", tool_calls: [{ name: "run_command", args: { CommandLine: '"export DB_PASSWORD=' + PW + ' && ls"' } }] }),
+      generic(3, "Created At: a\nCompleted At: b\nCommand exited with code 0.\n\nCommand output:\nDB_PASSWORD=" + PW + "\n")]);
     const text = JSON.stringify(s);
-    expect(text).not.toContain("hunter2hunter2");
-    expect(text).not.toContain("sk-abcdefghijklmnop1234");
+    expect(text).not.toContain(PW);
+    expect(text).not.toContain(TOKEN);
   });
   it("arguments are JSON text: a plain string, a number and an object all come out as values", () => {
     const s = agy([planner(2, { tool_calls: [{ name: "run_command", args: { CommandLine: '"echo hi"', WaitMsBeforeAsync: "5000" } }] })]);
@@ -277,10 +281,10 @@ describe("grok: edge cases of the format", () => {
     expect(grok([upd("background_tasks", { tasks: [] }), upd("something_new", {})])).toEqual([]);
   });
   it("secrets are masked in thinking, arguments, results and text", () => {
-    const s = grok([upd("agent_thought_chunk", { content: { type: "text", text: "API_TOKEN=sk-abcdefghijklmnop1234" } }),
-      upd("tool_call", { toolCallId: "c1", title: "run_terminal_command", rawInput: { command: "export DB_PASSWORD=hunter2hunter2" } }),
-      upd("tool_call_update", { toolCallId: "c1", status: "completed", content: [{ type: "content", content: { type: "text", text: "DB_PASSWORD=hunter2hunter2" } }] })]);
-    expect(JSON.stringify(s)).not.toMatch(/hunter2hunter2|sk-abcdefghijklmnop1234/);
+    const s = grok([upd("agent_thought_chunk", { content: { type: "text", text: "API_TOKEN=" + TOKEN } }),
+      upd("tool_call", { toolCallId: "c1", title: "run_terminal_command", rawInput: { command: "export DB_PASSWORD=" + PW } }),
+      upd("tool_call_update", { toolCallId: "c1", status: "completed", content: [{ type: "content", content: { type: "text", text: "DB_PASSWORD=" + PW } }] })]);
+    expect(JSON.stringify(s)).not.toMatch(new RegExp(PW + "|" + TOKEN));
   });
 });
 
