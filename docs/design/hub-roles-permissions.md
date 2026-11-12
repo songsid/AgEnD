@@ -1,6 +1,6 @@
 # Hub 自訂角色與權限（設計提案）
 
-狀態：擁有者已決定（2026-11-13，D1–D7 全部照建議）。只有設計，沒有程式。先做第一、二階段，排在 alpha.2 之後；伺服器模型（附錄 A）等 B2（#3706）合併後由 Hub 伺服器的負責人審閱。
+狀態：擁有者已決定（2026-11-13，D1–D7 全部照建議）。只有設計，沒有程式。先做第一、二階段，排在 alpha.2 之後。Hub 伺服器的負責人已審閱伺服器模型（2026-11-13，只讀原始碼 `7ae6a667`），六項修正已併入附錄 A 與第 3、4、6、8 節；產品決定沒有變動。
 來源：#3743 第 2 項（2026-11-13 的決定）、M-2986 流程板的發現 2 與 3、卡片 M-2990。
 對照的原始碼：`release/2.3.5-alpha` @ `8da18b33`。
 
@@ -42,8 +42,8 @@ Hub 現在只有兩種人：
 
 | 權限 | 意思 | 現況 |
 |---|---|---|
-| 查看團隊名單 | 範圍內每個人：是否登入過、連接了幾台 Fleet、分享了幾個 Agent、最後活動時間 | 沒有。管理員只看得到 Fleet 清單 |
-| 查看團隊用量 | 範圍內每個人近 30 天提問、被問、已回答的次數，以及最常被問的 Agent | 沒有。擁有者只看得到自己 Agent 的近期提問 |
+| 查看團隊名單 | 範圍內每個人：是否登入過、連接了幾台 Fleet、分享了幾個 Agent、最後一次提問或回答的時間。名單要從 AD 讀群組成員，讀不完整時照實標示「名單不完整」 | 沒有。管理員只看得到 Fleet 清單 |
+| 查看團隊用量 | 範圍內每個人近 30 天送出的提問次數、收到的提問次數、收到回答的次數，以及最常被問的 Agent。只有次數 | 沒有。擁有者只看得到自己 Agent 的近期提問 |
 | 核准連接申請 | 讓範圍內、還沒有連接權限的人連接一台 Fleet | 只有管理員的「個別邀請」 |
 | 核准提問申請 | 代替擁有者核准「向某個 Agent 提問」的申請，只限擁有者已交給主管核准的 Agent | 沒有。只有擁有者自己允許 |
 
@@ -54,7 +54,7 @@ Hub 現在只有兩種人：
 | 管理已連接的 Fleet | 查看全部 Fleet、撤銷 | 管理員 |
 | 管理加入方式 | 公司帳號連接的開關、加入碼（#3706）、個別邀請、手動配對碼 | 管理員 |
 | 指派角色 | 把角色指派給個人或 AD 群組、移除指派 | 管理員（今天是「群組權限」頁） |
-| 查看稽核紀錄 | 讀 Hub 的稽核紀錄與安全通知 | 管理員（安全通知）；稽核紀錄沒有畫面 |
+| 查看稽核紀錄 | 讀 Hub 稽核紀錄的「誰、什麼時候、做了什麼」與安全通知。**讀不到任何對話內容**，管理員也一樣 | 管理員（安全通知）；稽核紀錄沒有畫面 |
 | 編輯角色、Hub 設定 | 新增或修改角色的權限；目錄、網址、保留天數 | 管理員。**只屬於「管理員」角色，不能加到其他角色** |
 
 沒有放進清單的：
@@ -68,7 +68,7 @@ Hub 現在只有兩種人：
 |---|---|---|---|
 | 和 Agent 對話 | ✓ | ✓ | ✓ |
 | 分享 Agent | ✓ | ✓ | ✓ |
-| 連接 Fleet | ✓（8 台） | ✓（2 台） | ✓（1 台） |
+| 連接 Fleet | ✓（8 台；搬移過來的第一位管理員見第 8 節） | ✓（2 台） | ✓（1 台） |
 | 查看團隊名單 | ✓（全部） | ✓（範圍內） | |
 | 查看團隊用量 | ✓（全部） | ✓（範圍內） | |
 | 核准連接申請 | ✓ | ✓（範圍內） | |
@@ -104,10 +104,10 @@ Hub 現在只有兩種人：
 ### 防止升級的規則
 
 1. **「編輯角色」「Hub 設定」不能授予。** 只有內建的管理員角色有，自訂角色的編輯畫面上是鎖住的。所以沒有人能做出一個「幾乎是管理員」的角色再指派給自己。
-2. **只能指派自己權限以內的角色。** 有「指派角色」的人，能指派的角色必須是自己目前所有權限的子集，範圍也必須在自己的範圍之內。管理員不受限。
+2. **只能指派自己權限以內的角色。** 逐項比對，不是合起來比：每一項權限，指派者自己都要在**同一個範圍**（同一個 AD 群組，或自己是整個 Hub）有這一項，連接 Fleet 的台數也不能超過自己的。在「RD 一部」能看名單、在「RD 二部」能看用量的人，不能把兩項一起指派在「RD 一部」。Hub 無法證明「群組 A 是群組 B 的一部分」，所以不做這種推論。指派的到期日不能晚於指派者自己那一項權限的到期日。
 3. **不能改自己的指派。** 新增、移除、延長自己的角色都要另一位有權限的人來做。
 4. **第一位管理員拿不掉。** 設定檔裡指定的那一位（今天的 `config.administrator`）永遠是管理員，只有在 Hub 主機上才能更換。這是救援用的：就算角色全被改壞，仍有一個人進得來。
-5. **至少一位管理員。** 移除最後一位管理員的指派會被拒絕（第 4 點已經保證，這是畫面上的說明）。
+5. **一定有一位管理員。** 第 4 點的第一位管理員永遠在，所以其他管理員的指派都可以移除，包括最後一筆。第一位管理員仍然要通過 AD 的帳號檢查（帳號停用就進不來），只是不看群組。
 6. **伺服器每次重新判斷。** 權限不放在登入階段裡。每個要求都重新查一次角色與 AD 成員資格，和今天的 `requireAdmin()`、`requirePerson()` 一樣；被移除的人下一個要求就失效。
 
 ### 稽核
@@ -120,7 +120,9 @@ Hub 現在只有兩種人：
 - `join-request.approved` / `.declined`、`ask-request.approved` / `.declined`。
 - 被拒絕的嘗試也記（例如想指派超出自己權限的角色）。
 
-另外，**任何 Hub 管理類權限的變更，都會出現在所有管理員的「通知」頁**，和今天「有新的 Fleet 連接」一樣要按確認已讀。
+另外，**任何 Hub 管理類權限的變更，都會通知當時所有的管理員**（不只是第一位），出現在「通知」頁，要按確認已讀。通知的對象在變更當下一起記錄；之後失去管理員角色的人就讀不到。
+
+規則 1 之外，**五項 Hub 管理類權限全部只能指派給個人**（決定 D2）。伺服器在兩個地方都擋：指派時，以及修改一個已經指派給 AD 群組的角色時。
 
 ## 7. 安全上的代價（照實說）
 
@@ -135,12 +137,12 @@ Hub 現在只有兩種人：
 
 ## 8. 從現在的管理員與成員搬過來
 
-升級時自動做一次，不需要管理員操作，做完的結果和升級前的權限**完全相同**：
+升級時自動做一次，不需要管理員操作。做完的結果和升級前**完全相同**：每個人的每一項權限、每人可連接的台數、群組權限的狀態（從未開啟、已開啟、已暫停）都不變，已暫停的分享也維持暫停。
 
 | 現在 | 搬過去之後 |
 |---|---|
-| 設定檔的管理員 | 「管理員」角色，指派給這個人，標記為「第一位管理員」，不能移除 |
-| 群組權限裡的每一條規則（群組 + 三項權限的組合 + 每人幾台） | 指派：AD 群組 → 對應的角色。三項全有就是「成員」；只有部分的，各產生一個自訂角色（例如「成員（只能對話）」），最多 7 種 |
+| 設定檔的管理員 | 「管理員」角色，指派給這個人，標記為「第一位管理員」，不能移除。**他今天沒有自動的對話、分享、連接權限（要靠群組），搬過去之後也一樣**；要套用管理員角色的新預設（含 8 台），由他自己在角色頁按一次「套用新的預設」，儲存前會顯示影響 |
+| 群組權限裡的每一條規則（群組 + 三項權限的組合 + 每人幾台） | 一筆指派：AD 群組 → 角色，**台數記在這一筆指派上**（0–8，原樣保留）。三項全有就是「成員」；只有部分的，各對應一個「沿用」角色，最多 7 種。同一個人符合多筆時，台數取最大值，和今天一樣，不相加。成員 1 台、主管 2 台是之後新指派的預設，不會改動搬過來的數字 |
 | 個別禁止 | 原樣保留，優先於角色 |
 | 群組權限「從未開啟」的舊 Hub | 維持舊行為（登入的人都能對話，連接要管理員核准），直到管理員第一次開啟角色 |
 | 個別邀請、加入碼、手動配對碼 | 不變。它們是一次性的核准，不是角色 |
@@ -148,7 +150,7 @@ Hub 現在只有兩種人：
 
 「群組權限」頁改名為「角色與權限」；「讓同仁加入」卡片的步驟 2 不變（它其實就是「把成員角色指派給 AD 群組」的捷徑）。
 
-可以退回：搬移前的設定保留一份，角色功能有開關；關掉就回到今天的行為。
+關閉角色功能是一個**往前的**變更，不是還原：關閉後回到「只有第一位管理員 + 三項群組權限」的行為，但已經做過的禁止、撤銷、暫停都保留。不會把升級前的設定整份蓋回來，因為那樣可能讓已經收回的權限或已撤銷的 Fleet 復活。要退回舊版程式是另一件事（資料庫備份與還原），不在這份提案內。
 
 ## 9. 分階段
 
@@ -174,68 +176,102 @@ Hub 現在只有兩種人：
 | D6 | 三個階段都做，還是先做到第二階段？ | 先做一、二（排在 alpha.2 之後）。第三階段等 #3743 第 3 項（依群組允許提問）上線後再看還需不需要 |
 | D7 | 主管預設可以連接幾台 Fleet？ | 2 台（成員 1 台、管理員 8 台） |
 
-## 附錄 A：Server model (for the Hub server owner's review)
+## 附錄 A：Server model
 
-English, for implementation review. Nothing here is built.
+English, for implementation. Nothing here is built. Reviewed by the Hub server owner on 2026-11-13 against source `7ae6a667` (read-only; no tests, builds or directory access). The six required amendments from that review are folded in below; A.8 records the answers to the open questions. Phase 3 (requests and delegated approval) was not cleared by that review and needs its own end-to-end protocol review.
 
-### A.1 Document
+### A.1 Storage
 
-One sealed, revisioned document next to today's group policy, written through the same preview → digest → compare-and-swap path (`src/hub/group-policy/store.ts`, `admin-control.ts`):
+One canonical JSON document (roles + assignments + denies) in the existing Hub SQLite policy transaction, written through today's preview → digest → compare-and-swap path (`src/hub/group-policy/store.ts`, `admin-control.ts:147-187`). Not a second sealed file: a cross-store transaction is unnecessary risk.
 
 ```
 RolePolicy {
   realm, generation, revision,
-  state: "legacy" | "enabled",
-  roles: Role[]            // ≤ 16
-  assignments: Assignment[] // ≤ 256
-  denies: Deny[]           // unchanged from HubGroupPolicy
+  state: "never-enabled" | "enabled" | "suspended",   // the three existing states, kept
+  everEnabled: boolean,                               // the existing latch: no return to never-enabled
+  roles: Role[],             // ≤ 32: 3 built-in + up to 7 "carried-over" + custom
+  assignments: Assignment[], // ≤ 256
+  denies: Deny[]             // unchanged
 }
-Role { id, name, builtin: "admin" | "manager" | "member" | null, permissions: Permission[], maxFleets: 0..8 }
+Role { id, name, kind: "admin" | "manager" | "member" | "carried-over" | "custom", permissions: Permission[], defaultMaxFleets: 0..8 }
 Assignment {
   id, roleId,
-  subject: { kind: "person", person } | { kind: "group", group, dn },
+  subject: { kind: "person", person } | { kind: "group", group, dn },   // group = immutable realm + GUID
   scope:   { kind: "hub" } | { kind: "group", group, dn },
+  maxFleets: 0..8 | null,    // per assignment; null = the role's default. Carried-over rules keep their exact number
   startsAt, expiresAt | null, assignedBy, assignedAt
 }
 Permission = "ask_agents" | "publish_agents" | "pair_fleet"
            | "team.view" | "team.usage" | "team.approve_join" | "team.approve_ask"
-           | "fleets.manage" | "join.manage" | "roles.assign" | "audit.view"
-           | "hub.admin"            // edit roles + Hub settings; builtin admin only
+           | "fleets.manage" | "join.manage" | "roles.assign" | "audit.view" | "hub.admin"
 ```
 
-The three existing capability names are kept so `evaluateGroupPolicy` callers (`authorization.ts`, `resources.ts`, `welcome.ts`) keep their meaning.
+The preview digest binds the proposed document, the existing resource inventory and the directory observations it was computed from, not only two revision numbers.
 
 ### A.2 Evaluation
 
-A pure function, same contract as `evaluateGroupPolicy` (`model.ts:35`): unknown directory facts never become an allow and never an authoritative removal; a person-level deny wins.
+A pure function with the contract of `evaluateGroupPolicy` (`model.ts:35`): unknown directory facts never become an allow and never an authoritative removal; a person-level deny wins; overlapping fleet limits combine by MAX, never SUM.
 
 ```
-can(policy, subject, permission, target?, facts) → { outcome: allow | deny | unknown, authoritative, via: assignmentIds[], maxFleets }
+can(policy, subject, permission, target | null, facts, now)
+  → { outcome: allow | deny | unknown, authoritative, via: assignmentIds[], maxFleets, nextExpiry }
 ```
 
-- Subject matches an assignment when it names the person, or names a group in `facts.groups`.
-- Hub-scoped permissions need a `scope.kind === "hub"` assignment.
-- Team permissions need `target` (a person): allowed when some matching assignment's scope group contains the target, by a fresh membership read of the target. This is a second directory read per request; see question Q2.
-- `requireAdmin()` becomes `require("hub.admin")`, and each admin route moves to the narrowest permission (`fleets.manage`, `join.manage`, `roles.assign`, `audit.view`). The sealed `config.administrator` always evaluates as admin without a directory group read (break-glass).
+- `now` is an input: an assignment expires without a document revision, so the result carries `nextExpiry` and expiry is settled idempotently (audit `role.assignment-expired`).
+- Hub-scoped permissions need a `scope.kind === "hub"` assignment. Team permissions need a target person and a fresh membership read of that target in the assignment's scope group.
+- The configured root administrator evaluates as admin without a group read. It still passes today's session and person-eligibility checks: break-glass skips group membership, not disabled-person validation.
+- Existing owner ask grants stay an independent AND gate. Team, usage and audit permissions confer no right to ask.
 
-### A.3 Invariants (each needs a test)
+### A.3 Authorization is an operation permit
 
-1. A role other than builtin admin can never contain `hub.admin`; the writer refuses it, not only the UI.
-2. `roles.assign` holder: the assigned role's permission set ⊆ the actor's effective set, and the assignment's scope ⊆ one of the actor's scopes. Checked in the write transaction against the same revision the preview used.
-3. An actor cannot create, remove or extend an assignment whose subject is the actor (person subjects), nor one whose group subject the actor is currently a member of when it would add permissions to the actor.
-4. Removing the last hub-scoped admin assignment is refused; the sealed administrator is not an assignment and cannot be removed here.
-5. Migration is exact: for every (person, capability) the decision before equals the decision after, on a fixture matrix of rules × denies × states.
-6. Every write, and every refused write, produces one audit record in the same transaction (the existing `audit` unavailable → refuse rule).
+Not a route rename. Each protected operation captures: actor and session, the exact permission with its target and scope, policy revision and generation, the authorization epoch, the directory facts used, and the time. It rechecks after any I/O and immediately before the effect or disclosure.
 
-### A.4 New reads (phase 2)
+- Role loss invalidates in-flight operations, member leases and protected SSE emissions, including notice streams that are already open. `isCurrent` on the session checks the cookie only and is not role authority.
+- Inventory to convert, beyond `requireAdmin()`: `group-policy/admin-context.ts:31`, `group-policy/authorization.ts:116` and its manual-enrolment path (`:285`), the code and invitation controls in `join/service.ts`, `session-directory-transition.ts:36,57,102`, `settings-commit.ts:329`.
+- The actual approver's identity is kept. Never rewrite `approvedBy` to the root to satisfy an old proof.
+- Codes and invitations issued by someone who later loses `join.manage`: they stop being redeemable at the moment of role loss (each redemption re-proves the issuer's current permission), and are listed as "issuer no longer permitted" until an admin revokes or re-issues them.
+- The final synchronous and audit-required fences of the current code stay as they are.
 
-- `GET /hub/v1/team?scope=<group>`: members of the scope group from the directory, joined with `hub_people` (signed in), fleets (count by owner), exposures (count by owner), and last activity. Paged; needs a group member listing the directory layer does not expose today (it resolves a person's groups, not a group's members).
-- `GET /hub/v1/team/usage?scope=<group>&days=30`: counts from `hub_messages` grouped by `asker` and by `owner` (`stage` answered vs not). Bounded by content retention: with a short `contentDays`, older rows are gone, so the window is `min(30, retention)`.
+### A.4 Invariants (each needs a test)
 
-### A.5 Questions for the server owner
+1. `hub.admin` exists only in the built-in admin role; the writer refuses it elsewhere.
+2. All five Hub-management permissions (`fleets.manage`, `join.manage`, `roles.assign`, `audit.view`, `hub.admin`) are persons-only. The writer checks this when assigning, and when editing a role that group assignments already reference.
+3. Delegation is compared per permission with its own scope and limit, never on flattened unions: the actor must hold that permission on the identical scope (same realm + GUID) or hub-wide; `maxFleets` granted ≤ the actor's; `expiresAt` granted ≤ the expiry of the actor's authority for that permission. No subset inference between groups.
+4. No self-increase: an actor cannot create, extend or widen an assignment naming themself, nor a group assignment that would add permissions to themself. Unknown self-membership refuses the write.
+5. The root administrator is counted as an effective admin. Any auxiliary admin assignment may be removed, including the last one.
+6. Every write and every refused write produces one audit record in the same transaction (audit unavailable → refuse).
 
-- Q1. One document (roles + assignments) or roles sealed and assignments in tables? Assignments change far more often than roles; a table makes expiry and paging simple, but then the preview digest must cover both.
-- Q2. Cost of fresh group facts on every admin-class request, and of the per-target membership read for team permissions. Is a short, non-authoritative cache acceptable for reads (`team.view`) while writes stay fresh?
-- Q3. Listing a group's members: is a bounded LDAP member read acceptable (size limit, paging, nested groups not expanded), or should phase 2 only show people who have signed in to the Hub?
-- Q4. B1/B2 join codes are "configured admin only". Under roles, is `join.manage` enough to create a code, or should creation stay with `hub.admin`?
-- Q5. Does anything on the member link (the Fleet side) need to learn about roles, or does it stay server-only as today?
+### A.5 Migration and switching off
+
+One atomic, idempotent cutover: a single marker plus, in the same commit, the matching old snapshot, the role policy, the resource / provenance / pending-join consequences, the audit record and the authorization revision; links refresh after. Independent durable rollback floors and fail-closed recovery are preserved. Crash points to pin: before and after commit, floor and audit; repeated migration.
+
+Losslessness, tested on a matrix of all three old states × overlapping rules × zero quota × denies × manual, code and invitation grants. The assertions cover decisions and quota and provenance:
+
+- each group rule → one assignment to the role with that capability set, its `maxFleets` on the assignment;
+- `suspended`, the ever-enabled latch, retained resource state and explicit Resume are carried unchanged;
+- the configured administrator → root admin, with **no** self-use permissions added (today it has no automatic ask / publish / pair exception). The D7 defaults (member 1, manager 2, admin 8) apply to assignments made after migration, or to the root when it explicitly applies them through a previewed save.
+
+Switching roles off is a new monotone transition, not a snapshot restore: it keeps current denies, revocations and suspensions. Restoring a saved pre-migration snapshot could resurrect removed permissions or revoked resources, so it is not offered. A binary downgrade is a separate schema and backup operation. Crash points and repeated disable are pinned like the migration.
+
+### A.6 Phase 2 reads
+
+Disclosure boundary: authorize the requested scope first; then apply a fresh target-membership check to every returned row or page. Unknown membership neither leaks a roster nor counts as removal; the page is labelled incomplete.
+
+- **Member list.** Needs new work: a bounded group-member reader (immutable group binding, stated direct / nested semantics, LDAP paging and ranged `member`, size and time limits, referrals refused, incomplete → unknown). Today's `resolve` (2) and suggestion (20) limits are not a member enumeration API. If the first delivery lists only people known to the Hub, the page must say it does not include people who never signed in.
+- **Directory cost.** The policy reader admits 4 per person and 32 in total, and person eligibility has its own 4 / 32; each call opens, binds, searches and closes. Batch and bound the reads; no per-row unbounded LDAP fan-out. A cached positive group fact used to disclose a roster is authority and must be fresh; only already-authorized snapshots may be cached for presentation.
+- **Usage counts.** `hub_messages` rows are not purged by the retention timer today (it purges audit content, events and attachments: `compose/server.ts:517-527`), so the window cannot be "min(30, content retention)". Phase 2 defines its own bounded metadata window and retention for these rows. Counts are defined on recorded events: questions accepted in the window, and answers accepted in the window (`stage_at` is mutable and a stage can change after answering, so `stage == answered` is not a historical counter). Deduplicate by room and idempotency identity; attribute by the recorded asker and owner; index by owner / asker / time; never read question or answer payloads.
+- **Last activity** = the person's last accepted question or answer. `hub_people.last_checked_at` is a directory verification time, not activity.
+- **"Who can see my usage"** (D5) is computed from the same permission and scope rules, and labels unknown or incomplete membership as such.
+
+### A.7 Audit and notices
+
+- `audit.view` is metadata only and gets its own read path. It is not mapped onto the existing auditor flag, because that flag also authorizes `readContent()` (`audit/index.ts:344-348`). Negative tests: no conversation payload for any role, admin included.
+- Role-management notices go to every effective admin at the time of the change, not only owner + configured administrator as the pairing notices do today. Recipients are recorded transactionally with the change; reads re-check current authority; removal or expiry of the role ends access to the notice.
+
+### A.8 Answers from the server review
+
+- **Q1 storage.** One canonical document in the existing SQL / CAS transaction; expiry against an injected clock (A.1, A.2).
+- **Q2 directory cost.** Bounded admission as in A.6; no relaxed freshness for anything that discloses.
+- **Q3 member listing.** A bounded member reader is feasible new work; a Hub-known-only list is a valid, explicitly partial first delivery (A.6).
+- **Q4 join codes.** `join.manage` covers create, list (including the sealed-code reveal), revoke and invitations, and carries through to redemption and retained approval with the recorded actor (A.3).
+- **Q5 member link.** Phases 1 and 2 stay server-side on the existing authorization epochs, leases and link refresh; no role names cross the member link.
