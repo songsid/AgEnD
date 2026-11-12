@@ -31,8 +31,8 @@ export const SHARED: { file: string; hub: (s: UiString) => boolean }[] = [
 ];
 // Network links (not the Fleet–Hub relationship), and 公開連結 — the public-link feature's own name, not "publish".
 const ZH_NETWORK = /網路連線|目錄連線|服務連線|測試連線|重新連線|連線中斷|AD 連線|離線|公開連結/g;
-const ZH_ALWAYS = /手動配對碼|一次性配對碼|同仁連線連結|組織帳號|公開|連線/;
-const EN_ALWAYS = /one-time pairing code|manual pairing code|\bexposures?\b|\bexpose[ds]?\b|organisation|\bHub admin\b(?!istrator)/i;
+const ZH_ALWAYS = /手動配對碼|一次性配對碼|同仁連線連結|組織帳號|例外邀請|公開|連線/;   // M-2957: 例外邀請 → 個別邀請
+const EN_ALWAYS = /one-time pairing code|manual pairing code|invitation exceptions?|connection exceptions?|\bexposures?\b|\bexpose[ds]?\b|organisation|\bHub admin\b(?!istrator)/i;   // M-2957: → individual invitation
 
 /** The banned terms in one string, as the gate sees them (empty: clean). */
 export function offences(s: UiString): string[] {

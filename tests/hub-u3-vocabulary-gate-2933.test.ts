@@ -70,6 +70,9 @@ describe("U3: one vocabulary across the Hub and Fleet Hub strings (A-L14)", () =
     expect(offences(s("zh-TW", "連線到 Hub"))).toEqual(["連線"]);
     expect(offences(s("zh-TW", "請輸入手動配對碼"))).toEqual(["手動配對碼"]);
     expect(offences(s("zh-TW", "複製同仁連線連結"))).toEqual(["同仁連線連結"]);
+    expect(offences(s("zh-TW", "例外邀請"))).toEqual(["例外邀請"]);                                       // M-2957
+    expect(offences(s("en", "Invitation exceptions"))).toEqual(["Invitation exceptions"]);
+    expect(offences(s("en", "as an individual Fleet-connection exception"))).toEqual(["connection exception"]);
     expect(offences(s("en", "My exposures"))).toEqual(["exposures"]);
     expect(offences(s("en", "Use your organisation account."))).toEqual(["organisation"]);
     expect(offences(s("en", "Contact your Hub admin."))).toEqual(["Hub admin"]);
@@ -78,6 +81,7 @@ describe("U3: one vocabulary across the Hub and Fleet Hub strings (A-L14)", () =
     // …and lets through what the table keeps
     expect(offences(s("zh-TW", "請輸入配對碼。暫時離線會自動重新連線。目錄連線失敗。公開連結上沒有。"))).toEqual([]);
     expect(offences(s("en", "Ask them for a pairing code. Contact your Hub administrator."))).toEqual([]);
+    expect(offences(s("en", "Individual invitations"))).toEqual([]); expect(offences(s("zh-TW", "個別邀請"))).toEqual([]);
     expect(offences(s("en", "Pairing requests for you", "pairingsTitle"))).toEqual([]);             // the code path's own key
   });
 });
