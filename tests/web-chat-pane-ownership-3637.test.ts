@@ -88,13 +88,14 @@ describe("pane scope adds no DOM and retains legacy defaults", () => {
       const a: any = p.document.getElementById("pane-a-msgIn");
       expect(observed.has(a)).toBe(true);
       let width = 600; a.getBoundingClientRect = () => ({ width });
-      Object.defineProperty(a, "scrollHeight", { configurable: true, get: () => width < 400 ? 96 : 48 });
+      Object.defineProperty(a, "scrollHeight", { configurable: true, get: () => width < 300 ? 600 : width < 400 ? 96 : 48 });
       a.value = "A wrapped draft"; fire(a, "input"); await settle(3);
       observed.get(a)!(); await settle(2); expect(a.style.height).toBe("48px");
       fire(a, "compositionstart"); width = 360; observed.get(a)!(); await settle(2); expect(a.style.height).toBe("48px");
       fire(a, "compositionend"); await settle(2); expect(a.style.height).toBe("96px");
       width = 600; observed.get(a)!(); await settle(2); expect(a.style.height).toBe("48px");
-      await p.unmount(); await p.mount(panel("alpha")); const single = p.document.getElementById("msgIn"); expect(observed.has(single)).toBe(false);
+      width = 260; observed.get(a)!(); await settle(2); expect(a.style.height).toBe("240px");
+      await p.unmount(); width = 360; observed.get(a)!(); await settle(2); expect(a.style.height).toBe("240px"); await p.mount(panel("alpha")); const single = p.document.getElementById("msgIn"); expect(observed.has(single)).toBe(false);
     } finally { delete (globalThis as any).ResizeObserver; }
   });
 

@@ -30,6 +30,11 @@ case('old-css',ui,'&& getComputedStyle(document.documentElement).getPropertyValu
 case('old-store',ui,'&& chat.popoutDraftReady?.() === true','',pc)
 case('float-menu-retirement','src/ui/chat-workspace-navigation.js','go({ ...docked, layout,','go({ ...w, layout,','tests/web-chat-workspace-docking-navigation-3637.test.ts')
 case('float-dock-retirement','src/ui/shared/chat-workspace-model.js','return { ...docked,','return { ...next,','tests/web-chat-workspace-geometry-3637.test.ts')
+case('scoped-width-observer','src/ui/panel-chat.js','return observeComposerWidth(bindings.input.current, () => composers.get(name) === bindings, () => bindings.composing);','return undefined;','tests/web-chat-pane-ownership-3637.test.ts')
+case('width-ime','src/ui/panel-chat.js','if (composing()) { deferred = true; return; }','','tests/web-chat-pane-ownership-3637.test.ts')
+case('width-height-cap','src/ui/panel-chat.js','Math.min(field.scrollHeight, 240)','field.scrollHeight','tests/web-chat-pane-ownership-3637.test.ts')
+case('width-retired-owner','src/ui/panel-chat.js','if (!alive || !current()) return;','if (false) return;','tests/web-chat-pane-ownership-3637.test.ts')
+
 if len(sys.argv)>2:
  selected=set(sys.argv[2].split(',')); cases=[c for c in cases if c[0] in selected]; assert len(cases)==len(selected)
 results=[]
