@@ -78,6 +78,9 @@ describe("what a step shows", () => {
     expect(v({}, "run")).toBeNull();
     // antigravity and grok (log-steps-agy-grok.ts): their own argument names
     expect(v({ input: '{"CommandLine":"ls -la","Cwd":"/srv/w","SafeToAutoRun":true}', subject: "ls -la" }, "run")).toEqual({ code: "ls -la" });
+    // AGEND-210: antigravity's CommandLine goes through the same unwrap (a wrapper with trailing words, and a two-command line left alone)
+    expect(v({ input: '{"CommandLine":"bash -lc \'ls -la\' x y"}', subject: "ls" }, "run")).toEqual({ code: "ls -la" });
+    expect(v({ input: '{"CommandLine":"bash -c \'a\' && echo \'b\'"}', subject: "a" }, "run")).toEqual({ code: "bash -c 'a' && echo 'b'" });
     expect(v({ input: '{"command":"git status"}', subject: "git status" }, "run")).toEqual({ code: "git status" });
     expect(v({ input: '{"target_file":"/a/b.ts","offset":1}', subject: "/a/b.ts" }, "read")).toBeNull();
     expect(v({ input: '{"Path":"/a/b.ts"}', subject: "/a/b.ts" }, "edit")).toBeNull();
