@@ -159,7 +159,9 @@ describe("the open Settings page follows a refusal and its clearing (no remount)
   });
   it("after the connection goes away, a tick reads nothing for the old list", async () => {
     const r = await rig(async () => [BASE]);
+    const withList = r.listeners.size;
     await r.tick({ state: "unpaired" }); await settle(20);
+    expect(r.listeners.size).toBe(withList - 1);                            // the list's poll listener is gone, not just idle
     const n = r.exposures.mock.calls.length;
     await r.tick({ state: "unpaired" });
     expect(r.exposures.mock.calls.length).toBe(n);
