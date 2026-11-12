@@ -17,6 +17,7 @@ import { workspaceMemory } from "/assets/chat-workspace-memory.js";
 import * as workspaceNavigation from "./chat-workspace-navigation.js";
 import { floatBox, splitSize } from "/assets/pane-geometry.js";
 import { createWorkspaceGestures, geometryText } from "./chat-workspace-gestures.js";
+import { createPanePopout, popoutText } from "./chat-popout.js";
 
 register("chatWorkspace", {
   en: { beside: "Open beside", replace: "Replace: {0}", split: "Split chat", choose: "Choose a second agent", current: "Focused pane", currentShort: "Active",
@@ -103,8 +104,9 @@ export function PaneHeader({ title, sub, headingRef, nav, notice, pageControls, 
     { key: "swap", label: tw("swap"), onSelect: () => pane.controller.swap() },
     { key: "other", label: tw("other"), onSelect: () => pane.controller.focus(pane.id === "a" ? "b" : "a", { moveFocus: true }) },
     { key: "split", label: tw("split"), icon: "sidebar", onSelect: () => choose(pane.controller, undefined, pane.id) },
+    ...(pane.popout ? [{ key: "popout", label: popoutText("open"), onSelect: () => pane.popout.open(pane.controller, pane.id) }] : []),
     { key: "close", label: tw("close"), icon: "close", onSelect: () => pane.controller.closePane(pane.id) },
-    ...(pane.focused ? pageActions || [] : []),
+    ...(pane.focused ? (pageActions || []).filter(item => item?.key !== "splitChat") : []),
   ];
   const interactive = event => event.target.closest("a,button,input,textarea,select,[contenteditable],.ws-page-tools");
   return html`<header data-trust="header" class="panel-head ws-pane-head" draggable=${!pane.floating}
@@ -124,7 +126,7 @@ export function PaneHeader({ title, sub, headingRef, nav, notice, pageControls, 
   </header>`;
 }
 
-function Pane({ id, w, focused, compact, width, height, controller, controls, panels, gestures }) {
+function Pane({ id, w, focused, compact, width, height, controller, controls, panels, gestures, popout }) {
   const pointer = useRef(false), ref = useRef(null);
   useLayoutEffect(() => { ref.current?.style.setProperty("--ws-pane-height", `${height}px`); }, [height]);
   useEffect(() => {
@@ -139,7 +141,7 @@ function Pane({ id, w, focused, compact, width, height, controller, controls, pa
   const visibleTabs = tabs.slice();
   for (let n = visibleTabs.length - 1; visibleTabs.length > keep && n >= 0; n--) if (visibleTabs[n] !== p.route.panel) visibleTabs.splice(n, 1);
   const value = { ...controller.pane(id), id, name: p.route.instance, route: p.route, search: p.search, hash: p.hash, focused,
-    tabs, visibleTabs: compact ? tabs : visibleTabs, width, controller, controls, gestures, floating: !compact && w.layout === "float" && w.floating === id, layout: w.layout, Header: compact ? null : PaneHeader };
+    tabs, visibleTabs: compact ? tabs : visibleTabs, width, controller, controls, gestures, popout, floating: !compact && w.layout === "float" && w.floating === id, layout: w.layout, Header: compact ? null : PaneHeader };
   return html`<section ref=${ref} id=${`ws-pane-${id}`} class=${`ws-pane${focused ? " ws-focused" : ""}${value.floating ? " ws-floating" : ""}`} data-pane=${id} role="region"
     aria-label=${tw("pane", p.route.instance, viewLabel(p.route.panel))} aria-current=${focused ? "true" : undefined}
     onPointerDown=${event => {
@@ -157,7 +159,7 @@ function Pane({ id, w, focused, compact, width, height, controller, controls, pa
   </section>`;
 }
 
-export function createWorkspaceHost(controller, pageGestures) {
+export function createWorkspaceHost(controller, pageGestures, popout) {
   return function WorkspaceHost({ nav, panels }) {
     const ref = useRef(null), [size, setSize] = useState({ width: 0, height: 0, viewport: 0 });
     const controls = useMemo(() => createPageControls(), []);
@@ -198,7 +200,7 @@ export function createWorkspaceHost(controller, pageGestures) {
           aria-orientation=${w.layout === "stack" ? "horizontal" : "vertical"} aria-valuemin=${Math.round(split.min)} aria-valuemax=${Math.round(split.max)} aria-valuenow=${Math.round(split.first)}
           onKeyDown=${gestures.sashKey} onPointerDown=${gestures.sashDown} ondblclick=${() => controller.geometry({ ratio: .5 })}></div></div>` : null,
         html`<${Pane} key=${id} id=${id} w=${w} focused=${w.focus === id} compact=${compact}
-          width=${paneWidth(id)} height=${paneHeight(id)} controller=${controller} controls=${controls} panels=${panels} gestures=${gestures} />`])}
+          width=${paneWidth(id)} height=${paneHeight(id)} controller=${controller} controls=${controls} panels=${panels} gestures=${gestures} popout=${popout} />`])}
       <span class="sr-only" role="status" aria-live="polite">${movement.announcement}</span>
       ${movement.keyboard ? html`<p class="ws-geometry-hint" role="status">${geometryText("help")}</p>` : null}
     </div>`;
@@ -212,12 +214,14 @@ export function installWorkspaceEntry({ nav, ready, landing = false, scope = "",
   let storage = null;
   try { storage = localStorage; } catch { /* memory-only */ }
   const memory = workspaceMemory(storage, scope);
+  const popout = createPanePopout({ scope, chat });
   const gestures = createWorkspaceGestures({ getRoot: () => document.querySelector(".chat-workspace") || document.getElementById("main"),
     controller: { current: () => controller?.current(), stamp: () => nav.navStore.get(), subscribe: fn => nav.navStore.subscribe(fn),
       focus: id => controller?.focus(id), geometry: change => controller?.geometry(change) },
     onDrop: (name, target, zone) => { if (agentRoute(nav.navStore.get().route)) void open(name, undefined, { target, zone }); } });
   const retire = () => {
     if (!alive) return; alive = false; memory.clear();
+    popout?.close();
     controller?.close();
     gestures.close();
     window.removeEventListener("resize", refresh); document.removeEventListener("keydown", key);
@@ -233,7 +237,7 @@ export function installWorkspaceEntry({ nav, ready, landing = false, scope = "",
         if (!controller) {
           if (!nav.installNavigation || !PanelHeader.workspaceVersion) throw new Error("old shell");
           controller = workspaceNavigation.installWorkspaceNavigation(nav, { geometry: true, beforeLayout: services?.stopPreview,
-            onWorkspace: () => { if (!shellStore.get().workspaceHost) shellStore.set({ workspaceHost: createWorkspaceHost(controller, gestures) }); } });
+            onWorkspace: () => { if (!shellStore.get().workspaceHost) shellStore.set({ workspaceHost: createWorkspaceHost(controller, gestures, popout) }); } });
           let previous = null;
           nav.navStore.subscribe(next => {
             if (!alive) return;

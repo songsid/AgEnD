@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-composition-3637.test.ts (11 tests | 1 failed) 399ms
+     × retained/missing store capability keeps the old entry closed 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-composition-3637.test.ts > the existing router, guards and draft owner compose the pop-out > retained/missing store capability keeps the old entry closed
+AssertionError: expected { open: [Function open], …(1) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "close": [Function close],
+  "open": [Function open],
+}
+
+ ❯ tests/web-chat-popout-composition-3637.test.ts:50:182
+     48|     if (cause === "guest") p.document.body.dataset.tier = "guest";
+     49|     try {
+     50|       expect(popup.createPanePopout({ scope: cause === "scope" ? "" : …
+       |                                                                                                                                                                                      ^
+     51|     } finally { shell.Shell.popoutVersion = old; delete p.document.bod…
+     52|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 passed (11)
+   Start at  11:20:54
+   Duration  805ms (transform 455ms, setup 102ms, import 148ms, tests 399ms, environment 0ms)
+

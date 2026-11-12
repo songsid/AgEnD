@@ -80,6 +80,37 @@ describe("visible chats are distinct from page focus", () => {
 });
 
 describe("pane scope adds no DOM and retains legacy defaults", () => {
+  it("resizes only scoped composers when their physical width changes, without touching an IME", async () => {
+    const observed = new Map<any, () => void>();
+    (globalThis as any).ResizeObserver = class { constructor(private update: () => void) {} observe(el: any) { if (el.tagName === "TEXTAREA") observed.set(el, this.update); } disconnect() {} };
+    try {
+      await p.mount(h("div", null, pane("a", true, panel("alpha")), pane("b", false, panel("beta"))));
+      const a: any = p.document.getElementById("pane-a-msgIn");
+      expect(observed.has(a)).toBe(true);
+      let width = 600; a.getBoundingClientRect = () => ({ width });
+      Object.defineProperty(a, "scrollHeight", { configurable: true, get: () => width < 300 ? 600 : width < 400 ? 96 : 48 });
+      a.value = "A wrapped draft"; fire(a, "input"); await settle(3);
+      observed.get(a)!(); await settle(2); expect(a.style.height).toBe("48px");
+      fire(a, "compositionstart"); width = 360; observed.get(a)!(); await settle(2); expect(a.style.height).toBe("48px");
+      fire(a, "compositionend"); await settle(2); expect(a.style.height).toBe("96px");
+      width = 600; observed.get(a)!(); await settle(2); expect(a.style.height).toBe("48px");
+      width = 260; observed.get(a)!(); await settle(2); expect(a.style.height).toBe("240px");
+      await p.unmount(); width = 360; observed.get(a)!(); await settle(2); expect(a.style.height).toBe("240px"); await p.mount(panel("alpha")); const single = p.document.getElementById("msgIn"); expect(observed.has(single)).toBe(false);
+    } finally { delete (globalThis as any).ResizeObserver; }
+  });
+
+  it("hands a local draft to the real composer and refuses IME or later source edits without sending", async () => {
+    await p.mount(h("div", null, pane("a", true, panel("alpha")), pane("b", false, panel("beta"))));
+    const a: any = p.document.getElementById("pane-a-msgIn"), b: any = p.document.getElementById("pane-b-msgIn");
+    a.value = "move this"; fire(a, "input"); b.value = ""; fire(b, "input"); await settle(3);
+    const ticket = chat.capturePaneDraft("alpha"); expect(ticket.current()).toBe(true);
+    fire(b, "compositionstart"); expect(chat.acceptPaneDraft("beta", ticket.payload)).toBe(false); fire(b, "compositionend");
+    expect(chat.acceptPaneDraft("beta", ticket.payload)).toBe(true); await settle(3); expect(b.value).toBe("move this");
+    fire(a, "compositionstart"); expect(chat.capturePaneDraft("alpha")).toBeNull(); expect(ticket.current()).toBe(false);
+    a.value = "later typing"; fire(a, "compositionend"); expect(ticket.current()).toBe(false);
+    expect(requests.filter(path => /send|upload|command/.test(path))).toEqual([]);
+  });
+
   it("cross-pane quote edits only B's draft, records undo and never sends or copies A's reply identity", async () => {
     await p.mount(h("div", null, pane("a", true, panel("alpha")), pane("b", false, panel("beta"))));
     const undo = await import("/assets/text-undo.js") as any;

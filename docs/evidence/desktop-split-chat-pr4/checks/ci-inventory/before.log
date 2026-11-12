@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+(node:1085173) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/web-app-modules-1408.test.ts (38 tests | 1 failed | 37 skipped) 39ms
+     × the public modules reach private ones only by dynamic import(), and never statically 36ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-app-modules-1408.test.ts > module admission (#1408 §4) > the public modules reach private ones only by dynamic import(), and never statically
+AssertionError: expected [ Array(15) ] to deeply equal [ Array(14) ]
+
+- Expected
++ Received
+
+@@ -1,8 +1,9 @@
+  [
+    "\"/ui/js/agent-proposals.js\"",
+    "\"/ui/js/backend-signin.js\"",
++   "\"/ui/js/chat-popout.js\"",
+    "\"/ui/js/chat-workspace.js\"",
+    "retryUrl(\"/assets/panel-view.js\", a",
+    "retryUrl(\"/ui/js/panel-chat.js\", a",
+    "retryUrl(\"/ui/js/panel-details.js\", a",
+    "retryUrl(\"/ui/js/panel-fleet.js\", a",
+
+ ❯ tests/web-app-modules-1408.test.ts:95:28
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 37 skipped (38)
+   Start at  11:54:45
+   Duration  9.41s (transform 7.15s, setup 182ms, import 8.98s, tests 39ms, environment 0ms)
+

@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-composition-3637.test.ts (11 tests | 1 failed) 420ms
+     × a replaced source or session retirement prevents the old ACK from consuming a successor 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-composition-3637.test.ts > the existing router, guards and draft owner compose the pop-out > a replaced source or session retirement prevents the old ACK from consuming a successor
+AssertionError: expected undefined to be 'gamma' // Object.is equality
+
+- Expected:
+"gamma"
+
++ Received:
+undefined
+
+ ❯ tests/web-chat-popout-composition-3637.test.ts:41:52
+     39|   it("a replaced source or session retirement prevents the old ACK fro…
+     40|     const f = await parent(); owner.open(controller, "b"); f.receive("…
+     41|     expect(controller.current()?.b.route.instance).toBe("gamma"); expe…
+       |                                                    ^
+     42|     owner.open(controller, "b"); owner.close(); f.receive("received");…
+     43|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 passed (11)
+   Start at  11:20:50
+   Duration  821ms (transform 477ms, setup 100ms, import 138ms, tests 420ms, environment 0ms)
+

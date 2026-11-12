@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  11:20:56
+   Duration  397ms (transform 171ms, setup 98ms, import 112ms, tests 43ms, environment 0ms)
+
