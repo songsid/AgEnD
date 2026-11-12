@@ -25,6 +25,8 @@ export interface BrowserBackendSignInSnapshot {
   states: Partial<Record<OnboardingBackend, AuthCheckResult | "console_only" | "not_installed">>;
   login: StructuredSignInView | null;
   ready: boolean;
+  /** Only in the answer to a start that CREATED a run: that run's id. A start that joined a run already there (another tab's, a double click) carries none — nobody may end it as "mine". */
+  started?: string;
 }
 type Run = { owner: object; backend: StructuredBackend; session: StructuredSignIn };
 
@@ -140,7 +142,7 @@ export class BrowserBackendSignIns {
     if (!this.current(owner) || this.run !== run) { await session.cancel(); throw new Error("signin_session_expired"); }
     if (!installed.includes(backend)) { await session.cancel(); this.states[backend] = "not_installed"; return this.snapshot(owner); }
     await session.start(relogin);
-    return this.snapshot(owner);
+    return { ...this.snapshot(owner), started: session.view(owner).id };
   }
   async input(owner: object, id: string, revision: number, action: SignInAction): Promise<BrowserBackendSignInSnapshot> {
     if (!this.current(owner) || !this.run || this.run.owner !== owner) throw new Error("signin_session_expired");

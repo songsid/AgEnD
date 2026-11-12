@@ -158,7 +158,7 @@ describe("closing, cancelling and the console fallback end the sign-in", () => {
     let state = snapshot();
     return (r: Req) => {
       if (r.url !== ENDPOINT) return {};
-      if (r.method === "POST" && r.body?.operation === "start") state = snapshot({ login: waitingForCode });
+      if (r.method === "POST" && r.body?.operation === "start") state = snapshot({ login: waitingForCode, started: waitingForCode.id });   // the server names the run its start CREATED
       if (r.method === "POST" && r.body?.operation === "cancel") state = snapshot();
       return state;
     };

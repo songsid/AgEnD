@@ -252,7 +252,9 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
     let cards, last = "";
     // Ridge #3321 S01: "Sign in again" asks in the dashboard's own confirmation (its title names the CLI), not the browser's.
     const ask = (message, cli) => confirmDialog({ title: t("signin.reloginTitle", cli), message, confirmLabel: t("signin.reloginGo") });
-    cards = mountStructuredSignIns(root.current, { endpoint, lang, ask, dashboard: true, ...(single ? { dialog: true, focus: backend } : {}), started: id => { run.current = id; }, changed: next => {
+    cards = mountStructuredSignIns(root.current, { endpoint, lang, ask, dashboard: true, ...(single ? { dialog: true, focus: backend } : {}), started: id => { run.current = id; },
+      // The dialog was closed while its start was still in flight and the server made the run after all: nobody sees it, so it is ended here — by its id, so no other run is touched.
+      abandoned: id => { if (profile || single) void post(endpoint, { operation: "cancel", id }).then(() => refreshSignIn()); }, changed: next => {
       if (!profile) {
         if (backends) { if (backends.some(b => !next.selected.includes(b))) void cards.addBackends(backends); }
         else if (!next.selected.includes(backend)) void cards.addBackend(backend);

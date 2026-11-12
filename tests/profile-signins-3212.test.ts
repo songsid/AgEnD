@@ -207,6 +207,7 @@ describe("ProfileSignIns", () => {
     const h = rig();
     const a = await h.c.begin(h.owner, h.target()), b = await h.c.begin(h.owner, h.target("chy"));
     expect(b.login!.id).toBe(a.login!.id); expect(h.transport.start).toHaveBeenCalledTimes(1);
+    expect(a.started).toBe(a.login!.id); expect(b.started, "#3725 review: a start that joined the run names none — nobody may end it as theirs").toBeUndefined();
     await expect(h.c.begin(h.owner, h.target("home"))).rejects.toThrow("signin_busy");
     expect(h.c.signingIn("claude-code", "CHY")).toBe(true); expect(h.c.signingIn("claude-code", "chy")).toBe(true); expect(h.c.signingIn("claude-code", "home")).toBe(false);
     expect(h.c.signingIn("codex", "CHY")).toBe(false);

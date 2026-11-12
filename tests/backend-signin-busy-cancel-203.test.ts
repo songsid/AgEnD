@@ -89,7 +89,7 @@ describe("closing the default account's dialog ends the run it started (BrowserS
     let state = snapshot();
     return (r: Req) => {
       if (r.url !== DEFAULT_ENDPOINT) return {};
-      if (r.method === "POST" && r.body?.operation === "start") state = snapshot({ login: waitingForCode });
+      if (r.method === "POST" && r.body?.operation === "start") state = snapshot({ login: waitingForCode, started: waitingForCode.id });   // the server names the run its start CREATED
       if (r.method === "POST" && r.body?.operation === "cancel") state = snapshot();
       return state;
     };
