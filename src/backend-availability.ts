@@ -281,9 +281,27 @@ export const STATIC_VERSION_FILES: Readonly<Record<string, (path: string) => str
 };
 
 /**
+ * Grok's installer drops one file, `<grok home>/downloads/grok-<target>` (no version in its name), and the launcher `~/.grok/bin/grok` links to it. The CLI keeps the version that last
+ * set up its home in `<grok home>/.metadata_version` (`1.0.77`; observed with grok 1.0.77, written on its first run). That records the installed version only while no newer binary
+ * has been put there since: a file older than the binary it sits beside says nothing about it, so it is read only when it is at least as new as the binary (AGEND-223). Reading it starts
+ * nothing. Null (unknown) when the binary is not in a grok home's `downloads/`, the file is missing, older than the binary, or not a plain x.y.z.
+ */
+async function grokInstalledVersion(real: string): Promise<string | null> {
+  const downloads = dirname(real);
+  if (!downloads.endsWith("/downloads")) return null;
+  try {
+    const marker = join(dirname(downloads), ".metadata_version");
+    const [bin, meta] = await Promise.all([stat(real), stat(marker)]);
+    if (meta.mtimeMs < bin.mtimeMs) return null;
+    const text = (await readFile(marker, "utf8")).trim();
+    return /^\d+\.\d+\.\d+$/.test(text) ? text : null;
+  } catch { return null; }
+}
+
+/**
  * The version from what is on disk, starting nothing: a launcher's own version file (muse), else a version segment
  * the package.json of the npm package that owns the binary (under node_modules), else a version segment of the real
- * path in a layout we know (claude's `…/versions/2.1.302`, codex's `…/releases/0.162.1-<target>/`). Null when none says.
+ * path in a layout we know (claude's `…/versions/2.1.302`, codex's `…/releases/0.162.1-<target>/`), else grok's `.metadata_version` beside its download. Null when none says.
  */
 export async function staticBackendVersion(backend: string, path: string): Promise<string | null> {
   const file = STATIC_VERSION_FILES[backend];
@@ -291,6 +309,7 @@ export async function staticBackendVersion(backend: string, path: string): Promi
   let real: string;
   try { real = await realpath(path); } catch { return null; }
   const parts = real.split("/");
+  if (backend === "grok") { const v = await grokInstalledVersion(real); if (v) return v; }
   // An npm-installed CLI: the package that owns the binary (…/node_modules/<pkg> or …/node_modules/@scope/<pkg>). Read
   // first: an nvm prefix puts Node's own version in the path (…/nvm/versions/node/v22.22.2/…, #2078 review).
   const nm = parts.lastIndexOf("node_modules");
@@ -311,34 +330,18 @@ export async function staticBackendVersion(backend: string, path: string): Promi
 }
 
 /**
- * Backends whose `--version` is a local read that never starts an update or a vendor request (AGEND-223): both are single-file binaries with no version on disk, so where no network
- * namespace can be made (a Docker container: `unshare -rn` is "Operation not permitted" there) the netless run is impossible and the card read "installed ?" forever. For these two only,
- * `--version` then runs directly — still under the no-update switches, the memory scope where systemd can make one, and the 5 s deadline. Evidence: `agy --version` and `grok --version`
- * leave `last_check.timestamp` / `version.json` (their update state) untouched and print the same inside a namespace with no network. Every other backend keeps the strict rule
- * (muse never; the rest unknown), since nothing shows their `--version` is as quiet.
- */
-export const DIRECT_VERSION_BACKENDS: ReadonlySet<string> = new Set(["antigravity", "grok"]);
-
-/** What the host can do for a `--version` run; tests pass their own. */
-export interface VersionProbeCaps { netless: () => Promise<boolean>; scope: () => Promise<boolean>; }
-const hostVersionCaps: VersionProbeCaps = { netless: canRunNetless, scope: canScope };
-
-/**
  * The version, without letting any CLI change anything or reach the network (the leader's rule, #2078):
  * 1. what is on disk (staticBackendVersion) — every OS, every backend;
  * 2. else, on Linux where an unprivileged network namespace can be made, `<path> --version` inside it (no network),
  *    with the CLIs' no-update switches, a deadline and (where systemd can) a memory cap; muse never (STATIC_VERSION_FILES);
- * 3. else, for DIRECT_VERSION_BACKENDS only (Linux), the same run without the namespace (AGEND-223);
- * 4. else unknown — never a networked `--version`. No version is no "too old" claim: the backend stays selectable.
+ * 3. else unknown — never a networked `--version`. No version is no "too old" claim: the backend stays selectable.
  */
-export async function probeBackendVersion(backend: string, path: string, caps: VersionProbeCaps = hostVersionCaps): Promise<string | null> {
+export async function probeBackendVersion(backend: string, path: string): Promise<string | null> {
   const known = await staticBackendVersion(backend, path);
   if (known || STATIC_VERSION_FILES[backend]) return known;
-  const netless = await caps.netless();
-  if (!netless && !(DIRECT_VERSION_BACKENDS.has(backend) && process.platform === "linux")) return null;
-  const run = ["env", ...Object.entries(NO_UPDATE_ENV).map(([k, v]) => `${k}=${v}`), path, "--version"];
-  const argv = netless ? ["unshare", "-rn", "--", ...run] : run;
-  const child = (await caps.scope())
+  if (!(await canRunNetless())) return null;
+  const argv = ["unshare", "-rn", "--", "env", ...Object.entries(NO_UPDATE_ENV).map(([k, v]) => `${k}=${v}`), path, "--version"];
+  const child = (await canScope())
     ? spawnProbeCommand("systemd-run", ["--user", "--scope", "-q", "-p", `MemoryMax=${VERSION_PROBE_MEMORY}`, "--", ...argv])
     : spawnProbeCommand(argv[0]!, argv.slice(1));
   return parseVersion(await answer(child, 5000));

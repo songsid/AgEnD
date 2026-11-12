@@ -206,38 +206,6 @@ describe("#2078 review: a probe never lets a CLI change itself or reach a vendor
   });
 });
 
-describe("AGEND-223: --version where no network namespace can be made (a Docker container)", () => {
-  const scratch = () => mkdtempSync(join(tmpdir(), "avail-bin-223-"));
-  const noNetns = { netless: async () => false, scope: async () => false };
-  const fake = (body: string) => { const dir = scratch(); const path = join(dir, "cli"); writeFileSync(path, `#!/bin/sh\n${body}\n`, { mode: 0o755 }); return { dir, path }; };
-  it.skipIf(process.platform !== "linux")("agy and grok are read by running `--version` directly, with the no-update switches", async () => {
-    const { probeBackendVersion } = await import("../src/backend-availability.js");
-    const { path } = fake('echo "tool 1.5.6 ${DISABLE_AUTOUPDATER:-0}${CI:-0}"');
-    expect(await probeBackendVersion("antigravity", path, noNetns)).toBe("1.5.6");
-    expect(await probeBackendVersion("grok", path, noNetns)).toBe("1.5.6");
-    const { path: grokLike } = fake('echo "grok 1.0.77 (50ca579fa996)"');
-    expect(await probeBackendVersion("grok", grokLike, noNetns)).toBe("1.0.77");
-  });
-  it.skipIf(process.platform !== "linux")("any other backend is still not started (unknown), and muse never is", async () => {
-    const { probeBackendVersion } = await import("../src/backend-availability.js");
-    const { dir, path } = fake('touch "$(dirname "$0")/ran"; echo 9.9.9');
-    for (const backend of ["kiro-cli", "opencode", "gemini", "codex", "muse"]) expect(await probeBackendVersion(backend, path, noNetns)).toBeNull();
-    expect(existsSync(join(dir, "ran"))).toBe(false);
-  });
-  it.skipIf(process.platform !== "linux")("no output, a failure or garbage is unknown (null), not a version", async () => {
-    const { probeBackendVersion } = await import("../src/backend-availability.js");
-    expect(await probeBackendVersion("antigravity", fake("exit 1").path, noNetns)).toBeNull();
-    expect(await probeBackendVersion("antigravity", fake('echo "no version here"').path, noNetns)).toBeNull();
-    expect(await probeBackendVersion("antigravity", join(scratch(), "missing"), noNetns)).toBeNull();
-  });
-  it("where a namespace can be made the run stays inside it (the strict rule is unchanged)", async () => {
-    const { probeBackendVersion } = await import("../src/backend-availability.js");
-    const { path } = fake('echo "$(tail -n +3 /proc/net/dev | wc -l | tr -d " ").0.0"');
-    const got = await probeBackendVersion("antigravity", path, { netless: async () => true, scope: async () => false });
-    expect(got === null || got === "1.0.0").toBe(true);   // null where this sandbox forbids `unshare -rn`
-  });
-});
-
 describe("#2078 review: the logins read are the ones the CLI reads", () => {
   const home = () => mkdtempSync(join(tmpdir(), "avail-home2-"));
   const put = (path: string) => { mkdirSync(join(path, ".."), { recursive: true }); writeFileSync(path, "{\"x\":1}"); };

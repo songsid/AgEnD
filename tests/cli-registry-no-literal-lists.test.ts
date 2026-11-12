@@ -32,7 +32,7 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
     "src/config-validator.ts": 2, "src/config.ts": 2, "src/outbound-schemas.ts": 1, "src/backend/types.ts": 2, "src/bug-report-cli.ts": 1, "src/setup-wizard.ts": 1, "src/quickstart-api.ts": 1,
     "src/topic-commands.ts": 2, "src/channel/adapters/discord.ts": 2, "src/tips.ts": 3, "src/cli.ts": 3, "src/ui/panel-fleet.js": 3,
   } },
-  { why: "per-backend behaviour switches (steer, effort, MCP mode, the Codex speed field, the flag that stops a Windows CLI updating itself, and which single-file CLIs may run `--version` directly where no network namespace can be made: AGEND-223)", files: { "src/backend-availability.ts": 1, "src/steer-capability.ts": 1, "src/backend/launch-effort.ts": 1, "src/ui/settings-model.js": 3, "src/ui/settings-dialogs.js": 1, "src/windows-cli-providers.ts": 2 } },
+  { why: "per-backend behaviour switches (steer, effort, MCP mode, the Codex speed field, the flag that stops a Windows CLI updating itself)", files: { "src/steer-capability.ts": 1, "src/backend/launch-effort.ts": 1, "src/ui/settings-model.js": 3, "src/ui/settings-dialogs.js": 1, "src/windows-cli-providers.ts": 2 } },
   { why: "display names, marks and colours, and the vendor commands the Runtime page shows (the standalone setup script cannot import the registry)", files: {
     "src/ui/panel-chat.js": 1, "src/ui/shared/instance-nav.js": 2, "src/ui/fleet-office-model.js": 1, "src/ui/provider-marks.js": 1, "src/ui/shared/panel-view.js": 1, "src/interaction-observation.ts": 3,
     "src/ui/structured-signin.js": 1, "src/ui/runtime-cli-install.js": 1,
