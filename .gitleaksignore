@@ -37,3 +37,9 @@ d51e4bc0c6a46cd5fedb9baccd50f1b047bad4d2:docs/screenshots/subagent-row/review-fi
 # per-commit scan. Exact historical commit/path/rule/line only; no rule, path, future commit or other finding is exempted. Delete with the PR's squash.
 37ee49537faa1a68f4c9dd51e7aeae359ac7fd94:tests/chat-activity-197-server.test.ts:generic-api-key:90
 37ee49537faa1a68f4c9dd51e7aeae359ac7fd94:tests/chat-activity-197-server.test.ts:generic-api-key:130
+
+# PR #3710: a synthetic placeholder value the tests redact and assert is absent (obviously fake, not a real secret). The current tree
+# builds it at run time and contains no such literal; commit 66467a67f added it and no later commit can remove it from the per-commit
+# scan. Exact historical commit/path/rule/line only; no rule, path, future commit or other finding is exempted.
+66467a67f396aceeb9037c4c9cfc8aff994dd749:tests/chat-activity-agy-grok-191.test.ts:generic-api-key:146
+66467a67f396aceeb9037c4c9cfc8aff994dd749:tests/chat-activity-agy-grok-191.test.ts:generic-api-key:263
