@@ -28,6 +28,8 @@ const {hostSample}=await import(process.argv[2]+'/scripts/manual/hub-enrolment-c
 const {requireHostBudget}=await import(process.argv[2]+'/scripts/manual/hub-enrolment-code-campaign/guard.mjs');
 const sample=hostSample();requireHostBudget(sample.load1,sample.availableMiB);console.log(JSON.stringify({hostPreflight:sample}));
 JS
+pw="$(realpath "${CAMPAIGN_PW_DIR:-$root/.artifacts/hub-enrolment-code-campaign-deps}")"
+node -e 'const p=require(process.argv[1]+"/node_modules/playwright-core/package.json");if(p.version!=="1.64.0")throw Error("Pinned playwright-core1.64.0 required")' "$pw"
 git -C "$root" diff --exit-code --quiet
 git -C "$root" diff --cached --exit-code --quiet
 # A private per-attempt lock and CID ensure cleanup can never stop a pre-existing container.
@@ -93,9 +95,10 @@ docker --config "$out/docker-config" run --rm --name "ridge-code-$nonce" --cidfi
  --mount "type=bind,src=$(realpath "$root/node_modules"),dst=/work/node_modules,readonly" \
  --mount "type=bind,src=$out/legacy,dst=/legacy,readonly" \
  --mount "type=bind,src=$(realpath "$root/node_modules"),dst=/legacy/node_modules,readonly" \
+ --mount "type=bind,src=$pw,dst=/pw,readonly" \
  --mount "type=bind,src=$out/control,dst=/control,readonly" --mount "type=bind,src=$out/evidence,dst=/evidence" \
  -e SAFE_RUN=1 -e AGEND_OWNED_CONTAINER=hub-enrolment-code-campaign -e CAMPAIGN_SHA="$sha" \
- -e REPO=/work -e OUT=/evidence -e HOME=/tmp/home -e AGEND_HOME=/tmp/home -e XDG_CACHE_HOME=/tmp/cache \
+ -e PW_DIR=/pw -e REPO=/work -e OUT=/evidence -e HOME=/tmp/home -e AGEND_HOME=/tmp/home -e XDG_CACHE_HOME=/tmp/cache \
  "ridge-code-campaign:$nonce" node --import tsx scripts/manual/hub-enrolment-code-campaign/entry.mts
 # All data remains private until reviewed. STOP is operator-controlled and can be touched as soon as overlap is reported.
 echo "Campaign receipt: $out/evidence/receipt.json"

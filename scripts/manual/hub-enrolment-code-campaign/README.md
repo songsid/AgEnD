@@ -30,7 +30,10 @@ other heavy campaigns; any reported overlap requires STOP.
 
 The launcher snapshots committed source only, refuses tracked modifications and
 SHA drift, and requires both digest-pinned base images to be cached. It performs
-no pull or package install. Its Docker config is private and empty. The single
+no pull or package install. Pinned playwright-core1.64.0 must be prepared in
+`CAMPAIGN_PW_DIR/node_modules/playwright-core` (default: private `.artifacts/
+hub-enrolment-code-campaign-deps`); it is separately mounted read-only at /pw.
+The preparation verifies the npm tarball SHA512. Its Docker config is private and empty. The single
 container has no network, no capabilities, no new privileges, a read-only root,
 2 CPUs, 3 GiB memory with no extra swap, 256 PIDs, 256 MiB shared memory and a
 1.5 GiB private tmpfs. It has no host lifecycle, pilot or user-state mount.

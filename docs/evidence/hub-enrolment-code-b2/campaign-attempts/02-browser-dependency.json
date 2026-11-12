@@ -1,0 +1,35 @@
+{
+  "source": "3f8586f8b04e081f883fb97a723e37af85139296",
+  "goReference": "xmsg-1794454315558-4oi40c",
+  "window": {
+    "from": 1794454900931,
+    "until": 1794462100931
+  },
+  "sourceVersionStamp": "2.3.5-alpha.16",
+  "startedAt": 1794454980482,
+  "phases": [
+    {
+      "name": "build",
+      "startedAt": 1794454980483,
+      "finishedAt": 1794454990166,
+      "exitCode": 0
+    },
+    {
+      "name": "protocol",
+      "startedAt": 1794454990199,
+      "finishedAt": 1794455031562,
+      "exitCode": 0
+    },
+    {
+      "name": "ui-capacity",
+      "startedAt": 1794455031562,
+      "finishedAt": 1794455035893,
+      "exitCode": 1
+    }
+  ],
+  "ready": false,
+  "boundary": "Source build, owned network-none container, synthetic verified LDAPS; five real Fleet web/settings/join/member services per mass wave with Agent lifecycle refused. Not npm/systemd or real accounts/AD/pilot/native Windows.",
+  "error": "Error: ui-capacity did not complete successfully",
+  "finishedAt": 1794455035894,
+  "failureDetail": "Protocol116/116 passed; UI phase stopped at missing playwright-core import before browser/Fleet launch. The dependency is now pinned in a separate owned read-only /pw mount, leaving the shared module store untouched. Owned container/image cleaned."
+}

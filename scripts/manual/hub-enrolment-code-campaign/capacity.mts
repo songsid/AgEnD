@@ -24,7 +24,7 @@ const {createJoinApprovalQueue}=await import('/tmp/b1-dist/ui/hub-join-queue.js'
 const {createLocalJoin,saveLocalJoin}=await import('/tmp/b1-dist/hub/join/local-journal.js');
 const {syncJoinPrivate}=await import('/tmp/b1-dist/hub/join/private.js');
 const {companyJoinRig}=await import('../../../tests/support/hub-company-join-rig.js');
-const {chromium}=await import('playwright-core');
+const {chromium}=createRequire((process.env.PW_DIR ?? '/work')+'/')('playwright-core');
 let rig:any,browser:any,ui:any;const clients:any[]=[],online=new Set<string>();
 const group='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 try {
