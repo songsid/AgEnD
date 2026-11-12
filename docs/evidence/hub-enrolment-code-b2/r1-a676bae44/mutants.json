@@ -1,0 +1,83 @@
+{
+  "baseline": "e4b018d36d3a19dc431109f4504a02700725d125",
+  "mutants": [
+    {
+      "mutant": "P1",
+      "file": "src/ui/hub-quick-pairing.js",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-quick-pairing-ui.test.ts",
+        "--maxWorkers=1",
+        "--cache=false",
+        "--configLoader",
+        "runner",
+        "--exclude",
+        "**/.artifacts/**",
+        "-t",
+        "B2 notice renderer"
+      ],
+      "exitCode": 1,
+      "semanticFailure": true
+    },
+    {
+      "mutant": "P3",
+      "file": "src/ui/hub-quick-pairing.js",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-quick-pairing-ui.test.ts",
+        "--maxWorkers=1",
+        "--cache=false",
+        "--configLoader",
+        "runner",
+        "--exclude",
+        "**/.artifacts/**",
+        "-t",
+        "B2 notice renderer"
+      ],
+      "exitCode": 1,
+      "semanticFailure": true
+    },
+    {
+      "mutant": "C2",
+      "file": "src/ui/hub-client.js",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-enrolment-code-client-b2.test.ts",
+        "--maxWorkers=1",
+        "--cache=false",
+        "--configLoader",
+        "runner",
+        "--exclude",
+        "**/.artifacts/**",
+        "-t",
+        "retires the prior session"
+      ],
+      "exitCode": 1,
+      "semanticFailure": true
+    },
+    {
+      "mutant": "C3",
+      "file": "src/ui/hub-client.js",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-enrolment-code-client-b2.test.ts",
+        "--maxWorkers=1",
+        "--cache=false",
+        "--configLoader",
+        "runner",
+        "--exclude",
+        "**/.artifacts/**",
+        "-t",
+        "retires the prior session"
+      ],
+      "exitCode": 1,
+      "semanticFailure": true
+    }
+  ],
+  "sourceRestored": true,
+  "initialSelectorLimit": "Initial commands also collected archived campaign test copies. Those logs are retained separately. The initial broad baseline was intentionally cancelled(130); only the explicit archive-excluding runs count."
+}

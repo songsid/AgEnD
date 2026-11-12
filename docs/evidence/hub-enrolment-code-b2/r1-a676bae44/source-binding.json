@@ -1,0 +1,16 @@
+{
+  "head": "a676bae440183eb6d160bcfacc9fdc39133251f6",
+  "previous": "e4b018d36d3a19dc431109f4504a02700725d125",
+  "changed": [
+    "tests/hub-enrolment-code-client-b2.test.ts",
+    "tests/hub-quick-pairing-ui.test.ts"
+  ],
+  "srcTree": "a071ba5f448023dd71ca48747aca7c450852275e",
+  "productIdentical": true,
+  "tests": {
+    "tests/hub-enrolment-code-client-b2.test.ts": "25fb79c7c471960de6a154a07bbe574baf94080f17720d2155cf77b7003ac0fe",
+    "tests/hub-quick-pairing-ui.test.ts": "591919d20f6476870f3fdd62c7c87a2d501fa295d07867f5005f6a7e1b6ef46d"
+  },
+  "runtimeEvidenceCommit": "5f852b3a29a86624e479b3e0a504e5b3615ccbce",
+  "runtimeSource": "e4b018d36d3a19dc431109f4504a02700725d125"
+}

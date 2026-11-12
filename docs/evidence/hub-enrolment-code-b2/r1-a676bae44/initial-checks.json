@@ -1,0 +1,46 @@
+[
+  {
+    "check": "focused",
+    "command": [
+      "node_modules/.bin/vitest",
+      "run",
+      "tests/hub-quick-pairing-ui.test.ts",
+      "tests/hub-enrolment-code-client-b2.test.ts",
+      "tests/hub-enrolment-code-ui-b2.test.ts",
+      "tests/hub-enrolment-code-slot-b2.test.ts",
+      "tests/hub-enrolment-code-session-b2.test.ts",
+      "tests/hub-enrolment-code-member-ui-b2.test.ts",
+      "tests/hub-enrolment-code-picker-b2.test.ts",
+      "tests/hub-join-queue-b2.test.ts",
+      "tests/hub-join-approval-ui-b2.test.ts",
+      "tests/hub-groups-ui-s89.test.ts",
+      "--maxWorkers=1",
+      "--cache=false",
+      "--configLoader",
+      "runner"
+    ],
+    "exitCode": 130
+  },
+  {
+    "check": "source-types",
+    "command": [
+      "node",
+      "node_modules/@typescript/native/bin/tsc",
+      "--noEmit",
+      "-p",
+      "tsconfig.json"
+    ],
+    "exitCode": 0
+  },
+  {
+    "check": "test-types",
+    "command": [
+      "node",
+      "node_modules/@typescript/native/bin/tsc",
+      "--noEmit",
+      "-p",
+      "tsconfig.test.json"
+    ],
+    "exitCode": 0
+  }
+]

@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-enrolment-code-ui-b2
+
+
+ Test Files  10 passed (10)
+      Tests  161 passed (161)
+   Start at  00:55:55
+   Duration  19.65s (transform 3.49s, setup 405ms, import 4.00s, tests 14.12s, environment 1ms)
+

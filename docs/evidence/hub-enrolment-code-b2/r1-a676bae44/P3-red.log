@@ -1,0 +1,61 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-enrolment-code-ui-b2
+
+ ❯ tests/hub-quick-pairing-ui.test.ts (23 tests | 2 failed | 19 skipped) 218ms
+     × B2 notice renderer requests the snapshot version supported by its client (v3=true) 59ms
+     × B2 notice renderer requests the load version supported by its client (v3=true) 35ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-quick-pairing-ui.test.ts > security notices and exact owner narrowing > B2 notice renderer requests the snapshot version supported by its client (v3=true)
+AssertionError: expected [ [] ] to deeply equal [ [ 3 ] ]
+
+- Expected
++ Received
+
+  [
+-   [
+-     3,
+-   ],
++   [],
+  ]
+
+ ❯ tests/hub-quick-pairing-ui.test.ts:92:61
+     90|     const c = fake({ ...(v3 ? { pairingNoticesV3: true } : {}), pairin…
+     91|     const p = await mount(c, ui.PairingNotices, {});
+     92|     expect(subscribe.mock.calls.map(call => call.slice(2))).toEqual([v…
+       |                                                             ^
+     93|     expect(c.pairingNotices).not.toHaveBeenCalled();
+     94|     expect(txt(p)).toContain(v3 ? codeNotice.label : notice.label);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-quick-pairing-ui.test.ts > security notices and exact owner narrowing > B2 notice renderer requests the load version supported by its client (v3=true)
+AssertionError: expected [ [] ] to deeply equal [ [ 3 ] ]
+
+- Expected
++ Received
+
+  [
+-   [
+-     3,
+-   ],
++   [],
+  ]
+
+ ❯ tests/hub-quick-pairing-ui.test.ts:104:61
+    102|     const p = await mount(c, ui.PairingNotices, {});
+    103|     expect(read.mock.calls).toEqual([v3 ? [3] : []]);
+    104|     expect(subscribe.mock.calls.map(call => call.slice(2))).toEqual([v…
+       |                                                             ^
+    105|     expect(txt(p)).toContain(v3 ? codeNotice.label : notice.label);
+    106|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed | 19 skipped (23)
+   Start at  00:55:53
+   Duration  538ms (transform 177ms, setup 85ms, import 112ms, tests 218ms, environment 0ms)
+

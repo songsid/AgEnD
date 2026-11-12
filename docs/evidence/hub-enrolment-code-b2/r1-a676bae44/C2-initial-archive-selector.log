@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-enrolment-code-ui-b2
+
+ ❯ tests/hub-enrolment-code-client-b2.test.ts (10 tests | 1 failed | 8 skipped) 43ms
+     × retires the prior session's notice capability after 401 20ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-enrolment-code-client-b2.test.ts > B2 code management through the Hub's same-origin client > retires the prior session's notice capability after 401
+AssertionError: expected '/hub/v1/notices?v=3' to be '/hub/v1/notices?v=2' // Object.is equality
+
+Expected: "/hub/v1/notices?v=2"
+Received: "/hub/v1/notices?v=3"
+
+ ❯ tests/hub-enrolment-code-client-b2.test.ts:71:54
+     69|         expect((await c.enrolmentCodes()).status).toBe(401);
+     70|       } else await c.signOut();
+     71|       await c.pairingNotices(3); expect(urls.at(-1)).toBe("/hub/v1/not…
+       |                                                      ^
+     72|       c.subscribePairingNotices(() => {}, () => {}, 3)();
+     73|       expect(streams).toEqual(["/hub/v1/notices/events?v=2"]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 24 skipped (25)
+      Tests  1 failed | 1 passed | 200 skipped (202)
+   Start at  00:53:48
+   Duration  4.73s (transform 752ms, setup 835ms, import 1.21s, tests 43ms, environment 2ms)
+

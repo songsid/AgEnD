@@ -1,0 +1,22 @@
+{
+  "head": "a676bae440183eb6d160bcfacc9fdc39133251f6",
+  "files": {
+    "focused.log": "80dad3fdcbf136be8b841cdbc93223348a1189a16bb9691f250b0b0f9f832cf9",
+    "checks.json": "84187e5a543cb12900fde5013b814a71aae7ddc3e219a9eb5377cba57634f964",
+    "focused-archive-selector-cancelled.log": "bc0c24c0e6b2d5917b8da8ca9b5408f52714586702ee0bc4ae3779dacab85527",
+    "P3-red.log": "a9492626d583080e49b850204933ef6352f4b879e311d554fc2512ce758c7c44",
+    "test-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "source-binding.json": "55cda6d045b61ab508f7b0554497fc86f45bb1903983c8c760171d8c3f7c7cec",
+    "C3-red.log": "ad6d191089e84b5dbd50e5856701c5a63ce08219cf8693bc1d907cc30ff1f735",
+    "mutants.json": "950fdbd385c12da6f8263d2b90b5921f3b0002ee1e23dc656f90600271b6a783",
+    "C3-initial-archive-selector.log": "5d0c2cd996d9cf9fac029c628ad1b612180b7001cfcf880e71073fae3c582ff5",
+    "P1-red.log": "9e8f8eff43aae5cb8bd864312f0b4fe5b2f9a4dc10140b7a7475a3885b452ba8",
+    "README.md": "8198f8f0cac797e8ea1ff3d841de64dac82c090869d386006bb8dcdd953c7095",
+    "P3-initial-archive-selector.log": "5c2762d2fb80d439272d4dbe444491c8858b07628b30092d12b6afd00c6fbc80",
+    "initial-checks.json": "c3761f0be1c5356f697fdbb81c3cf66c4bc1fb74ea8eb21f1cecad93329646bf",
+    "C2-red.log": "fe4ac4a28a59d77ef5fed2d4424dd2f221c33940ebdb244d9f106d6325c81cf0",
+    "source-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "C2-initial-archive-selector.log": "f4e2a702a877b1a457f4966fc4950414910a7d7b68e7b831b9104bc1fa7e3d10",
+    "P1-initial-archive-selector.log": "7f2b16439493dda0dd0073de71622419a73e85632f9f1cf9d6e51cdc72512bbd"
+  }
+}
