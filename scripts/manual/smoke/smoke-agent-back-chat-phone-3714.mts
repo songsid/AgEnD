@@ -1,0 +1,100 @@
+/** Owned cookie/HTTP UI rehearsal; no Fleet start, CLI, account or settings writes. */
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { loadavg } from "node:os";
+import { bootFixture } from "../smoke-fixture/index.mts";
+const repo=resolve(process.env.REPO!),out=resolve(process.env.OUT!);
+const git=(...a:string[])=>execFileSync("git",a,{cwd:repo,encoding:"utf8"}).trim();
+const digest=(b:string|Buffer)=>createHash("sha256").update(b).digest("hex");
+const dirty=!!git("status","--porcelain","--untracked-files=no");assert.ok(!dirty||process.env.DIAGNOSTIC_DIRTY==="1");
+assert.ok(loadavg()[0]<=10,"pause above host load10");
+const theme=process.env.THEME||"light",language=process.env.LANGUAGE||"zh-TW",phone=process.env.SCREEN==="phone",retain=process.env.RETAIN||"";
+const oldRef="6a39f3d1e8245df47839470c73e47957b7900bd4";
+const changed=["src/ui/panel-details.js","src/ui/chat-workspace.js","src/ui/chat-popout-header.js","src/ui/agent-details-settings.js","src/ui/shared/app.css"];
+const sources=[...changed,"src/ui/shared/instance-nav.js","src/ui/shared/app-shell.js","src/ui/shared/app-nav.js","src/ui/shared/app-route.js","src/ui/shared/app-store.js","src/ui/shared/app-ctx.js","src/ui/shared/app-i18n.js","src/ui/shared/app.css","src/ui/shared/tokens.css","src/ui/agent-details-settings.js","src/ui/settings-dialogs.js","src/web-api.ts","src/fleet-manager.ts","scripts/manual/smoke-fixture/index.mts","scripts/manual/smoke-fixture/data.mts"];
+const inputs:Record<string,string[]>={},assets:Record<string,string[]>={},substitutions:Record<string,string[]>={};
+const record=(m:Record<string,string[]>,path:string,b:string|Buffer)=>{const paths=m[digest(b)]||=[];if(!paths.includes(path))paths.push(path);};
+for(const p of sources)record(inputs,p,readFileSync(join(repo,p)));record(inputs,"harness",readFileSync(new URL(import.meta.url)));mkdirSync(out,{recursive:true});
+const receipt:any={head:git("rev-parse","HEAD"),tree:git("rev-parse","HEAD^{tree}"),dirty,theme,language,phone,retain,oldRef,inputs,assets,substitutions,cases:[],errors:[],effects:[],previews:[],external:[],scope:"Owned scratch FleetManager with real cookie/HTTP/SSE/UI; fixture status and names, no Fleet start/CLI/account/AD/live work; edit unsaved description only, never Apply"};
+const fx=await bootFixture({port:Number(process.env.HP||56046),instances:6,classic:false});let ctx:any;const jobs:Promise<unknown>[]=[];
+try{
+ receipt.browserVersion=fx.browser.version();const a=fx.instances[1].name,b=fx.instances[2].name,status=fx.fm.getUiStatus.bind(fx.fm);
+ fx.fm.getUiStatus=(...args:any[])=>{const s=status(...args);return {...s,instances:s.instances.map((it:any)=>({...it,...(it.name===a?{display_name:"Cairn"}:{}),...(it.name===b?{display_name:"AgEnD Leader"}:{})}))};};
+ fx.fm.webPrefs.write("operator",new Map([["theme",theme],["lang",language],["nav.favorites",[a]]]));
+ ctx=await fx.browser.newContext({viewport:phone?{width:390,height:844}:{width:1600,height:1000},colorScheme:theme,locale:language,hasTouch:phone});
+ await ctx.addInitScript({content:"window.__name = (f) => f;"});
+ await ctx.addInitScript(()=>{const Source=window.EventSource;(window as any).__streams={active:0,max:0};window.EventSource=class extends Source{ended=false;constructor(url:string|URL,opts?:EventSourceInit){super(url,opts);const c=(window as any).__streams;c.max=Math.max(c.max,++c.active);}close(){if(!this.ended){this.ended=true;(window as any).__streams.active--;}super.close();}};for(const key of ["agend_tour_done","agend_firstrun_dismissed","agend_prefs_synced"])localStorage.setItem(key,"1");});
+ const page=await ctx.newPage();page.setDefaultTimeout(10000);page.on("pageerror",(e:Error)=>receipt.errors.push(e.message));
+ ctx.on("request",(r:any)=>{const u=new URL(r.url());if(u.origin!==fx.base&&!["data:","blob:"].includes(u.protocol))receipt.external.push(u.origin);if(r.method()!=="GET"&&u.pathname!=="/auth/login"){if(u.pathname==="/api/settings/status-emojis/preview"&&r.method()==="POST")receipt.previews.push(u.pathname);else receipt.effects.push({path:u.pathname,method:r.method()});}});
+ page.on("response",(r:any)=>{const u=new URL(r.url());if(u.origin===fx.base&&/\.(js|css)$/.test(u.pathname))jobs.push(r.body().then((bytes:Buffer)=>record(assets,u.pathname,bytes)).catch(()=>{(receipt.omitted||=[]).push(u.pathname);}));});
+ await page.route("**/*",async(route:any)=>{const u=new URL(route.request().url());if(u.origin!==fx.base&&!["data:","blob:"].includes(u.protocol))return route.abort();const p=u.pathname.startsWith("/assets/")?"src/ui/shared/"+u.pathname.slice(8):u.pathname.startsWith("/ui/js/")?"src/ui/"+u.pathname.slice(7):"";const keep=retain==="all"?changed:retain==="details"?[changed[0]]:retain==="workspace"?[changed[1]]:retain==="categories"?[changed[3]]:retain==="css"?[changed[4]]:[];if(keep.includes(p)){const bytes=execFileSync("git",["show",`${oldRef}:${p}`],{cwd:repo});record(substitutions,p,bytes);return route.fulfill({body:bytes,contentType:p.endsWith(".css")?"text/css":"text/javascript"});}return route.continue();});
+ const {tokenEpoch}=await import(repo+"/src/web-session.ts");fx.fm.initializeWebSessions();const code=fx.fm.webLoginCodes.issue({tier:"admin",epoch:tokenEpoch(fx.fm.webToken)}).display;
+ await page.goto(fx.base+"/signin");await page.locator("#code").evaluate((el:HTMLInputElement,code:string)=>{el.value=code;el.dispatchEvent(new Event("input",{bubbles:true}));el.form!.requestSubmit();},code);await page.waitForURL(fx.base+"/ui");
+ const tr=(en:string,zh:string)=>language==="en"?en:zh,details=(name:string)=>`/ui/fleet/agent/${encodeURIComponent(name)}`,chat=(name:string)=>`/ui/chat/${encodeURIComponent(name)}`;
+ const go=async(path:string)=>{await page.evaluate(async(path:string)=>(await import("/assets/app-nav.js")).navigate(path),path);};
+ const settings=async(name:string)=>{await go(details(name)+"?cat=basic");await page.locator('.p-details input[id$="ag-desc"]').waitFor();};
+ const showSidebar=async()=>{if(phone){await page.locator("#sbOpen").click();await page.waitForFunction(()=>document.querySelector("#sidebar")!.getBoundingClientRect().left>=-.5);}};
+ const row=(name:string)=>page.locator(`.inst-nav a.inst[href$="/${encodeURIComponent(name)}"]`).first();
+ const check=(label:string,value:unknown)=>receipt.cases.push({label,value});
+ async function shot(label:string){await page.evaluate(async()=>{await document.fonts.ready;await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);});assert.ok(loadavg()[0]<=10,"load above10: close owned browser and pause");const geometry=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth,streams:(window as any).__streams,buttons:[...document.querySelectorAll<HTMLElement>('.agent-back-chat,.ws-pane-close')].map(el=>{const r=el.getBoundingClientRect();return{kind:el.matches(".agent-back-chat")?"return":"close",rightGap:(el.closest(".agent-settings-heading,.agent-settings-index-return")?.getBoundingClientRect().right??r.right)-r.right,label:el.getAttribute("aria-label"),x:r.x,y:r.y,width:r.width,height:r.height,visible:r.width>0&&r.height>0,inHeader:!!el.closest(".panel-head"),inContent:!!el.closest(".panel-body,.s-nav"),position:getComputedStyle(el).position};})}));assert.equal(geometry.overflow,false);assert.deepEqual(geometry.streams,{active:1,max:1});if(phone&&!retain)for(const r of geometry.buttons.filter((r:any)=>r.visible))assert.ok(r.width>=44&&r.height>=44);if(!retain)for(const r of geometry.buttons.filter((r:any)=>r.visible&&r.kind==="return")){assert.equal(r.inHeader,false);assert.equal(r.inContent,true);assert.ok(Math.abs(r.rightGap)<1);}const file=`${theme}-${language}-${label}.png`;if(phone&&!retain&&(label==="settings"||label==="settings-index")){
+  const heading=await page.evaluate((label:string)=>{
+   const row=document.querySelector(label==="settings"?".agent-settings-heading":".agent-settings-index-return")!;
+   const visible=(el:Element)=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0;};
+   const rect=(el:Element)=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,center:r.y+r.height/2};};
+   const title=row.querySelector("h2")!,back=row.querySelector(".s-back"),close=row.querySelector(".agent-back-chat")!;
+   return {titles:[...document.querySelectorAll(".p-details h2")].filter(visible).map(el=>el.textContent),title:rect(title),back:back?rect(back):null,close:rect(close),oldSectionLabels:row.querySelectorAll(".s-back-here").length};
+  },label);
+  assert.equal(heading.titles.length,1);assert.equal(heading.oldSectionLabels,0);
+  assert.ok(Math.abs(heading.title.center-heading.close.center)<1);
+  if(label==="settings"){assert.ok(heading.back);assert.ok(Math.abs(heading.back!.center-heading.close.center)<1);assert.ok(heading.back!.width>=44&&heading.back!.height>=44);assert.ok(heading.back!.x<heading.title.x&&heading.title.x<heading.close.x);}
+  check("single-phone-heading",heading);
+ }
+ await page.screenshot({path:join(out,file)});receipt.cases.push({label,file,geometry});}
+ if(phone){
+  await go(details(a));await page.locator('.p-details > .s-nav').waitFor();
+  const indexBack=page.locator('.agent-settings-index-return .agent-back-chat:visible');
+  if(retain==="categories"){assert.equal(await indexBack.count(),0);await showSidebar();await row(a).press("Enter");check("retained-index-fallback","old category module omits new child; selected sidebar still returns to Chat");}
+  else{assert.equal(await indexBack.getAttribute("aria-label"),tr("Back to chat","回到聊天"));assert.equal(await page.locator('.panel-head .agent-back-chat').count(),0);await shot("settings-index");await indexBack.click();check("index-return","phone category list return scrolls with its content and opens Chat");}
+  await page.locator("#msgIn").waitFor();
+ }
+ await settings(a);await shot("settings");
+ if(retain!=="details"){
+  assert.equal(await page.locator('.panel-head .agent-back-chat').count(),0);
+  const back=page.locator('.panel-body .agent-back-chat:visible');assert.equal(await back.count(),1);
+  const scroll=await back.evaluate(el=>{const body=el.closest('.panel-body')!;const before=el.getBoundingClientRect().top;body.scrollTop=Math.min(160,body.scrollHeight-body.clientHeight);const delta=body.scrollTop,after=el.getBoundingClientRect().top;body.scrollTop=0;return{delta,moved:before-after};});
+  if(scroll.delta>0)assert.ok(Math.abs(scroll.moved-scroll.delta)<1);check("content-placement",{headerReturn:0,bodyReturn:1,scroll});
+ }
+ {
+  if(retain==="details")assert.equal(await page.locator('.panel-head .agent-back-chat').count(),1);
+  const back=page.locator(".agent-back-chat:visible");assert.equal(await back.getAttribute("aria-label"),tr("Back to chat","回到聊天"));
+  await showSidebar();await row(a).focus();await row(a).press("Enter");
+  if(retain==="sidebar"){await page.waitForURL(fx.base+details(a));await back.click();check("retained-sidebar","old row keeps Settings; current X opens Chat");}
+  await page.locator("#msgIn").waitFor();check("native-enter",retain==="sidebar"?"legacy row + current X":"real Enter opens the selected agent Chat");
+  if(!retain){
+   await settings(a);await showSidebar();await row(b).click();await page.waitForURL(fx.base+details(b));await page.locator('.p-details .panel-title h1').filter({hasText:b}).waitFor();
+   assert.equal(await row(b).getAttribute("href"),chat(b));await showSidebar();await row(b).click();await page.locator("#msgIn").waitFor();check("second-click","first click changes agent and keeps Settings; second click opens Chat");
+   await settings(a);const field=page.locator('.p-details input[id$="ag-desc"]');await field.fill("Unsent M-2960 note");await page.locator(".s-pending").waitFor();
+   await page.locator(".agent-back-chat:visible").click();await page.locator('dialog[open] [data-confirm="yes"]').waitFor();await page.locator('dialog[open]').getByRole("button",{name:tr("Cancel","取消"),exact:true}).click();
+   assert.equal(await field.inputValue(),"Unsent M-2960 note");assert.ok(page.url().includes(details(a)));check("cancel-preserves-draft","Back to chat asks the existing unsaved-settings guard; Cancel keeps the draft");
+   await page.locator(".agent-back-chat:visible").click();await page.locator('dialog[open] [data-confirm="yes"]').click();await page.locator("#msgIn").waitFor();await shot("returned-chat");
+  }
+  if(!phone){
+   const target=row(b).locator("xpath=..");await target.hover();await target.locator(".inst-row-menu > button").click();await target.getByRole("menuitem",{name:tr("Open beside","在旁邊開啟"),exact:true}).click();
+   await page.locator('[data-pane="a"] textarea').fill("Preserved peer draft");await go(details(b)+"?cat=basic");await page.locator('[data-pane="b"] input[id$="ag-desc"]').waitFor();await shot("split-settings");
+   const close=page.locator('[data-pane="b"] .ws-pane-close');assert.equal(await close.getAttribute("aria-label"),tr("Close this pane","收起此格"));
+   assert.equal(await page.locator('.ws-pane-head .agent-back-chat').count(),0);
+   if(retain==="details"){await row(b).press("Enter");check("retained-details","old Settings cannot put a return in the new header; selected sidebar returns to Chat");}
+   else{await page.locator('[data-pane="a"] .panel-title h1').click();await page.locator('[data-pane="b"] .panel-body .agent-back-chat').click();}
+   await page.locator('[data-pane="b"] textarea').waitFor();assert.equal(await page.locator(".ws-pane").count(),2);assert.equal(await page.locator('[data-pane="a"] textarea').inputValue(),"Preserved peer draft");check("split-back","own content return opens Chat, peer draft and two-pane layout preserved");await shot("split-returned-chat");
+   await go(details(b)+"?cat=basic");await page.locator('[data-pane="b"] input[id$="ag-desc"]').waitFor();await page.locator('[data-pane="b"] .ws-pane-close').click();
+   await page.waitForFunction(()=>!document.querySelector('.chat-workspace'));assert.equal(await page.locator('#msgIn').inputValue(),"Preserved peer draft");check("header-close","Settings pane header X closes that pane, keeping peer draft");
+  }
+ }
+ await page.waitForFunction(()=>[...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].every(link=>!!link.sheet));
+ await page.evaluate(async()=>{await document.fonts.ready;await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);});
+ await Promise.all(jobs);assert.deepEqual(receipt.errors,[]);assert.deepEqual(receipt.effects,[]);assert.deepEqual(receipt.external,[]);receipt.completed=true;
+}finally{await ctx?.close();await fx.close();for(const p of sources)assert.ok(inputs[digest(readFileSync(join(repo,p)))]?.includes(p),`source changed:${p}`);writeFileSync(join(out,"receipt.json"),JSON.stringify(receipt,null,2)+"\n");}
+console.log(JSON.stringify({out,checks:receipt.cases.length,errors:receipt.errors.length}));

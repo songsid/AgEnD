@@ -30,7 +30,7 @@ import "/assets/chat-strings.js";
 import { api } from "./settings-confirm.js";
 import { InstanceBoardWork } from "./fleet-task-work.js";
 import { Icon } from "/assets/ui-icons.js";
-import { AgentCategoryNav, AgentPageHead, AgentSettingsPanels, agentKind, categoryFromSearch, categoryLabel, useAgentSettings } from "./agent-details-settings.js";
+import { AgentCategoryNav, AgentPageHead, AgentSettingsPanels, agentKind, categoryFromSearch, useAgentSettings } from "./agent-details-settings.js";
 import "./agent-page-strings.js";
 import { pt } from "./agent-page-strings.js";
 
@@ -187,10 +187,9 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   const Pending = sess.mod && sess.mod.PendingBar, OpCard = sess.mod && sess.mod.OperationCard;
   return html`<div data-effect-panel="details" class="panel p-details p-settings p-agent-page" data-view=${cat ? "section" : "index"}>
     <${PanelHeader} title=${name} sub=${sub} pageControls=${{ navKey }} pageActions=${items} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
-    <${AgentCategoryNav} name=${name} kind=${kind} cat=${shownCat} dirty=${dirty}>${!cat ? html`<div class="only-narrow"><div class="s-row agent-settings-index-return">${backLink()}</div></div>` : null}</${AgentCategoryNav}>
+    <${AgentCategoryNav} name=${name} kind=${kind} cat=${shownCat} dirty=${dirty}>${!cat ? html`<div class="only-narrow"><div class="s-row agent-settings-index-return"><h2>${pt("title")}</h2>${backLink()}</div></div>` : null}</${AgentCategoryNav}>
     <div data-trust="panel-content" class="panel-body"><div class="col" ref=${body}>
-      <a class="s-back" href=${detailsPath(name)}><${Icon} name="back" size=${16} /><span>${t("app.details")}</span><span class="s-back-here">${categoryLabel(kind, shownCat)}</span></a>
-      <div class="s-row agent-settings-heading"><${AgentPageHead} name=${name} kind=${kind} cat=${shownCat} inst=${null} />${backLink()}</div>
+      <div class="s-row agent-settings-heading"><a class="s-back" href=${detailsPath(name)}><${Icon} name="back" size=${16} /><span>${t("app.details")}</span></a><${AgentPageHead} name=${name} kind=${kind} cat=${shownCat} inst=${null} />${backLink()}</div>
       ${OpCard && sess.op ? html`<${OpCard} op=${sess.op} schema=${sess.data && sess.data.schema} />` : null}
       <div class="s-section-layout" data-agent-category=${shownCat}>
         <div class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-overview` : "ap-panel-overview"} hidden=${shownCat !== "overview"}>${overview}</div>
