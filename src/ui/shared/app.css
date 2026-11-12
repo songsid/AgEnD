@@ -636,9 +636,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
    Keep fieldsets as real boxes so disabled forms and their confirmation boundaries stay intact. */
 .p-settings > .panel-body > .col { width: 100%; max-width: var(--settings-width); min-width: 0; margin: 0 auto; container: settings-page / inline-size; }
 /* #3714: Settings return belongs to scrolling content; the pane-header X only closes a pane. */
-.agent-settings-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--s-3); }
+.agent-settings-heading.s-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--s-3); }
 .agent-settings-heading .s-page-head > div { min-width: 0; max-width: 100%; }
 .agent-settings-heading .s-scope { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.agent-settings-heading.s-row, .agent-settings-index-return.s-row { min-height: 0; padding: 0; border-radius: 0; background: none; }
 .agent-settings-index-return { justify-content: flex-end; width: 100%; }
 @media (max-width: 899px), (pointer: coarse) {
   .p-details .agent-back-chat { min-width: var(--tap); min-height: var(--tap); }

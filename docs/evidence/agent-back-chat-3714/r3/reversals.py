@@ -7,7 +7,7 @@ r={'head':git('rev-parse','HEAD'),'tree':git('rev-parse','HEAD^{tree}'),'runner'
 cases=[
  ('header-return','src/ui/panel-details.js', [('inst=${null} />${backLink()}</div>','inst=${null} /></div>'),('<${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>','<${Menu} items=${items} label=${t("app.more")} />${backLink()}</${PanelHeader}>')]),
  ('header-navigates','src/ui/chat-workspace.js',[('onClick=${() => pane.controller.closePane(pane.id)}','onClick=${() => pane.navigate("/ui/chat/"+encodeURIComponent(pane.name))}')]),
- ('wrong-owner','src/ui/panel-details.js',[('event.preventDefault(); pane.navigate(backToChat.path);','event.preventDefault(); navigate(backToChat.path);')]),
+ ('wrong-target','src/ui/panel-details.js',[('pane.navigate(backToChat.path);','pane.navigate(chatPath(pane.controller.current()[pane.id === "a" ? "b" : "a"].route.instance));')]),
  ('modified-click','src/ui/panel-details.js',[(' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey','')]),
  ('index-return','src/ui/agent-details-settings.js',[('${children}<div class="s-nav-groups">','<div class="s-nav-groups">')]),
 ]
