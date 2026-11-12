@@ -107,5 +107,6 @@ The administrator can still explicitly approve ordinary manual pairing when a co
 
 ## See also
 
+- [Connect a Fleet to a Hub](hub-join.md): the one-box connection and the administrator's **Let colleagues join** card.
 - [Web dashboard](web-dashboard.md): signing in to your own fleet's dashboard.
 - [Concepts](concepts.md): host owner, fleet admin and other roles.
