@@ -687,7 +687,11 @@ function PromptText({ p, action }) {
   </form>`;
 }
 
-/** "<name> is working… 0:42", "looks stuck", "Stopping…", or what it waits on at its terminal. Text only. */
+/**
+ * "<name> is working… 0:42", "looks stuck", "Stopping…", or what it waits on at its terminal. Text only.
+ * #3724: the strip is always there — idle it keeps its height and shows nothing (no button), so a state change only changes
+ * what is inside it and never moves the thread or the composer (chat-work-bar.css fixes the height; long text stays one line).
+ */
 function WorkBar({ name, lease, exec, awaiting, workingLabel }) {
   const s = store.state;
   const busy = R().isBusy(exec) ? exec : "";
@@ -698,7 +702,7 @@ function WorkBar({ name, lease, exec, awaiting, workingLabel }) {
     const h = lease.interval(() => tick(n => n + 1), 1000);      // ticks only while it shows, cleared with the lease
     return () => lease.clear(h);
   }, [kind, lease]);
-  if (!kind) return null;
+  if (!kind) return html`<div class="work-bar idle" aria-hidden="true"></div>`;
   // #1629: the agent's own working label (its theme), shown as text — only for "working", never for the other states.
   const label = kind === "working" && workingLabel ? workingLabel
     : t(kind === "stuck" ? "chat.stuck" : kind === "stopping" ? "chat.stopping" : kind === "awaiting" ? "chat.awaiting" : "chat.working", name);
