@@ -1,0 +1,6 @@
+{
+  "testCommit": "5b0a3fbe7",
+  "testPath": "tests/web-agent-back-chat-3714.test.ts",
+  "digestMatchesOriginalReceipt": true,
+  "scope": "Preimplementation test against parent8ac; final test additionally mounts the actual DetailsPanel in the owning-pane control."
+}

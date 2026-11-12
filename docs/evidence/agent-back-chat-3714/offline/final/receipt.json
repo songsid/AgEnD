@@ -1,0 +1,47 @@
+{
+  "head": "985a47ce5d5d561be64f778c73a77c749f370f19",
+  "tree": "a88b0f99fd1989d3af234b41b02f434cb69fd056",
+  "dirty": false,
+  "commands": [
+    {
+      "argv": [
+        "npx",
+        "vitest",
+        "run",
+        "tests/web-agent-back-chat-3714.test.ts",
+        "tests/web-chat-menus-2959.test.ts",
+        "tests/web-details-n2.test.ts",
+        "tests/web-chat-workspace-sidebar-3637.test.ts",
+        "tests/web-chat-workspace-host-3637.test.ts",
+        "tests/web-chat-workspace-navigation-3637.test.ts",
+        "tests/web-chat-popout-composition-3637.test.ts",
+        "tests/i18n-ui-literals-2390.test.ts",
+        "tests/web-chat-1307.test.ts",
+        "--maxWorkers=1"
+      ],
+      "exit": 0,
+      "seconds": 11.618,
+      "log": "1.log"
+    },
+    {
+      "argv": [
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit"
+      ],
+      "exit": 0,
+      "seconds": 3.85,
+      "log": "2.log"
+    },
+    {
+      "argv": [
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "seconds": 10.405,
+      "log": "3.log"
+    }
+  ]
+}
