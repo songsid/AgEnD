@@ -8,10 +8,11 @@ import { createRequire, syncBuiltinESMExports } from 'node:module';
 if (process.env.SAFE_RUN !== '1' || process.env.AGEND_OWNED_CONTAINER !== 'hub-enrolment-code-campaign' || !existsSync('/.dockerenv')) throw Error('Owned SAFE_RUN container required');
 const out=process.env.OUT!, root=mkdtempSync(join(tmpdir(),'ridge-b1-')); mkdirSync(out,{recursive:true});
 process.env.AGEND_HOME=join(root,'environment');mkdirSync(process.env.AGEND_HOME,{mode:0o700});
-const mode=process.env.CAMPAIGN_MODE??'full',diagnose=mode==='diagnose',remainder=mode==='remainder';
-if(!['full','diagnose','remainder'].includes(mode))throw Error('Unknown campaign mode');
+const mode=process.env.CAMPAIGN_MODE??'full',diagnose=mode==='diagnose',remainder=mode==='remainder',preflight=mode==='preflight';
+if(!['full','diagnose','remainder','preflight'].includes(mode))throw Error('Unknown campaign mode');
 const receipt:any={mode,source:process.env.CAMPAIGN_SHA,checks:[],waves:[],screenshots:[],boundary:'Owned network-none source build. Five independent production Fleet web/settings/join/member services per mass wave, no Agent lifecycle or backend CLI. Remaining clients use shipped compiled join/member code and explicit harness-side durable profiles. Synthetic LDAP; owned HTTPS proxies; deliberate eligibility-delay control for real admission backpressure. Not packaged/systemd/native/pilot/real AD.'};
 const check=(name:string,pass:boolean)=>{receipt.checks.push({name,pass});console.log(JSON.stringify({check:name,pass}));if(!pass)throw Error(name);};
+const memberObservation=(entry:any)=>{if(preflight){receipt.memberObservations??=[];if(receipt.memberObservations.length<128)receipt.memberObservations.push(entry);}};
 const wait=async(fn:()=>boolean,ms=30000)=>{const end=Date.now()+ms;while(!fn()&&Date.now()<end)await new Promise(r=>setTimeout(r,40));if(!fn())throw Error('Owned fixture deadline');};
 const tls=createRequire(import.meta.url)('node:tls'), original=tls.connect;let dc=0;
 tls.connect=(options:any,...args:any[])=>original({...options,...(options.host==='127.0.0.1'&&options.port===636?{port:dc}:{}),...(options.host==='hub.example.test'?{host:'127.0.0.1'}:{})},...args);syncBuiltinESMExports();
@@ -24,7 +25,10 @@ const {issuerKeyId}=await import('/tmp/b1-dist/hub/identity.js');
 const {pkceChallenge}=await import('/tmp/b1-dist/hub/join/protocol.js');
 const {createJoinApprovalQueue}=await import('/tmp/b1-dist/ui/hub-join-queue.js');
 const {createLocalJoin,saveLocalJoin}=await import('/tmp/b1-dist/hub/join/local-journal.js');
-const {syncJoinPrivate}=await import('/tmp/b1-dist/hub/join/private.js');
+const {syncJoinPrivate,createJoinPrivate}=await import('/tmp/b1-dist/hub/join/private.js');
+const {HubMemberJournal,HUB_MEMBER_JOURNAL_MIGRATION}=await import('/tmp/b1-dist/hub/member-journal.js');
+const {createHubMemberHandshake}=await import('/tmp/b1-dist/hub/member-reconciliation.js');
+const {HubFileVersionFloor}=await import('/tmp/b1-dist/hub/version-floor.js');
 const {applyHubMigrations}=await import('/tmp/b1-dist/hub/db.js');
 const {createHubAudit,HUB_AUDIT_MIGRATION}=await import('/tmp/b1-dist/hub/audit/index.js');
 const {createHubPairingNoticeInbox,HUB_PAIRING_INBOX_MIGRATION}=await import('/tmp/b1-dist/hub/member/pairing-notices.js');
@@ -32,6 +36,18 @@ const Database=createRequire(import.meta.url)('better-sqlite3');
 const {companyJoinRig}=await import('../../../tests/support/hub-company-join-rig.js');
 const {chromium}=createRequire((process.env.PW_DIR ?? '/work')+'/')('playwright-core');
 let activeProbe:any=null;let rig:any,browser:any,ui:any;const clients:any[]=[],memberDatabases:any[]=[],online=new Set<string>();
+const machineStates=new Map<string,any>();
+function machineState(home:string,hubId:string){
+ if(machineStates.has(home))return machineStates.get(home);
+ const key=randomBytes(32);createJoinPrivate(home,'machine-member/key',key.toString('hex'));
+ const db=new Database(join(home,'machine-member/state.sqlite'));memberDatabases.push(db);
+ applyHubMigrations(db,[HUB_MEMBER_JOURNAL_MIGRATION,HUB_AUDIT_MIGRATION,HUB_PAIRING_INBOX_MIGRATION]);
+ const floor=new HubFileVersionFloor(home,'machine-member/journal.floor');floor.initialize();
+ const journal=new HubMemberJournal(db,{hubId,encryptionKey:key,floor,outbox:{insert(){throw Error('Forbidden Agent outbox');},lookup(){throw Error('Forbidden Agent outbox');}}});journal.initialize();
+ const audit=createHubAudit({db,contentKey:key}),inbox=createHubPairingNoticeInbox({db,audit,current:()=>true,now:()=>Date.now()});
+ const handshake=createHubMemberHandshake({journal,publishSnapshot:async(link:any)=>{await link.send({v:1,type:'exposure.snapshot',requestId:randomUUID(),linkEpoch:link.linkEpoch,payload:{revision:0,exposures:[]}});}});
+ const state={journal,inbox,audit,handshake};machineStates.set(home,state);return state;
+}
 const group='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 try {
  rig=await companyJoinRig((port:number)=>dc=port);
@@ -50,7 +66,9 @@ try {
  const metadata=await client.discover(rig.webOrigin,()=>true);check('built strict discovery advertises code',metadata.features.includes('enrolment-code-v1'));
  browser=await chromium.launch({args:['--no-sandbox','--no-proxy-server','--host-resolver-rules=MAP *.example.test 127.0.0.1']});
  ui=campaignUi(rig,browser,receipt,check,online);
- if(!remainder)await ui.adminShots();
+ // Spend the fixed diagnostic budget on the target waves first. All picture
+ // and refusal criteria still run in the independent remainder, on a fresh Hub.
+ if(!diagnose&&!preflight)await ui.adminShots();
  const create=async(maxUses:number,scope:any={kind:'directory'},perPersonFleets=1)=>{const r=await rig.call(admin,'POST','/hub/v1/admin/enrolment-codes',{expires:'today',maxUses,perPersonFleets,scope});check('admin creates '+maxUses+'-use code',r.status===201);return r.body;};
  const secrets:string[]=[];
  const rawJson=(client as any).json.bind(client);(client as any).json=async(...args:any[])=>{const began=Date.now();try{return await rawJson(...args);}catch(e:any){const diagnostic={path:String(args[1]).split('?')[0],elapsedMs:Date.now()-began,code:e.code??null,kind:e.kind??null};receipt.machineErrors??=[];receipt.machineErrors.push(diagnostic);console.error(JSON.stringify({machineFailure:diagnostic}));throw e;}};
@@ -90,8 +108,10 @@ try {
   const journal={v:1 as const,operationId:binding.operationId,handoffId:randomUUID(),binding,privateKey:key.privateKey.export({type:'pkcs8',format:'pem'}).toString(),verifier,browserState:state,certificatePem:issued.certificatePem,sessionId:randomBytes(32).toString('hex'),authorityEpoch:1,hostConfirmed:true,snapshot:{membership:true,binding:null},createdAt:started,deadline:started+600000,stage:'durable' as const,reason:null,issued:true,outcomeKnown:true,issuedHash:createHash('sha256').update(issued.credential).digest('hex'),profileDigest,replaceProfile:null,intendedBinding:null,enableIntent:false,journalCommitId,remoteState:'issued'};
   createLocalJoin(home,journal,()=>true);
   await command('ack',{verifier,credentialHash:journal.issuedHash,profileDigest,journalCommitId});saveLocalJoin(home,{...journal,stage:'active'},()=>true);
+  const local=machineState(home,metadata.hub.hubId);
   const member=new (legacy?LegacyHubMemberClient:HubMemberClient)({home,hubId:metadata.hub.hubId,memberOrigin:metadata.hub.memberOrigin,current:()=>true,
-   reconcile:async()=>{online.add(binding.fleetId);},receive:async()=>{},hold:()=>{}});clients.push(member);await member.start().catch(()=>{});await wait(()=>online.has(binding.fleetId),60000);
+   reconcile:async(link:any)=>{memberObservation({fleetId:binding.fleetId,phase:'handshake',features:[...link.features]});await local.handshake(link);if(link.current())online.add(binding.fleetId);},
+   receive:async(frame:any,link:any)=>{if(['pairing.notice','pairing.notice-v2','pairing.notice-v3'].includes(frame.type))await local.inbox.receive(frame.payload,link);},hold:(code:string)=>memberObservation({fleetId:binding.fleetId,phase:'hold',code})});clients.push(member);await member.start().catch(()=>{});await wait(()=>online.has(binding.fleetId),60000);
   return{started,issued:true,binding,connected:Date.now(),home,member};
  }
  function people(prefix:string,n:number,groups:string[]=[]){return Array.from({length:n},(_,i)=>{const login=prefix+i;rig.people.push({id:randomUUID(),login,dn:'CN='+login+',DC=example,DC=test',password:'Dummy-'+login+'-only',groups});return login;});}
@@ -148,7 +168,7 @@ try {
    databaseBytes:statSync(join(rig.home,'hub/hub.sqlite')).size,walBytes:existsSync(join(rig.home,'hub/hub.sqlite-wal'))?statSync(join(rig.home,'hub/hub.sqlite-wal')).size:0});
   await ui.closeVisible();
  }
- if(!remainder){
+ async function refusalChecks(){
  // Code-specific authenticated refusals: actual fresh-company sign-in and real server reasons.
  const variants=[{lang:'en',phone:false},{lang:'en',phone:true},{lang:'zh-TW',phone:false},{lang:'zh-TW',phone:true}];
  const scopeCode=await create(8,{kind:'group',realm:'corp',objectId:group,dn:'CN=Owners,DC=example,DC=test'});secrets.push(scopeCode.code.replace('-',''));
@@ -158,14 +178,18 @@ try {
  for(let i=0;i<4;i++){const f=await ui.prepareFleet(i,'ended',variants[i]);pendingEnds.push(await ui.pendingRefusal(f,endedCode.code,endPeople[i]));}
  check('end pending code before actual sign-in',(await rig.call(admin,'POST','/hub/v1/admin/enrolment-codes/'+endedCode.id+'/revoke',{})).status===200);
  await Promise.all(pendingEnds.map(p=>ui.finishRefusal(p,'code-ended')));await ui.closeVisible();
+ }
+ if(!remainder&&!preflight){
+ if(!diagnose)await refusalChecks();
  await wave(20,'small');
  // Respect the120/min bucket across independent acceptance waves; never reset or bypass it.
  await new Promise(r=>setTimeout(r,60_000));await wave(50,'mass');
  await new Promise(r=>setTimeout(r,60_000));await wave(50,'withgroups',true);
  }
  if(!diagnose){
+ if(remainder)await refusalChecks();
  if(remainder){const live=await create(2);secrets.push(live.code.replace('-',''));}
- await ui.cachedShots();
+ if(!preflight)await ui.cachedShots();
  // Notices target the owner's OTHER existing fleets, never the fleet just enrolled.
  const compat=await create(2,{kind:'directory'},2);secrets.push(compat.code.replace('-',''));const compatPerson=people('compat',1)[0];
  const retained=await attempt(compat.code,compatPerson,null,async()=>{},()=>{},true);check('B-L9 old v2-only member link connected',retained.issued);
@@ -174,16 +198,13 @@ try {
  const target=()=>rig.db.prepare("SELECT t.state FROM hub_pairing_notice_targets t JOIN hub_pairing_notices n ON n.id=t.notice_id WHERE t.kind='fleet' AND t.target=? AND n.fleet_id=? AND json_extract(n.body,'$.source')='code'").get(retained.binding.fleetId,second.binding.fleetId)?.state;
  check('B-L9 code notice remains queued for actual old member',target()==='queued');
  await retained.member.close();online.delete(retained.binding.fleetId);
- const memberDb=new Database(join(retained.home,'notice-upgrade.sqlite'));memberDatabases.push(memberDb);
- applyHubMigrations(memberDb,[HUB_AUDIT_MIGRATION,HUB_PAIRING_INBOX_MIGRATION]);
- const memberAudit=createHubAudit({db:memberDb,contentKey:randomBytes(32)});
- const inbox=createHubPairingNoticeInbox({db:memberDb,audit:memberAudit,current:()=>true,now:()=>Date.now()});
- const upgraded=new HubMemberClient({home:retained.home,hubId:metadata.hub.hubId,memberOrigin:metadata.hub.memberOrigin,current:()=>true,reconcile:async()=>{online.add(retained.binding.fleetId);},
-  receive:async(frame:any,link:any)=>{if(['pairing.notice','pairing.notice-v2','pairing.notice-v3'].includes(frame.type))await inbox.receive(frame.payload,link);},hold:()=>{}});
+ const local=machineState(retained.home,metadata.hub.hubId),{inbox,audit:memberAudit}=local;
+ const upgraded=new HubMemberClient({home:retained.home,hubId:metadata.hub.hubId,memberOrigin:metadata.hub.memberOrigin,current:()=>true,reconcile:async(link:any)=>{memberObservation({phase:'upgraded-handshake',features:[...link.features]});await local.handshake(link);if(link.current())online.add(retained.binding.fleetId);},
+  receive:async(frame:any,link:any)=>{memberObservation({phase:'upgraded-receive',type:frame.type});try{if(['pairing.notice','pairing.notice-v2','pairing.notice-v3'].includes(frame.type))await inbox.receive(frame.payload,link);}catch(e:any){memberObservation({phase:'upgraded-receive-failed',type:frame.type,code:e.code??'unknown'});throw e;}},hold:(code:string)=>memberObservation({phase:'upgraded-hold',code})});
  clients.push(upgraded);await upgraded.start();await wait(()=>target()==='delivered',30000);check('B-L9 code notice delivered after actual member upgrade',online.has(retained.binding.fleetId));
  check('B-L9 upgraded inbox retains exact code provenance before ACK',inbox.list().some((n:any)=>n.fleetId===second.binding.fleetId&&n.source==='code'&&n.codeId===compat.id));
  check('B-L9 upgraded inbox audit chain verifies',memberAudit.verifyChain().ok===true);
-
+ if(!preflight){
  const activeBeforeRevoke=rig.deps.store.read().fleets.filter((f:any)=>f.status==='active').length;
  const revoke=await create(50);secrets.push(revoke.code.replace('-',''));const names=people('revoke',50);
  const revokeStarts:number[]=[];const launchRevoke=(p:string)=>{revokeStarts.push(Date.now());return attempt(revoke.code,p);};
@@ -196,7 +217,7 @@ try {
  check('issued fleets stay active after code revocation',rig.deps.store.read().fleets.filter((f:any)=>f.status==='active').length===activeBeforeRevoke+25);
  check('no join expired',rig.db.prepare("SELECT count(*) n FROM hub_company_join_requests WHERE json_extract(body,'$.reason')='expired'").get().n===0);
  const scan=(directory:string):boolean=>readdirSync(directory,{withFileTypes:true}).every(entry=>entry.isDirectory()?scan(join(directory,entry.name)):!secrets.some(s=>readFileSync(join(directory,entry.name)).includes(Buffer.from(s))));
- check('no plain code anywhere in Hub home',scan(rig.home));check('audit hash chain',rig.deps.audit.verifyChain().ok===true);}
+ check('no plain code anywhere in Hub home',scan(rig.home));check('audit hash chain',rig.deps.audit.verifyChain().ok===true);}}
  receipt.ready=true;
 }catch(error){receipt.error=String(error);console.error(error);process.exitCode=1;}
 finally{
@@ -208,6 +229,6 @@ finally{
  const files=["src/hub/audit/index.ts", "src/hub/catalog.ts", "src/hub/client.ts", "src/hub/compose/member.ts", "src/hub/compose/server.ts", "src/hub/enrolment-code.ts", "src/hub/group-policy/admin-impact.ts", "src/hub/group-policy/admin-inventory.ts", "src/hub/group-policy/authorization.ts", "src/hub/group-policy/impact-inventory.ts", "src/hub/group-policy/resources.ts", "src/hub/group-policy/store.ts", "src/hub/http/compose.ts", "src/hub/join/receipt.ts", "src/hub/join/service.ts", "src/hub/join/store.ts", "src/hub/member/pairing-notices.ts", "src/hub/pairing-notices.ts", "src/hub/pairing.ts", "src/hub/protocol.ts", "src/hub/server.ts", "src/hub/types.ts", "src/settings-api.ts"];
  files.push('src/fleet-manager.ts','src/ui/hub-join-steps.js','src/ui/hub-enrolment-code.js','src/ui/hub-enrolment-code-strings.js','src/ui/hub-join-approval.js','src/ui/hub-join-queue.js','src/ui/hub-client.js','src/ui/hub-company-join.js','src/ui/settings-hub.js','src/ui/settings-hub-company-join.js');
  receipt.production=files.map(path=>({path,sha256:createHash('sha256').update(readFileSync('/work/'+path)).digest('hex')}));
- receipt.images=receipt.screenshots.map((path:string)=>({path,sha256:createHash('sha256').update(readFileSync(join(out,path))).digest('hex')}));writeFileSync(join(out,diagnose?'receipt-diagnosis.json':remainder?'receipt-remainder.json':'receipt-runtime.json'),JSON.stringify(receipt,null,2));
+ receipt.images=receipt.screenshots.map((path:string)=>({path,sha256:createHash('sha256').update(readFileSync(join(out,path))).digest('hex')}));writeFileSync(join(out,diagnose?'receipt-diagnosis.json':remainder?'receipt-remainder.json':preflight?'receipt-preflight.json':'receipt-runtime.json'),JSON.stringify(receipt,null,2));
 }
 console.log(JSON.stringify({ready:receipt.ready===true,checks:receipt.checks.length,error:receipt.error}));process.exit(receipt.ready?0:1);

@@ -60,6 +60,7 @@ try {
     'tests/hub-enrolment-code-audit-b1.test.ts','tests/hub-enrolment-code-upgrade-b1.test.ts','tests/hub-pairing-api-s3c.test.ts',
     'tests/hub-enrolment-code-slot-b2.test.ts','tests/hub-pairing-notices.test.ts','tests/hub-pairing-inbox.test.ts','--maxWorkers=1','--cache=false','--configLoader','runner'], { VITEST_CACHE_DIR: '/tmp/vitest-cache' });
   if(plan.mode==='diagnose-3713') {
+    await run('member-fixture-preflight',process.execPath,['--import','tsx','scripts/manual/hub-enrolment-code-campaign/capacity.mts'],{CAMPAIGN_MODE:'preflight'},120_000);
     const diagnosisDeadline=Date.now()+30*60_000;
     try { await run('diagnose-3713',process.execPath,['--import','tsx','scripts/manual/hub-enrolment-code-campaign/capacity.mts'],{CAMPAIGN_MODE:'diagnose'},30*60_000); }
     catch(e){

@@ -17,7 +17,20 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
   const environmentHome=process.env.AGEND_HOME;
   let sequence = 0;
   const active: any[] = [];
+  const preparing = new Set<any>();
   const out = process.env.OUT!;
+  const releaseFleet=async(f:any)=>{
+    const failures:unknown[]=[];
+    const release=async(work:()=>any)=>{try{await work();}catch(e){failures.push(e);}};
+    await release(()=>f.ctx?.close());
+    if(f.fm)f.fm.hubEffectsReady=false;
+    await release(()=>f.controller?.close());await release(()=>f.fm?.hubRuntime?.fence());await release(()=>f.fm?.hubRuntime?.close());
+    await release(async()=>{f.proxy?.closeAllConnections();if(f.proxy)await new Promise<void>(done=>f.proxy.close(()=>done()));});
+    await release(async()=>{f.fm?.healthServer?.closeAllConnections();if(f.fm?.healthServer)await new Promise<void>(done=>f.fm.healthServer.close(()=>done()));});
+    await release(()=>f.fm?.stopPreviewListener?.());
+    await release(()=>rmSync(f.dir,{recursive:true,force:true}));await release(()=>rmSync(f.certs.dir,{recursive:true,force:true}));
+    if(failures.length)throw new AggregateError(failures,'Owned Fleet release failed');
+  };
   async function context(lang = 'en', phone = false, theme = 'light') {
     const ctx = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: phone ? 390 : 1366, height: phone ? 844 : 900 }, isMobile: phone, hasTouch: phone, colorScheme: theme, locale: lang });
     await ctx.addInitScript(({ lang, theme }: any) => {
@@ -95,9 +108,16 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
   async function prepareFleet(index: number, prefix: string, variant: any = null) {
     const number = sequence++, host = 'fleet-' + number + '.example.test', dir = mkdtempSync(join(tmpdir(),'campaign-fleet-'));
     process.env.AGEND_HOME = dir;
-    const port = 55100 + number * 2, certs = makeTestCerts(host);
+    // Keep fixed Fleet/preview ports outside the OS range used by our own
+    // ephemeral Hub, LDAPS and HTTPS proxy listeners. No takeover is intended.
+    const port = 19000 + number * 2, certs = makeTestCerts(host);
+    const range=readFileSync('/proc/sys/net/ipv4/ip_local_port_range','utf8').trim().split(/\s+/).map(Number);
+    if(port+1>=range[0]&&port<=range[1])throw Error('Owned Fleet ports overlap ephemeral listener range');
+    const partial:any={dir,certs};preparing.add(partial);
+    try {
     writeFileSync(join(dir,'fleet.yaml'), yaml.dump({ health_port: port, instances: { recorder: { backend: 'codex', working_directory: dir, display_name: '測試 Agent' } }, web: { preview_port: port + 1, allowed_hosts: [host] } }));
     const fm: any = new FleetManager(dir), quiet = () => {};
+    partial.fm=fm;
     fm.healthPortRetried = true; fm.logger = { info:quiet,warn:quiet,error:quiet,debug:quiet,trace:quiet,fatal:quiet,child:()=>fm.logger };
     fm.notifyFleetError = () => true; fm.loadConfig(join(dir,'fleet.yaml'));
     fm.lifecycle = { isPaused:()=>false,hasWorkLease:()=>false,daemons:new Map() };
@@ -110,14 +130,17 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
       const forward = httpRequest({ hostname:'127.0.0.1',port,path:req.url,method:req.method,headers:{ ...req.headers,'x-forwarded-proto':'https' } }, r => { res.writeHead(r.statusCode!,r.headers);r.pipe(res); });
       forward.on('error',()=>{res.writeHead(502);res.end();}); req.pipe(forward); res.on('close',()=>forward.destroy());
     });
+    partial.proxy=proxy;
     await new Promise<void>((resolve,reject)=>{proxy.once('error',reject);proxy.listen(0,'127.0.0.1',resolve);});
     const base = 'https://' + host + ':' + (proxy.address() as any).port;
     fm.hubEffectsReady = true;
     const controller = await fm.hubCompanyJoin();
+    partial.controller=controller;
     controller.client = new CompanyJoinClient({ ca:readFileSync(rig.certs.caCert),lookup:(_h:any,o:any,done:any)=>o.all?done(null,[{address:'127.0.0.1',family:4}]):done(null,'127.0.0.1',4) });
     const lang = variant?.lang ?? (index % 2 ? 'zh-TW' : 'en'), phone = variant?.phone ?? (index % 2 === 1), theme = variant?.theme ?? (index % 3 ? 'dark' : 'light');
     fm.webPrefs.write('operator',new Map([['lang',lang],['theme',theme]]));
     const ctx = await context(lang,phone,theme), page = await ctx.newPage(), errors: string[] = [];
+    partial.ctx=ctx;
     page.on('pageerror',(e:Error)=>errors.push(e.message));
     const { tokenEpoch } = await import(built + '/web-session.js'); fm.initializeWebSessions();
     const code = fm.webLoginCodes.issue({ tier:'admin',epoch:tokenEpoch(fm.webToken),host:true }).display;
@@ -125,13 +148,10 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
     // The current sign-in auto-submits; legacy manual pages use the same form.
     await page.locator('#code').evaluate((el:HTMLInputElement)=>el.form!.requestSubmit()).catch(()=>{});
     await page.waitForURL(base + '/ui'); await page.goto(base + '/settings/hub'); await page.locator('#hubCompanyAddress').waitFor();
-    const f = { fm,dir,base,ctx,page,errors,lang,phone,theme,controller,proxy,certs,label:prefix+'-'+index,approvals:()=>approvals,close:async()=>{
-      await ctx.close(); fm.hubEffectsReady = false; controller.close(); fm.hubRuntime?.fence(); await fm.hubRuntime?.close();
-      proxy.closeAllConnections(); await new Promise<void>(done=>proxy.close(()=>done()));
-      fm.healthServer?.closeAllConnections(); await new Promise<void>(done=>fm.healthServer?fm.healthServer.close(()=>done()):done());
-      await fm.stopPreviewListener?.(); rmSync(dir,{recursive:true,force:true}); rmSync(certs.dir,{recursive:true,force:true});
-    } };
+    const f = { fm,dir,base,ctx,page,errors,lang,phone,theme,controller,proxy,certs,label:prefix+'-'+index,approvals:()=>approvals,close:()=>releaseFleet(partial) };
+    preparing.delete(partial);
     active.push(f); return f;
+    } catch(error){try{await releaseFleet(partial);}finally{preparing.delete(partial);}throw error;}
   }
   async function signInFleet(f: any, login: string) {
     const page=await f.ctx.newPage();
@@ -244,5 +264,5 @@ export function campaignUi(rig: any, browser: any, receipt: any, check: (name: s
       } finally { await ctx.close(); }
     }
   }
-  return { adminShots,cachedShots,prepareFleet,signInFleet,joinFleet,pendingRefusal,finishRefusal,shot,adminPage,closeVisible:async()=>{ const failures:unknown[]=[];try{for(const f of active.splice(0).reverse()){try{await f.close();}catch(e){failures.push(e);}}}finally{process.env.AGEND_HOME=environmentHome;}if(failures.length)throw new AggregateError(failures,'Owned Fleet cleanup failed'); } };
+  return { adminShots,cachedShots,prepareFleet,signInFleet,joinFleet,pendingRefusal,finishRefusal,shot,adminPage,closeVisible:async()=>{ const failures:unknown[]=[];try{for(const f of active.splice(0).reverse()){try{await f.close();}catch(e){failures.push(e);}}for(const f of [...preparing]){try{await releaseFleet(f);}catch(e){failures.push(e);}finally{preparing.delete(f);}}}finally{process.env.AGEND_HOME=environmentHome;}if(failures.length)throw new AggregateError(failures,'Owned Fleet cleanup failed'); } };
 }
