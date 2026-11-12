@@ -88,3 +88,81 @@ describe("the exposure list and the owner's Settings row", () => {
     expect(setExposed).toHaveBeenCalledWith("atlas", false, 2, null);
   });
 });
+
+// Prism #3763 r1: the open page follows the Hub's answer — refused, then accepted — without a remount, on the card's own
+// visible pairing poll; bounded (one read per tick, none in flight twice, none while a switch is saved), newest-wins, and
+// nothing after the connection goes away.
+describe("the open Settings page follows a refusal and its clearing (no remount)", () => {
+  let client: any, card: any, i18n: any;
+  const mounted: AppPage[] = [];
+  beforeAll(async () => {
+    const pg = page({ url: "http://127.0.0.1:19280/ui", storage: { agend_tour_done: "1" } });
+    (globalThis as any).fetch = async () => ({ ok: true, status: 200, json: async () => ({}), text: async () => "" });
+    i18n = await import("/assets/app-i18n.js"); await import("/assets/app-store.js");
+    client = await import("/ui/js/hub-client.js"); card = await import("/ui/js/settings-hub.js");
+    pg.restore();
+  });
+  afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); i18n.setLang("en", { store: false }); });
+  const BASE = { agent: "atlas", display: "Atlas", exposureId: "11111111-2222-4333-8444-555555555555", revision: 2, state: "published",
+    policy: { dataView: "agent", tools: [] }, enforceable: true, choices: { dataViews: [{ id: "agent", label: "Atlas" }], tools: [] }, pending: null };
+  const PAIRED = { state: "paired", binding: "b1", hub: { hubId: "h", name: "Team", memberOrigin: "https://hub.test", webOrigin: "https://hub.test", fingerprint: { kind: "hub-key", digest: "a".repeat(64) } }, link: "online" };
+  async function rig(answer: () => Promise<any[]>, extra: Record<string, unknown> = {}) {
+    const listeners = new Set<(p: any) => void>(); let pairing: any = PAIRED;
+    const exposures = vi.fn(answer);
+    const c = { stub: false, pairing: async () => pairing, exposures, setExposed: vi.fn(async () => ({ ok: true, remote: "pending" })),
+      subscribe: (fn: (p: any) => void) => { listeners.add(fn); return () => listeners.delete(fn); }, ...extra };
+    client.setHubClient(c);
+    const pg = page({ url: "http://127.0.0.1:19280/settings/hub", storage: { agend_tour_done: "1" } }); mounted.push(pg);
+    pg.document.body.setAttribute("data-hub", "member");
+    await pg.mount(h(card.HubConnectCard, {}));
+    for (let i = 0; i < 200 && !pg.root.querySelector(".hub-exposure input"); i++) await settle(5);
+    const tick = async (p: any = pairing) => { pairing = p; for (const fn of [...listeners]) fn(p); await settle(15); };
+    const box = () => pg.root.querySelector(".hub-exposure input") as any;
+    const shown = () => ({ checked: box()?.checked, disabled: box()?.disabled, refused: !!pg.root.querySelector(".hub-exposure-refused"),
+      grant: [...pg.root.querySelectorAll("a")].some((a: any) => /grant=1/.test(a.getAttribute("href") || "")) });
+    return { pg, c, exposures, tick, shown, listeners };
+  }
+  it("published → refused → accepted again, each within one poll tick", async () => {
+    let row: any = BASE;
+    const r = await rig(async () => [row]);
+    expect(r.shown()).toEqual({ checked: true, disabled: false, refused: false, grant: true });
+    row = { ...BASE, reason: "hub_refused" }; await r.tick();
+    expect(r.shown()).toEqual({ checked: false, disabled: true, refused: true, grant: false });
+    row = BASE; await r.tick();
+    expect(r.shown()).toEqual({ checked: true, disabled: false, refused: false, grant: true });
+    expect(r.exposures).toHaveBeenCalledTimes(3);
+  });
+  it("bounded: a tick while a read is in flight reads nothing more; a tick while a switch is being saved reads nothing", async () => {
+    let release!: () => void, row: any = BASE, hold = false;
+    const r = await rig(() => hold ? new Promise<any[]>((ok) => { release = () => ok([row]); }) : Promise.resolve([row]));
+    hold = true; await r.tick(); await r.tick(); await r.tick();
+    expect(r.exposures).toHaveBeenCalledTimes(2);                           // the mount's read + one in flight
+    release(); await settle(15); hold = false;
+    let save!: () => void;
+    r.c.setExposed.mockImplementation(() => new Promise((ok) => { save = () => ok({ ok: true, remote: "pending" }); }));
+    const box = r.pg.root.querySelector(".hub-exposure input") as any; box.checked = false; fire(box, "change"); await settle(10);
+    const before = r.exposures.mock.calls.length;
+    await r.tick();
+    expect(r.exposures.mock.calls.length).toBe(before);                     // no background read while saving
+    save(); await settle(20);
+  });
+  it("newest wins: an older, slower answer never overwrites a newer one", async () => {
+    const answers: Array<(rows: any[]) => void> = [];
+    const r = await rig(() => answers.length === 0 ? (answers.push(() => {}), Promise.resolve([BASE])) : new Promise<any[]>((ok) => { answers.push(ok); }));
+    await r.tick();                                                          // background read #1 (slow)
+    const box = r.pg.root.querySelector(".hub-exposure input") as any;
+    r.c.setExposed.mockResolvedValue({ ok: false, error: "conflict" });      // a conflict reloads at once (read #2)
+    box.checked = false; fire(box, "change"); await settle(10);
+    answers[2]!([{ ...BASE, reason: "hub_refused" }]); await settle(10);   // the newer answer: refused
+    answers[1]!([BASE]); await settle(10);                                   // the older answer arrives late
+    expect(r.shown().refused).toBe(true);
+  });
+  it("after the connection goes away, a tick reads nothing for the old list", async () => {
+    const r = await rig(async () => [BASE]);
+    await r.tick({ state: "unpaired" }); await settle(20);
+    const n = r.exposures.mock.calls.length;
+    await r.tick({ state: "unpaired" });
+    expect(r.exposures.mock.calls.length).toBe(n);
+    expect(r.pg.root.querySelector(".hub-exposure")).toBeNull();
+  });
+});
