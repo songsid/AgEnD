@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-draft-3637.test.ts (5 tests | 1 failed) 13ms
+     × never transfers outgoing work, credentials, another target, or an unbounded payload 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-draft-3637.test.ts > a pop-out moves only a captured, still-current local composer > never transfers outgoing work, credentials, another target, or an unbounded payload
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/web-chat-popout-draft-3637.test.ts:37:98
+     35|   it("never transfers outgoing work, credentials, another target, or a…
+     36|     const a = make(); a.setDraft("beta", "other agent");
+     37|     expect(a.acceptDraft("alpha", { text: "x", files: [], reply: null,…
+       |                                                                                                  ^
+     38|     expect(a.acceptDraft("alpha", { text: "x".repeat(1_000_001), files…
+     39|     expect(a.state.drafts.beta).toBe("other agent");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  11:20:47
+   Duration  354ms (transform 137ms, setup 96ms, import 98ms, tests 13ms, environment 0ms)
+

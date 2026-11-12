@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts (16 tests | 1 failed) 35ms
+   × the child refuses not-ready offers before importing any draft 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-transport-3637.test.ts > the child refuses not-ready offers before importing any draft
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      Object {},
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts:77:22
+     75|   if (reason === "expired") now = POPOUT_DEADLINE_MS; if (reason === "…
+     76|   win.fire("message", { source: parent, origin: win.location.origin, d…
+     77|   expect(accept).not.toHaveBeenCalled(); expect(parent.postMessage).to…
+       |                      ^
+     78| });
+     79|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 passed (16)
+   Start at  11:20:43
+   Duration  484ms (transform 116ms, setup 143ms, import 46ms, tests 35ms, environment 1ms)
+

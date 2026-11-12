@@ -1,9 +1,11 @@
 """Verify capture-time Git/served-byte bindings and unchanged ordinary single-pane pixels."""
 import hashlib,json,pathlib,subprocess,sys
+from functools import lru_cache
 from PIL import Image,ImageChops
 root=pathlib.Path(__file__).resolve().parents[2]
 evidence=root/'docs/evidence/desktop-split-chat-pr4'
 def sha(b): return hashlib.sha256(b).hexdigest()
+@lru_cache(maxsize=None)
 def blob(ref,path): return subprocess.check_output(['git','show',f'{ref}:{path}'],cwd=root,stderr=subprocess.DEVNULL)
 def source(path):
  if path=='/assets/inter.woff2': return 'src/ui/shared/fonts/inter.woff2'
@@ -11,7 +13,7 @@ def source(path):
  if path.startswith('/assets/'): return 'src/ui/shared/'+path[8:]
  if path.startswith('/ui/js/'): return 'src/ui/'+path[7:]
  raise AssertionError(path)
-summary={'runs':0,'checkpoints':0,'pngs':0,'inputBindings':0,'servedBindings':0,'substitutions':0,'omittedAssetBodies':0,'pixelPairs':[],'unknownAssets':[]}
+summary={'runs':0,'checkpoints':0,'pngs':0,'inputBindings':0,'servedBindings':0,'substitutions':0,'omittedAssetBodies':0,'pixelPairs':[],'unknownAssets':[],'currentAssetDeltas':[]}
 for p in sorted((evidence/'browser').glob('*/receipt.json')):
  r=json.loads(p.read_text()); assert not r['dirty'],p
  tree=subprocess.check_output(['git','rev-parse',r['head']+'^{tree}'],cwd=root,text=True).strip(); assert tree==r['tree'],p
@@ -33,6 +35,7 @@ for p in sorted((evidence/'browser').glob('*/receipt.json')):
    except subprocess.CalledProcessError:
     summary['unknownAssets'].append(path);continue
    assert candidate==digest or src in r['substitutions'].get(digest,[]),(p,path,digest)
+   if candidate==digest and (root/src).exists() and sha((root/src).read_bytes())!=candidate and src not in summary['currentAssetDeltas']: summary['currentAssetDeltas'].append(src)
    summary['servedBindings']+=1
  assert not r.get('errors') and not r.get('external') and not r.get('effects'),p
  summary['runs']+=1;summary['checkpoints']+=len(r['cases']);summary['pngs']+=len(list(p.parent.glob('*.png')));summary['omittedAssetBodies']+=len(r.get('omittedAssets',[]))

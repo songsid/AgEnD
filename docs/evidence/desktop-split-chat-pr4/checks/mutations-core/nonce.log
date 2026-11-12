@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/split-chat-popout-3637
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts (16 tests | 1 failed) 47ms
+     × rejects foreign origin/window/viewer/agent/nonce and duplicate READY without disclosing a draft 10ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-popout-transport-3637.test.ts > real pop-out exact-window, one-use handoff > rejects foreign origin/window/viewer/agent/nonce and duplicate READY without disclosing a draft
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array []
+
+
+Number of calls: 1
+
+ ❯ tests/web-chat-popout-transport-3637.test.ts:36:76
+     34|     f.receive(msg("ready", { scope: "someone else" })); f.receive(msg(…
+     35|     f.receive(msg("ready")); f.receive(msg("ready")); expect(f.child.p…
+     36|     f.receive(msg("received", { nonce: "other" })); expect(f.complete)…
+       |                                                                            ^
+     37|   });
+     38|   it.each(["blocked", "closed", "timeout", "revoked", "pagehide", "ref…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 passed (16)
+   Start at  11:20:34
+   Duration  427ms (transform 104ms, setup 117ms, import 47ms, tests 47ms, environment 0ms)
+
