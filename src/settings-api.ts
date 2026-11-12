@@ -1370,6 +1370,15 @@ export function handleSettingsRequest(
         }
         web.session = { ...web.session, local };
       }
+      if (parsed.publicLinkSession) {
+        const pl: Record<string, number> = { ...web.session?.public_link };
+        for (const [key, value] of Object.entries(parsed.publicLinkSession)) {
+          if (value === null) { delete pl[key]; changes.push({ path: ["web", "session", "public_link", key], value: undefined, remove: true }); }
+          else { pl[key] = value; changes.push({ path: ["web", "session", "public_link", key], value }); }
+        }
+        const { public_link: _old, ...rest } = web.session ?? {};
+        web.session = Object.keys(pl).length ? { ...rest, public_link: pl } : rest;
+      }
       if (terminalPatch) {
         const wt: Record<string, unknown> = { ...cfg.web_terminal };
         for (const [key, value] of Object.entries(terminalPatch)) {

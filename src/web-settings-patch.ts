@@ -28,6 +28,8 @@ export type WebSettingsBody = {
   loginQr?: boolean;
   publicLink?: NonNullable<WebConfig["public_link"]>;
   session: Record<string, number | null> | null;
+  /** #3708: `session.public_link` — the public link's own limits (idle_minutes, absolute_hours). */
+  publicLinkSession?: Record<string, number | null> | null;
   terminal: Record<string, boolean | number | null> | null;
   /** #1920 phase 3: guest sign-in (Settings → Web sign-ins → Guests). */
   guests?: GuestsPatch;
@@ -52,7 +54,8 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   // #2793: its one feature, Canvas Worker effects, was removed; a stale page's switch is refused, not stored.
   if (patch.experimental !== undefined) return { error: "Canvas Worker effects were removed; experimental has nothing to set" };
   const session = webSessionPatch(patch.session);
-  if (session === "invalid") return { error: "session must be { local: { absolute_hours?, idle_hours? } } with numbers or null" };
+  const publicLinkSession = webPublicLinkSessionPatch(patch.session);
+  if (session === "invalid" || publicLinkSession === "invalid") return { error: "session must be { local?: { absolute_hours?, idle_hours? }, public_link?: { absolute_hours?, idle_minutes? } } with numbers or null" };
   const terminal = webTerminalPatch(patch.web_terminal);
   if (terminal === "invalid") return { error: "web_terminal must be { enabled?: boolean|null, ttl_minutes?: 1..20|null }" };
   const guests = guestsPatch(patch.guests);
@@ -70,6 +73,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
     ...(patch.public_link !== undefined ? { publicLink: patch.public_link as NonNullable<WebConfig["public_link"]> } : {}),
     ...(guests ? { guests } : {}),
     ...(verifiedAuthority ? { verifiedAuthority } : {}),
+    ...(publicLinkSession ? { publicLinkSession } : {}),
     session, terminal,
   };
 }
@@ -226,17 +230,24 @@ export function applyVerifiedAuthorityPatch(current: WebVerifiedAuthorityConfig 
   return { next: Object.keys(next).length ? next : undefined, changes };
 }
 
-/** `session`: `{ local: { absolute_hours?, idle_hours? } }` with numbers or null — the local limits only. */
+/** `session`: `{ local?: {…}, public_link?: {…} }` — its `local` part, `{ absolute_hours?, idle_hours? }` with numbers or null. */
 export function webSessionPatch(raw: unknown): Record<string, number | null> | null | "invalid" {
+  return sessionPart(raw, "local", ["absolute_hours", "idle_hours"]);
+}
+/** #3708: its `public_link` part, `{ absolute_hours?, idle_minutes? }` with numbers or null (bounds: the validator's). */
+export function webPublicLinkSessionPatch(raw: unknown): Record<string, number | null> | null | "invalid" {
+  return sessionPart(raw, "public_link", ["absolute_hours", "idle_minutes"]);
+}
+function sessionPart(raw: unknown, part: "local" | "public_link", keys: readonly string[]): Record<string, number | null> | null | "invalid" {
   if (raw === undefined) return null;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "invalid";
-  if (Object.keys(raw).some(k => k !== "local")) return "invalid";
-  const local = (raw as { local?: unknown }).local;
-  if (local === undefined) return null;
-  if (!local || typeof local !== "object" || Array.isArray(local)) return "invalid";
+  if (Object.keys(raw).some(k => k !== "local" && k !== "public_link")) return "invalid";
+  const value = (raw as Record<string, unknown>)[part];
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "invalid";
   const out: Record<string, number | null> = {};
-  for (const [k, v] of Object.entries(local)) {
-    if ((k !== "absolute_hours" && k !== "idle_hours") || !(v === null || (typeof v === "number" && Number.isFinite(v)))) return "invalid";
+  for (const [k, v] of Object.entries(value)) {
+    if (!keys.includes(k) || !(v === null || (typeof v === "number" && Number.isFinite(v)))) return "invalid";
     out[k] = v as number | null;
   }
   return Object.keys(out).length ? out : null;
