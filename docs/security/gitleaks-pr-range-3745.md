@@ -20,7 +20,11 @@ The workflow downloads Gitleaks 8.24.3 and verifies its release archive checksum
 before extraction. Push scanning still uses the existing pinned action, explicitly
 set to 8.24.3. PR scans use the same `.gitleaks.toml` and `.gitleaksignore` files.
 Scanner errors and findings both fail the job. Logs and SARIF redact findings.
-Missing configuration or an unexpected scanner version also fails closed.
+Missing configuration or an unexpected scanner version also fails closed. Git
+remerge cannot inspect merges with more than two parents, so any such commit
+in the selected range is rejected before scanning (including when a later commit
+removes its result-only secret). Unsupported merges already in the base are
+outside the PR range and do not cause a refusal.
 
 This retains the repository's existing policy of allowing PRs to change their
 scan config and fingerprint ignores; changing that trust policy is separate work.
@@ -67,10 +71,13 @@ A second repository proves a clean base sync containing an exactly ignored
 finding stays at zero, a conflict-resolution secret is detected, and a real
 remerge object-write failure exits nonzero. First-parent merge diffs are retained
 only as a negative control: they incorrectly report the clean sync.
+Two further controls demonstrate that raw remerge silently misses a three-parent
+result-only secret (with and without a later removal), while the production
+helper refuses both. Removing that guard makes the real control fail.
 Only ranges, counts and exit codes are printed, never the fake token.
 
-Local result: 11 real-binary controls pass (8.24.3 with Git 2.39.5,
-network-disabled node:22-bookworm container, one CPU); 92/92 focused tests pass (16 new).
+Local result: 13 real-binary controls pass (8.24.3 with Git 2.39.5,
+network-disabled node:22-bookworm container, one CPU); 93/93 focused tests pass (17 new).
 Five independent semantic reversals fail the new suite: using the base tip instead
 of the merge base, first-parent traversal, removing the version check, allowing
 shallow history, and dropping merge-resolution diffs. Reverting to first-parent merge diffs

@@ -125,7 +125,7 @@ with tempfile.TemporaryDirectory(prefix="merge-proof-", dir=work) as name:
     base_tip = git("rev-parse", "HEAD")
     git("checkout", "-qb", "feature", root)
     (repo / "feature.txt").write_text("feature\n")
-    git("add", ".")
+    git("add", "feature.txt")
     git("-c", "commit.gpgsign=false", "commit", "-qm", "feature")
     git("-c", "commit.gpgsign=false", "merge", "--no-edit", base_tip)
     clean_head = git("rev-parse", "HEAD")
@@ -170,4 +170,18 @@ with tempfile.TemporaryDirectory(prefix="merge-proof-", dir=work) as name:
         print(json.dumps({"case": "remerge-object-write-error", "exit": failed.returncode, "failsClosed": True}))
     finally:
         objects.chmod(mode)
-print("PASS: base-sync, conflict-resolution and real remerge-error controls; owned repositories removed")
+    git("checkout", "-q", "--detach", base_tip)
+    parent_tree = git("rev-parse", base_tip + "^{tree}")
+    parents = [git("commit-tree", parent_tree, "-p", base_tip, "-m", f"octopus parent {i}") for i in range(3)]
+    (repo / "octopus-only.txt").write_text(f'github_token = "{fake}"\n')
+    git("add", "octopus-only.txt")
+    octopus = git("commit-tree", git("write-tree"), *[a for p in parents for a in ("-p", p)], "-m", "octopus result")
+    removed = git("commit-tree", parent_tree, "-p", octopus, "-m", "remove result-only fake")
+    for label, candidate in [("octopus-result-only", octopus), ("octopus-later-removed", removed)]:
+        # This is the actual blind spot: the scanner alone returns zero.
+        code, findings = scan(label, "--diff-merges=remerge " + base_tip + ".." + candidate)
+        assert code == 0 and not findings
+        refused = helper(base_tip, candidate)
+        assert refused.returncode == 1 and "more than two parents" in refused.stdout
+        print(json.dumps({"case": label + "-helper", "exit": refused.returncode, "failsClosed": True}))
+print("PASS: base-sync, conflict-resolution, real remerge-error and octopus refusals; owned repositories removed")

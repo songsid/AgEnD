@@ -81,6 +81,18 @@ describe("complete fail-closed PR range", () => {
   it("refuses a different scanner version", () => {
     const r = scan({ FAKE_VERSION: "8.25.0" }); expect(r.status).not.toBe(0); expect(r.stderr).toContain("expected pinned Gitleaks");
   });
+  it("refuses a three-parent merge anywhere in the range before scanning", () => {
+    const a = commit(base), b = commit(base), c = commit(base);
+    const octopus = commit(a, b, c); const later = commit(octopus);
+    for (const candidate of [octopus, later]) {
+      const r = scan({ PR_HEAD_SHA: candidate });
+      expect(r.status).not.toBe(0); expect(r.stderr).toContain("more than two parents");
+      expect(r.stdout).not.toContain("--log-opts");
+    }
+    // Unsupported merges already in the base are outside this PR's scan range.
+    const afterBase = scan({ PR_BASE_SHA: octopus, PR_HEAD_SHA: later });
+    expect(afterBase.status, afterBase.stderr).toBe(0);
+  });
   it.each([1, 2])("propagates scanner failure %s", code => expect(scan({ FAKE_SCAN_EXIT: String(code) }).status).toBe(code));
 });
 
