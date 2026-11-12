@@ -1,0 +1,32 @@
+[
+  {
+    "name": "phone-dark-zh-TW",
+    "exit": 0,
+    "seconds": 5.465
+  },
+  {
+    "name": "phone-light-en",
+    "exit": 0,
+    "seconds": 5.635
+  },
+  {
+    "name": "phone-dark-en",
+    "exit": 0,
+    "seconds": 5.574
+  },
+  {
+    "name": "desktop-light-zh-TW",
+    "exit": 0,
+    "seconds": 5.951
+  },
+  {
+    "name": "desktop-dark-zh-TW",
+    "exit": 0,
+    "seconds": 6.011
+  },
+  {
+    "name": "phone-dark-zh-TW-retained-css",
+    "exit": 0,
+    "seconds": 5.939
+  }
+]

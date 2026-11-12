@@ -1,0 +1,48 @@
+{
+  "head": "1629f5c5808c75c488ca6e9194c17b3552239dd3",
+  "tree": "f800e2a4d95ad0c86b21503942c617696334ff5a",
+  "commands": [
+    {
+      "argv": [
+        "npx",
+        "vitest",
+        "run",
+        "tests/web-agent-back-chat-3714.test.ts",
+        "tests/web-usage-rail-1673.test.ts",
+        "tests/sidebar-instance-identity.test.ts",
+        "tests/web-instance-nav-n1.test.ts",
+        "tests/ui-css-literals-ratchet.test.ts",
+        "--maxWorkers=1"
+      ],
+      "exit": 0,
+      "log": "focused.log"
+    },
+    {
+      "argv": [
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit"
+      ],
+      "exit": 0,
+      "log": "source-types.log"
+    },
+    {
+      "argv": [
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "log": "test-types.log"
+    },
+    {
+      "argv": [
+        "node",
+        "scripts/changelog-assemble.mjs",
+        "--check"
+      ],
+      "exit": 0,
+      "log": "changelog.log"
+    }
+  ]
+}

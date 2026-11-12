@@ -709,6 +709,24 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 /* Settings share the available management workspace, independently of the chat's reading width.
    Keep fieldsets as real boxes so disabled forms and their confirmation boundaries stay intact. */
 .p-settings > .panel-body > .col { width: 100%; max-width: var(--settings-width); min-width: 0; margin: 0 auto; container: settings-page / inline-size; }
+/* #3714: Settings return belongs to scrolling content; the pane-header X only closes a pane. */
+.agent-settings-heading.s-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--s-3); }
+.agent-settings-heading .s-page-head > div { min-width: 0; max-width: 100%; }
+.agent-settings-heading .s-scope { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.agent-settings-heading.s-row, .agent-settings-index-return.s-row { min-height: 0; padding: 0; border-radius: 0; background: none; }
+.agent-settings-index-return.s-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; width: 100%; }
+.agent-settings-index-return h2 { margin: 0; font-size: var(--fs-lg); font-weight: var(--fw-semibold); }
+@media (max-width: 899px) {
+  .agent-settings-heading.s-row { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--s-2); margin-bottom: var(--s-4); }
+  .p-agent-page .agent-settings-heading.s-row > .s-back { min-width: var(--tap); min-height: var(--tap); margin: 0; padding: 0; border: 0; background: none; white-space: nowrap; }
+  .agent-settings-heading .s-page-head { min-width: 0; margin: 0; }
+  .agent-settings-heading .s-page-title { display: block; }
+  .agent-settings-heading .s-page-head h2 { font-size: var(--fs-lg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agent-settings-heading .s-page-lead, .agent-settings-heading .s-scope { display: none; }
+}
+@media (max-width: 899px), (pointer: coarse) {
+  .p-details .agent-back-chat { min-width: var(--tap); min-height: var(--tap); }
+}
 .s-page-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 0 0 24px; }
 .s-page-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .s-page-head h2 { margin: 0; color: var(--text); font-size: 24px; font-weight: var(--fw-semibold); line-height: 1.35; letter-spacing: -0.02em; }

@@ -1,0 +1,31 @@
+{
+  "head": "7a6d84a518f93c6686b9757060db06e38ad6fcec",
+  "tree": "3a1ced603d4cfc2a513d99bdad5e2270b60e08a4",
+  "dirty": false,
+  "commands": [
+    {
+      "argv": [
+        "npx",
+        "vitest",
+        "run",
+        "tests/web-instance-nav-n1.test.ts",
+        "tests/web-agent-back-chat-3714.test.ts",
+        "--maxWorkers=1"
+      ],
+      "exit": 0,
+      "seconds": 3.216,
+      "log": "1.log"
+    },
+    {
+      "argv": [
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "seconds": 10.358,
+      "log": "2.log"
+    }
+  ]
+}

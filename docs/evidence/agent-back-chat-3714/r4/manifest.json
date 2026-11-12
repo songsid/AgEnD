@@ -1,0 +1,141 @@
+{
+  "49569e9da52852a8e7df0f89a44d7997fc0fb1cfc96a48817edd9ce5bff1efe8": [
+    "README.md"
+  ],
+  "b91f612629a8c5c2c3b76b0a80f8c14c842cbb17e9e88da0e1c68f079108c74c": [
+    "browser/desktop-dark-zh-TW/dark-zh-TW-returned-chat.png"
+  ],
+  "8b226a665635b0b73e33d53bf5f5db3e37c233649c816fed5a84579afe2f6bc0": [
+    "browser/desktop-dark-zh-TW/dark-zh-TW-settings.png"
+  ],
+  "693295880d96426945d45bec2fe498e6230567ef4dcd776fcaaf6e0375899459": [
+    "browser/desktop-dark-zh-TW/dark-zh-TW-split-returned-chat.png"
+  ],
+  "1dc318488c33096cdc67972adf883cca87f304968d856cae0ddcf52956a3c3dc": [
+    "browser/desktop-dark-zh-TW/dark-zh-TW-split-settings.png"
+  ],
+  "546b2aacffd8e0b169719dfa00268974bb5c447536a23af07e0cd4123967cd74": [
+    "browser/desktop-dark-zh-TW/receipt.json"
+  ],
+  "dd223e205318d34e728717e2683d72d8799b5a5a394d0e28ca65dbf3acaa06c7": [
+    "browser/desktop-light-zh-TW/light-zh-TW-returned-chat.png"
+  ],
+  "c5e8272a1646290cff168d2d798a9c07b56a15591064d901b6481b118876a0fc": [
+    "browser/desktop-light-zh-TW/light-zh-TW-settings.png"
+  ],
+  "1a3eed3f7c4519dd0e7a83d59d906dbd7a84eeeac1ac0ef12777b142ede01ac5": [
+    "browser/desktop-light-zh-TW/light-zh-TW-split-returned-chat.png"
+  ],
+  "c5c8a6729beeb6183bd660e2c1270b0ff842a227a5c1e5996cd97d230fcc80c9": [
+    "browser/desktop-light-zh-TW/light-zh-TW-split-settings.png"
+  ],
+  "3bcdf63c8386c5771be8a55bd952f50b86233319c4aa425d20690e8a75170f1e": [
+    "browser/desktop-light-zh-TW/receipt.json"
+  ],
+  "754d5153efffc5878abcf272fbfb09847298ec680b3ac34dd42122890aeb728d": [
+    "browser/phone-dark-en/dark-en-returned-chat.png"
+  ],
+  "a410b7fe6afff798cc40730f056c0ff0429ec51dac6df991b7c3f8b12d645328": [
+    "browser/phone-dark-en/dark-en-settings-index.png"
+  ],
+  "2dca5dbb99d7d6d0e2be7fb24f6c740f36be3fddd8ba44c302cb3d45049d9ab2": [
+    "browser/phone-dark-en/dark-en-settings.png"
+  ],
+  "46766dbe5eae465148075c2e82e2857ab76b4c253f2ece99a610c4ce71dad9b8": [
+    "browser/phone-dark-en/receipt.json"
+  ],
+  "d465331f3f8975d2fd05e7fda3d04a86a8db1efeaf1c0eef26866c00873e50d1": [
+    "browser/phone-dark-zh-TW/dark-zh-TW-returned-chat.png"
+  ],
+  "57e4d751bc356800504b7ccfe9a1a5db968fd6926113c74151510ce769e4ed20": [
+    "browser/phone-dark-zh-TW/dark-zh-TW-settings-index.png"
+  ],
+  "51391e8db03be2a14bd306b5c277661152403cd3bb62fd4ff1e515419884d501": [
+    "browser/phone-dark-zh-TW/dark-zh-TW-settings.png"
+  ],
+  "ffb3aeee3d604e91e9918f2cc8df806dd5889a3c9bafac4022120aa2b8d53bbe": [
+    "browser/phone-dark-zh-TW/receipt.json"
+  ],
+  "4fbab04caea2df8ef5ef725b9875f1baa5d75c82e80e8d2ae8a3270fd56159ce": [
+    "browser/phone-dark-zh-TW-retained-css/dark-zh-TW-settings-index.png"
+  ],
+  "969be11ee766fac8d96e5c177a0da5d76bebccba45160047bdf3f3a7e9e86137": [
+    "browser/phone-dark-zh-TW-retained-css/dark-zh-TW-settings.png"
+  ],
+  "0955bb06c287f5a55f794a635f03454ad036860108c078c84df0a9048499b962": [
+    "browser/phone-dark-zh-TW-retained-css/receipt.json"
+  ],
+  "614ea622a80da1891a263d5337f11151363d7b1b25568301119a1684c0ecd5a0": [
+    "browser/phone-light-en/light-en-returned-chat.png"
+  ],
+  "73194e8c73a704588c16c728710319f6becc86a4c9841d5262a3c46969a5255b": [
+    "browser/phone-light-en/light-en-settings-index.png"
+  ],
+  "1f2bd4c5215f83953392056f5d13a0d70cd6dbec9c89e5f9cae65dcdf4c029dd": [
+    "browser/phone-light-en/light-en-settings.png"
+  ],
+  "d6de034bb51061f70e54d6837c94cdea4f5b2bb8364ea28ab94f5977e0aaea3a": [
+    "browser/phone-light-en/receipt.json"
+  ],
+  "ebc7581ae72e55e93a8f249f07d262d1a51429b9ea302f3916d674c3ff88330c": [
+    "browser/phone-light-zh-TW/light-zh-TW-returned-chat.png"
+  ],
+  "0e9fa71bc12470b689a57710674bd016f12ba4e0d620ae1f04ea509011b1ce4a": [
+    "browser/phone-light-zh-TW/light-zh-TW-settings-index.png"
+  ],
+  "f389f93cf088cbf4c051248f2813b5fd140610e576ba7d908b19ec5d862721bc": [
+    "browser/phone-light-zh-TW/light-zh-TW-settings.png"
+  ],
+  "3704835f4ee1f54332e8077300299e8c181dcb032793cf56353caaecc14329ae": [
+    "browser/phone-light-zh-TW/receipt.json"
+  ],
+  "8944d2402a18020f6baa3e265506842b84094ad33696119186b5a15facc7071c": [
+    "browser-verification.json"
+  ],
+  "e22d20fef0f8fb1c428586da04c89feb3b99d751b2661ffc9ab7a2fad911be62": [
+    "offline/campaign.json"
+  ],
+  "65b4e0f76328d1b18d60f867ad730359f33ab582999a67138e31df469e49be4d": [
+    "offline/changelog.log"
+  ],
+  "945ce30807fccce31efdf5873ecec28a2aa4f64666958109a2b5f3ae6be6ec43": [
+    "offline/checks.json"
+  ],
+  "c73b0476e6528ec56324560af979e43f46b83dbb13981be1e833546b631edae7": [
+    "offline/exploration/global-return-fallback.log"
+  ],
+  "8b4e1bdd33b1e6023cdeda94e4b77ce73824ed4f35ada18ad77db62821da77db": [
+    "offline/fail-first.log"
+  ],
+  "28dce1367929d744513bb836f155bad36d800c98f7a2db920e7491d23cd63b7e": [
+    "offline/fail-first.test.txt"
+  ],
+  "e8ce0a5e8843260717c0b176166231ffd116f074e6f6566a0ad35840176a4435": [
+    "offline/focused.log"
+  ],
+  "a7381937f63590717314fa1ea98720fc62e16612126017d3cb00339035304983": [
+    "offline/mutations/duplicate-section-label.log"
+  ],
+  "454485f9d2fa386f5cb85fed1cf566548733d514ccd223ff62eb5bbd5b2e5722": [
+    "offline/mutations/missing-index-title.log"
+  ],
+  "1c497264192c9e89d1219dea917692438ba80cb71f490f54577e9b28e9b77214": [
+    "offline/mutations/receipt.json"
+  ],
+  "dd05ae1e4ee668a57b44dd86297daf62c8f349a37b426fd35d2fb4cd45fbae96": [
+    "offline/mutations/separate-back-row.log"
+  ],
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
+    "offline/source-types.log",
+    "offline/test-types.log"
+  ],
+  "6c480cf60fd2ebda8d0031eb52deb91782f7c8ccc2c0b6d176edc7d8c7e7e06b": [
+    "reversals.py"
+  ],
+  "2de64801b5b4b1137a60fe0ef70b7d4de1d64fe4359eb0ee356736848d63c3d5": [
+    "verify.py"
+  ],
+  "9e4752d4dc6326340ac7fe5645f48eca6593d38ee491c3fb90962dbda7678f71": [
+    "visual-review.md"
+  ]
+}

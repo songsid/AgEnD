@@ -201,7 +201,7 @@ describe("the open instance stays on top while a filter is on (#1936)", () => {
   it("the same on View, Details and Log, and by status / CLI facets; a favorite open instance is pinned, not listed under Favorites", async () => {
     const pg = await app("/view/docs-writer");
     fire(chip(pg, "CLI", "Codex"), "change"); await settle();
-    expect([pinnedNames(pg), rowNames(pg), pinnedBlock(pg).querySelector("a.inst").getAttribute("href")]).toEqual([["docs-writer"], ["api-server"], "/view/docs-writer"]);
+    expect([pinnedNames(pg), rowNames(pg), pinnedBlock(pg).querySelector("a.inst").getAttribute("href")]).toEqual([["docs-writer"], ["api-server"], "/ui/chat/docs-writer"]);
     await go("/ui/fleet/agent/qa-bot");
     expect(pinnedNames(pg)).toEqual(["qa-bot"]);
     const nav = await import("/assets/instance-nav.js");

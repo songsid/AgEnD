@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/agent-back-to-chat-m2960
+
+ ❯ tests/web-agent-back-chat-3714.test.ts (22 tests | 1 failed) 2190ms
+     × keeps the phone section back link, single title and return in the same content heading 32ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-agent-back-chat-3714.test.ts > #3714 Settings Back to chat > keeps the phone section back link, single title and return in the same content heading
+AssertionError: expected null not to be null
+ ❯ tests/web-agent-back-chat-3714.test.ts:87:50
+     85|     await p.mount(h(details.DetailsPanel, { route: nav.navStore.get().…
+     86|     const heading = p.root.querySelector(".agent-settings-heading");
+     87|     expect(heading.querySelector(".s-back")).not.toBeNull();
+       |                                                  ^
+     88|     expect(heading.querySelector(".s-back").getAttribute("href")).toBe…
+     89|     expect(heading.querySelectorAll("h2").length).toBe(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 21 passed (22)
+   Start at  23:49:19
+   Duration  2.70s (transform 1.68s, setup 120ms, import 197ms, tests 2.19s, environment 0ms)
+
