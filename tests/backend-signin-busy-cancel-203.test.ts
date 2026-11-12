@@ -158,6 +158,21 @@ describe("AGEND-215: with two sign-ins at once, every web cancel names the backe
   });
 });
 
+describe("AGEND-218: the installer's list — a console fallback asks only for the backend it was pressed on", () => {
+  it("another backend's structured run is not ended: the fallback names the chosen backend and goes on to its console dialog", async () => {
+    // Claude Code has a structured run; the list's `codex · Use console fallback` is pressed. Cancel carries `codex` (no run there: the server ends nothing and
+    // answers 200), never claude-code's — and the console dialog for codex opens afterwards.
+    answer = r => r.url === DEFAULT_ENDPOINT ? snapshot({ selected: ["claude-code", "codex"], pending: ["claude-code", "codex"], login: waitingForCode }) : {};
+    await p.mount(h(S.BrowserSignInDialog, { backends: ["claude-code", "codex"], onClose: closing() })); await settle(8);
+    reqs = [];
+    const codex = p.root.querySelectorAll("button").find((b: any) => /^codex\s*·.*console/i.test(b.textContent.trim())) as any;
+    expect(codex).toBeDefined();
+    fire(codex, "click"); await settle(8);
+    expect(posts(DEFAULT_ENDPOINT, "cancel").map(r => r.body)).toEqual([{ operation: "cancel", backend: "codex" }]);
+    expect(shell.shellStore.get().dialog).not.toBeNull();   // the older dialog for codex is what opened
+  });
+});
+
 describe("AGEND-216: the console fallback says what it costs", () => {
   const mountDefault = async () => {
     answer = r => r.url === DEFAULT_ENDPOINT ? snapshot({ login: waitingForCode }) : {};
