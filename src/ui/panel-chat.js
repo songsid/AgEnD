@@ -159,6 +159,32 @@ export function insertPaneQuote(name, source, text, current = () => true) {
 }
 export const paneComposerReady = name => !!composerField(name);
 
+/** A scoped pane can change width without changing text. Keep its existing 240px composer cap and IME ownership. */
+function observeComposerWidth(field, current, composing) {
+  if (!field || typeof ResizeObserver !== "function") return () => {};
+  let alive = true, width = -1, deferred = false;
+  const resize = () => {
+    if (!alive || !current()) return;
+    const next = field.getBoundingClientRect().width;
+    if (next === width && !deferred) return;
+    if (composing()) { deferred = true; return; }
+    width = next; deferred = false;
+    field.style.height = "auto";
+    if (field.value) field.style.height = `${Math.min(field.scrollHeight, 240)}px`;
+  };
+  let frame = null;
+  const schedule = () => {
+    if (frame !== null || (field.getBoundingClientRect().width === width && !deferred)) return;
+    // Height writes happen outside ResizeObserver delivery, avoiding a self-generated resize loop.
+    frame = setTimeout(() => { frame = null; resize(); }, 0);
+  };
+  const ended = () => queueMicrotask(resize);
+  const observer = new ResizeObserver(schedule); observer.observe(field);
+  field.addEventListener("compositionend", ended); field.addEventListener("blur", ended); resize();
+  return () => { alive = false; clearTimeout(frame); observer.disconnect(); field.removeEventListener("compositionend", ended); field.removeEventListener("blur", ended); };
+}
+
+
 /** #3637: private, write-only local draft handoff; never send, upload or share an outgoing queue. */
 export const popoutDraftVersion = 1;
 export const popoutDraftReady = () => !!store && ["captureDraft", "draftCurrent", "clearCapturedDraft", "acceptDraft"].every(key => typeof store[key] === "function");
@@ -372,6 +398,10 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
       if (composers.get(name) === bindings) composers.delete(name);
     };
   }, [name]);
+  useLayoutEffect(() => {
+    if (!pane && new URLSearchParams(location.search).get("presentation") !== "popout") return;
+    return observeComposerWidth(bindings.input.current, () => composers.get(name) === bindings, () => bindings.composing);
+  }, [name, !!pane]);
   const attachmentsSupported = supportsInstanceFeature(inst,"attachments");
   const names = useStore(namesStore);   // #1722: which name leads (the title)
   // #1629: this agent's theme, on this surface only; redrawn when the themes, the viewer's switch or the mode move.

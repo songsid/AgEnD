@@ -118,9 +118,10 @@ try {
       controls: document.querySelectorAll("#main .hd-text").length,
       headerOverflow: [...document.querySelectorAll("#main .panel-head")].some(el => el.scrollWidth > el.clientWidth),
       touch: [...document.querySelectorAll('.popup-pane-head button, .popup-pane-head .seg-item')].map(el => { const r = el.getBoundingClientRect(); return { width: r.width, height: r.height, coarse: matchMedia('(pointer: coarse)').matches }; }).filter(r => r.width && r.height),
+      composerClipped: [...document.querySelectorAll('.composer-box textarea')].some((el: any) => el.value && el.clientHeight < 238 && el.scrollHeight > el.clientHeight + 2),
       oneRow: [...document.querySelectorAll(".popup-pane-head")].every(el => { const title = el.querySelector(".panel-title")!.getBoundingClientRect(), tabs = el.querySelector(".inst-switch")!.getBoundingClientRect(), actions = el.querySelector(".panel-actions")!.getBoundingClientRect(); return Math.abs(title.top + title.height / 2 - tabs.top - tabs.height / 2) < 2 && Math.abs(actions.top + actions.height / 2 - tabs.top - tabs.height / 2) < 2; }),
       panes: [...document.querySelectorAll(".ws-pane")].map(el => { const r = el.getBoundingClientRect(); return { id: el.getAttribute("data-pane"), rect: [r.x, r.y, r.width, r.height], tabs: [...el.querySelectorAll(".inst-switch a")].map(a => a.textContent) }; }) }));
-    assert.equal(geometry.headers, panes); assert.equal(geometry.controls, 1); assert.equal(geometry.overflow, false); assert.equal(geometry.headerOverflow, false); assert.equal(geometry.oneRow, true);
+    assert.equal(geometry.headers, panes); assert.equal(geometry.controls, 1); assert.equal(geometry.overflow, false); assert.equal(geometry.headerOverflow, false); assert.equal(geometry.oneRow, true); assert.equal(geometry.composerClipped, false);
     for (const r of geometry.touch) if (r.coarse) assert.ok(r.width >= 44 && r.height >= 44, JSON.stringify(r));
     assert.equal(geometry.streams.active, 1); assert.equal(geometry.streams.max, 1);
     const file = `${theme}-${language}-${label}.png`; await tab.screenshot({ path: join(out, file) }); receipt.cases.push({ label, file, geometry });
