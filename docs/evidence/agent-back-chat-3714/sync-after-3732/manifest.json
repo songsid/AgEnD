@@ -1,0 +1,18 @@
+{
+  "ceda9524b001fde70e4ff2f0aff734bbe629f0f7c1a24ee9f592e452f83f549a": [
+    "README.md"
+  ],
+  "527bd22d63e31f15f89bf6b0da0f73c00630d4c0194fd2a7fb5f72c0c117673d": [
+    "checks.json"
+  ],
+  "151bfc957d7559323ea988fde1b667650c7ac8e9cfba2027e9581179f3445e6f": [
+    "focused.log"
+  ],
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
+    "source-types.log",
+    "test-types.log"
+  ],
+  "46703c358b5bd74b279890309c62662ef4061d329ac438052ca3a243b1f895b9": [
+    "source.json"
+  ]
+}
