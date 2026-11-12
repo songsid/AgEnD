@@ -21184,7 +21184,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         claimWindow: backend => this.loginWindow.tryClaim("web", backend),
         releaseWindow: claim => { this.loginWindow.release(claim); },
         isClaimCurrent: claim => this.loginWindow.isCurrent(claim),
-        windowBusyMessage: () => this.loginWindow.busyMessage(),
+        windowBusyMessage: backend => this.loginWindow.busyMessage(backend),
+        windowHolder: backend => this.loginWindow.holderFor(backend),
         tunnelDataDir: () => this.dataDir,
         reserveTunnel: owner => this.getTunnelLane().reserve("login", owner),
         // Throws when the prompt cannot be posted: the controller tells the
@@ -21337,7 +21338,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       accessToken: sink => this.loginController?.webAccessToken(sink) ?? null,
       isActiveFor: sink => this.loginController?.isActiveFor(sink) ?? false,
       cancelFor: (sink, opts) => this.loginController?.cancelFor(sink, opts) ?? Promise.resolve(false),
-      cancel: () => this.cancelLoginSession(),
+      cancel: backend => this.cancelLoginSession(backend),
       notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
       // No details in the event: each page reads its own view (GET /ui/backend-login), as its session may see it.
       // The accounts are forgotten when ANY sign-in ends, even one a later one replaced (it may be a different account now), and not at every step of a
@@ -21759,9 +21760,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       classic: classic.filter(c => c.backend === backend && same(c.profile)).map(c => c.key),
       fleetDefault: same(fleetDefaults.get(backend)),
     };
-    const held = this.loginWindow.current;
+    const held = this.loginWindow.heldFor(backend);
     const signingIn = (this.loginController?.signingIn(backend, profile) ?? false) || (this.profileSignInsInstance?.signingIn(backend, profile) ?? false)
-      || (!!held && held !== ownClaim && held.backend === backend && !this.loginController?.activeBackend && !this.profileSignInsInstance?.active);   // a named account's sign-in holds the window too, and says WHICH account (above)
+      || (!!held && held !== ownClaim && !this.loginController?.activeBackend && !this.profileSignInsInstance?.active);   // a named account's sign-in holds the window too, and says WHICH account (above)
     return { backend, name, confirm, users, signingIn, usersUnknown: rooms.kind === "unknown" };
   }
 
@@ -22245,27 +22246,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     ]);
   }
 
-  /** `/login cancel` — abort the active session and remove its window. */
-  async cancelLoginSession(): Promise<string> {
+  /**
+   * `/login cancel` — abort the active session and remove its window. `backend` (AGEND-203, the dashboard's "Cancel the running sign-in" on a refused start): only the
+   * sign-in or install running on that backend; nothing else is touched, and the answer says none ran when there is none.
+   */
+  async cancelLoginSession(backend?: string): Promise<string> {
+    const mine = (b: string | null | undefined) => backend === undefined || b === backend;
     // `/login cancel` also stops an install that `/login` started — and the
     // sign-in an install that just succeeded is about to hand over to.
-    if (this.activeInstall) return this.cancelInstallSession();
-    if (this.installHandoff) {
-      const { backend } = this.installHandoff;
+    if (this.activeInstall && mine(this.activeInstall.backend)) return this.cancelInstallSession();
+    if (this.installHandoff && mine(this.installHandoff.backend)) {
+      const { backend: handedOff } = this.installHandoff;
       this.installHandoff.cancelled = true;
       this.installHandoff = null;
-      return t("login.cancelled", backend);
+      return t("login.cancelled", handedOff);
     }
     const browserLogin = this.browserBackendSignInsInstance, browserBackend = browserLogin?.activeBackend;
-    if (browserLogin && browserBackend) {
+    if (browserLogin && browserBackend && mine(browserBackend)) {
       const confirmed = await browserLogin.close();
       if (confirmed) this.browserBackendSignInsInstance = null;
       return confirmed ? t("login.cancelled", browserBackend) : t("login.browser_cleanup_failed");
     }
     // #3212: a named account's sign-in on this host ("Cancel sign-in and remove" and `/login cancel` end it as they end the others).
-    const ended = await this.profileSignInsInstance?.cancelActive();
-    if (ended) return ended.confirmed ? t("login.cancelled", t("login.profile_label", ended.target.backend, ended.target.profile)) : t("login.browser_cleanup_failed");
-    if (this.loginController?.isActive()) return this.loginController.cancel();
+    const target = this.profileSignInsInstance?.active ?? null;
+    if (!target || mine(target.backend)) {
+      const ended = await this.profileSignInsInstance?.cancelActive();
+      if (ended) return ended.confirmed ? t("login.cancelled", t("login.profile_label", ended.target.backend, ended.target.profile)) : t("login.browser_cleanup_failed");
+    }
+    if (this.loginController?.isActive() && mine(this.loginController.pendingBackend)) return this.loginController.cancel();
     return t("login.no_session");
   }
 
@@ -22441,7 +22449,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // login). Owned by this method until the session is published.
     const claim = this.loginWindow.tryClaim("install", backend);
     if (claim && await checkBinaryInstalledAsync(info.binary)) { this.loginWindow.release(claim); return t("install.already", backend, info.binary); }
-    if (!claim) return this.loginWindow.busyMessage();
+    if (!claim) return this.loginWindow.busyMessage(backend);
 
     // M-2281: the installer's output, live, in the chat that asked — no page shows this window.
     // Telegram gets its own <pre> (its markdown conversion keeps a fence as literal backticks); others a fenced block.

@@ -265,15 +265,16 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     expect(await fm.startInstallSession("claude", chat)).toContain("already");
     expect(await fm.startInstallSession("notreal", chat)).toContain("notreal");
 
-    // A web login holds the fleet-wide window; install must yield.
-    const loginClaim = (fm as any).loginWindow.tryClaim("web", "codex");
-    expect(await fm.startInstallSession("grok", chat)).toContain("codex");
+    // A web login holds its backend's window; an install of THAT backend must yield — another backend's login does not hold it up (AGEND-203).
+    const loginClaim = (fm as any).loginWindow.tryClaim("web", "grok");
+    expect(await fm.startInstallSession("grok", chat)).toContain("grok");
     (fm as any).loginWindow.release(loginClaim);
-
-    await fm.startInstallSession("grok", chat);
+    const elsewhere = (fm as any).loginWindow.tryClaim("web", "codex");
+    expect(await fm.startInstallSession("grok", chat)).toBe((await import("../src/locale.js")).t("install.started", "grok"));
+    (fm as any).loginWindow.release(elsewhere);
+    // One install at a time on the host, and an install blocks its own backend's /login.
     expect(await fm.startInstallSession("codex", chat)).toBe((await import("../src/locale.js")).t("install.busy"));
-    // And the reverse: an install blocks /login.
-    expect(await fm.startLoginSession("codex", chat)).toContain("install");
+    expect(await fm.startLoginSession("grok", chat)).toContain("install");
   });
 
   it("a shutdown during loginShell never starts the install session", async () => {

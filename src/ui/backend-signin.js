@@ -46,6 +46,7 @@ register("signin", {
     ended: "The authorization ended.",
     cancelSignIn: "Cancel connecting",
     cancelled: "Connecting cancelled.",
+    cancelOther: "Cancel that connection and continue",
     running: "Connecting your {0} account (started on {1}).",
     open: "Open",
     expired: "That took too long — start again.",
@@ -98,6 +99,7 @@ register("signin", {
     ended: "授權流程已結束。",
     cancelSignIn: "取消連接",
     cancelled: "已取消連接。",
+    cancelOther: "取消那個連接並繼續",
     running: "正在連接 {0} 帳號（從 {1} 啟動）。",
     open: "開啟",
     expired: "等太久了——請重新開始。",
@@ -257,7 +259,9 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
     const unlisten = onLang(() => cards.relabel());
     return () => {
       unlisten(); cards.dispose();
-      if (profile && run.current) void post(endpoint, { operation: "cancel", id: run.current }).then(() => refreshSignIn());   // that run only; nothing to end once it is over: the server answers with what is there
+      // AGEND-203: the default account's too (single dialog) — a sign-in left running behind a closed dialog held this backend's window until its ten minutes were up. The installer's
+      // multi-backend list keeps its runs: that page is where they are meant to continue.
+      if ((profile || single) && run.current) void post(endpoint, { operation: "cancel", id: run.current }).then(() => refreshSignIn());   // that run only; nothing to end once it is over: the server answers with what is there
     };
   }, [backend, profile, backends]);
   const fallback = async (chosen = backend) => {
@@ -287,15 +291,21 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
   const [busy, setBusy] = useState(false);
   const shown = shownOf(backend, profile);
   const dismiss = onClose || closeDialog;
+  const check = () => {
+    setStep({ kind: "checking" });
+    return post("/ui/backend-login/check", { backend, ...(profile ? { profile } : {}) }).then((r) => {
+      if (gone.current) return;
+      if (r.body && r.body.confirm) setStep({ kind: "confirm", confirm: r.body.confirm });
+      else setStep({ kind: "message", text: (r.body && (r.body.message || (r.body.error && errorText(r.body.error)))) || tn("failed"),
+        ...(r.body && r.body.busy && typeof r.body.busy.backend === "string" ? { busy: r.body.busy.backend } : {}) });
+    });
+  };
+  const gone = useRef(false);
   useEffect(() => {
     if (resume) return undefined;
-    let gone = false;
-    post("/ui/backend-login/check", { backend, ...(profile ? { profile } : {}) }).then((r) => {
-      if (gone) return;
-      if (r.body && r.body.confirm) setStep({ kind: "confirm", confirm: r.body.confirm });
-      else setStep({ kind: "message", text: (r.body && (r.body.message || (r.body.error && errorText(r.body.error)))) || tn("failed") });
-    });
-    return () => { gone = true; };
+    gone.current = false;
+    void check();
+    return () => { gone.current = true; };
   }, []);
   const login = s.login;
   const close = () => {
@@ -318,7 +328,16 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
     const r = await post("/ui/backend-login/start", { confirm: step.confirm.id, ...(tunnel ? { tunnel: true } : {}) });
     setBusy(false);
     if (r.body && r.body.login) { signInStore.set({ login: r.body.login }); setStep({ kind: "login" }); return; }
-    setStep({ kind: "message", text: (r.body && (r.body.message || (r.body.error && errorText(r.body.error)))) || tn("failed") });
+    setStep({ kind: "message", text: (r.body && (r.body.message || (r.body.error && errorText(r.body.error)))) || tn("failed"),
+      ...(r.body && r.body.busy && typeof r.body.busy.backend === "string" ? { busy: r.body.busy.backend } : {}) });
+  };
+  // AGEND-203: a start refused because another sign-in runs offers to end THAT one (by its backend), then asks again — no chat command to type.
+  const cancelOther = async () => {
+    setBusy(true);
+    await post("/ui/backend-login/cancel", { backend: step.busy });
+    setBusy(false);
+    void refreshSignIn();
+    await check();
   };
   const cancelRun = async () => {
     setBusy(true);
@@ -343,7 +362,10 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
       <button type="button" class="btn btn-primary" onClick=${() => start(false)}>${tn("go")}</button>`;
   } else if (step.kind === "message") {
     body = html`<p class="signin-message">${step.text}</p>`;
-    actions = html`<button type="button" class="btn btn-primary" onClick=${close}>${tn("close")}</button>`;
+    actions = step.busy
+      ? html`<button type="button" class="btn" disabled=${busy} onClick=${close}>${tn("close")}</button>
+        <button type="button" class="btn btn-danger" disabled=${busy} onClick=${cancelOther}>${tn("cancelOther")}</button>`
+      : html`<button type="button" class="btn btn-primary" onClick=${close}>${tn("close")}</button>`;
   } else if (!login) {
     body = html`<p class="signin-note">${tn("ended")}</p>`;
     actions = html`<button type="button" class="btn btn-primary" onClick=${close}>${tn("close")}</button>`;

@@ -151,7 +151,7 @@ describe("/login dispatch and exclusivity", () => {
     expect(claimed.mock.calls.map(call => call[0])).toContain("login-menu:");
   });
 
-  it("while a web login is active: install is refused and /login cancel reaches the controller", async () => {
+  it("while a web login is active: an install of its backend is refused and /login cancel reaches the controller", async () => {
     const { fm, chat } = setup();
     vi.spyOn(LoginController.prototype, "start").mockResolvedValue("web-started");
     vi.spyOn(LoginController.prototype, "isActive").mockReturnValue(true);
@@ -159,7 +159,9 @@ describe("/login dispatch and exclusivity", () => {
     const cancel = vi.spyOn(LoginController.prototype, "cancel").mockResolvedValue("web-cancelled");
     await fm.startLoginSession("codex", chat);
     (fm as any).loginWindow.tryClaim("web", "codex");                             // what the real start() does before its first await
-    expect(await fm.startInstallSession("grok", chat)).toBe(t("login.busy", "codex"));
+    expect(await fm.startInstallSession("codex", chat)).toBe(t("login.busy", "codex"));
+    expect(await fm.cancelLoginSession("grok"), "another backend's cancel never reaches it").toBe(t("login.no_session"));
+    expect(cancel).not.toHaveBeenCalled();
     expect(await fm.cancelLoginSession()).toBe("web-cancelled");
     expect(cancel).toHaveBeenCalledTimes(1);
   });

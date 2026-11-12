@@ -103,7 +103,7 @@ describe("startWebInstall", () => {
   it("the start returns while the installer runs: the fleet is not held, only the one window is", async () => {
     const { fm, reporter } = fleet();
     expect(await fm.startWebInstall("grok", reporter())).toEqual({ started: true });
-    expect((fm as any).loginWindow.current).toMatchObject({ kind: "install", backend: "grok" });
+    expect((fm as any).loginWindow.heldFor("grok")).toMatchObject({ kind: "install", backend: "grok" });
     // Another install, a sign-in or /login meanwhile: refused at once, never queued.
     expect(await fm.startWebInstall("codex", reporter())).toEqual({ refused: "busy" });
     expect(fakeSessions).toHaveLength(1);

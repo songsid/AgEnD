@@ -1353,7 +1353,7 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
           z.strictObject({ kind: z.enum(["code", "start_url", "region"]), value: z.string().max(4096) }),
         ]) }),
         z.strictObject({ operation: z.literal("skip"), backend: z.enum(ONBOARDING_BACKENDS as unknown as [typeof ONBOARDING_BACKENDS[number], ...typeof ONBOARDING_BACKENDS]) }),
-        z.strictObject({ operation: z.literal("cancel") }), z.strictObject({ operation: z.literal("refresh") }),
+        z.strictObject({ operation: z.literal("cancel"), id: z.string().regex(/^[0-9a-f]{32}$/).optional() }), z.strictObject({ operation: z.literal("refresh") }),
       ]).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "invalid_signin_action" }); return; }
       const action = parsed.data;
@@ -1361,7 +1361,7 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
       else if (action.operation === "start") result = await service.begin(owner, action.backend, action.relogin === true);
       else if (action.operation === "input") result = await service.input(owner, action.id, action.revision, action.action);
       else if (action.operation === "skip") result = await service.skip(owner, action.backend);
-      else if (action.operation === "cancel") result = await service.cancel(owner);
+      else if (action.operation === "cancel") result = await service.cancel(owner, action.id);
       else result = await service.refresh(owner, true);
     }
     if (!permitWebContinuation(req, res, ctx)) return;
@@ -1423,10 +1423,11 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
     } else {
       // `{}`: the explicit "Cancel sign-in" — whatever sign-in is running, as ever. `{ run, ifUnopened }`: the dialog's own Close (#3321 review), for
       // that one run and only while its terminal is unopened and it is this session's own; anything else is left alone and `cancelled` is false.
-      const parsed = z.union([z.strictObject({}), z.strictObject({ run: z.string().regex(/^[0-9a-f]{32}$/), ifUnopened: z.literal(true) })]).safeParse(body);
+      // `{ backend }` (AGEND-203): the "Cancel the running sign-in" a refused start offers — only the sign-in or install on that backend.
+      const parsed = z.union([z.strictObject({}), z.strictObject({ backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/i) }), z.strictObject({ run: z.string().regex(/^[0-9a-f]{32}$/), ifUnopened: z.literal(true) })]).safeParse(body);
       if (!parsed.success) { json(res, 400, { error: "sign_in_args" }); return; }
       if ("run" in parsed.data) json(res, 200, await logins.closeRun(now, parsed.data.run));
-      else json(res, 200, { message: await logins.cancel() });
+      else json(res, 200, { message: await logins.cancel("backend" in parsed.data ? parsed.data.backend.toLowerCase() : undefined) });
     }
   })().catch(() => { try { json(res, 500, { error: "sign_in_request_failed" }); } catch { /* response ended */ } });
   return true;

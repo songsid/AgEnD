@@ -57,7 +57,7 @@ export class BrowserBackendSignIns {
   }
   get activeBackend(): StructuredBackend | null { return this.run && !this.terminal(this.run) ? this.run.backend : null; }
   private loginMayWrite(backend: OnboardingBackend): boolean {
-    return this.lock.current?.backend === backend || (this.run?.backend === backend
+    return this.lock.heldFor(backend) !== null || (this.run?.backend === backend
       && (!this.terminal(this.run) || this.run.session.view(this.run.owner).reason === "cleanup_failed"));
   }
   get ready(): boolean {
@@ -148,10 +148,11 @@ export class BrowserBackendSignIns {
     if (result !== "accepted") throw new Error(`signin_action_${result}`);
     return this.snapshot(owner);
   }
-  async cancel(owner: object): Promise<BrowserBackendSignInSnapshot> {
+  /** `id` (AGEND-203): only the run with that id — a dialog that is closed ends the run IT started, never one another tab began since. */
+  async cancel(owner: object, id?: string): Promise<BrowserBackendSignInSnapshot> {
     if (!this.current(owner)) throw new Error("signin_session_expired");
     const run = this.run;
-    if (run) await run.session.cancel();
+    if (run && (id === undefined || run.session.view(run.owner).id === id)) await run.session.cancel();
     if (run?.session.view(owner).reason === "cleanup_failed") throw new Error("signin_cleanup_failed");
     return this.snapshot(owner);
   }

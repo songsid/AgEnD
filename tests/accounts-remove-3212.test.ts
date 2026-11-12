@@ -139,16 +139,16 @@ describe("Remove: the positive case", () => {
       dataDir: data, logger: { info },
       accountUses: () => ({ agents: [{ name: "dev", backend: "claude-code", profile: "spare" }, { name: "ops", backend: "codex", profile: "spare" }],
         classic: [], fleetDefaults: new Map([["codex", "spare"]]) }),
-      loginWindow: { current: null }, loginController: { signingIn: () => false, activeBackend: null },
+      loginWindow: { heldFor: () => null }, loginController: { signingIn: () => false, activeBackend: null },
       removalRequest: (FleetManager.prototype as any).removalRequest, withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(),
     };
     const call = (fm: any, ...a: unknown[]): Promise<any> => (FleetManager.prototype as any).removeAccountProfile.call(fm, ...a);
     expect(await call(self, "claude-code", "spare", "spare", "Firefox on Linux")).toEqual({ ok: false, error: "in_use", users: { agents: ["dev"], classic: [], fleetDefault: false } });
     // A sign-in for this backend whose profile is not known yet (the window held, no active entry): refused too.
     self.accountUses = () => ({ agents: [], classic: [], fleetDefaults: new Map() });
-    self.loginWindow = { current: { id: 1, kind: "web", backend: "claude-code" } };
+    self.loginWindow = { heldFor: (b: string) => b === "claude-code" ? { id: 1, kind: "web", backend: "claude-code" } : null };
     expect(await call(self, "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "signing_in" });
-    self.loginWindow = { current: null };
+    self.loginWindow = { heldFor: () => null };
     self.loginController = { signingIn: (b: string, p: string) => b === "claude-code" && p === "spare", activeBackend: "claude-code" };
     expect(await call(self, "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "signing_in" });
     self.loginController = { signingIn: () => false, activeBackend: null };
@@ -164,7 +164,7 @@ describe("#3291 review (Prism): who uses it is never under-counted", () => {
   const fm = (data: string, over: Record<string, unknown> = {}) => ({
     dataDir: data, logger: { info: vi.fn() }, fleetConfig: { defaults: {}, instances: {} },
     accountUses: () => ({ agents: [], classic: [], fleetDefaults: new Map() }),
-    loginWindow: { current: null }, loginController: { signingIn: () => false, activeBackend: null },
+    loginWindow: { heldFor: () => null }, loginController: { signingIn: () => false, activeBackend: null },
     removalRequest: (FleetManager.prototype as any).removalRequest, withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(), ...over,
   });
   const daemon = (cfg: Record<string, unknown>) => ({ getConfigSnapshot: () => cfg });

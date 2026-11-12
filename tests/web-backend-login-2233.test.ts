@@ -75,7 +75,8 @@ async function fixture(over: { checkAuth?: LoginControllerDeps["checkAuth"]; con
     claimWindow: backend => lock.tryClaim("web", backend),
     releaseWindow: c => { lock.release(c); },
     isClaimCurrent: c => lock.isCurrent(c),
-    windowBusyMessage: () => lock.busyMessage(),
+    windowBusyMessage: backend => lock.busyMessage(backend),
+    windowHolder: backend => lock.holderFor(backend),
     checkAuth: over.checkAuth ?? (async () => "invalid"),
     createSession: (spec, ev) => { const s = new FakeSession(spec, ev); terminals.push(s); return s as never; },
     createHttp: (s, _l, o) => new FakeHttp(s as unknown as FakeSession, o) as never,
@@ -97,7 +98,7 @@ async function fixture(over: { checkAuth?: LoginControllerDeps["checkAuth"]; con
     accessToken: sink => controller.webAccessToken(sink),
     isActiveFor: sink => controller.isActiveFor(sink),
     cancelFor: sink => controller.cancelFor(sink),
-    cancel: () => controller.isActive() ? controller.cancel() : Promise.resolve(t("login.no_session")),
+    cancel: backend => controller.isActive() && (backend === undefined || controller.pendingBackend === backend) ? controller.cancel() : Promise.resolve(t("login.no_session")),
     notice: info => { notices.push(info); },
     changed: () => { changes.n++; },
     now: () => wall,
@@ -350,9 +351,38 @@ describe("#2233 a terminal sign-in (claude-code) from the dashboard", () => {
     const idB = (await f.check(b, "claude-code")).body.confirm.id;
     await f.start(a, (await f.check(a, "claude-code")).body.confirm.id);
     const refused = await f.start(b, idB);
-    expect(refused.body).toEqual({ message: f.lock.busyMessage() });
+    // The dashboard is not told to type a chat command: it gets a plain sentence and the backend whose sign-in the dialog can end.
+    expect(refused.body).toEqual({ message: t("login.busy_web", "claude-code"), busy: { backend: "claude-code" } });
+    expect(refused.body.message).not.toContain("/login");
     expect((await f.view(a)).body.login).toMatchObject({ mine: true, phase: "running", accessCode: TOKEN });
     expect(f.terminals).toHaveLength(1);
+  });
+
+  it("AGEND-203: connecting Grok while Claude Code's sign-in is held is not refused by it; while this controller runs Claude Code's, Grok is told whose it is and the dialog's cancel (by backend) frees it", async () => {
+    // Claude Code's window held by something else (an unfinished dashboard sign-in of the structured kind): Grok asks and is confirmed.
+    const f = await fixture(), a = f.session();
+    const claude = f.lock.tryClaim("web", "claude-code");
+    expect((await f.check(a, "grok")).body.confirm).toMatchObject({ backend: "grok" });
+    const started = await f.start(a, (await f.check(a, "grok")).body.confirm.id);
+    expect(started.body.login).toMatchObject({ backend: "grok", mine: true, phase: "running" });
+    f.lock.release(claude);
+    await f.call("POST", "/ui/backend-login/cancel", a.headers, {});
+
+    // The controller's own session on Claude Code: Grok is refused with the web sentence, and cancelling THAT backend (not "whatever runs") frees it.
+    const g = await fixture(), b = g.session(), c = g.session();
+    await g.start(b, (await g.check(b, "claude-code")).body.confirm.id);
+    const refused = await g.check(c, "grok");
+    expect(refused.body).toEqual({ message: t("login.busy_web", "claude-code"), busy: { backend: "claude-code" } });
+    // A cancel that names another backend ends nothing.
+    expect((await g.call("POST", "/ui/backend-login/cancel", c.headers, { backend: "grok" })).body).toEqual({ message: t("login.no_session") });
+    expect(g.terminals[0]!.state).toBe("running");
+    expect((await g.call("POST", "/ui/backend-login/cancel", c.headers, { backend: "claude-code" })).status).toBe(200);
+    expect(g.terminals[0]!.state).toBe("finished");
+    expect(g.lock.isHeld).toBe(false);
+    expect((await g.check(c, "grok")).body.confirm).toMatchObject({ backend: "grok" });
+    // The body is validated: a backend name that is not one is refused, and so is anything else next to it.
+    expect((await g.call("POST", "/ui/backend-login/cancel", c.headers, { backend: "../x" })).status).toBe(400);
+    expect((await g.call("POST", "/ui/backend-login/cancel", c.headers, { backend: "grok", extra: 1 })).status).toBe(400);
   });
 
   it("not installed and unsupported (agy) are answered with words, and nothing runs; a codex profile (#3212 PR 4) is asked like any sign-in", async () => {
