@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-notice-idle-3713
+
+
+ Test Files  4 passed (4)
+      Tests  22 passed (22)
+   Start at  16:47:47
+   Duration  3.06s (transform 898ms, setup 348ms, import 1.41s, tests 622ms, environment 0ms)
+

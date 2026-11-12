@@ -1,0 +1,2192 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-notice-idle-3713
+
+ ❯ tests/hub-pairing-notices.test.ts (14 tests | 1 failed | 13 skipped) 132ms
+     × does not schedule idle members whose retained notice targets are all delivered (#3713) 130ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-pairing-notices.test.ts > durable quick-pairing security notice outbox > does not schedule idle members whose retained notice targets are all delivered (#3713)
+AssertionError: expected "flushFleet" to not be called at all, but actually been called 120 times
+
+Received:
+
+  1st flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "00fdc633-c981-4497-8965-c3de52f5e847",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  2nd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "031e7292-6b60-45ef-9e08-129ee4e4f42e",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  3rd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "03f525c1-493b-4bd2-b2fc-388ed396b9e1",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  4th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "062f721a-d3f0-4126-b806-de516c3ad036",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  5th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "092c3b43-74c0-4071-939f-f91b7b8a7be0",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  6th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "0aac4388-4699-4960-8a09-b4d00b767a1d",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  7th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "0e1e5415-fdfb-478c-b3b6-1dabcc95e2b4",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  8th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "0ea02aa4-de9f-4cae-8d8a-0de7d3f7f6ad",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  9th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "11757df8-2b4f-42c4-a753-0d2cf30897b2",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  10th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "11ab4d29-5bb7-4f96-a290-0ea3e24f8492",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  11th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "13cd7945-ff9c-4589-b3c7-9f4986b8e21a",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  12th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "13ddf9ec-0e6b-49ab-b603-de7b8b2d1c9a",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  13th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "1430bdab-d6c9-46d6-b486-656a1f454365",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  14th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "14bcc4d8-5ea9-4dd3-87d4-026ca0187720",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  15th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "165c6263-2250-428e-9f3e-70724e6dd074",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  16th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "1f05c441-ab54-46b8-851b-c4527081a9c4",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  17th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "1fcced3e-17a4-4114-84fe-8bdcf36a03cd",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  18th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "242293c8-388d-46cf-8432-d60c0b699e38",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  19th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "26aef772-f995-4c6b-8945-3a5d45fce5bd",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  20th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "2eeff647-bb1c-4498-ad62-4b5bb1eb1fff",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  21st flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "328be5f2-1275-424f-bb1f-a84d67e8daca",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  22nd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "32b02c6f-5204-4e90-800b-77085fa81564",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  23rd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "3377d976-1228-4103-abca-b199cb83f5cc",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  24th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "368477e4-4461-4770-9d31-48e047e9115c",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  25th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "3b0f8786-66f8-41d7-aca4-3d0074ba9970",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  26th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "3ec9f1e4-04e1-4888-9215-0a2a1f858957",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  27th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "3fdb797b-4626-48a5-92ed-9503f01f2937",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  28th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "41f81a55-f87a-4156-b69c-d935a7fd0b2d",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  29th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "41fe2c38-7fd2-43d5-b5e2-27d76b1bbca1",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  30th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "42110f5f-6ec2-4321-a2b6-d7a36ee065ef",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  31st flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "42810bdf-8f3c-4074-9820-d3946a43ea98",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  32nd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "444229ff-b9dc-4f62-aaed-612cb54e7216",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  33rd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "4b570b1c-22c1-4f3b-8c01-90c1bc2e5735",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  34th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "4bb01579-34f9-4ebf-97d8-59a9d8f698fb",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  35th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "4c871949-b854-4779-8854-e3473267f743",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  36th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "4cce5b48-6032-43ee-a372-1ce6ce522127",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  37th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "4e590395-290a-42d8-9a80-6415dacb450b",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  38th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "5a817ee9-dd20-421b-9b11-5971b5484e74",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  39th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "5cb2e60b-5506-4b7a-91d9-241d68c91b8e",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  40th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "5eae857e-f25d-4dc8-abe4-76f70b787ec1",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  41st flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "5fe5cdc6-d34a-4ea9-a7f6-2e9832e4da97",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  42nd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "6280098c-399d-400e-b8b2-e3f8083256d5",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  43rd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "656a7b95-5333-4850-9e87-e33d9f43f869",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  44th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "65834313-327d-44b9-9fbe-9b10f5b5e0cc",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  45th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "65fc693e-a688-417e-9f5e-70fe4005c66a",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  46th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "6ae8935e-18c6-4767-9576-0ea987417413",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  47th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "6d03e97d-9a15-4847-8237-acc82766e973",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  48th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "6e725948-75ab-4107-b87d-a1997dc34157",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  49th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "71147f3e-132c-4d59-aaa4-3165887ebddc",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  50th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "722e9695-3e11-4449-98b3-2aa3e946c02f",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  51st flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "73f46c84-fcc9-4037-8239-4e99163865b2",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  52nd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "752125d6-6f5e-478b-9fb6-57c4e31942dd",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  53rd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "756dc727-711b-4fbf-9ead-9b1dbd922c95",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  54th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "791bb384-571f-4639-ae93-37d76aff1512",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  55th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "7a5f873c-ae28-4381-bab4-5c7c684b93be",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  56th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "8034a95c-f138-445d-90f3-e35957eefd79",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  57th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "812fdf6a-8485-4e72-9fae-37f0239f4880",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  58th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "82bbc6b9-0af3-432e-8a3a-6b1053a3ba5b",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  59th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "8554d763-8335-4ea5-8c8d-d5a345fcb5ae",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  60th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "85943faf-097e-4478-bab0-f411518bc94c",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  61st flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "859ac83f-4030-47c2-9934-5efce28cf30f",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  62nd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "8660f412-688b-4e40-975b-7c7e631f1538",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  63rd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "8862999d-44af-4e7a-90b0-2ac294f0d5ad",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  64th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "8a27ad2a-d212-4a3a-b1fc-8ad8b4134df3",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  65th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "8b1398dc-ed48-45b9-92bd-acfd8080ba50",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  66th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "8b73cd33-5892-4408-9cfe-6727ed091cdf",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  67th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "8c1874d8-65d6-420d-93da-f3bbeec3f99a",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  68th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "8cd6d0fc-170b-40f0-9ed8-c7ba98b5fdab",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  69th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "916d8fd2-12dc-4abf-8cb1-6faa243775e9",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  70th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "93aefe21-9ec6-498d-a90f-2375baeb5f50",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  71st flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "954e2d9f-cfb4-46b6-9718-67dcf507a9ab",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  72nd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "97d76858-1fbe-4c49-abe9-88561ff05ba8",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  73rd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "97dba86e-d843-4edd-81de-f10f01104328",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  74th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "9cc3e4c7-91dd-48e6-8ca8-89c2df55a1ef",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  75th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "9d27e73b-c05e-4a29-bcdb-a14b9bdc1f46",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  76th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "a174459f-5403-4050-8a36-b268de249a10",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  77th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "a245073b-81eb-4bdc-8640-2c2ab88893f6",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  78th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "a552a29b-c48e-4f58-a57b-034de801d886",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  79th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "a72ce425-608e-418d-b0ca-4122014dd887",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  80th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "a7cc1a1e-dd86-4536-8a9d-ce3d76fbefc3",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  81st flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "a868806a-9bfe-4f4a-9331-14f5ded8d773",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  82nd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "a8d659be-ef49-45ea-bbfb-61bda858a4cc",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  83rd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "aaf88b31-a17a-4514-bdab-4113a273304e",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  84th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "ab412d5a-4406-4d72-8a20-d47d34df0640",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  85th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "acb1f50f-8be8-4ef7-9120-7c842106d50e",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  86th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "ae593b9a-3f15-47ed-aa63-38c314787b52",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  87th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "ae957fba-7b22-438d-9ac7-912bf2381760",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  88th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "b3133765-0171-4457-914f-0bca5e7befce",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  89th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "b3e923b4-6f08-4f47-a27d-8a465d118c0f",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  90th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "b4bf21eb-dd7e-4ea3-a191-c43c3ec82d6d",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  91st flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "b7c673db-0f04-4092-86bf-e8ce49ac6f0e",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  92nd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "b92c3aee-5ac0-4908-a654-c9c422e2fdad",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  93rd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "bb5d4953-c2d7-4ac8-9501-86262c4f0750",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  94th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "bce98960-baa3-4ac6-8ac1-e509a65decd7",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  95th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "bf530bea-d2f2-434b-8d8f-903340aab155",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  96th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "c15023c9-e1b1-4570-a35d-1e3cb95b0be7",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  97th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "c22b4096-77a7-4984-af14-cdb96b578102",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  98th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "c3cf2688-1d81-4e49-92cf-5f7a2e8d1525",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  99th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "c448e3f4-62de-4c9a-9b9b-4a3707052488",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  100th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "c55019e3-f398-4c93-86c2-65041fbdd9cd",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  101st flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "cb06caed-3207-4321-94a2-589aea672fc2",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  102nd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "cb755da1-4998-4616-b19d-dab34b61134f",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  103rd flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "cdf3a65a-9492-4c18-9b5b-e0d4168b6fd5",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  104th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "ce055caf-9737-415d-8884-787c70db8c63",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  105th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "d018469f-0f57-4f3b-b7cb-3c96bcf17459",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  106th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "d4e14948-fc2a-4f50-81ca-be6647ebd83d",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  107th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "d5c007e3-2a9f-48d5-8e91-aea67c53347a",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  108th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "d88ea3d4-0931-4d9c-8453-6fc11621241c",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  109th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "de203c4f-b395-47f0-bd97-30c970989729",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  110th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "de429e3b-ebf4-45bd-90ca-504c8f4a1904",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  111th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "e2bd31e2-fa20-4ace-824d-206a93efd84c",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  112th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "ec7dc3c6-11cf-4500-82f4-2ce1dbeccc07",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  113th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "ed601ee2-8229-4eec-8e0c-e650dc265230",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  114th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "eec8a487-5b8e-4aee-b167-40d597ec84ba",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  115th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "f10374ef-82e1-4dee-b7cf-8c48ba42f0a0",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  116th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "f48387db-4b64-47de-8fb8-58209389e059",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  117th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "f60b45aa-8190-4fcb-bc35-81fefe1438c0",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  118th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "f65c41b0-8a3b-4a3d-8cfd-e722c2621a9a",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  119th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "f760b005-e66e-4559-87d5-f1aa2c4b7302",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+  120th flushFleet call:
+
+    Array [
+      Object {
+        "current": [Function Mock],
+        "features": Set {
+          "welcome-caps-v1",
+          "pairing-notices-v1",
+        },
+        "fleetId": "fd3b6326-4a2f-4712-859e-c39c8b697055",
+        "linkEpoch": 1,
+        "owner": Object {
+          "objectId": "efb6ef3d-dc90-49de-ac49-cd28d88cfdcf",
+          "realm": "example",
+        },
+      },
+    ]
+
+
+Number of calls: 120
+
+ ❯ tests/hub-pairing-notices.test.ts:106:22
+    104|   try{
+    105|    w.notices.start();await vi.advanceTimersByTimeAsync(1000);
+    106|    expect(flush).not.toHaveBeenCalled();
+       |                      ^
+    107|    expect(links.reduce((n,link)=>n+link.current.mock.calls.length,0)).…
+    108|    expect(w.eligible).not.toHaveBeenCalled();expect(w.send).not.toHave…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 skipped (14)
+   Start at  16:47:45
+   Duration  1.52s (transform 859ms, setup 221ms, import 935ms, tests 132ms, environment 0ms)
+

@@ -1,0 +1,12 @@
+{
+  "head": "fe489fa9810ef4fa33ebbf65ff6e4b7c7ad7c2da",
+  "files": {
+    "test-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "proof.json": "c42b54cfdc0153ca0b7f11ac80e270538ae689aecc79172da54b4161e6bfcff0",
+    "focused-green-unsupported-option.log": "8753f8d9567546c1778b66f83270201cf66083eac5b0e92cc43c51656d24ad54",
+    "w2-delivered-mutant-unsupported-option.log": "8753f8d9567546c1778b66f83270201cf66083eac5b0e92cc43c51656d24ad54",
+    "README.md": "b02820a2f6368933b2fc16da2eb2e03323c0d48870fb01ab1d7168fd39a42689",
+    "focused-green.log": "61dc168d05a5358ebf2860bed9eb10a39a07b44877010c7e6e4d25ba3817fd23",
+    "w2-delivered-mutant.log": "0cb2e2e71f7e75aee9d40af2261f5a0067f137db9106c162ef0e140f8ecac7f1"
+  }
+}

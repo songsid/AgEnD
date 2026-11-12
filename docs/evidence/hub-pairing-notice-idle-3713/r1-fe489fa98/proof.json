@@ -1,0 +1,13 @@
+{
+  "sourceBase": "2e7b3f781a5747113e1300ef8a03b9dec621fa31",
+  "guard": "AND state<>'delivered' in scheduling query only",
+  "exitCode": 1,
+  "semanticFailure": true,
+  "productionRestored": true,
+  "productionSha256": "187707c1d4513aa58a11084239c2160dc093b8abf2f845f98512aafc20296d7c",
+  "discardedAttempt": "Unsupported --minWorkers CLI option; no test executed; logs retained separately",
+  "head": "fe489fa9810ef4fa33ebbf65ff6e4b7c7ad7c2da",
+  "testSha256": "f2b22d6862419818e2c36d148953f0fbcddd5fe74bbe35f36d08375c1ca03d8a",
+  "nativeTestTypes": "TypeScript7.0.2; noEmit tsconfig.test.json exit0",
+  "restoredFocused": "22/22 across four files; maxWorkers1"
+}
