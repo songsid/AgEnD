@@ -1,7 +1,7 @@
 {
   "algorithm": "SHA-256",
   "files": {
-    "dbf74db92f15356d9eaf82a3e32e774a7f9ba734bf1f0088d40f98a1e0cba6ba": [
+    "4ac18607361f6b4a35004f664bdab143be31d916a4a02095cff5abc0d573ba51": [
       "README.md"
     ],
     "02366720f8167af8e2d7c4dc7122a274b00b9d25ec54c4e32256a2b51dd0ce1b": [
@@ -362,6 +362,36 @@
     ],
     "5f415f6d8807dad97a50de912e0ff19129f45076a60f55b971bf76da7a106daf": [
       "offline/type-parity.json"
+    ],
+    "6c148238a45b68727ee82fdc7368fd08270cc41165e2bd7ff659b1f7ee709ae4": [
+      "r1/README.md"
+    ],
+    "26ca715b4066147bbe6d882e09e0174b447088d4f737ca12082f196f820bc932": [
+      "r1/both.log.gz"
+    ],
+    "4c62a1ec237809fd634c1c8778c0f63bb076d2933855ceacab93489dec2b15fd": [
+      "r1/checkbox.log.gz"
+    ],
+    "8cac6cd274cdd739fce88ed23ba2a07d0c8549b9904bd83984bde906282e6f23": [
+      "r1/driver.py"
+    ],
+    "95cc4dbfffa3c79d44db5c52beebcfb7747ae5ee8f6cdcb1c52aa91223f1db6e": [
+      "r1/parity.json"
+    ],
+    "518d9fbd6384fe2c0a7d9d2c8ba677b4bee8cbf7fc84bbe4abfe1d53b28b07f4": [
+      "r1/radio.log.gz"
+    ],
+    "500ad4dc0dcb45f3b6ca6bf046edaf76fb3b045191a32ea56f9b08c9ebd3d0f8": [
+      "r1/receipt.json"
+    ],
+    "1e9ae4f4e9877cc9a8dc3975e5211041f5ea3514a37445cbd3f343ff21be6ad6": [
+      "r1/restored.log.gz"
+    ],
+    "7276e25e83c147b952facc1a4594f96e06072dd8d8dbbdcdb9d37af37a690ba0": [
+      "r1/test-types.json"
+    ],
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": [
+      "r1/test-types.log"
     ],
     "5b3962986a4a1c391abe13608e46b611f54df8e82dabd8de8a85781dec6790a5": [
       "visual-read.md"

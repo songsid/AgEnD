@@ -1,0 +1,12 @@
+{
+  "head": "d49637616e6b6e72f6bc4676027bea9b80ca4b56",
+  "command": [
+    "npx",
+    "tsc",
+    "--noEmit",
+    "-p",
+    "tsconfig.test.json"
+  ],
+  "exit": 0,
+  "startLoad": 8.09619140625
+}

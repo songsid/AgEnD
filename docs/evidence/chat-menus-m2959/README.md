@@ -48,3 +48,7 @@ python3 scripts/manual/verify-chat-menus-2959.py
 ## Risks and rollback
 
 Native popovers are used only when both the browser and current CSS support them; retained CSS uses the ordinary Menu path and one ordinary More trigger. Existing favourite limits, per-account storage, read-only/guest restrictions and navigation guards remain. Reverting this PR restores the prior presentation; favourite preferences stay compatible. No data migration is involved.
+
+## R1 review pin
+
+[R1](r1/README.md) adds checked/unchecked icon-radio and icon-checkbox assertions for Fable’s M2. Three compiling reversals are caught, restored suites pass39/39, and the current test typecheck passes. Product source, harnesses and all browser originals are unchanged from R0.
