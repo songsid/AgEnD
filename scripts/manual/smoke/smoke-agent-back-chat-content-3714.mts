@@ -80,6 +80,8 @@ try{
    await page.waitForFunction(()=>!document.querySelector('.chat-workspace'));assert.equal(await page.locator('#msgIn').inputValue(),"Preserved peer draft");check("header-close","Settings pane header X closes that pane, keeping peer draft");
   }
  }
+ await page.waitForFunction(()=>[...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].every(link=>!!link.sheet));
+ await page.evaluate(async()=>{await document.fonts.ready;await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);});
  await Promise.all(jobs);assert.deepEqual(receipt.errors,[]);assert.deepEqual(receipt.effects,[]);assert.deepEqual(receipt.external,[]);receipt.completed=true;
 }finally{await ctx?.close();await fx.close();for(const p of sources)assert.ok(inputs[digest(readFileSync(join(repo,p)))]?.includes(p),`source changed:${p}`);writeFileSync(join(out,"receipt.json"),JSON.stringify(receipt,null,2)+"\n");}
 console.log(JSON.stringify({out,checks:receipt.cases.length,errors:receipt.errors.length}));
