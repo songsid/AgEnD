@@ -47,6 +47,11 @@ try {
  await ui.adminShots();
  const create=async(maxUses:number)=>{const r=await rig.call(admin,'POST','/hub/v1/admin/enrolment-codes',{expires:'today',maxUses,perPersonFleets:1,scope:{kind:'directory'}});check('admin creates '+maxUses+'-use code',r.status===201);return r.body;};
  const secrets:string[]=[];
+ const rawJson=(client as any).json.bind(client);(client as any).json=async(...args:any[])=>{const began=Date.now();try{return await rawJson(...args);}catch(e:any){const diagnostic={path:String(args[1]).split('?')[0],elapsedMs:Date.now()-began,code:e.code??null,kind:e.kind??null};receipt.machineErrors??=[];receipt.machineErrors.push(diagnostic);console.error(JSON.stringify({machineFailure:diagnostic}));throw e;}};
+ let pushing=0;const pushWaiters:Array<()=>void>=[];
+ const enterPush=async()=>{if(pushing<8){pushing++;return;}await new Promise<void>(resolve=>pushWaiters.push(resolve));};
+ const leavePush=()=>{const next=pushWaiters.shift();if(next)next();else pushing--;};
+
  const signedPeople=new Map<string,any>();
  let signins=0;const signinWaiters:Array<()=>void>=[];
  const enterSignin=async()=>{if(signins<3){signins++;return;}await new Promise<void>(resolve=>signinWaiters.push(resolve));};
@@ -56,7 +61,7 @@ try {
   const started=Date.now(), key=generateKeyPairSync('ed25519'), verifier=randomBytes(32).toString('base64url'), state=randomBytes(32).toString('hex');
   const binding={hub:metadata.hub,requestId:randomUUID(),operationId:randomUUID(),fleetId:randomUUID(),publicKey:key.publicKey.export({type:'spki',format:'pem'}).toString(),fleetOrigin:'https://'+login+'.example.test:43210',verifierS256:pkceChallenge(verifier)};
   const command=(purpose:any,payload:any={})=>client.command(binding,purpose,payload,key.privateKey,()=>true);
-  await command('push',{label:'Owned '+login,stateHash:createHash('sha256').update(state).digest('hex'),invitation:null,...(code?{code}:{})});
+  await enterPush();try{await command('push',{label:'Owned '+login,stateHash:createHash('sha256').update(state).digest('hex'),invitation:null,...(code?{code}:{})});}finally{leavePush();}
   const open=await rig.call(null,'POST','/hub/join/open',new URLSearchParams({requestId:binding.requestId,state}).toString(),{'Content-Type':'application/x-www-form-urlencoded',Origin:binding.fleetOrigin});
   check('Origin-bound browser handoff '+login,open.status===303);
   let signed:any=signedPeople.get(login);
@@ -91,21 +96,30 @@ try {
    await Promise.all([...persons.slice(5),...groupPeople].map(async login=>{await enterSignin();try{signedPeople.set(login,await rig.signIn(login));}finally{leaveSignin();}}));
    await Promise.all(visible.map((f:any,i:number)=>ui.signInFleet(f,persons[i])));authenticatedAt=Date.now();
   }
-  // Deliberately hold actual eligibility promises AFTER the shared read pool admits them. No forged HTTP response/permit.
-  const original=rig.directory.checkEligibility.bind(rig.directory);let held=0,released=n!==50,release!:()=>void;
-  const gate=new Promise<void>(resolve=>{release=()=>{released=true;resolve();};});
-  rig.directory.checkEligibility=async(...args:any[])=>{if(!released){held++;await gate;}return original(...args);};
-  const deadline=setTimeout(release,12000);const beforeSignIn=async()=>{if(n===50)await wait(()=>held>=32||released,11000);};
+  // Hold32 real pool reads belonging to separate fixture identities, not HTTP approve/sign-in callers.
+  // The real LDAPS eligibility answer/close completes first; its operation promise stays pending for the control.
+  const original=rig.directory.checkEligibility.bind(rig.directory),seedPeople=withGroups?people(prefix+'pool',32):[];
+  const seedIds=new Set(seedPeople.map(login=>rig.people.find((p:any)=>p.login===login).id));let held=0,released=!withGroups,release!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=()=>{released=true;resolve();};}),seedJobs:Promise<unknown>[]=[];
+  rig.directory.checkEligibility=async(key:any,...args:any[])=>{const answer=await original(key,...args);if(seedIds.has(key.objectId)&&!released){held++;await gate;}return answer;};
+  let deadline:ReturnType<typeof setTimeout>|null=null;
   const queueBefore=receipt.queueTextObserved??0;
   let result:any[];
-  try{result=await Promise.all([...persons.map((p,i)=>attempt(code.code,p,i<5?visible[i]:null,beforeSignIn,release)),...groupPeople.map(p=>attempt(null,p))]);}
-  finally{release();clearTimeout(deadline);rig.directory.checkEligibility=original;}
+  try{
+   if(withGroups)for(let offset=0;offset<32;offset+=4){
+    for(const login of seedPeople.slice(offset,offset+4)){const p=rig.people.find((p:any)=>p.login===login);const job=rig.deps.groups.prepareOwnerEligibility({realm:'corp',objectId:p.id},{requestId:randomUUID(),current:()=>true});seedJobs.push(job);void job.catch(()=>release());}
+    await wait(()=>held===offset+4||released,10_000);if(released)throw Error('Controlled physical pool setup refused');
+   }
+   deadline=setTimeout(release,12000);const beforeSignIn=async()=>{if(withGroups)await wait(()=>held===32||released,11000);};
+   result=await Promise.all([...persons.map((p,i)=>attempt(code.code,p,i<5?visible[i]:null,beforeSignIn,release)),...groupPeople.map(p=>attempt(null,p))]);
+  }
+  finally{release();if(deadline)clearTimeout(deadline);await Promise.allSettled(seedJobs);rig.directory.checkEligibility=original;}
   const uses=rig.db.prepare('SELECT uses FROM hub_enrolment_codes WHERE id=?').get(code.id).uses;
   check(prefix+' all issued and pinned member links online',result.every(r=>r.issued));check(prefix+' uses counted once',uses===n);
   const pushed=result.map(r=>rig.deps.companyJoin.records.get(r.binding.requestId).createdAt);
   const span=Math.max(...pushed)-Math.min(...pushed),elapsed=Date.now()-start;
   check(prefix+' starts inside 60 seconds',span<60000);check(prefix+' connected within five minutes',elapsed<300000);
-  if(n===50)check(prefix+' queue text appeared on a real Hub page',(receipt.queueTextObserved??0)>queueBefore);
+  if(withGroups)check(prefix+' queue text appeared on a real Hub page',(receipt.queueTextObserved??0)>queueBefore);
   const list=await rig.call(admin,'GET','/hub/v1/admin/enrolment-codes');check(prefix+' recent labels and owners',list.body.codes.find((c:any)=>c.id===code.id).recent.length===n);
   const view=await ui.adminPage();try{for(const f of visible){const label=view.page.locator('.hub-fleet-list').getByText(f.label,{exact:true});check(prefix+' labelled admin row '+f.label,await label.count()===1);await label.scrollIntoViewIfNeeded();await ui.shot(view.page,prefix+'-admin-row-'+f.label);}}finally{await view.ctx.close();}
   const extra=people(prefix+'extra',1)[0];check(prefix+' next push refuses after exhaustion',await attempt(code.code,extra).then(()=>false,(e:any)=>e.code==='denied'));
@@ -113,7 +127,10 @@ try {
    databaseBytes:statSync(join(rig.home,'hub/hub.sqlite')).size,walBytes:existsSync(join(rig.home,'hub/hub.sqlite-wal'))?statSync(join(rig.home,'hub/hub.sqlite-wal')).size:0});
   await ui.closeVisible();
  }
- await wave(20,'small');await wave(50,'mass');await wave(50,'withgroups',true);
+ await wave(20,'small');
+ // Respect the120/min bucket across independent acceptance waves; never reset or bypass it.
+ await new Promise(r=>setTimeout(r,60_000));await wave(50,'mass');
+ await new Promise(r=>setTimeout(r,60_000));await wave(50,'withgroups',true);
  await ui.cachedShots();
  const compat=await create(1);secrets.push(compat.code.replace('-',''));const compatPerson=people('compat',1)[0];
  const retained=await attempt(compat.code,compatPerson,null,async()=>{},()=>{},true);check('B-L9 old v2-only member link connected',retained.issued);

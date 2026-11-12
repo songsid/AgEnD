@@ -61,20 +61,25 @@ Dependency modules are mounted read-only. Images are unchanged from B1's kit.
    join/member clients, with explicitly harness-owned durable profile/journal
    persistence. Assert all connected, labelled administrator rows, exact use
    counts and refusal of the next attempt.
-5. B-L12: repeat with 50 people and five real Fleet UI paths. Assert the Hub's
-   actual push timestamps span under 60 seconds and all connect within five
-   minutes without manual retry. To make queue presentation observable, the
-   fixture first completes real AD sign-in (including the five real browser
-   sessions), with that time included in wave elapsed time. It then deliberately
-   delays real eligibility promises after shared-pool
-   admission. It releases them after a visible real Hub backpressure/queue
-   result, with a bounded fallback. No 429, permit or credential is fabricated.
-   This controlled overload is separate from natural-host capacity evidence.
-6. B-L13: a separate 50-person repetition with three simultaneous group joins.
-   Then a source-bound cached old Hub HTML/shell/client/CSS capture uses the
-   previous source's own HTML renderer and response CSP. Every substituted asset
-   is hashed. A cached client must safely omit code management and show no raw
-   translation keys or script errors.
+5. B-L12: repeat with50 people and five real Fleet UI paths. Real AD sign-in
+   (including five browser sessions) is completed before starting the connection
+   burst and its time is included in wave elapsed. Assert actual push timestamps
+   span under60 seconds and all connect within five minutes without manual retry.
+   Harness proof exchanges have at most8 concurrent pushes; this is a ramp
+   within the specified60 seconds, not a50-at-once machine-RPC claim. Existing
+   five-second sign-in and machine deadlines stay unchanged.
+6. B-L13: a separate50-person repetition with three group joins adds a deliberate
+   overload control. Thirty-two separate fixture identities make actual shared-pool
+   eligibility reads in groups of4. Each real LDAPS answer/close completes before
+   its declared operation promise is held. User sign-in/approve calls are not
+   held; they receive real pool backpressure immediately. The control releases
+   after visible queue text, with a12-second fallback. No HTTP429, permit,
+   credential or directory answer is fabricated. This is a controlled queue
+   proof, distinct from the natural B-L12 ramp. Real60-second quiet intervals
+   between independent waves respect the120/min budget without resetting it.
+   Then source-bound cached old Hub HTML/shell/client/CSS uses the previous
+   renderer and CSP, with hashes of every substitution. A cached client must
+   safely omit code management and show no raw keys or script errors.
 7. B-L9: an actual previous-source v2 member client connects a code-issued Fleet;
    its code-notice target must remain `queued`. Close it and start the current
    compiled member on the same durable home; require delivery after upgrade.
