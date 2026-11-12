@@ -295,7 +295,7 @@ describe("Remove with cancelSignIn (#3321 review)", () => {
     const self: any = {
       dataDir: data, logger: { info },
       accountUses: () => ({ agents: [], classic: [], fleetDefaults: new Map() }),
-      loginWindow: { current: null }, loginController: { signingIn, activeBackend: null, ...loginController },
+      loginWindow: { heldFor: () => null }, loginController: { signingIn, activeBackend: null, ...loginController },
       removalRequest: (FleetManager.prototype as any).removalRequest, withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(),
     };
     const call = (...a: unknown[]): Promise<any> => (FleetManager.prototype as any).removeAccountProfile.call(self, ...a);

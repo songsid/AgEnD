@@ -46,6 +46,8 @@ register("signin", {
     ended: "The authorization ended.",
     cancelSignIn: "Cancel connecting",
     cancelled: "Connecting cancelled.",
+    cancelOther: "Cancel that connection and continue",
+    busy: "Your {0} account is already being connected. Cancel that connection first, then try again.",
     running: "Connecting your {0} account (started on {1}).",
     open: "Open",
     expired: "That took too long — start again.",
@@ -56,6 +58,7 @@ register("signin", {
     listTitle: "AI accounts",
     browserRunning: "Connecting your {0} account on this machine",
     consoleFallback: "Use console fallback",
+    consoleFallbackNote: "Using the console takes the only terminal sign-in. Until it finishes or you cancel it, Grok and any other AI that connects through the terminal has to wait.",
     defaultAccount: "Default connection",
     listHint: "Connect AI accounts: each AI account connected on this machine, and each credential profile an agent uses. Connecting finishes on the provider's official website.",
     stUsable: "connected",
@@ -98,6 +101,8 @@ register("signin", {
     ended: "授權流程已結束。",
     cancelSignIn: "取消連接",
     cancelled: "已取消連接。",
+    cancelOther: "取消那個連接並繼續",
+    busy: "正在連接 {0} 帳號。請先取消那個連接，再重試。",
     running: "正在連接 {0} 帳號（從 {1} 啟動）。",
     open: "開啟",
     expired: "等太久了——請重新開始。",
@@ -108,6 +113,7 @@ register("signin", {
     listTitle: "AI 帳號",
     browserRunning: "正在這台機器連接 {0} 帳號",
     consoleFallback: "改用主控台備援",
+    consoleFallbackNote: "改用主控台會佔用唯一的終端登入。在它完成或你取消之前，Grok 和其他走終端登入的 AI 都要等。",
     defaultAccount: "預設連接",
     listHint: "連接 AI 帳號：這台機器上連接的每個 AI 帳號，以及 Agent 使用的每個憑證設定檔。連接時會前往供應商官方網站完成授權。",
     stUsable: "已連接",
@@ -246,7 +252,9 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
     let cards, last = "";
     // Ridge #3321 S01: "Sign in again" asks in the dashboard's own confirmation (its title names the CLI), not the browser's.
     const ask = (message, cli) => confirmDialog({ title: t("signin.reloginTitle", cli), message, confirmLabel: t("signin.reloginGo") });
-    cards = mountStructuredSignIns(root.current, { endpoint, lang, ask, dashboard: true, ...(single ? { dialog: true, focus: backend } : {}), started: id => { run.current = id; }, changed: next => {
+    cards = mountStructuredSignIns(root.current, { endpoint, lang, ask, dashboard: true, ...(single ? { dialog: true, focus: backend } : {}), started: id => { run.current = id; },
+      // The dialog was closed while its start was still in flight and the server made the run after all: nobody sees it, so it is ended here — by its id, so no other run is touched.
+      abandoned: id => { if (profile || single) void post(endpoint, { operation: "cancel", id }).then(() => refreshSignIn()); }, changed: next => {
       if (!profile) {
         if (backends) { if (backends.some(b => !next.selected.includes(b))) void cards.addBackends(backends); }
         else if (!next.selected.includes(backend)) void cards.addBackend(backend);
@@ -257,7 +265,9 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
     const unlisten = onLang(() => cards.relabel());
     return () => {
       unlisten(); cards.dispose();
-      if (profile && run.current) void post(endpoint, { operation: "cancel", id: run.current }).then(() => refreshSignIn());   // that run only; nothing to end once it is over: the server answers with what is there
+      // AGEND-203: the default account's too (single dialog) — a sign-in left running behind a closed dialog held this backend's window until its ten minutes were up. The installer's
+      // multi-backend list keeps its runs: that page is where they are meant to continue.
+      if ((profile || single) && run.current) void post(endpoint, { operation: "cancel", id: run.current }).then(() => refreshSignIn());   // that run only; nothing to end once it is over: the server answers with what is there
     };
   }, [backend, profile, backends]);
   const fallback = async (chosen = backend) => {
@@ -265,7 +275,8 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
     // account's: only the run this dialog started is ended (none started here: nothing to end, and one another tab runs is left alone); the default account's, as before.
     const own = profile ? run.current : null;
     if (!profile || own) {
-      const result = await post(endpoint, own ? { operation: "cancel", id: own } : { operation: "cancel" });
+      // AGEND-215: with no run id of its own, only a run on the backend this dialog is for (the one chosen) — never whichever structured run another backend has.
+      const result = await post(endpoint, own ? { operation: "cancel", id: own } : { operation: "cancel", ...(profile ? {} : { backend: chosen }) });
       if (!result.ok) { toast(tn("failed")); return; }
       run.current = null;   // ended here: closing this dialog has nothing left to end
     }
@@ -278,6 +289,7 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
   return html`<${Dialog} title=${backends ? tn("listTitle") : tn("title", account)} onClose=${close} actions=${actions}>
     <div class="signin-browser" ref=${root}></div>
     ${single ? html`<p class="note"><button type="button" class="btn btn-sm btn-ghost" onClick=${() => fallback(backend)}>${tn("consoleFallback")}</button></p>` : null}
+    ${single ? html`<p class="note" data-signin-console-note>${tn("consoleFallbackNote")}</p>` : null}
   </${Dialog}>`;
 }
 
@@ -287,15 +299,21 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
   const [busy, setBusy] = useState(false);
   const shown = shownOf(backend, profile);
   const dismiss = onClose || closeDialog;
+  const check = () => {
+    setStep({ kind: "checking" });
+    return post("/ui/backend-login/check", { backend, ...(profile ? { profile } : {}) }).then((r) => {
+      if (gone.current) return;
+      if (r.body && r.body.confirm) setStep({ kind: "confirm", confirm: r.body.confirm });
+      else setStep({ kind: "message", text: (r.body && (r.body.message || (r.body.error && errorText(r.body.error)))) || tn("failed"),
+        ...(r.body && r.body.busy && typeof r.body.busy.backend === "string" ? { busy: r.body.busy.backend } : {}) });
+    });
+  };
+  const gone = useRef(false);
   useEffect(() => {
     if (resume) return undefined;
-    let gone = false;
-    post("/ui/backend-login/check", { backend, ...(profile ? { profile } : {}) }).then((r) => {
-      if (gone) return;
-      if (r.body && r.body.confirm) setStep({ kind: "confirm", confirm: r.body.confirm });
-      else setStep({ kind: "message", text: (r.body && (r.body.message || (r.body.error && errorText(r.body.error)))) || tn("failed") });
-    });
-    return () => { gone = true; };
+    gone.current = false;
+    void check();
+    return () => { gone.current = true; };
   }, []);
   const login = s.login;
   const close = () => {
@@ -318,11 +336,22 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
     const r = await post("/ui/backend-login/start", { confirm: step.confirm.id, ...(tunnel ? { tunnel: true } : {}) });
     setBusy(false);
     if (r.body && r.body.login) { signInStore.set({ login: r.body.login }); setStep({ kind: "login" }); return; }
-    setStep({ kind: "message", text: (r.body && (r.body.message || (r.body.error && errorText(r.body.error)))) || tn("failed") });
+    setStep({ kind: "message", text: (r.body && (r.body.message || (r.body.error && errorText(r.body.error)))) || tn("failed"),
+      ...(r.body && r.body.busy && typeof r.body.busy.backend === "string" ? { busy: r.body.busy.backend } : {}) });
   };
+  // AGEND-203: a start refused because another sign-in runs offers to end THAT one (by its backend), then asks again — no chat command to type.
+  const cancelOther = async () => {
+    setBusy(true);
+    await post("/ui/backend-login/cancel", { backend: step.busy });
+    setBusy(false);
+    void refreshSignIn();
+    await check();
+  };
+  // AGEND-215: the sign-in THIS dialog shows — by its own backend. Two sign-ins can run at once (structured Claude Code beside a terminal Grok); a body without one ends
+  // whichever the server finds first, which is not necessarily the one on screen. (Without a sign-in on screen there is no backend: this dialog's own.)
   const cancelRun = async () => {
     setBusy(true);
-    const r = await post("/ui/backend-login/cancel", {});
+    const r = await post("/ui/backend-login/cancel", { backend: (login && login.backend) || backend });
     setBusy(false);
     toast((r.body && r.body.message) || tn("cancelled"));
     void refreshSignIn();
@@ -342,8 +371,12 @@ export function SignInDialog({ backend, profile, resume = false, onClose }) {
       ${c.publicLink ? html`<button type="button" class="btn" onClick=${() => start(true)}>${tn("goPublic")}</button>` : null}
       <button type="button" class="btn btn-primary" onClick=${() => start(false)}>${tn("go")}</button>`;
   } else if (step.kind === "message") {
-    body = html`<p class="signin-message">${step.text}</p>`;
-    actions = html`<button type="button" class="btn btn-primary" onClick=${close}>${tn("close")}</button>`;
+    // A refusal because another sign-in runs is worded here, in the page's language (the server's sentence follows ITS language, not this browser's).
+    body = html`<p class="signin-message">${step.busy ? tn("busy", shownOf(step.busy)) : step.text}</p>`;
+    actions = step.busy
+      ? html`<button type="button" class="btn" disabled=${busy} onClick=${close}>${tn("close")}</button>
+        <button type="button" class="btn btn-danger" disabled=${busy} onClick=${cancelOther}>${tn("cancelOther")}</button>`
+      : html`<button type="button" class="btn btn-primary" onClick=${close}>${tn("close")}</button>`;
   } else if (!login) {
     body = html`<p class="signin-note">${tn("ended")}</p>`;
     actions = html`<button type="button" class="btn btn-primary" onClick=${close}>${tn("close")}</button>`;

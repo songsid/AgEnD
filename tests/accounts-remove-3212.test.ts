@@ -23,6 +23,7 @@ import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { GUEST_ROUTES } from "../src/web-guest-access.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { LoginController } from "../src/login-controller.js";
+import { LoginWindowLock } from "../src/login-window-lock.js";
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -139,16 +140,16 @@ describe("Remove: the positive case", () => {
       dataDir: data, logger: { info },
       accountUses: () => ({ agents: [{ name: "dev", backend: "claude-code", profile: "spare" }, { name: "ops", backend: "codex", profile: "spare" }],
         classic: [], fleetDefaults: new Map([["codex", "spare"]]) }),
-      loginWindow: { current: null }, loginController: { signingIn: () => false, activeBackend: null },
+      loginWindow: { heldFor: () => null }, loginController: { signingIn: () => false, activeBackend: null },
       removalRequest: (FleetManager.prototype as any).removalRequest, withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(),
     };
     const call = (fm: any, ...a: unknown[]): Promise<any> => (FleetManager.prototype as any).removeAccountProfile.call(fm, ...a);
     expect(await call(self, "claude-code", "spare", "spare", "Firefox on Linux")).toEqual({ ok: false, error: "in_use", users: { agents: ["dev"], classic: [], fleetDefault: false } });
     // A sign-in for this backend whose profile is not known yet (the window held, no active entry): refused too.
     self.accountUses = () => ({ agents: [], classic: [], fleetDefaults: new Map() });
-    self.loginWindow = { current: { id: 1, kind: "web", backend: "claude-code" } };
+    self.loginWindow = { heldFor: (b: string) => b === "claude-code" ? { id: 1, kind: "web", backend: "claude-code" } : null };
     expect(await call(self, "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "signing_in" });
-    self.loginWindow = { current: null };
+    self.loginWindow = { heldFor: () => null };
     self.loginController = { signingIn: (b: string, p: string) => b === "claude-code" && p === "spare", activeBackend: "claude-code" };
     expect(await call(self, "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "signing_in" });
     self.loginController = { signingIn: () => false, activeBackend: null };
@@ -164,7 +165,7 @@ describe("#3291 review (Prism): who uses it is never under-counted", () => {
   const fm = (data: string, over: Record<string, unknown> = {}) => ({
     dataDir: data, logger: { info: vi.fn() }, fleetConfig: { defaults: {}, instances: {} },
     accountUses: () => ({ agents: [], classic: [], fleetDefaults: new Map() }),
-    loginWindow: { current: null }, loginController: { signingIn: () => false, activeBackend: null },
+    loginWindow: { heldFor: () => null }, loginController: { signingIn: () => false, activeBackend: null },
     removalRequest: (FleetManager.prototype as any).removalRequest, withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(), ...over,
   });
   const daemon = (cfg: Record<string, unknown>) => ({ getConfigSnapshot: () => cfg });
@@ -320,5 +321,49 @@ describe("the routes", () => {
     // An encoded name reaches the fleet decoded (and the fleet's rule refuses it).
     await f.call("DELETE", "/ui/accounts/claude-code/..%2Fx", a, { confirm: "../x" });
     expect(f.rm).toHaveBeenLastCalledWith("claude-code", "../x", "../x", "Firefox on Linux");
+  });
+});
+
+describe("#3725 review (Prism P2-2): Remove honours the TARGET backend's live window, whatever another backend's sign-in is doing", () => {
+  const call = (fm: any, ...a: unknown[]): Promise<any> => (FleetManager.prototype as any).removeAccountProfile.call(fm, ...a);
+  const fm = (data: string, loginWindow: LoginWindowLock, over: Record<string, unknown> = {}) => ({
+    dataDir: data, logger: { info: vi.fn() }, fleetConfig: { defaults: {}, instances: {} },
+    accountUses: () => ({ agents: [], classic: [], fleetDefaults: new Map() }),
+    loginWindow, loginController: { signingIn: () => false, activeBackend: null },
+    removalRequest: (FleetManager.prototype as any).removalRequest, withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(), ...over,
+  });
+  it("Grok's terminal sign-in runs and a Claude Code logout (its child not ended) holds Claude Code's window: Remove of a Claude Code profile is refused and deletes nothing", async () => {
+    const { data, home } = withProfile();
+    const lock = new LoginWindowLock();
+    const logout = lock.tryClaim("account", "claude-code");             // the named account's logout: held until its child is shown gone
+    expect(lock.tryClaim("web", "grok")).not.toBeNull();                // Grok's terminal sign-in beside it — a different backend's window
+    const grokTerminal = { signingIn: () => false, activeBackend: "grok" };
+    expect(await call(fm(data, lock, { loginController: grokTerminal }), "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "signing_in" });
+    expect(existsSync(home)).toBe(true);
+    lock.release(logout);                                               // the logout's child is gone: now it is the profile's alone
+    expect(await call(fm(data, lock, { loginController: grokTerminal }), "claude-code", "spare", "spare", "x")).toEqual({ ok: true });
+    expect(existsSync(home)).toBe(false);
+  });
+  it("another backend's NAMED sign-in does not hide the target's window either", async () => {
+    const { data, home } = withProfile();
+    const lock = new LoginWindowLock();
+    lock.tryClaim("keepalive", "claude-code");                          // a keep-alive refresh (a writer on this backend's credentials)
+    const codexNamed = { active: { backend: "codex", profile: "work" }, signingIn: () => false };
+    expect(await call(fm(data, lock, { profileSignInsInstance: codexNamed }), "claude-code", "spare", "spare", "x")).toEqual({ ok: false, error: "signing_in" });
+    expect(existsSync(home)).toBe(true);
+  });
+  it("another backend's window alone never refuses: with only Grok's sign-in held, Claude Code's Remove goes ahead", async () => {
+    const { data, home } = withProfile();
+    const lock = new LoginWindowLock();
+    lock.tryClaim("web", "grok");
+    expect(await call(fm(data, lock, { loginController: { signingIn: () => false, activeBackend: "grok" } }), "claude-code", "spare", "spare", "x")).toEqual({ ok: true });
+    expect(existsSync(home)).toBe(false);
+  });
+  it("the target's own sign-in is still judged by its account: the controller's sign-in of ANOTHER profile on this backend leaves this one removable", async () => {
+    const { data } = withProfile();
+    const lock = new LoginWindowLock();
+    lock.tryClaim("web", "claude-code");
+    const otherProfile = { signingIn: (_b: string, p: string) => p === "other", activeBackend: "claude-code" };
+    expect(await call(fm(data, lock, { loginController: otherProfile }), "claude-code", "spare", "spare", "x")).toEqual({ ok: true });
   });
 });
