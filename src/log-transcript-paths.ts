@@ -14,7 +14,7 @@
  */
 import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAP_MAX_BYTES = 4 * 1024 * 1024;
@@ -59,6 +59,18 @@ export function grokUpdatesPath(cwd: string, home = homedir(), now = Date.now())
   if (grokLookups.size > 64) grokLookups.clear();
   grokLookups.set(base, { at: now, path: best });
   return best;
+}
+
+/**
+ * the `events.jsonl` that sits beside a grok session's `updates.jsonl` — and only that: `updatesPath` must be
+ * `<…>/<session uuid>/updates.jsonl` (the shape `grokUpdatesPath` makes, whose directory name was already checked as a UUID).
+ * The name is fixed and the directory is the validated one; nothing a file holds, and no other path, ever makes it. Null: not
+ * that shape.
+ */
+export function grokEventsPath(updatesPath: string | null | undefined): string | null {
+  if (typeof updatesPath !== "string" || basename(updatesPath) !== "updates.jsonl") return null;
+  const dir = dirname(updatesPath);
+  return UUID.test(basename(dir)) ? join(dir, "events.jsonl") : null;
 }
 
 /** The CLIs whose own record the Log reads, each with where to find it (the table the Log's source resolution asks). */

@@ -2,6 +2,8 @@
  * AGEND-181 PR2: the antigravity (agy) and grok transcript parsers for the Log and the chat's activity timeline — in
  * their own module, on the step model and helpers of log-steps.ts (which does not import this file).
  */
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
 import type { LongLine } from "./transcript-jsonl.js";
 import {
   RESULT_MAX, StepParser, TEXT_MAX, bodyOf, describeTool, inputOf, isReplyTool, promptAnchor, replyAnchor, replyResult, tsOf,
@@ -280,4 +282,63 @@ export class GrokStepParser extends StepParser {
     s.bodyBytes = bytes;
     return [{ ...s }];
   }
+}
+
+// ── where grok is in its turn, from `events.jsonl` ───────────────────────────────────────────────────────
+
+/** What the chat's live line may say about where grok is: a closed set, mapped from grok's own `phase` values. */
+export type GrokPhase = "waiting" | "reasoning" | "tool" | "permission" | "text";
+/**
+ * grok's `phase_changed.phase` values, as they appear in a real session's `events.jsonl` (the preview's `grok-try`; fixture
+ * tests/fixtures/chat-activity-3648/grok-events-phases.jsonl): the five it writes today. Any other value — a phase a newer grok
+ * adds — maps to nothing, and the chat keeps its plain "Working…" line: a word is never guessed for a phase not seen.
+ */
+const GROK_PHASES: Readonly<Record<string, GrokPhase>> = Object.freeze({
+  waiting_for_model: "waiting", streaming_reasoning: "reasoning", tool_execution: "tool", permission_prompt: "permission", streaming_text: "text",
+});
+/** How much of the end of `events.jsonl` is read (one phase line is ~65 bytes: this is far more than the newest turn boundary needs). */
+export const GROK_EVENTS_TAIL_BYTES = 64 * 1024;
+
+/**
+ * The phase grok is in, from the newest lines of its `events.jsonl` (oldest first). Only three record types are looked at, and
+ * only their `type` and `phase` — nothing else in a line (tool names, MCP configuration, session ids) is ever returned:
+ * `turn_ended` (the turn is over: null), `turn_started` (the turn began, nothing else yet: "waiting") and `phase_changed`
+ * (its phase, or null when it is a value not known). The newest of them decides; none: null.
+ */
+export function grokPhaseOf(lines: readonly string[]): GrokPhase | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!;
+    const type = line.includes('"type":"phase_changed"') ? "phase_changed" : line.includes('"type":"turn_ended"') ? "turn_ended" : line.includes('"type":"turn_started"') ? "turn_started" : null;
+    if (!type) continue;
+    let rec: unknown;
+    try { rec = JSON.parse(line); } catch { continue; }       // a line cut in two by the read window, or damaged
+    if (!rec || typeof rec !== "object" || (rec as { type?: unknown }).type !== type) continue;
+    if (type === "turn_ended") return null;
+    if (type === "turn_started") return "waiting";
+    const phase = (rec as { phase?: unknown }).phase;
+    return typeof phase === "string" && Object.prototype.hasOwnProperty.call(GROK_PHASES, phase) ? GROK_PHASES[phase]! : null;
+  }
+  return null;
+}
+
+/**
+ * The phase grok is in now, read from the end of `eventsPath` (from `grokEventsPath`: the validated session directory's own
+ * `events.jsonl`). Opened without following a symbolic link, a regular file only, at most GROK_EVENTS_TAIL_BYTES from its end;
+ * any failure (no such file, not a file, unreadable) is null — nothing is shown rather than a guess.
+ */
+export async function readGrokPhase(eventsPath: string | null): Promise<GrokPhase | null> {
+  if (!eventsPath) return null;
+  let fh: Awaited<ReturnType<typeof open>> | null = null;
+  try {
+    fh = await open(eventsPath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const st = await fh.stat();
+    if (!st.isFile() || st.size === 0) return null;
+    const n = Math.min(st.size, GROK_EVENTS_TAIL_BYTES);
+    const buf = Buffer.alloc(n);
+    const { bytesRead } = await fh.read(buf, 0, n, st.size - n);
+    const lines = buf.toString("utf8", 0, bytesRead).split("\n");
+    if (st.size > n) lines.shift();                           // the first line of a window that starts mid-file is partial
+    return grokPhaseOf(lines);
+  } catch { return null; }
+  finally { await fh?.close().catch(() => undefined); }
 }
