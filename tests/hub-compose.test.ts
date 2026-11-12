@@ -731,7 +731,7 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
     return runtime;
   };
   build();
-  try { await runtime!.apply(hub.config); expect(runtime!.serverHealth(hub.config.hub)).toBe("ready"); }
+  try { await runtime!.apply(hub.config); expect(runtime!.serverHealth(hub.config.hub), JSON.stringify(runtime!.currentHolds())).toBe("ready"); }
   catch (err) { await runtime!.close(); throw err; }
   const candidate = () => ({ directory: { ...(hub.config.hub.directory as import("../src/hub/directory/config.js").HubDirectoryConfig), url: "ldaps://next.example.test" },
     bindPassword: "Dummy-next-bind-only", changes: ["server", "secret"] as const,
