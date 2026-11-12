@@ -1,0 +1,559 @@
+{
+  "scrollerSeen": [
+    "desk-light-en/mid: [\"scroller\",11615,720,5447]",
+    "desk-light-en/bottom: [\"scroller\",11615,720,10895]",
+    "desk-dark-zh-TW/mid: [\"scroller\",11615,720,5447]",
+    "desk-dark-zh-TW/bottom: [\"scroller\",11615,720,10895]",
+    "phone-light-en/mid: [\"scroller\",14224,474,6875]",
+    "phone-light-en/bottom: [\"scroller\",14224,422,13802]",
+    "phone-dark-zh-TW/mid: [\"scroller\",14224,474,6875]",
+    "phone-dark-zh-TW/bottom: [\"scroller\",14224,422,13802]"
+  ],
+  "result": {
+    "desk-light-en/mid": [
+      {
+        "state": "idle",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 5447,
+        "atBottom": false,
+        "lastTop": 6130,
+        "barHeight": 30,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      },
+      {
+        "state": "working",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 5447,
+        "atBottom": false,
+        "lastTop": 6130,
+        "barHeight": 30,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "stuck",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 5447,
+        "atBottom": false,
+        "lastTop": 6130,
+        "barHeight": 30,
+        "barClass": "work-bar stuck",
+        "textLines": 1
+      },
+      {
+        "state": "awaiting-long",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 5447,
+        "atBottom": false,
+        "lastTop": 6130,
+        "barHeight": 30,
+        "barClass": "work-bar awaiting",
+        "textLines": 1
+      },
+      {
+        "state": "working-again",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 5447,
+        "atBottom": false,
+        "lastTop": 6130,
+        "barHeight": 30,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "idle-again",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 5447,
+        "atBottom": false,
+        "lastTop": 6130,
+        "barHeight": 30,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      }
+    ],
+    "desk-light-en/bottom": [
+      {
+        "state": "idle",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 10895,
+        "atBottom": true,
+        "lastTop": 682,
+        "barHeight": 30,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      },
+      {
+        "state": "working",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 10895,
+        "atBottom": true,
+        "lastTop": 682,
+        "barHeight": 30,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "stuck",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 10895,
+        "atBottom": true,
+        "lastTop": 682,
+        "barHeight": 30,
+        "barClass": "work-bar stuck",
+        "textLines": 1
+      },
+      {
+        "state": "awaiting-long",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 10895,
+        "atBottom": true,
+        "lastTop": 682,
+        "barHeight": 30,
+        "barClass": "work-bar awaiting",
+        "textLines": 1
+      },
+      {
+        "state": "working-again",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 10895,
+        "atBottom": true,
+        "lastTop": 682,
+        "barHeight": 30,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "idle-again",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 10895,
+        "atBottom": true,
+        "lastTop": 682,
+        "barHeight": 30,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      }
+    ],
+    "desk-dark-zh-TW/mid": [
+      {
+        "state": "idle",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 5447,
+        "atBottom": false,
+        "lastTop": 6130,
+        "barHeight": 30,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      },
+      {
+        "state": "working",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 5447,
+        "atBottom": false,
+        "lastTop": 6130,
+        "barHeight": 30,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "stuck",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 5447,
+        "atBottom": false,
+        "lastTop": 6130,
+        "barHeight": 30,
+        "barClass": "work-bar stuck",
+        "textLines": 1
+      },
+      {
+        "state": "awaiting-long",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 5447,
+        "atBottom": false,
+        "lastTop": 6130,
+        "barHeight": 30,
+        "barClass": "work-bar awaiting",
+        "textLines": 1
+      },
+      {
+        "state": "working-again",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 5447,
+        "atBottom": false,
+        "lastTop": 6130,
+        "barHeight": 30,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "idle-again",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 5447,
+        "atBottom": false,
+        "lastTop": 6130,
+        "barHeight": 30,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      }
+    ],
+    "desk-dark-zh-TW/bottom": [
+      {
+        "state": "idle",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 10895,
+        "atBottom": true,
+        "lastTop": 682,
+        "barHeight": 30,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      },
+      {
+        "state": "working",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 10895,
+        "atBottom": true,
+        "lastTop": 682,
+        "barHeight": 30,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "stuck",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 10895,
+        "atBottom": true,
+        "lastTop": 682,
+        "barHeight": 30,
+        "barClass": "work-bar stuck",
+        "textLines": 1
+      },
+      {
+        "state": "awaiting-long",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 10895,
+        "atBottom": true,
+        "lastTop": 682,
+        "barHeight": 30,
+        "barClass": "work-bar awaiting",
+        "textLines": 1
+      },
+      {
+        "state": "working-again",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 10895,
+        "atBottom": true,
+        "lastTop": 682,
+        "barHeight": 30,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "idle-again",
+        "composerTop": 818,
+        "threadHeight": 720,
+        "scrollTop": 10895,
+        "atBottom": true,
+        "lastTop": 682,
+        "barHeight": 30,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      }
+    ],
+    "phone-light-en/mid": [
+      {
+        "state": "idle",
+        "composerTop": 696.203125,
+        "threadHeight": 422,
+        "scrollTop": 6875,
+        "atBottom": false,
+        "lastTop": 7371,
+        "barHeight": 44,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      },
+      {
+        "state": "working",
+        "composerTop": 696.203125,
+        "threadHeight": 422,
+        "scrollTop": 6875,
+        "atBottom": false,
+        "lastTop": 7371,
+        "barHeight": 44,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "stuck",
+        "composerTop": 696.203125,
+        "threadHeight": 422,
+        "scrollTop": 6875,
+        "atBottom": false,
+        "lastTop": 7371,
+        "barHeight": 44,
+        "barClass": "work-bar stuck",
+        "textLines": 1
+      },
+      {
+        "state": "awaiting-long",
+        "composerTop": 696.203125,
+        "threadHeight": 422,
+        "scrollTop": 6875,
+        "atBottom": false,
+        "lastTop": 7371,
+        "barHeight": 44,
+        "barClass": "work-bar awaiting",
+        "textLines": 1
+      },
+      {
+        "state": "working-again",
+        "composerTop": 696.203125,
+        "threadHeight": 422,
+        "scrollTop": 6875,
+        "atBottom": false,
+        "lastTop": 7371,
+        "barHeight": 44,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "idle-again",
+        "composerTop": 696.203125,
+        "threadHeight": 422,
+        "scrollTop": 6875,
+        "atBottom": false,
+        "lastTop": 7371,
+        "barHeight": 44,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      }
+    ],
+    "phone-light-en/bottom": [
+      {
+        "state": "idle",
+        "composerTop": 696.203125,
+        "threadHeight": 474,
+        "scrollTop": 13750,
+        "atBottom": true,
+        "lastTop": 496,
+        "barHeight": 44,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      },
+      {
+        "state": "working",
+        "composerTop": 696.203125,
+        "threadHeight": 474,
+        "scrollTop": 13750,
+        "atBottom": true,
+        "lastTop": 496,
+        "barHeight": 44,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "stuck",
+        "composerTop": 696.203125,
+        "threadHeight": 474,
+        "scrollTop": 13750,
+        "atBottom": true,
+        "lastTop": 496,
+        "barHeight": 44,
+        "barClass": "work-bar stuck",
+        "textLines": 1
+      },
+      {
+        "state": "awaiting-long",
+        "composerTop": 696.203125,
+        "threadHeight": 474,
+        "scrollTop": 13750,
+        "atBottom": true,
+        "lastTop": 496,
+        "barHeight": 44,
+        "barClass": "work-bar awaiting",
+        "textLines": 1
+      },
+      {
+        "state": "working-again",
+        "composerTop": 696.203125,
+        "threadHeight": 474,
+        "scrollTop": 13750,
+        "atBottom": true,
+        "lastTop": 496,
+        "barHeight": 44,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "idle-again",
+        "composerTop": 696.203125,
+        "threadHeight": 474,
+        "scrollTop": 13750,
+        "atBottom": true,
+        "lastTop": 496,
+        "barHeight": 44,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      }
+    ],
+    "phone-dark-zh-TW/mid": [
+      {
+        "state": "idle",
+        "composerTop": 696.203125,
+        "threadHeight": 422,
+        "scrollTop": 6875,
+        "atBottom": false,
+        "lastTop": 7371,
+        "barHeight": 44,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      },
+      {
+        "state": "working",
+        "composerTop": 696.203125,
+        "threadHeight": 422,
+        "scrollTop": 6875,
+        "atBottom": false,
+        "lastTop": 7371,
+        "barHeight": 44,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "stuck",
+        "composerTop": 696.203125,
+        "threadHeight": 422,
+        "scrollTop": 6875,
+        "atBottom": false,
+        "lastTop": 7371,
+        "barHeight": 44,
+        "barClass": "work-bar stuck",
+        "textLines": 1
+      },
+      {
+        "state": "awaiting-long",
+        "composerTop": 696.203125,
+        "threadHeight": 422,
+        "scrollTop": 6875,
+        "atBottom": false,
+        "lastTop": 7371,
+        "barHeight": 44,
+        "barClass": "work-bar awaiting",
+        "textLines": 1
+      },
+      {
+        "state": "working-again",
+        "composerTop": 696.203125,
+        "threadHeight": 422,
+        "scrollTop": 6875,
+        "atBottom": false,
+        "lastTop": 7371,
+        "barHeight": 44,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "idle-again",
+        "composerTop": 696.203125,
+        "threadHeight": 422,
+        "scrollTop": 6875,
+        "atBottom": false,
+        "lastTop": 7371,
+        "barHeight": 44,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      }
+    ],
+    "phone-dark-zh-TW/bottom": [
+      {
+        "state": "idle",
+        "composerTop": 696.203125,
+        "threadHeight": 474,
+        "scrollTop": 13750,
+        "atBottom": true,
+        "lastTop": 496,
+        "barHeight": 44,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      },
+      {
+        "state": "working",
+        "composerTop": 696.203125,
+        "threadHeight": 474,
+        "scrollTop": 13750,
+        "atBottom": true,
+        "lastTop": 496,
+        "barHeight": 44,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "stuck",
+        "composerTop": 696.203125,
+        "threadHeight": 474,
+        "scrollTop": 13750,
+        "atBottom": true,
+        "lastTop": 496,
+        "barHeight": 44,
+        "barClass": "work-bar stuck",
+        "textLines": 1
+      },
+      {
+        "state": "awaiting-long",
+        "composerTop": 696.203125,
+        "threadHeight": 474,
+        "scrollTop": 13750,
+        "atBottom": true,
+        "lastTop": 496,
+        "barHeight": 44,
+        "barClass": "work-bar awaiting",
+        "textLines": 1
+      },
+      {
+        "state": "working-again",
+        "composerTop": 696.203125,
+        "threadHeight": 474,
+        "scrollTop": 13750,
+        "atBottom": true,
+        "lastTop": 496,
+        "barHeight": 44,
+        "barClass": "work-bar working",
+        "textLines": 1
+      },
+      {
+        "state": "idle-again",
+        "composerTop": 696.203125,
+        "threadHeight": 474,
+        "scrollTop": 13750,
+        "atBottom": true,
+        "lastTop": 496,
+        "barHeight": 44,
+        "barClass": "work-bar idle",
+        "textLines": 0
+      }
+    ]
+  },
+  "fail": []
+}
