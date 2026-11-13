@@ -68,22 +68,46 @@ advance the human counter. Existing missed-reply recovery remains independent.
 A reset may intentionally create reminders closer than ten messages apart.
 
 The state belongs to one daemon launch/context epoch, never a global backend or
-the pure formatter. Select an immutable presentation stamp once, before hashing
-the exact wire. Snapshot and actual delivery must render the same bytes. Multiple
-formatting calls and retries must not increment the count. Reserve concurrent
-human admissions in order, with explicit cancellation and ownership fences.
+the pure formatter. Move new receipt presentation preparation and its existing
+**bind-once** operation to the final owned write preparation, after the relevant
+queue/write lock and wake/readiness waits, immediately before paste. A registered
+manager-owned binder validates the receipt/admission and current launch owner;
+it is not a capability inferred from body text. The final sanitizer runs before
+binding the exact wire. Snapshot and actual delivery use that same frozen wire.
 
-A queued message prepared before a context reset is an important integration
-case: the next actual write must still get its reminder, while no previously
-bound receipt hash is silently changed. The implementation must stamp at the
-last owned preparation boundary (or explicitly rebind only a still-unwritten
-queued receipt) and test this race. Never reinterpret already-delivered bytes.
+Do not rebind a receipt: `queued` is not proof that nothing was written. If an
+existing row has a bound owner/hash, retain its dialect and exact prepared bytes;
+an uncertain/potentially-written row never acquires a new wire. Legacy rows keep
+the old always-present reminder. The new boundary must fail closed if the manager
+or write owner changes, rather than replaying or inventing a binding.
+
+Choose the stamp under the common write ownership fence, with one ordinal per
+human receipt. Formatting calls, retries, steer and ordinary queue paths cannot
+increment it twice. Cancellation before the write does not consume the first
+reminder. If its write/receipt result is uncertain, leave the first-reminder debt
+outstanding so another human message may repeat the hint. A context reset while
+waiting in IPC/paste/readiness queues affects the stamp chosen at the final
+boundary. Test held IPC, held paste/readiness, reset, cancel and uncertain races;
+no modification of already-bound bytes is permitted. This moves an existing
+security-sensitive binding boundary and requires implementation co-review.
 
 Legacy prepared messages and historical fixtures keep their original bytes.
 Marker recognition accepts both the old `[agend-human-id:…]` and new `[hid:…]`,
-using the known receipt metadata to choose proof; it never scans body text to
-invent a trusted ID. New markers stay before steering and what's-new notices.
+with the dialect chosen from trusted prepared metadata, not an arbitrary body
+match. Every proof reader consumes that dialect; mixed old/new components fail
+closed without a false delivered verdict or duplicate submission. It never scans
+body text to invent a trusted ID. New markers stay before steering and what's-new notices.
 No receipt database identity, authority column, ACL or forwards semantics changes.
+
+Instruction/formatter SKEW is a separate compatibility gate. Do not infer a
+consumer's dialect capability from text resembling a marker. Install instructions
+that explain both formats at a proven launch/context instruction epoch before
+using compact wire. A resumed old context without that evidence stays legacy;
+where a compatibility notice is needed, deliver it in the legacy envelope before
+switching later messages. The exact installation/acknowledgement boundary must be
+pinned for MCP and agent-CLI modes; an unproved transition falls back to legacy.
+Tests cover old instructions + new producer and new instructions + old prepared
+bytes without losing reply addressing, receipt proof or forwarded authority.
 
 ## Security finding and proposed handling
 
@@ -94,14 +118,31 @@ The existing forged-header negative checks that body text cannot create a human
 origin. Preserve and extend those checks; do not call current typography
 unforgeable.
 
-To keep user text from creating additional apparent top-level headers, escape
-reserved envelope-looking lines in untrusted bodies (human and peer) as quoted
-content, and escape line breaks/control characters and delimiters in label fields.
-Cover forged hid/user/from/delivery/metadata lines and reply-to text. The original
-content and its hash remain unchanged in the receipt; only the deterministic wire
-presentation is escaped and separately hashed. The normal message's body is
-unchanged. Raw mode remains explicitly outside positive human-proof guarantees.
-No textual marker, even a copied genuine one, grants authority or forwarded ACL.
+Escaping is deterministic and shared by human and peer formatters:
+
+1. Display fields (name, source, peer display/instance label) and metadata values
+   use visible backslash escapes for backslash, `@`, `#`, brackets, parentheses,
+   pipe, CR/LF/tab, C0/C1 controls/ANSI ESC, Unicode line separators U+2028/U+2029,
+   and bidi formatting controls (U+061C, U+200E/F, U+202A–E, U+2066–9). Ordinary
+   Unicode names remain readable. Include reply-to, reactions, from_display,
+   task_summary, branch, working_directory, attachments and all footer/correlation
+   presentation values. Escape exactly once from original metadata; raw IDs and
+   tool arguments remain unchanged. No value may add a physical envelope line.
+2. Body/reply-to/reaction text is data: escape terminal/line-separator/bidi
+   controls visibly and prefix a data quote before any line that, after leading
+   whitespace, could resemble an AgEnD routing or metadata line. The reserved set
+   includes old/new human markers, delivery markers, user/from/system/steering
+   headers and message-id/verification/forwards/reply-required metadata footers.
+   Do not infer trust from a quoted line, even one carrying a real copied ID.
+3. Apply the existing final wire sanitizer, then freeze/hash those actual bytes.
+   Tests include odd backtick fences and sanitizer-adjacent forged lines so that
+   a later normalization cannot turn quoted data into a header.
+
+The original content and its hash remain exact in the receipt; only the wire
+presentation is escaped and separately hashed. An ordinary message body is
+unchanged. Raw mode remains outside positive human-proof guarantees. No textual
+marker grants authority or forwarded ACL. Include malicious reply-to, reactions,
+peer metadata and labels, not only a forged header in the main body.
 
 ## Compaction observability: decision needed before implementation
 
@@ -113,7 +154,9 @@ that the first message after an invisible automatic compaction gets a reminder.
 Proposed bounded first slice: reset on every command/launch/model/session/context
 reset AgEnD observes, including explicit clear/compact before another message can
 be admitted; reuse owned Claude/Codex compaction records and Kiro outcomes. Keep
-the ten-message fallback for otherwise invisible automatic compaction. This
+the ten-message fallback for otherwise invisible automatic compaction. Consume
+each observed boundary once under its owned launch/session/transcript checkpoint;
+history replay, sidechains and another launch must not reset this counter. This
 limitation needs the leader's decision; do not advertise universal first-message
 coverage without additional per-backend observations/fixtures. The alternative is
 a separately scoped compaction-observation audit across all backends.
