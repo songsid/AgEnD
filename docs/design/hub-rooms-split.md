@@ -121,6 +121,26 @@ GET      /hub/v1/admin/rooms                                    names and member
 - Teams (C): a subject of kind `team` is accepted wherever a person or AD group is today: room members, invitations, and owner ask grants. C adds it next to the existing `person | group` subject.
 - Room permissions (R): creator check on `POST /rooms`; `manager | member` on every room call; `allMention` checked on `POST …/messages`.
 
+### Additions agreed between tracks U and R (2026-11-14, PR #3854)
+
+**Seam 1**
+- `GET /hub/v1/rooms/candidates?q=&kind=person|team|group|agent` → `[{ kind, id, name, people?, owner?: { name }, mine? }]`. `mine` decides add versus invite.
+- `PATCH /hub/v1/rooms/:id/members/:memberId { role: "manager" | "member" }`. Demoting the last manager answers 409 `last-manager`.
+- Leaving is `DELETE /hub/v1/rooms/:id/members/<me>`. The only manager gets 409 `last-manager`.
+- Room GET adds `me: { id, role }`; an agent member's `canAsk: true` when a 1:1 is allowed; and `invited[]: { id, exposureId, name, owner: { name }, at, state: "pending" | "expired" }`. Expired rows stay so they can be invited again.
+- The list answer adds `me: { canCreateRooms, assistant }`, and `invitations` (pending only).
+
+**Seam 3**
+- `DELETE /hub/v1/rooms/:id/invitations/:id` cancels. Inviting again is a new POST.
+- `GET /hub/v1/exposures/:id/rooms` → `[{ id, name, people, memberId }]`. The owner leaves a room with `DELETE …/members/<memberId>`.
+
+**Seam 5**
+- `GET /hub/v1/admin/rooms/creators` names its entries: `{ people: [{ id, name }], teams: [{ id, name, people }] }`. PUT still takes ids.
+- `POST /hub/v1/admin/rooms/:id/join` (with a system line in the room).
+- `PATCH /hub/v1/admin/rooms/:id { archived }`.
+
+**Seam 4** (2026-11-14): when the asking message is a reply, `context` also carries the replied-to message, even when it is older than the last 30.
+
 ## 3. Files, so nobody edits the same one
 
 | Area | Owner | Notes |
