@@ -54,6 +54,20 @@ describe("company join UI", () => {
     expect(p.root.querySelector("#hubCompanyLine").textContent).toContain("\u201cQA\u201d");
     expect(calls.every(c => !c.init.method || c.init.method === "GET" || c.path.endsWith("/probe"))).toBe(true);
   });
+  it("#3837: a click right after typing (the input loses focus as the button is pressed) sends exactly one /start; no second look", async () => {
+    fetcher(path => path.endsWith("/probe") ? { ok: true, hubName: "Acme Hub", webOrigin: "https://hub.example.test", companyJoin: true, identity: "new", separateHosts: true, suggestedLabel: "box", features: [] }
+      : path.endsWith("/start") ? { ok: true, operation: pending } : { ok: true, operation: null });
+    vi.stubGlobal("open", vi.fn());
+    const p = await mount(fleet.CompanyJoinSettings);
+    const address = p.root.querySelector("#hubCompanyAddress"); address.value = "hub.example.test"; fire(address, "input"); await settle(4);
+    fire(address, "blur"); await settle(8);                                                  // the Hub is found (cleared)
+    // A real click: mousedown blurs the input, the page re-renders, then the click submits the form.
+    fire(address, "blur"); await settle(1);
+    expect(button(p, "Sign in with company account").disabled).toBe(false);
+    fire(p.root.querySelector(".hub-join-one"), "submit"); await settle(8);
+    expect(calls.filter(c => c.path.endsWith("/probe"))).toHaveLength(1);
+    expect(calls.filter(c => c.path.endsWith("/start"))).toHaveLength(1);
+  });
   it("M-2921: Start stays off while the probe for this address has not answered; a probe that cannot answer at all does not block it", async () => {
     let answer: (v: any) => void = () => {};
     fetcher(path => path.endsWith("/probe") ? new Promise(r => { answer = r; }) : { ok: true, operation: null });
