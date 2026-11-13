@@ -5,6 +5,8 @@ export interface RoomMessage {
   text: string; mentions: string[]; replyTo?: string; idempotencyKey?: string;
   files?: { id: string; name: string; size: number; mime: string; url: string }[];
   warning?: "assistant-unavailable";
+  ask?: { total: number; answered: number; working: number; later: number };
+  answerTo?: string;
   stage?: "queued" | "working" | "answered" | "not-answered";
 }
 export interface RoomAssistantPort {
