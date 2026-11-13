@@ -1,0 +1,152 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-repair-3823.test.ts (16 tests | 2 failed) 5613ms
+   × R1: pairing change after bind refuses composition before attaching the stale service 180ms
+   × R1: pairing change during offline bind refuses withdrawal and keeps its published consent 272ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > R1: pairing change after bind refuses composition before attaching the stale service
+AssertionError: promise resolved "{ service: { …(6) }, links: [], …(1) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "api": {
++     "value": null,
++   },
++   "links": [],
++   "service": {
++     "binding": [Function binding],
++     "close": [Function close],
++     "fence": [Function fence],
++     "leave": [Function leave],
++     "representative": HubRepresentativeExecution {
++       "closed": false,
++       "options": {
++         "agentToken": [Function agentToken],
++         "attentionChanged": [Function attentionChanged],
++         "audit": [Function audit],
++         "authorize": [Function authorize],
++         "binding": [Function binding],
++         "db": Database {
++           "inTransaction": false,
++           "memory": false,
++           "name": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823/.artifacts/hub-net-test-WX4RQg/member/hub-member/d314dc9c-3c91-45fc-ad96-757246f9d5e2/member.sqlite",
++           "open": true,
++           "readonly": false,
++         },
++         "deliver": [Function deliver],
++         "journal": HubMemberJournal {
++           "db": Database {
++             "inTransaction": false,
++             "memory": false,
++             "name": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823/.artifacts/hub-net-test-WX4RQg/member/hub-member/d314dc9c-3c91-45fc-ad96-757246f9d5e2/member.sqlite",
++             "open": true,
++             "readonly": false,
++           },
++           "failed": false,
++           "options": {
++             "encryptionKey": {
++               "data": [
++                 141,
++                 93,
++                 175,
++                 207,
++                 199,
++                 133,
++                 60,
++                 42,
++                 221,
++                 36,
++                 126,
++                 201,
++                 66,
++                 146,
++                 10,
++                 78,
++                 155,
++                 128,
++                 241,
++                 124,
++                 235,
++                 104,
++                 240,
++                 79,
++                 69,
++                 97,
++                 117,
++                 11,
++                 117,
++                 6,
++                 60,
++                 6,
++               ],
++               "type": "Buffer",
++             },
++             "floor": HubFileVersionFloor {
++               "home": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823/.artifacts/hub-net-test-WX4RQg/member",
++               "suffix": "hub-member/d314dc9c-3c91-45fc-ad96-757246f9d5e2/floors/journal",
++             },
++             "hubId": "d314dc9c-3c91-45fc-ad96-757246f9d5e2",
++             "now": [Function now],
++             "outbox": {
++               "insert": [Function insert],
++               "lookup": [Function lookup],
++             },
++           },
++         },
++         "link": [Function link],
++         "localExposure": [Function localExposure],
++         "log": [Function log],
++         "now": [Function now],
++       },
++       "receiptsTail": Promise {},
++       "recovered": true,
++       "running": Set {},
++     },
++     "start": [Function start],
++   },
+  }
+
+ ❯ tests/hub-member-repair-3823.test.ts:241:48
+    239| it("R1: pairing change after bind refuses composition before attaching…
+    240|   const r = await rig(); let checks = 0;
+    241|   await expect(member(r, () => ++checks === 1)).rejects.toThrow("pairi…
+       |                                                ^
+    242|   expect(checks).toBe(2);
+    243| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > R1: pairing change during offline bind refuses withdrawal and keeps its published consent
+AssertionError: promise resolved "1" instead of rejecting
+
+- Expected:
+Error {
+  "message": "rejected promise",
+}
+
++ Received:
+1
+
+ ❯ tests/hub-member-repair-3823.test.ts:254:79
+    252|     return result;
+    253|   });
+    254|   await expect(withdrawMemberExposuresOffline(r.memberHome, r.identity…
+       |                                                                               ^
+    255|   expect(changed).toBe(true);
+    256|   const j = journal(r);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  2 failed | 46 passed (48)
+   Start at  23:13:00
+   Duration  8.41s (transform 2.50s, setup 260ms, import 3.01s, tests 5.93s, environment 0ms)
+

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { createPublicKey, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
-import { HubMemberJournal, migrateHubMemberJournal } from "../src/hub/member-journal.js";
+import { HubMemberJournal, migrateHubMemberJournal, questionContextDigest } from "../src/hub/member-journal.js";
+import { migrateHubExecution } from "../src/hub/execution/store.js";
+import { migrateHubRepresentative } from "../src/hub/representative.js";
 import { HubMemberAdmissionAdapter } from "../src/hub/admission.js";
 import { signAsker, sha256, issuerKeyId, operationDigest } from "../src/hub/identity.js";
 import type { HubAuthorizationRequest, HubExposure, HubMemberTransport, HubQuestion } from "../src/hub/types.js";
@@ -73,6 +75,29 @@ describe("#3823 durable pairing ownership", () => {
   it("a receipt counter without any attributable history is not an empty legacy journal", () => {
     const f = fixture(); f.db.prepare("UPDATE hub_member_meta SET receipt_sequence=1").run();
     expect(() => f.journal.bindPairing(f.profile, [])).toThrow("uncertain");
+  });
+  it("R1: a matching legacy S4 source with the wrong context digest refuses adoption; exact digest adopts", async () => {
+    const f = fixture(); await f.admission.admit(f.q); migrateHubExecution(f.db);
+    f.db.prepare("INSERT INTO hub_execution_queue VALUES(?,?,?,?)").run(`hub:${f.profile.hub.hubId}:${f.q.identity.messageId}`, randomUUID(), "e".repeat(64), "f".repeat(64));
+    expect(() => f.journal.bindPairing(f.profile, [])).toThrow("uncertain");
+    expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).toEqual({ binding: null });
+    f.db.prepare("UPDATE hub_execution_queue SET digest=?").run(questionContextDigest(f.q));
+    expect(f.journal.bindPairing(f.profile, [])).toBe(true);
+  });
+  it("R1: a matching representative source with the wrong exposure revision refuses adoption; exact revision adopts", async () => {
+    const f = fixture(); await f.admission.admit(f.q); migrateHubRepresentative(f.db);
+    f.db.prepare("INSERT INTO hub_representative_questions(source,id,message_id,digest,exposure_id,revision,consent_id,agent,token,state,at) VALUES(?,?,?,?,?,?,?,?,?,'queued',?)")
+      .run(`hub:${f.profile.hub.hubId}:${f.q.identity.messageId}`, randomUUID(), f.q.identity.messageId, f.q.identity.contentDigest, f.exposure.id, 2, randomUUID(), "fixture", "token", Date.now());
+    expect(() => f.journal.bindPairing(f.profile, [])).toThrow("uncertain");
+    expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).toEqual({ binding: null });
+    f.db.prepare("UPDATE hub_representative_questions SET revision=1").run();
+    expect(f.journal.bindPairing(f.profile, [])).toBe(true);
+  });
+  it("R1: a bound retained read independently rejects foreign pairing metadata without prepare", async () => {
+    const f = fixture(); await f.admission.admit(f.q); expect(f.journal.bindPairing(f.profile, [])).toBe(true);
+    // Selectively restored/corrupt metadata, not a permitted writer: the AEAD payload still has its original identity.
+    f.db.prepare("UPDATE hub_member_meta SET binding=?").run(JSON.stringify({ fleetId: randomUUID(), owner: f.profile.owner, issuerKeyId: f.profile.issuerKeyId }));
+    expect(() => new HubMemberJournal(f.db, f.options).knownMessages()).toThrow("uncertain");
   });
 });
 describe("Hub restricted member journal", () => {

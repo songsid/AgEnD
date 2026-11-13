@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-repair-3823.test.ts (16 tests | 1 failed) 22606ms
+   × R1: missing pairing with published legacy consent refuses offline withdrawal rather than reporting success 242ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > R1: missing pairing with published legacy consent refuses offline withdrawal rather than reporting success
+AssertionError: promise resolved "+0" instead of rejecting
+
+- Expected:
+Error {
+  "message": "rejected promise",
+}
+
++ Received:
+0
+
+ ❯ tests/hub-member-repair-3823.test.ts:233:79
+    231|   const { r, profile } = await seeded(), set = memberSet(r.identity.hu…
+    232|   unlinkSync(join(r.memberHome, "hub-member", r.identity.hubId, "pairi…
+    233|   await expect(withdrawMemberExposuresOffline(r.memberHome, r.identity…
+       |                                                                               ^
+    234|   const j = journal(r);
+    235|   try { expect(j.db.prepare("SELECT json_extract(committed,'$.exposure…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 47 passed (48)
+   Start at  23:11:48
+   Duration  25.85s (transform 2.94s, setup 237ms, import 3.57s, tests 22.92s, environment 0ms)
+

@@ -1,5 +1,5 @@
 /** Owned TLS/WSS + SQLite reproduction; directory and input delivery are inert. */
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, unlinkSync, existsSync, writeFileSync } from "node:fs";
@@ -24,15 +24,15 @@ import { operationDigest, personKeyString, sha256 } from "../src/hub/identity.js
 import type { HubQuestion } from "../src/hub/types.js";
 
 const rigs: Awaited<ReturnType<typeof hubRig>>[] = [], services: HubMountedService[] = [];
-afterEach(async () => { for (const s of services.splice(0).reverse()) await s.close(); for (const r of rigs.splice(0)) await r.close(); });
+afterEach(async () => { vi.restoreAllMocks(); for (const s of services.splice(0).reverse()) await s.close(); for (const r of rigs.splice(0)) await r.close(); });
 async function rig() { const r = await hubRig(); rigs.push(r); await r.pair(); return r; }
-async function member(r: Awaited<ReturnType<typeof rig>>) {
+async function member(r: Awaited<ReturnType<typeof rig>>, current = () => true) {
   const links: string[] = [], api: { value: unknown } = { value: null };
   const create = createHubMemberFactory({ home: r.memberHome, components: MEMBER_COMPONENTS, boundHub: () => r.identity.hubId,
     agents: () => [], representative: { deliver: async () => { throw Error("no input in fixture"); }, agentToken: () => null, attachReports: () => {} },
     attachExposures: value => { api.value = value; }, attachAttention: () => {}, pokeAttention: () => {},
     linkState: value => links.push(value), report: () => {}, log: () => {} });
-  const service = await create({}, () => true); services.push(service); return { service, links, api };
+  const service = await create({}, current); services.push(service); return { service, links, api };
 }
 function journal(r: Awaited<ReturnType<typeof rig>>, set = memberSet(r.identity.hubId)) {
   const db = new Database(join(r.memberHome, set.database));
@@ -209,4 +209,51 @@ it("legacy adoption checks even the parked S4 execution floor", async () => {
   const { r } = await seeded(); legacy(r);
   writeFileSync(join(r.memberHome, memberSet(r.identity.hubId).floors[1]!), "1", { mode: 0o600 });
   await expect(member(r)).rejects.toThrow("execution database and floor disagree");
+});
+
+it.each(["absent", "partial"])("R1: a complete scoped set wins over %s legacy state without recreating it", async state => {
+  const { r, q } = await seeded(), next = await rePair(r), first = await member(r); await first.service.close();
+  const set = memberSet(r.identity.hubId, next), j = journal(r, set);
+  const ownQuestion = { ...q, identity: { ...q.identity, messageId: randomUUID(), destinationFleetId: next.fleetId } };
+  j.value.prepare(ownQuestion); j.db.close();
+  const old = memberSet(r.identity.hubId), paths = [old.database, ...old.floors, ...old.keys];
+  for (const p of state === "absent" ? paths : [old.floors[0]!]) unlinkSync(join(r.memberHome, p));
+  const presence = paths.map(p => existsSync(join(r.memberHome, p)));
+  const opening = member(r); await expect(opening).resolves.toBeDefined();
+  const reopened = await opening; await reopened.service.start();
+  expect(r.received.filter(f => f.type === "reconcile").map(f => f.payload.messages)).toEqual([
+    [{ messageId: ownQuestion.identity.messageId, contentDigest: ownQuestion.identity.contentDigest }],
+  ]);
+  expect(paths.map(p => existsSync(join(r.memberHome, p)))).toEqual(presence);
+});
+
+it("R1: missing pairing with published legacy consent refuses offline withdrawal rather than reporting success", async () => {
+  const { r, profile } = await seeded(), set = memberSet(r.identity.hubId); exposure(r, profile, set);
+  unlinkSync(join(r.memberHome, "hub-member", r.identity.hubId, "pairing.json"));
+  await expect(withdrawMemberExposuresOffline(r.memberHome, r.identity.hubId)).rejects.toThrow("no pairing");
+  const j = journal(r);
+  try { expect(j.db.prepare("SELECT json_extract(committed,'$.exposure.state') AS state FROM hub_exposures").get()).toEqual({ state: "published" }); }
+  finally { j.db.close(); }
+});
+
+it("R1: pairing change after bind refuses composition before attaching the stale service", async () => {
+  const r = await rig(); let checks = 0;
+  await expect(member(r, () => ++checks === 1)).rejects.toThrow("pairing changed while opening");
+  expect(checks).toBe(2);
+});
+
+it("R1: pairing change during offline bind refuses withdrawal and keeps its published consent", async () => {
+  const { r, profile } = await seeded(), set = memberSet(r.identity.hubId); exposure(r, profile, set);
+  const profiles = new HubMemberProfileStore(r.memberHome, r.identity.hubId), bind = HubMemberJournal.prototype.bindPairing;
+  let changed = false;
+  vi.spyOn(HubMemberJournal.prototype, "bindPairing").mockImplementation(function (this: HubMemberJournal, ...args) {
+    const result = bind.apply(this, args);
+    if (!changed) { changed = true; profiles.saveProfile({ ...profile, credential: "c".repeat(64) }, profiles.profileDigest(), () => true); }
+    return result;
+  });
+  await expect(withdrawMemberExposuresOffline(r.memberHome, r.identity.hubId)).rejects.toThrow("pairing changed while opening");
+  expect(changed).toBe(true);
+  const j = journal(r);
+  try { expect(j.db.prepare("SELECT json_extract(committed,'$.exposure.state') AS state FROM hub_exposures").get()).toEqual({ state: "published" }); }
+  finally { j.db.close(); }
 });

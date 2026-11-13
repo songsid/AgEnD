@@ -1,0 +1,58 @@
+[
+  {
+    "name": "K2-prefer-legacy",
+    "file": "src/hub/compose/member.ts",
+    "sha256": "912a6ea8b9ade6c75d0626132e09cd2fbfa127927f07bf51000ecd33284dfbd7",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "K8-ignore-S4-digest",
+    "file": "src/hub/member-journal.ts",
+    "sha256": "a17e64aa69abb098e03536677ebbe44965056cc5e27c60683a2f6d276b1211c7",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "K10-missing-pairing-success",
+    "file": "src/hub/compose/member.ts",
+    "sha256": "8b3df636582a9b473b22bc28d2429a6673e0d474858c2c919eb37b450a973f2e",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "K13-ignore-representative-revision",
+    "file": "src/hub/member-journal.ts",
+    "sha256": "7d5c15b0b07b8eb0f2d9268cfbea59332304b4cc106d5f984045f3d5c9ed1782",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "K5-no-decrypt-pairing-check",
+    "file": "src/hub/member-journal.ts",
+    "sha256": "e7ec13537f1d58bd48463693c8d4b099aa18edd40a1045ccfe67ebbfd738a967",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "K11-no-offline-profile-fence",
+    "file": "src/hub/compose/member.ts",
+    "sha256": "7205cd63034f3087276ec2014f8f7055ddfc62510db6f8c7ef1e0566ccb12243",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "K12-no-post-bind-fence",
+    "file": "src/hub/compose/member.ts",
+    "sha256": "0398a33e6e993a5452f6b37cbb23cb175b408f68b1478980abc469277bb66a54",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  }
+]

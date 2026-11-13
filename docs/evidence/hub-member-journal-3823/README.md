@@ -27,7 +27,7 @@ node_modules/.bin/tsc --noEmit -p tsconfig.test.json
 ```
 
 Results at source merge `249e4eb4b`: 168/168 across eight focused files, then 65/65 across the two changed files plus
-`hub-exposures-s3c` and `hub-exposure-api-s3c` (39 overlapping cases; 194 distinct cases in ten files). Both native type
+`hub-exposures-s3c` and `hub-exposure-api-s3c` (40 overlapping cases; 193 distinct cases in ten files). Both native type
 checks exit 0. All eleven compiling reversals are caught. The incoming alpha sync has five disjoint UI/test/script/
 fragment paths from #3838; all eight own product/test/doc/fragment blobs are unchanged from source `48f23c67f`.
 
@@ -43,3 +43,15 @@ for rollback. Do not delete binding metadata, floors or journals, and do not cop
 
 The public rehearsal handoff is [the redacted #3823 capture](https://github.com/songsid/AgEnD/issues/3823#issuecomment-6851255072).
 Its original container was already removed by its owner; this reproduction needs no peer filesystem or private backup.
+
+## R1 review pins
+
+R1 changes tests and evidence only; both production files are byte-identical to `a8e56a67a` (Ridge scoped SOURCE CLEAR).
+The new controls cover complete scoped state with absent/partial legacy files, missing-pairing offline refusal,
+exact S4 context digest and representative exposure revision, the retained-read pairing check, and pairing changes
+inside composition/offline binding. The offline race changes the real private fixture profile after the production
+bind returns; the reader must refuse before withdrawal. Original logs/receipts retain their stated scopes.
+
+The original aggregate had a counting error: its two changed files contain 40 cases, so 168 + 65 - 40 = **193**
+distinct cases. Test outcomes are unchanged. R1 results and seven isolated compiling reversals are recorded under
+`r1/`; no additional browser, live Fleet, directory or account operation was used.

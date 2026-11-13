@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-repair-3823.test.ts (16 tests | 1 failed) 5007ms
+   × R1: pairing change during offline bind refuses withdrawal and keeps its published consent 240ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > R1: pairing change during offline bind refuses withdrawal and keeps its published consent
+AssertionError: promise resolved "1" instead of rejecting
+
+- Expected:
+Error {
+  "message": "rejected promise",
+}
+
++ Received:
+1
+
+ ❯ tests/hub-member-repair-3823.test.ts:254:79
+    252|     return result;
+    253|   });
+    254|   await expect(withdrawMemberExposuresOffline(r.memberHome, r.identity…
+       |                                                                               ^
+    255|   expect(changed).toBe(true);
+    256|   const j = journal(r);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 47 passed (48)
+   Start at  23:12:47
+   Duration  7.44s (transform 2.16s, setup 231ms, import 2.66s, tests 5.24s, environment 0ms)
+

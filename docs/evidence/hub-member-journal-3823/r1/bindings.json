@@ -1,0 +1,25 @@
+{
+  "reviewedHead": "a8e56a67a611a46c11ce1aca6f899948568fcdd5",
+  "inputs": [
+    {
+      "sha256": "5282424b9dad438df35673c3e0d38bf088ed3fde97014111fbe195292a875d08",
+      "file": "src/hub/member-journal.ts",
+      "unchangedFromA8": true
+    },
+    {
+      "sha256": "7d3c9d01e171be4b89ded41aa306b5f060c5ebb603e7e6f758f33200695f0fcc",
+      "file": "src/hub/compose/member.ts",
+      "unchangedFromA8": true
+    },
+    {
+      "sha256": "747af1022a7bd7b7eafc19fd450cbb40d1d32ffc327fbc9264e4d1c730e36e5d",
+      "file": "tests/hub-member-journal.test.ts",
+      "unchangedFromA8": false
+    },
+    {
+      "sha256": "d2432135810c8e0ab0dd3670dfac0e596762815973935aad8a79653f316caf08",
+      "file": "tests/hub-member-repair-3823.test.ts",
+      "unchangedFromA8": false
+    }
+  ]
+}
