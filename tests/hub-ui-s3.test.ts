@@ -201,13 +201,13 @@ describe("Settings → Connect to a Hub", () => {
     expect(pg.root.querySelector(".hub-preview")!.textContent).toContain("nothing here leaves this page");
     const go = () => pg.root.querySelector(".hub-connect button[type=submit]") as any;
     expect(go().disabled).toBe(true);
-    input(pg, "hubAddress", "https://hub.example.test"); input(pg, "hubCode", "ABCD-EFGH"); await settle(5);
+    input(pg, "hubAddress", "https://hub.example.test"); input(pg, "hubCode", "1a2b-3c4d-5e6f"); await settle(5);
     expect(go().disabled).toBe(false);
   });
   it("pending: the pairing fingerprint (8 groups, full on request) and both steps; each step marked as it is done", async () => {
     const c = stub();
     const pg = await mountCard();
-    input(pg, "hubAddress", "https://hub.example.test"); input(pg, "hubCode", "ABCD-EFGH"); await settle(5);
+    input(pg, "hubAddress", "https://hub.example.test"); input(pg, "hubCode", "1a2b-3c4d-5e6f"); await settle(5);
     fire(pg.root.querySelector("form.hub-connect")!, "submit"); await until(() => pg.root.querySelector(".hub-pending"));
     expect(pg.root.querySelector(".hub-fp-label")!.textContent).toBe("Pairing fingerprint");
     expect(pg.root.querySelector(".hub-fp-groups")!.textContent!.split(" ").length).toBe(8);

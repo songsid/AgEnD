@@ -1,0 +1,25 @@
+{
+  "reason": "Two historical generic-api-key false positives: SHA-256 of a public stylesheet response. Lossless served-map serialization change only; no capture repeated or PNG changed. Exact historical fingerprints only.",
+  "publicPath": "src/ui/shared/tokens.css",
+  "publicDigest": "cd62669f84666fb16e49cf63ebdc8376d3965106eeaf0531744372bdcf70f3c9",
+  "receipts": [
+    {
+      "path": "docs/evidence/hub-group-label-3824/before/receipt.json",
+      "originalSha256": "fcb790b9d33bde7cf441c29f92a36b3557f7873f23e902ac4a65f62df87270a6",
+      "groupedSha256": "673a9d295feaff2051d805285bde45325535fedcb26f5033697e22bef3e41413",
+      "servedEntries": 90,
+      "roundTripExact": true,
+      "historicalCommit": "6bdab5c543a671c8d55dee3d70663fe8441dd838",
+      "PNGsUnchanged": true
+    },
+    {
+      "path": "docs/evidence/hub-group-label-3824/current/receipt.json",
+      "originalSha256": "b912ced3e296336bc28e4e6fc06769d60aca9346488d6468a1b2a51adeae6425",
+      "groupedSha256": "93ceb923880212167e142dc62a570776269c110e752ce6afed9d5dcf906e73bf",
+      "servedEntries": 90,
+      "roundTripExact": true,
+      "historicalCommit": "6bdab5c543a671c8d55dee3d70663fe8441dd838",
+      "PNGsUnchanged": true
+    }
+  ]
+}

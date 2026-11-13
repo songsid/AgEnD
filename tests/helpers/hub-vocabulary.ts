@@ -9,7 +9,11 @@ export const MODULES = ["hub-strings.js", "hub-company-join-strings.js", "hub-qu
   "hub-grant-strings.js", "hub-pairing-progress-strings.js", "hub-read-strings.js", "settings-hub-setup-strings.js",
   "settings-hub-connection.js", "settings-hub-membership.js", "settings-hub-company-join.js",
   // U1 / U2's own dictionaries (written after the spec's list).
-  "hub-join-one-strings.js", "hub-join-steps.js", "hub-group-search.js"].map((f) => `src/ui/${f}`);
+  "hub-join-one-strings.js", "hub-join-steps.js", "hub-group-search.js",
+  // Hub rooms (hub-rooms-ux.md §1): own module so a cached hub-chat-strings.js still has the room words.
+  "hub-room-strings.js"].map((f) => `src/ui/${f}`);
+/** Room dictionaries: hub-rooms-ux.md §1 extra bans (群組 except AD 群組, 頻道, 聊天室, 機器人, bot) apply only here. */
+export const ROOM_MODULES = ["src/ui/hub-room-strings.js"];
 /** Everything else on the Hub's and Fleet-Hub's screens (A-L15 found words there too): every hub-* and settings-hub* module. */
 export const ALL = [...new Set([...MODULES, ...readdirSync("src/ui").filter((f) => /^(hub-|settings-hub).*\.js$/.test(f)).map((f) => `src/ui/${f}`)])];
 
@@ -34,19 +38,29 @@ const ZH_NETWORK = /網路連線|目錄連線|服務連線|測試連線|重新�
 const ZH_ALWAYS = /手動配對碼|一次性配對碼|同仁連線連結|組織帳號|例外邀請|公開|連線/;   // M-2957: 例外邀請 → 個別邀請
 const EN_ALWAYS = /one-time pairing code|manual pairing code|invitation exceptions?|connection exceptions?|\bexposures?\b|\bexpose[ds]?\b|organisation|\bHub admin\b(?!istrator)/i;   // M-2957: → individual invitation
 
+const isRoomModule = (file: string) => ROOM_MODULES.includes(file) || /(?:^|\/)hub-room[^/]*\.js$/.test(file);
+
 /** The banned terms in one string, as the gate sees them (empty: clean). */
 export function offences(s: UiString): string[] {
   const pairOk = PAIRING_CODE_KEYS.has(`${s.ns}.${s.key}`);
+  const room = isRoomModule(s.file);
   if (s.lang === "zh-TW") {
     const t = s.text.replace(ZH_NETWORK, ""), out: string[] = [];
     const always = t.match(new RegExp(ZH_ALWAYS.source, "g")) ?? []; out.push(...always);
     if (!pairOk && /配對(?!碼)/.test(t.replace(/手動配對碼|一次性配對碼/g, ""))) out.push("配對");
+    if (room) {
+      if (/群組/.test(s.text.replace(/AD 群組/g, ""))) out.push("群組");
+      if (/頻道/.test(s.text)) out.push("頻道");
+      if (/聊天室/.test(s.text)) out.push("聊天室");
+      if (/機器人/.test(s.text)) out.push("機器人");
+    }
     return out;
   }
   if (s.lang === "en") {
     const out = (s.text.match(new RegExp(EN_ALWAYS.source, "gi")) ?? []).slice();
     const rest = s.text.replace(/(one-time |manual )?pairing codes?/gi, "");   // the legacy name (its banned forms were counted above)
     if (!pairOk && /\bpair(s|ed|ing)?\b/i.test(rest)) out.push("pair");
+    if (room && /\bbot\b/i.test(s.text)) out.push("bot");
     return out;
   }
   return [];

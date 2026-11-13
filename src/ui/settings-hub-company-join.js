@@ -47,7 +47,7 @@ const jw = (key, ...args) => t(`companyJoinWait.${key}`, ...args);
 const root = "/api/hub/member/company-join";
 const LOCAL_WAIT_MS = 5 * 60_000; // matches the Settings confirmation ceiling; never renew on a status read
 export const companyJoinEmbedV1 = true;
-export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded = false, onPairingCode } = {}) {
+export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded = false, onPairingCode, onOffer } = {}) {
   const notified = useRef(null), submittedTarget = useRef(""), submittedHandoff = useRef(null);
   const shellState = useStore(appStore);
   const { hubJoinChanges = [] } = shellState;
@@ -95,6 +95,11 @@ export function CompanyJoinSettings({ onSaved, memberEnabled = false, embedded =
     return () => clearInterval(timer);
   }, [view?.state, view?.expiresAt]);
   useEffect(() => { if (kind.kind === "pairing") onPairingCode?.({ address: kind.address || "", code: kind.code }); }, [kind.kind, kind.code, kind.address]);
+  // User decision 2aeecd58 (P6, "one way in"): the Hub typed here answered that it takes company sign-in, so the other
+  // join paths (the pairing-code form under Other ways) are not offered. Unknown (no answer yet, an untrusted
+  // certificate, an unreachable Hub) is not an offer: the pairing path stays (#3839's workaround).
+  const offered = kind.kind === "address" && !!probe?.ok && probe.address === kind.address && probe.companyJoin === true;
+  useEffect(() => { onOffer?.(offered); }, [offered]);
   const read = () => {
     if (reading.current) return reading.current; // one physical status read, including Retry and slow networks
     const gen = token.current;

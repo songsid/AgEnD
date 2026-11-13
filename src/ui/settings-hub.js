@@ -20,6 +20,7 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { confirmPlace, pendingView } from "./hub-confirm-place.js";
 import { hq } from "./hub-quick-strings.js";
 import { hp } from "./hub-pairing-progress-strings.js";
+import { hpf, pairingCodeState, pairingFailure } from "./hub-pairing-form-strings.js";
 
 register("hubSharingFleet", {
   en: { hint: "To pause and resume without clearing the allow list, open this agent under My shared agents on the Hub. Turning Share off stops sharing." },
@@ -79,8 +80,11 @@ export function HubConnectCard({ embedded = false, onPairing, labels = {}, prefi
       if (!current()) return;
       if (next) setPairing(next);
       activePending.current = null;
+      // #3840: a confirmed connect that failed names the handler's own reason (a wrong code, an unreachable Hub, …).
+      const specific = action === "connect" && outcome?.state === "failed" ? pairingFailure(outcome) : null;
       const text = !next || !["applied", "failed", "expired", "rejected", "stale"].includes(outcome?.state) ? hp("unknown")
         : outcome.state === "applied" || !waitingForPairing({ pending }, next) ? null
+        : specific ? specific
         : action === "connect" && next.state === "unpaired" && ["failed", "expired"].includes(outcome.state) ? hp("connectFailed") : hp("notApplied");
       setMsg(old => old?.pending === pending ? text ? { error: true, text } : null : old);
     };
@@ -135,12 +139,14 @@ export function HubConnectCard({ embedded = false, onPairing, labels = {}, prefi
   let body = null;
   if (!p) body = readError ? html`<${ErrorState} message=${hw("errFailed")} onRetry=${readPairing} />` : html`<${Skeleton} variant="form" lines=${4} />`;
   else if (p.state === "unpaired") {
-    const addressOk = ADDRESS_HINT.test(form.address.trim()), codeOk = CODE_HINT.test(form.code.trim());
-    body = html`<form class="form hub-connect" onSubmit=${(e) => { e.preventDefault(); connect(); }}>
+    // #3840: the code's real shape (the server's 12 hex) before any confirmation; a join code is pointed up to the one box.
+    const codeState = pairingCodeState(form.code), addressOk = ADDRESS_HINT.test(form.address.trim()), codeOk = codeState === "ok" && CODE_HINT.test(form.code.trim());
+    body = html`<form class="form hub-connect" onSubmit=${(e) => { e.preventDefault(); if (addressOk && codeOk) connect(); }}>
       <label class="field"><span>${hw("address")}</span><input id="hubAddress" type="url" inputmode="url" autocomplete="off" spellcheck=${false}
-        placeholder=${hw("addressPh")} value=${form.address} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, address: v })); }} /><small class="note">${hw("addressHint")}</small></label>
+        placeholder=${hw("addressPh")} value=${form.address} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, address: v })); }} /><small class="note">${hpf("addressHint")}</small></label>
       <label class="field"><span>${hw("code")}</span><input id="hubCode" autocomplete="one-time-code" spellcheck=${false} autocapitalize="characters"
-        value=${form.code} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, code: v })); }} /></label>
+        value=${form.code} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, code: v })); }} />
+        ${codeState === "join" || codeState === "shape" ? html`<small class="note hub-code-shape" role="status">${hpf(codeState === "join" ? "joinCode" : "codeShape")}</small>` : null}</label>
       <div class="field-row"><button type="submit" class="btn btn-primary" disabled=${busy || !addressOk || !codeOk}>${embedded ? labels.pair : hw("connect")}</button></div>
     </form>`;
   } else if (p.state === "pending") {
