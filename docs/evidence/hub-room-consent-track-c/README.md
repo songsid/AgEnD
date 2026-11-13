@@ -1,0 +1,9 @@
+# Track C owner room consent
+
+The previous public integration offered only the invitation ports. The new optional C service persists seven-day pending invitations, checks the exact agent owner, and joins the agent without adding the owner as a room person. Its acceptance consumes the invitation, joins membership and writes the audit in one transaction. R owns production migration registration, factory composition and routes; they are not activated by importing C's module.
+
+`acceptance.json` binds the clean source/integration head and the tests. `inputs.sha256` covers the stated 22 source/harness inputs. Eight selected final-fixture controls compile and fail with HTTP404 assertions on the prior type-only source; seven other tests are excluded from that baseline count. Exact restore then passes all15 C tests. On the shared integration, four suites pass28/28 and both native TypeScript programs exit0. The six reversals each compile and fail one focused assertion before exact source restore. Historical attempts with an incorrect401 test expectation and the interrupted load-gated mutation batch are excluded; only the corrected final receipts are packaged.
+
+The six reversals remove owner consent, audit rollback, seven-day expiry, exact final-row checking, the live session fence, and postcommit-only events. `mutations.py` reproduces them serially with a load≤10 start gate. Tests use actual HTTP/SQLite and inert directory/delivery dependencies. The existing R/C TLS/WSS ACK-recovery control uses an inert input sink; it does not make a live agent-input claim.
+
+Owner UI capture is pending. No browser/PNG, real directory, real Fleet/account, native operating-system or full-suite claim is made by these test receipts. The parent/integrated-gallery and ordinary review/exact-CI prerequisites remain. Virtual Team storage is a later slice.

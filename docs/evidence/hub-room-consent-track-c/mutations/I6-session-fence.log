@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+ ❯ tests/hub-room-consent-track-c.test.ts (15 tests | 1 failed | 14 skipped) 96ms
+   × retiring the owner's actual browser session during acceptance rolls back both durable effects 94ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > retiring the owner's actual browser session during acceptance rolls back both durable effects
+AssertionError: expected 200 to be 403 // Object.is equality
+
+- Expected
++ Received
+
+- 403
++ 200
+
+ ❯ tests/hub-room-consent-track-c.test.ts:180:91
+    178|   r!.httpDeps.roomInvitations = (core, host) => api.createHubRoomInvit…
+    179|     addAgentMember(...args) { host.addAgentMember(...args); args[0].pr…
+    180|   expect((await r!.call(w.o, "POST", `/hub/v1/invitations/${inv.id}/ac…
+       |                                                                                           ^
+    181|   expect(members()).toEqual([]); expect(r!.db.prepare("SELECT state FR…
+    182| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 skipped (15)
+   Start at  03:08:20
+   Duration  3.67s (transform 2.60s, setup 92ms, import 3.33s, tests 96ms, environment 0ms)
+

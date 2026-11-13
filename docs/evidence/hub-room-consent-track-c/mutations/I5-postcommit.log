@@ -1,0 +1,39 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+ ❯ tests/hub-room-consent-track-c.test.ts (15 tests | 1 failed | 14 skipped) 103ms
+   × publishes refresh events only after the atomic consent and membership commit 101ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-consent-track-c.test.ts > publishes refresh events only after the atomic consent and membership commit
+AssertionError: expected [ { transaction: true, …(2) } ] to deeply equal [ { transaction: false, …(2) } ]
+
+- Expected
++ Received
+
+  [
+    {
+      "members": 0,
+      "state": "pending",
+-     "transaction": false,
++     "transaction": true,
+    },
+  ]
+
+ ❯ tests/hub-room-consent-track-c.test.ts:130:54
+    128|     host.changed(change);
+    129|   } }); await r!.restartHttp();
+    130|   const inv = await w.invite(); expect(observations).toEqual([{ transa…
+       |                                                      ^
+    131|   observations.length = 0; r!.setAuditFails(true, "room.invitation-acc…
+    132|   await r!.call(w.o, "POST", `/hub/v1/invitations/${inv.id}/accept`, {…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 skipped (15)
+   Start at  03:08:29
+   Duration  3.99s (transform 2.83s, setup 94ms, import 3.64s, tests 103ms, environment 0ms)
+

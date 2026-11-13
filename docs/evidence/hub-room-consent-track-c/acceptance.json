@@ -1,0 +1,29 @@
+{
+  "sourceHead": "09f1e2f2887f25110e4648adc9781601532eb30c",
+  "ownSourceCommit": "64ef7fba5cbcd8e802ee57a30f197f9bb156dde8",
+  "integrationParent": "f41f8efc80647476f9fb09d0ba6f84a542588d6a",
+  "sourceSha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9",
+  "focused": {
+    "files": 4,
+    "cases": 28,
+    "exit": 0
+  },
+  "types": {
+    "source": "native TS7.0.2 exit0",
+    "tests": "native TS7.0.2 exit0"
+  },
+  "failFirst": {
+    "selected": 8,
+    "semanticAssertionFailures": 8,
+    "unselected": 7,
+    "baselineTypes": 0,
+    "restoredCurrentTests": 15
+  },
+  "mutations": {
+    "isolated": 6,
+    "compilingAssertionReds": 6,
+    "exactRestore": true
+  },
+  "browser": "pending; no claim yet",
+  "scope": "Actual R HTTP/SQLite, C factory/storage, inert directory/transport; U mini-DOM and actual pinned TLS/WSS ACK recovery use their existing bounded scopes. No real AD/Fleet/account/input. Factory remains optional until R composes it."
+}

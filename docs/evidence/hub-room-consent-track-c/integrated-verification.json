@@ -1,0 +1,18 @@
+{
+  "head": "39b9000ad65da895b1239b5642bfa0efaf5d2a68",
+  "sourceSha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9",
+  "results": [
+    {
+      "label": "integrated-focused",
+      "exit": 0
+    },
+    {
+      "label": "integrated-source-types",
+      "exit": 0
+    },
+    {
+      "label": "integrated-test-types",
+      "exit": 0
+    }
+  ]
+}
