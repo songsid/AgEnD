@@ -46,14 +46,14 @@ describe("rooms (seam 1) against the fixture", () => {
     expect(client.roomsLive()).toBe(true);
     const r = await client.roomList();
     expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/rooms?v=2" });              // Ridge #3858: /rooms stays direct-only for old tabs
-    expect(r.me).toEqual({ canCreateRooms: true }); expect(r.invitations).toBe(1);
-    expect(r.rooms.map((x: any) => x.name)).toEqual(["研一主管週會", "project-helper", "研發例會", "report-bot", "去年專案", "Hub 助理"].filter(n => r.rooms.some((x: any) => x.name === n)).sort((a, b) =>
+    expect(r.me).toEqual({ canCreateRooms: true, assistant: true }); expect(r.invitations).toBe(1);
+    expect(r.rooms.map((x: any) => x.name)).toEqual(["研一主管週會", "project-helper", "研發例會", "report-bot", "去年專案", "Hub assistant"].filter(n => r.rooms.some((x: any) => x.name === n)).sort((a, b) =>
       r.rooms.findIndex((x: any) => x.name === a) - r.rooms.findIndex((x: any) => x.name === b)));
     const weekly = r.rooms.find((x: any) => x.name === "研一主管週會");
     expect(weekly).toMatchObject({ kind: "group", people: 3, agents: 12, unread: 2 });
     expect(r.rooms[0].id).toBe("room-weekly");                                                          // the only one with unread
     expect(r.rooms.find((x: any) => x.name === "去年專案")).toMatchObject({ archived: true });
-    expect(r.rooms.find((x: any) => x.name === "Hub 助理")).toMatchObject({ kind: "direct", assistant: true });
+    expect(r.rooms.find((x: any) => x.name === "Hub assistant")).toMatchObject({ kind: "direct", assistant: true });
     expect(r.rooms.find((x: any) => x.name === "report-bot")).toMatchObject({ kind: "direct", agent: { owner: { name: "吳小安" }, presence: "offline" } });
   });
   it("a room: every presence state, both notes, the assistant, my role and its settings; members only @all where allowed", async () => {
@@ -64,7 +64,7 @@ describe("rooms (seam 1) against the fixture", () => {
     expect(new Set(weekly.members.map((m: any) => m.presence))).toEqual(new Set(["online", "offline", "idle", "working", "paused", "later"]));
     expect(weekly.members.map((m: any) => m.presenceNote).filter(Boolean)).toEqual(["額度用完", "等待登入", "需要更新 AgEnD"]);
     expect(weekly.members.filter((m: any) => m.kind === "assistant")).toHaveLength(1);
-    expect(weekly.invited).toHaveLength(1);
+    expect(weekly.invited.map((x: any) => [x.name, x.owner, x.state])).toEqual([["audit-helper", { name: "周小明" }, "pending"], ["old-audit", { name: "林小華" }, "expired"]]);   // U2
     const rd = await client.room("room-rd");
     expect(rd).toMatchObject({ me: { id: FIXTURE_ME.id, role: "member" }, settings: { allMention: false } });
   });
@@ -72,10 +72,10 @@ describe("rooms (seam 1) against the fixture", () => {
     const { client, calls } = await live();
     const page = await client.roomMessages("room-weekly", { limit: 100 });
     const all = page.messages.find((m: any) => m.mentions.includes("all"));
-    expect(all.ask).toEqual({ total: 12, answered: 8, working: 1, later: 3 });                       // 「已回答 8 · 處理中 1 · 稍後回覆 3」
+    expect(all.ask).toEqual({ total: 12, answered: 6, working: 1, later: 5 });                       // 「已回答 6 · 處理中 1 · 稍後回覆 5」
     const replies = page.messages.filter((m: any) => m.answerTo === all.id);
-    expect(replies.filter((m: any) => m.stage === "answered")).toHaveLength(8);
-    expect(replies.filter((m: any) => m.stage === "queued")).toHaveLength(3);
+    expect(replies.filter((m: any) => m.stage === "answered")).toHaveLength(6);
+    expect(replies.filter((m: any) => m.stage === "queued")).toHaveLength(5);                          // paused agents answer later, as on send
     expect(page.messages.some((m: any) => m.author.kind === "assistant" && m.stage === "answered")).toBe(true);
     const older = await client.roomMessages("room-weekly", { before: page.messages[5].id, limit: 3 });
     expect(older.messages.map((m: any) => m.id)).toEqual(page.messages.slice(2, 5).map((m: any) => m.id));
@@ -105,7 +105,7 @@ describe("rooms (seam 1) against the fixture", () => {
     const heard: any[] = []; client.subscribeRooms({ "message.updated": (d: any) => heard.push(d), "presence.changed": (d: any) => heard.push(d) });
     const late = fx.answerLater();
     expect(heard[0]).toMatchObject({ roomId: "room-weekly", presence: "idle" });
-    expect(heard[1]).toMatchObject({ roomId: "room-weekly", message: { id: late!.id, stage: "answered" }, parent: { ask: { answered: 9, later: 2 } } });
+    expect(heard[1]).toMatchObject({ roomId: "room-weekly", message: { id: late!.id, stage: "answered" }, parent: { ask: { answered: 7, later: 4 } } });
   });
   it("read, room changes and members: each call's path and body; leaving drops the room from the list", async () => {
     const { client, calls } = await live();
@@ -118,6 +118,8 @@ describe("rooms (seam 1) against the fixture", () => {
     expect(calls.at(-1)).toMatchObject({ method: "PATCH", path: "/hub/v1/rooms/room-weekly", body: { allMention: false } });
     await client.addRoomMember("room-weekly", { kind: "agent", id: "exp-05" });
     expect(heard.at(-1)).toEqual({ roomId: "room-weekly" });
+    expect(await client.removeRoomMember("room-weekly", FIXTURE_ME.id)).toMatchObject({ ok: false, status: 409, code: "last-manager" });   // the only manager
+    await client.setRoomMemberRole("room-weekly", "person-chen", "manager");
     await client.removeRoomMember("room-weekly", FIXTURE_ME.id);
     expect(calls.at(-1)).toMatchObject({ method: "DELETE", path: `/hub/v1/rooms/room-weekly/members/${FIXTURE_ME.id}` });
     expect(heard.at(-1)).toEqual({ roomId: "room-weekly", removed: true });
@@ -136,7 +138,7 @@ describe("rooms (seam 1) against the fixture", () => {
     expect(calls.at(-1)).toMatchObject({ method: "POST", path: "/hub/v1/rooms/room-weekly/invitations", body: { agents: ["exp-99"] } });
     expect((await client.teams()).teams[0]).toMatchObject({ name: "研一" });
     await client.saveRoomCreators({ people: ["person-chen"], teams: ["team-1"] });
-    expect(await client.roomCreators()).toMatchObject({ people: ["person-chen"], teams: ["team-1"] });
+    expect(await client.roomCreators()).toMatchObject({ people: [{ id: "person-chen", name: "陳主任" }], teams: [{ id: "team-1", name: "研一", people: 2 }] });   // U2: named
     const admin = await client.adminRooms();
     expect(admin.rooms.map((r: any) => r.name)).toEqual(["研一主管週會", "研發例會", "去年專案"]);
     expect(JSON.stringify(admin)).not.toContain("整理");                                                  // names and members, no content

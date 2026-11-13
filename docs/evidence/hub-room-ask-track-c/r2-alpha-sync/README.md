@@ -1,0 +1,1 @@
+Clean plain sync after parent#3848 and strings#3850 merged. sync.json binds both parents and unchanged adapter/test/design blobs. This is a merge inspection, not a fresh local test or browser run. Host load was over10; review and green CI must bind the new pushed head. Existing source/evidence limits remain.

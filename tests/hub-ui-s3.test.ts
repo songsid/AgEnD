@@ -156,9 +156,10 @@ describe("the shell", () => {
       client.setHubClient(client.createHubWebClient());
       hubPanel.resetHubSession();
       const pg = await app("hub", "/ui/hub", "Team Hub");
-      await until(() => pg.root.querySelector(".hub-side-rooms .hub-room-row"));
-      const row = pg.root.querySelector(".hub-side-rooms .hub-room-row")!;
-      expect([row.getAttribute("href"), row.querySelector(".t")!.textContent, row.querySelector(".s")!.textContent, !!row.querySelector(".pulse")])
+      // M-3092: the Fleet roster's row (today's chat: waiting marked by the Fleet's working dot and its second line).
+      await until(() => pg.root.querySelector(".hub-side-rooms .v-inst"));
+      const row = pg.root.querySelector(".hub-side-rooms .v-inst")!;
+      expect([row.getAttribute("href"), row.querySelector(".inst-name")!.textContent, row.querySelector(".inst-alt")!.textContent, !!row.querySelector(".av-dot.busy")])
         .toEqual(["/ui/hub?room=11111111-2222-4333-8444-555555555555", "Sales numbers", "Waiting for an answer", true]);
       expect([...pg.root.querySelectorAll(".side-nav .side-row .grow")].map((x: any) => x.textContent)).toEqual(["Chats", "My shared agents", "Search", "New chat"]);
       expect(pg.root.querySelector(".side-nav .side-new")!.textContent).toBe("New chat");
