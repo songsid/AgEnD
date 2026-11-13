@@ -429,21 +429,25 @@ describe("get_usage_report: scope and words", () => {
   const ask = (ctx: any, caller: string, args: Record<string, unknown>) => new Promise<{ result: any; error: string | null }>((resolve) => {
     void outboundHandlers.get("get_usage_report")!(ctx, args, (result: unknown, error?: string) => resolve({ result, error: error ?? null }), { instanceName: caller } as any);
   });
-  it("an ordinary instance reads only its own row, and may not name another; General reads the fleet", async () => {
+  it.each([false, true])("an ordinary instance reads only its own row, and may not name another; General reads the fleet (detail=%s)", async detail => {
     const usageReport = vi.fn(async () => report);
     const ctx = { fleetConfig: { instances: { cheap: {}, gt: { general_topic: true } } }, usageReport };
-    const own = await ask(ctx, "cheap", { group: "model" });
+    const own = await ask(ctx, "cheap", { group: "model", detail });
     expect(own.error).toBeNull();
     expect(usageReport).toHaveBeenLastCalledWith({ range: { kind: "7d" }, group: "instance", only: "cheap" });
-    expect((await ask(ctx, "cheap", { instance: "gt" })).error).toMatch(/only its own row/);
-    await ask(ctx, "gt", { range: "month", group: "model" });
+    expect((await ask(ctx, "cheap", { instance: "gt", detail })).error).toBe("get_usage_report: an instance reads only its own row");
+    await ask(ctx, "gt", { range: "month", group: "model", detail });
     expect(usageReport).toHaveBeenLastCalledWith({ range: { kind: "month" }, group: "model" });
   });
-  it("every row and the totals carry the basis in words", async () => {
+  it("compact carries basis once and omits speed; detail preserves the full tool shape", async () => {
     const r = await ask({ fleetConfig: { instances: {} }, usageReport: async () => report }, "general", {});
     expect(r.result.basis).toBe(usageBasis());
-    expect(r.result.rows.every((x: any) => x.basis === usageBasis())).toBe(true);
-    expect(r.result.totals.basis).toBe(usageBasis());
+    expect(r.result.rows.every((x: any) => !("basis" in x) && !("speed" in x))).toBe(true);
+    expect(r.result.totals).not.toHaveProperty("basis");
+    expect(r.result.totals).not.toHaveProperty("speed");
+    const full = await ask({ fleetConfig: { instances: {} }, usageReport: async () => report }, "general", { detail: true });
+    expect(full.result.rows).toEqual(report.rows.map(row => ({ ...row, basis: report.basis })));
+    expect(full.result.totals).toEqual({ ...report.totals, basis: report.basis });
   });
 });
 
