@@ -90,7 +90,8 @@ try {
       checks.push({ label, file, geometry });
     };
     const visible = c.variant !== "before" && c.variant !== "retained-panels";
-    await checkpoint("details", `/ui/fleet/agent/${name}`, visible);
+    const detailsPath = `/ui/fleet/agent/${name}${c.device === "phone" ? "?cat=overview" : ""}`;
+    await checkpoint("details", detailsPath, visible);
     if (c.variant !== "before") {
       await checkpoint("needs", "/ui/needs", visible);
       await checkpoint("log", `/ui/log/${name}`, visible);
@@ -105,7 +106,7 @@ try {
         const desk = page.locator(`.oo-desk[data-name="${name}"]`); await desk.waitFor({ state: "attached" });
         await desk.focus(); await desk.press("Enter"); await page.waitForSelector(".oo-card .model-switch");
       });
-      await page.goto(fx.base + `/ui/fleet/agent/${name}`); await page.waitForSelector(".model-switch");
+      await page.goto(fx.base + detailsPath); await page.waitForSelector(".model-switch");
       observer.observe(parseClaudeModelRecord({ ...response, uuid: "recovery", timestamp: "2026-11-13T07:00:02.000Z", message: { ...response.message, id: "recovery", model: "claude-opus-5-5" } })!, "claude-opus-5-5");
       observed = observer.snapshot(); publish(); await page.waitForFunction(() => !document.querySelector(".model-switch"));
       checks.push({ label: "recovery-without-reload", active: observed.active, lastServed: observed.lastServed, needs: fm.needsYouItems().length });
