@@ -12,7 +12,6 @@
  *
  * Nothing here runs in the daemon, and nothing reads a CLI's file on a tool call.
  */
-import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { ClaudeStepParser, CodexStepParser, bounded, chatStep, readTailRecords, type LogStep } from "./log-steps.js";
 import type { ToolProgressLevel } from "./tool-progress.js";
@@ -20,7 +19,7 @@ import { AntigravityStepParser, GrokStepParser, readGrokPhase, type GrokPhase } 
 import { grokEventsPath, type LogFormat } from "./log-transcript-paths.js";
 export type { LogFormat };
 import { SCREEN_MAX_BYTES } from "./dialog-screen-text.js";
-import { LOOKS_PER_POLL, isClaudeAssistantHead, readNewLines, readWholeLine, type LongLine } from "./transcript-jsonl.js";
+import { LOOKS_PER_POLL, isClaudeAssistantHead, readNewLines, readWholeLine, statTranscript, type LongLine } from "./transcript-jsonl.js";
 
 /**
  * AGEND-197: whether thinking is switched on — `web.log_thinking` is exactly `true` (OFF by default: unset, false and junk
@@ -35,6 +34,9 @@ export const LOG_RESPONSE_MAX_BYTES = 512 * 1024;
 export const WATCH_LEASE_MS = 45_000;
 export const WATCH_POLL_MS = 2_000;
 export const LOG_EVENTS_LIMIT = 50;
+/** How far back a Codex poll reads to learn the turn and the call in flight (#3787): the last records before its cursor. */
+export const PRIME_BYTES = 256 * 1024;
+export const PRIME_RECORDS = 300;
 
 /** Where an instance's steps come from, as the fleet resolves it (only when the Log asks). */
 export interface LogSource {
@@ -140,8 +142,6 @@ export type ReadBack =
   | { backend: string; format: LogFormat | null; reason: string; key?: undefined; steps?: undefined }
   | { backend: string; format: LogFormat; key: string; steps: LogStep[]; before: number | null; end: number; reset?: boolean; reason?: undefined };
 
-/** The transcript format whose new chat-activity projection (and thinking) is withheld until it has a real redacted fixture (#3648). */
-const CODEX_ACTIVITY_WITHHELD = "codex";
 const parserFor = (format: LogFormat, thinking = false) => {
   switch (format) {
     case "claude": return new ClaudeStepParser({ thinking });
@@ -184,16 +184,10 @@ export class LogService {
       this.unwatch(name, "chat");
       return { enabled: true, instance: name, backend: src.backend, supported: !!src.format, level, thinking: false, steps: [], events: [], ev: q.ev ?? 0, before: null, after: null };
     }
-    // Prism #3709 R6: the new Codex activity projection is withheld until a real, redacted Codex capture proves it (the owner's
-    // #3648 decision: an unproved backend stays as it is today). Codex keeps its Log tab exactly as before; the chat's block
-    // gets "not supported" for it and nothing is read. The parser stays, unreachable from the chat.
-    if (chat && src.format === CODEX_ACTIVITY_WITHHELD) {
-      return { enabled: true, instance: name, backend: src.backend, supported: false, reason: "unsupported", level, thinking: false, steps: [], events: [], ev: q.ev ?? 0, before: null, after: null };
-    }
     const evs = chat ? { events: [] as LogEvent[], ev: q.ev ?? 0 } : this.eventsFor(name, q.ev);
-    // Thinking: only when asked, only for the viewer the route let it through, and only while `web.log_thinking` is ON —
-    // and never for Codex (the same withholding: its reasoning summaries are the new, unproved part).
-    const thinking = q.thinking === true && this.deps.thinking?.() === true && src.format !== CODEX_ACTIVITY_WITHHELD;
+    // Thinking: only when asked, only for the viewer the route let it through, and only while `web.log_thinking` is ON.
+    // (Codex: a reasoning summary only when the model wrote one — its `encrypted_content` is never read.)
+    const thinking = q.thinking === true && this.deps.thinking?.() === true;
     // The OS user name (home) and the working directory are for the viewer the route let the chat's block or thinking
     // through (an admin session on the local dashboard) — never the public link or a guest: the page only shortens paths.
     const named = chat || thinking;
@@ -219,7 +213,7 @@ export class LogService {
       return { ...base, supported: !!src.format, reason: src.reason ?? (src.format ? "no_transcript" : "unsupported"), steps: [], before: null, after: null };
     }
     let st: { dev: number; ino: number; size: number };
-    try { st = await stat(src.path); } catch { return { ...base, supported: true, reason: "no_transcript", steps: [], before: null, after: null }; }
+    try { st = await statTranscript(src.path); } catch { return { ...base, supported: true, reason: "no_transcript", steps: [], before: null, after: null }; }
     const key = `${st.dev}-${st.ino}`;
     // grok's own phase, for the chat's block only (this request is the admin's: the route refused anyone else).
     const phasePath = chat && src.format === "grok" ? grokEventsPath(src.path) : null;
@@ -249,7 +243,7 @@ export class LogService {
     const src = this.deps.source(name);
     if (!src.format || !src.path) return { backend: src.backend, format: src.format, reason: src.reason ?? (src.format ? "no_transcript" : "unsupported") };
     let st: { dev: number; ino: number; size: number };
-    try { st = await stat(src.path); } catch { return { backend: src.backend, format: src.format, reason: "no_transcript" }; }
+    try { st = await statTranscript(src.path); } catch { return { backend: src.backend, format: src.format, reason: "no_transcript" }; }
     const key = `${st.dev}-${st.ino}`;
     const limit = Math.max(1, Math.min(q.limit, LOG_STEPS_LIMIT));
     const stale = q.end !== undefined && ((q.key !== undefined && q.key !== key) || q.end > st.size);
@@ -296,6 +290,22 @@ export class LogService {
     const parser = parserFor(format, thinking);
     const whole = wholeFor(format);
     let offset = from, skipping = skip, more = false;
+    // Codex: a poll begins in the middle of a turn, usually between an `exec` call and the item that finishes it (the file does
+    // not grow while a command runs). A parser that has met nothing of the turn cannot tell the item is that call's: the
+    // action would be two steps. So it first reads the few records before the cursor (bounded) and learns the turn and the call
+    // in flight from them; what it makes of them is not sent (the page has it) — only what the new records change of it.
+    const primed = new Set<string>();
+    const touched = new Map<string, LogStep>();
+    if (format === "codex" && from > 0) {
+      try {
+        const before = await readTailRecords(path, { maxBytes: PRIME_BYTES, maxLines: PRIME_RECORDS, end: from });
+        for (const r of before.records) parser.push(r.record, r.at);
+        for (const s of parser.steps) primed.add(s.id);
+      } catch { /* a transcript that cannot be read back: read forward without it */ }
+    }
+    const feed = (item: string | LongLine, at: number): void => {
+      for (const s of parser.push(item, at)) if (primed.has(s.id)) touched.set(s.id, s);
+    };
     for (let look = 0; look < LOOKS_PER_POLL; look++) {
       const read = await readNewLines(path, offset, { skipping });
       const moved = read.newOffset !== offset;
@@ -305,18 +315,19 @@ export class LogService {
       const pushLong = async (l: LongLine) => {
         if (l.complete && whole(l.head)) {
           const text = await readWholeLine(path, l.offset, l.bytes).catch(() => null);
-          if (text !== null) { parser.push(text, l.offset); return; }
+          if (text !== null) { feed(text, l.offset); return; }
         }
-        parser.push(l, l.offset);
+        feed(l, l.offset);
       };
       for (const l of read.long) {
-        while (li < l.at) { parser.push(read.lines[li]!, read.offsets[li]!); li++; }
+        while (li < l.at) { feed(read.lines[li]!, read.offsets[li]!); li++; }
         await pushLong(l);
       }
-      while (li < read.lines.length) { parser.push(read.lines[li]!, read.offsets[li]!); li++; }
+      while (li < read.lines.length) { feed(read.lines[li]!, read.offsets[li]!); li++; }
       if (!moved || !read.more) break;
     }
-    const steps = fitBytes(parser.steps);
+    // Steps the priming made and the new records did not touch are the page's already; the ones they changed come first (file order).
+    const steps = fitBytes(primed.size ? [...touched.values(), ...parser.steps.filter((s) => !primed.has(s.id))] : parser.steps);
     return { steps, before: null, after: offset, ...(skipping ? { skip: true } : {}), ...(more || skipping ? { more: true } : {}) };
   }
 
@@ -370,7 +381,7 @@ export class LogService {
     if (this.now() > w.until || (!logOk && !chatOk)) { this.unwatch(name, "all"); return; }
     w.log = logOk; w.chat = chatOk;
     let st: { size: number; ino: number };
-    try { st = await stat(w.path); } catch { return; }
+    try { st = await statTranscript(w.path); } catch { return; }
     if (this.watches.get(name) !== w) return;
     // grok writes a thought to `updates.jsonl` only when it ends, but its phase to `events.jsonl` as it happens: a
     // change of that phase is a tick too (a bounded tail read, only while a chat holds the watch), so the live line moves from

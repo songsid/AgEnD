@@ -1,4 +1,5 @@
-import { open, stat, type FileHandle } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, type FileHandle } from "node:fs/promises";
 
 /** #1218 P0: the most one look reads. A busy session's delta is read over several looks, never in one buffer. */
 export const READ_MAX_BYTES = 1024 * 1024;
@@ -21,12 +22,33 @@ export interface LongLine { at: number; head: string; bytes: number; complete: b
 export const WHOLE_LINE_MAX_BYTES = 16 * 1024 * 1024;
 
 /**
+ * A transcript opened for reading, and only if it is a regular file: a symbolic link in its place is not followed
+ * (O_NOFOLLOW), and a FIFO or device is refused at once instead of waited on (O_NONBLOCK — opening a FIFO for reading blocks
+ * until a writer comes). Where those flags are not defined (Windows) they are 0. Throws when the path is not such a file.
+ * The same guard `readGrokPhase` puts on grok's events file; every read of a transcript goes through it.
+ */
+export async function openTranscript(path: string): Promise<FileHandle> {
+  const fh = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+  try {
+    if (!(await fh.stat()).isFile()) throw new Error("not a regular file");
+    return fh;
+  } catch (e) { await fh.close().catch(() => undefined); throw e; }
+}
+
+/** `stat` of the transcript itself: a symbolic link, a FIFO or a directory in its place throws (the link is not followed). */
+export async function statTranscript(path: string): Promise<{ dev: number; ino: number; size: number }> {
+  const st = await lstat(path);
+  if (!st.isFile()) throw new Error("not a regular file");
+  return st;
+}
+
+/**
  * The line of `bytes` bytes at `offset`, as text, when it is at most `max` bytes; null otherwise or when it cannot be read whole.
  * `handle`: read from this open file (the caller's, left open) instead of opening `path`.
  */
 export async function readWholeLine(path: string, offset: number, bytes: number, max = WHOLE_LINE_MAX_BYTES, handle?: FileHandle): Promise<string | null> {
   if (bytes <= 0 || bytes > max) return null;
-  const fh = handle ?? await open(path, "r");
+  const fh = handle ?? await openTranscript(path);
   try {
     const buf = Buffer.alloc(bytes);
     for (let filled = 0; filled < bytes;) {
@@ -119,11 +141,11 @@ export async function readNewLines(path: string, fromOffset: number, opts: { max
   const maxBytes = Math.max(1, opts.maxBytes ?? READ_MAX_BYTES);
   const maxLine = Math.max(1, opts.maxLine ?? LINE_MAX_BYTES);
   // `handle`: one file the caller opened and checked (its identity), read and sized through that handle only.
-  const stats = opts.handle ? await opts.handle.stat() : await stat(path);
+  const stats = opts.handle ? await opts.handle.stat() : await statTranscript(path);
   const empty = (offset: number, skipping: boolean, more: boolean, longEnd?: number): ReadNewLinesResult =>
     ({ lines: [], offsets: [], newOffset: offset, long: [], more, skipping, ...(longEnd !== undefined ? { longEnd } : {}) });
   if (stats.size <= fromOffset) return empty(fromOffset, !!opts.skipping, false);
-  const fh = opts.handle ?? await open(path, "r");
+  const fh = opts.handle ?? await openTranscript(path);
   try {
     const read = async (at: number, length: number): Promise<Buffer> => {
       const buffer = Buffer.alloc(length);
@@ -191,7 +213,7 @@ const BOUNDARY_CHUNK = 64 * 1024;
  * retry; they never save a guessed one.
  */
 export async function lastLineBoundary(path: string, size?: number): Promise<number> {
-  const fh = await open(path, "r");
+  const fh = await openTranscript(path);
   try {
     let position = size ?? (await fh.stat()).size;
     while (position > 0) {
