@@ -40,16 +40,12 @@ const text = (pg: AppPage) => pg.root.textContent ?? "";
 const button = (pg: AppPage, label: string) => [...pg.root.querySelectorAll("button")].find((b: any) => b.textContent === label);
 
 describe("Hub room invitations, owner side (section 8)", () => {
-  it("the row reads 「邀請 · 1」 and opens the list; the item names who, which agent and which room, and who will see it", async () => {
+  it("the list is titled 「邀請」; the item names who, which agent and which room, who will see it, and what it reads", async () => {
     const { pg, client } = await fixture();
-    let opened = 0;
-    const count = (await client.roomList()).invitations;
-    await pg.mount(h("div", null, h(inv.InvitationsRow, { count, onOpen: () => { opened++; } }), h(inv.InvitationsList, { client }))); await settle(20);
-    const row = pg.root.querySelector("button.hub-invitations-row");
-    expect(row.textContent).toBe("邀請 · 1");
-    fire(row, "click"); expect(opened).toBe(1);
+    await pg.mount(h(inv.InvitationsList, { client })); await settle(20);
+    expect(pg.root.querySelector(".hub-invitations h3").textContent).toBe("邀請");
     expect(pg.root.querySelector(".hub-invitation p").textContent).toBe("陳主任 邀請你的 Agent「my-notes」加入房間「產品規劃」");
-    expect(pg.root.querySelector(".hub-invitation small").textContent).toBe("房間裡的 4 個人可以在那裡 @ 它；它的回答房間裡的人都看得到。");
+    expect([...pg.root.querySelectorAll(".hub-invitation small")].map((x: any) => x.textContent)).toEqual(["房間裡的 4 個人可以在那裡 @ 它；它的回答房間裡的人都看得到。", "被 @ 時，它會讀到房間最近的訊息。"]);
     expect(button(pg, "同意")).toBeTruthy(); expect(button(pg, "不要")).toBeTruthy();
   });
 
@@ -62,10 +58,12 @@ describe("Hub room invitations, owner side (section 8)", () => {
     expect(pg.root.querySelector(".hub-invitation")).toBeNull();
   });
 
-  it("the row is nothing at 0 and reads the shell's count otherwise", async () => {
-    const { pg } = await fixture("en");
-    await pg.mount(h("div", null, h(inv.InvitationsRow, { count: 0 }), h(inv.InvitationsRow, { count: 3 }))); await settle(5);
-    expect([...pg.root.querySelectorAll("button.hub-invitations-row")].map((b: any) => b.textContent)).toEqual(["Invitations · 3"]);
+  it("the invitations page says 「Invitations」 once: heading:false leaves the title to the page; the item adds what it reads", async () => {
+    const { pg, client } = await fixture("en");
+    await pg.mount(h(inv.InvitationsList, { client, heading: false })); await settle(20);
+    expect(pg.root.querySelector(".hub-invitations h3")).toBeNull();
+    expect(pg.root.querySelector(".hub-invitations").getAttribute("aria-label")).toBe("Invitations");
+    expect(pg.root.textContent).toContain("When @-ed, it reads the room's recent messages.");
   });
 
   it("an answer from another tab, or a new invitation, reaches this one by the stream", async () => {
@@ -74,7 +72,7 @@ describe("Hub room invitations, owner side (section 8)", () => {
     fx.invitations.push({ id: "inv-in-0002", room: { id: "room-x", name: "研發例會", people: 1 }, agent: { exposureId: "exp-mine-1", name: "my-notes" }, by: { name: "吳小安" }, at: 1 });
     fx.emit("invitation.changed", {}); await settle(20);
     expect(pg.root.querySelectorAll(".hub-invitation")).toHaveLength(2);
-    expect(pg.root.querySelectorAll(".hub-invitation small")[1].textContent).toBe("房間裡的 1 個人可以在那裡 @ 它；它的回答房間裡的人都看得到。");
+    expect(pg.root.querySelectorAll(".hub-invitation")[1].querySelector("small").textContent).toBe("房間裡的 1 個人可以在那裡 @ 它；它的回答房間裡的人都看得到。");
     fx.invitations.splice(0); fx.emit("invitation.changed", {}); await settle(20);
     expect(pg.root.querySelector(".hub-invitation")).toBeNull();
   });
@@ -115,7 +113,9 @@ describe("Hub room invitations, owner side (section 8)", () => {
 
   it("「在這些房間裡」 on an agent's page: its rooms with people; 退出這個房間 removes exactly that agent member; nothing when in none", async () => {
     const { pg, client, calls, fx } = await fixture();
-    await pg.mount(h("div", null, h(inv.AgentRoomsSection, { client, exposureId: "exp-02" }), h(inv.AgentRoomsSection, { client, exposureId: "exp-mine-1" }))); await settle(20);
+    const told: number[] = [];
+    await pg.mount(h("div", null, h(inv.AgentRoomsSection, { client, exposureId: "exp-02", onRooms: (n: number) => told.push(n) }), h(inv.AgentRoomsSection, { client, exposureId: "exp-mine-1" }))); await settle(20);
+    expect(told).toEqual([2]);                                                          // onRooms: the page learns the count
     const items = () => [...pg.root.querySelectorAll(".hub-agent-rooms li span")].map((x: any) => x.textContent);
     expect(pg.root.querySelectorAll(".hub-agent-rooms")).toHaveLength(1);
     expect(pg.root.querySelector(".hub-agent-rooms h4").textContent).toBe("在這些房間裡");
@@ -123,8 +123,16 @@ describe("Hub room invitations, owner side (section 8)", () => {
     fire(button(pg, "退出這個房間"), "click"); await settle(20);
     expect(calls.filter(c => c.method === "DELETE").map(c => c.path)).toEqual(["/hub/v1/rooms/room-weekly/members/exp-02"]);
     expect(items()).toEqual(["研發例會 · 2 人"]);
+    expect(told.at(-1)).toBe(1); expect(told[0]).toBe(2);                               // and follows 退出這個房間
     fx.rooms.find((r: any) => r.id === "room-rd")!.members.push({ id: "exp-mine-1", kind: "agent", name: "my-notes", owner: { name: "王經理" }, role: "member", presence: "idle" });
     fx.emit("member.changed", { roomId: "room-rd" }); await settle(20);
     expect(pg.root.querySelectorAll(".hub-agent-rooms")).toHaveLength(2);
+  });
+
+  it("onRooms(0) when the agent is in no room (the page keeps its own lead), and nothing is drawn", async () => {
+    const { pg, client } = await fixture();
+    const told: number[] = [];
+    await pg.mount(h(inv.AgentRoomsSection, { client, exposureId: "exp-mine-1", onRooms: (n: number) => told.push(n) })); await settle(20);
+    expect(told).toEqual([0]); expect(pg.root.querySelector(".hub-agent-rooms")).toBeNull();
   });
 });

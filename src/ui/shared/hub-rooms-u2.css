@@ -29,7 +29,6 @@
 .hub-invitations { display: flex; flex-direction: column; gap: var(--s-2); }
 .hub-invitation { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
 .hub-invitation p { margin: 0; overflow-wrap: anywhere; }
-.hub-invitations-row { display: flex; width: 100%; align-items: center; padding: var(--s-2) var(--s-3); background: var(--surface-2); border: 0; border-radius: var(--r-sm); cursor: pointer; color: inherit; font: inherit; font-weight: 600; min-height: 40px; }
 .hub-admin-rooms { display: flex; flex-direction: column; gap: var(--s-4); }
 .hub-admin-all-rooms { overflow-x: auto; }
 .hub-admin-rooms-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
@@ -38,6 +37,5 @@
 /* Phone and touch: every button in these screens is at least a fingertip (--tap, 44px) tall and wide — the invitations
    list's 同意/拒絕, its retry, the sidebar's invitations row, 退出這個房間, the member card, Room settings, admin rooms. */
 @media (max-width: 899px), (pointer: coarse) {
-  :is(.hub-invitations, .hub-agent-rooms, .hub-room-members, .hub-room-settings, .hub-room-new, .hub-admin-rooms) .btn,
-  .hub-invitations-row { min-height: var(--tap); min-width: var(--tap); }
+  :is(.hub-invitations, .hub-agent-rooms, .hub-room-members, .hub-room-settings, .hub-room-new, .hub-admin-rooms) .btn { min-height: var(--tap); min-width: var(--tap); }
 }
