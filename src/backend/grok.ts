@@ -252,6 +252,64 @@ const GROK_BOX_MAX_ROWS = 40;
  * UTF-16 offset while the real closer (and an unsent id) sit further right.
  */
 export function readGrokInputBox(pane: string): InputBox | null {
+  const found = locateGrokInputBox(pane);
+  if (!found) return null;
+  const { box, rows, top } = found;
+  // M-3098: a multi-line paste shows collapsed (`❯ [Pasted: 20 lines]`), its text in a preview card drawn just above
+  // the box (`╭…╮` / `│<line>│` / `╰─ paste again or double-click to expand ─╯`). That card is the draft, not the
+  // transcript: its rows (the envelope footer with the message_id among them) count as input, so an unsent paste can
+  // never be read as an echo of a sent one. Live captures: tests/fixtures/grok-receipt-m3098/<ver>/20-long-draft.
+  const collapsed = box.text.match(GROK_COLLAPSED_PASTE)?.length ?? 0;
+  if (!collapsed) return box;
+  const card = grokPastePreviewCard(rows, top);
+  return { text: card ? `${box.text}\n${card}` : box.text, collapsedPastes: collapsed };
+}
+
+/** `[Pasted: 20 lines]`: Grok's collapsed paste in the box (1.0.70, 1.0.77). */
+const GROK_COLLAPSED_PASTE = /\[Pasted: \d+ lines?\]/g;
+/** Rows between a collapsed paste's preview card and the box (a busy status row, a blank). The card's rows may carry
+ *  the transcript's scrollbar (`█`) at the pane's right edge. */
+const GROK_PREVIEW_GAP_ROWS = 3;
+
+/** The preview card's inner rows, joined; null when no framed card sits right above the box. */
+function grokPastePreviewCard(rows: string[], boxTop: number): string | null {
+  let bottom = -1;
+  for (let i = boxTop - 1; i >= 0 && boxTop - i <= GROK_PREVIEW_GAP_ROWS + 1; i--) {
+    if (/^\s*╰─.*╯(?:\s+█)?\s*$/.test(rows[i]!)) { bottom = i; break; }
+  }
+  if (bottom < 0) return null;
+  const lines: string[] = [];
+  for (let i = bottom - 1; i >= 0 && bottom - i <= GROK_BOX_MAX_ROWS + 1; i--) {
+    const row = rows[i]!;
+    if (/^\s*╭─+╮(?:\s+█)?\s*$/.test(row)) return lines.reverse().join("\n");
+    const inner = /^\s*│(.*)│(?:\s+█)?\s*$/.exec(row);
+    if (!inner) return null;
+    lines.push(inner[1]!.trimEnd());
+  }
+  return null;
+}
+
+/**
+ * M-3098: the AgEnD lead markers (`[agend-delivery-id:…]`, `[hid:…]`, legacy `[agend-human-id:…]`) Grok shows as
+ * TAKEN, above the live box: the first row of a transcript echo (`     ❯ <marker>  <time>`) or a queued message
+ * (`    #1 <marker> (+19 lines)`, a paste sent while a turn runs). Grok cuts an echo to three rows and a `…`, so an
+ * envelope's trailing `(message_id: …)` footer is never on screen after Enter; its lead marker always is (live 1.0.70
+ * and 1.0.77, tests/fixtures/grok-receipt-m3098). Box rows (`│ ❯ …`) and the preview card (`│[…`) never match.
+ * Empty when there is no readable box: then nothing above it can be placed.
+ */
+export function readGrokTakenMarkers(pane: string): string[] {
+  const found = locateGrokInputBox(pane);
+  if (!found) return [];
+  const markers: string[] = [];
+  for (const row of found.rows.slice(0, found.top)) {
+    const m = GROK_TAKEN_ROW.exec(row);
+    if (m) markers.push(m[1]!);
+  }
+  return markers;
+}
+const GROK_TAKEN_ROW = /^ {2,}(?:❯|#\d+) (\[(?:agend-(?:delivery|human)-id|hid):[^\]\s]+\])(?: |$)/;
+
+function locateGrokInputBox(pane: string): { box: InputBox; rows: string[]; top: number } | null {
   const rows = pane.replace(/\r/g, "").split("\n").map(row => row.trimEnd());
   let bottom = -1;
   for (let i = rows.length - 1, footer = 0; i >= 0; i--) {
@@ -298,7 +356,7 @@ export function readGrokInputBox(pane: string): InputBox | null {
     }
   }
   if (lines.length === 0) return null;
-  return { text: lines.join("\n").trimEnd(), collapsedPastes: 0 };
+  return { box: { text: lines.join("\n").trimEnd(), collapsedPastes: 0 }, rows, top };
 }
 
 /** UTF-16 index of the first positive-width character whose display column starts at `col`. */
@@ -512,6 +570,11 @@ export class GrokBackend implements CliBackend {
    */
   readInputRow(pane: string): InputBox | null {
     return readGrokInputBox(pane);
+  }
+
+  /** M-3098: the lead markers Grok shows as taken (echoed or queued) above the live box. */
+  readTakenMarkers(pane: string): string[] {
+    return readGrokTakenMarkers(pane);
   }
 
   getErrorPatterns(): ErrorPattern[] {
