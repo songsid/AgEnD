@@ -1,0 +1,22 @@
+{
+  "info": {
+    "id": "4b388fc1-2601-4552-bd03-4a6e2edcf8e0",
+    "cwd": "/rig/work"
+  },
+  "agent_id": "ag1.cbc4ec6d4eb543f394fd7b4599496545",
+  "attempt_id": "at1.2d162e91083a4d5180fb426ba5df0d69",
+  "session_summary": "",
+  "created_at": "2026-11-13T09:03:33.423262816Z",
+  "updated_at": "2026-11-13T09:03:59.694453757Z",
+  "num_messages": 1,
+  "num_chat_messages": 4,
+  "current_model_id": "grok-mock",
+  "next_trace_turn": 1,
+  "chat_format_version": 1,
+  "git_root_dir": "/rig/work/",
+  "request_id": "649b00cd-660b-4354-a6ac-938fcfafede0",
+  "grok_home": "/rig/home/.grok",
+  "last_active_at": "2026-11-13T09:03:59.694453757Z",
+  "agent_name": "grok-build-plan",
+  "sandbox_profile": "off"
+}
