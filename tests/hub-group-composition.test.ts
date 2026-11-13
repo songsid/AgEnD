@@ -32,14 +32,18 @@ async function rig(supported = true) {
   const origin = `https://hub.example.test:${webPort}`, group = randomUUID(), outsider = randomUUID();
   const colleague: DirectoryPerson = { key: { realm: "corp", objectId: randomUUID() }, login: "morgan", displayName: "Morgan Example", dn: "CN=Morgan,DC=example,DC=test", groups: [] };
   const people = [ADMIN, colleague]; let known = true, adminEligible = true, live = true;
+  const eligible: HubDirectory["checkEligibility"] = async key => {
+    const person = people.find(p => p.key.objectId === key.objectId && p.key.realm === key.realm);
+    return person && (person !== ADMIN || adminEligible) ? { eligible: true, person } : { eligible: false, reason: "disabled" };
+  };
+  let eligibilityAnswer: HubDirectory["checkEligibility"] | undefined;
   const read = vi.fn(async (person: DirectoryPerson["key"]): Promise<PolicyGroupFacts> => known
     ? { kind: "complete", person, groups: [person.objectId === ADMIN.key.objectId ? group : outsider], observedAt: Date.now() } : { kind: "unknown" });
   const directory: HubDirectory = { realm: "corp", ...(supported ? { groupPolicy: "ad-direct-guid" as const, readPolicyGroups: read,
     resolvePolicyGroup: async dn => ({ ok: true as const, group: { key: { realm: "corp", objectId: group }, dn } }) } : {}),
     async signIn(login, password) { const person = people.find(p => p.login === login); return person && password === `test-${login}`
       ? { ok: true, person } : { ok: false, reason: "invalid-credentials" }; },
-    async checkEligibility(key) { const person = people.find(p => p.key.objectId === key.objectId && p.key.realm === key.realm);
-      return person && (person !== ADMIN || adminEligible) ? { eligible: true, person } : { eligible: false, reason: "disabled" }; }, close: async () => {} };
+    async checkEligibility(key) { return (eligibilityAnswer ?? eligible)(key); }, close: async () => {} };
   const plan = { name: "Example groups Hub", webOrigin: origin, memberOrigin: `https://hub.example.test:${memberPort}`,
     webListen: { host: "127.0.0.1", port: webPort }, memberListen: { host: "127.0.0.1", port: memberPort },
     webTls: { certFile: certs.cert, keyFile: certs.key }, directory: { realm: "corp", url: "ldaps://directory.example.test:636",
@@ -73,6 +77,7 @@ async function rig(supported = true) {
     const applied = await call(admin, "PUT", path, { policy, previewDigest: preview.json.previewDigest }); expect(applied.status).toBe(200); return preview.json; };
   const auditCount = () => (db!.prepare("SELECT COUNT(*) n FROM hub_audit").get() as { n: number }).n;
   return { home, cfg, db, directory, read, group, outsider, colleague, deps, http, service, marks, admin, path, call, signIn, readPolicy, proposal, save, auditCount,
+    eligible, setEligibility: (answer: typeof eligibilityAnswer) => { eligibilityAnswer = answer; },
     unknown: () => { known = false; }, known: () => { known = true; }, disableAdmin: () => { adminEligible = false; }, fence: () => { live = false; } };
 }
 
@@ -124,7 +129,9 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
     expect((await pending).status).not.toBe(200); expect(r.deps.store.read().revocationVersion).toBe(1);
   });
   it("uses the actual pairing and publication gates after HTTP enable, and resumes only the exact paused revision", async () => {
-    const r = await rig(), ctx = { requestId: randomUUID(), current: vi.fn(), requirePerson: async () => ADMIN.key,
+    const r = await rig(), ctx = { requestId: randomUUID(), isCurrent: () => true,
+      current: async () => ({ kind: "directory" as const, person: ADMIN.key, sessionId: "test-local-authority" }), requirePerson: async () => ADMIN.key,
+      isIdentityCurrent: (who: DirectoryPerson["key"], session: string) => who.realm === ADMIN.key.realm && who.objectId === ADMIN.key.objectId && session === "test-local-authority",
       requireAdmin: async () => ({ kind: "directory" as const, person: ADMIN.key, sessionId: "test-local-authority" }) };
     const offer = await r.deps.pairing.create(ctx, ADMIN.key), pending = r.deps.pairing.pair({ code: offer.code });
     await r.deps.pairing.confirmOwner(ctx, pending.pairingId, pending.fingerprint); await r.deps.pairing.approve(ctx, pending.pairingId, pending.fingerprint);
@@ -169,10 +176,14 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
   it("allows explicit manual approval above the automatic fleet limit without granting self-service", async () => {
     const r = await rig(); await r.save(await r.proposal());
     const claim = async (owner: DirectoryPerson["key"]) => {
-      const ctx = { requestId: randomUUID(), current: async () => ({ kind: "directory" as const, person: owner, sessionId: "test-owner-authority" }), requirePerson: async () => owner,
+      const ctx = { requestId: randomUUID(), isCurrent: () => true,
+        current: async () => ({ kind: "directory" as const, person: ADMIN.key, sessionId: "test-local-authority" }), requirePerson: async () => ADMIN.key,
+        isIdentityCurrent: (who: DirectoryPerson["key"], session: string) => who.realm === ADMIN.key.realm && who.objectId === ADMIN.key.objectId && session === "test-local-authority",
         requireAdmin: async () => ({ kind: "directory" as const, person: ADMIN.key, sessionId: "test-local-authority" }) };
+      const ownerCtx = { requestId: randomUUID(), isCurrent: () => true,
+        current: async () => ({ kind: "directory" as const, person: owner, sessionId: "test-owner-authority" }), requirePerson: async () => owner };
       const offer = await r.deps.pairing.create(ctx, owner), pending = r.deps.pairing.pair({ code: offer.code });
-      await r.deps.pairing.confirmOwner(ctx, pending.pairingId, pending.fingerprint);
+      await r.deps.pairing.confirmOwner(ownerCtx, pending.pairingId, pending.fingerprint);
       await r.deps.pairing.approve(ctx, pending.pairingId, pending.fingerprint);
       return r.deps.pairing.claim({ pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret });
     };
@@ -199,27 +210,27 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
   });
   it.each(["disabled", "gone", "unavailable"] as const)("never lets manual approval or claim override %s owner eligibility", async reason => {
     const r = await rig(); await r.save(await r.proposal()); const attempt = await manualAttempt(r);
-    const original = r.directory.checkEligibility.bind(r.directory);
+    const original = r.eligible;
     const refuse = async (key: DirectoryPerson["key"]) => key.objectId === r.colleague.key.objectId
       ? { eligible: false as const, reason } : original(key);
-    r.directory.checkEligibility = refuse;
+    r.setEligibility(refuse);
     expect((await attempt.approve()).status).toBe(reason === "unavailable" ? 503 : 403);
     expect(r.deps.store.read().pairings[0]!.adminApproved).toBe(false);
-    r.directory.checkEligibility = original; expect((await attempt.approve()).status).toBe(200);
-    r.directory.checkEligibility = refuse; await expect(attempt.claim()).rejects.toThrow();
+    r.setEligibility(original); expect((await attempt.approve()).status).toBe(200);
+    r.setEligibility(refuse); await expect(attempt.claim()).rejects.toThrow();
     expect(r.deps.store.read().fleets).toEqual([]); expect(r.db!.prepare("SELECT * FROM hub_group_resources").all()).toEqual([]);
   });
   it("holds directory outages without mutation and suspends an existing manual fleet after authoritative ineligibility", async () => {
     const r = await rig(); await r.save(await r.proposal()); const attempt = await manualAttempt(r);
     expect((await attempt.approve()).status).toBe(200); await attempt.claim();
-    const original = r.directory.checkEligibility.bind(r.directory);
-    r.directory.checkEligibility = key => key.objectId === r.colleague.key.objectId
-      ? Promise.resolve({ eligible: true, person: { ...r.colleague, key: ADMIN.key } }) : original(key);
+    const original = r.eligible;
+    r.setEligibility(key => key.objectId === r.colleague.key.objectId
+      ? Promise.resolve({ eligible: true, person: { ...r.colleague, key: ADMIN.key } }) : original(key));
     await expect(r.deps.groups!.check(attempt.resource, { requestId: randomUUID(), current: () => true })).rejects.toThrow();
     expect(r.deps.groups!.resourceState(attempt.resource)).toMatchObject({ state: "active" });
     let reason: "unavailable" | "disabled" = "unavailable";
-    r.directory.checkEligibility = key => key.objectId === r.colleague.key.objectId
-      ? Promise.resolve({ eligible: false as const, reason }) : original(key);
+    r.setEligibility(key => key.objectId === r.colleague.key.objectId
+      ? Promise.resolve({ eligible: false as const, reason }) : original(key));
     await expect(r.deps.groups!.check(attempt.resource, { requestId: randomUUID(), current: () => true })).rejects.toThrow();
     expect(r.deps.groups!.resourceState(attempt.resource)).toMatchObject({ state: "active" });
     reason = "disabled";
@@ -229,9 +240,9 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
   it.each(["resolve", "reject"])("shares four physical manual eligibility slots across factory checks until %s settlement", async mode => {
     const r = await rig(); await r.save(await r.proposal()); const attempt = await manualAttempt(r);
     expect((await attempt.approve()).status).toBe(200); await attempt.claim();
-    const original = r.directory.checkEligibility.bind(r.directory), release = gate<boolean>(); let entered = 0, live = true;
-    r.directory.checkEligibility = async key => { entered++; await release.promise;
-      if (mode === "reject") throw Error("inert directory failure"); return original(key); };
+    const original = r.eligible, release = gate<boolean>(); let entered = 0, live = true;
+    r.setEligibility(async key => { entered++; await release.promise;
+      if (mode === "reject") throw Error("inert directory failure"); return original(key); });
     r.read.mockClear();
     const before = r.auditCount(), check = (current = () => true) => r.deps.groups!.check(attempt.resource,
       { requestId: randomUUID(), current }).then(value => value.source, error => error);
@@ -250,14 +261,14 @@ describe("the complete group control on the actual Hub HTTPS factory", () => {
     const results = await Promise.all(work); expect(results[0]).toBeInstanceOf(Error);
     expect(results.slice(1)).toEqual(mode === "resolve" ? ["manual", "manual", "manual"] :
       Array.from({ length: 3 }, () => expect.objectContaining({ reason: "held" })));
-    r.directory.checkEligibility = original;
+    r.setEligibility(original);
     await expect(r.deps.groups!.check(attempt.resource, { requestId: randomUUID(), current: () => true })).resolves.toMatchObject({ source: "manual" });
     expect(r.deps.groups!.resourceState(attempt.resource)).toMatchObject({ state: "active", revision: 1 });
   });
   it("cannot finish a held manual approval after the administrator signs out", async () => {
     const r = await rig(); await r.save(await r.proposal()); const attempt = await manualAttempt(r);
-    const original = r.directory.checkEligibility.bind(r.directory), entered = gate<boolean>(), release = gate<boolean>();
-    r.directory.checkEligibility = async key => { if (key.objectId === r.colleague.key.objectId) { entered.resolve(true); await release.promise; } return original(key); };
+    const original = r.eligible, entered = gate<boolean>(), release = gate<boolean>();
+    r.setEligibility(async key => { if (key.objectId === r.colleague.key.objectId) { entered.resolve(true); await release.promise; } return original(key); });
     const approving = attempt.approve(); await entered.promise;
     expect((await r.call(r.admin, "DELETE", "/hub/v1/session")).status).toBe(200); release.resolve(true);
     expect((await approving).status).toBe(401); expect(r.deps.store.read().pairings[0]!.adminApproved).toBe(false);
