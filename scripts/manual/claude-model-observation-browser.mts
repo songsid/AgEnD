@@ -68,7 +68,14 @@ try {
     const checkpoint = async (label: string, path: string, expectLine: boolean, prepare?: () => Promise<void>) => {
       await page.goto(fx.base + path); await page.waitForTimeout(650); if (prepare) await prepare(); await page.evaluate(() => document.fonts.ready);
       const word = c.lang === "en" ? c.variant === "availability" ? "Model switched due to availability" : "Model switched by safeguards" : c.variant === "availability" ? "模型因供應狀況而切換" : "安全機制已切換模型";
-      if (expectLine && !(await page.locator("body").innerText()).includes(word)) throw Error(`${c.variant}/${label}: missing ${word}`);
+      if (expectLine) {
+        try { await page.waitForFunction(value => document.body.innerText.includes(value), word, { timeout: 5000 }); }
+        catch {
+          writeFileSync(join(out, "diagnostic.json"), JSON.stringify({ case: caseName(c), variant: c.variant, label, url: page.url(), errors, expected: observed, actual: (fm.getUiStatus() as any).instances?.find((x: any) => x.name === name)?.model_observation, body: (await page.locator("body").innerText()).slice(0, 12000) }, null, 2));
+          await page.screenshot({ path: join(out, "diagnostic.png"), fullPage: true });
+          throw Error(`${c.variant}/${label}: missing ${word}`);
+        }
+      }
       if (label === "details" && expectLine && c.device === "phone") await page.locator(".p-details .model-switch").scrollIntoViewIfNeeded();
       if (label === "log" && expectLine) {
         const pair = page.locator(".log-text").filter({ hasText: "Opus 5.5 → Opus 4.8" });
