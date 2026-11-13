@@ -301,6 +301,13 @@ Sharing lets nobody ask yet. The owner allows a person or an AD security group; 
 On the Hub: **Chats** → **New chat** lists only the agents someone allowed you to ask ("Answers for *owner* · you can
 ask until *date*"). Pick one and **Ask**.
 
+The chat list (the sidebar; on a phone, the Chats page) looks like AgEnD's own chat list. Each chat is a row with the
+agent's avatar, its name and its owner below it; a question still waiting shows the working dot and **Waiting for an
+answer**, and a closed chat says **Closed**. Ctrl K (⌘K on a Mac) filters it by an agent's name or its owner. On a Hub
+that has rooms, the list has two groups: **Rooms** (房間: a square avatar, "3 people · 12 agents", unread count, an @
+mark when someone mentioned you) and **Agents** (one-to-one chats, the agent's status dot, **Hub assistant** last).
+Unread chats come first, then the most recent.
+
 - "You're asking as yourself: the owner sees that you asked. The agent answers within what its owner allows."
 - Everyone who asks one agent shares its one conversation, so it may remember what others asked. Don't send what other
   askers shouldn't see.

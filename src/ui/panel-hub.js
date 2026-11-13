@@ -493,6 +493,8 @@ function HubChats() {
   // shared thread (M-3092 PR 2).
   const listed = id ? rs.rooms.find((r) => r.id === id) : null;
   const room = id ? (listed ? listed.legacy || listed : rs.loaded ? { id, exposureName: "", ownerName: "", features: [] } : null) : null;
+  // A room of a Hub with rooms is drawn on the shared thread by M-3092 PR 2; until then its frame (no Hub offers rooms yet).
+  if (id && listed && !listed.legacy) return html`<${HubRoomLoading} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   return html`<${PanelHeader} title=${hc("chats")} />
