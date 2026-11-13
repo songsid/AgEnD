@@ -204,6 +204,11 @@
       "detail": "prompt=1 skeleton=0"
     },
     {
+      "name": "phone-light-en lazy after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "130×44"
+    },
+    {
       "name": "phone-light-en lazy after: in the page's language",
       "ok": true
     },
@@ -226,6 +231,11 @@
       "name": "phone-light-en outlet after: the reload prompt in place, no skeleton",
       "ok": true,
       "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-en outlet after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "130×44"
     },
     {
       "name": "phone-light-en outlet after: in the page's language",
@@ -252,6 +262,11 @@
       "detail": "prompt=1 skeleton=0"
     },
     {
+      "name": "phone-light-zh-TW lazy after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "138×44"
+    },
+    {
       "name": "phone-light-zh-TW lazy after: in the page's language",
       "ok": true
     },
@@ -274,6 +289,11 @@
       "name": "phone-light-zh-TW outlet after: the reload prompt in place, no skeleton",
       "ok": true,
       "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-zh-TW outlet after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "138×44"
     },
     {
       "name": "phone-light-zh-TW outlet after: in the page's language",
@@ -300,6 +320,11 @@
       "detail": "prompt=1 skeleton=0"
     },
     {
+      "name": "phone-dark-en lazy after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "130×44"
+    },
+    {
       "name": "phone-dark-en lazy after: in the page's language",
       "ok": true
     },
@@ -322,6 +347,11 @@
       "name": "phone-dark-en outlet after: the reload prompt in place, no skeleton",
       "ok": true,
       "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-dark-en outlet after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "130×44"
     },
     {
       "name": "phone-dark-en outlet after: in the page's language",
@@ -348,6 +378,11 @@
       "detail": "prompt=1 skeleton=0"
     },
     {
+      "name": "phone-dark-zh-TW lazy after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "138×44"
+    },
+    {
       "name": "phone-dark-zh-TW lazy after: in the page's language",
       "ok": true
     },
@@ -372,6 +407,11 @@
       "detail": "prompt=1 skeleton=0"
     },
     {
+      "name": "phone-dark-zh-TW outlet after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "138×44"
+    },
+    {
       "name": "phone-dark-zh-TW outlet after: in the page's language",
       "ok": true
     },
@@ -387,6 +427,82 @@
     },
     {
       "name": "phone-dark-zh-TW outlet before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "phone-light-en lazy after-oldcss: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-en lazy after-oldcss: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "130×44"
+    },
+    {
+      "name": "phone-light-en lazy after-oldcss: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en lazy after-oldcss: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "phone-light-en outlet after-oldcss: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-en outlet after-oldcss: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "130×44"
+    },
+    {
+      "name": "phone-light-en outlet after-oldcss: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en outlet after-oldcss: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "phone-light-zh-TW lazy after-oldcss: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-zh-TW lazy after-oldcss: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "138×44"
+    },
+    {
+      "name": "phone-light-zh-TW lazy after-oldcss: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW lazy after-oldcss: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "phone-light-zh-TW outlet after-oldcss: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-zh-TW outlet after-oldcss: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "138×44"
+    },
+    {
+      "name": "phone-light-zh-TW outlet after-oldcss: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW outlet after-oldcss: the browser really refused to link",
       "ok": true,
       "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
     }
