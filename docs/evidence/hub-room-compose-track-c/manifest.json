@@ -1,5 +1,9 @@
 [
   {
+    "path": "docs/evidence/hub-room-compose-track-c/README.md",
+    "sha256": "da167747058a8c36031d35aa36210f23f8aa9a00d658f3ba522f647a0ddb8819"
+  },
+  {
     "path": "docs/evidence/hub-room-compose-track-c/baseline-before.log",
     "sha256": "2ef91aad4991201634131a9a9c3eb48b22e9dfd4acaba538fa365f1fc1be6fbf"
   },
