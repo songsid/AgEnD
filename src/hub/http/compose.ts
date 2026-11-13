@@ -31,6 +31,8 @@ import { HubCatalogService } from "../catalog.js";
 import { HubGrantSearch } from "../grant-search.js";
 import { HubPolicyService } from "../policy.js";
 import { HubRoomsService } from "../rooms.js";
+import { HubGroupRooms, HubRoomRefusal } from "../rooms/service.js";
+import { directMessages, directRoomView, directUnread, markDirectRead } from "../rooms/direct-view.js";
 import { HubAttachmentRefused } from "../attachments/store.js";
 import { HubQuotaService } from "../quota.js";
 import { HubCore, pairingOwnerByLogin } from "./core.js";
@@ -131,6 +133,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const sessions = new HubSessions(core), catalog = new HubCatalogService(core), policy = new HubPolicyService(core);
   const grantSearch = new HubGrantSearch(core);
   const rooms = new HubRoomsService(core, policy);
+  const groupRooms = new HubGroupRooms(core);
   const quota = new HubQuotaService(core);
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
   const live = () => !closed && core.live();
@@ -157,7 +160,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     };
     const m = (re: RegExp) => re.exec(path);
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
-    const offered = [...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    const offered = ["rooms-v1", ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     const features = offered.length ? { features: offered } : {};
@@ -361,14 +364,104 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       await guard(() => quota.setVisible(ctx, exposureId, int(b.revision), b.visible as boolean));
       return send(res, 200, { quotaVisible: b.visible, ...quota.projection(exposureId) });
     }
+    if (path === "/hub/v1/rooms/candidates") {
+      if (method !== "GET") throw new HttpError(405, "method");
+      signedIn(); return send(res, 200, await guard(() => groupRooms.candidates(ctx, query.get("q") ?? "", query.get("kind") ?? "person")));
+    }
+    if (path === "/hub/v1/rooms/events") {
+      if (method !== "GET") throw new HttpError(405, "method");
+      const streamSession = signedIn(), streamPerson = personKeyString(await guard(() => ctx.requirePerson()));
+      const requestedNotices = query.get("notices"), notices = deps.pairingNotices;
+      const noticeVersion = requestedNotices === "3" && deps.companyJoin ? 3 : requestedNotices === "2" || requestedNotices === "3" ? 2 : null;
+      const initialNotices = notices && noticeVersion ? await guard(() => notices.forSession(ctx, noticeVersion)) : null;
+      if (streams.size >= 64 || !ctx.isCurrent?.()) throw new HubProtocolError("backpressure");
+      res.writeHead(200, { ...API_HEADERS, "Content-Type": "text/event-stream; charset=utf-8", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+      let ended = false, queued = 0, tail = Promise.resolve(), noticesRunning = false, noticesDirty = false;
+      let offNotices = () => {};
+      const close = () => { if (ended) return; ended = true; off(); offNotices(); clearInterval(heartbeat); streams.delete(close); res.end(); };
+      const off = groupRooms.subscribe(event => {
+        if (ended) return;
+        if (event.audiencePerson && event.audiencePerson !== streamPerson) return;
+        if (!event.audiencePerson && !groupRooms.interested(streamPerson, event)) return;
+        if (++queued > 64) { close(); return; }
+        tail = tail.then(async () => {
+          if (ended) return;
+          let data: Record<string, unknown> | null;
+          if (event.audiencePerson) {
+            const view = await rooms.view(ctx, event.roomId);
+            if (event.type === "unread.changed") data = { roomId: event.roomId, unread: directUnread(core, view) };
+            else if (event.type === "room.changed") data = { roomId: event.roomId, room: directRoomView(view, rooms.presence(view.exposureId), directUnread(core, view)) };
+            else {
+              const page = await rooms.readPage(ctx, event.roomId, 0, streamSession.sessionId, { before: null, limit: 100 });
+              const message = directMessages(page.room, page.entries, streamSession.displayName).find(m => m.id === event.data.messageId);
+              data = message ? { roomId: event.roomId, message } : null;
+            }
+          } else data = await groupRooms.event(ctx, event);
+          if (ended || !live() || !ctx.isCurrent?.()) return close();
+          if (data && !res.write(`event: ${event.type}\ndata: ${JSON.stringify(data)}\n\n`)) close();
+        }).catch(close).finally(() => { queued--; });
+      });
+      const pushNotices = async () => {
+        if (ended || !notices || !noticeVersion) return;
+        if (noticesRunning) { noticesDirty = true; return; }
+        noticesRunning = true;
+        try {
+          do {
+            noticesDirty = false; const rows = await notices.forSession(ctx, noticeVersion);
+            if (ended || !live() || !ctx.isCurrent?.()) return close();
+            if (!res.write(`event: notices\ndata: ${JSON.stringify({ notices: rows })}\n\n`)) return close();
+          } while (noticesDirty);
+        } catch { close(); } finally { noticesRunning = false; }
+      };
+      const heartbeat = setInterval(() => { if (!live() || !ctx.isCurrent?.()) close(); else if (!res.write(": heartbeat\n\n")) close(); }, 15_000); heartbeat.unref();
+      try { if (notices && noticeVersion) offNotices = notices.subscribe(() => void pushNotices()); }
+      catch { close(); return; }
+      streams.add(close); res.on("close", close);
+      if (initialNotices) res.write(`event: notices\ndata: ${JSON.stringify({ notices: initialNotices })}\n\n`);
+      res.write(": connected\n\n"); return;
+    }
     if (path === "/hub/v1/rooms") {
-      if (method === "GET") { signedIn(); const view = await guard(() => rooms.listAuthorized(ctx)); return send(res, 200, { rooms: view.rooms.map(room => ({ ...room, ...quota.roomProjection(room, view.grantProof) })) }); }
+      if (method === "GET") { signedIn(); const view = await guard(() => rooms.listAuthorized(ctx));
+        // Cached clients draw every row as a direct agent conversation. New roomList() opts into group rows.
+        if (query.get("v") !== "2") return send(res, 200, { rooms: view.rooms.map(room => ({ ...room, ...quota.roomProjection(room, view.grantProof) })) });
+        const groups = await guard(() => groupRooms.list(ctx));
+        return send(res, 200, { ...groups, rooms: [...groups.rooms, ...view.rooms.map(room => ({ ...directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room)), ...quota.roomProjection(room, view.grantProof) }))] }); }
       if (method === "POST") {
         csrf(); const b = await body();
+        if (b.exposureId === undefined) return send(res, 200, await guard(() => groupRooms.create(ctx, b)));
         const room = await guard(() => rooms.open(ctx, uuid(b.exposureId), uuid(b.grantId)));
         return send(res, 200, { room: { id: room.id, exposureId: room.exposureId, grantId: room.grantId, state: room.state, exposureName: room.exposure.displayName, features: rooms.features(room.exposure.fleetId), ...quota.roomProjection(room, room.grantProof) } });
       }
       throw new HttpError(405, "method");
+    }
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)$/))) {
+      signedIn(); const roomId = uuid(r[1]);
+      if (groupRooms.has(roomId)) {
+        if (method === "GET") return send(res, 200, await guard(() => groupRooms.detail(ctx, roomId)));
+        if (method === "PATCH") { csrf(); const b = await body(); return send(res, 200, await guard(() => groupRooms.patch(ctx, roomId, b))); }
+      } else if (method === "GET") {
+        const room = await guard(() => rooms.view(ctx, roomId)); const person = personKeyString(room.asker), name = signedIn().displayName;
+        return send(res, 200, { room: directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room)), me: { id: person, role: "member" },
+          members: [{ id: person, kind: "person", name, role: "member", presence: "online" }, { id: room.exposureId, kind: "agent", name: room.exposureName,
+            owner: { name: room.ownerName }, role: "member", presence: rooms.presence(room.exposureId), canAsk: room.state === "active" }],
+          settings: { allMention: false, historyForNew: "all" }, invited: [] });
+      }
+      throw new HttpError(405, "method");
+    }
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/members(?:\/([^/]+))?$/))) {
+      csrf(); const roomId = uuid(r[1]), memberId = r[2] ? uuid(r[2]) : null;
+      if (method === "POST" && !memberId) { const b = await body(); return send(res, 200, await guard(() => groupRooms.add(ctx, roomId, b))); }
+      if (method === "DELETE" && memberId) return send(res, 200, await guard(() => groupRooms.changeMember(ctx, roomId, memberId)));
+      if (method === "PATCH" && memberId) { const b = await body(); if (Object.keys(b).length !== 1 || !["manager", "member"].includes(String(b.role))) throw new HubProtocolError("invalid");
+        return send(res, 200, await guard(() => groupRooms.changeMember(ctx, roomId, memberId, b.role as "manager" | "member"))); }
+      throw new HttpError(405, "method");
+    }
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/read$/))) {
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const b = await body(), roomId = uuid(r[1]);
+      if (groupRooms.has(roomId)) return send(res, 200, await guard(() => groupRooms.markRead(ctx, roomId, b.upTo)));
+      const room = await guard(() => rooms.view(ctx, roomId)); markDirectRead(core, roomId, str(b.upTo));
+      groupRooms.publish({ type: "unread.changed", roomId, data: { roomId }, audiencePerson: personKeyString(room.asker) }); return send(res, 200, { ok: true });
     }
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/buttons$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
@@ -377,17 +470,33 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/messages$/))) {
       const roomId = uuid(r[1]);
+      if (groupRooms.has(roomId)) {
+        if (method === "GET") { signedIn(); return send(res, 200, await guard(() => groupRooms.messages(ctx, roomId, query.get("before"), int(query.get("limit") ?? "50")))); }
+        if (method === "POST") { csrf(); const b = await body(); return send(res, 200, await guard(() => groupRooms.post(ctx, roomId, b))); }
+        throw new HttpError(405, "method");
+      }
       if (method === "GET") {
         const s = signedIn();
         // #3226 B + G: the room comes with its entries, fresh each poll — its view (state, grant's end, what its link
         // negotiated) and its quota projection (G; absent when hidden or not shared).
-        const { entries, room: view, grantProof } = await guard(() => rooms.readPage(ctx, roomId, int(query.get("after") ?? "0"), s.sessionId));
-        return send(res, 200, { entries, room: { ...view, ...quota.roomProjection(view, grantProof) } });
+        const { entries, room: view, grantProof, more } = await guard(() => rooms.readPage(ctx, roomId, int(query.get("after") ?? "0"), s.sessionId,
+          query.has("after") ? undefined : { before: query.get("before"), limit: int(query.get("limit") ?? "50") }));
+        let messages = directMessages(view, entries, s.displayName);
+        const cursor = query.get("before"), index = cursor ? messages.findIndex(m => m.id === cursor) : -1;
+        if (index >= 0) messages = messages.slice(0, index);
+        const limit = int(query.get("limit") ?? "50"), overflow = !query.has("after") && messages.length > limit;
+        if (overflow) messages = messages.slice(-limit);
+        return send(res, 200, { entries, room: { ...view, ...quota.roomProjection(view, grantProof) }, messages, more: (more ?? false) || overflow });
       }
       if (method === "POST") {
         csrf(); const b = await body();
         const files = b.files === undefined ? [] : Array.isArray(b.files) && b.files.length <= 10 ? b.files.map(uuid) : (() => { throw new HubProtocolError("invalid"); })();
-        return send(res, 200, { receipt: await guard(() => rooms.ask(ctx, roomId, uuid(b.idempotencyKey), typeof b.text === "string" ? b.text : "", files)) });
+        if (b.mentions !== undefined && (!Array.isArray(b.mentions) || b.mentions.length)) throw new HubProtocolError("invalid");
+        const receipt = await guard(() => rooms.ask(ctx, roomId, uuid(b.idempotencyKey), typeof b.text === "string" ? b.text : "", files));
+        const room = await guard(() => rooms.view(ctx, roomId));
+        groupRooms.publish({ type: "message.added", roomId, data: { roomId, messageId: receipt.messageId }, audiencePerson: personKeyString(room.asker) });
+        return send(res, 200, { id: receipt.messageId, roomId, at: receipt.at, author: { kind: "person", id: personKeyString(room.asker), name: signedIn().displayName },
+          text: typeof b.text === "string" ? b.text : "", mentions: [], idempotencyKey: b.idempotencyKey, receipt });
       }
       throw new HttpError(405, "method");
     }
@@ -510,6 +619,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   }
 
   function fail(res: ServerResponse, e: unknown): void {
+    if (e instanceof HubRoomRefusal) return send(res, e.status, { code: e.code });
     if (e instanceof HubEnrolmentCodeLimit) return send(res, 429, { code: "backpressure", reason: e.reason });
     if (e instanceof CompanyJoinCodeRefusal) return send(res, 403, { code: "denied", reason: e.reason });
     if (e instanceof CompanyJoinOfferPending) return send(res, 409, { code: "offer-pending" });
@@ -563,13 +673,15 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     deps.pairingNotices?.noteLink(link);
     const reply = { v: 1 as const, requestId: frame.requestId, linkEpoch: link.linkEpoch };
     switch (frame.type) {
+      // Schemas shared with Track C; no group-agent dispatch is advertised before R2 is composed.
+      case "room.answer": case "agent.state": throw new HubProtocolError("incompatible");
       case "exposure.snapshot": await catalog.receiveSnapshot(frame.payload, link, frame.requestId); quota.prune(); return;
       case "exposure.quota": quota.receive(frame.payload, link); return;
       case "pairing.notice-ack":
         if (!deps.pairingNotices) throw new HubProtocolError("incompatible");
         deps.pairingNotices.acknowledgeFleet(link, frame.payload.id); return;
-      case "receipt": return { ...reply, type: "receipt", payload: rooms.receipt(frame.payload, link) };
-      case "answer": return { ...reply, type: "receipt", payload: await rooms.answer(frame.payload, link) };
+      case "receipt": { const payload = rooms.receipt(frame.payload, link); directChanged(payload.messageId, false); return { ...reply, type: "receipt", payload }; }
+      case "answer": { const payload = await rooms.answer(frame.payload, link); directChanged(payload.messageId, true); return { ...reply, type: "receipt", payload }; }
       case "authorize.request": return { ...reply, type: "authorize.result", payload: await policy.authorize(frame.payload, link) };
       case "reconcile": {
         const page = rooms.reconcile(frame.payload, link);
@@ -581,6 +693,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       case "attachment.put": return { ...reply, type: "attachment.ack", payload: rooms.attachmentPut(frame.payload, link) };
       case "error": return;
     }
+  }
+  function directChanged(messageId: string, answer: boolean): void {
+    const row = core.atomic(db => db.prepare("SELECT room_id,asker FROM hub_messages WHERE id=?").get(messageId) as { room_id: string; asker: string } | undefined);
+    if (!row) return;
+    groupRooms.publish({ type: answer ? "message.added" : "message.updated", roomId: row.room_id, data: { roomId: row.room_id, messageId: answer ? `${messageId}:answer` : messageId }, audiencePerson: row.asker });
+    groupRooms.publish({ type: "unread.changed", roomId: row.room_id, data: { roomId: row.room_id }, audiencePerson: row.asker });
   }
   function flushSoon(link: HubLinkContext, attempt = 0): void {
     const t = setTimeout(() => {
@@ -598,8 +716,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, features: Object.freeze([...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, features: Object.freeze(["rooms-v1", ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
-    async close() { closed = true; grantSearch.close(); for (const end of streams) end(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
+    async close() { closed = true; grantSearch.close(); for (const end of streams) end(); groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }
