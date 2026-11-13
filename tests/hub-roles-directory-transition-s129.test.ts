@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { roleAuthorityWorld } from "./support/hub-role-authority-rig.js";
 import { createHubDirectorySettingsDecision, HUB_DIRECTORY_SETTINGS_MIGRATION, type HubDirectoryDecisionRequest } from "../src/hub/settings-directory-decision.js";
-import { inspectHubDirectoryDecisionProof, type HubDirectoryDecisionProof } from "../src/hub/directory-decision-proof.js";
+import { withHubDirectoryDecisionProof, inspectHubDirectoryDecisionProof, type HubDirectoryDecisionProof } from "../src/hub/directory-decision-proof.js";
 import { createHubRoleAuthorizationClock } from "../src/hub/roles/clock.js";
 import { createHubManagementAuthority } from "../src/hub/roles/authority.js";
 
@@ -152,6 +152,17 @@ describe("S129 explicit administration decision authority", () => {
 });
 
 describe("S129 exact synchronous decision frames", () => {
+  it("refuses inspection and permit use after a successful frame returns with every SQL row unchanged", async () => {
+    const w = await world(true, true), permit = await w.authority.require(w.ctx.ctx, "hub.admin"); let proof: HubDirectoryDecisionProof | undefined;
+    const before = w.db.serialize();
+    w.db.transaction(() => withHubDirectoryDecisionProof({ db: w.db, transport: w.store, hubId: w.hubId, request: w.input,
+      beforeRaw: JSON.stringify(w.policy) }, captured => { proof = captured; permit.assertDirectoryDecision!(captured); return 100; }))();
+    expect(w.db.serialize()).toEqual(before);
+    const code = (work: () => unknown) => { try { work(); return null; } catch (error) { return (error as { code?: string }).code; } };
+    expect(w.db.transaction(() => code(() => inspectHubDirectoryDecisionProof(proof!, { db: w.db, hubId: w.hubId })))()).toBe("unavailable");
+    expect(w.db.transaction(() => code(() => permit.assertDirectoryDecision!(proof!)))()).toBe("unavailable");
+    expect(w.db.serialize()).toEqual(before);
+  });
   it("exposes two distinct exact views only during their owning callback", async () => {
     const w = await world(true), proofs: HubDirectoryDecisionProof[] = [], phases: string[] = [];
     expect(w.decision.administrationProof()).toBeNull();
