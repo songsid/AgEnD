@@ -1,0 +1,494 @@
+{
+  "head": "94f5433ccff2be2640d43c436ce168ddbb98d319",
+  "tree": "5225c03c106b064074e5ba0e00b8ef8ed8c08a99",
+  "trackedDirty": "",
+  "mode": "before",
+  "base": "34bd23bdef54628059744044b79e43ee0d50749c",
+  "inputDigests": {
+    "4568b472e8b5c207c5ebe455fea25f9c6f9744159ed6ee1dc2a844167a4a6af7": [
+      "src/general-knowledge/skills/hub/SKILL.md"
+    ],
+    "2ee175f0895ee8112ffe37480ddcbef56c42540527325ffce924b1b9e79681ac": [
+      "src/hub/buttons.ts"
+    ],
+    "fb1914718fde848e289e95394dc6a437579a1e3cb176ea3a7705b31674e6bf21": [
+      "src/hub/catalog.ts"
+    ],
+    "8ff6832f3d5b2e17a5d8b9fffac43aba418533a959207b83bcde68641094b993": [
+      "src/hub/compose/server.ts"
+    ],
+    "cbdab7569e2581375b8fc5fb20af13b86795f6b115069db3be3fb3e15d1e1b49": [
+      "src/hub/directory/directory.ts"
+    ],
+    "f7feef6cba1601b6e58ccc07589c8703272b355be0e6f7e04206d39f5116d3b4": [
+      "src/hub/directory/types.ts"
+    ],
+    "157e26bdbca7a90a05e007cf9b596d4306dcb6d32cc33eb2dbd9621ce4aec1c0": [
+      "src/hub/grant-access.ts"
+    ],
+    "2f08cd63d95a28542849df9b0df7e87470926dc6f9f08d803ecde0c3a4fa1a5f": [
+      "src/hub/grant-search.ts"
+    ],
+    "40d711e25cf0dee05f71734bfb6d28b79d3596318f6950b00b5e91fc8df140bb": [
+      "src/hub/group-policy/admin-impact.ts"
+    ],
+    "798cf0f58a576fcc9e0bef07040133ee0f95fda5945d966b412161580a417264": [
+      "src/hub/group-policy/impact-inventory.ts"
+    ],
+    "08960db9f876596334aabfb8fa95f8aa4b68bd71464d10c5960648a9a2b5b27b": [
+      "src/hub/http/compose.ts"
+    ],
+    "6ea14d7b63b100db40634bca674c5c3de592adb12c0f92268205b0497414a48e": [
+      "src/hub/http/core.ts"
+    ],
+    "a385a373479c8dbe3bc3f6f7619dec5af763725e468b45ea2a5f87581d096508": [
+      "src/hub/http/deps.ts"
+    ],
+    "6d895af57058b467ee7e5757d1585e75b279ef2f997bf38506aeafd108c4c351": [
+      "src/hub/http/schema.ts"
+    ],
+    "6b90dd038bab9050cf9ee21a782824eb7a5ba645549269da2156fa0771dde263": [
+      "src/hub/policy.ts"
+    ],
+    "531ad380acda33b5959b81999e194fe455d177316510bcc82d21f38301dbc45d": [
+      "src/hub/quota.ts"
+    ],
+    "9d71fdb2c14ab9425f5f0e3c2ac9f051f236de91c4308badb1cf29fbfb788aa7": [
+      "src/hub/roles/change.ts"
+    ],
+    "a262adcbc4ff40815e6ed847c2642c3e2c2d8462c722b16221b8925b1c76aaec": [
+      "src/hub/roles/delegation.ts"
+    ],
+    "ffd6fb47ef95ccecc3b4e282cd891ad38a5d104ffaa344e220cfab2c0dfd29bd": [
+      "src/hub/roles/evaluate.ts"
+    ],
+    "dd743de54979e05af69c8c67c451a6cfc012dfd04b72a0cb6c5c5572f693020d": [
+      "src/hub/roles/expiry.ts"
+    ],
+    "60b41ed514b99675f4828a2ea813b0904e3639fcc89b4970c87ce402b584c78a": [
+      "src/hub/roles/model.ts"
+    ],
+    "e2a649f2b630702368a422cac1756e0dd267d3228cce6a81737eb3908bee9884": [
+      "src/hub/roles/writer.ts"
+    ],
+    "95d5b07e2f212574cc7ce88869a9858064514b66d7a92dba50a48d0078bb4ed5": [
+      "src/hub/rooms.ts"
+    ],
+    "6338fdbd23f8cbe2d262b74606814fc09bcf65346acd37fa1952b50ff8bc87af": [
+      "src/hub/types.ts"
+    ],
+    "63dc3fc3b5efd79c0007a10af76a90246a55c8e02ae2fa701eee13f59a1b9a9c": [
+      "src/ui/hub-client.js"
+    ],
+    "812b9a889b9596e697058008b99c7e98282aedcb944c4b7fe0a4053774fe2cc5": [
+      "src/ui/hub-grant-picker.js"
+    ],
+    "b2dbde89981e82b69cc258f7b932ad875a175af25274574463fda7bff89faf2a": [
+      "src/ui/hub-group-search.js"
+    ],
+    "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f": [
+      "src/ui/panel-hub.js"
+    ],
+    "f841f955dbb644b5f5f4c419c9184b8c819953cd6aa242ee9d967d81b37f69e9": [
+      "tests/helpers/hub-s3b-rig.ts"
+    ],
+    "e9f21752619c7ad281806f8ecf4e9ef4c7d0f1552d3ffd9d7a4e7faa5517d2e9": [
+      "scripts/manual/hub-group-ask-m3016/browser.mts"
+    ]
+  },
+  "servedDigests": {
+    "ffc4f54dd8a2511eeb931a77d25d65ddd0a187e414b9deabe9290184399fe22d": [
+      "/assets/theme.js"
+    ],
+    "cd62669f84666fb16e49cf63ebdc8376d3965106eeaf0531744372bdcf70f3c9": [
+      "/assets/tokens.css"
+    ],
+    "68dd23194827d7a83f532b1d7b3161fd27a2e696ef14cf6d593b0a65e3ad9ce8": [
+      "/assets/loading.css"
+    ],
+    "db5c3a265b094ac0a85ac059efeee467577696f4eb909626dd1d1dc8ea382c04": [
+      "/assets/app.css"
+    ],
+    "ca27cd9ab9bbee60a0ecb427fa05d5322c1eab3606154bf64a8947948ae6154c": [
+      "/assets/app.js"
+    ],
+    "d223ea3ca62d93e8991f3a92efa92de9eb0bb5ad4e72b11ce18f286e372580c2": [
+      "/assets/app-prefs.js"
+    ],
+    "8949e374c68b9252d5ee3ee788ec1b0340d12c4a6999ef8b734fe89562266bd9": [
+      "/assets/app-html.js"
+    ],
+    "5b71d57a353d8e3cde1c178cb1020b2ebda68a463c57ac579d522d6b2ba58c8b": [
+      "/assets/app-shell.js"
+    ],
+    "feb36efef72b92a5510f881902c0a08140d6940f62304766e3857d13f5e188fa": [
+      "/assets/app-swipe.js"
+    ],
+    "601074179fe7c9156d05d507f28e3d22f93b49aba43f8d903b40ae4b8b1bba8d": [
+      "/assets/ui-toast.js"
+    ],
+    "cc0afbe551e1b5857bcfb79447bc24ce59b7a1988972101718c2994b49a95842": [
+      "/assets/app-store.js"
+    ],
+    "0ad785a7cf88d1d46dc4b747aaebb3e969945e46b9c63a1dbc50f444536832e4": [
+      "/assets/app-needs.js"
+    ],
+    "49234d50df7b41e005d0221a1a5b5614d30f9b27a9c0d82312c56c694184b58b": [
+      "/assets/app-stream.js"
+    ],
+    "3c59e5ba9039ad05e18be88b71270c232f6d73bac2dc681cdec70c1825f7027a": [
+      "/assets/text-undo.js"
+    ],
+    "5dfa69d440e16e949c469acbe9945daa6fe65bd41320d18041d6ee9981171d5f": [
+      "/assets/app-nav.js"
+    ],
+    "d89c2578c4f45f9619ddd7529041d7e774474ead7f657c93d1eec335f6fa4bdd": [
+      "/assets/app-route.js"
+    ],
+    "6f7fd589ed235fb3081d3097b4669cee511a16ad3a3b5e363d94ab4b2cefd9e5": [
+      "/assets/app-i18n.js"
+    ],
+    "d38412dd2327ffb4a98248ab8a847eb6abcf18470cd8f5f9635a20df3aace05e": [
+      "/assets/owner-css.js"
+    ],
+    "886b72a54b88f65fbc27a9b86fe786d5a1f2774a24c0cc16dddfd1c6ce1fc2b4": [
+      "/assets/app-themes.js"
+    ],
+    "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8": [
+      "/assets/preact.module.js"
+    ],
+    "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4": [
+      "/assets/htm.module.js"
+    ],
+    "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38": [
+      "/assets/preact-hooks.module.js"
+    ],
+    "c1fe9587644da4bb37524c6dcd1a64c95b6acd9cff4ad5b78eca9844c6f16c5b": [
+      "/assets/ui-confirm.js"
+    ],
+    "6f55664e3748e3837474f252035ba1dccac885385ae57ebea6be5e464deb3f50": [
+      "/assets/ui-icons.js"
+    ],
+    "e3e03f14648322ac8c159ebc16de5c44ad02be82bd83d79478e71fae91e52c5a": [
+      "/assets/identity-color.js"
+    ],
+    "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec": [
+      "/assets/app-session.js"
+    ],
+    "25c22c87ff575b89b52ef1ab58ff921d02aaf2744122e064d824a1fa2fd95ff6": [
+      "/assets/ui-dialog.js"
+    ],
+    "9d70a93221aa1c0499cd01ead1dd548a465e2388c5c63049457cc4efd65a7b64": [
+      "/assets/instance-nav.js"
+    ],
+    "fa17fa458645e5f9b747163854449c1a5cb0c45d51379fea86ff601dc03e682d": [
+      "/assets/header-tools.js"
+    ],
+    "0b675a3860b2f10a40d9557b18d609cb60ddd0e766b6cf9c1b2f27211d930596": [
+      "/assets/app-update.js"
+    ],
+    "aefbba84067328f2bb16c86bdbe7328cf125f63f40795ee88b3b87e09c27f946": [
+      "/assets/side-panel.js"
+    ],
+    "0d9ae9002f0cf2a8388ea9177430ce382b91abe630ea68f3a7579c80d4c28c31": [
+      "/assets/ui-states.js"
+    ],
+    "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6": [
+      "/assets/app-ctx.js"
+    ],
+    "8e90812b94bad0b93c744a0daa3fc4fe6e02249106604ca013c9d6df4ef25a43": [
+      "/assets/agent-widget.js"
+    ],
+    "46dc2cb17194565a8ed15d5c3477954c98323bfd4874cdbf6ee69df4b34939e1": [
+      "/assets/settings-width.js"
+    ],
+    "3c87a7c99b39adb87e624cd7292b37547e33e418b955466109e178795af927b1": [
+      "/assets/web-authorize.js"
+    ],
+    "ca93209e235040a5ff9ee7f73a39b98fc9412c9a12e46d812a961d6eec95578d": [
+      "/assets/device-roles.js"
+    ],
+    "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48": [
+      "/assets/ui-menu.js"
+    ],
+    "f73502bef7f44e8fe028b1bf9f4ee304af6d6318be61523006e316e38638b4d8": [
+      "/assets/view-roster-store.js"
+    ],
+    "9897ad69ca4983e96ede71578f6b53a47b6f2a6bcb53832aba5d8e1bcc1542ae": [
+      "/assets/machine-name.js"
+    ],
+    "23f03826cec94cb9bd940325b6f4c14d66faaef0473fb34cfad71cb682757d52": [
+      "/assets/view-strings.js"
+    ],
+    "80827afbb28969692e1575339c9e4b54a372812653ede0221a361a2c6a14ad56": [
+      "/assets/side-rail.js"
+    ],
+    "b7cb7d8f4df081e3d514c869cf6f99d8f64b0b730ddecaf955a8d0ccedf3ca43": [
+      "/assets/usage-dialog.js"
+    ],
+    "01e6cd78752e902232b60c87fdb5281947dbdc11ae9b1a09b17e9e0241d48c41": [
+      "/assets/read-stream.js"
+    ],
+    "2766db3d5d230dd18fdacdf44719c49ba9e25eff02ffb500c6345dcfee090200": [
+      "/assets/usage-meter.js"
+    ],
+    "c963526317c84f7ff9a4f29d3e11aa213b8bb54aaee1a91756c5b6e924e2e83c": [
+      "/ui/js/panel-hub.js"
+    ],
+    "696e5db1efc6388e3059b9651e3e6a9fa8d4f279010eb53152b85d293ad9a112": [
+      "/ui/js/hub-owner-strings.js"
+    ],
+    "7840122cfb793af9b9ae44e9081252064c8993274d3fc0a9e485c908259b9f58": [
+      "/ui/js/hub-company-join.js"
+    ],
+    "abfdaf90a367c11b1c229e6b5d8e00b75ead6b1b799fcfdfcb7d28414616c2e1": [
+      "/ui/js/hub-join-approval.js"
+    ],
+    "e11e7cd022cb23c758726f1cd7f07d530608ab38f1907085ae86a8926ac29676": [
+      "/ui/js/hub-company-join-strings.js"
+    ],
+    "4c48aed807c6249f2f7695be97cf773ddabb8e4c99a47ce496ad2c3d0d0383e3": [
+      "/ui/js/hub-joincode-flow-strings.js"
+    ],
+    "90f089c96321bdf5a45be4921fb6133f9203f0aa4826e796c02f1dc9dcb8896e": [
+      "/ui/js/hub-directory-notice-strings.js"
+    ],
+    "a65e96967cc72e25e6f14fb286b430c95cf6a9209316982f648a97dba431ac13": [
+      "/ui/js/hub-quick-pairing.js"
+    ],
+    "c4d0a6cf1b12d7fde9bb1e30ab005da1ca9c7916b693cc86e9bf0d28f5a8f9eb": [
+      "/ui/js/hub-directory-notices.js"
+    ],
+    "1f159b7a9c9e2ed01a7ab1468f2990101c69162f21210b3ca78d2d170a4ae076": [
+      "/assets/preview-panel.js"
+    ],
+    "20b0ec2db04b564054aee01c3b013b45eb318314ea1e9e38826f36efe11d4227": [
+      "/assets/chat-composer.js"
+    ],
+    "cc1690aa8931b111e35166fd8f29120c3a7a4ec7a6720108dc7b7ef7e515ac8c": [
+      "/assets/chat-strings.js"
+    ],
+    "63dc3fc3b5efd79c0007a10af76a90246a55c8e02ae2fa701eee13f59a1b9a9c": [
+      "/ui/js/hub-client.js"
+    ],
+    "7903f0a70ae974c4f562d54efdbf698e4186293db3a2c6067ed1557ece11d76f": [
+      "/ui/js/hub-chat-strings.js"
+    ],
+    "e8124f3778fdb4eb70ebf5077e282f01e464a6945dcfd9730d085757dbf3209b": [
+      "/assets/chat-thread.js"
+    ],
+    "f12b3db0cc675c4fde91b793641cd43b8bd9ea1d87afe318bbf6c90cb3a737f2": [
+      "/ui/js/hub-strings.js"
+    ],
+    "63d4e7dffad21cb5262d4feb959ed9d04d1c79b68b94dc83a54e9ae2088433c4": [
+      "/ui/js/hub-grant-strings.js"
+    ],
+    "1be8bee71352ed41e8b71592b6acc404829f574327f3ab2aab433c64ace4a046": [
+      "/ui/js/hub-read-strings.js"
+    ],
+    "b4cf4c2c4976b3b0ba5d1440579bd89c7b54f1231a33a38b1aef4bd49bdc14d1": [
+      "/ui/js/hub-quota.js"
+    ],
+    "25add8f85a324c042177876f70383a90b8ad4432fc184fe1da0494a7dd8edb8f": [
+      "/ui/js/hub-chat-store.js"
+    ],
+    "a9e9e71b8e64b54a69e3265395948d15f512f811a03353ccf3c0fa04e2788f2a": [
+      "/assets/page-head.js"
+    ],
+    "b653dd4b49b92b91c1db71d6e652a08da06cc8164db5dfad4bdb46fe6ef711d5": [
+      "/ui/js/hub-preview.js"
+    ],
+    "1ae6496f5838934df8008c782b0f249404a3d3dfdff96769c39879f24a2b6324": [
+      "/ui/js/hub-enrolment-code-strings.js"
+    ],
+    "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764": [
+      "/ui/js/hub-join-queue.js"
+    ],
+    "126c0d26660264607f8c497420e57e3319abacb0839dea105cfe3f2648c09975": [
+      "/ui/js/hub-join-steps.js"
+    ],
+    "dedbf75e56c51d5a8d22c449a2869bc04e7c5a9e59bda8d5e0c139e856ba5c09": [
+      "/ui/js/hub-attachments.js"
+    ],
+    "2419460a300b9aae37024348e9925d7fe142b0e3cd8d20f0c429ab24903e1d22": [
+      "/assets/chat-render.js"
+    ],
+    "d179862fd1d2535bf1c06776cb20cce601d874d5fa42e47eca0fbd7835023ff1": [
+      "/assets/preview.js"
+    ],
+    "0a6b59ad416fe04765c9ec8fcb06aea0d75f1c22cededf746415377fe19c4c35": [
+      "/ui/js/hub-quick-strings.js"
+    ],
+    "45ce6f2b941c6f0d8e154c51e7d6977cea9241a6ddfc03c6bf8b848323448643": [
+      "/assets/html-attachment.js"
+    ],
+    "8e2665b14f5df60a7698ba5852a5d217257c495bd4c5c4e81b70acda8c65431f": [
+      "/assets/preview-panel-actions.js"
+    ],
+    "6a1fd446d3200fa3ebebafec1f814c95b365315d1e7553924a2bf587a9553925": [
+      "/assets/preview-pages.js"
+    ],
+    "ca3dacd41ddf8284ce6542f529cdacb9fc333722f41d1ce2beb6fb019e4b8538": [
+      "/assets/chat-time.js"
+    ],
+    "31a90eea31b3f957965ffce28897cf6fb1571698ecc4a320dd95d310c4c37d3b": [
+      "/assets/chat-md-strings.js"
+    ],
+    "0ed438dca5c96bedafd603761e786287a8465a9fc7c6bda1aca1fb6affb65063": [
+      "/ui/js/hub-button-actions.js"
+    ],
+    "0583433c1027b8ca25410392c623e4f83f92dd1db6f62f46e40be23b71431814": [
+      "/assets/preview-versions.js"
+    ],
+    "b2dbde89981e82b69cc258f7b932ad875a175af25274574463fda7bff89faf2a": [
+      "/ui/js/hub-group-search.js"
+    ],
+    "dbb490b50f06f45d538259cad57f5d130ed29c17f4295d8d3c4c848b037190fb": [
+      "/assets/hub-quota.css"
+    ],
+    "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472": [
+      "/assets/hub.css"
+    ],
+    "e8d9234628f8ac9e1e5a9732d15b6ddefc00fa2eba98d2a32fe52185164264bc": [
+      "/assets/hub-owner.css"
+    ],
+    "06a788df08807cbc7b124add1103b36355ad4f411357cbddb3ca338feb9701be": [
+      "/assets/hub-chat.css"
+    ],
+    "bff809d11b0869cfa0b05055fbe80a2190de5cff388d5f13d74bb71aa6e5f5cb": [
+      "/assets/hub-signin.css"
+    ]
+  },
+  "substitutions": [
+    {
+      "ref": "34bd23bdef54628059744044b79e43ee0d50749c",
+      "path": "src/ui/panel-hub.js",
+      "digest": "c963526317c84f7ff9a4f29d3e11aa213b8bb54aaee1a91756c5b6e924e2e83c"
+    }
+  ],
+  "cases": [
+    {
+      "tag": "before-desk-light-en",
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "legacy": true,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 331,
+              "width": 480,
+              "height": 338,
+              "top": 331,
+              "right": 923,
+              "bottom": 669,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 613,
+                "width": 77.671875,
+                "height": 36,
+                "top": 613,
+                "right": 826.09375,
+                "bottom": 649,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 613,
+                "width": 68.90625,
+                "height": 36,
+                "top": 613,
+                "right": 903,
+                "bottom": 649,
+                "left": 834.09375
+              }
+            ]
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": []
+          }
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "name": "before-desk-light-en matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-en empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-en allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "before-desk-light-en no real recipient sign-in",
+      "ok": true
+    }
+  ],
+  "errors": [],
+  "requests": [
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/fd218261-65d8-4b81-998e-f8272780d6ff/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    }
+  ],
+  "scope": "Production HTTPS/cookie/CSRF/SQLite/owner UI. Inert directory GUID facts and authenticated member boundary. Real fixture grant writes/revokes, no real AD/account/Fleet/model execution. Before is retained base panel on candidate server, not a baseline server execution.",
+  "font": "MicrosoftYaHeiMono-Enhanced.ttf: \"Microsoft YaHei Mono\" \"Regular\"",
+  "browser": "156.0.8078.4",
+  "status": "FAIL",
+  "error": "Error: Paused: host load above10\n    at <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-group-ask-m3016/scripts/manual/hub-group-ask-m3016/browser.mts:40:29)",
+  "cleaned": true
+}
