@@ -81,6 +81,27 @@ describe("S129 preparation-aware directory controller", () => {
     try { expect(w.control.read(w.context).reauthentication).toBe("recent"); }
     finally { await w.finish(); }
   });
+  it("refuses a bare auxiliary actor before any attestation read or candidate work", async () => {
+    const w = await world(); delete w.context.preparation;
+    try {
+      expect(() => w.control.read(w.context)).toThrow();
+      await expect(w.control.prepare(w.request(), w.context)).rejects.toThrow();
+      expect(w.recent).not.toHaveBeenCalled(); expect(w.probe).not.toHaveBeenCalled();
+      expect(w.candidate.checkEligibility).not.toHaveBeenCalled(); expect(w.commit).not.toHaveBeenCalled();
+    } finally { await w.finish(); }
+  });
+  it("refuses a forged preparation before the session adapter", async () => {
+    const w = await world(); w.context.preparation = {} as NonNullable<HubDirectoryProofContext["preparation"]>;
+    try { expect(() => w.control.read(w.context)).toThrow(); expect(w.recent).not.toHaveBeenCalled(); }
+    finally { await w.finish(); }
+  });
+  it("refuses simultaneous preparation and effect witnesses instead of choosing one", async () => {
+    const w = await world();
+    const permit = await w.core.deps.management!.require(w.selected.ctx, "hub.admin");
+    w.context.administration = bindHubDirectoryAdministration(permit, w.actor, w.source);
+    try { expect(() => w.control.read(w.context)).toThrow(); expect(w.recent).not.toHaveBeenCalled(); }
+    finally { await w.finish(); }
+  });
   it("uses the recent auxiliary sign-in for a preparation without asking for another password", async () => {
     const w = await world();
     try {
@@ -156,6 +177,20 @@ describe("S129 preparation-aware directory controller", () => {
       w.eligible.mockResolvedValueOnce({ eligible: false, reason: "unavailable" });
       await expect(w.engine.apply(draft.ref, {}, w.context)).rejects.toMatchObject({ code: "unavailable" });
       expect(w.candidate.checkEligibility).not.toHaveBeenCalled(); expect(w.commit).not.toHaveBeenCalled();
+    } finally { await w.finish(); }
+  });
+  it("preserves the preparation through Save's attestation before refusing fresh old-directory ineligibility", async () => {
+    const w = await world();
+    try {
+      const draft = await w.control.prepare(w.request(), w.context);
+      const rotation = w.sessions.prepareDirectoryRotation(w.selected.token, w.actor,
+        { preparation: w.context.preparation!, source: w.source });
+      w.eligible.mockResolvedValueOnce({ eligible: false, reason: "unavailable" });
+      await expect(w.control.apply({ ref: draft.ref }, w.context, {
+        rotation, capture() { throw Error("refused Save captured a response"); },
+      })).rejects.toMatchObject({ code: "unavailable" });
+      expect(w.recent).toHaveBeenCalledWith(w.actor, expect.objectContaining({ preparation: w.context.preparation }));
+      expect(w.candidate.checkEligibility).not.toHaveBeenCalled(); expect(w.prepare).not.toHaveBeenCalled(); expect(w.commit).not.toHaveBeenCalled();
     } finally { await w.finish(); }
   });
   it.each(["image", "epoch", "root", "frame", "signout", "time", "lifetime"] as const)("withholds a read when %s changes during authentication lookup", async mode => {
