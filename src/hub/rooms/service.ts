@@ -29,6 +29,11 @@ export class HubGroupRooms {
   constructor(private readonly core: HubCore) {}
   has(id: string): boolean { return this.core.atomic(db => !!db.prepare("SELECT 1 FROM hub_group_rooms WHERE id=?").get(id)); }
   subscribe(listener: (event: RoomEvent) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
+  /** Cheap queue admission only; event() still freshly authorizes and projects the eventual disclosure. */
+  interested(person: string, event: RoomEvent): boolean {
+    if (event.removedPerson) return event.removedPerson === person;
+    return this.core.atomic(db => !!db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=?").get(event.roomId, person));
+  }
   close(): void { this.listeners.clear(); }
   /** The direct-chat receiver shares this stream without changing its grant-backed delivery path. */
   publish(event: RoomEvent): void { this.emit(event); }
@@ -67,7 +72,7 @@ export class HubGroupRooms {
     const counts = db.prepare("SELECT kind,COUNT(*) AS n FROM hub_room_members WHERE room_id=? GROUP BY kind").all(room.id) as { kind: string; n: number }[];
     const floor = member.joined_sequence;
     const last = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND sequence>=? ORDER BY sequence DESC LIMIT 1").get(room.id, floor) as PostRow | undefined;
-    const unread = (db.prepare("SELECT COUNT(*) AS n FROM hub_room_posts WHERE room_id=? AND sequence>=? AND sequence>? AND author_subject<>?")
+    const unread = (db.prepare("SELECT COUNT(*) AS n FROM hub_room_posts WHERE room_id=? AND sequence>=? AND sequence>? AND author_subject<>? AND author_kind<>'system'")
       .get(room.id, floor, member.read_sequence, member.subject) as { n: number }).n;
     const online = (db.prepare(`SELECT COUNT(*) AS n FROM hub_room_members m WHERE m.room_id=? AND m.kind='person' AND EXISTS
       (SELECT 1 FROM hub_sessions s WHERE s.person=m.subject AND s.state='active' AND s.expires_at>?)`).get(room.id, this.core.now()) as { n: number }).n;

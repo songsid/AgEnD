@@ -368,13 +368,18 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (path === "/hub/v1/rooms/events") {
       if (method !== "GET") throw new HttpError(405, "method");
       const streamSession = signedIn(), streamPerson = personKeyString(await guard(() => ctx.requirePerson()));
+      const requestedNotices = query.get("notices"), notices = deps.pairingNotices;
+      const noticeVersion = requestedNotices === "3" && deps.companyJoin ? 3 : requestedNotices === "2" || requestedNotices === "3" ? 2 : null;
+      const initialNotices = notices && noticeVersion ? await guard(() => notices.forSession(ctx, noticeVersion)) : null;
       if (streams.size >= 64 || !ctx.isCurrent?.()) throw new HubProtocolError("backpressure");
       res.writeHead(200, { ...API_HEADERS, "Content-Type": "text/event-stream; charset=utf-8", Connection: "keep-alive", "X-Accel-Buffering": "no" });
-      let ended = false, queued = 0, tail = Promise.resolve();
-      const close = () => { if (ended) return; ended = true; off(); clearInterval(heartbeat); streams.delete(close); res.end(); };
+      let ended = false, queued = 0, tail = Promise.resolve(), noticesRunning = false, noticesDirty = false;
+      let offNotices = () => {};
+      const close = () => { if (ended) return; ended = true; off(); offNotices(); clearInterval(heartbeat); streams.delete(close); res.end(); };
       const off = groupRooms.subscribe(event => {
         if (ended) return;
         if (event.audiencePerson && event.audiencePerson !== streamPerson) return;
+        if (!event.audiencePerson && !groupRooms.interested(streamPerson, event)) return;
         if (++queued > 64) { close(); return; }
         tail = tail.then(async () => {
           if (ended) return;
@@ -393,8 +398,24 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           if (data && !res.write(`event: ${event.type}\ndata: ${JSON.stringify(data)}\n\n`)) close();
         }).catch(close).finally(() => { queued--; });
       });
+      const pushNotices = async () => {
+        if (ended || !notices || !noticeVersion) return;
+        if (noticesRunning) { noticesDirty = true; return; }
+        noticesRunning = true;
+        try {
+          do {
+            noticesDirty = false; const rows = await notices.forSession(ctx, noticeVersion);
+            if (ended || !live() || !ctx.isCurrent?.()) return close();
+            if (!res.write(`event: notices\ndata: ${JSON.stringify({ notices: rows })}\n\n`)) return close();
+          } while (noticesDirty);
+        } catch { close(); } finally { noticesRunning = false; }
+      };
       const heartbeat = setInterval(() => { if (!live() || !ctx.isCurrent?.()) close(); else if (!res.write(": heartbeat\n\n")) close(); }, 15_000); heartbeat.unref();
-      streams.add(close); res.on("close", close); res.write(": connected\n\n"); return;
+      try { if (notices && noticeVersion) offNotices = notices.subscribe(() => void pushNotices()); }
+      catch { close(); return; }
+      streams.add(close); res.on("close", close);
+      if (initialNotices) res.write(`event: notices\ndata: ${JSON.stringify({ notices: initialNotices })}\n\n`);
+      res.write(": connected\n\n"); return;
     }
     if (path === "/hub/v1/rooms") {
       if (method === "GET") { signedIn(); const view = await guard(() => rooms.listAuthorized(ctx));

@@ -4,6 +4,8 @@ Track R follows `hub-rooms-split.md` at 08ca97d67, `hub-rooms-ux.md` at e9b189c6
 
 The new client's `roomList()` uses `GET /hub/v1/rooms?v=2` for the combined list. The original URL remains direct-only for cached clients that render every row as an agent conversation. Older servers ignore the query and the new client's existing legacy normalizer handles their direct rows.
 
+The client's single EventSource uses `/hub/v1/rooms/events?notices=2|3`. With pairing notices available it receives the same initial `{notices}` snapshot and committed updates as the old notices stream. A request for 3 downgrades to 2 without the session's enrolment-code feature; missing or invalid parameters send no notice frames. System messages stay in history but do not count as unread. Room membership is checked cheaply before events enter a viewer's queue and freshly again before disclosure.
+
 ## Available
 
 - Create/list/get group rooms; the configured administrator creates rooms in this slice.

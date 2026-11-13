@@ -3,6 +3,7 @@ import { afterEach, expect, it } from "vitest";
 import { createHash, randomUUID } from "node:crypto";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
 import { personKeyString } from "../src/hub/identity.js";
+import { HubPairingNotices, HUB_PAIRING_NOTICES_MIGRATION } from "../src/hub/pairing-notices.js";
 
 let r: Awaited<ReturnType<typeof s3bRig>> | undefined;
 afterEach(async () => { await r?.close(); r = undefined; });
@@ -18,7 +19,7 @@ async function world() {
 it("creates a group room with the creator as manager and lists it only for its members", async () => {
   const w = await world();
   const list = await r!.call(w.a, "GET", "/hub/v1/rooms?v=2");
-  expect(list.json).toMatchObject({ me: { canCreateRooms: false }, invitations: 0, rooms: [{ id: w.id, kind: "group", name: "Weekly", people: 3, agents: 0, unread: 1 }] });
+  expect(list.json).toMatchObject({ me: { canCreateRooms: false }, invitations: 0, rooms: [{ id: w.id, kind: "group", name: "Weekly", people: 3, agents: 0, unread: 0 }] });
   expect((await r!.call(w.c, "GET", "/hub/v1/rooms?v=2")).json.rooms).toEqual([]);
   expect((await r!.call(w.a, "GET", "/hub/v1/rooms")).json).toEqual({ rooms: [] }); // cached direct renderer
   const detail = await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.id}`);
@@ -116,7 +117,72 @@ it("retains room membership, history and unread across an HTTP remount", async (
   const posted = await r!.call(w.a, "POST", `/hub/v1/rooms/${w.id}/messages`, { text: "retained", idempotencyKey: randomUUID() });
   await r!.restartHttp();
   expect((await r!.call(w.b, "GET", `/hub/v1/rooms/${w.id}/messages`)).json.messages.at(-1).id).toBe(posted.json.id);
-  expect((await r!.call(w.b, "GET", "/hub/v1/rooms?v=2")).json.rooms[0].unread).toBe(2);
+  expect((await r!.call(w.b, "GET", "/hub/v1/rooms?v=2")).json.rooms[0].unread).toBe(1);
+});
+
+it.each([{ version: "3", enrolment: true }, { version: "2", enrolment: false }, { version: "3", enrolment: false }])("the single rooms stream includes initial notices and updates: %j", async ({ version, enrolment }) => {
+  r = await s3bRig(); const admin = await r.signIn("admin");
+  HUB_PAIRING_NOTICES_MIGRATION.up(r.db);
+  const notices = new HubPairingNotices({ db: r.db, store: r.store, administrator: r.admin, directory: r.directory,
+    audit: { appendInTransaction(record, db) { db.prepare("INSERT INTO audit_rows VALUES(?)").run(JSON.stringify(record)); return record; } },
+    current: () => r!.httpDeps.current().serverEnabled(), transport: () => null });
+  // Availability-only marker: no company-join method is called by these room/notices routes.
+  if (enrolment) r.httpDeps.companyJoin = {} as never;
+  r.httpDeps.pairingNotices = notices; await r.restartHttp();
+  const seed = (source: "manual" | "code" = "manual") => {
+    const id = randomUUID(), fleetId = randomUUID(), body = { id, fleetId, generation: 1, label: "Fleet", at: 123, source, ...(source === "code" ? { codeId: randomUUID() } : {}), revoked: true };
+    r!.db.transaction(() => {
+      r!.db.prepare("INSERT INTO hub_pairing_notices VALUES(?,?,?,?,?,?)").run(id, fleetId, 1, personKeyString(r!.admin), "another-session", JSON.stringify(body));
+      r!.db.prepare("INSERT INTO hub_pairing_notice_targets VALUES(?,'person',?,'queued')").run(id, personKeyString(r!.admin));
+    }).immediate(); return id;
+  };
+  const initial = seed(), code = seed("code"), stop = new AbortController(), deadline = setTimeout(() => stop.abort(), 3000);
+  try {
+    const response = await fetch(`${r.base}/hub/v1/rooms/events?notices=${version}`, { headers: { Cookie: admin.cookie }, signal: stop.signal }), reader = response.body!.getReader();
+    expect(response.status).toBe(200); let events = "";
+    const until = async (id: string) => { while (!events.includes(id)) { const chunk = await reader.read(); if (chunk.done) throw new Error("stream ended"); events += new TextDecoder().decode(chunk.value); } };
+    await until("\n\n"); expect(events).toContain("event: notices"); await until(initial);
+    if (version === "3" && enrolment) expect(events).toContain(code); else expect(events).not.toContain(code);
+    const update = seed(); notices.committed(); await until(update);
+    expect(events.match(/event: notices/g)).toHaveLength(2);
+  } finally { clearTimeout(deadline); stop.abort(); notices.close(); }
+});
+
+it.each(["", "?notices=invalid"])("rooms streams without a valid notices parameter send only room events: %s", async suffix => {
+  const w = await world(), stop = new AbortController(), deadline = setTimeout(() => stop.abort(), 3000);
+  HUB_PAIRING_NOTICES_MIGRATION.up(r!.db);
+  const notices = new HubPairingNotices({ db: r!.db, store: r!.store, administrator: r!.admin, directory: r!.directory,
+    audit: { appendInTransaction(record, db) { db.prepare("INSERT INTO audit_rows VALUES(?)").run(JSON.stringify(record)); return record; } },
+    current: () => r!.httpDeps.current().serverEnabled(), transport: () => null });
+  r!.httpDeps.pairingNotices = notices; await r!.restartHttp();
+  const noticeId = randomUUID(), fleetId = randomUUID();
+  r!.db.prepare("INSERT INTO hub_pairing_notices VALUES(?,?,?,?,?,?)").run(noticeId, fleetId, 1, personKeyString(w.alex), "another-session",
+    JSON.stringify({ id: noticeId, fleetId, generation: 1, label: "Other notice", at: 123, source: "manual", revoked: true }));
+  r!.db.prepare("INSERT INTO hub_pairing_notice_targets VALUES(?,'person',?,'queued')").run(noticeId, personKeyString(w.alex));
+  try {
+    const response = await fetch(`${r!.base}/hub/v1/rooms/events${suffix}`, { headers: { Cookie: w.a.cookie }, signal: stop.signal }), reader = response.body!.getReader();
+    notices.committed();
+    await r!.call(w.a, "POST", `/hub/v1/rooms/${w.id}/messages`, { text: "room-only marker", idempotencyKey: randomUUID() });
+    let text = ""; while (!text.includes("room-only marker")) { const chunk = await reader.read(); if (chunk.done) throw new Error("stream ended"); text += new TextDecoder().decode(chunk.value); }
+    expect(text).not.toContain("event: notices");
+  } finally { clearTimeout(deadline); stop.abort(); notices.close(); }
+});
+
+it("unrelated room traffic does not fill a viewer's SSE queue behind a held eligibility read", async () => {
+  const w = await world();
+  const own = await r!.call(w.admin, "POST", "/hub/v1/rooms", { name: "Cara room", people: [personKeyString(w.cara)] });
+  const stop = new AbortController(), deadline = setTimeout(() => stop.abort(), 5000);
+  let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; });
+  const eligibility = r!.directory.checkEligibility.bind(r!.directory); let holding = true;
+  try {
+    const response = await fetch(`${r!.base}/hub/v1/rooms/events`, { headers: { Cookie: w.c.cookie }, signal: stop.signal }), reader = response.body!.getReader();
+    r!.directory.checkEligibility = async key => { if (holding && key.objectId === w.cara.objectId) await held; return eligibility(key); };
+    for (let n = 0; n < 40; n++) expect((await r!.call(w.a, "POST", `/hub/v1/rooms/${w.id}/messages`, { text: `unrelated-${n}`, idempotencyKey: randomUUID() })).status).toBe(200);
+    holding = false; release();
+    await r!.call(w.admin, "POST", `/hub/v1/rooms/${own.json.room.id}/messages`, { text: "own final marker", idempotencyKey: randomUUID() });
+    let text = ""; while (!text.includes("own final marker")) { const chunk = await reader.read(); if (chunk.done) throw new Error("stream ended"); text += new TextDecoder().decode(chunk.value); }
+    expect(text).not.toContain("unrelated-");
+  } finally { holding = false; release(); clearTimeout(deadline); stop.abort(); }
 });
 
 it("keeps direct-chat grants, receipts and old history shapes alongside seam-1 messages", async () => {
