@@ -34,15 +34,3 @@ Choose your color scheme:        ╭──────────────�
 
   ↑/↓ Navigate · enter Confirm
                                                                                                               auto · Gemini 3.8 Flash · high
-
-
-
-
-
-
-
-
-
-
-
-
