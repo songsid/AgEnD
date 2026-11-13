@@ -150,7 +150,8 @@ export class ClaudeModelObserver {
     }
     const expected = this.expected;
     const returnsTo = this.state.active?.original ?? expected;
-    if (returnsTo && normalizeClaudeModel(record.served) === normalizeClaudeModel(returnsTo)) this.state.active = null;
+    if ((returnsTo && normalizeClaudeModel(record.served) === normalizeClaudeModel(returnsTo))
+      || (claudeModelId(this.state.configured) && normalizeClaudeModel(record.served) === normalizeClaudeModel(this.state.configured))) this.state.active = null;
     else if (allowInference && !this.state.active && expected && normalizeClaudeModel(record.served) !== normalizeClaudeModel(expected)) {
       this.state.active = { id: key, original: expected, served: record.served, cause: "observed", scope: "unknown", since: record.at };
     }

@@ -200,6 +200,7 @@ export class TranscriptMonitor extends EventEmitter {
           const session = this.source!.modelObservationSession?.();
           if (!session || record[1].sessionId !== session || record[1].at <= this.modelResetAt) continue;
           this.emit("model_context", session, undefined);
+          if (generation !== this.generation || this.source!.modelObservationSession?.() !== session) continue;
         }
         this.emit(record[0], ...record.slice(1));
       }

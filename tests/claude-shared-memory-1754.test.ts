@@ -3,7 +3,7 @@
  * start empty there and stay apart from every other instance's. Memory is knowledge, not an account — shared like the
  * instructions and skills (#1699 (a)): at a profile launch `<profile>/projects/<repo key>/memory` links to the shared
  * `<~/.claude>/projects/<repo key>/memory`. The key is the repository's root (a worktree's main checkout), as claude
- * keys memory. Never replaces anything real; no profile is today's launch, byte for byte.
+ * keys memory. Never replaces anything real; no profile preserves the legacy command after the common observation marker.
  *
  * Scratch AGEND_HOME and HOME, the real ClaudeCodeBackend.buildCommand; nothing starts a CLI or a fleet.
  */
@@ -145,9 +145,10 @@ describe("a profile launch links the project's memory to the shared one", () => 
 });
 
 describe("no profile: today's launch, nothing linked or created", () => {
-  it("the launch command is byte-identical and the shared config gets no projects/ entry", () => {
-    const TODAY = `CMUX_CLAUDE_HOOKS_DISABLED=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 /usr/bin/claude --settings ${inst}/claude-settings.json --mcp-config ${inst}/mcp-config.json --dangerously-skip-permissions`;
-    const cmd = backend().buildCommand(cfg(repo));
+  it("the legacy command is preserved after the observation marker and the shared config gets no projects/ entry", () => {
+    const b = backend();
+    const TODAY = `AGEND_CLAUDE_LAUNCH_ID=${b.modelObservationLaunch().id} CMUX_CLAUDE_HOOKS_DISABLED=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 /usr/bin/claude --settings ${inst}/claude-settings.json --mcp-config ${inst}/mcp-config.json --dangerously-skip-permissions`;
+    const cmd = b.buildCommand(cfg(repo));
     expect([cmd, existsSync(join(home, ".claude", "projects")), existsSync(join(agendHome, "credential-profiles"))]).toEqual([TODAY, false, false]);
   });
 });

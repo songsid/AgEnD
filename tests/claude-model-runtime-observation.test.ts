@@ -39,3 +39,13 @@ it("a native gap preserves typed evidence and suppresses inferred switches acros
  await f.monitor.pollIncrement(); expect(observer.snapshot()).toMatchObject({ lastServed: "claude-opus-4-8", active: null, session: null });
  f.add(f.record()); await f.monitor.pollIncrement(); expect(observer.snapshot().active?.cause).toBe("safeguards");
 });
+it("a context callback that retires the monitor cannot leak its paired model observation", async () => {
+ const f = rig(); await f.monitor.initialize(); f.add(f.record()); const events: any[] = [];
+ f.monitor.on("model_context", () => f.monitor.stop()); f.monitor.on("model_observation", r => events.push(r));
+ await f.monitor.pollIncrement(); expect(events).toEqual([]);
+});
+it("the native source itself never projects metadata from a different embedded session", async () => {
+ const f = rig(); await f.source.initialize(); f.add({ ...f.record(), sessionId: randomUUID() }, f.record());
+ const events = await f.source.poll();
+ expect(events.records?.flatMap(r => r[0] === "model_observation" ? [r[1].sessionId] : [])).toEqual([f.reference.cursor.sessionId]);
+});

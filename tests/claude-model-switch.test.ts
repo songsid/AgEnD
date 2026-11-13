@@ -98,6 +98,13 @@ describe("incident lifecycle without a model/policy action", () => {
     const o = new ClaudeModelObserver("claude-opus-5-5", "claude-opus-5-5"); o.observe(parse(served()), "claude-opus-5-5");
     expect(o.snapshot().active).toMatchObject({ cause: "observed", scope: "unknown" });
   });
+  it("a return to the configured model recovers a fallback that followed next-spawn failover", () => {
+    const o = new ClaudeModelObserver("claude-opus-5-5", "claude-opus-4-8");
+    o.observe(parse({ ...notice(), originalModel: "claude-opus-4-8", fallbackModel: "claude-sonnet-5-5" }), "claude-opus-4-8");
+    expect(o.snapshot().active?.served).toBe("claude-sonnet-5-5");
+    o.observe(parse(served("claude-opus-5-5", "configured-recovery")), "claude-opus-5-5");
+    expect(o.snapshot().active).toBeNull();
+  });
   it("next-spawn failover is a launch selection, not a detected provider switch", () => {
     const o = new ClaudeModelObserver("claude-opus-5-5", "claude-opus-4-8"); o.observe(parse(served()), "claude-opus-4-8");
     expect(o.snapshot()).toMatchObject({ configured: "claude-opus-5-5", launch: "claude-opus-4-8", lastServed: "claude-opus-4-8", active: null });
