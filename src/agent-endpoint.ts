@@ -393,15 +393,16 @@ export async function dispatchAgentOperation(
   }
 
   // AI subscription usage — same snapshot and cache as /usage and the web panel.
-  // Returns the full payload plus a pre-rendered `formatted` text so the CLI can
-  // print something readable without owning the formatting.
+  // Compact by default, with the legacy full response available through --detail.
   if (op === "usage") {
     const { getUsageSnapshot, formatUsageSummary } = await import("./usage/usage-api.js");
     const payload = await getUsageSnapshot(
       args.force === true || args.force === "true",
       ctx.getActiveUsageProviderIds?.(),
     );
-    return { formatted: formatUsageSummary(payload), ...payload };
+    if (args.detail === true) return { formatted: formatUsageSummary(payload), ...payload };
+    const { agentUsage } = await import("./usage/agent-output.js");
+    return agentUsage(payload);
   }
 
   // Display name / description

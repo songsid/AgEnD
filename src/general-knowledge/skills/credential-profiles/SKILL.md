@@ -220,6 +220,15 @@ Say "the default login", not "no subscription".
 
 ## Answer "how much is left on each subscription?"
 
+`get_usage` defaults to compact account rows: name/profile, plan, used percentages
+and relative reset times; `binding` lists only vendor-reported binding windows
+(absent means not reported), with short stale/cache hints and Codex reset tickets
+and credits. `get_usage {detail:true}` returns the full JSON, including capacity
+estimates and localization metadata. CLI: `agend-agent usage [--detail]`; `--force`
+still uses the existing rate-limited refresh. Capacity estimates count only this
+fleet, so the shared footnote appears once in the compact answer. The dashboard
+and chat `/usage` keep their existing rich display.
+
 `get_usage` returns one row per subscription: `Kiro (work)` and
 `Kiro (personal)` rather than a single `Kiro`. Read them out separately — they
 are two quotas, and adding them together would give a number that is true of
