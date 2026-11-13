@@ -16,7 +16,9 @@
  *   Hub assistant's; `mentioned` (an @ to me is unread); `archived`;
  * - events (Lumen): message.updated carries `parent` { id, ask } when a reply changes its question's counts;
  *   room.changed { roomId, removed: true } when I am no longer a member; member.changed { roomId };
- * - the list answer: `me` { canCreateRooms }, `invitations` (pending count);
+ * - the list answer: `me` { canCreateRooms, assistant }, `invitations` (pending count);
+ * - U2 (dev-claude2): room `invited[]` rows carry `owner: { name }` and `state: "pending" | "expired"`; my leaving as the
+ *   only manager is 409 last-manager; the U2 block near the end serves pickers, roles, invitations, the agent's rooms, admin rooms;
  * - room detail: `me` { id, role } (the panel marks 「你」); an agent member's `canAsk` (dev-claude2);
  * - a Message echoes the `idempotencyKey` it was sent with; `warning: "assistant-unavailable"` (Ridge) when an @ of the
  *   assistant was stored but the assistant cannot answer now (setAssistant("paused")). Refusals: all-mention-off (403),
@@ -43,7 +45,7 @@ export interface FixtureMessage {
 export interface FixtureRoom {
   id: string; kind: "direct" | "group"; name: string; members: FixtureMember[]; messages: FixtureMessage[];
   settings: { allMention: boolean; historyForNew: "since-join" | "all" }; archived: boolean; readUpTo: string | null;
-  assistant: boolean; invited: Array<{ id: string; exposureId: string; name: string; owner: string; at: number }>;
+  assistant: boolean; invited: Array<{ id: string; exposureId: string; name: string; owner: { name: string }; at: number; state: "pending" | "expired" }>;
 }
 type Reply = { status: number; body: unknown; headers?: Record<string, string> };
 type Listener = (event: { data: string }) => void;
@@ -78,7 +80,9 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   // 研一主管週會: people talk, an @all with answers (9 answered, 1 working, 2 later), the assistant's summary.
   const group: FixtureRoom = { id: "room-weekly", kind: "group", name: "研一主管週會", members: [...people, ...agentMembers, assistant], messages: [],
     settings: { allMention: true, historyForNew: "since-join" }, archived: false, readUpTo: null, assistant: true,
-    invited: [{ id: "inv-0001", exposureId: "exp-90", name: "audit-helper", owner: "周小明", at: minutes(10) }] };
+    // U2: one pending invitation and one that lapsed after 7 days (the manager can 重新邀請 it).
+    invited: [{ id: "inv-0001", exposureId: "exp-90", name: "audit-helper", owner: { name: "周小明" }, at: minutes(10), state: "pending" },
+      { id: "inv-0002", exposureId: "exp-91", name: "old-audit", owner: { name: "林小華" }, at: minutes(-7 * 24 * 60 - 60), state: "expired" }] };
   const say = (room: FixtureRoom, who: FixtureMember | { kind: "system"; id: string; name: string }, at: number, text: string, extra: Partial<FixtureMessage> = {}) => {
     const m: FixtureMessage = { id: nextId("msg"), roomId: room.id, at, author: "role" in who ? author(who) : who, text, mentions: [], ...extra };
     room.messages.push(m); return m;
@@ -157,7 +161,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       return { status: 200, body: { signedIn: true, csrf, person: { name: FIXTURE_ME.name }, admin: true, features } };
     if (p === "/hub/v1/rooms" && method === "GET")
       return { status: 200, body: { rooms: rooms.map(listItem).sort((a, b) => (b.unread > 0 ? 1 : 0) - (a.unread > 0 ? 1 : 0) || b.lastAt - a.lastAt),
-        me: { canCreateRooms: creators.people.includes(FIXTURE_ME.id) }, invitations: invitations.length } };
+        me: { canCreateRooms: creators.people.includes(FIXTURE_ME.id), assistant: true }, invitations: invitations.length } };   // U2: me.assistant — the Hub offers the room assistant
     if (p === "/hub/v1/rooms" && method === "POST") {
       const b = req.body ?? {};
       if (typeof b.name !== "string" || !b.name.trim() || b.name.length > 60) return fail(400, "invalid");
@@ -193,6 +197,8 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       }
       if (sub === "members" && method === "DELETE" && m[3]) {
         const gone = decodeURIComponent(m[3]!);
+        // U2: the room's only manager cannot leave (hand the role on first).
+        if (gone === FIXTURE_ME.id && room.members.find(x => x.id === gone)?.role === "manager" && room.members.filter(x => x.role === "manager").length === 1) return fail(409, "last-manager");
         room.members = room.members.filter(x => x.id !== gone);
         emit(gone === FIXTURE_ME.id ? "room.changed" : "member.changed", gone === FIXTURE_ME.id ? { roomId: room.id, removed: true } : { roomId: room.id });
         return { status: 200, body: {} };
@@ -232,7 +238,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       }
       if (sub === "invitations" && method === "POST") {
         const ids: string[] = Array.isArray(req.body?.agents) ? req.body.agents : [];
-        for (const exposureId of ids) room.invited.push({ id: nextId("inv"), exposureId, name: exposureId, owner: "", at: now() });
+        for (const exposureId of ids) room.invited.push({ id: nextId("inv"), exposureId, name: exposureId, owner: { name: "" }, at: now(), state: "pending" });
         emit("room.changed", { roomId: room.id, room: listItem(room) });
         return { status: 200, body: { invited: room.invited } };
       }

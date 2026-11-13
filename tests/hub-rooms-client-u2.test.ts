@@ -44,7 +44,7 @@ describe("rooms client, track U2", () => {
     const { client, calls } = await live();
     expect((await client.cancelRoomInvitation("room-weekly", "inv-0001")).ok).toBe(true);
     expect(calls.at(-1)).toMatchObject({ method: "DELETE", path: "/hub/v1/rooms/room-weekly/invitations/inv-0001", csrf: "fixture-csrf" });
-    expect((await client.room("room-weekly")).invited).toEqual([]);
+    expect((await client.room("room-weekly")).invited.map((x: any) => x.id)).toEqual(["inv-0002"]);
     expect((await client.cancelRoomInvitation("room-weekly", "inv-0001")).status).toBe(404);
   });
 

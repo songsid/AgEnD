@@ -118,9 +118,7 @@ describe("Hub Room settings (section 7)", () => {
   });
 
   it("the room's invitations: a pending one can be cancelled; an expired one (7 days) can be sent again", async () => {
-    const { pg, client, calls, fx } = await fixture();
-    const room = fx.rooms.find((r: any) => r.id === "room-weekly");
-    room.invited.push({ id: "inv-old", exposureId: "exp-91", name: "old-audit", owner: "林小華", at: 1, state: "expired" });
+    const { pg, client, calls } = await fixture();
     await mountSettings(pg, client); calls.length = 0;
     const rows = [...pg.root.querySelectorAll(".hub-settings-invited li")].map((li: any) => li.textContent.replace(/\s+/g, " ").trim());
     expect(rows).toEqual(["audit-helper（周小明）· 已邀請，等擁有者同意取消邀請", "old-audit（林小華）· 邀請已過期重新邀請"]);
@@ -128,7 +126,7 @@ describe("Hub Room settings (section 7)", () => {
     fire(button(pg, "取消邀請"), "click"); await settle(30);
     expect(writes(calls)).toEqual([
       ["POST", "/hub/v1/rooms/room-weekly/invitations", { agents: ["exp-91"] }],
-      ["DELETE", "/hub/v1/rooms/room-weekly/invitations/inv-old", undefined],
+      ["DELETE", "/hub/v1/rooms/room-weekly/invitations/inv-0002", undefined],
       ["DELETE", "/hub/v1/rooms/room-weekly/invitations/inv-0001", undefined],
     ]);
   });
