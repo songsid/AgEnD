@@ -565,7 +565,7 @@ card offers, and what it means:
   shared store). Before connecting a named account AgEnD asks agy about an empty scratch folder and refuses
   (`not_isolated`, nothing starts) unless it says "not connected"; afterwards the folder must hold a token file **written
   by that attempt** (an old file left there proves nothing). An agent can run on a named account (Account field in its
-  dialog); the default connection is what an agent that names none uses.
+  dialog); an agent that names no account may inherit a named default set for the whole Fleet, so it is not necessarily the computer's own default login.
 - **Disconnect** removes a named account's token file (or, on Windows, the default's Credential Manager entry) and then
   asks `agy models`. It reports **signed out only when agy said so** ("Please sign in"); offline, a timeout or any other
   failure is reported as **unverified / refused**, never as signed out. **Remove** deletes a named account's folder.

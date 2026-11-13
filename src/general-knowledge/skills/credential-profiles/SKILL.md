@@ -77,7 +77,8 @@ anywhere: on macOS the login is stored under a Keychain item named after that
 path string, so a login under a differently spelled path (a relative
 `AGEND_HOME`, a trailing slash, a `~` that was never expanded) lands in another
 item, and the agent still finds no login.
-The refusal also names `/login <backend> <profile>`: offer that first, since it works from chat.
+For `kiro-cli`, `codex` and `claude-code` the refusal also names `/login <backend> <profile>`: offer that first, since it works from chat.
+**Antigravity is the exception: never tell the user to type `/login` for it.** An Antigravity account is connected only from the dashboard (Settings → Accounts → **+ Add account** → Connect), so for it send the user there; a chat `/login agy …` is refused.
 
 ## Create a worker on another subscription
 
@@ -312,8 +313,11 @@ and log it in, so report it as such rather than as a missing subscription.
 
 - Do not invent a profile that has never been logged in and report success —
   the switch is refused, and the refusal tells you what to relay.
-- Do not set `credential_profile` for a backend other than `kiro-cli`, `codex`
-  or `claude-code`; it is ignored, and the config validator warns about it.
+- Do not set `credential_profile` for a backend other than `kiro-cli`, `codex`,
+  `claude-code` or `antigravity`; it is ignored, and the config validator warns
+  about it. An `antigravity` agent may be assigned an account that already exists
+  (`backend_options: { "antigravity": { "credential_profile": "<account>" } }`),
+  but connecting that account is dashboard-only: do not offer `/login` for it.
 - Do not copy a Codex agent's `state_5.sqlite`, `cx/` hash dirs or rollout JSONL
   by hand. Set the profile through tooling; a running instance is restarted for
   you. Do not tell the user the agent has resumed the same thread just because

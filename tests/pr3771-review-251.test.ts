@@ -3,7 +3,7 @@
  * against the pre-fix source to see it fail. Fixture strings only; no account, no token, no real `agy`.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecycle.js";
@@ -85,5 +85,28 @@ describe("P2-6 (round 2): the quota cap belongs to the launch, even when Setting
     admit(); await starting;
     hit(lc, "agy");
     expect(getProviderRateLimit(antigravityCapKey("work"))).not.toBeNull();
+  });
+});
+
+describe("P2-8 / P3 (round 2): the skills agents read do not contradict themselves about Antigravity", () => {
+  const skill = (name: string) => readFileSync(join(process.cwd(), "src/general-knowledge/skills", name, "SKILL.md"), "utf8").replace(/\s+/g, " ");
+  const section = (text: string, heading: string) => { const at = text.indexOf(`## ${heading}`); expect(at, heading).toBeGreaterThan(-1); const rest = text.slice(at + 3 + heading.length); const next = rest.indexOf(" ## "); return next < 0 ? rest : rest.slice(0, next); };
+  it("credential-profiles' mandatory 'Do not' section lists antigravity among the backends a credential_profile may be assigned to, and no longer calls it ignored", () => {
+    const rules = section(skill("credential-profiles"), "Do not");
+    expect(rules).toMatch(/other than `kiro-cli`, `codex`, `claude-code` or `antigravity`/);
+    expect(rules).not.toMatch(/other than `kiro-cli`, `codex` or `claude-code`/);
+    expect(rules).toMatch(/connecting that account is dashboard-only: do not offer `\/login` for it/);
+  });
+  it("the generic refusal guidance offers /login only for kiro-cli, codex and claude-code, with Antigravity named as the exception (dashboard)", () => {
+    const text = skill("credential-profiles");
+    expect(text).not.toContain("The refusal also names `/login <backend> <profile>`: offer that first, since it works from chat.");
+    expect(text).toContain("For `kiro-cli`, `codex` and `claude-code` the refusal also names `/login <backend> <profile>`");
+    expect(text).toMatch(/Antigravity is the exception: never tell the user to type `\/login` for it\./);
+    expect(text).toMatch(/send the user there; a chat `\/login agy …` is refused/);
+  });
+  it("P3: web-dashboard no longer equates 'names no account' with the computer's default login", () => {
+    const text = skill("web-dashboard");
+    expect(text).not.toContain("the default connection is what an agent that names none uses");
+    expect(text).toContain("an agent that names no account may inherit a named default set for the whole Fleet, so it is not necessarily the computer's own default login");
   });
 });
