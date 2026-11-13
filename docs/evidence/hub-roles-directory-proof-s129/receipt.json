@@ -1,0 +1,152 @@
+{
+  "recordedAt": "2026-11-13T10:33:52.408293+00:00",
+  "sourceCommit": "e8bdf130748b2342cca9081e248aa638c07ff279",
+  "parent": {
+    "pr": 3818,
+    "head": "c9c7a51cffac66b64af845b7bd36b91b463b4766"
+  },
+  "branch": "feat/hub-roles-directory-m3010",
+  "scope": "Private proof/controller preparation; no production witness issuer or live auxiliary Save integration.",
+  "bindings": [
+    {
+      "path": "src/hub/roles/directory-authority.ts",
+      "sha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c"
+    },
+    {
+      "path": "src/hub/settings-directory-proof.ts",
+      "sha256": "247df13aadb24460a2602a3609bfdbd0aab05b26c877024442aec97a40d01f05"
+    },
+    {
+      "path": "src/hub/settings-directory-control.ts",
+      "sha256": "0e47c1c72f1cd6f13d77ddc1afea147f2f191f74e9db37ef8e59558e7b52d19e"
+    },
+    {
+      "path": "src/hub/settings-directory-ca.ts",
+      "sha256": "c541cd0491d7057bfb2d4eba48b2e1980d860ded1bcae720a1caf9299e26390f"
+    },
+    {
+      "path": "src/hub/settings-directory-save.ts",
+      "sha256": "ee26a5788898db9bbc4ae9c663f25f7520d3a1e58e37f9d6d3681bbbf6c46a48"
+    },
+    {
+      "path": "tests/hub-roles-directory-s129.test.ts",
+      "sha256": "1c23273eac5bf394e589f6a55806fb36281835c1b59bd2ff2654b42481c197f5"
+    },
+    {
+      "path": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "8aa3dfa1eb53e9492a7c0c43812870e675b88900137bc7f123733818feed22ac"
+    },
+    {
+      "path": "src/hub/settings-commit.ts",
+      "sha256": "778284b011dd741414db9cf233ce646f506d8195993a0afdd051f650a88d0357"
+    },
+    {
+      "path": "src/hub/session-directory-transition.ts",
+      "sha256": "130bfb9882ad2365f44c8659b6fdc37c0da7ab4dd9327215ff49c39e84c60428"
+    },
+    {
+      "path": "src/hub/settings-directory-http.ts",
+      "sha256": "d1ffefcc751653b7170652d467413808318f434ca7b28b3a0b552b85056c267e"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "a37e2a2c51d6291e56bce25c98ae5e4d576c7b086689fde33825f1147f06b760"
+    },
+    {
+      "path": "docs/design/hub-roles-directory-proof.md",
+      "sha256": "b02fb59fe26c305d4c4a6e359fcdd73914264a1d29010c70681e88da268e905e"
+    },
+    {
+      "path": "changes/3743-roles-directory-proof.md",
+      "sha256": "a2a8874f06ac5f8932bfe7991cc75555ff400f1380a9a88adec31e9b16293a1e"
+    },
+    {
+      "path": "changes/3743-roles-directory-proof.zh-TW.md",
+      "sha256": "a1d05510b1bafdf168cfe9cafd6b1ef62301c9b3f026e3fa6424320770e45353"
+    },
+    {
+      "path": "docs/evidence/hub-roles-directory-proof-s129/README.md",
+      "sha256": "78ac51966aaadc626b4fd3a3991d6d95c99314bdb3aecb6a2602c55b3d7a7d17"
+    }
+  ],
+  "focused": {
+    "command": "nice -n 10 node_modules/.bin/vitest run --maxWorkers=2 tests/hub-roles-directory-s129.test.ts tests/hub-directory-settings-proof.test.ts tests/hub-directory-settings-control.test.ts tests/hub-directory-settings-ca.test.ts tests/hub-directory-save.test.ts tests/hub-directory-session-transition.test.ts tests/hub-roles-session-s129.test.ts",
+    "files": [
+      "tests/hub-roles-directory-s129.test.ts",
+      "tests/hub-directory-settings-proof.test.ts",
+      "tests/hub-directory-settings-control.test.ts",
+      "tests/hub-directory-settings-ca.test.ts",
+      "tests/hub-directory-save.test.ts",
+      "tests/hub-directory-session-transition.test.ts",
+      "tests/hub-roles-session-s129.test.ts"
+    ],
+    "passed": 225,
+    "failed": 0,
+    "skipped": 0,
+    "loadAtStart": 1.57421875
+  },
+  "newCases": 25,
+  "native": {
+    "compiler": "TypeScript native7.0.2",
+    "environment": {
+      "GOMAXPROCS": "2"
+    },
+    "source": {
+      "command": "node_modules/.bin/tsc --noEmit",
+      "exit": 0,
+      "diagnosticBytes": 0
+    },
+    "test": {
+      "command": "node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0,
+      "diagnosticBytes": 0
+    }
+  },
+  "mutations": {
+    "uniqueCases": 16,
+    "compiled": 16,
+    "semanticCaught": 16,
+    "allSourceExactlyRestored": true,
+    "file": "mutations.json",
+    "classification": "D15 derived verdict corrected for retained promise-rejection assertion; compile/test/hash observations unchanged, no rerun."
+  },
+  "restored": {
+    "passed": 25,
+    "failed": 0,
+    "skipped": 0
+  },
+  "failFirst": {
+    "semanticFailed": 1,
+    "passedControls": 2,
+    "scope": "Auxiliary engine root-only refusal before engine changes; root and host controls passed. Witness binding was subsequently strengthened to the source."
+  },
+  "excluded": [
+    "Initial person-key expectation was shadowed by actor metadata",
+    "CA spy installed after captured function; inert mock ordering corrected",
+    "Generic vi.fn erased its TypeScript type parameter before final native checks"
+  ],
+  "changelog": {
+    "command": "node scripts/changelog-assemble.mjs --check",
+    "fragments": 447,
+    "exit": 0
+  },
+  "unchangedLiveBoundaries": [
+    "src/hub/settings-commit.ts",
+    "src/hub/session-directory-transition.ts",
+    "src/hub/settings-directory-http.ts",
+    "src/hub/compose/server.ts"
+  ],
+  "remaining": [
+    "Exact decision-owned old policy/version proof basis, no ambient fallback",
+    "Current auxiliary new-generation browser handoff",
+    "Live route/writer/rotation conversion and actual mounted acceptance",
+    "Parent-first plain alpha sync/resolution review/current-head CI/release clearance",
+    "Startup cutover, member/streams and full S-129 acceptance"
+  ],
+  "limits": [
+    "Actual role/session/SQL proof and physical read pool; fictional directories and inert new-role candidate/writer.",
+    "Existing root regression suites retain their own SQL/HTTPS fixture scope; no new auxiliary mounted-route claim.",
+    "No real AD/account/backend CLI/live Fleet/browser/container/native OS/pilot.",
+    "No UI/assets/config format changes or PNG/browser SKEW claim."
+  ]
+}

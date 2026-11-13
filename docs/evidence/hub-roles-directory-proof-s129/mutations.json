@@ -1,0 +1,520 @@
+{
+  "sourceCommit": "e8bdf130748b2342cca9081e248aa638c07ff279",
+  "cases": [
+    {
+      "id": "D1-named-admin",
+      "file": "src/hub/roles/directory-authority.ts",
+      "old": "permit.permission !== \"hub.admin\" || ",
+      "new": "",
+      "originalSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "mutantSha256": "11fe65bf3a833fc9927f1f4aa19094ec9e06eaf7b5dee3952af651e7c183148d",
+      "restoredSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 24,
+      "failed": 1,
+      "skipped": 0,
+      "loadAtStart": 1.3564453125,
+      "seconds": 12.618,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity refuses a split join.manage permit as directory administration",
+          "assertions": [
+            "AssertionError: expected [Function] to throw an error"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D2-witness-current",
+      "file": "src/hub/roles/directory-authority.ts",
+      "old": "} else if (context.administration !== undefined) assertHubDirectoryAdministration(context.administration, context.actor, source);",
+      "new": "} else if (context.administration !== undefined) void 0;",
+      "originalSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "mutantSha256": "849d3045fb039539108c5128d4751c2884b4522d75b93db31ed4c53008f3a433",
+      "restoredSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 17,
+      "failed": 8,
+      "skipped": 0,
+      "loadAtStart": 1.59619140625,
+      "seconds": 12.821,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity refuses forged before candidate work",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(3) }\" instead of rejecting"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity refuses foreign-session before candidate work",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(3) }\" instead of rejecting"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity refuses foreign-request before candidate work",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(3) }\" instead of rejecting"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity refuses foreign-person before candidate work",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(3) }\" instead of rejecting"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity retires the witness on role-loss during a held candidate read",
+          "assertions": [
+            "AssertionError: expected { \u2026(2) } to have property \"code\""
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity retires the witness on expiry during a held candidate read",
+          "assertions": [
+            "AssertionError: expected { \u2026(2) } to have property \"code\""
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity checks authority after response capture before invoking the commit callback",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity keeps the opaque witness through controller reads, preparation and the predecision Save orchestration",
+          "assertions": [
+            "AssertionError: expected [Function] to throw an error"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D3-legacy-root",
+      "file": "src/hub/roles/directory-authority.ts",
+      "old": "  else if (canonicalArguments(context.actor.person) !== canonicalArguments(source.administrator)) throw new HubProtocolError(\"denied\");",
+      "new": "",
+      "originalSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "mutantSha256": "3f4dd39963407878c6a9a168c5191926120b0959e067dec93f720ae41129b1d8",
+      "restoredSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 24,
+      "failed": 1,
+      "skipped": 0,
+      "loadAtStart": 1.67919921875,
+      "seconds": 13.279,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity refuses no-witness before candidate work",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(3) }\" instead of rejecting"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D4-source-image",
+      "file": "src/hub/roles/directory-authority.ts",
+      "old": " || state.binding.image !== source.image",
+      "new": "",
+      "originalSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "mutantSha256": "cb7f89bd9bee2a2acfbd0dd4cbd79919bc022a8f8b8fd966d6a178a19d518391",
+      "restoredSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 24,
+      "failed": 1,
+      "skipped": 0,
+      "loadAtStart": 2.19677734375,
+      "seconds": 13.771,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity binds the witness to its exact image source",
+          "assertions": [
+            "AssertionError: expected [Function] to throw an error"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D5-source-directory",
+      "file": "src/hub/roles/directory-authority.ts",
+      "old": "state.binding.directory !== source.directory || ",
+      "new": " ",
+      "originalSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "mutantSha256": "b8fa58556b02c1eb94b065713f17e61ac0b44c2a9fa9a26263f2f5f88ef8e135",
+      "restoredSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 24,
+      "failed": 1,
+      "skipped": 0,
+      "loadAtStart": 2.50439453125,
+      "seconds": 12.213,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity binds the witness to its exact directory source",
+          "assertions": [
+            "AssertionError: expected [Function] to throw an error"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D6-source-epoch",
+      "file": "src/hub/roles/directory-authority.ts",
+      "old": " || state.binding.epoch !== source.epoch",
+      "new": "",
+      "originalSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "mutantSha256": "e4bf48d421f5ed8d2dcd6956b86890b660b6d81a7d8b2f9aea4818e3c3ffc0fb",
+      "restoredSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 24,
+      "failed": 1,
+      "skipped": 0,
+      "loadAtStart": 2.42626953125,
+      "seconds": 13.784,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity binds the witness to its exact epoch source",
+          "assertions": [
+            "AssertionError: expected [Function] to throw an error"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D7-source-root",
+      "file": "src/hub/roles/directory-authority.ts",
+      "old": "      || canonicalArguments(state.binding.administrator) !== canonicalArguments(source.administrator)",
+      "new": "",
+      "originalSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "mutantSha256": "06efd810aa3511a85af5aa99ce7898111109d22f3b92e23e8a22f5bf144fe290",
+      "restoredSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 24,
+      "failed": 1,
+      "skipped": 0,
+      "loadAtStart": 2.9599609375,
+      "seconds": 13.731,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity binds the witness to its exact root source",
+          "assertions": [
+            "AssertionError: expected [Function] to throw an error"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D8-actor-request",
+      "file": "src/hub/roles/directory-authority.ts",
+      "old": " || canonicalArguments(raw) !== canonicalArguments(state.actor)",
+      "new": "",
+      "originalSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "mutantSha256": "e22abe0f99bc6ad845c09265d75282be3836305feeb283bb12c903a0ee12df5a",
+      "restoredSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 22,
+      "failed": 3,
+      "skipped": 0,
+      "loadAtStart": 2.9013671875,
+      "seconds": 13.572,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity refuses foreign-session before candidate work",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(3) }\" instead of rejecting"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity refuses foreign-request before candidate work",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(3) }\" instead of rejecting"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity refuses foreign-person before candidate work",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(3) }\" instead of rejecting"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D9-permanent-retirement",
+      "file": "src/hub/roles/directory-authority.ts",
+      "old": "state.retired = true; throw error;",
+      "new": "throw error;",
+      "originalSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "mutantSha256": "37cb39d6f1ac0b2cdd3639a4c1e098f5bc8f1a22eb6407d69213170b46326cd5",
+      "restoredSha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 21,
+      "failed": 4,
+      "skipped": 0,
+      "loadAtStart": 3.1328125,
+      "seconds": 13.603,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity binds the witness to its exact directory source",
+          "assertions": [
+            "AssertionError: expected [Function] to throw an error"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity binds the witness to its exact image source",
+          "assertions": [
+            "AssertionError: expected [Function] to throw an error"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity binds the witness to its exact epoch source",
+          "assertions": [
+            "AssertionError: expected [Function] to throw an error"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity binds the witness to its exact root source",
+          "assertions": [
+            "AssertionError: expected [Function] to throw an error"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D10-own-reauth",
+      "file": "src/hub/settings-directory-proof.ts",
+      "old": "        const answer = await d.source.directory.signIn(credentials.login.trim(), credentials.password); current(d, ctx);\n        if (!answer.ok) refuse(answer.reason === \"unavailable\" ? \"unavailable\" : \"denied\");\n        if (!same(answer.person.key, actor.person)) refuse(\"denied\");",
+      "new": "        const answer = await d.source.directory.signIn(credentials.login.trim(), credentials.password); current(d, ctx);\n        if (!answer.ok) refuse(answer.reason === \"unavailable\" ? \"unavailable\" : \"denied\");",
+      "originalSha256": "247df13aadb24460a2602a3609bfdbd0aab05b26c877024442aec97a40d01f05",
+      "mutantSha256": "fb5cbf8e3384cf6fbb72e2e0d268745997b253f89c6b5e857de7b5bd74e89bbe",
+      "restoredSha256": "247df13aadb24460a2602a3609bfdbd0aab05b26c877024442aec97a40d01f05",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 24,
+      "failed": 1,
+      "skipped": 0,
+      "loadAtStart": 3.11181640625,
+      "seconds": 12.322,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity requires the acting administrator's password rather than the root's password",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D11-candidate-actor",
+      "file": "src/hub/settings-directory-proof.ts",
+      "old": "...(ctx.actor.kind === \"hub-administrator\" && !same(ctx.actor.person, d.source.administrator) ? [ctx.actor.person] : [])",
+      "new": "...[]",
+      "originalSha256": "247df13aadb24460a2602a3609bfdbd0aab05b26c877024442aec97a40d01f05",
+      "mutantSha256": "2a8084be864652c1505a36eca301ff2fba4b69f2be9e1509b73481f80e7c8650",
+      "restoredSha256": "247df13aadb24460a2602a3609bfdbd0aab05b26c877024442aec97a40d01f05",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 21,
+      "failed": 4,
+      "skipped": 0,
+      "loadAtStart": 2.77880859375,
+      "seconds": 15.994,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity prepares for a current auxiliary administrator, authenticates that actor and checks both candidate identities",
+          "assertions": [
+            "AssertionError: expected [ { realm: 'corp', \u2026(1) } ] to deeply equal [ { realm: 'corp', \u2026(1) }, \u2026(1) ]"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity requires current candidate eligibility for actor",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity requires current candidate eligibility for actor-unknown",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity retains actor eligibility when using a recent server authentication",
+          "assertions": [
+            "AssertionError: expected [ { realm: 'corp', \u2026(1) } ] to deeply equal [ { realm: 'corp', \u2026(1) }, \u2026(1) ]"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D12-candidate-root",
+      "file": "src/hub/settings-directory-proof.ts",
+      "old": "const people = [d.source.administrator, ...",
+      "new": "const people = [...",
+      "originalSha256": "247df13aadb24460a2602a3609bfdbd0aab05b26c877024442aec97a40d01f05",
+      "mutantSha256": "0df53a21f7802f5cff44933edf5c8f13318dbfe30dbf74d860fea675573285fd",
+      "restoredSha256": "247df13aadb24460a2602a3609bfdbd0aab05b26c877024442aec97a40d01f05",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 20,
+      "failed": 5,
+      "skipped": 0,
+      "loadAtStart": 2.79052734375,
+      "seconds": 12.902,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity prepares for a current auxiliary administrator, authenticates that actor and checks both candidate identities",
+          "assertions": [
+            "AssertionError: expected [ { realm: 'corp', \u2026(1) } ] to deeply equal [ { realm: 'corp', \u2026(1) }, \u2026(1) ]"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity retains the old root proof path",
+          "assertions": [
+            "AssertionError: expected \"vi.fn()\" to be called with arguments: [ { realm: 'corp', \u2026(1) } ]"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity retains the old host proof path",
+          "assertions": [
+            "AssertionError: expected \"vi.fn()\" to be called with arguments: [ { realm: 'corp', \u2026(1) } ]"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity requires current candidate eligibility for root",
+          "assertions": [
+            "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+          ]
+        },
+        {
+          "name": "S129 directory proof administrator identity retains actor eligibility when using a recent server authentication",
+          "assertions": [
+            "AssertionError: expected [ { realm: 'corp', \u2026(1) } ] to deeply equal [ { realm: 'corp', \u2026(1) }, \u2026(1) ]"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D13-actor-pool",
+      "file": "src/hub/settings-directory-proof.ts",
+      "old": "const subject = ctx.actor.kind === \"hub-administrator\" ? ctx.actor.person : d.source.administrator;",
+      "new": "const subject = d.source.administrator;",
+      "originalSha256": "247df13aadb24460a2602a3609bfdbd0aab05b26c877024442aec97a40d01f05",
+      "mutantSha256": "71407059f20e07c776a891e254b33b4063ef435ad51cb970166d0e8500c7afe8",
+      "restoredSha256": "247df13aadb24460a2602a3609bfdbd0aab05b26c877024442aec97a40d01f05",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 24,
+      "failed": 1,
+      "skipped": 0,
+      "loadAtStart": 2.8359375,
+      "seconds": 13.238,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity prepares for a current auxiliary administrator, authenticates that actor and checks both candidate identities",
+          "assertions": [
+            "AssertionError: expected false to be true // Object.is equality"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D14-controller-authority",
+      "file": "src/hub/settings-directory-control.ts",
+      "old": "    assertHubDirectoryActor(ctx, s);\n",
+      "new": "",
+      "originalSha256": "0e47c1c72f1cd6f13d77ddc1afea147f2f191f74e9db37ef8e59558e7b52d19e",
+      "mutantSha256": "e6a10a1ceae65b3dde6e68c69a6aa5a34eb33ff921ad2014e844de5af106010d",
+      "restoredSha256": "0e47c1c72f1cd6f13d77ddc1afea147f2f191f74e9db37ef8e59558e7b52d19e",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 24,
+      "failed": 1,
+      "skipped": 0,
+      "loadAtStart": 2.62646484375,
+      "seconds": 14.866,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity keeps the opaque witness through controller reads, preparation and the predecision Save orchestration",
+          "assertions": [
+            "AssertionError: expected [Function] to throw an error"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "D15-ca-context",
+      "file": "src/hub/settings-directory-ca.ts",
+      "old": "  const context = captureHubDirectoryProofContext;",
+      "new": "  const context = (input: HubDirectoryProofContext) => ({ actor: structuredClone(input.actor), current: input.current, signal: input.signal });",
+      "originalSha256": "c541cd0491d7057bfb2d4eba48b2e1980d860ded1bcae720a1caf9299e26390f",
+      "mutantSha256": "53fc782f82a3fc079ea4b7a70817172f6cb150c97f71522c25a24e339ed4f322",
+      "restoredSha256": "c541cd0491d7057bfb2d4eba48b2e1980d860ded1bcae720a1caf9299e26390f",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 24,
+      "failed": 1,
+      "skipped": 0,
+      "loadAtStart": 2.86376953125,
+      "seconds": 12.967,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity retains the witness and acting-person physical pool identity through CA inspection",
+          "assertions": [
+            "Error: promise rejected \"Error: Hub protocol: denied { \u2026(1) }\" instead of resolving"
+          ]
+        }
+      ],
+      "classificationNote": "Derived verdict corrected to recognize the retained Vitest promise-rejection assertion; compile/test/hash observations unchanged, no rerun."
+    },
+    {
+      "id": "D16-save-context",
+      "file": "src/hub/settings-directory-save.ts",
+      "old": "    const context = captureHubDirectoryProofContext(inputContext);",
+      "new": "    const context = { actor: structuredClone(inputContext.actor), current: inputContext.current, signal: inputContext.signal };",
+      "originalSha256": "ee26a5788898db9bbc4ae9c663f25f7520d3a1e58e37f9d6d3681bbbf6c46a48",
+      "mutantSha256": "8b70fc1c4e78ac0c383c90bfea56fcb87dc2b974f4d383f92bd371129ccb31ae",
+      "restoredSha256": "ee26a5788898db9bbc4ae9c663f25f7520d3a1e58e37f9d6d3681bbbf6c46a48",
+      "compileExit": 0,
+      "testExit": 1,
+      "caught": true,
+      "passed": 24,
+      "failed": 1,
+      "skipped": 0,
+      "loadAtStart": 2.39697265625,
+      "seconds": 14.7,
+      "failures": [
+        {
+          "name": "S129 directory proof administrator identity keeps the opaque witness through controller reads, preparation and the predecision Save orchestration",
+          "assertions": [
+            "Error: expected Error: Hub protocol: denied { \u2026(1) } to match object { code: 'stale' }"
+          ]
+        }
+      ]
+    }
+  ]
+}
