@@ -3,6 +3,7 @@ import { appendFileSync, linkSync, mkdtempSync, mkdirSync, readFileSync, renameS
 import { performance } from "node:perf_hooks";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { probeBackendVersion } from "../src/backend-availability.js";
 import { GrokBackend } from "../src/backend/grok.js";
 import { Daemon } from "../src/daemon.js";
 import { checkpointGrokDelivery, grokConsumedMarker } from "../src/grok-delivery-proof.js";
@@ -22,13 +23,18 @@ vi.mock("node:fs/promises", async importOriginal => {
     try { return await real.lstat(...args); } finally { gate?.settled(); }
   } };
 });
+const versionProbe = vi.hoisted(() => ({ value: "1.0.77" as string | null }));
+vi.mock("../src/backend-availability.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/backend-availability.js")>();
+  return { ...real, probeBackendVersion: vi.fn(async () => versionProbe.value) };
+});
 const roots: string[] = [];
-afterEach(() => { consumedWatches.stopAll(); osHome.value = ""; vi.restoreAllMocks(); vi.useRealTimers(); for (const p of roots.splice(0)) rmSync(p, { recursive: true, force: true }); });
+afterEach(() => { consumedWatches.stopAll(); osHome.value = ""; versionProbe.value = "1.0.77"; vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.useRealTimers(); for (const p of roots.splice(0)) rmSync(p, { recursive: true, force: true }); });
 const temp = () => { const p = mkdtempSync(join(tmpdir(), "grok3810-")); roots.push(p); return p; };
 const log: any = { info() {}, warn() {}, debug() {}, error() {}, child() { return this; } };
 describe("#3810 owned Grok late consumption", () => {
-  it("pins a fresh launch UUID rather than guessing the newest same-cwd session", () => {
-    const p = temp(), backend = new GrokBackend(p);
+  it("pins a fresh launch UUID rather than guessing the newest same-cwd session", async () => {
+    const p = temp(), backend = fakeLaunch(p); await backend.prepareLaunch();
     const command = backend.buildCommand({ instanceName: "worker", instanceDir: p, workingDirectory: p, mcpServers: {} });
     expect(command).toMatch(/--session-id [0-9a-f-]{36}(?: |$)/);
   });
@@ -149,8 +155,8 @@ describe("pre-paste ownership and late watcher fences", () => {
     expect(pasted).not.toHaveBeenCalled();
     d.launchFenceEpoch++; expect(verdict.transcriptCheckpoint.ownedGrok.current()).toBe(false);
   });
-  it("retains explicit resume, creates a fresh identity after skipResume, and never reuses an unselected UUID", () => {
-    const p = temp(), backend = new GrokBackend(p); writeFileSync(join(p, "session-id"), SID);
+  it("retains explicit resume, creates a fresh identity after skipResume, and never reuses an unselected UUID", async () => {
+    const p = temp(), backend = fakeLaunch(p); await backend.prepareLaunch(); writeFileSync(join(p, "session-id"), SID);
     const config = { instanceName: "worker", instanceDir: p, workingDirectory: p, mcpServers: {} };
     expect(backend.buildCommand(config)).toContain(`--resume ${SID}`); expect(backend.getDeliverySessionId()).toBe(SID);
     expect(backend.buildCommand({ ...config, skipResume: true })).toContain("--session-id "); expect(backend.getDeliverySessionId()).not.toBe(SID);
@@ -203,4 +209,63 @@ describe("late-watch admission negatives", () => {
     d.finishDurableDelivery({ deliveryId: DID, attemptNo: 1 }, "uncertain", "unproven", { submissionMode: mode, transcriptCheckpoint: { backend: "grok", path: "/owned", offset: 0, ownedGrok: { sessionId: SID, current: () => true, readChunk: vi.fn() } } });
     expect(start).not.toHaveBeenCalled();
   });
+});
+
+it.each(["custom-grok", " custom Grok "])("honors literal GROK_HOME=%s for both summary and fenced updates", async name => {
+  const h = source(), home = join(h.root, name); renameSync(join(h.home, ".grok"), home); vi.stubEnv("GROK_HOME", home);
+  const cp = await checkpointGrokDelivery({ sessionId: SID, cwd: h.cwd, current: () => true });
+  const path = join(home, "sessions", encodeURIComponent(h.cwd), SID, "updates.jsonl");
+  expect(cp?.path).toBe(path); writeFileSync(path, user);
+  expect((await cp!.ownedGrok.readChunk(0, 4096))?.chunk.toString()).toBe(user);
+});
+
+function fakeLaunch(p: string) {
+  const backend = new GrokBackend(p), binary = join(p, "grok-fixture");
+  writeFileSync(binary, "inert version-gate fixture; never executed\n");
+  (backend as any).binaryPath = binary;
+  return backend;
+}
+describe("G1: old and unknown launch compatibility", () => {
+  it.each(["1.0.62", "1.0.77"])("%s selects a fresh UUID only after bounded preparation", async version => {
+    versionProbe.value = version; const p = temp(), backend = fakeLaunch(p);
+    const config = { instanceName: "worker", instanceDir: p, workingDirectory: p, mcpServers: {} };
+    expect(backend.buildCommand(config)).not.toContain("--session-id"); expect(backend.getDeliverySessionId()).toBeNull();
+    await backend.prepareLaunch(); expect(backend.buildCommand(config)).toMatch(/--session-id [0-9a-f-]{36}/);
+  });
+  it.each(["1.0.61", null, "unknown"])("%s keeps the old fresh-launch syntax and has no lease/watch", async version => {
+    versionProbe.value = version; const p = temp(), backend = fakeLaunch(p); await backend.prepareLaunch();
+    const config = { instanceName: "worker", instanceDir: p, workingDirectory: p, mcpServers: {} };
+    expect(backend.buildCommand(config)).not.toContain("--session-id"); expect(backend.getDeliverySessionId()).toBeNull();
+    expect(await checkpointGrokDelivery({ sessionId: backend.getDeliverySessionId(), cwd: p, home: p, current: () => true })).toBeNull();
+    writeFileSync(join(p, "session-id"), SID); expect(backend.buildCommand(config)).toContain(`--resume ${SID}`);
+  });
+  it("does not reuse version proof after binary replacement or a later unknown preparation", async () => {
+    const p = temp(), backend = fakeLaunch(p), config = { instanceName: "worker", instanceDir: p, workingDirectory: p, mcpServers: {} };
+    await backend.prepareLaunch(); appendFileSync(join(p, "grok-fixture"), "replaced");
+    expect(backend.buildCommand(config)).not.toContain("--session-id"); expect(backend.getDeliverySessionId()).toBeNull();
+    await backend.prepareLaunch(); expect(backend.buildCommand(config)).toContain("--session-id");
+    versionProbe.value = null; await backend.prepareLaunch(); expect(backend.buildCommand(config)).not.toContain("--session-id");
+  });
+});
+
+it("an older in-flight version answer cannot re-enable a later unknown preparation", async () => {
+  const p = temp(), backend = fakeLaunch(p), config = { instanceName: "worker", instanceDir: p, workingDirectory: p, mcpServers: {} };
+  let release!: (v: string) => void, entered!: () => void;
+  const inside = new Promise<void>(r => { entered = r; });
+  vi.mocked(probeBackendVersion).mockImplementationOnce(async () => { entered(); return await new Promise<string>(r => { release = r; }); });
+  const old = backend.prepareLaunch(); await inside;
+  versionProbe.value = null; await backend.prepareLaunch(); release("1.0.77"); await old;
+  expect(backend.buildCommand(config)).not.toContain("--session-id"); expect(backend.getDeliverySessionId()).toBeNull();
+});
+it("a binary changed during version preparation cannot gain UUID capability", async () => {
+  const p = temp(), backend = fakeLaunch(p), config = { instanceName: "worker", instanceDir: p, workingDirectory: p, mcpServers: {} };
+  vi.mocked(probeBackendVersion).mockImplementationOnce(async () => { appendFileSync(join(p, "grok-fixture"), "changed during read"); return "1.0.77"; });
+  await backend.prepareLaunch(); expect(backend.buildCommand(config)).not.toContain("--session-id");
+});
+it("a synthetic #3742 banner above the recorded composer is nonmodal and preserves the readable input box", () => {
+  const backend = new GrokBackend(temp()), pane = fix("ready.pane.txt");
+  const banner = "Help improve Grok [Opt out] [Opt in]\nOff by default. Opt-in to allow SpaceXAI to retain coding data.\n";
+  const shown = pane.replace("  ╭", banner + "  ╭");
+  expect(backend.readInputRow(pane)).not.toBeNull(); expect(backend.readInputRow(shown)).toEqual(backend.readInputRow(pane));
+  expect(backend.getRuntimeDialogs().filter(d => d.pattern.test(shown))).toEqual([]);
 });
