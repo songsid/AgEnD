@@ -157,6 +157,23 @@ describe("rooms (seam 1) against the fixture", () => {
     fx.emit("message.added", { roomId: "r", message: { id: "m3" } });
     expect(added).toHaveLength(2); expect(made).toBe(1);                                                  // closed with the last
   });
+  it("a name that listens again while the stream stays open is heard once, however often (Fable on #3848)", async () => {
+    const { client, fx } = await live();
+    const stopRooms = client.subscribeRooms({ "message.added": () => {} });                              // keeps the stream open
+    let n = 0;
+    for (let cycle = 0; cycle < 3; cycle++) { const off = client.subscribePairingNotices(() => {}, () => {}, 3); off(); }
+    const off = client.subscribePairingNotices(() => { n++; }, () => {}, 3);
+    fx.emit("notices", { notices: [{ id: "n1" }] });
+    expect(n).toBe(1);
+    // A room view that remounts: its handler again, once.
+    let added = 0; stopRooms();
+    const keep = client.subscribePairingNotices(() => {}, () => {}, 3);
+    for (let cycle = 0; cycle < 2; cycle++) client.subscribeRooms({ "message.added": () => {} })();
+    const stop = client.subscribeRooms({ "message.added": () => { added++; } });
+    fx.emit("message.added", { roomId: "r", message: { id: "m" } });
+    expect(added).toBe(1);
+    off(); keep(); stop();
+  });
   it("a write without the session's CSRF is refused by the fixture as by the Hub", async () => {
     const fx = createHubRoomsFixture();
     expect(await (await fx.fetch("/hub/v1/rooms/room-weekly/read", { method: "POST", body: "{}" })).json()).toEqual({ code: "csrf" });

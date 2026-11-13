@@ -308,28 +308,32 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
   // One stream per tab (#1580): every live subscription shares one EventSource. A Hub with rooms carries the notices on
   // its rooms stream too (`notices` = the notice version); before that the notices have their own. Listeners are kept
   // per event name; the stream closes with its last listener, and a refused (CLOSED) stream tells every subscriber once.
-  const stream = { source: null, url: "", listeners: new Map(), closers: new Set() };
+  // One dispatcher per event name per source, added when the name first listens and kept while that source lives (with no
+  // listeners it reads an empty set), so a name that listens again while the stream stays open is heard once (Fable on #3848).
+  const stream = { source: null, url: "", listeners: new Map(), dispatchers: new Map(), closers: new Set() };
+  const attach = (name) => { if (stream.source && !stream.dispatchers.has(name)) { const fn = dispatch(name); stream.dispatchers.set(name, fn); stream.source.addEventListener(name, fn); } };
   const dispatch = (name) => (event) => {
     let data; try { data = JSON.parse(event.data); } catch { return; }
     for (const fn of [...(stream.listeners.get(name) || [])]) { try { fn(data); } catch { /* a listener's own failure */ } }
   };
   function listen(url, handlers, onClosed) {
     if (typeof EventSource === "undefined") return () => {};
-    if (stream.source && stream.url !== url) { stream.source.close(); stream.source = null; }   // the session changed what it may hear
+    if (stream.source && stream.url !== url) { stream.source.close(); stream.source = null; stream.dispatchers.clear(); }   // the session changed what it may hear
     const mine = [];
     for (const [name, fn] of Object.entries(handlers)) {
       if (typeof fn !== "function") continue;
-      if (!stream.listeners.has(name)) { stream.listeners.set(name, new Set()); stream.source?.addEventListener(name, dispatch(name)); }
+      if (!stream.listeners.has(name)) stream.listeners.set(name, new Set());
+      attach(name);
       stream.listeners.get(name).add(fn); mine.push([name, fn]);
     }
     stream.closers.add(onClosed);
     if (!stream.source) {
-      const source = new EventSource(url); stream.source = source; stream.url = url;
-      for (const name of stream.listeners.keys()) source.addEventListener(name, dispatch(name));
+      const source = new EventSource(url); stream.source = source; stream.url = url; stream.dispatchers.clear();
+      for (const name of stream.listeners.keys()) attach(name);
       source.addEventListener("error", () => {
         // A refused handshake is CLOSED, unlike a transient disconnect that EventSource itself reconnects.
         if (stream.source !== source || source.readyState !== 2) return;
-        source.close(); stream.source = null; stream.listeners.clear();
+        source.close(); stream.source = null; stream.listeners.clear(); stream.dispatchers.clear();
         const closers = [...stream.closers]; stream.closers.clear();
         for (const fn of closers) { try { fn(); } catch { /* a subscriber's own failure */ } }
       });
@@ -339,7 +343,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
       if (!live) return; live = false;
       for (const [name, fn] of mine) { const set = stream.listeners.get(name); set?.delete(fn); if (set && !set.size) stream.listeners.delete(name); }
       stream.closers.delete(onClosed);
-      if (!stream.listeners.size && stream.source) { stream.source.close(); stream.source = null; }
+      if (!stream.listeners.size && stream.source) { stream.source.close(); stream.source = null; stream.dispatchers.clear(); }
     };
   }
   const noticeVersion = (version) => version === 3 && codeNotices ? 3 : 2;

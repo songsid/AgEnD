@@ -286,6 +286,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       if (this.readyState !== 1) return; for (const fn of this.listeners.get(name) ?? []) fn({ data: JSON.stringify(data) }); } };
     constructor(readonly url: string) { if (url.startsWith("/hub/v1/rooms/events")) sources.add(this.self); else this.readyState = 2; }
     addEventListener(name: string, fn: Listener) { if (!this.listeners.has(name)) this.listeners.set(name, new Set()); this.listeners.get(name)!.add(fn); }
+    removeEventListener(name: string, fn: Listener) { this.listeners.get(name)?.delete(fn); }
     close() { this.readyState = 2; sources.delete(this.self); }
   }
   /**
