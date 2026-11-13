@@ -12,6 +12,8 @@ import { X509Certificate } from "node:crypto";
 import { makeTestCerts } from "./support/hub-init-fixtures.js";
 import { directoryCertificates } from "./support/hub-directory-ca-fixture.js";
 import { companyJoinRig } from "./support/hub-company-join-rig.js";
+import { HubMemberClient, type HubMemberLink } from "../src/hub/client.js";
+import { provisionHubIdentity } from "../src/hub/tls.js";
 import { CompanyJoinClient } from "../src/hub/join/client.js";
 import { CompanyJoinController } from "../src/hub/join/local.js";
 import { readLocalJoin } from "../src/hub/join/local-journal.js";
@@ -21,8 +23,11 @@ afterEach(async () => { for (const done of cleanup.splice(0).reverse()) await do
 it("a self-signed Hub joins a Fleet by code after the one explicit trust choice, through real redeem and ACK", async () => {
   const certs = makeTestCerts(), directory = directoryCertificates();
   cleanup.push(() => { directory.cleanup(); rmSync(certs.dir, { recursive: true, force: true }); });
-  const web = { ...certs, cert: certs.selfSigned, key: join(certs.dir, "self.key"), caCert: certs.selfSigned };
-  const r = await companyJoinRig(port => { dc.port = port; }, { certificates: { host: "hub.example.test", web, directory } }); cleanup.push(r.close);
+  const webHome = mkdtempSync(join(tmpdir(), "agend-pilot-ip-cert-")); cleanup.push(() => rmSync(webHome, { recursive: true, force: true }));
+  await provisionHubIdentity({ home: webHome, memberOrigin: "https://127.0.0.1:9443" });
+  const certificate = join(webHome, "hub/keys/tls-cert.pem");
+  const web = { ...certs, cert: certificate, key: join(webHome, "hub/keys/tls-key.pem"), caCert: certificate };
+  const r = await companyJoinRig(port => { dc.port = port; }, { host: "127.0.0.1", certificates: { host: "127.0.0.1", web, directory } }); cleanup.push(r.close);
   const admin = await r.signIn("alice");
   expect((await r.call(admin, "PUT", "/hub/v1/admin/company-join", { enabled: true, expectedRevision: 1 })).status).toBe(200);
   const made = await r.call(admin, "POST", "/hub/v1/admin/enrolment-codes", { expires: "today", maxUses: 30, perPersonFleets: 1, scope: { kind: "directory" } });
@@ -30,7 +35,7 @@ it("a self-signed Hub joins a Fleet by code after the one explicit trust choice,
   const home = mkdtempSync(join(tmpdir(), "agend-pilot-joined-")); cleanup.push(() => rmSync(home, { recursive: true, force: true }));
   let membership = false;
   const controller = new CompanyJoinController({ home, schedule: false, pilotTrustEnabled: () => true,
-    client: new CompanyJoinClient({ lookup: (_host, o, done) => o.all ? done(null, [{ address: "127.0.0.1", family: 4 }]) : done(null, "127.0.0.1", 4) }),
+    client: new CompanyJoinClient(),
     snapshot: () => ({ membership, binding: existsSync(join(home, "hub-member/state.json")) ? sha256(readFileSync(join(home, "hub-member/state.json"))) : null }),
     enableMembership: (current, accept) => { if (!current()) throw Error("stale"); membership = true; accept(); }, activate() {}, link: () => "offline" });
   cleanup.push(() => controller.close());
@@ -51,4 +56,11 @@ it("a self-signed Hub joins a Fleet by code after the one explicit trust choice,
   expect(membership).toBe(true); expect(r.deps.store.read().fleets).toHaveLength(1);
   expect(readLocalJoin(home, started.operationId)).toMatchObject({ stage: "active" });
   expect(r.db.prepare("SELECT stage FROM hub_company_join_requests WHERE id=?").get(record.binding.requestId)).toEqual({ stage: "acknowledged" });
+  let memberLink: HubMemberLink | undefined;
+  const holds: string[] = [];
+  const member = new HubMemberClient({ home, hubId: record.binding.hub.hubId, memberOrigin: r.memberOrigin, current: () => true,
+    capabilities: [], hold: reason => holds.push(reason), receive: async () => {}, reconcile: async link => { memberLink = link; } });
+  cleanup.push(() => member.close());
+  await member.start();
+  expect(memberLink?.current()).toBe(true); expect(holds).toEqual([]);
 }, 30_000);

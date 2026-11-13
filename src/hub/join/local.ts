@@ -59,7 +59,8 @@ export class CompanyJoinController {
   private now() { return this.options.now?.() ?? Date.now(); }
   private pilotEnabled() { return this.options.pilotTrustEnabled?.() === true; }
   private async discover(origin: string, current: () => boolean, display = false, choice?: PilotTrustChoice, descriptor = false) {
-    try { return { metadata: await this.client.discover(origin, current, { display, descriptor }), pilot: false }; }
+    const extras = { ...(display ? { display: true } : {}), ...(descriptor ? { descriptor: true } : {}) };
+    try { return { metadata: await this.client.discover(origin, current, extras), pilot: false }; }
     catch (error) {
       if (!(error instanceof CompanyJoinReachError) || error.kind !== "certificate" || !this.pilotEnabled()) throw error;
       const store = new CompanyCertificateTrust(this.options.home), previous = store.read(origin);
@@ -67,7 +68,7 @@ export class CompanyJoinController {
       const fingerprint = choice?.fingerprint ?? previous;
       if (!fingerprint) throw error;
       const enabled = () => current() && this.pilotEnabled();
-      const metadata = await this.client.discover(origin, enabled, { display, descriptor, certificateFingerprint: fingerprint });
+      const metadata = await this.client.discover(origin, enabled, { ...extras, certificateFingerprint: fingerprint });
       if (!enabled()) throw new HubProtocolError("stale");
       return { metadata, pilot: true };
     }
