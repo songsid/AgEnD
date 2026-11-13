@@ -1,0 +1,43 @@
+{
+  "sourceCheckpoint": "155cd71211f257b3478eed906a0cccaa41f6b51b",
+  "parent": "17f63688921e80a20031aa3e9725a1c36ad3a01e",
+  "scope": "Two product files: optional committed group message sequence in HTTP DTO/projection. No migration/Fleet frame/UI implementation in this slice.",
+  "bindings": {
+    "src/hub/rooms/types.ts": "61410073db82d07bdb01ffd881cee33aa5e83872ed262dddb79865aaa15b60dc",
+    "src/hub/rooms/service.ts": "ef5392688f56695957d3069076d827874ea666f55cb5a60749a51b7219e0f762",
+    "tests/hub-room-agents-r2.test.ts": "102af4391b7d236a60230098e88ec58275828c29d3733ce235b057604eb30264",
+    "changes/3856-room-message-order.md": "4b963b8eb10102028ad49f506db3f93baee73634b264944442c57c045423aef4",
+    "changes/3856-room-message-order.zh-TW.md": "ecd0e456dd8beec0158fa801178f7e45234494d595a2d06ec26261b488c0e4c0"
+  },
+  "focused": {
+    "files": 3,
+    "passed": 42,
+    "failed": 0
+  },
+  "nativePrograms": {
+    "source": {
+      "exit": 0,
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit"
+    },
+    "test": {
+      "exit": 0,
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json"
+    }
+  },
+  "failFirst": {
+    "source": "2434afc76a3b7f49515a2c61099b81e08b02858b",
+    "targetedNewCaseFailed": true,
+    "scope": "Broader real R/C/A/U integration, not an execution of this narrow parent. Exact before-field projector body equals the parent projector.",
+    "projectorSha256": "1226ce93c24699474684cbc6777a9e85bf02172a4ede01dc5168d0339300b0bf"
+  },
+  "integratedConsumer": {
+    "source": "500ee6d50130894cae39121ea556414a2864d4bb",
+    "U1": "3d30a29ea41ee2ed85f93ae5d819680e9d8af947",
+    "browserChecks": 88,
+    "originalPNGs": 8,
+    "imageInspected": 8,
+    "UIFocused": "37/3",
+    "natives": "source/test0 at the integration source",
+    "packet": "https://github.com/songsid/AgEnD/tree/47844b7cb/docs/evidence/hub-rooms-integration-r3/r6-six-answers"
+  }
+}

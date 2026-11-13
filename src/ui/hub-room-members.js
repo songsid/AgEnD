@@ -28,6 +28,11 @@ export function memberStatus(m) {
   return { dot: presenceDot(v.dot), text: note ? `${word} · ${note}` : word };
 }
 
+/** 「林小華的 Agent」, but 「Alex 的 Agent」: a name ending in a Latin letter or digit takes a space before 的 (Lumen). */
+export function ownerAgent(name) {
+  return hm(/[A-Za-z0-9]$/.test(name) ? "ownerAgentLatin" : "ownerAgent", name);
+}
+
 /**
  * The panel, in the right rail of a group room. Props (one mount line in the shell):
  * - client;
@@ -68,7 +73,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
   };
   // An agent's second line names whose it is beside its state (「處理中 · 林小華的 Agent」), always shown, not only on hover.
   const row = (m, extra = null) => {
-    const v = memberStatus(m), owner = (m.kind === "agent" || m.kind === "later") && m.owner?.name ? hm("ownerAgent", m.owner.name) : "";
+    const v = memberStatus(m), owner = (m.kind === "agent" || m.kind === "later") && m.owner?.name ? ownerAgent(m.owner.name) : "";
     return html`<span class="hub-member-name">${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>`;
   };
   return html`<aside class="hub-room-members">

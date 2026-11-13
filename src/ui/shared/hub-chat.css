@@ -30,7 +30,7 @@
 .hub-room-at { flex: none; color: var(--accent); font-weight: var(--fw-semibold); font-size: var(--fs-xs); }
 .inst-line2 > .nav-count { flex: none; height: 18px; min-width: 18px; line-height: 18px; }
 .hub-room-archived .inst-name { color: var(--text-3); }
-/* Keep the room hint and @all bar on balanced lines. */
+/* The room composer's fixed hint and @all bar wrap without leaving a lone word on the last line. */
 .hub-room-hint, .hub-room-allbar { text-wrap: pretty; }
 /* A question's folded answers: a left-aligned link under the last one shown (Lumen), not a centred line. */
 .hub-room-page .msg.status-line:has(.st-action) .st-text { display: none; }

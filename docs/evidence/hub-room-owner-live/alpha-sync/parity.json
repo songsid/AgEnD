@@ -1,0 +1,55 @@
+{
+  "previous": "2766123a83134d9b8b940544f28cd92ea26949d5",
+  "oldbase": "13bbaf92f46336ecbdafe800b7d0b46663292642",
+  "incoming": "0680313c267f2aaf9044c38ac682783625e59c57",
+  "merge": "a3d2bd6290f8cb0d1370f1c4b9fd4af04d67ddff",
+  "conflicts": [
+    "src/hub/http/compose.ts",
+    "src/hub/rooms/service.ts"
+  ],
+  "resolution": "Retain both cleared own changes, plus incoming module inventory; other incoming paths auto-merged unchanged",
+  "own": [
+    {
+      "path": "src/hub/http/compose.ts",
+      "unchangedOrderedDelta": true,
+      "sha256": "de7626de5cb9643302326df70ba0e44cd93a730c6caaf1e4b27307a5f82ce713"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "unchangedOrderedDelta": true,
+      "sha256": "1118c3678ebed1784861f6d1e250443a5c44e9f1609e64c1d9faeafff2da1a64"
+    },
+    {
+      "path": "tests/hub-rooms-r1.test.ts",
+      "unchangedOrderedDelta": true,
+      "sha256": "a91b7cb6bf6b436bd028bae9e2a49fbc23fc1612c95666ecff882be720d2b7d5"
+    },
+    {
+      "path": "tests/hub-room-agents-r2.test.ts",
+      "unchangedOrderedDelta": true,
+      "sha256": "698b3b84d31231c5944d0fd192a04f469ee2097ced1097d21ace0ca29dc523ab"
+    }
+  ],
+  "carried": [
+    {
+      "path": "src/ui/hub-room-presence.js",
+      "blob": "15e4b7e4cd4256d6576b821aa32f758c6f5b38fd"
+    },
+    {
+      "path": "src/ui/hub-room-working.js",
+      "blob": "cc50e6da53418bb1303c26ea0b4a8acd4a3861d4"
+    },
+    {
+      "path": "tests/hub-room-presence.test.ts",
+      "blob": "819178145731d0e2f70fbe3c4c505f1202cac748"
+    },
+    {
+      "path": "tests/hub-room-working.test.ts",
+      "blob": "319c9b2dbb685d7c36b06a4cb97549ee72ced0cc"
+    },
+    {
+      "path": "tests/hub-shared-modules-a.test.ts",
+      "blob": "04004cb91299519bcabc49b5bb315296f8ae4cae"
+    }
+  ]
+}
