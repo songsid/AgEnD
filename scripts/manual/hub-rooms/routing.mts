@@ -142,7 +142,8 @@ try {
     const question = mentionAll + " Plan together " + device, askBubble = page.locator(".msg.user").filter({ has: page.locator(".md", { hasText: question }) });
     check(tag + " @all sent mention has the same accent", (await askBubble.locator(".mention").allTextContents()).includes(mentionAll));
     check(tag + " progress follows its question without a second time", await askBubble.evaluate((el: HTMLElement, text: string) => {
-      const line = el.nextElementSibling; return !!line?.classList.contains("status-line") && line.textContent?.trim() === text && !line.querySelector(".time");
+      const line = el.nextElementSibling; return !!line?.classList.contains("status-line") && line.querySelector(".st-text")?.textContent?.trim() === text
+        && [...line.querySelectorAll(".time")].every(time => !time.textContent?.trim() && !time.hasAttribute("data-ts"));
     }, progress) && await askBubble.locator(".time").count() === 1);
     await shot("all-queued");
     check(tag + " offline Fleet retains exactly one queued delivery", planner.inputs.length === b && web.db.prepare("SELECT COUNT(*) n FROM hub_room_deliveries WHERE room_id=? AND fleet_id=? AND state='queued'").get(roomId, planner.profile.fleetId).n === 1);
@@ -176,6 +177,7 @@ try {
       if (created.status !== 200) throw Error("four-agent room: " + created.text);
       const batchRoom = created.json.room.id, batchQuestion = mentionAll + " Compare four answers " + device;
       await page.goto(origin + "/ui/hub?room=" + batchRoom); await page.locator(".hub-room-composer textarea").waitFor();
+      await page.locator(".hub-room-page .thread .msg.status-line").first().waitFor();
       await send(batchQuestion); await until(() => batch.every((p, i) => p.inputs.length === counts[i] + 1), "four-agent input");
       await Promise.all(batch.map(p => p.state({ process: "running", execution: "working" })));
       for (let i = 0; i < batch.length; i++) {
