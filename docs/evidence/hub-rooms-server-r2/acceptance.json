@@ -1,5 +1,5 @@
 {
-  "sourceHead": "461e92dcc3f0c9a26db7c431adc5b6ea28e56a0b",
+  "sourceHead": "7df4c2a851f37c7ef0b3917cb065a51d9c3054a5",
   "parentR1": "00af7e86e9d85ad977cb2f3444682676eef61cd7",
   "dispatchSource": "9b2d83c64",
   "framingSource": "563769ff7",
@@ -59,6 +59,36 @@
       "name": "changelog",
       "fragments": 458,
       "outcome": "pass"
+    },
+    {
+      "name": "review-r1-before",
+      "tests": 16,
+      "failed": 2,
+      "outcome": "semantic assertions",
+      "costBefore": 38394,
+      "costLimit": 20,
+      "scope": "120offline targets,60simulated seconds; orphan late answer hidden-parent floor"
+    },
+    {
+      "name": "review-r1-after",
+      "tests": 54,
+      "files": 5,
+      "outcome": "pass",
+      "suites": [
+        "hub-room-agents-r2",
+        "hub-rooms-r1",
+        "hub-room-routing-network-r2",
+        "hub-rooms-migration-r1",
+        "hub-groups-mount-s89"
+      ]
+    },
+    {
+      "name": "review-r1-source-types",
+      "exit": 0
+    },
+    {
+      "name": "review-r1-test-types",
+      "exit": 0
     }
   ],
   "limits": {
@@ -78,7 +108,7 @@
     },
     {
       "path": "docs/design/hub-rooms-server-r2.md",
-      "sha256": "f9c71b2b76af9d85cd81d525883fb6597b5e2de6396f25583be0e13f3d8c4c56"
+      "sha256": "b11b30024fd6cded4068bd57c681fcd588fd27e515b2e61f5114fccdc28d4662"
     },
     {
       "path": "src/hub/client.ts",
@@ -90,7 +120,7 @@
     },
     {
       "path": "src/hub/http/compose.ts",
-      "sha256": "82002bb9c4491444ee51b25abccc19bd7c1b932ad80a410df1eaad3812006ed3"
+      "sha256": "994e94ea066c7a2e7f75a8904e3173b9597011f6719348fbd8c68cdc2b4fb03a"
     },
     {
       "path": "src/hub/http/schema.ts",
@@ -102,15 +132,15 @@
     },
     {
       "path": "src/hub/rooms/agents.ts",
-      "sha256": "c81378cb9faeb31ea2a79c5615d2fe13a6f839c96a1fc78bf1e645c928f97a0e"
+      "sha256": "1020ce2f8053c7489ae707a9104799a54fbc0fd1394c6b12ff01c567f670c4f6"
     },
     {
       "path": "src/hub/rooms/schema.ts",
-      "sha256": "6efe8853bf5d8c4b9452e6e5b7fd99895e118af636050f7bf8d1b0c2b2319c25"
+      "sha256": "49ef3cdb27866eaa8a2b66397b35cb9fdfe3de4a6c41ad21114dfd10d4eaf581"
     },
     {
       "path": "src/hub/rooms/service.ts",
-      "sha256": "8e02d074e576d4cda729f35a2616c119c16d68ddefb96c4bd2b8e7f7111ff561"
+      "sha256": "d3a8c45dbf4af65e7da642a6605aca8cef5f8de45b06165ab3688053a0bad68b"
     },
     {
       "path": "src/hub/rooms/types.ts",
@@ -130,7 +160,7 @@
     },
     {
       "path": "tests/hub-room-agents-r2.test.ts",
-      "sha256": "23f40a803501f138c098b44ecff6e4fc950a05add5fc311b66ab1ca4b307a64c"
+      "sha256": "d5c5a0a4ebb4f69b249c7950d3b5d64af71a808fa05d0b53362f9a84a81394f6"
     },
     {
       "path": "tests/hub-room-link-r2.test.ts",
@@ -151,5 +181,6 @@
     "TrackC production adapter composition remains separate; default member omits capability",
     "counts overlap; no summed total claimed",
     "additive migration, older registry refuses; compatible fix-forward retains DB/keys"
-  ]
+  ],
+  "previousSourceHead": "461e92dcc3f0c9a26db7c431adc5b6ea28e56a0b"
 }

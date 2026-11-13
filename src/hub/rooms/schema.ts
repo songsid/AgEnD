@@ -52,5 +52,6 @@ CREATE TABLE hub_room_deliveries (
 );
 CREATE INDEX hub_room_deliveries_pending ON hub_room_deliveries(fleet_id,created_at) WHERE state IN ('queued','sent');
 CREATE INDEX hub_room_deliveries_parent ON hub_room_deliveries(parent_id);
+CREATE INDEX hub_room_deliveries_expiry ON hub_room_deliveries(expires_at) WHERE state IN ('queued','sent');
 `);
 } });
