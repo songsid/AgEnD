@@ -13582,7 +13582,7 @@ export class Daemon extends EventEmitter {
                 // Before every key, synchronously: the lock wait, the capture and the gap after the previous key can
                 // each have seen a respawn, pause or stop.
                 if (!owned()) return false;
-                if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape") {
+                if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape" || key === "Right") {
                   if (!await this.tmux!.sendSpecialKey(key)) return false;
                 } else {
                   if (!await this.tmux!.sendKeys(key)) return false;

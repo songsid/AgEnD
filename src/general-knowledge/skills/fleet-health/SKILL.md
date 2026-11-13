@@ -42,3 +42,18 @@ Do this when the user asks, or confirm first — don't silently restart others' 
 A genuinely wedged CLI can sometimes be freed without a restart by interrupting it —
 that is the cancel key, exposed to users as the Cancel button / `/cancel`. Only drop to
 `tmux send-keys -t agend:<name> C-c` (kiro) / `Escape` (others) if the tools aren't enough.
+
+## Antigravity first-run setup
+
+After connecting an agy account, its first interactive launch may still show a setup
+wizard. AgEnD keeps the default colour, unticks **Interactions-data sharing**, checks
+that the checkbox visibly reads `[ ]`, then accepts the Terms with Done. It never
+confirms Done with sharing checked. A changed or ambiguous screen remains in
+**Needs you**; inspect View and complete it there rather than repeatedly restarting.
+Do not create an `onboarding.json` completion flag to bypass this choice: completion
+does not prove that sharing is off. This applies to a default or named account's
+interactive pane. On alpha, Windows Runtime agy executes headless JSON requests,
+not an interactive pane; that path has no wizard-key handler. Do not promise that
+it has completed onboarding or changed the account's server-side data preference.
+After an interactive setup, the CLI's `/config` page shows **Enable Telemetry off**;
+this is the visible confirmation to inspect, rather than the completion file.
