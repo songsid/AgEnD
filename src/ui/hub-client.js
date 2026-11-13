@@ -449,6 +449,24 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     roomCreators() { return call("GET", "/hub/v1/admin/rooms/creators"); },
     saveRoomCreators(input) { return call("PUT", "/hub/v1/admin/rooms/creators", input); },
     adminRooms() { return call("GET", "/hub/v1/admin/rooms"); },
+    // Track U2 (dev-claude2): pickers, roles, invitations, leave, the agent's rooms, admin rooms.
+    // Leaving is removeRoomMember(roomId, <my id>) (409 last-manager); `me.assistant` comes with roomList()'s answer.
+    /** The new-room and add-member pickers → { ok, candidates: [{ kind: "person" | "team" | "group" | "agent", id, name, people?, owner?: { name }, mine? }] }. */
+    roomCandidates(q, kind, signal) {
+      const s = new URLSearchParams({ q: String(q ?? "") });
+      if (kind) s.set("kind", kind);
+      return call("GET", `/hub/v1/rooms/candidates?${s}`, undefined, signal);
+    },
+    /** 設為房間管理 / 改為成員. */
+    setRoomMemberRole(roomId, memberId, role) { return call("PATCH", `/hub/v1/rooms/${id(roomId)}/members/${id(memberId)}`, { role }); },
+    /** A room manager withdraws a pending (or clears an expired) invitation; 重新邀請 is a new inviteToRoom(). */
+    cancelRoomInvitation(roomId, invitationId) { return call("DELETE", `/hub/v1/rooms/${id(roomId)}/invitations/${id(invitationId)}`); },
+    /** The rooms one of my shared agents is in → { ok, rooms: [{ id, name, people, memberId }] }; 退出這個房間 is removeRoomMember(id, memberId). */
+    agentRooms(exposureId) { return call("GET", `/hub/v1/exposures/${id(exposureId)}/rooms`); },
+    /** 管理 → 房間: 加入自己成為房間管理 (the room gets a system line). */
+    joinRoomAsAdmin(roomId) { return call("POST", `/hub/v1/admin/rooms/${id(roomId)}/join`, {}); },
+    /** 管理 → 房間: 封存. */
+    archiveRoomAsAdmin(roomId, archived = true) { return call("PATCH", `/hub/v1/admin/rooms/${id(roomId)}`, { archived }); },
     pairings() { return call("GET", "/hub/v1/pairings"); },
     quickPairingV1: true,
     createQuickPairing(label) { return call("POST", "/hub/v1/quick-pairing", { label }); },

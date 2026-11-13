@@ -164,7 +164,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       return { status: 200, body: { room: listItem(room) } };
     }
     const m = p.match(/^\/hub\/v1\/rooms\/([^/]+)(?:\/(members|messages|read|invitations)(?:\/([^/]+))?)?$/);
-    if (m && m[1] !== "events") {
+    if (m && m[1] !== "events" && m[1] !== "candidates") {   // candidates: Track U2 below
       const room = roomOf(decodeURIComponent(m[1]!));
       if (!room) return fail(404, "not-found");
       const sub = m[2];
@@ -247,6 +247,56 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       return { status: 200, body: { rooms: rooms.filter(r => r.kind === "group").map(r => ({ id: r.id, name: r.name, people: r.members.filter(x => x.kind === "person").length,
         agents: r.members.filter(x => x.kind === "agent" || x.kind === "later").length, managers: r.members.filter(x => x.role === "manager").map(x => x.name),
         lastAt: r.messages.at(-1)?.at ?? 0, archived: r.archived })) } };
+    // ── Track U2 (dev-claude2): pickers, roles, invitations, the agent's rooms, admin rooms ──
+    if (p === "/hub/v1/rooms/candidates" && method === "GET") {
+      const q = (url.searchParams.get("q") ?? "").trim().toLowerCase(), kind = url.searchParams.get("kind");
+      const all = [
+        ...[...people, { id: "person-lin", name: "林小華" }, { id: "person-zhou", name: "周小明" }].map(x => ({ kind: "person", id: x.id, name: x.name })),
+        ...teams.map(x => ({ kind: "team", id: x.id, name: x.name, people: x.members.length })),
+        { kind: "group", id: "group-rd1", name: "研發一部", people: 20 },
+        ...agentMembers.map(x => ({ kind: "agent", id: x.id, name: x.name, owner: x.owner, mine: false })),
+        { kind: "agent", id: "exp-mine-1", name: "my-notes", owner: { name: FIXTURE_ME.name }, mine: true },
+      ];
+      return { status: 200, body: { candidates: all.filter(x => (!kind || x.kind === kind) && (!q || x.name.toLowerCase().includes(q))) } };
+    }
+    const u2 = p.match(/^\/hub\/v1\/rooms\/([^/]+)\/(members|invitations)\/([^/]+)$/);
+    if (u2 && u2[2] === "members" && method === "PATCH") {
+      const room = roomOf(decodeURIComponent(u2[1]!)), who = room?.members.find(x => x.id === decodeURIComponent(u2[3]!));
+      if (!room || !who) return fail(404, "not-found");
+      const role = req.body?.role;
+      if (role !== "manager" && role !== "member") return fail(400, "invalid");
+      if (role === "member" && who.role === "manager" && room.members.filter(x => x.role === "manager").length === 1) return fail(409, "last-manager");
+      who.role = role; emit("member.changed", { roomId: room.id });
+      return { status: 200, body: { member: who } };
+    }
+    if (u2 && u2[2] === "invitations" && method === "DELETE") {
+      const room = roomOf(decodeURIComponent(u2[1]!));
+      if (!room) return fail(404, "not-found");
+      const before = room.invited.length;
+      room.invited = room.invited.filter(x => x.id !== decodeURIComponent(u2[3]!));
+      if (room.invited.length === before) return fail(404, "not-found");
+      emit("room.changed", { roomId: room.id, room: listItem(room) });
+      return { status: 200, body: {} };
+    }
+    const agentRooms = p.match(/^\/hub\/v1\/exposures\/([^/]+)\/rooms$/);
+    if (agentRooms && method === "GET") {
+      const exposureId = decodeURIComponent(agentRooms[1]!);
+      return { status: 200, body: { rooms: rooms.filter(r => r.kind === "group" && r.members.some(x => x.id === exposureId))
+        .map(r => ({ id: r.id, name: r.name, people: r.members.filter(x => x.kind === "person").length, memberId: exposureId })) } };
+    }
+    const admin = p.match(/^\/hub\/v1\/admin\/rooms\/([^/]+)(\/join)?$/);
+    if (admin && ((admin[2] && method === "POST") || (!admin[2] && method === "PATCH"))) {
+      const room = roomOf(decodeURIComponent(admin[1]!));
+      if (!room) return fail(404, "not-found");
+      if (admin[2]) {
+        const mine = room.members.find(x => x.id === FIXTURE_ME.id);
+        if (mine) mine.role = "manager";
+        else { room.members.push({ id: FIXTURE_ME.id, kind: "person", name: FIXTURE_ME.name, role: "manager", presence: "online" }); say(room, system, now(), `${FIXTURE_ME.name} 加入了房間`); }
+        emit("member.changed", { roomId: room.id });
+      } else if (typeof req.body?.archived === "boolean") { room.archived = req.body.archived; emit("room.changed", { roomId: room.id, room: listItem(room) }); }
+      return { status: 200, body: { room: listItem(room) } };
+    }
+    // ── end Track U2 ──
     return null;
   }
 
