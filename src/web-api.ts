@@ -4391,7 +4391,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
             ts,
             thread_id: topicId != null ? String(topicId) : "",
             source: "web",
-            ...(guest ? { web_guest: "1" } : {}),          // #1920: "[user:… via web (guest), id:…]" (authority none)
+            ...(guest ? { web_guest: "1" } : {}),          // #1920: "[user:…@web:g#…]" (authority none)
             adapter_id: syncAdapter?.id,
             ...delivery.meta,
             // #2272: `(reply_to: "…")`, as a Discord or Telegram reply gives the agent.

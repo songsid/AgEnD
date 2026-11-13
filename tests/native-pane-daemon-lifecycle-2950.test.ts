@@ -61,3 +61,13 @@ it('a positively dead native startup retains its session and never retries fresh
  const f=fixture();f.native.acquire.mockResolvedValueOnce({pane:f.pane,source:f.source,disposition:'resumed'} as never);vi.spyOn(f.daemon,'finishStartupScan').mockResolvedValue(false);
  await expect(f.daemon.start()).rejects.toThrow('retained session was not replaced');expect(f.native.acquire).toHaveBeenCalledOnce();expect(f.daemon.spawning).toBe(false);expect(f.forbidden).not.toHaveBeenCalled();
 });
+
+it.each(['fresh','resumed','reattached'] as const)('native header capability is fenced by the %s owned startup (#3074)',async disposition=>{
+ const f=fixture();f.native.acquire.mockResolvedValueOnce({pane:f.pane,source:f.source,disposition} as never);
+ vi.spyOn(f.daemon,'finishStartupScan').mockResolvedValue(true);
+ await f.daemon.start();
+ expect(f.daemon.compactInboundInstructions).toBe(disposition==='fresh');
+ expect(f.daemon.inboundCompatibilityPending).toBe(disposition!=='fresh');
+ expect(f.daemon.humanReminders.prepare('next').replyHint).toBe(true);
+ expect(f.forbidden).not.toHaveBeenCalled();
+});

@@ -20,6 +20,22 @@ describe("TranscriptMonitor", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it("consumes only live main-context compaction boundaries once (#3074)", async () => {
+    const path = join(tmpDir, "compaction.jsonl");
+    const old = "2000-01-01T00:00:00.000Z";
+    const live = "2099-01-01T00:00:00.000Z";
+    const row = (timestamp: string, extra = {}) => JSON.stringify({ type: "system", subtype: "compact_boundary", timestamp, ...extra }) + "\n";
+    writeFileSync(path, row(old));
+    monitor.setTranscriptPath(path);
+    let resets = 0; monitor.on("context_reset", () => resets++);
+    await monitor.pollIncrement(); expect(resets).toBe(0);
+    appendFileSync(path, row(live, { isSidechain: true }));
+    await monitor.pollIncrement(); expect(resets).toBe(0);
+    appendFileSync(path, row(live));
+    await monitor.pollIncrement(); expect(resets).toBe(1);
+    await monitor.pollIncrement(); expect(resets).toBe(1);
+  });
+
   it("emits tool_use events from JSONL", async () => {
     const jsonlPath = join(tmpDir, "transcript.jsonl");
     const entry = { message: { role: "assistant", content: [{ type: "tool_use", name: "Read", input: { file_path: "/tmp/foo" } }] } };

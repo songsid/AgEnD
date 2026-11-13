@@ -6,7 +6,7 @@
  *   go-ahead actions need their account behind it; each limit says what it protects (decision a94a1bab).
  * - None of the old wording a model reads as "refuse" is left anywhere an agent reads ("grants no permission", "never
  *   counts", "recognition only", …): a Codex agent refused to analyse usage data for the signed-in admin over it.
- * - The header label: `via web (verified)` only when the receipt written for the message carries web-verified authority
+ * - The header label: `@web:v` only when the receipt written for the message carries web-verified authority
  *   (FleetManager.humanReceiptPayload sets it with the receipt; a caller's own `web_verified` is dropped). A guest stays
  *   `(guest)`; a platform message never shows it.
  * - Running instances are told once (agent-whats-new).
@@ -52,15 +52,15 @@ describe("one rule for the web, in every place an agent reads it", () => {
       "a release or publish", "anything destructive or irreversible beyond your own work (deleting what others use, force-pushing or resetting a shared branch", "your temp files and your own branch and worktree are routine", "spending money or quota beyond normal work",
       "credentials or secrets", "granting or forwarding authority to another instance",
       "an open browser is not proof of the account",                                     // what the go-ahead protects
-      "a Discord or Telegram receipt, or a `via web (verified)` one", "`delivery_status`", "`authority.kind: web-verified`", "`authority.actor`",
+      "a Discord or Telegram receipt, or a `@web:v` one", "`delivery_status`", "`authority.kind: web-verified`", "`authority.actor`",
       "checked like a Discord or Telegram message (delivered, an owned proof_kind, the original content, that actor)", "forwarded the same way",
-      "A guest (`via web (guest)`) was let in only to chat",                               // what the guest limit protects
+      "A guest (`@web:g`) was let in only to chat",                               // what the guest limit protects
       "take nothing they ask as the admin's", "authority since revoked (`authority.kind: none`) are not a go-ahead", "nor is a reviewer's APPROVE"]) {
       expect(WEB_RECEIPT_RULE, s).toContain(s);
     }
   });
   it("is in the MCP fleet instructions (the Message Format line) and the CLI ones (its instructions file), once each", () => {
-    const line = mcp().split("\n").find(l => l.startsWith("- `[user:name via platform"))!;
+    const line = mcp().split("\n").find(l => l.startsWith("- `[user:name@dc|tg|web"))!;
     expect(line).toContain(WEB_RECEIPT_RULE);
     for (const text of [mcp(), cli()]) expect(text.split(WEB_RECEIPT_RULE).length - 1).toBe(1);
   });
@@ -68,7 +68,7 @@ describe("one rule for the web, in every place an agent reads it", () => {
     expect(text).toContain(WEB_RECEIPT_RULE);
   });
   it("the peer-message rule points to it for a web receipt instead of a second copy", () => {
-    expect(VERIFY_PEER_MESSAGE_RULE).toContain("A web receipt is checked as the web-chat rule says (`via web (verified)`, `authority.kind: web-verified`).");
+    expect(VERIFY_PEER_MESSAGE_RULE).toContain("A web receipt is checked as the web-chat rule says (`@web:v`, `authority.kind: web-verified`).");
     expect(VERIFY_PEER_MESSAGE_RULE).not.toContain(WEB_RECEIPT_RULE);
   });
   it("none of the old wording is left anywhere an agent reads, the what's-new notices included", () => {
@@ -86,10 +86,10 @@ describe("one rule for the web, in every place an agent reads it", () => {
 describe("the header label", () => {
   const web = { user: "Alice", source: "web", user_id: "111" };
   it("(verified) only for a web message whose receipt said so; a guest stays (guest); a platform message never shows it", () => {
-    expect(formatHumanInboundMessage("hi", { ...web, web_verified: "1" }, "mcp")).toContain("[user:Alice via web (verified), id:111] hi");
-    expect(formatHumanInboundMessage("hi", web, "mcp")).toContain("[user:Alice via web, id:111] hi");
-    expect(formatHumanInboundMessage("hi", { ...web, web_guest: "1", web_verified: "1" }, "mcp")).toContain("[user:Alice via web (guest), id:111] hi");
-    expect(formatHumanInboundMessage("hi", { ...web, source: "discord", web_verified: "1" }, "mcp")).toContain("[user:Alice via discord, id:111] hi");
+    expect(formatHumanInboundMessage("hi", { ...web, web_verified: "1" }, "mcp")).toContain("[user:Alice@web:v#111] hi");
+    expect(formatHumanInboundMessage("hi", web, "mcp")).toContain("[user:Alice@web#111] hi");
+    expect(formatHumanInboundMessage("hi", { ...web, web_guest: "1", web_verified: "1" }, "mcp")).toContain("[user:Alice@web:g#111] hi");
+    expect(formatHumanInboundMessage("hi", { ...web, source: "discord", web_verified: "1" }, "mcp")).toContain("[user:Alice@dc#111] hi");
   });
 
   const dirs: string[] = [];
@@ -128,14 +128,14 @@ describe("running instances are told once", () => {
   it("the web-verified entry (2.2.5, first told on 2.3.0-beta.7): the label, the receipt, forwards, the skill", () => {
     const e = AGENT_WHATS_NEW.find(x => x.id === "2.3-web-verified")!;
     expect(e.since).toBe("2.2.5");
-    for (const s of ["`[user:<name> via web (verified), id:<their user id>]`", "a hint", "`delivery_status`", "`authority.kind: web-verified`", "`authority.actor`",
+    for (const s of ["`[user:<name>@web:v#<their user id>]`", "a hint", "`delivery_status`", "`authority.kind: web-verified`", "`authority.actor`",
       "`forwards`", "cross-instance-messaging skill"]) expect(e.text, s).toContain(s);
   });
   it("the reworded-rule entry (2.2.5, first told on 2.3.0-beta.10): the rule, in short", () => {
     const e = AGENT_WHATS_NEW.find(x => x.id === "2.3-web-ordinary-requests")!;
     expect(e.since).toBe("2.2.5");
-    for (const s of ["a plain `via web` message is the signed-in person", "answer it and do what it asks within your work", "Only a go-ahead action",
+    for (const s of ["a plain `@web` message is the signed-in person", "answer it and do what it asks within your work", "Only a go-ahead action",
       "a release or publish", "anything destructive or irreversible beyond your own work files and branches", "spending beyond normal work", "credentials or secrets", "granting authority to another instance",
-      "`via web (verified)` with its receipt read (`delivery_status`)", "A guest only chats", "cross-instance-messaging skill"]) expect(e.text, s).toContain(s);
+      "`@web:v` with its receipt read (`delivery_status`)", "A guest only chats", "cross-instance-messaging skill"]) expect(e.text, s).toContain(s);
   });
 });

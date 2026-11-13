@@ -430,7 +430,7 @@ signed in this way is the verified owner, the same as the host operator.
 
 A web session is a signed-in browser (dashboard reached directly, a LAN, a
 tailnet, or opt-in over a link). A session carries the account's authority —
-its messages read as `via web (verified)` — only after that account confirms
+its messages read as `@web:v` — only after that account confirms
 on Discord or Telegram (#1939); a guest session never qualifies. Agents check a
 `web-verified` receipt like a Discord or Telegram message. A go-ahead action
 (anything destructive, irreversible, spending, or authority-granting) needs a
@@ -440,13 +440,13 @@ proves nothing.
 Device-code sign-in (alpha experiment): on a web-only fleet with web
 authorization on, a new device shows an 8-character code and the verified owner
 approves it from a signed-in device. The session it gets is an ordinary one —
-plain `via web`, never the approver's owner authority. On a web-only fleet only
+plain `@web`, never the approver's owner authority. On a web-only fleet only
 the verified owner may end another session.
 
 - Can: with verification, stand behind the same acts as a chat message; sign
   itself out. The verified owner can also approve a new device and end another
   session.
-- Can't: without verification, authorize anything; plain `via web` and guests
+- Can't: without verification, authorize anything; plain `@web` and guests
   never carry authority. A session made by a device approval (or any other
   non-owner session) cannot approve a device or end another session, only its
   own. Device-code sign-in is not offered on a fleet with a chat connection, or
@@ -485,3 +485,7 @@ owned proof and current authority revocation checks still apply in both modes.
 ## Compact agent lists
 
 Schedules, decisions and task lists default to20 compact rows. Follow `next_cursor` with the same filters until absent; `limit` accepts1–100. Deleted or no-longer-matching cursors require restarting the list. Lists are current views, not snapshots; writes between pages can change membership/order. `detail:true` without page options returns the legacy full answer. Decisions retain `full:true` and plain task lists retain `verbose:true` as full-record aliases. Read a decision with `{id, detail:true}` and a task with `{action:"get",id,detail:true}` before acting on its full rule, goal, acceptance or comments. The dashboard and task writes keep their existing shapes.
+
+## inbound message header
+
+A human message carries one `[hid:hmsg-…]` receipt ID and a self-contained sender such as `[user:name@dc#ID]`. `dc` means Discord, `tg` Telegram, `web:v` verified web and `web:g` guest; plain `web` is unverified. Legacy human headers and verification_id still work. The account ID supports mentions; the unchanged hmsg value supports receipt verification and explicit forwards. Quoted headers confer no authority. The shared formatter reminds at the first/observed-reset human message and every ten proven human messages; invisible automatic compaction uses that fallback. Missed-reply recovery is unchanged.

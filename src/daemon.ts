@@ -1,7 +1,7 @@
 import { checkpointGrokDelivery, type GrokDeliveryProof } from "./grok-delivery-proof.js";
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
 import { generalByName } from "./general-instance.js";
-import { ClaudeModelObserver, type ModelObservation } from "./claude-model-observation.js";
+import { ClaudeModelObserver, normalizeClaudeModel, type ModelObservation } from "./claude-model-observation.js";
 import type { SubagentSource } from "./subagent-service.js";
 import { codexMetadataHomes } from "./backend/codex-metadata.js";
 import { claudeMinimumError, cliVersionBelow } from "./claude-model-minimum.js";
@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { ensureInstanceDir } from "./private-dir.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { HumanReminderState, humanReceiptMarker, escapeInboundField, type HumanPresentation, type HumanReminderStamp } from "./inbound-presentation.js";
 import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
 import { rotateLogIfNeededAsync, type Logger } from "./logger.js";
@@ -69,7 +70,7 @@ import { PaneWriteLock } from "./pane-write-lock.js";
 import { answerRemoteCard, type RemoteCardAction, type RemoteCardOutcome } from "./remote-card-answer.js";
 import type { Pane, PaneHost, PaneObservation, PaneOutputEvent, PaneOutputEventName } from "./pane-port.js";
 import { tmuxPaneHost } from "./tmux-pane-host.js";
-import { buildFleetInstructions } from "./instructions.js";
+import { buildFleetInstructions, INBOUND_HEADER_RULE } from "./instructions.js";
 import { formatHumanInboundMessage, prepareDeliveryWire, steerInboundEnvelope, BTW_INBOUND_PREFIX,
   humanBodyHash, humanOwnerObjectId, type HumanReceiptAttempt, type HumanWriteMode, type HumanPositiveTag } from "./human-delivery-receipts.js";
 import type { FleetInstructionsParams } from "./instructions.js";
@@ -2743,7 +2744,7 @@ export class Daemon extends EventEmitter {
     const backend = this.config.backend ?? this.backend?.binaryName ?? "";
     if (!["claude-code", "codex"].includes(backend)) return;
     const marker = durableAttempt ? `[agend-delivery-id:${durableAttempt.deliveryId}]`
-      : humanVerificationId ? `[agend-human-id:${humanVerificationId}]` : null;
+      : humanVerificationId ? verdict.humanReceipt?.marker ?? `[agend-human-id:${humanVerificationId}]` : null;
     if (!marker || !formatted.startsWith(marker)) return;
     let found: { path?: string; offset?: number } | null = verdict.transcriptCheckpoint ?? null;
     if (!found) {
@@ -2756,7 +2757,7 @@ export class Daemon extends EventEmitter {
     if (!checkpoint) return; // nothing could judge it later: it runs as before (✅ at the hand-off)
     const entry: QueuedHandoff = {
       id: track.id ?? randomUUID(), marker, backend, path: checkpoint.path, offset: checkpoint.offset,
-      content: track.content, meta: track.meta, holder: this.handoffHolder(), createdAt: Date.now(),
+      content: track.content, meta: track.meta, wire: formatted, holder: this.handoffHolder(), createdAt: Date.now(),
       redeliveries: track.redeliveries ?? 0,
     };
     try {
@@ -3275,6 +3276,12 @@ export class Daemon extends EventEmitter {
           this.startupAdmission?.();
           if (this.startupAborted || this.deliveryWritesStopping || !this.nativePaneLifecycle.current()) throw Error("Native launch was superseded");
         }
+        // Only a fresh owned launch has received this manager's current instruction grammar.
+        // A resumed/reattached context learns it through the same proven legacy notice as local panes.
+        this.startupAdmission?.();
+        if (this.startupAborted || this.deliveryWritesStopping || !this.nativePaneLifecycle.current()) throw Error("Native launch was superseded");
+        if (acquired.disposition === "fresh") this.installCompactInboundInstructions();
+        else { this.compactInboundInstructions = false; this.inboundCompatibilityPending = true; this.resetInboundPresentation(); }
       } finally { this.endSpawn(); }
     } else {
     // 2. Tmux — ensure session, create window if not alive
@@ -5091,7 +5098,7 @@ export class Daemon extends EventEmitter {
       try { pane = await tmux.capturePaneWithHistory(KIRO_COMPACT_PANE_LINES); } catch { continue; }
       if (!standing()) return;
       const outcome = follower.look(pane);
-      if (outcome) { this.broadcastFleetMessage({ type: "compact_pane_result", id, owner, outcome }); return; }
+      if (outcome) { if (outcome === "done") this.resetInboundPresentation(); this.broadcastFleetMessage({ type: "compact_pane_result", id, owner, outcome }); return; }
     }
   }
 
@@ -5114,6 +5121,7 @@ export class Daemon extends EventEmitter {
     durableAttempt?: DurableDeliveryAttempt,
     ownSwitch?: { id: string; kind: "model"; requested: string },
     notifyWritten?: string,
+    contextReset?: "clear" | "compact",
   ): void {
     const modelObserver = this.claudeModelObserver;
     const modelOwner = launchIdentity(this.interactionOwner());
@@ -5121,6 +5129,7 @@ export class Daemon extends EventEmitter {
     const reportSwitch = (result: OwnSwitchOutcome) => {
       if (!ownSwitch) return;
       if (currentModelOwner()) modelObserver?.ownResult(result.outcome === "switched", ownSwitch.requested);
+      if (result.outcome === "switched") this.resetInboundPresentation();
       this.broadcastFleetMessage({ type: "runtime_switch_result", id: ownSwitch.id, ...result });
     };
     // Board 003648ac: the fleet follows a web /compact from just before its paste is written: the transcript's end then
@@ -5183,7 +5192,7 @@ export class Daemon extends EventEmitter {
           preserveExactBytes: true,
           // #1690: our own /model holds every other delivery from its write on — before the lock is released, so a steer
           // or /btw waiting on it cannot type into the gap before claude paints "Switch model?" (default cursor: Yes).
-          ...(ownSwitch || notifyWritten ? { onPaneWritten: () => { if (ownSwitch) { this.ownSwitch = ownSwitch; if (currentModelOwner()) modelObserver?.ownIntent(ownSwitch.requested); } tellWritten(true); } } : {}),
+          ...(ownSwitch || notifyWritten || contextReset ? { onPaneWritten: () => { if (contextReset) this.resetInboundPresentation(); if (ownSwitch) { this.ownSwitch = ownSwitch; if (currentModelOwner()) modelObserver?.ownIntent(ownSwitch.requested); } tellWritten(true); } } : {}),
           ...(notifyWritten ? { beforePaneWrite: takeCheckpoint, ...(this.backend?.compactPaneUi?.() ? { lookBeforePaneWrite: lookBefore } : {}) } : {}),
         });
         tellWritten(false);                                                // never written (once told, this says nothing)
@@ -5254,6 +5263,7 @@ export class Daemon extends EventEmitter {
       durableAttempt ? { ...durableAttempt, submissionMode: "raw_paste", silentSchedule: msg.silent_schedule === true } : undefined,
       ownSwitch,
       notifyWritten,
+      msg.context_reset === "clear" || msg.context_reset === "compact" ? msg.context_reset : undefined,
     );
   }
 
@@ -6925,13 +6935,27 @@ export class Daemon extends EventEmitter {
     this.claudeModelObserver = modelObserver;
     this.modelObservationBound = false;
     const owner = launchIdentity(this.interactionOwner());
+    let reminderSession = modelObserver?.checkpoint().sessionId ?? null;
+    const observeReminderBoundary = (sessionId: string, before: ModelObservation, after: ModelObservation) => {
+      const selected = (s: ModelObservation) => normalizeClaudeModel(s.session ?? s.launch);
+      const served = (s: ModelObservation) => normalizeClaudeModel(s.active?.served ?? s.lastServed ?? s.session ?? s.launch);
+      const moved = (a: string | null, b: string | null) => a !== null && b !== null && a !== b;
+      const changed = reminderSession !== null && reminderSession !== sessionId
+        || moved(selected(before), selected(after)) || moved(served(before), served(after));
+      reminderSession = sessionId;
+      if (changed) this.resetInboundPresentation();
+    };
     monitor.on("model_context", (sessionId, sessionModel) => {
       if (!modelObserver || this.transcriptMonitor !== monitor || owner !== launchIdentity(this.interactionOwner()) || !modelCurrent()) return;
+      const before = modelObserver.snapshot();
       modelObserver.bindSession(sessionId, sessionModel); this.modelObservationBound = true;
+      observeReminderBoundary(sessionId, before, modelObserver.snapshot());
     });
     monitor.on("model_observation", (record, sessionModel, allowInference = true) => {
       if (!modelObserver || this.transcriptMonitor !== monitor || owner !== launchIdentity(this.interactionOwner()) || !modelCurrent()) return;
+      const before = modelObserver.snapshot();
       const changed = modelObserver.observe(record, sessionModel, allowInference); this.modelObservationBound = true;
+      observeReminderBoundary(record.sessionId, before, modelObserver.snapshot());
       try {
         const path = join(this.instanceDir, "claude-model-observation.json"), temp = `${path}.tmp`;
         writeFileSync(temp, JSON.stringify(modelObserver.checkpoint()), { mode: 0o600 }); renameSync(temp, path);
@@ -6952,7 +6976,10 @@ export class Daemon extends EventEmitter {
     monitor.on("workspace_follow", (event) => { if (canFollow()) this.followLog.observe(event); });
     monitor.on("workspace_reset", () => { if (this.transcriptMonitor === monitor) this.followLog.reset(); });
     // #1641 R2: a re-baselined source starts over, and so does what it said (an open turn read before is withdrawn).
-    monitor.on("reset", () => { if (this.transcriptMonitor === monitor) { this.transcriptTurns.reset(); this.transcriptActivityAt = 0; this.followLog.reset(); } });
+    monitor.on("reset", () => { if (this.transcriptMonitor === monitor) { this.transcriptTurns.reset(); this.transcriptActivityAt = 0; this.followLog.reset(); this.resetInboundPresentation(); } });
+    monitor.on("context_reset", () => {
+      if (this.transcriptMonitor === monitor && owner === launchIdentity(this.interactionOwner())) this.resetInboundPresentation();
+    });
     for (const event of ["tool_use", "tool_result", "assistant_text"] as const) monitor.on(event, touch);
     return monitor;
   }
@@ -8009,10 +8036,64 @@ export class Daemon extends EventEmitter {
   /** #1650: how this instance talks to the fleet — MCP tools, or agend-agent commands (agent_mode: cli). */
   private agentMode(): AgentMode { return this.config.agent_mode === "cli" ? "cli" : "mcp"; }
 
+  private humanReminders = new HumanReminderState();
+  private compactInboundInstructions = false;
+  private inboundCompatibilityPending = false;
+  private humanPreparations = new Map<string, {
+    receiptId: string;
+    prepare: (presentation: HumanPresentation) => { wire: string; meta: Record<string, string> };
+    abandon?: () => void;
+    prepared?: { wire: string; meta: Record<string, string>; stamp: HumanReminderStamp };
+  }>();
+  private humanReminderAttempts = new Map<string, HumanReminderStamp>();
+
+  /** Manager-owned admission capability. Never derived from a body marker. */
+  registerHumanReceiptPreparation(receiptId: string,
+    prepare: (presentation: HumanPresentation) => { wire: string; meta: Record<string, string> }, abandon?: () => void): string {
+    this.humanPreparations ??= new Map();
+    this.humanReminderAttempts ??= new Map();
+    this.humanReminders ??= new HumanReminderState();
+    const token = randomUUID();
+    this.humanPreparations.set(token, { receiptId, prepare, abandon });
+    return token;
+  }
+
+  /** Called only when this launch has installed instructions teaching both dialects. */
+  private installCompactInboundInstructions(): void {
+    this.compactInboundInstructions = true;
+    this.inboundCompatibilityPending = false;
+    this.humanReminders.reset();
+  }
+
+  public resetInboundPresentation(): void { (this.humanReminders ??= new HumanReminderState()).reset(); }
+
+  private prepareHumanReceiptWrite(meta: Record<string, string>, fallback: string): string {
+    if (!meta.human_prepare_token) return fallback;
+    const preparation = this.humanPreparations.get(meta.human_prepare_token);
+    if (!preparation || preparation.receiptId !== meta.human_receipt_id) throw new Error("Human delivery preparation is unavailable");
+    const stamp = preparation.prepared?.stamp ?? this.humanReminders.prepare(preparation.receiptId);
+    if (!this.humanReminders.current(stamp)) throw new Error("Human delivery context changed");
+    const dialect = this.compactInboundInstructions ? "compact" : "legacy";
+    const prepared = preparation.prepared ?? { ...preparation.prepare({ dialect, replyHint: stamp.replyHint, escape: true,
+      ...(this.inboundCompatibilityPending ? { compatibilityNotice: "[system:headers] " + INBOUND_HEADER_RULE } : {}) }), stamp };
+    preparation.prepared = prepared;
+    Object.assign(meta, prepared.meta);
+    this.humanReminderAttempts.set(preparation.receiptId, stamp);
+    return prepared.wire;
+  }
+
   private formatInboundMessage(content: string, meta: Record<string, string>): string {
-    if (!meta.from_instance) return formatHumanInboundMessage(content, meta, this.agentMode());
+    let historicalHandoff = false;
+    if (meta.handoff_redelivery) {
+      const owned = this.handoffStore().list().find(row => row.id === meta.handoff_redelivery && row.holder === this.handoffHolder());
+      if (owned?.wire) return owned.wire;
+      // Pre-wire records retain their historical rendering only after proving the owned handoff.
+      historicalHandoff = !!owned;
+    }
+    // Receiptless bot/system traffic has no final receipt preparation to replace this fallback.
+    if (!meta.from_instance) return formatHumanInboundMessage(content, meta, this.agentMode(), { dialect: "legacy", escape: !historicalHandoff });
     let formatted = formatCrossInstanceInboundMessage(content, meta, this.agentMode());
-    if (meta.reply_to_text) formatted += '\n(reply_to: "' + meta.reply_to_text + '")';
+    if (meta.reply_to_text) formatted += '\n(reply_to: "' + escapeInboundField(meta.reply_to_text) + '")';
     if (meta.delivery_id) formatted = "[agend-delivery-id:" + meta.delivery_id + "]\n" + formatted;
     return formatted;
   }
@@ -8031,10 +8112,12 @@ export class Daemon extends EventEmitter {
   }
 
   /** The same formatter/sanitizer used by the actual write; snapshot only. */
-  humanReceiptWire(content: string, meta: Record<string, string>, kind: string): string {
+  humanReceiptWire(content: string, meta: Record<string, string>, kind: string, presentation?: HumanPresentation): string {
     let wire = kind === "raw_paste" ? content
       : !meta.from_instance && content.startsWith("/raw ") && kind === "fleet_inbound"
-        ? content.slice(5) : this.formatInboundMessage(content, meta);
+        ? content.slice(5) : presentation && !meta.from_instance
+          ? formatHumanInboundMessage(content, meta, this.agentMode(), presentation) : this.formatInboundMessage(content, meta);
+    if (presentation?.compatibilityNotice) wire = withWhatsNew(wire, presentation.compatibilityNotice);
     if (kind === "steer") wire = Daemon.steerEnvelope(wire);
     else if (kind === "btw") wire = BTW_INBOUND_PREFIX + wire;
     return prepareDeliveryWire(wire, kind === "raw_paste");
@@ -8046,8 +8129,10 @@ export class Daemon extends EventEmitter {
     if (!id || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(id) || meta.verification_id !== "hmsg-" + id
       || !daemonOwner || !meta.human_owner_key || !/^[a-f0-9]{64}$/.test(meta.human_wire_sha256 ?? "")
       || humanBodyHash(prepareDeliveryWire(wire)) !== meta.human_wire_sha256) return undefined;
+    const stamp = this.humanReminderAttempts?.get(id);
     return { receiptId: id, verificationId: meta.verification_id, expectedWireHash: meta.human_wire_sha256,
-      ownerKey: meta.human_owner_key, current: () => this.captureHumanReceiptOwner() === daemonOwner };
+      ownerKey: meta.human_owner_key, marker: humanReceiptMarker(meta.verification_id, meta.human_wire_dialect === "compact" ? "compact" : "legacy"), current: () => this.captureHumanReceiptOwner() === daemonOwner
+        && (!stamp || this.humanReminders.current(stamp)) };
   }
 
   /**
@@ -8069,12 +8154,33 @@ export class Daemon extends EventEmitter {
   }
 
   private finishHumanReceipt(meta: Record<string, string>, verdict: DeliveryVerdict): void {
-    if (!meta.human_receipt_id || !meta.human_owner_key) return;
+    if (!meta.human_receipt_id) return;
+    if (!meta.human_owner_key) {
+      const preparation = meta.human_prepare_token ? this.humanPreparations?.get(meta.human_prepare_token) : undefined;
+      preparation?.abandon?.();
+      if (meta.human_prepare_token) this.humanPreparations?.delete(meta.human_prepare_token);
+      return;
+    }
     const attempt = verdict.humanReceipt;
     const proof = attempt?.current() && !["unverified", "output-edge", "unverifiable"].includes(verdict.proof ?? "")
       ? attempt.proof ?? null : null;
     try { this.emit("human_receipt_result", { receipt_id: meta.human_receipt_id, owner_key: meta.human_owner_key, proof }); }
     catch (err) { this.logger.error({ err }, "Could not publish human delivery evidence"); }
+    finally {
+      if (meta.human_prepare_token) this.humanPreparations.delete(meta.human_prepare_token);
+      this.humanReminderAttempts.delete(meta.human_receipt_id);
+    }
+  }
+
+  /** Synchronous acknowledgement from the manager after the existing receipt owner/authority checks. */
+  public noteHumanReceiptSettlement(id: string, positive: boolean): void {
+    const stamp = this.humanReminderAttempts?.get(id);
+    if (!stamp || !positive || !this.humanReminders.current(stamp)) return;
+    this.humanReminders.settle(stamp, true);
+    if (this.inboundCompatibilityPending) {
+      this.compactInboundInstructions = true;
+      this.inboundCompatibilityPending = false;
+    }
   }
 
   /**
@@ -8185,7 +8291,7 @@ export class Daemon extends EventEmitter {
           steer: true,
           deliveryEpoch,
           submissionId: meta.message_id,
-          ...(meta.verification_id ? { humanVerificationId: meta.verification_id } : {}),
+          ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}),
           verdict,
           durableAttempt: durableAttempt || undefined,
         })) {
@@ -8244,7 +8350,7 @@ export class Daemon extends EventEmitter {
       let delivered = false;
       try {
         if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id,
-          ...(meta.verification_id ? { humanVerificationId: meta.verification_id } : {}), verdict })) {
+          ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}), verdict })) {
           delivered = true;
           this.markTurnStarted(meta, formatted, deliveryEpoch);
         }
@@ -8380,7 +8486,7 @@ export class Daemon extends EventEmitter {
           sent = await this.deliverMessage(pasted, status, {
             deliveryEpoch,
             submissionId: meta.message_id,
-            ...(meta.verification_id ? { humanVerificationId: meta.verification_id } : {}),
+            ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}),
             verdict,
             durableAttempt: durableAttempt || undefined,
           });
@@ -8460,6 +8566,7 @@ export class Daemon extends EventEmitter {
       deliveryEpoch?: number;
       submissionId?: string;
       humanVerificationId?: string;
+      humanMeta?: Record<string, string>;
       verdict?: DeliveryVerdict;
       spawnRetry?: number;
       durableAttempt?: DurableDeliveryAttempt;
@@ -8675,6 +8782,7 @@ export class Daemon extends EventEmitter {
           opts?.humanVerificationId,
           opts?.beforePaneWrite,
           opts?.lookBeforePaneWrite,
+          opts?.humanMeta,
         );
         // #1690: still under the lock — whatever waits on it next must already see what this write started.
         if (verdict.paneWriteStarted) opts?.onPaneWritten?.();
@@ -10610,14 +10718,29 @@ export class Daemon extends EventEmitter {
     beforePaste?: () => void,
     // Board 907c7899: awaited each attempt after its last capture, begin and fence; the fence is asked again after it.
     lookBeforePaste?: () => Promise<void>,
+    humanMeta?: Record<string, string>,
     // "handoff-box-unread": a hand-off's last capture had no readable box — nothing begun or written (#1169).
   ): Promise<boolean | KiroPendingDelivery | "handoff-box-unread" | "pane-in-mode"> {
-    const signature = this.submissionSignature(formatted, humanVerificationId ?? submissionId, humanVerificationId !== undefined);
+    if (humanMeta?.human_prepare_token) {
+      if (stillCurrent && !stillCurrent()) return false;
+      formatted = this.prepareHumanReceiptWrite(humanMeta, formatted);
+      if (verdict.trackHandoff) {
+        const { human_prepare_token: _token, ...kept } = humanMeta;
+        Object.assign(verdict.trackHandoff.meta, kept);
+        delete verdict.trackHandoff.meta.human_prepare_token;
+      }
+      verdict.humanReceipt = this.humanReceiptAttempt(humanMeta, formatted);
+      if (!verdict.humanReceipt?.current()) return false;
+      const writeOwner = stillCurrent;
+      stillCurrent = () => (!writeOwner || writeOwner()) && verdict.humanReceipt!.current();
+    }
+    const humanDialect = humanMeta?.human_wire_dialect === "compact" ? "compact" : "legacy";
+    const signature = this.submissionSignature(formatted, humanVerificationId ?? submissionId, humanVerificationId !== undefined, humanDialect);
     const rawPaste = durableAttempt?.submissionMode === "raw_paste";
     const humanAttempt = verdict.humanReceipt;
     const humanMode: HumanWriteMode = rawPaste ? "raw_paste" : steer ? "steer"
       : handingOffToNativeQueue ? "native_queue_handoff" : "idle_submit";
-    if (humanAttempt && signature.unique && signature.value === "agend-human-id:" + humanAttempt.verificationId
+    if (humanAttempt && signature.unique && signature.value === humanReceiptMarker(humanAttempt.verificationId, humanDialect).slice(1, -1)
       && humanBodyHash(formatted) === humanAttempt.expectedWireHash) {
       signature.humanPositive = tag => {
         if (!humanAttempt.current() || (stillCurrent && !stillCurrent())) return;
@@ -10875,7 +10998,7 @@ export class Daemon extends EventEmitter {
         if (before?.mode !== "text") return this.failDelivery(verdict, status, "steer-paste", before === null ? "box-unread" : `box-still-${before.mode}`);
         if (!this.steerPasteIsOurs(before.pane, formatted)) return this.failDelivery(verdict, status, "steer-paste", "box-not-this-paste");
         const shown = this.backend?.readSteerComposerText?.(before.pane)?.replace(/\s+/g, " ").trim();
-        humanComposerOwned = !!humanAttempt && shown === "[agend-human-id:" + humanAttempt.verificationId + "]";
+        humanComposerOwned = !!humanAttempt && shown === (humanAttempt.marker ?? "[agend-human-id:" + humanAttempt.verificationId + "]");
         // …and so is the Enter: the key is sent only while the reading is still within it.
         steerEnterDeadline = deadline;
       }
@@ -11757,7 +11880,7 @@ export class Daemon extends EventEmitter {
    * paste that never landed. System pastes carry no envelope and fall back to
    * the body signature, which the baseline comparison still ties to this paste.
    */
-  private submissionSignature(formatted: string, trustedId?: string, verification = false): SubmissionSignature {
+  private submissionSignature(formatted: string, trustedId?: string, verification = false, dialect: "legacy" | "compact" = "legacy"): SubmissionSignature {
     // The id must come from the message's own metadata, never from scanning the
     // rendered text: agents and users discuss message ids in the body all the
     // time ("check message_id: abc"), and a body-scanned value would match an
@@ -11765,7 +11888,7 @@ export class Daemon extends EventEmitter {
     // and confirm a paste that never landed. Only the value AgEnD itself put in
     // the handoff metadata identifies THIS delivery.
     const id = trustedId?.trim();
-    if (id) return { value: (verification ? "agend-human-id:" : "message_id:") + id, unique: true };
+    if (id) return { value: verification ? humanReceiptMarker(id, dialect).slice(1, -1) : "message_id:" + id, unique: true };
     return { value: pastedTextSignature(formatted), unique: false };
   }
 
@@ -12666,6 +12789,11 @@ export class Daemon extends EventEmitter {
     this.clearReplyGuardConfirm();
     this.sawBlockedInput = false;
     if (this.spawnDepth === 0) {
+      this.resetInboundPresentation();
+      this.compactInboundInstructions = false;
+      this.inboundCompatibilityPending = false;
+      for (const p of this.humanPreparations?.values() ?? []) p.abandon?.();
+      this.humanPreparations?.clear(); this.humanReminderAttempts?.clear();
       this.cliOomObservation = null;
       this.spawnGeneration++;
       this.interactionObservation.reset(this.interactionOwner());
@@ -13752,7 +13880,8 @@ export class Daemon extends EventEmitter {
     }
 
     // #1633: decided before prev-instructions is first written — its absence is what says "never launched before".
-    this.prepareWhatsNew(!existsSync(join(this.instanceDir, "prev-instructions")));
+    const freshInboundInstructions = !existsSync(join(this.instanceDir, "prev-instructions"));
+    this.prepareWhatsNew(freshInboundInstructions);
     // Record what this launch writes. #2787: a change is never announced in the pane; the CLI takes the new
     // instructions whenever it next reads its own file.
     if (backendConfig.instructions) {
@@ -13769,6 +13898,8 @@ export class Daemon extends EventEmitter {
     if (launchFence !== this.launchFenceEpoch) throw new Error("Launch cancelled: the instance was stopped or paused while the launch was being prepared");
 
     this.backend!.writeConfig(backendConfig);
+    if (freshInboundInstructions) this.installCompactInboundInstructions();
+    else { this.compactInboundInstructions = false; this.inboundCompatibilityPending = true; this.resetInboundPresentation(); }
     this.backend!.preTrust?.(this.config.working_directory, backendConfig);
 
     // Resolve working directory (e.g. symlink for hidden paths)
@@ -14340,7 +14471,9 @@ export class Daemon extends EventEmitter {
       // Idle observations happen after turns. Avoid needless writes (and mtime
       // churn) while still updating the marker when /new changes the session.
       try {
-        if (readFileSync(path, "utf-8").trim() === sid) return;
+        const previous = readFileSync(path, "utf-8").trim();
+        if (previous === sid) return;
+        if (previous) this.resetInboundPresentation();
       } catch { /* first checkpoint */ }
       writeFileSync(path, sid);
       this.sessionCheckpointWarningEmitted = false;

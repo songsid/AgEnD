@@ -1217,7 +1217,7 @@ export class TopicCommands {
         return { sent: false, text: t("compact.instructions_too_long", String(COMPACT_INSTRUCTIONS_MAX)) };
       }
       const id = notify?.() ?? null;
-      const paste = (content: string) => ipc.send({ type: "raw_paste", content, ...(id ? { notify_written: id } : {}) }) !== false;
+      const paste = (content: string) => ipc.send({ type: "raw_paste", content, context_reset: "compact", ...(id ? { notify_written: id } : {}) }) !== false;
       if (!custom) {
         if (!paste(base)) return { sent: false, text: t("compact.not_connected") };
         return { sent: true, text: t("compact.sent", base) };
@@ -1336,6 +1336,7 @@ export class TopicCommands {
       const sent = ipc.send({
         type: "raw_paste",
         content: cmd,
+        context_reset: "clear",
         ...(backend === "kiro-cli" ? { confirm_clear: true } : {}),
       }) !== false;
       return sent ? { sent: true, text: t("clear.sent", cmd) } : { sent: false, text: t("clear.not_connected") };

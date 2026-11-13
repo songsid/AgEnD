@@ -14,7 +14,7 @@ A peer's summary can omit or change what a person authorized. `delivery_status` 
 
 Fresh trusted Discord and Telegram ingress captures the actual adapter, actor ID, username and platform message ID. Quoted messages, bot/system messages, agent text and historical relays never acquire a human origin. Discord receipts require a non-system Default (0) or Reply (19) event; thread-created titles and unsupported/unknown types carry no human authority. Discord native forwards retain the outer person's own comment as original content; a quoted author's text is not that person's authorization.
 
-The target receives a separate `[agend-human-id:hmsg-…]` header and `verification_id`. Platform `message_id` stays intact for replies and reactions. Use the verification ID for an original human lookup:
+The target receives one `[hid:hmsg-…]` header. Legacy `agend-human-id` / `verification_id` still identify the same receipt. Platform `message_id` stays intact for replies and reactions. Use the verification ID for an original human lookup:
 
 ```json
 {"message_id":"hmsg-<receipt UUID>","detail":true}

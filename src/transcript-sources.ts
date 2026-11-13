@@ -55,6 +55,8 @@ export interface TranscriptEvents {
   turns?: TranscriptTurnEvent[];
   /** #2357: package roots codex reported a tool call could not run under (its code-mode host is missing). */
   codexPackageMissingHost?: string[];
+  /** New owned compaction records only; never historical baseline text. */
+  contextResets?: number;
 }
 
 export interface TranscriptCheckpoint {
@@ -447,6 +449,7 @@ export class CodexRolloutSource implements TranscriptSource {
       const line = record.line;
       let entry: Record<string, unknown>;
       try { entry = JSON.parse(line); } catch { continue; }
+      if (entry.type === "compacted") events.contextResets = (events.contextResets ?? 0) + 1;
       const p = entry.payload as Record<string, unknown> | undefined;
       if (!p) continue;
       for (const observation of codexFollowRecords(entry)) (events.records ??= []).push(["workspace_follow", observation]);

@@ -243,7 +243,7 @@ export const tsOf = (v: unknown): number => { const t = typeof v === "string" ? 
 /** AgEnD's `reply` tool as each backend names it: `mcp__agend__reply`, `mcp__agend-x__reply`, codex's `agend:reply`, kiro's bare `reply`. */
 const REPLY_TOOL = /^(?:mcp__agend[\w-]*__|agend[\w-]*:)?reply$/;
 export const isReplyTool = (name: string): boolean => REPLY_TOOL.test(name);
-const HUMAN_ID = /^\s*(?:<pasted_content[^>]*>\s*)?\[agend-human-id:(hmsg-[A-Za-z0-9-]{1,80})\]/;
+const HUMAN_ID = /^\s*(?:<pasted_content[^>]*>\s*)?\[(?:hid|agend-human-id):(hmsg-[A-Za-z0-9-]{1,80})\]/;
 const MESSAGE_ID = /\(message_id:\s*([A-Za-z0-9._:-]{1,80})(?:\s*\|[^)\n]{0,200})?\)/g;
 /** The ids in a delivered prompt's text (the last `(message_id: …)` — the trailer AgEnD appends — wins), or undefined. */
 export function promptAnchor(text: string): StepAnchor | undefined {
