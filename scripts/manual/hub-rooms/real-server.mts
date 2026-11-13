@@ -66,7 +66,7 @@ try {
     await p.getByRole("button", { name: lang === "en" ? "Create" : "建立", exact: true }).click();
     await p.waitForURL("**/ui/hub?room=*"); await p.locator(".hub-room-page").waitFor();
     const id = new URL(p.url()).searchParams.get("room")!, detail = await r.call(actor, "GET", `/hub/v1/rooms/${id}`);
-    check(tag + " create persists complete group and never-signed-in state", detail.json.members.some((m: any) => m.name === "Never signed in" && m.signedIn === false));
+    check(tag + " create persists complete group and never-signed-in state", detail.json.members.some((m: any) => m.kind === "person" && m.signedIn === false));
     await p.locator(".hub-room-composer textarea").fill("Browser human message " + tag); await p.locator(".hub-room-composer textarea").press("Enter");
     await p.getByText("Browser human message " + tag, { exact: true }).first().waitFor(); await shot("thread");
     check(tag + " human message uses actual SQL", (await r.call(actor, "GET", `/hub/v1/rooms/${id}/messages`)).text.includes("Browser human message " + tag));

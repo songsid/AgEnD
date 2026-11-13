@@ -351,7 +351,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/rooms$/))) {
       if (method !== "GET") throw new HttpError(405, "method");
-      signedIn(); return send(res, 200, await guard(() => groupRooms.roomsForExposure(ctx, uuid(r![1]))));
+      signedIn(); return send(res, 200, { rooms: await guard(() => groupRooms.roomsForExposure(ctx, uuid(r![1]))) });
     }
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/sharing$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
@@ -408,7 +408,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if (path === "/hub/v1/rooms/candidates") {
       if (method !== "GET") throw new HttpError(405, "method");
-      signedIn(); return send(res, 200, await guard(() => groupRooms.candidates(ctx, query.get("q") ?? "", query.get("kind") ?? "person")));
+      signedIn(); return send(res, 200, { candidates: await guard(() => groupRooms.candidates(ctx, query.get("q") ?? "", query.get("kind") ?? "person")) });
     }
     if ((r = m(/^\/hub\/v1\/rooms\/candidates\/group\/([^/]+)$/))) {
       if (method !== "GET") throw new HttpError(405, "method");

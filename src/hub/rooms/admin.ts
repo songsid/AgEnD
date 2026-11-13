@@ -24,7 +24,13 @@ export class HubRoomAdmin {
   }
   async creators(ctx: HubRequestContext, input?: unknown) {
     const permit = await this.core.management(ctx, "hub.admin");
-    if (input === undefined) return this.core.atomic(db => this.readPolicy(db), { assertCurrent: () => permit.assertCurrent() });
+    if (input === undefined) return this.core.atomic(db => {
+      const selected = this.readPolicy(db);
+      return {
+        people: selected.people.map(id => ({ id, name: (db.prepare("SELECT display_name FROM hub_people WHERE person=? UNION ALL SELECT display_name FROM hub_room_people WHERE person=? LIMIT 1").get(id, id) as { display_name: string } | undefined)?.display_name ?? id })),
+        teams: selected.teams.map(id => { const team = this.core.deps.roomTeams?.read(db, id); return { id, name: team?.name ?? id, people: team?.members.length ?? 0 }; }),
+      };
+    }, { assertCurrent: () => permit.assertCurrent() });
     const body = validated(policy, input);
     for (const person of body.people) if (!await this.core.eligible(personFromString(person))) throw new HubProtocolError("invalid");
     return this.core.atomic((db, tx) => {
