@@ -66,7 +66,7 @@ function makeContext(daemon: unknown, paused = false) {
 
 async function send(ctx: any): Promise<any> {
   let result: any; let error: string | undefined;
-  await outboundHandlers.get("send_to_instance")!(ctx, { instance_name: "target", message: "hello" },
+  await outboundHandlers.get("send_to_instance")!(ctx, { instance_name: "target", message: "hello", detail: true },
     (r, e) => { result = r; error = e; }, { instanceName: "sender", requestId: 1 } as any);
   expect(error).toBeUndefined();
   expect(result).toMatchObject({ sent: true, queued: true });

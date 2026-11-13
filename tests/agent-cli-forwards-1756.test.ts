@@ -34,6 +34,17 @@ async function client() {
   return { invoke, requests };
 }
 describe("CLI explicit references", () => {
+  it.each(["send", "delegate", "report", "ask", "broadcast"])("%s accepts --detail without shifting positionals", async command => {
+    const h = await client(); await h.invoke(command, "worker", "exact body", "--detail");
+    expect(h.requests[0].args).toMatchObject({ detail: true });
+    expect(JSON.stringify(h.requests[0].args)).toContain("worker");
+    expect(JSON.stringify(h.requests[0].args)).not.toContain("--detail");
+  });
+  it("delivery-status forwards contains and bare detail without consuming the selector", async () => {
+    const h = await client(); await h.invoke("delivery-status", "--detail", "--message-id", "hmsg-test", "--content-includes", "exact SHA");
+    expect(h.requests[0]).toMatchObject({ op: "delivery-status", args: { message_id: "hmsg-test", detail: true, content_includes: "exact SHA" } });
+  });
+
   it.each(["send", "delegate"])("%s keeps existing positionals and sends repeatable explicit forwards", async command => {
     const h = await client(); await h.invoke(command, "worker", "exact task", "task", "--forward", "hmsg-first", "--forward", "xmsg-second");
     expect(h.requests).toHaveLength(1);
