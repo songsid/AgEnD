@@ -101,9 +101,10 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
   return html`<${Dialog} title=${hroom("roomSettings")} onClose=${() => onClose?.()} cls="hub-room-settings" wide=${true}>
     ${error ? html`<p class="note hub-room-settings-error" role="alert">${error}</p>` : null}
     <section class="form"><h4>${hroom("basics")}</h4>
-      <form class="field-row" onSubmit=${(e) => { e.preventDefault(); saveName(); }}>
-        <label class="field"><span>${hroom("name")}</span><input id="hubRoomSettingsName" maxlength=${NAME_MAX} autocomplete="off" value=${name} onInput=${(e) => setName(e.target.value)} /></label>
-        <button type="button" class="btn" disabled=${busy || name.trim() === (room.name ?? "")} onClick=${saveName}>${hs("save")}</button>
+      <form class="field hub-room-name-row" onSubmit=${(e) => { e.preventDefault(); saveName(); }}>
+        <label for="hubRoomSettingsName">${hroom("name")}</label>
+        <div class="field-row"><input id="hubRoomSettingsName" maxlength=${NAME_MAX} autocomplete="off" value=${name} onInput=${(e) => setName(e.target.value)} />
+          <button type="button" class="btn" disabled=${busy || name.trim() === (room.name ?? "")} onClick=${saveName}>${hs("save")}</button></div>
       </form>
       <label class="check"><input id="hubRoomAllMention" class="s-ui-toggle" type="checkbox" role="switch" checked=${allMention} disabled=${busy}
         onChange=${(e) => { const v = e.target.checked; setAllMention(v); void act(() => client.updateRoom(roomId, { allMention: v }), () => setAllMention(!v)); }} /><span>${hroom("membersCanAll")}</span></label>

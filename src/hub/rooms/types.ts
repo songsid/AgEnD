@@ -1,7 +1,10 @@
 export type RoomPresence = "online" | "idle" | "working" | "paused" | "offline" | "later";
+export interface RoomSystemEvent { kind: "room-created" | "member-joined" | "admin-joined"; name: string }
 export interface RoomMessage {
   id: string; roomId: string; at: number;
   author: { kind: "person" | "agent" | "assistant" | "system"; id: string; name: string; owner?: { name: string } };
+  /** Structured viewer-localized system sentence; text remains a cached-client fallback. */
+  system?: RoomSystemEvent;
   text: string; mentions: string[]; replyTo?: string; idempotencyKey?: string;
   files?: { id: string; name: string; size: number; mime: string; url: string }[];
   warning?: "assistant-unavailable";

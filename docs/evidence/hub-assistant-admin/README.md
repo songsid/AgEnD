@@ -27,3 +27,8 @@ The PNGs and receipt bind the first UI commit e078ed6d2. The subsequent review d
 failure isolation, the successful-stop/failed-refresh message, and invalid-limit submission; it adds seven
 focused UI cases (17/17 pass). The healthy screenshots remain historical evidence at their bound source,
 not a browser rerun of the replacement head.
+
+A later UX walk corrected account guidance: signed-in accounts show only their positive status; sign-in-needed
+and unknown accounts retain their distinct status and instructions. Six en/zh-TW cases pin that copy. The original
+PNGs remain historical and include the earlier unconditional sign-in hint; the next integrated walk must use the
+published replacement source rather than treating those images as current account copy.

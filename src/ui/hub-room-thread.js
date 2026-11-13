@@ -9,6 +9,7 @@
 // an idempotency key, and answers HubThread's store interface.
 import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { RailFrame } from "/assets/side-rail.js";
+import { Icon } from "/assets/ui-icons.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
@@ -26,6 +27,15 @@ export function authorLine(author, mine = false, direct = false) {
   if (author.kind === "assistant") return direct ? hroom("hubAssistant") : hroom("authorAssistant");
   if (author.kind === "agent") return author.owner?.name ? hroom("authorAgent", String(author.name || ""), String(author.owner.name)) : String(author.name || "");
   return String(author.name || "");
+}
+/**
+ * A room's own line in this viewer's words (Ridge: `system` { kind, name } beside the stored text): a kind this page does
+ * not know, or an older row without `system`, keeps the stored text.
+ */
+const SYSTEM = { "room-created": "createdSys", "member-joined": "sysJoined", "admin-joined": "sysAdminJoined" };
+export function systemText(m) {
+  const key = m && m.system && SYSTEM[m.system.kind];
+  return key && typeof m.system.name === "string" ? hroom(key, m.system.name) : String((m && m.text) || "");
 }
 /** The progress of a message that asked agents: one agent → its delivery mark; several → the line (spec §3). */
 export function askState(ask) {
@@ -47,7 +57,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false }) {
     // An answer still to come is counted in its question's progress line, not drawn as an empty bubble.
     if (m.answerTo && m.stage === "queued" && !m.text) continue;
     const id = num(m.id), mine = kind === "person" && author.id === meId;
-    if (kind === "system") { out.push({ boot: BOOT, id, role: "status", sender: "", ts: iso(m.at), text: String(m.text || "") }); continue; }
+    if (kind === "system") { out.push({ boot: BOOT, id, role: "status", sender: "", ts: iso(m.at), text: systemText(m), bare: true }); continue; }
     const quoted = m.replyTo ? byId.get(m.replyTo) : null;
     const state = mine ? askState(m.ask) : null;
     out.push({ boot: BOOT, id, role: kind === "person" ? "user" : "agent", sender: authorLine(author, mine, direct), ts: iso(m.at), text: String(m.text || ""), mine,
@@ -55,8 +65,8 @@ export function toThreadMessages(messages, { meId, ids, direct = false }) {
       ...(quoted ? { replyTo: { boot: BOOT, id: num(quoted.id), sender: authorLine(quoted.author, quoted.author?.id === meId, direct), text: String(quoted.text || "").slice(0, 120) } } : {}),
       ...(m.stage === "not-answered" ? { text: hroom("noAnswer") } : {}) });
     const line = askState(m.ask)?.line;
-    if (line) out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", ts: iso(m.at), text: line, progressOf: m.id });
-    if (mine && m.warning === "assistant-unavailable") out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", ts: iso(m.at), text: hroom("errAssistant") });
+    if (line) out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", ts: iso(m.at), text: line, progressOf: m.id, bare: true });
+    if (mine && m.warning === "assistant-unavailable") out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", ts: iso(m.at), text: hroom("errAssistant"), bare: true });
   }
   return out;
 }
@@ -138,6 +148,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const [reply, setReply] = useState(null), [rail, setRail] = useState(true);
   const input = useRef(null), threadRef = useRef(null), insert = useRef(null);
   const Panel = useMembersPanel();
+  // dev-claude2's room settings (hub-room-settings.js), opened from the header or the members panel.
+  const [settings, setSettings] = useState(null);
+  const openSettings = () => { import("./hub-room-settings.js").then((m) => { if (typeof m.RoomSettings === "function") setSettings(() => m.RoomSettings); }, () => {}); };
   const detail = store.detail(), room = detail?.room || listed || {}, group = room.kind === "group";
   // The Hub assistant's one-to-one is named by its flag, in this viewer's words (its stored name is a fallback).
   const title = room.assistant ? hroom("hubAssistant") : String(room.name || "");
@@ -158,7 +171,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         <span class=${`av${group ? " av-square" : ""}`} aria-hidden="true"><span class="av-text">${firstCharacter(title || "?") || "?"}</span></span>
         <span class="hub-chat-title"><strong>${title}</strong><span class="s">${line2}</span></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${rail ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
-          onClick=${() => setRail(!rail)}>👥</button>` : null}
+          onClick=${() => setRail(!rail)}><${Icon} name="team" size=${18} /></button>` : null}
+        ${group && detail?.me?.role === "manager" ? html`<button type="button" class="icon-btn hub-room-settings-open" title=${hroom("roomSettings")} aria-label=${hroom("roomSettings")}
+          onClick=${openSettings}><${Icon} name="settings" size=${18} /></button>` : null}
       </header>
       <${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
         emptyView=${room.assistant ? html`<p class="note hub-assistant-empty">${hroom("hubAssistantEmpty")}</p>`
@@ -169,6 +184,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
       <${Panel} client=${client} roomId=${roomId} detail=${detail}
         onMention=${(m) => insert.current?.(`@${m.name}`)}
         onOpenChat=${(m) => { const direct = rooms.find((r) => r.kind === "direct" && r.agent?.exposureId === m.id); if (direct) openRoom(direct.id); }}
-        onSettings=${() => {}} /></${RailFrame}>` : null}
+        onSettings=${openSettings} /></${RailFrame}>` : null}
+    ${settings && detail ? html`<${settings} client=${client} roomId=${roomId} detail=${detail} assistant=${hasAssistant}
+      onClose=${() => setSettings(null)} onChanged=${() => { void store.refresh(); }} />` : null}
   </div>`;
 }

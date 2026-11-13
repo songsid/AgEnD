@@ -283,7 +283,8 @@ export function createThread(list, scroller, opts) {
     // Each line its own row (folded: the first two, each clipped to one row); the line breaks stay in the text.
     const body = textLinkSegments(text, x.links).map(sg => sg.href ? `<a data-trust="link" class="st-link" href="${escAttr(sg.href)}">${escAttr(sg.text)}</a>` : escAttr(sg.text)).join("")
       .split(/\r\n?|\n/).map(l => `<span class="st-ln">${l}</span>`).join("\n");
-    return `<div class="msg status-line folded${overflows ? " overflows" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${more}</div>${tools}</div>`;
+    // `bare` (a Hub room's own lines: created, joined, its progress): no message tools, Copy included. The fleet never sets it.
+    return `<div class="msg status-line folded${overflows ? " overflows" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${more}</div>${x.bare === true ? "" : tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,

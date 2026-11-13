@@ -137,6 +137,15 @@ describe("Hub New room dialog (section 6)", () => {
     expect(opened).toHaveLength(1);
   });
 
+  it.each(["en", "zh-TW"] as const)("a group of one reads 「1 person」 in English, 「1 人」 in zh (%s)", async (lang) => {
+    {
+      const { pg, client } = await fixture(lang, (path) => path === "/hub/v1/rooms/candidates/group/group-rd1" ? { status: 200, body: { kind: "group", id: "group-rd1", name: "Pilot direct group", people: 1 } } : null);
+      await pg.mount(h(dlg.NewRoomDialog, { client, assistant: false })); await settle(10);
+      await search(pg, "hubRoomPeople", "研發一"); await pick(pg, "hubRoomPeople", "研發一部"); await settle(10);
+      expect(tags(pg, "hubRoomPeople").at(-1)).toBe(lang === "en" ? "Pilot direct group · 1 person" : "Pilot direct group · 1 人");
+    }
+  });
+
   it("a picked item is not offered again, and × removes it", async () => {
     const { pg, client } = await fixture("en");
     await pg.mount(h(dlg.NewRoomDialog, { client, assistant: false })); await settle(10);
@@ -149,14 +158,14 @@ describe("Hub New room dialog (section 6)", () => {
   it("the assistant switch only when the Hub offers it (read from the list when not passed); off unless switched on", async () => {
     const { pg, client, calls } = await fixture("en");
     await pg.mount(h(dlg.NewRoomDialog, { client })); await settle(20);
-    expect(calls.some(c => c.path === "/hub/v1/rooms?v=2" && c.method === "GET")).toBe(true);
+    expect(calls.some(c => c.path.split("?")[0] === "/hub/v1/rooms" && c.method === "GET")).toBe(true);   // any version (?v=2 since #3848)
     expect(pg.root.querySelector("#hubRoomAssistant").checked).toBe(false);                 // me.assistant: true in the list
     await type(pg, "hubRoomName", "R"); fire(button(pg, "Create"), "click"); await settle(20);
     expect(calls.find(c => c.method === "POST")!.body.assistant).toBe(false);
   });
 
   it("no assistant switch when the list says the Hub has none", async () => {
-    const { pg, client } = await fixture("en", (path, init) => path === "/hub/v1/rooms?v=2" && (init.method ?? "GET") === "GET" ? { status: 200, body: { rooms: [], me: { canCreateRooms: true, assistant: false }, invitations: 0 } } : null);
+    const { pg, client } = await fixture("en", (path, init) => path.split("?")[0] === "/hub/v1/rooms" && (init.method ?? "GET") === "GET" ? { status: 200, body: { rooms: [], me: { canCreateRooms: true, assistant: false }, invitations: 0 } } : null);
     await pg.mount(h(dlg.NewRoomDialog, { client })); await settle(20);
     expect(pg.root.querySelector("#hubRoomAssistant")).toBeNull();
   });

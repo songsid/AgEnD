@@ -27,9 +27,9 @@ it("creates a group room with the creator as manager and lists it only for its m
   expect(detail.json.settings).toEqual({ allMention: true, historyForNew: "since-join" });
   expect((await r!.call(w.c, "GET", `/hub/v1/rooms/${w.id}`)).status).toBe(403);
   expect((await r!.call(w.a, "POST", "/hub/v1/rooms", { name: "No privilege" })).status).toBe(403);
-  expect((await r!.call(w.admin, "GET", "/hub/v1/rooms/candidates?kind=person&q=Al")).json).toEqual([{ kind: "person", id: personKeyString(w.alex), name: "Alex" }]);
+  expect((await r!.call(w.admin, "GET", "/hub/v1/rooms/candidates?kind=person&q=Al")).json.candidates).toEqual([{ kind: "person", id: personKeyString(w.alex), name: "Alex" }]);
   r!.setEligible("alex", false);
-  expect((await r!.call(w.admin, "GET", "/hub/v1/rooms/candidates?kind=person&q=Al")).json).toEqual([]);
+  expect((await r!.call(w.admin, "GET", "/hub/v1/rooms/candidates?kind=person&q=Al")).json.candidates).toEqual([]);
 });
 
 it("stores messages once, refuses conflicting idempotency, and pages newest-last without plaintext in SQL", async () => {

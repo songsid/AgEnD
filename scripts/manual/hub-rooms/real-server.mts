@@ -33,18 +33,13 @@ if ((await r.call(admin, "PUT", "/hub/v1/admin/rooms/creators", { people: [perso
 const initial = await r.call(admin, "POST", "/hub/v1/rooms", { name: "Pilot weekly", people: [personKeyString(alex)], assistant: true });
 if (initial.status !== 200) throw Error("room seed");
 await provisionHubIdentity({ home: keys, memberOrigin: origin });
-const mount = `import {html,render} from '/assets/app-html.js';import{setLang}from'/assets/app-i18n.js';import{ConfirmHost}from'/assets/ui-confirm.js';import{createHubWebClient}from'/ui/js/hub-client.js';import{NewRoomDialog}from'/ui/js/hub-room-new.js';const q=new URLSearchParams(location.search);setLang(q.get('lang')||'en',{store:false});const client=createHubWebClient();await client.session();render(html\`<\${NewRoomDialog} client=\${client} onOpenRoom=\${id=>location.assign('/ui/hub?room='+id)}/><\${ConfirmHost}/ >\`,document.getElementById('app'));`;
-const pageHtml = '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/assets/tokens.css"><link rel="stylesheet" href="/assets/app.css"><link rel="stylesheet" href="/assets/hub.css"></head><body><div id="app"></div><script type="module" src="/__rooms/mount.js"></script></body></html>';
 const server = createServer({ key: readFileSync(join(keys, "hub/keys/tls-key.pem")), cert: readFileSync(join(keys, "hub/keys/tls-cert.pem")) }, (req, res) => {
-  const path = new URL(req.url ?? "/", origin).pathname;
-  if (path === "/__rooms/new") { res.writeHead(200, { "content-type": "text/html" }); return res.end(pageHtml); }
-  if (path === "/__rooms/mount.js") { res.writeHead(200, { "content-type": "text/javascript" }); return res.end(mount); }
   if (!r.http.handle(req, res)) { res.writeHead(404); res.end(); }
 });
 await new Promise<void>(yes => server.listen(port, "127.0.0.1", yes));
 const pw = createRequire(resolve(process.env.PW_DIR!, "package.json"))("playwright-core"), browser = await pw.chromium.launch({ args: ["--no-sandbox"] });
 const sha = (data: Buffer | string) => createHash("sha256").update(data).digest("hex");
-const receipt: any = { sourceHead: execFileSync("git", ["-c", "gc.auto=0", "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), scope: "Real R HTTP/SQLite + A service/runner + shared U1/U2 browser components; inert directory and physical worker; NewRoom mounted in a component harness until U shell mount lands", checks: [], pictures: [], requests: [] };
+const receipt: any = { sourceHead: execFileSync("git", ["-c", "gc.auto=0", "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), scope: "Real R HTTP/SQLite + A service/runner + shared U1/U2 browser components; inert directory and physical worker; all list/new-room/thread/settings/admin views mounted by the actual Hub shell; invitations/Teams remain uncomposed", checks: [], pictures: [], requests: [] };
 const check = (name: string, ok: unknown, detail?: unknown) => { receipt.checks.push({ name, ok: !!ok, ...(ok ? {} : { detail }) }); console.log(`${ok ? "PASS" : "FAIL"} ${name}`); };
 try {
   for (const [device, lang, theme] of [["desktop", "en", "light"], ["phone", "zh-TW", "dark"]]) {
@@ -58,25 +53,76 @@ try {
     const shot = async (name: string) => { const path = `${tag}-${name}.png`; await p.screenshot({ path: join(out, path), fullPage: true }); receipt.pictures.push({ path, sha256: sha(readFileSync(join(out, path))) }); };
     await p.goto(origin + "/ui/hub"); await p.locator(".inst-name:visible").filter({ hasText: "Pilot weekly" }).first().waitFor();
     check(tag + " list reads real room and private assistant", (await p.locator("body").innerText()).includes(lang === "en" ? "Hub assistant" : "Hub 助理")); await shot("list");
-    await p.goto(origin + "/__rooms/new?lang=" + lang); await p.locator("#hubRoomName").fill("Browser room " + tag);
+    if (!await p.locator(".hub-new-room").isVisible()) await p.locator("#sbOpen").click();
+    await p.locator(".hub-new-room:visible").click(); await p.locator("#hubRoomName").fill("Browser room " + tag);
+    check(tag + " New room opens from the actual sidebar", !p.url().includes("/__rooms/"));
     await p.locator("#hubRoomPeople").fill("Pilot"); await p.getByRole("option").filter({ hasText: "Pilot direct group" }).click();
     await p.locator(".hub-room-tags").filter({ hasText: "Pilot direct group" }).waitFor();
-    check(tag + " complete direct group preview shows count", /Pilot direct group.*1/.test(await p.locator(".hub-room-tags").allTextContents().then((s: string[]) => s.join(" "))));
+    const chip = await p.locator(".hub-room-tags").allTextContents().then((s: string[]) => s.join(" "));
+    check(tag + " complete direct group preview shows singular count", /Pilot direct group.*1/.test(chip) && (lang !== "en" || /1 person(?!s)/.test(chip)));
     await p.locator("#hubRoomAssistant").check(); await shot("new-group");
     await p.getByRole("button", { name: lang === "en" ? "Create" : "建立", exact: true }).click();
     await p.waitForURL("**/ui/hub?room=*"); await p.locator(".hub-room-page").waitFor();
     const id = new URL(p.url()).searchParams.get("room")!, detail = await r.call(actor, "GET", `/hub/v1/rooms/${id}`);
     check(tag + " create persists complete group and never-signed-in state", detail.json.members.some((m: any) => m.kind === "person" && m.signedIn === false));
     await p.locator(".hub-room-composer textarea").fill("Browser human message " + tag); await p.locator(".hub-room-composer #sendBtn").click();
-    await p.getByText("Browser human message " + tag, { exact: true }).first().waitFor(); await shot("thread");
+    await p.getByText("Browser human message " + tag, { exact: true }).first().waitFor();
+    const systemLine = p.locator(".status-line").filter({ hasText: lang === "en" ? "Alex created this room." : "Alex 建立了這個房間。" });
+    await systemLine.waitFor(); check(tag + " system sentence follows viewer language without message actions", await systemLine.locator(".msg-tools").count() === 0);
+    check(tag + " members toggle uses a shared SVG icon", await p.locator(".hub-room-rail-toggle svg").count() === 1); await shot("thread");
     check(tag + " human message uses actual SQL", (await r.call(actor, "GET", `/hub/v1/rooms/${id}/messages`)).text.includes("Browser human message " + tag));
+    await p.locator(".hub-room-settings-open").click(); await p.locator("#hubRoomSettingsName").waitFor();
+    check(tag + " room settings is mounted by the actual shell", await p.locator(".hub-room-settings").count() === 1);
+    const nameBox = await p.locator("#hubRoomSettingsName").boundingBox(), saveBox = await p.locator(".hub-room-name-row .btn").boundingBox();
+    check(tag + " Name Save button aligns with the input", !!nameBox && !!saveBox && Math.abs(nameBox.y - saveBox.y) <= 2 && Math.abs(nameBox.height - saveBox.height) <= 2);
+    const renamed = "Saved room " + tag;
+    await p.locator("#hubRoomSettingsName").fill(renamed);
+    const saved = p.waitForResponse((res: any) => res.request().method() === "PATCH" && new URL(res.url()).pathname === `/hub/v1/rooms/${id}`);
+    await p.locator(".hub-room-settings").getByRole("button", { name: lang === "en" ? "Save" : "儲存", exact: true }).click(); await saved;
+    check(tag + " settings rename persists through actual HTTP", (await r.call(actor, "GET", `/hub/v1/rooms/${id}`)).json.room.name === renamed);
+    const toggled = p.waitForResponse((res: any) => res.request().method() === "PATCH" && new URL(res.url()).pathname === `/hub/v1/rooms/${id}`);
+    await p.locator("#hubRoomAllMention").uncheck(); await toggled;
+    check(tag + " settings all-mention switch persists through actual HTTP", (await r.call(actor, "GET", `/hub/v1/rooms/${id}`)).json.settings.allMention === false);
+    await shot("settings"); await p.locator(".hub-room-settings .dlg-x").click();
+    const mention = lang === "en" ? "@Room assistant" : "@房間助理", groupAsk = mention + " Group assistant request " + tag;
+    await p.locator(".hub-room-composer textarea").fill(groupAsk); await p.locator(".hub-room-composer #sendBtn").click();
+    await p.getByText("Owned assistant answer: " + groupAsk, { exact: true }).first().waitFor();
+    check(tag + " localized room assistant mention reaches actual A service", workerCalls > 0);
     const list = await r.call(actor, "GET", "/hub/v1/rooms?v=2"), assistant = list.json.rooms.find((room: any) => room.assistant);
-    await p.goto(origin + "/ui/hub?room=" + assistant.id); await p.locator(".hub-room-composer textarea").fill("Browser plain assistant request " + tag); await p.locator(".hub-room-composer #sendBtn").click();
+    await p.goto(origin + "/ui/hub?room=" + assistant.id); await p.locator(".hub-room-composer textarea").waitFor();
+    const directPrompt = lang === "en" ? "Ask the Hub assistant" : "問 Hub 助理";
+    // ComposerInput draws its placeholder in .composer-ph and exposes it through aria-label; its native placeholder is one space.
+    await p.waitForFunction((expected: string) => document.querySelector(".hub-room-composer textarea")?.getAttribute("aria-label") === expected, directPrompt, { timeout: 5_000 });
+    check(tag + " private assistant composer uses its direct prompt", (await p.locator(".hub-room-composer textarea").getAttribute("aria-label")) === directPrompt && (await p.locator(".hub-room-composer .composer-ph").innerText()) === directPrompt);
+    await p.locator(".hub-room-composer textarea").fill("Browser plain assistant request " + tag); await p.locator(".hub-room-composer #sendBtn").click();
     await p.getByText("Owned assistant answer: Browser plain assistant request " + tag, { exact: true }).first().waitFor();
     check(tag + " plain private ask reaches actual A service", workerCalls > 0);
     check(tag + " assistant label follows viewer language", lang !== "zh-TW" || !(await p.locator("body").innerText()).includes("Hub assistant")); await shot("assistant");
     check(tag + " no page errors", errors.length === 0, errors);
     check(tag + " no horizontal document overflow", await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    const adminAt = admin.cookie.indexOf("="); await context.clearCookies();
+    await context.addCookies([{ name: admin.cookie.slice(0, adminAt), value: admin.cookie.slice(adminAt + 1), url: origin, httpOnly: true, secure: true, sameSite: "Strict" }]);
+    await p.goto(origin + "/ui/hub/admin"); await p.locator("#hubRoomCreators").waitFor();
+    check(tag + " admin room card uses named creator projection", (await p.locator(".hub-admin-creators").innerText()).includes("Alex"));
+    check(tag + " admin room table contains actual created room", (await p.locator(".hub-admin-rooms-table").innerText()).includes(renamed));
+    const assistantCard = p.getByRole("heading", { name: lang === "en" ? "Room assistant" : "房間助理", exact: true }).locator("..");
+    await assistantCard.getByRole("combobox", { name: lang === "en" ? "Backend" : "後端", exact: true }).waitFor();
+    check(tag + " signed-in assistant account omits sign-in instructions", (await assistantCard.locator(".s-group .note").first().innerText()) === (lang === "en" ? "Signed in." : "已登入"));
+    check(tag + " admin cards keep rooms-assistant-fleets-pairing order", await assistantCard.evaluate((card: Element) => {
+      const nodes = [document.querySelector(".hub-admin-rooms"), card, document.querySelector(".hub-fleet-list"), document.querySelector("#hubOwnerLogin")?.closest("section.card")];
+      return nodes.every((node, i) => !!node && (i === 0 || !!(nodes[i - 1]!.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)));
+    })); await shot("admin");
+    check(tag + " admin view has no horizontal document overflow", await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    if (device === "phone") {
+      const tableViewport = p.locator(".hub-admin-all-rooms"); await tableViewport.scrollIntoViewIfNeeded();
+      await tableViewport.evaluate((el: HTMLElement) => { el.scrollLeft = el.scrollWidth; });
+      const rowMenu = p.locator(".hub-admin-rooms-table tbody tr").first().locator("td").last().getByRole("button");
+      const box = await rowMenu.boundingBox(); await rowMenu.click(); await p.getByRole("menuitem").first().waitFor();
+      check(tag + " internal room-table scroll exposes row actions", !!box && box.x >= 0 && box.x + box.width <= 391 && await p.getByRole("menuitem").count() >= 2);
+      await shot("admin-table-actions"); await p.keyboard.press("Escape"); await tableViewport.evaluate((el: HTMLElement) => { el.scrollLeft = 0; });
+      await assistantCard.locator(".s-group .note").first().scrollIntoViewIfNeeded(); await shot("admin-account");
+    }
+    await p.locator(".hub-fleet-list").scrollIntoViewIfNeeded(); await shot("admin-tail");
     await context.close();
   }
 } catch (error) { check("run completed", false, String(error)); }

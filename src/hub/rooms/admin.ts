@@ -67,7 +67,7 @@ export class HubRoomAdmin {
       else db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence) VALUES(?,?,'person',?,'manager',?)").run(randomUUID(), id, me, room.history_for_new === "all" ? 0 : sequence);
       const name = (db.prepare("SELECT display_name FROM hub_people WHERE person=?").get(me) as { display_name: string } | undefined)?.display_name ?? me;
       db.prepare(`INSERT INTO hub_room_posts(id,room_id,sequence,author_kind,author_id,author_subject,author_name,content_ref,digest,mentions,created_at)
-        VALUES(?,?,?,'system','system','system','',?,'','[]',?)`).run(randomUUID(), id, sequence,
+        VALUES(?,?,?,'system','admin-joined',?,?,?,'','[]',?)`).run(randomUUID(), id, sequence, me, name,
           this.core.deps.content.put(tx, { question: `${name} joined as a room manager.` }), this.core.now());
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person }, action: "room.admin-joined", result: "completed", roomId: id });
     }, { assertCurrent: () => { permit.assertCurrent(); if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked"); } });

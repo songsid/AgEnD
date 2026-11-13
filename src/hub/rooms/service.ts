@@ -9,7 +9,7 @@ import { personKeyString } from "../identity.js";
 import { HubCore, personFromString, type HubOperationPermit } from "../http/core.js";
 import { uuid, plain, validated, HubProtocolError } from "../validation.js";
 import type { HubRequestContext, HubTx } from "../types.js";
-import type { RoomEvent, RoomMessage } from "./types.js";
+import type { RoomEvent, RoomMessage, RoomSystemEvent } from "./types.js";
 import type { RoomInvitationHost } from "../invitations.js";
 import { RoomDirectoryCandidates, rememberRoomPeople, type RoomPersonSelection } from "./directory.js";
 
@@ -101,8 +101,10 @@ export class HubGroupRooms {
   }
   private maximum(db: DB, id: string): number { return (db.prepare("SELECT COALESCE(MAX(sequence),0) AS n FROM hub_room_posts WHERE room_id=?").get(id) as { n: number }).n; }
   private projection(row: PostRow): RoomMessage {
+    const system: RoomSystemEvent | undefined = row.author_kind === "system" && ["room-created", "member-joined", "admin-joined"].includes(row.author_id)
+      ? { kind: row.author_id as RoomSystemEvent["kind"], name: row.author_name } : undefined;
     return { id: row.id, roomId: row.room_id, at: row.created_at, author: { kind: row.author_kind, id: row.author_id, name: row.author_name },
-      text: this.core.deps.content.get(row.content_ref)?.question ?? "", mentions: JSON.parse(row.mentions) as string[],
+      ...(system ? { system } : {}), text: this.core.deps.content.get(row.content_ref)?.question ?? "", mentions: JSON.parse(row.mentions) as string[],
       ...(row.reply_to ? { replyTo: row.reply_to } : {}), ...(row.idempotency_key ? { idempotencyKey: row.idempotency_key } : {}),
       ...(row.stage ? { stage: row.stage } : {}), ...(row.answer_to ? { answerTo: row.answer_to } : {}),
       ...this.core.atomic(db => { const a = this.agents.progress(db, row.id), b = this.assistant.progress(db, row.id);
@@ -128,9 +130,10 @@ export class HubGroupRooms {
       AND p.author_subject<>? AND j.value IN (?,?) LIMIT 1`).get(room.id, floor, member.read_sequence, member.subject, member.id, member.subject);
     const online = (db.prepare(`SELECT COUNT(*) AS n FROM hub_room_members m WHERE m.room_id=? AND m.kind='person' AND EXISTS
       (SELECT 1 FROM hub_sessions s WHERE s.person=m.subject AND s.state='active' AND s.expires_at>?)`).get(room.id, this.core.now()) as { n: number }).n;
+    const projected = last ? this.projection(last) : undefined;
     const summary = { id: room.id, kind: "group" as const, name: room.name, people: counts.find(c => c.kind === "person")?.n ?? 0,
       agents: counts.find(c => c.kind === "agent")?.n ?? 0, online, unread, lastAt: last?.created_at ?? room.created_at,
-      lastText: last ? this.projection(last).text.slice(0, 240) : "", lastAuthor: last?.author_name ?? "", mentioned, archived: room.archived === 1 };
+      lastText: projected?.text.slice(0, 240) ?? "", ...(projected?.system ? { lastSystem: projected.system } : {}), lastAuthor: last?.author_name ?? "", mentioned, archived: room.archived === 1 };
     return room.assistant_for ? { ...summary, kind: "direct" as const, assistant: true, presence: this.assistant.presence(room.id) } : summary;
   }
   private addAssistant(db: DB, roomId: string): void {
@@ -229,7 +232,7 @@ export class HubGroupRooms {
       rememberRoomPeople(db, selectedPeople, this.core.now());
       const id = randomUUID(); db.prepare("INSERT INTO hub_group_rooms(id,name,created_by,created_at) VALUES(?,?,?,?)").run(id, body.name, me, this.core.now());
       for (const person of people) db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence) VALUES(?,?,'person',?,?,0)").run(randomUUID(), id, person, person === me ? "manager" : "member");
-      this.insert(db, tx, id, { kind: "system", id: "system", subject: "system", name: "" }, `${this.name(db, me)} created this room.`);
+      this.insert(db, tx, id, { kind: "system", id: "room-created", subject: me, name: this.name(db, me) }, `${this.name(db, me)} created this room.`);
       for (const agent of body.agents) this.addAgentMember(db, tx, id, agent, me);
       if (body.assistant) this.addAssistant(db, id);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.created", result: "completed", roomId: id });
@@ -318,7 +321,7 @@ export class HubGroupRooms {
         const seq = this.maximum(db, id) + 1;
         db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence,read_sequence) VALUES(?,?,'person',?,'member',?,?)")
           .run(randomUUID(), id, person, room.history_for_new === "all" ? 0 : seq, 0);
-        this.insert(db, tx, id, { kind: "system", id: "system", subject: "system", name: "" }, `${this.name(db, person)} joined this room.`);
+        this.insert(db, tx, id, { kind: "system", id: "member-joined", subject: person, name: this.name(db, person) }, `${this.name(db, person)} joined this room.`);
       }
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.member-added", result: "completed", roomId: id });
     }, this.fence(ctx));
@@ -336,7 +339,7 @@ export class HubGroupRooms {
     const seq = this.maximum(db, roomId) + 1;
     db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence,owner_at_join) VALUES(?,?,'agent',?,'member',?,?)")
       .run(randomUUID(), roomId, exposureId, room.history_for_new === "all" ? 0 : seq, owner);
-    this.insert(db, tx, roomId, { kind: "system", id: "system", subject: "system", name: "" }, `${e.display_name} joined this room.`);
+    this.insert(db, tx, roomId, { kind: "system", id: "member-joined", subject: exposureId, name: e.display_name }, `${e.display_name} joined this room.`);
   }
   async changeMember(ctx: HubRequestContext, id: string, memberId: string, role?: "manager" | "member") {
     const me = await this.who(ctx);

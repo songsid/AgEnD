@@ -11,3 +11,11 @@ The directory adapter's inert peers cover multi-page direct membership, disabled
 Lumen confirmed all direct eligible people including never-signed-in,100-person union bound, no nested groups and snapshot-only membership (aafd4ae2c). Chosen-group preview returns a count; the UI must preserve existing selections on group-unavailable and render people-limit with the returned count. signedIn:false is an additive member field; older UI can ignore it. Team SQL/search callback and concrete C/A composition remain owned by those tracks.
 
 Rollback retains the DB/content keys/history and deploys a compatible correction. Older binaries refuse the new s3-room-directory component; never remove sign-in history to undo a display label.
+
+## Shared UI response correction
+
+Source `2da528a2c04dc9c856289229c0cd74fe7382dd7b` carries the actual-browser finding from the broader integration checkpoint `0529469f0466da2e2a5e0e6f2c162f9d2eb441db`. Candidate search and exposure-room reads now return the `{candidates}` and `{rooms}` envelopes consumed by the shared client. Creator-policy GET returns named people and Team head counts; PUT retains ID-only input and the existing permission boundary. Existing candidate/admin content assertions remain; a new actual-HTTP regression pins all three public shapes.
+
+The three new assertions were red before the fix on that broader integration candidate, where the relevant pre-fix methods matched this draft. This is not claimed as an exact-draft fail-first execution. After carrying the fix here,19/19 across4 focused files and both native TypeScript programs pass. These cases overlap the historical116/12 scope above.
+
+The integration packet separately records78/10 server checks,46/5 UI checks, and16/16 browser checks with8 original PNGs. Those are broader R/C/A/U results, not executions on this draft. NewRoom is mounted in a component harness, so the full shell/settings/invitation/Team walk remains open. Lumen reviewed the8 PNGs and requested localized system events plus U-owned glyph/composer/singular-count corrections before that full walk.

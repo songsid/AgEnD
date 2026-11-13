@@ -44,6 +44,23 @@ describe("Hub room-assistant administration with the real shared UI", () => {
     expect(c.saveAssistantSettings).not.toHaveBeenCalled(); expect(c.stopRoomAssistant).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["en", "signed-in", "Signed in."], ["zh-TW", "signed-in", "已登入"],
+    ["en", "needs-sign-in", "Sign-in needed. Sign in under AgEnD settings on this Hub computer."],
+    ["zh-TW", "needs-sign-in", "需要登入。請在 Hub 這台電腦的 AgEnD 設定裡登入。"],
+    ["en", "unknown", "Sign-in status unknown. Sign in under AgEnD settings on this Hub computer."],
+    ["zh-TW", "unknown", "登入狀態未知。請在 Hub 這台電腦的 AgEnD 設定裡登入。"],
+  ])("shows accurate account guidance for %s / %s", async (language, state, expected) => {
+    const settings = view(); settings.backends[0]!.accounts[0]!.state = state;
+    const { p } = await fixture(language, { assistantSettings: async () => ({ ok: true, ...settings }) });
+    const notes = [...p.root.querySelectorAll("p")].map((row: any) => row.textContent);
+    expect(notes).toContain(expected);
+    if (state === "signed-in") {
+      expect(p.root.textContent).not.toContain("Sign in under AgEnD settings");
+      expect(p.root.textContent).not.toContain("請在 Hub 這台電腦");
+    } else expect(notes).not.toContain(language === "en" ? "Signed in." : "已登入");
+  });
+
   it("saves the explicitly selected account and limits, without extra backend fields", async () => {
     const { p, c } = await fixture();
     change(p.root.querySelectorAll("select")[1], "team", "change");
@@ -127,5 +144,6 @@ describe("Hub room-assistant administration with the real shared UI", () => {
     await settle(10);
     expect(read.mock.calls.length > 0).toBe(offered && capable);
     expect(p.root.textContent.includes("Room assistant")).toBe(offered && capable);
+    if (offered && capable) expect(p.root.textContent.indexOf("Room assistant")).toBeLessThan(p.root.textContent.indexOf(p.root.querySelector(".hub-fleet-list").textContent));
   });
 });

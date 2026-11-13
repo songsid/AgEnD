@@ -9,3 +9,13 @@ The U1 list/thread/composer and U2 NewRoom run against actual room API responses
 Final browser:16 judged checks,8 original PNGs, desktop EN/light and phone zh-TW/dark. It covers the list, complete direct-group count, room creation, never-signed-in membership, a persisted human message and the exact private assistant answer. There are no page errors or horizontal document overflow. A bounded independent image inspection found no clipping/overlap/readability blocker; the members header emoji is a small hollow glyph in this headless environment. NewRoom is explicitly mounted in a component harness because the U1 WIP shell does not mount it yet. The list, group thread and private assistant use the actual shell. The directory and physical worker remain inert; no production Fleet, account, AD or model CLI is used. Cookie/CSRF material is absent from receipts, and generated TLS keys are removed at teardown.
 
 Remaining: concrete C invitation/Team services and production factory injection, the U shell mounts/settings callbacks, and Lumen's complete real-server workflow walkthrough. Current ordinary parent-first review, final resolution review and exact-head CI remain. This checkpoint does not finish S-142 or full Track R. Coordinator alone merges.
+
+## Revision1: actual shared-shell mounts
+
+See [r1/README.md](r1/README.md) and its bound receipt: source `7ce5d52798704ca3000b313a30bc7d1da111c5ef`,106/15 focused, both native programs0,38/38 actual-browser checks and12 original PNGs. It replaces the NewRoom component harness with the real sidebar action and adds actual room settings/admin walks. Earlier packet remains historical and untouched.
+
+Administration order is consumed separately in [admin-order.md](admin-order.md), with33 focused UI checks. Existing revision1 screenshots retain their original source binding.
+
+## Revision2: all three PM follow-ups combined
+
+[r2/README.md](r2/README.md) records source `5706f1a98c6c72fc0faf210a77f2791cc2920326`:51 focused UI checks plus the overlapping final23-case A slice,45/45 real-browser checks and16 refreshed original PNGs. It consumes admin order, signed-in copy and Name/Save alignment together; previous gallery bindings remain historical.
