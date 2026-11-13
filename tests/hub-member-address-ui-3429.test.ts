@@ -113,6 +113,15 @@ describe("#3429 Settings → Hub → Fleet connection address", () => {
     expect(f.q('[role="alert"]').textContent).toContain("That took too long. Check again.");
     expect(f.q("#hubMemberNew")).not.toBeNull();
   });
+  it("a first read that fails offers Retry in place (no reload); Retry reads again and shows the card", async () => {
+    let fail = true;
+    const f = await fixture({ read: { status: 503, body: { ok: false, code: "unavailable" } } });
+    expect(f.q('.hub-member-address [role="alert"]')).not.toBeNull();
+    (globalThis as any).fetch = async () => ({ ok: true, status: 200, json: async () => (fail ? { ok: false } : NOW) });
+    fail = false; await f.click("Try again");
+    expect(f.q(".hub-addr-now code").textContent).toBe("hub.example.com:9443");
+    expect(f.q('.hub-member-address [role="alert"]')).toBeNull();
+  });
   it("someone who is not this computer's host owner sees no card", async () => {
     const f = await fixture({ read: { status: 403, body: { ok: false, code: "denied" } } });
     expect(f.q(".hub-member-address")).toBeNull();

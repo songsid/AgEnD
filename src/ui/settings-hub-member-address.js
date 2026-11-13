@@ -5,7 +5,7 @@
 // the rest must reconnect, and their owners get a notice. The certificate keeps its key (the server reissues its name).
 // Own lazy module with its own words. Shared components: card, field, btn, note, err, s-web-ro, s-ui-disclosure, Skeleton.
 import { html, useEffect, useState } from "/assets/app-html.js";
-import { Skeleton } from "/assets/ui-states.js";
+import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { register, t } from "/assets/app-i18n.js";
 import { api } from "./settings-confirm.js";
 import { typedOrigin, shownAddress, defaultListen } from "./settings-hub-web-address.js";
@@ -113,17 +113,19 @@ export function HubMemberAddressSettings({ client: given = null } = {}) {
   const [step, setStep] = useState("show");             // show | edit | confirm
   const [typed, setTyped] = useState(""), [host, setHost] = useState(""), [port, setPort] = useState(""), [touched, setTouched] = useState(false);
   const [proposal, setProposal] = useState(null), [outcome, setOutcome] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);            // a failed first read retries in place (the shared ErrorState), no reload
   useEffect(() => {
     let live = true;
-    client.read().then((r) => { if (live) setView(r.ok && typeof r.origin === "string" ? r : r.code === "denied" ? null : { failed: true }); });
+    client.read().then((r) => { if (live) setView(r.ok && typeof r.origin === "string" ? r : r.code === "denied" ? null : { failed: true }); },
+      () => { if (live) setView({ failed: true }); });
     return () => { live = false; };
-  }, []);
+  }, [attempt]);
   if (view === null) return null;
   const head = html`<p class="note">${copy("lead")}</p>`;                // the disclosure's summary is the title
   const wrap = (body) => html`<section class="card hub-member-address" data-section="hub-member-address">
     <details class="s-ui-disclosure" open=${step !== "show" || !!outcome || !!error}><summary>${copy("title")}</summary><div class="s-ui-disclosure-body">${body}</div></details></section>`;
   if (view === undefined) return wrap(html`${head}<${Skeleton} variant="rows" lines=${3} />`);
-  if (view.failed) return wrap(html`${head}<p class="err" role="alert">${copy("err_unavailable")}</p>`);
+  if (view.failed) return wrap(html`${head}<${ErrorState} message=${copy("err_unavailable")} onRetry=${() => { setView(undefined); setAttempt((n) => n + 1); }} />`);
 
   const origin = typedOrigin(typed);
   const listen = touched ? { host: host.trim(), port: Number(port) } : defaultListen(view, origin || view.origin);
