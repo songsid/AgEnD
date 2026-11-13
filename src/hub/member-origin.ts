@@ -5,13 +5,17 @@
  * - The statement: {v, from, to, spkiSha256, revision, signature}, signed with the Hub's issuer key over
  *   ["agend-hub-member-origin-v1", v, hubId, issuerKeyId, fleetId, from, to, spkiSha256, revision].
  * - The state, `hub-member/<hubId>/member-origin.json`, beside pairing.json (never inside it: its digest is an identity
- *   key): {v, profile (pairing.json's digest), highWater, confirmed: [chain], pending}. The anchor is the last confirmed
+ *   key): {v, profile (pairing.json's digest), credential (a tag of the credential it was written under), highWater,
+ *   confirmed: [chain], pending}. The anchor is the last confirmed
  *   `to`, else the profile's member address; `from` of a new statement must be the anchor (an aborted pending one is
  *   superseded, never built on). Revisions only move forward; an identical retry re-flushes the exact bytes; the same
  *   revision with another statement is refused.
  * - Promotion (pending → confirmed) only for the exact pending digest, by the caller that holds a fully validated welcome
  *   on the link it dialled to that `to`. The confirmed chain lets a company pin left behind by a crash be completed later.
- * - Absent: legacy (the profile's address). Corrupt, partial, another profile's, a broken chain: fail closed.
+ * - Absent: legacy (the profile's address). Corrupt, partial, a broken chain: fail closed. Another profile digest under the
+ *   SAME credential is this pairing's file with its binding changed: fail closed too. Under another credential it is a
+ *   retired pairing's (a re-pair always issues a new credential): as if absent, but if its statements still verify for
+ *   this Fleet, their high water stays (revisions are the Hub's, never reused), so a re-pair never re-opens old ones.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -32,7 +36,7 @@ export { relocationStatementSchema };
 export type HubRelocationStatement = z.infer<typeof relocationStatementSchema>;
 export interface HubRelocationBinding { hubId: string; issuerKeyId: string; fleetId: string }
 const entrySchema = z.strictObject({ statement: relocationStatementSchema, digest: hash });
-const stateSchema = z.strictObject({ v: z.literal(1), profile: hash, highWater: epoch,
+const stateSchema = z.strictObject({ v: z.literal(1), profile: hash, credential: hash, highWater: epoch,
   confirmed: z.array(entrySchema).max(HUB_RELOCATION_CHAIN_MAX), pending: entrySchema.nullable() });
 type Entry = z.infer<typeof entrySchema>;
 export type HubRelocationState = z.infer<typeof stateSchema>;
@@ -41,6 +45,8 @@ function bytes(b: HubRelocationBinding, s: Omit<HubRelocationStatement, "signatu
   return Buffer.from(JSON.stringify(["agend-hub-member-origin-v1", s.v, b.hubId, b.issuerKeyId, b.fleetId, s.from, s.to, s.spkiSha256, s.revision]));
 }
 export const relocationDigest = (s: HubRelocationStatement): string => sha256(canonicalArguments(s));
+/** Which pairing a state was written under (never the credential itself: a domain-separated tag of it). */
+const credentialTag = (profile: HubMemberProfile): string => sha256(`agend-hub-member-origin-credential\0${profile.credential}`);
 const validOrigin = (o: string) => { try { return hubOrigin(o) === o; } catch { return false; } };
 
 /** The Hub's side: sign one relocation for the Fleet its link authenticated. */
@@ -71,8 +77,11 @@ export function verifyHubRelocation(input: unknown, profile: HubMemberProfile, w
 }
 
 export type HubRelocationRead =
-  /** No state for this pairing. `stale`: a previous pairing's file still on disk (its exact bytes, to replace). */
-  | { kind: "absent"; anchor: string; stale?: string }
+  /**
+   * No state for this pairing. `stale`: a retired pairing's file still on disk (its exact bytes, to replace); `floor`: its
+   * high water when its statements were signed for this same Fleet (a lower or equal revision is never accepted again).
+   */
+  | { kind: "absent"; anchor: string; stale?: string; floor?: number }
   | { kind: "ok"; anchor: string; state: HubRelocationState; text: string }
   | { kind: "corrupt" };
 
@@ -87,9 +96,19 @@ export class HubMemberRelocationStore {
     try {
       const text = readPrivateFile(this.home, this.suffix, 64 * 1024);
       const state = validated(stateSchema, parseStrictJson(text));
-      // A previous pairing's state (re-paired since: a new pairing.json, a new Fleet ID its statements were never signed
-      // for): not this pairing's, so as if absent — the profile's own address — and the next relocation replaces it.
-      if (state.profile !== profileDigest) return { kind: "absent", anchor: profile.hub.memberOrigin, stale: text };
+      if (state.profile !== profileDigest) {
+        // The same credential: this pairing's own file with its binding changed (pairing.json is never rewritten) — fail
+        // closed, never a silent reset of its history.
+        if (state.credential === credentialTag(profile)) return { kind: "corrupt" };
+        // A retired pairing's (re-paired since): the profile's own address, and the next relocation replaces it. If its
+        // statements verify for this Fleet (the same Fleet re-paired), all of them must, and their high water stays.
+        const entries = [...state.confirmed, ...(state.pending ? [state.pending] : [])];
+        const mine = entries.map(e => { try { const s = verifyHubRelocation(e.statement, profile); return e.digest === relocationDigest(s) ? s : null; } catch { return null; } });
+        if (!mine.some(Boolean)) return { kind: "absent", anchor: profile.hub.memberOrigin, stale: text };
+        if (!mine.every(Boolean) || mine.some(s => s!.revision > state.highWater)) return { kind: "corrupt" };
+        return { kind: "absent", anchor: profile.hub.memberOrigin, stale: text, floor: state.highWater };
+      }
+      if (state.credential !== credentialTag(profile)) return { kind: "corrupt" };
       let anchor = profile.hub.memberOrigin, top = 0;
       for (const e of state.confirmed) {
         const s = verifyHubRelocation(e.statement, profile);
@@ -127,7 +146,7 @@ export class HubMemberRelocationStore {
     // An already-confirmed statement sent again (a lost ack, a reconnect): the same ack, its bytes flushed again — it
     // never reopens a pending state.
     if (state?.confirmed.some(e => e.digest === digest)) return { kind: "retry", digest };
-    if (s.revision <= (state?.highWater ?? 0)) throw new HubProtocolError("stale");
+    if (s.revision <= (state ? state.highWater : r.kind === "absent" ? r.floor ?? 0 : 0)) throw new HubProtocolError("stale");
     if (s.from !== r.anchor) throw new HubProtocolError("denied");
     return { kind: "store", statement: s, digest, expected: r.kind === "ok" ? r.text : r.stale ?? null };
   }
@@ -135,7 +154,8 @@ export class HubMemberRelocationStore {
   store(profile: HubMemberProfile, profileDigest: string, planned: { statement: HubRelocationStatement; digest: string; expected: string | null }, current: () => boolean): void {
     const r = this.read(profile, profileDigest);
     if (r.kind === "corrupt" || (r.kind === "ok" ? r.text : r.stale ?? null) !== planned.expected) throw new HubProtocolError("stale");
-    const next: HubRelocationState = { v: 1, profile: profileDigest, highWater: planned.statement.revision,
+    if (r.kind === "absent" && planned.statement.revision <= (r.floor ?? 0)) throw new HubProtocolError("stale");
+    const next: HubRelocationState = { v: 1, profile: profileDigest, credential: credentialTag(profile), highWater: planned.statement.revision,
       confirmed: r.kind === "ok" ? r.state.confirmed : [], pending: { statement: planned.statement, digest: planned.digest } };
     this.write(JSON.stringify(validated(stateSchema, next)), planned.expected, current);
   }
@@ -156,7 +176,7 @@ export class HubMemberRelocationStore {
     // The chain starts at the profile's own address (pairing.json is never rewritten), so it cannot drop its oldest hop:
     // a ninth confirmed move is refused (it stays pending and still dials first; Reconnect re-pairs from scratch).
     if (chain.length > HUB_RELOCATION_CHAIN_MAX) throw new HubProtocolError("denied");
-    const next: HubRelocationState = { v: 1, profile: profileDigest, highWater: r.state.highWater, confirmed: chain, pending: null };
+    const next: HubRelocationState = { v: 1, profile: profileDigest, credential: r.state.credential, highWater: r.state.highWater, confirmed: chain, pending: null };
     this.write(JSON.stringify(validated(stateSchema, next)), r.text, current);
     return promoted.statement;
   }

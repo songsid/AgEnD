@@ -484,7 +484,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         sign: (fleetId, r) => signHubRelocation({ hubId: settings.hubId, issuerKeyId: identity.issuerKeyId, fleetId },
           { ...r, spkiSha256: identity.spkiSha256 }, issuerKey),
         send: (fleetId, statement, digest, deadline) => memberServer ? memberServer.relocate(fleetId, statement, digest, deadline) : Promise.resolve(null),
-        linkCurrent: proof => !!memberServer && memberServer.relocationLinkCurrent(proof),
+        linkCurrent: (proof, advanced) => !!memberServer && memberServer.relocationLinkCurrent(proof, advanced),
       };
       teardown.add("the relocation sender", () => { memberAddressDecision.relocator = null; });
 

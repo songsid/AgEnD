@@ -5,10 +5,13 @@
  * - An older member (no capability): nothing sent, null at once. A mismatched ack is ignored (null at the deadline).
  *   A link that closes while waiting: null at once, not at the deadline.
  * - The member dials a pending `to` first and, when nothing answers there, the anchor in the same attempt; the link's
- *   endpoint is the address it actually reached.
+ *   endpoint is the address it actually reached. The same when the `to` holds the pinned key and upgrades, but closes or
+ *   stays silent before a welcome (a usable link) — it never retries that `to` in place of a healthy anchor.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPrivateKey } from "node:crypto";
+import { createServer as createHttpsServer } from "node:https";
+import { WebSocketServer } from "ws";
 import { hubRig, freeHubPort } from "./helpers/hub-rig.js";
 import { readPrivateFile } from "../src/hub/private-files.js";
 import { issuerKeyId } from "../src/hub/identity.js";
@@ -51,6 +54,18 @@ describe("#3429 B — relocate and its ack over the pinned link", () => {
     await vi.waitFor(() => expect(c.state.holds).toContain("replaced"));
     expect(r.server.relocationLinkCurrent(proof!)).toBe(false);
   });
+  it("the decision's recheck after its own version advance: exactly one advance is accounted for, nothing else", async () => {
+    const { r, p, st, onFrame } = await setup();
+    const c = r.client(onFrame()); await c.value.start();
+    const s = st(B, 1), proof = (await r.server.relocate(p.fleetId, s, relocationDigest(s), Date.now() + 5_000))!;
+    expect([r.server.relocationLinkCurrent(proof), r.server.relocationLinkCurrent(proof, 1)]).toEqual([true, false]);
+    const bump = (change: (x: any) => void) => r.store.mutate({ at: 1, requestId: "bump", actor: { kind: "local-host" }, action: "fixture.bump", result: "completed" }, change);
+    bump(x => { x.revocationVersion++; });                                                              // what the decision itself publishes
+    expect([r.server.relocationLinkCurrent(proof), r.server.relocationLinkCurrent(proof, 1)]).toEqual([false, true]);
+    bump(x => { x.revocationVersion++; });                                                              // anything more: not this link's
+    expect(r.server.relocationLinkCurrent(proof, 1)).toBe(false);
+    void c;
+  });
   it("an older member (no capability): nothing sent, null at once", async () => {
     const { r, p, st, onFrame } = await setup();
     const c = r.client(onFrame(), undefined, HUB_OPTIONAL_CAPABILITIES.filter(x => x !== HUB_MEMBER_RELOCATION_CAPABILITY)); await c.value.start();
@@ -86,6 +101,34 @@ describe("#3429 B — the member's dial order", () => {
     const c = r.client(); await c.value.start();
     expect(c.state.link!.endpoint).toBe(p.hub.memberOrigin);
   });
+  /** A `to` that passes the pinned TLS (the Hub's own member key and certificate) and upgrades, then closes or stays silent. */
+  async function decoy(root: string, mode: "close" | "silent") {
+    const server = createHttpsServer({ key: readPrivateFile(root, "hub/keys/tls-key.pem"), cert: readPrivateFile(root, "hub/keys/tls-cert.pem") });
+    const wss = new WebSocketServer({ server }), seen = { upgrades: 0 };
+    wss.on("connection", ws => { seen.upgrades++; if (mode === "close") ws.close(1011); });
+    const port = await freeHubPort(); await new Promise<void>(ok => server.listen(port, "127.0.0.1", ok));
+    return { origin: `https://127.0.0.1:${port}`, seen, close: () => { for (const c of wss.clients) c.terminate(); wss.close(); server.close(); } };
+  }
+  it.each(["close", "silent"] as const)("a pending `to` that upgrades but %s before a welcome: the anchor in the same attempt, the `to` once", async mode => {
+    let anchor = "", to = "";
+    const { r, p } = await setup({ dial: () => [to, anchor] });
+    const d = await decoy(r.root, mode); to = d.origin; anchor = p.hub.memberOrigin;
+    try {
+      const c = r.client(); await c.value.start();
+      expect(c.state.link!.endpoint).toBe(p.hub.memberOrigin);
+      expect(d.seen.upgrades).toBe(1);
+      expect(c.state.holds).toEqual([]);                                                               // no outage was reported
+    } finally { d.close(); }
+  }, 20_000);
+  it("the anchor (last) that closes before a welcome is an outage, never a fallback elsewhere", async () => {
+    const { r } = await setup({ dial: () => [d.origin] });
+    const d = await decoy(r.root, "close");
+    try {
+      const c = r.client(); await expect(c.value.start()).rejects.toThrow();
+      expect(c.state.holds.length).toBeGreaterThan(0);
+      await c.value.close();
+    } finally { d.close(); }
+  }, 20_000);
   it("a relocation state that does not verify: nothing is dialled, the link holds", async () => {
     const { r } = await setup({ dial: () => [] });
     const c = r.client();

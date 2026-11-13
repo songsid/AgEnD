@@ -22,7 +22,9 @@ import type { HubRelocation } from "./types.js";
 export interface HubRelocationAck { fleetId: string; linkEpoch: number; digest: string; revision: number; readonly link: object }
 /** `features`: the optional features both ends listed (the member's hello ∩ this Hub's), set once at hello. */
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
-interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout }
+interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout;
+  /** The credential binding the link authenticated with (#3429 B: what a relocation ack's proof is rechecked against). */
+  binding: { generation: number; revocationVersion: number } }
 export interface HubServerOptions {
   home: string; hubId: string; memberOrigin: string; listen: { host: string; port: number }; pairing: HubPairingService;
   current(): boolean;
@@ -116,7 +118,8 @@ export class HubServer {
             clearTimeout(connection?.timer); if (this.connections.get(binding.fleetId) === connection) this.connections.delete(binding.fleetId);
             this.options.hold(binding.fleetId, code);
           } });
-        connection = { link, context, ready: false, hello: false, timer: setTimeout(() => link.end(), 5_000) }; connection.timer.unref();
+        connection = { link, context, ready: false, hello: false, timer: setTimeout(() => link.end(), 5_000),
+          binding: { generation: binding.generation, revocationVersion: binding.revocationVersion } }; connection.timer.unref();
         this.connections.set(binding.fleetId, connection);
       });
     } catch (error) {
@@ -200,10 +203,16 @@ export class HubServer {
       connection.link.send({ v: 1, type: "relocate", requestId, linkEpoch, payload: statement }).catch(() => settle(null));
     });
   }
-  /** #3429 B: is this ack's link still the Fleet's current, ready one (the decision's recheck)? */
-  relocationLinkCurrent(proof: HubRelocationAck): boolean {
+  /**
+   * #3429 B: is this ack's link still the Fleet's current, ready one (the decision's recheck)? `advanced`: how many
+   * authorization versions the caller's own uncommitted decision has already published (the member-address decision
+   * advances it by exactly one, and rechecks after its audit with 1) — any other change still fails.
+   */
+  relocationLinkCurrent(proof: HubRelocationAck, advanced = 0): boolean {
     const connection = this.connections.get(proof.fleetId);
-    return !!connection && connection === proof.link && connection.ready && connection.context.current() && connection.context.linkEpoch === proof.linkEpoch;
+    if (!connection || connection !== proof.link || !connection.ready || connection.context.linkEpoch !== proof.linkEpoch || !this.current()) return false;
+    return advanced === 0 ? connection.context.current()
+      : this.options.pairing.bindingCurrent(proof.fleetId, connection.binding.generation, connection.binding.revocationVersion + advanced);
   }
   /** The enabled optional features of a fleet's ready link, or null while it has none. */
   features(fleetId: string): ReadonlySet<string> | null {

@@ -7,7 +7,8 @@ import { readHubMemberTls } from "./tls.js";
 import { parseHubMemberAddressCandidate, HubMemberAddressError } from "./settings-member-address-policy.js";
 import { probeHubMemberAddress } from "./settings-member-address-network.js";
 import type { HubSettingsWriter } from "./settings-commit.js";
-import type { HubMemberAddressActor, HubMemberAddressDecision, HubMemberAddressRelocation } from "./settings-member-address-decision.js";
+import type { HubMemberAddressActor, HubMemberAddressDecision, HubMemberAddressRelocation, HubRelocationHeld } from "./settings-member-address-decision.js";
+import type { HubRelocationAck } from "./server.js";
 import { relocationDigest } from "./member-origin.js";
 import type { HubMemberAddressSummary } from "./settings-member-address.js";
 export interface HubMemberAddressContext {
@@ -46,8 +47,16 @@ export function createHubMemberAddressControl(deps: {
      * per affected Fleet recorded before any is sent, all sent at once under ONE deadline, and only an ack matched to that
      * exact link, epoch, digest and revision whose link is still current afterwards keeps that Fleet. No mounted relocator
      * (cold recovery) or nobody affected: nothing to send — every affected Fleet is revoked as in option A.
+     * Each kept Fleet's ack proof (its exact link) is retained, never persisted: `keep()` drops any link lost since, and
+     * `held` lets the SQL decision recheck the rest at its last boundary and after its audit.
      */
-    const relocate = async (attempt: string, from: string, to: string, current: () => boolean): Promise<HubMemberAddressRelocation | undefined> => {
+    type Followed = { relocation: HubMemberAddressRelocation; proofs: Map<string, HubRelocationAck>; linkCurrent(p: HubRelocationAck, advanced?: number): boolean };
+    const keep = (f: Followed): { relocation: HubMemberAddressRelocation; held: HubRelocationHeld } => {
+        const kept = f.relocation.kept.filter(k => f.linkCurrent(f.proofs.get(k.id)!));
+        return { relocation: { ...f.relocation, kept },
+            held: advanced => kept.every(k => f.linkCurrent(f.proofs.get(k.id)!, advanced)) };
+    };
+    const relocate = async (attempt: string, from: string, to: string, current: () => boolean): Promise<Followed | undefined> => {
         const plan = await deps.withDecision(d => {
             if (!d.relocator) return null;
             const fleets = d.affected().flatMap(f => { const b = d.fleetBinding(f.id); return b ? [{ id: f.id, ...b }] : []; });
@@ -60,12 +69,15 @@ export function createHubMemberAddressControl(deps: {
         if (!current()) throw new HubMemberAddressError("denied");
         const deadline = Date.now() + (deps.relocationWaitMs ?? 5_000);
         const proofs = await Promise.all(signed.map(s => plan.relocator.send(s.id, s.statement, s.digest, deadline).catch(() => null)));
+        const held = new Map<string, HubRelocationAck>();
         const kept = signed.flatMap((s, i) => {
             const p = proofs[i];
-            return p && p.fleetId === s.id && p.digest === s.digest && p.revision === sequence && plan.relocator.linkCurrent(p)
-                ? [{ id: s.id, generation: s.generation, credentialSha: s.credentialSha, digest: s.digest }] : [];
+            if (!p || p.fleetId !== s.id || p.digest !== s.digest || p.revision !== sequence || !plan.relocator.linkCurrent(p)) return [];
+            held.set(s.id, p);
+            return [{ id: s.id, generation: s.generation, credentialSha: s.credentialSha, digest: s.digest }];
         });
-        return { sequence, to, kept };
+        const relocator = plan.relocator;
+        return { relocation: { sequence, to, kept }, proofs: held, linkCurrent: (p, advanced) => relocator.linkCurrent(p, advanced) };
     };
     const proof = (ctx: HubMemberAddressContext) => {
         if (ctx.actor.kind !== "host-owner" || ctx.current() !== true)
@@ -133,13 +145,21 @@ export function createHubMemberAddressControl(deps: {
             proof({ ...ctx, current });
             await (deps.probe ?? probeHubMemberAddress)(deps.readConfig(), p.candidate, deps.running(p.hub));
             proof({ ...ctx, current });
-            const relocation = await relocate(input.ref, obj(p.hub).memberOrigin as string, p.candidate.origin, current);
+            // A listener-only edit (the advertised origin unchanged): nothing to relocate; every Fleet keeps its binding and
+            // reconnects to the same address on its own when the listener moves.
+            const sameOrigin = obj(p.hub).memberOrigin === p.candidate.origin;
+            const followed = sameOrigin ? undefined : await relocate(input.ref, obj(p.hub).memberOrigin as string, p.candidate.origin, current);
             // After the shared wait: the host session, the prepared image and the bind probe again (nothing awaited in SQL).
             proof({ ...ctx, current });
-            if (relocation) { await (deps.probe ?? probeHubMemberAddress)(deps.readConfig(), p.candidate, deps.running(p.hub)); proof({ ...ctx, current }); }
-            let result: ReturnType<NonNullable<HubSettingsWriter["memberAddress"]>["commit"]>;
+            if (followed) { await (deps.probe ?? probeHubMemberAddress)(deps.readConfig(), p.candidate, deps.running(p.hub)); proof({ ...ctx, current }); }
+            let result: ReturnType<NonNullable<HubSettingsWriter["memberAddress"]>["commit"]>, relocation: HubMemberAddressRelocation | undefined;
             try {
-                result = await deps.withDecision(() => writer().commit(input.ref, ctx.actor, current, relocation), current);
+                // A kept Fleet whose link was lost during the final probe is revoked (it is left out before the operation is
+                // built); one lost after this, up to the decision's last boundary, aborts the change (stale).
+                ({ result, relocation } = await deps.withDecision(() => {
+                    const k = followed ? keep(followed) : undefined;
+                    return { result: writer().commit(input.ref, ctx.actor, current, k?.relocation, k?.held), relocation: k?.relocation };
+                }, current));
             }
             catch (error) {
                 if (deps.writer.pending())
@@ -150,9 +170,9 @@ export function createHubMemberAddressControl(deps: {
             await deps.settle();
             proof(ctx);
             // #3429 B: who followed on their own and who must reconnect (by label; the card names them).
-            const kept = new Set((relocation?.kept ?? []).map(k => k.id));
+            const kept = new Set(sameOrigin ? p.summary.fleets.map(f => f.id) : (relocation?.kept ?? []).map(k => k.id));
             const reconnect = p.summary.fleets.filter(f => !kept.has(f.id)).map(f => ({ id: f.id, ...(f.label === undefined ? {} : { label: f.label }) }));
-            return { ok: true, ...result, origin: p.candidate.origin, followed: kept.size, reconnect,
+            return { ok: true, ...result, origin: p.candidate.origin, followed: kept.size, reconnect, ...(sameOrigin ? { sameOrigin: true } : {}),
                 state: obj(source()).enabled === false ? "off" : deps.running(source()) ? "ready" : "saved_unavailable" };
         },
     };

@@ -70,6 +70,20 @@ describe("#3429 Settings → Hub → Fleet connection address", () => {
     expect(dds.at(-1).textContent).toBe("1");
     expect(f.text()).toContain("These must reconnect from their own Settings → Hub: Bob Fleet.");
   });
+  it.each([
+    ["en", "Connected Fleets (2)", "The address Fleets use doesn't change", "Done. The address Fleets use didn't change; all 2 keep their connection."],
+    ["zh-TW", "已連接的 Fleet（2）", "Fleet 使用的位址不變", "完成。Fleet 使用的位址沒有變更，全部 2 個 Fleet 都保留連接。"],
+  ])("%s: a listener-only edit says the Fleets keep their connection (not that they move)", async (language, list, effect, done) => {
+    const f = await fixture({ language,
+      prepare: b => ({ body: { ok: true, ref: "r".repeat(32), expiresAt: Date.now() + 300_000, summary: { field: "member-address", from: NOW.origin, to: NOW.origin, listen: b.listen, fleetsRejoin: false, fleets: FLEETS } } }),
+      commit: () => ({ body: { ok: true, origin: NOW.origin, followed: 2, reconnect: [], sameOrigin: true, state: "ready" } }) });
+    await f.click(language === "en" ? "Change connection address" : "變更連接位址"); await f.type("#hubMemberNew", "hub.example.com:9443");
+    await f.type("#hubMemberPort", "9555"); await f.submit();
+    expect(f.text()).toContain(list); expect(f.text()).toContain(effect);
+    expect(f.text()).not.toContain(language === "en" ? "Fleets that move" : "會移動的 Fleet");
+    await f.click(language === "en" ? "Confirm change" : "確認變更");
+    expect(f.text()).toContain(done);
+  });
   it("each outcome names who must reconnect", async () => {
     const f = await fixture();
     const say = (r: object) => f.mod.outcomeText(r, 9555);

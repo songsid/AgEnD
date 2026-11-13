@@ -26,7 +26,9 @@ const relocationSchema = z.strictObject({ sequence: epoch.min(1), to: z.string()
 const operationSchema = z.strictObject({ v: z.literal(1), kind: z.literal("member-address"), id: uuid, revision: epoch,
   expected: expectedSchema, before: image, after: image.extend({ certificateSha: hash, memberSha: hash }), receiptSha: hash,
   actor, at: epoch, webOrigin: z.string().url(), affected: z.array(affected).max(256), administrator: person,
-  relocation: relocationSchema.optional() });
+  relocation: relocationSchema.optional(),
+  /** #3429 B: a listener-only edit — the advertised member origin is unchanged, so every affected Fleet keeps its binding. */
+  sameOrigin: z.literal(true).optional() });
 export type HubMemberAddressRelocation = z.infer<typeof relocationSchema>;
 /**
  * #3429 B: what a MOUNTED decision can do on the live member listener (compose/server.ts): sign a relocation for one Fleet
@@ -36,8 +38,14 @@ export type HubMemberAddressRelocation = z.infer<typeof relocationSchema>;
 export interface HubMemberRelocator {
   sign(fleetId: string, s: { from: string; to: string; revision: number }): import("./types.js").HubRelocation;
   send(fleetId: string, statement: import("./types.js").HubRelocation, digest: string, deadline: number): Promise<import("./server.js").HubRelocationAck | null>;
-  linkCurrent(proof: import("./server.js").HubRelocationAck): boolean;
+  /** `advanced`: authorization versions the caller's own uncommitted decision already published (see HubServer). */
+  linkCurrent(proof: import("./server.js").HubRelocationAck, advanced?: number): boolean;
 }
+/**
+ * #3429 B: the kept Fleets' exact ack links, retained through the decision (ephemeral: never persisted). true only while
+ * every kept Fleet's link is still the one that acked; `advanced` as in linkCurrent.
+ */
+export type HubRelocationHeld = (advanced: number) => boolean;
 export type HubMemberAddressOperation = z.infer<typeof operationSchema>;
 export type HubMemberAddressExpectation = z.infer<typeof expectedSchema>;
 export type HubMemberAddressFleet = z.infer<typeof affected>;
@@ -151,10 +159,14 @@ export function createHubMemberAddressDecision(options: { db: Database.Database;
       uuid.parse(id); api.head(); // Floor failure is uncertain, never mistaken for an uncommitted file stage.
       return db.prepare("SELECT 1 FROM hub_member_address_operations WHERE id=?").get(id) ? readOperation(db, id) : null;
     },
-    commit(raw: HubMemberAddressOperation, current: () => boolean): HubMemberAddressOperation {
+    commit(raw: HubMemberAddressOperation, current: () => boolean, held?: HubRelocationHeld): HubMemberAddressOperation {
       const op = operationSchema.parse(raw);
       if (db.inTransaction || op.expected.hubId !== hubId || op.revision !== op.expected.revision + 1 || op.revision >= Number.MAX_SAFE_INTEGER) throw new HubMemberAddressError("invalid");
-      const check = () => { proof(current); if (!same(snapshot(), op.expected) || !same(stateFleets(), op.affected)) throw new HubMemberAddressError("stale"); };
+      // #3429 B: a kept Fleet is kept only while its exact ack link is (design r4's last-boundary rule): no proof, no keep.
+      const keeping = (op.relocation?.kept.length ?? 0) > 0;
+      if (keeping && !held) throw new HubMemberAddressError("invalid");
+      const linksHeld = (advanced: number) => !keeping || held!(advanced) === true;
+      const check = () => { proof(current); if (!same(snapshot(), op.expected) || !same(stateFleets(), op.affected) || !linksHeld(0)) throw new HubMemberAddressError("stale"); };
       return db.transaction(() => {
         check();
         if ((db.prepare("SELECT count(*) n FROM hub_member_address_notices").get() as { n: number }).n >= 1024) throw new HubMemberAddressError("busy");
@@ -162,12 +174,17 @@ export function createHubMemberAddressDecision(options: { db: Database.Database;
         catch (e) { if (e instanceof HubProtocolError && e.code === "backpressure") throw new HubMemberAddressError("busy"); throw e; }
         // #3429 B: the kept Fleets must be from this exact reservation (its base head and target), signed rows included.
         const kept = new Map((op.relocation?.kept ?? []).map(k => [k.id, k]));
+        if (op.sameOrigin && op.relocation) return refuse();
         if (op.relocation) {
           const row = db.prepare("SELECT base_revision b,to_origin t FROM hub_member_relocations WHERE sequence=?").get(op.relocation.sequence) as { b: number; t: string } | undefined;
           if (!row || row.b !== op.expected.revision || row.t !== op.relocation.to) return refuse();
           for (const k of kept.values()) if (!db.prepare("SELECT 1 FROM hub_member_relocation_statements WHERE sequence=? AND fleet_id=? AND digest=?").get(op.relocation.sequence, k.id, k.digest)) return refuse();
         }
+        // A listener-only edit keeps every affected Fleet at the generation it was prepared with (the start check above
+        // already matched the live rows to op.affected; nothing runs between it and the mutate).
+        const same0 = new Map(op.sameOrigin ? op.affected.map(f => [f.id, f.generation]) : []);
         const keeps = (f: { id: string; generation: number; credentialHash: string | null }) => {
+          if (op.sameOrigin) return f.credentialHash !== null && same0.get(f.id) === f.generation;
           const k = kept.get(f.id);
           return !!k && f.credentialHash !== null && k.generation === f.generation && k.credentialSha === sha256(f.credentialHash);
         };
@@ -175,12 +192,14 @@ export function createHubMemberAddressDecision(options: { db: Database.Database;
         // stale (prepare again) — never a silently different kept set, so "revoked = affected − kept" holds exactly.
         const live = transport.read().fleets;
         for (const k of kept.values()) if (!live.some(f => f.id === k.id && f.status === "active" && keeps(f))) throw new HubMemberAddressError("stale");
-        const keptNow = new Set(kept.keys());
+        const keptNow = new Set(op.sameOrigin ? same0.keys() : kept.keys());
         const revokedOwners = op.affected.filter(f => !keptNow.has(f.id)).map(f => personKeyString(f.owner));
         const targets = new Set([personKeyString(op.administrator), ...revokedOwners]);
         let expectedState = "";
         transport.mutate({ at: op.at, requestId: op.actor.requestId, actor: { kind: "local-host" }, action: "hub.member-address.changed", result: "completed" }, (s, owning) => {
           if (owning !== db || s.revision !== op.expected.transportRevision || s.revocationVersion === Number.MAX_SAFE_INTEGER) return refuse();
+          // The last point before the version floor moves: a link lost by now aborts cleanly (stale; prepare again).
+          if (!linksHeld(0)) throw new HubMemberAddressError("stale");
           for (const f of s.fleets) if (f.status === "active" && f.credentialHash !== null) {
             if (keptNow.has(f.id) && keeps(f)) continue;          // #3429 B: it followed the relocation with this credential
             if (f.generation === Number.MAX_SAFE_INTEGER) return refuse();
@@ -196,14 +215,16 @@ export function createHubMemberAddressDecision(options: { db: Database.Database;
           for (const target of targets) insert.run(op.id, "person", target);
           expectedState = canonicalArguments({ ...s, revision: s.revision + 1 });
         });
-        // Required audit runs inside mutate. Its callbacks cannot revoke authority or alter the stage/material unnoticed.
+        // Required audit runs inside mutate. Its callbacks cannot revoke authority or alter the stage/material unnoticed —
+        // nor drop a kept link: rechecked with this operation's own one version advance (the floor has moved: fail closed).
         proof(current);
+        if (!linksHeld(1)) return refuse();
         const m = readHubMemberTls({ home }), h = readHubMemberAddressHead(db), settled = transport.read();
         if (sha256(m.metadataText) !== op.expected.identitySha || sha256(m.certificatePem) !== op.expected.certificateSha || sha256(m.keyPem) !== op.expected.keySha
           || h.operationId !== op.id || h.revision !== op.revision || !same(readOperation(db, op.id), op)
           || canonicalArguments(settled) !== expectedState || settled.revision !== op.expected.transportRevision + 1
           // #3429 B: exactly the kept rows stay active with their credential (the image, not merely a count).
-          || !same(stateFleets().map(f => [f.id, f.generation]).sort(), [...keptNow].map(id => [id, kept.get(id)!.generation]).sort())
+          || !same(stateFleets().map(f => [f.id, f.generation]).sort(), [...keptNow].map(id => [id, op.sameOrigin ? same0.get(id)! : kept.get(id)!.generation]).sort())
           || settled.pairings.some(p => p.state === "offered" || p.state === "pending")
           || (db.prepare("SELECT count(*) n FROM hub_member_address_targets WHERE notice_id=?").get(op.id) as { n: number }).n !== targets.size + 1
           || !db.prepare("SELECT 1 FROM hub_member_address_notices WHERE id=? AND revision=? AND body=?").get(op.id, op.revision, canonicalArguments(op))) return refuse();
@@ -222,7 +243,7 @@ export function createHubMemberAddressDecision(options: { db: Database.Database;
       const visible = rows.slice(0, 100).map(row => {
         const op = readOperation(db, row.id), all = recipient.kind === "host" || recipient.kind === "person" && personKeyString(op.administrator) === target;
         return { id: op.id, revision: op.revision, at: op.at, state: row.state, action: "reconnect" as const, webOrigin: op.webOrigin,
-          fleets: op.affected.filter(f => !(op.relocation?.kept ?? []).some(k => k.id === f.id) && (all || personKeyString(f.owner) === target)).map(f => ({ id: f.id, ...(f.label === undefined ? {} : { label: f.label }) })) };
+          fleets: op.affected.filter(f => !op.sameOrigin && !(op.relocation?.kept ?? []).some(k => k.id === f.id) && (all || personKeyString(f.owner) === target)).map(f => ({ id: f.id, ...(f.label === undefined ? {} : { label: f.label }) })) };
       });
       proof(current); return { rows: visible, before: rows.length > 100 ? visible.at(-1)!.revision : null };
     },

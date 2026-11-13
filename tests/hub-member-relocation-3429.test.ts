@@ -134,19 +134,45 @@ describe("#3429 B — fail closed; record before file", () => {
       expect(store.read(p, digest).kind).toBe("corrupt");
       expect(store.dialOrder(p, digest)).toEqual([]);
     }
-    // Another pairing's file (re-paired since): not this pairing's state — the profile's own address; the next one replaces it.
-    writeFileSync(file(), good, { mode: 0o600 });
-    expect(store.read(p, sha256("another profile"))).toMatchObject({ kind: "absent", anchor: A, stale: good });
-    expect(store.dialOrder(p, sha256("another profile"))).toEqual([A]);
   });
-  it("after a re-pair (a new pairing.json), the previous pairing's file is replaced by the next relocation", async () => {
-    const { r, p, digest, st, A, accept, file } = await setup();
-    accept(st(A, B, 1));
-    const repaired = sha256("a re-paired pairing.json");
-    const out = acceptHubRelocation({ home: r.memberHome, profile: p, profileDigest: repaired, webOrigins: [], current: () => true, log: () => {}, record: () => {} }, st(A, C, 2));
-    expect(out).toMatchObject({ ack: { revision: 2 } });
-    expect(JSON.parse(readFileSync(file(), "utf8"))).toMatchObject({ profile: repaired, highWater: 2, confirmed: [], pending: { statement: { to: C } } });
-    void digest;
+  it("this pairing's file with only its profile field changed (pairing.json untouched): fail closed — never a reset that reopens r1", async () => {
+    const { r, p, digest, st, store, A, accept, file } = await setup();
+    accept(st(A, B, 1)); accept(st(A, C, 2));                                                           // r2 supersedes the pending r1
+    promoteHubRelocation({ home: r.memberHome, profile: p, profileDigest: digest, webOrigin: p.hub.webOrigin, current: () => true, record: () => {},
+      trust: new CompanyTrustStore(r.memberHome) }, relocationDigest(st(A, C, 2)));
+    expect(store.read(p, digest)).toMatchObject({ kind: "ok", anchor: C });
+    const good = readFileSync(file(), "utf8");
+    writeFileSync(file(), good.replace(digest, sha256("not this pairing.json")), { mode: 0o600 });
+    expect(store.read(p, digest).kind).toBe("corrupt");
+    expect(store.dialOrder(p, digest)).toEqual([]);
+    expect(accept(st(A, B, 1))).toEqual({ refused: "unverified" });                                    // the old signed r1 is not a new history
+    expect(readFileSync(file(), "utf8")).not.toBe(good);                                               // and nothing was written over it
+  });
+  it("after a re-pair of the same Fleet (a new pairing.json and credential): the profile's address, the old high water kept", async () => {
+    const { r, p, st, A, accept, file } = await setup();
+    accept(st(A, B, 1)); accept(st(A, C, 2));
+    const old = readFileSync(file(), "utf8");
+    const repaired = { ...p, credential: "e".repeat(64) }, digest2 = sha256("a re-paired pairing.json");
+    const store = new HubMemberRelocationStore(r.memberHome, p.hub.hubId);
+    expect(store.read(repaired, digest2)).toMatchObject({ kind: "absent", anchor: A, stale: old, floor: 2 });
+    expect(store.dialOrder(repaired, digest2)).toEqual([A]);
+    const take = (s: unknown) => acceptHubRelocation({ home: r.memberHome, profile: repaired, profileDigest: digest2, webOrigins: [], current: () => true, log: () => {}, record: () => {} }, s);
+    expect(take(st(A, B, 1))).toEqual({ refused: "stale" });                                          // never reopened by the re-pair
+    expect(take(st(A, C, 2))).toEqual({ refused: "stale" });
+    expect(take(st(A, X, 3))).toMatchObject({ ack: { revision: 3 } });
+    expect(JSON.parse(readFileSync(file(), "utf8"))).toMatchObject({ profile: digest2, highWater: 3, confirmed: [], pending: { statement: { to: X } } });
+  });
+  it("after a re-pair as another Fleet (its statements were never signed for this one): starts afresh", async () => {
+    const { r, p, key, st, A, accept, file } = await setup();
+    accept(st(A, B, 5));
+    const other = { ...p, fleetId: randomUUID(), credential: "e".repeat(64) }, digest2 = sha256("another Fleet's pairing.json");
+    const store = new HubMemberRelocationStore(r.memberHome, p.hub.hubId);
+    const read = store.read(other, digest2);
+    expect(read).toMatchObject({ kind: "absent", anchor: A }); expect((read as { floor?: number }).floor).toBeUndefined();
+    const mine = signHubRelocation({ hubId: p.hub.hubId, issuerKeyId: issuerKeyId(key), fleetId: other.fleetId }, { from: A, to: C, spkiSha256: p.hub.spkiSha256, revision: 1 }, key);
+    expect(acceptHubRelocation({ home: r.memberHome, profile: other, profileDigest: digest2, webOrigins: [], current: () => true, log: () => {}, record: () => {} }, mine))
+      .toMatchObject({ ack: { revision: 1 } });
+    expect(JSON.parse(readFileSync(file(), "utf8"))).toMatchObject({ profile: digest2, highWater: 1 });
   });
   it("the record commits before the file; a record that fails leaves no file and no ack", async () => {
     const { r, p, digest, st, A, file } = await setup();

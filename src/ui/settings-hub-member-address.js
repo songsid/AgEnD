@@ -24,6 +24,9 @@ register("hubMemberAddress", {
     effect: "Fleets online now follow on their own. Any that are offline lose their connection and must reconnect from their own Settings → Hub; their owners get a notice. The Hub address and sign-ins stay the same.",
     confirm: "Confirm change", saving: "Changing…",
     allFollowed: "Done. All {0} Fleets followed to the new address.", noFleets: "Done. No Fleet was connected.",
+    sameKept: "Done. The address Fleets use didn't change; all {0} keep their connection.",
+    connected: "Connected Fleets ({0})",
+    sameEffect: "The address Fleets use doesn't change, only where the Hub listens on this computer. Connected Fleets keep their connection and reconnect on their own.",
     someFollowed: "Done. {0} of {1} Fleets followed. These must reconnect from their own Settings → Hub: {2}.",
     noneFollowed: "Done. No Fleet was online to follow. These must reconnect from their own Settings → Hub: {0}.",
     unnamed: "a Fleet without a name", sep: ", ",
@@ -55,6 +58,9 @@ register("hubMemberAddress", {
     effect: "目前在線上的 Fleet 會自動跟著移動。離線的 Fleet 會失去連接，需要在它自己的「設定 → Hub」重新連接，擁有者會收到通知。Hub 位址與登入狀態不變。",
     confirm: "確認變更", saving: "變更中…",
     allFollowed: "完成。全部 {0} 個 Fleet 都已跟著移動到新位址。", noFleets: "完成。目前沒有已連接的 Fleet。",
+    sameKept: "完成。Fleet 使用的位址沒有變更，全部 {0} 個 Fleet 都保留連接。",
+    connected: "已連接的 Fleet（{0}）",
+    sameEffect: "Fleet 使用的位址不變，只變更 Hub 在這台電腦上監聽的位置。已連接的 Fleet 會保留連接，並自動重新連接。",
     someFollowed: "完成。{1} 個 Fleet 中有 {0} 個已跟著移動。以下 Fleet 需要在它自己的「設定 → Hub」重新連接：{2}。",
     noneFollowed: "完成。沒有在線上的 Fleet 可以跟著移動。以下 Fleet 需要在它自己的「設定 → Hub」重新連接：{0}。",
     unnamed: "未命名的 Fleet", sep: "、",
@@ -96,7 +102,7 @@ export function outcomeText(r, port) {
   if (r.state === "saved_unavailable") return copy("saved_unavailable", String(port ?? ""));
   const reconnect = Array.isArray(r.reconnect) ? r.reconnect : [], followed = Number(r.followed) || 0, total = followed + reconnect.length;
   if (!total) return copy("noFleets");
-  if (!reconnect.length) return copy("allFollowed", String(total));
+  if (!reconnect.length) return copy(r.sameOrigin === true ? "sameKept" : "allFollowed", String(total));
   if (!followed) return copy("noneFollowed", names(reconnect));
   return copy("someFollowed", String(followed), String(total), names(reconnect));
 }
@@ -156,16 +162,16 @@ export function HubMemberAddressSettings({ client: given = null } = {}) {
   const err = error ? html`<p class="err" role="alert">${error}</p>` : null;
 
   if (step === "confirm" && proposal) {
-    const s = proposal.summary || {}, moving = Array.isArray(s.fleets) ? s.fleets : [];
+    const s = proposal.summary || {}, moving = Array.isArray(s.fleets) ? s.fleets : [], same = s.fleetsRejoin === false;
     return wrap(html`${head}<div class="hub-addr-confirm" role="group" aria-label=${copy("confirmTitle")}><h4>${copy("confirmTitle")}</h4>
         <dl class="s-web-ro">
           <dt>${copy("from")}</dt><dd>${shownAddress(s.from)}</dd>
           <dt>${copy("to")}</dt><dd><strong>${shownAddress(s.to)}</strong></dd>
           ${s.listen ? html`<dt>${copy("listens")}</dt><dd><code>${s.listen.host}:${s.listen.port}</code></dd>` : null}
         </dl>
-        ${moving.length ? html`<p class="note hub-member-moving"><strong>${copy("moving", String(moving.length))}</strong> ${moving.map((f, i) => html`<span key=${f.id} class="hub-member-fleet">${i ? copy("sep") : ""}${f.label || copy("unnamed")}</span>`)}</p>`
+        ${moving.length ? html`<p class="note hub-member-moving"><strong>${copy(same ? "connected" : "moving", String(moving.length))}</strong> ${moving.map((f, i) => html`<span key=${f.id} class="hub-member-fleet">${i ? copy("sep") : ""}${f.label || copy("unnamed")}</span>`)}</p>`
           : html`<p class="note">${copy("noneMoving")}</p>`}
-        <p class="note hub-addr-effect">${copy("effect")}</p>
+        <p class="note hub-addr-effect">${copy(same ? "sameEffect" : "effect")}</p>
         <div class="s-row">
           <button type="button" class="btn btn-primary" disabled=${busy} onClick=${confirm}>${busy ? copy("saving") : copy("confirm")}</button>
           <button type="button" class="btn" disabled=${busy} onClick=${() => { setProposal(null); setStep("edit"); setError(""); }}>${copy("back")}</button>

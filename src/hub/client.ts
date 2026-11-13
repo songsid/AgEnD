@@ -120,10 +120,14 @@ export class HubMemberClient implements HubMemberTransport {
       const handshakeTimer = setTimeout(() => link.end(), HUB_LIMITS.rpcTimeout); handshakeTimer.unref();
       link = new HubSocket(ws, { current: () => this.current() && this.link === link, parse: parseServerFrame, encode: encodeMemberFrame,
         receive: frame => this.receive(frame, link, handshake, handshakeTimer, origin), closed: code => {
-          clearTimeout(handshakeTimer); const wasStopped = this.stopped;
+          clearTimeout(handshakeTimer); const wasStopped = this.stopped, usable = this.ready;
           if (code === "replaced" || code === "revoked") this.stopped = true;
           if (this.link !== link) return;
           this.link = null; this.view = null; this.ready = false; this.deferred = []; this.deferredBytes = 0;
+          // #3429 B: a pending `to` that upgraded but closed (or timed out) before a validated, reconciled welcome is still
+          // only a candidate: try the next address now, as before the upgrade. Never after replaced/revoked (stopped), and
+          // the anchor (last) never falls back.
+          if (!usable && !last && !this.stopped && this.current()) { this.rejectPending(); this.dialIndex++; this.connect(); return; }
           this.rejectPending(); if (!wasStopped) this.options.hold(code); this.firstReject?.(new HubAuthorizationError("unavailable", code)); this.firstReject = this.firstResolve = null; this.reconnect();
         } });
       this.link = link;

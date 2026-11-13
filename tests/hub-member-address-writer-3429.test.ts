@@ -13,7 +13,7 @@ import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
 import { createHubSettingsWriter } from "../src/hub/settings-commit.js";
 import { HubTransportStore, migrateHubTransportStore } from "../src/hub/store.js";
 import { HUB_COMPANY_JOIN_MIGRATION } from "../src/hub/join/store.js";
-import { HUB_MEMBER_ADDRESS_MIGRATION, createHubMemberAddressDecision } from "../src/hub/settings-member-address-decision.js";
+import { HUB_MEMBER_ADDRESS_MIGRATION, HUB_MEMBER_RELOCATION_MIGRATION, createHubMemberAddressDecision } from "../src/hub/settings-member-address-decision.js";
 vi.mock("node:fs", async original => {
   const actual = await original<typeof import("node:fs")>();
   return { ...actual, fsyncSync: vi.fn(actual.fsyncSync) };
@@ -30,7 +30,7 @@ async function rig() {
   const at = new Date().toISOString(), confirmationId = "a".repeat(32), planDigest = hubPlanDigest(hub);
   writeFileSync(join(home, "hub/init-manifest.json"), JSON.stringify({ v: 1, hubId: identity.hubId, planDigest, committedAt: at, confirmationId,
     signature: sealHubInitialization({ home, planDigest, committedAt: at, confirmationId }) }) + "\n", { mode: 0o600 });
-  db.exec("CREATE TABLE audit(id TEXT)"); migrateHubTransportStore(db); HUB_COMPANY_JOIN_MIGRATION.up(db); HUB_MEMBER_ADDRESS_MIGRATION.up(db);
+  db.exec("CREATE TABLE audit(id TEXT)"); migrateHubTransportStore(db); HUB_COMPANY_JOIN_MIGRATION.up(db); HUB_MEMBER_ADDRESS_MIGRATION.up(db); HUB_MEMBER_RELOCATION_MIGRATION.up(db);
   let floor = 0;
   const store = new HubTransportStore(db, { floor: { read: () => floor, raise: v => { floor = v; } }, appendAudit: r => { db.prepare("INSERT INTO audit VALUES(?)").run(r.id); } }); store.initialize();
   const owner = { realm: "corp", objectId: randomUUID() };
@@ -84,6 +84,49 @@ describe("#3429 shared member address writer", () => {
     else { const p = await control.prepare(raw, context); await expect(control.commit({ ref: p.ref }, { ...context, ...(mode === "owner" ? { ownerKey: {} } : { authorityEpoch: 2 }) })).rejects.toThrow("expired"); }
     expect(r.decision.head().revision).toBe(0); expect(r.store.read().fleets[0]!.status).toBe("active"); expect(w.pending()).toBe(false);
   });
+  it("a listener-only edit with an active Fleet: committed, the Fleet keeps its binding; a fully unchanged edit is still refused", async () => {
+    const r = await rig(), w = r.writer(), before = r.store.read().fleets[0]!, listen = { host: "127.0.0.1", port: 19555 };
+    expect(() => w.memberAddress!.prepare({ ...r.candidate, origin: r.hub().memberOrigin as string, listen: r.hub().memberListen as typeof listen }, actor, () => true)).toThrow("unchanged");
+    const p = w.memberAddress!.prepare({ ...r.candidate, origin: r.hub().memberOrigin as string, listen }, actor, () => true);
+    expect(p.summary).toMatchObject({ fleetsRejoin: false, fleets: [{ label: "Owned Fleet" }] });
+    w.memberAddress!.commit(p.ref, actor, () => true);
+    expect(r.hub()).toMatchObject({ memberOrigin: "https://member.example.test:18443", memberListen: listen }); expect(r.verify()).toBeTruthy();
+    expect(r.store.read().fleets[0]).toEqual(before);
+    expect(r.decision.notices({ kind: "host" }, () => true).rows[0]!.fleets).toEqual([]);
+  });
+  describe("control: an acked Fleet is kept only while its exact ack link is (Ridge's interleavings)", () => {
+    async function run(mode: "stable" | "probe" | "same-origin") {
+      const r = await rig(), w = r.writer(), { createHubMemberAddressControl } = await import("../src/hub/settings-member-address-control.js");
+      let alive = true, probes = 0; const sent: string[] = [], asked: number[] = [];
+      r.decision.relocator = {
+        sign: (fleetId, s) => ({ v: 1, ...s, spkiSha256: "c".repeat(64), signature: fleetId.replace(/-/g, "").padEnd(86, "A") }) as never,
+        send: async (fleetId, statement, digest) => { sent.push(fleetId); return { fleetId, linkEpoch: 1, digest, revision: statement.revision, link: {} }; },
+        linkCurrent: (_p, advanced = 0) => { asked.push(advanced); return alive && advanced <= 1; },
+      };
+      const control = createHubMemberAddressControl({ home: r.home, writer: w, readConfig: () => ({ hub: r.hub() }), running: () => true, settle: async () => {},
+        withDecision: async work => work(r.decision), probe: async () => { if (++probes === 3 && mode === "probe") alive = false; } });
+      const context = { actor, ownerKey: {}, authorityEpoch: 1, current: () => true };
+      const raw = mode === "same-origin" ? { origin: r.hub().memberOrigin as string, listen: { host: "127.0.0.1", port: 19555 } } : { origin: r.candidate.origin, listen: r.candidate.listen };
+      const p = await control.prepare(raw, context);
+      return { r, sent, asked, out: await control.commit({ ref: p.ref }, context) };
+    }
+    it("stable link: kept, followed 1; the decision rechecked it with its own one version advance", async () => {
+      const { r, out, asked } = await run("stable");
+      expect(out).toMatchObject({ followed: 1, reconnect: [] }); expect(r.store.read().fleets[0]).toMatchObject({ status: "active", generation: 2 });
+      expect(asked.slice(-2)).toEqual([0, 1]);
+    });
+    it("the link closes during the final probe: that Fleet is revoked (reconnect), never a stale keeper", async () => {
+      const { r, out } = await run("probe");
+      expect(out).toMatchObject({ followed: 0, reconnect: [{ label: "Owned Fleet" }] });
+      expect(r.store.read().fleets[0]).toMatchObject({ status: "revoked", credentialHash: null, generation: 3 });
+      expect(r.decision.lookup(r.decision.head().operationId!)!.relocation!.kept).toEqual([]);
+    });
+    it("a listener-only edit sends no relocation and keeps the Fleet", async () => {
+      const { r, out, sent } = await run("same-origin");
+      expect(sent).toEqual([]); expect(out).toMatchObject({ followed: 1, reconnect: [], sameOrigin: true });
+      expect(r.store.read().fleets[0]).toMatchObject({ status: "active", generation: 2 });
+    });
+  });
   for (const at of ["member-certificate", "member-material", "member-staged", "member-decision", "member-identity", "member-manifest", "member-config", "member-receipt", "member-done", "member-cleanup-journal", "member-cleanup-stage"]) {
     it(`crash after ${at}: recover exact identity/manifest/config from SQL without repeating revocation`, async () => {
       const r = await rig(), before = structuredClone(r.hub()), w = r.writer(s => { if (s === at) throw Error("crash"); });
@@ -131,6 +174,17 @@ describe("#3429 shared member address writer", () => {
     } });
     const p = w.memberAddress!.prepare(r.candidate, actor, () => true); expect(() => w.memberAddress!.commit(p.ref, actor, () => true)).toThrow("recovery");
     expect(readFileSync(join(r.home, "hub/keys/identity.json"))).toEqual(old); expect(w.pending()).toBe(true);
+  });
+  it("recovery refuses a third certificate in place of the OLD selected one (same key, valid), before any install write", async () => {
+    const r = await rig(), old = readFileSync(join(r.home, "hub/keys/identity.json"));
+    const alternate = execFileSync("/usr/bin/openssl", ["req", "-new", "-x509", "-sha256", "-days", "1", "-key", join(r.home, "hub/keys/tls-key.pem"),
+      "-subj", "/CN=Owned third image fixture", "-addext", "subjectAltName=DNS:member.example.test"], { encoding: "utf8", timeout: 10000 });
+    const w = r.writer(s => { if (s === "member-decision") { writeFileSync(join(r.home, "hub/keys/tls-cert.pem"), alternate, { mode: 0o600 }); throw Error("crash"); } });
+    const p = w.memberAddress!.prepare(r.candidate, actor, () => true); expect(() => w.memberAddress!.commit(p.ref, actor, () => true)).toThrow("crash");
+    const manifest = readFileSync(join(r.home, "hub/init-manifest.json")), hub = structuredClone(r.hub());
+    expect(() => r.writer().recover()).toThrow("recovery");
+    expect(readFileSync(join(r.home, "hub/keys/identity.json"))).toEqual(old);                       // no install write
+    expect(readFileSync(join(r.home, "hub/init-manifest.json"))).toEqual(manifest); expect(r.hub()).toEqual(hub); expect(r.writer().pending()).toBe(true);
   });
   it("a postcommit staged certificate replacement is refused before identity publication", async () => {
     const r = await rig(), old = readFileSync(join(r.home, "hub/keys/identity.json")), w = r.writer(s => { if (s === "member-decision") {

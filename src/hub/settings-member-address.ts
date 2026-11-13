@@ -11,7 +11,7 @@ import { hubPlanDigest } from "./init/plan-digest.js";
 
 import { parseHubMemberAddressCandidate, HubMemberAddressError, hubMemberAddressBoundary } from "./settings-member-address-policy.js";
 import { canonicalArguments } from "./identity.js";
-import type { HubMemberAddressActor, HubMemberAddressDecision, HubMemberAddressExpectation, HubMemberAddressOperation, HubMemberAddressRelocation } from "./settings-member-address-decision.js";
+import type { HubMemberAddressActor, HubMemberAddressDecision, HubMemberAddressExpectation, HubMemberAddressOperation, HubMemberAddressRelocation, HubRelocationHeld } from "./settings-member-address-decision.js";
 const manifest = "hub/init-manifest.json";
 const obj = (x: unknown): Record<string, unknown> => x && typeof x === "object" && !Array.isArray(x) ? x as Record<string, unknown> : {};
 const canonical = (x: unknown): string => Array.isArray(x) ? `[${x.map(canonical).join(",")}]` : x && typeof x === "object"
@@ -30,7 +30,8 @@ export interface HubMemberAddressSummary {
         host: string;
         port: number;
     };
-    fleetsRejoin: true;
+    /** false for a listener-only edit (the advertised origin is unchanged): every Fleet keeps its binding (#3429 B). */
+    fleetsRejoin: boolean;
     fleets: HubMemberAddressOperation["affected"];
 }
 export type HubMemberAddressStep = "member-certificate" | "member-identity" | "member-material" | "member-staged" | "member-decision" | "member-manifest" | "member-config" | "member-receipt" | "member-done" | "member-cleanup-journal" | "member-cleanup-stage";
@@ -42,7 +43,7 @@ export interface HubMemberAddressSettingsWriter {
         summary: HubMemberAddressSummary;
     };
     /** #3429 B: `relocation` names the Fleets that followed (kept); every other affected Fleet is revoked as before. */
-    commit(ref: string, actor: HubMemberAddressActor, current: () => boolean, relocation?: HubMemberAddressRelocation): {
+    commit(ref: string, actor: HubMemberAddressActor, current: () => boolean, relocation?: HubMemberAddressRelocation, held?: HubRelocationHeld): {
         receiptId: string;
         summary: HubMemberAddressSummary;
     };
@@ -151,7 +152,7 @@ export function createHubMemberAddressSettingsOperation(deps: Deps) {
         catch { throw new HubMemberAddressError("certificate"); }
     };
     const actorSame = (a: HubMemberAddressActor, b: HubMemberAddressActor) => a.kind === b.kind && a.sessionId === b.sessionId;
-    const summary = (p: Prepared): HubMemberAddressSummary => ({ field: "member-address", from: p.old.hub.memberOrigin as string, to: p.input.origin, listen: { ...p.input.listen }, fleetsRejoin: true, fleets: structuredClone(p.fleets) });
+    const summary = (p: Prepared): HubMemberAddressSummary => ({ field: "member-address", from: p.old.hub.memberOrigin as string, to: p.input.origin, listen: { ...p.input.listen }, fleetsRejoin: p.input.origin !== p.old.hub.memberOrigin, fleets: structuredClone(p.fleets) });
     const journal = (j: HubMemberAddressJournal) => write(deps.journalPath, JSON.stringify(j) + "\n");
     const load = (j: HubMemberAddressJournal): Stage => {
         let s: Stage;
@@ -203,7 +204,10 @@ export function createHubMemberAddressSettingsOperation(deps: Deps) {
             throw new HubMemberAddressError("recovery");
         const material = readHubMemberTls({ home: deps.home }), identitySha = sha(material.metadataText);
         if (![op.before.identitySha, op.after.identitySha].includes(identitySha) || sha(material.keyPem) !== op.expected.keySha
-            || material.identity.hubId !== op.expected.hubId || material.identity.issuerKeyId !== op.expected.issuerKeyId) throw new HubMemberAddressError("recovery");
+            || material.identity.hubId !== op.expected.hubId || material.identity.issuerKeyId !== op.expected.issuerKeyId
+            // The selected certificate is exactly the one of that identity image (old: the prepared one; new: the staged one),
+            // never a third same-key certificate swapped in between.
+            || sha(material.certificatePem) !== (identitySha === op.after.identitySha ? op.after.certificateSha : op.expected.certificateSha)) throw new HubMemberAddressError("recovery");
         if (identitySha !== op.after.identitySha) write("hub/keys/identity.json", s.identity);
         deps.step("member-identity");
         if (manifestSha !== op.after.manifestSha)
@@ -245,7 +249,7 @@ export function createHubMemberAddressSettingsOperation(deps: Deps) {
             refs.set(ref, p);
             return { ref, expiresAt: p.expiresAt, summary: summary(p) };
         },
-        commit(ref, rawActor, current, relocation) {
+        commit(ref, rawActor, current, relocation, held) {
             const p = refs.get(ref);
             refs.delete(ref);
             if (!p)
@@ -275,7 +279,7 @@ export function createHubMemberAddressSettingsOperation(deps: Deps) {
             const receiptText = JSON.stringify(receipt) + "\n", confirmationId = sha(canonical(receipt)).slice(0, 32), planDigest = hubPlanDigest(next), committedAt = receipt.at;
             const manifestText = JSON.stringify({ v: 1, hubId: d.hubId, planDigest, committedAt, confirmationId, signature: sealHubInitialization({ home: deps.home, planDigest, committedAt, confirmationId }) }) + "\n";
             const op: HubMemberAddressOperation = { v: 1, kind: "member-address", id, expected: p.expected, revision: p.expected.revision + 1, before: { configSha: p.old.configSha, manifestSha: p.old.manifestSha, identitySha: p.old.identitySha },
-                after: { configSha: sha(canonical(next)), manifestSha: sha(manifestText), certificateSha: sha(p.input.certificate), identitySha: sha(identityText), memberSha: sha(canonicalArguments(hubMemberAddressBoundary(next))) }, receiptSha: sha(receiptText), actor, at: deps.now(), webOrigin: p.old.hub.webOrigin as string, affected: p.fleets, administrator: p.old.hub.administrator as HubMemberAddressOperation["administrator"], ...(relocation ? { relocation } : {}) };
+                after: { configSha: sha(canonical(next)), manifestSha: sha(manifestText), certificateSha: sha(p.input.certificate), identitySha: sha(identityText), memberSha: sha(canonicalArguments(hubMemberAddressBoundary(next))) }, receiptSha: sha(receiptText), actor, at: deps.now(), webOrigin: p.old.hub.webOrigin as string, affected: p.fleets, ...(p.input.origin === p.old.hub.memberOrigin ? { sameOrigin: true as const } : {}), administrator: p.old.hub.administrator as HubMemberAddressOperation["administrator"], ...(relocation ? { relocation } : {}) };
             write(certificateFile, p.input.certificate);
             deps.step("member-certificate");
             const s: Stage = { v: 1, id, operation: op, next, manifest: manifestText, receipt: receiptText, certificateFile, identity: identityText };
@@ -285,7 +289,7 @@ export function createHubMemberAddressSettingsOperation(deps: Deps) {
             journal(j);
             deps.step("member-staged");
             // The only decision: file journals are recovery indexes, not authority. Revocation/audit/notices/head share this COMMIT.
-            d.commit(op, () => { assert(); load(j); return true; });
+            d.commit(op, () => { assert(); load(j); return true; }, held);
             deps.step("member-decision");
             journal({ ...j, phase: "installing" });
             install(j, s);

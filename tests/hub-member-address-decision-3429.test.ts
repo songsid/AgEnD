@@ -116,8 +116,9 @@ describe("#3429 B — members that followed keep their credential (the kept set)
     return { ...r, op, sequence };
   }
   it("the acked Fleet stays active with its credential; the others are revoked; notices name only the revoked", async () => {
-    const r = await relocated(), before = r.store.read();
-    r.decision.commit(r.op, () => true);
+    const r = await relocated(), before = r.store.read(), asked: number[] = [];
+    r.decision.commit(r.op, () => true, advanced => { asked.push(advanced); return true; });
+    expect(asked).toEqual([0, 0, 1]);                       // start, the last point before the floor, after the audit (+1 own advance)
     const after = r.store.read();
     expect(after.fleets.find(f => f.id === r.a)).toEqual(before.fleets.find(f => f.id === r.a));          // untouched
     expect(after.fleets.find(f => f.id === r.b)).toMatchObject({ status: "revoked", credentialHash: null, generation: 6 });
@@ -130,14 +131,43 @@ describe("#3429 B — members that followed keep their credential (the kept set)
   it.each([["another generation", { keptGeneration: 4 }], ["another credential", { keptCredential: "z".repeat(64) }]] as const)(
     "a kept Fleet with %s since it was signed for: stale, nothing written", async (_n, opts) => {
     const r = await relocated(opts), before = r.store.read();
-    expect(() => r.decision.commit(r.op, () => true)).toThrow(expect.objectContaining({ code: "stale" }));
+    expect(() => r.decision.commit(r.op, () => true, () => true)).toThrow(expect.objectContaining({ code: "stale" }));
     expect(r.store.read()).toEqual(before);
     expect(r.decision.head()).toEqual({ operationId: null, revision: 0 });
   });
   it("a kept Fleet that is not one of this reservation's signed rows: refused, nothing written", async () => {
     const r = await relocated({ statementDigest: "f".repeat(64) }), before = r.store.read();
-    expect(() => r.decision.commit(r.op, () => true)).toThrow();
+    expect(() => r.decision.commit(r.op, () => true, () => true)).toThrow();
     expect(r.store.read()).toEqual(before);
+  });
+  it.each([["at the start", 1], ["at the last point before the version floor", 2]] as const)(
+    "a kept Fleet's ack link lost %s: stale, nothing written, the store still reads", async (_n, lostAt) => {
+    const r = await relocated(), before = r.store.read(); let calls = 0;
+    expect(() => r.decision.commit(r.op, () => true, () => ++calls < lostAt)).toThrow(expect.objectContaining({ code: "stale" }));
+    expect(r.store.read()).toEqual(before); expect(r.decision.head()).toEqual({ operationId: null, revision: 0 }); expect(r.floor()).toBe(before.revision);
+  });
+  it("a kept Fleet's ack link lost inside the required audit: refused (fail closed), never published as kept", async () => {
+    const r = await relocated(); let lost = false;
+    r.audit.mockImplementation((event: { id: string; action: string }, own: Database.Database) => { own.prepare("INSERT INTO audit VALUES(?,?)").run(event.id, event.action); lost = true; });
+    expect(() => r.decision.commit(r.op, () => true, () => !lost)).toThrow("recovery");
+    expect(r.db.prepare("SELECT revision,operation_id o FROM hub_member_address_head").get()).toEqual({ revision: 0, o: null });
+    expect(r.db.prepare("SELECT count(*) n FROM hub_member_address_operations").get()).toEqual({ n: 0 });
+  });
+  it("kept Fleets without a link proof: refused before anything", async () => {
+    const r = await relocated(), before = r.store.read();
+    expect(() => r.decision.commit(r.op, () => true)).toThrow(expect.objectContaining({ code: "invalid" }));
+    expect(r.store.read()).toEqual(before);
+  });
+  it("a listener-only edit (sameOrigin): every affected Fleet keeps its binding; no notice names a Fleet; a relocation with it is refused", async () => {
+    const r = await rig(), before = r.store.read(), op = { ...r.operation(), sameOrigin: true as const };
+    r.decision.commit(op, () => true);
+    const after = r.store.read();
+    for (const id of [r.a, r.b]) expect(after.fleets.find(f => f.id === id)).toEqual(before.fleets.find(f => f.id === id));
+    expect(after.revocationVersion).toBe(before.revocationVersion + 1);                                 // links re-authorize on the moved listener
+    expect(r.decision.notices({ kind: "person", person: r.bob }, () => true).rows).toEqual([]);
+    expect(r.decision.notices({ kind: "host" }, () => true).rows[0]!.fleets).toEqual([]);
+    const s = await relocated();
+    expect(() => s.decision.commit({ ...s.op, sameOrigin: true }, () => true, () => true)).toThrow("recovery");
   });
   it("a reservation per attempt: an abort burns its sequence; the head does not move until the decision", async () => {
     const r = await rig(), spki = r.decision.inspect().spkiSha256;
