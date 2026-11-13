@@ -11,6 +11,7 @@ import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js"
 import { RailFrame } from "/assets/side-rail.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Empty } from "/assets/ui-states.js";
+import { Dialog } from "/assets/ui-dialog.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
@@ -128,6 +129,17 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
   };
 }
 
+/**
+ * Wide enough for the side rail: the shared stylesheet hides `.u-rail` below 1200 px (app.css), so a narrower page shows
+ * the members panel in a sheet instead (spec §2: on a phone, a bottom drawer) — the Fleet's rail rule itself unchanged.
+ */
+const RAIL_QUERY = "(min-width: 1200px)";
+function useRailWide() {
+  const q = typeof matchMedia === "function" ? matchMedia(RAIL_QUERY) : null;
+  const [wide, setWide] = useState(() => !!q?.matches);
+  useEffect(() => { if (!q) return undefined; const on = () => setWide(!!q.matches); q.addEventListener?.("change", on); return () => q.removeEventListener?.("change", on); }, []);
+  return wide;
+}
 /** dev-claude2's members panel (hub-room-members.js), when this Hub serves it; otherwise the rail stays closed. */
 function useMembersPanel() {
   const [Panel, setPanel] = useState(null);
@@ -146,7 +158,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const [, tick] = useState(0);
   // The first read may land before this subscribes: read once more on subscribing.
   useEffect(() => { const off = store.subscribe(() => tick((n) => n + 1)); tick((n) => n + 1); return off; }, [store]);
-  const [reply, setReply] = useState(null), [rail, setRail] = useState(true);
+  const [reply, setReply] = useState(null), [rail, setRail] = useState(true), [sheet, setSheet] = useState(false);
+  const wide = useRailWide();
   const input = useRef(null), threadRef = useRef(null), insert = useRef(null);
   const Panel = useMembersPanel();
   // dev-claude2's room settings (hub-room-settings.js), opened from the header or the members panel.
@@ -166,13 +179,18 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   };
   const line2 = group ? (hasAssistant ? hroom("roomTitle", String(room.people ?? 0), String(room.agents ?? 0)) : hroom("roomSub", String(room.people ?? 0), String(room.agents ?? 0)))
     : room.assistant ? hroom("providedByHub") : String(room.agent?.owner?.name || "");
-  return html`<div class=${`hub-chat hub-room-page${rail && Panel && group ? " with-rail" : ""}`} data-room=${roomId}>
+  const showRail = wide && rail && Panel && group && detail;
+  const panel = Panel && detail ? html`<${Panel} client=${client} roomId=${roomId} detail=${detail}
+        onMention=${(m) => { setSheet(false); insert.current?.(`@${m.name}`); }}
+        onOpenChat=${(m) => { const direct = rooms.find((r) => r.kind === "direct" && r.agent?.exposureId === m.id); if (direct) openRoom(direct.id); }}
+        onSettings=${() => { setSheet(false); openSettings(); }} />` : null;
+  return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId}>
     <section class="hub-chat-main">
       <header class="hub-chat-head" data-trust="panel-content">
         <span class=${`av${group ? " av-square" : ""}`} aria-hidden="true"><span class="av-text">${firstCharacter(title || "?") || "?"}</span></span>
         <span class="hub-chat-title"><strong>${title}</strong><span class="s">${line2}</span></span>
-        ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${rail ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
-          onClick=${() => setRail(!rail)}><${Icon} name="team" size=${18} /></button>` : null}
+        ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? rail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
+          onClick=${() => (wide ? setRail(!rail) : setSheet(true))}><${Icon} name="team" size=${18} /></button>` : null}
         ${group && detail?.me?.role === "manager" ? html`<button type="button" class="icon-btn hub-room-settings-open" title=${hroom("roomSettings")} aria-label=${hroom("roomSettings")}
           onClick=${openSettings}><${Icon} name="settings" size=${18} /></button>` : null}
       </header>
@@ -181,11 +199,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
           : group ? html`<p class="note">${hroom("composerHint")}</p>` : null} />
       <${RoomComposer} store=${store} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert} />
     </section>
-    ${rail && Panel && group && detail ? html`<${RailFrame} trust="hub-context" label=${hroom("members")} title=${hroom("members")} closeLabel=${hroom("cancel")} onClose=${() => setRail(false)}>
-      <${Panel} client=${client} roomId=${roomId} detail=${detail}
-        onMention=${(m) => insert.current?.(`@${m.name}`)}
-        onOpenChat=${(m) => { const direct = rooms.find((r) => r.kind === "direct" && r.agent?.exposureId === m.id); if (direct) openRoom(direct.id); }}
-        onSettings=${openSettings} /></${RailFrame}>` : null}
+    ${showRail ? html`<${RailFrame} trust="hub-context" label=${hroom("members")} title=${hroom("members")} closeLabel=${hroom("cancel")} onClose=${() => setRail(false)}>${panel}</${RailFrame}>` : null}
+    ${!wide && sheet && panel && group ? html`<${Dialog} title=${hroom("members")} label=${hroom("members")} onClose=${() => setSheet(false)}><div class="hub-rail-sheet">${panel}</div></${Dialog}>` : null}
     ${settings && detail ? html`<${settings} client=${client} roomId=${roomId} detail=${detail} assistant=${hasAssistant}
       onClose=${() => setSettings(null)} onChanged=${() => { void store.refresh(); }} />` : null}
   </div>`;
