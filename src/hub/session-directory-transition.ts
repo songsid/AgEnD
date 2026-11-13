@@ -73,6 +73,12 @@ export function recentHubDirectoryAuthentication(core: HubCore, raw: Actor, proo
 
 /** Opaque, ephemeral and single use. A browser/body cannot construct its private proof or retrieve its new token. */
 export interface HubDirectorySessionRotation { discard(): void }
+/** Private response-owned release. Assertions never reveal the token; release is single-use. */
+export interface HubDirectorySessionRelease {
+  assertCurrent(): void;
+  release(): { token: string; maxAgeMs: number };
+  discard(): void;
+}
 interface Rotation {
   db: Database.Database; hubId: string; actor: Actor; old: Row; epoch: number; createdAt: number; expiresAt: number;
   now(): number; token: string | null; newId: string; phase: "prepared" | "taken" | "committed" | "completing" | "released" | "discarded";
@@ -136,9 +142,10 @@ export function completeHubDirectorySessionRotation(core: HubCore, handle: HubDi
 }
 
 /** Validate persisted rows after the proof callback. The token stays private until the release caller consumes the handle. */
-function completion(core: HubCore, state: Rotation, operationId: string, prove?: () => number) {
+function completion(core: HubCore, state: Rotation, operationId: string, prove?: () => number, expectedToken?: string) {
   return core.atomic(db => {
     const sampled = core.now(), now = prove ? prove() : sampled;
+    const token = expectedToken ?? state.token;
     if (!Number.isSafeInteger(now) || now < sampled) throw new HubProtocolError("unavailable");
     const head = db.prepare("SELECT operation_id,directory_epoch FROM hub_settings_head WHERE singleton=1").get() as { operation_id: string; directory_epoch: number } | undefined;
     const r = row(db, state.newId);
@@ -149,22 +156,25 @@ function completion(core: HubCore, state: Rotation, operationId: string, prove?:
     if (!binding.success || binding.data.previousSessionId !== state.actor.sessionId || binding.data.sessionId !== state.newId) throw new HubProtocolError("revoked");
     if (!head || head.operation_id !== operationId || head.directory_epoch !== state.nextEpoch
       || !Number.isSafeInteger(now) || now < state.createdAt || now >= state.expiresAt
-      || !current(r, state.old.person, state.nextEpoch!, now) || r.token_hash !== hash(state.token!)) throw new HubProtocolError("revoked");
-    return { token: state.token!, maxAgeMs: r.expires_at - now };
+      || !token || !current(r, state.old.person, state.nextEpoch!, now) || r.token_hash !== hash(token)) throw new HubProtocolError("revoked");
+    return { token, maxAgeMs: r.expires_at - now };
   });
 }
 
-/** Internal new-generation adapter: the exact successor must freshly prove hub.admin, never the old permit. */
-export async function completeHubRoleDirectorySessionRotation(core: HubCore, handle: HubDirectorySessionRotation, operationId: string,
-  contextForToken: (token: string) => HubRequestContext): Promise<{ token: string; maxAgeMs: number }> {
+/** Acquire fresh successor authority before a response callback, then retain it through final disclosure. */
+export async function prepareHubRoleDirectorySessionRelease(core: HubCore, handle: HubDirectorySessionRotation, operationId: string,
+  contextForToken: (token: string) => HubRequestContext): Promise<HubDirectorySessionRelease> {
   const state = rotations.get(handle);
   if (!state || state.phase !== "committed" || !state.token) throw new HubProtocolError("revoked");
   state.phase = "completing"; // One caller owns release; a second call cannot cancel or join this one.
+  const token = state.token;
+  let released = false;
   try {
     const authority = core.deps.management, method = core.management, configuration = core.deps.config,
       directory = core.deps.directory, uow = core.deps.uow;
     const live = () => {
-      if (state.phase !== "completing" || !state.token || state.operationId !== operationId || state.hubId !== core.deps.config.hubId
+      if ((released ? state.phase !== "released" || state.token !== null : state.phase !== "completing" || state.token !== token)
+        || state.operationId !== operationId || state.hubId !== core.deps.config.hubId
         || state.nextEpoch !== core.directoryEpoch || !authority || core.deps.management !== authority || core.management !== method
         || core.deps.config !== configuration || personKeyString(configuration.administrator) !== state.administrator
         || core.deps.directory !== directory || core.deps.uow !== uow) throw new HubProtocolError("revoked");
@@ -186,7 +196,26 @@ export async function completeHubRoleDirectorySessionRotation(core: HubCore, han
       if (typeof at !== "number" || !Number.isSafeInteger(at)) throw new HubProtocolError("unavailable");
       return at;
     };
-    const out = completion(core, state, operationId, proof);
-    state.token = null; state.phase = "released"; return out;
+    const checked = () => {
+      try { return completion(core, state, operationId, proof, token); }
+      catch (error) { handle.discard(); throw error; }
+    };
+    checked();
+    return Object.freeze({
+      assertCurrent() { void checked(); },
+      release() {
+        if (released) throw new HubProtocolError("revoked");
+        const out = checked();
+        released = true; state.token = null; state.phase = "released";
+        return out;
+      },
+      discard() { handle.discard(); },
+    });
   } catch (error) { handle.discard(); throw error; }
+}
+
+/** Existing immediate-release adapter retains its fresh-proof and single-use behavior. */
+export async function completeHubRoleDirectorySessionRotation(core: HubCore, handle: HubDirectorySessionRotation, operationId: string,
+  contextForToken: (token: string) => HubRequestContext): Promise<{ token: string; maxAgeMs: number }> {
+  return (await prepareHubRoleDirectorySessionRelease(core, handle, operationId, contextForToken)).release();
 }

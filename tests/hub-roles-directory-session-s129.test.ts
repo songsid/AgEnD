@@ -69,7 +69,8 @@ describe("S129 response-owned successor release", () => {
   it("prepares without exposing a token and releases exactly once under current authority", async () => {
     const w = await world(), { rotation, operation } = w.commit(), n = w.next();
     const release = await prepareResponseRelease(n.sessions, rotation, operation.id);
-    expect(Object.keys(release).sort()).toEqual(["assertCurrent", "discard", "release"]);
+    expect(Reflect.ownKeys(release).map(String).sort()).toEqual(["assertCurrent", "discard", "release"]);
+    expect(Object.isFrozen(release)).toBe(true);
     expect(() => release.assertCurrent()).not.toThrow();
     const cookie = release.release();
     expect(n.sessions.session(cookie.token)?.person).toEqual(w.admin);
@@ -102,6 +103,35 @@ describe("S129 response-owned successor release", () => {
     w.db.prepare("UPDATE hub_sessions SET state='ended' WHERE id=?").run(successor.sessionId);
     expect(() => release.assertCurrent()).toThrow(); expect(() => release.release()).toThrow();
   });
+  it("refuses a second acquisition and the immediate shortcut without cancelling the first response owner", async () => {
+    const w = await world(), { rotation, operation } = w.commit(), n = w.next();
+    const release = await prepareResponseRelease(n.sessions, rotation, operation.id); w.eligible.mockClear();
+    await expect(prepareResponseRelease(n.sessions, rotation, operation.id)).rejects.toThrow();
+    await expect(n.sessions.completeRoleDirectoryRotation(rotation, operation.id)).rejects.toThrow();
+    expect(w.eligible).not.toHaveBeenCalled(); expect(() => release.assertCurrent()).not.toThrow();
+    expect(n.sessions.session(release.release().token)?.person).toEqual(w.admin);
+  });
+  it("discards the private token when the response owner is abandoned", async () => {
+    const w = await world(), { rotation, operation } = w.commit(), n = w.next();
+    const release = await prepareResponseRelease(n.sessions, rotation, operation.id); release.discard();
+    expect(() => release.assertCurrent()).toThrow(); expect(() => release.release()).toThrow();
+    await expect(n.sessions.completeRoleDirectoryRotation(rotation, operation.id)).rejects.toThrow();
+  });
+  it.each(["provider", "head", "declaration", "root", "config", "directory", "uow", "lifetime"] as const)(
+    "withholds a prepared response after %s changes", async mode => {
+      const w = await world(), { rotation, operation } = w.commit(), n = w.next();
+      const release = await prepareResponseRelease(n.sessions, rotation, operation.id);
+      if (mode === "provider") n.core.deps.management = undefined;
+      if (mode === "head") w.db.prepare("UPDATE hub_settings_head SET operation_id=?").run(randomUUID());
+      if (mode === "declaration") w.db.prepare("UPDATE hub_settings_operations SET body=? WHERE id=?").run(JSON.stringify({ ...operation,
+        browserSession: { ...operation.browserSession, sessionId: randomUUID() } }), operation.id);
+      if (mode === "root") (n.core.deps.config as { administrator: typeof w.root }).administrator = w.other;
+      if (mode === "config") n.core.deps.config = { ...n.core.deps.config };
+      if (mode === "directory") n.core.deps.directory = { ...w.directory };
+      if (mode === "uow") n.core.deps.uow = { ...n.core.deps.uow };
+      if (mode === "lifetime") w.stop();
+      expect(() => release.assertCurrent()).toThrow(); expect(() => release.release()).toThrow();
+    });
 });
 
 describe("S129 auxiliary directory session preparation", () => {

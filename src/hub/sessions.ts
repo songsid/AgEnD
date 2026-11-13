@@ -17,7 +17,7 @@ import type { IncomingMessage } from "node:http";
 import { HubProtocolError } from "./validation.js";
 import { personKeyString } from "./identity.js";
 import type { HubActor, HubRequestContext, PersonKey } from "./types.js";
-import { recentHubDirectoryAuthentication, prepareHubDirectorySessionRotation, completeHubDirectorySessionRotation, completeHubRoleDirectorySessionRotation,
+import { recentHubDirectoryAuthentication, prepareHubDirectorySessionRotation, completeHubDirectorySessionRotation, completeHubRoleDirectorySessionRotation, prepareHubRoleDirectorySessionRelease,
   type HubDirectorySessionProof, type HubDirectorySessionRotation } from "./session-directory-transition.js";
 import type { HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import type { HubCore } from "./http/core.js";
@@ -131,6 +131,9 @@ export class HubSessions {
   }
   completeRoleDirectoryRotation(rotation: HubDirectorySessionRotation, operationId: string) {
     return completeHubRoleDirectorySessionRotation(this.core, rotation, operationId, token => this.contextOf(token));
+  }
+  prepareRoleDirectoryRotationRelease(rotation: HubDirectorySessionRotation, operationId: string) {
+    return prepareHubRoleDirectorySessionRelease(this.core, rotation, operationId, token => this.contextOf(token));
   }
 
   /** The current session of this token, or null (ended, expired, idle, or the server fenced). Refreshes "seen". */
