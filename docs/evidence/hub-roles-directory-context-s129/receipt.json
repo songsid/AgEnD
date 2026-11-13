@@ -1,0 +1,158 @@
+{
+  "source_checkpoint": "4dafdd94351dc653a58216668aa1e16e156c546f",
+  "test_checkpoint": "aaf1999ce39e0d9966c8979f7215b5c3f356d84a",
+  "parent": "60af11f4414a4aea424479530d3b745f51545877",
+  "parent_pr": 3828,
+  "scope": "Private unmounted Core adapter; no producer, controller, writer-provider, HTTP activation, working auxiliary Save or full S129 acceptance.",
+  "tests": {
+    "restored_focused": {
+      "files": 8,
+      "passed": 304,
+      "new_cases": 46
+    },
+    "typed_pass_through": {
+      "compile_exit": 0,
+      "semantic_failures": 2,
+      "passing_controls": 2
+    },
+    "mutations": {
+      "typed_baseline": 1,
+      "isolated_guard_reversals": 18,
+      "compiled_semantic_assertion_reds": 19,
+      "all_restored": true
+    },
+    "native_typescript": "7.0.2 source and test checks passed"
+  },
+  "fixtures": "Actual memory SQLite, HubSessions, canonical roles, shared pool, persisted cutover/clock, real SQL decision and independent floor. Fictional directory, inert file hashes. No physical Save, file install, browser, container, live AD/account/Fleet or native platform claim.",
+  "negative_setup_disclosure": "Expanded negative initially read through decision.lookup after independent floor advance; it correctly refused uncertain. Test now checks SQL rollback directly and separately asserts the held transport.",
+  "defence_only": "Frozen raw handle method and duplicate typed actor/capability checks are retained, without individual necessity claims.",
+  "skill_update": "N/A: no user-visible flow, label, limit or command changes.",
+  "rollback": "Before activation leave the optional adapter uncomposed. Committed directory changes use forward recovery.",
+  "remaining": "Parent-first plain alpha sync, conflict review, current-head CI/readiness, mounted source/controller/writer/successor composition and full S129 acceptance.",
+  "bindings": [
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18"
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "sha256": "4bb0c1e6a5f49b2606069ce1fcd638c66b1f4b984f0fd97c0c0f52fafa5731d9"
+    },
+    {
+      "path": "tests/hub-roles-directory-context-s129.test.ts",
+      "sha256": "f506a4be0ab10e743886941c1e4b6a7d649d71fe4539f6f9614b20464c6c73aa"
+    },
+    {
+      "path": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "c886cf7218dcb2e713259fa2be29bd27b42a134d61535a520ddf96e85ffd8b28"
+    },
+    {
+      "path": "src/hub/roles/authority.ts",
+      "sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "path": "src/hub/roles/directory-authority.ts",
+      "sha256": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d"
+    },
+    {
+      "path": "src/hub/directory-decision-proof.ts",
+      "sha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861"
+    },
+    {
+      "path": "src/hub/settings-directory-decision.ts",
+      "sha256": "a7be86d307e22adc25cd9724aefee3ca5ed0db3aa951b15bc22cd7ae9acebf20"
+    },
+    {
+      "path": "src/hub/roles/clock.ts",
+      "sha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "a37e2a2c51d6291e56bce25c98ae5e4d576c7b086689fde33825f1147f06b760"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "5450a50a564d7429ed352af680eadb9fa4b81ff07a10ca005a893b253b32e3f3"
+    },
+    {
+      "path": "src/hub/settings-directory-http.ts",
+      "sha256": "d1ffefcc751653b7170652d467413808318f434ca7b28b3a0b552b85056c267e"
+    },
+    {
+      "path": "src/hub/settings-directory-control.ts",
+      "sha256": "0e47c1c72f1cd6f13d77ddc1afea147f2f191f74e9db37ef8e59558e7b52d19e"
+    },
+    {
+      "path": "src/hub/settings-directory-proof.ts",
+      "sha256": "084fa3fc3777c0e401dea5b7dad639026cc98e00b0340ccccb1e8fc7d4d84f36"
+    },
+    {
+      "path": "src/hub/settings-directory-recovery-intent.ts",
+      "sha256": "dbc40a5c360c90f02d5fd32b1d3e0adea83f53b3d4f44189ca45ff898aa2f963"
+    },
+    {
+      "path": "src/hub/settings-commit.ts",
+      "sha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+    },
+    {
+      "path": "src/hub/sessions.ts",
+      "sha256": "40d0960d0f3969454999e270e7825888668d2d4f6abfb1edf610a32c445b5e5e"
+    },
+    {
+      "path": "src/hub/session-directory-transition.ts",
+      "sha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb"
+    },
+    {
+      "path": "tests/hub-roles-directory-preparation-s129.test.ts",
+      "sha256": "59bcba8070435b4fdaba8b3c8c0684f1116ce6432c8395530cceb6cfdd53eb2d"
+    },
+    {
+      "path": "tests/hub-roles-directory-transition-s129.test.ts",
+      "sha256": "74af41493b351c1dda47e38e3b0ea4b6196d5d8aed908f2d185bf5d9a71d0dc1"
+    },
+    {
+      "path": "tests/hub-roles-directory-s129.test.ts",
+      "sha256": "a2699e91aba288a38c8d7278f19fcfd9a7f16aec17442c0222c29bd4903b4a12"
+    },
+    {
+      "path": "tests/hub-roles-directory-writer-s129.test.ts",
+      "sha256": "d13cb58473f41383a701267a6ddeadab4d963d42f725021482aef1f1235fd90b"
+    },
+    {
+      "path": "tests/hub-roles-directory-session-s129.test.ts",
+      "sha256": "81a43b16a34a49b8781e46bfa127bb2315c7a66034f07d76a0f3760429cfa154"
+    },
+    {
+      "path": "tests/hub-roles-authority-s129.test.ts",
+      "sha256": "fbce4d78d82e6bf9e6ca5dab57048b318aca03dd2e10131064abe9dba7f7526d"
+    },
+    {
+      "path": "tests/hub-roles-session-s129.test.ts",
+      "sha256": "8bc7fc0d1c9b78cdbedc33addc0c8db65b676bbc591ca214aabc04e44391c704"
+    },
+    {
+      "path": "docs/design/hub-roles-directory-context-s129.md",
+      "sha256": "d902abc92a84aa0a0797070fe52c77c2433f892abbe7611e3b2d0ea2c87cd45a"
+    },
+    {
+      "path": "changes/3743-roles-directory-context.md",
+      "sha256": "d4141f7ee50caabe0bc35fa0e5f7428b78e5cccc6168e7819150c2d229173174"
+    },
+    {
+      "path": "changes/3743-roles-directory-context.zh-TW.md",
+      "sha256": "469144ef3831d0bf271f2b549c61468dceffdac3c84c630dd5a09aa6bd44d31f"
+    }
+  ],
+  "logs": {
+    "fail-first.log": "2223ac9093206fe797df5a92af93d7b48cc8e3b41742f503a75f27d4b97213cb",
+    "first-green.log": "7447d1e4e88713f35b5e68b188972b2dc722e61e8a30ae09d998b0e9a8d3c6d0",
+    "expanded.log": "01e772e88ebbf92569837ff8779e9b249db4bfcd56423fafaf8fabb9fdf91000",
+    "final-focused.log": "5e163116f2d170b5d7a4d308cca9050724665f7356768ace80e8d828c1d5bffb",
+    "pin-baseline.log": "22b25287a2bc302b920bd292ec081dd34a6ce40d37434dde45b03654636a24c3",
+    "recovery-pin-baseline.log": "5aa8cc1e78c9dd72ae5f069c766d00396e52e836c914617a6198c183054d7a77",
+    "restored-focused.log": "6f7dbbd3abe3ab2819092e022d572f621742c87d1f636ed3059cb9a470922fd5",
+    "final-source-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "final-test-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "fragments.log": "d34cd305248e46b5e4ae2c222e316835f942dd14c912ad7a358f38cb0b976758"
+  }
+}

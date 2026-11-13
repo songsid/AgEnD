@@ -1,0 +1,483 @@
+{
+  "input_commit": "aaf1999ce39e0d9966c8979f7215b5c3f356d84a",
+  "input_core_sha256": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+  "mutations": [
+    {
+      "id": "F00",
+      "claim": "typed pass-through recreates the two original semantic failures",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "95a91d94bd9b26f3760fa28b5f9c6987e81051b6dab0412b165cfb8cfb430fd0",
+      "replacements": [
+        {
+          "before": "  async directoryPreparation(ctx: HubRequestContext): Promise<HubDirectoryManagementPreparation> {\n    this.check();\n    const management = this.deps.management, prepare = management?.prepareDirectory, require = management?.require;\n    if (!management || !prepare) throw new HubProtocolError(\"unavailable\");\n    const config = this.deps.config, image = JSON.stringify(config), directory = this.deps.directory,\n      store = this.deps.store, uow = this.deps.uow, atomic = uow.atomic, mode = this.deps.current, clock = this.deps.now;\n    const caller = { requestId: ctx.requestId, current: ctx.current, isCurrent: ctx.isCurrent, identity: ctx.isIdentityCurrent };\n    let failed = false, closed = false, running = false, raw: HubDirectoryManagementPreparation | undefined;\n    let methods: Pick<HubDirectoryManagementPreparation, \"assertCurrent\" | \"authorize\" | \"retire\"> | undefined;\n    const retireOwner = () => { failed = true; if (raw && methods) methods.retire.call(raw); };\n    const identity = () => {\n      if (failed || this.deps.management !== management || management.require !== require || management.prepareDirectory !== prepare\n        || this.deps.config !== config || JSON.stringify(config) !== image || this.deps.directory !== directory || this.deps.store !== store\n        || this.deps.uow !== uow || uow.atomic !== atomic || this.deps.current !== mode || this.deps.now !== clock\n        || ctx.requestId !== caller.requestId || ctx.current !== caller.current || ctx.isCurrent !== caller.isCurrent || ctx.isIdentityCurrent !== caller.identity\n        || raw && methods && (raw.assertCurrent !== methods.assertCurrent || raw.authorize !== methods.authorize || raw.retire !== methods.retire))\n        throw new HubProtocolError(\"unavailable\");\n    };\n    const owner = () => {\n      try { identity(); this.atomic(() => {}); identity(); }\n      catch (error) { retireOwner(); throw error; }\n    };\n    const refused = async (error: unknown): Promise<never> => {\n      // The real token adapter owns signed-out classification after a held physical read.\n      if (ctx.isCurrent?.() === false) await ctx.current();\n      throw error;\n    };\n    try {\n      owner(); raw = await prepare.call(management, ctx);\n      methods = { assertCurrent: raw.assertCurrent, authorize: raw.authorize, retire: raw.retire };\n      owner();\n      if (raw.requestId !== caller.requestId || raw.directory !== directory\n        || personKeyString(raw.administrator) !== personKeyString(config.administrator)) throw new HubProtocolError(\"unavailable\");\n      const selected = raw, retained = methods;\n      const check = () => {\n        // Consuming/cancelling preparation does not revoke an already acquired effect permit.\n        if (closed) throw new HubProtocolError(\"unavailable\");\n        try { owner(); retained.assertCurrent.call(selected); owner(); }\n        catch (error) { retireOwner(); throw error; }\n      };\n      check();\n      return Object.freeze({ actor: selected.actor, requestId: selected.requestId, directory, administrator: selected.administrator, assertCurrent: check,\n        async authorize() {\n          check();\n          if (running) throw new HubProtocolError(\"backpressure\");\n          running = true;\n          try {\n            const fresh = await retained.authorize.call(selected); owner();\n            if (closed || fresh.permission !== \"hub.admin\" || fresh.actor.sessionId !== selected.actor.sessionId\n              || personKeyString(fresh.actor.person) !== personKeyString(selected.actor.person)) throw new HubProtocolError(\"unavailable\");\n            const current = fresh.assertCurrent, decision = fresh.assertDirectoryDecision;\n            const assertCurrent = () => {\n              try {\n                owner();\n                if (fresh.assertCurrent !== current) throw new HubProtocolError(\"unavailable\");\n                const sample = current.call(fresh); owner(); return sample;\n              } catch (error) { retireOwner(); throw error; }\n            };\n            const permit: HubManagementPermit = Object.freeze({ ...fresh, assertCurrent,\n              ...(decision ? { assertDirectoryDecision(proof: HubDirectoryDecisionProof) {\n                try {\n                  owner();\n                  if (fresh.assertDirectoryDecision !== decision) throw new HubProtocolError(\"unavailable\");\n                  const sample = decision.call(fresh, proof); owner(); return sample;\n                } catch (error) { retireOwner(); throw error; }\n              } } : {}) });\n            permit.assertCurrent(); return permit;\n          } catch (error) { retireOwner(); return refused(error); }\n          finally { closed = true; retained.retire.call(selected); }\n        },\n        retire() { closed = true; retained.retire.call(selected); },\n      });\n    } catch (error) { retireOwner(); return refused(error); }\n  }\n",
+          "after": "  async directoryPreparation(ctx: HubRequestContext): Promise<HubDirectoryManagementPreparation> {\n    this.check(); const management = this.deps.management;\n    if (!management?.prepareDirectory) throw new HubProtocolError(\"unavailable\");\n    return management.prepareDirectory(ctx);\n  }\n"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "2"
+      ],
+      "pattern": "S129 directory preparation belongs to its actual Core",
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "a235223176f8d312acba1c5bd5fd681adbc87110f4d32f27b96b9084a7e906b6",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C01",
+      "claim": "actual management provider identity",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "c502cdc1809e15dc6cd68ce5df0c919824a251ab050e599c10263b9d2b5a8a0e",
+      "replacements": [
+        {
+          "before": "this.deps.management !== management || ",
+          "after": ""
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "7"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "7a96ca301110d3f92355c0ce1d80656e0e8aa3164801be66ceccb6f8fe1f504f",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C02",
+      "claim": "preparation method identity",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "62a976ee2eb357ff2d4fb20ab7a009b8d9c16002a1b853837c8395d77e5d7b39",
+      "replacements": [
+        {
+          "before": "management.prepareDirectory !== prepare",
+          "after": "false"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "2"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "8ffeb28df00edf050857eac0be03a0581ba3855ef451f6a3bb514d20ec937e66",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C03",
+      "claim": "require method identity",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "4e189a2dba6283ccfa0516e1ffe885d2ed9f8677b88c41d54c05d875eee334fa",
+      "replacements": [
+        {
+          "before": "management.require !== require",
+          "after": "false"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "b8c691253da96327f1ccc65dc674a84ec9d38f9b26ac12055a08870def06d110",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C04",
+      "claim": "Core config object and contents",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "de140fe46467e3ec8f6644edc5defb4eef411ffb023565cbb1a8dc6dd085979b",
+      "replacements": [
+        {
+          "before": "this.deps.config !== config || JSON.stringify(config) !== image",
+          "after": "false"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "7"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "4d0bf36d509cf54fb1ca0b1982c6020a4fa09035b990c32e90c2a3367e891808",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C05",
+      "claim": "Core directory identity",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "bf94c2261fbbdfb3468513b3e85d1d5c17290ff40f1f70e3e96662988a887712",
+      "replacements": [
+        {
+          "before": "this.deps.directory !== directory",
+          "after": "false"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "2"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "a68c88756d26ef00f71df8cd1aabb048a9a79ea8a3629477de3f324484de9d95",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C06",
+      "claim": "Core transport store identity",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "d0cd2b427eabf19370072b3b3c087d0bce838aeab11769daddcc29cae741662d",
+      "replacements": [
+        {
+          "before": "this.deps.store !== store",
+          "after": "false"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "2"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "2acec653fc4f694071d39878d08bf2c6839f1ca7ff7e7a376c4b7ca018a036bd",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C07",
+      "claim": "Core unit of work and atomic method",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "bb56d83eddbc11d875629c173e734812356e8e3351addcf7fdef0b16c8ad2cc7",
+      "replacements": [
+        {
+          "before": "this.deps.uow !== uow || uow.atomic !== atomic",
+          "after": "false"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "4"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "698ce1fccfe4b3f43e5f3cd053f7423a82318584a4d94ae066814f8e99518fcd",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C08",
+      "claim": "Core mode and clock providers",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "ebd4a86e0ede8f905818804f1b2de07fe2655734bde5aae4fd23fcdd1d0e601f",
+      "replacements": [
+        {
+          "before": "this.deps.current !== mode || this.deps.now !== clock",
+          "after": "false"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "4"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "fea7b43a572bbcf48ccb17cd4076969127a36d743bdc6dbc483f498caeb3dc13",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C09",
+      "claim": "retained caller request and methods",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "55b979214f388b72e6df7b69367be1a8bf56eeb3a5369764c5501d2cad2ebbf2",
+      "replacements": [
+        {
+          "before": "ctx.requestId !== caller.requestId || ctx.current !== caller.current || ctx.isCurrent !== caller.isCurrent || ctx.isIdentityCurrent !== caller.identity",
+          "after": "false"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "3"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "faeb0625d3da7b85c693efc3e92b504d23362ad640526d7722fd46da36223dcd",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C10",
+      "claim": "owner retirement persists after restoration",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "87d7b68cd623e821decd89e842b5d98ec24d7b055070912dae77f78c5fcd5511",
+      "replacements": [
+        {
+          "before": "if (failed || this.deps.management",
+          "after": "if (this.deps.management"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "16"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "5e1657250f3a846ec25f982dd840dc57fffee8a030dad8db8ce6b2b842b339c7",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C11",
+      "claim": "Core lifetime and epoch transaction",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "9f9aa1406587dac7eb7e13ac4c10ac656d6f1d2c6a8db322b8179a086a6fb290",
+      "replacements": [
+        {
+          "before": "identity(); this.atomic(() => {}); identity();",
+          "after": "identity(); identity();"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "2"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "ac78d6cc37d7d6360b6fa0f4fe64403cd69387514a9f1e9e4e34e781054990fe",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C12",
+      "claim": "ordinary final proof post-callback owner fence",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "5c9d3a1cb17f3808f4ae60ce2f995b090f110ae0c1aab9836205c7a19a7dded8",
+      "replacements": [
+        {
+          "before": "const sample = current.call(fresh); owner(); return sample;",
+          "after": "const sample = current.call(fresh); return sample;"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "d1bf03ea70472a6410f243a437dac178d8846e84d4ba09349914932e1a846298",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C13",
+      "claim": "explicit SQL final proof post-callback owner fence",
+      "file": "src/hub/http/core.ts",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "01be5dcbc2291206774ce14d6ae0c187508d491144b34c17f23b18172aec863e",
+      "replacements": [
+        {
+          "before": "const sample = decision.call(fresh, proof); owner(); return sample;",
+          "after": "const sample = decision.call(fresh, proof); return sample;"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "9d6f7b4f3b1f58b36e392317026ba439d0abdcaf4fa3f749ae109bfef77bfc88",
+      "input_commit": "4dafdd94351dc653a58216668aa1e16e156c546f",
+      "test_input_sha256": "730a41bd777e84b9ad99f09a23e667bcef4992c8b4db6b3b88ba0c657b767123"
+    },
+    {
+      "id": "C14",
+      "claim": "consumed preparation separated from effect proof",
+      "file": "src/hub/http/core.ts",
+      "input_commit": "da121c8c71b5539742a423a494539d02e60873aa",
+      "test_input_sha256": "867bed60dede1f9bdd738ba7e2ac55bff9416cd359c555eac87f6a25013620a9",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "91d169f48b75e585590aedadfbb35f2ac42b0a005fe64364b67e29ea8bc82354",
+      "replacements": [
+        {
+          "before": "if (closed) throw new HubProtocolError(\"unavailable\");",
+          "after": "/* reversal: consume check omitted */"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "83faaf2a37a03375caf1ffc2e772ebd189299cd136b3df7f1fa69661cc52da78"
+    },
+    {
+      "id": "C15",
+      "claim": "second flight does not retire the first",
+      "file": "src/hub/http/core.ts",
+      "input_commit": "da121c8c71b5539742a423a494539d02e60873aa",
+      "test_input_sha256": "867bed60dede1f9bdd738ba7e2ac55bff9416cd359c555eac87f6a25013620a9",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "3e5943c2ef5e4cc600abab8bc5bc9aed052f83211664cca55ba6c65edf500f3d",
+      "replacements": [
+        {
+          "before": "if (running) throw new HubProtocolError(\"backpressure\");",
+          "after": "void running;"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "f103242df95b20d58add70b359f577386ff6a8a40af3a6ada376a5792f150860"
+    },
+    {
+      "id": "C16",
+      "claim": "ordinary trusted scalar preserved",
+      "file": "src/hub/http/core.ts",
+      "input_commit": "da121c8c71b5539742a423a494539d02e60873aa",
+      "test_input_sha256": "867bed60dede1f9bdd738ba7e2ac55bff9416cd359c555eac87f6a25013620a9",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "8724dab29d03b06ebf8d81652da3008a233f7189a19c02841cc8b0971168fb3d",
+      "replacements": [
+        {
+          "before": "const sample = current.call(fresh); owner(); return sample;",
+          "after": "const sample = current.call(fresh); owner(); void sample;"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "2317baff36c6a00659264ba1541ebf9c1665ee9993e078ffe62c6a94c4572b56"
+    },
+    {
+      "id": "C17",
+      "claim": "explicit SQL trusted scalar preserved",
+      "file": "src/hub/http/core.ts",
+      "input_commit": "aaf1999ce39e0d9966c8979f7215b5c3f356d84a",
+      "test_input_sha256": "f506a4be0ab10e743886941c1e4b6a7d649d71fe4539f6f9614b20464c6c73aa",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "9c81ed742ae051c004c5fc42ed64e44b8180ab0057ecb7a048e653fc7c8cd19a",
+      "replacements": [
+        {
+          "before": "const sample = decision.call(fresh, proof); owner(); return sample;",
+          "after": "const sample = decision.call(fresh, proof); owner(); void sample;"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "2"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "afd0136a23225eba08e0e8fc28d8774572f75e0931f826365580fb3a1ef393a1"
+    },
+    {
+      "id": "C18",
+      "claim": "real signed-out classification after held read",
+      "file": "src/hub/http/core.ts",
+      "input_commit": "aaf1999ce39e0d9966c8979f7215b5c3f356d84a",
+      "test_input_sha256": "f506a4be0ab10e743886941c1e4b6a7d649d71fe4539f6f9614b20464c6c73aa",
+      "before": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+      "mutation": "944a9149b7cf422966082027acab783da103db33000480bf9ed725c89d25555b",
+      "replacements": [
+        {
+          "before": "if (ctx.isCurrent?.() === false) await ctx.current();",
+          "after": "/* reversal: classification omitted */"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "pattern": null,
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "1c0a5f3cd0eb607395add22d995133d9238c4e6edf1bc009bde8bed49373b1b1"
+    }
+  ],
+  "source_checkpoint": "4dafdd94351dc653a58216668aa1e16e156c546f",
+  "test_only_pin_commit": "aaf1999ce39e0d9966c8979f7215b5c3f356d84a",
+  "restoration": {
+    "file": "src/hub/http/core.ts",
+    "expected": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18",
+    "actual": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18"
+  },
+  "exclusions": [
+    {
+      "kind": "runner-match",
+      "detail": "Initial C01 text also matched existing Core.management; no C01 mutation was applied, source restored, runner narrowed to the new method."
+    },
+    {
+      "kind": "positive-control",
+      "detail": "Initial C14 compiled and failed via a production protocol refusal at the expected-permitted call; not counted as an assertion red. A single not.toThrow assertion was added, then C14-C18 rerun. F00 and C01-C13 retain their exact original input bindings; product bytes are unchanged."
+    },
+    {
+      "kind": "surviving-scalar-reversal",
+      "detail": "Initial C17 compiled and passed because a bare legacy-compatible decision accepts void. Test-only input adds the real recovery-clock intent; C17-C18 rerun against that consumer. Earlier caught rows retain their explicit source/test input bindings; product bytes are unchanged."
+    }
+  ]
+}
