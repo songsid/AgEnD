@@ -1,0 +1,3 @@
+Antigravity CLI 1.5.7
+Color Scheme			terminal
+Enable Telemetry		off
