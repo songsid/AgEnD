@@ -34,15 +34,15 @@ export function useInvitations(client = hubClient()) {
 }
 const valid = (x) => x && typeof x.id === "string" && x.room && typeof x.room.name === "string" && x.agent && typeof x.agent.name === "string";
 
-/** The left list's 「邀請 · n」 row: nothing while there are none. */
-export function InvitationsRow({ client = hubClient(), onOpen } = {}) {
-  const { list } = useInvitations(client);
-  if (!list?.length) return null;
-  return html`<button type="button" class="hub-invitations-row" onClick=${() => onOpen?.()}>${hi("row", list.length)}</button>`;
+/** The left list's 「邀請 · n」 row. The shell passes the list answer's pending count; nothing when it is 0. */
+export function InvitationsRow({ count = 0, onOpen } = {}) {
+  const n = Number(count) || 0;
+  if (n <= 0) return null;
+  return html`<button type="button" class="hub-invitations-row" onClick=${() => onOpen?.()}>${hi("row", n)}</button>`;
 }
 
 /** The invitations themselves, each with 同意 / 不要. Nothing when there are none (My shared agents shows no empty box). */
-export function InvitationsList({ client = hubClient(), heading = true } = {}) {
+export function InvitationsList({ client = hubClient(), heading = true } = {}) {   // onOpenRoom: not used — the owner is not a member of the inviting room
   const { list, error, reload, answer } = useInvitations(client);
   const [busy, setBusy] = useState(null), [note, setNote] = useState(null), inflight = useRef(false);
   if (error && !list) return html`<p class="note hub-invitations-error" role="alert">${hi("loadFailed")} <button type="button" class="btn btn-link" onClick=${() => { void reload(); }}>${hi("retry")}</button></p>`;

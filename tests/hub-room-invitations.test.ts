@@ -43,7 +43,8 @@ describe("Hub room invitations, owner side (section 8)", () => {
   it("the row reads 「邀請 · 1」 and opens the list; the item names who, which agent and which room, and who will see it", async () => {
     const { pg, client } = await fixture();
     let opened = 0;
-    await pg.mount(h("div", null, h(inv.InvitationsRow, { client, onOpen: () => { opened++; } }), h(inv.InvitationsList, { client }))); await settle(20);
+    const count = (await client.roomList()).invitations;
+    await pg.mount(h("div", null, h(inv.InvitationsRow, { count, onOpen: () => { opened++; } }), h(inv.InvitationsList, { client }))); await settle(20);
     const row = pg.root.querySelector("button.hub-invitations-row");
     expect(row.textContent).toBe("邀請 · 1");
     fire(row, "click"); expect(opened).toBe(1);
@@ -54,25 +55,28 @@ describe("Hub room invitations, owner side (section 8)", () => {
 
   it.each([["Accept", "accept"], ["Decline", "decline"]])("%s answers once, and the invitation leaves the row and the list", async (label, verb) => {
     const { pg, client, calls } = await fixture("en");
-    await pg.mount(h("div", null, h(inv.InvitationsRow, { client }), h(inv.InvitationsList, { client }))); await settle(20);
+    await pg.mount(h(inv.InvitationsList, { client })); await settle(20);
     expect(text(pg)).toContain("陳主任 invited your agent “my-notes” to the room “產品規劃”");
     fire(button(pg, label), "click"); await settle(20);
     expect(calls.filter(c => c.method === "POST").map(c => c.path)).toEqual([`/hub/v1/invitations/inv-in-0001/${verb}`]);
     expect(pg.root.querySelector(".hub-invitation")).toBeNull();
-    expect(pg.root.querySelector("button.hub-invitations-row")).toBeNull();
+  });
+
+  it("the row is nothing at 0 and reads the shell's count otherwise", async () => {
+    const { pg } = await fixture("en");
+    await pg.mount(h("div", null, h(inv.InvitationsRow, { count: 0 }), h(inv.InvitationsRow, { count: 3 }))); await settle(5);
+    expect([...pg.root.querySelectorAll("button.hub-invitations-row")].map((b: any) => b.textContent)).toEqual(["Invitations · 3"]);
   });
 
   it("an answer from another tab, or a new invitation, reaches this one by the stream", async () => {
     const { pg, client, fx } = await fixture();
-    await pg.mount(h("div", null, h(inv.InvitationsRow, { client }), h(inv.InvitationsList, { client }))); await settle(20);
+    await pg.mount(h(inv.InvitationsList, { client })); await settle(20);
     fx.invitations.push({ id: "inv-in-0002", room: { id: "room-x", name: "研發例會", people: 1 }, agent: { exposureId: "exp-mine-1", name: "my-notes" }, by: { name: "吳小安" }, at: 1 });
     fx.emit("invitation.changed", {}); await settle(20);
-    expect(pg.root.querySelector("button.hub-invitations-row").textContent).toBe("邀請 · 2");
     expect(pg.root.querySelectorAll(".hub-invitation")).toHaveLength(2);
     expect(pg.root.querySelectorAll(".hub-invitation small")[1].textContent).toBe("房間裡的 1 個人可以在那裡 @ 它；它的回答房間裡的人都看得到。");
     fx.invitations.splice(0); fx.emit("invitation.changed", {}); await settle(20);
     expect(pg.root.querySelector(".hub-invitation")).toBeNull();
-    expect(pg.root.querySelector("button.hub-invitations-row")).toBeNull();
   });
 
   it("an invitation already gone (404) says so and leaves; a failed answer keeps it with a retry note", async () => {
