@@ -1,0 +1,5 @@
+# Sync after the R2 alpha merge
+
+Plain merge b818ea33b has parents11122e1ae and alpha0cff950b. Alpha contained the R2 squash and the shell-gate repair already present in the reviewed candidate. The six textual conflicts are in HTTP composition/registry, agent context/progress helpers, room registry/service, and migration controls. Each resolution retains the already-reviewed R3 additions together with final R2 retry behavior. The resulting full repository tree is exactly a9b17c600c1fef0af6d5337ff5ad24ea58b29e8f, identical to11122e1ae. No source, test, fixture or evidence byte changed in the merge itself.
+
+The fresh bounded migration/system/DTO/routing slice passes29/29 across4 suites. Previous96/13,166/5 and both native-program results remain historical with byte-identical inputs; they are not rerun or summed into this count. No browser, directory or vendor operation is part of this sync. This final commit only adds this receipt and the original test log. New-head CI and Fable's exact-head approval are required before the coordinator gates; the old approval is not carried as a formal new verdict.

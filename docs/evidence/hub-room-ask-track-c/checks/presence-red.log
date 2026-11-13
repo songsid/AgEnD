@@ -1,0 +1,83 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (35 tests | 4 failed) 92ms
+     × publishes the actual state once, sends only changes and gives a new link a baseline 3ms
+     × coalesces simultaneous refreshes and fences withdrawn exposures across a held read 3ms
+     × does not publish on an old or unnegotiated link or wait behind an old link's held read 1ms
+     × retries a failed send instead of marking it sent, and gives a bounded state when reading fails 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C current-link agent.state publisher > publishes the actual state once, sends only changes and gives a new link a baseline
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ tests/hub-room-ask-track-c.test.ts:205:95
+    203|   }
+    204|   it("publishes the actual state once, sends only changes and gives a …
+    205|     const f = publisher(); await f.p.refresh(); await f.p.refresh(); e…
+       |                                                                                               ^
+    206|     expect(f.link.sendState).toHaveBeenLastCalledWith({ exposureId: f.…
+    207|     f.setState({ process: "running", execution: "working" }); await f.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C current-link agent.state publisher > coalesces simultaneous refreshes and fences withdrawn exposures across a held read
+AssertionError: expected Promise{…} to be Promise{…} // Object.is equality
+
+If it should pass with deep equality, replace "toBe" with "toStrictEqual"
+
+Expected: Promise{…}
+Received: serializes to the same string
+
+
+Compared values have no visual difference.
+
+ ❯ tests/hub-room-ask-track-c.test.ts:214:72
+    212|   it("coalesces simultaneous refreshes and fences withdrawn exposures …
+    213|     const f = publisher(), hold = deferred<AgentStateInput>(); f.read.…
+    214|     const first = f.p.refresh(), second = f.p.refresh(); expect(first)…
+       |                                                                        ^
+    215|     f.withdraw(); hold.resolve({ process: "running", execution: "worki…
+    216|     expect(f.link.sendState).not.toHaveBeenCalled();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C current-link agent.state publisher > does not publish on an old or unnegotiated link or wait behind an old link's held read
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ tests/hub-room-ask-track-c.test.ts:221:70
+    219|     const f = publisher(), hold = deferred<AgentStateInput>(); f.read.…
+    220|     const old = f.p.refresh(), next = { ...f.link, sendState: vi.fn(as…
+    221|     f.p.connected(next); await f.p.refresh(); expect(next.sendState).t…
+       |                                                                      ^
+    222|     hold.resolve({ process: "running", execution: "working" }); await …
+    223|     f.p.connected({ ...next, features: new Set() }); await f.p.refresh…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C current-link agent.state publisher > retries a failed send instead of marking it sent, and gives a bounded state when reading fails
+AssertionError: promise resolved "undefined" instead of rejecting
+
+- Expected:
+Error {
+  "message": "rejected promise",
+}
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-ask-track-c.test.ts:227:32
+    225|   it("retries a failed send instead of marking it sent, and gives a bo…
+    226|     const f = publisher(); vi.mocked(f.link.sendState).mockRejectedVal…
+    227|     await expect(f.p.refresh()).rejects.toThrow("offline"); await f.p.…
+       |                                ^
+    228|     f.read.mockRejectedValueOnce(Error("private detailed activity")); …
+    229|     expect(f.link.sendState).toHaveBeenLastCalledWith({ exposureId: f.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 31 passed (35)
+   Start at  00:48:16
+   Duration  613ms (transform 225ms, setup 96ms, import 267ms, tests 92ms, environment 0ms)
+

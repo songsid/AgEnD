@@ -1,0 +1,157 @@
+{
+  "sourceCommit": "509b940cb371a92f56f427432170179beab860a8",
+  "parentCommit": "5b71d3f4d0d2496278fb90f26f326ebabf19c8ed",
+  "files": [
+    {
+      "path": "changes/3856-room-directory.md",
+      "sha256": "037f3afc22d88f63a777be9a2930811b6c5dfd879d9b9546fcd5ab04f82bf50f"
+    },
+    {
+      "path": "changes/3856-room-directory.zh-TW.md",
+      "sha256": "15971c4cf3ed10bb4c54b3af2c997c41513fe8a045bee3c1b2a81fdfb821e141"
+    },
+    {
+      "path": "docs/design/hub-rooms-directory-r3.md",
+      "sha256": "494d378d0820ae34c592c65c69c50ee395e92680397cfb67832ae6640d7b5c68"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "a0f5e3870d3ba59c35d00f80f29d4c7c8526aa5b84bde69405b60b712f6dfc59"
+    },
+    {
+      "path": "src/hub/directory/directory.ts",
+      "sha256": "7a1afe4e9ce0ff35df9eaba6081a2d772ba3fb4e593997ab0750b3f48f0b0c38"
+    },
+    {
+      "path": "src/hub/directory/types.ts",
+      "sha256": "6ec6a7eee0a173ab9fbac3a3826e609295e8101333d48cb765168ba6a3775c0f"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "0e2d6ebc5b59c24fc9170964f8b81985466eabc80bfead43dbcf79271f85f884"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "5c272a8d47c2a60617e04053c2cc8bd29c359474e7f7107e94a56172ab44ee79"
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "sha256": "ce4ef715f339c19d83aa5162cae61e982f8290bdfca37cb12014946e903a0a8f"
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "sha256": "27e5009501157fac085a96d372c35b33b05d8b1930e4f2cd1a9496c354ad4c75"
+    },
+    {
+      "path": "src/hub/rooms/admin.ts",
+      "sha256": "6c9acbfd88226cea40d942efade23fc56be061c5fdb2e2b43b61692721375494"
+    },
+    {
+      "path": "src/hub/rooms/directory.ts",
+      "sha256": "2e2fe034190b84b6d2d3d6afeac497f1804e631ad7c4d2003bc2608e828b0061"
+    },
+    {
+      "path": "src/hub/rooms/schema.ts",
+      "sha256": "1e9a3ec1ddda0875b50eda4a07fe06935f77b38e81a6a3e3d5aa9e2c847011f3"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "2ad90b5d2f5877ae2e06936665d6c291e9b67134343275b39890bfd94116fa9f"
+    },
+    {
+      "path": "tests/hub-room-candidates-r3.test.ts",
+      "sha256": "41c06a5ed71bee9bb73b54184c2e0ab4e7d3cede387e56d6eb2d365db155385c"
+    },
+    {
+      "path": "tests/hub-room-directory-roster-r3.test.ts",
+      "sha256": "00e9d2bf9e12d79513f3cee7a5e0dfaa6e58bc1dc3f5653ac497c73fc708819d"
+    },
+    {
+      "path": "tests/hub-rooms-migration-r1.test.ts",
+      "sha256": "c9e29e96bcae7af1e0c118ec8cfe53ce8770df7529887fe778285db711ac2cac"
+    },
+    {
+      "path": "tests/hub-room-client-contract-r3.test.ts",
+      "sha256": "055ff308969294778499efbaec5d0ecdf0bf80c02c5a17a72b73917cfbe364e6"
+    },
+    {
+      "path": "tests/hub-room-admin-r3.test.ts",
+      "sha256": "f1135cebefcfb19fe0dfbbce06f7775f47f8198abd4f7fd960e98ed5a6d42231"
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "sha256": "e4ab7220700659a2d3775bae75dda63032a8b6bbe2da5977d6e37f68f6968634"
+    },
+    {
+      "path": "tests/hub-room-system-r3.test.ts",
+      "sha256": "4428bc5176e1bd82314a562cdfa91766df1954737f9f401329d4f25be923a75f"
+    },
+    {
+      "path": "tests/hub-rooms-r1.test.ts",
+      "sha256": "4d0f39f5feef8aa330f71dbe55c89f9f1a8411cc5c0b68805df33f3555e2bc79"
+    }
+  ],
+  "checks": [
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-candidates-r3.test.ts tests/hub-room-directory-roster-r3.test.ts tests/hub-room-admin-r3.test.ts tests/hub-room-assistant-r3.test.ts tests/hub-room-integration-r3.test.ts tests/hub-rooms-r1.test.ts tests/hub-room-agents-r2.test.ts tests/hub-grant-person-search-m3016.test.ts --maxWorkers=2",
+      "result": "64/64 across8 suites"
+    },
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-rooms-migration-r1.test.ts tests/hub-skill.test.ts tests/hub-groups-mount-s89.test.ts tests/hub-group-composition.test.ts --maxWorkers=2",
+      "result": "51/51 across4 additional suites"
+    },
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-candidates-r3.test.ts --maxWorkers=2",
+      "result": "7/7 after additional archived-invitation detail case"
+    },
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-admin-r3.test.ts --maxWorkers=2",
+      "result": "6/6 after pre-sign-in manager-label projection change"
+    },
+    {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+      "exitCode": 0
+    },
+    {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exitCode": 0
+    },
+    {
+      "command": "node scripts/changelog-assemble.mjs --check",
+      "exitCode": 0
+    },
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-client-contract-r3.test.ts tests/hub-room-candidates-r3.test.ts tests/hub-room-admin-r3.test.ts tests/hub-room-integration-r3.test.ts --maxWorkers=2",
+      "result": "19/19 across4 suites on the DTO source checkpoint; overlaps historical counts, not added"
+    },
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-system-r3.test.ts tests/hub-room-client-contract-r3.test.ts tests/hub-room-candidates-r3.test.ts tests/hub-room-admin-r3.test.ts tests/hub-room-integration-r3.test.ts tests/hub-rooms-r1.test.ts --maxWorkers=2",
+      "result": "37/37 across6 files after the system-event correction; overlaps historical and DTO results"
+    }
+  ],
+  "directoryLibrary": {
+    "package": "ldapts",
+    "version": "9.2.0",
+    "sourceFile": "ldapts/src/Client.ts",
+    "sha256": "b3ee5f26f7cce4852011f9fb745f09ec2253ce7122571d74c2d85f8850fbb3c6",
+    "inspection": "_sendSearch accepts SizeLimitExceeded only with nonzero searchRequest.sizeLimit; complete room roster uses0. Dependency source inspected, not a real-directory execution."
+  },
+  "scope": "Real production local HTTP/SQLite; directory adapter under inert LDAP/TLS peers, C Team projection under injected port. No real AD, account, Fleet, vendor CLI/API or browser.",
+  "previousSourceCommit": "4097a9a633062a531e638a6e1e0590a2bf54a42b",
+  "dtoIntegration": {
+    "checkpoint": "0529469f0466da2e2a5e0e6f2c162f9d2eb441db",
+    "sourceCommit": "5ca70231b519db8ee3c24aacc6046116ddeeef4c",
+    "failFirst": "Three semantic assertion failures before the fix on the broader R/C/A/U integration candidate. Relevant pre-fix methods match the prior source; not an execution of this exact draft baseline.",
+    "browser": "16/16 checks and8 original EN/zh-TW PNGs through real R HTTPS/SQLite +A service/inert worker. NewRoom uses a component harness; list/thread/private assistant use the actual shell. No full invitations/Teams/settings walkthrough.",
+    "natives": "Fresh source and test TypeScript programs exit0 on the DTO source body; no further product change after these checks."
+  },
+  "dtoSourceCommit": "2da528a2c04dc9c856289229c0cd74fe7382dd7b",
+  "systemEvents": {
+    "request": "Lumen actual8-PNG walkthrough at0529469f; UX8224c4675",
+    "failFirst": "3/3 new actual HTTP/SQLite tests failed with missing system metadata before implementation on234e50c37.",
+    "restored": "37/37 across6 files, both fresh native TypeScript programs exit0. Restart persistence, exact display names with English-like substrings, unmarked historical fallback, person and agent joins, explicit admin join and list preview metadata are covered.",
+    "storage": "Existing system author_id/name fields; no migration, no English parsing or rewrite. Message.system and list.lastSystem are additive.",
+    "compatibility": "Two existing R1 candidate assertions now read the candidates envelope while keeping their exact original item/eligibility expectations.",
+    "ui": "U1 owns localization/rendering and legacy fallback. U2 copy/order corrections are consumed separately by the broader integration candidate."
+  }
+}

@@ -20,7 +20,7 @@ import * as tls from "node:tls";
 import type { Client as LdapClient, Control, Entry, Filter } from "ldapts";
 import { HubDirectoryConfigError, resolveDirectoryConfig, type ResolvedDirectoryConfig } from "./config.js";
 import { PROFILES, escapeFilterValue, isDisabled, objectIdMatch, readObjectId, readText, readTextList } from "./profiles.js";
-import type { DirectoryPerson, DirectoryLookupResult, Eligibility, HubDirectory, InitializationLookupResult, PersonKey, SignInResult } from "./types.js";
+import type { DirectoryPerson, DirectoryLookupResult, Eligibility, HubDirectory, InitializationLookupResult, PersonKey, SignInResult, RoomGroupRoster } from "./types.js";
 
 export interface HubDirectorySecrets {
   /** The service account's password (resolved by the caller from the Hub's secret store). */
@@ -28,7 +28,7 @@ export interface HubDirectorySecrets {
 }
 
 export interface HubDirectoryDiagnostic {
-  readonly op: "sign-in" | "eligibility" | "initialization-lookup" | "pairing-owner-lookup" | "grant-recipient-lookup" | "group-lookup" | "group-membership" | "group-search" | "person-search";
+  readonly op: "sign-in" | "eligibility" | "initialization-lookup" | "pairing-owner-lookup" | "grant-recipient-lookup" | "group-lookup" | "group-membership" | "group-search" | "person-search" | "room-group-members";
   readonly outcome: string;
   /** The underlying error's message, for the technical log. Never contains a password. */
   readonly error?: string;
@@ -194,6 +194,19 @@ class Session {
       attributes: [...attributes], explicitBufferAttributes: [...binary],
     });
     return searchEntries; // Feedback only; referrals are never followed or interpreted as an absence proof.
+  }
+  async roomMembers(dn: string, attributes: readonly string[], binary: readonly string[]): Promise<Entry[]> {
+    this.assertSecure(); const entries: Entry[] = [];
+    // sizeLimit=0 makes ldapts refuse SizeLimitExceeded instead of silently accepting capped entries.
+    // Paging bounds each response; the deadline and total cap bound this complete snapshot operation.
+    for await (const page of this.client.searchPaginated(this.cfg.baseDn, { scope: "sub", derefAliases: "never", sizeLimit: 0, timeLimit: 5,
+      paged: { pageSize: 100 }, filter: `(&${this.cfg.userFilter}(memberOf=${escapeFilterValue(dn)}))`,
+      attributes: [...attributes], explicitBufferAttributes: [...binary] })) {
+      this.assertSecure();
+      if (page.searchReferences.length || entries.length + page.searchEntries.length > 4096) throw new IncompleteDirectoryResult();
+      entries.push(...page.searchEntries);
+    }
+    return entries;
   }
   abort(): void { this.tlsSocket?.destroy(); }
 
@@ -371,6 +384,34 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
         // ldapts accepts capped size-limit replies but does not expose their status; reaching 20 is conservatively truncated.
         return { ok: true, groups, truncated: entries.length === 20 };
       } catch (err) { const failure = expired ? "unreachable" : directoryFailure(err); report("group-search", "unknown", undefined, failure); return { ok: false, reason: "unknown", failure }; }
+      finally { clearTimeout(deadline); await service?.close(true); }
+    },
+    async roomGroupMembers(key: PersonKey): Promise<RoomGroupRoster> {
+      const who = key && Object.freeze({ realm: key.realm, objectId: key.objectId });
+      if (!groupSupport) return { ok: false, reason: "unsupported" };
+      if (closed || !who || who.realm !== cfg.realm || !objectIdMatch("ad", who.objectId)) return { ok: false, reason: "unknown" };
+      let service: Session | undefined, expired = false;
+      const deadline = setTimeout(() => { expired = true; service?.abort(); }, 5000); deadline.unref();
+      try {
+        service = await openService({ ...cfg, timeoutMs: Math.min(cfg.timeoutMs, 5000) }, current => {
+          service = current; if (expired) { current.abort(); throw new InsecureTransportError("room group deadline"); }
+        });
+        const { AndFilter, EqualityFilter, FilterParser } = await loadLdapts();
+        const filter = new AndFilter({ filters: [FilterParser.parseString("(objectClass=group)"), new EqualityFilter(objectIdMatch("ad", who.objectId)!)] });
+        const attrs = ["objectGUID", "groupType", "cn"], found = await service.search(filter, attrs, ["objectGUID"], "sub", cfg.baseDn, undefined, true);
+        if (!found.length) return { ok: false, reason: "not-found" };
+        const entry = found[0]!, name = readText(entry, "cn");
+        if (found.length !== 1 || !groupEntry(entry, who.objectId) || !withinGroupBase(entry.dn, cfg.baseDn) || !name || name.length > 256 || /[\u0000-\u001f\u007f]/.test(name)) return { ok: false, reason: "unknown" };
+        const members = await service.roomMembers(entry.dn, attributes, shape.binaryAttributes), people: DirectoryPerson[] = [], seen = new Set<string>();
+        for (const member of members) {
+          const id = readObjectId(cfg.profile, member);
+          if (!id || seen.has(id) || !withinGroupBase(member.dn, cfg.baseDn)) return { ok: false, reason: "unknown" };
+          seen.add(id); if (!isDisabled(cfg.profile, member, now())) people.push(toPerson(member, id));
+        }
+        const again = await service.search(filter, attrs, ["objectGUID"], "base", entry.dn, undefined, true);
+        if (closed || expired || again.length !== 1 || !groupEntry(again[0]!, who.objectId) || again[0]!.dn.toLowerCase() !== entry.dn.toLowerCase()) return { ok: false, reason: "unknown" };
+        return { ok: true, group: { key: who, name }, people };
+      } catch { report("room-group-members", "unknown"); return { ok: false, reason: "unknown" }; }
       finally { clearTimeout(deadline); await service?.close(true); }
     },
     async resolvePolicyGroup(dn: string): Promise<PolicyGroupLookup> {

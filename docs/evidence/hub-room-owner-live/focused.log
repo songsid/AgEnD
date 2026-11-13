@@ -1,0 +1,8 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-room-live-fixes
+
+
+ Test Files  4 passed (4)
+      Tests  43 passed (43)
+   Start at  04:31:27
+   Duration  9.12s (transform 5.21s, setup 242ms, import 7.71s, tests 8.36s, environment 0ms)

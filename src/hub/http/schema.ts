@@ -9,7 +9,7 @@ import type Database from "better-sqlite3";
 import { HUB_BUTTONS_MIGRATION } from "../buttons.js";
 import { HUB_SESSION_AUTHENTICATION_MIGRATION } from "../session-directory-transition.js";
 import { HUB_SESSION_EPOCH_MIGRATION } from "../session-epoch.js";
-import { HUB_ROOMS_MIGRATION } from "../rooms/schema.js";
+import { HUB_ROOMS_MIGRATION, HUB_ROOM_AGENTS_MIGRATION, HUB_ROOM_RETRY_MIGRATION, HUB_ROOM_CREATORS_MIGRATION, HUB_ROOM_ASSISTANT_MIGRATION, HUB_ROOM_DIRECTORY_MIGRATION } from "../rooms/schema.js";
 
 export interface HubHttpMigration { readonly component: string; readonly version: number; up(db: Database.Database): void }
 
@@ -104,4 +104,9 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
     db.exec("ALTER TABLE hub_exposures ADD COLUMN sharing_epoch INTEGER NOT NULL DEFAULT 0 CHECK(sharing_epoch>=0)");
   } }),
   HUB_ROOMS_MIGRATION,
+  HUB_ROOM_AGENTS_MIGRATION,
+  HUB_ROOM_RETRY_MIGRATION,
+  HUB_ROOM_CREATORS_MIGRATION,
+  HUB_ROOM_ASSISTANT_MIGRATION,
+  HUB_ROOM_DIRECTORY_MIGRATION,
 ]);

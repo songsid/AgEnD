@@ -34,6 +34,9 @@ import "/assets/chat-strings.js";
 import { compareGroups, hubClient } from "./hub-client.js";
 import { hw, linkHubCss } from "./hub-strings.js";
 import { hc, linkHubChatCss } from "./hub-chat-strings.js";
+import { HubRoomRows, readRoomList } from "./hub-room-list.js";
+import { HubRoomPage } from "./hub-room-thread.js";
+import { hroom } from "./hub-room-strings.js";
 import { hr } from "./hub-read-strings.js";
 import { ho, linkHubOwnerCss } from "./hub-owner-strings.js";
 import { hg } from "./hub-grant-strings.js";
@@ -136,7 +139,8 @@ export function HubPanel({ route }) {
   // The owner stylesheet holds the page column (.hub-owner, 860 px) every page with a column uses — Notices too (Argon #12).
   useEffect(() => { linkHubCss(); linkHubOwnerCss(); if (tab === "ask") linkHubChatCss(); }, [tab]);
   // Join takes precedence over other query views. Rooms and Group permissions otherwise name their own pages.
-  const pageName = companyPage ? hj("title") : tab === "exposures" ? hc("mine") : tab === "admin" ? hc("admin") : view === "notices" ? hc("noticesTitle") : hc("chats");
+  const pageName = companyPage ? hj("title") : tab === "exposures" ? hc("mine") : tab === "admin" ? hc("admin") : view === "notices" ? hc("noticesTitle")
+    : view === "invitations" ? hroom("invitationsTitle") : hc("chats");
   useEffect(() => { if (companyPage || !(tab === "ask" && roomParam()) && !(tab === "admin" && view === "groups")) setTitle(pageName); }, [tab, view, pageName, roomParam(), companyPage]);
   let body = tab === "ask" ? roomParam() ? html`<${HubRoomLoading} />`
     : html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><${Skeleton} variant="rows" lines=${4} /></div>`
@@ -153,6 +157,10 @@ export function HubPanel({ route }) {
       <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
         ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${directoryNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
         ${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}</div></div></div>`;
+  // M-3092: the owner's invitations (spec §8), a page of the chats like Notices.
+  if (s && tab === "ask" && view === "invitations" && roomsLive()) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-invitations">
+    <${PanelHeader} title=${hroom("invitationsTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body"><div class="col hub-owner">
+      <${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="InvitationsList" props=${{ client: hubClient(), heading: false }} /></div></div></div>`;
   // The chats draw their own header (the room's); the other pages keep the panel's.
   if (s !== null && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${body}</div></div>`;
   // #3226 C: My shared agents and Administration are Settings-like pages. The panel's header names the page once, its scope
@@ -280,11 +288,13 @@ function useRead(read) {
 /** The person's open rooms, as the list shows them: { loaded, rooms, error }; read on demand and every ROOMS_MS. */
 export const ROOMS_MS = 30_000;
 export function refreshRooms() {
-  return roomsReading ??= hubClient().rooms().then((r) => {
+  // M-3092: the rooms list (docs/design/hub-rooms-split.md seam 1). A Hub without rooms yet answers today's chats in the
+  // same shape (kind "direct", `limited`, the old item under `legacy`: hub-client.js legacyRoom()).
+  return roomsReading ??= readRoomList(hubClient()).then((r) => {
     // With group permissions on, a person whose groups don't include chatting is refused the list: that is their access, shown
     // by the welcome, not a failure (Cairn #3372) — the list stays empty and quiet. Every chat action still asks the server.
     if (!r.ok && (r.code === "denied" || r.code === "revoked") && groupPolicyOn(session, hubClient())) roomsStore.set({ loaded: true, rooms: [], error: null, denied: true });
-    else roomsStore.set(r.ok ? { loaded: true, rooms: r.rooms || [], error: null } : { ...roomsStore.get(), loaded: true, error: errText(r) });
+    else roomsStore.set(r.ok ? { loaded: true, rooms: r.rooms || [], me: r.me || null, invitations: Number(r.invitations) || 0, error: null } : { ...roomsStore.get(), loaded: true, error: errText(r) });
   }, () => roomsStore.set({ ...roomsStore.get(), loaded: true, error: hw("errFailed") })).finally(() => { roomsReading = null; });
 }
 /** Keeps the list fresh while something shows it (every ROOMS_MS, paused while the page is hidden). */
@@ -297,22 +307,21 @@ function useRooms() {
   }, []);
   return rs;
 }
-const roomParam = () => { try { const v = new URLSearchParams(location.search).get("room"); return v && /^[a-f0-9-]{36}$/.test(v) ? v : null; } catch { return null; } };
+// A room's id as the list gives it (today's are UUIDs; a Hub with rooms may name them otherwise): matched against the list
+// and encoded into each call, never trusted as anything else.
+const roomParam = () => { try { const v = new URLSearchParams(location.search).get("room"); return v && /^[A-Za-z0-9-]{1,64}$/.test(v) ? v : null; } catch { return null; } };
 const roomPath = (id) => `/ui/hub?room=${encodeURIComponent(id)}`;
 /** cid-hub-shell-parity: the Notices page is /ui/hub?view=notices (the path every Hub listener and router already serves). */
 const viewParam = () => { try { return new URLSearchParams(location.search).get("view"); } catch { return null; } };
 export const NOTICES_PATH = "/ui/hub?view=notices";
+/** M-3092: the owner's invitations (spec §8). */
+export const INVITATIONS_PATH = "/ui/hub?view=invitations";
 const pairingNoticesOffered = (s) => !!s && Array.isArray(s.features) && s.features.includes("quick-pairing-v1") && !!hubClient().quickPairingV1;
 const noticesOffered = s => pairingNoticesOffered(s) || directoryNoticesOffered(s, hubClient());
 const initial = (name) => (String(name || "?").trim()[0] || "?").toUpperCase();
 const AV_TONES = 6;
 const tone = (name) => { let h = 0; for (const c of String(name || "")) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % AV_TONES; };
 function Avatar({ name, size = "" }) { return html`<span class=${`hub-av t${tone(name)} ${size}`} aria-hidden="true">${initial(name)}</span>`; }
-const listTime = (ms) => {
-  if (!ms) return "";
-  const d = new Date(ms), now = new Date();
-  return d.toDateString() === now.toDateString() ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
-};
 const dateOnly = (ms) => new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 function daysLeft(ms) {
   const d = Math.ceil((ms - Date.now()) / 86_400_000);
@@ -328,7 +337,7 @@ export function HubNav({ onPick } = {}) {
   useEffect(() => { linkHubChatCss(); }, []);
   if (!s) return null;
   const current = roomParam();
-  const shown = rs.rooms.filter((r) => !q.trim() || `${r.exposureName} ${r.ownerName}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const shown = rs.rooms.filter((r) => !q.trim() || [r.name, r.agent?.owner?.name, r.lastText].some((v) => String(v || "").toLowerCase().includes(q.trim().toLowerCase())));
   const pick = (e, r) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(roomPath(r.id)); };
   return html`<div class="hub-nav">
     <button type="button" class="btn hub-new" onClick=${() => setPicking(true)}><${Icon} name="plus" size=${16} />${hc("newChat")}</button>
@@ -339,12 +348,7 @@ export function HubNav({ onPick } = {}) {
     ${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : null}
     ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length ? html`<p class="note hub-list-empty">${hc("noChats")}</p>` : null}
     ${rs.rooms.length && !shown.length ? html`<p class="note hub-list-empty">${hc("noMatch")}</p>` : null}
-    <ul class="hub-rooms" role="list">${shown.map((r) => html`<li key=${r.id}>
-      <a class=${`hub-room-row${current === r.id ? " active" : ""}${r.state === "closed" ? " closed" : ""}`} href=${roomPath(r.id)} aria-current=${current === r.id ? "page" : undefined} onClick=${(e) => pick(e, r)}>
-        <${Avatar} name=${r.exposureName} />
-        <span class="hub-room-text"><span class="t">${r.exposureName}</span><span class="s">${r.state === "closed" ? hc("tagClosed") : r.waiting ? hc("waiting") : r.ownerName ? hc("represents", r.ownerName) : ""}</span></span>
-        <span class="hub-room-side"><span class="time">${listTime(r.lastAt)}</span>${r.waiting ? html`<span class="pulse" title=${hc("waiting")}></span>` : null}</span>
-      </a></li>`)}</ul>
+    <div class="view-roster inst-nav hub-side-rooms"><${HubRoomRows} rooms=${rs.rooms} q=${q} current=${current} href=${(r) => roomPath(r.id)} onGo=${pick} /></div>
     ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
   </div>`;
 }
@@ -363,7 +367,7 @@ export function HubSide({ onPick } = {}) {
   const { route } = useStore(navStore);
   const [q, setQ] = useState("");
   const [filtering, setFiltering] = useState(false);
-  const [picking, setPicking] = useState(false);
+  const [picking, setPicking] = useState(false), [newRoom, setNewRoom] = useState(false);
   const filter = useRef(null);
   useEffect(() => { linkHubChatCss(); }, []);
   const openFilter = () => { setFiltering(true); setTimeout(() => filter.current?.focus(), 0); };
@@ -380,7 +384,7 @@ export function HubSide({ onPick } = {}) {
   if (!s) return null;
   const tab = route && route.panel === "hub" ? route.tab : "ask";
   const view = viewParam();
-  const here = (key) => key === "notices" ? tab === "ask" && view === "notices" : key === "ask" ? tab === "ask" && view !== "notices" : tab === key;
+  const here = (key) => key === "notices" || key === "invitations" ? tab === "ask" && view === key : key === "ask" ? tab === "ask" && view !== "notices" && view !== "invitations" : tab === key;
   const go = (e, href) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(href); };
   const row = (key, href, icon, label) => html`<a class=${`side-row${here(key) ? " active" : ""}`} href=${href} aria-current=${here(key) ? "page" : undefined}
     onClick=${(e) => go(e, href)}><${Icon} name=${icon} /><span class="grow">${label}</span></a>`;
@@ -391,12 +395,18 @@ export function HubSide({ onPick } = {}) {
       ${row("exposures", "/ui/hub/exposures", "globe", hc("mine"))}
       ${s.admin ? row("admin", "/ui/hub/admin", "key", hc("admin")) : null}
       ${noticesOffered(s) ? row("notices", NOTICES_PATH, "bell", hc("notices")) : null}
+      ${roomsLive() && rs.invitations > 0 ? html`<a class=${`side-row${here("invitations") ? " active" : ""}`} href=${INVITATIONS_PATH} aria-current=${here("invitations") ? "page" : undefined}
+        onClick=${(e) => go(e, INVITATIONS_PATH)}><${Icon} name="inbox" /><span class="grow">${hroom("invitationsTitle")}</span><span class="nav-count" title=${hroom("invitationsN", String(rs.invitations))}>${rs.invitations}</span></a>` : null}
       <button type="button" class="side-row side-search" onClick=${openFilter} title=${`${hc("search")} (${searchShortcut()})`}
         aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${hc("navSearch")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>
       <button type="button" class="side-row side-new" onClick=${() => setPicking(true)}><${Icon} name="plus" /><span class="grow">${hc("newChat")}</span></button>
+      ${roomsLive() && rs.me?.canCreateRooms ? html`<button type="button" class="side-row side-new hub-new-room" onClick=${() => setNewRoom(true)}><${Icon} name="room" /><span class="grow">${hroom("newRoomTitle")}</span></button>` : null}
     </nav>
+
     <${HubRoomList} rs=${rs} q=${q} setQ=${setQ} filtering=${filtering} setFiltering=${setFiltering} filterRef=${filter} onPick=${onPick} quietEmpty=${home} />
-    ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}`;
+    ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
+    ${newRoom ? html`<${LazyRoomPart} load=${() => import("./hub-room-new.js")} name="NewRoomDialog" props=${{ client: hubClient(), assistant: !!rs.me?.assistant,
+      onClose: () => setNewRoom(false), onOpenRoom: (id) => { setNewRoom(false); void refreshRooms(); navigate(roomPath(id)); } }} />` : null}`;
 }
 
 /**
@@ -407,23 +417,18 @@ export function HubSide({ onPick } = {}) {
 function HubRoomList({ rs, q, setQ, filtering, setFiltering, filterRef, onPick, quietEmpty = false, onNew = null }) {
   const current = roomParam();
   const go = (e, href) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(href); };
-  const shown = rs.rooms.filter((r) => !q.trim() || `${r.exposureName} ${r.ownerName}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const shown = rs.rooms.filter((r) => !q.trim() || [r.name, r.agent?.owner?.name, r.lastText].some((v) => String(v || "").toLowerCase().includes(q.trim().toLowerCase())));
   const always = !!onNew;                              // the home page's list: its filter is always there (when there's a list to filter)
   return html`<div class="view-roster inst-nav hub-side-rooms"><div data-trust="navigation" class="side-section">
       ${onNew ? html`<button type="button" class="side-row side-new" onClick=${onNew}><${Icon} name="plus" /><span class="grow">${hc("newChat")}</span></button>` : null}
-      <div class="inst-head"><h2 class="side-label">${hc("chats")}</h2>${rs.rooms.length ? html`<span class="count">${rs.rooms.length}</span>` : null}</div>
+      ${!rs.rooms.length ? html`<div class="inst-head"><h2 class="side-label">${hc("chats")}</h2></div>` : null}
       ${filtering || q || (always && rs.rooms.length) ? html`<label class="hub-side-filter"><${Icon} name="search" size=${14} /><input ref=${filterRef} type="search" placeholder=${hc("search")} aria-label=${hc("search")} value=${q}
         onInput=${(e) => setQ(e.target.value)} onKeyDown=${(e) => { if (e.key === "Escape") { setQ(""); setFiltering(false); } }} /></label>` : null}
       ${rs.error ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : null}
       ${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : null}
       ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length && !quietEmpty ? html`<p class="side-empty muted">${hc("noChats")}</p>` : null}
       ${rs.rooms.length && !shown.length ? html`<p class="side-empty muted">${hc("noMatch")}</p>` : null}
-      <ul class="hub-rooms" role="list">${shown.map((r) => html`<li key=${r.id}>
-        <a class=${`hub-room-row${current === r.id ? " active" : ""}${r.state === "closed" ? " closed" : ""}`} href=${roomPath(r.id)} aria-current=${current === r.id ? "page" : undefined} onClick=${(e) => go(e, roomPath(r.id))}>
-          <${Avatar} name=${r.exposureName} />
-          <span class="hub-room-text"><span class="t">${r.exposureName}</span><span class="s">${r.state === "closed" ? hc("tagClosed") : r.waiting ? hc("waiting") : r.ownerName ? hc("represents", r.ownerName) : ""}</span></span>
-          <span class="hub-room-side"><span class="time">${listTime(r.lastAt)}</span>${r.waiting ? html`<span class="pulse" title=${hc("waiting")}></span>` : null}</span>
-        </a></li>`)}</ul>
+      <${HubRoomRows} rooms=${rs.rooms} q=${q} current=${current} href=${(r) => roomPath(r.id)} onGo=${(e, r) => go(e, roomPath(r.id))} />
     </div></div>`;
 }
 
@@ -475,7 +480,7 @@ function NewChatDialog({ onClose }) {
   };
   const all = cat && cat.askable ? cat.askable : [];
   const shown = all.filter((it) => !q.trim() || `${it.exposure.displayName} ${it.ownerName}`.toLowerCase().includes(q.trim().toLowerCase()));
-  const hasRoom = (it) => rs.rooms.some((r) => r.exposureId === it.exposure.id && r.grantId === it.grant.id);
+  const hasRoom = (it) => rs.rooms.some((r) => { const o = r.legacy || r; return o.exposureId === it.exposure.id && o.grantId === it.grant.id; });
   return html`<${Dialog} title=${hc("pickTitle")} onClose=${onClose}>
     <div class="hub-pick">
       <label class="field"><span class="sr-only">${hc("pickSearch")}</span><input type="search" placeholder=${hc("pickSearch")} value=${q} onInput=${(e) => setQ(e.target.value)} /></label>
@@ -501,7 +506,13 @@ function HubChats() {
   const [picking, setPicking] = useState(false);
   useEffect(() => { linkHubChatCss(); }, []);
   const id = roomParam();
-  const room = id ? rs.rooms.find((r) => r.id === id) || (rs.loaded ? { id, exposureName: "", ownerName: "", features: [] } : null) : null;
+  // Today's chats (the list's `legacy` item) open the room view they always had; a room of a Hub with rooms opens the
+  // shared thread (M-3092 PR 2).
+  const listed = id ? rs.rooms.find((r) => r.id === id) : null;
+  const room = id ? (listed ? listed.legacy || listed : rs.loaded ? { id, exposureName: "", ownerName: "", features: [] } : null) : null;
+  // A room of a Hub with rooms: the shared thread with the room's store, composer and members panel (hub-room-thread.js).
+  if (id && listed && !listed.legacy) return html`<${HubRoomPage} key=${id} roomId=${id} listed=${listed} Thread=${HubThread} client=${hubClient()}
+    rooms=${rs.rooms} openRoom=${(rid) => navigate(roomPath(rid))} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   return html`<${PanelHeader} title=${hc("chats")} />
@@ -557,7 +568,7 @@ function HubRoomView({ room: given }) {
       const waiting = store.entries().some((e) => ["queued", "delivered", "consumed"].includes(e.receipt && e.receipt.stage));
       if (was !== null && waiting !== was) {
         // The row says so at once; the list is read again behind it.
-        roomsStore.set((rs) => ({ ...rs, rooms: rs.rooms.map((r) => (r.id === given.id ? { ...r, waiting } : r)) }));
+        roomsStore.set((rs) => ({ ...rs, rooms: rs.rooms.map((r) => (r.id === given.id ? (r.legacy ? { ...r, legacy: { ...r.legacy, waiting } } : { ...r, waiting }) : r)) }));
         void refreshRooms();
       }
       was = waiting;
@@ -689,7 +700,7 @@ function HubWorkBar({ name, since }) {
 }
 
 /** The thread: the fleet chat's own (createThread), fed by the room's store. */
-function HubThread({ store, name, panelKey, threadRef }) {
+function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView = null }) {
   const scroller = useRef(null), host = useRef(null);
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
@@ -710,6 +721,8 @@ function HubThread({ store, name, panelKey, threadRef }) {
       replyButtonBusy: (id) => store.busy(id), pollMine: (id) => store.mine(id), serverNow: () => Date.now(),
       retryOutgoing: () => {}, deleteOutgoing: () => {}, putBackOutgoing: () => {}, startReply: () => {}, findQuoted: () => null,
       emojis: () => false, mentions: () => null,
+      // M-3092: a room of a Hub with rooms (hub-room-thread.js) says whose messages are mine, and replies and quotes.
+      ...(extra || {}),
     });
     th.current = thread;
     if (threadRef) threadRef.current = thread;
@@ -736,7 +749,8 @@ function HubThread({ store, name, panelKey, threadRef }) {
     ${!loaded && !store.error() && !store.closed() ? html`<${Skeleton} variant="rows" lines=${5} />` : null}
     ${store.error() === "backpressure" ? html`<p class="hub-banner warn" role="status">${hr("busy")}</p>`
       : !loaded && store.error() ? html`<${ErrorState} message=${errText({ code: store.error() })} onRetry=${() => store.refresh()} />` : null}
-    ${empty && loaded && !store.closed() ? html`<div class="center hub-room-empty"><${Empty} icon="chat" title=${hc("emptyRoom", name)} hint=${`${hc("emptyRoomHint", store.room().ownerName || name)}${lang() === "zh-TW" ? "" : " "}${hw("roomShared")}`} /></div>` : null}
+    ${empty && loaded && !store.closed() && emptyView ? html`<div class="center hub-room-empty">${emptyView}</div>` : null}
+    ${empty && loaded && !store.closed() && !emptyView ? html`<div class="center hub-room-empty"><${Empty} icon="chat" title=${hc("emptyRoom", name)} hint=${`${hc("emptyRoomHint", store.room().ownerName || name)}${lang() === "zh-TW" ? "" : " "}${hw("roomShared")}`} /></div>` : null}
     <div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
       <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}</div>
   </div>`;
@@ -816,6 +830,7 @@ function HubMine() {
   // Nothing shared yet: the empty state below says where to share from, so the lead doesn't say it too (Argon #20).
   return html`<div class="col hub-owner"><p class="s-page-lead hub-page-lead">${ho(cat && !cat.error && !mine.length ? "mineLeadShort" : "mineLead")}</p>
     <div class="s-section-layout">
+      ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="InvitationsList" props=${{ client: hubClient(), heading: true }} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       ${!pairings ? html`<${Skeleton} lines=${2} />` : pairings.error ? html`<${ErrorState} message=${pairings.error} onRetry=${reloadPairings} />` : null}
       ${pend.length ? html`<section class="card hub-pairings"><h3>${ho("pendingPairings")}</h3><p class="note">${ho("pendingLead")}</p>
@@ -837,6 +852,8 @@ function HubAgentPage({ x, act, msg }) {
   const session = useSession(), client = hubClient();
   const resumable = session?.features?.includes("sharing-pause-v1") && client?.sharingPauseV1 === true && typeof client.sharing === "function";
   const [sharingBusy, setSharingBusy] = useState(false);
+  // M-3092: how many rooms this agent is in — reported by its 「在這些房間裡」 section's own read (one read, no second count).
+  const [roomCount, setRoomCount] = useState(null);
   const sharing = async () => {
     if (sharingBusy) return; setSharingBusy(true);
     try { await act(() => client.sharing(x.id, x.revision, x.sharingEpoch ?? 0, x.state !== "paused")); }
@@ -860,7 +877,8 @@ function HubAgentPage({ x, act, msg }) {
   const acts = activity && activity.activity ? activity.activity : [];
   return html`<div class="col hub-owner">
     <a class="hub-crumb" href="/ui/hub/exposures"><${Icon} name="back" size=${14} />${ho("backToMine")}</a>
-    <${PageHead} title=${x.displayName} scope=${stateTag(x.state)} lead=${grantSummary(grants)} />
+    <${PageHead} title=${x.displayName} scope=${stateTag(x.state)} lead=${!grants.length && roomCount > 0
+      ? `${hroom("agentNoOneToOne")} · ${roomCount === 1 ? hroom("inRoomsOne") : hroom("inRoomsMany", String(roomCount))}` : grantSummary(grants)} />
     <div class="s-section-layout">
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       <section class="card"><div class="hub-card-head"><h3>${ho("whoMayAsk")}</h3>${shared ? html`<button type="button" class="btn btn-sm" onClick=${() => setAllowing(true)}><${Icon} name="plus" size=${14} />${ho("allow")}</button>` : null}</div>
@@ -868,8 +886,10 @@ function HubAgentPage({ x, act, msg }) {
           <${Avatar} name=${g.subjectName || g.subjectLogin} size="sm" />
           <span class="hub-row-text"><strong>${g.subjectName || g.subjectLogin}</strong><small class="note">${g.subjectLogin ? html`<code>${g.subjectLogin}</code> · ` : null}${ho("untilLeft", dateOnly(g.expiresAt), DAYS_LEFT(g.expiresAt))}</small>${g.subject?.kind === "group" ? html`<small class="tag">${t("hubGrantStatus.grantADGroup")}</small>` : g.subjectSignedIn === false ? html`<small class="tag warn">${t("hubGrantStatus.grantNeverSignedIn")}</small>` : null}</span>
           <${Menu} label=${ho("rowMenu", g.subjectName || g.subjectLogin)} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(g) }]} />
-        </div>`)}</div>` : html`<p class="note">${hw("noGrants")}</p>`}
+        </div>`)}</div>` : html`<p class="note">${roomCount > 0 ? hroom("agentNoOneToOne") : hw("noGrants")}</p>`}
+        ${roomCount > 0 ? html`<p class="note hub-rooms-can-ask">${hroom("roomsCanAskIt")}</p>` : null}
       </section>
+      ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="AgentRoomsSection" props=${{ client: hubClient(), exposureId: x.id, onRooms: setRoomCount }} />` : null}
       <${QuotaVisibilityRow} exposure=${x} onSaved=${() => act(async () => ({ ok: true }))} />
       <section class="card"><h3>${ho("recent")}</h3><p class="note">${ho("recentLead")}</p>
         ${!activity ? html`<${Skeleton} variant="rows" lines=${3} />` : activity.error ? html`<${ErrorState} message=${activity.error} onRetry=${reloadActivity} />` : null}
@@ -946,6 +966,16 @@ function LazyDirectory({ session }) {
   return Page ? html`<${Page} client=${hubClient()} offered=${true} login=${session.login} afterSave=${async () => !!(await readSession())} />` : null;
 }
 /** M-2682: Administration → This Hub, its own lazy module (an older server doesn't serve it: then it's left out). */
+/**
+ * M-3092: one of the Hub rooms' own screens (dev-claude2's modules: new room, invitations, administration → rooms), loaded
+ * when first shown; nothing while it loads or if this Hub does not serve it.
+ */
+function LazyRoomPart({ load, name, props = {} }) {
+  const [C, setC] = useState(null);
+  useEffect(() => { let live = true; load().then((m) => { if (live && typeof m[name] === "function") setC(() => m[name]); }, () => {}); return () => { live = false; }; }, []);
+  return C ? html`<${C} ...${props} />` : null;
+}
+const roomsLive = () => { const c = hubClient(); return typeof c.roomsLive === "function" && c.roomsLive() === true; };
 function LazyThisHub({ directory }) {
   const [C, setC] = useState(null);
   useEffect(() => { let live = true; import("./hub-this-hub.js").then((m) => { if (live) setC(() => m.ThisHubCard); }, () => {}); return () => { live = false; }; }, []);
@@ -1007,10 +1037,26 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
     <div class="s-section-layout">
       ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
       ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
-      ${/* Track U2 places AdminRooms above this assistant slot; keep it before Connected fleets and pairing. */ ""}
+      ${/* Lumen's order: Let colleagues join → Rooms → Room assistant → Connected fleets → pairing. */ ""}
+      ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
       ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
+      <section class="card hub-fleet-list"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
+        ${fleets.length ? (() => {
+          // Spec 1.2: the row's title is the Fleet's label (S1 overview), its subtitle the owner; active first, revoked folded.
+          const row = (f) => html`<div key=${f.id} class="s-row hub-row" data-fleet=${f.id}>
+            <${Avatar} name=${f.owner ? f.owner.name : "?"} size="sm" />
+            <span class="hub-row-text"><strong>${typeof f.label === "string" && f.label ? f.label : ho("fleetOf", f.owner ? f.owner.name : "—")}</strong>${f.owner ? html`<small class="note">${f.owner.name}${f.owner.login ? html` · <code>${f.owner.login}</code>` : null}</small>` : null}</span>
+            ${f.status === "active" ? html`<span class="tag ok">${ho("active")}</span><${Menu} label=${ho("rowMenu", f.label || (f.owner ? f.owner.name : f.id))} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(f) }]} />`
+              : html`<span class="tag">${ho("revokedTag")}</span>`}
+          </div>`;
+          const current = fleets.filter((f) => f.status !== "revoked").sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1));
+          const revoked = fleets.filter((f) => f.status === "revoked");
+          return html`${current.length ? html`<div class="hub-rows">${current.map(row)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
+            ${revoked.length ? html`<details class="s-ui-disclosure hub-fleets-revoked"><summary>${t("hubFleetList.revoked", revoked.length)}</summary><div class="hub-rows">${revoked.map(row)}</div></details>` : null}`;
+        })() : html`<p class="note">${ho("noFleets")}</p>`}
+      </section>
       <${ManualFrame} class=${accessEntry ? "s-ui-disclosure hub-admin-manual" : ""} open=${accessEntry && (!!offer || pairings.some(p => p.ownerConfirmed && !p.adminApproved))}>${accessEntry ? html`<summary>${ho("manualAdvanced")}</summary>` : null}<section class="card"><h3>${ho("pairSteps")}</h3>
         <ol class="hub-steps">
           <li class=${offer || pairings.length ? "done" : "now"}><div class="hub-step-body"><span><b>${ho("stepCode")}</b><small class="note">${ho("stepCodeHint")}</small></span>
@@ -1032,21 +1078,6 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
             : html`<span class="tag warn">${ho("waitingOwner")}</span>`}
         </div>`)}</div>` : null}
       </section></${ManualFrame}>
-      <section class="card hub-fleet-list"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
-        ${fleets.length ? (() => {
-          // Spec 1.2: the row's title is the Fleet's label (S1 overview), its subtitle the owner; active first, revoked folded.
-          const row = (f) => html`<div key=${f.id} class="s-row hub-row" data-fleet=${f.id}>
-            <${Avatar} name=${f.owner ? f.owner.name : "?"} size="sm" />
-            <span class="hub-row-text"><strong>${typeof f.label === "string" && f.label ? f.label : ho("fleetOf", f.owner ? f.owner.name : "—")}</strong>${f.owner ? html`<small class="note">${f.owner.name}${f.owner.login ? html` · <code>${f.owner.login}</code>` : null}</small>` : null}</span>
-            ${f.status === "active" ? html`<span class="tag ok">${ho("active")}</span><${Menu} label=${ho("rowMenu", f.label || (f.owner ? f.owner.name : f.id))} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(f) }]} />`
-              : html`<span class="tag">${ho("revokedTag")}</span>`}
-          </div>`;
-          const current = fleets.filter((f) => f.status !== "revoked").sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1));
-          const revoked = fleets.filter((f) => f.status === "revoked");
-          return html`${current.length ? html`<div class="hub-rows">${current.map(row)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
-            ${revoked.length ? html`<details class="s-ui-disclosure hub-fleets-revoked"><summary>${t("hubFleetList.revoked", revoked.length)}</summary><div class="hub-rows">${revoked.map(row)}</div></details>` : null}`;
-        })() : html`<p class="note">${ho("noFleets")}</p>`}
-      </section>
       <${LazyThisHub} directory=${directory} />
     </div></div>`;
 }

@@ -15,7 +15,7 @@
 //   - Hub-only: the page asks the Hub for nothing but /hub/v1/*, /assets/*, its own /ui/js modules and its pages;
 //   - no page error, no CSP report.
 // The Notices page needs a Hub that offers its security notices: the rig composes none, so the session's capability mark and
-// the notices are answered in the browser (page.route) — the page itself is the product's.
+// the notices are answered in the browser (page.route), including on the combined rooms stream. The page itself is the product's.
 // GATE=ci (the CI job): desk light en + phone dark zh-TW. GATE=full (local): desk/phone × light/dark × en/zh-TW.
 // Pictures of every page land in OUT/smoke-hub-shell-gate (a failing CI run uploads them).
 //   PW_DIR=<dir with playwright-core> (or node_modules) REPO=<checkout> OUT=<dir> [GATE=ci|full] [CHROME=<chrome binary>] \
@@ -42,6 +42,8 @@ const { s3bRig } = await import(REPO + "/tests/helpers/hub-s3b-rig.ts");
 const { provisionHubIdentity } = await import(REPO + "/src/hub/tls.ts");
 // What the Hub's own listener serves under /ui/js (the authority — the page may ask for nothing else there).
 const { HUB_UI_MODULES } = await import(REPO + "/src/hub/http/compose.ts") as { HUB_UI_MODULES: readonly string[] };
+/** M-3092: whether this Hub offers rooms (its session lists rooms-v1): the sidebar then adds 「新房間」. */
+let roomsOffered = false;
 const allowed = (path: string) => /^\/(hub\/v1\/|assets\/|ui\/hub|favicon)/.test(path) || (path.startsWith("/ui/js/") && HUB_UI_MODULES.includes(path.slice(7)));
 async function startListener() {
   const server = createServer();
@@ -184,11 +186,18 @@ try {
       if (route.request().method() !== "GET") return route.continue();
       const res = await route.fetch(); const json = await res.json().catch(() => null);
       if (json && json.signedIn) json.features = [...new Set([...(json.features ?? []), "quick-pairing-v1"])];
+      if (json && json.signedIn) roomsOffered = (json.features ?? []).includes("rooms-v1");
       await route.fulfill({ response: res, json });
     });
-    await ctx.route(/\/hub\/v1\/notices\/events$/, (route: any) => route.fulfill({ status: 200, headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store" },
-      body: `event: notices\ndata: ${JSON.stringify({ notices: [NOTICE] })}\n\n` }));
-    await ctx.route(/\/hub\/v1\/notices(\/[^/]+\/ack)?$/, (route: any) => route.fulfill({ status: 200, json: route.request().method() === "GET" ? { notices: [NOTICE] } : {} }));
+    const noticeStreams: string[] = [];
+    // rooms-v1 moves notices onto the tab's one rooms stream. Match its version query as well as the older notices URL;
+    // otherwise the real rooms stream opens with no composed notice service and this fixture's notice never arrives.
+    await ctx.route(/\/hub\/v1\/(?:rooms|notices)\/events(?:\?.*)?$/, (route: any) => {
+      const url = new URL(route.request().url()); noticeStreams.push(url.pathname + url.search);
+      return route.fulfill({ status: 200, headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store" },
+        body: `event: notices\ndata: ${JSON.stringify({ notices: [NOTICE] })}\n\n` });
+    });
+    await ctx.route(/\/hub\/v1\/notices(\/[^/]+\/ack)?(?:\?.*)?$/, (route: any) => route.fulfill({ status: 200, json: route.request().method() === "GET" ? { notices: [NOTICE] } : {} }));
     const page = await ctx.newPage();
     const errs: string[] = [], foreign: string[] = [];
     page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
@@ -206,6 +215,8 @@ try {
       const ready = await page.waitForSelector(p.key === "notices" ? ".p-hub-notices .hub-security-notices" : ".p-hub .panel-body", { timeout: 15000 }).then(() => true, () => false);
       await page.waitForTimeout(900);
       if (!ready) { await page.screenshot({ path: shotPath(SMOKE, cn, p.key) }); check(`${tag}:drawn`, false, "the page never drew"); continue; }
+      if (p.key === "notices") check(`${tag}:notice-record`, await page.locator(`[data-pairing-notice="${NOTICE.id}"]`).count() === 1,
+        "the retained notice must render, not just an empty or retry card");
       const drawn = await page.evaluate(PAGE) as any;
       await page.screenshot({ path: shotPath(SMOKE, cn, p.key) });
       if (drawn.missing) { check(`${tag}:drawn`, false, "no Hub page body"); continue; }
@@ -226,7 +237,9 @@ try {
       if (phone) { await page.click("#sbOpen"); await page.waitForTimeout(600); await page.screenshot({ path: shotPath(SMOKE, cn, `${p.key}-drawer`) }); }
       const sb = await page.evaluate(SIDEBAR) as any;
       if (sb.missing) { check(`${tag}:sidebar`, false, "no #sidebar"); continue; }
-      const want = c.lang === "zh-TW" ? ["對話", "我分享的 Agent", "管理", "通知", "搜尋", "新對話"] : ["Chats", "My shared agents", "Administration", "Notices", "Search", "New chat"];
+      // M-3092: a Hub with rooms adds 「新房間」 for someone who may open rooms (the administrator, by default).
+      const want = [...(c.lang === "zh-TW" ? ["對話", "我分享的 Agent", "管理", "通知", "搜尋", "新對話"] : ["Chats", "My shared agents", "Administration", "Notices", "Search", "New chat"]),
+        ...(roomsOffered ? [c.lang === "zh-TW" ? "新房間" : "New room"] : [])];
       const rows = sb.rows as any[];
       check(`${tag}:sidebar:brand`, !!sb.brand && sb.brand.text === "AgEnD Hub" && sb.brand.title === "Team Hub" && sb.brand.lines === 1, sb.brand);
       check(`${tag}:sidebar:rows`, JSON.stringify(rows.map((x) => x.text)) === JSON.stringify(want), rows.map((x) => x.text));
@@ -270,6 +283,7 @@ try {
       await page.screenshot({ path: shotPath(SMOKE, cn, "signed-out") });
       check(`${cn}:signed-out`, out.signin && !out.session && !out.failed, out);
     } catch (e) { check(`${cn}:signed-out`, false, String(e).slice(0, 200)); }
+    check(`${cn}:notice-stream`, noticeStreams.length > 0 && noticeStreams.every(path => path === "/hub/v1/rooms/events?notices=2"), noticeStreams);
     const csp = await page.evaluate("window.__csp || []") as string[];
     check(`${cn}:hub-only`, foreign.length === 0, foreign);
     check(`${cn}:no-errors`, errs.length === 0 && csp.length === 0, { errs, csp });

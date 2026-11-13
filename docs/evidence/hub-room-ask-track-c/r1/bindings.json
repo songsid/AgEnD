@@ -1,0 +1,25 @@
+{
+  "producer": "40a2dd3bf6dc81a85b563dec4c9cb2ca1e62aac6",
+  "priorReviewedHead": "985e2753b6dd8e3880b1cc67e9697a0f3d06f159",
+  "fixtureHead": "86f119edf7704cb6f15e913455eff83307105a88",
+  "R2Contract": "563769ff7daa8f21eaae9172325da8cf32018853",
+  "sourceBindings": {
+    "src/hub/member/room-ask.ts": "e05091c211ec5c3521b2ee81ad8d46533370596de8da57a218a4d4602ba433bb",
+    "tests/hub-room-ask-track-c.test.ts": "d0995f3a18cde51ba851fb8683949905b37105055970ca1dcb29dd7299ff3049",
+    "tests/support/hub-rooms-fixture.ts": "9828bce48c14f3737a1c44fb8c9a1611d83278d0657116875eb65998f90be864",
+    "src/ui/hub-client.js": "ef07feb2b968c41e955038dc2e5a696e8c2d78b01023eb67f070c60540487ea4",
+    "tests/hub-rooms-client-3092.test.ts": "0e98f86c78f7688c8497a092605762c38f24689f2a5a6cceb164ae14ecdb5aa6",
+    "docs/design/hub-room-ask-member.md": "ba1881bd9bba2b8fe500023421b167031c461254eed443fa5df2cd2eb7c3f089"
+  },
+  "focused": {
+    "files": 5,
+    "passed": 105,
+    "adapterTests": 46
+  },
+  "nativeSourceExit": 0,
+  "nativeTestExit": 0,
+  "compilingAssertionReversals": 17,
+  "producerContractConfirmed": true,
+  "viewerReplyPending": true,
+  "productionMount": false
+}

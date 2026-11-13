@@ -1,0 +1,119 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (12 tests | 11 failed) 38ms
+     × names the fixture's room and asker, ordered context and exact answer correlation (en) 14ms
+     × names the fixture's room and asker, ordered context and exact answer correlation (zh-TW) 2ms
+     × keeps the older replied-to row plus the latest30 in order without duplicating it 3ms
+     × uses actual process/execution state rather than question activity: working 2ms
+     × uses actual process/execution state rather than question activity: quota 1ms
+     × uses actual process/execution state rather than question activity: auth 1ms
+     × uses actual process/execution state rather than question activity: stopped 1ms
+     × uses actual process/execution state rather than question activity: crashed 1ms
+     × uses actual process/execution state rather than question activity: stuck 6ms
+     × uses actual process/execution state rather than question activity: unknown 3ms
+     × localizes the bounded pause reason without exporting the Fleet's detailed activity 2ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 11 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > names the fixture's room and asker, ordered context and exact answer correlation (en)
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > names the fixture's room and asker, ordered context and exact answer correlation (zh-TW)
+AssertionError: expected '@所有 Agent 請各自用三行回報這週的進度與風險。' to contain '研一主管週會'
+
+Expected: "研一主管週會"
+Received: "@所有 Agent 請各自用三行回報這週的進度與風險。"
+
+ ❯ tests/hub-room-ask-track-c.test.ts:17:18
+     15|   it.each(["en", "zh-TW"] as const)("names the fixture's room and aske…
+     16|     const ask = example(), cid = `hub-room-${randomUUID()}`, text = fo…
+     17|     expect(text).toContain(ask.roomName); expect(text).toContain(ask.a…
+       |                  ^
+     18|     expect(text).toContain("report_result"); expect(text).toContain("a…
+     19|     expect(text).toContain(ask.text);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/11]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > keeps the older replied-to row plus the latest30 in order without duplicating it
+AssertionError: expected [ '@所有 Agent 請各自用三行回報這週的進度與風險。' ] to have a length of 2 but got 1
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ tests/hub-room-ask-track-c.test.ts:30:45
+     28|     ];
+     29|     const text = formatRoomAskPrompt(ask, "hub-room-cid");
+     30|     expect(text.split("older-replied-row")).toHaveLength(2);
+       |                                             ^
+     31|     expect(text).toContain("Replied-to message");
+     32|     expect(text.indexOf("older-replied-row")).toBeLessThan(text.indexO…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/11]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > uses actual process/execution state rather than question activity: working
+AssertionError: expected 'idle' to be 'working' // Object.is equality
+
+Expected: "working"
+Received: "idle"
+
+ ❯ tests/hub-room-ask-track-c.test.ts:45:40
+     43|     ["unknown", { process: "running", execution: null }, "paused"],
+     44|   ] as const)("uses actual process/execution state rather than questio…
+     45|     expect(agentPresence(input).state).toBe(state);
+       |                                        ^
+     46|   });
+     47|   it("localizes the bounded pause reason without exporting the Fleet's…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/11]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > uses actual process/execution state rather than question activity: quota
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > uses actual process/execution state rather than question activity: auth
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > uses actual process/execution state rather than question activity: stopped
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > uses actual process/execution state rather than question activity: crashed
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > uses actual process/execution state rather than question activity: stuck
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > uses actual process/execution state rather than question activity: unknown
+AssertionError: expected 'idle' to be 'paused' // Object.is equality
+
+Expected: "paused"
+Received: "idle"
+
+ ❯ tests/hub-room-ask-track-c.test.ts:45:40
+     43|     ["unknown", { process: "running", execution: null }, "paused"],
+     44|   ] as const)("uses actual process/execution state rather than questio…
+     45|     expect(agentPresence(input).state).toBe(state);
+       |                                        ^
+     46|   });
+     47|   it("localizes the bounded pause reason without exporting the Fleet's…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/11]⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C room question presentation > localizes the bounded pause reason without exporting the Fleet's detailed activity
+AssertionError: expected { state: 'idle' } to deeply equal { state: 'paused', …(1) }
+
+- Expected
++ Received
+
+  {
+-   "note": "Quota exhausted",
+-   "state": "paused",
++   "state": "idle",
+  }
+
+ ❯ tests/hub-room-ask-track-c.test.ts:48:100
+     46|   });
+     47|   it("localizes the bounded pause reason without exporting the Fleet's…
+     48|     expect(agentPresence({ process: "paused", execution: "working", pa…
+       |                                                                                                    ^
+     49|     expect(agentPresence({ process: "paused", execution: "working", pa…
+     50|     expect(agentPresence({ process: "running", execution: "idle" })).t…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/11]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  11 failed | 1 passed (12)
+   Start at  00:40:00
+   Duration  473ms (transform 132ms, setup 149ms, import 54ms, tests 38ms, environment 0ms)
+
