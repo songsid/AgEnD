@@ -35,3 +35,9 @@
 .hub-admin-rooms-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .hub-admin-rooms-table th, .hub-admin-rooms-table td { text-align: start; padding: var(--s-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
 .hub-admin-rooms-table td:first-child { white-space: normal; overflow-wrap: anywhere; min-width: 8em; }
+/* Phone and touch: every button in these screens is at least a fingertip (--tap, 44px) tall and wide — the invitations
+   list's 同意/拒絕, its retry, the sidebar's invitations row, 退出這個房間, the member card, Room settings, admin rooms. */
+@media (max-width: 899px), (pointer: coarse) {
+  :is(.hub-invitations, .hub-agent-rooms, .hub-room-members, .hub-room-settings, .hub-room-new, .hub-admin-rooms) .btn,
+  .hub-invitations-row { min-height: var(--tap); min-width: var(--tap); }
+}
