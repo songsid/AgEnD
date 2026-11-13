@@ -72,7 +72,10 @@ try {
   }
   const notes = await peer("Notes"), planner = await peer("Planner");
   const pw = createRequire(resolve(process.env.PW_DIR!, "package.json"))("playwright-core"); browser = await pw.chromium.launch({ args: ["--no-sandbox"] });
-  for (const [device, lang, theme] of [["desktop", "en", "light"], ["phone", "zh-TW", "dark"]]) {
+  const layouts = [["desktop", "en", "light"], ["phone", "zh-TW", "dark"]].filter(([device]) => !process.env.DEVICES || process.env.DEVICES.split(",").includes(device));
+  if (!layouts.length) throw Error("DEVICES must select desktop or phone");
+  receipt.layouts = layouts;
+  for (const [device, lang, theme] of layouts) {
     await notes.state({ process: "running", execution: "idle" }); await planner.state({ process: "running", execution: "idle" });
     const made = await web.call(admin, "POST", "/hub/v1/rooms", { name: "Routing room " + device, agents: [notes.exposureId, planner.exposureId] });
     if (made.status !== 200) throw Error("create room: " + made.text);
