@@ -14083,7 +14083,7 @@ export class Daemon extends EventEmitter {
                 if (!owned()) return false;
                 const keyScreen = this.nativePaneLifecycle ? await this.tmux!.capturePane() : answeredPane;
                 if (!owned() || !Daemon.dialogMatches(dialog, keyScreen)) return false;
-                if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape") {
+                if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape" || key === "Right") {
                   if (!await (this.nativePaneLifecycle ? this.tmux!.sendSpecialKey(key, undefined, { kind: "dialog", screen: keyScreen }) : this.tmux!.sendSpecialKey(key))) return false;
                 } else {
                   if (!await (this.nativePaneLifecycle ? this.tmux!.sendKeys(key, { kind: "dialog", screen: keyScreen }) : this.tmux!.sendKeys(key))) return false;
