@@ -14,8 +14,9 @@ import { hubPlanDigest } from "./init/plan-digest.js";
 import { hubPreviewReloadKey } from "./preview.js";
 import { HubMount, type HubMountedService } from "./mount.js";
 import { createHubServerFactory, hubServerDatabasePlan, type HubHttpEntry, type HubServerComponents } from "./compose/server.js";
-import { createHubDirectoryColdSettings, HubDirectoryColdCleanupError, withHubDirectoryRecovery, withHubWebAddressRecovery } from "./settings-directory-recovery.js";
+import { createHubDirectoryColdSettings, HubDirectoryColdCleanupError, withHubDirectoryRecovery, withHubWebAddressRecovery, withHubMemberAddressRecovery } from "./settings-directory-recovery.js";
 import type {HubWebAddressDecision} from "./settings-web-address-decision.js";
+import type { HubMemberAddressDecision } from "./settings-member-address-decision.js";
 import type { HubDirectorySettingsDecision } from "./settings-directory-decision.js";
 import type { HubMountedDirectory } from "./settings-directory-runtime.js";
 import { canonicalArguments } from "./identity.js";
@@ -195,6 +196,8 @@ export class HubRuntime {
   }
   private recoveryDirectory: HubDirectorySettingsDecision | null = null;
   private recoveryWebAddress: HubWebAddressDecision | null = null;
+  private recoveryMemberAddress: HubMemberAddressDecision | null = null;
+  private mountedMemberAddress: HubMemberAddressDecision | null = null;
   private mountedWebAddress: HubWebAddressDecision | null = null;
   private settingsRecoveryGeneration = 0;
   private directoryStartupAttempted = false;
@@ -223,6 +226,28 @@ export class HubRuntime {
       if(!current()||this.recoveryWebAddress)throw Error("Web address recovery is busy");
       this.recoveryWebAddress=decision;
       try{return work(decision);}finally{this.recoveryWebAddress=null;}
+    });
+  }
+  memberAddressDecision():HubMemberAddressDecision|null{return this.recoveryMemberAddress??this.mountedMemberAddress;}
+  /** Borrow only existing state; cold access creates no listener, directory client, migration or session. */
+  async withMemberAddressDecision<T>(work:(decision:HubMemberAddressDecision)=>T,ownerCurrent:()=>boolean):Promise<T>{
+    const snapshot=structuredClone(this.options.readConfig?.()??this.lastConfig??{}),ticket=this.admissionTicket;
+    const current=()=>!this.stopped&&ownerCurrent()===true&&ticket===this.admissionTicket;
+    if(!current())throw Error("Member address authority changed");
+    if(this.running)await this.running;
+    if(!current())throw Error("Member address generation changed");
+    const mounted=this.memberAddressDecision();if(mounted){
+      if(this.serverHealth(snapshot.hub)!=="ready")throw Error("Member address mount is changing");
+      return work(mounted);
+    }
+    const entry=await(this.options.components??{http:S3B_HTTP_ENTRY}).http?.();
+    if(!entry||!current())throw Error("Member address storage is unavailable");
+    const hub=obj(snapshot.hub);if(!hub)throw Error("Hub is unavailable");
+    const {settings,migrations}=hubServerDatabasePlan(hub,entry.migrations);
+    return withHubMemberAddressRecovery({home:this.options.home,hubId:settings.hubId,memberOrigin:settings.memberOrigin,migrations},decision=>{
+      if(!current()||this.recoveryMemberAddress)throw Error("Member address recovery is busy");
+      this.recoveryMemberAddress=decision;
+      try{return work(decision);}finally{this.recoveryMemberAddress=null;}
     });
   }
   /** Physical Save completion may borrow the exact existing state after its old listener has closed. Never migrate/create here. */
@@ -315,6 +340,10 @@ export class HubRuntime {
             this.mountedWebAddress=decision;
             return()=>{if(this.mountedWebAddress===decision)this.mountedWebAddress=null;};
           },
+          memberAddressReady: decision => {
+            this.mountedMemberAddress = decision;
+            return () => { if (this.mountedMemberAddress === decision) this.mountedMemberAddress = null; };
+          },
           version: options.version ?? null,
           browserCertificateReady: control => {
             this.browserCertificateControl = control;
@@ -392,14 +421,18 @@ export class HubRuntime {
     const ticket = ++this.settingsRecoveryGeneration, snapshot = structuredClone(config);
     const current = () => !this.stopped && ticket === this.settingsRecoveryGeneration;
     try {
-      if (writer.pendingDirectory() || writer.pendingWebAddress?.()) {
+      if (writer.pendingDirectory() || writer.pendingWebAddress?.() || writer.pendingMemberAddress?.()) {
         const entry = await (this.options.components ?? { http: S3B_HTTP_ENTRY }).http?.();
         if (!current()) return false;
         const hub = obj(snapshot.hub);
         if (!entry || !hub) throw Error("The directory recovery registry is unavailable");
         const { settings, migrations } = hubServerDatabasePlan(hub, entry.migrations);
         const options={home:this.options.home,hubId:settings.hubId,memberOrigin:settings.memberOrigin,migrations};
-        if(writer.pendingWebAddress?.())withHubWebAddressRecovery({...options,initial:settings.webTls},decision=>{
+        if (writer.pendingMemberAddress?.()) withHubMemberAddressRecovery(options, decision => {
+          this.recoveryMemberAddress = decision;
+          try { writer.recover(); } finally { this.recoveryMemberAddress = null; }
+        });
+        else if(writer.pendingWebAddress?.())withHubWebAddressRecovery({...options,initial:settings.webTls},decision=>{
           this.recoveryWebAddress=decision;
           try{writer.recover();}finally{this.recoveryWebAddress=null;}
         });

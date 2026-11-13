@@ -1,4 +1,5 @@
 /** #3423 fail-first actual HTTPS/AD-wire admission, browser-origin, quota and replay controls. */
+import { verifyCompanyDescriptor } from "../src/hub/join/descriptor.js";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const dc = vi.hoisted(() => ({ port: 0 }));
 vi.mock("node:tls", async original => {
@@ -64,6 +65,18 @@ async function attempt(r: Awaited<ReturnType<typeof companyJoinRig>>) {
 }
 
 describe("company-join actual Hub boundary", () => {
+  it("#3429: the metadata carries this Hub's issuer-signed descriptor only when asked; it signs exactly the identity it names", async () => {
+    const { r } = prepared;
+    const plain = await r.call(null, "GET", "/hub/v1/join/metadata");
+    expect(plain.status).toBe(200);
+    expect(plain.body).not.toHaveProperty("descriptor");                       // an older Fleet's strict metadata schema
+    const asked = await r.call(null, "GET", "/hub/v1/join/metadata", undefined, { "X-AgEnD-Join-Descriptor": "1" });
+    expect(asked.status).toBe(200);
+    const d = verifyCompanyDescriptor(asked.body.descriptor);
+    expect(d.hub).toEqual(asked.body.hub);
+    expect(d.fingerprint).toBe(asked.body.identityDigest);
+    expect(Object.keys(asked.body.descriptor).sort()).toEqual(["fingerprint", "hub", "signature", "v"]);   // identity only: no code, credential or key
+  });
   it("a genuinely unissued cancellation releases its reservation without creating a Fleet", async () => {
     const { r } = prepared, a = await attempt(r), browser = await a.browser(); expect((await a.approve(browser)).status).toBe(200);
     expect(r.deps.companyJoin!.retained()).toBe(1);

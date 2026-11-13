@@ -32,13 +32,14 @@ import { createHubGroupAdminInventory } from "../group-policy/admin-inventory.js
 import { createHubGroupWelcome } from "../group-policy/welcome.js";
 import { signAsker, canonicalArguments, sha256, personKeyString } from "../identity.js";
 import { signHubWebOrigin } from "../web-origin.js";
+import { signHubRelocation } from "../member-origin.js";
 import { BIND_SECRET_REL, bindSecretPath } from "../init/layout.js";
 import type { HubMountedService } from "../mount.js";
 import { HubPairingService } from "../pairing.js";
 import { ensurePrivateDirectory, readPrivateFile } from "../private-files.js";
 import { HubServer, type HubLinkContext } from "../server.js";
 import { HUB_TRANSPORT_MIGRATION, HubTransportStore } from "../store.js";
-import { readHubIdentity } from "../tls.js";
+import { readHubMemberTls, readHubIdentity } from "../tls.js";
 import type { HubAskerEnvelope, HubMemberFrame, HubMode, HubPerson, HubServerFrame, HubServerTransport, HubUnitOfWork, PersonKey } from "../types.js";
 import { HubFileVersionFloor } from "../version-floor.js";
 import { HUB_NAME_RULE, type HubSettingsWriter } from "../settings-commit.js";
@@ -53,6 +54,8 @@ import { HubCompanyJoin } from "../join/service.js";
 import { createHubDirectorySettingsDecision, HUB_DIRECTORY_SETTINGS_MIGRATION } from "../settings-directory-decision.js";
 import { HUB_DIRECTORY_RECOVERY_MIGRATION } from "../settings-directory-recovery-intent.js";
 import { createHubWebAddressDecision, HUB_WEB_ADDRESS_MIGRATION, type HubWebAddressDecision } from "../settings-web-address-decision.js";
+import { createHubMemberAddressNotices } from "../settings-member-address-notices.js";
+import { createHubMemberAddressDecision, HUB_MEMBER_ADDRESS_MIGRATION, HUB_MEMBER_RELOCATION_MIGRATION, type HubMemberAddressDecision } from "../settings-member-address-decision.js";
 import { createHubDirectoryNotices, HUB_DIRECTORY_HOST_NOTICE_SINK, type HubDirectoryNotices } from "../settings-directory-notices.js";
 import { createHubDirectoryMountBarrier } from "../settings-directory-mount.js";
 import type { HubMountedDirectory, HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
@@ -83,6 +86,7 @@ export interface HubHttpDeps {
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
   grantDirectory?: import("../http/deps.js").HubHttpDeps["grantDirectory"];
   pairingNotices?: HubPairingNotices;
+  memberAddressNotices?: import("../settings-member-address-notices.js").HubMemberAddressNotices;
   directoryNotices?: Pick<HubDirectoryNotices, "forSession" | "acknowledgeSession">;
   store: HubTransportStore;
   /** Reconnect links after the sharing writer commits its authorization version. */
@@ -143,6 +147,7 @@ export interface HubServerFactoryOptions {
   directoryReady?(directory: HubMountedDirectory): () => void;
   /** Physical participant remains owned until this exact database generation is closed. */
   webAddressReady?(decision: HubWebAddressDecision): () => void;
+  memberAddressReady?(decision: HubMemberAddressDecision): () => void;
   /** Runtime-owned across server generations; absent on older/custom factories. */
   directoryResponses?: HubDirectoryResponseOwner;
   /** This AgEnD's version, shown on Hub Administration → This Hub. */
@@ -217,7 +222,7 @@ export function hubServerDatabasePlan(cfg: Record<string, unknown>, httpMigratio
   const migrations = [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_WEB_INIT_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpMigrations,
     retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION,
     groupPolicyMigration(settings.hubId, resolvedDirectory.realm, groupGeneration), HUB_GROUP_RESOURCES_MIGRATION,
-    HUB_PAIRING_NOTICES_MIGRATION, HUB_COMPANY_JOIN_MIGRATION, HUB_ENROLMENT_CODE_MIGRATION, HUB_DIRECTORY_SETTINGS_MIGRATION, HUB_DIRECTORY_RECOVERY_MIGRATION, HUB_WEB_ADDRESS_MIGRATION];
+    HUB_PAIRING_NOTICES_MIGRATION, HUB_COMPANY_JOIN_MIGRATION, HUB_ENROLMENT_CODE_MIGRATION, HUB_DIRECTORY_SETTINGS_MIGRATION, HUB_DIRECTORY_RECOVERY_MIGRATION, HUB_WEB_ADDRESS_MIGRATION, HUB_MEMBER_ADDRESS_MIGRATION, HUB_MEMBER_RELOCATION_MIGRATION];
   return { settings, resolvedDirectory, groupGeneration, migrations };
 }
 
@@ -321,9 +326,14 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const addressDecision = createHubWebAddressDecision({ db, home: options.home, hubId: settings.hubId, initial: settings.webTls, audit });
       addressDecision.assertMounted(cfg);
       const addressHead = addressDecision.head();
+      const memberAddressDecision = createHubMemberAddressDecision({ db, home: options.home, hubId: settings.hubId, transport: store, now });
+      memberAddressDecision.assertMounted(cfg);
+      const memberAddressHead = memberAddressDecision.head();
       // A SQL decision closes old sign-in flights before any file hook, await or listener replacement.
       const live = () => {
-        try { const head=addressDecision.head();return owned() && directoryBarrier.current() && head.revision === addressHead.revision && head.operationId===addressHead.operationId; }
+        try { const head=addressDecision.head(), member=memberAddressDecision.head();return owned() && directoryBarrier.current()
+          && head.revision === addressHead.revision && head.operationId===addressHead.operationId
+          && member.revision === memberAddressHead.revision && member.operationId === memberAddressHead.operationId; }
         catch { return false; }
       };
       if (sha256(bindPassword) !== directoryBarrier.assertCurrent().bindSecretSha) throw new HubStateError("hub-directory-secret", "the directory bind secret changed while mounting");
@@ -393,7 +403,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         management,
         refreshAuthorization: () => memberServer?.refreshAuthorization(),
         identity: companyIdentity, connected: fleetId => memberServer?.features(fleetId) !== null && memberServer?.features(fleetId) !== undefined, signInvitation: claims => signCompanyInvitation(claims, issuerKey), descriptor: signCompanyDescriptor(companyIdentity, issuerKey),
-        certificatePem: readPrivateFile(options.home, "hub/keys/tls-cert.pem"), administrator: settings.administrator,
+        certificatePem: readHubMemberTls({home:options.home,memberOrigin:settings.memberOrigin}).certificatePem, administrator: settings.administrator,
         eventDays: settings.retention.eventDays, current: live, now });
       const pairing = new HubPairingService({
         store,
@@ -450,6 +460,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         grantDirectory: { policy, binding },
         pairingNotices,
         directoryNotices,
+        memberAddressNotices: createHubMemberAddressNotices(memberAddressDecision, live),
         ...(options.directorySettings ? { directorySettings: options.directorySettings } : {}),
         store,
         current: () => mode,
@@ -483,6 +494,14 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           settings.webOrigin, settings.webAddressRevision, issuerKey),
       });
       teardown.add("the member listener", () => memberServer?.close());
+      // #3429 B: the mounted decision can relocate members online at a member-address change (settings-member-address-control).
+      memberAddressDecision.relocator = {
+        sign: (fleetId, r) => signHubRelocation({ hubId: settings.hubId, issuerKeyId: identity.issuerKeyId, fleetId },
+          { ...r, spkiSha256: identity.spkiSha256 }, issuerKey),
+        send: (fleetId, statement, digest, deadline) => memberServer ? memberServer.relocate(fleetId, statement, digest, deadline) : Promise.resolve(null),
+        linkCurrent: (proof, advanced) => !!memberServer && memberServer.relocationLinkCurrent(proof, advanced),
+      };
+      teardown.add("the relocation sender", () => { memberAddressDecision.relocator = null; });
 
       // 5. The Hub web listener: every request goes to S3's handler (it serves /hub/v1/*, the Hub-only shell and its
       //    assets without fleet cookies); anything it declines is 404. The personal fleet listener is untouched.
@@ -574,6 +593,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
             if (withdrawDirectory) teardown.add("the mounted directory control", withdrawDirectory);
             const withdrawAddress = options.webAddressReady?.(addressDecision);
             if (withdrawAddress) teardown.add("the mounted web-address participant", withdrawAddress);
+            const withdrawMemberAddress = options.memberAddressReady?.(memberAddressDecision);
+            if (withdrawMemberAddress) teardown.add("the mounted member-address participant", withdrawMemberAddress);
           } catch (err) {
             options.report(err instanceof HubStateError ? err.code : "service-unavailable", (err as Error).message);
             throw err;

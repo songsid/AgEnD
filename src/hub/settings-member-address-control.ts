@@ -1,0 +1,180 @@
+/** D3-owned orchestration: async preparation/probe, then the one shared synchronous sealed writer decision. */
+import { X509Certificate } from "node:crypto";
+import { z } from "zod";
+import { canonicalArguments } from "./identity.js";
+import { prepareMemberCertificate } from "./init/member-certificate.js";
+import { readHubMemberTls } from "./tls.js";
+import { parseHubMemberAddressCandidate, HubMemberAddressError } from "./settings-member-address-policy.js";
+import { probeHubMemberAddress } from "./settings-member-address-network.js";
+import type { HubSettingsWriter } from "./settings-commit.js";
+import type { HubMemberAddressActor, HubMemberAddressDecision, HubMemberAddressRelocation, HubRelocationHeld } from "./settings-member-address-decision.js";
+import type { HubRelocationAck } from "./server.js";
+import { relocationDigest } from "./member-origin.js";
+import type { HubMemberAddressSummary } from "./settings-member-address.js";
+export interface HubMemberAddressContext {
+    actor: HubMemberAddressActor;
+    ownerKey: object;
+    authorityEpoch: number;
+    current(): boolean;
+}
+const ref = z.strictObject({ ref: z.string().regex(/^[A-Za-z0-9_-]{32}$/) });
+const obj = (x: unknown): Record<string, unknown> => x && typeof x === "object" && !Array.isArray(x) ? x as Record<string, unknown> : {};
+const same = (a: unknown, b: unknown) => canonicalArguments(a) === canonicalArguments(b);
+export function createHubMemberAddressControl(deps: {
+    home: string;
+    readConfig(): unknown;
+    writer: HubSettingsWriter;
+    withDecision<T>(work: (decision: HubMemberAddressDecision) => T, current: () => boolean): Promise<T>;
+    running(hub: unknown): boolean;
+    settle(): Promise<void>;
+    probe?: typeof probeHubMemberAddress;
+    /** #3429 B: the one shared wait for every member's ack (design r4: concurrent, never N × this). */
+    relocationWaitMs?: number;
+}) {
+    const prepared = new Map<string, {
+        actor: HubMemberAddressActor;
+        hub: unknown;
+        candidate: ReturnType<typeof parseHubMemberAddressCandidate>;
+        summary: HubMemberAddressSummary;
+        expiresAt: number;
+        ownerKey: object;
+        authorityEpoch: number;
+        current(): boolean;
+    }>();
+    /**
+     * #3429 B (design r4): before the decision, members online with member-relocation-v1 are told where the member address
+     * goes — one reservation (its sequence is every statement's revision; an abort burns it), one issuer-signed statement
+     * per affected Fleet recorded before any is sent, all sent at once under ONE deadline, and only an ack matched to that
+     * exact link, epoch, digest and revision whose link is still current afterwards keeps that Fleet. No mounted relocator
+     * (cold recovery) or nobody affected: nothing to send — every affected Fleet is revoked as in option A.
+     * Each kept Fleet's ack proof (its exact link) is retained, never persisted: `keep()` drops any link lost since, and
+     * `held` lets the SQL decision recheck the rest at its last boundary and after its audit.
+     */
+    type Followed = { relocation: HubMemberAddressRelocation; proofs: Map<string, HubRelocationAck>; linkCurrent(p: HubRelocationAck, advanced?: number): boolean };
+    const keep = (f: Followed): { relocation: HubMemberAddressRelocation; held: HubRelocationHeld } => {
+        const kept = f.relocation.kept.filter(k => f.linkCurrent(f.proofs.get(k.id)!));
+        return { relocation: { ...f.relocation, kept },
+            held: advanced => kept.every(k => f.linkCurrent(f.proofs.get(k.id)!, advanced)) };
+    };
+    const relocate = async (attempt: string, from: string, to: string, current: () => boolean): Promise<Followed | undefined> => {
+        const plan = await deps.withDecision(d => {
+            if (!d.relocator) return null;
+            const fleets = d.affected().flatMap(f => { const b = d.fleetBinding(f.id); return b ? [{ id: f.id, ...b }] : []; });
+            return fleets.length ? { relocator: d.relocator, fleets, spki: d.inspect().spkiSha256 } : null;
+        }, current);
+        if (!plan) return undefined;
+        const sequence = await deps.withDecision(d => d.reserveRelocation({ attempt, from, to, spki: plan.spki, at: Date.now() }), current);
+        const signed = plan.fleets.map(f => { const statement = plan.relocator.sign(f.id, { from, to, revision: sequence }); return { ...f, statement, digest: relocationDigest(statement) }; });
+        await deps.withDecision(d => d.recordRelocationStatements(sequence, signed.map(s => ({ fleetId: s.id, digest: s.digest, body: JSON.stringify(s.statement) }))), current);
+        if (!current()) throw new HubMemberAddressError("denied");
+        const deadline = Date.now() + (deps.relocationWaitMs ?? 5_000);
+        const proofs = await Promise.all(signed.map(s => plan.relocator.send(s.id, s.statement, s.digest, deadline).catch(() => null)));
+        const held = new Map<string, HubRelocationAck>();
+        const kept = signed.flatMap((s, i) => {
+            const p = proofs[i];
+            if (!p || p.fleetId !== s.id || p.digest !== s.digest || p.revision !== sequence || !plan.relocator.linkCurrent(p)) return [];
+            held.set(s.id, p);
+            return [{ id: s.id, generation: s.generation, credentialSha: s.credentialSha, digest: s.digest }];
+        });
+        const relocator = plan.relocator;
+        return { relocation: { sequence, to, kept }, proofs: held, linkCurrent: (p, advanced) => relocator.linkCurrent(p, advanced) };
+    };
+    const proof = (ctx: HubMemberAddressContext) => {
+        if (ctx.actor.kind !== "host-owner" || ctx.current() !== true)
+            throw new HubMemberAddressError("denied");
+    };
+    const writer = () => {
+        if (!deps.writer.memberAddress)
+            throw new HubMemberAddressError("unavailable");
+        return deps.writer.memberAddress;
+    };
+    const source = () => structuredClone(obj(deps.readConfig()).hub);
+    const info = (cert: string) => { const leaf = new X509Certificate(cert); return { fingerprint256: leaf.fingerprint256, validTo: leaf.validTo, selfSigned: leaf.subject === leaf.issuer && leaf.verify(leaf.publicKey) }; };
+    return {
+        async read(ctx: HubMemberAddressContext) {
+            proof(ctx);
+            const hub = obj(source()), current = () => ctx.current() === true && same(source(), hub);
+            const snapshot = await deps.withDecision(d => { d.assertMounted(hub); return { certificate: info(readHubMemberTls({ home: deps.home }).certificatePem), fleets: d.affected() }; }, current);
+            proof({ ...ctx, current });
+            return { ok: true, origin: hub.memberOrigin, listen: hub.memberListen, ...snapshot };
+        },
+        async notices(ctx: HubMemberAddressContext, before?: number) {
+            proof(ctx);
+            const page = await deps.withDecision(d => d.notices({ kind: "host" }, ctx.current, before), ctx.current);
+            proof(ctx); return page;
+        },
+        async acknowledge(id: string, ctx: HubMemberAddressContext) {
+            proof(ctx);
+            await deps.withDecision(d => d.acknowledge(id, { kind: "host" }, ctx.current), ctx.current);
+            proof(ctx); return { ok: true };
+        },
+        async prepare(raw: unknown, ctx: HubMemberAddressContext) {
+            proof(ctx);
+            if (deps.writer.pending())
+                throw new HubMemberAddressError("busy");
+            const hub = source(), candidate = parseHubMemberAddressCandidate(raw, hub);
+            const current = () => ctx.current() === true && same(source(), hub);
+            const before = await deps.withDecision(d => ({ expected: d.inspect() }), current);
+            proof({ ...ctx, current });
+            const material = await prepareMemberCertificate(deps.home, candidate.origin);
+            proof({ ...ctx, current });
+            await (deps.probe ?? probeHubMemberAddress)(deps.readConfig(), candidate, deps.running(hub));
+            proof({ ...ctx, current });
+            const result = await deps.withDecision(d => {
+                if (!same(d.inspect(), before.expected))
+                    throw new HubMemberAddressError("stale");
+                return writer().prepare({ origin: candidate.origin, listen: candidate.listen, certificate: material }, ctx.actor, current);
+            }, current);
+            proof({ ...ctx, current });
+            for (const [k, p] of prepared)
+                if (p.expiresAt <= Date.now())
+                    prepared.delete(k);
+            if (prepared.size >= 8)
+                throw new HubMemberAddressError("busy");
+            prepared.set(result.ref, { actor: { ...ctx.actor }, hub, candidate, summary: result.summary, expiresAt: result.expiresAt,
+                ownerKey: ctx.ownerKey, authorityEpoch: ctx.authorityEpoch, current });
+            return { ok: true, ...result, certificate: info(material) };
+        },
+        async commit(raw: unknown, ctx: HubMemberAddressContext) {
+            proof(ctx);
+            const input = ref.parse(raw), p = prepared.get(input.ref);
+            prepared.delete(input.ref);
+            if (!p || p.actor.sessionId !== ctx.actor.sessionId || p.ownerKey !== ctx.ownerKey || p.authorityEpoch !== ctx.authorityEpoch)
+                throw new HubMemberAddressError("expired");
+            const current = () => ctx.current() === true && p.current() === true && same(source(), p.hub);
+            proof({ ...ctx, current });
+            await (deps.probe ?? probeHubMemberAddress)(deps.readConfig(), p.candidate, deps.running(p.hub));
+            proof({ ...ctx, current });
+            // A listener-only edit (the advertised origin unchanged): nothing to relocate; every Fleet keeps its binding and
+            // reconnects to the same address on its own when the listener moves.
+            const sameOrigin = obj(p.hub).memberOrigin === p.candidate.origin;
+            const followed = sameOrigin ? undefined : await relocate(input.ref, obj(p.hub).memberOrigin as string, p.candidate.origin, current);
+            // After the shared wait: the host session, the prepared image and the bind probe again (nothing awaited in SQL).
+            proof({ ...ctx, current });
+            if (followed) { await (deps.probe ?? probeHubMemberAddress)(deps.readConfig(), p.candidate, deps.running(p.hub)); proof({ ...ctx, current }); }
+            let result: ReturnType<NonNullable<HubSettingsWriter["memberAddress"]>["commit"]>, relocation: HubMemberAddressRelocation | undefined;
+            try {
+                // A kept Fleet whose link was lost during the final probe is revoked (it is left out before the operation is
+                // built); one lost after this, up to the decision's last boundary, aborts the change (stale).
+                ({ result, relocation } = await deps.withDecision(() => {
+                    const k = followed ? keep(followed) : undefined;
+                    return { result: writer().commit(input.ref, ctx.actor, current, k?.relocation, k?.held), relocation: k?.relocation };
+                }, current));
+            }
+            catch (error) {
+                if (deps.writer.pending())
+                    await deps.settle().catch(() => { });
+                throw error;
+            }
+            // Never repeat the write after the decision. A bind race is saved-but-unavailable; old sessions are not restored.
+            await deps.settle();
+            proof(ctx);
+            // #3429 B: who followed on their own and who must reconnect (by label; the card names them).
+            const kept = new Set(sameOrigin ? p.summary.fleets.map(f => f.id) : (relocation?.kept ?? []).map(k => k.id));
+            const reconnect = p.summary.fleets.filter(f => !kept.has(f.id)).map(f => ({ id: f.id, ...(f.label === undefined ? {} : { label: f.label }) }));
+            return { ok: true, ...result, origin: p.candidate.origin, followed: kept.size, reconnect, ...(sameOrigin ? { sameOrigin: true } : {}),
+                state: obj(source()).enabled === false ? "off" : deps.running(source()) ? "ready" : "saved_unavailable" };
+        },
+    };
+}
+export type HubMemberAddressControl = ReturnType<typeof createHubMemberAddressControl>;

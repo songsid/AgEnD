@@ -8,12 +8,15 @@ import { pinnedHubAgent, HubTlsIdentityError } from "./tls.js";
 import { verifyLease, sha256, canonicalArguments } from "./identity.js";
 import { HubMemberProfileStore, type HubMemberProfile } from "./profile.js";
 import { HUB_WEB_ORIGIN_CAPABILITY, type HubWebOriginStatement } from "./web-origin.js";
+import { HUB_MEMBER_RELOCATION_CAPABILITY } from "./member-origin.js";
 import type { HubAuthorizationLease, HubAuthorizationRequest, HubMemberFrame, HubServerFrame, HubMemberTransport, HubMemberLeaveBinding } from "./types.js";
 export class HubAuthorizationError extends Error {
   constructor(readonly code: "denied" | "unavailable" | "stale", readonly reasonCode: string) { super(`Hub authorization ${code}`); }
 }
 export interface HubMemberLink {
   readonly linkEpoch: number; readonly revocationVersion: number; readonly profile: HubMemberProfile;
+  /** #3429 B: the member address this link actually dialled and authenticated (a pending relocation's `to`, or the anchor). */
+  readonly endpoint: string;
   /** The optional features both ends listed: this member's offer ∩ the Hub's welcome (empty for an older Hub). */
   readonly features: ReadonlySet<string>;
   current(): boolean;
@@ -30,6 +33,12 @@ export interface HubClientOptions {
   now?: () => number; random?: () => number;
   /** The optional features this member offers (tests use a smaller list to stand in for an older member). */
   capabilities?: readonly string[];
+  /**
+   * #3429 B: where to dial, in order — a pending relocation's `to` first, then the anchor (member-origin.ts). Each dial
+   * is pinned to the profile's member key and checked against the origin actually dialled. Empty: a relocation state that
+   * does not verify (fail closed: held, nothing dialled). Absent: the profile's member address, as before.
+   */
+  dial?(): string[];
   /**
    * web-origin-v1 (M-2901): the Hub's signed current web address from this link's welcome, before reconciliation. The
    * receiver verifies it against the pinned profile; whatever it does, the link goes on (a refusal is its own to record).
@@ -56,21 +65,30 @@ export class HubMemberClient implements HubMemberTransport {
   private revocation = 0;
   private firstResolve: (() => void) | null = null;
   private firstReject: ((error: Error) => void) | null = null;
+  /** #3429 B: which of dial()'s addresses this attempt is on (a candidate that fails moves to the next one at once). */
+  private dialIndex = 0;
   readonly bootId = randomUUID();
   constructor(private readonly options: HubClientOptions) {}
   private current(): boolean { return !this.stopped && this.options.current(); }
   async start(): Promise<void> {
     if (!this.current() || this.profile) throw new HubAuthorizationError("unavailable", "unavailable");
     this.profile = new HubMemberProfileStore(this.options.home, this.options.hubId).readProfile();
-    if (this.profile.hub.memberOrigin !== this.options.memberOrigin) { this.options.hold("key-changed"); throw new HubAuthorizationError("stale", "stale"); }
+    // With dial() the anchor may differ from pairing.json's own address (a confirmed relocation); without it, as before.
+    if (!this.options.dial && this.profile.hub.memberOrigin !== this.options.memberOrigin) { this.options.hold("key-changed"); throw new HubAuthorizationError("stale", "stale"); }
     await new Promise<void>((resolve, reject) => { this.firstResolve = resolve; this.firstReject = reject; this.connect(); });
   }
   private connect(): void {
     if (!this.current() || !this.profile || this.connecting) return;
     this.connecting = true; this.ready = false; this.deferred = []; this.deferredBytes = 0;
     const profile = this.profile, handshake = randomUUID();
-    const endpoint = new URL(HUB_PATHS.connect, profile.hub.memberOrigin); endpoint.protocol = "wss:";
-    const agent = pinnedHubAgent(profile.hub, () => this.current());
+    const origins = this.options.dial ? this.options.dial() : [profile.hub.memberOrigin];
+    if (!origins.length) {                                       // a relocation state that does not verify: fail closed
+      this.connecting = false; this.stopped = true; this.options.hold("key-changed");
+      this.firstReject?.(new HubAuthorizationError("stale", "stale")); this.firstReject = this.firstResolve = null; return;
+    }
+    const index = Math.min(this.dialIndex, origins.length - 1), origin = origins[index]!, last = index === origins.length - 1;
+    const endpoint = new URL(HUB_PATHS.connect, origin); endpoint.protocol = "wss:";
+    const agent = pinnedHubAgent({ memberOrigin: origin, spkiSha256: profile.hub.spkiSha256 }, () => this.current());
     const ws = new WebSocket(endpoint, { headers: { Authorization: `Bearer ${profile.credential}` }, agent,
       followRedirects: false, handshakeTimeout: HUB_LIMITS.rpcTimeout, maxPayload: HUB_LIMITS.frame, perMessageDeflate: false });
     this.opening = ws;
@@ -80,6 +98,9 @@ export class HubMemberClient implements HubMemberTransport {
       if (this.opening === ws) this.opening = null;
       agent.destroy();
       if (!this.current()) return;
+      // #3429 B: a pending relocation's `to` that cannot be reached, or that does not hold the pinned key, is only a
+      // candidate: try the next address now. Never after a refused credential (401/403: stopped) — that is recovery.
+      if (!connected && !last && !this.stopped) { this.dialIndex++; this.connect(); return; }
       if (error instanceof HubTlsIdentityError) { this.options.hold("key-changed"); this.stopped = true; }
       if (!connected) { if (!this.stopped) this.options.hold("unavailable"); this.firstReject?.(new HubAuthorizationError("unavailable", "unavailable")); this.firstReject = this.firstResolve = null; this.reconnect(); }
     };
@@ -98,11 +119,15 @@ export class HubMemberClient implements HubMemberTransport {
       let link!: HubSocket<HubServerFrame, HubMemberFrame>;
       const handshakeTimer = setTimeout(() => link.end(), HUB_LIMITS.rpcTimeout); handshakeTimer.unref();
       link = new HubSocket(ws, { current: () => this.current() && this.link === link, parse: parseServerFrame, encode: encodeMemberFrame,
-        receive: frame => this.receive(frame, link, handshake, handshakeTimer), closed: code => {
-          clearTimeout(handshakeTimer); const wasStopped = this.stopped;
+        receive: frame => this.receive(frame, link, handshake, handshakeTimer, origin), closed: code => {
+          clearTimeout(handshakeTimer); const wasStopped = this.stopped, usable = this.ready;
           if (code === "replaced" || code === "revoked") this.stopped = true;
           if (this.link !== link) return;
           this.link = null; this.view = null; this.ready = false; this.deferred = []; this.deferredBytes = 0;
+          // #3429 B: a pending `to` that upgraded but closed (or timed out) before a validated, reconciled welcome is still
+          // only a candidate: try the next address now, as before the upgrade. Never after replaced/revoked (stopped), and
+          // the anchor (last) never falls back.
+          if (!usable && !last && !this.stopped && this.current()) { this.rejectPending(); this.dialIndex++; this.connect(); return; }
           this.rejectPending(); if (!wasStopped) this.options.hold(code); this.firstReject?.(new HubAuthorizationError("unavailable", code)); this.firstReject = this.firstResolve = null; this.reconnect();
         } });
       this.link = link;
@@ -110,7 +135,7 @@ export class HubMemberClient implements HubMemberTransport {
         payload: { supportedVersions: [1], capabilities: [...HUB_CAPABILITIES, ...(this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES)], memberBootId: this.bootId } }).catch(() => link.end());
     });
   }
-  private async receive(frame: HubServerFrame, link: HubSocket<HubServerFrame, HubMemberFrame>, handshake: string, timeout: NodeJS.Timeout): Promise<void> {
+  private async receive(frame: HubServerFrame, link: HubSocket<HubServerFrame, HubMemberFrame>, handshake: string, timeout: NodeJS.Timeout, endpoint: string): Promise<void> {
     if (!link.current()) return;
     if (!this.view) {
       if (frame.type === "welcome" && frame.requestId === handshake && frame.payload.hubId !== this.profile!.hub.hubId) {
@@ -122,7 +147,7 @@ export class HubMemberClient implements HubMemberTransport {
       const profile = this.profile!, epoch = this.epoch;
       const self = this, offered = this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES;
       const features: ReadonlySet<string> = new Set(offered.includes("welcome-caps-v1") ? offered.filter(c => frame.payload.capabilities?.includes(c)) : []);
-      const view: HubMemberLink = { profile: structuredClone(profile), linkEpoch: epoch, features, get revocationVersion() { return self.revocation; },
+      const view: HubMemberLink = { profile: structuredClone(profile), linkEpoch: epoch, endpoint, features, get revocationVersion() { return self.revocation; },
         current: () => this.current() && this.link === link && this.view === view && this.epoch === epoch && link.current(),
         send: value => {
           if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale"));
@@ -136,7 +161,7 @@ export class HubMemberClient implements HubMemberTransport {
       const learned = statement && learn ? Promise.resolve().then(() => view.current() ? learn(statement, view) : undefined).catch(() => undefined) : Promise.resolve();
       void learned.then(() => this.options.reconcile(view)).then(async () => {
         if (!view.current()) return;
-        this.ready = true; this.attempt = 0; this.firstResolve?.(); this.firstReject = this.firstResolve = null;
+        this.ready = true; this.attempt = 0; this.dialIndex = 0; this.firstResolve?.(); this.firstReject = this.firstResolve = null;
         const queued = this.deferred.splice(0); this.deferredBytes = 0;
         for (const waiting of queued) { if (!view.current()) return; await this.dispatch(waiting, view); }
       }).catch(error => link.end(error instanceof HubProtocolError && error.code === "backpressure" ? "backpressure" : "unavailable"));
@@ -162,6 +187,7 @@ export class HubMemberClient implements HubMemberTransport {
     if (frame.type === "pairing.notice" && (!view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v2" && (!view.features.has("pairing-notices-v2") || !view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v3" && (!view.features.has("pairing-notices-v3") || !view.features.has("pairing-notices-v1") || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if (frame.type === "relocate" && (!view.features.has(HUB_MEMBER_RELOCATION_CAPABILITY) || !view.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "revoke") {
       if (frame.payload.revocationVersion < this.revocation) throw new HubProtocolError("stale");
       this.revocation = frame.payload.revocationVersion;
@@ -221,6 +247,7 @@ export class HubMemberClient implements HubMemberTransport {
   private reconnect(): void {
     if (!this.current() || this.timer) return;
     const base = Math.min(30_000, 250 * 2 ** Math.min(this.attempt++, 7));
+    this.dialIndex = 0;                                          // each new attempt starts at the first candidate again
     this.timer = setTimeout(() => { this.timer = null; this.connect(); }, Math.floor(base * (1 + (this.options.random?.() ?? Math.random()) * 0.25))); this.timer.unref();
   }
   private rejectPending(): void {

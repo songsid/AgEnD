@@ -15,7 +15,7 @@ function setup() {
   const changed = vi.fn(() => { if (db.inTransaction) throw Error("notify before commit"); });
   const send = vi.fn(async () => { expect(db.inTransaction).toBe(false); expect(db.prepare("SELECT * FROM hub_pairing_notice_inbox").all()).toHaveLength(1); });
   const link: HubMemberLink = { current: () => current, features: new Set(["welcome-caps-v1", "pairing-notices-v1"]), linkEpoch: 1, revocationVersion: 1,
-    profile: {} as HubMemberLink["profile"], exchange: async () => { throw Error("exchange not used"); }, send };
+    profile: {} as HubMemberLink["profile"], endpoint: "https://hub.example.test:9443", exchange: async () => { throw Error("exchange not used"); }, send };
   const inbox = createHubPairingNoticeInbox({ db, current: () => current, now: () => 100, audit: { appendInTransaction: audit }, changed });
   const notice: HubPairingNotice = { id: randomUUID(), fleetId: randomUUID(), generation: 1, label: "<script>text</script>", at: 100, source: "group", revoked: false };
   return { db, audit, changed, send, link, inbox, notice, fence: () => { current = false; } };

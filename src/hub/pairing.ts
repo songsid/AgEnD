@@ -348,6 +348,16 @@ export class HubPairingService {
     const fleet = this.options.store.read().fleets.find(f => f.status === "active" && f.credentialHash && timingSafeEqual(digest, Buffer.from(f.credentialHash, "hex")));
     if (!fleet) throw new HubProtocolError("denied"); return { fleetId: fleet.id, owner: fleet.owner, generation: fleet.generation };
   }
+  /**
+   * #3429 B: the transport row alone — active at this generation with exactly this authorization version — without the
+   * Hub's liveness gate. Only for a recheck inside the caller's own uncommitted decision, whose own head advance already
+   * makes the Hub's liveness say no (compose live()); never an admission check.
+   */
+  bindingRow(fleetId: string, generation: number, revocationVersion: number): boolean {
+    try { const state = this.options.store.read(), f = state.fleets.find(f => f.id === fleetId);
+      return f?.status === "active" && f.generation === generation && state.revocationVersion === revocationVersion;
+    } catch { return false; }
+  }
   bindingCurrent(fleetId: string, generation: number, revocationVersion?: number): boolean {
     try { this.check(); const state = this.options.store.read(), f = state.fleets.find(f => f.id === fleetId);
       return f?.status === "active" && f.generation === generation && (revocationVersion === undefined || state.revocationVersion === revocationVersion);

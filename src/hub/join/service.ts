@@ -91,6 +91,17 @@ export class HubCompanyJoin {
       .get(id) as { at: number } | undefined;
     return { source: row?.source ?? null, createdAt: issued?.at ?? null };
   }
+  /**
+   * M-2901 (#3429): this mount's issuer-signed company descriptor — public identity evidence, the same a company link
+   * carries (no code, credential or key) — for a member's Reconnect after the member address moved. Built with the
+   * identity and certificate of this one mounted snapshot (compose), checked current before it is given out.
+   */
+  descriptor() {
+    this.check();
+    const d = this.options.descriptor;
+    if (d.fingerprint !== companyIdentityDigest(this.options.identity)) throw new HubProtocolError("unavailable");
+    return d;
+  }
   metadata() {
     const control = this.control();
     return { v: 1 as const, hub: this.options.identity, identityDigest: companyIdentityDigest(this.options.identity),
