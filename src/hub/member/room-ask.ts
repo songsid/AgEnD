@@ -42,9 +42,11 @@ export function migrateRoomAsks(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS hub_room_asks_state ON hub_room_asks(state)`);
 }
 export const HUB_ROOM_ASK_MIGRATION = Object.freeze({ component: "room-ask-v1", version: 1, up: migrateRoomAsks });
-const askSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, roomName: plain(4096),
-  asker: z.strictObject({ name: plain(4096) }), text: plain(HUB_LIMITS.question),
-  context: z.array(z.strictObject({ author: plain(4096), text: plain(HUB_LIMITS.question), at: epoch, repliedTo: z.literal(true).optional() })).max(31),
+// Persisted payload shape matches Track R #3858. R2 validates frames with its shared roomAskSchema before dispatch.
+const askSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, roomName: plain(120),
+  asker: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.question),
+  context: z.array(z.strictObject({ author: plain(256), text: plain(HUB_LIMITS.question), at: epoch, repliedTo: z.literal(true).optional() })).max(31)
+    .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1),
 });
 const savedSchema = z.strictObject({ ask: askSchema,
   local: z.strictObject({ agent: z.string().min(1), consentId: z.string().min(1), revision: epoch, token: z.string().min(1) }),

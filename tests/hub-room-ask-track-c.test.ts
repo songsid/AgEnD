@@ -203,6 +203,12 @@ describe("Track C durable room adapter (injectable Track R seam)", () => {
     const f = member(); expect(() => f.adapter.accept({ ...f.ask, ...change }, f.link)).toThrow();
     expect(f.db.prepare("SELECT count(*) AS n FROM hub_room_asks").get()).toEqual({ n: 0 });
   });
+  it("accepts a 31st older replied-to context row, while refusing 31 ordinary rows", async () => {
+    const f = member(), rows = Array.from({ length: 31 }, (_, i) => ({ author: "Colleague", text: `row ${i}`, at: i }));
+    expect(() => f.adapter.accept({ ...f.ask, context: rows }, f.link)).toThrow();
+    f.adapter.accept({ ...f.ask, context: [{ ...rows[0]!, repliedTo: true }, ...rows.slice(1)] }, f.link); await f.adapter.settled();
+    expect(f.inputs).toHaveLength(1); expect(f.inputs[0]!.text).toContain("Replied-to message"); expect(f.inputs[0]!.text).toContain("row 30");
+  });
   it("reopens a real on-disk journal with the same frozen answer and no plaintext room content", async () => {
     const f = member(), directory = mkdtempSync(join(tmpdir(), "agend-room-ask-")), file = join(directory, "member.sqlite");
     f.adapter.close(); let db = new Database(file), adapter: HubRoomAskAdapter | undefined;
