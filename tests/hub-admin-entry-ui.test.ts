@@ -87,3 +87,24 @@ describe("Administration leads with existing group and individual connection con
   const f=await fixture();await f.p.unmount();await f.p.mount(h(company.CompanyJoinAdminCard));await settle(20);expect(f.p.root.textContent).toContain("Company sign-in joining");expect(f.p.root.querySelector(".hub-admin-access")).toBeNull();
  });
 });
+
+// Lumen's hub skill (#3773): once Let colleagues join shows, the full group-permissions editor (turn group permissions
+// off, resume paused items, People excluded) is reachable from it — "All group permissions", in step 2.
+describe("the card links to the full group-permissions editor",()=>{
+ it.each(["en","zh-TW"])("present with the card (%s) and it opens the editor",async lang=>{
+  const f=await fixture({lang});await until(()=>f.p.root.querySelector(".hub-join-card"));
+  const link=f.p.root.querySelector('.hub-join-card li[data-step="2"] .hub-join-groups-link a');
+  expect(link).toBeTruthy();
+  expect(link.textContent).toBe(lang==="en"?"All group permissions":"所有群組權限");
+  expect(link.getAttribute("href")).toBe("/ui/hub/admin?view=groups");
+  for(let el=link;el&&el!==f.p.root;el=el.parentNode){expect(el.hasAttribute?.("hidden")).toBeFalsy();if(el.tagName==="DETAILS")expect(el.open).toBe(true);}   // visible: nothing hides or folds it
+  const nav=await import("/assets/app-nav.js");nav.startRouter((globalThis as any).window ?? globalThis);   // as the app shell does at boot
+  fire(link,"click");await settle(10);
+  const w=(globalThis as any).window ?? globalThis;
+  expect(w.location.pathname+w.location.search).toBe("/ui/hub/admin?view=groups");
+ });
+ it("absent when this Hub has no group permissions (nothing to open)",async()=>{
+  const f=await fixture({groups:false});await settle(20);
+  expect(f.p.root.querySelector(".hub-join-groups-link")).toBeNull();
+ });
+});

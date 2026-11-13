@@ -32,7 +32,7 @@ On a computer with a wide window (1200 px or more), you can talk to two agents a
 - In an agent's chat, open **⋯ → Split chat** and choose the second agent. Or, while an agent is open, use the **⋯** beside another agent in the sidebar and choose **Open beside**. The keyboard shortcut is Ctrl+\ (⌘\ on a Mac).
 - Each pane is a whole chat: its own message box and its own **Chat**, **View**, **Log** and **Settings** tabs. The pane you are working in is marked **Active**. The sidebar, text size and usage controls follow it. Ctrl+Alt+\ (Ctrl+⌘\ on a Mac) moves to the other pane.
 - A pane's **⋯** menu has **Side by side** or **Top and bottom**, **Swap positions**, **Focus the other pane** and **Close this pane**.
-- **Quote into the other pane.** Select text in one pane and choose **Quote into the other pane: *name*** (next to **Quote**). The text goes into the other agent's message box as a quote. Nothing is sent until you press Send.
+- **Quote into the other pane.** Select text in one pane and choose **Quote into the other pane (*name*)** (next to **Quote**). The text goes into the other agent's message box as a quote. Nothing is sent until you press Send.
 - On a narrower window only one pane shows, with a tab for each agent. The two agents you had open are remembered.
 
 ### Reasoning effort
