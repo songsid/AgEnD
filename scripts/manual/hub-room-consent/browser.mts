@@ -2,7 +2,7 @@
 import { createRequire } from "node:module";
 import { createServer } from "node:https";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { s3bRig } from "../../../tests/helpers/hub-s3b-rig.js";
@@ -27,7 +27,7 @@ server.on("request", (req, res) => {
 const pw = createRequire(resolve(process.env.PW_DIR!, "package.json"))("playwright-core");
 let browser: any;
 const sha = (data: Buffer | string) => createHash("sha256").update(data).digest("hex");
-const receipt: any = { sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+const receipt: any = { origin, sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   scope: "Owned HTTPS/SQLite real C consent/R HTTP with the public U owner/sidebar mounts. Fake directory/transport; no real agent, AD or input; no API response fixtures.",
   checks: [], pictures: [], requests: [], served: {}, geometry: [] };
 const check = (name: string, ok: unknown) => { receipt.checks.push({ name, ok: !!ok }); if (!ok) throw Error(name); };
@@ -84,6 +84,7 @@ try {
 } catch (error) { receipt.checks.push({ name: "run completed", ok: false, error: String(error) }); }
 finally {
   await browser?.close(); server.closeAllConnections(); await new Promise<void>(yes => server.close(() => yes())); await r.close(); rmSync(keys, { recursive: true, force: true });
+  receipt.cleanup = { browserClosed: !!browser, listenerClosed: !server.listening, keysRemoved: !existsSync(keys) };
   writeFileSync(join(out, "receipt.json"), JSON.stringify(receipt, null, 2));
 }
 console.log(JSON.stringify({ checks: receipt.checks.length, failed: receipt.checks.filter((x: any) => !x.ok).length, pictures: receipt.pictures.length }));
