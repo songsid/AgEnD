@@ -101,7 +101,8 @@ what the Hub has saved.
 
 Under the card: **Individual invitations** (see [Administration](#administration)) and **Link with key fingerprint
 (Advanced)**, a long link that also carries the Hub's identity, for a colleague who must check the fingerprint by
-hand. The full group editor is described under [Group permissions](#group-permissions).
+hand. Step 2's **All group permissions** opens the full group editor, described under
+[Group permissions](#group-permissions).
 
 ## Join codes
 
@@ -181,10 +182,10 @@ One attempt lasts at most 10 minutes. The page says what happened; do what it na
 | Many people are connecting at once. Waiting in the queue… / Waiting in the queue… Retry *n* of 8. | Nothing. The Hub tab retries the same request by itself, up to 8 times a few seconds apart. It never creates a second Fleet. |
 | The Hub is handling other connections and will retry shortly. | Nothing; same queue, seen from the Fleet page. |
 | The Hub is busy. Check this same connection again shortly. | Press the retry on that message; it is still the same request. |
-| **Connection needs attention** | The attempt is held. **Recover this connection** (恢復這次連接) continues the same saved attempt; **Cancel connection** ends it. **Check again** reads its status. |
+| **Connection needs attention** | The attempt is held. **Recover this connection** (恢復這次連接) continues the same saved attempt; **Cancel connection** ends it. When the result is unknown, **Check again** (再次檢查) also appears: it asks the Hub how the attempt ended. |
 | Another connection attempt is still open (shown above). | Use **Recover this connection** or **Cancel connection** on it, then start again. A refused or held attempt no longer blocks the next one for 10 minutes once it is cancelled. |
 | This attempt was started in another browser tab or session. | Recover or cancel it here, or finish it there. |
-| The result could not be confirmed. | Use **Check again** on that connection (the message calls it "Check this connection"). Do not start another one: a Fleet may already exist on the Hub. |
+| The result could not be confirmed. | Use **Check again** on that connection. Do not start another one: a Fleet may already exist on the Hub. |
 | This attempt timed out and nothing was created. | Press **Sign in with company account** again. |
 | This connection request expired. | If a Fleet was already created, inspect or revoke that exact Fleet on the Hub (**Open Hub**) before starting again. |
 | Your company account may not connect a Fleet. | Ask the Hub administrator to add you or one of your groups, or for a join code. |
@@ -242,9 +243,10 @@ ask until *date*"). Pick one and **Ask**.
 ## Group permissions
 
 Optional, for the Hub administrator; needs Active Directory over LDAPS (port 636). Step 2 of **Let colleagues join**
-covers the everyday case. The full editor (turn off, **Paused**, **People excluded**) is a separate page: from the
-dashboard of the Fleet that hosts the Hub, **Settings → Hub**, card **Group permissions** → **Open on the Hub**; or,
-signed in as the administrator, the address `https://<hub address>/ui/hub/admin?view=groups`. Until group permissions
+covers the everyday case. The full editor (turn off, **Paused**, **People excluded**) is a separate page: on
+**Administration**, step 2 of **Let colleagues join** has **All group permissions** (所有群組權限), which opens it;
+from the dashboard of the Fleet that hosts the Hub, **Settings → Hub**, card **Group permissions** → **Open on the Hub**;
+or, signed in as the administrator, the address `https://<hub address>/ui/hub/admin?view=groups`. Until group permissions
 are turned on, the Hub behaves as before: everyone who signs in can chat, and connecting needs the administrator's
 approval or a join code.
 
