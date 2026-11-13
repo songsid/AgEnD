@@ -218,6 +218,7 @@ can(policy, subject, permission, target | null, facts, now)
   → { outcome: allow | deny | unknown, authoritative, via: assignmentIds[], maxFleets, nextExpiry }
 ```
 
+- `never-enabled` keeps its distinct `legacy` outcome and source in the self-use evaluator, for `pair_fleet` too, with today's behaviour at each legacy call site. It is never collapsed into `allow`: that could turn manual pairing into automatic pairing.
 - `now` is an input: an assignment expires without a document revision, so the result carries `nextExpiry` and expiry is settled idempotently (audit `role.assignment-expired`).
 - Scope constrains team permissions only. The three self-use permissions of a role are unscoped: they apply to the subject itself, whatever scope the assignment carries (a manager scoped to one AD group still chats, shares and connects as themself).
 - Hub-management permissions need a `scope.kind === "hub"` assignment. Team permissions need a target person: with a hub-wide assignment the target may be any currently eligible person (fresh eligibility); with a group scope the target needs a fresh membership read in that scope group.
@@ -232,6 +233,8 @@ Not a route rename. Each protected operation captures: actor and session, the ex
 - Inventory to convert, beyond `requireAdmin()`: `group-policy/admin-context.ts:31`, `group-policy/authorization.ts:116` and its manual-enrolment path (`:285`), the code and invitation controls in `join/service.ts`, `session-directory-transition.ts:36,57,102`, `settings-commit.ts:329`.
 - The actual approver's identity is kept. Never rewrite `approvedBy` to the root to satisfy an old proof.
 - Codes and invitations issued by someone who later loses `join.manage`: the issuer's current permission is proved **before first issuance** of each admission, so no new Fleet is admitted after the role is lost; the code or invitation is listed as "issuer no longer permitted" until an admin revokes or re-issues it. What is already committed is not touched: `redeem()`'s re-delivery of an already committed, exact key / owner / credential-bound result still succeeds, and Fleets already joined through that code keep their provenance and stay connected until someone revokes them explicitly, exactly as code expiry and code revocation behave today. No issued Fleet is silently turned into released capacity.
+- Admin actions the twelve permissions do not name stay with `hub.admin` until one is mapped explicitly: fleet / exposure / asker freeze and explicit Resume, person denies, policy-wide state switches, and the roles on / off control. No residual action reaches a custom operator role by default.
+- Directory Save by an admin other than the root: that acting admin proves (re-authenticates) their own identity and must be eligible in the candidate directory; the candidate-directory eligibility proof for the configured root is still required, so the break-glass account survives the change. The recorded actor is the acting admin, never rewritten to the root.
 - The final synchronous and audit-required fences of the current code stay as they are.
 
 ### A.4 Invariants (each needs a test)
