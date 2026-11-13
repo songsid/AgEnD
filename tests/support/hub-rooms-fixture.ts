@@ -13,8 +13,8 @@
  *   and 「Hub 助理」 (the assistant). One invitation to my own agent waits for me (GET /hub/v1/invitations).
  *
  * Fields beyond the split's table, added on the U side and told to R:
- * - list item: `agent` { exposureId, owner: { name }, presence, presenceNote? } on a direct chat; `assistant: true` on the
- *   Hub assistant's; `mentioned` (an @ to me is unread); `archived`;
+ * - list item: `agent` { exposureId, owner: { name }, presence, presenceNote? } on a direct chat; `assistant: true` and
+ *   its `presence` on the Hub assistant's; `mentioned` (an @ to me is unread); `archived`;
  * - events (Lumen): message.updated carries `parent` { id, ask } when a reply changes its question's counts;
  *   room.changed { roomId, removed: true } when I am no longer a member; member.changed { roomId };
  * - the list answer: `me` { canCreateRooms }, `invitations` (pending count);
@@ -147,7 +147,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       online: r.members.filter(m => ["online", "idle", "working"].includes(m.presence)).length, unread: unread(r).length,
       lastAt: last?.at ?? 0, lastText: last?.text.slice(0, 120) ?? "", lastAuthor: last?.author.name ?? "",
       mentioned: unread(r).some(m => m.mentions.includes(FIXTURE_ME.id)), ...(r.archived ? { archived: true } : {}),
-      ...(agent ? agent.kind === "assistant" ? { assistant: true } : { agent: { exposureId: agent.id, owner: agent.owner, presence: agent.presence, ...(agent.presenceNote ? { presenceNote: agent.presenceNote } : {}) } } : {}) };
+      ...(agent ? agent.kind === "assistant" ? { assistant: true, presence: agent.presence } : { agent: { exposureId: agent.id, owner: agent.owner, presence: agent.presence, ...(agent.presenceNote ? { presenceNote: agent.presenceNote } : {}) } } : {}) };
   };
   const roomOf = (id: string) => rooms.find(r => r.id === id);
   const fail = (status: number, code: string): Reply => ({ status, body: { code } });
