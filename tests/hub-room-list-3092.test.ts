@@ -92,8 +92,10 @@ describe("the list's groups and rows (pure)", () => {
     i18n.setLang("zh-TW", { store: false });
     expect(list.countsLine(1, 2)).toBe("1 人 · 2 個 Agent");
   });
-  it("presence as the Fleet sidebar's dots (spec §5's colours)", () => {
-    expect(["online", "idle", "working", "paused", "offline", "later", undefined].map(list.presenceDot)).toEqual(["ok", "ok", "busy", "warn", "off", "off", null]);
+  it("presence as the Fleet sidebar's dots (spec §5's colours), from the shared mapping (hub-room-presence.js); no presence yet: no dot", () => {
+    const dot = (presence?: string) => list.rowView({ id: "r", kind: "direct", name: "n", agent: { owner: { name: "o" }, ...(presence ? { presence } : {}) } }).dot;
+    expect(["online", "idle", "working", "paused", "offline", "later", "unknown", undefined].map(dot)).toEqual(["ok", "ok", "busy", "warn", "off", "off", "off", null]);
+    expect(list.presenceDot).toBeUndefined();   // one mapping (S-148): the list has no copy of its own
   });
 });
 

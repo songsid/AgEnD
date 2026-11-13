@@ -16,6 +16,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
+import { workingLine } from "./hub-room-working.js";
 import { countsLine } from "./hub-room-list.js";
 
 const iso = (ms) => (Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : undefined);
@@ -166,7 +167,9 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
     /** 「展開其餘 N 則」: show every answer of that question. */
     expand(messageId) { if (typeof messageId === "string" && !expanded.has(messageId)) { expanded.add(messageId); changed(); } },
     /** Who is working on an answer in this room now (its answer row has no text yet): their names, in arrival order. */
-    working() { return st.messages.filter((m) => m.answerTo && !m.text && m.stage === "working").map((m) => String(m.author?.name || "")).filter(Boolean); },
+    working() { return this.workers().map((w) => w.name); },
+    /** The same, as members ({ kind, name }) — what workingLine() words (the room assistant by its own name). */
+    workers() { return st.messages.filter((m) => m.answerTo && !m.text && m.stage === "working" && m.author?.name).map((m) => ({ kind: m.author.kind === "assistant" ? "assistant" : "agent", name: String(m.author.name) })); },
     markRead() { const last = st.messages.at(-1); return last ? client.markRoomRead(roomId, last.id) : Promise.resolve({ ok: true }); },
     refresh, clickButton: async () => ({ ok: false, code: "stopped" }), vote: async () => ({ ok: false, code: "stopped" }), busy: () => false, mine: () => [],
     stop() { st.live = false; subs.clear(); unsubscribe(); },
@@ -229,7 +232,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     : room.assistant ? hroom("providedByHub") : String(room.agent?.owner?.name || "");
   const showRail = wide && rail && Panel && group && detail;
   // The Fleet chat's working bar (Lumen): 「Notes 正在處理」, or 「2 個 Agent 正在處理」 — the answer row only when it arrives.
-  const working = store.working();
+  // Who: this room's answers being worked on; the words: workingLine() (#3857), the one place that says it.
+  const working = workingLine({ members: store.workers().map((w) => ({ ...w, presence: "working" })) });
   const panel = Panel && detail ? html`<${Panel} client=${client} roomId=${roomId} detail=${detail}
         onMention=${(m) => { setSheet(false); insert.current?.(`@${m.name}`); }}
         onOpenChat=${(m) => { const direct = rooms.find((r) => r.kind === "direct" && r.agent?.exposureId === m.id); if (direct) openRoom(direct.id); }}
@@ -247,7 +251,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
       <${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
         emptyView=${room.assistant ? html`<div class="hub-assistant-empty"><${Empty} icon="bot" title=${hroom("hubAssistant")} hint=${hroom("hubAssistantEmpty")} /></div>`
           : group ? html`<p class="note">${hroom("composerHint")}</p>` : null} />
-      ${working.length ? html`<${WorkBarView} kind="working" label=${working.length === 1 ? hroom("workingOne", working[0]) : hroom("workingMany", String(working.length))} elapsed="" elapsedTitle="" />` : null}
+      ${working ? html`<${WorkBarView} kind="working" label=${working.text} elapsed="" elapsedTitle="" />` : null}
       <${RoomComposer} store=${store} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert} />
     </section>
     ${showRail ? html`<${RailFrame} trust="hub-context" label=${hroom("members")} title=${hroom("members")} closeLabel=${hroom("cancel")} onClose=${() => setRail(false)}>${panel}</${RailFrame}>` : null}
