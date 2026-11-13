@@ -318,21 +318,45 @@ describe("Prism #3709 R3: a wrapper's options are arguments — never the progra
   });
 });
 
-describe("Prism #3709 R6: the Codex activity projection is withheld until a real redacted capture exists", () => {
-  const rollout = join(import.meta.dirname, "fixtures", "reply-guard-1510", "codex-0.162.0", "rollout.jsonl");
+describe("#3787: the Codex instance's chat block is read like every other backend's", () => {
+  const rollout = join(import.meta.dirname, "fixtures", "chat-activity-3787", "codex-0.160.0-web-chat.jsonl");
   const codex = (over: Partial<LogServiceDeps> = {}) => new LogService({ enabled: () => true, toolProgress: () => "verbose", thinking: () => true, cwd: () => "/w", known: () => true, events: () => [], emit() {},
     source: () => ({ backend: "codex", path: rollout, format: "codex" }), ...over });
-  it("the chat's block on a Codex instance: not supported, no steps, nothing read, no thinking — whatever is asked", async () => {
-    const a: any = await codex({ source: () => ({ backend: "codex", path: "/nonexistent/never-read.jsonl", format: "codex" }) }).steps("w", { chat: true, thinking: true, watch: true });
-    expect(a).toMatchObject({ enabled: true, backend: "codex", supported: false, reason: "unsupported", steps: [], events: [], thinking: false });
-    expect(a).not.toHaveProperty("key");
+  it("the chat's block on a Codex instance: supported, with the steps of the rollout and its watch", async () => {
+    const a: any = await codex().steps("w", { chat: true, watch: true });
+    expect(a).toMatchObject({ enabled: true, backend: "codex", supported: true, level: "verbose" });
+    expect(a.reason).toBeUndefined();
+    expect(a.key).toEqual(expect.any(String));
+    expect(a.steps.filter((s: any) => s.kind === "tool").length).toBeGreaterThan(0);
+    expect(a.steps.filter((s: any) => s.kind === "user").every((s: any) => s.body === undefined)).toBe(true);   // a person's prompt text is never sent (the chat has it)
   });
-  it("the Log tab on the same Codex transcript is as it was: its steps are shown, and no thinking is made for Codex", async () => {
-    const a: any = await codex().steps("w", { thinking: true });
+  it("the Log tab on the same transcript still shows its steps", async () => {
+    const a: any = await codex().steps("w", {});
     expect(a.supported).toBe(true);
     expect(a.steps.length).toBeGreaterThan(0);
-    expect(a.steps.some((s: any) => s.kind === "thinking")).toBe(false);
-    expect(a.thinking).toBe(false);
+  });
+  it("thinking only when the request asks for it AND web.log_thinking is on — for Codex as for the others", async () => {
+    const f = join(temp(), "rollout.jsonl");
+    writeFileSync(f, [
+      { timestamp: "2026-11-13T05:00:00.000Z", type: "event_msg", payload: { type: "task_started", turn_id: "t1" } },
+      { timestamp: "2026-11-13T05:00:01.000Z", type: "response_item", payload: { type: "reasoning", summary: [{ type: "summary_text", text: "Checking the notes first." }], encrypted_content: "gAAAAAB-REDACTED" } },
+      { timestamp: "2026-11-13T05:00:02.000Z", type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "Looking." }] } },
+    ].map((r) => JSON.stringify(r)).join("\n") + "\n");
+    const mk = (on: boolean) => codex({ thinking: () => on, source: () => ({ backend: "codex", path: f, format: "codex" }) });
+    const asked: any = await mk(true).steps("w", { chat: true, thinking: true });
+    expect(asked.thinking).toBe(true);
+    expect(asked.steps.filter((s: any) => s.kind === "thinking").map((s: any) => s.body)).toEqual(["Checking the notes first."]);
+    expect(JSON.stringify(asked)).not.toContain("gAAAAAB");
+    const notAsked: any = await mk(true).steps("w", { chat: true });
+    expect(notAsked.thinking).toBe(false);
+    expect(notAsked.steps.some((s: any) => s.kind === "thinking")).toBe(false);
+    const switchedOff: any = await mk(false).steps("w", { chat: true, thinking: true });
+    expect(switchedOff.thinking).toBe(false);
+    expect(switchedOff.steps.some((s: any) => s.kind === "thinking")).toBe(false);
+  });
+  it("tool_progress off: Codex's block is off too (nothing read)", async () => {
+    const a: any = await codex({ toolProgress: () => "off", source: () => ({ backend: "codex", path: "/nonexistent/never-read.jsonl", format: "codex" }) }).steps("w", { chat: true });
+    expect(a).toMatchObject({ supported: true, level: "off", steps: [] });
   });
   it("control: the same request on a Claude transcript still gets the chat's block", async () => {
     const f = join(temp(), "t.jsonl");

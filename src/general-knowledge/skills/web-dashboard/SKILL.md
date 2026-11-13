@@ -184,8 +184,10 @@ them: "N running", "N finished", "Main Agent task: …" (up to 16 recent).
 line above where its reply will come (the current step · N tools · elapsed; grok says **Reasoning…**, **Running a
 tool…** and so on); opened, the steps, newest in bold; once it replied, one line **Tool history · used N tools** above
 the reply. **⋯ → Show activity** turns it on or off for you; **Show thinking** is off by default. It follows the agent's
-**Tool progress** (Off shows no block). An agent whose steps aren't readable here, such as Codex, gets only the line
-"This agent's steps are not shown in the chat; this line only says it is working."
+**Tool progress** (Off shows no block). An agent whose steps aren't readable here (muse, opencode, kiro) gets only the line
+"This agent's steps are not shown in the chat; this line only says it is working." Codex has the block: its steps come from its
+rollout file, one step per action; its own reasoning is encrypted and never shown, so **Show thinking** has something only when the
+model wrote a summary.
 
 **Files & changes (#3153, #3160, alpha).** An agent's **⋯ → Files & changes** opens the folder it works in, read-only
 (secret-looking files such as `.env` and keys are hidden): tabs **Changes** and **Files**, **Refresh**. **Follow
@@ -560,7 +562,7 @@ from the tab itself needs a fleet admin's confirmation). Read from each CLI's ow
 stopped), Codex while it runs, Antigravity and Grok from the records they keep for the agent's working directory (a
 stopped agent's last work too, where it is still there; a ClassicBot room on them has no working directory of its own,
 so nothing to read). kiro shows fleet events only; other backends, or an agent whose transcript can't be found, say there
-is no readable transcript. (Codex's steps are in the Log, though not in the chat's activity block.) Secrets are masked.
+is no readable transcript. (Codex's steps are in the chat's activity block too.) Secrets are masked.
 A dialog or prompt the agent stopped at is a row with its text folded: **Show what was on screen** / **Hide what was on
 screen** (「顯示當時的畫面」, #2966).
 

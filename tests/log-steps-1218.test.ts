@@ -363,16 +363,16 @@ describe("codex: the rollout as steps", () => {
     ]) p.push(l);
     expect(p.steps.map(brief)).toEqual([
       "t1|user||||||fix it",
-      "t1|tool|exec|run|exec_command|done||Script completed",
-      "t1|tool|command|run|git status|done||clean",
+      "t1|tool|command|run|git status|done||clean",     // the first item took over the `exec` call's step (#3787): one step per action
       "t1|tool|command|run|npm test|failed||1 failed",
       "t1|tool|github:get_issue|mcp|github:get_issue|done||issue body",
       "t1|tool|file_change|edit|/w/src/a.ts|done||Success",
       "t1|assistant||||||done",
       "t1|turn_end||||||",
     ]);
-    expect(p.steps[3]).toMatchObject({ exitCode: 1, durationMs: 12000 });
-    expect(p.steps[7]).toMatchObject({ durationMs: 20000 });
+    expect(p.steps[1]).toMatchObject({ id: "c1", ts: Date.parse("2026-10-13T08:00:01.000Z"), durationMs: 1500, exitCode: 0 });   // the call's id and start, the item's outcome
+    expect(p.steps[2]).toMatchObject({ exitCode: 1, durationMs: 12000 });
+    expect(p.steps[6]).toMatchObject({ durationMs: 20000 });
   });
 
   it("codex's own context records (environment, instructions, permissions) are not a person's prompt", () => {
@@ -397,7 +397,7 @@ describe("codex: the rollout as steps", () => {
     const p = new CodexStepParser();
     p.push(JSON.stringify({ type: "response_item", payload: { type: "function_call", call_id: "cx", name: "exec_command", arguments: '{"cmd":"cat big"}' } }));
     const head = '{"timestamp":"2026-10-13T08:00:00.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"cx","output":"Chunk ID: 1\\nOutput:\\nfirst lines of a big file';
-    expect(p.push({ at: 0, head, bytes: 5_000_000, complete: true, offset: 0 })).toMatchObject([{ id: "cx", status: "done", bodyBytes: 5_000_000, body: "Chunk ID: 1\nOutput:\nfirst lines of a big file" }]);
+    expect(p.push({ at: 0, head, bytes: 5_000_000, complete: true, offset: 0 })).toMatchObject([{ id: "cx", status: "done", bodyBytes: 5_000_000, body: "first lines of a big file" }]);   // the body is what follows `Output:`, as for a whole record
   });
 });
 

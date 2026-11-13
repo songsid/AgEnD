@@ -157,9 +157,16 @@ export function mergeSteps(list, incoming, older = false) {
       // category and start time stay; the outcome is the newer read's.
       // Prism #3709 R5: a read that saw only a call's result has no turn evidence (`turn: ""`) — it never erases the turn the
       // call already gave (a fresh parser per cursor range), so a poll-by-poll Log groups exactly as a cold read does.
-      if (!older) next[i] = s.kind === "tool" && !s.tool && next[i].tool
-        ? { ...next[i], ...s, tool: next[i].tool, cat: next[i].cat, ts: next[i].ts, ...kept(s.turn, next[i].turn) }
-        : { ...next[i], ...s, ...kept(s.turn, next[i].turn) };
+      // A result with no call (`tool: ""`) is not proof of anything about a step the page already holds as finished: codex runs a
+      // tool through an `exec` script call, and the item that did the work takes the call's step over (done / failed, with its
+      // own output); the script's own, later output — read by a poll that cannot see the call — is not the action's outcome.
+      // It completes a call still running, and never rewrites an outcome (a failed command stays failed, with its body).
+      const orphan = s.kind === "tool" && !s.tool && next[i].tool;
+      if (!older) next[i] = orphan && (next[i].status === "done" || next[i].status === "failed")
+        ? { ...next[i], ...kept(s.turn, next[i].turn) }
+        : orphan
+          ? { ...next[i], ...s, tool: next[i].tool, cat: next[i].cat, ts: next[i].ts, ...kept(s.turn, next[i].turn) }
+          : { ...next[i], ...s, ...kept(s.turn, next[i].turn) };
       else if (next[i].kind === "tool" && !next[i].tool && s.tool) {
         const { tool, cat, subject, input, ts } = s;
         next[i] = { ...next[i], tool, cat, ...(subject !== undefined ? { subject } : {}), ...(input !== undefined ? { input } : {}), ...(ts ? { ts } : {}), ...kept(next[i].turn, s.turn) };
