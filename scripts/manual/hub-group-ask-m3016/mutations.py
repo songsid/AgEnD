@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Isolated semantic reversals. Stops on load>10; restores exact bytes even on a failed probe."""
 import hashlib,json,os,pathlib,subprocess,sys,time
-root=pathlib.Path.cwd();out=root/'.artifacts/hub-group-ask-m3016/mutations';out.mkdir(parents=True,exist_ok=True)
+root=pathlib.Path.cwd();out=pathlib.Path(os.environ.get('MUTATION_OUT',str(root/'.artifacts/hub-group-ask-m3016/mutations')));out.mkdir(parents=True,exist_ok=True)
 subjects='tests/hub-grant-subjects-m3016.test.ts';picker='tests/hub-grant-picker-m3016.test.ts';directory='tests/hub-grant-person-search-m3016.test.ts'
 mutants=[
  ('G1','src/hub/grant-access.ts','facts.groups.includes(g.subject.group.objectId)','true',subjects,'checks live direct membership'),
@@ -25,6 +25,9 @@ mutants=[
  ('R2','src/hub/catalog.ts','if (this.core.now() >= subjectProof.expiresAt)','if (false)',subjects,'catalog refreshes an aged'),
  ('R3','src/hub/rooms.ts','    const subjectProof = await this.core.grantAccess(rows.filter(r => r.state === "active").map(r => r.grant_id), asker, context);\n','',subjects,'room-list subject proof'),
  ('C1','src/hub/catalog.ts','askable: selectAskable(db, askable.filter(candidate => {','askable: askable.filter(candidate => {',subjects,'one askable agent'),
+ ('K1','src/hub/grant-access.ts','if (at < lastObserved)','if (at < created)',subjects,'permanently retires'),
+ ('K2','src/hub/grant-access.ts','lastObserved = at; return at;','return at;',subjects,'permanently retires'),
+ ('K3','src/hub/grant-access.ts','if (clockRetired)','if (false)',subjects,'permanently retires'),
 ]
 chosen=set(sys.argv[1:]);manifest=[]
 for id,path,old,new,file,name in mutants:

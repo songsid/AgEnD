@@ -4415,6 +4415,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .hub-directory-fingerprint { display: grid; grid-template-columns: repeat(4, max-content); gap: var(--s-1) var(--s-2); white-space: normal; }
 .hub-directory-fingerprint > span { display: inline-block; white-space: nowrap; }
 @media (max-width: 899px), (pointer: coarse) {
+  .hub-grant[data-grant-picker] :is(input, select) { min-width: var(--tap); min-height: var(--tap); font-size: var(--fs-md); }
   .hub-directory-editor :is(.btn, .dlg-x) { min-width: var(--tap); min-height: var(--tap); }
   .hub-directory-editor .dlg-actions .btn { white-space: normal; overflow-wrap: anywhere; padding-block: var(--s-2); }
   .hub-directory-editor .dlg-actions .btn-primary { flex: 0 1 auto; }

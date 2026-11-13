@@ -49,19 +49,33 @@ export async function prepareGrantAccess(core: HubCore, ids: readonly string[], 
     && (g.subject.kind === "person" ? same(g.subject.person, asker) : facts.kind === "complete" && g.subject.group.realm === asker.realm && facts.groups.includes(g.subject.group.objectId))) deadline = Math.min(deadline, g.expiresAt);
   if (facts.kind === "complete" && facts.observedAt > created) throw new HubProtocolError("unavailable");
   const used = new Map<string, HubGrant>();
+  let lastObserved = created, clockRetired = false, actionRetired = false;
+  const proofTime = () => {
+    if (clockRetired) throw new HubProtocolError("unavailable");
+    let at: number;
+    try { at = time(); }
+    catch (error) { clockRetired = actionRetired = true; throw error; }
+    if (at < lastObserved) { clockRetired = actionRetired = true; throw new HubProtocolError("unavailable"); }
+    lastObserved = at; return at;
+  };
   const assertSelectionCurrent = () => {
+    proofTime();
     assertContext(); physical?.assertCurrent();
     core.atomic(db => { for (const [id, g] of used) {
       const row = readGrant(db, id);
-      if (!row || bytes(grantOf(row)) !== bytes(g) || time() < g.startsAt || time() >= g.expiresAt) throw new HubProtocolError("revoked");
+      if (!row || bytes(grantOf(row)) !== bytes(g) || proofTime() < g.startsAt || proofTime() >= g.expiresAt) throw new HubProtocolError("revoked");
     } });
-    if (time() < created || core.revocationVersion() !== epoch || core.deps.directory !== directory
+    if (proofTime() < created || core.revocationVersion() !== epoch || core.deps.directory !== directory
       || (groupNeeded && directory.readPolicyGroups !== read)) throw new HubProtocolError("unavailable");
   };
-  const assertCurrent = () => { assertSelectionCurrent(); if (time() >= deadline) throw new HubProtocolError("unavailable"); };
+  const assertCurrent = () => {
+    if (actionRetired) throw new HubProtocolError("unavailable");
+    assertSelectionCurrent();
+    if (proofTime() >= deadline) { actionRetired = true; throw new HubProtocolError("unavailable"); }
+  };
   const proof: HubGrantSubjectProof = { expiresAt: deadline, assertCurrent, assertSelectionCurrent, allows(g, who) {
     assertCurrent();
-    const captured = grants.get(g.id), now = time();
+    const captured = grants.get(g.id), now = proofTime();
     if (!same(who, asker) || !captured || bytes(captured) !== bytes(g) || g.state !== "active" || now < g.startsAt || now >= g.expiresAt) return false;
     const match = g.subject.kind === "person" ? same(g.subject.person, asker)
       : g.subject.group.realm === asker.realm && facts.kind === "complete" && facts.groups.includes(g.subject.group.objectId);

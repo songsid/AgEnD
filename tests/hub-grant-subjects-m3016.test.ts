@@ -125,6 +125,30 @@ describe("M-3016 owner person/group grants", () => {
     const fresh = await policy.operation(msg, w.link); fresh.assertCurrent();
     w.setMembership([]); await expect(policy.operation(msg, w.link)).rejects.toThrow();
   });
+  it.each(["person", "group"].flatMap(kind => ["within-window", "expired", "rollback"].map(clock => ({ kind, clock }))))(
+    "permanently retires a $kind action proof after $clock clock regression, while a fresh proof works", async ({ kind, clock }) => {
+      const w = await world(), out = kind === "group" ? await w.grant()
+        : await w.r.call(w.browser, "POST", "/hub/v1/grants", { exposureId: w.exposureId, exposureRevision: 1, login: "alex", days: 7 });
+      expect(out.status).toBe(200);
+      const core = new HubCore(w.r.httpDeps, w.r.sql), context = { requestId: randomUUID(), current: () => true };
+      const grant = grantOf(w.r.db.prepare("SELECT * FROM hub_grants WHERE id=?").get(out.json.grant.id) as never);
+      const proof = await core.grantAccess([grant.id], w.recipient, context);
+      expect(proof.allows(grant, w.recipient)).toBe(true);
+      if (clock === "within-window") {
+        w.advance(3_000); proof.assertCurrent(); w.advance(-2_000);
+      } else if (clock === "expired") {
+        w.advance(5_000); expect(() => proof.assertCurrent()).toThrow();
+        // Expiry retires the action permit, not its separate data-only selection fence.
+        expect(() => proof.assertSelectionCurrent()).not.toThrow(); w.advance(-4_999);
+      } else { w.advance(-1); expect(() => proof.assertCurrent()).toThrow(); w.advance(2); }
+      expect(() => proof.assertCurrent()).toThrow();
+      w.advance(3_000); expect(() => proof.allows(grant, w.recipient)).toThrow();
+      expect(() => proof.assertSelectionCurrent()).toThrow();
+      const reads = vi.mocked(w.r.directory.readPolicyGroups!).mock.calls.length;
+      const fresh = await core.grantAccess([grant.id], w.recipient, context);
+      expect(fresh.allows(grant, w.recipient)).toBe(true); fresh.assertCurrent();
+      expect(vi.mocked(w.r.directory.readPolicyGroups!).mock.calls.length).toBe(reads + (kind === "group" ? 1 : 0));
+    });
   it("a group owner grant never bypasses the Hub's operational ask gate", async () => {
     const w = await world(), grant = await w.grant(); expect(grant.status).toBe(200);
     w.r.httpDeps.groups = { asker: async () => { throw new HubProtocolError("denied"); }, check: async () => ({ source: "legacy", assertCurrent() {} }) } as never;
