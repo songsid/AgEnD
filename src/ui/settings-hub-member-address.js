@@ -20,12 +20,12 @@ register("hubMemberAddress", {
     listenHint: "Where the Hub listens for Fleets on this computer. Usually the address's own port; change it only if a router or reverse proxy forwards another port.",
     check: "Check", checking: "Checking…", cancel: "Cancel", back: "Back",
     confirmTitle: "Change the Fleet connection address?", from: "From", to: "To",
-    moving: "Fleets that move ({0})", noneMoving: "No Fleet is connected now.",
+    moving: "Fleets that move ({0}):", noneMoving: "No Fleet is connected now.",
     effect: "Fleets online now follow on their own. Any that are offline lose their connection and must reconnect from their own Settings → Hub; their owners get a notice. The Hub address and sign-ins stay the same.",
     confirm: "Confirm change", saving: "Changing…",
-    allFollowed: "Done. All {0} Fleets followed to the new address.", noFleets: "Done. No Fleet was connected.",
-    sameKept: "Done. The address Fleets use didn't change; all {0} keep their connection.",
-    connected: "Connected Fleets ({0})",
+    allFollowed: "Done. All {0} Fleets followed to the new address.", oneFollowed: "Done. The Fleet followed to the new address.", noFleets: "Done. No Fleet was connected.",
+    sameKept: "Done. The address Fleets use didn't change; all {0} keep their connection.", sameKeptOne: "Done. The address Fleets use didn't change; the Fleet keeps its connection.",
+    connected: "Connected Fleets ({0}):",
     sameEffect: "The address Fleets use doesn't change, only where the Hub listens on this computer. Connected Fleets keep their connection and reconnect on their own.",
     someFollowed: "Done. {0} of {1} Fleets followed. These must reconnect from their own Settings → Hub: {2}.",
     noneFollowed: "Done. No Fleet was online to follow. These must reconnect from their own Settings → Hub: {0}.",
@@ -54,12 +54,12 @@ register("hubMemberAddress", {
     listenHint: "Hub 在這台電腦上監聽 Fleet 連接的位置。通常就是位址本身的連接埠；只有路由器或反向代理轉送其他連接埠時才需要變更。",
     check: "檢查", checking: "檢查中…", cancel: "取消", back: "返回",
     confirmTitle: "要變更 Fleet 連接位址嗎？", from: "原位址", to: "新位址",
-    moving: "會移動的 Fleet（{0}）", noneMoving: "目前沒有已連接的 Fleet。",
+    moving: "會移動的 Fleet（{0}）：", noneMoving: "目前沒有已連接的 Fleet。",
     effect: "目前在線上的 Fleet 會自動跟著移動。離線的 Fleet 會失去連接，需要在它自己的「設定 → Hub」重新連接，擁有者會收到通知。Hub 位址與登入狀態不變。",
     confirm: "確認變更", saving: "變更中…",
-    allFollowed: "完成。全部 {0} 個 Fleet 都已跟著移動到新位址。", noFleets: "完成。目前沒有已連接的 Fleet。",
-    sameKept: "完成。Fleet 使用的位址沒有變更，全部 {0} 個 Fleet 都保留連接。",
-    connected: "已連接的 Fleet（{0}）",
+    allFollowed: "完成。全部 {0} 個 Fleet 都已跟著移動到新位址。", oneFollowed: "完成。這個 Fleet 已跟著移動到新位址。", noFleets: "完成。目前沒有已連接的 Fleet。",
+    sameKept: "完成。Fleet 使用的位址沒有變更，全部 {0} 個 Fleet 都保留連接。", sameKeptOne: "完成。Fleet 使用的位址沒有變更，這個 Fleet 保留連接。",
+    connected: "已連接的 Fleet（{0}）：",
     sameEffect: "Fleet 使用的位址不變，只變更 Hub 在這台電腦上監聽的位置。已連接的 Fleet 會保留連接，並自動重新連接。",
     someFollowed: "完成。{1} 個 Fleet 中有 {0} 個已跟著移動。以下 Fleet 需要在它自己的「設定 → Hub」重新連接：{2}。",
     noneFollowed: "完成。沒有在線上的 Fleet 可以跟著移動。以下 Fleet 需要在它自己的「設定 → Hub」重新連接：{0}。",
@@ -102,7 +102,7 @@ export function outcomeText(r, port) {
   if (r.state === "saved_unavailable") return copy("saved_unavailable", String(port ?? ""));
   const reconnect = Array.isArray(r.reconnect) ? r.reconnect : [], followed = Number(r.followed) || 0, total = followed + reconnect.length;
   if (!total) return copy("noFleets");
-  if (!reconnect.length) return copy(r.sameOrigin === true ? "sameKept" : "allFollowed", String(total));
+  if (!reconnect.length) return total === 1 ? copy(r.sameOrigin === true ? "sameKeptOne" : "oneFollowed") : copy(r.sameOrigin === true ? "sameKept" : "allFollowed", String(total));
   if (!followed) return copy("noneFollowed", names(reconnect));
   return copy("someFollowed", String(followed), String(total), names(reconnect));
 }

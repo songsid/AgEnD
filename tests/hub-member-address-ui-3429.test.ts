@@ -90,6 +90,8 @@ describe("#3429 Settings → Hub → Fleet connection address", () => {
     expect(say({ state: "ready", followed: 1, reconnect: [{ id: "b", label: "Bob Fleet" }] })).toBe("Done. 1 of 2 Fleets followed. These must reconnect from their own Settings → Hub: Bob Fleet.");
     expect(say({ state: "ready", followed: 0, reconnect: [{ id: "a", label: "Alice Fleet" }, { id: "b" }] })).toBe("Done. No Fleet was online to follow. These must reconnect from their own Settings → Hub: Alice Fleet, a Fleet without a name.");
     expect(say({ state: "ready", followed: 0, reconnect: [] })).toBe("Done. No Fleet was connected.");
+    expect(say({ state: "ready", followed: 1, reconnect: [] })).toBe("Done. The Fleet followed to the new address.");          // one: never "All 1 Fleets"
+    expect(say({ state: "ready", followed: 1, reconnect: [], sameOrigin: true })).toBe("Done. The address Fleets use didn't change; the Fleet keeps its connection.");
     expect(say({ state: "off" })).toContain("The Hub is stopped");
     expect(say({ state: "saved_unavailable" })).toContain("port 9555");
   });

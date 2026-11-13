@@ -181,34 +181,42 @@ try {
         "**/ui/js/settings-hub-section.js": [JS, baseUi("src/ui/settings-hub-section.js")],
         "**/ui/js/settings-hub-connection.js": [JS, baseUi("src/ui/settings-hub-connection.js")],
         "**/ui/js/hub-join-one-strings.js": [JS, baseUi("src/ui/hub-join-one-strings.js")] };
-    const SKEW: Record<string, [string, string]> = {
-        "**/ui/js/settings-confirm.js": [JS, baseUi("src/ui/settings-confirm.js")],
-        "**/ui/js/settings-hub-web-address.js": [JS, baseUi("src/ui/settings-hub-web-address.js")],
-        "**/assets/ui-states.js": [JS, baseUi("src/ui/shared/ui-states.js")],
-        "**/assets/app.css": ["text/css", baseUi("src/ui/shared/app.css")] };
+    const SKEW_FILES: Record<string, [string, string]> = { "**/ui/js/settings-confirm.js": [JS, "src/ui/settings-confirm.js"],
+        "**/ui/js/settings-hub-web-address.js": [JS, "src/ui/settings-hub-web-address.js"], "**/assets/ui-states.js": [JS, "src/ui/shared/ui-states.js"],
+        "**/assets/app.css": ["text/css", "src/ui/shared/app.css"] };
+    const SKEW: Record<string, [string, string]> = Object.fromEntries(Object.entries(SKEW_FILES).map(([g, [type, path]]) => [g, [type, baseUi(path)]]));
+    // Whether each base file the SKEW tab holds differs from this tree's (an identical one proves nothing on its own).
+    receipt.skewFiles = Object.values(SKEW_FILES).map(([, path]) => ({ path, differsFromThisTree: baseUi(path) !== readFileSync(join("/work", path), "utf8") }));
     const sectionPage = async (lang: "en" | "zh-TW", view: keyof typeof VIEW, routes: Record<string, [string, string]>) => {
         const ctx = await browser.newContext({ locale: lang === "en" ? "en-US" : "zh-TW", viewport: VIEW[view], isMobile: view === "phone", hasTouch: view === "phone" });
         await ctx.addCookies([{ name: cookieName, value: cookieValue, url: origin }]);
         await ctx.addInitScript(() => { localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1"); });
-        for (const [glob, [type, body]] of Object.entries(routes)) await ctx.route(glob, (r: any) => r.fulfill({ status: 200, contentType: type, body }));
+        const hits: Record<string, number> = {};
+        for (const [glob, [type, body]] of Object.entries(routes)) await ctx.route(glob, (r: any) => { hits[glob] = (hits[glob] ?? 0) + 1; return r.fulfill({ status: 200, contentType: type, body }); });
         const pg = await ctx.newPage(), errors: string[] = [];
         pg.on("pageerror", (e: any) => errors.push(String(e).slice(0, 200)));
         pg.on("console", (m: any) => { if (m.type() === "error") errors.push(m.text().slice(0, 200)); });
         await pg.goto(origin + "/settings/hub"); const section = pg.locator(".s-hub-section"); await section.waitFor();
         await pg.waitForLoadState("networkidle"); await pg.waitForTimeout(400);
-        return { ctx, pg, section, errors };
+        return { ctx, pg, section, errors, hits };
     };
     receipt.surface = [];
     for (const lang of ["en", "zh-TW"] as const) for (const view of ["desktop", "phone"] as const) for (const variant of ["before", "after"] as const) {
-        const { ctx, pg, section, errors } = await sectionPage(lang, view, variant === "before" ? BEFORE : {});
+        const { ctx, pg, section, errors, hits } = await sectionPage(lang, view, variant === "before" ? BEFORE : {});
         const cards = await section.locator(".hub-member-address").count();
-        check(`${variant} ${lang} ${view}: the card is ${variant === "before" ? "absent (base)" : "present, folded"}; no page error`, cards === (variant === "before" ? 0 : 1) && errors.length === 0);
+        // The whole section in the viewport, so every card is painted (an element screenshot taller than the viewport
+        // leaves off-screen cards blank).
+        await pg.setViewportSize({ width: VIEW[view].width, height: Math.max(VIEW[view].height, await pg.evaluate(() => document.documentElement.scrollHeight) + 40) });
+        await pg.waitForTimeout(300);
+        const shown = cards ? await pg.evaluate(() => { const r = document.querySelector(".hub-member-address")!.getBoundingClientRect(); return r.height > 0 && r.bottom <= innerHeight; }) : false;
+        check(`${variant} ${lang} ${view}: the card is ${variant === "before" ? "absent (base)" : "present, folded, on screen"}; no page error`,
+            (variant === "before" ? cards === 0 : cards === 1 && shown) && errors.length === 0);
         await themes(pg, async theme => { await shot(section, `surface-${variant}.${lang}.${view}.${theme}.png`); });
-        receipt.surface.push({ variant, lang, view, cards, errors }); await ctx.close();
+        receipt.surface.push({ variant, lang, view, cards, shown, errors, routed: hits }); await ctx.close();
     }
     receipt.skew = [];
     for (const [lang, view, theme] of [["en", "desktop", "light"], ["zh-TW", "phone", "dark"]] as const) {
-        const { ctx, pg, section, errors } = await sectionPage(lang, view, SKEW);
+        const { ctx, pg, section, errors, hits } = await sectionPage(lang, view, SKEW);
         await pg.emulateMedia({ colorScheme: theme });
         const card = section.locator(".hub-member-address"); await card.waitFor();
         await card.locator("summary").first().click(); await card.locator(".hub-addr-now").waitFor();
@@ -216,7 +224,8 @@ try {
         check(`SKEW ${lang} ${view}: the new card links and renders under the base's shared modules and stylesheet; no raw key, no page error`,
             text.includes(new URL(memberOrigin).host) && !/hubMemberAddress\.|err_/.test(text) && errors.length === 0);
         await shot(card, `skew-card.${lang}.${view}.${theme}.png`);
-        receipt.skew.push({ lang, view, theme, errors }); await ctx.close();
+        check(`SKEW ${lang} ${view}: every base file was served to the tab`, Object.keys(SKEW).every(g => (hits[g] ?? 0) >= 1));
+        receipt.skew.push({ lang, view, theme, errors, routed: hits }); await ctx.close();
     }
     // #3429 option B, leg 1: the member is ONLINE at the change — it follows the issuer-signed relocation, keeps its credential.
     // Through the card's Confirm (EN); the server's answer is read from the commit response.
@@ -239,7 +248,7 @@ try {
     const ui1 = await confirmVia("en", nextOrigin);
     check("browser prepares affected fleet", ui1.prepared === 1);
     const result = { status: ui1.status, body: ui1.body };
-    check("the card says the Fleet followed", ui1.said.includes("Done. All 1 Fleets followed to the new address."));
+    check("the card says the Fleet followed", ui1.said.includes("Done. The Fleet followed to the new address."));
     receipt.leg1 = { status: result.status, state: result.body.state, followed: result.body.followed, reconnect: result.body.reconnect };
     check("saved exact member mount ready; the online Fleet followed", result.status === 200 && result.body.state === "ready" && result.body.followed === 1 && result.body.reconnect.length === 0);
     await wait(() => memberFm.hubMemberLink === "online" && reloc()?.pending === null && reloc()?.confirmed?.length === 1);
