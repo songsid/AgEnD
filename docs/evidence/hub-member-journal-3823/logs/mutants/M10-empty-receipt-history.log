@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-journal.test.ts (29 tests | 1 failed) 219ms
+     × a receipt counter without any attributable history is not an empty legacy journal 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > a receipt counter without any attributable history is not an empty legacy journal
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-member-journal.test.ts:75:56
+     73|   it("a receipt counter without any attributable history is not an emp…
+     74|     const f = fixture(); f.db.prepare("UPDATE hub_member_meta SET rece…
+     75|     expect(() => f.journal.bindPairing(f.profile, [])).toThrow("uncert…
+       |                                                        ^
+     76|   });
+     77| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 39 passed (40)
+   Start at  22:53:30
+   Duration  6.01s (transform 1.88s, setup 171ms, import 2.35s, tests 3.92s, environment 0ms)
+

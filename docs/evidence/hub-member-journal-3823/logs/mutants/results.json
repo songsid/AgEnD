@@ -1,0 +1,90 @@
+[
+  {
+    "name": "M1-ignore-set-binding",
+    "file": "src/hub/compose/member.ts",
+    "sha256": "91a8485c45b86ddb57c7b3c5e2ad1e776fc1a1084978842f8b4e0fb34fc0aec9",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "M2-relabel-legacy",
+    "file": "src/hub/member-journal.ts",
+    "sha256": "8161e67fb51dd3559fe5f136920621f8a1943ab33f251d0c00e5493729e86a92",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "M3-ignore-staged",
+    "file": "src/hub/member-journal.ts",
+    "sha256": "28221fb1182bf508dae650793f5033cb12db444e57812c717c4ed77da96c52a8",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "M4-ignore-stored-identity",
+    "file": "src/hub/member-journal.ts",
+    "sha256": "7b316bc6cd1c26092db99d72a515c189ddf13a783d1e33978926deaefdb5f63a",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "M5-accept-other-fleet-question",
+    "file": "src/hub/member-journal.ts",
+    "sha256": "bec530d382512bebe3f6dc208ed47f47a9c9b1379e630e675a5d3652ef6199cd",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "M6-orphan-is-empty",
+    "file": "src/hub/member-journal.ts",
+    "sha256": "1abe926867543afffc2680e7b3dd08c664baf348271bd44a26977df124413abf",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "M7-no-adoption-floor",
+    "file": "src/hub/member-journal.ts",
+    "sha256": "226520848c419a0dcc7e9b4e620e75792c3cc36dcaa0d12d697e47fae54d633d",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "M8-path-ignores-fleet",
+    "file": "src/hub/compose/member.ts",
+    "sha256": "f4466f5986c39a4d8cda7923ab6ca9815ec171d0209a2d3a110ff46a0fafc309",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "M9-orphan-representative-with-known-owner",
+    "file": "src/hub/member-journal.ts",
+    "sha256": "80d3f51c5f2c8abd2efb76dcf8c9ee698f7eacecf3236dadd526c960d4e07058",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "M10-empty-receipt-history",
+    "file": "src/hub/member-journal.ts",
+    "sha256": "5d30661b53d4c11561982a46022431c57891cdea61f621a4048d2457ae8299af",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  },
+  {
+    "name": "M11-ignore-execution-floor",
+    "file": "src/hub/compose/member.ts",
+    "sha256": "7176cf4cd90ba11ee7f0df2053d10ffa08b81ba3ddabc320ebee7a1182709159",
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true
+  }
+]

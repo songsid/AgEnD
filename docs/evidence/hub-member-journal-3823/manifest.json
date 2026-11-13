@@ -1,0 +1,148 @@
+{
+  "entries": [
+    {
+      "sha256": "175b9d4f46fc27ccd94405f5fae6349fa3e0e0fb7b58a8a961f36ee87f0831c4",
+      "file": "docs/evidence/hub-member-journal-3823/README.md"
+    },
+    {
+      "sha256": "fdd492991d51b834c33f61eea92ae30dc2e9a1e4af43f68df003550b50e7c48b",
+      "file": "docs/evidence/hub-member-journal-3823/logs/baseline/baseline.log"
+    },
+    {
+      "sha256": "8b20a6c3e371fa76e19d4edb62179cfa948394d6584dcfc4e2592065defddc63",
+      "file": "docs/evidence/hub-member-journal-3823/logs/baseline/receipt.json"
+    },
+    {
+      "sha256": "5851d4de6fb6eb370dff167d2e2cb0f70277f2155b578604343f1626e5186d11",
+      "file": "docs/evidence/hub-member-journal-3823/logs/baseline/restored.json"
+    },
+    {
+      "sha256": "7a969446e4eb5acaa149637397b81ee63d7a2f42b5ca4e0068fbe8069f557706",
+      "file": "docs/evidence/hub-member-journal-3823/logs/focused.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M1-ignore-set-binding-types.log"
+    },
+    {
+      "sha256": "176c9d92ad398ee62e0d5cbdd2683a17ea7f24397d814c82d031e689d9232926",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M1-ignore-set-binding.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M10-empty-receipt-history-types.log"
+    },
+    {
+      "sha256": "58c5fe1d8fa52c5a835fd0075902d2ff37310e5c5c12102597511463ba01607a",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M10-empty-receipt-history.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M11-ignore-execution-floor-types.log"
+    },
+    {
+      "sha256": "2403479393bd2ef2e2ccc622839af196d54a4ab5def7a7830cb1a7a3dc4d2289",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M11-ignore-execution-floor.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M2-relabel-legacy-types.log"
+    },
+    {
+      "sha256": "3566e7144ac71030d586755065e5bf8fea53e464183b660355cb60aaf619fa34",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M2-relabel-legacy.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M3-ignore-staged-types.log"
+    },
+    {
+      "sha256": "ee95cacda673f25a80d36a33ab4c188c270a9c7a1fa4f5ad0265f7d66f09f8a6",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M3-ignore-staged.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M4-ignore-stored-identity-types.log"
+    },
+    {
+      "sha256": "9001b5d554ff961ee249f24ca8c27b3faaf03567ec9f0faafa9de60a1a56b614",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M4-ignore-stored-identity.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M5-accept-other-fleet-question-types.log"
+    },
+    {
+      "sha256": "c021230156e2a2be3a013ff753df0d91bccdb701722c6d8fd4cab6f418cbe99e",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M5-accept-other-fleet-question.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M6-orphan-is-empty-types.log"
+    },
+    {
+      "sha256": "4222b8c0b06e983d46af9eb59b38a3d6f797d50888188ede081c3f5114be0796",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M6-orphan-is-empty.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M7-no-adoption-floor-types.log"
+    },
+    {
+      "sha256": "b0fef885dec8029d5fcb0e3309f0153b8aa6df9382cfc4f85708c19e8da83f20",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M7-no-adoption-floor.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M8-path-ignores-fleet-types.log"
+    },
+    {
+      "sha256": "c760c0fb89f2a384d95b240bd568025d4173cb4ce926eec6f5a6db851dc4b55a",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M8-path-ignores-fleet.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M9-orphan-representative-with-known-owner-types.log"
+    },
+    {
+      "sha256": "3a841dd24d234fdfc790791071b3a66209f0a7f7591a556fc4fceeba74d6d110",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/M9-orphan-representative-with-known-owner.log"
+    },
+    {
+      "sha256": "5851d4de6fb6eb370dff167d2e2cb0f70277f2155b578604343f1626e5186d11",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/restored.json"
+    },
+    {
+      "sha256": "42a78bcdbeb23efc64da12427b0e3e99e9a37a5d0029497e7a0d71373a818466",
+      "file": "docs/evidence/hub-member-journal-3823/logs/mutants/results.json"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/source-types.log"
+    },
+    {
+      "sha256": "86f78f7964542d3ec56804c2a266bf5b79244dc33a5e70addb313118552e106d",
+      "file": "docs/evidence/hub-member-journal-3823/logs/sync-restored.log"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file": "docs/evidence/hub-member-journal-3823/logs/test-types.log"
+    },
+    {
+      "sha256": "73507033497e2c23bb6338234fd7fe4425ca976fdb3a0c04ed34f033ea194ff8",
+      "file": "docs/evidence/hub-member-journal-3823/scripts/baseline.py"
+    },
+    {
+      "sha256": "c65eade8706006c734536c5811c900c6d88c16ba6b4109ba97beb8d3728226fb",
+      "file": "docs/evidence/hub-member-journal-3823/scripts/mutate.py"
+    },
+    {
+      "sha256": "298085a25d9e70d5971b69d3867c368b166cf5824b89a6e42bd48764dc39a655",
+      "file": "docs/evidence/hub-member-journal-3823/source-bindings.json"
+    },
+    {
+      "sha256": "1770cb83262c59c4bd396187620e105cec84aa3a4f6bd241fc98b7bfdfb91078",
+      "file": "docs/evidence/hub-member-journal-3823/type-results.json"
+    }
+  ]
+}

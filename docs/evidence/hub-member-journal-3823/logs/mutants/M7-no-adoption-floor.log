@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-journal.test.ts (29 tests | 1 failed) 254ms
+     × a crash after the adoption floor advances rolls back the binding and remains held on restart 9ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > a crash after the adoption floor advances rolls back the binding and remains held on restart
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-member-journal.test.ts:68:56
+     66|     const f = fixture(), raise = f.options.floor.raise;
+     67|     f.options.floor.raise = n => { raise(n); throw Error("simulated fl…
+     68|     expect(() => f.journal.bindPairing(f.profile, [])).toThrow("simula…
+       |                                                        ^
+     69|     expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).…
+     70|     f.options.floor.raise = raise;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 39 passed (40)
+   Start at  22:50:23
+   Duration  7.06s (transform 2.25s, setup 210ms, import 2.82s, tests 4.58s, environment 0ms)
+

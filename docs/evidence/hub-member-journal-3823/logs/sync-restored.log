@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+
+ Test Files  4 passed (4)
+      Tests  65 passed (65)
+   Start at  22:54:56
+   Duration  10.84s (transform 4.65s, setup 295ms, import 6.31s, tests 8.73s, environment 0ms)
+

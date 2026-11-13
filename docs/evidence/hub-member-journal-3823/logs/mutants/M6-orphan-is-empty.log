@@ -1,0 +1,38 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-journal.test.ts (29 tests | 6 failed) 225ms
+     × does not adopt unattributed hub_representative_questions as an empty legacy set 5ms
+     × does not adopt unattributed hub_representative_consents as an empty legacy set 3ms
+     × does not adopt unattributed hub_execution_queue as an empty legacy set 3ms
+     × does not adopt unattributed hub_execution_contexts as an empty legacy set 3ms
+     × does not adopt unattributed hub_execution_operations as an empty legacy set 3ms
+     × does not adopt unattributed hub_execution_attention as an empty legacy set 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > does not adopt unattributed hub_representative_questions as an empty legacy set
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > does not adopt unattributed hub_representative_consents as an empty legacy set
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > does not adopt unattributed hub_execution_queue as an empty legacy set
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > does not adopt unattributed hub_execution_contexts as an empty legacy set
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > does not adopt unattributed hub_execution_operations as an empty legacy set
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > does not adopt unattributed hub_execution_attention as an empty legacy set
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-member-journal.test.ts:48:56
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  6 failed | 34 passed (40)
+   Start at  22:50:10
+   Duration  6.77s (transform 2.06s, setup 191ms, import 2.62s, tests 4.46s, environment 0ms)
+

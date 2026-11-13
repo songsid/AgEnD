@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-journal.test.ts (29 tests | 1 failed) 192ms
+     × does not adopt orphan representative work merely because another question identifies an owner 7ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > does not adopt orphan representative work merely because another question identifies an owner
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-member-journal.test.ts:62:56
+     60|     f.db.exec("CREATE TABLE hub_representative_questions(source TEXT,m…
+     61|     f.db.prepare("INSERT INTO hub_representative_questions VALUES(?,?,…
+     62|     expect(() => f.journal.bindPairing(f.profile, [])).toThrow("uncert…
+       |                                                        ^
+     63|     expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).…
+     64|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 39 passed (40)
+   Start at  22:50:53
+   Duration  7.03s (transform 1.86s, setup 174ms, import 2.29s, tests 4.94s, environment 0ms)
+

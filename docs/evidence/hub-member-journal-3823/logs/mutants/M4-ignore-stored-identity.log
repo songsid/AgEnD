@@ -1,0 +1,84 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-journal.test.ts (29 tests | 1 failed) 216ms
+     × infers the legacy owner from authenticated questions, never the replacement profile 35ms
+ ❯ tests/hub-member-repair-3823.test.ts (11 tests | 3 failed) 3035ms
+   × #3823 (bound): a new Fleet binding never replays the revoked Fleet's IDs or receipts on the real member link 608ms
+   × a scoped Fleet retains its own receipt/revocation state on restart and offline withdrawal selects only that Fleet 273ms
+   × a partial scoped set never falls back to the complete legacy set after a failed startup 227ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > infers the legacy owner from authenticated questions, never the replacement profile
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/hub-member-journal.test.ts:36:111
+     34|     const reopened = new HubMemberJournal(f.db, f.options);
+     35|     expect(reopened.bindPairing(f.profile, [])).toBe(true);
+     36|     expect(reopened.bindPairing({ ...f.profile, owner: { ...f.profile.…
+       |                                                                                                               ^
+     37|     expect(reopened.bindPairing({ ...f.profile, issuerKeyId: "e".repea…
+     38|     expect(reopened.unackedReceipts().receipts).toEqual([receipt]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > #3823 (bound): a new Fleet binding never replays the revoked Fleet's IDs or receipts on the real member link
+AssertionError: promise rejected "Error: Hub authorization unavailable { …(2) }" instead of resolving
+ ❯ tests/hub-member-repair-3823.test.ts:106:75
+    104|     return { v: 1, type: "reconcile", requestId: frame.requestId, link…
+    105|   });
+    106|   const reopened = await member(r); await expect(reopened.service.star…
+       |                                                                           ^
+    107|   expect(reopened.links).toContain("online");
+    108|   expect(r.received.filter(f => f.type === "reconcile").every(f => f.p…
+
+Caused by: Error: Hub authorization unavailable
+ ❯ Object.closed src/hub/client.ts:106:94
+ ❯ HubSocket.end src/hub/socket.ts:50:113
+ ❯ WebSocket.<anonymous> src/hub/socket.ts:28:43
+ ❯ WebSocket.emitClose ../../node_modules/ws/lib/websocket.js:292:10
+ ❯ TLSSocket.socketOnClose ../../node_modules/ws/lib/websocket.js:1374:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'unavailable', reasonCode: 'unavailable' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > a scoped Fleet retains its own receipt/revocation state on restart and offline withdrawal selects only that Fleet
+TypeError: Cannot open database because the directory does not exist
+ ❯ new Database ../../node_modules/better-sqlite3/lib/database.js:54:10
+ ❯ exposure tests/hub-member-repair-3823.test.ts:51:14
+     49| }
+     50| function exposure(r: Awaited<ReturnType<typeof rig>>, profile: HubMemb…
+     51|   const db = new Database(join(r.memberHome, set.database));
+       |              ^
+     52|   const store = new HubExposureStore(db, { floor: new HubFileVersionFl…
+     53|     audit: createHubAudit({ db, contentKey: Buffer.from(readFileSync(j…
+ ❯ tests/hub-member-repair-3823.test.ts:174:50
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > a partial scoped set never falls back to the complete legacy set after a failed startup
+Error: ENOENT: no such file or directory, unlink '/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823/.artifacts/hub-net-test-X2XhWs/member/hub-member/23943870-fc1c-4fad-a4c4-4f275cc090c1/bindings/4239b010c1a43a9917fc561433b82ea8ba6f1b61a67a2feae3c3bbb4eaf806d4/floors/journal'
+ ❯ tests/hub-member-repair-3823.test.ts:194:50
+    192| it("a partial scoped set never falls back to the complete legacy set a…
+    193|   const { r } = await seeded(), next = await rePair(r), first = await …
+    194|   const set = memberSet(r.identity.hubId, next); unlinkSync(join(r.mem…
+       |                                                  ^
+    195|   await expect(member(r)).rejects.toThrow("partial");
+    196|   await expect(withdrawMemberExposuresOffline(r.memberHome, r.identity…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  4 failed | 36 passed (40)
+   Start at  22:49:47
+   Duration  5.15s (transform 1.72s, setup 191ms, import 2.15s, tests 3.25s, environment 0ms)
+
