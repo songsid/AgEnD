@@ -14,7 +14,9 @@ export function assistantStateStore(home: string): AssistantStateStore {
         if (!info.isFile() || info.isSymbolicLink() || info.size > 32 * 1024) throw new Error("Invalid room assistant state file");
         const text = await readFile(path, "utf8");
         if (Buffer.byteLength(text) > 32 * 1024) throw new Error("Room assistant state exceeds its limit");
-        return JSON.parse(text) as AssistantSavedState;
+        const value: unknown = JSON.parse(text);
+        if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid room assistant state");
+        return value as AssistantSavedState;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
         throw error;
