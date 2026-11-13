@@ -65,7 +65,8 @@ export function rowView(r) {
   return {
     title: r.assistant ? tr("hubAssistant") : String(r.name || ""), line2,
     avatar: { square: group, text: firstCharacter(r.assistant ? tr("hubAssistant") : String(r.name || "?")) || "?" },
-    dot: group ? null : limited ? waiting ? "busy" : null : r.assistant ? "ok" : presenceDot(r.agent?.presence),
+    // The Hub assistant's dot is its own state (spec §10: 待命, or 暫時無法回答 when it can't answer): `presence` on its row.
+    dot: group ? null : limited ? waiting ? "busy" : null : r.assistant ? presenceDot(r.presence || "idle") : presenceDot(r.agent?.presence),
     closed,
     unread: limited ? 0 : Math.max(0, Number(r.unread) || 0), mentioned: !limited && r.mentioned === true, archived: r.archived === true || closed,
   };

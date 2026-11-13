@@ -64,6 +64,20 @@ describe("the list's groups and rows (pure)", () => {
     expect(list.rowView(answer.rooms.find((r: any) => r.assistant))).toMatchObject({ title: "Hub 助理", line2: "Hub 提供", dot: "ok" });
     expect(list.rowView(answer.rooms.find((r: any) => r.name === "去年專案"))).toMatchObject({ archived: true });
   });
+  it("archived stays last and the Hub assistant stays last, whatever their time or unread (Fable via Muse)", () => {
+    const at = (n: number) => 1_000_000 + n;
+    const rows = [
+      { id: "g-old", kind: "group", name: "Old", people: 2, agents: 1, unread: 0, lastAt: at(1) },
+      { id: "g-arch", kind: "group", name: "Archived", people: 2, agents: 1, unread: 9, lastAt: at(99), archived: true },
+      { id: "g-new", kind: "group", name: "New", people: 2, agents: 1, unread: 0, lastAt: at(5) },
+      { id: "d-hub", kind: "direct", name: "Hub assistant", unread: 4, lastAt: at(100), assistant: true, presence: "idle" },
+      { id: "d-a", kind: "direct", name: "agent-a", unread: 0, lastAt: at(2), agent: { owner: { name: "A" }, presence: "idle" } },
+      { id: "d-b", kind: "direct", name: "agent-b", unread: 1, lastAt: at(3), agent: { owner: { name: "B" }, presence: "working" } },
+    ];
+    expect(list.groupRooms(rows).map((g: any) => g.items.map((r: any) => r.id))).toEqual([["g-new", "g-old", "g-arch"], ["d-b", "d-a", "d-hub"]]);
+    expect(list.rowView(rows[3]).dot).toBe("ok");
+    expect(list.rowView({ ...rows[3], presence: "paused" }).dot).toBe("warn");                       // 暫時無法回答
+  });
   it("today's chats: no dot or count; waiting is the working dot and said; closed is said and set apart", () => {
     const base = { id: "r1", exposureId: "e1", grantId: "g1", state: "active", exposureName: "Sales numbers", ownerName: "Olivia", lastAt: 5, waiting: false, features: [] };
     expect(list.rowView(list.listRoomOf(base))).toMatchObject({ line2: "Olivia", dot: null, unread: 0, mentioned: false });
