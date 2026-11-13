@@ -112,4 +112,19 @@ describe("Hub room invitations, owner side (section 8)", () => {
     fire(button(pg, "Try again"), "click"); await settle(20);
     expect(pg.root.textContent).toBe("");
   });
+
+  it("「在這些房間裡」 on an agent's page: its rooms with people; 退出這個房間 removes exactly that agent member; nothing when in none", async () => {
+    const { pg, client, calls, fx } = await fixture();
+    await pg.mount(h("div", null, h(inv.AgentRoomsSection, { client, exposureId: "exp-02" }), h(inv.AgentRoomsSection, { client, exposureId: "exp-mine-1" }))); await settle(20);
+    const items = () => [...pg.root.querySelectorAll(".hub-agent-rooms li span")].map((x: any) => x.textContent);
+    expect(pg.root.querySelectorAll(".hub-agent-rooms")).toHaveLength(1);
+    expect(pg.root.querySelector(".hub-agent-rooms h4").textContent).toBe("在這些房間裡");
+    expect(items()).toEqual(["研一主管週會 · 3 人", "研發例會 · 2 人"]);
+    fire(button(pg, "退出這個房間"), "click"); await settle(20);
+    expect(calls.filter(c => c.method === "DELETE").map(c => c.path)).toEqual(["/hub/v1/rooms/room-weekly/members/exp-02"]);
+    expect(items()).toEqual(["研發例會 · 2 人"]);
+    fx.rooms.find((r: any) => r.id === "room-rd").members.push({ id: "exp-mine-1", kind: "agent", name: "my-notes", owner: { name: "王經理" }, role: "member", presence: "idle" });
+    fx.emit("member.changed", { roomId: "room-rd" }); await settle(20);
+    expect(pg.root.querySelectorAll(".hub-agent-rooms")).toHaveLength(2);
+  });
 });

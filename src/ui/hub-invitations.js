@@ -69,3 +69,37 @@ export function InvitationsList({ client = hubClient(), heading = true } = {}) {
     ${note && !list.some(x => x.id === note.id) ? html`<p class="note" role="status">${note.text}</p>` : null}
   </section>`;
 }
+
+/**
+ * 「在這些房間裡」 on one of my shared agents' pages (section 8): the rooms it was let into, each with 退出這個房間.
+ * Nothing when it is in none. Follows member.changed / room.changed for those rooms, and invitation.changed (an accepted
+ * invitation adds a room).
+ */
+export function AgentRoomsSection({ client = hubClient(), exposureId } = {}) {
+  const [rooms, setRooms] = useState(null), [busy, setBusy] = useState(null), [failed, setFailed] = useState(null);
+  const live = useRef(true), asked = useRef(0);
+  const reload = async () => {
+    const mine = ++asked.current;
+    const r = await client.agentRooms(exposureId);
+    if (live.current && mine === asked.current && r?.ok && Array.isArray(r.rooms)) setRooms(r.rooms.filter(x => x && typeof x.id === "string"));
+  };
+  useEffect(() => {
+    live.current = true; void reload();
+    const again = () => { void reload(); };
+    const off = client.subscribeRooms?.({ "invitation.changed": again, "member.changed": again, "room.changed": again }) ?? (() => {});
+    return () => { live.current = false; off(); };
+  }, [client, exposureId]);
+  if (!rooms?.length) return null;
+  const leave = async (room) => {
+    setBusy(room.id); setFailed(null);
+    const r = await client.removeRoomMember(room.id, room.memberId || exposureId);
+    if (!live.current) return;
+    setBusy(null);
+    if (r?.ok) setRooms(old => old.filter(x => x.id !== room.id)); else setFailed(room.id);
+  };
+  return html`<section class="hub-agent-rooms"><h4>${hroom("inTheseRooms")}</h4>
+    <ul>${rooms.map(room => html`<li key=${room.id} data-room=${room.id}><span>${hi("roomPeople", room.name, Number(room.people) || 0)}</span>
+      <button type="button" class="btn btn-link" disabled=${busy !== null} onClick=${() => { void leave(room); }}>${hroom("leaveThisRoom")}</button>
+      ${failed === room.id ? html`<p class="note" role="alert">${hi("leaveFailed")}</p>` : null}</li>`)}</ul>
+  </section>`;
+}

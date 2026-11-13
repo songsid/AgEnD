@@ -10,6 +10,8 @@ register("hubInvitations", {
     failed: "That did not go through. Try again.",
     loadFailed: "Invitations could not be loaded.",
     retry: "Try again",
+    roomPeople: "{0} · {1} people",
+    leaveFailed: "It did not leave the room. Try again.",
   },
   "zh-TW": {
     leadOne: "房間裡的 1 個人可以在那裡 @ 它；它的回答房間裡的人都看得到。",
@@ -17,6 +19,8 @@ register("hubInvitations", {
     failed: "沒有送出，請再試一次。",
     loadFailed: "無法載入邀請。",
     retry: "再試一次",
+    roomPeople: "{0} · {1} 人",
+    leaveFailed: "沒有退出房間，請再試一次。",
   },
 });
 export const hi = (key, ...args) => t(`hubInvitations.${key}`, ...args);
