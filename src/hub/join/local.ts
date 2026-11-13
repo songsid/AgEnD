@@ -7,9 +7,9 @@ import { CompanyJoinClient, CompanyJoinRemoteError, CompanyJoinReachError } from
 import { hostname } from "node:os";
 import { readDisplay, saveStartDisplay, settleDisplay, type CompanyDisplay } from "./display.js";
 import { CompanyTrustStore, CompanyIdentityChanged } from "./trust.js";
-import { ENROLMENT_CODE, normalEnrolmentCode, parseCompanyAddress } from "./descriptor.js";
+import { ENROLMENT_CODE, normalEnrolmentCode, parseCompanyAddress, verifyCompanyDescriptor } from "./descriptor.js";
 export { ENROLMENT_CODE, normalEnrolmentCode } from "./descriptor.js";
-import { canonicalFleetOrigin, companyIdentityDigest, pkceChallenge, requireSeparateJoinHosts, CompanyBrowserHostnameConflict } from "./protocol.js";
+import { canonicalFleetOrigin, companyIdentityDigest, type JoinIdentity, pkceChallenge, requireSeparateJoinHosts, CompanyBrowserHostnameConflict } from "./protocol.js";
 import { hash, uuid, epoch, person, token, validated, HubProtocolError, parseStrictJson } from "../validation.js";
 import { sha256, issuerKeyId } from "../identity.js";
 import { HubMemberProfileStore, profileSchema, validateHubBinding, type HubMemberProfile } from "../profile.js";
@@ -256,10 +256,13 @@ export class CompanyJoinController {
     const moved = this.movedWebOrigin(body.hubId, profile), address = moved?.webOrigin ?? display.webOrigin;
     // The address the admin confirmed is the saved one (or, after a change, the Hub's current one; an older tab sends the saved).
     if (body.address !== address && body.address !== display.webOrigin) throw new HubProtocolError("conflict");
+    // M-2901 (#3429): the anchor, read BEFORE the binding retires — the pinned identity (with a verified moved web address)
+    // and the exact bytes of that web address's trust pin (or none). A moved member address is accepted only against it.
+    const anchor = { hub: moved?.hub ?? profile.hub, pin: new CompanyTrustStore(this.options.home).pinBytes(address) };
     await this.leaveExactly(body, authority, pairing);
     // The page's waiting tab (opened in the press) follows this handoff to the Hub's sign-in, as Start's does.
     return this.start({ address, label: display.label || probeLabel() || "Fleet", fleetOrigin: body.fleetOrigin, ...(body.handoffId ? { handoffId: body.handoffId } : {}) }, authority,
-      { expected: companyIdentityDigest(moved?.hub ?? profile.hub), supersedes: { fleetId: profile.fleetId, credential: profile.credential } });
+      { expected: companyIdentityDigest(anchor.hub), supersedes: { fleetId: profile.fleetId, credential: profile.credential }, anchor });
   }
   /**
    * M-2921 (spec 1.3): 「移除這個連接」 — one confirmed press: disconnect (member.leave first, when the Hub takes it) and
@@ -298,8 +301,30 @@ export class CompanyJoinController {
     pairing.cancel();
     return left;
   }
+  /**
+   * M-2901 (#3429): may Reconnect follow the Hub to a new member address? Only when the Hub's issuer-signed descriptor
+   * names exactly the identity this answer names, signed by the issuer key pinned before the binding retired, and only
+   * memberOrigin differs from that pinned identity (Hub ID, member key, issuer key and web address the same). The new
+   * digest is never its own proof: every field is compared with the anchor. A pin for this web address, when there is one,
+   * is replaced only if it is still exactly the bytes read before the binding retired. Returns the new expected digest.
+   */
+  private reanchor(anchor: { hub: JoinIdentity; pin: string | null }, metadata: { hub: JoinIdentity; descriptor?: unknown }, current: () => boolean): string {
+    const a = anchor.hub, h = metadata.hub;
+    if (!metadata.descriptor || !current()) throw new CompanyIdentityChanged();
+    let d: ReturnType<typeof verifyCompanyDescriptor>;
+    try { d = verifyCompanyDescriptor(metadata.descriptor); } catch { throw new CompanyIdentityChanged(); }
+    const next = companyIdentityDigest(h);
+    if (d.fingerprint !== next || companyIdentityDigest(d.hub) !== next
+      || h.hubId !== a.hubId || h.spkiSha256 !== a.spkiSha256 || h.issuerPublicKey !== a.issuerPublicKey || d.hub.issuerPublicKey !== a.issuerPublicKey
+      || h.webOrigin !== a.webOrigin || h.memberOrigin === a.memberOrigin) throw new CompanyIdentityChanged();
+    const store = new CompanyTrustStore(this.options.home);
+    if (anchor.pin === null) { if (store.pinBytes(h.webOrigin) !== null) throw new CompanyIdentityChanged(); }   // none then, none now: a first pin
+    else store.reanchor(a, h, anchor.pin, current);
+    if (!current()) throw new HubProtocolError("stale");
+    return next;
+  }
   async start(input: { address: string; label: string; fleetOrigin: string; handoffId?: string; code?: string }, authority: JoinLocalAuthority,
-    internal: { expected?: string; supersedes?: { fleetId: string; credential: string } } = {}) {
+    internal: { expected?: string; supersedes?: { fleetId: string; credential: string }; anchor?: { hub: JoinIdentity; pin: string | null } } = {}) {
     // M-2921 / Phase B: an enrolment code typed with the address goes to the Hub only when it takes one (enrolment-code-v1).
     const body = validated(z.strictObject({ address: z.string().max(8192), label: z.string().trim().min(1).max(120), fleetOrigin: z.string().max(2048), handoffId: uuid.optional(),
       code: z.string().regex(ENROLMENT_CODE).optional() }), input);
@@ -327,7 +352,7 @@ export class CompanyJoinController {
       const address = parseCompanyAddress(body.address);
       if (code && address.invitation) throw new HubProtocolError("invalid");   // B1: a code and an invitation together are refused
       requireSeparateJoinHosts(body.fleetOrigin, address.webOrigin);
-      const metadata = await this.client.discover(address.webOrigin, current);
+      const metadata = await this.client.discover(address.webOrigin, current, internal.anchor ? { descriptor: true } : {});
       if (!current()) throw new HubProtocolError("stale");
       requireSeparateJoinHosts(body.fleetOrigin, metadata.hub.webOrigin);
       if (code && !metadata.features.includes("enrolment-code-v1")) throw new CompanyJoinRemoteError("incompatible");   // before any pin or journal
@@ -339,7 +364,13 @@ export class CompanyJoinController {
           if (s.hubId) existing = new HubMemberProfileStore(this.options.home, s.hubId).readProfile().hub;
         }
       } catch { throw new HubProtocolError("uncertain"); }
-      new CompanyTrustStore(this.options.home).checkAndPin(metadata.hub, address.expected ?? internal.expected ?? null, existing, current);
+      let expected = address.expected ?? internal.expected ?? null;
+      // M-2901 (#3429): Reconnect after the Hub's member address moved — its signed descriptor, anchored to the identity
+      // pinned before the binding retired, may change memberOrigin and nothing else; the pin is replaced exactly. Anything
+      // else stays a changed identity (the checks below refuse it).
+      if (internal.anchor && address.expected === null && expected !== null && companyIdentityDigest(metadata.hub) !== expected)
+        expected = this.reanchor(internal.anchor, metadata, current);
+      new CompanyTrustStore(this.options.home).checkAndPin(metadata.hub, expected, existing, current);
       const folder = ensurePrivateDirectory(this.options.home, "hub-member/company-joins");
       if (readdirSync(folder).length >= 1024) throw new HubProtocolError("backpressure");
       const key = generateKeyPairSync("ed25519"), verifier = randomBytes(32).toString("base64url"), operationId = randomUUID(), browserState = randomBytes(32).toString("hex");

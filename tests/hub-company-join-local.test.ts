@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID, sign } from "node:crypto";
 import { signCompanyInvitation } from "../src/hub/join/invitation.js";
-import { parseCompanyAddress } from "../src/hub/join/descriptor.js";
+import { parseCompanyAddress, signCompanyDescriptor } from "../src/hub/join/descriptor.js";
 import { createPrivateKey } from "node:crypto";
 import { ENROLMENT_CODE, normalEnrolmentCode, CompanyJoinController } from "../src/hub/join/local.js";
 import { CompanyJoinRemoteError } from "../src/hub/join/client.js";
@@ -422,6 +422,80 @@ describe("M-2921 (spec 1.3, O1): the connected card's reconnect and 「移除這
     await expect(w.controller.reconnect({ ...w.shown, address: w.oldWeb, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing)).rejects.toThrow();
     expect(w.pushes.length).toBe(pushes);
     expect(existsSync(join(w.directory, new CompanyTrustStore(w.directory).path(NEW_WEB)))).toBe(false);
+    w.controller.close();
+  });
+
+  /** #3429: the Hub's MEMBER address moved (same Hub ID, member key, issuer key and web address); its signed descriptor. */
+  const NEW_MEMBER = "https://hub.example.test:9555";
+  async function memberMoved(opts: { descriptor?: "issuer" | "none" | "old" | "other-key"; change?: Partial<Record<"spkiSha256" | "hubId", string>>; newIssuer?: boolean; during?: (w: any, old: any) => void } = {}) {
+    const w = await joined(["join-supersedes-v1", "member-leave-v1"]);
+    const issuer = createPrivateKey(readFileSync(join(w.hubHome, "hub/keys/issuer-key.pem"), "utf8"));
+    const old = { ...w.metadata.hub }, store = new CompanyTrustStore(w.directory), pinBefore = store.pinBytes(old.webOrigin);
+    const other = generateKeyPairSync("ed25519");
+    Object.assign(w.metadata.hub, { memberOrigin: NEW_MEMBER }, opts.change ?? {},
+      opts.newIssuer ? { issuerPublicKey: other.publicKey.export({ type: "spki", format: "pem" }).toString() } : {});
+    w.metadata.identityDigest = companyIdentityDigest(w.metadata.hub);
+    const kind = opts.descriptor ?? "issuer";
+    // "other-key": the right tuple, signed by a key that is not the issuer's (signed by hand: the product signer refuses).
+    if (kind === "other-key") (w.metadata as any).descriptor = { v: 1, hub: { ...w.metadata.hub }, fingerprint: w.metadata.identityDigest,
+      signature: sign(null, Buffer.from(JSON.stringify(["agend-hub-company-descriptor-v1", w.metadata.identityDigest])), other.privateKey).toString("base64url") };
+    else if (kind !== "none") (w.metadata as any).descriptor = kind === "old" ? signCompanyDescriptor(old, issuer)
+      : signCompanyDescriptor({ ...w.metadata.hub }, opts.newIssuer ? other.privateKey : issuer);
+    const original = w.client.discover.getMockImplementation()!;
+    w.client.discover.mockImplementation(async (...args: any[]) => { const v = await (original as any)(...args); opts.during?.(w, old); return v; });
+    w.client.discover.mockClear();
+    return { ...w, old, store, pinBefore, pushesBefore: w.pushes.length };
+  }
+  const reconnect = (w: any) => w.controller.reconnect({ ...w.shown, address: w.old.webOrigin, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing);
+  it("#3429: the Hub's member address moved — Reconnect asks for the signed descriptor, follows it, and re-pins exactly that identity", async () => {
+    const w = await memberMoved();
+    expect(w.pinBefore).not.toBeNull();
+    await reconnect(w);
+    expect((w.client.discover.mock.calls[0] as unknown[])[2]).toEqual({ descriptor: true });
+    expect(w.pushes.length).toBe(w.pushesBefore + 1);                                           // past the identity check, to the Hub
+    const pin = JSON.parse(w.store.pinBytes(w.old.webOrigin)!);
+    expect(pin).toEqual({ v: 1, hub: w.metadata.hub, fingerprint: companyIdentityDigest(w.metadata.hub) });
+    w.controller.close();
+  });
+  it.each([
+    ["no descriptor", { descriptor: "none" as const }],
+    ["the descriptor of the old identity", { descriptor: "old" as const }],
+    ["a descriptor another key signed", { descriptor: "other-key" as const }],
+    ["a new member key (SPKI)", { change: { spkiSha256: "f".repeat(64) } }],
+    ["a new issuer key (a descriptor it signed itself)", { newIssuer: true }],
+    ["another Hub ID", { change: { hubId: randomUUID() } }],
+  ])("#3429: %s — refused as a changed identity; the pin is untouched; nothing is pushed", async (_n, opts) => {
+    const w = await memberMoved(opts);
+    await expect(reconnect(w)).rejects.toThrow();
+    expect(w.store.pinBytes(w.old.webOrigin)).toBe(w.pinBefore);
+    expect(w.pushes.length).toBe(w.pushesBefore);
+    w.controller.close();
+  });
+  it("#3429: the pin changed while Reconnect was discovering (another repair, a join): nothing is written over it", async () => {
+    let raced = "";
+    const w = await memberMoved({ during: (v: any, old: any) => {
+      const suffix = new CompanyTrustStore(v.directory).path(old.webOrigin);
+      raced = JSON.stringify({ v: 1, hub: { ...old }, fingerprint: companyIdentityDigest(old) }) + " ";
+      writeJoinPrivate(v.directory, suffix, raced, () => true);
+    } });
+    await expect(reconnect(w)).rejects.toThrow();
+    expect(w.store.pinBytes(w.old.webOrigin)).toBe(raced);
+    expect(w.pushes.length).toBe(w.pushesBefore);
+    w.controller.close();
+  });
+  it("#3429: the confirmation is withdrawn after discovery: nothing is written, nothing pushed", async () => {
+    const w = await memberMoved({ during: (v: any) => v.deny() });
+    await expect(reconnect(w)).rejects.toThrow();
+    expect(w.store.pinBytes(w.old.webOrigin)).toBe(w.pinBefore);
+    expect(w.pushes.length).toBe(w.pushesBefore);
+    w.controller.close();
+  });
+  it("#3429: only Reconnect follows: a plain Start at the moved Hub still stops at the saved pin", async () => {
+    const w = await memberMoved();
+    await w.controller.remove({ ...w.shown, address: w.old.webOrigin }, w.authority, w.pairing);
+    const before = w.store.pinBytes(w.old.webOrigin);
+    await expect(w.start()).rejects.toThrow();
+    expect(w.store.pinBytes(w.old.webOrigin)).toBe(before);
     w.controller.close();
   });
 });

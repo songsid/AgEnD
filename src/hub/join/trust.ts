@@ -40,6 +40,29 @@ export class CompanyTrustStore {
     const unchanged = () => current() && readPrivateFile(this.home, suffix, 8192) === previous;
     writeJoinPrivate(this.home, suffix, JSON.stringify({ v: 1, hub, fingerprint }), unchanged);
   }
+  /** M-2901 (#3429): the exact bytes of a web address's pin, or null when there is none (read only). */
+  pinBytes(webOrigin: string): string | null {
+    const suffix = this.path(webOrigin);
+    try { lstatSync(join(this.home, suffix)); } catch { return null; }
+    return readPrivateFile(this.home, suffix, 8192);
+  }
+  /**
+   * M-2901 (#3429), Reconnect only: the Hub's member address moved, proven by the caller (its issuer-signed descriptor,
+   * anchored to the identity pinned before the binding retired; only memberOrigin differs). Replace exactly `previous` —
+   * the pin read then, which must be `from`'s own — with `to`, for the same web address. A pin changed meanwhile (another
+   * repair, a join), a different web address or a stale reconnect writes nothing.
+   */
+  reanchor(from: JoinIdentity, to: JoinIdentity, previous: string, current: () => boolean): void {
+    if (from.webOrigin !== to.webOrigin) throw new CompanyIdentityChanged();
+    const suffix = this.path(to.webOrigin);
+    let parsed: z.infer<typeof trustSchema>;
+    try { parsed = validated(trustSchema, parseStrictJson(previous)); } catch { throw new CompanyIdentityChanged(); }
+    if (parsed.hub.webOrigin !== from.webOrigin || parsed.fingerprint !== companyIdentityDigest(parsed.hub) || parsed.fingerprint !== companyIdentityDigest(from))
+      throw new CompanyIdentityChanged();
+    const unchanged = () => current() && this.pinBytes(to.webOrigin) === previous;
+    if (!unchanged()) throw new CompanyIdentityChanged();
+    writeJoinPrivate(this.home, suffix, JSON.stringify({ v: 1, hub: to, fingerprint: companyIdentityDigest(to) }), unchanged);
+  }
   checkAndPin(hub: JoinIdentity, expected: string | null, existing: JoinIdentity | null, current: () => boolean): "known" | "first-use" | "company-link" {
     if (!current()) throw new HubProtocolError("stale");
     const fingerprint = companyIdentityDigest(hub), suffix = this.path(hub.webOrigin);
