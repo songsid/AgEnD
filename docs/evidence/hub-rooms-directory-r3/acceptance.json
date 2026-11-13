@@ -1,0 +1,112 @@
+{
+  "sourceCommit": "4097a9a633062a531e638a6e1e0590a2bf54a42b",
+  "parentCommit": "5b71d3f4d0d2496278fb90f26f326ebabf19c8ed",
+  "files": [
+    {
+      "path": "changes/3856-room-directory.md",
+      "sha256": "037f3afc22d88f63a777be9a2930811b6c5dfd879d9b9546fcd5ab04f82bf50f"
+    },
+    {
+      "path": "changes/3856-room-directory.zh-TW.md",
+      "sha256": "15971c4cf3ed10bb4c54b3af2c997c41513fe8a045bee3c1b2a81fdfb821e141"
+    },
+    {
+      "path": "docs/design/hub-rooms-directory-r3.md",
+      "sha256": "08021926942d5490abd753167cd7f58c0423cac9b20b6c54301a396d08845c31"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "a0f5e3870d3ba59c35d00f80f29d4c7c8526aa5b84bde69405b60b712f6dfc59"
+    },
+    {
+      "path": "src/hub/directory/directory.ts",
+      "sha256": "7a1afe4e9ce0ff35df9eaba6081a2d772ba3fb4e593997ab0750b3f48f0b0c38"
+    },
+    {
+      "path": "src/hub/directory/types.ts",
+      "sha256": "6ec6a7eee0a173ab9fbac3a3826e609295e8101333d48cb765168ba6a3775c0f"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "b71a71571842ee20b2391362e6275aa3d6153255d3f487c8071f242086781943"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "5c272a8d47c2a60617e04053c2cc8bd29c359474e7f7107e94a56172ab44ee79"
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "sha256": "ce4ef715f339c19d83aa5162cae61e982f8290bdfca37cb12014946e903a0a8f"
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "sha256": "27e5009501157fac085a96d372c35b33b05d8b1930e4f2cd1a9496c354ad4c75"
+    },
+    {
+      "path": "src/hub/rooms/admin.ts",
+      "sha256": "842f200621c479b58340caa908566439e25a17ad4f4b7d3594396721e3a6a61e"
+    },
+    {
+      "path": "src/hub/rooms/directory.ts",
+      "sha256": "2e2fe034190b84b6d2d3d6afeac497f1804e631ad7c4d2003bc2608e828b0061"
+    },
+    {
+      "path": "src/hub/rooms/schema.ts",
+      "sha256": "1e9a3ec1ddda0875b50eda4a07fe06935f77b38e81a6a3e3d5aa9e2c847011f3"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "6be7306341b65808c72f918fbf7dfecc4234c07a5746f3b8b53d2d6190d31fb3"
+    },
+    {
+      "path": "tests/hub-room-candidates-r3.test.ts",
+      "sha256": "1b86cbb3da98cd59247d2739e99aa6a65173c9fca6659b9d6da65d573a826e91"
+    },
+    {
+      "path": "tests/hub-room-directory-roster-r3.test.ts",
+      "sha256": "00e9d2bf9e12d79513f3cee7a5e0dfaa6e58bc1dc3f5653ac497c73fc708819d"
+    },
+    {
+      "path": "tests/hub-rooms-migration-r1.test.ts",
+      "sha256": "c9e29e96bcae7af1e0c118ec8cfe53ce8770df7529887fe778285db711ac2cac"
+    }
+  ],
+  "checks": [
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-candidates-r3.test.ts tests/hub-room-directory-roster-r3.test.ts tests/hub-room-admin-r3.test.ts tests/hub-room-assistant-r3.test.ts tests/hub-room-integration-r3.test.ts tests/hub-rooms-r1.test.ts tests/hub-room-agents-r2.test.ts tests/hub-grant-person-search-m3016.test.ts --maxWorkers=2",
+      "result": "64/64 across8 suites"
+    },
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-rooms-migration-r1.test.ts tests/hub-skill.test.ts tests/hub-groups-mount-s89.test.ts tests/hub-group-composition.test.ts --maxWorkers=2",
+      "result": "51/51 across4 additional suites"
+    },
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-candidates-r3.test.ts --maxWorkers=2",
+      "result": "7/7 after additional archived-invitation detail case"
+    },
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-admin-r3.test.ts --maxWorkers=2",
+      "result": "6/6 after pre-sign-in manager-label projection change"
+    },
+    {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+      "exitCode": 0
+    },
+    {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exitCode": 0
+    },
+    {
+      "command": "node scripts/changelog-assemble.mjs --check",
+      "exitCode": 0
+    }
+  ],
+  "directoryLibrary": {
+    "package": "ldapts",
+    "version": "9.2.0",
+    "sourceFile": "ldapts/src/Client.ts",
+    "sha256": "b3ee5f26f7cce4852011f9fb745f09ec2253ce7122571d74c2d85f8850fbb3c6",
+    "inspection": "_sendSearch accepts SizeLimitExceeded only with nonzero searchRequest.sizeLimit; complete room roster uses0. Dependency source inspected, not a real-directory execution."
+  },
+  "scope": "Real production local HTTP/SQLite; directory adapter under inert LDAP/TLS peers, C Team projection under injected port. No real AD, account, Fleet, vendor CLI/API or browser."
+}
