@@ -30,7 +30,9 @@ import { HubMemberClient, type HubMemberLink } from "../client.js";
 import { HUB_MEMBER_JOURNAL_MIGRATION, HubMemberJournal, type HubRestrictedOutbox } from "../member-journal.js";
 import { createHubMemberHandshake } from "../member-reconciliation.js";
 import { HubMemberProfileStore, type HubMemberProfile } from "../profile.js";
-import { createHubWebOriginRecorder, learnHubWebOrigin } from "../web-origin.js";
+import { createHubWebOriginRecorder, learnHubWebOrigin, HubMemberWebOriginStore } from "../web-origin.js";
+import { HubMemberRelocationStore, acceptHubRelocation, completeRelocationPin, knownMemberOrigins, promoteHubRelocation } from "../member-origin.js";
+import { CompanyTrustStore } from "../join/trust.js";
 import { createQuotaPublisher } from "../member/quota.js";
 import { HubFileVersionFloor } from "../version-floor.js";
 import type { HubAuditRecord, HubServerFrame } from "../types.js";
@@ -244,6 +246,8 @@ export function createMemberReceive(deps: {
   notices?: { receive: ReturnType<typeof createHubPairingNoticeInbox>["receive"] };
   /** M-3007: the snapshot sender's record of a policy refusal (what the owner's Settings shows). */
   publicationRefused?(requestId: string, code: string): void;
+  /** #3429 B: a `relocate` statement on this link (member-relocation-v1): kept durably, then acked on the same link. */
+  relocate?(statement: unknown, requestId: string, l: HubMemberLink): Promise<void>;
 }) {
   return async (frame: Exclude<HubServerFrame, { type: "welcome" }>, l: HubMemberLink): Promise<void> => {
     if (!deps.live() || !l.current()) return;
@@ -263,6 +267,7 @@ export function createMemberReceive(deps: {
       return;
     }
     if ((frame.type === "pairing.notice" || frame.type === "pairing.notice-v2" || frame.type === "pairing.notice-v3") && deps.notices) return deps.notices.receive(frame.payload, l);
+    if (frame.type === "relocate" && deps.relocate) return deps.relocate(frame.payload, frame.requestId, l);
     deps.log("warn", "Hub frame not expected on the member", { type: frame.type });
     throw new HubStateError("service-unavailable", `unexpected ${frame.type} frame`);
   };
@@ -469,17 +474,51 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         changed: () => options.pokeAttention() });
       options.attachPairingNotices?.(() => notices.list());
       teardown.add("security notices", () => options.attachPairingNotices?.(null));
+      // #3429 B: the member-address relocation (member-origin.ts). The audit is this member's own; the web address the
+      // Hub's pages are at now is #3797's, bound to every member address this Fleet trusts.
+      const recorder = (l: HubMemberLink) => createHubWebOriginRecorder({ db, audit, now, fleetId: profile.fleetId, policyVersion: () => l.revocationVersion });
+      const relocations = new HubMemberRelocationStore(options.home, hubId), trust = new CompanyTrustStore(options.home);
+      const trustedMemberOrigins = () => knownMemberOrigins(options.home, profile, profileDigest);
+      const webNow = () => new HubMemberWebOriginStore(options.home, hubId).effective(profile, trustedMemberOrigins());
+      if (profileDigest) {
+        try { completeRelocationPin(options.home, profile, profileDigest, webNow(), live, trust); }
+        catch (err) { options.log("warn", "A company pin left behind by a relocation was not completed", { error: (err as Error).message }); }
+      }
       const receive = createMemberReceive({ admission, journal, live, log: options.log, notices,
-        publicationRefused: (requestId, code) => sender.refused(requestId, code) });
+        publicationRefused: (requestId, code) => sender.refused(requestId, code),
+        relocate: async (statement, requestId, l) => {
+          if (!live() || !l.current() || !profileDigest) return;
+          let out: ReturnType<typeof acceptHubRelocation>;
+          try {
+            out = acceptHubRelocation({ home: options.home, profile, profileDigest, webOrigins: [webNow()], current: () => live() && l.current(),
+              log: options.log, record: recorder(l) }, statement);
+          } catch (err) {
+            // Not recorded or not kept: no ack (the Hub then revokes this Fleet's credential and it reconnects).
+            options.log("warn", "The Hub's relocation was not kept", { error: (err as Error).message }); return;
+          }
+          if ("ack" in out && l.current()) await l.send({ v: 1, type: "relocate.ack", requestId, linkEpoch: l.linkEpoch, payload: out.ack });
+        } });
       client = new HubMemberClient({
         home: options.home,
         hubId,
         memberOrigin: profile.hub.memberOrigin,
+        // #3429 B: a pending relocation's `to` first, then the anchor; a relocation state that does not verify: none.
+        ...(profileDigest ? { dial: () => relocations.dialOrder(profile, profileDigest) } : {}),
         current: live,
         reconcile: async (l) => {
           links.relink(l);
           online = null;
           await handshake(l);
+          // #3429 B: a fully validated, current welcome on the link dialled to the pending `to` proves that exact relocation.
+          if (l.current() && live() && profileDigest) {
+            const r = relocations.read(profile, profileDigest);
+            if (r.kind === "ok" && r.state.pending && r.state.pending.statement.to === l.endpoint) {
+              try {
+                promoteHubRelocation({ home: options.home, profile, profileDigest, webOrigin: webNow(), current: () => live() && l.current(),
+                  record: recorder(l), trust }, r.state.pending.digest);
+              } catch (err) { options.log("warn", "The Hub's relocation was not confirmed yet", { error: (err as Error).message }); }
+            }
+          }
           if (l.current() && live()) {
             online = l;
             quota.start(l);
@@ -495,6 +534,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (!live() || !l.current()) return;
           try {
             learnHubWebOrigin({ home: options.home, profile, current: () => live() && l.current(), log: options.log,
+              memberOrigin: l.endpoint, memberOrigins: trustedMemberOrigins(),
               record: createHubWebOriginRecorder({ db, audit, now, fleetId: profile.fleetId, policyVersion: () => l.revocationVersion }) }, statement);
           } catch (err) {
             // Not recorded or not kept: the address is unchanged; the next welcome's statement tries again (no second record).

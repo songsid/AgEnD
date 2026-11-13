@@ -60,8 +60,8 @@ export function verifyHubWebOrigin(input: unknown, binding: HubWebOriginBinding,
   return s;
 }
 /** A member's binding, from its own pinned profile (never from anything the Hub sends). */
-export function memberWebOriginBinding(profile: HubMemberProfile): { binding: HubWebOriginBinding; key: KeyObject } {
-  return { binding: { hubId: profile.hub.hubId, issuerKeyId: profile.issuerKeyId, fleetId: profile.fleetId, memberOrigin: profile.hub.memberOrigin },
+export function memberWebOriginBinding(profile: HubMemberProfile, memberOrigin = profile.hub.memberOrigin): { binding: HubWebOriginBinding; key: KeyObject } {
+  return { binding: { hubId: profile.hub.hubId, issuerKeyId: profile.issuerKeyId, fleetId: profile.fleetId, memberOrigin },
     key: createPublicKey(profile.hub.issuerPublicKey) };
 }
 
@@ -69,33 +69,41 @@ export function memberWebOriginBinding(profile: HubMemberProfile): { binding: Hu
 export class HubMemberWebOriginStore {
   constructor(private readonly home: string, readonly hubId: string) { validated(uuid, hubId); }
   private get suffix(): string { return `hub-member/${this.hubId}/web-origin.json`; }
-  /** The verified kept statement for this profile, or null. */
-  read(profile: HubMemberProfile): HubWebOriginStatement | null {
+  /**
+   * The verified kept statement for this profile, or null. #3429 B: the Hub signs it for the member address of the link
+   * it came on, so it verifies against any member address this Fleet trusts (`memberOrigins`: pairing.json's, and a
+   * relocation's — member-origin.ts knownMemberOrigins); by default pairing.json's own.
+   */
+  read(profile: HubMemberProfile, memberOrigins: readonly string[] = [profile.hub.memberOrigin]): HubWebOriginStatement | null {
     try {
       if (profile.hub.hubId !== this.hubId || !existsSync(join(this.home, this.suffix))) return null;
-      const { binding, key } = memberWebOriginBinding(profile);
-      return verifyHubWebOrigin(parseStrictJson(readPrivateFile(this.home, this.suffix, 8 * 1024)), binding, key);
+      const raw = parseStrictJson(readPrivateFile(this.home, this.suffix, 8 * 1024));
+      for (const origin of memberOrigins) {
+        const { binding, key } = memberWebOriginBinding(profile, origin);
+        try { return verifyHubWebOrigin(raw, binding, key); } catch { /* the next trusted member address */ }
+      }
+      return null;
     } catch { return null; }
   }
   /** The address this Fleet's links use: the kept statement's when one verifies with a revision above 0, else the profile's. */
-  effective(profile: HubMemberProfile): string {
-    const s = this.read(profile);
+  effective(profile: HubMemberProfile, memberOrigins?: readonly string[]): string {
+    const s = this.read(profile, memberOrigins);
     return s && s.revision > 0 ? s.webOrigin : profile.hub.webOrigin;
   }
   /**
    * Decide what a verified statement changes. "unchanged": nothing to write. "changed": the caller writes it with `save`.
    * Refuses ("stale") a lower revision than the kept one, or the same revision naming another address.
    */
-  plan(profile: HubMemberProfile, statement: HubWebOriginStatement): { kind: "unchanged" } | { kind: "changed"; from: string } {
-    const kept = this.read(profile), from = this.effective(profile);
+  plan(profile: HubMemberProfile, statement: HubWebOriginStatement, memberOrigins?: readonly string[]): { kind: "unchanged" } | { kind: "changed"; from: string } {
+    const kept = this.read(profile, memberOrigins), from = this.effective(profile, memberOrigins);
     const keptRevision = kept?.revision ?? 0;
     if (statement.revision < keptRevision || statement.revision === keptRevision && statement.webOrigin !== from && (kept || statement.revision === 0))
       throw new HubProtocolError("stale");
     if (statement.webOrigin === from && statement.revision === keptRevision) return { kind: "unchanged" };
     return { kind: "changed", from };
   }
-  save(profile: HubMemberProfile, statement: HubWebOriginStatement, current: () => boolean): void {
-    const { binding, key } = memberWebOriginBinding(profile);
+  save(profile: HubMemberProfile, statement: HubWebOriginStatement, current: () => boolean, memberOrigin = profile.hub.memberOrigin): void {
+    const { binding, key } = memberWebOriginBinding(profile, memberOrigin);
     const s = verifyHubWebOrigin(statement, binding, key);
     if (!current() || profile.hub.hubId !== this.hubId) throw new HubProtocolError("stale");
     ensurePrivateDirectory(this.home, `hub-member/${this.hubId}`);
@@ -114,7 +122,7 @@ const statementDigest = (statement: unknown): string => {
  * (a retry after a failed write or a lost process finds it and adds nothing).
  */
 export function createHubWebOriginRecorder(deps: { db: Database.Database; audit: Pick<HubAuditStore, "appendInTransaction">; now(): number;
-  fleetId: string; policyVersion(): number }): (entry: HubWebOriginAuditEntry) => void {
+  fleetId: string; policyVersion(): number }): (entry: { requestId: string; action: string; result: "completed" | "denied"; reasonCode: string }) => void {
   return entry => deps.db.transaction(() => {
     if (deps.db.prepare("SELECT 1 FROM hub_audit WHERE request_id = ? AND action = ? LIMIT 1").get(entry.requestId, entry.action)) return;
     deps.audit.appendInTransaction({ id: randomUUID(), sequence: 0, at: deps.now(), requestId: entry.requestId, actor: { kind: "local-host" },
@@ -130,6 +138,10 @@ export function createHubWebOriginRecorder(deps: { db: Database.Database; audit:
  */
 export function learnHubWebOrigin(deps: {
   home: string; profile: HubMemberProfile; current(): boolean;
+  /** #3429 B: the member address of the link the statement came on (the Hub signs for it); pairing.json's by default. */
+  memberOrigin?: string;
+  /** #3429 B: every member address this Fleet trusts, for the kept statement (member-origin.ts knownMemberOrigins). */
+  memberOrigins?: readonly string[];
   /** Commit one audit record (idempotent per requestId + action); throws if it did not commit. */
   record(entry: HubWebOriginAuditEntry): void;
   log(level: "info" | "warn", message: string, fields: Record<string, unknown>): void;
@@ -137,9 +149,9 @@ export function learnHubWebOrigin(deps: {
   const store = new HubMemberWebOriginStore(deps.home, deps.profile.hub.hubId), requestId = statementDigest(statement);
   let verified: HubWebOriginStatement, plan: ReturnType<HubMemberWebOriginStore["plan"]>;
   try {
-    const { binding, key } = memberWebOriginBinding(deps.profile);
+    const { binding, key } = memberWebOriginBinding(deps.profile, deps.memberOrigin);
     verified = verifyHubWebOrigin(statement, binding, key);
-    plan = store.plan(deps.profile, verified);
+    plan = store.plan(deps.profile, verified, deps.memberOrigins);
   } catch (error) {
     const reason = error instanceof HubProtocolError && error.code === "stale" ? "stale" : "unverified";
     deps.log("warn", "Hub web address statement refused", { reason });
@@ -148,7 +160,7 @@ export function learnHubWebOrigin(deps: {
   }
   if (plan.kind === "unchanged") return "unchanged";
   deps.record({ requestId, action: "web-origin.updated", result: "completed", reasonCode: `revision:${verified.revision}` });
-  store.save(deps.profile, verified, deps.current);
+  store.save(deps.profile, verified, deps.current, deps.memberOrigin);
   deps.log("info", "The Hub's web address changed", { from: plan.from, to: verified.webOrigin, revision: verified.revision });
   return "updated";
 }

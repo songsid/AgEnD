@@ -14,6 +14,7 @@ import { hash, uuid, epoch, person, token, validated, HubProtocolError, parseStr
 import { sha256, issuerKeyId } from "../identity.js";
 import { HubMemberProfileStore, profileSchema, validateHubBinding, type HubMemberProfile } from "../profile.js";
 import { HubMemberWebOriginStore } from "../web-origin.js";
+import { HubMemberRelocationStore, completeRelocationPin, knownMemberOrigins } from "../member-origin.js";
 import { ensurePrivateDirectory, readPrivateFile } from "../private-files.js";
 import { syncJoinPrivate, writeJoinPrivate, createJoinPrivate } from "./private.js";
 import { createLocalJoin, currentLocalJoinId, readLocalJoin, saveLocalJoin, selectLocalJoin,
@@ -231,9 +232,25 @@ export class CompanyJoinController {
   private movedWebOrigin(hubId: string, profile?: HubMemberProfile): { webOrigin: string; hub: HubMemberProfile["hub"] } | null {
     try {
       const p = profile ?? new HubMemberProfileStore(this.options.home, hubId).readProfile();
-      const webOrigin = new HubMemberWebOriginStore(this.options.home, hubId).effective(p);
+      const digest = new HubMemberProfileStore(this.options.home, hubId).profileDigest();
+      const webOrigin = new HubMemberWebOriginStore(this.options.home, hubId).effective(p, knownMemberOrigins(this.options.home, p, digest));
       return webOrigin !== p.hub.webOrigin ? { webOrigin, hub: { ...p.hub, webOrigin } } : null;
     } catch { return null; }
+  }
+  /**
+   * #3429 B: the identity this Fleet holds now — the pinned one, with the Hub's verified web address (#3797) and the member
+   * address its confirmed relocations lead to (member-origin.ts; the profile's own when none). Completes a company pin a
+   * crash left at an older confirmed hop first, so that pin is this identity's (design r3).
+   */
+  private currentIdentity(hubId: string, profile: HubMemberProfile, webOrigin: string): HubMemberProfile["hub"] {
+    const digest = new HubMemberProfileStore(this.options.home, hubId).profileDigest();
+    const r = digest ? new HubMemberRelocationStore(this.options.home, hubId).read(profile, digest) : null;
+    const memberOrigin = r && r.kind !== "corrupt" ? r.anchor : profile.hub.memberOrigin;
+    if (digest && r?.kind === "ok") {
+      try { completeRelocationPin(this.options.home, profile, digest, webOrigin, () => !this.closed, new CompanyTrustStore(this.options.home)); }
+      catch { /* left as it is: Reconnect then refuses a pin that is not this identity's */ }
+    }
+    return { ...profile.hub, webOrigin, memberOrigin };
   }
   /**
    * M-2921 (spec 1.3): one press repairs a held connection — as one claimed operation: disconnect it (if it is not yet),
@@ -258,7 +275,9 @@ export class CompanyJoinController {
     if (body.address !== address && body.address !== display.webOrigin) throw new HubProtocolError("conflict");
     // M-2901 (#3429): the anchor, read BEFORE the binding retires — the pinned identity (with a verified moved web address)
     // and the exact bytes of that web address's trust pin (or none). A moved member address is accepted only against it.
-    const anchor = { hub: moved?.hub ?? profile.hub, pin: new CompanyTrustStore(this.options.home).pinBytes(address) };
+    // #3429 B: with the member address its confirmed relocations lead to; a lagging company pin is completed first.
+    const anchor = { hub: this.currentIdentity(body.hubId, profile, moved?.webOrigin ?? profile.hub.webOrigin), pin: null as string | null };
+    anchor.pin = new CompanyTrustStore(this.options.home).pinBytes(address);
     await this.leaveExactly(body, authority, pairing);
     // The page's waiting tab (opened in the press) follows this handoff to the Hub's sign-in, as Start's does.
     return this.start({ address, label: display.label || probeLabel() || "Fleet", fleetOrigin: body.fleetOrigin, ...(body.handoffId ? { handoffId: body.handoffId } : {}) }, authority,

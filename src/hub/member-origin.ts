@@ -23,12 +23,12 @@ import { hubOrigin } from "./tls.js";
 import { canonicalArguments, issuerKeyId, sha256 } from "./identity.js";
 import { epoch, hash, uuid, validated, parseStrictJson, HubProtocolError } from "./validation.js";
 import type { HubMemberProfile } from "./profile.js";
+import { relocationStatementSchema } from "./protocol.js";
 
 export const HUB_MEMBER_RELOCATION_CAPABILITY = "member-relocation-v1";
 /** The longest confirmed chain kept: enough to complete a company pin left behind by a crash (design r3). */
 export const HUB_RELOCATION_CHAIN_MAX = 8;
-export const relocationStatementSchema = z.strictObject({ v: z.literal(1), from: z.string().min(1).max(2048), to: z.string().min(1).max(2048),
-  spkiSha256: hash, revision: epoch.min(1), signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/) });
+export { relocationStatementSchema };
 export type HubRelocationStatement = z.infer<typeof relocationStatementSchema>;
 export interface HubRelocationBinding { hubId: string; issuerKeyId: string; fleetId: string }
 const entrySchema = z.strictObject({ statement: relocationStatementSchema, digest: hash });
@@ -242,4 +242,19 @@ export function promoteHubRelocation(deps: {
   const promoted = store.promote(deps.profile, deps.profileDigest, digest, deps.current);
   completeRelocationPin(deps.home, deps.profile, deps.profileDigest, deps.webOrigin, deps.current, deps.trust);
   return promoted;
+}
+
+/**
+ * Every member address this Fleet trusts for a statement the Hub signed for one of them (#3797's web address): pairing.json's,
+ * each confirmed relocation's `to`, and a pending one's (its link authenticated the pinned key). A relocation state that
+ * does not verify adds nothing.
+ */
+export function knownMemberOrigins(home: string, profile: HubMemberProfile, profileDigest: string | null): string[] {
+  const out = [profile.hub.memberOrigin];
+  if (!profileDigest) return out;
+  const r = new HubMemberRelocationStore(home, profile.hub.hubId).read(profile, profileDigest);
+  if (r.kind !== "ok") return out;
+  for (const e of r.state.confirmed) out.push(e.statement.to);
+  if (r.state.pending) out.push(r.state.pending.statement.to);
+  return [...new Set(out)];
 }
