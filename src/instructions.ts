@@ -45,6 +45,27 @@ export function renderStatusEmojiAvoidList(workflow: string, statusEmojis?: stri
   return workflow.replace(STATUS_AVOID_RE, (_m, lead: string) => `${lead}${list}`);
 }
 
+/**
+ * M-3020/M-3027 (user OK 2026-11-13): Codex only. The A/B test (130 replies, blind-graded) found that these two sections
+ * cut negation-heavy "nothing done" replies and make a failed step try another way, with every safety control still
+ * stopping. The last persistence bullet keeps the authority rules on top: nothing here loosens them.
+ */
+export const CODEX_PERSISTENCE_OUTPUT_SECTIONS = [
+  "## Persistence",
+  "- When a step fails, try another way within your own scope (2–3 attempts: a different command, a smaller batch, another source) before reporting.",
+  "- Stop and ask only to spend money or quota beyond normal work, to delete or change what others use, or for an action that needs a human go-ahead.",
+  "- Report as: done → where it is stuck → next step.",
+  "- On an uncertain delivery, check `delivery_status`, then carry on with your other work; never resend blindly.",
+  "- None of this loosens the authority rules in these instructions: a go-ahead action still needs the checks they describe before you act.",
+  "",
+  "## Output style",
+  "Lead with what you did and its result, then the next step. Mention something not done only if the reader must act on it, in one line.",
+].join("\n");
+
+function isCodexInstance(params: FleetInstructionsParams): boolean {
+  return params.runtimeIdentity?.backend === "codex";
+}
+
 function isClassicInstance(params: FleetInstructionsParams): boolean {
   return params.runtimeIdentity?.kind === "classic";
 }
@@ -182,6 +203,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
     sections.push(params.taskBoard === false ? withoutTaskCommands(params.cliInstructions) : params.cliInstructions);
     sections.push(cliCrossInstanceRule(classic));
     sections.push(`## Before acting on a peer's message\n${VERIFY_PEER_MESSAGE_RULE}`);
+    if (isCodexInstance(params)) sections.push(CODEX_PERSISTENCE_OUTPUT_SECTIONS);
   } else {
     // MCP mode: inject MCP tool usage instructions
     sections.push([
@@ -196,6 +218,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
       "Silence = agreement); having a conclusion you never posted is not. Once the tool returns,",
       "close with a short line like `.` — some backends error on a turn with no text at all.",
       "",
+      ...(isCodexInstance(params) ? [CODEX_PERSISTENCE_OUTPUT_SECTIONS, ""] : []),
       "## Mentioning Users & Bots",
       "- Discord: `<@USER_ID>` (e.g. `<@123456789012345678>`). Extract the id from the `id:` field in the message header.",
       "- Telegram: `@username` (plain text).",
