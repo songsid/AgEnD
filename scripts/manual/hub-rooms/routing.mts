@@ -13,12 +13,18 @@ import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY } from "../../../src
 import { HubRoomAskAdapter, migrateRoomAsks, createRoomStatePublisher, type RoomAskLink, type AgentStateInput } from "../../../src/hub/member/room-ask.js";
 import type { HubRepresentativeDelivery } from "../../../src/hub/representative.js";
 import type { HubMemberLink } from "../../../src/hub/client.js";
+import { HubGroupRooms } from "../../../src/hub/rooms/service.js";
 
 const out = resolve(process.env.OUT ?? ".artifacts/rooms-integration/routing/browser"); mkdirSync(out, { recursive: true });
 const sha = (value: Buffer | string) => createHash("sha256").update(value).digest("hex");
 const receipt: any = { sourceHead: execFileSync("git", ["-c", "gc.auto=0", "rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   scope: `Actual R HTTP/SQLite and HubServer/HubMemberClient TLS/WSS, C durable adapter/state publisher, shared U1/U2 browser UI. ${process.env.EXTRA_ANSWERS === "1" ? "Four" : "Two"} owned Fleet fixtures; inert directory and physical input/report hook. Captured bridge composes the two existing test rigs, not a complete FleetManager mount. No Team provider, external service, real agent, account or vendor API.`,
-  checks: [], pictures: [], requests: [], served: {}, wire: [], events: [], streams: [] };
+  checks: [], pictures: [], requests: [], served: {}, wire: [], events: [], streams: [], eventFailures: [] };
+const originalEvent = HubGroupRooms.prototype.event;
+HubGroupRooms.prototype.event = async function (...args) {
+  try { return await originalEvent.apply(this, args); }
+  catch (error: any) { receipt.eventFailures.push({ at: Date.now(), type: args[1].type, roomId: args[1].roomId, code: error.code, message: error.message, stack: error.stack }); throw error; }
+};
 const check = (name: string, value: unknown, detail?: unknown) => { receipt.checks.push({ name, ok: !!value, ...(value ? {} : { detail }) }); console.log(`${value ? "PASS" : "FAIL"} ${name}`); };
 const until = async (test: () => unknown | Promise<unknown>, label: string) => {
   const end = Date.now() + 8_000; while (Date.now() < end) { if (await test()) return; await new Promise(r => setTimeout(r, 25)); } throw Error("Timed out: " + label);
@@ -217,6 +223,7 @@ try {
   }
 }
 finally {
+  HubGroupRooms.prototype.event = originalEvent;
   writeFileSync(join(out, "receipt.json"), JSON.stringify(receipt, null, 2));
   await browser?.close(); for (const p of peers) { p.publisher.close(); await p.adapter.close(); }
   await web?.close(); await new Promise<void>(yes => server.close(() => yes())); await net.close(); for (const p of peers) p.db.close();
