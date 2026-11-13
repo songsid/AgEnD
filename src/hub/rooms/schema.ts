@@ -32,3 +32,25 @@ CREATE TABLE hub_direct_room_reads (
 );
 `);
 } });
+
+/** R2 retained per-agent deliveries. Unknown components keep older binaries from opening this state. */
+export const HUB_ROOM_AGENTS_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-agents", version: 1, up(db: Database.Database) {
+  db.exec(`
+ALTER TABLE hub_room_members ADD COLUMN owner_at_join TEXT;
+ALTER TABLE hub_room_posts ADD COLUMN answer_to TEXT;
+ALTER TABLE hub_room_posts ADD COLUMN delivery_id TEXT;
+ALTER TABLE hub_room_posts ADD COLUMN stage TEXT;
+CREATE TABLE hub_room_deliveries (
+  id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES hub_group_rooms(id),
+  parent_id TEXT NOT NULL REFERENCES hub_room_posts(id), reply_id TEXT NOT NULL REFERENCES hub_room_posts(id),
+  exposure_id TEXT NOT NULL, exposure_revision INTEGER NOT NULL, fleet_id TEXT NOT NULL, owner TEXT NOT NULL,
+  asker TEXT NOT NULL, asker_member TEXT NOT NULL, agent_member TEXT NOT NULL,
+  payload_ref TEXT NOT NULL, payload_digest TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('queued','sent','answered','retired','expired')),
+  sent_epoch INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+  answer_id TEXT, answer_digest TEXT, UNIQUE(parent_id,exposure_id)
+);
+CREATE INDEX hub_room_deliveries_pending ON hub_room_deliveries(fleet_id,created_at) WHERE state IN ('queued','sent');
+CREATE INDEX hub_room_deliveries_parent ON hub_room_deliveries(parent_id);
+`);
+} });
