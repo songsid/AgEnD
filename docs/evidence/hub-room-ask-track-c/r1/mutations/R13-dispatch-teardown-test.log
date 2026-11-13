@@ -1,0 +1,31 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (46 tests | 1 failed) 157ms
+     × does not access a closed member database when a held input callback finishes after teardown 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > does not access a closed member database when a held input callback finishes after teardown
+AssertionError: promise rejected "TypeError: The database connection is not…" instead of resolving
+ ❯ tests/hub-room-ask-track-c.test.ts:260:38
+    258|     f.options.deliver = async input => { expect(await input.beforeInpu…
+    259|     f.adapter.accept(f.ask, f.link); await entered.promise; f.adapter.…
+    260|     await expect(f.adapter.settled()).resolves.toBeUndefined();
+       |                                      ^
+    261|   });
+    262|   it("keeps a frozen answer saved without reading the closed database …
+
+Caused by: TypeError: The database connection is not open
+ ❯ Database.prepare ../../node_modules/better-sqlite3/lib/methods/wrappers.js:5:21
+ ❯ HubRoomAskAdapter.row src/hub/member/room-ask.ts:90:69
+ ❯ HubRoomAskAdapter.dispatch src/hub/member/room-ask.ts:174:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 45 passed (46)
+   Start at  01:14:06
+   Duration  641ms (transform 212ms, setup 88ms, import 245ms, tests 157ms, environment 0ms)
+

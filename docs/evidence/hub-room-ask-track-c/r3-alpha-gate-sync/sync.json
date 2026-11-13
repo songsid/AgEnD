@@ -1,0 +1,27 @@
+{
+  "sourceMerge": "71a0c9fdee6dc2fbac07c6b41d651e34f5a5cce8",
+  "parents": [
+    "d82bca5ca0bc75960fc7e474257b6858a9d28bd7",
+    "889e62d478caaf964141950ebec8570216a9f442"
+  ],
+  "alpha": "889e62d478caaf964141950ebec8570216a9f442",
+  "kind": "clean plain merge; one inherited smoke-script change; no manual resolution",
+  "unchangedOwn": [
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "before": "3bdba164fd640419ec3005d437f01b64733959f1",
+      "current": "3bdba164fd640419ec3005d437f01b64733959f1"
+    },
+    {
+      "path": "tests/hub-room-ask-track-c.test.ts",
+      "before": "13f7f3b79bd3c1e097ed0043e5babd14ef0e0d66",
+      "current": "13f7f3b79bd3c1e097ed0043e5babd14ef0e0d66"
+    },
+    {
+      "path": "docs/design/hub-room-ask-member.md",
+      "before": "97b7cf0ed80f949f2a806365f6c2bb6c7ac7e809",
+      "current": "97b7cf0ed80f949f2a806365f6c2bb6c7ac7e809"
+    }
+  ],
+  "localVerification": "No local re-run for unchanged injectable adapter. Incoming script equals standalone3869 with fresh174-check GATEci pass; oldhead ui-gate red was the inherited fixture. New exacthead CI/review required; no oldgreen carry."
+}

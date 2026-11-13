@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (38 tests | 1 failed) 154ms
+     × publishes the actual state once, sends only changes and gives a new link a baseline 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C current-link agent.state publisher > publishes the actual state once, sends only changes and gives a new link a baseline
+AssertionError: expected "vi.fn()" to be called 1 times, but got 2 times
+ ❯ tests/hub-room-ask-track-c.test.ts:240:95
+    238|   }
+    239|   it("publishes the actual state once, sends only changes and gives a …
+    240|     const f = publisher(); await f.p.refresh(); await f.p.refresh(); e…
+       |                                                                                               ^
+    241|     expect(f.link.sendState).toHaveBeenLastCalledWith({ exposureId: f.…
+    242|     f.setState({ process: "running", execution: "working" }); await f.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 37 passed (38)
+   Start at  00:57:49
+   Duration  766ms (transform 290ms, setup 96ms, import 362ms, tests 154ms, environment 0ms)
+

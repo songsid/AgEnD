@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-ask-track-c.test.ts (46 tests | 1 failed) 146ms
+     × accepts a 31st older replied-to context row, while refusing 31 ordinary rows 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-ask-track-c.test.ts > Track C durable room adapter (injectable Track R seam) > accepts a 31st older replied-to context row, while refusing 31 ordinary rows
+AssertionError: expected [Function] to throw an error
+ ❯ tests/hub-room-ask-track-c.test.ts:238:73
+    236|   it("accepts a 31st older replied-to context row, while refusing 31 o…
+    237|     const f = member(), rows = Array.from({ length: 31 }, (_, i) => ({…
+    238|     expect(() => f.adapter.accept({ ...f.ask, context: rows }, f.link)…
+       |                                                                         ^
+    239|     f.adapter.accept({ ...f.ask, context: [{ ...rows[0]!, repliedTo: t…
+    240|     expect(f.inputs).toHaveLength(1); expect(f.inputs[0]!.text).toCont…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 45 passed (46)
+   Start at  01:13:49
+   Duration  603ms (transform 216ms, setup 94ms, import 228ms, tests 146ms, environment 0ms)
+
