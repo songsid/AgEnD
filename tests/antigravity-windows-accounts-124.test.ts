@@ -236,6 +236,25 @@ describe("signing the computer's OWN Antigravity login out", () => {
     expect(deleted).toHaveLength(1);
     await f.stop();
   });
+  // AGEND-250 (#3771 review P2-3).
+  it("AGEND-250 P2-3: a credential deletion that did not happen (could not run, another exit) is refused and `agy models` is not even asked; exit 1 (no such entry) goes on to the strict check", async () => {
+    for (const code of [null, 2, 5, 1_000]) {
+      const asked = vi.fn(async () => false);                                  // a check that WOULD say "signed out" must not be what proves it
+      const { f } = credentialRig({ deleteCredential: async () => code, defaultStatus: asked });
+      await expect(f.runtime.handle("accounts.signout", { cli: "antigravity", actor: ACTOR }), String(code)).rejects.toThrow(/could not be removed from this computer/);
+      expect(asked).not.toHaveBeenCalled();
+      expect(audit(f).filter(r => r.cli === "antigravity").at(-1)).toMatchObject({ action: "login.signout", outcome: "refused" });
+      await f.stop();
+    }
+    const { f } = credentialRig({ deleteCredential: async () => 1 }); f.agyAnswer(false);
+    expect(await f.runtime.handle("accounts.signout", { cli: "antigravity", actor: ACTOR })).toEqual({ loggedIn: false });
+    await f.stop();
+  });
+  it("AGEND-250 P2-3: an unknown check (offline, timeout: null) after a successful deletion is not reported as signed out", async () => {
+    const { f } = credentialRig(); f.agyAnswer(null);
+    await expect(f.runtime.handle("accounts.signout", { cli: "antigravity", actor: ACTOR })).rejects.toThrow(/could not be confirmed/);
+    await f.stop();
+  });
   it("is refused while a task runs on the computer, while a sign-in is open, when the switch is off, and for a CLI that has no login of its own", async () => {
     let running = true;
     const { f, deleted } = credentialRig({ taskRunning: () => running }); f.agyAnswer(false);

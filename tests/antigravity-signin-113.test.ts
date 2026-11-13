@@ -520,12 +520,16 @@ describe("the Accounts rows for a computer's Antigravity login", () => {
 
 describe("Windows: Antigravity's own login on that computer", () => {
   const exe = { path: "C:\\agy.exe", command: "C:\\agy.exe", args: [] as string[] };
-  it("is `agy models` read by its exit code: 0 is signed in, a failure is signed out, and a command that could not be run or ran out of time is unknown", async () => {
+  it("is `agy models`: exit 0 is signed in; a failing exit that says \"Please sign in\" is signed out; any other failure (offline, DNS, a crash), and a command that could not be run or ran out of time, is unknown (AGEND-250 P2-3)", async () => {
     const seen: string[][] = [];
-    const ask = async (code: number | null) => probeDefaultLogin("antigravity", async () => exe, async (_entry, args) => { seen.push(args); return code; });
-    expect(await ask(0)).toBe(true); expect(await ask(1)).toBe(false); expect(await ask(2)).toBe(false); expect(await ask(null)).toBeNull();
+    const SAID = "Fetching available models...\nError: Please sign in to view available models. Launch the CLI without arguments to sign in.";
+    const ask = async (code: number | null, text = "") => probeDefaultLogin("antigravity", async () => exe, async (_entry, args) => { seen.push(args); return { code, text }; });
+    expect(await ask(0, "gemini-3.1-pro-high")).toBe(true); expect(await ask(0)).toBe(true);
+    expect(await ask(1, SAID)).toBe(false); expect(await ask(2, SAID)).toBe(false);
+    for (const text of ["", "dial tcp: lookup example.com: no such host", "context deadline exceeded", "panic: runtime error"]) { expect(await ask(1, text), text).toBeNull(); expect(await ask(2, text), text).toBeNull(); }
+    expect(await ask(null)).toBeNull(); expect(await ask(null, SAID)).toBeNull();
     expect(seen.every(args => args.join(" ") === "models")).toBe(true);
-    expect(await probeDefaultLogin("antigravity", async () => null, async () => 0)).toBeNull();     // no agy.exe: not "signed out"
+    expect(await probeDefaultLogin("antigravity", async () => null, async () => ({ code: 0, text: "" }))).toBeNull();     // no agy.exe: not "signed out"
   });
   it("the inventory reads the same listing it already asks for: models = signed in, 'Please sign in' = signed out, any other failure = unknown", async () => {
     const detect = async (listing: { ok: boolean; text: string }) => {

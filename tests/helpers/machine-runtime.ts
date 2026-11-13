@@ -62,6 +62,8 @@ export interface RigOptions {
   taskRunning?: () => boolean | Promise<boolean>;
   /** AGEND-124: what the CLI's status says about a named account's folder, by CLI (default: the one `answer`). */
   status?: RemoteAccountsDeps["status"];
+  /** AGEND-250: what the Runtime asks for the computer's own login (default: the one `agyAnswer`). */
+  defaultStatus?: RemoteAccountsDeps["defaultStatus"];
 }
 export function runtimeRig(options: RigOptions = {}) {
   const pairing = scratch(), root = credentialProfilesRoot(pairing), children: FakeChild[] = [], spawned: Array<{ args: readonly string[]; env: NodeJS.ProcessEnv | undefined }> = [];
@@ -71,7 +73,7 @@ export function runtimeRig(options: RigOptions = {}) {
   let agyAnswer: boolean | null = false;                       // Antigravity's own login on that computer (`agy models` by its exit code)
   let clock = Date.now();                                      // the Runtime's clock: it paces sign-in starts (5 s apart), so a test moves it
   const deps: RemoteAccountsDeps = { pairingDirectory: pairing, credentialRoot: root, now: () => clock, status: options.status ?? (async () => answer), find: async cli => (cli === "antigravity" ? { path: "agy.exe", command: "agy.exe", args: [] } : { path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }),
-    defaultStatus: async () => agyAnswer,
+    defaultStatus: options.defaultStatus ?? (async () => agyAnswer),
     ...(options.isolated ? { isolated: options.isolated } : {}), ...(options.deleteCredential ? { deleteCredential: options.deleteCredential } : {}), taskRunning: options.taskRunning ?? (() => false),
     ...(options.noteLogin ? { noteLogin: options.noteLogin } : {}),
     runLogout: options.runLogout ?? (async () => 0), inUse: () => undefined, inUseNow: () => undefined, defaultProfile: options.defaultProfile ?? (() => undefined), changed: options.changed ?? vi.fn(),

@@ -21920,7 +21920,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const check = LOGIN_FLOWS[backend]?.authCheck;
         if (!check) return "unknown" as const;
         const launch = profile ? credentialProfileLaunch(this.dataDir, backend, profile) : null;
-        return checkAuthStatus(check, launch?.env, launch?.args);
+        // AGEND-250 (#3771 review P2-3): the strict reading. "Signed out" (`invalid`) only when the CLI exited non-zero AND said it is signed out ("Please sign in"); a DNS failure, a timeout or any other
+        // nonzero exit is `unknown`, which the sign-out reports as unverified. The permissive `checkAuthStatus` took every nonzero exit as proof, so an offline machine "proved" a sign-out that had not happened.
+        return checkAuthSignedOut(check, launch?.env, launch?.args);
       }),
     };
     let finished!: () => void;

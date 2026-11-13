@@ -171,19 +171,31 @@ async function exitCodeOf(file: string, args: string[], timeout: number, env: No
   }
 }
 /**
+ * AGEND-250: like `exitCodeOf`, and the words the command printed, for the strict reading below. They are read here and never returned by `probeDefaultLogin`: only a yes, a no or a null leaves it.
+ */
+async function exitAndTextOf(file: string, args: string[], timeout: number, env: NodeJS.ProcessEnv): Promise<{ code: number | null; text: string }> {
+  try { const r = await exec(file, args, { env, encoding: "utf8", timeout, maxBuffer: 64 * 1024, windowsHide: true, shell: false }); return { code: 0, text: `${r.stdout}\n${r.stderr}`.trim() }; }
+  catch (error) {
+    const e = error as { code?: unknown; killed?: boolean; stdout?: string; stderr?: string };
+    return !e.killed && typeof e.code === "number" ? { code: e.code, text: `${e.stdout ?? ""}\n${e.stderr ?? ""}`.trim() } : { code: null, text: "" };
+  }
+}
+/**
  * A CLI's own login on this computer, for one whose login is the computer's (cli-registry.ts: `runtime.signIn.profile === "none"`; Antigravity): its registry `authStatus` command (`agy models`: a
- * listing, never a login and never a model request) read by its exit code, as the host's `authCheck` reads it. Windows keeps that login in the Credential Manager under one fixed name, so there is
- * one answer per Windows user and no profile to ask about. true = exit 0, false = the CLI said no, null = it could not be asked. Started only because an administrator's request asked (a
- * sign-in's own checks): never on a timer or a read.
+ * listing, never a login and never a model request). Windows keeps that login in the Credential Manager under one fixed name, so there is one answer per Windows user and no profile to ask about.
+ * true = exit 0. false = a failing exit that SAID it is signed out (the shared reader `parseNativeAuthResult`: "Please sign in"). null = it could not be asked, or failed without saying so (no network, a DNS
+ * failure, a timeout, a crash): never "signed out" (AGEND-250, #3771 review P2-3: a sign-out must not be proven by an offline `agy models`). Started only because an administrator's request asked.
  */
 export async function probeDefaultLogin(cli: RuntimeDefaultLoginCli, find: (id: NativeCliId) => Promise<NativeCliExecutable | null> = findCli,
-  run: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<number | null> = (entry, args, env) => exitCodeOf(entry.command, [...entry.args, ...args], 20_000, env)): Promise<boolean | null> {
+  run: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<{ code: number | null; text: string }> = (entry, args, env) => exitAndTextOf(entry.command, [...entry.args, ...args], 20_000, env)): Promise<boolean | null> {
   const status = runtimeFacts(cli, "authStatus");
   if (!status) return null;
   const executable = await find(cli);
   if (!executable) return null;
-  const code = await run(executable, [...nativeUpdateGuard(cli), ...status.argv], nativeCliEnvironment());
-  return code === null ? null : code === 0;
+  const { code, text } = await run(executable, [...nativeUpdateGuard(cli), ...status.argv], nativeCliEnvironment());
+  if (code === null) return null;
+  if (code === 0) return true;
+  return parseNativeAuthResult(cli, false, text) === false ? false : null;
 }
 /**
  * AGEND-124: removes one Windows Credential Manager entry by name (`cmdkey /delete:<name>`), the entry a CLI keeps the computer's OWN login in (`runtime.signOut.credential`: `gemini:antigravity`, the one agy's own

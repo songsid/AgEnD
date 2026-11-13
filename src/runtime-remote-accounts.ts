@@ -713,13 +713,16 @@ export class RemoteAccounts {
       run: async () => {
         this.gate(ctx, "accounts");
         if (this.slot.current() || (await this.deps.taskRunning?.()) !== false) throw new ProfileOwnershipRefusal("A sign-in or a task started on this computer; nothing was changed", "in_use");
-        // 0: deleted. Any other exit is not by itself a failure (an entry that was not there is already signed out): `agy models` below is what answers.
-        await this.deps.deleteCredential!(facts.credential);
+        // 0: deleted. 1: no such entry (already signed out). AGEND-250 (#3771 review P2-3): anything else (could not run, access denied, another exit) is a deletion that did not happen, and is not ignored:
+        // `agy models` below could then say "signed out" for a credential that is still there. The ONE reading that proves a sign-out is the explicit "Please sign in" (`defaultStatus`: false).
+        const deleted = await this.deps.deleteCredential!(facts.credential);
+        if (deleted !== 0 && deleted !== 1) throw new SignInRefusal(`${cliName(cli)}'s saved sign-in could not be removed from this computer, so it was not signed out`, "failed");
         this.gate(ctx, "accounts");
         const loggedIn = await this.deps.defaultStatus!(cli);
         this.gate(ctx, "accounts");
         if (loggedIn !== null) { try { this.deps.noteLogin?.(cli, loggedIn); } catch { /* the answer is still given */ } }
         await this.refreshed(ctx);
+        if (loggedIn === null) throw new SignInRefusal(`${cliName(cli)}'s sign-out could not be confirmed (the check did not say it is signed out; is the computer offline?), so it is not reported as signed out`, "failed");
         if (loggedIn !== false) throw new SignInRefusal(`${cliName(cli)} is still signed in on this computer after sign-out`, "failed");
         return { loggedIn: false as const };
       },

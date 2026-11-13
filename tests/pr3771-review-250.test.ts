@@ -10,6 +10,8 @@ import { credentialProfileHome } from "../src/backend/credential-profile.js";
 import { createStructuredSignInTransport } from "../src/structured-signin-transport.js";
 import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecycle.js";
 import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
+import { FleetManager } from "../src/fleet-manager.js";
+import { LoginWindowLock } from "../src/login-window-lock.js";
 
 const dirs: string[] = [];
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-250-")); dirs.push(d); return d; };
@@ -111,5 +113,35 @@ describe("P2-2: lifecycle auth verification asks the NAMED folder (env AND args)
     await lc.verifyBackendAuth("claude-code", "work");
     expect(probes[0]!.env).toEqual({ CLAUDE_CONFIG_DIR: credentialProfileHome(w.data, "claude-code", "work") });
     expect(probes[0]!.argv).not.toContain("--app_data_dir");
+  });
+});
+
+describe("P2-3: Disconnect treats a network failure as unknown (host), and a deletion that did not happen is not ignored (Windows)", () => {
+  const SAID = "Fetching available models...\nError: Please sign in to view available models.";
+  const hostSignOut = async (w: ReturnType<typeof world>, models: { code: number; output: string }, profile: string | null = "work") => {
+    writeFileSync(join(w.home("work"), TOKEN), "FIXTURE-NOT-A-TOKEN");
+    setAuthCheckRunnerForTests(async () => models);
+    const events: unknown[] = [];
+    const fm: any = { dataDir: w.data, logger: { info: vi.fn(), debug: vi.fn() }, fleetConfig: { defaults: {}, instances: {} }, sseClients: new Set(), accountUses: () => ({ agents: [], classic: [], fleetDefaults: new Map() }),
+      loginWindow: new LoginWindowLock(), loginController: { signingIn: () => false, activeBackend: null }, removalRequest: (FleetManager.prototype as any).removalRequest,
+      withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(), forgetSignInIdentities: () => events.push("forget"),
+      backendAvailability: { refresh: async () => {} }, accountSignOutDeps: { platform: "linux", run: async () => ({ code: 0 }), keychainHas: async () => false } };
+    return (FleetManager.prototype as any).signOutAccount.call(fm, "antigravity", profile, true, "test");
+  };
+  it("a NAMED account: exit 1 saying \"Please sign in\" is a proven sign-out; exit 1 from a DNS failure, a timeout wording or nothing is `unverified`, never proven; exit 0 is still signed in", async () => {
+    expect(await hostSignOut(world(), { code: 1, output: SAID })).toEqual({ ok: true });
+    for (const output of ["dial tcp: lookup example.com: no such host", "context deadline exceeded", ""]) expect(await hostSignOut(world(), { code: 1, output }), output).toEqual({ ok: true, unverified: true });
+    expect(await hostSignOut(world(), { code: 0, output: "gemini-3.1-pro-high" })).toEqual({ ok: false, error: "still_signed_in" });
+  });
+  it("the check runs under the account's own launch (the folder argument AND the pin), not the default's", async () => {
+    const w = world(), seen: Array<{ argv: string[]; env?: Record<string, string> }> = [];
+    writeFileSync(join(w.home("work"), TOKEN), "FIXTURE-NOT-A-TOKEN");
+    setAuthCheckRunnerForTests(async (argv, _ms, env) => { seen.push({ argv: [...argv], ...(env ? { env } : {}) }); return { code: 1, output: SAID }; });
+    const fm: any = { dataDir: w.data, logger: { info: vi.fn(), debug: vi.fn() }, fleetConfig: { defaults: {}, instances: {} }, sseClients: new Set(), accountUses: () => ({ agents: [], classic: [], fleetDefaults: new Map() }),
+      loginWindow: new LoginWindowLock(), loginController: { signingIn: () => false, activeBackend: null }, removalRequest: (FleetManager.prototype as any).removalRequest,
+      withAccountWriter: (FleetManager.prototype as any).withAccountWriter, accountWriters: new Set(), forgetSignInIdentities: () => {}, backendAvailability: { refresh: async () => {} },
+      accountSignOutDeps: { platform: "linux", run: async () => ({ code: 0 }), keychainHas: async () => false } };
+    await (FleetManager.prototype as any).signOutAccount.call(fm, "antigravity", "work", true, "test");
+    expect(seen).toHaveLength(1); expect(seen[0]!.argv).toContain("--app_data_dir"); expect(seen[0]!.env).toMatchObject({ SSH_CONNECTION: "127.0.0.1 0 127.0.0.1 0" });
   });
 });
