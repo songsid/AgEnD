@@ -4,7 +4,7 @@ Root cause: company discovery asked OS roots to validate the browser listener be
 
 The Fleet now offers the PM's one-button trust prompt for a valid, correctly named, self-signed leaf only. It saves that leaf's SHA-256 certificate fingerprint per canonical web origin. Discovery tries normal trust first; a trusted certificate needs no prompt. Only after that fails can an enabled Fleet use an explicitly chosen or saved exact leaf. A changed untrusted certificate refuses ordinary connection; “Trust again and continue” replaces the exact previous pin after a new explicit press. Member/issuer identity and command transport keep their existing checks. The `hub_member.pilot_trust` boolean defaults on only in installed alpha versions; stable and unknown versions default off. Turning it off stops use of the saved browser pins.
 
-Source: `9149c5ff7be174246bf522d902f5e4c6f1e4689b`, plain merge of alpha `51b9f694` included. `SHA256SUMS` binds the ten relevant production files. All source and test changes are committed. No roles activation is included.
+Current source: `2d58d2d23ec641ad01a36fc82d3bb21f5719cd28`, plain merge of alpha `d3400439` (#3844) included. Initial source was `9149c5ff7be174246bf522d902f5e4c6f1e4689b` on alpha `51b9f694`. `SHA256SUMS` binds the ten relevant production files. All source and test changes are committed. No roles activation is included.
 
 ## Checks
 
@@ -14,7 +14,7 @@ Source: `9149c5ff7be174246bf522d902f5e4c6f1e4689b`, plain merge of alpha `51b9f6
 - Native TypeScript source and test checks pass. Commands use `GOMAXPROCS=2`, Vitest `--maxWorkers=2`, and `nice -n10`, starting below load 10.
 - `scripts/manual/hub-pilot-trust/accept.mjs`: one serial Chromium, 16 English/zh-TW phone/desktop frames for first trust, changed certificate, disabled setting and the saved-pin hint. No horizontal overflow or page errors. The full fingerprint is shown in first-trust frames. Four representative originals were visually inspected.
 
-The browser uses the production Fleet connection card, Preact, modules and CSS on a small loopback shell with API DTO fixtures. Its receipt names source `0e12b91e1`; every served UI/CSS blob is byte-identical at `9149c5ff7`. This is UI evidence, separate from the real protocol integration test; no packaged runtime or live browser company sign-in claim. Browser, server, scratch keys and test listeners close in their own finally/cleanup paths.
+The browser uses the production Fleet connection card, Preact, modules and CSS on a small loopback shell with API DTO fixtures. The refreshed receipt names source `2d58d2d23`; its served UI/CSS files match that committed source. This is UI evidence, separate from the real protocol integration test; no packaged runtime or live browser company sign-in claim. Browser, server, scratch keys and test listeners close in their own finally/cleanup paths.
 
 Reproduce the focused checks:
 
@@ -27,3 +27,9 @@ GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json
 For browser evidence, set `PW_DIR` to an owned playwright-core install and `CHROME` to its Chromium executable, then run `nice -n10 node scripts/manual/hub-pilot-trust/accept.mjs`.
 
 Limits: pilot trust is an explicit first-use choice. A browser opened for company sign-in still applies that browser's own certificate policy. Expired, wrong-name and untrusted-chain certificates are not offered. Turning the Fleet setting off is the immediate rollback; reverting this feature restores OS-only discovery. Saved certificate files remain inert when disabled and are separate from pairing state.
+
+## Plain #3844 sync
+
+The merge `2d58d2d23` has parents `cf65c098c` and alpha `d3400439`. Both conflicts are adjacent UI edits: CompanyJoinSettings keeps `onOffer` and `pilotRevision`, and the parent keeps both states, forwards both props, retains the conditional Other ways wrapper, and mounts pilot settings outside it. Both effects remain. No backend/transport/type source changes occurred in this sync.
+
+Six affected suites pass **141/141**, including P6 hiding/reappearing, pairing guidance, the trust UI, company join, existing Hub UI and the skill. The original backend/integration and type checks retain their recorded scope. Sixteen UI frames were refreshed at the merged source; the script now explicitly checks that Other ways is absent for the successful saved-pin probe and present for untrusted/refused probes. Two refreshed trusted originals were visually inspected with no clipping/overlap. `p6-sync-summary.json` records the image changes; these counts overlap earlier suites and are not added together.

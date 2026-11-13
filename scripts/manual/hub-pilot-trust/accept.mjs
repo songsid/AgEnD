@@ -44,11 +44,12 @@ try {
       await page.locator('#hubCompanyAddress').blur();
       if (state === 'first' || state === 'changed') await page.locator('.hub-pilot-trust').waitFor();
       else await page.getByText(state === 'off' ? lang === 'en' ? "hub.example.test uses a self-signed certificate, and this AgEnD doesn't allow trusting one. Ask the Hub administrator for a trusted certificate." : 'hub.example.test 用的是自簽憑證，這台 AgEnD 不允許信任它。請 Hub 管理員換上受信任的憑證。' : lang === 'en' ? "You trusted this Hub's self-signed certificate (for testing)." : '已信任這個 Hub 的自簽憑證（測試用）。').waitFor();
+      await page.locator('.hub-connection-manual').waitFor({ state: state === 'trusted' ? 'detached' : 'visible' });
       if (state === 'first') await page.getByRole('button', { name: lang === 'en' ? 'Show the full fingerprint' : '顯示完整指紋' }).click();
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       if (overflow) throw Error('Horizontal overflow: ' + [lang, phone, state].join('/'));
       const file = `${lang}-${phone ? 'phone' : 'desktop'}-${state}.png`;
-      await page.screenshot({ path: join(out, file), fullPage: true }); images.push(file); checks.push({ lang, phone, state, overflow });
+      await page.screenshot({ path: join(out, file), fullPage: true }); images.push(file); checks.push({ lang, phone, state, overflow, otherWaysVisible: state !== 'trusted' });
     }
     await ctx.close();
   }
