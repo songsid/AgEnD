@@ -100,6 +100,8 @@ try {
     await page.goto(origin + "/ui/hub?room=" + roomId); await page.locator(".hub-room-page").waitFor(); await page.locator(".hub-room-rail-toggle").waitFor();
     if (await page.locator(".hub-room-rail-toggle").getAttribute("aria-pressed") === "false") await page.locator(".hub-room-rail-toggle").click();
     await page.locator(".hub-member-agent").first().waitFor();
+    check(tag + " members panel uses the intended width layout", device === "phone" ? await page.locator("dialog[open] .hub-rail-sheet").count() === 1 : await page.locator(".u-rail .hub-room-members").count() === 1);
+    check(tag + " room counts use viewer language and singular person", (await page.locator(".hub-chat-title .s").innerText()) === (lang === "en" ? "1 person · 2 agents" : "1 人 · 2 個 Agent"));
     const row = (name: string) => page.locator(".hub-member-agent").filter({ has: page.locator(".hub-member-name", { hasText: name }) });
     const visiblePresence = async (name: string, word: string, dot: string) => {
       if (!await page.locator(".hub-room-members").isVisible()) await page.locator(".hub-room-rail-toggle").click();
@@ -138,12 +140,17 @@ try {
     await page.getByText(lang === "en" ? "All 2 answered" : "2 個都回答了", { exact: true }).waitFor(); await closeRail(); await shot("all-answered");
     check(tag + " both @all answers persisted exactly once", web.db.prepare("SELECT COUNT(*) n FROM hub_room_deliveries WHERE room_id=? AND state='answered'").get(roomId).n === 3);
     await notes.state({ process: "paused", execution: null, pauseReason: "quota" }); await visiblePresence("Notes", paused, "warn");
-    check(tag + " quota reason uses viewer language in live panel", (await row("Notes").locator(".hub-member-state").innerText()).includes(lang === "en" ? "Out of quota" : "額度用完")); await shot("paused");
+    check(tag + " quota reason uses viewer language in live panel", (await row("Notes").locator(".hub-member-state").innerText()).includes(lang === "en" ? "Out of quota" : "額度用完"));
+    if (device === "phone") { await closeRail(); await visiblePresence("Notes", paused, "warn"); check(tag + " reason survives members-sheet reopen", (await row("Notes").locator(".hub-member-state").innerText()).includes("額度用完")); }
+    await shot("paused");
     const detail = await web.call(admin, "GET", `/hub/v1/rooms/${roomId}`);
     check(tag + " quota reason reaches real HTTP projection", detail.json.members.find((m: any) => m.id === notes.exposureId)?.presenceReason === "quota");
     const events = await page.evaluate(() => (window as any).__roomEvents); receipt.events.push({ device, events });
     check(tag + " live SSE carries state reason and completed progress", events.some((e: any) => e.type === "presence.changed" && e.data.memberId === notes.exposureId && e.data.presenceReason === "quota")
       && events.some((e: any) => e.type === "message.updated" && e.data.parent?.ask?.answered === 2));
+    await notes.state({ process: "running", execution: "idle" }); await visiblePresence("Notes", idle, "ok");
+    const restored = await web.call(admin, "GET", `/hub/v1/rooms/${roomId}`);
+    check(tag + " idle event clears prior quota reason", !restored.json.members.find((m: any) => m.id === notes.exposureId)?.presenceReason && !(await row("Notes").locator(".hub-member-state").innerText()).includes(lang === "en" ? "Out of quota" : "額度用完")); await shot("presence-restored");
     check(tag + " no browser error", errors.length === 0, errors);
     check(tag + " no horizontal document overflow", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await Promise.all(responses); await context.close(); activePage = null;
