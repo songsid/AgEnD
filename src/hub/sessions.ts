@@ -191,6 +191,10 @@ export class HubSessions {
       return current();
     };
     const isCurrent = () => this.session(token) !== null;
-    return { requestId, token, current, isCurrent, requirePerson, requireAdmin };
+    const isIdentityCurrent = (person: PersonKey, sessionId: string) => {
+      const s = this.session(token);
+      return s !== null && s.sessionId === sessionId && personKeyString(s.person) === personKeyString(person);
+    };
+    return { requestId, token, current, isCurrent, isIdentityCurrent, requirePerson, requireAdmin };
   }
 }

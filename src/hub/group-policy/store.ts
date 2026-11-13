@@ -9,6 +9,7 @@ import type { HubDirectory } from "../directory/types.js";
 import type { PolicyGroupFacts } from "../directory/groups.js";
 import { identifier, parseStrictJson, person, uuid, validated } from "../validation.js";
 import { GROUP_CAPABILITIES, evaluateGroupPolicy, initialGroupPolicy, parseGroupCapability, parseGroupPolicy, type GroupCapability, type HubGroupDecision, type HubGroupPolicy } from "./model.js";
+import { createHubCanonicalPolicyReader, parseCanonicalPolicy, type HubCanonicalPolicy } from "../roles/read.js";
 
 export class HubGroupPolicyError extends Error {
   constructor(readonly code: "unavailable" | "conflict" | "unsupported" | "invalid" | "audit") { super(`group_policy_${code}`); }
@@ -37,10 +38,10 @@ export function inspectHubGroupPolicyBinding(db: Database.Database, hubId: strin
     const binding = initialGroupPolicy(realm, generation);
     const row = db.prepare("SELECT hub_id, body FROM hub_group_policy WHERE singleton=1").get() as { hub_id: string; body: string } | undefined;
     if (!row || row.hub_id !== validated(identifier, hubId)) return { kind: "repair-required", legacy: false };
-    const policy = parseGroupPolicy(parseStrictJson(row.body));
+    const document = parseCanonicalPolicy(row.body), policy = document.policy;
     if (policy.realm !== binding.realm) return { kind: "repair-required", legacy: false };
     if (policy.generation === binding.generation) return { kind: "ready" };
-    if (policy.state !== "never-enabled") return { kind: "repair-required", legacy: false };
+    if (document.kind !== "group" || policy.state !== "never-enabled") return { kind: "repair-required", legacy: false };
     const fingerprint = createHash("sha256").update(JSON.stringify({ hubId: row.hub_id,
       realm: binding.realm, generation: binding.generation, policy })).digest("hex");
     return { kind: "repair-required", legacy: true, fingerprint };
@@ -57,6 +58,8 @@ export interface GroupCheckContext {
 }
 export interface HubGroupPolicyStore {
   read(): HubGroupPolicy;
+  /** Complete canonical image for converted consumers; legacy injected drivers may omit it. */
+  canonical?(): HubCanonicalPolicy;
   resolveEnrolmentGroup?(subject: PersonKey, group: PersonKey, dn: string, context: GroupCheckContext): Promise<boolean>;
   checkEnrolmentGroup?(subject: PersonKey, group: PersonKey, context: GroupCheckContext): Promise<boolean>;
   /** Admission only, never an allowance. Shares membership/welcome limits until the physical read settles. */
@@ -81,14 +84,14 @@ export function createHubGroupPolicyStore(options: {
   if (directory.realm !== binding.realm) throw new HubGroupPolicyError("unavailable");
   const inflight = new Map<string, number>(); let total = 0;
   const assert = (caller: () => boolean = () => true) => { if (current() !== true || caller() !== true) throw new HubGroupPolicyError("unavailable"); };
+  const reader = createHubCanonicalPolicyReader({ db, hubId, realm: binding.realm, generation: binding.generation, current });
+  const canonical = (): HubCanonicalPolicy => {
+    try { return reader(); } catch { throw new HubGroupPolicyError("unavailable"); }
+  };
   const read = (): HubGroupPolicy => {
-    assert();
-    const row = db.prepare("SELECT hub_id, body FROM hub_group_policy WHERE singleton=1").get() as { hub_id: string; body: string } | undefined;
-    if (!row || row.hub_id !== hubId) throw new HubGroupPolicyError("unavailable");
-    let policy: HubGroupPolicy;
-    try { policy = parseGroupPolicy(parseStrictJson(row.body)); } catch { throw new HubGroupPolicyError("unavailable"); }
-    if (policy.realm !== binding.realm || policy.generation !== binding.generation) throw new HubGroupPolicyError("unavailable");
-    return policy;
+    const value = canonical();
+    if (value.kind !== "group") throw new HubGroupPolicyError("unavailable");
+    return value.policy;
   };
   const context = (input: GroupCheckContext) => ({ requestId: validated(identifier, input.requestId),
     resource: validated(resources, input.resource ?? {}), current: input.current });
@@ -104,8 +107,8 @@ export function createHubGroupPolicyStore(options: {
     assert(ctx.current);
     db.prepare("INSERT INTO hub_group_events VALUES(?, ?, ?)").run(id, body, at);
   };
-  read(); // Missing/corrupt state is not an excuse to restore permissive legacy behavior.
-  return { read, async withDirectoryRead<T>(subject: PersonKey, read: () => Promise<T>): Promise<T> {
+  canonical(); // Missing/corrupt state is not an excuse to restore permissive legacy behavior.
+  return { read, canonical, async withDirectoryRead<T>(subject: PersonKey, read: () => Promise<T>): Promise<T> {
     const who = validated(person, subject); assert();
     const key = `${who.realm}/${who.objectId}`, count = inflight.get(key) ?? 0;
     if (count >= 4 || total >= 32) throw new HubGroupReadOverload();

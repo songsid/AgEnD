@@ -197,6 +197,8 @@ export interface HubRequestContext {
   readonly requestId: string;
   /** Synchronous session/lifetime fence for a permit immediately before its effect; never directory authority. */
   isCurrent?(): boolean;
+  /** Exact synchronous identity/session fence, not a directory or permission proof. */
+  isIdentityCurrent?(person: PersonKey, sessionId: string): boolean;
   current(): Promise<HubActor>; // authenticates again, checks mode/session/body continuation
   requirePerson(): Promise<PersonKey>; // fresh directory eligibility; host repair is not an asker
   requireAdmin(): Promise<HubActor>; // current local host or explicit Hub admin assignment
