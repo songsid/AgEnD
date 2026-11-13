@@ -141,7 +141,10 @@ export function HubMemberAddressSettings({ client: given = null } = {}) {
     setBusy(false);
     if (!r.ok) { setError(copy(errKey(r.code))); if (r.code === "expired" || r.code === "stale") { setProposal(null); setStep("edit"); } return; }
     setOutcome(r); setStep("show");
-    setView((v) => ({ ...v, origin: r.origin || proposal.summary?.to, listen: proposal.summary?.listen || v.listen }));
+    // Connected now: only the Fleets that followed (the rest were disconnected and must reconnect).
+    const gone = new Set((Array.isArray(r.reconnect) ? r.reconnect : []).map((f) => f.id));
+    setView((v) => ({ ...v, origin: r.origin || proposal.summary?.to, listen: proposal.summary?.listen || v.listen,
+      fleets: (Array.isArray(v.fleets) ? v.fleets : []).filter((f) => !gone.has(f.id)) }));
     setProposal(null);
   };
   const fleetCount = Array.isArray(view.fleets) ? view.fleets.length : 0;

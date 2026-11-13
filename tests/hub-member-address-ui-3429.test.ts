@@ -61,6 +61,14 @@ describe("#3429 Settings → Hub → Fleet connection address", () => {
     expect(f.calls[2]).toEqual({ path: "/api/settings/hub/member-address/commit", method: "POST", body: { ref: "r".repeat(32) } });
     expect(f.text()).toContain(done);
     expect(f.q(".hub-addr-now code").textContent).toBe("hub.example.com:9555");
+    expect(f.q(".hub-addr-now").textContent).toContain("2");                                         // both followed: still connected
+  });
+  it("after a change, the Fleets that must reconnect no longer count as connected", async () => {
+    const f = await fixture({ commit: () => ({ body: { ok: true, origin: "https://hub.example.com:9555", followed: 1, reconnect: [{ id: FLEETS[1]!.id, label: "Bob Fleet" }], state: "ready" } }) });
+    await f.click("Change connection address"); await f.type("#hubMemberNew", "hub.example.com:9555"); await f.submit(); await f.click("Confirm change");
+    const dds = Array.from(f.pg.root.querySelectorAll(".hub-addr-now dd")) as any[];
+    expect(dds.at(-1).textContent).toBe("1");
+    expect(f.text()).toContain("These must reconnect from their own Settings → Hub: Bob Fleet.");
   });
   it("each outcome names who must reconnect", async () => {
     const f = await fixture();
