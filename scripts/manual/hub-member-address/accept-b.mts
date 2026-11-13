@@ -27,7 +27,7 @@ process.env.AGEND_HOME = join(root, "environment");
 mkdirSync(process.env.AGEND_HOME, { mode: 0o700 });
 const { FleetManager } = await import("../../../src/fleet-manager.js"), { csrfTokenFor } = await import("../../../src/web-session.js"), { WEB_CSRF_HEADER } = await import("../../../src/web-auth.js");
 const { chromium } = await import("playwright-core");
-const receipt: any = { checks: [], screenshots: [], boundary: "Owned container, --network none, explicit uid1000, no capabilities. Real Fleet health/Settings shell, D3, Hub HTTPS, synthetic verified LDAPS, the Settings → Hub → Fleet connection address card (before/after: base modules served by route; SKEW: base shared modules and app.css under the new card), option B leg 1 (online member follows the issuer-signed relocation) and leg 2 (offline member revoked; re-joined by legacy manual pairing → explicit shipped Disconnect/Start over → real browser company sign-in in the one-box join — not the one-button Reconnect). Explicit per-client fixture CA/hostname mapping and exact :636-to-owned-wire-port mapping only. No full fleet daemon lifecycle, agent/model/CLI/tmux/native/real AD/pilot." };
+const receipt: any = { checks: [], screenshots: [], boundary: "Owned container, --network none, explicit uid1000, no capabilities. Real Fleet health/Settings shell, D3, Hub HTTPS, synthetic verified LDAPS, the Settings → Hub → Fleet connection address card (before/after: base modules served by route; SKEW: a stale old settings-hub-section.js or hub-join-one-strings.js with the rest new; the card's imports are byte-identical to the base's), option B leg 1 (online member follows the issuer-signed relocation) and leg 2 (offline member revoked; re-joined by legacy manual pairing → explicit shipped Disconnect/Start over → real browser company sign-in in the one-box join — not the one-button Reconnect). Explicit per-client fixture CA/hostname mapping and exact :636-to-owned-wire-port mapping only. No full fleet daemon lifecycle, agent/model/CLI/tmux/native/real AD/pilot." };
 const check = (name: string, value: boolean) => { receipt.checks.push({ name, pass: value }); if (!value)
     throw Error(name); };
 const wait = async (fn: () => boolean) => { const end = Date.now() + 15000; while (!fn() && Date.now() < end)
@@ -174,7 +174,8 @@ try {
     check("Check and Back changed nothing", fm.getRawFleetConfig().hub.memberOrigin === memberOrigin);
     // Before/after of the affected surface (Settings → Hub on the Hub's computer): "before" serves the base's own section,
     // connection and strings modules (run.sh exports them from BASE_REF into /work/.base) — the base never mounts the card.
-    // SKEW: a tab holding the base's shared modules and stylesheet lazily loads the new card (it must link and render).
+    // SKEW: an old tab holds one changed module stale while the rest is new (old section: no card; old strings: no raw key).
+    // The card's own imports are recorded too: identical to the base's, so a stale copy of them cannot break it.
     const baseUi = (path: string) => readFileSync(join("/work/.base", path), "utf8");
     const JS = "text/javascript";
     const BEFORE: Record<string, [string, string]> = {
@@ -184,9 +185,21 @@ try {
     const SKEW_FILES: Record<string, [string, string]> = { "**/ui/js/settings-confirm.js": [JS, "src/ui/settings-confirm.js"],
         "**/ui/js/settings-hub-web-address.js": [JS, "src/ui/settings-hub-web-address.js"], "**/assets/ui-states.js": [JS, "src/ui/shared/ui-states.js"],
         "**/assets/app.css": ["text/css", "src/ui/shared/app.css"] };
-    const SKEW: Record<string, [string, string]> = Object.fromEntries(Object.entries(SKEW_FILES).map(([g, [type, path]]) => [g, [type, baseUi(path)]]));
-    // Whether each base file the SKEW tab holds differs from this tree's (an identical one proves nothing on its own).
+    // The card's own imports: whether the base's copy differs from this tree's (identical ones cannot skew it).
     receipt.skewFiles = Object.values(SKEW_FILES).map(([, path]) => ({ path, differsFromThisTree: baseUi(path) !== readFileSync(join("/work", path), "utf8") }));
+    // The modules this change does alter, each held stale by an old tab while the rest is new.
+    const SKEW_LEGS = { "old-section": { "**/ui/js/settings-hub-section.js": [JS, baseUi("src/ui/settings-hub-section.js")] },
+        "old-strings": { "**/ui/js/hub-join-one-strings.js": [JS, baseUi("src/ui/hub-join-one-strings.js")] } } as Record<string, Record<string, [string, string]>>;
+    /** The whole section painted: the settings scroller back at the top and the viewport as tall as the section's bottom. */
+    const fit = async (pg: any, view: keyof typeof VIEW) => {
+        const bottom = await pg.evaluate(() => {
+            const el = document.querySelector(".s-hub-section")!;
+            for (let a: HTMLElement | null = el.parentElement; a; a = a.parentElement) if (a.scrollHeight > a.clientHeight) a.scrollTop = 0;
+            window.scrollTo(0, 0);
+            return Math.ceil(el.getBoundingClientRect().bottom); });
+        await pg.setViewportSize({ width: VIEW[view].width, height: Math.max(VIEW[view].height, bottom + 40) }); await pg.waitForTimeout(300);
+        return pg.evaluate(() => { const c = document.querySelector(".hub-member-address"); if (!c) return null; const r = c.getBoundingClientRect(); return r.height > 0 && r.top >= 0 && r.bottom <= innerHeight; });
+    };
     const sectionPage = async (lang: "en" | "zh-TW", view: keyof typeof VIEW, routes: Record<string, [string, string]>) => {
         const ctx = await browser.newContext({ locale: lang === "en" ? "en-US" : "zh-TW", viewport: VIEW[view], isMobile: view === "phone", hasTouch: view === "phone" });
         await ctx.addCookies([{ name: cookieName, value: cookieValue, url: origin }]);
@@ -204,28 +217,23 @@ try {
     for (const lang of ["en", "zh-TW"] as const) for (const view of ["desktop", "phone"] as const) for (const variant of ["before", "after"] as const) {
         const { ctx, pg, section, errors, hits } = await sectionPage(lang, view, variant === "before" ? BEFORE : {});
         const cards = await section.locator(".hub-member-address").count();
-        // The whole section in the viewport, so every card is painted (an element screenshot taller than the viewport
-        // leaves off-screen cards blank).
-        await pg.setViewportSize({ width: VIEW[view].width, height: Math.max(VIEW[view].height, await pg.evaluate(() => document.documentElement.scrollHeight) + 40) });
-        await pg.waitForTimeout(300);
-        const shown = cards ? await pg.evaluate(() => { const r = document.querySelector(".hub-member-address")!.getBoundingClientRect(); return r.height > 0 && r.bottom <= innerHeight; }) : false;
+        // The whole section in the viewport, so every card is painted (off-screen cards stay blank in an element shot).
+        const shown = await fit(pg, view) === true;
         check(`${variant} ${lang} ${view}: the card is ${variant === "before" ? "absent (base)" : "present, folded, on screen"}; no page error`,
             (variant === "before" ? cards === 0 : cards === 1 && shown) && errors.length === 0);
         await themes(pg, async theme => { await shot(section, `surface-${variant}.${lang}.${view}.${theme}.png`); });
         receipt.surface.push({ variant, lang, view, cards, shown, errors, routed: hits }); await ctx.close();
     }
     receipt.skew = [];
-    for (const [lang, view, theme] of [["en", "desktop", "light"], ["zh-TW", "phone", "dark"]] as const) {
-        const { ctx, pg, section, errors, hits } = await sectionPage(lang, view, SKEW);
+    for (const [leg, routes] of Object.entries(SKEW_LEGS)) for (const [lang, view, theme] of [["en", "desktop", "light"], ["zh-TW", "phone", "dark"]] as const) {
+        const { ctx, pg, section, errors, hits } = await sectionPage(lang, view, routes);
         await pg.emulateMedia({ colorScheme: theme });
-        const card = section.locator(".hub-member-address"); await card.waitFor();
-        await card.locator("summary").first().click(); await card.locator(".hub-addr-now").waitFor();
-        const text = await card.innerText();
-        check(`SKEW ${lang} ${view}: the new card links and renders under the base's shared modules and stylesheet; no raw key, no page error`,
-            text.includes(new URL(memberOrigin).host) && !/hubMemberAddress\.|err_/.test(text) && errors.length === 0);
-        await shot(card, `skew-card.${lang}.${view}.${theme}.png`);
-        check(`SKEW ${lang} ${view}: every base file was served to the tab`, Object.keys(SKEW).every(g => (hits[g] ?? 0) >= 1));
-        receipt.skew.push({ lang, view, theme, errors, routed: hits }); await ctx.close();
+        const cards = await section.locator(".hub-member-address").count(), shown = await fit(pg, view), text = await section.innerText();
+        const served = Object.keys(routes).every(g => (hits[g] ?? 0) >= 1);
+        check(`SKEW ${leg} ${lang} ${view}: the stale module was served; ${leg === "old-section" ? "no card (that tab never mounts it)" : "the card renders, folded"}; no raw key, no page error`,
+            served && (leg === "old-section" ? cards === 0 : cards === 1 && shown === true) && !/joinOne\.|hubMemberAddress\./.test(text) && errors.length === 0);
+        await shot(section, `skew-${leg}.${lang}.${view}.${theme}.png`);
+        receipt.skew.push({ leg, lang, view, theme, cards, shown, errors, routed: hits }); await ctx.close();
     }
     // #3429 option B, leg 1: the member is ONLINE at the change — it follows the issuer-signed relocation, keeps its credential.
     // Through the card's Confirm (EN); the server's answer is read from the commit response.
