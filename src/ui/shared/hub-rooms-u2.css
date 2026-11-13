@@ -23,7 +23,8 @@
 .hub-member, .hub-member-open { display: flex; flex-direction: column; gap: 2px; }
 .hub-member-open { width: 100%; background: transparent; border: 0; padding: var(--s-1); border-radius: var(--r-sm); text-align: start; cursor: pointer; color: inherit; font: inherit; }
 .hub-member-open:hover, .hub-member-open:focus-visible { background: var(--surface-2); }
-.hub-member-state { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-xs); color: var(--text-2); }
+.hub-member-state { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0 var(--s-1); font-size: var(--fs-xs); color: var(--text-2); }
+.hub-member-owner { overflow-wrap: anywhere; }
 .hub-member-card { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-2); margin: var(--s-1) 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
 .hub-member-card .field-row { display: flex; flex-wrap: wrap; gap: var(--s-1); }
 .hub-invitations { display: flex; flex-direction: column; gap: var(--s-2); }

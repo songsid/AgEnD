@@ -66,9 +66,10 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
     if (r?.ok) { setOpen(null); setGone(old => ({ ...old, [m.id]: true })); }   // the shell reads the room again on member.changed
     else setFailed(true);
   };
+  // An agent's second line names whose it is beside its state (「處理中 · 林小華的 Agent」), always shown, not only on hover.
   const row = (m, extra = null) => {
-    const v = memberStatus(m);
-    return html`<span class="hub-member-name">${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span>${v.text}</span>`;
+    const v = memberStatus(m), owner = (m.kind === "agent" || m.kind === "later") && m.owner?.name ? hm("ownerAgent", m.owner.name) : "";
+    return html`<span class="hub-member-name">${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>`;
   };
   return html`<aside class="hub-room-members">
     <section><h4>${heads.member}</h4>
