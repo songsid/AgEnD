@@ -34,7 +34,7 @@ async function roomPage(roomId: string, lang = "en") {
   i18n.setLang(lang, { store: false });
   client.setHubClient(client.createHubWebClient()); hubPanel.resetHubSession(); router.startRouter(pg.window); store.applyStatus({ instances: [] });
   await pg.mount(h(shell.Shell, { panels: new Map([["hub", { Component: hubPanel.HubPanel || (() => null) }]]), onNewInstance() {} }));
-  await until(() => pg.root.querySelectorAll(".hub-room-page .thread .msg").length > 5);
+  await until(() => roomId === "room-assistant" ? pg.root.querySelector(".hub-room-page") : pg.root.querySelectorAll(".hub-room-page .thread .msg").length > 5);
   return { pg, fx, restore: () => { g.fetch = realFetch; } };
 }
 const msgs = (pg: AppPage) => [...pg.root.querySelectorAll(".hub-room-page .thread .msg")] as any[];
@@ -115,6 +115,14 @@ describe("a room on the page", () => {
     expect(box.value).toBe("Thanks @project-helper ");
     insert.current("@test-runner"); await settle(5);
     expect(box.value).toBe("Thanks @project-helper @test-runner ");
+  });
+  it("the Hub assistant's 1:1, first opened: what it is, in its own words (spec §10)", async () => {
+    const { pg, restore } = await roomPage("room-assistant", "zh-TW");
+    try {
+      await until(() => pg.root.querySelector(".hub-room-page .hub-assistant-empty"));
+      expect(pg.root.querySelector(".hub-room-page .hub-assistant-empty")!.textContent).toBe("這是 Hub 提供的 AI 助理。它讀不到你的電腦，也讀不到其他房間。");
+      expect(pg.root.querySelector(".hub-room-page .hub-room-hint")).toBeNull();                       // a 1:1: no @ needed
+    } finally { restore(); }
   });
   it("an archived room: the box says so, nothing to send", async () => {
     const { pg, restore } = await roomPage("room-archived");
