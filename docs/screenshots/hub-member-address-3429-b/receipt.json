@@ -97,6 +97,54 @@
       "pass": true
     },
     {
+      "name": "before en desktop: the card is absent (base); no page error",
+      "pass": true
+    },
+    {
+      "name": "after en desktop: the card is present, folded, on screen; no page error",
+      "pass": true
+    },
+    {
+      "name": "before en phone: the card is absent (base); no page error",
+      "pass": true
+    },
+    {
+      "name": "after en phone: the card is present, folded, on screen; no page error",
+      "pass": true
+    },
+    {
+      "name": "before zh-TW desktop: the card is absent (base); no page error",
+      "pass": true
+    },
+    {
+      "name": "after zh-TW desktop: the card is present, folded, on screen; no page error",
+      "pass": true
+    },
+    {
+      "name": "before zh-TW phone: the card is absent (base); no page error",
+      "pass": true
+    },
+    {
+      "name": "after zh-TW phone: the card is present, folded, on screen; no page error",
+      "pass": true
+    },
+    {
+      "name": "SKEW old-section en desktop: the stale module was served; no card (that tab never mounts it); no raw key, no page error",
+      "pass": true
+    },
+    {
+      "name": "SKEW old-section zh-TW phone: the stale module was served; no card (that tab never mounts it); no raw key, no page error",
+      "pass": true
+    },
+    {
+      "name": "SKEW old-strings en desktop: the stale module was served; the card renders, folded; no raw key, no page error",
+      "pass": true
+    },
+    {
+      "name": "SKEW old-strings zh-TW phone: the stale module was served; the card renders, folded; no raw key, no page error",
+      "pass": true
+    },
+    {
       "name": "browser prepares affected fleet",
       "pass": true
     },
@@ -231,6 +279,26 @@
     "png/card-edit.zh-TW.phone.dark.png",
     "png/card-confirm.zh-TW.phone.light.png",
     "png/card-confirm.zh-TW.phone.dark.png",
+    "png/surface-before.en.desktop.light.png",
+    "png/surface-before.en.desktop.dark.png",
+    "png/surface-after.en.desktop.light.png",
+    "png/surface-after.en.desktop.dark.png",
+    "png/surface-before.en.phone.light.png",
+    "png/surface-before.en.phone.dark.png",
+    "png/surface-after.en.phone.light.png",
+    "png/surface-after.en.phone.dark.png",
+    "png/surface-before.zh-TW.desktop.light.png",
+    "png/surface-before.zh-TW.desktop.dark.png",
+    "png/surface-after.zh-TW.desktop.light.png",
+    "png/surface-after.zh-TW.desktop.dark.png",
+    "png/surface-before.zh-TW.phone.light.png",
+    "png/surface-before.zh-TW.phone.dark.png",
+    "png/surface-after.zh-TW.phone.light.png",
+    "png/surface-after.zh-TW.phone.dark.png",
+    "png/skew-old-section.en.desktop.light.png",
+    "png/skew-old-section.zh-TW.phone.dark.png",
+    "png/skew-old-strings.en.desktop.light.png",
+    "png/skew-old-strings.zh-TW.phone.dark.png",
     "png/card-done.en.desktop.light.png",
     "png/card-done.en.desktop.dark.png",
     "png/card-done.en.phone.light.png",
@@ -241,7 +309,7 @@
     "png/card-done.zh-TW.phone.dark.png",
     "backend-after-reconnect.zh-TW.png"
   ],
-  "boundary": "Owned container, --network none, explicit uid1000, no capabilities. Real Fleet health/Settings shell, D3, Hub HTTPS, synthetic verified LDAPS, legacy manual pairing followed by explicit shipped Disconnect/Start over and real browser company sign-in through the second FleetManager/member runtime with empty Agent inventory. Explicit per-client fixture CA/hostname mapping and exact :636-to-owned-wire-port mapping only; no new reconnect widget or automatic trust reset. No new address UI, full fleet daemon lifecycle, agent/model/CLI/tmux/native/real AD/pilot.",
+  "boundary": "Owned container, --network none, explicit uid1000, no capabilities. Real Fleet health/Settings shell, D3, Hub HTTPS, synthetic verified LDAPS, the Settings \u2192 Hub \u2192 Fleet connection address card (before/after: base modules served by route; SKEW: a stale old settings-hub-section.js or hub-join-one-strings.js with the rest new; the card's imports are byte-identical to the base's), option B leg 1 (online member follows the issuer-signed relocation) and leg 2 (offline member revoked; re-joined by legacy manual pairing \u2192 explicit shipped Disconnect/Start over \u2192 real browser company sign-in in the one-box join \u2014 not the one-button Reconnect). Explicit per-client fixture CA/hostname mapping and exact :636-to-owned-wire-port mapping only. No full fleet daemon lifecycle, agent/model/CLI/tmux/native/real AD/pilot.",
   "hubResponses": [
     {
       "method": "GET",
@@ -327,6 +395,164 @@
       "admin": true
     }
   ],
+  "skewFiles": [
+    {
+      "path": "src/ui/settings-confirm.js",
+      "differsFromThisTree": false
+    },
+    {
+      "path": "src/ui/settings-hub-web-address.js",
+      "differsFromThisTree": false
+    },
+    {
+      "path": "src/ui/shared/ui-states.js",
+      "differsFromThisTree": false
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "differsFromThisTree": false
+    }
+  ],
+  "surface": [
+    {
+      "variant": "before",
+      "lang": "en",
+      "view": "desktop",
+      "cards": 0,
+      "shown": false,
+      "errors": [],
+      "routed": {
+        "**/ui/js/settings-hub-section.js": 1,
+        "**/ui/js/settings-hub-connection.js": 1,
+        "**/ui/js/hub-join-one-strings.js": 1
+      }
+    },
+    {
+      "variant": "after",
+      "lang": "en",
+      "view": "desktop",
+      "cards": 1,
+      "shown": true,
+      "errors": [],
+      "routed": {}
+    },
+    {
+      "variant": "before",
+      "lang": "en",
+      "view": "phone",
+      "cards": 0,
+      "shown": false,
+      "errors": [],
+      "routed": {
+        "**/ui/js/settings-hub-section.js": 1,
+        "**/ui/js/settings-hub-connection.js": 1,
+        "**/ui/js/hub-join-one-strings.js": 1
+      }
+    },
+    {
+      "variant": "after",
+      "lang": "en",
+      "view": "phone",
+      "cards": 1,
+      "shown": true,
+      "errors": [],
+      "routed": {}
+    },
+    {
+      "variant": "before",
+      "lang": "zh-TW",
+      "view": "desktop",
+      "cards": 0,
+      "shown": false,
+      "errors": [],
+      "routed": {
+        "**/ui/js/settings-hub-section.js": 1,
+        "**/ui/js/settings-hub-connection.js": 1,
+        "**/ui/js/hub-join-one-strings.js": 1
+      }
+    },
+    {
+      "variant": "after",
+      "lang": "zh-TW",
+      "view": "desktop",
+      "cards": 1,
+      "shown": true,
+      "errors": [],
+      "routed": {}
+    },
+    {
+      "variant": "before",
+      "lang": "zh-TW",
+      "view": "phone",
+      "cards": 0,
+      "shown": false,
+      "errors": [],
+      "routed": {
+        "**/ui/js/settings-hub-section.js": 1,
+        "**/ui/js/settings-hub-connection.js": 1,
+        "**/ui/js/hub-join-one-strings.js": 1
+      }
+    },
+    {
+      "variant": "after",
+      "lang": "zh-TW",
+      "view": "phone",
+      "cards": 1,
+      "shown": true,
+      "errors": [],
+      "routed": {}
+    }
+  ],
+  "skew": [
+    {
+      "leg": "old-section",
+      "lang": "en",
+      "view": "desktop",
+      "theme": "light",
+      "cards": 0,
+      "shown": null,
+      "errors": [],
+      "routed": {
+        "**/ui/js/settings-hub-section.js": 1
+      }
+    },
+    {
+      "leg": "old-section",
+      "lang": "zh-TW",
+      "view": "phone",
+      "theme": "dark",
+      "cards": 0,
+      "shown": null,
+      "errors": [],
+      "routed": {
+        "**/ui/js/settings-hub-section.js": 1
+      }
+    },
+    {
+      "leg": "old-strings",
+      "lang": "en",
+      "view": "desktop",
+      "theme": "light",
+      "cards": 1,
+      "shown": true,
+      "errors": [],
+      "routed": {
+        "**/ui/js/hub-join-one-strings.js": 1
+      }
+    },
+    {
+      "leg": "old-strings",
+      "lang": "zh-TW",
+      "view": "phone",
+      "theme": "dark",
+      "cards": 1,
+      "shown": true,
+      "errors": [],
+      "routed": {
+        "**/ui/js/hub-join-one-strings.js": 1
+      }
+    }
+  ],
   "leg1": {
     "status": 200,
     "state": "ready",
@@ -345,15 +571,16 @@
     "followed": 0,
     "reconnect": [
       {
-        "id": "810e8867-d5b5-48f4-b824-344485f6267f"
+        "id": "563fbade-3afc-4237-ba18-ab795743329c"
       }
-    ]
+    ],
+    "rejoin": "manual pairing \u2192 explicit Disconnect/Start over \u2192 company sign-in (one-box join): a new Fleet ID; not the one-button Reconnect"
   },
   "policyPreview": {
     "status": 200
   },
   "memberConsole": [
-    "new page: http://127.0.0.1:40439/settings/hub?joinWait=0921241e-f180-41af-acd0-4eba38b06959&joinConsent=1#target=https%3A%2F%2Fhub.example.test%3A39063"
+    "new page: http://127.0.0.1:42047/settings/hub?joinWait=068ec8f1-e408-4f67-a542-465ec0ae68cf&joinConsent=1#target=https%3A%2F%2Fhub.example.test%3A45489"
   ],
   "memberRequests": [
     "GET /ui/js/hub-company-join-strings.js",
@@ -363,12 +590,283 @@
     "POST /api/hub/member/company-join/start",
     "POST /api/hub/member/company-join/probe",
     "GET /api/hub/member/company-join",
-    "GET /api/hub/member/company-join",
     "GET /api/hub/member/company-join"
   ],
-  "debugBeforeSignin": "Hub 連接\n尚未連接\n\n使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。\n\nHub 位址\n\n找到「Synthetic address rehearsal」。這台 Fleet 會顯示為「6478f6bf28f3」 改名\n\n以公司帳號登入\n其他方式",
+  "debugBeforeSignin": "Hub \u9023\u63a5\n\u5c1a\u672a\u9023\u63a5\n\n\u4f7f\u7528\u516c\u53f8\u5e33\u865f\u767b\u5165\uff0c\u9023\u63a5\u6210\u529f\u5f8c\u6703\u555f\u7528\u6210\u54e1\u529f\u80fd\uff0c\u4e0d\u6703\u5206\u4eab\u4efb\u4f55 Agent\u3002\n\nHub \u4f4d\u5740\n\n\u627e\u5230\u300cSynthetic address rehearsal\u300d\u3002\u9019\u53f0 Fleet \u6703\u986f\u793a\u70ba\u300ce3b995263570\u300d \u6539\u540d\n\n\u4ee5\u516c\u53f8\u5e33\u865f\u767b\u5165\n\u5176\u4ed6\u65b9\u5f0f",
   "reconciliations": 3,
-  "initialProfileSha256": "daefee56ae118f47376cb86f01f92f04968395221a2d865e6166e62a4fd8fe1a",
+  "initialProfileSha256": "123af631d4f8761bc7790e905ece37652ba273b26e448967e03ebe75e2008742",
   "ready": true,
-  "cleaned": true
+  "cleaned": true,
+  "inputs": {
+    "sourceHead": "b6643bea413365f699a320c18897e63093b21a53",
+    "sourceTree": "1486da799a1200726551f30f3e3d0cb0a04455ed",
+    "baseRef": "af6f44ae1fc031d86b1fb2030d3a448d0176b174",
+    "script": {
+      "path": "scripts/manual/hub-member-address/accept-b.mts",
+      "sha256": "854b1ed31611b1ca71c9739f75b53b33f80ff42fa60bbbc113460a806df857c6"
+    },
+    "runSh": "717a5b74a81f0dd00a7578735c7ea4e7ecc7a3ed762d7d71b2773c3e0c8bdbfc",
+    "packageLock": "9daa4d1e11dae2fff5db49d282a1bcb13e3cc56bb3e31941a5a6377e493abf17",
+    "installedDependencies": {
+      "lockSha256": "4a7f0c4d0e845ecbbcf9fefe9a463f66ee2b37dc6209e2e5c071ce5e688f771d",
+      "note": "node_modules/.package-lock.json of the mounted (read-only) dependency tree"
+    },
+    "baseUi": [
+      {
+        "path": "src/ui/settings-hub-section.js",
+        "sha256": "397827e9d5cf515f2bf2efa61da7e18d3149f7be7e49e5d160076620926a3080"
+      },
+      {
+        "path": "src/ui/settings-hub-connection.js",
+        "sha256": "419755ab7d1d7ba9b92927eed628e1d1e24ccf7a9ca341641abe65c42f2aa1ec"
+      },
+      {
+        "path": "src/ui/hub-join-one-strings.js",
+        "sha256": "b7bc9486c340b89ef7f5cc3b6001668f186d95d8ee49ac87a7b031ff841d66a0"
+      },
+      {
+        "path": "src/ui/settings-confirm.js",
+        "sha256": "db54c674121a4603bab3f7758951f3ece288cc2fcbd6e731259af899020c5f87"
+      },
+      {
+        "path": "src/ui/settings-hub-web-address.js",
+        "sha256": "0d3b8449b82d9183a76a0ceda2801ac893f0fa74239f93ebb4ef370d87ddade5"
+      },
+      {
+        "path": "src/ui/shared/ui-states.js",
+        "sha256": "0d9ae9002f0cf2a8388ea9177430ce382b91abe630ea68f3a7579c80d4c28c31"
+      },
+      {
+        "path": "src/ui/shared/app.css",
+        "sha256": "f7faa2c82ad65dbbfab74fdb303390ac4d7f622b04127fc9ff3f1ba535296135"
+      }
+    ],
+    "overlay": [],
+    "image": {
+      "id": "sha256:4189bb057c5aa2c9df593b52b3007b2fe120901a93774cc83ea3cd88c67ac7bf",
+      "dockerfile": "bd7bf2395de32d270c6265619ad35b50e2830b5800af44e0ec78f4dec9feebf1"
+    }
+  },
+  "artifacts": [
+    {
+      "path": "backend-after-reconnect.zh-TW.png",
+      "sha256": "75b3c81d9f185f55f2d0706d22865f3169411309577da926eb78c5bfb756cf37"
+    },
+    {
+      "path": "backend-before-hub.zh-TW.png",
+      "sha256": "fd25c939da9575433e12f9178ec924272423976b18be23326091bf16ec446b27"
+    },
+    {
+      "path": "debug-before-signin.png",
+      "sha256": "b91c15929c366271194fa4ea0fc796624fe11c3dceb88d031207959a550da520"
+    },
+    {
+      "path": "png/card-confirm.en.desktop.dark.png",
+      "sha256": "4daa51357ca90ddd857418ac090ad11e7b5cfcf17555139c01657e082be97f4b"
+    },
+    {
+      "path": "png/card-confirm.en.desktop.light.png",
+      "sha256": "8c2552e5047548350f7b618ad24e57c7a3d1ebdf6cf2c4113d9307d42c6a49ac"
+    },
+    {
+      "path": "png/card-confirm.en.phone.dark.png",
+      "sha256": "b4a9ca2e019f9aac7f001b31aac92730d1f27cbf042180bca48c6badc1ccc898"
+    },
+    {
+      "path": "png/card-confirm.en.phone.light.png",
+      "sha256": "a17191c1fa228b6c5f2c6a6753bd5bd44e7f648143809aaba4b46b16d974d9cc"
+    },
+    {
+      "path": "png/card-confirm.zh-TW.desktop.dark.png",
+      "sha256": "3b62227cbbcacffb2f22357167de772318ad35ff6d86c2a42d69c1acca043731"
+    },
+    {
+      "path": "png/card-confirm.zh-TW.desktop.light.png",
+      "sha256": "573c40227a74b3ebb2e3e79c8e3ffdd59355351436ca03a3198ccae829ab0d7e"
+    },
+    {
+      "path": "png/card-confirm.zh-TW.phone.dark.png",
+      "sha256": "69cc0b1f6894042bad34dd21681fde246357df4de11e08897687e97f4187008a"
+    },
+    {
+      "path": "png/card-confirm.zh-TW.phone.light.png",
+      "sha256": "dcd6ba3ab9400067704cd61bb91b5bf74e99382594876a1fa78e5752f62938db"
+    },
+    {
+      "path": "png/card-done.en.desktop.dark.png",
+      "sha256": "3f57478ffa26a7ce1234605c980e76f31bb33598d4405311d913e7ef57492d29"
+    },
+    {
+      "path": "png/card-done.en.desktop.light.png",
+      "sha256": "ca93a88214877c9aad5dc9a797eedf5c9333b290aac739a20f4b89ab3e0c60a0"
+    },
+    {
+      "path": "png/card-done.en.phone.dark.png",
+      "sha256": "79c5fcc9ce0bbe3deae8c9f743494d8ec5b7eee8f810d18dae6cae409a330b91"
+    },
+    {
+      "path": "png/card-done.en.phone.light.png",
+      "sha256": "561f85d000ef71f1358c9f29c9feb023d896096c21571413e291177ae78825bd"
+    },
+    {
+      "path": "png/card-done.zh-TW.desktop.dark.png",
+      "sha256": "38002d0f951383f3958003034e7d45dbbcd3e87d77b1cc2f4ab24e4e6de402df"
+    },
+    {
+      "path": "png/card-done.zh-TW.desktop.light.png",
+      "sha256": "546da726f88e1a904938fed34d59ee8bc0447eea30934822f2b234ab14909586"
+    },
+    {
+      "path": "png/card-done.zh-TW.phone.dark.png",
+      "sha256": "37deeffbac205fc49bb34babb833307a27423d9daa0f8ea648a6534c0b9a96d4"
+    },
+    {
+      "path": "png/card-done.zh-TW.phone.light.png",
+      "sha256": "8fdc0d0d1eac5c480b8fe380063ace3b48cbaf9aa84ca86083331220b3a0555d"
+    },
+    {
+      "path": "png/card-edit.en.desktop.dark.png",
+      "sha256": "3474e21a235d004c0092904d94ee5bc88443c3a2bb33d09571cdb4777b6741d9"
+    },
+    {
+      "path": "png/card-edit.en.desktop.light.png",
+      "sha256": "73b222aeb79462fe6ba2bec24f3611a3993d569bda34f8dd3029901a9aeb20fe"
+    },
+    {
+      "path": "png/card-edit.en.phone.dark.png",
+      "sha256": "1f7b996dbf9c5cdfdc9d601fd5cb71b624073b70897b090114c2b6570c0ea049"
+    },
+    {
+      "path": "png/card-edit.en.phone.light.png",
+      "sha256": "f4a5da30cdc136ba475a300a7ad1c58f04dbdfb169c5ddf93e98b31642427872"
+    },
+    {
+      "path": "png/card-edit.zh-TW.desktop.dark.png",
+      "sha256": "624849b72238163b14a03049076337960e8c08777f338bcccc878a9031a1a19b"
+    },
+    {
+      "path": "png/card-edit.zh-TW.desktop.light.png",
+      "sha256": "4043d95924b33788b3a5e4a57979a5a0df8296743e540e5ccd61173d77b16046"
+    },
+    {
+      "path": "png/card-edit.zh-TW.phone.dark.png",
+      "sha256": "db27d9ac7bac7affb9b958c2ca42a281fa02a80b8cd5485f1c6266c37d2b0bc4"
+    },
+    {
+      "path": "png/card-edit.zh-TW.phone.light.png",
+      "sha256": "8141109bca69dfc1266999e49b32812ae659364157f59ca4ad6e65bebf6a5d6e"
+    },
+    {
+      "path": "png/card-show.en.desktop.dark.png",
+      "sha256": "27ed33d8b542e170a2807bb46ecb79156bba77c3cddf2163fbf4e67a36e0f097"
+    },
+    {
+      "path": "png/card-show.en.desktop.light.png",
+      "sha256": "a4473a83c4bc034fee06b81e79d87cef987ac73a1696cc0d4f52a7bf139f5737"
+    },
+    {
+      "path": "png/card-show.en.phone.dark.png",
+      "sha256": "06b94d9598e6335770a20b2fa3583051aedc2993e39210710b60f7855e93ea2a"
+    },
+    {
+      "path": "png/card-show.en.phone.light.png",
+      "sha256": "ebaae320463e7b8ec489ed4e75dab49a2389bc47599e47ceca0460a7d8a040da"
+    },
+    {
+      "path": "png/card-show.zh-TW.desktop.dark.png",
+      "sha256": "e55f477f42b6fe0f95e84e4d222b3c21f9105e861b27d99a22d1179f960a6255"
+    },
+    {
+      "path": "png/card-show.zh-TW.desktop.light.png",
+      "sha256": "dd314eb5ecb7e6676a6b4de158bfc189e73272d2d7d58be4d57fc7be2db1c8f5"
+    },
+    {
+      "path": "png/card-show.zh-TW.phone.dark.png",
+      "sha256": "6f9f721465644cd095f2fcd76cd7d492d1873a324ba763763e8a0c62a9d24406"
+    },
+    {
+      "path": "png/card-show.zh-TW.phone.light.png",
+      "sha256": "07c2a81a5dbbc4d46d9852d9aedcc7eec259a8f89e9e8d79be5a9452eca12857"
+    },
+    {
+      "path": "png/skew-old-section.en.desktop.light.png",
+      "sha256": "0ffddc76aea5e6e996b8e17d42de72075bef377b48bb40c0ca991632fedfe783"
+    },
+    {
+      "path": "png/skew-old-section.zh-TW.phone.dark.png",
+      "sha256": "171dfce0346bd499f7a32ea99d336f7a2372ea9a015327a3423c751e2cf08d8c"
+    },
+    {
+      "path": "png/skew-old-strings.en.desktop.light.png",
+      "sha256": "ddf9256959b9bebc10b908e40955ca7d2f0ca2d6540662b58f02f30353f8242e"
+    },
+    {
+      "path": "png/skew-old-strings.zh-TW.phone.dark.png",
+      "sha256": "deb7d3b93d3d2b729f284d657d8e5d298472ccf7ee9a10094e4617b7e7c3512e"
+    },
+    {
+      "path": "png/surface-after.en.desktop.dark.png",
+      "sha256": "a07207d37e77d6523402046b36072b9ca912525eb4811e8344bd08885e50994f"
+    },
+    {
+      "path": "png/surface-after.en.desktop.light.png",
+      "sha256": "ddf9256959b9bebc10b908e40955ca7d2f0ca2d6540662b58f02f30353f8242e"
+    },
+    {
+      "path": "png/surface-after.en.phone.dark.png",
+      "sha256": "0c34327f31c03fca4c506202ef89266bf8451c2c1425642cec8b6e7acb267fa0"
+    },
+    {
+      "path": "png/surface-after.en.phone.light.png",
+      "sha256": "b17b14f3fe6d6690d5b056b7de11c85e94e11e37335f1757ff32626062dcc1a3"
+    },
+    {
+      "path": "png/surface-after.zh-TW.desktop.dark.png",
+      "sha256": "cd1803038ca108dfa3dce9aa6d7829209283ec735d287140cd5be1565e7bbf1d"
+    },
+    {
+      "path": "png/surface-after.zh-TW.desktop.light.png",
+      "sha256": "17afb400b36f40e5da5a45dcd3cf4a1c0d497397d5e32a92879448397a58ea9c"
+    },
+    {
+      "path": "png/surface-after.zh-TW.phone.dark.png",
+      "sha256": "635a45769c584f10d396fe7bb80a4751c6994abfb58b607d569e0f53f1f92667"
+    },
+    {
+      "path": "png/surface-after.zh-TW.phone.light.png",
+      "sha256": "b40cb3b3925b9e3fe00aeb0ecb6574b8d82730f95c8a5371ccbc0f25fdf2dfe2"
+    },
+    {
+      "path": "png/surface-before.en.desktop.dark.png",
+      "sha256": "2b18ec7c9094c4b3a24797e88f016de490b75f470619f4e78bf3f682c3b59909"
+    },
+    {
+      "path": "png/surface-before.en.desktop.light.png",
+      "sha256": "0ffddc76aea5e6e996b8e17d42de72075bef377b48bb40c0ca991632fedfe783"
+    },
+    {
+      "path": "png/surface-before.en.phone.dark.png",
+      "sha256": "afe7facc1bda3184e75abf0462baea8c9508919cb23231b82889847c1b204799"
+    },
+    {
+      "path": "png/surface-before.en.phone.light.png",
+      "sha256": "280871b468598e83e0372c94307ac0a6d3f1b231db7aa28f09c7b28bfb5ab287"
+    },
+    {
+      "path": "png/surface-before.zh-TW.desktop.dark.png",
+      "sha256": "1585176e2b7eae426a68d61df23c0bbadeaff0944444ca11ac995889cf5a4eee"
+    },
+    {
+      "path": "png/surface-before.zh-TW.desktop.light.png",
+      "sha256": "4cf9e3150a923d19c1ec389131ac45fe411f4b570fd5c0022c4be17f75a752e6"
+    },
+    {
+      "path": "png/surface-before.zh-TW.phone.dark.png",
+      "sha256": "612738e35dc20b5f0ea6ef90f1e80fd024c4ebef0d0e54f2aa1cd82438da6d6f"
+    },
+    {
+      "path": "png/surface-before.zh-TW.phone.light.png",
+      "sha256": "7f0b6fbc08b8bab769640ad335f025cf0ed2912107518f9fcf380c5eb7bfebdc"
+    }
+  ]
 }
