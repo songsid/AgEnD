@@ -14,6 +14,7 @@ import { parseRolePolicy, BUILTIN_ROLE_IDS } from "../src/hub/roles/model.js";
 import { planRoleChange } from "../src/hub/roles/change.js";
 import { personKeyString } from "../src/hub/identity.js";
 import { HubCore } from "../src/hub/http/core.js";
+import { HubSharingService } from "../src/hub/sharing.js";
 import { HubSessions, hubCookieName } from "../src/hub/sessions.js";
 import { HubPairingService } from "../src/hub/pairing.js";
 import { createHubDirectoryAdmission } from "../src/hub/directory/admission.js";
@@ -107,9 +108,9 @@ function world(source: "group" | "manual" | "code" = "group", state: "never-enab
     const core = new HubCore({ uow: createHubUnitOfWork(db), audit, content: audit.content, store: transport, directory, directoryReads: reads,
         pairing: new HubPairingService({ store: transport, directory, enabled: () => live, fenceFleet() { }, identity: { hubId, webOrigin: "https://hub.example.test", memberOrigin: "https://member.example.test", spkiSha256: "a".repeat(64), issuerPublicKey: "unused" } }),
         config: { hubId, name: "Synthetic", webOrigin: "https://hub.example.test", memberOrigin: "https://member.example.test", administrator: root }, issuer: { keyId: "unused", sign() { throw Error("unused"); } }, transport: () => null,
-        current: () => ({ serverEnabled: () => live, memberEnabled: () => false, epoch: () => 0 }), now: () => at }, hubTxDatabase);
+        current: () => ({ serverEnabled: () => live, memberEnabled: () => false, epoch: () => 0 }), refreshAuthorization: refresh, now: () => at }, hubTxDatabase);
     const sessions = new HubSessions(core), browser = async (who = root) => { const s = await sessions.signIn(who.objectId, "synthetic"); return sessions.context({ headers: { cookie: `${hubCookieName(hubId)}=${s.token}` } } as IncomingMessage); };
-    return { db, hubId, root, owner, policy, resource, body, audit, transport, clock, facts, effects, adapter, prepare, apply, row, read, directory, reads, options, browser, refresh,
+    return { db, hubId, root, owner, policy, resource, body, audit, transport, clock, facts, effects, adapter, prepare, apply, row, read, directory, reads, options, browser, refresh, core,
         addPerson: (who: typeof root) => people.push(who), holdRead: (action: typeof holdRead) => { holdRead = action; }, asyncAudit: (value: boolean) => { asyncAudit = value; }, groupAnswer: (action: typeof groupAnswer) => { groupAnswer = action; }, elapsed: (n: number) => { elapsed = n; }, onRead: (action: typeof onRead) => { onRead = action; }, hook: (action: typeof hook) => { hook = action; },
         now: () => at, time: (n: number) => { at = n; }, stop: () => { live = false; } };
 }
@@ -251,21 +252,23 @@ describe("S129 exact resource effects and retirement", () => {
         expect(w.db.serialize()).toEqual(before);
     });
 });
-function pausedExposure(w: ReturnType<typeof world>) {
-    // Future-compatible raw-column fixture, not execution of M3015's Pause writer.
-    w.db.exec("ALTER TABLE hub_exposures ADD COLUMN sharing_paused INTEGER NOT NULL DEFAULT 0;ALTER TABLE hub_exposures ADD COLUMN sharing_epoch INTEGER NOT NULL DEFAULT 0");
+async function pausedExposure(w: ReturnType<typeof world>) {
+    // Registered s3-sharing-pause schema and actual owner writer; only directory and transport sinks are inert.
     const resource = { kind: "exposure" as const, id: randomUUID(), revision: 1, owner: w.owner };
-    w.db.prepare("INSERT INTO hub_exposures(id,fleet_id,owner,display_name,revision,state,data_view_id,allowed_tools,policy_digest,updated_at,sharing_paused,sharing_epoch) VALUES(?,?,?,?,1,'published','agent','[]',?,100,1,7)")
+    w.db.prepare("INSERT INTO hub_exposures(id,fleet_id,owner,display_name,revision,state,data_view_id,allowed_tools,policy_digest,updated_at,sharing_paused,sharing_epoch) VALUES(?,?,?,?,1,'published','agent','[]',?,100,0,0)")
         .run(resource.id, w.resource.id, personKeyString(w.owner), "Synthetic", "a".repeat(64));
     w.db.prepare("INSERT INTO hub_group_resources VALUES(?,?,'group','active',1)").run(JSON.stringify([resource.kind, resource.id, 1]), JSON.stringify(resource));
     const grant = randomUUID();
     w.db.prepare("INSERT INTO hub_grants(id,revision,owner,exposure_id,exposure_revision,approved_by,approved_at,subject,permissions,starts_at,expires_at,state) VALUES(?,1,?,?,1,?,100,?,?,0,1000,'active')")
         .run(grant, personKeyString(w.owner), resource.id, personKeyString(w.owner), personKeyString(w.root), JSON.stringify(["ask"]));
+    await new HubSharingService(w.core).change(await w.browser(w.owner), resource.id, { revision: 1, sharingEpoch: 0, paused: true });
+    expect(w.db.prepare("SELECT sharing_paused,sharing_epoch FROM hub_exposures WHERE id=?").get(resource.id)).toEqual({ sharing_paused: 1, sharing_epoch: 1 });
+    expect(w.refresh).toHaveBeenCalledOnce();
     return { resource, raw: () => w.db.prepare("SELECT * FROM hub_exposures WHERE id=?").get(resource.id), grant: () => w.db.prepare("SELECT * FROM hub_grants WHERE id=?").get(grant) };
 }
 describe("S129 ordinary sharing boundaries and actual writer/expiry", () => {
     it("preserves raw owner-pause fields and grants across role loss and restoration", async () => {
-        const w = world(), e = pausedExposure(w), raw = e.raw(), grant = e.grant(), next = w.read();
+        const w = world(), e = await pausedExposure(w), raw = e.raw(), grant = e.grant(), next = w.read();
         next.assignments = [];
         await w.apply(next);
         expect(e.raw()).toEqual(raw);
@@ -278,7 +281,7 @@ describe("S129 ordinary sharing boundaries and actual writer/expiry", () => {
         expect(w.db.prepare("SELECT state FROM hub_group_resources WHERE resource_key=?").get(JSON.stringify(["exposure", e.resource.id, 1]))).toEqual({ state: "suspended" });
     });
     it("rolls back an owner-pause ABA observed during required audit", async () => {
-        const w = world(), e = pausedExposure(w), next = w.read();
+        const w = world(), e = await pausedExposure(w), next = w.read();
         next.assignments = [];
         const p = await w.prepare(next), before = w.db.serialize();
         w.hook(record => {
