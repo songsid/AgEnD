@@ -70,9 +70,9 @@ describe("the real daemon's footer follows its agent_mode", () => {
   };
   it("a user message: the reply tool in MCP mode, agend-agent reply in CLI mode", () => {
     const meta = { user: "alice", source: "telegram", user_id: "1" };
-    expect(daemon()["formatInboundMessage"]("hi", meta)).toBe("[user:alice via telegram, id:1] hi\n(Answer with the reply tool.)");
-    expect(daemon("mcp")["formatInboundMessage"]("hi", meta)).toBe("[user:alice via telegram, id:1] hi\n(Answer with the reply tool.)");
-    expect(daemon("cli")["formatInboundMessage"]("hi", meta)).toBe('[user:alice via telegram, id:1] hi\n(Answer with agend-agent reply "…".)');
+    expect(daemon()["formatInboundMessage"]("hi", meta)).toBe("[user:alice via telegram, id:1] hi\n(Answer with the reply tool; terminal text does not reach them.)");
+    expect(daemon("mcp")["formatInboundMessage"]("hi", meta)).toBe("[user:alice via telegram, id:1] hi\n(Answer with the reply tool; terminal text does not reach them.)");
+    expect(daemon("cli")["formatInboundMessage"]("hi", meta)).toBe('[user:alice via telegram, id:1] hi\n(Answer with agend-agent reply "…"; terminal text does not reach them.)');
   });
   it("a cross-instance message: the same marker as the envelope, in the daemon's own mode", () => {
     const meta = { from_instance: "lead", requires_reply: "true", correlation_id: "cid-1" };
