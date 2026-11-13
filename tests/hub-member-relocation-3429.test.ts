@@ -93,6 +93,7 @@ describe("#3429 B — D1: pending is not confirmed; the anchor decides", () => {
     accept(st(A, B, 1)); const first = relocationDigest(st(A, B, 1));
     accept(st(A, C, 2));                                                                                // a new proposal supersedes it
     expect(() => promote(first)).toThrow();                                                            // the old welcome cannot confirm C
+    expect(() => store.promote(p, digest, first, () => true)).toThrow();                                // nor at the store itself
     expect(store.dialOrder(p, digest)).toEqual([C, A]);
     promote(relocationDigest(st(A, C, 2)));
     expect(store.dialOrder(p, digest)).toEqual([C]);
