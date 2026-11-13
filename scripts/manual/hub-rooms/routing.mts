@@ -215,7 +215,10 @@ try {
       if (batch.length >= 6) {
         const expand = page.getByRole("button", { name: lang === "en" ? "Show " + (batch.length - 3) + " more" : "展開其餘 " + (batch.length - 3) + " 則", exact: true }); await expand.waitFor();
         check(tag + " six answers show three before expansion", await page.locator(".msg.agent:visible").filter({ hasText: "Grouped-answer" }).count() === 3);
-        check(tag + " expand link follows the third shown answer", await expand.evaluate((el: HTMLElement) => el.closest(".status-line")?.previousElementSibling?.textContent?.includes("Grouped-answer 3")));
+        check(tag + " expand link follows the third shown answer", await expand.evaluate((el: HTMLElement) => {
+          const shown = [...document.querySelectorAll<HTMLElement>(".msg.agent")].filter(row => row.querySelector(".md")?.textContent?.startsWith("Grouped-answer") && getComputedStyle(row).display !== "none");
+          return el.closest(".status-line")?.previousElementSibling === shown[2];
+        }));
         await shot("six-answers-collapsed"); await expand.click(); await page.getByText(answerText(batch.length - 1), { exact: true }).waitFor();
       }
       const answerRows = page.locator(".msg.agent:visible").filter({ hasText: "Grouped-answer" });
@@ -250,10 +253,18 @@ finally {
   // and keep asset paths separate from their digests, so token.css's public hash is not mistaken for a credential.
   const labelIds = (value: any): any => Array.isArray(value) ? value.map(labelIds) : value && typeof value === "object"
     ? Object.fromEntries(Object.entries(value).map(([key, entry]) => [key === "idempotencyKey" ? "idempotencyId" : key, labelIds(entry)])) : value;
+  const canonical = (value: any) => JSON.stringify(value, (_key, entry) => entry && typeof entry === "object" && !Array.isArray(entry)
+    ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b))) : entry);
+  const originalCanonicalSha256 = sha(canonical(receipt));
   const { served, ...data } = receipt;
-  const encoded = { ...data, evidenceFormat: { version: 2, fieldAliases: { idempotencyId: "idempotencyKey" }, assetDigests: "servedAssets entries pair path with sha256" },
-    servedAssets: Object.entries(served).map(([path, sha256]) => ({ path, sha256 })) };
-  writeFileSync(join(out, "receipt.json"), JSON.stringify(labelIds(encoded), null, 2));
+  const encoded = labelIds({ ...data, evidenceFormat: { version: 2, originalCanonicalSha256, fieldAliases: { idempotencyId: "idempotencyKey" }, assetDigests: "servedAssets entries pair path with sha256" },
+    servedAssets: Object.entries(served).map(([path, sha256]) => ({ path, sha256 })) });
+  const restoreIds = (value: any): any => Array.isArray(value) ? value.map(restoreIds) : value && typeof value === "object"
+    ? Object.fromEntries(Object.entries(value).map(([key, entry]) => [key === "idempotencyId" ? "idempotencyKey" : key, restoreIds(entry)])) : value;
+  const { evidenceFormat, servedAssets, ...labelled } = encoded;
+  const restored = { ...restoreIds(labelled), served: Object.fromEntries(servedAssets.map(({ path, sha256 }: any) => [path, sha256])) };
+  if (sha(canonical(restored)) !== originalCanonicalSha256) throw Error("Evidence aliases did not round-trip");
+  writeFileSync(join(out, "receipt.json"), JSON.stringify(encoded, null, 2));
   await browser?.close(); for (const p of peers) { p.publisher.close(); await p.adapter.close(); }
   await web?.close(); await new Promise<void>(yes => server.close(() => yes())); await net.close(); for (const p of peers) p.db.close();
 }
