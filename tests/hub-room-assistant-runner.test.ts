@@ -235,7 +235,8 @@ describe("Hub room assistant host-Fleet ownership", () => {
     const w = world();
     for (const value of [null, undefined, { ...input("a"), asker: undefined }, { ...input("a"), asker: { name: 3 } },
       { ...input("a"), context: [null] }, { ...input("a"), context: [{ author: "Han", text: 7, at: 0 }] },
-      { ...input("a"), context: [{ author: "Han", text: "Hello", at: NaN }] }]) {
+      { ...input("a"), context: [{ author: "Han", text: "Hello", at: NaN }] },
+      ...[false, "yes"].map(repliedTo => ({ ...input("a"), context: [{ author: "Han", text: "Hello", at: 0, repliedTo }] }))]) {
       let result!: Promise<{ text: string }>;
       expect(() => { result = w.runner.ask(value as unknown as RoomAssistantAsk); }).not.toThrow();
       await expect(result).rejects.toThrow("Invalid room assistant ask");
