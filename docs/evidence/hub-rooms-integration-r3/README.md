@@ -13,3 +13,5 @@ Remaining: concrete C invitation/Team services and production factory injection,
 ## Revision1: actual shared-shell mounts
 
 See [r1/README.md](r1/README.md) and its bound receipt: source `7ce5d52798704ca3000b313a30bc7d1da111c5ef`,106/15 focused, both native programs0,38/38 actual-browser checks and12 original PNGs. It replaces the NewRoom component harness with the real sidebar action and adds actual room settings/admin walks. Earlier packet remains historical and untouched.
+
+Administration order is consumed separately in [admin-order.md](admin-order.md), with33 focused UI checks. Existing revision1 screenshots retain their original source binding.
