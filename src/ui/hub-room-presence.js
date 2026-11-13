@@ -46,6 +46,12 @@ export function presenceView(member) {
   return view;
 }
 
+/** The Fleet sidebar dot class for a presence value (shared with the list rows). */
+const DOT_CLASS = { online: "ok", idle: "ok", working: "busy", paused: "warn", offline: "off", later: "off" };
+export function presenceDot(presence) {
+  return DOT_CLASS[presence] ?? "off";
+}
+
 /**
  * The Agents list order (spec §5): working, then idle (待命), paused, offline,
  * reply-later; stable by name within each group. Only kind "agent"/"later"

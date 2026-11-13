@@ -71,6 +71,14 @@ describe("presenceView", () => {
   });
 });
 
+describe("presenceDot", () => {
+  it("maps every presence to the Fleet sidebar dot class", () => {
+    expect(["online", "idle", "working", "paused", "offline", "later"].map((p) => P.presenceDot(p))).toEqual(["ok", "ok", "busy", "warn", "off", "off"]);
+    expect(P.presenceDot("unknown")).toBe("off");
+    expect(P.presenceDot(undefined)).toBe("off");
+  });
+});
+
 describe("sortAgents", () => {
   it("orders working, idle, paused, offline, later — stable by name", () => {
     const fx = createHubRoomsFixture();
