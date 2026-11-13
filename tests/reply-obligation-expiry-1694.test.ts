@@ -66,7 +66,7 @@ describe("#2802: a restart adds no reminder of its own", () => {
     fm.lifecycle.daemons.set("owner", { getInstanceState: () => "idle" });
     fm.sweepReplyObligations(new Date(T0 + 120_000));
     expect(notices(outbox).map((r: any) => [r.target, r.cid])).toEqual(Array.from({ length: 12 }, (_, i) => ["owner", `cid-${String(i).padStart(2, "0")}`]));
-    expect(notices(outbox).every((r: any) => r.text.startsWith("[system:reply-pending] Your turn ended"))).toBe(true);
+    expect(notices(outbox).every((r: any) => r.text.startsWith("[system:reply-pending] ") && r.text.includes("is waiting for your result"))).toBe(true);
     expect(originals.map(id => outbox.get(id))).toEqual(snapshots);
   });
 });
