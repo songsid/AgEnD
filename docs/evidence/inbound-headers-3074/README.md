@@ -78,3 +78,36 @@ An uncertain compatibility write stays legacy. Header text grants no authority;
 lookup ACL, original content/hash, authority actor, proof and explicit forwarding
 are unchanged. Rollback is a scoped revert with legacy support retained; there is
 no receipt schema/authority migration.
+
+## Alpha parity and native scope
+
+Alpha base `ac1e5a65905b010aa6e1419713c88f6985581749`. Shared presentation,
+human binder/receipt helpers, rules, tests and skills carry main's implementation.
+Conflict resolution retains alpha's Pane abstraction, broadcastFleetMessage,
+Follow ledger/portable transcript parser, and native transcript exclusions. Main's
+Claude model observer is not introduced by this twin; existing alpha model/session
+observations and successful owned switch boundaries are retained.
+
+Alpha-only: an owned fresh native acquisition can use the installed grammar;
+resumed/reattached native contexts require the proven legacy introduction. Native
+Claude/Codex compaction events preserve the baseline, sidechain, checkpoint and
+owner fences and reach the same reminder epoch through the monitor.
+
+Fail-first: fresh/resumed/reattached capability cases3red; native Claude/Codex
+context observations2red. Restored production: six focused files132/132, including
+the full1728-renderer golden; native lifecycle/source30/30 after the extra event
+wiring. Three additional reversals catch fresh-only capability, retaining a reset
+through checkpoint and rejecting sidechains. No real Windows execution claimed.
+
+All1728 incoming alpha golden hashes matched the old builder. Normalizing ONLY
+the added header rule, the exact WEB/VERIFY receipt-rule substitutions and the
+new user-header example reproduced every incoming rendered string exactly, then
+the new hashes were recorded. Existing matrix/assertions/case count remain.
+
+Ridge's main-only observer finding: ordinary distinct served-response records
+reported a snapshot update, not a model change. The main replacement now compares
+normalized selected/served models and owned session identity; the alpha base has
+no model-observer feature, so that main-only hook is not imported. Common alpha
+paths already leave ordinary response events outside the reminder reset hooks.
+Fixed grammar instructions and one-time transition notices are extra context
+overhead; the header-byte estimate excludes them and is not net fleet billing.

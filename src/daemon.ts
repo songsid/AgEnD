@@ -3272,6 +3272,12 @@ export class Daemon extends EventEmitter {
           this.startupAdmission?.();
           if (this.startupAborted || this.deliveryWritesStopping || !this.nativePaneLifecycle.current()) throw Error("Native launch was superseded");
         }
+        // Only a fresh owned launch has received this manager's current instruction grammar.
+        // A resumed/reattached context learns it through the same proven legacy notice as local panes.
+        this.startupAdmission?.();
+        if (this.startupAborted || this.deliveryWritesStopping || !this.nativePaneLifecycle.current()) throw Error("Native launch was superseded");
+        if (acquired.disposition === "fresh") this.installCompactInboundInstructions();
+        else { this.compactInboundInstructions = false; this.inboundCompatibilityPending = true; this.resetInboundPresentation(); }
       } finally { this.endSpawn(); }
     } else {
     // 2. Tmux — ensure session, create window if not alive

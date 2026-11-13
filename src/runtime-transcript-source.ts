@@ -44,6 +44,8 @@ export class RuntimeTranscriptSource implements TranscriptSource {
       const events = await this.read(false), queued = this.pending; this.pending = empty(); this.pendingBytes = 0;
       queued.toolUses.push(...events.toolUses); queued.toolResults.push(...events.toolResults); queued.assistantTexts.push(...events.assistantTexts);
       queued.records!.push(...events.records!); queued.turns!.push(...this.takeTurns(), ...events.turns!);
+      const resets = (queued.contextResets ?? 0) + (events.contextResets ?? 0);
+      if (resets) queued.contextResets = resets;
       return queued;
     });
   }
@@ -59,6 +61,7 @@ export class RuntimeTranscriptSource implements TranscriptSource {
         this.pendingBytes += Buffer.byteLength(JSON.stringify(events));
         this.pending.toolUses.push(...events.toolUses); this.pending.toolResults.push(...events.toolResults); this.pending.assistantTexts.push(...events.assistantTexts);
         this.pending.records!.push(...events.records!); this.pendingTurns.push(...events.turns!);
+        if (events.contextResets) this.pending.contextResets = (this.pending.contextResets ?? 0) + events.contextResets;
         if (!this.baseline && (this.following() || this.deferred && this.reference.cursor.fileId === null
           && this.port.isTranscriptObservationCurrent(this.reference))) return structuredClone(this.reference);
       }
@@ -104,6 +107,10 @@ export class RuntimeTranscriptSource implements TranscriptSource {
       } else if (before.cursor.offset === 0) this.state.turnKnown = true;
       for (const line of text.split(/\r?\n/)) if (line) {
         const entry = JSON.parse(line);
+        if (!wasBaseline && (before.provider === "codex" ? entry.type === "compacted"
+          : entry.type === "system" && entry.subtype === "compact_boundary" && entry.isSidechain !== true)) {
+          events.contextResets = (events.contextResets ?? 0) + 1;
+        }
         if (before.provider === "codex") {
           // After a gap an orphan end proves no closed turn. Only a subsequent start re-establishes the ledger.
           const orphanEnd = !this.state.turnKnown && entry.type === "event_msg" && ["task_complete", "turn_aborted"].includes(entry.payload?.type);
