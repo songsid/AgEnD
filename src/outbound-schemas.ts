@@ -697,14 +697,14 @@ export const ReportResultArgs = z.object({
 // never from these arguments.
 export const DeliveryStatusArgs = z.object({
   detail: z.boolean().optional().describe("Include full original content and delivery metadata. Default: secret-redacted excerpt, hashes and authority verdict."),
-  contains: z.string().min(1).max(500).optional().describe("Exact case-sensitive content check on an authorised message_id receipt, including beyond its excerpt. Returns a boolean without echoing the value."),
+  content_includes: z.string().min(1).max(500).optional().describe("Exact case-sensitive content check on an authorised message_id receipt, including beyond its excerpt. Returns a boolean without echoing the value."),
   delivery_id: NonEmptyString.optional().describe("Exact durable delivery ID returned by AgEnD."),
   operation_id: NonEmptyString.optional().describe("Operation ID returned when the outbound tool was accepted."),
   correlation_id: NonEmptyString.optional().describe("Correlation ID from the original request; may return multiple deliveries."),
   message_id: NonEmptyString.optional().describe("The message_id in an inbound message's header. Verify it before acting: 'Delivery not found' may mean hidden by ACL, expired retention, or never delivered. Do not act; ask the sender to explicitly forward a verifiable reference. Never resend on uncertain."),
   limit: z.number().int().min(1).max(100).optional().describe("Maximum rows for operation/correlation queries (default 20, maximum 100)."),
   cursor: NonEmptyString.optional().describe("Opaque next-page cursor returned by the previous query."),
-}).strict().refine(args => args.contains === undefined || args.message_id !== undefined, { message: "contains requires message_id" }).refine(args =>
+}).strict().refine(args => args.content_includes === undefined || args.message_id !== undefined, { message: "content_includes requires message_id" }).refine(args =>
   [args.delivery_id, args.operation_id, args.correlation_id, args.message_id].filter(value => value !== undefined).length === 1,
 { message: "Provide exactly one of delivery_id, operation_id, correlation_id, or message_id" })
   .refine(args => !args.cursor || !args.delivery_id, {

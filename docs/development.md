@@ -634,4 +634,4 @@ install -m 755 scripts/gate-merge.sh ~/.agend/scripts/gate-merge.sh
 install -m 644 scripts/gate-support.mjs ~/.agend/scripts/gate-support.mjs
 ```
 
-Full verification evidence must be fetched with `delivery_status {message_id: ID, detail: true}` (CLI `agend-agent delivery-status --detail --message-id ID`). Compact excerpts and `contains` matches do not establish the complete original intent and cannot replace full merge-gate evidence. Existing ACL/proof/actor/current-authority checks remain mandatory; never log secret-bearing originals.
+Full verification evidence must be fetched with `delivery_status {message_id: ID, detail: true}` (CLI `agend-agent delivery-status --detail --message-id ID`). Compact excerpts and `content_includes` matches do not establish the complete original intent and cannot replace full merge-gate evidence. Existing ACL/proof/actor/current-authority checks remain mandatory; never log secret-bearing originals.

@@ -455,6 +455,6 @@ Communication tools acknowledge acceptance with compact delivery IDs; `detail: t
 (CLI `--detail`) restores complete acknowledgements. `delivery_status` defaults to
 state, authority/proof/origin, content hashes and a redacted excerpt, not the full
 original. Before relying on original consent or feeding a merge gate, explicitly
-request detail and inspect it without exposing secrets. `contains` can confirm an
+request detail and inspect it without exposing secrets. `content_includes` can confirm an
 exact resource string, but presence alone grants no authority. Store visibility,
 owned proof and current authority revocation checks still apply in both modes.

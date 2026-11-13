@@ -2538,7 +2538,7 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
       respond(null, t("delivery.not_found"));
       return;
     }
-    respond(compactDeliveryStatus(page, v.data.detail, v.data.contains));
+    respond(compactDeliveryStatus(page, v.data.detail, v.data.content_includes));
   } catch (err) {
     ctx.logger.warn({ err, caller: meta.instanceName }, "Delivery status query failed");
     respond(null, t("delivery.unavailable"));

@@ -41,8 +41,8 @@ describe("CLI explicit references", () => {
     expect(JSON.stringify(h.requests[0].args)).not.toContain("--detail");
   });
   it("delivery-status forwards contains and bare detail without consuming the selector", async () => {
-    const h = await client(); await h.invoke("delivery-status", "--detail", "--message-id", "hmsg-test", "--contains", "exact SHA");
-    expect(h.requests[0]).toMatchObject({ op: "delivery-status", args: { message_id: "hmsg-test", detail: true, contains: "exact SHA" } });
+    const h = await client(); await h.invoke("delivery-status", "--detail", "--message-id", "hmsg-test", "--content-includes", "exact SHA");
+    expect(h.requests[0]).toMatchObject({ op: "delivery-status", args: { message_id: "hmsg-test", detail: true, content_includes: "exact SHA" } });
   });
 
   it.each(["send", "delegate"])("%s keeps existing positionals and sends repeatable explicit forwards", async command => {
