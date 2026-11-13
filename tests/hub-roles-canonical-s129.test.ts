@@ -5,7 +5,7 @@ import {afterEach,describe,expect,it} from "vitest";
 import {createHubAudit,HUB_AUDIT_MIGRATION} from "../src/hub/audit/index.js";
 import {createHubGroupPolicyStore,groupPolicyMigration,inspectHubGroupPolicyBinding} from "../src/hub/group-policy/store.js";
 import {convertGroupPolicy} from "../src/hub/roles/convert.js";
-import {createHubCanonicalPolicyReader,parseCanonicalPolicy} from "../src/hub/roles/read.js";
+import {collectPolicyDirectoryGroups,createHubCanonicalPolicyReader,MAX_POLICY_DIRECTORY_GROUPS,parseCanonicalPolicy,rebindCanonicalPolicy} from "../src/hub/roles/read.js";
 import type {HubDirectory} from "../src/hub/directory/types.js";
 const dbs:Database.Database[]=[];afterEach(()=>{for(const db of dbs.splice(0))db.close();});
 function fixture(){
@@ -60,5 +60,24 @@ describe("S129 canonical policy bridge",()=>{
   const w=fixture();w.roles.rolesActive=false;w.save(w.roles);let checks=0;
   const reader=createHubCanonicalPolicyReader({...w.options,current:()=>++checks===1});expect(reader).toThrow();
   expect(parseCanonicalPolicy(JSON.stringify(w.roles)).kind).toBe("roles");
+ });
+ it("collects all retained group subjects/scopes without inventing groups for people or discarding distinct DN assertions",()=>{
+  const w=fixture(),group={realm:"corp",objectId:randomUUID()};w.roles.rolesActive=false;
+  const assignment={id:"future",roleId:"builtin:member",subject:{kind:"group"as const,group,dn:"CN=Subject"},scope:{kind:"group"as const,group,dn:"CN=Scope"},
+   maxFleets:0,startsAt:5000,expiresAt:6000,assignedBy:w.root,assignedAt:100};
+  w.roles.assignments=[assignment,{...assignment,id:"expired",startsAt:0,expiresAt:1},{...assignment,id:"person",subject:{kind:"person",person:w.root},scope:{kind:"hub"}}];
+  const refs=collectPolicyDirectoryGroups(w.roles);expect(refs).toEqual([{key:group,dn:"CN=Scope"},{key:group,dn:"CN=Subject"}]);
+  (refs[0]as{dn:string}).dn="mutated";expect(collectPolicyDirectoryGroups(w.roles)[0]!.dn).toBe("CN=Scope");
+ });
+ it("retains the schema's full bounded subject/scope graph beyond the old 32-group limit",()=>{
+  const w=fixture();w.roles.assignments=Array.from({length:256},(_,i)=>({id:`a${i}`,roleId:"builtin:member",subject:{kind:"group",group:{realm:"corp",objectId:randomUUID()},dn:`CN=Subject${i}`},
+   scope:{kind:"group",group:{realm:"corp",objectId:randomUUID()},dn:`CN=Scope${i}`},maxFleets:1,startsAt:0,expiresAt:null,assignedBy:w.root,assignedAt:100}));
+  expect(collectPolicyDirectoryGroups(w.roles)).toHaveLength(MAX_POLICY_DIRECTORY_GROUPS);
+ });
+ it.each(["roles","group"])("rebinds only the %s generation/revision and refuses overflow",kind=>{
+  const w=fixture(),document=parseCanonicalPolicy(JSON.stringify(kind==="roles"?w.roles:w.old));
+  const next=rebindCanonicalPolicy(document,"g2");expect(next.kind).toBe(document.kind);
+  expect(next.policy).toEqual({...document.policy,generation:"g2",revision:document.policy.revision+1});
+  const max=parseCanonicalPolicy(JSON.stringify({...document.policy,revision:Number.MAX_SAFE_INTEGER}));expect(()=>rebindCanonicalPolicy(max,"g2")).toThrow();
  });
 });

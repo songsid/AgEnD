@@ -11,7 +11,7 @@ import { createHubDirectoryNotices, type HubDirectoryNotices } from "./settings-
 import { HUB_DIRECTORY_RECOVERY_MIGRATION } from "./settings-directory-recovery-intent.js";
 import { createHubDirectoryMountBarrier } from "./settings-directory-mount.js";
 import { createHubGroupPolicyStore } from "./group-policy/store.js";
-import { parseGroupPolicy } from "./group-policy/model.js";
+import { collectPolicyDirectoryGroups, parseCanonicalPolicy } from "./roles/read.js";
 import { readPrivateFile } from "./private-files.js";
 import { BIND_PASSWORD_REF, BIND_SECRET_REL } from "./init/layout.js";
 import type { HubDirectory, HubDirectoryConfig } from "./directory/index.js";
@@ -121,11 +121,11 @@ export async function createHubDirectoryColdSettings(options: HubDirectoryRecove
       current: barrier.current,
       source: () => state.db.transaction(() => {
         const stamp = barrier.capture();
-        const previous = state.decision.proofBasis()?.policy ?? parseGroupPolicy(JSON.parse(
-          (state.db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string }).body));
+        const previous = state.decision.proofBasis()?.policy ?? parseCanonicalPolicy(
+          (state.db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string }).body).policy;
         return { directory: acceptedDirectory, config: structuredClone(directoryConfig) as HubDirectoryConfig, bindPassword,
           administrator: structuredClone(hub.administrator) as PersonKey,
-          groups: previous.groups.map(g => ({ key: { ...g.group }, dn: g.dn })), ...stamp, current: barrier.current };
+          groups: collectPolicyDirectoryGroups(previous), ...stamp, current: barrier.current };
       })(),
       sessions(): never { throw new HubStateError("service-unavailable", "A local recovery source has no Hub browser sessions"); },
       withDirectoryRead<T>(person: PersonKey, work: () => Promise<T>): Promise<T> {

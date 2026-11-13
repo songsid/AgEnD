@@ -95,6 +95,12 @@ describe("S129 operation-owned management authority", () => {
     expect((await w.authority.require((await w.browser(w.root)).ctx, "join.manage")).source).toBe("legacy");
     expect((w.db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body).toBe(w.legacyRaw);
   });
+  it("pins the legacy directory method independently of role-clock validation", async () => {
+    const w = await fixture(); w.db.prepare("UPDATE hub_group_policy SET body=?").run(w.legacyRaw);
+    const permit = await w.authority.require((await w.browser(w.root)).ctx, "join.manage");
+    w.directory.checkEligibility = async who => ({ eligible: true, person: w.person(who) });
+    expect(() => permit.assertCurrent()).toThrow();
+  });
   it.each(["policy", "epoch", "floor", "session", "lifetime", "directory", "closed", "expiry", "wall-ttl", "elapsed-ttl", "rewind"] as const)("permanently retires an admitted proof at %s", async change => {
     const w = await fixture(); if (change === "expiry") { w.policy.assignments[0]!.expiresAt = 200; w.save(w.policy); }
     const permit = await w.authority.require(w.ctx.ctx, "join.manage");

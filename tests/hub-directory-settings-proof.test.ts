@@ -54,6 +54,21 @@ function fixture() {
 }
 
 describe("directory setting preparation authority", () => {
+  it.each([33, 512])("re-proves all %i retained role subject/scope references before Save", async count => {
+    const r = fixture(); r.source.groups = Array.from({ length: count }, (_, i) => ({ key: { realm: who.realm, objectId: randomUUID() }, dn: `CN=Retained${i}` }));
+    await expect(r.save()).resolves.toMatchObject({ directoryEpoch: 1 });
+    expect(r.next.checkPolicyGroup).toHaveBeenCalledTimes(count); expect(r.next.close).toHaveBeenCalledOnce();
+  });
+  it("refuses a reference graph over the schema bound before any directory I/O", async () => {
+    const r = fixture(); r.source.groups = Array.from({ length: 513 }, () => structuredClone(group));
+    await expect(r.control.prepare(r.candidate(), r.ctx)).rejects.toMatchObject({ code: "unavailable" });
+    expect(r.probeTls).not.toHaveBeenCalled(); expect(r.createDirectory).not.toHaveBeenCalled();
+  });
+  it.each(["", "CN=Invalid\n", "x".repeat(1025), undefined])("refuses a malformed retained DN assertion before directory I/O", async dn => {
+    const r = fixture(); r.source.groups = [{ ...structuredClone(group), dn: dn as string }];
+    await expect(r.control.prepare(r.candidate(), r.ctx)).rejects.toMatchObject({ code: "unavailable" });
+    expect(r.probeTls).not.toHaveBeenCalled(); expect(r.createDirectory).not.toHaveBeenCalled();
+  });
   it("propagates the bounded server deadline to the one writer", async () => {
     const r = fixture(), p = await r.control.prepare(r.candidate(), r.ctx);
     await r.control.apply(p.ref, { credentials: r.credentials, confirmation: p.trust!.challenge }, r.ctx, undefined, () => 1600);

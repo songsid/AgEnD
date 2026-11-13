@@ -13,7 +13,7 @@ import type { HubMigration } from "./db.js";
 import type { HubTransportStore } from "./store.js";
 import { advanceHubSessionEpoch, readHubSessionEpoch } from "./session-epoch.js";
 import { canonicalArguments, sha256 } from "./identity.js";
-import { parseGroupPolicy, type HubGroupPolicy } from "./group-policy/model.js";
+import { parseCanonicalPolicy, rebindCanonicalPolicy, type HubCanonicalPolicy } from "./roles/read.js";
 import { epoch, hash, identifier, person, uuid, validated, parseStrictJson, HubProtocolError } from "./validation.js";
 
 const imageSchema = z.strictObject({ configDigest: hash, configSha: hash, directorySha: hash, manifestSha: hash, bindSecretSha: hash });
@@ -90,7 +90,8 @@ export function readHubDirectorySettingsHead(db: Database.Database): { operation
 function policyRow(db: Database.Database) {
   const row = db.prepare("SELECT hub_id,body FROM hub_group_policy WHERE singleton=1").get() as { hub_id: string; body: string } | undefined;
   if (!row) throw new HubProtocolError("uncertain");
-  return { ...row, policy: parseGroupPolicy(parseStrictJson(row.body)), sha: sha256(row.body) };
+  const document = parseCanonicalPolicy(row.body);
+  return { ...row, document, policy: document.policy, sha: sha256(row.body) };
 }
 const same = (a: unknown, b: unknown) => canonicalArguments(a) === canonicalArguments(b);
 const content = ({ manifestSha: _manifest, ...rest }: HubDirectorySettingsImage) => rest;
@@ -115,8 +116,8 @@ export type HubDirectorySettingsDecision = ReturnType<typeof createHubDirectoryS
 export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDeps) {
   const { db, transport } = deps, hubId = validated(identifier, deps.hubId);
   // Only while THIS root decision calls its synchronous proof. The final SQL checks still validate every own change.
-  let proofBasis: { expected: HubDirectoryDecisionRequest["expected"]; policy: HubGroupPolicy } | null = null;
-  function prove<T>(expected: HubDirectoryDecisionRequest["expected"], policy: HubGroupPolicy, work: () => T): T {
+  let proofBasis: { expected: HubDirectoryDecisionRequest["expected"]; policy: HubCanonicalPolicy["policy"] } | null = null;
+  function prove<T>(expected: HubDirectoryDecisionRequest["expected"], policy: HubCanonicalPolicy["policy"], work: () => T): T {
     if (proofBasis) throw new HubProtocolError("invalid");
     proofBasis = { expected: structuredClone(expected), policy: structuredClone(policy) };
     try { return work(); } finally { proofBasis = null; }
@@ -158,7 +159,7 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
         if (readHubDirectoryRecoveryIntent(db, compensation)?.state !== "pending") throw new HubProtocolError("conflict");
         assertHubDirectoryRecoveryClock(compensation, input.at);
       }
-      const nextPolicy: HubGroupPolicy = { ...policy, generation: input.generation, revision: policy.revision + 1 };
+      const nextDocument = rebindCanonicalPolicy(previous.document, input.generation), nextPolicy = nextDocument.policy;
       const nextEpoch = input.expected.directoryEpoch + 1, nextVersion = input.expected.authorizationVersion + 1;
       if (!Number.isSafeInteger(nextEpoch) || !Number.isSafeInteger(nextVersion)) throw new HubProtocolError("unavailable");
       const saved = validated(operationSchema, { ...input, kind: compensation ? "directory-compensation" : "directory",
@@ -175,8 +176,8 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
         for (const pairing of state.pairings) if (pairing.automatic && ["offered", "pending"].includes(pairing.state)) {
           pairing.state = "revoked"; pairing.codeHash = null; pairing.claimHash = null;
         }
-        db.prepare("UPDATE hub_group_policy SET body=? WHERE singleton=1 AND hub_id=? AND body=?")
-          .run(JSON.stringify(parseGroupPolicy(nextPolicy)), hubId, previous.body);
+        if (db.prepare("UPDATE hub_group_policy SET body=? WHERE singleton=1 AND hub_id=? AND body=?")
+          .run(nextDocument.raw, hubId, previous.body).changes !== 1) throw new HubProtocolError("conflict");
         db.prepare("INSERT INTO hub_settings_operations VALUES(?,?)").run(input.id, JSON.stringify(saved));
         if (input.recovery) db.prepare("INSERT INTO hub_settings_mount_recovery VALUES(?,?,'pending',NULL)").run(input.id, input.recovery.expiresAt);
         db.prepare("INSERT INTO hub_settings_security_notices VALUES(?,?,?)").run(notice.id, input.id, JSON.stringify(notice));
