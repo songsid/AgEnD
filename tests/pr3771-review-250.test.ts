@@ -15,9 +15,12 @@ import { EventEmitter } from "node:events";
 import { antigravityCapKey, clearProviderRateLimitsForTests, getProviderRateLimit } from "../src/usage/provider-alerts.js";
 import { fetchAntigravityUsage } from "../src/usage/providers.js";
 import { StructuredSignIn, type StructuredSignInTransport } from "../src/structured-signin.js";
-import { AGY_CODE, AGY_SCREEN, ID, runtimeRig, cleanScratch, waitFor } from "./helpers/machine-runtime.js";
+import { REDUCED_AGY_CODE_PROMPT, REDUCED_AGY_UNRECOGNIZED, REDUCED_AGY_URL_PREFIX, reduceAgyLoginScreen } from "../src/runtime-signin.js";
+import { AGY_CODE, AGY_SCREEN, AGY_URL, ID, runtimeRig, cleanScratch, waitFor } from "./helpers/machine-runtime.js";
 import { LoginWindowLock } from "../src/login-window-lock.js";
 
+const HREF = new URL(AGY_URL).href;
+const AGY_URL_SCREEN = `Open this link in a browser to log in with Google:\n\n  ${AGY_URL}\n`;   // the sentence and the link, before the code prompt
 const dirs: string[] = [];
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-250-")); dirs.push(d); return d; };
 const savedAgend = process.env.AGEND_HOME, savedGemini = process.env.GEMINI_HOME;
@@ -189,6 +192,43 @@ describe("P2-5: a real login screen followed by unknown text is an unknown scree
     f.children[0]!.say(AGY_SCREEN);
     await waitFor(() => expect(f.agyPhase()).toBe("code"));
     f.children[0]!.say(UNKNOWN);
+    await waitFor(() => expect(f.agyPhase()).toBe("waiting"));
+    await vi.waitFor(() => expect(f.agyView()).toMatchObject({ phase: "failed", reason: "unsupported_prompt" }), { timeout: 9_000, interval: 100 });
+    expect(f.children[0]!.killed).toBe(true); expect(f.children[0]!.written).toBe("");
+    expect(f.signIns.busy(ID)).toBe(false);
+    await f.stop();
+  }, 20_000);
+  // AGEND-251 (#3771 review round 2, P2-5): a line that only STARTS like the code prompt is not the prompt.
+  const COLLIDING = "Then paste the authorization code after accepting the new data-sharing terms\n";
+  it("AGEND-251 reducer: the whole known prompt (and its echoed-code form) is recognised; a line sharing only its first words is an unknown screen, raw and already reduced", () => {
+    expect(reduceAgyLoginScreen(AGY_SCREEN)).toBe(`${REDUCED_AGY_URL_PREFIX}${HREF}\n${REDUCED_AGY_CODE_PROMPT}\n`);
+    expect(reduceAgyLoginScreen(`${AGY_SCREEN.trimEnd()} ${AGY_CODE}\n`)).toBe(`${REDUCED_AGY_URL_PREFIX}${HREF}\n`);
+    const raw = `${AGY_URL_SCREEN}${COLLIDING}`;
+    expect(reduceAgyLoginScreen(raw)).toBe(`${REDUCED_AGY_UNRECOGNIZED}\n`);
+    expect(reduceAgyLoginScreen(`${AGY_SCREEN}${COLLIDING}`)).toBe(`${REDUCED_AGY_UNRECOGNIZED}\n`);
+    // An echo that is not code characters (a sentence) is no supported echoed form either.
+    expect(reduceAgyLoginScreen(`${AGY_SCREEN.trimEnd()} and then some more words\n`)).toBe(`${REDUCED_AGY_UNRECOGNIZED}\n`);
+    // The Runtime sends the reduced screen: the reduced collision (link line + the fixed unrecognised line) changes nothing either.
+    expect(reduceAgyLoginScreen(reduceAgyLoginScreen(raw))).toBe(`${REDUCED_AGY_UNRECOGNIZED}\n`);
+  });
+  it("AGEND-251 host: the link, then the colliding prompt: waiting, then unsupported_prompt at 6 s, process reaped, window freed, NO input sent", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(1_000_000);
+    const lock = new LoginWindowLock(), owner = {}, t = fake(AGY_URL_SCREEN), s = hostSession(t, lock, owner);
+    await s.start();
+    expect(s.view(owner).phase).toBe("authorization");
+    t.state.pane = `${AGY_URL_SCREEN}${COLLIDING}`;
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(s.view(owner).phase, "inside the 5-second grace").toBe("waiting");
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(s.view(owner)).toMatchObject({ phase: "failed", reason: "unsupported_prompt" });
+    expect(t.transport.write).not.toHaveBeenCalled(); expect(t.transport.close).toHaveBeenCalledTimes(1); expect(lock.isHeld).toBe(false);
+  });
+  it("AGEND-251 Runtime: the link, then the colliding prompt: the reduced screen is an unknown one, ended as unsupported_prompt within 5 s, child killed, nothing written", async () => {
+    const f = runtimeRig({ agy: true }); f.agyAnswer(false);
+    await f.signIns.begin(f.owner, f.agyTarget);
+    f.children[0]!.say(AGY_URL_SCREEN);
+    await waitFor(() => expect(f.agyPhase()).toBe("authorization"));
+    f.children[0]!.say(COLLIDING);
     await waitFor(() => expect(f.agyPhase()).toBe("waiting"));
     await vi.waitFor(() => expect(f.agyView()).toMatchObject({ phase: "failed", reason: "unsupported_prompt" }), { timeout: 9_000, interval: 100 });
     expect(f.children[0]!.killed).toBe(true); expect(f.children[0]!.written).toBe("");

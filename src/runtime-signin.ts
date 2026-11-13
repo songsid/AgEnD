@@ -111,6 +111,12 @@ function checkedLoginUrl(text: string, cli: SignInCli = "claude-code"): string |
   return href.length <= MAX_URL && /^https:\/\/[\x21-\x7e]+$/.test(href) && linkableLoginUrl(cli, href) ? href : undefined;
 }
 /**
+ * AGEND-251 (#3771 review P2-5): the WHOLE known code prompt, optionally followed by the one echoed form agy produces once a code was typed (the code's own characters, bounded: the same set
+ * `checkedSignInInput` accepts). A line that merely STARTS like the prompt ("Then paste the authorization code after accepting the new data-sharing terms") is not the prompt: it is an unknown
+ * line, so the screen is an unknown one and the 5-second rule ends it. The words are compared exactly, never by their first few.
+ */
+const AGY_CODE_PROMPT_LINE = new RegExp(`^${REDUCED_AGY_CODE_PROMPT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?: +[A-Za-z0-9._~+/#=-]{1,${MAX_CODE}})?$`);
+/**
  * Antigravity's closed table: the sign-in link (https, `accounts.google.com` only, on the line after the sentence or on its own line), the code prompt when it is the last line, and
  * "Login failed" / "Login cancelled" for the two endings `agy acp --login` words. Nothing else is kept, so no account name or path in the CLI's text can reach the server.
  */
@@ -129,11 +135,11 @@ export function reduceAgyLoginScreen(raw: string): string {
     if (/^login cancelled\b/i.test(line)) { outcome = REDUCED_AGY_CANCELLED; recognized = index; }
     else if (/^couldn't log in\b/i.test(line)) { outcome = REDUCED_AGY_REJECTED; recognized = index; }
     // The code prompt (what the CLI echoes after it, a code that was typed, is still its line: the screen does not change meaning while the code is being sent).
-    else if (/^Then paste the authorization code\b/.test(line)) recognized = index;
+    else if (AGY_CODE_PROMPT_LINE.test(line)) recognized = index;
   });
   if (outcome) return `${outcome}\n`;
   const last = lines[lines.length - 1];
-  const asking = last !== undefined && /^Then paste the authorization code\b.*press Enter:$/.test(last);
+  const asking = last === REDUCED_AGY_CODE_PROMPT;
   // AGEND-250 (#3771 review P2-5): a link that was seen EARLIER and a last line that is none of the forms above (an unsupported prompt after the real login screen: the terminal's scrollback and this
   // process's accumulated output both keep the earlier lines) is an unknown screen, not an authorization step. Keeping the link in front of it made `authorization` of it, so the 5-second unknown-screen
   // rule never started. It is reported as one fixed line that carries none of the CLI's text, so that whoever reads the reduced screen (the server, for a Runtime) sees a non-empty screen it cannot use, as
