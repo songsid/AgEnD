@@ -51,6 +51,15 @@ restored in finally. All eight produced assertion failures, not transform errors
 | Main-context rather than sidechain compaction | caught |
 | Prepared dialect used by the positive-proof reader | caught |
 
+## Review pins
+
+Fable independently ran the eight changed formatter/receipt/instruction/reset
+suites: 200/200 at the original main review head. His E1/E5 reversals identified
+missing assertions for escaped @/# in a display name, reactions, source and actor
+ID, and for a backtick directly preceding a reserved token. The replacement adds
+both exact-output cases; production is unchanged. Final-head acceptance records
+their targeted reversal results.
+
 ## Bytes and limits
 
 Actual forwarded Discord receipt field widths (body excluded, UUID replaced with
