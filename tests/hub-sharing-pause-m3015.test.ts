@@ -124,4 +124,27 @@ describe("M-3015 resumable sharing", () => {
     expect((await w.change(false, 1)).status).toBe(403);
     expect(w.r.db.prepare("SELECT sharing_paused,sharing_epoch FROM hub_exposures WHERE id=?").get(w.e.id)).toEqual({ sharing_paused: 1, sharing_epoch: 1 });
   });
+  it.each(["session", "owner", "stop"])("fences a held Resume after %s changes", async mode => {
+    const w = await world(); expect((await w.change(true, 0)).status).toBe(200);
+    w.r.store.mutate({ requestId: randomUUID(), actor: { kind: "local-host" }, action: "fixture.fleet", result: "completed", at: w.now() }, state => {
+      state.fleets.push({ id: w.link.fleetId, owner: w.e.owner, generation: 1, status: "active", credentialHash: "a".repeat(64) });
+    });
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>(r => { enter = r; }), held = new Promise<void>(r => { release = r; });
+    w.r.httpDeps.groups = { check: async (resource: { kind: string }) => {
+      if (resource.kind === "exposure") { enter(); await held; }
+      return { source: "legacy", assertCurrent() {} };
+    } } as never;
+    const pending = w.change(false, 1); await entered;
+    try {
+      if (mode === "session") await w.r.call(w.o, "DELETE", "/hub/v1/session");
+      else if (mode === "owner") w.r.db.prepare("UPDATE hub_exposures SET owner=? WHERE id=?").run(`corp/${randomUUID()}`, w.e.id);
+      else expect((await w.r.call(w.o, "POST", `/hub/v1/exposures/${w.e.id}/freeze`, { revision: 1 })).status).toBe(200);
+    } finally { release(); }
+    expect((await pending).status).not.toBe(200);
+    const row = w.r.db.prepare("SELECT sharing_paused FROM hub_exposures WHERE id=?").get(w.e.id) as any;
+    expect(row.sharing_paused).toBe(mode === "stop" ? 0 : 1);
+    expect(w.r.audits.filter(e => e.action === "exposure.resumed")).toHaveLength(0);
+  });
+
 });
