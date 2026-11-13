@@ -7799,11 +7799,15 @@ export class Daemon extends EventEmitter {
   }
 
   private formatInboundMessage(content: string, meta: Record<string, string>): string {
+    let historicalHandoff = false;
     if (meta.handoff_redelivery) {
       const owned = this.handoffStore().list().find(row => row.id === meta.handoff_redelivery && row.holder === this.handoffHolder());
       if (owned?.wire) return owned.wire;
+      // Pre-wire records retain their historical rendering only after proving the owned handoff.
+      historicalHandoff = !!owned;
     }
-    if (!meta.from_instance) return formatHumanInboundMessage(content, meta, this.agentMode(), { dialect: "legacy" });
+    // Receiptless bot/system traffic has no final receipt preparation to replace this fallback.
+    if (!meta.from_instance) return formatHumanInboundMessage(content, meta, this.agentMode(), { dialect: "legacy", escape: !historicalHandoff });
     let formatted = formatCrossInstanceInboundMessage(content, meta, this.agentMode());
     if (meta.reply_to_text) formatted += '\n(reply_to: "' + escapeInboundField(meta.reply_to_text) + '")';
     if (meta.delivery_id) formatted = "[agend-delivery-id:" + meta.delivery_id + "]\n" + formatted;

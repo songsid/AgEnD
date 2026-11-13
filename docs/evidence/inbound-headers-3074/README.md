@@ -111,3 +111,14 @@ clear/compact commands; no assertion, negative fence or timeout was removed.
 The Codex authority-equivalence test locates the renamed header bullet and still
 checks its full authority text. All8 files pass255/255 with maxWorkers=2.
 This is a test/evidence-only correction; production remains identical to cac8.
+
+Prism P2: receiptless bot/system traffic bypassed final receipt preparation and
+used an unescaped legacy fallback. Added FM-to-daemon origin-undefined MCP/CLI
+controls first (3semantic failures including foreign-handoff control), then
+escaped only fresh fallback traffic. Owned stored wire remains byte-exact;
+owned historical wire-less handoffs keep historical rendering. Fixed receipt
+and formatter slice80/80; strengthened stored-wire sentinel control3/3.
+Three isolated reversals (fresh escape, stored-wire return, historical rendering)
+each fail semantically, exact source restored. Both nativeTS7 checks pass.
+No receipt authority, ACL, forwarding, proof, deadline or retry change.
+The optional unwritten-preparation cleanup P3 remains outside this scoped fix.
