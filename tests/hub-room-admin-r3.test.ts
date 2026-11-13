@@ -65,3 +65,15 @@ it("serves assistant administration only with both ports and current Hub admin a
   expect((await r!.call(w.admin, "GET", path + "/usage")).json).toEqual({ days: [], quota: { band: "unknown" } });
   const id = randomUUID(); expect((await r!.call(w.admin, "POST", path + `/rooms/${id}/stop`, {})).status).toBe(200); expect(stopped).toEqual([id]);
 });
+
+it("withholds a held assistant admin read after the actual browser signs out", async () => {
+  const w = await world(); let release!: () => void, entered!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
+  r!.httpDeps.roomAssistant = { available: () => ({ enabled: false, backend: null, running: 0, cap: 3, state: "paused" }), ask: async () => ({ text: "Inert" }), forget() {} };
+  r!.httpDeps.assistantAdmin = { settings: async () => { entered(); await held; return { privatePicker: true }; }, configure: async value => value, usage: async () => ({}), stopRoom: async () => {} };
+  await r!.restartHttp();
+  const result = r!.call(w.admin, "GET", "/hub/v1/admin/assistant");
+  try { await started; expect((await r!.call(w.admin, "DELETE", "/hub/v1/session")).status).toBe(200); }
+  finally { release(); }
+  const refused = await result; expect(refused.status).toBe(401); expect(refused.text).not.toContain("privatePicker");
+});

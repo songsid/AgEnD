@@ -59,3 +59,12 @@ CREATE INDEX hub_room_deliveries_expiry ON hub_room_deliveries(expires_at) WHERE
 export const HUB_ROOM_CREATORS_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-creators", version: 1, up(db: Database.Database) {
   db.exec("CREATE TABLE hub_room_creators(kind TEXT NOT NULL CHECK(kind IN ('person','team')),subject TEXT NOT NULL,PRIMARY KEY(kind,subject))");
 } });
+
+export const HUB_ROOM_ASSISTANT_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-assistant", version: 1, up(db: Database.Database) {
+  db.exec(`ALTER TABLE hub_group_rooms ADD COLUMN assistant_for TEXT;
+CREATE UNIQUE INDEX hub_group_room_assistant_person ON hub_group_rooms(assistant_for) WHERE assistant_for IS NOT NULL;
+CREATE TABLE hub_room_assistant_calls(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,parent_id TEXT NOT NULL UNIQUE,reply_id TEXT NOT NULL,
+  asker TEXT NOT NULL,asker_member TEXT NOT NULL,assistant_member TEXT NOT NULL,payload_ref TEXT NOT NULL,payload_digest TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('queued','working','answered','failed')),reason TEXT,created_at INTEGER NOT NULL);
+CREATE INDEX hub_room_assistant_queued ON hub_room_assistant_calls(state,created_at) WHERE state='queued';`);
+} });

@@ -38,16 +38,16 @@ export class HubRoomAdmin {
       (SELECT COUNT(*) FROM hub_room_members m WHERE m.room_id=r.id AND m.kind='person') people,
       (SELECT COUNT(*) FROM hub_room_members m WHERE m.room_id=r.id AND m.kind='agent') agents,
       COALESCE((SELECT MAX(p.created_at) FROM hub_room_posts p WHERE p.room_id=r.id),r.created_at) lastAt
-      FROM hub_group_rooms r ORDER BY lastAt DESC,r.id`).all() as { id: string; name: string; archived: number; people: number; agents: number; lastAt: number }[]).map(r => ({
+      FROM hub_group_rooms r WHERE r.assistant_for IS NULL ORDER BY lastAt DESC,r.id`).all() as { id: string; name: string; archived: number; people: number; agents: number; lastAt: number }[]).map(r => ({
         id: r.id, name: r.name, people: r.people, agents: r.agents, managers: (db.prepare(`SELECT COALESCE(p.display_name,m.subject) name FROM hub_room_members m
           LEFT JOIN hub_people p ON p.person=m.subject WHERE m.room_id=? AND m.kind='person' AND m.role='manager' ORDER BY name,m.id`).all(r.id) as { name: string }[]).map(x => x.name),
         lastAt: r.lastAt, archived: r.archived === 1,
-      })) }), permit);
+      })) }), { assertCurrent: () => permit.assertCurrent() });
   }
   async join(ctx: HubRequestContext, id: string) {
     const permit = await this.core.management(ctx, "hub.admin"), person = await ctx.requirePerson(), me = personKeyString(person);
     this.core.atomic((db, tx) => {
-      const room = db.prepare("SELECT history_for_new FROM hub_group_rooms WHERE id=?").get(id) as { history_for_new: string } | undefined;
+      const room = db.prepare("SELECT history_for_new FROM hub_group_rooms WHERE id=? AND assistant_for IS NULL").get(id) as { history_for_new: string } | undefined;
       if (!room) throw new HubProtocolError("not-found");
       const old = db.prepare("SELECT id,role FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=?").get(id, me) as { id: string; role: string } | undefined;
       if (old?.role === "manager") return;
@@ -65,7 +65,7 @@ export class HubRoomAdmin {
   async archive(ctx: HubRequestContext, id: string, input: unknown) {
     const permit = await this.core.management(ctx, "hub.admin"), body = validated(z.strictObject({ archived: z.boolean() }), input);
     this.core.atomic((db, tx) => {
-      if (!db.prepare("SELECT 1 FROM hub_group_rooms WHERE id=?").get(id)) throw new HubProtocolError("not-found");
+      if (!db.prepare("SELECT 1 FROM hub_group_rooms WHERE id=? AND assistant_for IS NULL").get(id)) throw new HubProtocolError("not-found");
       db.prepare("UPDATE hub_group_rooms SET archived=? WHERE id=?").run(Number(body.archived), id);
       this.core.audit(tx, { requestId: ctx.requestId, actor: permit.actor.kind === "directory" ? { kind: "person", person: permit.actor.person } : { kind: "local-host" }, action: "room.admin-archived", result: "completed", roomId: id });
     }, { assertCurrent: () => permit.assertCurrent() });

@@ -8,6 +8,7 @@ import { HUB_LIMITS, HUB_ROOM_ASK_CAPABILITY, roomAskSchema, roomAnswerSchema, a
 import type { HubLinkContext } from "../server.js";
 import type { HubAgentState, HubRoomAsk, HubRoomAnswer, HubRoomAnswerAck, HubTx } from "../types.js";
 import { HubProtocolError, validated } from "../validation.js";
+import { boundedRoomText as trim, roomContext } from "./context.js";
 import type { RoomEvent, RoomMessage } from "./types.js";
 
 type DB = Database.Database;
@@ -25,13 +26,6 @@ interface Delivery {
 interface Member { id: string; subject: string; joined_sequence: number; owner_at_join: string | null }
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const pending = (d: Delivery) => d.state === "queued" || d.state === "sent";
-const trim = (value: string, bytes: number) => {
-  if (Buffer.byteLength(value) <= bytes) return value;
-  // Truncate at a Unicode codepoint so the frozen payload has one stable JSON representation.
-  let out = "", used = 0;
-  for (const c of value) { const n = Buffer.byteLength(c); if (used + n > bytes) break; out += c; used += n; }
-  return out;
-};
 export class HubRoomAgents {
   private links = new Map<string, HubLinkContext>();
   private states = new Map<string, { link: HubLinkContext; value: HubAgentState }>();
@@ -110,13 +104,7 @@ export class HubRoomAgents {
     for (const m of selected) {
       const e = readExposure(db, m.subject);
       if (!e || e.owner !== m.owner_at_join) throw new HubProtocolError("revoked");
-      const rows = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND sequence<? AND sequence>=? AND author_kind<>'system' AND (stage IS NULL OR stage='answered') ORDER BY sequence DESC LIMIT 30")
-        .all(parent.room_id, parent.sequence, Math.max(m.joined_sequence, personMember.joined_sequence)) as RoomPostRow[];
-      const anchor = parent.reply_to ? db.prepare("SELECT * FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=? AND sequence>=?").get(parent.reply_to, parent.room_id, m.joined_sequence, personMember.joined_sequence) as RoomPostRow | undefined : undefined;
-      if (anchor && !rows.some(r => r.id === anchor.id)) rows.push(anchor);
-      rows.sort((a, b) => a.sequence - b.sequence);
-      const context = rows.map(row => ({ author: trim(row.author_name, 256), text: trim(this.core.deps.content.get(row.content_ref)?.question ?? "", 2048), at: row.created_at,
-        ...(row.id === parent.reply_to ? { repliedTo: true as const } : {}) }));
+      const context = roomContext(this.core, db, parent, Math.max(m.joined_sequence, personMember.joined_sequence));
       const id = randomUUID(), replyId = randomUUID(), now = this.core.now();
       const payload: HubRoomAsk = validated(roomAskSchema, { messageId: id, roomId: parent.room_id, roomName: trim(room.name, 120), exposureId: e.id,
         asker: { name: trim(parent.author_name, 256) }, text: this.core.deps.content.get(parent.content_ref)?.question ?? "", context });
@@ -145,7 +133,7 @@ export class HubRoomAgents {
   private update(d: Delivery, added = false): void {
     const data = this.core.atomic(db => {
       const reply = db.prepare("SELECT * FROM hub_room_posts WHERE id=?").get(d.reply_id) as RoomPostRow;
-      return { value: { roomId: d.room_id, message: this.project(reply), parent: { id: d.parent_id, ask: this.progress(db, d.parent_id) } }, sequence: reply.sequence };
+      return { value: { roomId: d.room_id, message: this.project(reply), parent: { id: d.parent_id, ask: this.project(db.prepare("SELECT * FROM hub_room_posts WHERE id=?").get(d.parent_id) as RoomPostRow).ask } }, sequence: reply.sequence };
     });
     this.emit({ type: added ? "message.added" : "message.updated", roomId: d.room_id, data: data.value, sequence: data.sequence }); this.emit({ type: "unread.changed", roomId: d.room_id, data: { roomId: d.room_id } });
   }

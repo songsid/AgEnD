@@ -31,6 +31,11 @@ export interface HubContentStore {
 export interface HubHttpDeps {
   /** Track A's optional host adapter; absent means the room assistant is disabled. */
   roomAssistant?: import("../rooms/types.js").RoomAssistantPort;
+  /** Structural admin port until the host service's typed DTO module lands; it owns validation and worker drain. */
+  assistantAdmin?: {
+    settings(): Promise<unknown>; configure(value: unknown): Promise<unknown>;
+    usage(): Promise<unknown>; stopRoom(roomId: string): Promise<void>;
+  };
   directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
   uow: HubUnitOfWork;
   audit: HubAuditSink;

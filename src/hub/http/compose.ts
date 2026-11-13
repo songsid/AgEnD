@@ -133,7 +133,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const grantSearch = new HubGrantSearch(core);
   const rooms = new HubRoomsService(core, policy);
   const groupRooms = new HubGroupRooms(core);
-  const roomAdmin = new HubRoomAdmin(core, event => groupRooms.publish(event), id => { deps.roomAssistant?.forget(id); groupRooms.agents.sweep(); });
+  const roomAdmin = new HubRoomAdmin(core, event => groupRooms.publish(event), id => { groupRooms.assistant.forget(id); groupRooms.agents.sweep(id); });
   const quota = new HubQuotaService(core);
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
   const live = () => !closed && core.live();
@@ -160,7 +160,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     };
     const m = (re: RegExp) => re.exec(path);
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
-    const offered = ["rooms-v1", ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    const offered = ["rooms-v1", ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     const features = offered.length ? { features: offered } : {};
@@ -363,6 +363,26 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       const exposureId = uuid(r[1]);
       await guard(() => quota.setVisible(ctx, exposureId, int(b.revision), b.visible as boolean));
       return send(res, 200, { quotaVisible: b.visible, ...quota.projection(exposureId) });
+    }
+    if (path === "/hub/v1/admin/assistant" || path === "/hub/v1/admin/assistant/usage" || /^\/hub\/v1\/admin\/assistant\/rooms\/[^/]+\/stop$/.test(path)) {
+      const port = deps.roomAssistant && deps.assistantAdmin;
+      if (!port) throw new HttpError(404, "not-found");
+      if (mutation) csrf(); else signedIn();
+      const permit = await guard(() => core.management(ctx, "hub.admin"));
+      const call = async (work: () => Promise<unknown>) => {
+        permit.assertCurrent();
+        let result: unknown;
+        try { result = await work(); } catch { permit.assertCurrent(); throw new HttpError(503, "unavailable"); }
+        permit.assertCurrent(); return result;
+      };
+      if (path === "/hub/v1/admin/assistant") {
+        if (method === "GET") return send(res, 200, await guard(() => call(() => port.settings())));
+        if (method === "PUT") { const b = await body(); return send(res, 200, await guard(() => call(() => port.configure(b)))); }
+      } else if (path.endsWith("/usage") && method === "GET") return send(res, 200, await guard(() => call(() => port.usage())));
+      else if (method === "POST") {
+        const id = uuid(path.split("/")[6]); await guard(() => call(() => port.stopRoom(id))); return send(res, 200, { ok: true });
+      }
+      throw new HttpError(405, "method");
     }
     if (path === "/hub/v1/admin/rooms/creators") {
       if (method === "GET") { signedIn(); return send(res, 200, await guard(() => roomAdmin.creators(ctx))); }
@@ -732,14 +752,14 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     t.unref?.();
   }
 
-  rooms.buttons.start(); groupRooms.agents.wake();
+  rooms.buttons.start(); groupRooms.agents.wake(); groupRooms.assistant.start();
   return {
     directorySessions: Object.freeze({
       recentAuthentication: actor => sessions.recentAuthentication(actor),
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, features: Object.freeze(["rooms-v1", "room-ask-v1", ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, features: Object.freeze(["rooms-v1", "room-ask-v1", ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
     async close() { closed = true; grantSearch.close(); for (const end of streams) end(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
