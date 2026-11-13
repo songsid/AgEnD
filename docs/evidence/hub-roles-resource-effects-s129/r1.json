@@ -1,0 +1,55 @@
+{
+  "oldHead": "746c4dc41c2e164e90222394cb411f1352ac5f5f",
+  "factoryParent": "882633aaefb5e4653279b3d3079270291677b5a3",
+  "merge": "ce502239652a5bd4205cc4c7bf16d77913a35e8a",
+  "scope": "CI fixture integration and exact parent held-session correction; resource product unchanged",
+  "checks": {
+    "passed": 291,
+    "files": 11,
+    "skipped": 0,
+    "sourceTypes": 0,
+    "testTypes": 0
+  },
+  "fixtureAudit": {
+    "originalAssertionLinesRetained": 92,
+    "parentFixtureBlobEqualsChild": true,
+    "before": "e12edc7622d57f7a3b06e4658adebd38b0fa176b1c7c8319ec724abe5a52778e",
+    "after": "f264d18e2a468a86b55a00401d9ba535e51577d045fa5f4e13b064a98e03d03a",
+    "changes": "complete exact admin actor/session/current/identity contexts; separate owner confirmation; stable directory method with injectable answer closure, no authority/assertion weakening"
+  },
+  "parentSessionCorrection": "docs/evidence/hub-roles-management-s129/session-r2.json",
+  "resourceProductBlobsUnchanged": true,
+  "pairingAndFixtureBlobsEqualFactoryParent": true,
+  "reviewerEquivalentMutation": "E3 authoritative qualifier is defence-only under evaluate.ts:36\u201337; not counted among semantic reversals",
+  "bindings": [
+    {
+      "file": "src/hub/roles/effects.ts",
+      "sha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9"
+    },
+    {
+      "file": "src/hub/roles/writer.ts",
+      "sha256": "1bab3a2b6aae6f35dc65fe31dbf60fc5d66dc12bffea1e2fcfacdf09b174cbaa"
+    },
+    {
+      "file": "src/hub/pairing.ts",
+      "sha256": "99c75843f7ea821a6262f7d7bc26f6cfa4ae1d87c5c0bbc8600fb4427336dc7e"
+    },
+    {
+      "file": "tests/hub-roles-effects-s129.test.ts",
+      "sha256": "f6c6e81dc2de4cb2946f2244926c94980235acb4d402617d0b5c4ebac6197a48"
+    },
+    {
+      "file": "tests/hub-group-composition.test.ts",
+      "sha256": "db0869c33f1ed0837cfc090826c5c1a3547ba4370f49a5707661208d95625e16"
+    },
+    {
+      "file": "tests/hub-roles-issuer-s129.test.ts",
+      "sha256": "26eb319c39a7c85a5eb18238c5ab3ef84f836af33d48b150afd1ff65f8756143"
+    },
+    {
+      "file": "docs/design/hub-roles-resource-effects.md",
+      "sha256": "ed0f6d9055cd595d0b9e0781240c8b81edcd95ceff765721c133f0cd4c0b712d"
+    }
+  ],
+  "exclusions": "Original43391003980CIred retained. Initial incomplete fixture repairs/type corrections do not count as successful or fail-first runs. Old17 mutation results carry only on unchanged resource source; this R1 adds parent correction and fixture integration, not a new live activation."
+}
