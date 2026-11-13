@@ -75,7 +75,7 @@ describe("safety net 1: remind the owner (#926)", () => {
     expect(outbox.remindReplyObligations("reviewer", { now: at(59), graceMs: 60_000 })).toBe(0);
     expect(outbox.remindReplyObligations("reviewer", { now: at(61), graceMs: 60_000 })).toBe(1);
     expect(outbox.remindReplyObligations("reviewer", { now: at(600), graceMs: 60_000 })).toBe(0);
-    expect(notices(outbox)).toEqual([{ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/^\[system:reply-pending\] Your turn ended without answering leader.*report_result.*terminal text does not reach them\.\ncorrelation_id=cid-925/) }]);
+    expect(notices(outbox)).toEqual([{ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/^\[system:reply-pending\] leader is waiting for your result.*report_result.*report_result is what reaches them\)\.\ncorrelation_id=cid-925/) }]);
     expect(outbox.getReplyObligation("cid-925", "leader", "reviewer")?.nudgedAt).toBe(at(61).toISOString());
     outbox.close();
   });
@@ -150,7 +150,7 @@ describe("the fleet sweep (#926, #2802)", () => {
     fm.onDaemonReady("reviewer", "reviewer-boot-2");
     expect(notices(outbox)).toEqual([]);
     fm.sweepReplyObligations(later(2));
-    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/^\[system:reply-pending\] Your turn ended without answering leader/) })]);
+    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/^\[system:reply-pending\] leader is waiting for your result/) })]);
     fm.onDaemonReady("reviewer", "reviewer-boot-3");
     fm.sweepReplyObligations(later(5));
     expect(notices(outbox)).toHaveLength(1);
@@ -197,7 +197,7 @@ describe("the #925 shape: the whole process dies mid-review (#926)", () => {
     fm.onDaemonReady("reviewer", "reviewer-boot-after-restart");
     expect(notices(outbox)).toEqual([]);
     fm.sweepReplyObligations(new Date(Date.now() + 2 * 60_000));
-    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/^\[system:reply-pending\] Your turn ended without answering leader.*\ncorrelation_id=cid-925/s) })]);
+    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/^\[system:reply-pending\] leader is waiting for your result.*\ncorrelation_id=cid-925/s) })]);
     outbox.close();
   }, 30_000);
 });
@@ -229,7 +229,7 @@ describe("a reminder reaches the owner's pane through the real dispatcher and Da
     vi.spyOn(fm, "waitForDurableLaneRelease").mockReturnValue(Promise.resolve());
     await fm.dispatchDurableDelivery(claimed);
     await vi.waitFor(() => expect(pasted.length).toBeGreaterThan(0), { timeout: 10_000 });
-    expect(pasted[0]).toContain("[system:reply-pending] Your turn ended without answering leader.");
+    expect(pasted[0]).toContain("[system:reply-pending] leader is waiting for your result.");
     outbox.close();
   }, 20_000);
 });

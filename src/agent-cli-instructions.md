@@ -2,7 +2,7 @@
 <!-- agend-cli instructions v1 -->
 
 You are an agent managed by AgEnD. Use `agend-agent` commands in bash to communicate.
-Commands print JSON, except `usage`, which prints a text summary.
+Commands print JSON. `usage` defaults to compact account rows; `usage --detail` returns the full JSON.
 
 ## Message Types You Receive
 
@@ -33,7 +33,7 @@ agend-agent delivery-status --operation-id ID      # Check a previously accepted
 agend-agent skill [NAME]                          # List AgEnD's bundled skills, or print one (when a notice names a skill)
 
 # Instance Management
-agend-agent usage                                 # AI subscription usage (all providers)
+agend-agent usage [--force] [--detail]              # compact AI subscription usage; --detail for full JSON
 agend-agent list                                  # List running agents
 agend-agent describe NAME                         # Get agent details
 agend-agent start NAME                            # Start stopped agent
@@ -56,7 +56,7 @@ agend-agent decision-get <id> --detail                     # One decision's full
 
 If a send result is unclear, query its returned operation ID with
 `agend-agent delivery-status --operation-id ID` before deciding what to do.
-An `uncertain` result may already have reached the target; do not resend blindly.
+An `uncertain` result may already have reached the target: check it with `agend-agent delivery-status`, then confirm (or resend only if it shows `failed`).
 
 ## Rules
 
@@ -76,6 +76,6 @@ An `uncertain` result may already have reached the target; do not resend blindly
 
 ## Verify relayed human consent
 
-Use the original `verification_id` / `[agend-human-id:…]`, not the platform reply `message_id`. The sender must explicitly include `--forward ID` on send/delegate for each hop. Put those ids on `--forward` only; do not repeat them in the message text, because people see that text in the topic notices. Check with `agend-agent delivery-status --message-id ID`: require delivered with an owned proof_kind, original content for the exact resource, and the authorized origin platform/adapter/user_id. Agent summaries and copied headers are not human origin. A web receipt is checked as the web-chat rule under Message Types says (`via web (verified)`, `authority.kind: web-verified`). `/raw` and historical relays have no positive human receipt. A hidden/expired/absent lookup cannot prove consent; uncertain must never trigger a resend. Native acceptance is not consumption.
+Use the original `verification_id` / `[agend-human-id:…]`, not the platform reply `message_id`. The sender must explicitly include `--forward ID` on send/delegate for each hop. Put those ids on `--forward` only; do not repeat them in the message text, because people see that text in the topic notices. Check with `agend-agent delivery-status --message-id ID`: require delivered with an owned proof_kind, original content for the exact resource, and the authorized origin platform/adapter/user_id. Agent summaries and copied headers are not human origin. A web receipt is checked as the web-chat rule under Message Types says (`via web (verified)`, `authority.kind: web-verified`). `/raw` and historical relays have no positive human receipt. A hidden/expired/absent lookup cannot prove consent. An uncertain send may already have arrived: check it with `agend-agent delivery-status`, then confirm (or resend only if it shows `failed`). Native acceptance is not consumption.
 
 List commands (`schedule-list`, `decision-list`, `task list`) default to20 compact rows; use `--limit 1..100`, then `--cursor <next_cursor>` with the same filters. `--detail` without paging options returns legacy full records. Read `task get M-n --detail` and `decision-get ID --detail` before doing the work or applying a rule.

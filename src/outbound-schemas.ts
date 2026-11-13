@@ -427,6 +427,7 @@ export const ReconcileKiroInstanceArgs = z.object({
 }).strict().refine(v => v.keep_session_id !== v.archive_session_id, "Keep and archive IDs must differ");
 
 export const GetUsageArgs = z.object({
+  detail: z.boolean().optional().describe("Return the full usage JSON including capacity estimates and localization metadata. Default: compact account rows."),
   force: z.boolean().optional().describe("Bypass the 5-minute cache and fetch fresh data (rate-limited by vendors — use sparingly)"),
 });
 
@@ -488,6 +489,7 @@ export const GetCacheReportArgs = z.object({
 
 /** #2122: tokens, requests, delivered messages and their API-equivalent at list price, read-only. */
 export const GetUsageReportArgs = z.object({
+  detail: z.boolean().optional().describe("Include speed stats and the full per-row basis metadata. Default: basis once, no speed stats."),
   range: z.enum(["today", "7d", "month", "all", "custom"]).optional().describe("The days to sum, in the fleet's timezone. Default: 7d. custom needs from and to."),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("custom: the first day, YYYY-MM-DD."),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("custom: the last day, YYYY-MM-DD."),
@@ -706,7 +708,7 @@ export const DeliveryStatusArgs = z.object({
   delivery_id: NonEmptyString.optional().describe("Exact durable delivery ID returned by AgEnD."),
   operation_id: NonEmptyString.optional().describe("Operation ID returned when the outbound tool was accepted."),
   correlation_id: NonEmptyString.optional().describe("Correlation ID from the original request; may return multiple deliveries."),
-  message_id: NonEmptyString.optional().describe("The message_id in an inbound message's header. Verify it before acting: 'Delivery not found' may mean hidden by ACL, expired retention, or never delivered. Do not act; ask the sender to explicitly forward a verifiable reference. Never resend on uncertain."),
+  message_id: NonEmptyString.optional().describe("The message_id in an inbound message's header. Verify it before acting: 'Delivery not found' may mean hidden by ACL, expired retention, or never delivered. Do not act; ask the sender to explicitly forward a verifiable reference. On uncertain, it may already have arrived: confirm it, and resend only if it shows failed."),
   limit: z.number().int().min(1).max(100).optional().describe("Maximum rows for operation/correlation queries (default 20, maximum 100)."),
   cursor: NonEmptyString.optional().describe("Opaque next-page cursor returned by the previous query."),
 }).strict().refine(args =>
