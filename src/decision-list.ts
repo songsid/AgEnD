@@ -1,9 +1,10 @@
 /**
  * #2152: what `list_decisions` answers. The fleet's decisions are long (82 of them were 126 KB, ≈31k–42k tokens in one
  * call) and every instance lists them after a restart, so by default it answers titles — id, title, scope, date, tags —
- * and the full text is asked for: one decision by `id`, or all of them with `full: true`. One function for both entry
+ * and full text is asked for with `detail:true` (one id or all records). One function for both entry
  * paths (the MCP tool through the daemon, and the agent endpoint's `decision-*` ops).
  */
+import { listOptions, pageRows, type ListOptions } from "./agent-list-output.js";
 import type { Decision } from "./scheduler/types.js";
 
 export interface DecisionTitle {
@@ -18,7 +19,7 @@ export interface DecisionTitle {
   status?: Decision["status"];
 }
 
-export const DECISION_TITLES_HINT = "Titles only. Call list_decisions with { id } for one decision's full text, or { full: true } for every one.";
+export const DECISION_TITLES_HINT = "Titles only. Follow next_cursor with the same filters for all pages. Use { id, detail: true } for the full rule; detail: true lists all full records (legacy full: true also works).";
 
 /** One decision by id (exact, or a unique prefix of at least 6 characters); null when none or more than one match. */
 function byId(all: readonly Decision[], id: string): Decision | null {
@@ -30,19 +31,25 @@ function byId(all: readonly Decision[], id: string): Decision | null {
 }
 
 /**
- * The answer: `{ decision }` for an id, the full records for `full`, else the titles. `all` is the list as the store
+ * The answer: compact `{ decision }` for an id, full records for detail/full, else paged titles. `all` is the list as the store
  * returns it (already filtered by scope, archive and tags).
  */
-export function decisionListAnswer(all: readonly Decision[], opts: { id?: unknown; full?: unknown } = {}): unknown {
+export function decisionListAnswer(all: readonly Decision[], opts: ListOptions & { id?: unknown; full?: unknown } = {}): unknown {
+  listOptions(opts);
   if (typeof opts.id === "string" && opts.id.trim()) {
+    if (opts.limit !== undefined || opts.cursor !== undefined) throw new Error("A single decision does not take limit or cursor");
     const d = byId(all, opts.id.trim());
-    return d ? { decision: d } : { error: `No decision '${opts.id.trim()}' among these (an id, or a unique prefix of 6 or more characters).` };
+    return d ? { decision: opts.detail === true || opts.full === true ? d : title(d) } : { error: `No decision '${opts.id.trim()}' among these (an id, or a unique prefix of 6 or more characters).` };
   }
-  if (opts.full === true) return all;
-  const titles: DecisionTitle[] = all.map(d => ({
-    id: d.id, title: d.title, scope: d.scope, ...(d.team ? { team: d.team } : {}), date: (d.updated_at || d.created_at || "").slice(0, 10),
+  if (opts.full === true || opts.detail === true) return all;
+  const { rows, ...more } = pageRows(all, opts);
+  return { decisions: rows.map(title), ...more, hint: DECISION_TITLES_HINT };
+}
+function title(d: Decision): DecisionTitle {
+  return {
+    id: d.id, title: d.title, scope: d.scope, ...(d.team ? { team: d.team } : {}),
+    date: (d.updated_at || d.created_at || "").slice(0, 10),
     ...(d.tags?.length ? { tags: d.tags } : {}),
     ...(d.status && d.status !== "active" ? { status: d.status } : {}),
-  }));
-  return { decisions: titles, hint: DECISION_TITLES_HINT };
+  };
 }

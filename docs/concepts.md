@@ -395,3 +395,7 @@ Real code-vs-decision gaps only. Nothing here is papered over.
 
 [繁體中文](concepts.zh-TW.md)
 
+
+## Compact agent lists
+
+Schedules, decisions and task lists default to20 compact rows. Follow `next_cursor` with the same filters until absent; `limit` accepts1–100. Deleted or no-longer-matching cursors require restarting the list. Lists are current views, not snapshots; writes between pages can change membership/order. `detail:true` without page options returns the legacy full answer. Decisions retain `full:true` and plain task lists retain `verbose:true` as full-record aliases. Read a decision with `{id, detail:true}` and a task with `{action:"get",id,detail:true}` before acting on its full rule, goal, acceptance or comments. The dashboard and task writes keep their existing shapes.

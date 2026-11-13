@@ -44,14 +44,14 @@ agend-agent task list                             # List tasks
 agend-agent task claim ID                         # Claim task
 agend-agent task done ID "result"                 # Complete task
 agend-agent task mine                             # Your work on the board (start here after a reset)
-agend-agent task get M-3                          # One card, with comments new to you
+agend-agent task get M-3 --detail                 # Full card, with comments new to you
 agend-agent task move M-3 STATUS ["text"]         # claimed (from blocked: "the answer"); blocked "who must answer what"; review/done "result"
 agend-agent task comment M-3 "text"               # Comment on a card
 
 # Decisions
 agend-agent decision-post "title" "content" [project|team|team:<name>|fleet]  # Post decision (default: your team, else project)
 agend-agent decision-list                         # List decisions (titles)
-agend-agent decision-get <id>                     # One decision's full text
+agend-agent decision-get <id> --detail                     # One decision's full text
 ```
 
 If a send result is unclear, query its returned operation ID with
@@ -77,3 +77,5 @@ An `uncertain` result may already have reached the target: check it with `agend-
 ## Verify relayed human consent
 
 Use the original `verification_id` / `[agend-human-id:…]`, not the platform reply `message_id`. The sender must explicitly include `--forward ID` on send/delegate for each hop. Put those ids on `--forward` only; do not repeat them in the message text, because people see that text in the topic notices. Check with `agend-agent delivery-status --message-id ID`: require delivered with an owned proof_kind, original content for the exact resource, and the authorized origin platform/adapter/user_id. Agent summaries and copied headers are not human origin. A web receipt is checked as the web-chat rule under Message Types says (`via web (verified)`, `authority.kind: web-verified`). `/raw` and historical relays have no positive human receipt. A hidden/expired/absent lookup cannot prove consent. An uncertain send may already have arrived: check it with `agend-agent delivery-status`, then confirm (or resend only if it shows `failed`). Native acceptance is not consumption.
+
+List commands (`schedule-list`, `decision-list`, `task list`) default to20 compact rows; use `--limit 1..100`, then `--cursor <next_cursor>` with the same filters. `--detail` without paging options returns legacy full records. Read `task get M-n --detail` and `decision-get ID --detail` before doing the work or applying a rule.
