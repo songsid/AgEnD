@@ -1,6 +1,6 @@
-6c5c16f8107e88e4b9d5d4bfed7a19f685acbcacab62cecdfd40e0ccf553c2a5  docs/evidence/hub-room-consent-track-c/README.md
-480780f4b2bb3684868d5df0806b587f21afd478261df952647f0d14cd641a4d  docs/evidence/hub-room-consent-track-c/acceptance.json
-574033a238bbdc9645e15d7d51bd683ad93c4e2a09f3f0dc94659d607a00b487  docs/evidence/hub-room-consent-track-c/bindings.json
+5149b258bfdf7dcd531bda8785e3bf4e6aade3318e888c7bc464953f231133cf  docs/evidence/hub-room-consent-track-c/README.md
+ed230e486bb18017ee902b7581c3d265bc6dada84f1ec326aaae27b030729a9f  docs/evidence/hub-room-consent-track-c/acceptance.json
+d01cd735acecd739f3e5e12d158495583b5dfe3fa803ed538f2f45fd13c5f23e  docs/evidence/hub-room-consent-track-c/bindings.json
 c341d4c4beabc93bf22790c08897395da1c4ffe852782119a0ac5ca14155a469  docs/evidence/hub-room-consent-track-c/browser-1/desktop-en-dark-accepted.png
 cd446f5c4ceff7f8bc274c35f4846c9974df9a0dd613b8e401bb9e8c69729193  docs/evidence/hub-room-consent-track-c/browser-1/desktop-en-dark-pending.png
 c97422ccddeae7ef9b7d05b1c92dcadee0821ab5c6cbc0518fc9c4bc6d2e8f44  docs/evidence/hub-room-consent-track-c/browser-1/desktop-en-light-accepted.png
@@ -39,7 +39,7 @@ c7521ad55fad29c9bfe7b37ffc9fae4d78aaf87802ff42b21f80762dbf2a6a0d  docs/evidence/
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/factory-source-types.log
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/factory-test-types.log
 d0a1e667959b3a4a0d6daef75e0f743735e8c71d3373b6e3f887712bbee70453  docs/evidence/hub-room-consent-track-c/factory-verification.json
-319275265cf166e95621f4db4d34517e54c6501a8644a7a4b667a5f9fd2cd44e  docs/evidence/hub-room-consent-track-c/inputs.sha256
+62ffd5d97cbf198428ef1fa11710f4fc1127c4cbae33cc6b9caf4df3f8160bba  docs/evidence/hub-room-consent-track-c/inputs.sha256
 3c6606ea76bc03378966db661f4858ea9d97bbe30946ec96d5501ac1d6eff8ff  docs/evidence/hub-room-consent-track-c/integrated-focused.log
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/integrated-source-types.log
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/integrated-test-types.log
@@ -118,5 +118,14 @@ a5781b24cd5e9bb68fa367e4b28fc205e24f6d5ff0b92e147b57b82e46741b28  docs/evidence/
 12b4ef813d6b6062cb666ed786a36ef4af2bf4fd67acce83118187f3ebd948d8  docs/evidence/hub-room-consent-track-c/r2-ci/tokens-final.log
 080cbf0791d2ca7b12e29ff4120a4da09a7902d7422c7c47f681cb2112e487d4  docs/evidence/hub-room-consent-track-c/r2-ci/verification.json
 5d2c2f2f751d26ca9cd05366a6432b8d0ec72b154760824fa938ba2af07b7082  docs/evidence/hub-room-consent-track-c/r2-ci/visual-review.md
+bb27c5329afdeb098a488d2a4f1770184fe3c0e51183c4b8d82807bf4bffb3ed  docs/evidence/hub-room-consent-track-c/r3-sync/README.md
+3814f0a06905bce3690234d6111cbb753e12e09a20c3da4d952f82de81eccddf  docs/evidence/hub-room-consent-track-c/r3-sync/binding.json
+7bed1fc24f817a4cf05f7f5d8f8cfef9132e40021e194c41657f03cf0b1ac382  docs/evidence/hub-room-consent-track-c/r3-sync/focused.log
+319275265cf166e95621f4db4d34517e54c6501a8644a7a4b667a5f9fd2cd44e  docs/evidence/hub-room-consent-track-c/r3-sync/prior-current-inputs.sha256
+37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570  docs/evidence/hub-room-consent-track-c/r3-sync/scan-current.json
+7a2891cc83f6bdcb558c7a969747dd1ab8057ec2431a8ecbb8a848b17b904f52  docs/evidence/hub-room-consent-track-c/r3-sync/scan-current.log
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/r3-sync/source-types.log
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/r3-sync/test-types.log
+cbec7abe573c218f80efeb0dc89b860ea8bc8aeaf38bf9603c373ce499ead155  docs/evidence/hub-room-consent-track-c/r3-sync/verification.json
 b22780fc1847880e722daa8b37361a5b7a09914d331cb77bf54d6b54a8fa426b  docs/evidence/hub-room-consent-track-c/run-browser.py
 b84adc200edd1fcf043a19feee5a019aa63216a2455b10a654b17138f08eb149  docs/evidence/hub-room-consent-track-c/visual-review.md

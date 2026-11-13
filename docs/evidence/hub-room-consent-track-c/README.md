@@ -27,3 +27,7 @@ See r1/README.md and verification.json for expired-entry clearing/replacement an
 ## R2 inherited UI CI repair
 
 See r2-ci/README.md. The reviewed C service remains byte-identical. Two inherited UI files now consume the owner's#3867fix: shared badge typography and a rooms-v1-aware navigation expectation. Fresh two-case shell checks174/18PNGs and focused19/2 pass. The prior consent captures and R1claims remain stage-bound; no new full consent/gallery or native run is claimed.
+
+## R3 plain alpha sync
+
+See r3-sync/README.md. The merge consumes Ridge's public resolution and alpha d51240605 without changing the C service or its tests. Current67/8focused and both native programs pass. Prior43PNG bytes retain their heads; changed capture inputs are disclosed. Fresh exact CI/review and release holds remain.
