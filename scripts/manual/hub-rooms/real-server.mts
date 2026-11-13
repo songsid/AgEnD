@@ -120,16 +120,42 @@ try {
     await p.goto(origin + "/ui/hub?view=invitations"); await p.locator(".hub-invitation").waitFor();
     check(tag + " actual owner page discloses the room and people count", (await p.locator(".hub-invitation").innerText()).includes("Consent room " + tag)
       && (await p.locator(".hub-invitation").innerText()).includes(lang === "en" ? "2 people" : "2 個人"));
+    const invitationTitle = lang === "en" ? "Invitations" : "邀請";
+    check(tag + " invitation page has one plural title", (await p.locator(".p-hub-invitations .panel-title h1").innerText()) === invitationTitle
+      && await p.locator(".p-hub-invitations .hub-invitations h3").count() === 0);
+    check(tag + " invitation explains the recent room context", (await p.locator(".hub-invitation").innerText()).includes(lang === "en"
+      ? "When @-ed, it reads the room's recent messages." : "被 @ 時，它會讀到房間最近的訊息。"));
     await shot("consent-pending");
+    const invitationNav = p.locator('#sidebar .side-nav a.side-row[href="/ui/hub?view=invitations"]');
+    if (!await invitationNav.isVisible()) await p.locator("#sbOpen").click();
+    const navBox = await invitationNav.boundingBox(), firstNav = await p.locator("#sidebar .side-nav a.side-row").first().boundingBox();
+    check(tag + " invitation is a normal nav row with count badge", (await invitationNav.locator(".grow").innerText()) === invitationTitle
+      && (await invitationNav.locator(".nav-count").innerText()) === "1" && !!navBox && !!firstNav && Math.abs(navBox.height - firstNav.height) <= 2
+      && await p.locator("#sidebar .hub-invitations-row").count() === 0);
+    await shot("consent-nav"); await invitationNav.click();
+
     await p.getByRole("button", { name: lang === "en" ? "Agree" : "同意", exact: true }).click();
     await p.locator(".hub-invitation").waitFor({ state: "detached" });
     await p.goto(origin + "/ui/hub/exposures?agent=" + exposureId); await p.locator(".hub-agent-rooms li").waitFor();
     check(tag + " owner acceptance persisted exact agent membership", !!r.db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(consentRoomId, exposureId));
     check(tag + " consent did not add owner as person", !r.db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=?").get(consentRoomId, personKeyString(alex)));
     check(tag + " owner room list names the accepted room", (await p.locator(".hub-agent-rooms").innerText()).includes("Consent room " + tag));
+    const roomLead = lang === "en" ? "No one may ask it one-to-one yet · in 1 room" : "還沒有人可以一對一提問 · 在 1 個房間裡";
+    await p.waitForFunction((text: string) => document.querySelector(".s-page-lead")?.textContent === text, roomLead);
+    check(tag + " owner lead distinguishes one-to-one from room reach", (await p.locator(".s-page-lead").innerText()) === roomLead);
+    check(tag + " Who may ask explains room reach", (await p.locator(".hub-rooms-can-ask").innerText()) === (lang === "en"
+      ? "People in its rooms can @ it there. See In these rooms." : "房間裡的人可以在房間裡 @ 它，見「在這些房間裡」。"));
+    check(tag + " agent rooms sit directly after Who may ask", await p.evaluate(() => document.querySelector(".hub-rooms-can-ask")?.closest("section")?.nextElementSibling === document.querySelector(".hub-agent-rooms")));
+    check(tag + " owner count comes from the section's single real read", receipt.requests.filter((r: any) => r.method === "GET" && r.path === `/hub/v1/exposures/${exposureId}/rooms`).length === 1);
+
     await shot("consent-accepted");
     await p.locator(".hub-agent-rooms button").click(); await p.locator(".hub-agent-rooms").waitFor({ state: "detached" });
     check(tag + " owner removal persisted through actual route", !r.db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(consentRoomId, exposureId));
+    const noRoomLead = lang === "en" ? "No one may ask yet" : "還沒有人可以提問";
+    await p.waitForFunction((text: string) => document.querySelector(".s-page-lead")?.textContent === text, noRoomLead);
+    check(tag + " owner lead follows zero rooms after Leave", (await p.locator(".s-page-lead").innerText()) === noRoomLead
+      && await p.locator(".hub-rooms-can-ask").count() === 0);
+
     const reinvited = await r.call(admin, "POST", `/hub/v1/rooms/${consentRoomId}/invitations`, { agents: [exposureId] });
     check(tag + " manager can invite again after owner removal", reinvited.status === 200);
     await p.goto(origin + "/ui/hub?view=invitations"); await p.locator(".hub-invitation").waitFor();
