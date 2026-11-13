@@ -1,0 +1,40 @@
+{
+  "mergeCheckpoint": "68baf306aec22ff677e3af5e354ddb8af03ec527",
+  "parents": [
+    "608b35dc3d96daa54cffe793ab5c61f1c24d2c01",
+    "dee603eb00090979a528b6f2db2a89b8236a1e94"
+  ],
+  "parentPR": 3805,
+  "parentMergeVerifiedBy": "GH actual PR merge state and delivered coordinator receipt",
+  "freshValidation": {
+    "focused": {
+      "files": 2,
+      "passed": 80
+    },
+    "nativeVersion": "7.0.2",
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "changelogFragments": 445,
+    "scopedDiffCheck": "pass",
+    "changelogGuard": "pass"
+  },
+  "privateLogBindings": [
+    {
+      "path": "focused.log",
+      "sha256": "221996a3b852efc142a5d8656148c96216ade8ef5081c69fd016a4a9564f8560"
+    },
+    {
+      "path": "source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "historicalValidation": "Original 178/6, restored80/2 overlap,15 compiling semantic reversals and fail-first controls remain historical at608b35dc3; original 9 paths unchanged. Not rerun or relabelled as final-head mutations.",
+  "scope": "Inactive read-only clock preparation only; no production clock caller/registered cutover/effects/scheduler/role endpoint/member lease/stream/HTTP Save/fullS129 activation.",
+  "conflicts": "5 incoming-only conflicts resolved to exact alpha: three documentation files, pairing.ts and issuer tests. All original R2 sign-out classification and mandatory permit checks retained. No package or lock conflict.",
+  "incomingWhitespace": "Parent-to-merge diff check reported pre-existing incoming log/fixture whitespace; alpha-scoped diff passes and those incoming bytes are unchanged.",
+  "gate": "Current exact-head CI, new conflict-resolution review and coordinator gate still required. No merge authority."
+}

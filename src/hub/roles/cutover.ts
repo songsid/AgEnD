@@ -2,27 +2,23 @@
 import type Database from "better-sqlite3";
 import {createHash,randomUUID} from "node:crypto";
 import {performance} from "node:perf_hooks";
-import {z} from "zod";
 import {applyHubMigrations,assertHubMigrationsCurrent,type HubMigration} from "../db.js";
 import type {HubTransportStore} from "../store.js";
 import type {PersonKey} from "../types.js";
-import {epoch,hash,identifier,parseStrictJson,person,uuid,validated} from "../validation.js";
+import {epoch,parseStrictJson,person,uuid,validated} from "../validation.js";
 import {parseGroupPolicy} from "../group-policy/model.js";
 import {convertGroupPolicy} from "./convert.js";
 import {parseRolePolicy} from "./model.js";
 import {HUB_ROLE_WRITER_MIGRATION} from "./writer.js";
 import {HUB_ROLE_EXPIRY_MIGRATION} from "./expiry.js";
 import {captureRoleCutoverInventory} from "./cutover-inventory.js";
+import {hubRoleCutoverMarkerSchema as markerSchema,parseHubRoleCutoverMarker} from "./cutover-marker.js";
 export const HUB_ROLE_CUTOVER_MIGRATION:HubMigration={component:"roles-cutover",version:1,up(db){db.exec("CREATE TABLE IF NOT EXISTS hub_role_cutover(singleton INTEGER PRIMARY KEY CHECK(singleton=1),body TEXT NOT NULL)");}};
 export interface RoleCutoverOptions {db:Database.Database;hubId:string;realm:string;generation:string;root:PersonKey;
  transport:Pick<HubTransportStore,"read"|"mutate">;migrations:readonly HubMigration[];current():boolean;refreshAuthorization():void;now?:()=>number;elapsedNow?:()=>number;}
 export type RoleCutoverResult={ok:true;changed:boolean;revision:number;epoch:number}|{ok:false;code:"unavailable"|"conflict"|"expired"};
 class Refusal extends Error{constructor(readonly code:"unavailable"|"conflict"|"expired"){super(code);}}
 const sha=(s:string)=>createHash("sha256").update(s).digest("hex");
-const part=z.strictObject({name:identifier,rows:epoch,digest:hash});
-const markerSchema=z.strictObject({v:z.literal(1),hubId:uuid,realm:person.shape.realm,generation:identifier,root:person,at:epoch,
- oldRaw:z.string().max(256*1024),oldDigest:hash,roleDigest:hash,fromRevision:epoch,transportRevision:epoch,authorizationVersion:epoch,
- inventory:z.strictObject({digest:hash,tables:z.array(part).max(64)}),auditId:uuid});
 function sync(value:unknown){if(value&&typeof(value as{then?:unknown}).then==="function"){void Promise.resolve(value).catch(()=>{});throw new Refusal("unavailable");}}
 export function createHubRoleCutover(options:RoleCutoverOptions){
  const{db,transport,current,refreshAuthorization}=options,hubId=validated(uuid,options.hubId),root=validated(person,options.root),{realm,generation}=options;
@@ -40,11 +36,7 @@ export function createHubRoleCutover(options:RoleCutoverOptions){
   if(rows.length>1)throw new Refusal("unavailable");return rows[0]?.body??null;};
  const registry=()=>{const count=(db.prepare("SELECT COUNT(*) AS n FROM hub_schema WHERE component IN ('roles-writer','roles-expiry','roles-cutover')").get()as{n:number}).n;
   assertHubMigrationsCurrent(db,count?full:base);if(markerRaw()!==null&&!count)throw new Refusal("unavailable");};
- const readMarker=()=>{const raw=markerRaw();if(raw===null)return null;const m=validated(markerSchema,parseStrictJson(raw,512*1024));
-  const old=parseGroupPolicy(parseStrictJson(m.oldRaw)),converted=convertGroupPolicy(old,{root:m.root,now:m.at,rolesActive:true});
-  if(m.hubId!==hubId||m.root.realm!==m.realm||old.realm!==m.realm||old.generation!==m.generation||old.revision!==m.fromRevision||m.oldDigest!==sha(m.oldRaw)
-   ||m.roleDigest!==sha(JSON.stringify(converted))||m.inventory.digest!==sha(JSON.stringify(m.inventory.tables))||m.transportRevision<1||m.authorizationVersion<1)throw new Refusal("unavailable");
-  return{raw,marker:m};};
+ const readMarker=()=>{const raw=markerRaw();return raw===null?null:parseHubRoleCutoverMarker(raw,hubId);};
  const publish=(authorizationVersion:number)=>{live();if(publishedEpoch!==authorizationVersion){sync(refreshAuthorization());live();publishedEpoch=authorizationVersion;}};
  return{
   migrate():RoleCutoverResult{
