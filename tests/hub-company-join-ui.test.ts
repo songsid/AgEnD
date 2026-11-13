@@ -68,6 +68,16 @@ describe("company join UI", () => {
     expect(calls.filter(c => c.path.endsWith("/probe"))).toHaveLength(1);
     expect(calls.filter(c => c.path.endsWith("/start"))).toHaveLength(1);
   });
+  it("#3837: an address whose look got no answer at all is still asked again on the next blur (not taken as cleared)", async () => {
+    const answers: any[] = [{ ok: false }, { ok: true, hubName: "Acme Hub", webOrigin: "https://hub.example.test", companyJoin: true, identity: "new", separateHosts: true, suggestedLabel: "box", features: [] }];
+    fetcher(path => path.endsWith("/probe") ? answers.shift() ?? answers[0] : { ok: true, operation: null });
+    const p = await mount(fleet.CompanyJoinSettings);
+    const address = p.root.querySelector("#hubCompanyAddress"); address.value = "hub.example.test"; fire(address, "input"); await settle(4);
+    fire(address, "blur"); await settle(8);                                                  // no answer (an older server, a network error)
+    fire(address, "blur"); await settle(8);
+    expect(calls.filter(c => c.path.endsWith("/probe"))).toHaveLength(2);
+    expect(p.root.querySelector("#hubCompanyLine").textContent).toContain("Found \u201cAcme Hub\u201d");
+  });
   it("M-2921: Start stays off while the probe for this address has not answered; a probe that cannot answer at all does not block it", async () => {
     let answer: (v: any) => void = () => {};
     fetcher(path => path.endsWith("/probe") ? new Promise(r => { answer = r; }) : { ok: true, operation: null });
