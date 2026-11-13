@@ -1,3 +1,5 @@
+import { escapeInboundBody, escapeInboundField } from "./inbound-presentation.js";
+
 /** Product guard that reserves room for routing metadata and protects recipient context. */
 export const MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES = 16_000;
 
@@ -6,13 +8,13 @@ export const MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES = 16_000;
  * not rendered — "a reply is owed" is the only thing it told the receiver, and `replyMarker` says that. The marker
  * replaces the correlation_id row (it carries the id) and goes last, so a long task_summary or branch can't bury it.
  */
-export function renderCrossInstanceHandoffMetadata(meta: Record<string, string>, replyMarker = ""): string {
+export function renderCrossInstanceHandoffMetadata(meta: Record<string, string>, replyMarker = "", options: { omitVerification?: boolean; legacy?: boolean } = {}): string {
   const rows: string[] = [];
   const add = (label: string, value: string | undefined) => {
-    if (value && value.trim()) rows.push(`${label}: ${value.trim()}`);
+    if (value && value.trim()) rows.push(`${label}: ${options.legacy ? value.trim() : escapeInboundField(value.trim())}`);
   };
   add("message_id", meta.message_id);
-  add("verification_id", meta.verification_id);
+  if (!options.omitVerification && (options.legacy || meta.verification_id !== meta.message_id)) add("verification_id", meta.verification_id);
   add("forwards", meta.forwards);
   if (!replyMarker) add("correlation_id", meta.correlation_id);
   add("task_summary", meta.task_summary);
@@ -56,17 +58,20 @@ export type AgentMode = "mcp" | "cli";
 export function crossInstanceReplyMarker(meta: Record<string, string>, mode: AgentMode = "mcp"): string {
   if (meta.requires_reply !== "true") return "";
   const cid = meta.correlation_id?.trim();
+  if (/[\r\n\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069\[\]()|@#\\]/.test((meta.from_instance ?? "") + (cid ?? ""))) {
+    return "reply required → read the exact sender/correlation with delivery_status, then report the result";
+  }
   if (mode === "cli") {
     return `reply required → agend-agent report ${shellArg(meta.from_instance || "SENDER")} "…" ${shellArg(cid || "CORRELATION_ID")}`;
   }
-  return cid ? `reply required → report_result ${cid}` : "reply required → send_to_instance";
+  return cid ? `reply required → report_result ${escapeInboundField(cid)}` : "reply required → send_to_instance";
 }
 
 /** Exact cross-instance block pasted by the receiving daemon (in the receiver's mode, #1650). */
 export function formatCrossInstanceInboundMessage(content: string, meta: Record<string, string>, mode: AgentMode = "mcp"): string {
-  const fromInstance = meta.from_instance || "unknown";
-  const fromLabel = meta.from_display ? `${meta.from_display} (${fromInstance})` : fromInstance;
-  let formatted = `[from:${fromLabel}] ${content}`;
+  const fromInstance = escapeInboundField(meta.from_instance || "unknown");
+  const fromLabel = meta.from_display && meta.from_display !== meta.from_instance ? `${escapeInboundField(meta.from_display)} (${fromInstance})` : fromInstance;
+  let formatted = `[from:${fromLabel}] ${escapeInboundBody(content)}`;
   // Dedup only the injected block — logs and Telegram labels keep the raw
   // task_summary exactly as the sender provided it.
   const renderMeta = isRedundantTaskSummary(content, meta.task_summary)

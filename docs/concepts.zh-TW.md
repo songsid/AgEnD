@@ -220,10 +220,10 @@ AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面�
 
 ## web session 與 verified web go-ahead（已驗證的網頁授權）
 
-web session 是登入的瀏覽器（直連儀表板、區網、tailnet，或 opt-in 的連結）。session 要帶上帳號的授權——訊息顯示為 `via web (verified)`——必須該帳號先在 Discord 或 Telegram 上確認過（#1939）；訪客 session 永遠沒資格。Agent 檢查 `web-verified` 收據，跟 Discord、Telegram 訊息一樣。go-ahead 動作（破壞性、不可逆、花錢、授權類）要有 Discord／Telegram 收據或 `web (verified)` 收據——瀏覽器開著本身什麼都證明不了。
+web session 是登入的瀏覽器（直連儀表板、區網、tailnet，或 opt-in 的連結）。session 要帶上帳號的授權——訊息顯示為 `@web:v`——必須該帳號先在 Discord 或 Telegram 上確認過（#1939）；訪客 session 永遠沒資格。Agent 檢查 `web-verified` 收據，跟 Discord、Telegram 訊息一樣。go-ahead 動作（破壞性、不可逆、花錢、授權類）要有 Discord／Telegram 收據或 `web (verified)` 收據——瀏覽器開著本身什麼都證明不了。
 
 - 能做什麼：驗證過後，跟聊天訊息一樣為同樣的行為背書。
-- 不能做什麼：沒驗證就什麼都授權不了；普通的 `via web` 與訪客永遠不帶授權。
+- 不能做什麼：沒驗證就什麼都授權不了；普通的 `@web` 與訪客永遠不帶授權。
 - 程式碼：`src/authority/web-authority.ts`；`src/config-validator.ts:517-522`（`web.verified_authority`）。
 - 相關決議與議題：#1939。
 

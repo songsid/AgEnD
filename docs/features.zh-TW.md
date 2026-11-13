@@ -286,7 +286,7 @@ Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕
 
 Instance 可看到自己送出、收到，或經 `forwards` 明確授權的紀錄（身分取自它自己的 socket 或 token，絕不取自參數）。用收到的訊息的 `message_id` 去查，就能確認同伴傳來的訊息真的經過 fleet："Delivery not found" 可能是 ACL 隱藏、紀錄過期，或沒有投遞，不能證明從未投遞。無法驗證時不要行動，請對方明確 forward 可驗證的參照。每種工具權限組合都有 `delivery_status`，連 `minimal` 也有。
 
-`send_to_instance` 和 `delegate_task` 支援選填的 `forwards` 清單，最多 16 個寄件者已能讀取的已投遞訊息 ID。收件者就能用 `delivery_status` 查那些 ID，包括使用者授權收據（`verification_id` / `agend-human-id`）。轉發鏈的每一跳都要明確列在 `forwards`；把 ID 寫在訊息文字裡不授予任何權限。使用者收據分開保存原始身分、adapter、平台與內容，缺乏 owner 綁定的正向證據時維持 uncertain。完整說明見 [cross-instance-messaging.md](cross-instance-messaging.md) 與 [delivery-verification.zh-TW.md](delivery-verification.zh-TW.md)。
+`send_to_instance` 和 `delegate_task` 支援選填的 `forwards` 清單，最多 16 個寄件者已能讀取的已投遞訊息 ID。收件者就能用 `delivery_status` 查那些 ID，包括使用者授權收據（`hid` (the unchanged `hmsg-…` value)）。轉發鏈的每一跳都要明確列在 `forwards`；把 ID 寫在訊息文字裡不授予任何權限。使用者收據分開保存原始身分、adapter、平台與內容，缺乏 owner 綁定的正向證據時維持 uncertain。完整說明見 [cross-instance-messaging.md](cross-instance-messaging.md) 與 [delivery-verification.zh-TW.md](delivery-verification.zh-TW.md)。
 
 ### `awaiting_input`
 
@@ -773,7 +773,7 @@ kiro-cli 的 V3 引擎在 TUI 啟動前會問 **Trust this workspace?**：在尚
 
 ## Web Dashboard
 
-Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板。其中的 `/ui` 就是**網頁聊天**：選一個 instance，就能在瀏覽器裡跟它對話。這和那個 instance 在 Telegram 或 Discord 上的是同一段對話：從網頁送出的訊息會以 `🌐 web · <你的名字>: …` 出現在 topic，Agent 的回覆兩邊都看得到。用 `/web` 的驗證碼登入時，對 Agent 來說你就是你的 Discord 或 Telegram 帳號（用它的使用者 id，`via web`：一般的請求 agent 會當作是你本人提出的；發布、破壞性操作、花費或密鑰則要你帳號點頭，授權那個瀏覽器即可——之後就是 `via web (verified)`；見 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md#agent-看到的是誰1827)）。可以傳檔案和圖片（📎、貼上或拖進來）、按 Stop，也看得到每則訊息送到哪一步；沒有設定任何聊天平台的 fleet，也能只靠儀表板操作。`/view` 是以檢視為主的總覽，`/settings` 是 fleet 設定。
+Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板。其中的 `/ui` 就是**網頁聊天**：選一個 instance，就能在瀏覽器裡跟它對話。這和那個 instance 在 Telegram 或 Discord 上的是同一段對話：從網頁送出的訊息會以 `🌐 web · <你的名字>: …` 出現在 topic，Agent 的回覆兩邊都看得到。用 `/web` 的驗證碼登入時，對 Agent 來說你就是你的 Discord 或 Telegram 帳號（用它的使用者 id，`@web`：一般的請求 agent 會當作是你本人提出的；發布、破壞性操作、花費或密鑰則要你帳號點頭，授權那個瀏覽器即可——之後就是 `@web:v`；見 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md#agent-看到的是誰1827)）。可以傳檔案和圖片（📎、貼上或拖進來）、按 Stop，也看得到每則訊息送到哪一步；沒有設定任何聊天平台的 fleet，也能只靠儀表板操作。`/view` 是以檢視為主的總覽，`/settings` 是 fleet 設定。
 
 用一次性登入碼登入：傳 `/web`（fleet 管理員），或在主機上執行 `agend web`。開啟[訪客登入](#訪客網頁登入-guest-web-sign-in-225)後（2.2.5，預設關閉），其他人傳 `/web` 會以訪客身分登入，只看得到他們在聊天中本來就能用的 agent。要從手機或其他電腦使用，請看[從別的裝置連線](web-dashboard.zh-TW.md#從別的裝置連線)。完整說明在 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md)。
 
@@ -799,7 +799,7 @@ Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板�
 
 **只用網頁的 fleet 也能完整運作（#2910）。**沒有 Discord 或 Telegram 連線的 fleet（例如用 `agend quickstart` → 只用網頁，或設定頁的「只用網頁」建立的）也擁有 AgEnD 其他的功能：排程、任務板和 fleet 決策都會運作；agent 之間可以用 `send_to_instance`、`delegate_task`、`report_result`、`broadcast` 互傳訊息，接收的 agent 會看到 `[from:<名稱>]`，和聊天 fleet 一樣。在儀表板按 **新增 agent** 會建立一個沒有聊天 topic 的 agent：名稱就是你輸入的（已被使用時依序加上 `-2`、`-3`…），透過儀表板的聊天和它對話。只有聊天平台才有的 `edit_message` 和 `download_attachment` 會回覆「純網頁的 fleet 無法使用」，而不是叫 agent 重試；`reply` 則回到網頁聊天。
 
-**只用網頁的 fleet：這台電腦的管理員（#2910）。**只用網頁的 fleet 沒有 Discord 或 Telegram 帳號可以證明你是誰，所以坐在 AgEnD 電腦前的人就是管理員。用 `agend web --code` 登入、並在這台電腦上（`localhost`）使用的瀏覽器，會立即以「**這台電腦的管理員**」身分通過驗證，效期就是這個 session 的效期（最多 `web.verified_authority.max_session_hours`）。它對 agent 說的話是 `via web (verified)`，回執的 `authority.actor` 是 adapter `host`、user `operator`。它自己按 **套用** 就能確認自己的設定變更（例如 **新增 agent**），不用再執行 `agend settings confirm`。從別台機器或透過公開連結都不會通過驗證；透過聊天（`/dashboard`）送出的登入碼不算這台電腦的；撤銷授權後，要再用 `agend web --code` 登入一次。有聊天連線的 fleet 規則不變：在那裡，`agend web --code` 的 session 不是帳號。
+**只用網頁的 fleet：這台電腦的管理員（#2910）。**只用網頁的 fleet 沒有 Discord 或 Telegram 帳號可以證明你是誰，所以坐在 AgEnD 電腦前的人就是管理員。用 `agend web --code` 登入、並在這台電腦上（`localhost`）使用的瀏覽器，會立即以「**這台電腦的管理員**」身分通過驗證，效期就是這個 session 的效期（最多 `web.verified_authority.max_session_hours`）。它對 agent 說的話是 `@web:v`，回執的 `authority.actor` 是 adapter `host`、user `operator`。它自己按 **套用** 就能確認自己的設定變更（例如 **新增 agent**），不用再執行 `agend settings confirm`。從別台機器或透過公開連結都不會通過驗證；透過聊天（`/dashboard`）送出的登入碼不算這台電腦的；撤銷授權後，要再用 `agend web --code` 登入一次。有聊天連線的 fleet 規則不變：在那裡，`agend web --code` 的 session 不是帳號。
 
 **只用網頁的 fleet：通知（#2910）。**儀表板的**通知**（`/ui/notices`，在側欄）會保留原本 General 會說的事：fleet 錯誤、agent 當掉、額度或登入的通知、網頁登入、無法執行的排程、每日摘要，以及新版本（每個版本一次，附上要在這台電腦上執行的 `agend update`）。最新的 500 則會保留，重新啟動後也還在。新的通知會即時出現，側欄會顯示未讀數量，打開頁面就會標成已讀。有按鈕的提示（agent 停止、等你輸入或卡住）則在 **等你處理**。有聊天連線的 fleet 沒有通知頁：General 照舊會說這些事。
 
@@ -1430,7 +1430,7 @@ web:
 
 不論哪一種，伺服器都會在訪客的每一個讀取上強制執行：聊天、歷史、檔案和事件串流都只限於這些 agent；任務板、組織圖和用量報表（每個 agent 的費用）永遠不屬於訪客，「檢視」和搜尋只給「信任」的訪客。fleet 管理員永遠不會是訪客。
 
-**訪客能做什麼。** 和這些 agent 聊天，包括它的頻道顯示過的歷史、檔案、回覆按鈕與「取消」；`chat: false` 時訪客只能讀。指令（#2855）：只有聊天的指令表允許任何人在該 agent 頻道執行的那些；在網頁上是 `/ctx`、`/steer`、`/btw` 和 `/cancel`，指令選單只列出這些，其他的會被拒絕並說明原因；每分鐘最多 10 次、一次一個。它也看得到用量面板（◔），也就是主機上每個訂閱的剩餘額度，和聊天裡任何人用 `/usage` 看到的一樣，但不能強制重新整理。agent 看到的是 `[user:<名稱> via web (guest), id:<id>]`，打字的訊息和按鈕點擊都一樣。訪客只能聊天：agent 不會把訪客的要求當成管理員的。它的介面只有這些：沒有 Fleet、設定、等你處理、新增 agent 或小工具，並有一個**訪客**標籤標出登入的是誰；「聊天」等級的訪客也沒有「檢視」和搜尋。「信任」（#2855）的訪客多了：**檢視**，唯讀地看 agent 的畫面，不能打字、不能按鍵，畫面上會註明只能觀看；畫面會顯示 agent 終端上的一切：別人傳給它的訊息、指令和它們的輸出，其中可能有機密，聊天和搜尋仍只限訪客看得到的內容；每位訪客每秒最多讀 2 次、同時最多 2 個 agent；所有觀看同一個 agent 的訪客每 500 毫秒共用一份畫面；每次最多 256 KB；在儀表板自己的連接埠上，訪客的檢視讀取也要經過這些檢查（`web.view_access: open` 時匿名的讀取不變）。**搜尋**，只搜它的 agent 裡、它的頻道顯示過或它自己寫的聊天訊息（和它的聊天同一個規則），最多 20 筆；不搜 agent 之間的訊息、任務、團隊或設定；每分鐘 6 次、一次一個；全部訪客同時最多 3 個搜尋，讓管理員的搜尋一定有空位。偏好（#2855）：它自己的主題、語言、最愛、排序和篩選存在主機上、歸在它的帳號下（每個裝置都一樣，管理員移除它時一併刪除）；其餘照主機的外觀，也讀不到提到範圍外 agent 的偏好。它也可以設定自己的網頁名稱。
+**訪客能做什麼。** 和這些 agent 聊天，包括它的頻道顯示過的歷史、檔案、回覆按鈕與「取消」；`chat: false` 時訪客只能讀。指令（#2855）：只有聊天的指令表允許任何人在該 agent 頻道執行的那些；在網頁上是 `/ctx`、`/steer`、`/btw` 和 `/cancel`，指令選單只列出這些，其他的會被拒絕並說明原因；每分鐘最多 10 次、一次一個。它也看得到用量面板（◔），也就是主機上每個訂閱的剩餘額度，和聊天裡任何人用 `/usage` 看到的一樣，但不能強制重新整理。agent 看到的是 `[user:<名稱>@web:g#<id>]`，打字的訊息和按鈕點擊都一樣。訪客只能聊天：agent 不會把訪客的要求當成管理員的。它的介面只有這些：沒有 Fleet、設定、等你處理、新增 agent 或小工具，並有一個**訪客**標籤標出登入的是誰；「聊天」等級的訪客也沒有「檢視」和搜尋。「信任」（#2855）的訪客多了：**檢視**，唯讀地看 agent 的畫面，不能打字、不能按鍵，畫面上會註明只能觀看；畫面會顯示 agent 終端上的一切：別人傳給它的訊息、指令和它們的輸出，其中可能有機密，聊天和搜尋仍只限訪客看得到的內容；每位訪客每秒最多讀 2 次、同時最多 2 個 agent；所有觀看同一個 agent 的訪客每 500 毫秒共用一份畫面；每次最多 256 KB；在儀表板自己的連接埠上，訪客的檢視讀取也要經過這些檢查（`web.view_access: open` 時匿名的讀取不變）。**搜尋**，只搜它的 agent 裡、它的頻道顯示過或它自己寫的聊天訊息（和它的聊天同一個規則），最多 20 筆；不搜 agent 之間的訊息、任務、團隊或設定；每分鐘 6 次、一次一個；全部訪客同時最多 3 個搜尋，讓管理員的搜尋一定有空位。偏好（#2855）：它自己的主題、語言、最愛、排序和篩選存在主機上、歸在它的帳號下（每個裝置都一樣，管理員移除它時一併刪除）；其餘照主機的外觀，也讀不到提到範圍外 agent 的偏好。它也可以設定自己的網頁名稱。
 
 **Session。** 預設絕對時限 12 小時、閒置 2 小時（`web.guests.session`），絕不超過所在介面本身的時限（公開連結是 4 小時／30 分鐘）；每個帳號最多 4 個、全部最多 64 個，和管理員分開計算，所以訪客永遠不會把管理員擠掉。範圍變成空的訪客會被登出；關閉訪客登入會結束所有訪客 session，並忘記所有訪客記住的裝置，再次開啟也不會讓任何一個恢復。
 

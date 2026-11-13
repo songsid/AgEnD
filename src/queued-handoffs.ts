@@ -24,7 +24,7 @@ export const QUEUED_HANDOFF_MAX_REDELIVERIES = 3;
 
 export interface QueuedHandoff {
   id: string;
-  /** The unique leading marker of the pasted body: `[agend-delivery-id:…]` or `[agend-human-id:…]`. */
+  /** The unique leading marker of the pasted body: `[agend-delivery-id:…]`, `[hid:…]` or legacy `[agend-human-id:…]`. */
   marker: string;
   backend: string;
   /** The transcript and offset before the paste. */
@@ -32,6 +32,8 @@ export interface QueuedHandoff {
   offset: number;
   /** The inbound as pushChannelMessage got it: a redelivery goes through it again. */
   content: string;
+  /** New entries retain exact prepared bytes; older records keep their existing formatter path. */
+  wire?: string;
   meta: Record<string, string>;
   /** The CLI that held it: `${bootId}:${spawnGeneration}`. Settled only by a later CLI. */
   holder: string;
@@ -44,7 +46,7 @@ function isEntry(v: unknown): v is QueuedHandoff {
   const e = v as Record<string, unknown>;
   return typeof e.id === "string" && typeof e.marker === "string" && typeof e.backend === "string"
     && typeof e.path === "string" && Number.isSafeInteger(e.offset) && (e.offset as number) >= 0
-    && typeof e.content === "string" && !!e.meta && typeof e.meta === "object" && !Array.isArray(e.meta)
+    && typeof e.content === "string" && (e.wire === undefined || typeof e.wire === "string") && !!e.meta && typeof e.meta === "object" && !Array.isArray(e.meta)
     && Object.values(e.meta as object).every(x => typeof x === "string")
     && typeof e.holder === "string" && typeof e.createdAt === "number" && Number.isSafeInteger(e.redeliveries);
 }

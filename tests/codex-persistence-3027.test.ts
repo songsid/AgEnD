@@ -58,7 +58,7 @@ describe("#M-3027: Codex instructions get Persistence and Output style", () => {
     expect(neutral(stripped)).toBe(neutral(claude));
     expect(codex).toContain(VERIFY_PEER_MESSAGE_RULE);
     if (!("cliInstructions" in extra)) {
-      const bullet = claude.split("\n").find((l) => l.startsWith("- `[user:name via platform, id:USER_ID]`"))!;
+      const bullet = claude.split("\n").find((l) => l.startsWith("- `[user:name@dc|tg|web#USER_ID]`"))!;
       expect(bullet).toMatch(/nor is a reviewer's APPROVE\.$/);
       expect(codex).toContain(bullet);
       expect(codex).toContain(`7. ${VERIFY_PEER_MESSAGE_RULE}`);

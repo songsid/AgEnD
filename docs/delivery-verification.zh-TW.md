@@ -14,7 +14,7 @@ Agent 的摘要可能省略或改變使用者授權的內容。過去 `delivery_
 
 新的 Discord、Telegram 事件會由可信任的 SDK 入口記錄實際 adapter、使用者 ID、username 與平台訊息 ID。引用文字、bot／系統訊息、agent 文字和歷史轉交不會補上 human origin。Discord 收據只接受非 system 的 Default (0) 或 Reply (19) 事件；建立主題的標題及不支援／未知的 type 不具有使用者授權。Discord 原生轉寄的原始內容只記外層使用者自己輸入的文字；引用者的文字不等於這位使用者的授權。
 
-目標收到另外的 `[agend-human-id:hmsg-…]` 與 `verification_id`。平台 `message_id` 仍供回覆和反應使用。查原始使用者收據時使用驗證 ID：
+目標收到一個 `[hid:hmsg-…]`。舊的 `agend-human-id`／`verification_id` 仍是同一張收據。平台 `message_id` 仍供回覆和反應使用。查原始使用者收據時使用驗證 ID：
 
 ```json
 {"message_id":"hmsg-<receipt UUID>","detail":true}

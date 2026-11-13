@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { escapeInboundBody, escapeInboundField, humanReceiptMarker, type HumanPresentation } from "./inbound-presentation.js";
 import type Database from "better-sqlite3";
 import type { DeliveryStatusItem, DeliveryStatusSelector, DeliveryStatusPage } from "./delivery-outbox.js";
 import { t } from "./locale.js";
@@ -55,6 +56,7 @@ export interface HumanReceiptAttempt {
   verificationId: string;
   expectedWireHash: string;
   ownerKey: string;
+  marker?: string;
   current: () => boolean;
   proof?: HumanReceiptProof;
 }
@@ -153,7 +155,7 @@ export function getHumanReceipt(db: Database.Database, id: string): HumanReceipt
   return db.prepare("SELECT * FROM human_delivery_receipts WHERE receipt_id=?").get(id) as HumanReceiptRow | undefined;
 }
 
-/** Bind once at the actual IPC handoff, after wake/reconnect waits. */
+/** Bind once at the final owned write preparation, after wake/reconnect waits. */
 export function bindHumanReceipt(db: Database.Database, id: string, target: string, ownerKey: string, wire: string, managerBootId: string): HumanReceiptRow {
   if (!ownerKey || Buffer.byteLength(wire, "utf8") > 256 * 1024) throw new Error("Human verification wire evidence is unavailable");
   return db.transaction(() => {
@@ -271,30 +273,35 @@ export function prepareDeliveryWire(body: string, preserveExactBytes = false): s
 
 export function steerInboundEnvelope(inbound: string): string {
   const banner = "[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]\n";
-  const marker = inbound.match(/^\[agend-(?:delivery|human)-id:[^\]\r\n]+\]\r?\n/);
+  const marker = inbound.match(/^\[(?:agend-(?:delivery|human)-id|hid):[^\]\r\n]+\]\r?\n/);
   return marker ? marker[0] + banner + inbound.slice(marker[0].length) : banner + inbound;
 }
 
 export const BTW_INBOUND_PREFIX = "[BTW — side question from the user. Answer it separately without changing or interrupting the CURRENT work.]\n";
 
 /** One formatter for human wire bytes and their immutable evidence snapshot. */
-export function formatHumanInboundMessage(content: string, meta: Record<string, string>, mode: AgentMode): string {
+export function formatHumanInboundMessage(content: string, meta: Record<string, string>, mode: AgentMode, presentation: HumanPresentation = {}): string {
+  const compact = presentation.dialect !== "legacy";
+  const safe = compact || presentation.escape === true;
   // #1920: a guest's web message says so — recognition only (authority none). #1939 S3: "(verified)" when its receipt
   // carries web-verified authority (set with the receipt, FleetManager.humanReceiptPayload) — a hint: agents read the
   // receipt before acting on it as the person.
   const web = meta.source === "web";
   const label = web && meta.web_guest === "1" ? " (guest)" : web && meta.web_verified === "1" ? " (verified)" : "";
-  const via = meta.source ? " via " + meta.source + label : "";
-  const idTag = meta.user_id ? ", id:" + meta.user_id : "";
-  let body = "[user:" + (meta.user || "unknown") + via + idTag + "] " + content;
-  if (meta.pending_reactions) body = "[Recent reactions: " + meta.pending_reactions + "]\n" + body;
+  const code = meta.source === "discord" ? "dc" : meta.source === "telegram" ? "tg" : meta.source;
+  const webTag = web && meta.web_guest === "1" ? ":g" : web && meta.web_verified === "1" ? ":v" : "";
+  const via = meta.source ? compact ? "@" + escapeInboundField(code) + webTag : " via " + (safe ? escapeInboundField(meta.source) : meta.source) + label : "";
+  const idTag = meta.user_id ? compact ? "#" + escapeInboundField(meta.user_id) : ", id:" + (safe ? escapeInboundField(meta.user_id) : meta.user_id) : "";
+  let body = "[user:" + (safe ? escapeInboundField(meta.user || "unknown") : meta.user || "unknown") + via + idTag + "] "
+    + (safe ? escapeInboundBody(content) : content);
+  if (meta.pending_reactions) body = "[Recent reactions: " + (safe ? escapeInboundField(meta.pending_reactions) : meta.pending_reactions) + "]\n" + body;
   // Reaction/reply addressing keeps the actual platform ID. Only verification uses hmsg.
-  body += renderCrossInstanceHandoffMetadata(meta);
-  body += mode === "cli"
+  body += renderCrossInstanceHandoffMetadata(meta, "", { omitVerification: compact && !!meta.verification_id, legacy: !safe });
+  if (presentation.replyHint !== false || !compact) body += mode === "cli"
     ? '\n(Answer with agend-agent reply "…"; terminal text does not reach them.)'
     : "\n(Answer with the reply tool; terminal text does not reach them.)";
-  if (meta.reply_to_text) body += '\n(reply_to: "' + meta.reply_to_text + '")';
-  if (meta.verification_id) body = "[agend-human-id:" + meta.verification_id + "]\n" + body;
+  if (meta.reply_to_text) body += '\n(reply_to: "' + (safe ? escapeInboundField(meta.reply_to_text) : meta.reply_to_text) + '")';
+  if (meta.verification_id) body = humanReceiptMarker(meta.verification_id, compact ? "compact" : "legacy") + "\n" + body;
   if (meta.delivery_id) body = "[agend-delivery-id:" + meta.delivery_id + "]\n" + body;
   return body;
 }
