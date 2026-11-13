@@ -1,0 +1,23 @@
+# Track R2 acceptance
+
+Source checkpoint: `461e92dcc3f0c9a26db7c431adc5b6ea28e56a0b`. Parent R1 is00af7e86e. Framing563769ff7 was published first for C. Dispatcher source9b2d83c64 follows it; a plain merge6258a1146 brings the R1 feature-inventory repair without changing R2 product blobs. The final fixture commit adds the machine-dispatch feature only to the two exact http.features expectations. `acceptance.json` binds every own changed path, without user data or credential material.
+
+Three pinned TLS/WSS framing assertions and six HTTP agent-member assertions failed before their implementation. Later focused controls cover @all deduplication, stable replay, one answer plus ACK retries, 24-hour expiry, pause/resume, removal/rejoin retirement, person-only mentions, required-audit rollback, other-owner refusal, portable presence, and newest30 context plus one older reply anchor. Migration controls preserve existing fields and refuse an old registry. A fast-answer control commits an answer during the actual transport.send callback, proving dispatch intent precedes the write.
+
+The actual routing fixture composes production Hub HTTP/SQLite with the real pinned TLS/WSS server/client. It reconnects after retaining one synthetic input, receives the exact same room.ask bytes/ID, loses the committed answer's first ACK, reconnects again, and retries the exact answer. It observes one inert input identity and one room answer. No agent/CLI is run.
+
+Latest41/41 in five suites after the plain R1 sync. Earlier206/206 across ten includes direct-chat, actual factory and quick-pairing controls; the later additions/corrections have focused final17/17 and15/15 scopes. Counts overlap. Both native source/test programs exit0 on the final code and test bodies; only exact feature string-array expectations change in the later sync.458 changelog fragments and whitespace validation pass.
+
+Commands (nice10, load<10):
+
+```sh
+nice -n10 node_modules/.bin/vitest run tests/hub-room-routing-network-r2.test.ts tests/hub-room-agents-r2.test.ts tests/hub-room-link-r2.test.ts tests/hub-room-frames-r1.test.ts tests/hub-rooms-r1.test.ts tests/hub-rooms-migration-r1.test.ts tests/hub-s3b-server.test.ts tests/hub-network.test.ts tests/hub-compose.test.ts tests/hub-quick-pairing-http.test.ts --maxWorkers=2
+nice -n10 node_modules/.bin/vitest run tests/hub-groups-mount-s89.test.ts tests/hub-room-agents-r2.test.ts tests/hub-room-routing-network-r2.test.ts tests/hub-room-link-r2.test.ts tests/hub-rooms-migration-r1.test.ts --maxWorkers=2
+GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit
+GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json
+node scripts/changelog-assemble.mjs --check
+```
+
+The directory, encrypted-content facade and agent executor are inert owned ports; real production content still uses the existing encrypted store. No browser/PNG, vendor, live account/Fleet/AD or host-lifecycle claim. No optional mutation campaign/gate is required under the pilot rule. The production TrackC adapter integration, invitations/teams/assistant/creator/admin routes and complete joined UI walkthrough follow. This packet is not full TrackR acceptance.
+
+Rollback deploys a compatible corrected build; older binaries refuse s3-room-agents. Keep the DB, content keys and retained answer/input history.
