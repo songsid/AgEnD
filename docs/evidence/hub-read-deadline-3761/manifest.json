@@ -1,0 +1,129 @@
+{
+  "sha256": {
+    "dd9aa43674b8ef294a57fab2cbe76b1e7cd77872b9f1da938d500574c44474a2": [
+      "browser/candidate-dark-en-body-ready.png",
+      "browser/candidate-dark-en-body-recovered.png",
+      "browser/candidate-dark-en-headers-ready.png",
+      "browser/candidate-dark-en-headers-recovered.png"
+    ],
+    "442fed0a78f11c95c81ea7ef1800a6612b310a1326c329f7f79e3345c1085321": [
+      "browser/candidate-dark-en-body-timeout.png",
+      "browser/candidate-dark-en-headers-timeout.png"
+    ],
+    "1c8ce151622a7dd305fc2dc8476e5d4f3191e50903e7b1e811163b1745e7e6ec": [
+      "browser/candidate-dark-zh-TW-body-ready.png",
+      "browser/candidate-dark-zh-TW-headers-ready.png",
+      "browser/candidate-dark-zh-TW-headers-recovered.png",
+      "browser/client-dark-zh-TW-body-ready.png",
+      "browser/client-dark-zh-TW-body-stuck.png"
+    ],
+    "a0e09af620ec82abbb662b273dc98b7757d046acb272d0b633b3efe64d8972e2": [
+      "browser/candidate-dark-zh-TW-body-recovered.png"
+    ],
+    "2b543e36dbab1961acfbfea07cbe593d5dce8aa7ad76a4639f4f81cf5ca1b380": [
+      "browser/candidate-dark-zh-TW-body-timeout.png",
+      "browser/candidate-dark-zh-TW-headers-timeout.png"
+    ],
+    "afa9a0ae05bf65e5f4ed9bef65caaa53865d1553e4192c37dd7905ae89042dbe": [
+      "browser/candidate-light-en-body-ready.png",
+      "browser/candidate-light-en-body-recovered.png",
+      "browser/candidate-light-en-headers-ready.png",
+      "browser/candidate-light-en-headers-recovered.png",
+      "browser/client-light-en-headers-ready.png",
+      "browser/client-light-en-headers-stuck.png"
+    ],
+    "bdc030fb89a16568d220a1ed6a9b31f3f480f3e5ee9b0dc1e6e917f1feafb1ff": [
+      "browser/candidate-light-en-body-timeout.png",
+      "browser/candidate-light-en-headers-timeout.png"
+    ],
+    "74f3a15f4bbd995de39669f5e8134ac008bf101a96d0cef7388f2103a16b204c": [
+      "browser/candidate-light-zh-TW-body-ready.png",
+      "browser/candidate-light-zh-TW-headers-ready.png",
+      "browser/ui-light-zh-TW-body-ready.png",
+      "browser/ui-light-zh-TW-body-recovered.png"
+    ],
+    "23018d26d896d01a0ff7d6c2d4cc39575e0027fefff077e13c7d4f6a96ec14b1": [
+      "browser/candidate-light-zh-TW-body-recovered.png",
+      "browser/candidate-light-zh-TW-headers-recovered.png"
+    ],
+    "e97d621762f36beb67079a20d31ebfbe1d6f99478b175a1315f0f09336913840": [
+      "browser/candidate-light-zh-TW-body-timeout.png",
+      "browser/candidate-light-zh-TW-headers-timeout.png"
+    ],
+    "d1f5f00b86f32f3866a8d9adcd6489f9a58fd9d92543369fb60b0ad154bdc3be": [
+      "browser/receipt.json"
+    ],
+    "253ce673b7c7b330f3c1c510912cafc4e254f1808784f8aabf139be4b6ff76e9": [
+      "browser/ui-light-zh-TW-body-timeout.png"
+    ],
+    "eae7945de7570ec45088f10b2ef8a810f54dd41d4deb4bc9a793b41858f10ddd": [
+      "checks.json"
+    ],
+    "01298e60925245a595accccef8a82bebb7be7eacc3c9034d3225396f06767fb3": [
+      "logs/D1-deadline.log.gz"
+    ],
+    "483a1430bc633adde731bc57b9c60c15023f2eb4d2c2d0c3c70b45de7035e20a": [
+      "logs/D10-known-codes.log.gz"
+    ],
+    "148f22a8f00fa8a42fd48aa217a75bf6486573cbacb6e6b9a7c9b1de09af2f48": [
+      "logs/D2-abort-transport.log.gz"
+    ],
+    "13fa32a86638b20267af9090bd59eb11f549f5b6a423c63c72e894cfb6704dea": [
+      "logs/D3-body-late401.log.gz"
+    ],
+    "709a4810fb8e5d92f6e32509e06c82e91007196766bd1d871f757984552a8af5": [
+      "logs/D4-release-queue.log.gz"
+    ],
+    "d72c753a195c4cdc582551701774365f89ecdec1428e0cee8672d7b4f9b4864e": [
+      "logs/D5-queued-cancel.log.gz"
+    ],
+    "12a19e734f97d093ea424c629a2efd61bf325e1cdc93fe53eea5174b4c109757": [
+      "logs/D6-retire.log.gz"
+    ],
+    "8813c262769f34e00b33285f2b3e3f171999391438f12781aa8305c65ce61a70": [
+      "logs/D7-backoff-cleanup.log.gz"
+    ],
+    "64f9d45ba5acaefdf4d7f9500ec7f46904897c2683f4a1d50cde1febcf15fd75": [
+      "logs/D8-release-owner.log.gz"
+    ],
+    "8182b9316af2f1a29b9028a3e947b5554994e2261e607d03727fa6c415c77d67": [
+      "logs/D9-known-steps.log.gz"
+    ],
+    "50c45e47c2c950675acd5dc9237c88a8b1fc203a40f2a9f357442c0b66dea899": [
+      "logs/browser.log.gz"
+    ],
+    "d05569497972b4481f2625861c473102882832a9d1bef3030838189034cf7b2b": [
+      "logs/fail-first.log.gz"
+    ],
+    "f23db8ac2b56aa04809b6f27ce065fbd989c7b6d4cbff2ba399a8ffbfddee1dc": [
+      "logs/final-focused.log.gz"
+    ],
+    "500693b261f409fbd4f1e3df359b7c2311291db4b3f68a02fe522450e81f89f9": [
+      "logs/final-restored.log.gz"
+    ],
+    "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64": [
+      "logs/final-source-types.log.gz",
+      "logs/final-test-types.log.gz",
+      "logs/source-types.log.gz",
+      "logs/test-types.log.gz"
+    ],
+    "a609c1dafede90681e7d6b78d67a46e2f6266f161e86d2b9f94a5c4ca816cec7": [
+      "logs/focused.log.gz"
+    ],
+    "8da2b7d056dec8200489c71516c6cf2be381c9e2594b176e3d28c208c2f9e646": [
+      "logs/presentation-fail-first.log.gz"
+    ],
+    "cceee406bd4ac566b4621a95bf4c28dc17efab077b94124a85eb559d56b39e14": [
+      "logs/reversals-driver.log.gz"
+    ],
+    "7f84e84fbda0fd2e66662382ee3027035ad9ebf76115195b1db5f9a1a0f7588f": [
+      "reversals.json"
+    ],
+    "2e2dea19a18a40755114c184e4739f8378b058bb28c19277b27365d7b1ce0466": [
+      "reversals.py"
+    ],
+    "59db21541be8963fc2046192e63b92b3d5d7f772705679b70d8cc33d2878178c": [
+      "visual-review.md"
+    ]
+  }
+}

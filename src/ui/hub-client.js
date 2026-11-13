@@ -204,39 +204,65 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
  * session cookie (HttpOnly; this page never sees it) and the CSRF token /hub/v1/session gives a same-origin read.
  * Every answer is { ok: true, ...body } or { ok: false, status, code }; a 401 also tells the page the session ended.
  */
-export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
+export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTimeoutMs = 120_000 } = {}) {
+  // The factory override is for owned transports/rehearsals; the page uses the finite default.
+  const readBudget = Number.isInteger(readTimeoutMs) && readTimeoutMs > 0 && readTimeoutMs <= 300_000 ? readTimeoutMs : 120_000;
   let csrf = null, codeNotices = false, generation = 0;
-  const ended = new Set(), pendingReads = new Map(), waits = new Set();
+  const ended = new Set(), pendingReads = new Map(), waits = new Set(), readControllers = new Set();
   let readTail = Promise.resolve();
   const retired = () => ({ ok: false, status: 401, code: "unauthenticated" });
-  const retireReads = () => { generation++; pendingReads.clear(); for (const wake of waits) wake(); };
-  const pause = ms => new Promise(resolve => {
-    const wake = () => { clearTimeout(timer); waits.delete(wake); resolve(); };
-    const timer = setTimeout(wake, ms); waits.add(wake);
+  const unreachable = () => ({ ok: false, status: 0, code: "unreachable" });
+  const retireReads = () => {
+    generation++; pendingReads.clear();
+    for (const controller of readControllers) controller.abort();
+    for (const wake of waits) wake();
+  };
+  const pause = (ms, signal) => new Promise(resolve => {
+    const wake = () => { clearTimeout(timer); waits.delete(wake); signal.removeEventListener("abort", wake); resolve(); };
+    const timer = setTimeout(wake, ms); waits.add(wake); signal.addEventListener("abort", wake, { once: true });
+    if (signal.aborted) wake();
   });
-  // Private reads share fresh directory eligibility admission. One read per client, with only simultaneous identical
-  // reads shared (never an allow-cache). Other tabs/writes can still fill the server pool, so back off at most 3 times.
+  // Private reads share fresh directory eligibility admission. Only simultaneous signal-less GETs coalesce;
+  // a caller-owned signal stays independent. No successful-response cache and no automatic write replay.
   function call(method, path, body, signal) {
     if (method !== "GET") { pendingReads.clear(); return request(method, path, body, signal); }
     if (!signal && pendingReads.has(path)) return pendingReads.get(path);
-    const mine = generation;
+    const mine = generation, controller = new AbortController();
+    let timedOut = false;
+    readControllers.add(controller);
+    const aborted = () => mine !== generation ? retired() : { ...unreachable(), ...(timedOut ? { timedOut: true } : {}) };
+    let stop;
+    const stopped = new Promise(resolve => { stop = () => resolve(aborted()); controller.signal.addEventListener("abort", stop, { once: true }); });
+    const cancel = () => controller.abort();
+    signal?.addEventListener("abort", cancel, { once: true });
+    if (signal?.aborted) cancel();
     const run = async () => {
       for (let attempt = 0; ; attempt++) {
         if (mine !== generation) return retired();
-        if (signal?.aborted) return { ok: false, status: 0, code: "unreachable" };
-        const result = await request(method, path, body, signal);
+        if (controller.signal.aborted) return aborted();
+        // Budget begins when this attempt is admitted, and covers BOTH headers and JSON body. Abort the actual
+        // transport before settling the timeout; the race also fences late/non-cooperative transport completions.
+        const timer = setTimeout(() => { timedOut = true; cancel(); }, readBudget);
+        let result;
+        try { result = await Promise.race([request(method, path, body, controller.signal), stopped]); }
+        finally { clearTimeout(timer); }
         if (mine !== generation) return retired();
+        if (controller.signal.aborted) return aborted();
         if (result.ok || result.status !== 429 || result.code !== "backpressure" || attempt === 3) return result;
-        await pause(Math.min(2000, Math.max(500 * 2 ** attempt, Number(result.retryAfter) * 1000 || 0)));
+        await pause(Math.min(2000, Math.max(500 * 2 ** attempt, Number(result.retryAfter) * 1000 || 0)), controller.signal);
       }
     };
-    const result = readTail.then(run, run);
-    readTail = result.then(() => {}, () => {});
-    if (!signal) {
-      pendingReads.set(path, result);
-      const forget = () => { if (pendingReads.get(path) === result) pendingReads.delete(path); };
-      void result.then(forget, forget);
-    }
+    const queued = readTail.then(run, run);
+    // A queued caller can cancel promptly, but does not let later work jump its still-running predecessor.
+    readTail = queued.then(() => {}, () => {});
+    const result = Promise.race([queued, stopped]);
+    const forget = () => {
+      readControllers.delete(controller); controller.signal.removeEventListener("abort", stop);
+      signal?.removeEventListener("abort", cancel);
+      if (pendingReads.get(path) === result) pendingReads.delete(path);
+    };
+    void result.then(forget, forget);
+    if (!signal) pendingReads.set(path, result);
     return result;
   }
   async function request(method, path, body, signal) {
@@ -247,8 +273,10 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     let r;
     try { r = await fetchImpl(path, { method, headers, credentials: "same-origin", cache: "no-store", ...(signal ? { signal } : {}), body: body === undefined ? undefined : JSON.stringify(body) }); }
     catch { return { ok: false, status: 0, code: "unreachable" }; }
+    if (method === "GET" && signal?.aborted) return unreachable();
     let json = null;
     try { json = await r.json(); } catch { json = null; }
+    if (method === "GET" && signal?.aborted) return unreachable();
     if (r.status === 401 && mine === generation) { retireReads(); csrf = null; codeNotices = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
     if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0,
       ...(method === "POST" && path === "/hub/v1/admin/enrolment-codes" && r.status === 429 && json?.code === "backpressure"
