@@ -23,7 +23,7 @@ register("hubRoom", {
     roomSettings: "Room settings", leaveRoom: "Leave room", menu: "Menu",
     authorAgent: "{0} · {1}'s agent", authorAssistant: "Room assistant · Provided by the Hub",
     askProgress: "Answered {0} · working {1} · reply later {2}",
-    allAnswered: "All {0} answered", expandRest: "Show the other {0}",
+    allAnswered: "All {0} answered", expandRest: "Show {0} more",
     laterAnswer: "{0} ({1}) · answers after they come online", noAnswer: "No answer",
     workingOne: "{0} is working on it", workingMany: "{0} agents are working",
     // §4 composer

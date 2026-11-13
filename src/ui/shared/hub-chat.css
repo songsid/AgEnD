@@ -32,6 +32,10 @@
 .hub-room-archived .inst-name { color: var(--text-3); }
 /* The room composer's fixed hint and @all bar wrap without leaving a lone word on the last line. */
 .hub-room-hint, .hub-room-allbar { text-wrap: pretty; }
+/* A question's folded answers: a left-aligned link under the last one shown (Lumen), not a centred line. */
+.hub-room-page .status-line:has(.st-action) { justify-content: flex-start; text-align: start; border: 0; background: none; padding-block: 0; }
+.hub-room-page .status-line .st-action { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; }
+.hub-room-page .status-line .st-action:hover { text-decoration: underline; }
 
 /* a name's letter on a tone (the same tones in both themes) */
 .hub-av { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-weight: 600; font-size: 14px; color: #fff; flex: none; }

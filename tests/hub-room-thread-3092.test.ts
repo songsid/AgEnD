@@ -64,6 +64,16 @@ describe("the thread's mapping (pure)", () => {
     const w = { id: "a2", roomId: "r", at: 3, author: { kind: "agent", id: "n2", name: "Planner" }, text: "", mentions: [], answerTo: "q1", stage: "working" };
     const small = thread.toThreadMessages([q, a, w], { meId: FIXTURE_ME.id, ids: new Map() });
     expect(small.map((x: any) => x.sender)).toEqual(["陳主任", "Notes · 林小華的 Agent"]);
+    // A Latin owner name keeps a space before 的 (Lumen); a CJK one doesn't.
+    expect(thread.authorLine({ kind: "agent", name: "Notes", owner: { name: "Alex" } })).toBe("Notes · Alex 的 Agent");
+    // Up to five answers all show; from six, three and one link right under the third.
+    const ask = { id: "qq", roomId: "r", at: 1, author: { kind: "person", id: "p2", name: "陳主任" }, text: "@所有 Agent ?", mentions: ["all"] };
+    const ans = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `x${i}`, roomId: "r", at: 2 + i, author: { kind: "agent", id: `e${i}`, name: `bot${i}` }, text: `ok ${i}`, mentions: [], answerTo: "qq", stage: "answered" }));
+    const five = thread.toThreadMessages([ask, ...ans(5)], { meId: FIXTURE_ME.id, ids: new Map() });
+    expect([five.filter((x: any) => x.role === "agent").length, five.some((x: any) => x.action)]).toEqual([5, false]);
+    const six = thread.toThreadMessages([ask, ...ans(6)], { meId: FIXTURE_ME.id, ids: new Map() });
+    const third = six.findIndex((x: any) => x.text === "ok 2");
+    expect([six.filter((x: any) => x.role === "agent").length, six[third + 1].action.label]).toEqual([3, "展開其餘 3 則"]);
     // A final "not answered" with no text still shows, in words (Ridge: only queued and working wait unseen).
     const gone = { ...w, id: "a3", stage: "not-answered" };
     const withGone = thread.toThreadMessages([q, a, gone], { meId: FIXTURE_ME.id, ids: new Map() });
@@ -195,7 +205,7 @@ describe("a room on the page", () => {
       const answers = () => msgs(pg).filter((m) => /'s agent$/.test(m.querySelector(".sender")?.textContent || "") && /進度/.test(m.textContent)).length;
       expect(answers()).toBe(3);
       const btn = pg.root.querySelector(".hub-room-page .thread .st-action") as any;
-      expect(btn.textContent).toBe("Show the other 3");
+      expect(btn.textContent).toBe("Show 3 more");
       fire(btn, "click"); await until(() => answers() === 6);
       expect([answers(), pg.root.querySelector(".hub-room-page .thread .st-action")]).toEqual([6, null]);
     } finally { restore(); }
