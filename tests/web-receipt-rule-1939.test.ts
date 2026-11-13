@@ -41,6 +41,11 @@ const mcp = () => buildFleetInstructions({ instanceName: "worker", workingDirect
 const cli = () => buildFleetInstructions({ instanceName: "worker", workingDirectory: "/w", cliInstructions: COPIES["the CLI instructions"] });
 
 describe("one rule for the web, in every place an agent reads it", () => {
+  it("verification explicitly requests complete originals on both rules and the CLI", () => {
+    expect(VERIFY_PEER_MESSAGE_RULE).toContain("and `detail: true` to read the complete original");
+    expect(WEB_RECEIPT_RULE).toContain("`delivery_status` with `detail: true`");
+    expect(COPIES["the CLI instructions"]).toContain("--detail --message-id");
+  });
   it("ordinary requests are the person's; the go-ahead actions, each named, need their account behind it — and why", () => {
     for (const s of ["is that person: their sign-in code went to their own Discord or Telegram account", "Answer it and do what it asks within your work",
       "questions, looking things up, reading, analysis, changes in your own scope", "Only a go-ahead action asks for more",
