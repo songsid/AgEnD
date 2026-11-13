@@ -147,18 +147,21 @@ export class ClaudeModelObserver {
     }
     if (this.state.observedAt !== null && record.at < this.state.observedAt) return false;
     this.state.lastServed = record.served; this.state.observedAt = record.at;
+    const expected = this.expected;
+    const returnsTo = this.state.active?.original ?? expected;
+    const returned = (returnsTo && normalizeClaudeModel(record.served) === normalizeClaudeModel(returnsTo))
+      || (claudeModelId(this.state.configured) && normalizeClaudeModel(record.served) === normalizeClaudeModel(this.state.configured));
     if (this.intent !== undefined) {
       // Only a concrete requested model corroborated by both hook and served metadata confirms an intentional switch.
       if (this.intent && normalizeClaudeModel(this.intent) === normalizeClaudeModel(record.served)
         && normalizeClaudeModel(session) === normalizeClaudeModel(record.served)) {
         this.expected = record.served; this.intent = undefined; this.state.active = null;
       }
+      // Definite recovery is independent of whether a missing command permits NEW mismatch inference.
+      if (returned) this.state.active = null;
       return true;
     }
-    const expected = this.expected;
-    const returnsTo = this.state.active?.original ?? expected;
-    if ((returnsTo && normalizeClaudeModel(record.served) === normalizeClaudeModel(returnsTo))
-      || (claudeModelId(this.state.configured) && normalizeClaudeModel(record.served) === normalizeClaudeModel(this.state.configured))) this.state.active = null;
+    if (returned) this.state.active = null;
     else if (!this.state.active && expected && normalizeClaudeModel(record.served) !== normalizeClaudeModel(expected)) {
       this.state.active = { id: key, original: expected, served: record.served, cause: "observed", scope: "unknown", since: record.at };
     }
