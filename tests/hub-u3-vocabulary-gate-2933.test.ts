@@ -83,5 +83,14 @@ describe("U3: one vocabulary across the Hub and Fleet Hub strings (A-L14)", () =
     expect(offences(s("en", "Ask them for a pairing code. Contact your Hub administrator."))).toEqual([]);
     expect(offences(s("en", "Individual invitations"))).toEqual([]); expect(offences(s("zh-TW", "個別邀請"))).toEqual([]);
     expect(offences(s("en", "Pairing requests for you", "pairingsTitle"))).toEqual([]);             // the code path's own key
+    // hub-rooms-ux.md §1: extra bans on room modules only (each new term once)
+    const room = (lang: string, text: string, key = "anything"): UiString => ({ file: "src/ui/hub-room-strings.js", ns: "hubRoom", lang, key, text });
+    expect(offences(room("zh-TW", "加入這個群組"))).toEqual(["群組"]);
+    expect(offences(room("zh-TW", "頻道"))).toEqual(["頻道"]);
+    expect(offences(room("zh-TW", "聊天室"))).toEqual(["聊天室"]);
+    expect(offences(room("zh-TW", "機器人"))).toEqual(["機器人"]);
+    expect(offences(room("en", "Ask the bot"))).toEqual(["bot"]);
+    expect(offences(room("zh-TW", "加入人、團隊或 AD 群組：輸入名稱搜尋"))).toEqual([]);
+    expect(offences(s("zh-TW", "這個聊天室的紀錄只有你看得到。"))).toEqual([]);                       // 1:1 Hub chat keeps 聊天室
   });
 });
