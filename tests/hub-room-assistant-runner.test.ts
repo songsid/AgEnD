@@ -200,4 +200,16 @@ describe("Hub room assistant host-Fleet ownership", () => {
     expect(w.start).not.toHaveBeenCalled();
     expect(w.runner.available()).toMatchObject({ enabled: false, running: 0, state: "paused" });
   });
+
+  it("returns rejected promises for malformed asker and context rows, without synchronous exceptions", async () => {
+    const w = world();
+    for (const value of [null, undefined, { ...input("a"), asker: undefined }, { ...input("a"), asker: { name: 3 } },
+      { ...input("a"), context: [null] }, { ...input("a"), context: [{ author: "Han", text: 7, at: 0 }] },
+      { ...input("a"), context: [{ author: "Han", text: "Hello", at: NaN }] }]) {
+      let result!: Promise<{ text: string }>;
+      expect(() => { result = w.runner.ask(value as unknown as RoomAssistantAsk); }).not.toThrow();
+      await expect(result).rejects.toThrow("Invalid room assistant ask");
+    }
+    expect(w.start).not.toHaveBeenCalled();
+  });
 });

@@ -59,7 +59,10 @@ export class RoomAssistantRunner implements RoomAssistant {
   ask(input: RoomAssistantAsk): Promise<{ text: string }> {
     if (this.closed || !this.config.enabled) return Promise.reject(new Error("Room assistant is unavailable"));
     if ([...this.entries.values()].some(entry => entry.state === "failed")) return Promise.reject(new Error("Room assistant instance did not stop"));
-    if (!input.roomId || !input.messageId || typeof input.text !== "string" || !Array.isArray(input.context)) {
+    if (!input || typeof input.roomId !== "string" || !input.roomId || typeof input.roomName !== "string"
+      || typeof input.messageId !== "string" || !input.messageId || typeof input.text !== "string"
+      || !input.asker || typeof input.asker.name !== "string" || !Array.isArray(input.context)
+      || !input.context.every(row => row && typeof row.author === "string" && typeof row.text === "string" && Number.isFinite(row.at))) {
       return Promise.reject(new Error("Invalid room assistant ask"));
     }
     // Snapshot at admission: caller mutations and an adjacent room's later asks cannot alter this turn's context.
