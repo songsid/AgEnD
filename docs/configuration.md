@@ -392,6 +392,11 @@ OpenCode and Kiro
 do not depend on reading MCP's `instructions` field for full fleet context.
 Codex's project-document size limit can still truncate a large `AGENTS.md`.
 
+A Codex agent's block also has two short sections the other backends don't: **Persistence** (when a step fails, try another
+way within its own scope before reporting; stop and ask before spending money or quota, deleting or changing what others
+use, or any go-ahead action such as a release, credentials or forwarding authority — the authority rules still apply in full) and **Output style** (lead
+with what was done and its result, then the next step). They come from a blind-graded A/B test of Codex replies (M-3020).
+
 Set `workflow` in `defaults.workflow` or `instances.<name>.workflow`, **not at the
 root of `fleet.yaml`**. The default is `"builtin"`; inline content, `file:path`
 and `false` are supported. `systemPrompt` uses the same native routes whether

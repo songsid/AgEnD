@@ -383,6 +383,8 @@ MCP server instructions 提供精簡的身分、回覆與跨 instance 通訊契�
 可能移除 BEGIN 到檔尾。OpenCode 與 Kiro 的完整 fleet context 不依賴
 CLI 是否讀取 MCP `instructions`；Codex 的專案文件大小限制仍可能截短大型 `AGENTS.md`。
 
+Codex agent 的區塊另外多兩小節，其他後端沒有：**Persistence**（某一步失敗時，先在自己的範圍內換個方法試，再回報；要花錢或額度、刪除或更動別人在用的東西、或任何需要人同意的動作（發版、憑證或密鑰、轉交授權等）之前，先停下來問——授權規則照樣完整適用）與 **Output style**（先說做了什麼、結果如何，再說下一步）。這兩節來自一次盲評的 Codex 回覆 A/B 測試（M-3020）。
+
 `workflow` 請放在 `defaults.workflow` 或 `instances.<name>.workflow`，**不是
 fleet.yaml 頂層**。預設 `"builtin"`，也可用內嵌內容、`file:path` 或 `false`。
 `systemPrompt` 同樣走上述原生路徑：可寫內嵌字串或 `file:path`，並非只透過 MCP 傳入。
