@@ -56,3 +56,9 @@ d51e4bc0c6a46cd5fedb9baccd50f1b047bad4d2:docs/screenshots/subagent-row/review-fi
 7ae6a6676d95912a773a3ce4a8adef06d33fc0d3:docs/evidence/hub-enrolment-code-b2/u2-composition/source-binding.json:generic-api-key:34
 7ae6a6676d95912a773a3ce4a8adef06d33fc0d3:docs/evidence/hub-enrolment-code-b2/u2-composition/source-binding.json:generic-api-key:48
 7ae6a6676d95912a773a3ce4a8adef06d33fc0d3:docs/evidence/hub-enrolment-code-b2/u2-composition/source-binding.json:generic-api-key:7
+
+# PR #3771 (AGEND-250, Prism review): two synthetic access-token literals in a test ("ya29." + DEFAULT / WORK, the strings the test hands to a fake fetch and
+# asserts each account's request carried). Obviously fake, not credentials; commit ee2a9922c added them and no later commit can remove them from the
+# per-commit scan. Exact historical commit/path/rule/line only; no rule, path, future commit or other finding is exempted. Delete with the PR's squash.
+ee2a9922c0f59662b11f2cb9ba6a7887bb68c4e4:tests/antigravity-accounts-119.test.ts:generic-api-key:511
+ee2a9922c0f59662b11f2cb9ba6a7887bb68c4e4:tests/antigravity-accounts-119.test.ts:generic-api-key:527
