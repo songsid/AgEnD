@@ -37,6 +37,7 @@ import { hostUpdateAckError, hostUpdatePlan } from "./web-host-install.js";
 import { LATEST_ACK_FIELD } from "./cli-audited.js";
 import { runtimeFacts } from "./cli-registry.js";
 import { INSTALLABLE_CLIS, isInstallableCli } from "./runtime-cli-install.js";
+import { pilotTrustChoice } from "./hub/join/certificate-trust.js";
 import { ENROLMENT_CODE, parseCompanyAddress } from "./hub/join/descriptor.js";
 
 export interface SettingsSecretProof {
@@ -51,6 +52,7 @@ export interface SettingsEffectContext {
   /** S3c (S-55): a Hub exposure publish's summary (absent: no Hub member here). Throws on a refused input. */
   hubBrowserCertificate?(input: unknown, binding: string): HubBrowserCertificateProposal;
   hubMembership?(): { enabled: boolean };
+  hubPilotTrust?(): { enabled: boolean };
   hubExposure?(input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
   /** S3c PR B: a Hub pairing step's summary (connect, confirm the fingerprint, disconnect). Throws on a refused input. */
   hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
@@ -67,7 +69,7 @@ export const isRuntimeCliInstallPath = (path: string): boolean => RUNTIME_CLI_IN
 export const isCliInstallPath = (path: string): boolean => HOST_CLI_PATHS.has(path) || isRuntimeCliInstallPath(path);
 export function isSettingsMutation(method: string, path: string): boolean {
   if (method === "POST" && /^\/api\/hub\/member\/company-join\/(start|resume|repair-trust|reconnect|remove)$/.test(path)) return true;
-  if (method === "PUT" && path === "/api/settings/hub/membership") return true;
+  if (method === "PUT" && (path === "/api/settings/hub/membership" || path === "/api/settings/hub/pilot-trust")) return true;
   if (method === "POST" && path === "/api/settings/hub/browser-certificate/apply") return true;
   if (method === "PUT" && path === "/api/settings/hub/retention") return true;
   if (method === "PUT" && (path === "/api/settings/hub/run" || path === "/api/settings/hub/preview")) return true;   // #3451 (M-2682)
@@ -182,6 +184,12 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       ...settingsSummary([run ? translatedSummary(b.enabled ? "hub.run.start" : "hub.run.stop") : b.enabled ? translatedSummary("hub.preview.on", String(port)) : translatedSummary("hub.preview.off")]),
       affectedConnections: [], authority: HUB_AUTHORITY } };
   }
+  if (path === "/api/settings/hub/pilot-trust") {
+    if (method !== "PUT" || !cfg || !context.hubPilotTrust) throw new SettingsConfirmationError(503, "unavailable");
+    const next = parseHubMembership(body), previous = context.hubPilotTrust();
+    const diff = settingsChangeDiff({ fleet: { hub_member: { pilot_trust: previous.enabled } } }, { fleet: { hub_member: { pilot_trust: next.enabled } } }, { operation });
+    return { diff: diff ? { ...diff, section: "access", ...settingsSummary([translatedSummary(next.enabled ? "hub.pilotTrust.enable" : "hub.pilotTrust.disable")]), affectedConnections: [], authority: HUB_AUTHORITY } : null };
+  }
   if (path === "/api/settings/hub/membership") {
     if (method !== "PUT" || !cfg || !context.hubMembership) throw new SettingsConfirmationError(503, "unavailable");
     let next: { enabled: boolean }, previous: { enabled: boolean };
@@ -234,9 +242,10 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
         const address = parseCompanyAddress(b.address); if (!address.expected || address.invitation) throw Error();
         target = address.webOrigin;
       } else if (start) {
-        if (Object.keys(b).some(k => !["address", "label", "handoffId", "code"].includes(k)) || typeof b.address !== "string" || typeof b.label !== "string" || !b.label.trim() || b.label.length > 120) throw Error();
+        if (Object.keys(b).some(k => !["address", "label", "handoffId", "code", "trust"].includes(k)) || typeof b.address !== "string" || typeof b.label !== "string" || !b.label.trim() || b.label.length > 120) throw Error();
         if (b.handoffId !== undefined && (typeof b.handoffId !== "string" || !/^[a-f0-9-]{36}$/.test(b.handoffId))) throw Error();
         if (b.code !== undefined && (typeof b.code !== "string" || !ENROLMENT_CODE.test(b.code))) throw Error();
+        if (b.trust !== undefined) pilotTrustChoice.parse(b.trust);
         target = parseCompanyAddress(b.address).webOrigin;
       } else if (reconnect) {
         pairingOf(["hubId", "binding", "address"], ["handoffId"]);
