@@ -1,0 +1,200 @@
+{
+  "parent": "608b35dc3d96daa54cffe793ab5c61f1c24d2c01",
+  "scope": "Factory consumer composition before startup activation, not full S129 delivery",
+  "checks": {
+    "passed": 328,
+    "files": 9,
+    "skipped": 0,
+    "sourceTypes": 0,
+    "testTypes": 0,
+    "compiler": "native TypeScript7.0.2/GOMAXPROCS2",
+    "compilingSemanticReversals": 8,
+    "changelogPairs": 438,
+    "changelogErrors": 0,
+    "changelogOrphans": 0
+  },
+  "suites": [
+    {
+      "file": "hub-compose.test.ts",
+      "passed": 128
+    },
+    {
+      "file": "hub-group-authorization.test.ts",
+      "passed": 54
+    },
+    {
+      "file": "hub-pairing-api-s3c.test.ts",
+      "passed": 30
+    },
+    {
+      "file": "hub-pairing.test.ts",
+      "passed": 11
+    },
+    {
+      "file": "hub-roles-authority-s129.test.ts",
+      "passed": 31
+    },
+    {
+      "file": "hub-roles-clock-s129.test.ts",
+      "passed": 29
+    },
+    {
+      "file": "hub-roles-company-issuer-s129.test.ts",
+      "passed": 8
+    },
+    {
+      "file": "hub-roles-issuer-s129.test.ts",
+      "passed": 23
+    },
+    {
+      "file": "hub-roles-management-reader-s129.test.ts",
+      "passed": 14
+    }
+  ],
+  "baseline": {
+    "semanticReds": 3,
+    "kind": "New mounted consumer contract under privately provisioned role images, not a deployed-role vulnerability claim",
+    "observations": [
+      "legacy root allowed and non-root refused before private cutover",
+      "named HTTPS assignment refused at expected403-vs200 assertion",
+      "manual first-issuer preparation lacked the role-aware operational proof",
+      "root HTTP ignored the persisted role clock boundary200-vs503"
+    ],
+    "excluded": "Initial fixture nested cutover in UOW, then used an incorrect HTTP method; all setup/405 failures excluded. Corrected baseline is before-valid.json."
+  },
+  "bindings": [
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "b012f66e6ac5e6e9540e509402a0d6437c181f776784e5a893ff0f0107c05315"
+    },
+    {
+      "file": "tests/hub-compose.test.ts",
+      "sha256": "e51f3590ea8a9e395c090de762a772a0c732c7f655df526fa9321f46024fd1ee"
+    },
+    {
+      "file": "docs/design/hub-roles-factory-management.md",
+      "sha256": "d4e695724d4a9aa1b26af37c5a7f6196edd6aa2911c35460e75f2f2205c4bf9a"
+    },
+    {
+      "file": "changes/3743-roles-factory-management.md",
+      "sha256": "6da6183f75e99e8d159917110fe2a1c60fb706cbaa9717602d5b34cc61ea41da"
+    },
+    {
+      "file": "changes/3743-roles-factory-management.zh-TW.md",
+      "sha256": "e496b6212a617c7f3e7fceca2cfc094025a19317b89b6e3da1d74e1e79b7725b"
+    }
+  ],
+  "mutations": [
+    {
+      "name": "http-management",
+      "file": "src/hub/compose/server.ts",
+      "sourceSha256": "b012f66e6ac5e6e9540e509402a0d6437c181f776784e5a893ff0f0107c05315",
+      "selected": "S129 mounted management factory.*legacy root access",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 mounted management factory keeps legacy root access and applies a join-only assignment on the actual HTTPS routes"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "company-management",
+      "file": "src/hub/compose/server.ts",
+      "sourceSha256": "b012f66e6ac5e6e9540e509402a0d6437c181f776784e5a893ff0f0107c05315",
+      "selected": "S129 mounted management factory.*legacy root access",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 mounted management factory keeps legacy root access and applies a join-only assignment on the actual HTTPS routes"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "pairing-management",
+      "file": "src/hub/compose/server.ts",
+      "sourceSha256": "b012f66e6ac5e6e9540e509402a0d6437c181f776784e5a893ff0f0107c05315",
+      "selected": "S129 mounted management factory.*legacy root access",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 mounted management factory keeps legacy root access and applies a join-only assignment on the actual HTTPS routes"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "issuer-management",
+      "file": "src/hub/compose/server.ts",
+      "sourceSha256": "b012f66e6ac5e6e9540e509402a0d6437c181f776784e5a893ff0f0107c05315",
+      "selected": "S129 mounted management factory.*manual-enrollment preparation",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 mounted management factory uses the same role issuer and clock in the actual manual-enrollment preparation"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "operational-clock",
+      "file": "src/hub/compose/server.ts",
+      "sourceSha256": "b012f66e6ac5e6e9540e509402a0d6437c181f776784e5a893ff0f0107c05315",
+      "selected": "S129 mounted management factory.*manual-enrollment preparation",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 mounted management factory uses the same role issuer and clock in the actual manual-enrollment preparation"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "management-clock",
+      "file": "src/hub/compose/server.ts",
+      "sourceSha256": "b012f66e6ac5e6e9540e509402a0d6437c181f776784e5a893ff0f0107c05315",
+      "selected": "S129 mounted management factory.*persisted role clock settled",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 mounted management factory refuses a persisted role clock settled on a mounted root route"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "repair-reader",
+      "file": "src/hub/compose/server.ts",
+      "sourceSha256": "b012f66e6ac5e6e9540e509402a0d6437c181f776784e5a893ff0f0107c05315",
+      "selected": "S129 mounted management factory.*intact legacy image",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 mounted management factory keeps the generation repair exception restricted to an intact legacy image"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "shared-admission",
+      "file": "src/hub/compose/server.ts",
+      "sourceSha256": "b012f66e6ac5e6e9540e509402a0d6437c181f776784e5a893ff0f0107c05315",
+      "selected": "mounted HTTP and pairing eligibility share",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "directory decision joins the mounted runtime mounted HTTP and pairing eligibility share the proof-source admission owner"
+      ],
+      "semanticRed": true,
+      "restored": true
+    }
+  ],
+  "limits": "Actual initialized/sealed owned Hub and loopback HTTPS, inert directory identities, actual factory/SQLite/transport/cutover. Private fixture invokes cutover after mount; no supported live migration/remount claim. Synthetic settled-term SQL only, no expiry-worker execution. No real AD/account/backend/Fleet/browser/native/pilot. No startup migration/cutover registration, scheduler, role endpoints, admin-session mapping or member/SSE activation. Existing factory fixtures complete inert current/eligibility methods while retaining assertions.",
+  "commands": [
+    "vitest run <nine listed files> --maxWorkers=2",
+    "GOMAXPROCS=2 tsc --noEmit",
+    "GOMAXPROCS=2 tsc --noEmit -p tsconfig.test.json",
+    "python3 .artifacts/roles-factory-m3010/mutate.py"
+  ]
+}
