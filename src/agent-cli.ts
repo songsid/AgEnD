@@ -169,7 +169,12 @@ async function main(): Promise<void> {
     }
 
     // Usage
-    case "usage": args = { ...(rest[0] === "--force" ? { force: true } : {}) }; break;
+    case "usage": {
+      const { flags, positional } = splitFlags(rest, [], ["--force", "--detail"]);
+      if (positional.length) die(`Unknown usage option: ${positional[0]}`);
+      args = { ...(flags["--force"] ? { force: true } : {}), ...(flags["--detail"] ? { detail: true } : {}) };
+      break;
+    }
 
     // Instance management
     case "list": break;
@@ -418,15 +423,6 @@ async function main(): Promise<void> {
 
   try {
     const result = await post(op, args);
-    // `usage` responses carry a pre-rendered text block; print that instead of
-    // one long JSON line so an agent (or a human) can read it directly.
-    if (op === "usage") {
-      try {
-        const parsed = JSON.parse(result) as { formatted?: string; error?: string };
-        console.log(parsed.error ? result : parsed.formatted ?? result);
-        return;
-      } catch { /* fall through to raw */ }
-    }
     // The task board answers in text (a card, your work): printed as text, not as one quoted JSON line.
     if (op === "task") {
       try {

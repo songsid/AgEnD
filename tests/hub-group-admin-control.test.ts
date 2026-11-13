@@ -299,7 +299,7 @@ describe("ordinary impact inventory", () => {
   });
   it.each(["current", "expired", "revoked", "stale-revision", "wrong-owner", "without-ask"] as const)("reports only %s grants as Chat impact, without creating a person", async changed => {
     const w = fixture(), subject = key(), owner = personKeyString(w.owner), id = randomUUID();
-    w.db.prepare("INSERT INTO hub_grants VALUES(?,1,?,?,?, ?,100,?,?,0,?,?)")
+    w.db.prepare("INSERT INTO hub_grants(id,revision,owner,exposure_id,exposure_revision,approved_by,approved_at,subject,permissions,starts_at,expires_at,state) VALUES(?,1,?,?,?, ?,100,?,?,0,?,?)")
       .run(id, changed === "wrong-owner" ? personKeyString(w.administrator) : owner, w.exposureId, changed === "stale-revision" ? 2 : 1,
         owner, personKeyString(subject), JSON.stringify(changed === "without-ask" ? ["read-own-room"] : ["ask", "read-own-room"]), changed === "expired" ? 100 : 200, changed === "revoked" ? "revoked" : "active");
     const snapshot = w.impactInventory.snapshot(), row = snapshot.people.find(p => personKeyString(p.key) === personKeyString(subject));

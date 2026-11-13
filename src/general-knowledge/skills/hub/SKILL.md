@@ -26,13 +26,13 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | Settings → Hub, Hub address, "address space code", Join code included | [Connecting a Fleet](#connecting-a-fleet) |
 | needs attention, Recover this connection, queue, timed out, cancel | [Held, refused and queued connections](#held-refused-and-queued-connections) |
 | Shared agents, Share, Not shared, Stop sharing, ClassicBot rooms | [Sharing agents](#sharing-agents) |
-| Allow someone to ask, how long, Revoke, Recent questions | [Who may ask](#who-may-ask) |
+| Allow someone to ask, AD group, name search, how long, Revoke, Recent questions | [Who may ask](#who-may-ask) |
 | New chat, asking someone's agent, Waiting / Answered | [Asking an agent](#asking-an-agent) |
 | Chat with agents / Share agents / Connect a fleet by AD group, Paused | [Group permissions](#group-permissions) |
 | Connected fleets, Revoke, Individual invitations, pairing code, Notices | [Administration](#administration) |
 | `hub`, `hub_member` in fleet.yaml | [Config keys](#config-keys) |
 | how many, how long | [Limits](#limits) |
-| roles, managers, allow by group, rooms | [Not available yet](#not-available-yet) |
+| roles, managers, rooms | [Not available yet](#not-available-yet) |
 | can't connect, certificate, different host names, old tab | [Troubleshooting](#troubleshooting) |
 
 ## What the Hub is
@@ -44,7 +44,7 @@ Active Directory account they use at work).
 - The Hub runs no agents. A shared agent answers inside its own conversation on its owner's Fleet, with its own folder
   and the tools its Settings allow. Actions that need approval still go to the owner.
 - Every agent is private unless its owner shares it, and sharing alone lets nobody ask: the owner also allows each
-  person.
+  person or an AD security group.
 - The Hub administrator manages who may connect and sees connected Fleets, not chats ("You cannot read anyone's chats
   here."). What was asked stays in the owner's Fleet chat.
 - The Hub's pages are at `https://<hub address>/ui/hub`: **Chats**, **My shared agents** (who may ask them, until
@@ -215,13 +215,16 @@ On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), 
 
 ## Who may ask
 
-Sharing lets nobody ask yet. The owner allows people one by one.
+Sharing lets nobody ask yet. The owner allows a person or an AD security group; Hub eligibility and operational group permissions still apply.
 
 - From the Fleet row, **Allow someone to ask…** opens the Hub at the agent's page; or on the Hub: **My shared agents**
   → the agent → **Who may ask** → **Allow…**.
-- The dialog **Allow someone to ask** *agent* takes **Their sign-in name** ("The account they sign in to this Hub
-  with.") and **For** 1, 7, 30 or 90 days. One person at a time, by exact sign-in name; 90 days is the longest.
-- Each row shows the person and "until *date*". A person allowed before they ever used the Hub is tagged **Hasn't
+- On a supported AD Hub, **Allow access to** *agent* offers **A person** (search the beginning of their name or login) or **An AD security group** (the same group-search control as Let colleagues join). Select a result, choose **Access lasts** 1, 7 (default), 30 or 90 days, then **Allow**.
+- Group grants bind the directory's immutable GUID, not its name. Every action checks fresh direct membership; nested and primary groups are not included. An AD group manager can change who may ask, as the dialog explains. Each person's chat stays private. Joining or leaving takes effect on the next check. Unknown membership is unavailable, not a grant removal.
+- New personal and group grants are capped at 90 days server-side. Existing longer grants keep their recorded expiry, ID and revision, and remain revocable; show their actual date without shortening it.
+- An older tab or unsupported directory retains the dialog **Allow someone to ask** *agent*: **Their sign-in name**, by exact login, and **For** 1, 7, 30 or 90 days.
+- A person covered by several grants sees one agent entry, preferring an existing still-authorized conversation. History is never transferred to a different grant.
+- Each row shows the person or group and "until *date*"; a group has an **AD group** tag. A person allowed before they ever used the Hub is tagged **Hasn't
   signed in to Hub yet** (還沒登入過 Hub).
 - **Revoke…** on a row: "Revoke *name*'s access? Their conversation closes."
 - **Recent questions**: who asked, when, and whether it was answered. What they asked stays in the Fleet's chat.
@@ -305,8 +308,6 @@ Say plainly that these are not in the product yet:
 
 - **Custom roles and a manager's team view** (several administrators, roles assigned to people or AD groups, a team
   list with usage counts). Designed and decided; not shipped. Today there is one Hub administrator.
-- **Allowing a whole AD group to ask, or finding a person by name.** Today the owner types one exact sign-in name at a
-  time.
 - **Sharing a ClassicBot room.** Only fleet agents can be shared.
 - **Pause and resume of a shared agent on the Hub.** Stop sharing is final until the agent is shared again from its
   Fleet and everyone is allowed again.

@@ -276,7 +276,7 @@ Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕
 
 ### 投遞追蹤（`delivery_status`）
 
-跨 instance 的傳送只要 fleet 一接手就會立刻回傳（`{ sent, queued }`，附上 `operation_id` / `delivery_id`）；之後由 fleet 透過持久化的 outbox 負責投遞。`delivery_status` 可以查出某次投遞進行到哪裡，查詢時要剛好指定 `delivery_id`、`operation_id`、`correlation_id` 或 `message_id` 其中之一（可用 `limit` 分頁，最多 100 筆，搭配 `cursor`）。一筆紀錄會經過 `queued`、`delivering`、`submission_started`、`reconciliation_pending`、`retry_wait`，最後變成 `delivered`、`failed`、`uncertain` 或 `cancelled`。`uncertain` 代表訊息可能已經送達，不要貿然重送。
+跨 instance 的傳送只要 fleet 一接手就會立刻回傳（`{ sent, queued }`，附上 `operation_id` / `delivery_id`）；之後由 fleet 透過持久化的 outbox 負責投遞。`delivery_status` 可以查出某次投遞進行到哪裡，查詢時要剛好指定 `delivery_id`、`operation_id`、`correlation_id` 或 `message_id` 其中之一（可用 `limit` 分頁，最多 100 筆，搭配 `cursor`）。一筆紀錄會經過 `queued`、`delivering`、`submission_started`、`reconciliation_pending`、`retry_wait`，最後變成 `delivered`、`failed`、`uncertain` 或 `cancelled`。`uncertain` 代表訊息可能已經送達：先用 `delivery_status` 查明再確認，只有顯示 `failed` 時才重送。
 
 每筆紀錄也會說明它怎麼被投遞、到了 CLI 之後怎麼了（#1201）：
 - `delivery_mode`：`steer`（插進進行中的回合）或 `idle_queue`（作為下一則訊息），與 `send_to_instance` 回報的一致。

@@ -1,0 +1,56 @@
+{
+  "merge": "d187710a961a076ac8717c6c84ce058dbf456d31",
+  "parents": [
+    "0a168740210ffad0de43f67df7aa1543d0b0dc94",
+    "5fc122feb46b76fd8e82eaefe73d2a2b3495db61"
+  ],
+  "plainMerge": "clean; no conflict resolution",
+  "ownParent": "0a168740210ffad0de43f67df7aa1543d0b0dc94",
+  "alphaParent": "5fc122feb46b76fd8e82eaefe73d2a2b3495db61",
+  "incomingPaths": [
+    ".github/pull_request_template.md",
+    "changes/3776-hub-ui-gaps.md",
+    "changes/3776-hub-ui-gaps.zh-TW.md",
+    "docs/web-dashboard.md",
+    "docs/web-dashboard.zh-TW.md",
+    "docs/whats-new-2.4.md",
+    "docs/whats-new-2.4.zh-TW.md",
+    "scripts/manual/smoke/smoke-hub-ui-gaps.mts",
+    "src/general-knowledge/skills/hub/SKILL.md",
+    "src/general-knowledge/skills/web-dashboard/SKILL.md",
+    "src/ui/hub-join-one-strings.js",
+    "src/ui/hub-join-steps.js",
+    "src/ui/settings-hub-company-join.js",
+    "tests/hub-admin-entry-ui.test.ts",
+    "tests/hub-company-join-wait.test.ts",
+    "tests/hub-skill.test.ts"
+  ],
+  "autoMergedOverlaps": [
+    "src/general-knowledge/skills/hub/SKILL.md",
+    "src/general-knowledge/skills/web-dashboard/SKILL.md",
+    "tests/hub-skill.test.ts"
+  ],
+  "unchangedOwnPaths": 225,
+  "unchangedIncomingPaths": 13,
+  "scope": "All grant product/browser/harness inputs and original evidence are byte-identical to own parent. Three overlap files are additive skill text and its test. Incoming runtime UI changes are the existing Hub join steps/E14, outside the grant-picker capture states. Original captures stay pinned to their original heads; no post-sync browser execution is claimed.",
+  "check": {
+    "head": "d187710a961a076ac8717c6c84ce058dbf456d31",
+    "command": [
+      "node",
+      "node_modules/vitest/vitest.mjs",
+      "run",
+      "tests/hub-grant-subjects-m3016.test.ts",
+      "tests/hub-grant-picker-m3016.test.ts",
+      "tests/hub-skill.test.ts",
+      "tests/hub-admin-entry-ui.test.ts",
+      "tests/hub-company-join-wait.test.ts",
+      "--maxWorkers=2",
+      "--reporter=dot",
+      "--no-color"
+    ],
+    "exit": 0,
+    "startLoad": 5.86572265625,
+    "seconds": 10.572,
+    "completedAt": "2026-11-13T04:23:37.977740+00:00"
+  }
+}

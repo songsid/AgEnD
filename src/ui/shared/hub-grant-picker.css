@@ -1,0 +1,4 @@
+/* Loaded by the lazy picker, including tabs retaining an older app.css. */
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-grant[data-grant-picker] :is(input, select) { min-width: var(--tap); min-height: var(--tap); font-size: var(--fs-md); }
+}

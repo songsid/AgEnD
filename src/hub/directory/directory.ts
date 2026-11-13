@@ -28,7 +28,7 @@ export interface HubDirectorySecrets {
 }
 
 export interface HubDirectoryDiagnostic {
-  readonly op: "sign-in" | "eligibility" | "initialization-lookup" | "pairing-owner-lookup" | "grant-recipient-lookup" | "group-lookup" | "group-membership" | "group-search";
+  readonly op: "sign-in" | "eligibility" | "initialization-lookup" | "pairing-owner-lookup" | "grant-recipient-lookup" | "group-lookup" | "group-membership" | "group-search" | "person-search";
   readonly outcome: string;
   /** The underlying error's message, for the technical log. Never contains a password. */
   readonly error?: string;
@@ -185,6 +185,15 @@ class Session {
     });
     // Suggestions never establish absence/eligibility. Continuation references are not followed.
     return searchEntries;
+  }
+  async personPrefix(q: string, attributes: readonly string[], binary: readonly string[]): Promise<Entry[]> {
+    this.assertSecure(); const literal = escapeFilterValue(q);
+    const { searchEntries } = await this.client.search(this.cfg.baseDn, {
+      scope: "sub", derefAliases: "never", sizeLimit: 20, timeLimit: 5,
+      filter: `(&${this.cfg.userFilter}(|(displayName=${literal}*)(cn=${literal}*)(${this.cfg.loginAttribute}=${literal}*)))`,
+      attributes: [...attributes], explicitBufferAttributes: [...binary],
+    });
+    return searchEntries; // Feedback only; referrals are never followed or interpreted as an absence proof.
   }
   abort(): void { this.tlsSocket?.destroy(); }
 
@@ -453,6 +462,29 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
     },
     lookupForGrant(login: string): Promise<DirectoryLookupResult> {
       return lookup(login, "grant-recipient-lookup");
+    },
+    async searchGrantPeople(q: string) {
+      if (closed || typeof q !== "string" || q.length < 2 || q.length > 64 || /[\u0000-\u001f\u007f]/.test(q)) return { ok: false as const, reason: "unknown" as const };
+      let service: Session | undefined, expired = false;
+      const deadline = setTimeout(() => { expired = true; service?.abort(); }, 5000); deadline.unref();
+      try {
+        service = await openService({ ...cfg, timeoutMs: Math.min(cfg.timeoutMs, 5000) }, current => {
+          service = current; if (expired) { current.abort(); throw new InsecureTransportError("person search deadline"); }
+        });
+        const entries = await service.personPrefix(q, attributes, [shape.idAttribute]);
+        if (closed || expired || entries.length > 20) return { ok: false as const, reason: "unknown" as const };
+        const people: Array<{ person: PersonKey; login: string; displayName: string }> = [], seen = new Set<string>();
+        for (const entry of entries) {
+          const objectId = readObjectId(cfg.profile, entry);
+          if (!objectId || seen.has(objectId) || !withinGroupBase(entry.dn, cfg.baseDn)) return { ok: false as const, reason: "unknown" as const };
+          seen.add(objectId); if (isDisabled(cfg.profile, entry, now())) continue;
+          const p = toPerson(entry, objectId), displayName = p.displayName || p.login;
+          if (!p.login || p.login.length > 256 || displayName.length > 256 || /[\u0000-\u001f\u007f]/.test(p.login + displayName)) return { ok: false as const, reason: "unknown" as const };
+          people.push({ person: { ...p.key }, login: p.login, displayName });
+        }
+        return { ok: true as const, people, truncated: entries.length === 20 };
+      } catch { report("person-search", "unavailable", "directory lookup failed"); return { ok: false as const, reason: "unknown" as const }; }
+      finally { clearTimeout(deadline); await service?.close(true); }
     },
 
     async signIn(login: string, password: string): Promise<SignInResult> {

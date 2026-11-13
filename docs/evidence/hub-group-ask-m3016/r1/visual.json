@@ -1,0 +1,39 @@
+{
+  "scope": "Eight fresh phone originals and their eight pre-R1 counterparts visually compared; no whole-gallery, dynamic, native or AD claim. Titles, labels, cautions, search/results, selectors and footer buttons clear; slightly taller fields/sheets, no visible clipping/overflow/overlap.",
+  "head": "b5253efbc0810597c7aec4c7eea212159048343c",
+  "pairs": [
+    {
+      "current": "r1/browser-current/current-phone-light-en-empty.png",
+      "before": "browser-current/current-phone-light-en-empty.png"
+    },
+    {
+      "current": "r1/browser-current/current-phone-light-en-groups.png",
+      "before": "browser-current/current-phone-light-en-groups.png"
+    },
+    {
+      "current": "r1/browser-current/current-phone-light-zh-TW-empty.png",
+      "before": "browser-current/current-phone-light-zh-TW-empty.png"
+    },
+    {
+      "current": "r1/browser-current/current-phone-light-zh-TW-groups.png",
+      "before": "browser-current/current-phone-light-zh-TW-groups.png"
+    },
+    {
+      "current": "r1/browser-current/current-phone-dark-en-empty.png",
+      "before": "browser-current/current-phone-dark-en-empty.png"
+    },
+    {
+      "current": "r1/browser-current/current-phone-dark-en-groups.png",
+      "before": "browser-current/current-phone-dark-en-groups.png"
+    },
+    {
+      "current": "r1/browser-current/current-phone-dark-zh-TW-empty.png",
+      "before": "browser-current/current-phone-dark-zh-TW-empty.png"
+    },
+    {
+      "current": "r1/browser-current/current-phone-dark-zh-TW-groups.png",
+      "before": "browser-current/current-phone-dark-zh-TW-groups.png"
+    }
+  ],
+  "result": "bounded PASS"
+}

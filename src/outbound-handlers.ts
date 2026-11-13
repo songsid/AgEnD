@@ -1267,9 +1267,10 @@ const getUsage: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(GetUsageArgs, rawArgs, "get_usage");
   if (!v.ok) { respond(null, v.error); return; }
   try {
-    // Same structure as GET /api/ai-usage, same 5-minute cache behind it.
+    // Same snapshot/cache as the web and slash command; only agent rendering differs.
     const { getUsageSnapshot } = await import("./usage/usage-api.js");
-    respond(await getUsageSnapshot(v.data.force === true, ctx.getActiveUsageProviderIds?.()));
+    const { agentUsage } = await import("./usage/agent-output.js");
+    respond(agentUsage(await getUsageSnapshot(v.data.force === true, ctx.getActiveUsageProviderIds?.()), v.data.detail));
   } catch (err) {
     respond(null, `Usage fetch failed: ${(err as Error).message}`);
   }
@@ -1321,8 +1322,8 @@ const getCacheReport: Handler = async (ctx, rawArgs, respond, meta) => {
 
 /**
  * #2122: the usage report for an agent — the dashboard's Fleet → Usage, from the last scan (no transcript read). Who
- * sees what: cacheReportScope (its own row, or the fleet). Every amount carries `basis`: the API-equivalent at list
- * price, not money spent.
+ * sees what: cacheReportScope (its own row, or the fleet). A shared `basis` identifies every amount as the API-equivalent
+ * at list price, not money spent. detail:true preserves the full legacy tool shape.
  */
 const getUsageReport: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(GetUsageReportArgs, rawArgs, "get_usage_report");
@@ -1337,14 +1338,8 @@ const getUsageReport: Handler = async (ctx, rawArgs, respond, meta) => {
   const only = scope === "own" ? caller : v.data.instance;
   try {
     const r = await ctx.usageReport({ range: usageRange(v.data.range, v.data.from, v.data.to), group: scope === "own" ? "instance" : usageGroup(v.data.group), ...(only ? { only } : {}) });
-    const top = v.data.top ?? 10;
-    respond({
-      basis: r.basis, range: r.range, zone: r.zone, granularity: r.granularity, group: r.group,
-      rows: r.rows.slice(0, top).map(row => ({ ...row, basis: r.basis })),
-      more: Math.max(0, r.rows.length - top),
-      totals: { ...r.totals, basis: r.basis },
-      notMeasured: r.notMeasured, shared: r.shared, scanning: r.scanning,
-    });
+    const { agentUsageReport } = await import("./usage/agent-output.js");
+    respond(agentUsageReport(r, v.data.top, v.data.detail));
   } catch (err) {
     respond(null, `get_usage_report failed: ${(err as Error).message}`);
   }

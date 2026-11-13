@@ -21,7 +21,7 @@ import type { Logger } from "../src/logger.js";
 import { matrixCases } from "./helpers/instructions-matrix.js";
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
-// Recorded from receipt guidance at 8c5a595a9: detail:true is intentionally required for original consent; all 576x3 combinations remain pinned.
+// Recorded from receipt guidance after plain sync of bcd7a4853: detail:true is intentionally required for original consent; all 576x3 combinations remain pinned.
 const GOLDEN: Record<string, string> = JSON.parse(readFileSync(new URL("./fixtures/instructions-matrix.json", import.meta.url), "utf8"));
 
 describe("the complete expected agent instructions", () => {

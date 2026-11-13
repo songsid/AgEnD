@@ -1,0 +1,17 @@
+{
+  "head": "e6eaf1c4c99c4d0ba81384376e069a9b9fc74d7e",
+  "trackedDirty": "",
+  "command": [
+    "node",
+    "node_modules/vitest/vitest.mjs",
+    "run",
+    "tests/hub-grant-picker-m3016.test.ts",
+    "--no-file-parallelism",
+    "--reporter=dot",
+    "--no-color",
+    "-t",
+    "own served stylesheet"
+  ],
+  "exit": 0,
+  "scope": "restored exact-source mounted loader control after three isolated reversals"
+}
