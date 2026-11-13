@@ -75,6 +75,7 @@ export interface HubHttpDeps {
   companyJoin?: HubCompanyJoin;
   groups?: HubGroupAuthorization;
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
+  grantDirectory?: import("../http/deps.js").HubHttpDeps["grantDirectory"];
   pairingNotices?: HubPairingNotices;
   directoryNotices?: Pick<HubDirectoryNotices, "forSession" | "acknowledgeSession">;
   store: HubTransportStore;
@@ -417,6 +418,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         companyJoin,
         groups,
         groupHttp: { control: groupControl, welcome: groupWelcome },
+        grantDirectory: { policy, binding },
         pairingNotices,
         directoryNotices,
         ...(options.directorySettings ? { directorySettings: options.directorySettings } : {}),

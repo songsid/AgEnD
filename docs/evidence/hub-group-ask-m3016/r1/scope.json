@@ -1,0 +1,8 @@
+{
+  "sourceAndTestHead": "627992254a19784935a2e32446e7dc9721e1ab68",
+  "browserHead": "b5253efbc0810597c7aec4c7eea212159048343c",
+  "sourceAndTestsByteEqual": true,
+  "onlyLaterDelta": "one browser-harness line retaining failed geometry",
+  "physicalCloseFinding": "Withdrawn after installed ldapts9.2.0 dependency review; directory.ts and person-search tests unchanged from0eb. Private false-start logs are excluded from acceptance.",
+  "scope": "132/132 seven suites and both native types on clean627; three compiling semantic reversals/exact restoration; final12cases141checks64PNGs cleanb525. Retained0eb CSS negative fails fields40/42px, one original screenshot, cleanuptrue; not an accepted scenario."
+}

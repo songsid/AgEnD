@@ -1,0 +1,28 @@
+{
+  "head": "6bcf12ba720b0a4d4d7d832fdace749d55fa9598",
+  "trackedDirty": true,
+  "command": [
+    "node",
+    "node_modules/vitest/vitest.mjs",
+    "run",
+    "tests/hub-grant-picker-m3016.test.ts",
+    "--no-file-parallelism",
+    "--reporter=verbose",
+    "--no-color",
+    "-t",
+    "own served stylesheet"
+  ],
+  "exit": 1,
+  "scope": "new mounted picker stylesheet control before loader/asset map change",
+  "inputDigests": {
+    "812b9a889b9596e697058008b99c7e98282aedcb944c4b7fe0a4053774fe2cc5": [
+      "src/ui/hub-grant-picker.js"
+    ],
+    "11b00d6aab720540e59c50c61c8caa9e6fa590efe0214a863900b147a57bdda0": [
+      "src/auth-api.ts"
+    ],
+    "ee8bad2b36748d5d204168e49553a37306c63c6321732e0553689738ee5afa6a": [
+      "tests/hub-grant-picker-m3016.test.ts"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "initialBrowserHead": "a87be1c4da61499c730d1d3916b3645f5bd0c15f",
+  "finalCheckedAndBrowserHead": "78874096d7fbd861f7742c76b8f3d80e0779b5c8",
+  "uiByteEqual": true,
+  "productDelta": [
+    "src/hub/catalog.ts",
+    "src/hub/grant-access.ts",
+    "src/hub/rooms.ts"
+  ],
+  "scope": "Final source and15-suite/native checks at the same clean78874096d head. Earlier UI source is byte-identical; earlier server execution is not relabeled."
+}

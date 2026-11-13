@@ -1,0 +1,35 @@
+{
+  "head": "e6eaf1c4c99c4d0ba81384376e069a9b9fc74d7e",
+  "result": "bounded PASS",
+  "scope": "Seven changed fresh/R1 pairs (14 originals) inspected. Only subtle reselection-button fill/edge differences; layout/wrapping/identity/expiry/footer clear, no clipping/overlap/horizontal overflow. Other17 originals byte-identical. Static comparison only, no whole-gallery/dynamic/native/AD claim.",
+  "pairs": [
+    {
+      "current": "r2/browser-retained-css/current-phone-dark-en-group-selected.png",
+      "before": "r1/browser-current/current-phone-dark-en-group-selected.png"
+    },
+    {
+      "current": "r2/browser-retained-css/current-phone-dark-en-person-selected.png",
+      "before": "r1/browser-current/current-phone-dark-en-person-selected.png"
+    },
+    {
+      "current": "r2/browser-retained-css/current-phone-dark-zh-TW-group-selected.png",
+      "before": "r1/browser-current/current-phone-dark-zh-TW-group-selected.png"
+    },
+    {
+      "current": "r2/browser-retained-css/current-phone-dark-zh-TW-person-selected.png",
+      "before": "r1/browser-current/current-phone-dark-zh-TW-person-selected.png"
+    },
+    {
+      "current": "r2/browser-retained-css/current-phone-light-en-person-selected.png",
+      "before": "r1/browser-current/current-phone-light-en-person-selected.png"
+    },
+    {
+      "current": "r2/browser-retained-css/current-phone-light-zh-TW-group-selected.png",
+      "before": "r1/browser-current/current-phone-light-zh-TW-group-selected.png"
+    },
+    {
+      "current": "r2/browser-retained-css/current-phone-light-zh-TW-person-selected.png",
+      "before": "r1/browser-current/current-phone-light-zh-TW-person-selected.png"
+    }
+  ]
+}

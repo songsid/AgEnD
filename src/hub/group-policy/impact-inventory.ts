@@ -47,16 +47,28 @@ export function createHubGroupImpactInventory(options: {
       const { resource } = parseStoredHubGroupResource(parseStrictJson(row.body), row.source);
       if (resource.kind === "asker") addResource(resource);
     }
-    const grants: unknown[] = [], at = now();
+    const grants: unknown[] = [], groupSubjects = new Map<string, PersonKey>(), at = now();
     for (const row of db.prepare("SELECT * FROM hub_grants WHERE state='active' AND starts_at<=? AND expires_at>? ORDER BY id").all(at, at) as Parameters<typeof grantOf>[0][]) {
       const grant = grantOf(row), exposure = readExposure(db, grant.exposureId); if (!exposure) continue;
-      const currentExposure = exposureOf(exposure), subject = validated(person, grant.subject.person);
+      const currentExposure = exposureOf(exposure);
+      if (grant.subject.kind === "group") {
+        if (currentExposure.state !== "published" || grant.exposureRevision !== currentExposure.revision
+          || personKeyString(grant.owner) !== personKeyString(currentExposure.owner) || !grant.permissions.includes("ask")
+          || !inventory.current({ kind: "exposure", id: exposure.id, revision: exposure.revision })) continue;
+        const group = validated(person, grant.subject.group);
+        if (group.realm !== administrator.realm) throw new HubGroupPolicyError("unavailable");
+        groupSubjects.set(personKeyString(group), group); grants.push(grant); continue;
+      }
+      const subject = validated(person, grant.subject.person);
       if (currentExposure.state !== "published" || !inventory.current({ kind: "exposure", id: exposure.id, revision: exposure.revision })
         || !grantApplies(grant, currentExposure, subject, at)) continue;
       addPerson(subject, true); grants.push(grant);
     }
     if (current() !== true) throw new HubGroupPolicyError("unavailable");
-    const persons = [...people].sort(([a], [b]) => a.localeCompare(b)).map(([, p]) => p);
+    const groups = [...groupSubjects].sort(([a], [b]) => a.localeCompare(b)).map(([, g]) => g);
+    // No directory enumeration. The preview later evaluates these candidate groups with fresh facts for known Hub people;
+    // missing/partial facts remain explicitly unknown and cannot become a false personal-grant/removal claim.
+    const persons = [...people].sort(([a], [b]) => a.localeCompare(b)).map(([, p]) => groups.length ? { ...p, askGroups: groups } : p);
     const entries = [...resources].sort(([a], [b]) => a.localeCompare(b)).map(([, r]) => r);
     ordinary.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");

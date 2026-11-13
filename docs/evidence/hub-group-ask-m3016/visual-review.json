@@ -1,0 +1,14 @@
+{
+  "initialHead": "a87be1c4da61499c730d1d3916b3645f5bd0c15f",
+  "initialSelectedOriginals": 12,
+  "finalHead": "78874096d7fbd861f7742c76b8f3d80e0779b5c8",
+  "finalPairedOriginals": 6,
+  "conclusion": "bounded static PASS, no blocker",
+  "scope": "12 initial originals, then6 final/initial pairs read with view_image;58other final PNGs are byte-identical to initial. No whole-gallery, browser, real AD or native visual claim.",
+  "nonblocking": [
+    "Existing browser-locale dates can be English in zh-TW UI captures.",
+    "Saved groups use their verified DN label; it truncates in lists.",
+    "Choose someone else is generic group-change copy.",
+    "Shared/retained group search uses Add before final Allow."
+  ]
+}

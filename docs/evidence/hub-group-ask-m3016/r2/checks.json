@@ -1,0 +1,73 @@
+{
+  "head": "6bcf12ba720b0a4d4d7d832fdace749d55fa9598",
+  "trackedDirty": true,
+  "checks": [
+    {
+      "name": "focused",
+      "command": [
+        "node",
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "tests/hub-grant-picker-m3016.test.ts",
+        "tests/hub-shared-modules-a.test.ts",
+        "tests/hub-ui-s3.test.ts",
+        "tests/web-app-modules-1408.test.ts",
+        "tests/esm-skew-roles-138.test.ts",
+        "tests/web-emoji-fonts.test.ts",
+        "--maxWorkers=2",
+        "--reporter=dot",
+        "--no-color"
+      ],
+      "exit": 0,
+      "startLoad": 8.0087890625,
+      "seconds": 19.613,
+      "completedAt": "2026-11-13T04:58:38.487460+00:00"
+    },
+    {
+      "name": "source-types",
+      "command": [
+        "node",
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit"
+      ],
+      "exit": 0,
+      "startLoad": 9.26708984375,
+      "seconds": 6.689,
+      "completedAt": "2026-11-13T04:58:45.176864+00:00"
+    },
+    {
+      "name": "test-types",
+      "command": [
+        "node",
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad": 8.5244140625,
+      "seconds": 26.682,
+      "completedAt": "2026-11-13T04:59:11.857937+00:00"
+    }
+  ],
+  "inputDigests": {
+    "5bd5b7cb2058712f6ea900fa18e7b83371af9ad294868613757f7e45fbbd9046": [
+      "src/auth-api.ts"
+    ],
+    "1f72db3da95f521c9d4e71cee1c6d983270b2d69db9e86f55a08ad995e982c02": [
+      "src/ui/hub-grant-picker.js"
+    ],
+    "db5c3a265b094ac0a85ac059efeee467577696f4eb909626dd1d1dc8ea382c04": [
+      "src/ui/shared/app.css"
+    ],
+    "291a3c0419d94d20034b384f07036cc8b49654f0633e66b9e14e43a888010390": [
+      "src/ui/shared/hub-grant-picker.css"
+    ],
+    "077d4ff204d31b38de38d76e2e24d851161c70d1eeaaa6a8bc114c1d0de44881": [
+      "tests/hub-grant-picker-m3016.test.ts"
+    ],
+    "6bbd355945f4fd517fff8d1bf28ce5289f761b86444724654be51dda0d67ed1f": [
+      "scripts/manual/hub-group-ask-m3016/browser.mts"
+    ]
+  }
+}

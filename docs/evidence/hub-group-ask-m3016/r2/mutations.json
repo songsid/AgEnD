@@ -1,0 +1,35 @@
+[
+  {
+    "id": "L1",
+    "file": "tests/hub-grant-picker-m3016.test.ts",
+    "selector": "own served stylesheet",
+    "caught": true,
+    "exit": 1,
+    "sourceDigest": "1f72db3da95f521c9d4e71cee1c6d983270b2d69db9e86f55a08ad995e982c02",
+    "logDigest": "1ed77338943b3f547ab2a9094b57a99ba238b9de67d299c0550e8a64ce7167ac",
+    "seconds": 2.184,
+    "restored": true
+  },
+  {
+    "id": "L2",
+    "file": "tests/hub-grant-picker-m3016.test.ts",
+    "selector": "own served stylesheet",
+    "caught": true,
+    "exit": 1,
+    "sourceDigest": "5bd5b7cb2058712f6ea900fa18e7b83371af9ad294868613757f7e45fbbd9046",
+    "logDigest": "c21e7a5b92b030464b4a1134471194bd66d36b023f34d93dfd1cb67712e3ae5f",
+    "seconds": 1.88,
+    "restored": true
+  },
+  {
+    "id": "L3",
+    "file": "tests/hub-grant-picker-m3016.test.ts",
+    "selector": "own served stylesheet",
+    "caught": true,
+    "exit": 1,
+    "sourceDigest": "1f72db3da95f521c9d4e71cee1c6d983270b2d69db9e86f55a08ad995e982c02",
+    "logDigest": "0762b8d4c41a13ec56818be785d8d2d02dc2d78c0a30bb154a6081e4eba98a09",
+    "seconds": 1.771,
+    "restored": true
+  }
+]
