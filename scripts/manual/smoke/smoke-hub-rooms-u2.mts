@@ -29,7 +29,7 @@ let body;
 if (view === "new") { const { NewRoomDialog } = await import("/ui/js/hub-room-new.js"); body = html\`<\${NewRoomDialog} client=\${client} />\`; }
 if (view === "settings") { const { RoomSettings } = await import("/ui/js/hub-room-settings.js"); const detail = await client.room("room-weekly"); body = html\`<\${RoomSettings} client=\${client} roomId="room-weekly" detail=\${detail} />\`; }
 if (view === "members") { const { RoomMembersPanel } = await import("/ui/js/hub-room-members.js"); const detail = await client.room("room-weekly"); body = html\`<div style="max-width:320px"><\${RoomMembersPanel} client=\${client} roomId="room-weekly" detail=\${detail} /></div>\`; }
-if (view === "invitations") { const m = await import("/ui/js/hub-invitations.js"); body = html\`<div class="card" style="max-width:640px;display:flex;flex-direction:column;gap:12px"><\${m.InvitationsRow} count=\${1} /><\${m.InvitationsList} client=\${client} /><\${m.AgentRoomsSection} client=\${client} exposureId="exp-02" /></div>\`; }
+if (view === "invitations") { const m = await import("/ui/js/hub-invitations.js"); body = html\`<div class="card" style="max-width:640px;display:flex;flex-direction:column;gap:12px"><\${m.InvitationsList} client=\${client} /><\${m.AgentRoomsSection} client=\${client} exposureId="exp-02" /></div>\`; }
 if (view === "admin") { const { AdminRooms } = await import("/ui/js/hub-admin-rooms.js"); body = html\`<div class="card"><\${AdminRooms} client=\${client} /></div>\`; }
 render(html\`<main style="padding:16px">\${body}<\${ConfirmHost} /></main>\`, document.getElementById("app"));
 document.body.dataset.ready = "1";
@@ -87,7 +87,7 @@ try {
         new: zh ? ["新房間", "你 · 管理", "陳主任", "研一 · 2 人", "my-notes", "spec-writer · 邀請 · 等擁有者同意", "加入房間助理（Hub 提供）", "建立"] : ["New room", "You · Manager", "Create"],
         settings: zh ? ["房間設定", "基本", "成員可以 @所有 Agent", "成員與 Agent", "audit-helper（周小明）· 已邀請，等擁有者同意", "old-audit（林小華）· 邀請已過期", "重新邀請", "封存房間"] : ["Room settings", "Invite again", "Archive room"],
         members: zh ? ["成員 · 3（線上 2）", "Agent · 12（線上 9）", "… 其餘 4 個", "房間助理", "誰看得到", "在這裡 @ 它"] : ["Members · 3 (online 2)", "Agents · 12 (online 9)", "@ it here"],
-        invitations: zh ? ["邀請 · 1", "陳主任 邀請你的 Agent「my-notes」加入房間「產品規劃」", "同意", "不要", "在這些房間裡", "退出這個房間"] : ["Invitations · 1", "Agree", "Leave this room"],
+        invitations: zh ? ["邀請", "被 @ 時，它會讀到房間最近的訊息。", "陳主任 邀請你的 Agent「my-notes」加入房間「產品規劃」", "同意", "不要", "在這些房間裡", "退出這個房間"] : ["Invitations", "When @-ed, it reads the room's recent messages.", "Agree", "Leave this room"],
         admin: zh ? ["誰可以開房間", "每個人都可以開一對一對話。", "所有房間", "這裡看不到任何房間的內容。", "研一主管週會", "已封存"] : ["Who can start rooms", "All rooms", "Archived"],
       };
       const missing = want[view]!.filter(w => !facts.text.toLowerCase().includes(w.toLowerCase()));   // headings may be drawn upper-case
