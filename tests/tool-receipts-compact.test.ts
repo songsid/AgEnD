@@ -22,21 +22,21 @@ describe("compact delivery verification", () => {
     expect(item.excerpt).toContain("PR #3788");
     expect(ctx.queryDurableDeliveryStatus).toHaveBeenCalledWith("sender", { messageId: "hmsg-1" });
   });
-  it("contains checks the original after ACL, even beyond the excerpt, without echoing the query", async () => {
+  it("content_includes checks the original after ACL, even beyond the excerpt, without echoing the query", async () => {
     const ctx = { queryDurableDeliveryStatus: vi.fn(() => structuredClone(page)) };
-    const yes = await call("delivery_status", ctx, { message_id: "hmsg-1", contains: "abcdef0123456789" });
-    expect(yes.result.items[0].contains).toBe(true);
+    const yes = await call("delivery_status", ctx, { message_id: "hmsg-1", content_includes: "abcdef0123456789" });
+    expect(yes.result.items[0].content_includes).toBe(true);
     expect(JSON.stringify(yes.result)).not.toContain("abcdef0123456789");
-    expect((await call("delivery_status", ctx, { message_id: "hmsg-1", contains: "other SHA" })).result.items[0].contains).toBe(false);
+    expect((await call("delivery_status", ctx, { message_id: "hmsg-1", content_includes: "other SHA" })).result.items[0].content_includes).toBe(false);
     const hidden = { queryDurableDeliveryStatus: vi.fn(() => ({ items: [], next_cursor: null })) };
-    expect((await call("delivery_status", hidden, { message_id: "hmsg-1", contains: "abcdef0123456789" })).error).toBe("Delivery not found");
+    expect((await call("delivery_status", hidden, { message_id: "hmsg-1", content_includes: "abcdef0123456789" })).error).toBe("Delivery not found");
   });
   it("detail returns the exact existing full page", async () => {
     expect((await call("delivery_status", { queryDurableDeliveryStatus: () => structuredClone(page) }, { message_id: "hmsg-1", detail: true })).result).toEqual(page);
   });
-  it("detail with contains preserves all original evidence and adds only the boolean", async () => {
-    const r = await call("delivery_status", { queryDurableDeliveryStatus: () => structuredClone(page) }, { message_id: "hmsg-1", detail: true, contains: "abcdef0123456789" });
-    expect(r.result).toEqual({ ...page, items: [{ ...page.items[0], contains: true }] });
+  it("detail with content_includes preserves all original evidence and adds only the boolean", async () => {
+    const r = await call("delivery_status", { queryDurableDeliveryStatus: () => structuredClone(page) }, { message_id: "hmsg-1", detail: true, content_includes: "abcdef0123456789" });
+    expect(r.result).toEqual({ ...page, items: [{ ...page.items[0], content_includes: true }] });
   });
   it("does not revive downgraded authority or fabricate a proof", async () => {
     const revoked = structuredClone(page); revoked.items[0].authority = { kind: "none", actor: null, authority_epoch: 2, downgraded: "revoked" }; revoked.items[0].proof_kind = null;
@@ -52,9 +52,9 @@ describe("compact delivery verification", () => {
     expect(compact.result.items[0].excerpt).toContain("[redacted]");
     expect((await call("delivery_status", ctx, { message_id: "hmsg-1", detail: true })).result.items[0].content).toBe(p.items[0].content);
   });
-  it("contains is restricted to message evidence and accepts only boolean detail", () => {
-    expect(DeliveryStatusArgs.safeParse({ delivery_id: "d", contains: "x" }).success).toBe(false);
-    expect(DeliveryStatusArgs.safeParse({ message_id: "m", contains: "" }).success).toBe(false);
+  it("content_includes is restricted to message evidence and accepts only boolean detail", () => {
+    expect(DeliveryStatusArgs.safeParse({ delivery_id: "d", content_includes: "x" }).success).toBe(false);
+    expect(DeliveryStatusArgs.safeParse({ message_id: "m", content_includes: "" }).success).toBe(false);
     expect(DeliveryStatusArgs.safeParse({ message_id: "m", detail: "true" }).success).toBe(false);
   });
 });

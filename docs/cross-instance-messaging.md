@@ -111,4 +111,4 @@ Fleet manager 維護 `sessionRegistry: Map<sessionName, instanceName>`；`mcp_re
 
 聊天的 `/restart`（全 fleet、不加 `full`）會等每個 instance idle（各等最多 10 秒），整體最多等 **5 分鐘**，超時就強制重啟、不再無限等。Telegram/Discord 會收到開始與完成通知。
 
-Full verification evidence must be fetched with `delivery_status {message_id: ID, detail: true}` (CLI `agend-agent delivery-status --detail --message-id ID`). Compact excerpts and `contains` matches do not establish the complete original intent and cannot replace full merge-gate evidence. Existing ACL/proof/actor/current-authority checks remain mandatory; never log secret-bearing originals.
+Full verification evidence must be fetched with `delivery_status {message_id: ID, detail: true}` (CLI `agend-agent delivery-status --detail --message-id ID`). Compact excerpts and `content_includes` matches do not establish the complete original intent and cannot replace full merge-gate evidence. Existing ACL/proof/actor/current-authority checks remain mandatory; never log secret-bearing originals.

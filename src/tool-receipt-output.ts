@@ -12,11 +12,11 @@ export function receiptExcerpt(text: string): string {
     .slice(0, 200);
 }
 
-export function compactDeliveryStatus(page: DeliveryStatusPage, detail = false, contains?: string) {
-  if (detail && contains === undefined) return page;
+export function compactDeliveryStatus(page: DeliveryStatusPage, detail = false, content_includes?: string) {
+  if (detail && content_includes === undefined) return page;
   return {
     items: page.items.map(item => {
-      const check = contains === undefined ? {} : { contains: typeof item.content === "string" ? item.content.includes(contains) : null };
+      const check = content_includes === undefined ? {} : { content_includes: typeof item.content === "string" ? item.content.includes(content_includes) : null };
       if (detail) return { ...item, ...check };
       return {
         delivery_id: item.delivery_id, message_id: item.message_id,

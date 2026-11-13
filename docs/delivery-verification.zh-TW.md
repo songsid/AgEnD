@@ -46,4 +46,4 @@ CLI 模式的 `agend-agent send`／`delegate` 支援可重複的 `--forward`，�
 
 [English](delivery-verification.md)
 
-完整驗證證據請用 `delivery_status {message_id: ID, detail: true}`（CLI：`agend-agent delivery-status --detail --message-id ID`）取得。精簡摘要或 `contains` 命中只證明文字存在，不能代替完整原始意圖或合併 gate 的證據。存取權、已擁有的送達證明、授權者及目前撤銷狀態仍必須逐項確認；不要將含秘密的原文輸出到紀錄。
+完整驗證證據請用 `delivery_status {message_id: ID, detail: true}`（CLI：`agend-agent delivery-status --detail --message-id ID`）取得。精簡摘要或 `content_includes` 命中只證明文字存在，不能代替完整原始意圖或合併 gate 的證據。存取權、已擁有的送達證明、授權者及目前撤銷狀態仍必須逐項確認；不要將含秘密的原文輸出到紀錄。

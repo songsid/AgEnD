@@ -153,7 +153,7 @@ async function main(): Promise<void> {
       for (let i = 0; i < rest.length; i++) {
         const key = rest[i]!.replace(/^--/, "").replaceAll("-", "_");
         if (key === "detail") { args.detail = true; continue; }
-        if (!["delivery_id", "operation_id", "correlation_id", "message_id", "limit", "cursor", "contains"].includes(key)) {
+        if (!["delivery_id", "operation_id", "correlation_id", "message_id", "limit", "cursor", "content_includes"].includes(key)) {
           die(`Unknown delivery-status option: ${rest[i]}`);
         }
         const value = rest[++i];
