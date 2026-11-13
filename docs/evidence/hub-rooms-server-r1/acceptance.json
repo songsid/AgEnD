@@ -1,5 +1,5 @@
 {
-  "sourceHead": "3ed015da2576b909cd6ac488ee48152be6bb38cf",
+  "sourceHead": "b2228a95583fa883b81d54c0e445315a0df74a71",
   "base": "95393951296dcdaecc1c300a89eb7da701b2888f",
   "sourceCommit": "ec45ddfdd",
   "checks": [
@@ -61,6 +61,33 @@
     {
       "name": "final-test-types",
       "exit": 0
+    },
+    {
+      "name": "review-r1-before",
+      "tests": 14,
+      "failed": 6,
+      "outcome": "semantic: missing initial notice frames, system unread counts, unrelated stream closed"
+    },
+    {
+      "name": "review-r1-after",
+      "tests": 48,
+      "files": 5,
+      "outcome": "pass",
+      "suites": [
+        "hub-rooms-r1",
+        "hub-room-frames-r1",
+        "hub-rooms-migration-r1",
+        "hub-s3b-server",
+        "hub-quick-pairing-http"
+      ]
+    },
+    {
+      "name": "review-r1-source-types",
+      "exit": 0
+    },
+    {
+      "name": "review-r1-test-types",
+      "exit": 0
     }
   ],
   "limits": {
@@ -79,11 +106,11 @@
     },
     {
       "path": "docs/design/hub-rooms-server-r1.md",
-      "sha256": "3e702ad3e12ab8ec50fc66a53a060edadbf07a12404813787863c96fb7f679f2"
+      "sha256": "fe7bcef125a78f3a65c96e908dc3b14b6c04a58e7478b264184f7c2c23b58731"
     },
     {
       "path": "src/hub/http/compose.ts",
-      "sha256": "527696c42598321796ce55c43c77bf8c04154dc3feac9a02b72ce33f8e74bdf3"
+      "sha256": "2e377ec5e533a825ee35877d3325ff38c8c86f2d68f58b506a63bf198cff1126"
     },
     {
       "path": "src/hub/http/deps.ts",
@@ -111,7 +138,7 @@
     },
     {
       "path": "src/hub/rooms/service.ts",
-      "sha256": "348e4891dd1af03e7be35c35ee219fca125d6574e0d67c7ac62ea0e27f01f83a"
+      "sha256": "465f3dd6a2be71450f53c7793ec30ea49c55dd023f0226e4dbe2c4db20b96ce6"
     },
     {
       "path": "src/hub/rooms/types.ts",
@@ -131,7 +158,7 @@
     },
     {
       "path": "tests/hub-rooms-r1.test.ts",
-      "sha256": "0627b05408bc9693feae38e959a597e2b687ba44acac5c7aed571929a88cdca2"
+      "sha256": "b4fe8a021746457df368cf9ca53a5f775c56ba1e4e9a09d39f5a1c130082dbc0"
     }
   ]
 }

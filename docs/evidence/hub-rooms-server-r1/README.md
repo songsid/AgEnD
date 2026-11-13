@@ -24,3 +24,9 @@ The new tests use real localhost HTTP, SQLite and the production HTTP compositio
 No live directory/Fleet/account, CLI execution, browser or container campaign was run. This is backend R1, not the later joined UI walk-through. The configured root creates rooms; the picker lists known eligible Hub people. Teams/groups, invitations, room agents/assistant calls and group attachments are subsequent integrations. The reserved room-agent wire feature is not advertised.
 
 Migration is additive and keeps existing direct tables/IDs/receipts. An older binary refuses the new registry; use a corrected build that understands it for rollback, retaining state. Full Track R remains open in #3856.
+
+## Review R1: single stream integration
+
+Latest source checkpoint: `b2228a95583fa883b81d54c0e445315a0df74a71`; this supersedes the earlier checkpoint for the changed files. New controls first failed six semantic assertions across 14 cases: missing initial notices, system rows counted as unread, and an unrelated viewer closed under queue pressure. The restored expanded run passes 48/48 across five suites (rooms, frames, migration, direct server and existing quick-pairing HTTPS); both native programs exit 0. Counts overlap prior runs.
+
+The combined rooms stream now includes initial snapshots and updates for notices=2/3, with a v3-to-v2 downgrade when enrolment-code-v1 is not offered. Missing/invalid parameters send only room events. The positive controls use the real HubPairingNotices service and SQLite/audit, with an inert company-join availability marker solely for the v3 feature case; no join method or account is used. Unread excludes system rows. A cheap membership query precedes per-viewer queue admission; final event projection still authorizes afresh. The queue control holds Cara's eligibility while 40 unrelated posts produce 80 events, then proves her own stream still works.
