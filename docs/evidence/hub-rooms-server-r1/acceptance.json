@@ -1,5 +1,5 @@
 {
-  "sourceHead": "9fdbf580017bd0234b348a99555e9d60191a1642",
+  "sourceHead": "3ed015da2576b909cd6ac488ee48152be6bb38cf",
   "base": "95393951296dcdaecc1c300a89eb7da701b2888f",
   "sourceCommit": "ec45ddfdd",
   "checks": [
@@ -41,6 +41,26 @@
     {
       "name": "post-sync-test-types",
       "exit": 0
+    },
+    {
+      "name": "list-compatibility",
+      "tests": 37,
+      "files": 4,
+      "outcome": "pass",
+      "suites": [
+        "hub-rooms-r1",
+        "hub-room-frames-r1",
+        "hub-rooms-migration-r1",
+        "hub-s3b-server"
+      ]
+    },
+    {
+      "name": "final-source-types",
+      "exit": 0
+    },
+    {
+      "name": "final-test-types",
+      "exit": 0
     }
   ],
   "limits": {
@@ -59,11 +79,11 @@
     },
     {
       "path": "docs/design/hub-rooms-server-r1.md",
-      "sha256": "2ab6fe865efb21da1663481fbf76da45c7ad9611948a9393b3b10feced4fdd71"
+      "sha256": "3e702ad3e12ab8ec50fc66a53a060edadbf07a12404813787863c96fb7f679f2"
     },
     {
       "path": "src/hub/http/compose.ts",
-      "sha256": "bcfe9e099b64e83f8bae12c421d3d7f1eac27751955926b8541e8467da1d2bb8"
+      "sha256": "527696c42598321796ce55c43c77bf8c04154dc3feac9a02b72ce33f8e74bdf3"
     },
     {
       "path": "src/hub/http/deps.ts",
@@ -111,7 +131,7 @@
     },
     {
       "path": "tests/hub-rooms-r1.test.ts",
-      "sha256": "250d160624c21f6116b45b2080d877cf18c124e16405ec374645ff82e0b3b758"
+      "sha256": "0627b05408bc9693feae38e959a597e2b687ba44acac5c7aed571929a88cdca2"
     }
   ]
 }
