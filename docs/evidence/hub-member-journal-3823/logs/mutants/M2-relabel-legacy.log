@@ -1,0 +1,72 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-journal.test.ts (29 tests | 1 failed) 301ms
+     × infers the legacy owner from authenticated questions, never the replacement profile 60ms
+ ❯ tests/hub-member-repair-3823.test.ts (11 tests | 3 failed) 4944ms
+   × #3823 (v1): a new Fleet binding never replays the revoked Fleet's IDs or receipts on the real member link 702ms
+   × v1 exposure-only ownership (published=true) keeps old consent out of the new Fleet 492ms
+   × v1 exposure-only ownership (published=false) keeps old consent out of the new Fleet 373ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > infers the legacy owner from authenticated questions, never the replacement profile
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/hub-member-journal.test.ts:33:45
+     31|   it("infers the legacy owner from authenticated questions, never the …
+     32|     const f = fixture(); const receipt = await f.admission.admit(f.q),…
+     33|     expect(f.journal.bindPairing(next, [])).toBe(false);
+       |                                             ^
+     34|     const reopened = new HubMemberJournal(f.db, f.options);
+     35|     expect(reopened.bindPairing(f.profile, [])).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > #3823 (v1): a new Fleet binding never replays the revoked Fleet's IDs or receipts on the real member link
+Error: Hub protocol: uncertain
+ ❯ HubMemberJournal.decrypt src/hub/member-journal.ts:159:41
+    157|       this.checkPairing(payload.question);
+    158|       return payload;
+    159|     } catch { this.failed = true; throw new HubProtocolError("uncertai…
+       |                                         ^
+    160|   }
+    161|   prepare(question: HubQuestion): { operationId: string; receipt: HubR…
+ ❯ src/hub/member-journal.ts:244:51
+ ❯ Function.<anonymous> src/hub/member-journal.ts:130:39
+ ❯ Function.sqliteTransaction ../../node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ HubMemberJournal.change src/hub/member-journal.ts:132:8
+ ❯ HubMemberJournal.recoverInterruptedInputs src/hub/member-journal.ts:241:17
+ ❯ HubRepresentativeExecution.recover src/hub/representative.ts:202:26
+ ❯ createMember src/hub/compose/member.ts:456:15
+ ❯ member tests/hub-member-repair-3823.test.ts:35:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > v1 exposure-only ownership (published=true) keeps old consent out of the new Fleet
+ FAIL  tests/hub-member-repair-3823.test.ts > v1 exposure-only ownership (published=false) keeps old consent out of the new Fleet
+TypeError: Cannot open database because the directory does not exist
+ ❯ new Database ../../node_modules/better-sqlite3/lib/database.js:54:10
+ ❯ journal tests/hub-member-repair-3823.test.ts:38:14
+     36| }
+     37| function journal(r: Awaited<ReturnType<typeof rig>>, set = memberSet(r…
+     38|   const db = new Database(join(r.memberHome, set.database));
+       |              ^
+     39|   db.exec("CREATE TABLE IF NOT EXISTS fixture_sources(source TEXT PRIM…
+     40|   return { db, value: new HubMemberJournal(db, { hubId: r.identity.hub…
+ ❯ tests/hub-member-repair-3823.test.ts:161:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  4 failed | 36 passed (40)
+   Start at  22:49:18
+   Duration  8.00s (transform 2.48s, setup 308ms, import 3.27s, tests 5.25s, environment 0ms)
+

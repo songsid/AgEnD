@@ -1,0 +1,39 @@
+{
+  "sourceCommit": "249e4eb4b7dda38851f33af8c6077f2cd5a46f32",
+  "base": "85985319b001d95d748027ba2f5426c3f60f19b4",
+  "node": "v22.22.2",
+  "bindings": [
+    {
+      "sha256": "40dbc0305633768a370bd4ffe86ed367206f1afacd753b51d49bcdc5527cd18b",
+      "file": "changes/3823-member-journal-scope.md"
+    },
+    {
+      "sha256": "dff95c7f83c03543359c9b51d9f8e80c16e6915b4f45b8e06a5deb9fd568fbf4",
+      "file": "changes/3823-member-journal-scope.zh-TW.md"
+    },
+    {
+      "sha256": "2e49a1d5f760a2110929d1a0c2d682ed63faee13d642529575fa0289b8d60672",
+      "file": "docs/design/hub-composition.md"
+    },
+    {
+      "sha256": "50948055460d8b73abd8629cc999ee3c8303d61fbf8880695a3ab3402836559f",
+      "file": "src/general-knowledge/skills/hub/SKILL.md"
+    },
+    {
+      "sha256": "7d3c9d01e171be4b89ded41aa306b5f060c5ebb603e7e6f758f33200695f0fcc",
+      "file": "src/hub/compose/member.ts"
+    },
+    {
+      "sha256": "5282424b9dad438df35673c3e0d38bf088ed3fde97014111fbe195292a875d08",
+      "file": "src/hub/member-journal.ts"
+    },
+    {
+      "sha256": "f3c86f1d99af10a729586f99e0b0c382841d1d2dfdc0130bd2e450429b35d089",
+      "file": "tests/hub-member-journal.test.ts"
+    },
+    {
+      "sha256": "176f0a9712903b01222112b2d6b39cdd9b22720c4eb1c54e30d0e7e80bc6bd59",
+      "file": "tests/hub-member-repair-3823.test.ts"
+    }
+  ]
+}

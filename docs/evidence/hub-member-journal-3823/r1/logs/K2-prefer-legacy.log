@@ -1,0 +1,62 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-repair-3823.test.ts (16 tests | 2 failed) 5372ms
+   × R1: a complete scoped set wins over absent legacy state without recreating it 410ms
+   × R1: a complete scoped set wins over partial legacy state without recreating it 334ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > R1: a complete scoped set wins over absent legacy state without recreating it
+AssertionError: expected [ [] ] to deeply equal [ [ { …(2) } ] ]
+
+- Expected
++ Received
+
+  [
+-   [
+-     {
+-       "contentDigest": "3a2d28a387f1b44d17fa03352760a5369e5eaf92f71045e16e20dc381daa67de",
+-       "messageId": "58e13bd1-e1c0-4ae1-bc7a-fa515c1a4957",
+-     },
+-   ],
++   [],
+  ]
+
+ ❯ tests/hub-member-repair-3823.test.ts:224:87
+    222|   const opening = member(r); await expect(opening).resolves.toBeDefine…
+    223|   const reopened = await opening; await reopened.service.start();
+    224|   expect(r.received.filter(f => f.type === "reconcile").map(f => f.pay…
+       |                                                                                       ^
+    225|     [{ messageId: ownQuestion.identity.messageId, contentDigest: ownQu…
+    226|   ]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > R1: a complete scoped set wins over partial legacy state without recreating it
+AssertionError: promise rejected "HubStateError: Hub state is partial (miss… { code: '…' }" instead of resolving
+ ❯ tests/hub-member-repair-3823.test.ts:222:51
+    220|   for (const p of state === "absent" ? paths : [old.floors[0]!]) unlin…
+    221|   const presence = paths.map(p => existsSync(join(r.memberHome, p)));
+    222|   const opening = member(r); await expect(opening).resolves.toBeDefine…
+       |                                                   ^
+    223|   const reopened = await opening; await reopened.service.start();
+    224|   expect(r.received.filter(f => f.type === "reconcile").map(f => f.pay…
+
+Caused by: HubStateError: Hub state is partial (missing: hub-member/15c3f9c6-5eb2-4d9e-a355-3bf3fe85d5ef/floors/journal); nothing is recreated
+ ❯ inspectStateSet src/hub/db.ts:71:9
+ ❯ openMemberState src/hub/compose/member.ts:284:19
+ ❯ createMember src/hub/compose/member.ts:407:49
+ ❯ member tests/hub-member-repair-3823.test.ts:35:19
+ ❯ tests/hub-member-repair-3823.test.ts:222:30
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'hub-state-mismatch' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  2 failed | 46 passed (48)
+   Start at  23:11:17
+   Duration  8.10s (transform 2.48s, setup 193ms, import 3.06s, tests 5.63s, environment 0ms)
+

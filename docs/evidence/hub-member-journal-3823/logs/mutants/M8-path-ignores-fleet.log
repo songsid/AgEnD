@@ -1,0 +1,29 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-repair-3823.test.ts (11 tests | 1 failed) 8078ms
+   × binding paths distinguish immutable identity, retaining address/credential and authorization refreshes 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > binding paths distinguish immutable identity, retaining address/credential and authorization refreshes
+AssertionError: expected { …(3) } to not deeply equal { …(3) }
+
+Compared values have no visual difference.
+
+ ❯ tests/hub-member-repair-3823.test.ts:134:41
+    132|   const path = memberSet(hubId, base);
+    133|   for (const other of [{ ...base, fleetId: randomUUID() }, { ...base, …
+    134|     expect(memberSet(hubId, other)).not.toEqual(path);
+       |                                         ^
+    135|   expect(memberSet(randomUUID(), base)).not.toEqual(path);
+    136|   expect(memberSet(hubId, { ...base, credential: "renewed", memberOrig…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 39 passed (40)
+   Start at  22:50:36
+   Duration  11.13s (transform 2.59s, setup 273ms, import 3.06s, tests 8.29s, environment 0ms)
+

@@ -75,6 +75,21 @@ Rules:
 | Audit content key | `<home>/hub/keys/content.key` (32 random bytes) | server factory, on first creation only |
 | Member journal key | `<home>/hub-member/<hubId>/keys/journal.key` | member factory, on first creation only |
 
+For #3823, the member journal's v2 metadata binds a complete state set to the Hub's pinned issuer key, Fleet ID and
+owner (the Hub ID is also checked by `hub_instance`). The first set remains at the legacy paths above; subsequent
+bindings use `hub-member/<hubId>/bindings/<binding-hash>/` with their own database, all floors and both keys. Origins,
+credentials and authorization versions are excluded from this identity, so relocation and genuine reconnects preserve
+idempotency. Selection happens before recovery, outbox attachment or snapshot publication, and offline withdrawal uses
+the same selection. The previous set is retained, never reset or imported into the new identity.
+
+An unbound v1 set is adopted only after checking its journal/exposure floors, decrypting every stored question and
+comparing its destination/owner/issuer with all committed and staged exposure owners. Mixed ownership, unreadable
+payloads and unattributable execution state are held. Adoption is committed under an immediate transaction and the
+journal's independent revision floor. A partial selected set or a DB/floor disagreement never falls back to empty
+state. The existing authorization, source keys, ciphertext AAD and Hub reconcile conflict checks stay in force.
+Older binaries refuse journal schema v2; rollback requires a consistent pre-upgrade backup of the whole state set,
+not deleting the binding, journal or floors.
+
 - **Private from the first byte.** Directories are 0700, verified as non-symlinks owned by this user. Files are
   created 0600 before SQLite opens them, and the `-wal`/`-shm` files are checked after opening. Windows is refused
   (S1's `privatePath` does the same), so native Windows Hubs are out of scope; WSL works. Pragmas: `journal_mode=WAL`,

@@ -1,0 +1,130 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-repair-3823.test.ts (11 tests | 1 failed) 3347ms
+   × legacy adoption checks even the parked S4 execution floor 188ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > legacy adoption checks even the parked S4 execution floor
+AssertionError: promise resolved "{ service: { …(6) }, links: [], …(1) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "api": {
++     "value": null,
++   },
++   "links": [],
++   "service": {
++     "binding": [Function binding],
++     "close": [Function close],
++     "fence": [Function fence],
++     "leave": [Function leave],
++     "representative": HubRepresentativeExecution {
++       "closed": false,
++       "options": {
++         "agentToken": [Function agentToken],
++         "attentionChanged": [Function attentionChanged],
++         "audit": [Function audit],
++         "authorize": [Function authorize],
++         "binding": [Function binding],
++         "db": Database {
++           "inTransaction": false,
++           "memory": false,
++           "name": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823/.artifacts/hub-net-test-2DwiXC/member/hub-member/1efaf656-6f85-4296-bb2f-62e182ab9f7d/member.sqlite",
++           "open": true,
++           "readonly": false,
++         },
++         "deliver": [Function deliver],
++         "journal": HubMemberJournal {
++           "db": Database {
++             "inTransaction": false,
++             "memory": false,
++             "name": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823/.artifacts/hub-net-test-2DwiXC/member/hub-member/1efaf656-6f85-4296-bb2f-62e182ab9f7d/member.sqlite",
++             "open": true,
++             "readonly": false,
++           },
++           "failed": false,
++           "options": {
++             "encryptionKey": {
++               "data": [
++                 186,
++                 91,
++                 229,
++                 198,
++                 237,
++                 5,
++                 223,
++                 89,
++                 156,
++                 213,
++                 113,
++                 225,
++                 150,
++                 253,
++                 216,
++                 180,
++                 55,
++                 164,
++                 230,
++                 230,
++                 103,
++                 81,
++                 201,
++                 146,
++                 214,
++                 197,
++                 32,
++                 141,
++                 245,
++                 110,
++                 159,
++                 116,
++               ],
++               "type": "Buffer",
++             },
++             "floor": HubFileVersionFloor {
++               "home": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823/.artifacts/hub-net-test-2DwiXC/member",
++               "suffix": "hub-member/1efaf656-6f85-4296-bb2f-62e182ab9f7d/floors/journal",
++             },
++             "hubId": "1efaf656-6f85-4296-bb2f-62e182ab9f7d",
++             "now": [Function now],
++             "outbox": {
++               "insert": [Function insert],
++               "lookup": [Function lookup],
++             },
++           },
++         },
++         "link": [Function link],
++         "localExposure": [Function localExposure],
++         "log": [Function log],
++         "now": [Function now],
++       },
++       "receiptsTail": Promise {},
++       "recovered": true,
++       "running": Set {},
++     },
++     "start": [Function start],
++   },
+  }
+
+ ❯ tests/hub-member-repair-3823.test.ts:211:26
+    209|   const { r } = await seeded(); legacy(r);
+    210|   writeFileSync(join(r.memberHome, memberSet(r.identity.hubId).floors[…
+    211|   await expect(member(r)).rejects.toThrow("execution database and floo…
+       |                          ^
+    212| });
+    213|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 39 passed (40)
+   Start at  22:53:41
+   Duration  5.53s (transform 1.79s, setup 210ms, import 2.23s, tests 3.54s, environment 0ms)
+

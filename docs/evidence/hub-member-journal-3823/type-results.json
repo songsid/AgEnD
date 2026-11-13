@@ -1,0 +1,20 @@
+[
+  {
+    "name": "source-types",
+    "command": [
+      "node_modules/.bin/tsc",
+      "--noEmit"
+    ],
+    "exitCode": 0
+  },
+  {
+    "name": "test-types",
+    "command": [
+      "node_modules/.bin/tsc",
+      "--noEmit",
+      "-p",
+      "tsconfig.test.json"
+    ],
+    "exitCode": 0
+  }
+]

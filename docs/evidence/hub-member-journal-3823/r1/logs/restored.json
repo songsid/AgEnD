@@ -1,0 +1,12 @@
+[
+  {
+    "file": "src/hub/member-journal.ts",
+    "sha256": "5282424b9dad438df35673c3e0d38bf088ed3fde97014111fbe195292a875d08",
+    "restored": true
+  },
+  {
+    "file": "src/hub/compose/member.ts",
+    "sha256": "7d3c9d01e171be4b89ded41aa306b5f060c5ebb603e7e6f758f33200695f0fcc",
+    "restored": true
+  }
+]

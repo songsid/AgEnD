@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+(node:23190) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  8 passed (8)
+      Tests  168 passed (168)
+   Start at  22:52:20
+   Duration  22.95s (transform 14.06s, setup 913ms, import 21.21s, tests 21.07s, environment 1ms)
+

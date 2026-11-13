@@ -1,0 +1,49 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-journal.test.ts (29 tests | 1 failed) 281ms
+     × refuses mixed committed/staged legacy ownership before committing a binding 10ms
+ ❯ tests/hub-member-repair-3823.test.ts (11 tests | 1 failed) 5259ms
+   × v1 exposure-only ownership (published=false) keeps old consent out of the new Fleet 388ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > refuses mixed committed/staged legacy ownership before committing a binding
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-member-journal.test.ts:43:159
+     41|   it("refuses mixed committed/staged legacy ownership before committin…
+     42|     const f = fixture(); await f.admission.admit(f.q); const floor = f…
+     43|     expect(() => f.journal.bindPairing(f.profile, [{ committed: { expo…
+       |                                                                                                                                                               ^
+     44|     expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).…
+     45|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > v1 exposure-only ownership (published=false) keeps old consent out of the new Fleet
+TypeError: Cannot open database because the directory does not exist
+ ❯ new Database ../../node_modules/better-sqlite3/lib/database.js:54:10
+ ❯ journal tests/hub-member-repair-3823.test.ts:38:14
+     36| }
+     37| function journal(r: Awaited<ReturnType<typeof rig>>, set = memberSet(r…
+     38|   const db = new Database(join(r.memberHome, set.database));
+       |              ^
+     39|   db.exec("CREATE TABLE IF NOT EXISTS fixture_sources(source TEXT PRIM…
+     40|   return { db, value: new HubMemberJournal(db, { hubId: r.identity.hub…
+ ❯ tests/hub-member-repair-3823.test.ts:161:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  2 failed | 38 passed (40)
+   Start at  22:49:33
+   Duration  8.10s (transform 2.39s, setup 226ms, import 2.87s, tests 5.54s, environment 0ms)
+

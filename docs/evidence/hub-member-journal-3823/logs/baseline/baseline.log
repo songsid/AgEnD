@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-repair-3823.test.ts (11 tests | 1 failed | 9 skipped) 1127ms
+   × #3823 (bound): a new Fleet binding never replays the revoked Fleet's IDs or receipts on the real member link 806ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > #3823 (bound): a new Fleet binding never replays the revoked Fleet's IDs or receipts on the real member link
+AssertionError: promise rejected "Error: Hub authorization unavailable { …(2) }" instead of resolving
+ ❯ tests/hub-member-repair-3823.test.ts:106:75
+    104|     return { v: 1, type: "reconcile", requestId: frame.requestId, link…
+    105|   });
+    106|   const reopened = await member(r); await expect(reopened.service.star…
+       |                                                                           ^
+    107|   expect(reopened.links).toContain("online");
+    108|   expect(r.received.filter(f => f.type === "reconcile").every(f => f.p…
+
+Caused by: Error: Hub authorization unavailable
+ ❯ Object.closed src/hub/client.ts:106:94
+ ❯ HubSocket.end src/hub/socket.ts:50:113
+ ❯ WebSocket.<anonymous> src/hub/socket.ts:28:43
+ ❯ WebSocket.emitClose ../../node_modules/ws/lib/websocket.js:292:10
+ ❯ TLSSocket.socketOnClose ../../node_modules/ws/lib/websocket.js:1374:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'unavailable', reasonCode: 'unavailable' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 9 skipped (11)
+   Start at  22:51:18
+   Duration  3.97s (transform 2.13s, setup 102ms, import 2.58s, tests 1.13s, environment 0ms)
+

@@ -1,0 +1,6 @@
+{
+  "base": "17e0b50633e374a13662214d21e6e28b468f3d98",
+  "testExit": 1,
+  "semanticRed": true,
+  "fixtureSha256": "176f0a9712903b01222112b2d6b39cdd9b22720c4eb1c54e30d0e7e80bc6bd59"
+}

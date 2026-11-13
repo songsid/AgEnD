@@ -1,0 +1,54 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-member-repair-journal-3823
+
+ ❯ tests/hub-member-journal.test.ts (29 tests | 1 failed) 232ms
+     × infers the legacy owner from authenticated questions, never the replacement profile 41ms
+ ❯ tests/hub-member-repair-3823.test.ts (11 tests | 1 failed) 5222ms
+   × a scoped Fleet retains its own receipt/revocation state on restart and offline withdrawal selects only that Fleet 747ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-member-journal.test.ts > #3823 durable pairing ownership > infers the legacy owner from authenticated questions, never the replacement profile
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-member-journal.test.ts:39:138
+     37|     expect(reopened.bindPairing({ ...f.profile, issuerKeyId: "e".repea…
+     38|     expect(reopened.unackedReceipts().receipts).toEqual([receipt]);
+     39|     expect(() => reopened.prepare({ ...f.q, identity: { ...f.q.identit…
+       |                                                                                                                                          ^
+     40|   });
+     41|   it("refuses mixed committed/staged legacy ownership before committin…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-member-repair-3823.test.ts > a scoped Fleet retains its own receipt/revocation state on restart and offline withdrawal selects only that Fleet
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-member-repair-3823.test.ts:188:44
+    186|     expect(retained.db.prepare("SELECT json_extract(committed,'$.expos…
+    187|     for (let i = 0; i < set.keys.length; i++) expect(readFileSync(join…
+    188|     expect(() => current.value.prepare(q)).toThrow("denied");
+       |                                            ^
+    189|   } finally { current.db.close(); retained.db.close(); }
+    190| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  2 failed | 38 passed (40)
+   Start at  22:49:57
+   Duration  7.86s (transform 2.16s, setup 195ms, import 2.70s, tests 5.45s, environment 0ms)
+
