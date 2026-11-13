@@ -64,6 +64,10 @@ describe("the thread's mapping (pure)", () => {
     const w = { id: "a2", roomId: "r", at: 3, author: { kind: "agent", id: "n2", name: "Planner" }, text: "", mentions: [], answerTo: "q1", stage: "working" };
     const small = thread.toThreadMessages([q, a, w], { meId: FIXTURE_ME.id, ids: new Map() });
     expect(small.map((x: any) => x.sender)).toEqual(["陳主任", "Notes · 林小華的 Agent"]);
+    // A final "not answered" with no text still shows, in words (Ridge: only queued and working wait unseen).
+    const gone = { ...w, id: "a3", stage: "not-answered" };
+    const withGone = thread.toThreadMessages([q, a, gone], { meId: FIXTURE_ME.id, ids: new Map() });
+    expect(withGone.map((x: any) => x.text)).toEqual(["@Notes 好嗎", "好", "沒有回答"]);
     expect(small[1].replyTo).toMatchObject({ boot: "room", id: small[0].id, text: "@Notes 好嗎" });
     expect(out.find((x: any) => x.sender === "房間助理 · Hub 提供")).toBeTruthy();
     expect(out[0]).toMatchObject({ role: "status", text: "王經理 建立了這個房間。" });
