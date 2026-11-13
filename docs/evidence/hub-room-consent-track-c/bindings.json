@@ -21,7 +21,7 @@
       "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
     }
   ],
-  "currentInputsHead": "cc27e56cea98de04e0bcd0b008cb24a13314d3db",
+  "currentInputsHead": "c0e172f91dd3acfa8079bbd35052f232f7e2f1f2",
   "captures": [
     {
       "receipt": "docs/evidence/hub-room-consent-track-c/browser-1/receipt.json",
@@ -52,7 +52,7 @@
     "previousServiceSha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9",
     "UIUnchanged": true,
     "PNGUnchanged": true,
-    "receiptSerialization": "lossless path→hash to hash→paths",
+    "receiptSerialization": "lossless path\u2192hash to hash\u2192paths",
     "newBrowserClaim": false
   },
   "r2": {
@@ -211,5 +211,56 @@
     },
     "currentInputs": 41,
     "captures": "All43 C PNGs unchanged at their recorded prior heads; U owner gallery comes from shipped alpha. No new browser, live AD, Fleet, account or input claim."
+  },
+  "releaseAlphaSync": {
+    "sourceHead": "c0e172f91dd3acfa8079bbd35052f232f7e2f1f2",
+    "alpha": "3384e3728260d4f909978001a39d4b40804ced62",
+    "ownerResolution": "bfdf43a5e586a97cdc9559aa54eaf44da2c7d8e4",
+    "merges": [
+      {
+        "head": "22eb1b6bcf94adb8d4a39cd184fd8366563f01a6",
+        "parents": [
+          "35eaf216c2016ed19ca39d7e6a95160c64cffe56",
+          "bfdf43a5e586a97cdc9559aa54eaf44da2c7d8e4"
+        ]
+      },
+      {
+        "head": "c0e172f91dd3acfa8079bbd35052f232f7e2f1f2",
+        "parents": [
+          "22eb1b6bcf94adb8d4a39cd184fd8366563f01a6",
+          "3384e3728260d4f909978001a39d4b40804ced62"
+        ]
+      }
+    ],
+    "protected": {
+      "consentSourceAndTestEqualR1": true,
+      "enhancedRoomAdapterAndCompositionEqualApprovedC2": true,
+      "all43OwnPngsEqual35e": true
+    },
+    "currentInputCount": 46,
+    "focused": {
+      "distinctCases": 179,
+      "distinctFiles": 18,
+      "full16Suites": 174,
+      "selectedFactory": 2,
+      "selectedInventory": 1,
+      "assistantIntegration": 2,
+      "unselectedFactoryRuns": [
+        130,
+        131
+      ]
+    },
+    "native": {
+      "sourceExit": 0,
+      "testExit": 0
+    },
+    "scan": "Current required CI scan is mandatory; no fresh local remerge/history scan claim. Prior13 lossless receipt roundtrips verified; fingerprints unchanged.",
+    "resolutions": {
+      "C2Evidence": "Incoming released alpha evidence; no historical file rewriting.",
+      "assistantAdminUi": "Whole incoming alpha blob, including feature fixture/order assertion.",
+      "productionFactory": "Retain C import, one migration after room schema, optional interface and concrete injected factory; all other incoming wiring retained.",
+      "factoryTest": "Retain both C imports and two HTTPS/restart tests; incoming cases preserved.",
+      "skill": "Incoming assistant paragraph; one agent-room section with the C consent subsection; deduplicate routing row and fix blank table separator/stale assistant sentence."
+    }
   }
 }
