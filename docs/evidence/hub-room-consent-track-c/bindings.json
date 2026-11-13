@@ -21,7 +21,7 @@
       "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
     }
   ],
-  "currentInputsHead": "8aba948aefdf6464e9b7383b221a1c244a594ac9",
+  "currentInputsHead": "dd2ea70a919ddfd182ed64aee424e3b6bc580641",
   "captures": [
     {
       "receipt": "docs/evidence/hub-room-consent-track-c/browser-1/receipt.json",
@@ -54,5 +54,41 @@
     "PNGUnchanged": true,
     "receiptSerialization": "lossless path\u2192hash to hash\u2192paths",
     "newBrowserClaim": false
+  },
+  "r2": {
+    "beforeHead": "8a1974312ba09a589b85c8eb563e76cae19f0aa7",
+    "ownerCommit": "d19c3f49a23e737a8e3d9cb7abe12d16ea597a9b",
+    "captureHead": "dd2ea70a919ddfd182ed64aee424e3b6bc580641",
+    "semanticOwnerPatchEqual": true,
+    "finalNonEvidencePaths": [
+      "scripts/manual/smoke/smoke-hub-shell-gate.mts",
+      "src/ui/shared/hub-chat.css"
+    ],
+    "consentSourceByteEqualR1": true,
+    "tokensCssByteEqualBefore": true,
+    "provisionalOwnPatchFullyReverted": true,
+    "baseline": {
+      "ciRun": 43495758266,
+      "ciShardJob": 132131367528,
+      "ciUiJob": 132130271590,
+      "localCssAssertionReds": 1,
+      "localCssControls": 6,
+      "ciSidebarAssertionReds": 8
+    },
+    "final": {
+      "focusedCases": 19,
+      "focusedFiles": 2,
+      "shellChecks": 174,
+      "shellCases": 2,
+      "shellPictures": 18,
+      "visuallyInspectedOriginals": 4,
+      "maxLoad1": 6.87841796875
+    },
+    "limits": [
+      "No repeated consent/browser flow claim.",
+      "No R2 native/wider-suite rerun.",
+      "Old25PNGs retain original capture-head scope.",
+      "Fresh exact-head CI and draft/parent/shared-presence/integrated-gallery holds remain."
+    ]
   }
 }

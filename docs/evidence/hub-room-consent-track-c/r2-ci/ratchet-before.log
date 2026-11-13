@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c
+
+ ❯ tests/ui-css-literals-ratchet.test.ts (7 tests | 1 failed) 23ms
+     × no new literal colour or px font size: use a token from tokens.css 12ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/ui-css-literals-ratchet.test.ts > stylesheet literals ratchet (style guide rule 4) > no new literal colour or px font size: use a token from tokens.css
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "src/ui/shared/hub-chat.css: font-px font-size: 10.5px (1 now, 0 allowed)",
++ ]
+
+ ❯ tests/ui-css-literals-ratchet.test.ts:126:19
+    124|       if (n > was) added.push(`${file}: ${k} (${n} now, ${was} allowed…
+    125|     }
+    126|     expect(added).toEqual([]);
+       |                   ^
+    127|   });
+    128|   it("the list only shrinks: a literal that is gone is taken off it (r…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  04:11:29
+   Duration  783ms (transform 196ms, setup 298ms, import 245ms, tests 23ms, environment 0ms)
+

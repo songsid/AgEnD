@@ -23,3 +23,7 @@ No real AD, Fleet, account, agent input, native operating-system or full-suite c
 ## R1 review repair
 
 See r1/README.md and verification.json for expired-entry clearing/replacement and skewed-inbox isolation. Current31/4/native checks plus three compiling reversals validate the repaired server. UI and all25PNG bytes are unchanged; prior captures retain their own service-head scope. Receipt serialization is lossless, and only three verified historical public-asset fingerprints are exempted. Fresh exact-head CI remains required.
+
+## R2 inherited UI CI repair
+
+See r2-ci/README.md. The reviewed C service remains byte-identical. Two inherited UI files now consume the owner's#3867fix: shared badge typography and a rooms-v1-aware navigation expectation. Fresh two-case shell checks174/18PNGs and focused19/2 pass. The prior consent captures and R1claims remain stage-bound; no new full consent/gallery or native run is claimed.
