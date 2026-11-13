@@ -29,3 +29,11 @@ The service methods are `list(ctx)`, `get(ctx, id)`, `create(ctx, value)`, `upda
 R applies the normal signed-in read and mutation CSRF handling and passes the current `HubRequestContext`; C performs the business authorization. No room-manager host or R-owned Team SQL is needed. Team DTO field names stay `id`, `name`, `department`, `lead` and `members` per seam 5; C may also return the stored revision. The existing immutable department identity in `HubTeamSnapshot` and its reader methods stay unchanged.
 
 The Team store's 200-person/200-team bounds do not change the room's 100-person union bound. Room membership and invitations use snapshot expansion; creator rights and team ask grants use the live roster. These notes reserve the mount contract only: no Team factory, CRUD route or UI availability is activated by this documentation.
+
+## Team ask-grant subject
+
+C may add exactly `{ kind: "team"; teamId: string }` to `HubGrant.subject` in R-owned `src/hub/types.ts`, in the same change as C's catalog, grant evaluator, impact inventory and retained-row migration. `teamId` is a canonical UUID, validated at the grant-input boundary. Landing the union with its consumers avoids an intermediate type error in code that currently treats every non-person subject as an AD group. R will not make a competing edit to that union.
+
+There is no signed grant schema in `src/hub/protocol.ts` at this checkpoint. Grants are Hub catalog records; the issuer-signed asker envelope carries `grantId` and `grantRevision`, and the existing authorization path checks the current grant. No new subject field, signature format, capability or frame is needed for a team subject. C owns the existing grant-input schema in `catalog.ts`.
+
+New grants retain the 90-day maximum, and retained rows keep their recorded expiries. C's compatible migration must preserve existing person/group grants rather than editing the historical migration. This file-ownership exception reserves the type change only; team-grant availability follows the tested consumer and migration implementation.
