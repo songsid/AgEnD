@@ -21,7 +21,7 @@
       "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
     }
   ],
-  "currentInputsHead": "c4150c8b534a4d062948449329798000a2ddaea7",
+  "currentInputsHead": "cc27e56cea98de04e0bcd0b008cb24a13314d3db",
   "captures": [
     {
       "receipt": "docs/evidence/hub-room-consent-track-c/browser-1/receipt.json",
@@ -52,7 +52,7 @@
     "previousServiceSha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9",
     "UIUnchanged": true,
     "PNGUnchanged": true,
-    "receiptSerialization": "lossless path\u2192hash to hash\u2192paths",
+    "receiptSerialization": "lossless path→hash to hash→paths",
     "newBrowserClaim": false
   },
   "r2": {
@@ -176,5 +176,40 @@
     "ownerPngsByteUnchanged": 154,
     "ownerReceiptRoundTripEqual": 13,
     "currentOwnerEvidenceDirectoryScan": 0
+  },
+  "r5Alpha": {
+    "sourceHead": "cc27e56cea98de04e0bcd0b008cb24a13314d3db",
+    "ownerResolution": "47844b7cb2838b28b9d01909d17059a2344f3144",
+    "alpha": "ffc6bde2a841d4014026134946a602b4412cbe71",
+    "mergeParents": [
+      "21d454aa0574e34dfdecbf4b9c23fd2f3200c6c4",
+      "ffc6bde2a841d4014026134946a602b4412cbe71"
+    ],
+    "focused": {
+      "files": 12,
+      "cases": 131,
+      "exit": 0
+    },
+    "nativeSourceExit": 0,
+    "nativeTestExit": 0,
+    "protected": [
+      {
+        "path": "src/hub/invitations.ts",
+        "sha256": "11b9972a7970fb14e2feff40acb82e6a7afb69266066e2a0481718fe8440d2fa",
+        "equalsClearedR1": true
+      },
+      {
+        "path": "tests/hub-room-consent-track-c.test.ts",
+        "sha256": "5535c9d7b91dbbabcd613238481d1b5c8c88d70c1a5652be808679d670fd91ff",
+        "equalsClearedR1": true
+      }
+    ],
+    "resolutions": {
+      "R610a": "Consumed plain merge21d454aa0 from owner478; earlier six R source paths/evidence choices bound in private and public owner packet.",
+      "alphaFfc": "Latest owner U gallery+receipt from alpha; retain C2 room journal helpers and assistant admin mount. Module list combines incoming unread/U modules plus existing two assistant modules; paired inventory exact. Shared CSS incoming text comment, no old font literal.",
+      "evidence": "53 historical exact fingerprints and all13 repaired receipts retained. New owner routing format retained separately; original receipt decoder stays unchanged."
+    },
+    "currentInputs": 41,
+    "captures": "All43 C PNGs unchanged at their recorded prior heads; U owner gallery comes from shipped alpha. No new browser, live AD, Fleet, account or input claim."
   }
 }

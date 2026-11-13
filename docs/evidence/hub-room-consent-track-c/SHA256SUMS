@@ -1,6 +1,6 @@
-c8f365aab768d339e5b92ebe5f0227852d5bd4abfc4d3b7a27014c6c80eba394  docs/evidence/hub-room-consent-track-c/README.md
-2c56128130858018bb8a87176a890deb0e46be785d78f3c472da1037b6fcecbb  docs/evidence/hub-room-consent-track-c/acceptance.json
-32079eb58502e4f607c566c2b7115911aaee03c48edfdd2aed674d08877473cb  docs/evidence/hub-room-consent-track-c/bindings.json
+ce2b8da5e2c3998758150d82da6e924e1ce65a63f595a62e962ee7deb6f41f7e  docs/evidence/hub-room-consent-track-c/README.md
+98413c21347444d49e5fe756b581aeb88686dd01941cb3ff5d35742b46e47c69  docs/evidence/hub-room-consent-track-c/acceptance.json
+74714da36875116db5414eaa17866d3e4fdd3b75b2d8e72613a2d57aa771a485  docs/evidence/hub-room-consent-track-c/bindings.json
 c341d4c4beabc93bf22790c08897395da1c4ffe852782119a0ac5ca14155a469  docs/evidence/hub-room-consent-track-c/browser-1/desktop-en-dark-accepted.png
 cd446f5c4ceff7f8bc274c35f4846c9974df9a0dd613b8e401bb9e8c69729193  docs/evidence/hub-room-consent-track-c/browser-1/desktop-en-dark-pending.png
 c97422ccddeae7ef9b7d05b1c92dcadee0821ab5c6cbc0518fc9c4bc6d2e8f44  docs/evidence/hub-room-consent-track-c/browser-1/desktop-en-light-accepted.png
@@ -39,7 +39,7 @@ c7521ad55fad29c9bfe7b37ffc9fae4d78aaf87802ff42b21f80762dbf2a6a0d  docs/evidence/
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/factory-source-types.log
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/factory-test-types.log
 d0a1e667959b3a4a0d6daef75e0f743735e8c71d3373b6e3f887712bbee70453  docs/evidence/hub-room-consent-track-c/factory-verification.json
-56bbbc0119083f00ddb4ba2fff16fe956bedc8699d46614bf14f59db87d08153  docs/evidence/hub-room-consent-track-c/inputs.sha256
+39a7f3732cbb5aefdccbdcd289ef18ee6740f6a27c1f85876db77a607d26a346  docs/evidence/hub-room-consent-track-c/inputs.sha256
 3c6606ea76bc03378966db661f4858ea9d97bbe30946ec96d5501ac1d6eff8ff  docs/evidence/hub-room-consent-track-c/integrated-focused.log
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/integrated-source-types.log
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/integrated-test-types.log
@@ -143,5 +143,16 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/r4-final/test-types.log
 56a93db6e89ebe9885c1b5f3f7cea27b6297dcb28c1e87bb091c9c9641420a6c  docs/evidence/hub-room-consent-track-c/r4-final/verification.json
 7a45ce60fc35c6396c0e63c711d583ef239951c8426078f553df35e5cf29040f  docs/evidence/hub-room-consent-track-c/r4-final/verify-encoding.py
+0b2bfcd1b7d82f3e8f2622d05cd8505d689fb2f3a0e3af2e7b7b18c9082f763e  docs/evidence/hub-room-consent-track-c/r5-alpha/README.md
+411094f709bbf0f7af44186a82156775b1222af70d4fd3b7fce31688305c7596  docs/evidence/hub-room-consent-track-c/r5-alpha/binding.json
+37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570  docs/evidence/hub-room-consent-track-c/r5-alpha/current-c-scan.json
+f3dbad83495127fbeec15f06e723786bc44fc67d57e7eccc4671f13e01104cd4  docs/evidence/hub-room-consent-track-c/r5-alpha/current-c-scan.log
+37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570  docs/evidence/hub-room-consent-track-c/r5-alpha/current-r-scan.json
+ac8cbeca944581a121f3f09324ab528902bc969f8fc16b0685f74a81910878e4  docs/evidence/hub-room-consent-track-c/r5-alpha/current-r-scan.log
+d3a90681ba7f2b2dd5b8fa9c7dd47c5d4945e3d850b2121aa7c6f4a1eaaa39b1  docs/evidence/hub-room-consent-track-c/r5-alpha/focused.log
+56bbbc0119083f00ddb4ba2fff16fe956bedc8699d46614bf14f59db87d08153  docs/evidence/hub-room-consent-track-c/r5-alpha/prior-current-inputs.sha256
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/r5-alpha/source-types.log
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/r5-alpha/test-types.log
+c17b222a62c72dc23bbef118c8e68578ca63f99231e246653b498783fa7c274c  docs/evidence/hub-room-consent-track-c/r5-alpha/verification.json
 b22780fc1847880e722daa8b37361a5b7a09914d331cb77bf54d6b54a8fa426b  docs/evidence/hub-room-consent-track-c/run-browser.py
 b84adc200edd1fcf043a19feee5a019aa63216a2455b10a654b17138f08eb149  docs/evidence/hub-room-consent-track-c/visual-review.md

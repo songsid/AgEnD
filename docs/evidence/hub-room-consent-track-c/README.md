@@ -37,3 +37,7 @@ See r3-sync/README.md. The merge consumes Ridge's public resolution and alpha d5
 See r4-final/README.md. Current84/9and both native programs pass. Ridge's final SSE correction is unchanged; consent C source/tests stay at R1.53exact inherited public-hash/message-ID findings are verified while raw R evidence stays byte-identical. Full fresh CIremerge scan remains required; no new browser claim.
 
 Current R receipts additionally use a lossless public-ID/asset encoding so the future squash push scan stays clear. All13decode round trips equal the original data at472; all R PNGs are unchanged. Runtime DTOs are unchanged. See r4-final/verify-encoding.py.
+
+## Current alpha sync
+
+See r5-alpha for the source-preserving current alpha sync,131/12focused and both native checks. The earlier interrupted run has no completed result. Current source bindings are refreshed; prior PNGs remain bound to their original heads.
