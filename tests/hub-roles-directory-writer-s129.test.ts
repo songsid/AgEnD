@@ -192,6 +192,14 @@ describe("S129 trusted writer source and final proof", () => {
     expect(() => d.commit(p.ref, w.actor, () => true, undefined, 150, w.administration)).toThrow(); expect(proofs).toBe(2);
     expect(w.db.prepare("SELECT id FROM hub_settings_operations").all()).toEqual([]);
   });
+  it("refuses a proof clock behind the final writer sample even while both stay within the deadline", async () => {
+    const w = await world(); let ahead = false;
+    const d = w.admission(w.writer({ now: () => w.options.now() + (ahead ? 1 : 0) }));
+    const p = d.prepare(w.candidate(), w.actor, () => true, w.administration);
+    ahead = true; // Separate monotonic clocks: writer101, actual role clock100, preparation100.
+    expect(() => d.commit(p.ref, w.actor, () => true, undefined, undefined, w.administration)).toThrow();
+    expect(w.db.prepare("SELECT id FROM hub_settings_operations").all()).toEqual([]);
+  });
   it("commits under the same recovery deadline while the final role proof remains current", async () => {
     const w = await world(), d = w.admission(w.writer()), p = d.prepare(w.candidate(), w.actor, () => true, w.administration);
     const result = d.commit(p.ref, w.actor, () => true, undefined, 150, w.administration);
