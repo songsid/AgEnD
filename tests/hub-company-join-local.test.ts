@@ -396,7 +396,7 @@ describe("M-2921 (spec 1.3, O1): the connected card's reconnect and 「移除這
     expect(w.pairing.view()).toMatchObject({ state: "paired", hub: { webOrigin: NEW_WEB } });
     const op = await w.controller.reconnect({ ...w.shown, address: NEW_WEB, fleetOrigin: "http://127.0.0.1:4444", handoffId }, w.authority, w.pairing);
     expect(op).toMatchObject({ operationId: expect.any(String), handoffId });
-    expect(w.client.discover.mock.calls.map(c => c[0])).toEqual([NEW_WEB]);
+    expect(w.client.discover.mock.calls.map(c => (c as unknown[])[0])).toEqual([NEW_WEB]);
     expect(w.pushes.length).toBe(pushes + 1);                                                   // past the identity pin, to the Hub
     expect(w.pushes.at(-1)).toMatchObject({ supersedes: { fleetId: w.profile.fleetId, credential: w.profile.credential } });
     expect(existsSync(join(w.directory, new CompanyTrustStore(w.directory).path(NEW_WEB)))).toBe(true);
@@ -405,7 +405,7 @@ describe("M-2921 (spec 1.3, O1): the connected card's reconnect and 「移除這
   it("M-2901: an older tab that sends the saved address still names this connection; Reconnect goes to the new address; Remove takes either", async () => {
     const w = await moved("issuer");
     await w.controller.reconnect({ ...w.shown, address: w.oldWeb, fleetOrigin: "http://127.0.0.1:4444" }, w.authority, w.pairing);
-    expect(w.client.discover.mock.calls.map(c => c[0])).toEqual([NEW_WEB]);
+    expect(w.client.discover.mock.calls.map(c => (c as unknown[])[0])).toEqual([NEW_WEB]);
     w.controller.close();
     for (const address of [NEW_WEB, "saved"]) {
       const v = await moved("issuer");

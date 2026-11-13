@@ -132,6 +132,20 @@ try {
     check("saved exact mount ready", result.status === 200 && result.body.state === "ready");
     await wait(() => reconciliations >= 2);
     check("paired member reconnects with identical credential and pins", readFileSync(profilePath).equals(profileBefore));
+    // M-2901: the connected Fleet learned the Hub's new web address over its pinned link (issuer-signed), kept beside the
+    // pairing; its own pages' Hub links (Settings → Hub, who may ask, the switcher) are built from this view.
+    await wait(() => pairing.view().state === "paired" && pairing.view().hub.webOrigin === nextOrigin);
+    check("member pairing view names the new web address", pairing.view().hub.webOrigin === nextOrigin);
+    check("member keeps the Hub's signed statement beside the pairing", existsSync(join(memberHome, "hub-member", pairing.boundHub().hubId, "web-origin.json")));
+    {
+        const { default: Db } = await import("better-sqlite3");
+        const files = (await import("node:fs")).readdirSync(join(memberHome, "hub-member", pairing.boundHub().hubId)).filter((f: string) => f.endsWith(".sqlite"));
+        let rows = 0;
+        for (const f of files) { const db = new Db(join(memberHome, "hub-member", pairing.boundHub().hubId, f), { readonly: true });
+            try { rows += (db.prepare("SELECT count(*) n FROM hub_audit WHERE action='web-origin.updated' AND result='completed'").get() as any).n; } catch { } finally { db.close(); } }
+        receipt.memberAuditFiles = files;
+        check("member audit records the change", rows === 1);
+    }
     const after = fm.getRawFleetConfig().hub;
     check("member and issuer preserved", after.hubId === before.hubId && after.memberOrigin === before.memberOrigin && JSON.stringify(after.memberListen) === JSON.stringify(before.memberListen));
     await hp.goto(nextOrigin + "/ui/hub");
