@@ -81,7 +81,7 @@ this Hub**. Only that computer's own sign-in sees it, as with **Set up a Hub**.
   address?" → **Confirm change** (確認變更). **Back** changes nothing.
 - The Hub listens on the address's own port. The current certificate is kept when the host name stays the same;
   another host name gets a new self-signed one (browsers warn until it's trusted; compare the fingerprint shown).
-  **Advanced** (進階) sets the listening interface and port (for a router or proxy that forwards another port), or **Use
+  **Advanced** (進階) sets the listening interface and port (for a router or reverse proxy that forwards another port), or **Use
   my own certificate** (paste the certificate and private key as PEM).
 - After the change everyone, the administrator too, signs in to the Hub's pages again, and the old address stops
   working. Connected Fleets stay connected. Tell colleagues the new address: it's the one they type in Settings → Hub,

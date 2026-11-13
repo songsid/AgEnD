@@ -16,7 +16,7 @@ register("hubWebAddress", {
     address: "Address", listens: "Listens on", certificate: "Certificate", expires: "expires {0}", selfSigned: "Self-signed",
     change: "Change address", newAddress: "New address", newHint: "https:// is added for you. If the port isn't 443, add a colon and the port number, for example :8443.",
     advanced: "Advanced", listenHost: "Listen on (interface)", listenPort: "Port",
-    listenHint: "Where the Hub listens on this computer. Usually the address's own port; change it only if a router or proxy forwards another port.",
+    listenHint: "Where the Hub listens on this computer. Usually the address's own port; change it only if a router or reverse proxy forwards another port.",
     cert_keep: "Keep the current certificate", cert_generate: "Create a self-signed certificate for the new address",
     cert_import: "Use my own certificate", certPem: "Certificate (PEM)", keyPem: "Private key (PEM)",
     importHint: "Paste the PEM text. The certificate must cover the new address. The key is sent once to this computer and never shown again.",
@@ -47,7 +47,7 @@ register("hubWebAddress", {
     address: "位址", listens: "監聽於", certificate: "憑證", expires: "到期日 {0}", selfSigned: "自簽",
     change: "變更位址", newAddress: "新位址", newHint: "會自動加上 https://。如果連接埠不是 443，請加上冒號和連接埠號碼，例如 :8443。",
     advanced: "進階", listenHost: "監聽介面", listenPort: "連接埠",
-    listenHint: "Hub 在這台電腦上監聽的位置。通常就是位址本身的連接埠；只有路由器或代理伺服器轉送其他連接埠時才需要變更。",
+    listenHint: "Hub 在這台電腦上監聽的位置。通常就是位址本身的連接埠；只有路由器或反向代理轉送其他連接埠時才需要變更。",
     cert_keep: "沿用目前的憑證", cert_generate: "為新位址建立自簽憑證",
     cert_import: "使用我自己的憑證", certPem: "憑證（PEM）", keyPem: "私鑰（PEM）",
     importHint: "貼上 PEM 文字。憑證必須涵蓋新位址。私鑰只會傳送到這台電腦一次，之後不會再顯示。",
@@ -213,8 +213,8 @@ export function HubWebAddressSettings({ client: given = null } = {}) {
           <fieldset class="field hub-addr-cert"><legend>${copy("certificate")}</legend>
             ${(sameHost || !origin ? ["keep", "generate", "import"] : ["generate", "import"]).map((m) => html`<label class="check"><input type="radio" name="hubAddrCert" value=${m} checked=${mode === m} disabled=${busy}
               onChange=${() => { touch(); setCert(m); setError(""); }} /> ${copy(`cert_${m}`)}</label>`)}
-            ${mode === "import" ? html`<label class="field"><span>${copy("certPem")}</span><textarea id="hubAddrCertPem" rows="4" spellcheck="false" value=${certPem} disabled=${busy} onInput=${(e) => setCertPem(e.target.value)}></textarea></label>
-              <label class="field"><span>${copy("keyPem")}</span><textarea id="hubAddrKeyPem" rows="4" spellcheck="false" autocomplete="off" value=${keyPem} disabled=${busy} onInput=${(e) => setKeyPem(e.target.value)}></textarea></label>
+            ${mode === "import" ? html`<label class="field"><span>${copy("certPem")}</span><textarea id="hubAddrCertPem" rows="4" spellcheck=${false} value=${certPem} disabled=${busy} onInput=${(e) => setCertPem(e.target.value)}></textarea></label>
+              <label class="field"><span>${copy("keyPem")}</span><textarea id="hubAddrKeyPem" rows="4" spellcheck=${false} autocomplete="off" value=${keyPem} disabled=${busy} onInput=${(e) => setKeyPem(e.target.value)}></textarea></label>
               <small class="note">${copy("importHint")}</small>` : null}
           </fieldset>
         </div></details>
