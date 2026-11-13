@@ -88,3 +88,10 @@ button.s-account-used { display: inline-flex; align-items: center; gap: var(--s-
 .s-account-install-run > .signin-warn { color: var(--warn); font-weight: var(--fw-semibold); }
 .s-account-install-output { margin: 0; padding: var(--s-2) var(--s-3); max-height: 14em; overflow: auto; border-radius: var(--r-sm); background: var(--bg); color: var(--text-2); font-size: var(--fs-xs); line-height: 1.5; }
 .s-account-install-run .s-actions { justify-content: flex-end; }
+
+/* AGEND-250 (#3771 review; UI gate, style guide rule 7): on a phone every control of the account cards is a tap target (--tap high). Antigravity made a fourth card with an Add account button and a Fleet-default select; the
+   gate's ratchet lets no small control be added, so these are made tap-high for every card (the three listed allowances for them are gone from ui-gate-tap-allowlist.json). The buttons of one kind share one height, so all of them grow. */
+@media (max-width: 899px) {
+  .s-account-head .s-account-add, .s-account-machine-head .s-account-add { min-height: var(--tap); min-width: var(--tap); }
+  .s-accounts .s-account-default select { min-height: var(--tap); }
+}
