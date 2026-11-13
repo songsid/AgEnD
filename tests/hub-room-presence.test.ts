@@ -41,11 +41,17 @@ describe("presenceView", () => {
   it("R2 presenceReason codes win over legacy text; unknown codes are ignored", () => {
     const r = (presence: string, presenceReason?: string, presenceNote?: string) => P.presenceView({ kind: "agent", name: "x", presence, presenceReason, presenceNote });
     expect(r("paused", "quota", "額度用完")).toEqual({ dot: "paused", word: "stPaused", noteKey: "pauseQuota" });
-    expect(r("working", "approval")).toEqual({ dot: "paused", word: "stPaused", noteKey: "pauseApproval" });
-    expect(r("idle", "update")).toEqual({ dot: "offline", word: "needsUpdate" });
+    expect(r("paused", "approval")).toEqual({ dot: "paused", word: "stPaused", noteKey: "pauseApproval" });
+    expect(r("offline", "update")).toEqual({ dot: "offline", word: "needsUpdate" });
+    expect(r("idle", "update")).toEqual({ dot: "online", word: "stIdle" });
     expect(r("paused", "operator")).toEqual({ dot: "paused", word: "stPaused" });
     expect(r("working", "bogus-code")).toEqual({ dot: "working", word: "stWorking" });
     expect("noteKey" in r("working", "bogus-code")).toBe(false);
+    // A stale reason merged onto a newer presence never wins over it.
+    expect(r("idle", "quota")).toEqual({ dot: "online", word: "stIdle" });
+    expect(r("offline", "quota")).toEqual({ dot: "offline", word: "stOffline" });
+    expect(r("working", "approval")).toEqual({ dot: "working", word: "stWorking" });
+    expect(r("paused", "update")).toEqual({ dot: "paused", word: "stPaused" });
     // stopped/crashed wait on a hubRoom stopped word: presence mapping stands meanwhile.
     expect(r("paused", "stopped")).toEqual({ dot: "paused", word: "stPaused" });
     for (const lang of ["en", "zh-TW"]) {

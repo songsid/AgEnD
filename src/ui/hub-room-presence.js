@@ -26,23 +26,28 @@ const NOTE_KEY = { "額度用完": "pauseQuota", "等待登入": "pauseSignIn", 
 
 /**
  * R2 presenceReason codes → display overrides (hub-rooms track R/C contract).
- * A mapped reason wins over any legacy presenceNote text; an unmapped code is
- * ignored so the presence mapping stands and no raw code ever reaches the UI.
- * - quota/auth/approval/operator/capacity: yellow paused (only the first three
- *   have a reason word; there is no operator/capacity word in hubRoom yet).
- * - update: grey with its own word. - idle: no-op, the presence already says
- *   idle (autowake sleep). - error/stuck/unknown: no mapping defined — the
- *   presence mapping stands ("unknown" on a paused member is plain Paused).
+ * A mapped reason wins over any legacy presenceNote text, but only when the
+ * member's presence matches: patches can merge a stale reason onto a newer
+ * presence that omits it, so a lingering reason must never override a fresh
+ * presence. An unmapped code is ignored so the presence mapping stands and
+ * no raw code ever reaches the UI.
+ * - quota/auth/approval/operator/capacity apply to paused only (yellow; only
+ *   the first three have a reason word, there is no operator/capacity word
+ *   in hubRoom yet).
+ * - update applies to offline only (grey with its own word).
+ * - idle: no-op, the presence already says idle (autowake sleep).
+ * - error/stuck/unknown: no mapping defined — the presence mapping stands.
  * - stopped/crashed: need a hubRoom stopped word, which does not exist yet —
  *   deliberately unmapped here; until it lands, the presence mapping stands.
+ *   (When it lands: grey dot + the new word, gated on presence "paused".)
  */
 const REASON = {
-  quota: { dot: "paused", word: "stPaused", noteKey: "pauseQuota" },
-  auth: { dot: "paused", word: "stPaused", noteKey: "pauseSignIn" },
-  approval: { dot: "paused", word: "stPaused", noteKey: "pauseApproval" },
-  update: { dot: "offline", word: "needsUpdate" },
-  operator: { dot: "paused", word: "stPaused" },
-  capacity: { dot: "paused", word: "stPaused" },
+  quota: { when: ["paused"], dot: "paused", word: "stPaused", noteKey: "pauseQuota" },
+  auth: { when: ["paused"], dot: "paused", word: "stPaused", noteKey: "pauseSignIn" },
+  approval: { when: ["paused"], dot: "paused", word: "stPaused", noteKey: "pauseApproval" },
+  update: { when: ["offline"], dot: "offline", word: "needsUpdate" },
+  operator: { when: ["paused"], dot: "paused", word: "stPaused" },
+  capacity: { when: ["paused"], dot: "paused", word: "stPaused" },
 };
 
 const groupIndex = (presence) => { const i = GROUP_ORDER.indexOf(presence); return i < 0 ? GROUP_ORDER.length : i; };
@@ -64,7 +69,7 @@ export function presenceView(member) {
       : { dot: DOT[presence] ?? "offline", word: WORD[presence] ?? "stOffline" };
   }
   const reason = REASON[member?.presenceReason];
-  if (reason) return { dot: reason.dot, word: reason.word, ...(reason.noteKey ? { noteKey: reason.noteKey } : {}) };
+  if (reason && reason.when.includes(presence)) return { dot: reason.dot, word: reason.word, ...(reason.noteKey ? { noteKey: reason.noteKey } : {}) };
   const noteKey = NOTE_KEY[member?.presenceNote];
   if (presence === "offline" && noteKey === "needsUpdate") return { dot: "offline", word: "needsUpdate" };
   const view = { dot: DOT[presence] ?? "offline", word: WORD[presence] ?? "stOffline" };
