@@ -29,9 +29,10 @@ async function world() {
     spkiSha256: "a".repeat(64), issuerPublicKey: key.publicKey.export({ type: "spki", format: "pem" }).toString() };
   const notices = new HubPairingNotices({ db: w.db, store: w.store, administrator: w.root, directory: w.directory, audit: w.audit,
     current: w.options.current, now: w.options.now, transport: () => null });
-  const service = new HubCompanyJoin({ home, db: w.db, store: w.store, audit: w.audit, groups, notices, identity, certificatePem: "synthetic",
+  const serviceOptions: ConstructorParameters<typeof HubCompanyJoin>[0] = { home, db: w.db, store: w.store, audit: w.audit, groups, notices, identity, certificatePem: "synthetic",
     administrator: w.root, eventDays: 30, current: w.options.current, now: w.options.now, management: w.authority,
-    descriptor: signCompanyDescriptor(identity, key.privateKey), signInvitation: claims => signCompanyInvitation(claims, key.privateKey) });
+    descriptor: signCompanyDescriptor(identity, key.privateKey), signInvitation: claims => signCompanyInvitation(claims, key.privateKey) };
+  const service = new HubCompanyJoin(serviceOptions);
   await service.configure(w.ctx.ctx, { enabled: true, expectedRevision: 1 });
   const make = () => service.createCode(w.ctx.ctx, { expires: "1h", maxUses: 5, perPersonFleets: 2, scope: { kind: "directory" } });
   const begin = async (code: string | null, invitation: string | null) => {
@@ -48,9 +49,28 @@ async function world() {
     const redeem = () => { const payload = { verifier }; return service.redeem(binding, proof("redeem", payload), payload); };
     return { binding, approve, redeem };
   };
-  return { ...w, groups, service, notices, make, begin };
+  return { ...w, groups, service, notices, make, begin, legacy: () => new HubCompanyJoin({ ...serviceOptions, management: undefined }) };
 }
 describe("S129 company issuer and exact committed recovery", () => {
+  it.each(["createCode", "revokeCode", "configure", "createInvitation", "listCodes"] as const)(
+    "keeps legacy company administration root-only for %s even when requireAdmin accepts a non-root person", async action => {
+      const w = await world(), code = await w.make(), service = w.legacy();
+      const requireAdmin = vi.fn(async () => w.ctx.ctx.current()), ctx = { ...w.ctx.ctx, requireAdmin };
+      const attempt = (caller: typeof ctx) => {
+        if (action === "createCode") return service.createCode(caller, { expires: "1h", maxUses: 5, perPersonFleets: 2, scope: { kind: "directory" } });
+        if (action === "revokeCode") return service.revokeCode(caller, code.id);
+        if (action === "configure") return service.configure(caller, { enabled: false, expectedRevision: service.control().revision });
+        if (action === "createInvitation") return service.createInvitation(caller, w.other);
+        return service.listCodes(caller);
+      };
+      expect(await requireAdmin()).toMatchObject({ kind: "directory", person: w.admin }); requireAdmin.mockClear();
+      const before = w.db.serialize();
+      await expect(attempt(ctx)).rejects.toMatchObject({ code: "denied" });
+      expect(requireAdmin).toHaveBeenCalledOnce(); expect(w.db.serialize()).toEqual(before);
+      // The configured root can perform the same valid operation through this legacy service.
+      const root = await w.browser(w.root);
+      await expect(attempt({ ...root.ctx, requireAdmin: vi.fn(() => root.ctx.requireAdmin()) })).resolves.toBeDefined();
+    });
   it.each(["code", "invitation"] as const)("retains an auxiliary issuer and recovers an already issued %s after role loss while refusing a new issuance", async source => {
     const w = await world(), code = source === "code" ? await w.make() : null;
     const invitation = source === "invitation" ? (await w.service.createInvitation(w.ctx.ctx, w.other)).invitation : null;

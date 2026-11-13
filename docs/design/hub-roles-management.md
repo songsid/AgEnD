@@ -70,3 +70,11 @@ This is server-only preparation, so no new UI, PNG or user-facing skill applies.
 Before activation, reverting it changes no deployed role marker or policy. After
 an eventual activated Hub has auxiliary issuer records, do not restore an old
 root-only reader or policy snapshot: use forward recovery or a coherent backup.
+
+Review R1 pins the legacy configured-root guard even when an injected
+`requireAdmin` accepts another directory person: code create/list/revoke,
+company-join configuration and invitation creation all refuse without writes.
+The configured root succeeds through each same valid operation. Removing only
+that guard compiles and makes all five refusal assertions fail; exact source
+restoration passes all 37 selected tests in three files and native test types.
+Production bytes are unchanged; see the R1 evidence receipt.
