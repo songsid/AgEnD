@@ -5,7 +5,7 @@
 //   (chats with one agent: a round avatar with the agent's presence dot, its owner's name; 「Hub 助理」 last, "Hub 提供");
 // - unread first, then by the last message; archived ones last in their group; an unread @ to me is marked;
 // - a list from a Hub without rooms yet (`limited`: today's chats) shows no dot and no unread — that Hub has neither.
-// Words: hub-room-strings.js (namespace hubRoom, #3850's keys).
+// Words: hub-room-strings.js (namespace hubRoom, its list.* keys; #3850).
 import { html } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { firstCharacter } from "/assets/instance-nav.js";
@@ -59,12 +59,12 @@ export function rowView(r) {
   const group = r.kind === "group", limited = r.limited === true;
   // Today's chats keep what their row said: closed, or a question waiting (the Fleet's working dot), else its owner.
   const closed = limited && r.legacy?.state === "closed", waiting = limited && !closed && r.legacy?.waiting === true;
-  const line2 = group ? tr("roomSub", String(r.people ?? 0), String(r.agents ?? 0))
+  const line2 = group ? tr("list.roomLine", String(r.people ?? 0), String(r.agents ?? 0))
     : closed ? t("hubChat.tagClosed") : waiting ? t("hubChat.waiting")
-    : r.assistant ? tr("providedByHub") : String(r.agent?.owner?.name || "");
+    : r.assistant ? tr("list.hubProvided") : String(r.agent?.owner?.name || "");
   return {
-    title: r.assistant ? tr("hubAssistant") : String(r.name || ""), line2,
-    avatar: { square: group, text: firstCharacter(r.assistant ? tr("hubAssistant") : String(r.name || "?")) || "?" },
+    title: r.assistant ? tr("list.hubAssistant") : String(r.name || ""), line2,
+    avatar: { square: group, text: firstCharacter(r.assistant ? tr("list.hubAssistant") : String(r.name || "?")) || "?" },
     dot: group ? null : limited ? waiting ? "busy" : null : r.assistant ? "ok" : presenceDot(r.agent?.presence),
     closed,
     unread: limited ? 0 : Math.max(0, Number(r.unread) || 0), mentioned: !limited && r.mentioned === true, archived: r.archived === true || closed,
@@ -80,7 +80,7 @@ const listTime = (ms) => {
 /** The groups as the Fleet roster draws them. `current`: the open room's id; `onGo(e, room)`: a row was chosen. */
 export function HubRoomRows({ rooms, q = "", current = null, href, onGo }) {
   return html`${groupRooms(rooms, q).map((g) => html`<div key=${g.key} class="hub-room-group" data-group=${g.key}>
-    <div class="inst-head"><h2 class="side-label">${tr(g.key === "rooms" ? "roomsGroup" : "agentsGroup")}</h2><span class="count">${g.items.length}</span></div>
+    <div class="inst-head"><h2 class="side-label">${tr(g.key === "rooms" ? "list.groupRooms" : "list.groupAgents")}</h2><span class="count">${g.items.length}</span></div>
     <ul class="hub-rooms" role="list">${g.items.map((r) => {
       const v = rowView(r), on = current === r.id;
       return html`<li key=${r.id} class="v-li two-line" data-room=${r.id}>
@@ -89,9 +89,9 @@ export function HubRoomRows({ rooms, q = "", current = null, href, onGo }) {
           <span class=${`av${v.avatar.square ? " av-square" : ""}`}><span class="av-text" aria-hidden="true">${v.avatar.text}</span>${v.dot
             ? html`<span class=${`av-dot dot ${v.dot}`} aria-hidden="true"></span>` : null}</span>
           <span class="inst-text"><span class="inst-line"><span class="inst-name" title=${v.title}>${v.title}</span><span class="v-meta">${listTime(r.lastAt)}</span></span>
-            <span class="inst-line inst-line2"><span class="inst-alt" title=${v.line2 || undefined}>${v.archived ? `${tr("archived")} · ${v.line2}` : v.line2}</span>
-              ${v.mentioned ? html`<span class="hub-room-at" title=${tr("mentionedYou")}>@</span>` : null}
-              ${v.unread ? html`<span class="nav-count" title=${tr("unreadN", String(v.unread))}>${v.unread > 99 ? "99+" : v.unread}</span>` : null}</span></span>
+            <span class="inst-line inst-line2"><span class="inst-alt" title=${v.line2 || undefined}>${v.archived ? `${tr("list.archived")} · ${v.line2}` : v.line2}</span>
+              ${v.mentioned ? html`<span class="hub-room-at" title=${tr("list.mentioned")}>@</span>` : null}
+              ${v.unread ? html`<span class="nav-count" title=${tr("list.unread", String(v.unread))}>${v.unread > 99 ? "99+" : v.unread}</span>` : null}</span></span>
         </a></li>`;
     })}</ul></div>`)}`;
 }
