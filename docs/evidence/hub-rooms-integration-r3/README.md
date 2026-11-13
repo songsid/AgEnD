@@ -15,3 +15,7 @@ Remaining: concrete C invitation/Team services and production factory injection,
 See [r1/README.md](r1/README.md) and its bound receipt: source `7ce5d52798704ca3000b313a30bc7d1da111c5ef`,106/15 focused, both native programs0,38/38 actual-browser checks and12 original PNGs. It replaces the NewRoom component harness with the real sidebar action and adds actual room settings/admin walks. Earlier packet remains historical and untouched.
 
 Administration order is consumed separately in [admin-order.md](admin-order.md), with33 focused UI checks. Existing revision1 screenshots retain their original source binding.
+
+## Revision2: all three PM follow-ups combined
+
+[r2/README.md](r2/README.md) records source `5706f1a98c6c72fc0faf210a77f2791cc2920326`:51 focused UI checks plus the overlapping final23-case A slice,45/45 real-browser checks and16 refreshed original PNGs. It consumes admin order, signed-in copy and Name/Save alignment together; previous gallery bindings remain historical.
