@@ -57,7 +57,7 @@ describe("M-3032: the reminders keep their rules", () => {
   it("reply-required: one reply through the reply tool (or a react), only through them, work kept", () => {
     expect(prompt.startsWith("[system:reply-required] ")).toBe(true);
     expect(prompt).toMatch(/Send it once now with the reply tool/);
-    expect(prompt).toMatch(/a react is enough/);
+    expect(prompt).toMatch(/an emoji react is enough/);
     expect(prompt).toMatch(/Answer this only through the react or reply tool\./);
     expect(prompt).toMatch(/the work itself is done; keep it/);
     expect(prompt).toMatch(/if you already replied, carry on/);

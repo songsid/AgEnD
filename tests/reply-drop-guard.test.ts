@@ -287,7 +287,7 @@ describe("Claude human-turn reply completion harness", () => {
     expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
     expect(detected).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("chat=guild-1, thread=channel-1") }));
     expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
-    expect(daemon.deliverMessage.mock.calls[0][0]).toContain("React with an emoji or use the reply tool");
+    expect(daemon.deliverMessage.mock.calls[0][0]).toContain("Send it once now with the reply tool");
     expect(daemon.deliverMessage.mock.calls[0][0]).not.toMatch(/👍|✅|👀|⏳|❌/); // no specific emoji
     expect(daemon.deliverMessage.mock.calls[0][0]).toContain("already replied"); // idempotent (#1241)
     expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("recovering");
@@ -361,7 +361,7 @@ describe("Claude human-turn reply completion harness", () => {
 
     expect(detected).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_valid_call", recoveryStarted: true }));
     expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
-    expect(daemon.deliverMessage.mock.calls[0][0]).toContain("React with an emoji or use the reply tool");
+    expect(daemon.deliverMessage.mock.calls[0][0]).toContain("Send it once now with the reply tool");
   });
 
   it("still re-prompts when only a non-human-facing outbound succeeded", async () => {
