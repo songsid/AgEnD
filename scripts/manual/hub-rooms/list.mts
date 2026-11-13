@@ -1,5 +1,6 @@
 /**
- * M-3092 PR 1b browser acceptance: the Hub's conversation list on the Fleet roster's rows (docs/design/hub-rooms-ux.md §2).
+ * M-3092 browser acceptance: the Hub's conversation list on the Fleet roster's rows (docs/design/hub-rooms-ux.md §2) and a
+ * room on the Fleet chat's thread with its composer (§3–§4, §10).
  * The real Hub listener (tests/helpers/hub-s3b-rig.ts) serves the workspace shell and its modules over HTTPS on loopback;
  * every /hub/v1/* call is answered by the rooms fixture (tests/support/hub-rooms-fixture.ts) — no fleet, CLI or account.
  * Variants, EN/zh-TW × desktop/phone × light/dark (MATRIX=quick: desktop-en-light, phone-zh-TW-dark):
@@ -7,6 +8,9 @@
  *   after-live    — this tree; a Hub with rooms (the fixture: rooms, chats, the Hub assistant, unread, @, presence);
  *   after-limited — this tree; a Hub without rooms yet (today's chats in the new rows: waiting, closed);
  *   skew          — this tree's panel with BASE_REF's hub-client.js (an open tab after an upgrade): the same list, no error.
+ * Room pages: `room-before.*` (a chat on BASE_REF's modules: today's room view), `room-after.*` (研一主管週會: authors, the
+ * @all progress line, the room's own lines without tools), `menu-after.*` (the @ menu), and on the quick cases
+ * `assistant-after.*` (the Hub assistant's one-to-one: 「問 Hub 助理」, never its stored English name).
  * Writes PNGs and receipt.json (sourceHead, baseRef, inputs' digests, every check, every PNG's sha256) to OUT.
  *   PW_DIR=<playwright-core root> REPO=$PWD OUT=<dir> [BASE_REF=origin/release/2.3.5-alpha] [MATRIX=full|quick] npx tsx scripts/manual/hub-rooms/list.mts
  */
@@ -46,7 +50,7 @@ const pw = createRequire(resolve(process.env.PW_DIR!, "package.json"))("playwrig
 const browser = await pw.chromium.launch({ args: ["--no-sandbox"] });
 const receipt: any = { sourceHead: git("rev-parse", "HEAD"), baseRef: git("rev-parse", base), dirty: git("status", "--porcelain").split("\n").filter(Boolean),
   inputs: [...Object.values(BASE_FILES).map(p => ({ path: p, base: sha(baseOf(p)) })),
-    ...["src/ui/panel-hub.js", "src/ui/hub-client.js", "src/ui/hub-room-list.js", "src/ui/hub-room-strings.js", "src/ui/shared/hub-chat.css", "tests/support/hub-rooms-fixture.ts"].map(p => ({ path: p, sha256: sha(readFileSync(join(repo, p))) }))],
+    ...["src/ui/panel-hub.js", "src/ui/hub-client.js", "src/ui/hub-room-list.js", "src/ui/hub-room-strings.js", "src/ui/hub-room-thread.js", "src/ui/hub-room-composer.js", "src/ui/shared/chat-thread.js", "src/ui/shared/hub-chat.css", "tests/support/hub-rooms-fixture.ts"].map(p => ({ path: p, sha256: sha(readFileSync(join(repo, p))) }))],
   checks: [], pictures: [] };
 const check = (name: string, ok: unknown, detail?: unknown) => { receipt.checks.push({ name, ok: !!ok, ...(ok ? {} : { detail }) }); console.log(`${ok ? "PASS" : "FAIL"} ${name}`); };
 const cases = (process.env.MATRIX ?? "full") === "quick"
@@ -77,6 +81,10 @@ async function open(variant: "before" | "after-live" | "after-limited" | "skew",
   await p.waitForTimeout(400);
   return { ctx, p, errors, list };
 }
+const shotPage = async (p: any, name: string) => {
+  const file = join(out, name); await p.screenshot({ path: file });
+  receipt.pictures.push({ path: name, sha256: sha(readFileSync(file)) });
+};
 const shot = async (p: any, sel: string, name: string) => {
   const file = join(out, name); await p.locator(sel).first().screenshot({ path: file });
   receipt.pictures.push({ path: name, sha256: sha(readFileSync(file)) });
@@ -94,8 +102,39 @@ try {
           groups.length === 2 && names.length === 6 && names[0] === "研一主管週會" && await p.locator(`${list} .nav-count`).count() >= 1 && errors.length === 0, { groups, names, errors });
       } else check(`${tag} before: today's list (three chats, alpha's own rows); no page error`, names.length === 3 && errors.length === 0, { names, errors });
       await shot(p, device(c) === "phone" ? ".hub-home-list" : "#sidebar", `list.${variant}.${tag}.png`);
+      // The room page: today's chat on the base's modules, or a room of a Hub with rooms on the shared thread.
+      if (variant === "before") {
+        await p.goto(`${origin}/ui/hub?room=${LEGACY[1]!.id}`);
+        await p.waitForSelector(".hub-chat-main", { timeout: 15000 }); await p.waitForTimeout(400);
+        check(`${tag} room-before: today's chat page opens; no page error`, errors.length === 0, { errors });
+        await shotPage(p, `room-before.${tag}.png`);
+      } else {
+        await p.goto(`${origin}/ui/hub?room=room-weekly`);
+        await p.waitForFunction(() => document.querySelectorAll(".hub-room-page .thread .msg").length > 5, undefined, { timeout: 15000 }); await p.waitForTimeout(400);
+        const bareOk = await p.evaluate(() => [...document.querySelectorAll(".hub-room-page .thread .status-line")].every((el) => !el.querySelector(".msg-tools")));
+        const progress = await p.locator(".hub-room-page .thread .status-line").allTextContents();
+        check(`${tag} room-after: the room's header, its progress line, its own lines without tools; no page error`,
+          bareOk && progress.some((x) => /6|已回答|Answered/.test(x)) && errors.length === 0, { bareOk, progress: progress.slice(0, 4), errors });
+        await shotPage(p, `room-after.${tag}.png`);
+        await p.locator(".hub-room-page #msgIn").fill("@");
+        await p.locator(".hub-room-page #msgIn").press("End");
+        await p.waitForSelector(".hub-room-page .cmd-palette li", { timeout: 5000 }).catch(() => {});
+        const menu = await p.locator(".hub-room-page .cmd-palette .cmd-name").allTextContents();
+        check(`${tag} menu-after: the @ menu leads with @All agents and the room assistant`, menu.length >= 2 && /All agents|所有 Agent/.test(menu[0] || "") && /assistant|房間助理/.test(menu[1] || ""), { menu: menu.slice(0, 3) });
+        await shotPage(p, `menu-after.${tag}.png`);
+      }
       await ctx.close();
     }
+  }
+  for (const c of [["desktop", "en", "light"], ["phone", "zh-TW", "dark"]]) {
+    const tag = c.join("-"), { ctx, p, errors } = await open("after-live", c);
+    await p.goto(`${origin}/ui/hub?room=room-assistant`);
+    await p.waitForSelector(".hub-room-page .hub-assistant-empty", { timeout: 15000 }); await p.waitForTimeout(300);
+    const ph = await p.locator(".hub-room-page .composer-ph").textContent(), body = await p.locator(".hub-room-page").textContent();
+    check(`${tag} assistant-after: 「Hub 助理」 by its flag, its own prompt, never the stored English name; no page error`,
+      /問 Hub 助理|Ask the Hub assistant/.test(ph || "") && (c[1] === "en" || !String(body).includes("Hub assistant")) && errors.length === 0, { ph, errors });
+    await shotPage(p, `assistant-after.${tag}.png`);
+    await ctx.close();
   }
   for (const c of [["desktop", "en", "light"], ["phone", "zh-TW", "dark"]]) {
     const tag = c.join("-");
