@@ -955,8 +955,11 @@ function codexBoxedResumeLoading(rows: string[]): boolean {
  *
  * Anti-forgery: an assistant quoting this screen writes the same indented
  * rows, so the header must come before any transcript row (`›`/`•`), and the
- * composer must be the last thing on screen (a settled session has a footer
- * below it; the loading screen has none).
+ * composer must be the last thing on screen: a settled session has a footer
+ * below it (the status line's session id, then its hints). The loading screen
+ * has none — until 0.169.0, whose loading screen shows the bare shortcut hint
+ * `  ? for shortcuts` alone under the composer (alpha audit #3830).
+ * That one row is allowed; anything else below the composer still means settled.
  */
 function codexUnboxedResumeLoading(rows: string[]): boolean {
   const header = rows.findIndex(row => /^ {2}>_ OpenAI Codex \(v[^)]+\)\s*$/.test(row));
@@ -969,7 +972,8 @@ function codexUnboxedResumeLoading(rows: string[]): boolean {
   const after = rows.slice(resume + 1).map(row => row.trimEnd());
   const composer = after.findIndex(row => row !== "");
   if (composer < 0 || composer > 2 || !/^›(?:\s|$)/.test(after[composer]!)) return false;
-  return after.slice(composer + 1).every(row => row === "");
+  const below = after.slice(composer + 1).filter(row => row !== "");
+  return below.length === 0 || (below.length === 1 && /^ {2}\? for shortcuts$/.test(below[0]!));
 }
 
 /**
