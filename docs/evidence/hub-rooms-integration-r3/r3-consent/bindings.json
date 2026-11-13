@@ -1,0 +1,67 @@
+{
+  "sourceHead": "d168bed13fedf26721a9abe180fcbddf8117ba68",
+  "consentInput": "39b9000ad65da895b1239b5642bfa0efaf5d2a68",
+  "consentMerge": "6a639b17257815751f50f39ba1a6edf8fc7e7951",
+  "wiringSource": "36368b993e030dc7557e2ed8b80384163c97a40e",
+  "inventoryOnlyFix": "d168bed13fedf26721a9abe180fcbddf8117ba68",
+  "consentSourceUnchanged": true,
+  "bindings": {
+    "src/hub/compose/server.ts": "26bc9fe524f9e40e405ea6e49d1041255f98d7fd5e9169fe00f1de911956f7b7",
+    "src/hub/invitations.ts": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9",
+    "tests/hub-compose.test.ts": "69f753afcdee5be97f8149c8d40dda0cbf3f6d7c9e5193ac3e2be6a6ddb8297e",
+    "scripts/manual/hub-rooms/real-server.mts": "1548ba2d1f802a9b405165425b12988eac09538e5d5a6739275ae6c450fe25bd",
+    "src/ui/hub-invitations.js": "b30cd28e6dacfa02879a9b14281ad0124e15a6caf3232e6edaa6141889f536e1",
+    "src/ui/panel-hub.js": "98ac233c173e4f34e18a96378db7c3a92427d12fd336ca5a633f59ebbfbb51b2",
+    "src/ui/hub-client.js": "16c865fa7ce2f556818918a1a86e72d4b2744590c532c209e4f0e23626488fc8",
+    "src/ui/hub-room-new.js": "f4ade027d0733418d22f42d333dca9453f2f496eb58eaec4cd2ab0ee76459286",
+    "src/ui/hub-room-settings.js": "e96d99d9ec5af3e20a3a537ef3f9cd77ca6a5cca749aabb2b386926b6f8c076a",
+    "src/ui/hub-room-members.js": "6412d130351d049dcad325732b3f3cbbc42e24eb2655ca9f7c7cc109eaf085e3",
+    "src/ui/hub-assistant-admin.js": "183eece7eed0cd2190a96fb86f10876f3c0bf285064fab091e9209778978320c"
+  },
+  "newFactoryControls": {
+    "before": {
+      "semanticFailures": 2,
+      "reasons": [
+        "missing migration registry",
+        "invitation HTTP404"
+      ]
+    },
+    "after": {
+      "passed": 2,
+      "files": 1
+    }
+  },
+  "compatibilityRun": {
+    "files": 4,
+    "passed": 149,
+    "failed": 1,
+    "failure": "exact fake-HTTP factory schema inventory omitted new s3-room-invitations; fixed expectation only"
+  },
+  "afterInventoryFix": {
+    "passed": 3,
+    "files": 1,
+    "scope": "exact previous inventory case plus both new production factory cases; overlaps previous run"
+  },
+  "nativeTypeChecks": [
+    {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+      "exitCode": 0
+    },
+    {
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exitCode": 0
+    }
+  ],
+  "browser": {
+    "passed": 63,
+    "pictures": 20,
+    "servedAssets": 108,
+    "sourceHead": "d168bed13fedf26721a9abe180fcbddf8117ba68",
+    "scope": "Real R HTTP/SQLite + A service/runner + shared U1/U2 browser components; inert directory and physical worker; all list/new-room/thread/settings/admin views mounted by the actual Hub shell; C consent service/migration are injected at the real HTTP boundary; Teams remain uncomposed; production factory registration is checked separately by hub-compose tests"
+  },
+  "limitations": [
+    "owned inert directory, delivery and physical assistant worker; no real vendor CLI/API, AD or Fleet",
+    "browser injects C migration/factory at actual HTTP boundary; separate sealed-Hub HTTPS test proves production registration",
+    "Teams and full S142 acceptance remain open; C ordinary review/production merge gates separate"
+  ]
+}
