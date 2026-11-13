@@ -422,6 +422,7 @@ import { AuthorityStateStore, type AuthorityState } from "./authority/authority-
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
+import { listOptions, scheduleListAnswer, taskListAnswer, taskTitle } from "./agent-list-output.js";
 import { decisionListAnswer } from "./decision-list.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { hubInitializationSession } from "./authority/hub-initialization.js";
@@ -14588,7 +14589,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             includeArchived: payload.include_archived as boolean | undefined,
             tags: payload.tags as string[] | undefined,
             teams: instanceTeams(this.fleetConfig?.teams, instanceName),
-          }), { id: payload.id, full: payload.full });
+          }), { id: payload.id, full: payload.full, detail: payload.detail, limit: payload.limit, cursor: payload.cursor });
           break;
         case "fleet_decision_update": {
           const id = payload.id as string;
@@ -14764,7 +14765,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ...(reply.silent !== undefined ? { silent: reply.silent } : {}),
         });
       case "list":
-        return scheduler.list(requestedTarget);
+        return scheduleListAnswer(scheduler.list(requestedTarget), args);
       case "update":
         return scheduler.update(args.id as string, args as Record<string, unknown>);
       case "delete":
@@ -14887,7 +14888,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         includeArchived: args.includeArchived === true || args.include_archived === true,
         tags: asStrArr(args.tags),
         teams: instanceTeams(this.fleetConfig?.teams, instance),
-      }), { id: op === "get" ? asStr(args.id) ?? "" : args.id, full: args.full });
+      }), { id: op === "get" ? asStr(args.id) ?? "" : args.id, full: args.full, detail: args.detail, limit: args.limit, cursor: args.cursor });
       case "update": {
         const id = asStr(args.id);
         if (!id) return { error: "id is required" };
@@ -14948,18 +14949,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // #1336 item 1: default to live-only (no done/cancelled) unless the
           // caller explicitly asked for a status.
           const effectiveStatus = explicitStatus ?? LIVE_TASK_STATUSES;
-          const verbose = args.verbose === true;
+          listOptions(args);
+          const verbose = args.verbose === true || args.detail === true;
           const tasks = verbose
             ? db.listTasks({ assignee: filterAssignee, status: effectiveStatus, verbose: true })
             : db.listTasks({ assignee: filterAssignee, status: effectiveStatus });
           // #1335: cap unfiltered list. The default live-only filter does not
           // count as an explicit filter for the cap decision.
-          return applyTaskListCap(tasks, filterAssignee, explicitStatus);
+          return args.detail === true || args.verbose === true ? applyTaskListCap(tasks, filterAssignee, explicitStatus) : taskListAnswer(tasks, args);
         }
         case "get": {
           const id = asStr(args.id);
           if (!id) return { error: "id is required" };
-          return db.getTaskByPrefix(id);
+          listOptions(args);
+          const row = db.getTaskByPrefix(id);
+          return args.detail === true ? row : taskTitle(row);
         }
         case "claim": {
           const id = asStr(args.id);
@@ -15106,17 +15110,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const explicitStatus = asStatusFilter(payload.filter_status);
           // #1336 item 1: default to live-only (no done/cancelled).
           const effectiveStatus = explicitStatus ?? LIVE_TASK_STATUSES;
-          const verbose = payload.verbose === true;
+          listOptions(payload);
+          const verbose = payload.verbose === true || payload.detail === true;
           const tasks = verbose
             ? db.listTasks({ assignee: filterAssignee, status: effectiveStatus, verbose: true })
             : db.listTasks({ assignee: filterAssignee, status: effectiveStatus });
           // #1335: cap unfiltered list — the default live-only filter does not
           // count as an explicit filter.
-          result = applyTaskListCap(tasks, filterAssignee, explicitStatus);
+          result = payload.detail === true || payload.verbose === true ? applyTaskListCap(tasks, filterAssignee, explicitStatus) : taskListAnswer(tasks, payload);
           break;
         }
         case "get":
-          result = db.getTaskByPrefix(payload.id as string);
+          listOptions(payload);
+          result = payload.detail === true ? db.getTaskByPrefix(payload.id as string) : taskTitle(db.getTaskByPrefix(payload.id as string));
           break;
         case "claim":
           logTask = db.claimTask(db.getTaskByPrefix(payload.id as string).id, meta.instance_name || instanceName, { kind: "instance", name: meta.instance_name || instanceName });
