@@ -65,7 +65,7 @@ try {
       await until(() => web!.db.prepare("SELECT 1 FROM hub_exposures WHERE id=?").get(exposureId), name + " publication"); await publisher.refresh();
     };
     const value = { name, exposureId, profile, db, inputs, adapter, publisher, connect,
-      disconnect: async () => { await client.value.close(); adapter.connected(null); publisher.connected(null); web!.http.memberClosed?.(profile.fleetId); },
+      disconnect: async () => { await client.value.close(); adapter.connected(null); publisher.connected(null); await until(() => net.server.features(profile.fleetId) === null, name + " server observed close"); web!.http.memberClosed?.(profile.fleetId); },
       state: async (next: AgentStateInput) => { state = next; await publisher.refresh(); },
       answer: async (input: HubRepresentativeDelivery, text: string) => { await adapter.settled(); await adapter.report({ correlationId: input.correlationId!, caller: name, text }); },
     }; peers.push(value); await connect(); return value;
