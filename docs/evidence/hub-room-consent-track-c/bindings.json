@@ -45,5 +45,14 @@
       "complete": true,
       "cssOwnerHead": "ae3852c81f7a3878768f54452f18483a46c6de07"
     }
-  ]
+  ],
+  "r1": {
+    "sourceCommit": "8aba948aefdf6464e9b7383b221a1c244a594ac9",
+    "serviceSha256": "11b9972a7970fb14e2feff40acb82e6a7afb69266066e2a0481718fe8440d2fa",
+    "previousServiceSha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9",
+    "UIUnchanged": true,
+    "PNGUnchanged": true,
+    "receiptSerialization": "lossless path\u2192hash to hash\u2192paths",
+    "newBrowserClaim": false
+  }
 }

@@ -1,8 +1,8 @@
-195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9  src/hub/invitations.ts
-9b15cd2d748e6f4cbe0f367d9e338aa6c3b8d0081dc7ded2b6fb52073429ef19  tests/hub-room-consent-track-c.test.ts
-f9aea485186b05856460eb90d1399144615026920dd8822621003a295d8a89ed  docs/design/hub-room-owner-consent.md
-2464977ccab4cee4c723eaf7d6d95a4f1f6b5a5801105f610ca322a28b88665a  scripts/manual/hub-room-consent/browser.mts
-521ec8b7c8a2e34807acb68e8238cea65fea711453c7847bb7112c293be4a320  src/general-knowledge/skills/hub/SKILL.md
+11b9972a7970fb14e2feff40acb82e6a7afb69266066e2a0481718fe8440d2fa  src/hub/invitations.ts
+5535c9d7b91dbbabcd613238481d1b5c8c88d70c1a5652be808679d670fd91ff  tests/hub-room-consent-track-c.test.ts
+b2bdade7705753fff2fede34164e56edaafc986343e55971cef4d85c632d33fa  docs/design/hub-room-owner-consent.md
+a5eaea84bd84bdec6e7537d1840a1e4ee93ea8853f6cd32db48ff5e3c4a8a10b  scripts/manual/hub-room-consent/browser.mts
+8215f0263050b311f03a5ded2aecdb615ff10c79d309d74b77b8af55017c404c  src/general-knowledge/skills/hub/SKILL.md
 2ad90b5d2f5877ae2e06936665d6c291e9b67134343275b39890bfd94116fa9f  src/hub/rooms/service.ts
 aed9fb0eb8b73521859b62042a4d578927a5d0f868373b3bda1df76000792e7d  src/hub/rooms/schema.ts
 d416279bac416c4b616a9660f1d7d1104199ea6a832361c17051fe3909b59da5  src/hub/rooms/types.ts
@@ -22,3 +22,5 @@ a854bad193477756a421d4d4a01af8ef56c53b6fb2af5ab4c18b846224dff6c9  src/ui/hub-roo
 55e0bd511384e1e87d2ef2c2b997697966b85f0e491941791cd92ef1f2c62b89  src/ui/shared/hub-rooms-u2.css
 26bc9fe524f9e40e405ea6e49d1041255f98d7fd5e9169fe00f1de911956f7b7  src/hub/compose/server.ts
 69f753afcdee5be97f8149c8d40dda0cbf3f6d7c9e5193ac3e2be6a6ddb8297e  tests/hub-compose.test.ts
+f1c33a340220e32a418d84231f2c2c743dc40243b25ddb396fe508a5fbe76a95  changes/3095-room-owner-consent.md
+63af1cdc4662858d4f12f1e45c7dc8fcc0ececef5ca76cba4cc8bd0407190099  changes/3095-room-owner-consent.zh-TW.md
