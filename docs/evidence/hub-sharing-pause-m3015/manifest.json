@@ -331,8 +331,8 @@
   },
   {
     "path": "ci-repair/ci-repair-focused.log",
-    "sha256": "ae2dd362470d02fdde4f253aeff792a22b2e06eb7e64395939e4b4513e8b1476",
-    "bytes": 462
+    "sha256": "c69ae2ba4a007ae8c41a5812fd943ce9df09b4101aaea98b2cdb47b4ab664f8f",
+    "bytes": 461
   },
   {
     "path": "ci-repair/ci-repair-test-types.log",
