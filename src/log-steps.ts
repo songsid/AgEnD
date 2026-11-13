@@ -1,3 +1,4 @@
+import { parseClaudeModelRecord, type ModelSwitch } from "./claude-model-observation.js";
 /**
  * #1218: an instance's work, step by step, for the web Log tab (紀錄) — the step model and the per-backend parsers.
  * Design: issue #1218 comment 6142912335 and the user's decisions after it; docs/design/1218-live-activity.md.
@@ -53,6 +54,8 @@ export interface LogStep {
   note?: string;
   /** AGEND-181: what ties this step to a row of the chat ledger (see StepAnchor). Only user steps and `reply` calls carry one. */
   anchor?: StepAnchor;
+  modelSwitch?: ModelSwitch;
+  servedModel?: string;
 }
 
 /**
@@ -445,6 +448,10 @@ export class ClaudeStepParser extends StepParser {
   protected record(e: Record<string, unknown>): Emission {
     const ts = tsOf(e.timestamp);
     const msg = e.message as Record<string, unknown> | undefined;
+    const modelRecord = parseClaudeModelRecord(e);
+    if (modelRecord?.kind === "switch") return [this.add({ id: `model:${modelRecord.sessionId}:${modelRecord.id}`, kind: "state", ts, note: `Model switched: ${modelRecord.original} → ${modelRecord.served}`,
+      modelSwitch: { id: modelRecord.id, original: modelRecord.original!, served: modelRecord.served,
+        cause: modelRecord.cause!, scope: modelRecord.scope!, since: ts } })];
     if (e.type === "system") {
       if (e.subtype === "turn_duration") {
         const out = this.endOpen("interrupted");
@@ -488,7 +495,7 @@ export class ClaudeStepParser extends StepParser {
     for (const b of Array.isArray(content) ? content : []) {
       const blk = b as Record<string, unknown>;
       if (blk.type === "text" && typeof blk.text === "string" && blk.text.trim()) {
-        const s = this.add({ kind: "assistant", ts }); bodyOf(s, blk.text, TEXT_MAX); out.push(s);
+        const s = this.add({ kind: "assistant", ts, ...(modelRecord?.kind === "served" ? { servedModel: modelRecord.served } : {}) }); bodyOf(s, blk.text, TEXT_MAX); out.push(s);
       } else if (blk.type === "thinking" && this.opts.thinking && typeof blk.thinking === "string" && blk.thinking.trim()) {
         // AGEND-181: the summary Claude Code writes when `showThinkingSummaries` is on (empty otherwise: no step).
         const s = this.add({ kind: "thinking", ts }); bodyOf(s, blk.thinking, TEXT_MAX); out.push(s);

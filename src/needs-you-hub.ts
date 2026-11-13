@@ -319,7 +319,7 @@ export class NeedsYouHub {
           const listed = itemsForLane(this.items, world.id, lane);
           if (seeding) this.worldSeen.set(key, new Set(listed.map(i => i.id)));
           const seen = this.worldSeen.get(key) ?? new Set<string>();
-          const fresh = listed.filter(i => !seen.has(i.id));
+          const fresh = listed.filter(i => !i.quiet && !seen.has(i.id));
           this.worldSeen.set(key, new Set(listed.map(i => i.id)));
           let pinned = this.live.get(key);
           if (!pinned) {
@@ -366,6 +366,10 @@ export class NeedsYouHub {
   /** A line's words: why it waits — and for a card, which card and what it asks or lacks (the chat shows no detail). */
   private lineTitle(item: NeedsYouItem): string {
     // #2822: a usage-limit hold names its model in the title (the chat shows no detail line).
+    if (item.modelSwitch) {
+      const s = item.modelSwitch;
+      return this.ctx.t(`needs.model_switch.${s.cause}`, s.original, s.served, this.ctx.t(`needs.model_switch.${s.scope}`));
+    }
     const reason = item.runtimeUpdate ? this.ctx.t("runtime.update.attention") : item.reason === "usage_limit"
       ? this.ctx.t("needs.reason.usage_limit", item.detail || "Claude")
       : this.ctx.t(`needs.reason.${item.kiroChoice ? "kiro_choice" : item.reason}`);
@@ -683,7 +687,7 @@ export class NeedsYouHub {
 
   private queueDms(world: NeedsYouWorld, mine: NeedsYouItem[], now: number): void {
     const seen = this.dmSeen.get(world.id) ?? new Set<string>();
-    const due = mine.filter(i => !seen.has(i.id) && (i.type !== "awaiting_input" || now - i.since >= AWAITING_PING_MIN_MS));
+    const due = mine.filter(i => !i.quiet && !seen.has(i.id) && (i.type !== "awaiting_input" || now - i.since >= AWAITING_PING_MIN_MS));
     for (const i of due) seen.add(i.id);
     // Forget ids that are gone, so a recurrence (a new id anyway) is not confused with an old one.
     const listed = new Set(mine.map(i => i.id));

@@ -1,5 +1,6 @@
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
 import { generalByName } from "./general-instance.js";
+import { ClaudeModelObserver, type ModelObservation } from "./claude-model-observation.js";
 import type { SubagentSource } from "./subagent-service.js";
 import { codexMetadataHomes } from "./backend/codex-metadata.js";
 import { claudeMinimumError, cliVersionBelow } from "./claude-model-minimum.js";
@@ -1894,6 +1895,9 @@ export class Daemon extends EventEmitter {
   private pauseAdmissions = new Set<Promise<void>>();
   // Model failover: override model on next spawn when rate-limited
   private modelOverride: string | undefined;
+  private claudeModelObserver: ClaudeModelObserver | null = null;
+  private modelObservationBound = false;
+  modelObservation(): ModelObservation | null { return this.modelObservationBound ? this.claudeModelObserver?.snapshot() ?? null : null; }
   // Context rotation v3: ring buffers for daemon-side snapshot
   private recentUserMessages: Array<{ text: string; ts: string }> = [];
   private recentEvents: RotationSnapshotEvent[] = [];
@@ -5105,8 +5109,12 @@ export class Daemon extends EventEmitter {
     ownSwitch?: { id: string; kind: "model"; requested: string },
     notifyWritten?: string,
   ): void {
+    const modelObserver = this.claudeModelObserver;
+    const modelOwner = launchIdentity(this.interactionOwner());
+    const currentModelOwner = () => modelObserver === this.claudeModelObserver && modelOwner === launchIdentity(this.interactionOwner());
     const reportSwitch = (result: OwnSwitchOutcome) => {
       if (!ownSwitch) return;
+      if (currentModelOwner()) modelObserver?.ownResult(result.outcome === "switched", ownSwitch.requested);
       this.broadcastFleetMessage({ type: "runtime_switch_result", id: ownSwitch.id, ...result });
     };
     // Board 003648ac: the fleet follows a web /compact from just before its paste is written: the transcript's end then
@@ -5169,7 +5177,7 @@ export class Daemon extends EventEmitter {
           preserveExactBytes: true,
           // #1690: our own /model holds every other delivery from its write on — before the lock is released, so a steer
           // or /btw waiting on it cannot type into the gap before claude paints "Switch model?" (default cursor: Yes).
-          ...(ownSwitch || notifyWritten ? { onPaneWritten: () => { if (ownSwitch) this.ownSwitch = ownSwitch; tellWritten(true); } } : {}),
+          ...(ownSwitch || notifyWritten ? { onPaneWritten: () => { if (ownSwitch) { this.ownSwitch = ownSwitch; if (currentModelOwner()) modelObserver?.ownIntent(ownSwitch.requested); } tellWritten(true); } } : {}),
           ...(notifyWritten ? { beforePaneWrite: takeCheckpoint, ...(this.backend?.compactPaneUi?.() ? { lookBeforePaneWrite: lookBefore } : {}) } : {}),
         });
         tellWritten(false);                                                // never written (once told, this says nothing)
@@ -6900,7 +6908,30 @@ export class Daemon extends EventEmitter {
    */
   private buildTranscriptMonitor(source: TranscriptSource | null): TranscriptMonitor {
     this.followLog.reset();
-    const monitor = new TranscriptMonitor(this.instanceDir, this.logger, source);
+    const modelLaunch = this.backend?.modelObservationLaunch?.();
+    const monitor = new TranscriptMonitor(this.instanceDir, this.logger, source, () => modelLaunch);
+    let savedModel: unknown;
+    try { const path = join(this.instanceDir, "claude-model-observation.json"); if (statSync(path).size < 1_000_000) savedModel = JSON.parse(readFileSync(path, "utf-8")); } catch { /* No checkpoint. */ }
+    const nativeModel = !!source && source === this.nativeTranscriptSource && !!source.modelObservationSession;
+    const modelCurrent = () => !nativeModel || this.nativePaneLifecycle?.current() === true;
+    const modelObserver = (!source || nativeModel) && this.isClaudeCodeBackend()
+      ? new ClaudeModelObserver(this.config.model, this.backend?.modelObservationLaunch?.()?.model ?? this.runtimeIdentity?.model ?? this.config.model, savedModel) : null;
+    this.claudeModelObserver = modelObserver;
+    this.modelObservationBound = false;
+    const owner = launchIdentity(this.interactionOwner());
+    monitor.on("model_context", (sessionId, sessionModel) => {
+      if (!modelObserver || this.transcriptMonitor !== monitor || owner !== launchIdentity(this.interactionOwner()) || !modelCurrent()) return;
+      modelObserver.bindSession(sessionId, sessionModel); this.modelObservationBound = true;
+    });
+    monitor.on("model_observation", (record, sessionModel, allowInference = true) => {
+      if (!modelObserver || this.transcriptMonitor !== monitor || owner !== launchIdentity(this.interactionOwner()) || !modelCurrent()) return;
+      const changed = modelObserver.observe(record, sessionModel, allowInference); this.modelObservationBound = true;
+      try {
+        const path = join(this.instanceDir, "claude-model-observation.json"), temp = `${path}.tmp`;
+        writeFileSync(temp, JSON.stringify(modelObserver.checkpoint()), { mode: 0o600 }); renameSync(temp, path);
+      } catch { /* Observation remains visible in memory. */ }
+      if (changed) this.emit("model_observation");
+    });
     this.transcriptTurns.reset();
     this.transcriptActivityAt = 0;
     // Monotonic: a wall-clock correction must neither end nor extend the open-turn hold (#1641 R1).

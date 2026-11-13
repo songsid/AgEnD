@@ -2,11 +2,13 @@
 import type { TranscriptEvents } from "./transcript-sources.js";
 import type { TranscriptTurnEvent } from "./transcript-turns.js";
 import { claudeFollowRecords, type FollowObservation } from "./workspace-follow-records.js";
+import type { ClaudeModelRecord } from "./claude-model-observation.js";
 export type TranscriptRecordEvent =
   | ["tool_use", string, unknown] | ["tool_result", string, unknown]
   | ["assistant_text", string] | ["system_informational", string, number | null]
   | ["api_error", string, number | null, number | null, string | null] | ["user_prompt"]
-  | ["workspace_follow", FollowObservation];
+  | ["workspace_follow", FollowObservation]
+  | ["model_observation", ClaudeModelRecord, undefined, boolean];
 export interface CodexRecordState { openTurnId: string; openTurn: string | null; turnKnown: boolean }
 const CODE_MODE_HOST_SPAWN_FAILED = /^failed to spawn code-mode host (\/[^\n]*)\/bin\/codex-code-mode-host: No such file or directory \(os error 2\)$/;
 

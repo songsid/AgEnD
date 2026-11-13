@@ -18236,6 +18236,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         pauseReason, pausedAt,
         crashedAt: crashed ? (this.needsCrashedAt.get(name) ?? null) : null,
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
+        modelSwitch: this.modelObservationForInstance(name)?.active ?? null,
         usageHold: this.daemons.get(name)?.usageHold?.() ?? null,
         nativeDeliveryHold: this.daemons.get(name)?.nativeDeliveryHold?.() ?? null,
         generalLocation: this.generalLocationAttention(name),
@@ -29510,6 +29511,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { dashboardOrigin, previewOrigin: status.origin, reason: null, code: null, boot: status.boot, frameSrc: PUBLIC_PREVIEW_FRAME_SRC };
   }
 
+  modelObservationForInstance(name: string) {
+    const observation = this.daemons.get(name)?.modelObservation?.();
+    return observation ? { ...observation, configured: this.resolveInstanceModel(name).model } : null;
+  }
+
   getUiStatus(): unknown {
     return measureSyncWork("fleet.uiStatus", () => this.getUiStatusSync());
   }
@@ -29638,6 +29644,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         cost,
         model,
         model_source,
+        ...(backend === "claude-code" ? { model_observation: this.modelObservationForInstance(name) } : {}),
         backend,
         effort,
         effort_source,
