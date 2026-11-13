@@ -1,136 +1,134 @@
-# Sharing ClassicBot rooms on the Hub (M-3014)
+# Sharing ClassicBot rooms on the Hub: Hub users join as verified guests (M-3014)
 
-The user decided on 2026-11-13 (#3743 item 1, decision d1f29ab4) that ClassicBot rooms become shareable to the Hub, with
-the same owner controls as Fleet agents. A room-only owner now sees 「這個 Fleet 還沒有可以分享的 Agent。」 and has no
-next step.
+**Decisions.** The user decided on 2026-11-13 (decision b0e69ee4, refining #3743 item 1 / d1f29ab4): sharing a
+ClassicBot room to the Hub means Hub users **join that room as guests**, in the same model as today's web guests (#1920,
+`src/web-guest-access.ts`).
 
-This revision follows Ridge's review of the first draft
-(https://github.com/songsid/AgEnD/pull/3765#issuecomment-6841085662).
+- **Everything in the room is shared.** Guests see the room's conversation, and what they write and what the agent
+  answers is visible to everyone in the room, its Discord or Telegram channel included.
+- **The split with Fleet agents.** Share a Fleet agent for private asks, isolated per person, as today. Share a room for
+  joining the discussion.
 
-- **The problem.** A room's CLI conversation is shared with its Discord or Telegram channel. If Hub questions went into
-  that conversation, the private question and its answer would stay in the room's memory after the answer was sent. Any
-  later channel reply could repeat them, and the Hub asker would get answers drawn from channel talk.
-- **Why a guard is not enough.** A guard that refuses channel output only while a question is open cannot prevent that.
-- **The design.** A shared room answers the Hub through a **Hub-only twin**: the room's settings and persona, its own
-  session and folder, and no channel. This is option A, which the leader recommended; the user's choice is pending.
+This replaces the earlier twin and guard drafts of this note. Ridge's privacy finding on them no longer applies, because
+nothing in a room is private.
 
-## What already holds
+## 1. Identity and scope
 
-- **A room is a daemon with a stable local name.** Each ClassicBot room runs one daemon under
-  `instanceName = classic-<name>-<last4 of channel id>[-<adapter id>]` (`src/instance-names.ts`), saved in
-  `classicBot.yaml`, so it survives a channel rename.
-- **The Hub never sees the local name.** An exposure on the wire is `{id, fleetId, owner, displayName, revision, state,
-  dataViewId, allowedTools, policyDigest}` (`src/hub/protocol.ts`). The Hub keys it by uuid, stores `displayName` and an
-  opaque digest, and judges `publish_agents` on the owner. **The Hub server, protocol and catalog do not change.**
-- **The ask path is name-based.** `HubRepresentativeExecution` (`src/hub/representative.ts`) delivers to `local.agent`
-  through `FleetManager.deliverHubQuestion`, and takes the answer from `report_result` to `agend-hub`, sent by the
-  daemon of that name.
-- **Rooms are shut out today only by four Fleet-side checks** that read `fleetConfig.instances`, which never contains
-  rooms: the share list (`hubMemberAgents`), the lifecycle token (`hubAgentToken`), its incarnation inputs, and
-  `deliverHubQuestion`.
+**Who.** The Hub's AD-verified person. That is the `PersonKey` (realm, objectId) the Hub already authenticates against
+the directory, with the directory display name. Nothing in the guest's identity comes from Discord or Telegram.
 
-## 1. Identity
+**Where the scope comes from.**
 
-| | The room | Its Hub twin |
+| | Web guest today (#1920) | Hub guest (this design) |
 |---|---|---|
-| Name | `classic-…` (its `instanceName`) | `<room instanceName>--hub`. Name sanitizing collapses `-+`, so no room or instance can ever have this name. |
-| On the Hub | the exposure's local agent: consent, `agentPolicyDigest(agent)`, the shown `displayName` | never named: an internal delivery target |
-| Conversation | its channel's | its own: the Hub askers' only |
-| Folder | `workspaces/<room>` | `workspaces/<room>--hub`: Hub attachments land in its own `inbox` and `hub-files` |
-| Posts to | its channel | nowhere: it has no channel, adapter or topic, and answers only with `report_result` |
+| Account | the person's own Discord or Telegram account, signed in on the Fleet's dashboard | the Hub's AD person, signed in on the Hub |
+| Scope (which rooms) | derived on every request from channel membership and the owner's saved access (`guestScope`) | the share's **join list**: the persons and AD groups the owner allows for that room, checked on the Hub at every read and post, and again on the Fleet |
+| Rights | chat; never a command (`guestChatRefusal`, authority none) | the same: chat, never a command (`/…` and other admin text are refused) |
+| What they see | the room's history as its channel showed it (`guestHistory`, `guestSeesMessage`) | the same projection, produced by the Fleet |
 
-- **Consent stays on the room.** The owner shares "the room"; the twin is how it answers.
-- **Lifecycle token.** The same `hubAgentToken` scheme on the room's name. The incarnation is the room's effective
-  launch fields (backend, folder, runtime, machine) plus its credential profile and model, so a change to any of them
-  invalidates earlier consent until the owner shares again (questions are held as `stale`, as for Fleet agents).
-  - Removing the room (`/stop` unregisters it) drops the incarnation, stops the twin and removes its folder, so a later
-    room with the same name never inherits the consent.
+- **The join list.**
+  - It reuses the exposure's existing grant rows (`/hub/v1/grants`, the owner's 「允許提問…」).
+  - It is widened for rooms to an AD group, using the 「讓同仁加入」 group search; by-name search is #3743 item 3.
+  - A grant may have an end date, as today.
+- **Who may share.** Unchanged: the owner needs `publish_agents`. A refused share shows #3763's `hub_refused` row.
+- **Fleet-side check.** The Fleet never trusts the Hub for scope alone. Each relayed post names the exposure and the
+  person, and the Fleet checks that:
+  - the exposure is a published room share;
+  - the person's grant is not one it has seen revoked.
 
-## 2. The twin
+## 2. How the Hub user's message reaches the room and its channel
 
-- **Settings: the room's, read at every start.** Backend, model, credential profile (`backendOptions`), display name and
-  description from `classicBot.yaml`, plus the fleet defaults the room uses.
-  - Not copied: `contextLines` and the collab/reply triggers (no chat log, no channel), and `webEcho`.
-- **Persona: the room's instruction files only.** At each start, the twin's folder gets a fresh copy of the room
-  folder's instruction files, if present: `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.kiro/steering/*`.
-  - Nothing else is copied: no `chat-logs`, saved images, inbox, git history or other files the channel may have
-    produced.
-- **On demand, auto-pause.** The twin is not running until the first Hub question. `deliverHubQuestion` starts or wakes
-  it (ordinary delivery: idle gate, wake, retries). It pauses after the room's `auto_pause_after`, else 30 minutes.
-- **Not a visible instance.** The twin isn't in fleet.yaml or classicBot.yaml. It is not listed in the dashboard's agent
-  lists, chat, Fleet map or search, and no human or other instance can deliver to it. It counts toward the machine's
-  agent limit like any daemon while it runs.
-- **Restarts.** A room settings change from Settings restarts a running twin with the new settings. A plain room restart
-  does not touch the twin.
+The Hub user's browser never reaches the Fleet. Everything goes over the existing member link, through new frames
+(`room-share-v1`, negotiated in `hello` like the other features).
 
-## 3. The ask route
+**Posting**
+1. **The Hub UI sends the message.** `POST /hub/v1/rooms/shared/:exposureId/messages` with `{ text, idempotencyKey }`,
+   with the session's CSRF check as today. The Hub checks the session, the join list, and that the person has seen the
+   entry notice (section 3).
+2. **The Hub relays it to the Fleet.** The Hub sends `room.post { exposureId, requestId, person: { realm, objectId,
+   name }, text }` to the owner's Fleet and answers the browser once the Fleet acknowledges it with `room.posted`
+   (`{ ok | refused: reason }`).
+3. **The Fleet delivers it to the room** through the same entry as a channel message (`forwardToClassicInstance`'s
+   delivery), with the room's own chat-log context:
+   - the user is 「王小明（Hub）」, user id `hub:<realm>:<objectId>`, and `source: "hub"`;
+   - the header the agent reads is `[user:王小明 via hub (company account verified), id:hub:…]`;
+   - the authority is none, as for a web guest. A slash command or other admin text is refused with `guestChatRefusal`'s
+     rule, before delivery.
+4. **The channel sees it.** The Fleet posts it to the room's channel as 「王小明（Hub）：…」 through the same path as the
+   room's web echo (`sendClassicWebEcho`). For a Hub post it is always on, whatever the room's `webEcho` setting: the
+   room is shared, so its channel must see who is talking.
+5. **The agent's answer** goes to the channel as it always does, with `reply`. Nothing is routed specially.
 
-- The representative path is unchanged. `HubRepresentativeExecution` still delivers to `local.agent`, the room's name;
-  the Fleet maps it:
-  - `deliverHubQuestion(room)` delivers to the twin;
-  - the twin's `report_result` to `agend-hub` reaches `service.report` with `caller` set to the room's name. The Fleet
-    rewrites a twin caller to its room. This holds only for the twin's own daemon of the current room incarnation, never
-    a same-name replacement: the room must still be registered and its token unchanged.
-  - The pane-failure hook (`deliveryFailed`) and `files` (`inboxDir` / `scratchDir`) map the same way.
-- **One conversation for all Hub askers**, as for Fleet agents: the twin's. The asker's existing note
-  (`roomShared`: 「所有向這個 Agent 提問的人共用它的同一段對話…」) stays true.
-- **Nothing crosses between the channel and the Hub.**
-  - The channel never sees a Hub question or answer: different conversation, and the twin has no channel.
-  - The Hub asker never gets channel talk: the twin has no chat log and no access to the room's folder.
-  - So the first draft's in-flight reply guard and channel-message holding are not needed.
-- **Defence in depth.** The twin has no channel, so the outbound handler already has nowhere to send its `reply`. It
-  still refuses any channel-addressing tool from a `--hub` daemon with "answer with report_result to agend-hub", so a
-  twin can never be pointed at a channel by a future routing change.
+**Reading**
+6. **The Fleet keeps no second copy.** The room's history is the Fleet's existing room history (`WebChatHistory`), which
+   already records channel messages, web posts and the agent's replies.
+7. **Opening a room.** The Hub asks with `room.read { exposureId, before?, limit }` and the Fleet answers with
+   `room.page { entries, cursor }`. The entries are produced by the guest projection: what the channel showed, never
+   owner-only rows, tool output or prompts.
+8. **Live updates.** While at least one Hub user has the room open, the Hub sends `room.watch`, and the Fleet pushes
+   `room.event { exposureId, entries }` as the history grows. `room.unwatch` stops it, and so does closing the link.
+9. **What the Hub stores.** It does not store the room's transcript. It only relays it, so channel talk is not copied
+   into the Hub database. The Hub's audit log records the joins (the notice accepted) and each post: the person, the
+   time and the text, under the Hub's existing content retention.
 
-## 4. Publish rules and display
+**If the Fleet is offline**, the Hub page says the room can't be reached right now. Posts are refused, never queued.
 
-- **Who:** unchanged. The local admin switches the share on; the Settings confirmation runs as for agents; the Hub
-  accepts it only if the owner may share (`publish_agents`).
-- **List:** Settings → Hub → 「分享的 Agent」 lists rooms after the Fleet agents.
-  - Each room row has a 「ClassicBot 房間」 / "ClassicBot room" tag.
-  - Its share confirmation adds 「Hub 上的提問由這個房間的另一段對話回答，看不到頻道的內容，也不會出現在頻道裡。」 /
-    "Hub questions are answered in a separate conversation of this room: it can't see the channel, and nothing appears
-    there."
-  - The interim line 「目前只能分享 Fleet 的 Agent，ClassicBot 房間還不能分享。」 (M-2988) is removed.
-- **Limits:** rooms count toward the same 64-exposure limit (`exposures.ts`).
-- **Refused and denied:** #3763's `hub_refused` row applies unchanged; also frozen and `delivery_unavailable`.
-  - A room whose daemons would run natively on Windows is refused as a native Windows agent is.
+## 3. The Hub UI entry point
 
-## Build plan (after the user's choice)
+- **Home / New chat:** shared Fleet agents stay under 「新對話」 (a private chat per asker, unchanged). Shared rooms get
+  their own section, 「團隊房間」 / "Team rooms", each with its name, owner and a 「加入」 / "Join" button.
+- **First join of each room:** a notice the person must accept before seeing anything:
+  - zh: 「這是共用的團隊房間。房間裡的每個人，包括 Discord／Telegram 頻道裡的人，都看得到你說的話和 Agent 的回答。」
+  - en: "This is a shared team room. Everyone in it — including the people in its Discord or Telegram channel — can see
+    what you write and what the agent answers."
+  - Accepting it is recorded in the Hub audit log. It is asked again if the notice text changes.
+- **The room view:** the shared transcript with each speaker's name. Hub users are shown as 「名字（Hub）」; channel
+  members by their platform name. A composer sits below, and a banner keeps the notice visible.
+  - It differs from a private Fleet-agent chat: no per-asker isolation note, no "new chat", no stages per question.
+- **Owner's side, 我分享的 Agent:** a room row is tagged 「ClassicBot 房間」. Its 「可以加入的人」 list takes persons and
+  AD groups, where an agent's 「可以提問的人」 takes persons.
+- **Fleet Settings → Hub → 分享的 Agent:** rooms are listed after Fleet agents, with the same switch and the room tag.
+  - Switching a room on asks for the usual Settings confirmation, plus one line: 「分享後，Hub 上被允許的人可以加入這個房間的對話，頻道裡也看得到他們。」
+  - The interim line 「ClassicBot 房間還不能分享」 (M-2988) is removed.
 
-**PR 1, Fleet side (`src/fleet-manager.ts`):**
-- `hubAgentConfig(name)`: the fleet.yaml instance, else the room's effective config. The share list, token, quota,
-  incarnation and delivery use it.
-- the twin: its config from the room, the instruction-file seeding, on-demand start, auto-pause, hidden from every
-  listing, stop and removal with the room;
-- mapping the room to the twin for delivery, `report_result` (caller), `deliveryFailed` and files;
-- the `--hub` outbound refusal.
+## 4. What changes where
 
-**PR 1 tests:**
-- a room is listed and publishes;
-- a Hub question starts the twin, not the room;
-- the room's channel conversation receives nothing;
-- the twin's answer is released to the Hub;
-- nothing reaches the channel adapter on any path: reply, react, edit_message, files;
-- a later channel message is answered by the room, without the Hub text in its input;
-- the twin's folder has the instruction files and none of `chat-logs` or inbox;
-- a room backend change → questions held as `stale`;
-- `/stop` → the twin is stopped and its folder removed, and a same-name room can't answer earlier consent;
-- the twin is absent from instance lists and refuses human or instance delivery.
+**Fleet (`src/fleet-manager.ts`, the member compose):**
+- the room-aware Hub agent helper (rooms listed and published, their lifecycle token);
+- the `room.post` handler: the delivery as a Hub guest, the channel echo and the command refusal;
+- `room.read` / `room.watch` with the guest projection.
 
-**PR 2, Settings words:** the room tag, the room share line, removal of the interim line, and before/after PNGs.
+**Hub (Ridge reviews):**
+- **Protocol:**
+  - an optional `kind: "agent" | "room"` on the exposure;
+  - the `room.*` frames behind `room-share-v1`.
+- **Catalog:** a room exposure is listed only to the people on its join list.
+- **Routes:**
+  - `/hub/v1/rooms/shared/:exposureId` (read and watch);
+  - its `/messages` (post);
+  - the notice acceptance;
+  - grants extended to AD groups for room exposures.
+- **Audit:** joins and posts.
 
-**Ridge reviews:**
-- `src/hub/**` is unchanged, unless the caller mapping turns out to need a read in `representative.ts`; then Ridge
-  reviews that.
-- the twin's lifecycle and the report-caller mapping.
+**Not changed:**
+- Fleet agents (the per-asker representative path);
+- Hub sign-in (AD only, #3743 item 4).
 
-**Not in this change:** per-room permissions; the pause/resume of M-3015; letting the twin see channel context (the
-point of this design is that it can't).
+**Not in this change:**
+- files, buttons and reactions from Hub guests (text only first);
+- Hub guests in a room's web dashboard (they stay on the Hub);
+- the pause/resume of M-3015.
 
-## Considered and set aside
+## 5. Tests (plan)
 
-- **One shared conversation with a channel-output guard (first draft).** It can't stop a released answer from
-  surfacing in a later channel reply (Ridge).
-- **A retained channel fence until a clean session.** The room would lose its channel context after every Hub question.
-- **Accept and disclose.** It needs the user's explicit OK, and it is the weakest on privacy.
+- **Posting:** a Hub person on the join list posts, and the room receives it as 「名字（Hub）」 with authority none. The
+  channel gets the echo, and the agent's `reply` reaches both the channel and the Hub watchers.
+- **Refusals:**
+  - a person off the list, or whose grant is revoked or ended, is refused on the Hub and again on the Fleet;
+  - a slash command is refused;
+  - an unaccepted notice cannot post or read.
+- **The projection:** what a Hub guest reads equals a web guest's for the same room; owner-only rows never appear.
+- **Fleet offline:** reading or posting answers "can't be reached", and nothing is queued.
+- **The Hub stores no transcript:** only audit rows.
+- **Upgrade skew:** a Hub without `room-share-v1` never lists rooms. A Fleet without it rejects nothing it doesn't know
+  (the exposure `kind` is optional).
