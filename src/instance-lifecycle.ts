@@ -47,7 +47,7 @@ import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance, GENERAL_NAME } from "./general-instance.js";
 import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileEnv, credentialProfileLoginCommand } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileLaunch, credentialProfileLoginCommand } from "./backend/credential-profile.js";
 import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
 import type { CapacityNudgePauseGuard } from "./daemon.js";
 import type { SpawnGate } from "./spawn-gate.js";
@@ -803,8 +803,10 @@ export class InstanceLifecycle {
     const cached = this.authVerifyCache.get(key);
     if (cached && Date.now() - cached.at < AUTH_VERIFY_CACHE_MS) return cached.promise;
     const check = LOGIN_FLOWS[backend]?.authCheck ?? BACKEND_AUTH_CHECKS[backend];
-    const env = profile ? credentialProfileEnv(getAgendHome(), backend, profile) : null;
-    const promise = check ? (env ? checkAuthStatus(check, env) : checkAuthStatus(check)) : Promise.resolve("unknown" as const);
+    // AGEND-250 (#3771 review P2-2): the whole launch of that account, not its environment alone. A CLI told its account by an argument (agy `--app_data_dir <folder>`) carries it in `args`; probing with the
+    // environment only asked the DEFAULT account about a named agent's login (a valid default hid a named failure, a signed-out default paused a valid named agent). The cache key above names the account.
+    const launch = profile ? credentialProfileLaunch(getAgendHome(), backend, profile) : null;
+    const promise = check ? (launch ? checkAuthStatus(check, launch.env, launch.args) : checkAuthStatus(check)) : Promise.resolve("unknown" as const);
     this.authVerifyCache.set(key, { at: Date.now(), promise });
     return promise;
   }
