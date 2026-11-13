@@ -90,6 +90,20 @@ describe("S129 response-owned successor release", () => {
     const release = await prepareResponseRelease(n.sessions, rotation, operation.id); w.time(5000);
     expect(() => release.assertCurrent()).toThrow(); expect(() => release.release()).toThrow();
   });
+  it("checks effect authority inside release even without a preceding consumer assertion", async () => {
+    const w = await world(), { rotation, operation } = w.commit(), n = w.next();
+    const release = await prepareResponseRelease(n.sessions, rotation, operation.id);
+    w.save({ ...w.policy, generation: "g2", revision: 3, assignments: [] });
+    expect(() => release.release()).toThrow();
+  });
+  it("does not revive a release after a final SQL head refusal even if the exact head returns", async () => {
+    const w = await world(), { rotation, operation } = w.commit(), n = w.next();
+    const release = await prepareResponseRelease(n.sessions, rotation, operation.id);
+    w.db.prepare("UPDATE hub_settings_head SET operation_id=?").run(randomUUID());
+    expect(() => release.assertCurrent()).toThrow();
+    w.db.prepare("UPDATE hub_settings_head SET operation_id=?").run(operation.id);
+    expect(() => release.release()).toThrow();
+  });
   it("retires when its originating rotation is cancelled", async () => {
     const w = await world(), { rotation, operation } = w.commit(), n = w.next();
     const release = await prepareResponseRelease(n.sessions, rotation, operation.id); rotation.discard();
