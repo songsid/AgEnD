@@ -1,4 +1,6 @@
-# Real room routing walkthrough — work in progress
+# Real room routing walkthrough
+
+Current final packet: `final/`, source7f8aad05c4,48/48browser checks,16original PNGs all visually clear,72/7fresh focused and both native programs0. It covers real @agent/@all queue/reconnect and live Idle/Working/Offline/quota behavior in the shared browser. FullS142/Teams and final PM acceptance remain open. Historical failures below and in their named directories are retained, not presented as current results.
 
 The first actual routing walkthrough uses the R HTTP/SQLite dispatcher, HubServer/HubMemberClient over pinned TLS/WSS, C durable room adapter and state publisher, and the shared U browser shell. Two owned Fleet fixtures publish Notes and Planner. The physical agent input and reporting hook are inert. The captured bridge joins two existing test rigs; this is not a full FleetManager production mount. No real directory, account, vendor API, or agent process is used. Teams remain uncomposed.
 
