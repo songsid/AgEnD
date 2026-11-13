@@ -68,6 +68,8 @@ The chosen named account is not substituted with the default account if it disap
 The host Fleet supplies a provider factory to `HubRuntime`, which calls it only while mounting the Hub server.
 The same instance becomes `HubHttpDeps.roomAssistant` and `assistantAdmin`. Hub fencing immediately closes its
 admission; the mount teardown owns its physical drain before any replacement. An absent factory stays disabled.
+Fencing permanently retires that mounted generation: `HubMount.applyOwned` drains it before a fresh factory call;
+it never resumes the fenced server in place. Re-saving unchanged assistant settings is a no-op and keeps current asks.
 The rooms track owns the authenticated HTTP routes; this service slice adds no routes or visible controls.
 
 Settings and seven UTC days of answer counters are stored atomically in the Fleet's private
