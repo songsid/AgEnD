@@ -235,6 +235,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   // #3226 C: the owner and admin pages' stylesheet (linked by hub-owner-strings.js; an older hub-chat.css lacks it).
   "hub-owner.css": { file: join("shared", "hub-owner.css"), type: "text/css; charset=utf-8" },
   "hub-grant-picker.css": { file: join("shared", "hub-grant-picker.css"), type: "text/css; charset=utf-8" },
+  "hub-sharing.css": { file: join("shared", "hub-sharing.css"), type: "text/css; charset=utf-8" },
   "hub-quota.css": { file: join("shared", "hub-quota.css"), type: "text/css; charset=utf-8" },
   // #3298 S-89: the welcome and group permissions pages (linked by hub-group-strings.js; an older hub-chat.css lacks them).
   "hub-groups.css": { file: join("shared", "hub-groups.css"), type: "text/css; charset=utf-8" },
@@ -246,6 +247,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "access-overview.css": { file: join("shared", "access-overview.css"), type: "text/css; charset=utf-8" },
   // #3292: Keep sign-in alive's line on an Accounts row (linked by accounts-keepalive.js; an older accounts.css lacks it).
   "accounts-keepalive.css": { file: join("shared", "accounts-keepalive.css"), type: "text/css; charset=utf-8" },
+  // AGEND-113: the quota pool named under an Accounts usage window (linked by usage-pool.js; an older accounts.css lacks it).
+  "accounts-usage-pool.css": { file: join("shared", "accounts-usage-pool.css"), type: "text/css; charset=utf-8" },
   // #3160: Follow agent's stylesheet (linked by workspace-panel.js; an older workspace.css or app.css lacks it).
   "workspace-follow.css": { file: join("shared", "workspace-follow.css"), type: "text/css; charset=utf-8" },
   // #3727: the image viewer's annotation editor (linked by image-annotate.js; an older app.css lacks it).

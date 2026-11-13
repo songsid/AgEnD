@@ -53,6 +53,18 @@ register("hubGrantStatus", {
   "zh-TW": { grantNeverSignedIn: "還沒登入過 Hub", grantADGroup: "AD 群組", grantSubjects: "已允許的個人與群組：{0}" },
 });
 
+// These words travel with the renderer; retained dictionaries need no new exports.
+register("hubSharing", {
+  en: { pause: "Pause sharing", resume: "Resume sharing", paused: "Sharing paused", title: "Pause and resume sharing",
+    lead: "Stop new questions and keep the people and AD groups allowed to ask. Their expiry dates keep running while sharing is paused. A question already being handed to the Fleet may still start within a few seconds; work already in progress may finish.",
+    waiting: "Saving…", pausedChat: "The owner paused sharing {0}. New questions are stopped; a question already being handed to the Fleet may still start within a few seconds. You can still read this chat while your permission lasts. Sharing can resume; expiry dates keep running.",
+  },
+  "zh-TW": { pause: "暫停分享", resume: "繼續分享", paused: "分享已暫停", title: "暫停與繼續分享",
+    lead: "停止接受新提問，保留允許提問的個人與 AD 群組。暫停期間，授權的到期時間照常計算。已在傳送給 Fleet 的提問，可能仍會在幾秒內開始處理；已在處理的工作可能會完成。",
+    waiting: "儲存中…", pausedChat: "擁有者已暫停分享 {0}。不再接受新提問；已在傳送給 Fleet 的提問，可能仍會在幾秒內開始處理。權限有效期間，你仍可閱讀這段對話。之後可以繼續分享；授權的到期時間照常計算。",
+  },
+});
+
 // #3298 S-89 (experimental): the group permissions editor and the signed-in welcome are their own LAZY modules, loaded only
 // when the Hub's session says "group-policy-v1" and this tab's client has the calls — a Hub without them never serves or loads them.
 // The one group-permissions sentence this module draws itself (shown when the lazy modules are NOT loaded: this Hub lacks them).
@@ -594,7 +606,8 @@ function HubRoomView({ room: given }) {
   useEffect(() => {
     if (!denied) setMsg(current => current === errText({ code: "denied" }) ? null : current);
   }, [denied]);
-  const frozen = !closed && room.exposureState === "frozen";
+  const paused = !closed && room.exposureState === "paused";
+  const frozen = !closed && (room.exposureState === "frozen" || paused);
   const working = store.working();
   const name = room.exposureName || "";
   const client = hubClient();
@@ -611,7 +624,7 @@ function HubRoomView({ room: given }) {
     setSending(true); setMsg(null);
     const r = await store.send(q, chosen.length ? { files: chosen.map((f) => f.id) } : {});
     setSending(false);
-    if (!r.ok) { setMsg(errText(r)); return; }
+    if (!r.ok) { setMsg(r.code === "sharing-paused" ? null : errText(r)); return; }
     // Only the files this question carried; ones chosen while it was on its way stay for the next.
     const sent = new Set(chosen.map((f) => f.key));
     setDraft(""); setFiles(filesRef.current.filter((f) => !sent.has(f.key))); refreshRooms();
@@ -629,7 +642,7 @@ function HubRoomView({ room: given }) {
     if (panelOpen) { closePanel(); setRail(true); setRailPref(true); return; }
     setRail((v) => { setRailPref(!v); return !v; });
   };
-  const tag = closed ? html`<span class="tag danger">${hc("tagClosed")}</span>` : frozen ? html`<span class="tag warn">${hc("tagFrozen")}</span>`
+  const tag = closed ? html`<span class="tag danger">${hc("tagClosed")}</span>` : frozen ? html`<span class="tag warn">${paused ? t("hubSharing.paused") : hc("tagFrozen")}</span>`
     : denied ? html`<span class="tag warn">${ha("tag")}</span>` : html`<${QuotaChip} room=${room} fallback=${html`<span class="tag ok">${hc("tagCanAsk")}</span>`} />`;
   const back = !wide ? html`<a class="icon-btn hub-back" href="/ui/hub" aria-label=${hc("back")} title=${hc("back")}><${Icon} name="back" /></a>` : null;
   const info = html`<${HubRoomInfo} room=${room} closed=${closed} denied=${denied} />`;
@@ -645,7 +658,7 @@ function HubRoomView({ room: given }) {
       <${HubThread} store=${store} name=${name} panelKey=${panelKey} threadRef=${threadRef} />
       <div class="dock hub-dock" data-trust="composer"><div class="dock-col">
         ${closed ? html`<p class="hub-banner danger" role="status">${hc("closed")}</p>` : null}
-        ${frozen ? html`<p class="hub-banner warn" role="status">${hc("frozen", name)}</p>` : null}
+        ${frozen ? html`<p class="hub-banner warn" role="status">${paused ? t("hubSharing.pausedChat", name) : hc("frozen", name)}</p>` : null}
         ${!closed ? html`<${QuotaBanner} room=${room} />` : null}
         ${denied && !closed ? html`<div class="hub-banner warn" role="status">${ha("refused")}<div class="n-actions"><button type="button" class="btn btn-sm" onClick=${() => store.refresh()}>${ha("check")}</button></div></div>` : null}
         ${working ? html`<${HubWorkBar} name=${name} since=${working.since} />` : null}
@@ -754,6 +767,7 @@ function HubRoomInfo({ room, closed = false, denied = false }) {
 // rows), a destructive step behind a row's menu and a confirmation ──
 const DAYS_LEFT = (ms) => daysLeft(ms);
 const stateTag = (state) => state === "published" ? html`<span class="tag ok">${ho("stateShared")}</span>`
+  : state === "paused" ? html`<span class="tag warn">${t("hubSharing.paused")}</span>`
   : state === "frozen" ? html`<span class="tag warn">${ho("statePaused")}</span>` : html`<span class="tag">${ho("stateWithdrawn")}</span>`;
 const mayAsk = (n) => (n === 0 ? ho("mayAskNone") : n === 1 ? ho("mayAskOne") : ho("mayAsk", n));
 const grantSummary = (grants = []) => grants.some(g => g.subject?.kind === "group") ? t("hubGrantStatus.grantSubjects", grants.length) : mayAsk(grants.length);
@@ -775,7 +789,13 @@ function HubMine() {
   const [cat, reload] = useRead(() => hubClient().catalog());
   const [pairings, reloadPairings] = useRead(() => hubClient().pairings());
   const [msg, setMsg] = useState(null);
-  useEffect(() => { linkHubChatCss(); linkHubOwnerCss(); }, []);
+  useEffect(() => {
+    linkHubChatCss(); linkHubOwnerCss();
+    if (!document.querySelector('link[data-hub-sharing-css="1"]')) {
+      const link = document.createElement("link"); link.rel = "stylesheet"; link.href = "/assets/hub-sharing.css";
+      link.setAttribute("data-hub-sharing-css", "1"); document.head.appendChild(link);
+    }
+  }, []);
   const act = async (fn, after = reload, refused = (r) => setMsg(errText(r))) => {
     setMsg(null);
     const r = await fn();
@@ -814,6 +834,14 @@ function HubMine() {
 
 /** One shared agent: who may ask (allow, revoke), whether askers see its quota (G), who asked lately, pause. */
 function HubAgentPage({ x, act, msg }) {
+  const session = useSession(), client = hubClient();
+  const resumable = session?.features?.includes("sharing-pause-v1") && client?.sharingPauseV1 === true && typeof client.sharing === "function";
+  const [sharingBusy, setSharingBusy] = useState(false);
+  const sharing = async () => {
+    if (sharingBusy) return; setSharingBusy(true);
+    try { await act(() => client.sharing(x.id, x.revision, x.sharingEpoch ?? 0, x.state !== "paused")); }
+    finally { setSharingBusy(false); }
+  };
   // #3338: this page is reached only through catalog.mine; the link opens a form, never a grant.
   // Read the closed intent once on this keyed agent page, so cancel/save/reloads never reopen it.
   const [allowing, setAllowing] = useState(() => x.state === "published" && new URLSearchParams(location.search).get("grant") === "1");
@@ -851,7 +879,9 @@ function HubAgentPage({ x, act, msg }) {
         </div>`)}</div>` : null}
         <div class="field-row"><button type="button" class="btn btn-sm btn-ghost" onClick=${reloadActivity}>${ho("refresh")}</button></div>
       </section>
-      ${shared ? html`<section class="card hub-danger"><h3>${ho("pauseTitle")}</h3><p class="note">${ho("pauseLead")}</p>
+      ${resumable && (shared || x.state === "paused") ? html`<section class="card hub-sharing-control"><h3>${t("hubSharing.title")}</h3><p class="note">${t("hubSharing.lead")}</p>
+        <div class="field-row"><button type="button" class="btn btn-sm btn-primary" disabled=${sharingBusy} onClick=${sharing}>${t(sharingBusy ? "hubSharing.waiting" : x.state === "paused" ? "hubSharing.resume" : "hubSharing.pause")}</button></div></section>` : null}
+      ${shared || x.state === "paused" ? html`<section class="card hub-danger"><h3>${ho("pauseTitle")}</h3><p class="note">${ho("pauseLead")}</p>
         <div class="field-row"><button type="button" class="btn btn-sm btn-danger" onClick=${freeze}>${ho("pauseGo")}</button></div></section>` : null}
     </div>
     ${allowing && shared ? html`<${AllowDialog} x=${x} act=${act} onClose=${() => setAllowing(false)} />` : null}

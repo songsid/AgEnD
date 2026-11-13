@@ -1,0 +1,10 @@
+/* AGEND-113: an account's usage block when it has pools (usage-pool.js): a block per pool, its name over its windows. The block itself is `.s-account-usage` (accounts.css), whose grid a pool spans. */
+.s-account-usage.is-pooled { row-gap: var(--s-2); }
+.s-usage-group { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--s-1) var(--s-4); min-width: 0; }
+.s-usage-pool { grid-column: 1 / -1; min-width: 0; color: var(--text-3); font-size: var(--fs-xs); font-weight: var(--fw-medium); overflow-wrap: anywhere; }
+/* A window that has reset since the read: its tag, and the full card's "reset since" words where the bar would be. */
+.s-usage-reset { align-items: center; }
+.s-usage-reset-note { grid-column: 2 / -1; min-width: 0; color: var(--text-3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+/* AGEND-119: why the numbers are the last known ones (the cause and when they were read, then what the read said), under the windows and across the block. */
+.s-usage-stale { min-width: 0; overflow-wrap: anywhere; }
+.s-usage-stale-detail { display: block; }

@@ -78,11 +78,11 @@ describe("#3195: agents create projects and move main tasks between them", () =>
 
       // Its first write since the person's comment hands that over too, as every board write does.
       expect(await call({ action: "update", id: "M-2", project: 4 })).toBe("ok M-2 Leaderboard [to do] @dev-a (v3)\nnew comment (Ann): weekly");
-      expect((await call({ action: "get", id: "M-2" }) as string).split("\n")[1]).toMatch(/^project Ops/);
-      expect((await call({ action: "get", id: "S-1" }) as string)).toContain("main M-2 Leaderboard");
+      expect((await call({action:"get",detail:true, id: "M-2" }) as string).split("\n")[1]).toMatch(/^project Ops/);
+      expect((await call({action:"get",detail:true, id: "S-1" }) as string)).toContain("main M-2 Leaderboard");
       expect(b.getCard("S-1").projectId).toBe(4);                                      // the sub task follows
-      expect(await call({ action: "list", project: 4 })).toBe("M-2 [to do] Leaderboard @dev-a\nS-1 [to do] API @dev-a");
-      expect(await call({ action: "list", project: "Game" })).toBe("M-1 [to do] Theirs @dev-b");
+      expect(await call({action:"list",detail:true, project: 4 })).toBe("M-2 [to do] Leaderboard @dev-a\nS-1 [to do] API @dev-a");
+      expect(await call({action:"list",detail:true, project: "Game" })).toBe("M-1 [to do] Theirs @dev-b");
 
       expect(await call({ action: "update", id: "M-2", project: "2" })).toBe("ok M-2 Leaderboard [to do] @dev-a (v4)");   // digits as text
       expect(b.getCard("M-2").projectId).toBe(2);

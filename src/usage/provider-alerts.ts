@@ -25,6 +25,13 @@ interface ProviderAlert {
 const alerts = new Map<string, ProviderAlert>();
 
 /**
+ * AGEND-250 (#3771 review P2-6): the key an Antigravity individual-cap alert is kept under, per account: `antigravity` for the default sign-in, `antigravity:<profile>` for a named account (the
+ * profile an agent was LAUNCHED with, its binding, not whatever the configuration says now). The cap belongs to the Google account the agent's own login is, so a cap seen by one account's agent
+ * is never shown on another's row.
+ */
+export function antigravityCapKey(profile: string | null | undefined): string { return profile ? `antigravity:${profile.toLowerCase()}` : "antigravity"; }
+
+/**
  * `Resets in 139h12m12s` → milliseconds. Null when the text carries no such
  * phrase — the caller falls back to a default TTL rather than guessing.
  */

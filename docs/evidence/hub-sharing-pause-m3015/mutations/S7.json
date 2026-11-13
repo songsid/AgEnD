@@ -1,0 +1,13 @@
+{
+  "id": "S7",
+  "path": "src/hub/sharing.ts",
+  "test": "tests/hub-sharing-pause-m3015.test.ts",
+  "selector": "requires the exact owner",
+  "caught": true,
+  "nativeCompilerExit": 0,
+  "typeLogDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "exit": 1,
+  "sourceDigest": "bc78b461e277b8aa39769a874dbaeb53b08f20a3927ac098145ad3fba71cbd17",
+  "logDigest": "534731b6ea4c21ae85d89eb30bf9182cefda00b37e6376a3500eebeab8649c6b",
+  "restored": true
+}

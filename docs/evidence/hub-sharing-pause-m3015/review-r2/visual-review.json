@@ -1,0 +1,29 @@
+{
+  "task": "M-3015 / PR #3803 R2",
+  "capture_head": "d37b921bf",
+  "method": "Static inspection of eight original PNGs with view_image.",
+  "verdict": "BOUNDED_VISUAL_PASS",
+  "blockers": [],
+  "findings": [
+    "EN and zh-TW owner copy clearly says new questions stop, an already handed-off question may start within a few seconds, and work already in progress may finish.",
+    "Owner and asker copy remains readable and wraps within the captured phone viewports without clipping, overlap or horizontal overflow.",
+    "Phone owner captures clearly separate neutral Resume sharing from red Stop sharing, with distinct retention, expiry and re-grant explanations.",
+    "All four phone asker captures show a readable paused badge and bounded-window notice above the unobscured, disabled-looking composer.",
+    "Desktop owner cards and action controls remain legible; the lower Stop sharing card is outside these desktop crops."
+  ],
+  "files": [
+    ".artifacts/m3015-r2-browser/current-desk-light-en-paused.png",
+    ".artifacts/m3015-r2-browser/current-desk-dark-zh-TW-paused.png",
+    ".artifacts/m3015-r2-browser/current-phone-light-en-paused.png",
+    ".artifacts/m3015-r2-browser/current-phone-dark-zh-TW-paused.png",
+    ".artifacts/m3015-r2-browser/current-phone-light-en-asker-paused.png",
+    ".artifacts/m3015-r2-browser/current-phone-dark-en-asker-paused.png",
+    ".artifacts/m3015-r2-browser/current-phone-light-zh-TW-asker-paused.png",
+    ".artifacts/m3015-r2-browser/current-phone-dark-zh-TW-asker-paused.png"
+  ],
+  "limitations": [
+    "Only the eight listed static captures were inspected; no whole-gallery conclusion.",
+    "No browser runs, tests or source edits were performed.",
+    "Images do not verify dynamic enforcement, timing, real-device behavior or real AD behavior."
+  ]
+}

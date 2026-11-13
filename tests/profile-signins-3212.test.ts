@@ -61,7 +61,7 @@ describe("the transport: which folder and variable a named account's sign-in get
         .snapshot({}, { backend: "codex", profile: "CHY" })).toThrow("invalid_signin_target");
     } finally { widened.clear(); for (const b of before) widened.add(b); }
   });
-  it.each(["kiro-cli", "codex", "antigravity", "nope", ""])("%j: a backend whose login screen was not checked under a relocated home is refused, and makes no folder", (backend) => {
+  it.each(["kiro-cli", "codex", "grok", "nope", ""])("%j: a backend whose login screen was not checked under a relocated home is refused, and makes no folder", (backend) => {
     const dir = temp();
     expect(() => structuredSignInProfileEnvironment(dir, backend, "CHY")).toThrow("signin_profile_unsupported");
     expect(existsSync(join(dir, "credential-profiles"))).toBe(false);
@@ -407,6 +407,14 @@ describe("the route: ?backend=claude-code&profile=<name>", () => {
     const cancelled = await h.call(Q, { operation: "cancel" });
     expect(cancelled.body.login).toMatchObject({ phase: "failed", reason: "cancelled" });
     expect(h.lock.isHeld).toBe(false);
+  });
+  it("AGEND-119: a CLI whose named account the registry says is signed in with these controls (Antigravity) has the same address; one that is not (Codex, Kiro) does not", async () => {
+    const h = await http();
+    const read = await h.call("?backend=antigravity&profile=CHY");
+    expect(read.status).toBe(200);
+    expect(read.body).toMatchObject({ selected: ["antigravity"], target: { backend: "antigravity", profile: "CHY" } });
+    expect((await h.call("?backend=codex&profile=CHY")).status).toBe(404);
+    expect((await h.call("?backend=kiro-cli&profile=CHY")).status).toBe(404);
   });
   it.each([
     ["?backend=claude-code"], ["?profile=CHY"], ["?backend=kiro-cli&profile=CHY"], ["?backend=codex&profile=CHY"], ["?backend=claude-code&profile=..%2Fx"], ["?backend=claude-code&profile="],

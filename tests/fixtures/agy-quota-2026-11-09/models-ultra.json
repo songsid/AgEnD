@@ -1,0 +1,203 @@
+{
+  "models": {
+    "gemini-3.8-flash-low": {
+      "displayName": "Gemini 3.8 Flash (Low)",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "gemini-3.8-flash-medium": {
+      "displayName": "Gemini 3.8 Flash (Medium)",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "gemini-3.5-flash-lite": {
+      "displayName": "Gemini 3.5 Flash Lite",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "claude-opus-5-5-low": {
+      "displayName": "Claude Opus 5.5 (Low)",
+      "modelProvider": "MODEL_PROVIDER_ANTHROPIC",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-11-09T07:47:07Z"
+      }
+    },
+    "gemini-3.8-flash-tiered": {
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "claude-sonnet-5-5-medium": {
+      "displayName": "Claude Sonnet 5.5 (Medium)",
+      "modelProvider": "MODEL_PROVIDER_ANTHROPIC",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-11-09T07:47:07Z"
+      }
+    },
+    "claude-opus-5-5-high": {
+      "displayName": "Claude Opus 5.5 (High)",
+      "modelProvider": "MODEL_PROVIDER_ANTHROPIC",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-11-09T07:47:07Z"
+      }
+    },
+    "gemini-2.5-flash-lite": {
+      "displayName": "Gemini 3.5 Flash Lite",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "gemini-4-argon-medium": {
+      "displayName": "Gemini 4 Argon (Medium)",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "gemini-4-argon-high": {
+      "displayName": "Gemini 4 Argon (High)",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "chat_23310": {
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 1
+      }
+    },
+    "claude-sonnet-5-5-high": {
+      "displayName": "Claude Sonnet 5.5 (High)",
+      "modelProvider": "MODEL_PROVIDER_ANTHROPIC",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-11-09T07:47:07Z"
+      }
+    },
+    "claude-opus-5-5-medium": {
+      "displayName": "Claude Opus 5.5 (Medium)",
+      "modelProvider": "MODEL_PROVIDER_ANTHROPIC",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-11-09T07:47:07Z"
+      }
+    },
+    "tab_jump_flash_lite_preview": {
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 1
+      }
+    },
+    "gemini-2.5-flash": {
+      "displayName": "Gemini 3.5 Flash Lite",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "gemini-2.5-flash-thinking": {
+      "displayName": "Gemini 3.5 Flash Lite",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "gemini-3-flash": {
+      "displayName": "Gemini 3 Flash",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "gemini-2.5-pro": {
+      "displayName": "Gemini 2.5 Pro",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "claude-sonnet-5-5-low": {
+      "displayName": "Claude Sonnet 5.5 (Low)",
+      "modelProvider": "MODEL_PROVIDER_ANTHROPIC",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-11-09T07:47:07Z"
+      }
+    },
+    "gemini-4-argon-low": {
+      "displayName": "Gemini 4 Argon (Low)",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "gemini-3.1-flash-lite": {
+      "displayName": "Gemini 3.1 Flash Lite",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "gpt-oss-120b-medium": {
+      "displayName": "GPT-OSS 120B (Medium)",
+      "modelProvider": "MODEL_PROVIDER_OPENAI",
+      "quotaInfo": {
+        "remainingFraction": 1,
+        "resetTime": "2026-11-09T07:47:07Z"
+      }
+    },
+    "chat_20706": {
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 1
+      }
+    },
+    "gemini-3.8-flash-high": {
+      "displayName": "Gemini 3.8 Flash (High)",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "gemini-3.1-flash-image": {
+      "displayName": "Gemini 3.1 Flash Image",
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 0.96174145,
+        "resetTime": "2026-11-09T05:11:47Z"
+      }
+    },
+    "tab_flash_lite_preview": {
+      "modelProvider": "MODEL_PROVIDER_GOOGLE",
+      "quotaInfo": {
+        "remainingFraction": 1
+      }
+    }
+  }
+}

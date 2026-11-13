@@ -10,3 +10,11 @@
 /* The ⓘ sits against the switch it explains; the backup-renewal switch is on the same line, with its own ⓘ. */
 .s-account-keepalive > .s-tipwrap { margin-left: calc(-1 * var(--s-2)); }
 .s-account-keepalive .s-keepalive-fallback { display: flex; align-items: center; gap: var(--s-2); }
+
+/* AGEND-250 (UI gate, rule 7): on a phone the switch is tapped through its label, which is --tap high, and the ⓘ is a --tap box whose 18px circle is drawn inside it (the gate measures the element's own box, so the circle is a pseudo-element). */
+@media (max-width: 899px) {
+  .s-account-keepalive .check { min-height: var(--tap); }
+  .s-account-keepalive .s-i .s-tipbtn { position: relative; width: var(--tap); height: var(--tap); border-color: transparent; }
+  .s-account-keepalive .s-i .s-tipbtn::before { content: ""; position: absolute; inset: calc((var(--tap) - 18px) / 2); border: 1px solid var(--border-strong); border-radius: var(--r-full); }
+  .s-account-keepalive .s-i .s-tipbtn:hover::before, .s-account-keepalive .s-i .s-tipbtn:focus-visible::before { border-color: var(--accent); }
+}

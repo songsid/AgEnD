@@ -16,7 +16,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { spawn } from "./child-process.js";
-import { assertCredentialProfileCli, assertCredentialProfileName, credentialProfileDirectory, ensureCredentialProfile, forgetCredentialStatus, isCredentialProfileCli, type CredentialProfileCli } from "./runtime-credential-profiles.js";
+import { PROFILE_CLI_NAMES, assertCredentialProfileCli, assertCredentialProfileName, credentialProfileDirectory, ensureCredentialProfile, forgetCredentialStatus, isCredentialProfileCli, type CredentialProfileCli } from "./runtime-credential-profiles.js";
 
 export const CREATED_PROFILES_FILE = "created.json";
 const MAX_LEDGER_BYTES = 64 * 1024;
@@ -25,7 +25,7 @@ const BACKUP = /^\.claude\.json\.backup(?:[.\-_][A-Za-z0-9._-]{0,64})?$/;
 
 /** A refusal whose text is ours: it names a profile and what to do, never a path, an account or a secret. */
 export class ProfileOwnershipRefusal extends Error {
-  constructor(message: string, readonly reason: "unsupported" | "not_owned" | "not_found" | "link" | "invalid_request" | "in_use" | "default_profile" | "unconfirmed") { super(message); this.name = "ProfileOwnershipRefusal"; }
+  constructor(message: string, readonly reason: "unsupported" | "not_owned" | "not_found" | "link" | "invalid_request" | "in_use" | "default_profile" | "unconfirmed" | "not_isolated") { super(message); this.name = "ProfileOwnershipRefusal"; }
 }
 const present = (path: string): boolean => { try { lstatSync(path); return true; } catch { return false; } };
 const dictionary = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
@@ -140,7 +140,7 @@ export interface OwnedProfileOptions {
  * ProfileOwnershipRefusal otherwise; nothing is read from or written to the profile.
  */
 export async function requireOwnedProfile(pairingDirectory: string, root: string, cli: unknown, name: unknown, options: OwnedProfileOptions = {}): Promise<string> {
-  if (!isCredentialProfileCli(cli)) throw new ProfileOwnershipRefusal("Credential profiles on a Windows Runtime support Claude Code only. Codex may keep its sign-in in the Windows Credential Manager, which a profile folder cannot hold or remove, so it is not offered yet", "unsupported");
+  if (!isCredentialProfileCli(cli)) throw new ProfileOwnershipRefusal(`Credential profiles on a Windows Runtime support ${PROFILE_CLI_NAMES()} only. Codex may keep its sign-in in the Windows Credential Manager, which a profile folder cannot hold or remove, so it is not offered yet`, "unsupported");
   let checked: string; try { checked = assertCredentialProfileName(name); } catch { throw new ProfileOwnershipRefusal("That is not a valid credential profile name", "invalid_request"); }
   const directory = credentialProfileDirectory(root, cli, checked);
   if (!isCreatedProfile(root, cli, checked)) {
@@ -156,7 +156,7 @@ export async function requireOwnedProfile(pairingDirectory: string, root: string
   // Where it really is, against where it should be: any redirect not reported above still fails here.
   const real = realpathSync(directory), expected = join(realpathSync(pairingDirectory), "credential-profiles", cli, checked);
   if (!same(real, expected)) throw new ProfileOwnershipRefusal(`Credential profile "${checked}" is not inside this Runtime's profile folder`, "link");
-  const own = [join(homedir(), ".claude"), ...(options.protectedHomes ?? [])];
+  const own = [join(homedir(), ".claude"), join(homedir(), ".gemini"), ...(options.protectedHomes ?? [])];
   for (const home of own) { try { if (same(realpathSync(home), real)) throw new ProfileOwnershipRefusal("That is this Windows user's own sign-in, which is never changed from AgEnD", "not_owned"); } catch (error) { if (error instanceof ProfileOwnershipRefusal) throw error; } }
   assertNoLinksInside(directory);
   return directory;

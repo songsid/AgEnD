@@ -158,7 +158,7 @@ describe("internal fleet tools need no channel reply context", () => {
       await fm.handleOutboundFromInstance("source", { tool, args, adapterId: "discord", operationId: `op-${responses.length}`, sourceDaemonBootId: "source-boot", fleetRequestId: `r-${responses.length}` });
       return responses.at(-1);
     };
-    const sent = await call("send_to_instance", { instance_name: "target", message: "local work" });
+    const sent = await call("send_to_instance", { instance_name: "target", message: "local work", detail: true });
     expect(sent.error).toBeUndefined(); expect(sent.result).toMatchObject({ sent: true, queued: true, durable: true });
     const id = sent.result.delivery_id;
     expect((await call("delivery_status", { delivery_id: id })).result.items).toMatchObject([{ delivery_id: id, target_instance: "target" }]);
@@ -170,7 +170,7 @@ describe("internal fleet tools need no channel reply context", () => {
     expect((await call("reply", { text: "channel response" })).error).toMatch(/not ready|world unavailable/);
     const db = new SchedulerDb(join(root, "scheduler.db")); stores.push(db); fm.scheduler = { db };
     db.createTask({ title: "local task", created_by: "source" });
-    fm.dispatchTypedIpc("source", { type: "fleet_task", payload: { action: "list" }, fleetRequestId: "tasks" });
+    fm.dispatchTypedIpc("source", { type: "fleet_task", payload: { action: "list", detail:true }, fleetRequestId: "tasks" });
     expect(responses.at(-1)).toMatchObject({ type: "fleet_task_response", result: [{ title: "local task" }] });
   });
 

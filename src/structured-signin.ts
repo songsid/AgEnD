@@ -1,22 +1,29 @@
 /**
  * #2599 stage 1: browser controls for a login command, never a browser terminal.
  * Transport/authority are supplied by the host; this module starts no processes
- * by itself and imports no fleet lifecycle. Agy remains console-only.
+ * by itself and imports no fleet lifecycle.
+ *
+ * Antigravity (AGEND-113) is signed in with `agy acp --login` (agy >= 1.5.0: "Log in with Google interactively, then exit"), never with the bare `agy` TUI: the command prints
+ * Google's link, asks for the authorization code and ends. Its screen is read through the same closed table the Windows Runtime uses (`reduceAgyLoginScreen`), and it prints no
+ * success line, so it is "signed in" only when the command ended with exit 0 and `agy models` works (`checkAuth`).
  */
 import { randomBytes } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { LOGIN_FLOWS, extractLoginHint, type AuthCheckResult } from "./login-flows.js";
 import { LoginWindowLock, type LoginWindowClaim } from "./login-window-lock.js";
 import { linkableLoginUrl } from "./login-url.js";
+import { REDUCED_AGY_CANCELLED, REDUCED_AGY_CODE_PROMPT, REDUCED_AGY_REJECTED, REDUCED_AGY_URL_PREFIX, reduceAgyLoginScreen } from "./runtime-signin.js";
 import { hostFacts, hostIdsByRank, type HostCliWith } from "./cli-registry.js";
 
-/** The CLIs whose sign-in is driven with browser controls (cli-registry.ts: `host.structuredSignIn`, in the order of its `rank`). */
+/**
+ * The CLIs whose sign-in is driven with browser controls (cli-registry.ts: `host.structuredSignIn`, in the order of its `rank`). Whether the FIRST-RUN page offers them as controls
+ * is another capability (`host.firstRunSignIn.mode`): Antigravity is driven here, but that page only names its console command.
+ */
 export type StructuredBackend = HostCliWith<"structuredSignIn">;
 export const STRUCTURED_SIGNIN_BACKENDS: readonly StructuredBackend[] = Object.freeze(hostIdsByRank("structuredSignIn") as StructuredBackend[]);
 export function structuredSignInSupported(backend: string): backend is StructuredBackend {
   return (STRUCTURED_SIGNIN_BACKENDS as readonly string[]).includes(backend);
 }
-
 /** The exact command each sign-in launches (cli-registry.ts: `host.structuredSignIn.argv`; pinned, literally, by tests/cli-registry-golden.test.ts). */
 const ARGV = Object.fromEntries(STRUCTURED_SIGNIN_BACKENDS.map(id => [id, hostFacts(id, "structuredSignIn")!.argv])) as Record<StructuredBackend, readonly string[]>;
 const TTL_MS = 10 * 60_000;
@@ -25,7 +32,9 @@ const MAX_PANE = 64 * 1024;
 const MAX_VALUE = 4_096;
 
 export type SignInFailure = "busy" | "cancelled" | "expired" | "revoked" | "unsupported_prompt"
-  | "provider_rejected" | "relogin_required" | "auth_unconfirmed" | "transport_failed" | "cleanup_failed";
+  | "provider_rejected" | "relogin_required" | "auth_unconfirmed" | "transport_failed" | "cleanup_failed"
+  /** AGEND-119: a named account's folder is not where the CLI keeps its sign-in (it would use, and overwrite, another account's): nothing was started. */
+  | "not_isolated";
 export type SignInPrompt =
   | { phase: "waiting" }
   | { phase: "method"; choices: string[]; selected: number }
@@ -67,10 +76,33 @@ function menu(pane: string, backend: StructuredBackend): SignInPrompt | null {
     ? ["builder_id", "google", "github", "organization"] : ["subscription", "console", "third_party"] };
 }
 
+/**
+ * `agy acp --login`: the reduced screen has four forms (link, code prompt, "Login failed", "Login cancelled") and there is no success form to read: the command ending with exit 0 is
+ * checked in `poll`. The link only ever comes out of the reducer, so it is https on `accounts.google.com`.
+ */
+function agyPrompt(pane: string): SignInPrompt {
+  const rows = reduceAgyLoginScreen(pane).split("\n").filter(Boolean);
+  if (rows.includes(REDUCED_AGY_REJECTED)) return { phase: "failed", reason: "provider_rejected" };
+  if (rows.includes(REDUCED_AGY_CANCELLED)) return { phase: "failed", reason: "cancelled" };
+  const link = rows.find(row => row.startsWith(REDUCED_AGY_URL_PREFIX))?.slice(REDUCED_AGY_URL_PREFIX.length);
+  const url = link && link.length <= MAX_VALUE ? link : null;
+  if (rows.includes(REDUCED_AGY_CODE_PROMPT)) return { phase: "code", url };
+  return url ? { phase: "authorization", url, code: null } : { phase: "waiting" };
+}
+
+/**
+ * A CLI whose screen is read by its own closed table instead of `LOGIN_FLOWS`' patterns (the behaviour that backs a registry `structuredSignIn` whose `screen` is `"own"`;
+ * tests/cli-registry-completeness.test.ts checks the two agree).
+ */
+const SCREEN_READERS: Partial<Record<StructuredBackend, (pane: string) => SignInPrompt>> = { antigravity: agyPrompt };
+/** The CLIs that have one (the completeness test checks they are exactly the registry's `screen: "own"`). */
+export const OWN_SCREEN_READER_IDS: readonly string[] = Object.freeze(Object.keys(SCREEN_READERS));
 /** Plain joined pane only, bounded; raw output never becomes a browser view or an error. */
 export function structuredSignInPrompt(backend: StructuredBackend, input: string): SignInPrompt {
   if (Buffer.byteLength(input, "utf8") > MAX_PANE || /\x1b|\x00/.test(input)) return { phase: "failed", reason: "unsupported_prompt" };
   const pane = input.replace(/\r/g, "").trimEnd();
+  const reader = SCREEN_READERS[backend];
+  if (reader) return reader(pane);
   const flow = LOGIN_FLOWS[backend]!;
   if (flow.failures?.some(failure => failure.pattern.test(pane))) {
     return { phase: "failed", reason: /Already logged in, please logout/.test(pane) ? "relogin_required" : "provider_rejected" };
@@ -109,7 +141,8 @@ export interface StructuredSignInTransport {
    * No interactive shell after exit. Abort/close must reap late-created resources. */
   start(spec: StructuredSignInLaunch, signal: AbortSignal): Promise<void>;
   capture(): Promise<string>;
-  status(): Promise<{ alive: boolean; exitCode?: number }>;
+  /** `isolated: false` (AGEND-124): the command ended, but the account's sign-in is not in the account's own folder (the CLI kept it somewhere shared), so it is not this account's. */
+  status(): Promise<{ alive: boolean; exitCode?: number; isolated?: false }>;
   /** Literal PTY input to this attempt's fixed login command, never shell interpolation. */
   write(input: string, signal: AbortSignal): Promise<void>;
   /** Confirm all this attempt's native resources are gone; reject if that cannot be proven. */
@@ -124,6 +157,11 @@ export interface StructuredSignInDeps {
   profile?: string;
   /** Independently probe the backend's auth status; bounded and token-free (LOGIN_FLOWS.authCheck). */
   checkAuth(): Promise<AuthCheckResult>;
+  /**
+   * AGEND-119, a NAMED account of a CLI told its account by an argument: whether this account's sign-in is really kept in its own folder, asked before anything is started. False: the CLI keeps one
+   * sign-in for every folder (its keyring), so signing this account in would replace another's — the sign-in ends as `not_isolated` and no login command runs. Absent: not asked.
+   */
+  isolated?(): Promise<boolean>;
   /** Monotonic elapsed milliseconds; wall-clock corrections must not extend an attempt. */
   now?(): number;
   /** Safe event only. Never receives panes, URLs, codes or supplied input. */
@@ -193,6 +231,11 @@ export class StructuredSignIn {
     this.deadline.unref?.();
     try {
       if (!this.current()) { await this.finish(this.lostReason()); return; }
+      if (this.deps.isolated) {
+        const isolated = await this.deps.isolated().catch(() => false);
+        if (!this.current()) { await this.finish(this.lostReason()); return; }
+        if (!isolated) { await this.finish("not_isolated"); return; }
+      }
       const auth = await this.deps.checkAuth();
       if (!this.current()) { await this.finish(this.lostReason()); return; }
       if (auth === "valid" && !confirmedRelogin) { await this.finish(); return; }
@@ -204,7 +247,10 @@ export class StructuredSignIn {
       await this.startInFlight;
       if (!this.current()) { await this.finish(this.lostReason()); return; }
       await this.poll();
-    } catch { await this.finish("transport_failed"); }
+    } catch (error) {
+      // A transport that was refused because the account's sign-in is not kept in the account's own folder (a Runtime's proof, AGEND-124) says so; nothing else of an error is read.
+      await this.finish(error instanceof Error && error.message === "not_isolated" ? "not_isolated" : "transport_failed");
+    }
   }
 
   view(who: object): StructuredSignInView {
@@ -251,7 +297,13 @@ export class StructuredSignIn {
         if (prompt.phase === "failed") { await this.finish(prompt.reason); return; }
         const status = await this.deps.transport.status();
         if (!this.current()) { await this.finish(this.lostReason()); return; }
-        if (prompt.phase === "success" || !status.alive) {
+        // A named account whose command ended well but left no sign-in in the account's folder: the CLI did not keep it there, so it was kept in a store every folder shares.
+        if (status.isolated === false && !status.alive) { await this.finish("not_isolated"); return; }
+        // A CLI whose sign-in ends by its exit code (Antigravity prints no success line): it has ended only when the command has, and only exit 0 is checked. No exit code at all (a signal, a closed
+        // window, a pane status that could not be read) is not "signed in" either, because an older login is still there and would pass the check.
+        const byExit = hostFacts(this.backend, "structuredSignIn")?.ends === "exit-code";
+        if (byExit ? !status.alive : (prompt.phase === "success" || !status.alive)) {
+          if (byExit && status.exitCode !== 0) { await this.finish("auth_unconfirmed"); return; }
           const auth = await this.deps.checkAuth();
           if (!this.current()) { await this.finish(this.lostReason()); return; }
           await this.finish(auth === "valid" ? undefined : "auth_unconfirmed");

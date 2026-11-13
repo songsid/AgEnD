@@ -362,11 +362,11 @@ describe("the board's stale filter, Needs you, the zh-TW words", async () => {
       const { cards } = db.board.createCards(ann, { cards: [{ title: "Port the parser", assignee: "dev-a" }] }) as unknown as { cards: Array<{ uuid: string; code: string }> };
       const c = cards[0]!;
       db.board.updateCard({ kind: "instance", name: "dev-a" }, c.uuid, {});
-      expect(await fm.handleTaskCrudHttp("lead", { action: "list", stale: true })).toBe("No claimed card has a stopped assignee.");
+      expect(await fm.handleTaskCrudHttp("lead", {action:"list",stale:true,detail:true})).toBe("No claimed card has a stopped assignee.");
       scheduler.db.liveness.open({ cardUuid: c.uuid, assignee: "dev-a", dispatcher: "lead", dispatcherKind: "instance", kind: "quiet", since: Date.now() - 65 * MIN, detail: "", noticeKey: null, notifiedAt: Date.now() });
       // only a claimed card counts: claim it first
       db.updateTask(c.uuid, { status: "claimed" }, { kind: "instance", name: "dev-a" });
-      expect(await fm.handleTaskCrudHttp("lead", { action: "list", stale: true })).toMatch(new RegExp(`^${c.code} — @dev-a: quiet with the card claimed \\(1 h 0[45] min\\)$`));
+      expect(await fm.handleTaskCrudHttp("lead", {action:"list",stale:true,detail:true})).toMatch(new RegExp(`^${c.code} — @dev-a: quiet with the card claimed \\(1 h 0[45] min\\)$`));
       scheduler.db.close();
     } finally { rmSync(d, { recursive: true, force: true }); }
   });

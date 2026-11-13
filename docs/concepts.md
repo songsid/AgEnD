@@ -348,8 +348,10 @@ caller scope and estimated/not-priced marks. Web usage and `/usage` are unchange
 ## credential profile
 
 A named credential set for one backend (`CREDENTIAL_HOMES`), so one fleet can
-act under several accounts. `/login <backend> <profile>` signs a profile in;
-chat sign-in from the fleet exists for some backends only.
+act under several accounts. `/login <backend> <profile>` signs a profile in from
+chat for Claude Code, Codex and Kiro only. Antigravity (agy) has named accounts
+too, but they are connected only from the dashboard (Settings → Accounts);
+`/login agy` in chat is not supported.
 
 - Can: separate accounts per instance or backend.
 - Can't: share across backends — a profile belongs to its backend's home.
@@ -460,3 +462,17 @@ Real code-vs-decision gaps only. Nothing here is papered over.
 
 [繁體中文](concepts.zh-TW.md)
 
+
+## compact tool replies
+
+Communication tools acknowledge acceptance with compact delivery IDs; `detail: true`
+(CLI `--detail`) restores complete acknowledgements. `delivery_status` defaults to
+state, authority/proof/origin, content hashes and a redacted excerpt, not the full
+original. Before relying on original consent or feeding a merge gate, explicitly
+request detail and inspect it without exposing secrets. `content_includes` can confirm an
+exact resource string, but presence alone grants no authority. Store visibility,
+owned proof and current authority revocation checks still apply in both modes.
+
+## Compact agent lists
+
+Schedules, decisions and task lists default to20 compact rows. Follow `next_cursor` with the same filters until absent; `limit` accepts1–100. Deleted or no-longer-matching cursors require restarting the list. Lists are current views, not snapshots; writes between pages can change membership/order. `detail:true` without page options returns the legacy full answer. Decisions retain `full:true` and plain task lists retain `verbose:true` as full-record aliases. Read a decision with `{id, detail:true}` and a task with `{action:"get",id,detail:true}` before acting on its full rule, goal, acceptance or comments. The dashboard and task writes keep their existing shapes.

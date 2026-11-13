@@ -58,6 +58,12 @@ it("pending IDs for a backend without an agent survive into the authenticated da
   expect(response.status).toBe(200); expect(response.body.selected).toEqual(["codex", "antigravity"]); expect(response.body.pending).toEqual(["codex", "antigravity"]);
   expect(response.body.states.antigravity).toBe("console_only"); expect(response.headers["cache-control"]).toContain("no-store"); expect(h.transport.start).not.toHaveBeenCalled();
 });
+it("AGEND-113: the route takes a start for Antigravity (the service decides: the first-run checklist's own service still says console-only), and never anything outside the four", async () => {
+  const h = await rig();
+  const agy = await h.call(h.admin.headers, { operation: "start", backend: "antigravity" });
+  expect(agy.status).toBe(409); expect(agy.body).toEqual({ error: "signin_console_only" }); expect(h.transport.start).not.toHaveBeenCalled();
+  for (const backend of ["grok", "agy", "opencode", "codex; sh"]) expect((await h.call(h.admin.headers, { operation: "start", backend })).status, backend).toBe(400);
+});
 it("a second admin gets no hints and cannot answer the first admin's prompt", async () => {
   const h = await rig(); const started = await h.call(h.admin.headers, { operation: "start", backend: "codex" });
   expect(started.body.login.code).toBe("TEST-CODE"); const other = h.session(); const view = await h.call(other.headers);

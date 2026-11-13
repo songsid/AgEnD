@@ -7,7 +7,7 @@ roles: [general, worker]
 ## Tools
 
 - `create_schedule` — make a schedule (recurring or one-shot).
-- `list_schedules` — list all (optionally filter by target instance).
+- `list_schedules` — list compact titles and timing,20 per page (optionally filter by target instance). Follow `next_cursor` with the same filters. Use `detail:true` without page options for full messages and legacy records before editing.
 - `update_schedule` — change cron/at/message/target/label/timezone/enabled of an existing one.
 - `delete_schedule` — remove one.
 

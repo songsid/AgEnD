@@ -1,7 +1,7 @@
 /**
  * #3212 + #3321: Settings → Accounts, box layout (src/ui/accounts-view.js, accounts-keepalive.js and their stylesheets, over a faked GET /ui/accounts).
  * Each account is a box with three layers: the title bar (name, state, default tag · compact buttons without a trailing "…"), the meta bar
- * (masked email · plan, "used by" pill), the usage block (the short "5h" window and the week) and Keep sign-in alive as the box's foot.
+ * (masked email · plan, "used by" pill), the usage block (every pool and window the account reports) and Keep sign-in alive as the box's foot.
  * #3321 (the upstream UI rules, songsid/AgEnD#3321: shared components, theme variables, no one-off styles): the windows are the Usage panel's own
  * `CompactMeter`, "used by N agents ▾" is the shared `Menu` (one item per agent, choosing it opens that agent's settings), the foot's explanations are
  * `InfoTip` (hover, focus or a tap), the CLI's block is a `.card`, and the stylesheets hold no colour of their own — only the theme's variables (tokens.css),
@@ -13,13 +13,16 @@ import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
 const DAY = 86_400_000;
+/** A row's usage as the server sends it (accounts-view.ts `accountUsage`): groups of windows, each with its kind. */
+const win = (kind: string, percent: number, windowMs?: number, extra: Record<string, unknown> = {}) => ({ kind, percent, ...(windowMs ? { windowMs } : {}), ...extra });
+const groups = (...windows: any[]) => [{ windows }];
 const none = { agents: [], classic: [], fleetDefault: false };
 const VIEW = () => ({ clis: [
   { backend: "claude-code", profiles: true, installed: true, fleetDefault: "work", agents: [{ name: "architect", profile: "work" }, { name: "code-reviewer", profile: "work" }],
     rows: [
-      { scope: { kind: "host" }, backend: "claude-code", profile: null, state: "usable", signIn: true, identity: { maskedEmail: "ju***@example.com", plan: "max" }, usedBy: none, usage: { percent: 18, windowMs: 604800000 } },
+      { scope: { kind: "host" }, backend: "claude-code", profile: null, state: "usable", signIn: true, identity: { maskedEmail: "ju***@example.com", plan: "max" }, usedBy: none, usageGroups: groups(win("weekly", 18, 604800000)) },
       { scope: { kind: "host" }, backend: "claude-code", profile: "work", state: "usable", signIn: true, identity: { maskedEmail: "te***@company.example", plan: "team" },
-        usedBy: { agents: ["architect", "code-reviewer"], classic: [], fleetDefault: true }, usage: { percent: 42, windowMs: 604800000 },
+        usedBy: { agents: ["architect", "code-reviewer"], classic: [], fleetDefault: true }, usageGroups: groups(win("weekly", 42, 604800000)),
         keepAlive: { enabled: true, fallback: false, endsAt: new Date(Date.now() + 30 * DAY).toISOString() } },
       { scope: { kind: "host" }, backend: "claude-code", profile: "personal", state: "usable", signIn: true, usedBy: { agents: ["scout"], classic: [], fleetDefault: false }, keepAlive: { enabled: false, fallback: false } },
       { scope: { kind: "host" }, backend: "claude-code", profile: "spare", state: "not_signed_in", signIn: true, usedBy: { agents: [], classic: ["room1"], fleetDefault: false } },
@@ -91,7 +94,7 @@ describe("the account box: three layers (#3212)", () => {
     expect(rowOf("claude-code", "personal").querySelector(".u-cm")).toBeNull();                // no usage reported: no meter
     expect(p.root.querySelectorAll("[style]")).toHaveLength(0);
     // a percent outside 0–100 never overdraws the meter
-    view.clis[0].rows[0].usage = { percent: 140, windowMs: 604800000 };
+    view.clis[0].rows[0].usageGroups = groups(win("weekly", 100, 604800000));          // the server keeps a percent within 0–100; the page never overdraws either
     A.accountsStore.set({ loaded: false, failed: false, view: null }); await p.unmount(); await mount();
     expect(rowOf("claude-code", "default").querySelector(".u-cm-fill").style.width).toBe("100%");
     expect(text(rowOf("claude-code", "default").querySelector(".u-cm-pct"))).toBe("100%");
@@ -198,13 +201,12 @@ describe("“used by N agents ▾”: the shared Menu, one item per agent, each 
   });
 });
 
-describe("the usage block: the short window and the week, as CompactMeter (#3212, #3321)", () => {
-  const short = (percent: number, extra: Record<string, unknown> = {}) => ({ percent, windowMs: 5 * 3_600_000, resetsAt: new Date(Date.now() + 3 * 3_600_000 + 30_000).toISOString(), ...extra });
+describe("the usage block: the account's windows, as CompactMeter (#3212, #3321)", () => {
+  const short = (percent: number, extra: Record<string, unknown> = {}) => win("session", percent, 5 * 3_600_000, { resetsAt: new Date(Date.now() + 3 * 3_600_000 + 30_000).toISOString(), ...extra });
   const level = (w: any) => w.querySelector(".u-cm-fill").className.split(" ").filter((c: string) => /^(warn|crit)$/.test(c));
 
   it("both windows, short first: name · meter · percent · reset; the box's layers are title, meta, usage, foot", async () => {
-    view.clis[0].rows[1].shortUsage = short(76);
-    view.clis[0].rows[1].usage = { percent: 28, windowMs: 7 * 86_400_000, resetsAt: new Date(Date.now() + 2 * 86_400_000).toISOString() };
+    view.clis[0].rows[1].usageGroups = groups(short(76), win("weekly", 28, 7 * 86_400_000, { resetsAt: new Date(Date.now() + 2 * 86_400_000).toISOString() }));
     await mount();
     const work = rowOf("claude-code", "work"), ws = wins("claude-code", "work");
     expect(ws.map((w: any) => meterText(w).slice(0, 2))).toEqual([["5h", "76%"], ["7d", "28%"]]);
@@ -215,7 +217,7 @@ describe("the usage block: the short window and the week, as CompactMeter (#3212
   });
 
   it("amber from 70%, red from 90% — the meter's own thresholds, on the fill and the percent alike", async () => {
-    const at = async (pct: number) => { view.clis[0].rows[1].shortUsage = short(pct); A.accountsStore.set({ loaded: false, failed: false, view: null }); await p.unmount(); await mount();
+    const at = async (pct: number) => { view.clis[0].rows[1].usageGroups = groups(short(pct)); A.accountsStore.set({ loaded: false, failed: false, view: null }); await p.unmount(); await mount();
       const w = wins("claude-code", "work")[0]; return [level(w), w.querySelector(".u-cm-pct").className.split(" ").filter((c: string) => /^(warn|crit)$/.test(c))]; };
     expect(await at(0)).toEqual([[], []]); expect(await at(42)).toEqual([[], []]); expect(await at(69)).toEqual([[], []]);
     expect(await at(70)).toEqual([["warn"], ["warn"]]); expect(await at(89)).toEqual([["warn"], ["warn"]]);
@@ -224,8 +226,8 @@ describe("the usage block: the short window and the week, as CompactMeter (#3212
   });
 
   it("a CLI that reports one window shows one; one that reports none shows no block", async () => {
-    view.clis[0].rows[1].shortUsage = short(55); delete view.clis[0].rows[1].usage;               // work: only the short window
-    delete view.clis[0].rows[0].usage;                                                           // default: nothing
+    view.clis[0].rows[1].usageGroups = groups(short(55));                                        // work: only the short window
+    delete view.clis[0].rows[0].usageGroups;                                                     // default: nothing
     await mount();
     expect(wins("claude-code", "work").map((w: any) => meterText(w).slice(0, 2))).toEqual([["5h", "55%"]]);
     expect(wins("claude-code", "default")).toHaveLength(0);
@@ -236,10 +238,9 @@ describe("the usage block: the short window and the week, as CompactMeter (#3212
   });
 
   it("the reset is the meter's: ↻ and one unit (45m, 3h, 26h, 3d), nothing once it has passed; the exact clock time is the tooltip", async () => {
-    const reset = async (ms: number) => { view.clis[0].rows[1].shortUsage = short(50, { resetsAt: new Date(Date.now() + ms).toISOString() }); A.accountsStore.set({ loaded: false, failed: false, view: null }); await p.unmount(); await mount();
+    const reset = async (ms: number) => { view.clis[0].rows[1].usageGroups = groups(short(50, { resetsAt: new Date(Date.now() + ms).toISOString() })); A.accountsStore.set({ loaded: false, failed: false, view: null }); await p.unmount(); await mount();
       const w = wins("claude-code", "work")[0]; return [meterText(w)[2], w.getAttribute("title")]; };
     const MIN = 60_000, HOUR = 3_600_000;
-    view.clis[0].rows[1].usage = { percent: 42, windowMs: 7 * 86_400_000, resetsAt: new Date(Date.now() + 2 * 86_400_000).toISOString() };
     expect((await reset(44 * MIN + 30_000))[0]).toBe("↻ 45m");
     expect((await reset(3 * HOUR + MIN))[0]).toBe("↻ 3h");
     expect((await reset(26 * HOUR + MIN))[0]).toBe("↻ 26h");
@@ -251,19 +252,17 @@ describe("the usage block: the short window and the week, as CompactMeter (#3212
     expect(title).toMatch(/^5h: 50% · ↻ \d/);                                                       // the window, the percent and the reset's clock time
   });
 
-  it("a window is named from its length: hours, the week's word near seven days, else days; a week of unknown length is still the week", async () => {
-    view.clis[0].rows[0].shortUsage = short(10, { windowMs: 24 * 3_600_000 });
-    view.clis[0].rows[0].usage = { percent: 20, windowMs: 30 * 86_400_000 };
-    view.clis[0].rows[1].shortUsage = short(10, { windowMs: 3 * 3_600_000 });
-    view.clis[0].rows[1].usage = { percent: 20 };                                                 // no windowMs
+  it("a window is named from its length: hours, the week's word near seven days, else days; a week of unknown length is still the week, a month the days, one number with no window a dash", async () => {
+    view.clis[0].rows[0].usageGroups = groups(short(10, { windowMs: 24 * 3_600_000 }), win("monthly", 20, 30 * 86_400_000), win("monthly", 5), win("unwindowed", 7));
+    view.clis[0].rows[1].usageGroups = groups(short(10, { windowMs: 3 * 3_600_000 }), win("weekly", 20));                    // no windowMs
     await mount();
-    expect(wins("claude-code", "default").map((w: any) => meterText(w)[0])).toEqual(["24h", "30d"]);
+    expect(wins("claude-code", "default").map((w: any) => meterText(w)[0])).toEqual(["24h", "30d", "30d", "—"]);
     expect(wins("claude-code", "work").map((w: any) => meterText(w)[0])).toEqual(["3h", "7d"]);
   });
 
   it("stale: the block is greyed (`is-stale`) and says so once; a window with no reset time leaves its cell empty", async () => {
-    view.clis[0].rows[1].shortUsage = short(76, { stale: true, resetsAt: undefined });
-    view.clis[0].rows[1].usage = { percent: 28, windowMs: 7 * 86_400_000, stale: true };
+    view.clis[0].rows[1].usageGroups = groups(short(76, { resetsAt: undefined }), win("weekly", 28, 7 * 86_400_000));
+    view.clis[0].rows[1].usageStale = true;
     await mount();
     const block = rowOf("claude-code", "work").querySelector(".s-account-usage");
     expect(block.className).toContain("is-stale");
@@ -283,9 +282,9 @@ describe("the usage block: the short window and the week, as CompactMeter (#3212
 
   it("in zh-TW: 5h and 本週, （未更新）, 30天", async () => {
     i18n.setLang("zh-TW", { store: false });
-    view.clis[0].rows[1].shortUsage = short(76, { stale: true });
-    view.clis[0].rows[1].usage = { percent: 28, windowMs: 7 * 86_400_000, stale: true, resetsAt: new Date(Date.now() + 2 * 86_400_000).toISOString() };
-    view.clis[0].rows[0].usage = { percent: 20, windowMs: 30 * 86_400_000 };
+    view.clis[0].rows[1].usageGroups = groups(short(76), win("weekly", 28, 7 * 86_400_000, { resetsAt: new Date(Date.now() + 2 * 86_400_000).toISOString() }));
+    view.clis[0].rows[1].usageStale = true;
+    view.clis[0].rows[0].usageGroups = groups(win("monthly", 20, 30 * 86_400_000));
     await mount();
     const ws = wins("claude-code", "work");
     expect(ws.map((w: any) => meterText(w)[0])).toEqual(["5h", "本週"]);

@@ -178,7 +178,7 @@ describe("the folder above is checked again after the rename, and a leftover is 
     const { root } = setup(); expect(listRemovalLeftovers(root, "claude-code")).toEqual([]);
     createRuntimeProfile(root, "claude-code", "work"); mkdirSync(join(root, "claude-code", ".removing-xyz")); writeFileSync(join(root, "claude-code", ".removing-0123456789abcdef"), "a file");
     expect(listRemovalLeftovers(root, "claude-code")).toEqual([]); mkdirSync(join(root, "claude-code", ".removing-0123456789abcdef.d"));
-    expect(listRemovalLeftovers(root, "claude-code")).toEqual([]); expect(() => listRemovalLeftovers(root, "codex")).toThrow(/Claude Code only/);
+    expect(listRemovalLeftovers(root, "claude-code")).toEqual([]); expect(() => listRemovalLeftovers(root, "codex")).toThrow(/Claude Code and Antigravity only/);
   });
 });
 

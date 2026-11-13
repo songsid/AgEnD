@@ -101,7 +101,7 @@ describe("the hub skill", () => {
       "Connected. You can close this tab.", "Reconnect", "Remove this connection", "Other ways", "Allow this fleet to connect to a Hub", "Hub membership",
       "Connection needs attention", "Recover this connection", "Cancel connection", "Check again", "Open Hub", "Replace saved Hub identity",
       "Shared agents", "Waiting for your confirmation", "Shared: Hub questions go to this agent's own conversation.", "Don't share it", "Share again",
-      "This fleet has no agents to share yet.", "Stop sharing…", "Sharing stopped on the Hub", "Allow someone to ask…", "My shared agents", "Who may ask",
+      "This fleet has no agents to share yet.", "Pause sharing", "Resume sharing", "Sharing paused", "Stop sharing…", "Sharing stopped on the Hub", "Allow someone to ask…", "My shared agents", "Who may ask",
       "Allow…", "Their sign-in name", "Hasn't signed in to Hub yet", "Revoke…", "Recent questions", "Subscription quota", "Show quota to people asking",
       "Chats", "New chat", "Waiting for the owner's fleet", "At the owner's fleet", "Answered", "Not answered", "Outcome unknown",
       "Open on the Hub", "Connect a fleet", "People excluded", "What this change does", "Turn on and save", "Turn off", "Resume", "Paused",
@@ -126,7 +126,11 @@ describe("the hub skill", () => {
     for (const key of ["hub.enabled", "hub_member.enabled"]) expect(SKILL).toContain(`\`${key}\``);
     expect(manager).toContain("raw?.hub?.enabled === true || raw?.hub_member?.enabled === true");
     const notYet = SKILL.slice(SKILL.indexOf("\n## Not available yet\n"), SKILL.indexOf("\n## Troubleshooting\n"));
-    for (const topic of ["Custom roles", "ClassicBot room", "Pause and resume", "second sign-in factor"]) expect(notYet, topic).toContain(topic);
+    for (const topic of ["Custom roles", "ClassicBot room", "second sign-in factor"]) expect(notYet, topic).toContain(topic);
+    expect(notYet).not.toContain("Pause and resume");
+    const sharing = FLAT.slice(FLAT.indexOf("## Sharing agents"), FLAT.indexOf("## Who may ask"));
+    for (const text of ["**Pause sharing**", "**Resume sharing**", "Expiry time keeps running", "**Stop sharing…**", "Resume cannot undo Stop sharing or a Hub policy hold"])
+      expect(sharing, text).toContain(text);
   });
 
   it("after a join code: asking follows the group-policy state, sharing is never given by the code (review of #3773)", () => {

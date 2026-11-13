@@ -97,4 +97,8 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
     if (!columns.has("subject_kind")) db.exec("ALTER TABLE hub_grants ADD COLUMN subject_kind TEXT NOT NULL DEFAULT 'person' CHECK(subject_kind IN ('person','group'))");
     if (!columns.has("subject_label")) db.exec("ALTER TABLE hub_grants ADD COLUMN subject_label TEXT NOT NULL DEFAULT ''");
   } }),
+  Object.freeze({ component: "s3-sharing-pause", version: 1, up(db: Database.Database) {
+    db.exec("ALTER TABLE hub_exposures ADD COLUMN sharing_paused INTEGER NOT NULL DEFAULT 0 CHECK(sharing_paused IN (0,1))");
+    db.exec("ALTER TABLE hub_exposures ADD COLUMN sharing_epoch INTEGER NOT NULL DEFAULT 0 CHECK(sharing_epoch>=0)");
+  } }),
 ]);
