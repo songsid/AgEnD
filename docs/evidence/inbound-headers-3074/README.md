@@ -104,3 +104,10 @@ production.
 R5 verification: the listener file passes12/12. Removing the null-to-known guard
 produces1semantic failure in the new case, with11controls passing; source restored
 exactly afterward. Ridge independently cleared the production R2 boundary correction.
+
+CI at cac8 found13 legacy-format assertions across8 files. Their exact expected
+wire now uses stable web actor tags, escaped peer metadata and context_reset on
+clear/compact commands; no assertion, negative fence or timeout was removed.
+The Codex authority-equivalence test locates the renamed header bullet and still
+checks its full authority text. All8 files pass255/255 with maxWorkers=2.
+This is a test/evidence-only correction; production remains identical to cac8.

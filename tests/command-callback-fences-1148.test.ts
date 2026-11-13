@@ -101,7 +101,7 @@ describe("#1148: clear rechecks authority and exact target after retirement awai
     const r = rig(); const callback = await clearPrompt(r);
     await r.any.handleClearConfirmation(callback, r.a.id, r.a);
     await r.any.handleClearConfirmation(callback, r.a.id, r.a);
-    expect(r.ipc.send).toHaveBeenCalledExactlyOnceWith({ type: "raw_paste", content: "/clear" });
+    expect(r.ipc.send).toHaveBeenCalledExactlyOnceWith({ type: "raw_paste", content: "/clear", context_reset: "clear" });
   });
 });
 

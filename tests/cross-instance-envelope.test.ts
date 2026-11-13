@@ -73,12 +73,12 @@ describe("the full block (#2785 (a))", () => {
   };
   it("a reply owed: the marker takes the correlation_id row and goes last; request_kind is not shown", () => {
     expect(formatCrossInstanceInboundMessage("do x", { ...FULL, requires_reply: "true" })).toBe(
-      "[from:Lead (lead)] do x\n(message_id: xmsg-1 | verification_id: hmsg-2 | forwards: [\"xmsg-0\"] | task_summary: port it | working_directory: /repo | branch: feat/x | reply required → report_result cid-1)");
+      "[from:Lead (lead)] do x\n(message_id: xmsg-1 | verification_id: hmsg-2 | forwards: \\[\"xmsg-0\"\\] | task_summary: port it | working_directory: /repo | branch: feat/x | reply required → report_result cid-1)");
     expect(formatCrossInstanceInboundMessage("do x", { ...FULL, requires_reply: "true" }, "cli")).toBe(
-      "[from:Lead (lead)] do x\n(message_id: xmsg-1 | verification_id: hmsg-2 | forwards: [\"xmsg-0\"] | task_summary: port it | working_directory: /repo | branch: feat/x | reply required → agend-agent report lead \"…\" cid-1)");
+      "[from:Lead (lead)] do x\n(message_id: xmsg-1 | verification_id: hmsg-2 | forwards: \\[\"xmsg-0\"\\] | task_summary: port it | working_directory: /repo | branch: feat/x | reply required → agend-agent report lead \"…\" cid-1)");
   });
   it("no reply owed: the meta row alone, the same in both modes, with no footer", () => {
-    const row = "[from:Lead (lead)] fyi\n(message_id: xmsg-1 | verification_id: hmsg-2 | forwards: [\"xmsg-0\"] | correlation_id: cid-1 | task_summary: port it | working_directory: /repo | branch: feat/x)";
+    const row = "[from:Lead (lead)] fyi\n(message_id: xmsg-1 | verification_id: hmsg-2 | forwards: \\[\"xmsg-0\"\\] | correlation_id: cid-1 | task_summary: port it | working_directory: /repo | branch: feat/x)";
     expect(formatCrossInstanceInboundMessage("fyi", { ...FULL, request_kind: "update" })).toBe(row);
     expect(formatCrossInstanceInboundMessage("fyi", { ...FULL, request_kind: "update", requires_reply: "false" }, "cli")).toBe(row);
   });
