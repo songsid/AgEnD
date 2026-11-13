@@ -6,7 +6,8 @@
 // - under the box, always: messages with no @agent are seen only by the people in the room;
 // - `/` is plain text here (no slash commands); a refusal is worded where the Fleet chat words "Not sent: …".
 import { html, useState, useRef } from "/assets/app-html.js";
-import { ComposerInput } from "/assets/chat-composer.js";
+import { ComposerInput, touchScreen } from "/assets/chat-composer.js";
+import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import { hroom } from "./hub-room-strings.js";
 import { presenceDot } from "./hub-room-list.js";
@@ -85,6 +86,8 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     if (palette && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setPick((i) => (i + (e.key === "ArrowDown" ? 1 : palette.length - 1)) % palette.length); return; }
     if (palette && (e.key === "Enter" || e.key === "Tab") && !e.isComposing) { e.preventDefault(); complete(chosen); return; }
     if (palette && e.key === "Escape") { e.preventDefault(); setCaret(-1); return; }
+    // Enter sends, Shift+Enter is a new line — the Fleet chat's own rule (and a phone's).
+    if (globalThis.AgendChatRender?.composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); void send(); }
   };
   const track = (v) => { setValue(v); setMsg(null); setCaret(input.current ? input.current.selectionStart ?? v.length : v.length); };
   const paletteId = `hubMention-${room.id || "room"}`, optId = (o) => `${paletteId}-${o.key}`;
@@ -99,7 +102,9 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     ${reply ? html`<div class="reply-bar" data-trust="composer" role="status"><span class="reply-text">${reply.sender ? `${reply.sender} · ` : ""}${String(reply.text || "").slice(0, 80)}</span>
       <button type="button" class="icon-btn reply-cancel" title=${hroom("cancel")} aria-label=${hroom("cancel")} onClick=${() => { onReply(null); input.current?.focus(); }}><${Icon} name="close" size=${14} /></button></div>` : null}
     <${ComposerInput} inputRef=${input} value=${value} placeholder=${hroom("composer", room.name || "")} onValue=${track} onKeyDown=${onKeyDown}
-      controls=${palette ? paletteId : undefined} expanded=${!!palette} activeDescendant=${chosen ? optId(chosen) : undefined} send=${send} />
+      controls=${palette ? paletteId : undefined} expanded=${!!palette} activeDescendant=${chosen ? optId(chosen) : undefined}
+      stop=${{ hidden: true, disabled: true, title: t("chat.stopReply"), label: t("chat.stopReply"), onClick: () => {} }}
+      send=${{ hidden: false, disabled: !value.trim() || busy, label: t("chat.send"), onClick: () => { void send(); } }} />
     ${msg ? html`<p class="err" role="alert">${msg.text}${msg.retry ? html` <button type="button" class="btn btn-sm" onClick=${send}>${hroom("retrySend")}</button>` : null}</p>` : null}
     ${group ? html`<p class="note hub-room-hint">${hroom("composerHint")}</p>` : null}
   </div>`;

@@ -35,6 +35,7 @@ import { compareGroups, hubClient } from "./hub-client.js";
 import { hw, linkHubCss } from "./hub-strings.js";
 import { hc, linkHubChatCss } from "./hub-chat-strings.js";
 import { HubRoomRows, readRoomList } from "./hub-room-list.js";
+import { HubRoomPage } from "./hub-room-thread.js";
 import { hr } from "./hub-read-strings.js";
 import { ho, linkHubOwnerCss } from "./hub-owner-strings.js";
 import { hg } from "./hub-grant-strings.js";
@@ -300,7 +301,9 @@ function useRooms() {
   }, []);
   return rs;
 }
-const roomParam = () => { try { const v = new URLSearchParams(location.search).get("room"); return v && /^[a-f0-9-]{36}$/.test(v) ? v : null; } catch { return null; } };
+// A room's id as the list gives it (today's are UUIDs; a Hub with rooms may name them otherwise): matched against the list
+// and encoded into each call, never trusted as anything else.
+const roomParam = () => { try { const v = new URLSearchParams(location.search).get("room"); return v && /^[A-Za-z0-9-]{1,64}$/.test(v) ? v : null; } catch { return null; } };
 const roomPath = (id) => `/ui/hub?room=${encodeURIComponent(id)}`;
 /** cid-hub-shell-parity: the Notices page is /ui/hub?view=notices (the path every Hub listener and router already serves). */
 const viewParam = () => { try { return new URLSearchParams(location.search).get("view"); } catch { return null; } };
@@ -493,8 +496,8 @@ function HubChats() {
   // shared thread (M-3092 PR 2).
   const listed = id ? rs.rooms.find((r) => r.id === id) : null;
   const room = id ? (listed ? listed.legacy || listed : rs.loaded ? { id, exposureName: "", ownerName: "", features: [] } : null) : null;
-  // A room of a Hub with rooms is drawn on the shared thread by M-3092 PR 2; until then its frame (no Hub offers rooms yet).
-  if (id && listed && !listed.legacy) return html`<${HubRoomLoading} />`;
+  // A room of a Hub with rooms: the shared thread with the room's store, composer and members panel (hub-room-thread.js).
+  if (id && listed && !listed.legacy) return html`<${HubRoomPage} key=${id} roomId=${id} listed=${listed} Thread=${HubThread} client=${hubClient()} meId=${s?.personId || ""} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   return html`<${PanelHeader} title=${hc("chats")} />
@@ -682,7 +685,7 @@ function HubWorkBar({ name, since }) {
 }
 
 /** The thread: the fleet chat's own (createThread), fed by the room's store. */
-function HubThread({ store, name, panelKey, threadRef }) {
+function HubThread({ store, name, panelKey, threadRef, extra = null }) {
   const scroller = useRef(null), host = useRef(null);
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
@@ -703,6 +706,8 @@ function HubThread({ store, name, panelKey, threadRef }) {
       replyButtonBusy: (id) => store.busy(id), pollMine: (id) => store.mine(id), serverNow: () => Date.now(),
       retryOutgoing: () => {}, deleteOutgoing: () => {}, putBackOutgoing: () => {}, startReply: () => {}, findQuoted: () => null,
       emojis: () => false, mentions: () => null,
+      // M-3092: a room of a Hub with rooms (hub-room-thread.js) says whose messages are mine, and replies and quotes.
+      ...(extra || {}),
     });
     th.current = thread;
     if (threadRef) threadRef.current = thread;

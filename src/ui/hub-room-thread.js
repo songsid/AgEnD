@@ -7,7 +7,11 @@
 //   都回答了」; one agent: the Fleet's delivery marks on my own message; an answer still to come is not a row of its own.
 // The store reads the room (seam 1 of docs/design/hub-rooms-split.md), keeps it live from the tab's one stream, sends with
 // an idempotency key, and answers HubThread's store interface.
+import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
+import { RailFrame } from "/assets/side-rail.js";
+import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
+import { RoomComposer } from "./hub-room-composer.js";
 
 const iso = (ms) => (Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : undefined);
 const BOOT = "room";
@@ -107,4 +111,54 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
     refresh, clickButton: async () => ({ ok: false, code: "stopped" }), vote: async () => ({ ok: false, code: "stopped" }), busy: () => false, mine: () => [],
     stop() { st.live = false; subs.clear(); unsubscribe(); },
   };
+}
+
+/** dev-claude2's members panel (hub-room-members.js), when this Hub serves it; otherwise the rail stays closed. */
+function useMembersPanel() {
+  const [Panel, setPanel] = useState(null);
+  useEffect(() => { let live = true; import("./hub-room-members.js").then((m) => { if (live && typeof m.RoomMembersPanel === "function") setPanel(() => m.RoomMembersPanel); }, () => {}); return () => { live = false; }; }, []);
+  return Panel;
+}
+
+/**
+ * A room of a Hub with rooms (spec §3–§5): its header (a square avatar, its name, "3 人 · 12 個 Agent · 房間助理"), the
+ * Fleet chat's thread (panel-hub.js's HubThread, given as `Thread`: the thread wiring is one), the room's composer, and
+ * the members panel on the right. `client`: the Hub client; `me`: { id } from the session.
+ */
+export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "" }) {
+  const store = useMemo(() => createRoomStore(roomId, { client, meId }), [roomId]);
+  useEffect(() => () => store.stop(), [store]);
+  const [, tick] = useState(0);
+  // The first read may land before this subscribes: read once more on subscribing.
+  useEffect(() => { const off = store.subscribe(() => tick((n) => n + 1)); tick((n) => n + 1); return off; }, [store]);
+  const [reply, setReply] = useState(null), [rail, setRail] = useState(true);
+  const input = useRef(null), threadRef = useRef(null);
+  const Panel = useMembersPanel();
+  const detail = store.detail(), room = detail?.room || listed || {}, group = room.kind === "group";
+  const hasAssistant = (detail?.members || []).some((m) => m.kind === "assistant");
+  // Read when shown: the latest message once loaded and again as messages arrive while the page is visible.
+  const count = store.raw().length;
+  useEffect(() => { if (store.loaded() && (typeof document === "undefined" || !document.hidden)) void store.markRead(); }, [store.loaded(), count]);
+  const extra = {
+    isUser: (x) => x.mine === true, canReply: () => !store.closed(),
+    startReply: (x) => { setReply(x); setTimeout(() => input.current?.focus(), 0); },
+    findQuoted: async () => { await store.older(); return false; },
+  };
+  const line2 = group ? (hasAssistant ? hroom("roomTitle", String(room.people ?? 0), String(room.agents ?? 0)) : hroom("roomSub", String(room.people ?? 0), String(room.agents ?? 0)))
+    : String(room.agent?.owner?.name || "");
+  return html`<div class=${`hub-chat hub-room-page${rail && Panel && group ? " with-rail" : ""}`} data-room=${roomId}>
+    <section class="hub-chat-main">
+      <header class="hub-chat-head" data-trust="panel-content">
+        <span class=${`av${group ? " av-square" : ""}`} aria-hidden="true"><span class="av-text">${firstCharacter(String(room.name || "?")) || "?"}</span></span>
+        <span class="hub-chat-title"><strong>${room.name || ""}</strong><span class="s">${line2}</span></span>
+        ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${rail ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
+          onClick=${() => setRail(!rail)}>👥</button>` : null}
+      </header>
+      <${Thread} store=${store} name=${room.name || ""} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra} />
+      <${RoomComposer} store=${store} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} />
+    </section>
+    ${rail && Panel && group && detail ? html`<${RailFrame} trust="hub-context" label=${hroom("members")} title=${hroom("members")} closeLabel=${hroom("cancel")} onClose=${() => setRail(false)}>
+      <${Panel} client=${client} roomId=${roomId} detail=${detail}
+        onMention=${(m) => { input.current?.focus(); }} onOpenChat=${() => {}} onSettings=${() => {}} /></${RailFrame}>` : null}
+  </div>`;
 }
