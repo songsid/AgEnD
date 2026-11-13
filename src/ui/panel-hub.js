@@ -951,6 +951,11 @@ function LazyThisHub({ directory }) {
   useEffect(() => { let live = true; import("./hub-this-hub.js").then((m) => { if (live) setC(() => m.ThisHubCard); }, () => {}); return () => { live = false; }; }, []);
   return C ? html`<${C} directory=${directory} />` : null;
 }
+function LazyAssistantAdmin() {
+  const [C, setC] = useState(null);
+  useEffect(() => { let live = true; import("./hub-assistant-admin.js").then(m => { if (live) setC(() => m.HubAssistantAdmin); }, () => {}); return () => { live = false; }; }, []);
+  return C ? html`<${C} client=${hubClient()} />` : null;
+}
 /** #3298 S-89: Administration's sub-page (?view=groups: Group permissions), from the page's own address. */
 function adminView() { try { return new URLSearchParams(location.search).get("view") || ""; } catch { return ""; } }
 /** #3298 S-89: the prominent entry to Group permissions at the top of Administration (discovery without docs). */
@@ -958,6 +963,7 @@ function GroupPermissionsEntry() {
   return html`<${LazyGroups} pick=${(m) => m.GroupPermissionsCard} props=${{}} />`;
 }
 function HubAdminPage({ groups = false, companyJoin = false, directory = false } = {}) {
+  const assistantSession = useSession();
   const [view, reload] = useRead(() => hubClient().adminOverview());
   const [login, setLogin] = useState("");
   const [offer, setOffer] = useState(null);
@@ -1040,6 +1046,7 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
         })() : html`<p class="note">${ho("noFleets")}</p>`}
       </section>
       <${LazyThisHub} directory=${directory} />
+      ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
     </div></div>`;
 }
 

@@ -58,9 +58,8 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   // Hub UX U2 (M-2932): the group-search picker (its own words inside), shared with B2's join-code scope.
   "hub-group-search.js", "hub-join-steps.js", "hub-grant-picker.js",
   // B2: code management and the same-request Hub approval queue.
-  "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js",
-  // Hub rooms: Track U1 list/thread/composer and Track U2 dialogs.
-  "hub-room-list.js", "hub-room-strings.js", "hub-room-thread.js", "hub-room-composer.js", "hub-room-new.js", "hub-room-new-strings.js", "hub-room-settings.js", "hub-room-settings-strings.js", "hub-room-members.js", "hub-room-members-strings.js", "hub-invitations.js", "hub-invitations-strings.js", "hub-admin-rooms.js", "hub-admin-rooms-strings.js"]);
+  // Hub rooms and the optional assistant admin UI.
+  "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js", "hub-room-list.js", "hub-room-strings.js", "hub-room-thread.js", "hub-room-composer.js", "hub-room-new.js", "hub-room-new-strings.js", "hub-room-settings.js", "hub-room-settings-strings.js", "hub-room-members.js", "hub-room-members-strings.js", "hub-invitations.js", "hub-invitations-strings.js", "hub-admin-rooms.js", "hub-admin-rooms-strings.js", "hub-assistant-admin.js", "hub-assistant-admin-strings.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;

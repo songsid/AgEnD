@@ -1,0 +1,197 @@
+{
+  "scope": "Actual Hub shell and components; fake same-origin admin/session APIs, no real authentication/Fleet/account/model",
+  "cases": [
+    "desktop-light-en",
+    "desktop-light-zh-TW",
+    "desktop-dark-en",
+    "desktop-dark-zh-TW",
+    "phone-light-en",
+    "phone-light-zh-TW",
+    "phone-dark-en",
+    "phone-dark-zh-TW"
+  ],
+  "checks": [
+    {
+      "name": "load gate before browser",
+      "pass": true
+    },
+    {
+      "name": "load gate before case",
+      "pass": true
+    },
+    {
+      "name": "desktop-light-en no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "desktop-light-en selected account and cap",
+      "pass": true
+    },
+    {
+      "name": "desktop-light-en stop keeps unsaved edit",
+      "pass": true
+    },
+    {
+      "name": "desktop-light-en failed save keeps edit",
+      "pass": true
+    },
+    {
+      "name": "load gate before case",
+      "pass": true
+    },
+    {
+      "name": "desktop-light-zh-TW no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "desktop-light-zh-TW selected account and cap",
+      "pass": true
+    },
+    {
+      "name": "desktop-light-zh-TW stop keeps unsaved edit",
+      "pass": true
+    },
+    {
+      "name": "desktop-light-zh-TW failed save keeps edit",
+      "pass": true
+    },
+    {
+      "name": "load gate before case",
+      "pass": true
+    },
+    {
+      "name": "desktop-dark-en no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "desktop-dark-en selected account and cap",
+      "pass": true
+    },
+    {
+      "name": "desktop-dark-en stop keeps unsaved edit",
+      "pass": true
+    },
+    {
+      "name": "desktop-dark-en failed save keeps edit",
+      "pass": true
+    },
+    {
+      "name": "load gate before case",
+      "pass": true
+    },
+    {
+      "name": "desktop-dark-zh-TW no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "desktop-dark-zh-TW selected account and cap",
+      "pass": true
+    },
+    {
+      "name": "desktop-dark-zh-TW stop keeps unsaved edit",
+      "pass": true
+    },
+    {
+      "name": "desktop-dark-zh-TW failed save keeps edit",
+      "pass": true
+    },
+    {
+      "name": "load gate before case",
+      "pass": true
+    },
+    {
+      "name": "phone-light-en no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "phone-light-en selected account and cap",
+      "pass": true
+    },
+    {
+      "name": "phone-light-en stop keeps unsaved edit",
+      "pass": true
+    },
+    {
+      "name": "phone-light-en failed save keeps edit",
+      "pass": true
+    },
+    {
+      "name": "load gate before case",
+      "pass": true
+    },
+    {
+      "name": "phone-light-zh-TW no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "phone-light-zh-TW selected account and cap",
+      "pass": true
+    },
+    {
+      "name": "phone-light-zh-TW stop keeps unsaved edit",
+      "pass": true
+    },
+    {
+      "name": "phone-light-zh-TW failed save keeps edit",
+      "pass": true
+    },
+    {
+      "name": "load gate before case",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-en no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-en selected account and cap",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-en stop keeps unsaved edit",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-en failed save keeps edit",
+      "pass": true
+    },
+    {
+      "name": "load gate before case",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW selected account and cap",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW stop keeps unsaved edit",
+      "pass": true
+    },
+    {
+      "name": "phone-dark-zh-TW failed save keeps edit",
+      "pass": true
+    },
+    {
+      "name": "all eight cases ran",
+      "pass": true
+    },
+    {
+      "name": "no browser/server errors",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "source": {
+    "src/ui/hub-assistant-admin.js": "1d85c7ba2d941599",
+    "src/ui/hub-assistant-admin-strings.js": "aa41dd95de541a3f",
+    "src/ui/hub-client.js": "7c176b2b2a5ab045",
+    "src/ui/panel-hub.js": "f36138901179e4df"
+  },
+  "browser": "156.0.8078.4",
+  "status": "PASS",
+  "cleaned": true
+}
