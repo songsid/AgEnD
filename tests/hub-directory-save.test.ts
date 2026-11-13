@@ -35,8 +35,9 @@ function fixture(roleMode = false) {
       events.push("role-release"); return { token: "fixture-role-token", maxAgeMs: 10_000 }; }), discard: vi.fn() });
   const prepareRole = vi.fn(async () => { events.push("role-acquire"); await releaseGate?.(); assertRole(); return release; });
   const helpers = { completeDirectoryRotation: complete, ...(roleMode ? { prepareRoleDirectoryRotationRelease: prepareRole } : {}) };
+  let sessionsView = helpers;
   const old = { decision, current: () => live } as unknown as HubMountedDirectory;
-  const mounted = { decision, current: () => active, sessions: () => helpers } as unknown as HubMountedDirectory;
+  const mounted = { decision, current: () => active, sessions: () => sessionsView } as unknown as HubMountedDirectory;
   let replacementMount: HubMountedDirectory | undefined;
   const rotation = { discard: vi.fn() }, packets: Array<{ status: number; json: string; cookie?: string }> = [];
   const response: HubDirectoryResponse = { current: () => connected, discard: vi.fn(async () => { connected = false; }),
@@ -64,6 +65,7 @@ function fixture(roleMode = false) {
   return { coordinator, context, deps, proof, rotation, response, packets, events, capture, save, id, compensation, head, original, complete,
     helpers, mounted, prepareRole, release, loseRole: () => { permitted = false; },
     replaceMounted: (next: HubMountedDirectory) => { replacementMount = next; },
+    replaceSessionsView: () => { sessionsView = { ...helpers }; },
     releaseGate: (gate: () => Promise<void>) => { releaseGate = gate; }, beforeBuild: (hook: () => void) => { beforeBuild = hook; }, afterBuild: (hook: () => void) => { afterBuild = hook; },
     compensate, remount, intent, settled, decision, get deadline() { return deadline; }, tick: (n: number) => { time += n; }, stop: () => { owner = false; }, disconnect: () => { connected = false; },
     fail: (restore = false) => { failure = true; failRestore = restore; }, proofGate: (gate: () => Promise<void>) => { proofGate = gate; },
@@ -125,12 +127,16 @@ describe("S129 Save successor release", () => {
       expect(r.packets).toEqual([]); expect(r.complete).not.toHaveBeenCalled(); expect(r.release.discard).toHaveBeenCalledOnce();
     } finally { held.resolve(); await Promise.allSettled([saving, closing]); await r.coordinator.close(); }
   });
-  it.each(["mount", "method"] as const)("retires an awaited successor acquisition after its %s changes", async mode => {
+  it.each(["mount", "provider", "view", "method"] as const)("retires an awaited successor acquisition after its %s changes", async mode => {
     const r = fixture(true), entered = deferred(), held = deferred();
     r.releaseGate(async () => { entered.resolve(); await held.promise; });
     const saving = r.save(); void saving.catch(() => {}); await entered.promise;
     try {
       if (mode === "mount") r.replaceMounted({ ...r.mounted });
+      else if (mode === "provider") {
+        const previous = r.mounted.sessions; r.mounted.sessions = () => previous.call(r.mounted);
+      }
+      else if (mode === "view") r.replaceSessionsView();
       else r.helpers.prepareRoleDirectoryRotationRelease = vi.fn(async () => r.release);
       held.resolve(); await expect(saving).rejects.toThrow(); expect(r.packets).toEqual([]);
       expect(r.complete).not.toHaveBeenCalled(); expect(r.compensate).not.toHaveBeenCalled();
