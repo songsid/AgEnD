@@ -1,0 +1,38 @@
+[
+  {
+    "id": "R01",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "releaseClaimed = true;",
+    "after": "releaseClaimed = false;",
+    "checkpoint": "45ceafb6dd69bfaec4ebfe1e82eaada20e6af435",
+    "inputs": {
+      "tests/hub-roles-directory-session-s129.test.ts": "20ce70852e7587b40fef733f55dd06a04d4c5f2211c6f26a2cd0d31d7494ed0f"
+    },
+    "baseSha256": "b0fc16e1501acae5c6ed4b09ee1d39423ee8df87e061aa8b405d42a45c4d48a7",
+    "mutantSha256": "7ba067c32607561024f92606cf45bda4d8b6845bd10ba0a9c49379b59b333113",
+    "load1": 2.13623046875,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 response-owned successor release prepares without exposing a token and releases exactly once under current authority",
+      "S129 response-owned successor release refuses synchronous clock reentry without cancelling the outer response owner"
+    ],
+    "caught": true,
+    "restoredSha256": "b0fc16e1501acae5c6ed4b09ee1d39423ee8df87e061aa8b405d42a45c4d48a7",
+    "elapsedSeconds": 15.43,
+    "privateLogs": [
+      {
+        "path": "mutants/R01-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/R01-tests.json",
+        "sha256": "5dffb5b09febd77897ee2aa0711fb019373fb43c3bba2937a40b319862501bb8"
+      },
+      {
+        "path": "mutants/R01-tests.log",
+        "sha256": "b8ccbb0627427d0f36c2d1a3f80f81e05fea86c287a735ec68566cf6063a36d9"
+      }
+    ]
+  }
+]

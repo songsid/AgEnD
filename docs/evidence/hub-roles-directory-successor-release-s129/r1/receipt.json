@@ -1,0 +1,116 @@
+{
+  "scope": "R1 only: claim single disclosure before synchronous clock/proof callback; no mounted consumer or activation",
+  "parentReviewedHead": "ff23ef161f2734eb89076e3c29ccb5270aa43dc9",
+  "review": 5893532957,
+  "failFirstCheckpoint": "6bf850b6b",
+  "sourceAndTestCheckpoint": "45ceafb6dd69bfaec4ebfe1e82eaada20e6af435",
+  "checks": {
+    "beforeSemanticReds": 1,
+    "beforeStableControls": 1,
+    "beforeFilterExcluded": 55,
+    "freshFocusedPassed": 172,
+    "suites": 5,
+    "skipped": 0,
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "isolatedCompilingSemanticReversals": 1,
+    "restoredPassed": 57
+  },
+  "bindings": [
+    {
+      "path": "src/hub/session-directory-transition.ts",
+      "sha256": "b0fc16e1501acae5c6ed4b09ee1d39423ee8df87e061aa8b405d42a45c4d48a7"
+    },
+    {
+      "path": "src/hub/sessions.ts",
+      "sha256": "fb0c811c37742242c5c94297a2b80e532adcc0309fb41049b6818fb70ef3bca2"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18"
+    },
+    {
+      "path": "src/hub/roles/authority.ts",
+      "sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "path": "src/hub/roles/clock.ts",
+      "sha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5"
+    },
+    {
+      "path": "src/hub/settings-directory-save.ts",
+      "sha256": "ee26a5788898db9bbc4ae9c663f25f7520d3a1e58e37f9d6d3681bbbf6c46a48"
+    },
+    {
+      "path": "src/hub/settings-directory-runtime.ts",
+      "sha256": "10bda593f3795493781495fb230a9cc75304385232393a65d99e76a877a2f303"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "a899c095c086579c2193d2b5e60addafd8f138be34d1600bb310872537cd622a"
+    },
+    {
+      "path": "tests/hub-roles-directory-session-s129.test.ts",
+      "sha256": "20ce70852e7587b40fef733f55dd06a04d4c5f2211c6f26a2cd0d31d7494ed0f"
+    },
+    {
+      "path": "tests/hub-roles-directory-session-preparation-s129.test.ts",
+      "sha256": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6"
+    },
+    {
+      "path": "tests/hub-directory-save.test.ts",
+      "sha256": "21f60b4f49d8e996a6ba2c82dd9ee3fdc9520ae1fd160a21890e0b372e4f5b3a"
+    },
+    {
+      "path": "tests/hub-directory-session-transition.test.ts",
+      "sha256": "37660f09901efad29d1e3d2da0875c6e387187b3fc92c24905be95722aa7baea"
+    },
+    {
+      "path": "tests/hub-directory-session-epoch.test.ts",
+      "sha256": "74c9b5edb8d2abbf2b4cbaba9aff9c5db0efa11646e341d2da725ad43be012d0"
+    },
+    {
+      "path": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "c886cf7218dcb2e713259fa2be29bd27b42a134d61535a520ddf96e85ffd8b28"
+    }
+  ],
+  "privateLogBindings": [
+    {
+      "path": "before.log",
+      "sha256": "d2f58886c3beac32aedc3df09701a9d76b1387ad298aa3969acc41e5d11c932e"
+    },
+    {
+      "path": "before.json",
+      "sha256": "e59190f4b29eabcb0dd3594636e132cd0eb96284e270e80beac61cdee94f39bb"
+    },
+    {
+      "path": "focused.log",
+      "sha256": "55ee292159e1c1bd842950d025f84809dff265bed5212a9da21d32d90a6ea723"
+    },
+    {
+      "path": "focused.json",
+      "sha256": "5925c09fff4542dcd5251c6f0544473886807bebdd8e02f555b6d7c4c54cde88"
+    },
+    {
+      "path": "source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "mutation.log",
+      "sha256": "4771091c75cc8755a1473a7ee89c64e7c5a897bedfda3358f02a9a2c2a56d28a"
+    },
+    {
+      "path": "restored.log",
+      "sha256": "10bc5a20301bdc23356ed2b22268240be03569e7403b408b7de2fbc8ef412d32"
+    },
+    {
+      "path": "restored.json",
+      "sha256": "55b76a6bcf24a0121f05d4b15dd8ae3ce34dc3933157875124dc791db2ffa3fb"
+    }
+  ],
+  "limits": "Actual in-memory SQL/cutover/clock/Core/Sessions/pool with fictional directory. No HTTP/cookie delivery, mounted Save, physical install/floor/crash, live AD/account/Fleet/backend CLI/browser/container/native/pilot. Existing eight mutation/171-test receipt remains historical at its named checkpoint. Parent-first plain alpha sync/resolution/current CI and full S129 acceptance remain pending."
+}

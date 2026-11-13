@@ -76,6 +76,22 @@ describe("S129 response-owned successor release", () => {
     expect(n.sessions.session(cookie.token)?.person).toEqual(w.admin);
     expect(() => release.release()).toThrow();
   });
+  it("refuses synchronous clock reentry without cancelling the outer response owner", async () => {
+    const w = await world(), { rotation, operation } = w.commit(), n = w.next();
+    const release = await prepareResponseRelease(n.sessions, rotation, operation.id), now = n.core.deps.now!;
+    let armed = true, nestedSuccess = 0, nestedRefused = 0;
+    n.core.deps.now = () => {
+      if (armed) {
+        armed = false;
+        try { release.release(); nestedSuccess++; } catch { nestedRefused++; }
+      }
+      return now();
+    };
+    const cookie = release.release();
+    expect(nestedSuccess).toBe(0); expect(nestedRefused).toBe(1);
+    expect(n.sessions.session(cookie.token)?.person).toEqual(w.admin);
+    expect(() => release.assertCurrent()).not.toThrow(); expect(() => release.release()).toThrow();
+  });
   it("refuses role loss while the originating response is held", async () => {
     const w = await world(), { rotation, operation } = w.commit(), n = w.next();
     const release = await prepareResponseRelease(n.sessions, rotation, operation.id);
