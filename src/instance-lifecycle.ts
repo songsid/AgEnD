@@ -47,7 +47,7 @@ import { antigravityCapKey, reportProviderRateLimit } from "./usage/provider-ale
 import { isFleetStartCommandLine } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance, GENERAL_NAME } from "./general-instance.js";
 import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileLaunch, credentialProfileLoginCommand } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileLaunch, credentialProfileLoginCommand, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
 import type { CapacityNudgePauseGuard } from "./daemon.js";
 import type { SpawnGate } from "./spawn-gate.js";
@@ -55,7 +55,7 @@ import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageTracker } from "./backend-outage.js";
 import { assertExplicitInstanceRemoval, authorizeExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import type { DeliveryOutbox } from "./delivery-outbox.js";
-import { WINDOWS_CREATE_REFUSED, isNativePaneInstance } from "./native-instance-registry.js";
+import { WINDOWS_CREATE_REFUSED, isNativePaneInstance, isWindowsInstance } from "./native-instance-registry.js";
 import {
   capturePendingTargetReconciliation,
   finishTargetReconciliation,
@@ -1070,10 +1070,20 @@ export class InstanceLifecycle {
     finally{if(!run.timer)this.ctx.onNativePaneRecoverySettled?.(name);}
   }
 
-  attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
-    // AGEND-250 (#3771 review P2-6): the credential this daemon was LAUNCHED with, fixed now (a daemon is attached when it is created, from the configuration it launches with). An agent that keeps running
-    // after its account was changed in the configuration still runs as, and hits the quota of, the account it started with.
-    const launchedProfile = this.profileOf(name, this.backendOf(name));
+  /** The backend and credential profile a launch is bound to: the configuration the start was handed, with the fleet defaults it inherits. No await, no read of the live fleet configuration for the instance. */
+  private launchBindingOf(config: InstanceConfig): { backend: string; profile: string | null } {
+    const backend = config.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+    return { backend, profile: isWindowsInstance(config) || !credentialHomeSpec(backend) ? null : instanceCredentialProfile(config, this.ctx.fleetConfig?.defaults, backend) };
+  }
+
+  /**
+   * `launch` is what the start captured before its first await; without it (a caller that attaches at creation) the live configuration is read now, which is the same moment.
+   */
+  attachIncidentHandlers(name: string, daemon: IncidentEventSource, launch?: { backend: string; profile: string | null }): void {
+    // AGEND-250 (#3771 review P2-6): the credential this daemon was LAUNCHED with, fixed at launch. An agent that keeps running after its account was changed in the configuration still runs as,
+    // and hits the quota of, the account it started with. AGEND-251: and a change saved while the START was still awaiting is "after the launch" too, backend included.
+    const launchedBackend = launch?.backend ?? this.backendOf(name);
+    const launchedProfile = launch ? launch.profile : this.profileOf(name, launchedBackend);
     if(daemon.usesNativePane?.())daemon.on("native_pane_exited",safeHandler((data:{name:string;snapshot:RuntimePaneSnapshot;owner:InteractionOwner})=>this.nativePaneExited(name,daemon as Daemon,data),this.ctx.logger,`daemon.native_pane_exited[${name}]`));
     daemon.on("capacity_nudge_cancelled", safeHandler((data: { reason: string; target: string }) => {
       const reason = data.reason === "the user cancelled" ? t("inst.codex_retry_cancel_reason_user")
@@ -1509,7 +1519,7 @@ export class InstanceLifecycle {
       // API keeps reporting its buckets as barely used while the CLI is blocked
       // (verified live — 0% used and "Individual quota reached" in the same
       // minute). Remember it so /usage can overlay the truth on that row.
-      if (data.type === "quota" && this.backendOf(name) === "antigravity") {
+      if (data.type === "quota" && launchedBackend === "antigravity") {
         reportProviderRateLimit(antigravityCapKey(launchedProfile), data.message);
       }
 
@@ -1931,6 +1941,9 @@ export class InstanceLifecycle {
   ): Promise<void> {
     const epoch = this.epochOf(name);
     const check = (): void => { execution?.assert(); if (this.epochOf(name) !== epoch) throw new SupersededStartError(name); };
+    // AGEND-251 (#3771 review round 2, P2-6): what this start LAUNCHES as, read from the configuration it was handed (inherited defaults included) BEFORE the first await. Reconciliation, the spawn and the
+    // readiness wait all yield, and a Settings save in that window changes the fleet configuration the incident handlers would read later; the cap of a running agent belongs to the launch, not to the save.
+    const launchBinding = this.launchBindingOf(config);
     check();
     this.ctx.assertGeneralBindingStart?.(name, config);
     assertNoSessionOomStop(this.ctx.getInstanceDir(name));
@@ -2172,7 +2185,7 @@ export class InstanceLifecycle {
     });
 
     this.ctx.setKiroCompatibilityHold?.(name, null);
-    this.attachIncidentHandlers(name, daemon);
+    this.attachIncidentHandlers(name, daemon, launchBinding);
     // #2897: a new daemon starts with no dialog held; a notice the last one left (a crash, a respawn) is out of date.
     this.ctx.resolveParkedNotice?.(name);
 
