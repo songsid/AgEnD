@@ -16,6 +16,10 @@ let installed = false, reading = null, again = false;
 // that failed (the network, a 5xx, an answer that is not a list) leaves `loaded` behind, so the next status frame (the
 // same revision included) or the bounded retry reads again; never a revision taken as read before a read succeeded.
 let observed = null, loaded = null, retries = 0, retryTimer = null;
+// M-2505 (#1580's rule): a page that leaves (pagehide) keeps no timer behind it — a retry waiting then (or one a read
+// still out would start) is held, not run, and one restored from the back-forward cache (pageshow, persisted) reads at
+// once. Before this, the retry outlived the page: a test's fixture had removed fetch when it fired (alpha CI 42210637320).
+let away = false, heldRetry = false, listening = false;
 const RETRY_MS = 5000, RETRY_MAX = 5;
 
 /** Read the list again (one read at a time; a change meanwhile reads once more). Resolves true when it was read. */
@@ -34,7 +38,10 @@ export function refreshProposals() {
     .catch(() => {
       // Not read: try again a few times on its own (a page whose stream sends no more status frames), and at any status
       // frame meanwhile (its revision is still ahead of `loaded`).
-      if (retries < RETRY_MAX && !retryTimer) { retries++; retryTimer = setTimeout(() => { retryTimer = null; void refreshProposals(); }, RETRY_MS); }
+      if (retries < RETRY_MAX && !retryTimer) {
+        if (away) heldRetry = true;
+        else { retries++; retryTimer = setTimeout(() => { retryTimer = null; void refreshProposals(); }, RETRY_MS); }
+      }
       return false;
     })
     .finally(() => {
@@ -55,6 +62,19 @@ export function refreshProposals() {
 export function installProposals() {
   if (installed) return;
   installed = true;
+  const win = typeof window !== "undefined" ? window : null;
+  if (!listening && win && typeof win.addEventListener === "function") {           // once per page (reset re-installs)
+    listening = true;
+    win.addEventListener("pagehide", () => {
+      away = true;
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; heldRetry = true; }
+    });
+    win.addEventListener("pageshow", (e) => {
+      if (!e || !e.persisted || !away) return;
+      away = false;
+      if (heldRetry) { heldRetry = false; void refreshProposals(); }
+    });
+  }
   const on = appStore.get().streamOn;
   if (typeof on === "function") {
     on("agent_proposals", () => { void refreshProposals(); });
@@ -85,6 +105,6 @@ export async function decideProposal(id, decision) {
 
 /** For tests: as on a fresh page. */
 export function resetProposals() {
-  installed = false; reading = null; again = false; observed = null; loaded = null; retries = 0;
+  installed = false; reading = null; again = false; observed = null; loaded = null; retries = 0; away = false; heldRetry = false;
   if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
 }

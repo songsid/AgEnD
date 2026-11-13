@@ -1,0 +1,235 @@
+{
+  "scope": "M-3010/S-128 unmounted cutover + identity-only mode effects; no production caller/registration",
+  "design": "9e000625658d55c6d8f522cfbae2a01448a9cc37",
+  "testedBase": "88749ea3fd4e44c7d0b289ba235798a852bb4bd8",
+  "checks": {
+    "ownTests": 51,
+    "integratedTests": 164,
+    "integratedFiles": 8,
+    "skips": 0,
+    "storedOutcomeComparisons": 288,
+    "processSIGKILLPoints": 8,
+    "receiptSourcesByStates": 9,
+    "failFirstSemanticAssertions": 4,
+    "isolatedCompilingReversals": 14,
+    "caught": 14,
+    "nativeCompiler": "TypeScript7.0.2",
+    "sourceAndTestTypechecks": "exit0",
+    "changelogFragments": 425
+  },
+  "fileDigests": {
+    "src/hub/roles/cutover.ts": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
+    "src/hub/roles/cutover-inventory.ts": "15e33eef0dbf35aaf13644ebcf8d23db7a1e5ba152e33c44a71a97b91be39eeb",
+    "src/hub/roles/mode-effects.ts": "69baf708ac2f6972cbf55ac92bc6bff0298b92f7a8e8cac154b0d1ca2a7f0af5",
+    "tests/hub-roles-cutover-m3010.test.ts": "151844e2ced6b637d041869ba429f636ec7c39b2d695e09f9dcec61d8f96d4ab",
+    "tests/support/hub-role-cutover-crash-worker.ts": "5779a98724e4ad666fde52c885a5666b072071394a24658e799f542da8e8b390",
+    "tests/support/hub-role-cutover-plan.ts": "b2a75aa0235bc2538caad893bef51be0a2b0ab2032bcd4c55032c3cec7f33302"
+  },
+  "mutations": [
+    {
+      "name": "on-choice",
+      "file": "src/hub/roles/cutover.ts",
+      "test": "atomically converts",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
+      "replace": "now:started,rolesActive:true",
+      "with": "now:started,rolesActive:false"
+    },
+    {
+      "name": "notice-required",
+      "file": "src/hub/roles/cutover.ts",
+      "test": "atomically converts",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
+      "replace": "db.prepare(\"INSERT INTO hub_role_notices(id,person) VALUES(?,?)\").run(auditId,`${root.realm}/${root.objectId}`);",
+      "with": "/* root notice omitted */"
+    },
+    {
+      "name": "epoch-required",
+      "file": "src/hub/roles/cutover.ts",
+      "test": "atomically converts",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
+      "replace": "s.revocationVersion++;",
+      "with": "/* epoch omitted */"
+    },
+    {
+      "name": "late-audit",
+      "file": "src/hub/roles/cutover.ts",
+      "test": "exact audit image",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
+      "replace": "if(JSON.stringify(db.prepare(\"SELECT * FROM hub_audit WHERE id=?\").get(auditId))!==auditImage)",
+      "with": "if(false)"
+    },
+    {
+      "name": "ordinary-final",
+      "file": "src/hub/roles/cutover.ts",
+      "test": "rolls back SQL at ordinary",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
+      "replace": "||captureRoleCutoverInventory(db,transport,guard).digest!==inventory.digest)throw new Refusal(\"conflict\");",
+      "with": " )throw new Refusal(\"conflict\");"
+    },
+    {
+      "name": "marker-final",
+      "file": "src/hub/roles/cutover.ts",
+      "test": "rolls back SQL at marker",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
+      "replace": "||markerRaw()!==exactMarker",
+      "with": ""
+    },
+    {
+      "name": "notice-final",
+      "file": "src/hub/roles/cutover.ts",
+      "test": "rolls back SQL at recipient",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
+      "replace": "if(JSON.stringify(recipients)!==JSON.stringify([{person:`${root.realm}/${root.objectId}`,acknowledged_at:null}]))",
+      "with": "if(false)"
+    },
+    {
+      "name": "current-owner",
+      "file": "src/hub/roles/cutover.ts",
+      "test": "changed-lifetime",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
+      "replace": "current()!==true||",
+      "with": ""
+    },
+    {
+      "name": "elapsed-budget",
+      "file": "src/hub/roles/cutover.ts",
+      "test": "rolls back SQL at elapsed",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
+      "replace": "||t>=elapsedStart+20_000",
+      "with": ""
+    },
+    {
+      "name": "hub-owner",
+      "file": "src/hub/roles/cutover.ts",
+      "test": "wrong-hub",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
+      "replace": "||owner?.hub_id!==hubId",
+      "with": ""
+    },
+    {
+      "name": "persisted-clock",
+      "file": "src/hub/roles/cutover.ts",
+      "test": "clock rollback after reopening",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
+      "replace": "if(now()<existing.marker.at)throw new Refusal(\"expired\");",
+      "with": ""
+    },
+    {
+      "name": "inventory-code",
+      "file": "src/hub/roles/cutover-inventory.ts",
+      "test": "includes actual code bytes",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "15e33eef0dbf35aaf13644ebcf8d23db7a1e5ba152e33c44a71a97b91be39eeb",
+      "replace": "for(const name of ROLE_CUTOVER_TABLES){",
+      "with": "for(const name of ROLE_CUTOVER_TABLES){if(name===\"hub_enrolment_codes\")continue;"
+    },
+    {
+      "name": "mode-only",
+      "file": "src/hub/roles/mode-effects.ts",
+      "test": "mode adapter refuses other role edits",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "69baf708ac2f6972cbf55ac92bc6bff0298b92f7a8e8cac154b0d1ca2a7f0af5",
+      "replace": "if(image(plan.before)!==image(plan.next))",
+      "with": "if(false)"
+    },
+    {
+      "name": "mode-current-resources",
+      "file": "src/hub/roles/mode-effects.ts",
+      "test": "mode adapter refuses other role edits",
+      "restored": true,
+      "types": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sourceDigest": "69baf708ac2f6972cbf55ac92bc6bff0298b92f7a8e8cac154b0d1ca2a7f0af5",
+      "replace": "if(snapshot().fingerprint!==before)",
+      "with": "if(false)"
+    }
+  ],
+  "boundaries": {
+    "actual": [
+      "private WAL SQLite",
+      "transport store + fsynced independent floor",
+      "hash-chain audit + retention",
+      "code HMAC/sealing/use receipts",
+      "Ed25519 invitation signatures",
+      "company request storage",
+      "AES-GCM delivery + key files",
+      "role writer + root notice ACK",
+      "owned Node SIGKILL"
+    ],
+    "synthetic": [
+      "mode session/directory answers",
+      "inert admission in isolated mode crash worker",
+      "retained provenance fixture construction"
+    ],
+    "notRun": [
+      "production startup/mount or redeem/ACK",
+      "LDAP or real accounts",
+      "browser/PNG/container",
+      "backend CLI",
+      "native Windows",
+      "Mac pilot",
+      "live Fleet"
+    ],
+    "inactive": "S-129 must convert readers/permits and register/invoke atomically before activation",
+    "skillsAndSkew": "N/A: no user-facing behavior/asset/module contract change",
+    "rollback": "unreferenced code can be reverted; future post-floor/precommit failures remain held, never lower floors or restore old policy"
+  },
+  "plainAlphaSync": {
+    "base": "5fc122feb46b76fd8e82eaefe73d2a2b3495db61",
+    "merge": "9302db09888b638b989a0118f494594de671f309",
+    "conflicts": false,
+    "incoming": "16 disjoint UI/docs/template/test paths; no Hub server/roles dependency changes",
+    "ownSourceAndTestDigestsUnchanged": true
+  }
+}

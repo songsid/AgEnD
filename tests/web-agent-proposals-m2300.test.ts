@@ -351,6 +351,50 @@ describe("alpha.2 the page: Needs you lists an agent's request for the owner", (
       expect(reqs.length).toBe(6);
     } finally { vi.useRealTimers(); }
   });
+  it("M-2505: a page that leaves keeps no retry behind it (#1580); back from the back-forward cache it reads at once", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const leave = () => p.window.dispatchEvent(new (globalThis as any).Event("pagehide", { persisted: true }));
+    const back = (persisted = true) => p.window.dispatchEvent(new (globalThis as any).Event("pageshow", { persisted }));
+    const gets = () => reqs.filter(r => r.method === "GET" && r.url === "/ui/agent-proposals").length;
+    try {
+      // A retry waiting when the page leaves: cleared, never run while away.
+      answer = () => ({ __status: 503, error: "busy" });
+      AP.installProposals();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(gets()).toBe(1);
+      expect(vi.getTimerCount()).toBe(1);                                                    // the retry waits
+      leave();
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(gets()).toBe(1);
+      back(false); await vi.advanceTimersByTimeAsync(10);
+      expect(gets()).toBe(1);                                                                // only a restored page (persisted) reads
+      answer = () => ({ owner: true, proposals: [PROPOSAL] });
+      back(); await vi.advanceTimersByTimeAsync(10);
+      expect(gets()).toBe(2);                                                                // restored: the held retry reads at once
+      expect(app.appStore.get().proposals.map((x: any) => x.id)).toEqual([PROPOSAL.id]);
+      expect(vi.getTimerCount()).toBe(0);
+      // A read still out when the page leaves, failing after: it starts no timer; the restored page reads it.
+      AP.resetProposals(); reqs = [];
+      let release!: () => void;
+      const held = new Promise<void>(r => { release = r; });
+      answer = async () => { await held; return { __status: 500, error: "down" }; };
+      AP.installProposals();
+      await vi.advanceTimersByTimeAsync(10);
+      leave();
+      release(); await vi.advanceTimersByTimeAsync(10);
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(gets()).toBe(1);
+      answer = () => ({ owner: true, proposals: [] });
+      back(); await vi.advanceTimersByTimeAsync(10);
+      expect(gets()).toBe(2);
+      expect(app.appStore.get().proposals).toEqual([]);
+      // Nothing held (the last read succeeded): leaving and coming back reads nothing more (the stream's frames do that).
+      leave(); back(); await vi.advanceTimersByTimeAsync(10);
+      expect(gets()).toBe(2);
+    } finally { vi.useRealTimers(); }
+  });
   it("#2997 review r2: a newer revision while a read is out reads once more after it; the newer list wins", async () => {
     const handlers: Record<string, Array<(d: unknown) => void>> = {};
     app.appStore.set({ streamOn: (name: string, fn: (d: unknown) => void) => { (handlers[name] ??= []).push(fn); return () => {}; } });

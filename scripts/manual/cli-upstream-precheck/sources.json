@@ -91,6 +91,7 @@
       { "file": "src/context-percent.ts", "symbols": ["parseTokenContextRatio"], "surfaces": { "parseTokenContextRatio": "idle-busy" } }
     ],
     "agy": [
+      { "file": "src/backend/agy-onboarding.ts", "surfaces": { "agyOnboardingState": "onboarding", "agyOnboardingDialogs": "onboarding" } },
       { "file": "src/backend/antigravity.ts",
         "exclude": ["parseAgyEffortLevels", "parseAntigravityModelsOutput", "enableStatusLine", "writeMcpEnvWrapper", "ensureGlobalMcpLauncher",
           "buildCommand", "writeConfig", "probeCLIEnv", "listModels"],
