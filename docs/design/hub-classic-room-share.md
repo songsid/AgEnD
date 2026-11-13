@@ -91,6 +91,64 @@ The Hub user's browser never reaches the Fleet. Everything goes over the existin
   - Switching a room on asks for the usual Settings confirmation, plus one line: 「分享後，Hub 上被允許的人可以加入這個房間的對話，頻道裡也看得到他們。」
   - The interim line 「ClassicBot 房間還不能分享」 (M-2988) is removed.
 
+## Server contracts (Ridge's review, https://github.com/songsid/AgEnD/pull/3765#issuecomment-6842111937)
+
+These four are pinned before any build. They override the looser wording above where the two differ.
+
+**C1. Positive admission proof, never "not seen revoked".** Every `room.post` and every viewer's read carries a short-lived
+Hub-authorized lease, built on the existing asker-envelope / authorization-lease pattern but with a scope of its own
+(never a private agent's). Each lease is bound to:
+- the authenticated member link (fleet, link epoch);
+- the exposure id and revision (room generation);
+- the verified person (realm, objectId);
+- the grant that admits them (grant id and revision, or the group grant and the Hub's fresh membership check);
+- for a post: the body digest and the browser's idempotency key;
+- an expiry.
+
+Ownership of the checks:
+- **The Fleet** verifies the lease's signature and binding, that the room is still published at that revision, the link,
+  and the expiry. It refuses an unknown, stale or expired lease. It never infers permission from the absence of a
+  revocation, and it never claims to know AD group membership.
+- **The Hub** owns the person's fresh authorization: grant, group membership, notice acceptance and session.
+
+**C2. Watch ownership and disclosure fences.**
+- **Subscriptions.** A watch is per viewer: subscription id and generation, person, exposure revision and lease. The
+  Fleet-side `room.watch` is one aggregate per exposure. It answers only the room, publication and link check, and never
+  authorizes a browser.
+- **Before every disclosure** (each page, each event, each SSE write), the Hub re-checks that viewer's authorization:
+  grant, group lease, session, notice. This is also done again after any awaited history or RPC result.
+- **Group membership** is re-checked on a bounded lease (minutes), never cached indefinitely.
+- **Bounds:** page size, frame and byte caps, pending events per viewer, and watches per person and per room.
+- **Teardown** on disconnect, unwatch, expiry, grant, person or room revocation, and session loss. A reconnect or a
+  reused room text or link id never revives an old subscription: it starts a new generation.
+- **The notice acceptance** is bound to person + exposure + room generation + notice version. One viewer's acceptance
+  never opens the room for another.
+
+**C3. Durable posting identity and partial outcomes.**
+- **Two identities.** The browser's idempotency key is the post's identity: kept separate from the transport `requestId`,
+  carried to the Fleet in the lease, and bound to the person, exposure and body digest.
+- **Durable recording.** The Fleet records the post in the existing durable input and delivery intent machinery
+  (delivery outbox / input intent) before delivering, and the echo as its own durable step.
+- **Partial outcomes.**
+  - If `room.posted` is lost, a retry with the same key answers the recorded outcome and never delivers again.
+  - If the Fleet reconnects after the guest's message was delivered, it answers "delivered".
+  - If it crashes between the delivery and the channel echo, the echo runs on recovery, once.
+  - When the result can't be proved, the answer is an explicit `uncertain`, never a refusal that invites a fresh
+    duplicate.
+- **Authority none** is pinned in the durable recovery path too, not only in the first header.
+- **Bounded receipts and metadata** (key, person, time, outcome) are kept, although the Hub stores no transcript.
+
+**C4. Group grants and real version skew.**
+- **Grant storage and its evaluator are coordinated with Cairn's M-3016** before either migration is built.
+- **Room exposures only** may be granted to an AD group, bound to the group's GUID. Private-agent grants stay personal
+  and GUID-bound. Every authoritative reader is updated for the group subject: the catalog projection, the policy impact
+  inventory, and the grant reads.
+- **Search is feedback only**, followed by the existing resolve, preview and current checks.
+- **Skew.** An older peer's exposure schema is strict and rejects an unknown key, so:
+  - an agent exposure never carries `kind`;
+  - room exposures and every `room.*` frame are sent only when both ends negotiated `room-share-v1`;
+  - against an older Hub, rooms are not shareable at all: the row says why, the same way as `delivery_unavailable`.
+
 ## 4. What changes where
 
 **Fleet (`src/fleet-manager.ts`, the member compose):**
@@ -100,7 +158,7 @@ The Hub user's browser never reaches the Fleet. Everything goes over the existin
 
 **Hub (Ridge reviews):**
 - **Protocol:**
-  - an optional `kind: "agent" | "room"` on the exposure;
+  - `kind: "room"` on a room exposure only, never on an agent one (C4);
   - the `room.*` frames behind `room-share-v1`.
 - **Catalog:** a room exposure is listed only to the people on its join list.
 - **Routes:**
