@@ -1,6 +1,6 @@
 {
-  "sourceHead": "7df4c2a851f37c7ef0b3917cb065a51d9c3054a5",
-  "parentR1": "00af7e86e9d85ad977cb2f3444682676eef61cd7",
+  "sourceHead": "8598a330a61fb28bb1366e140dd1ba04fb041c49",
+  "parentR1": "440e613d9346394ea8ef4b129d2e6c8f79bfce06",
   "dispatchSource": "9b2d83c64",
   "framingSource": "563769ff7",
   "checks": [
@@ -89,6 +89,30 @@
     {
       "name": "review-r1-test-types",
       "exit": 0
+    },
+    {
+      "name": "same-link-refusal-before",
+      "outcome": "1 semantic assertion failure: due same-epoch ask was never replayed",
+      "logSha256": "eb071aedb8a15d8adbd2c932f008cc97d7f9658e2e34281b98aab0fa42315fe7"
+    },
+    {
+      "name": "same-link-retry-post-sync",
+      "tests": 197,
+      "files": 9,
+      "outcome": "pass",
+      "scope": "owned HTTP/TLS/WSS/SQLite, timer-only retry, exact repeated payload, no early resend, consent removal, one answer ACK/dedupe, retained migration and existing offline120-query bound; source 8598a330a61fb28bb1366e140dd1ba04fb041c49"
+    },
+    {
+      "name": "same-link-retry-native-source",
+      "outcome": "exit0"
+    },
+    {
+      "name": "same-link-retry-native-tests",
+      "outcome": "exit0"
+    },
+    {
+      "name": "same-link-retry-fragments",
+      "outcome": "459 fragments OK"
     }
   ],
   "limits": {
@@ -108,7 +132,7 @@
     },
     {
       "path": "docs/design/hub-rooms-server-r2.md",
-      "sha256": "b11b30024fd6cded4068bd57c681fcd588fd27e515b2e61f5114fccdc28d4662"
+      "sha256": "58f9ef5eb86e3fa8ebd684966e944b29ccc78e995051c7b948bfe5e06c4eda7e"
     },
     {
       "path": "src/hub/client.ts",
@@ -124,7 +148,7 @@
     },
     {
       "path": "src/hub/http/schema.ts",
-      "sha256": "aa39f6a10d7978e97496443494673dee727368977263e8ffa35bbb185b0c40f5"
+      "sha256": "11334e5e46518eb70df873f6544c3693974d6f38a7e90a3ccaffc9cdcef8e20a"
     },
     {
       "path": "src/hub/protocol.ts",
@@ -132,11 +156,11 @@
     },
     {
       "path": "src/hub/rooms/agents.ts",
-      "sha256": "1020ce2f8053c7489ae707a9104799a54fbc0fd1394c6b12ff01c567f670c4f6"
+      "sha256": "57e388c5030a7f10d58c1bfd27e8f0d6503b2b6e0df742c9b666f77631fc3847"
     },
     {
       "path": "src/hub/rooms/schema.ts",
-      "sha256": "49ef3cdb27866eaa8a2b66397b35cb9fdfe3de4a6c41ad21114dfd10d4eaf581"
+      "sha256": "bef08cfb4ddda78d9184805ef3400899cc07855b8711459e7c1643ea3bcac038"
     },
     {
       "path": "src/hub/rooms/service.ts",
@@ -160,7 +184,7 @@
     },
     {
       "path": "tests/hub-room-agents-r2.test.ts",
-      "sha256": "d5c5a0a4ebb4f69b249c7950d3b5d64af71a808fa05d0b53362f9a84a81394f6"
+      "sha256": "3e64763d6c76a16fde7ffe18233999e84a7623fdfa972c58c7680f83bd7faf1f"
     },
     {
       "path": "tests/hub-room-link-r2.test.ts",
@@ -172,7 +196,7 @@
     },
     {
       "path": "tests/hub-rooms-migration-r1.test.ts",
-      "sha256": "ceaba6e460d4466f6face2974d4ff767be5d9020042d3f4acc355b3685919b10"
+      "sha256": "4441ee91bd61ecde1946bb9fe9fb804f0c19d32137fbec127be7c31c81231049"
     }
   ],
   "boundaries": [
@@ -182,5 +206,8 @@
     "counts overlap; no summed total claimed",
     "additive migration, older registry refuses; compatible fix-forward retains DB/keys"
   ],
-  "previousSourceHead": "461e92dcc3f0c9a26db7c431adc5b6ea28e56a0b"
+  "previousSourceHead": "7df4c2a851f37c7ef0b3917cb065a51d9c3054a5",
+  "parentR1Source": "00af7e86e9d85ad977cb2f3444682676eef61cd7",
+  "retryMigration": "s3-room-retry",
+  "retryIntervalMs": 30000
 }

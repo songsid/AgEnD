@@ -5,7 +5,7 @@ import { applyHubMigrations } from "../src/hub/db.js";
 import { HUB_HTTP_MIGRATIONS } from "../src/hub/http/schema.js";
 
 it("migrates once, preserves direct-room bytes and refuses an older migration registry", () => {
-  const db = new Database(":memory:"), older = HUB_HTTP_MIGRATIONS.filter(m => !["s3-rooms", "s3-room-agents", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
+  const db = new Database(":memory:"), older = HUB_HTTP_MIGRATIONS.filter(m => !["s3-rooms", "s3-room-agents", "s3-room-retry", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
   try {
     applyHubMigrations(db, older);
     const id = randomUUID(), grant = randomUUID(), owner = `corp/${randomUUID()}`, asker = `corp/${randomUUID()}`, exposure = randomUUID();
@@ -21,7 +21,7 @@ it("migrates once, preserves direct-room bytes and refuses an older migration re
 });
 
 it("adds retained agent deliveries without changing existing group message or membership fields", () => {
-  const db = new Database(":memory:"), r1 = HUB_HTTP_MIGRATIONS.filter(m => !["s3-room-agents", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
+  const db = new Database(":memory:"), r1 = HUB_HTTP_MIGRATIONS.filter(m => !["s3-room-agents", "s3-room-retry", "s3-room-creators", "s3-room-assistant", "s3-room-directory"].includes(m.component));
   try {
     applyHubMigrations(db, r1);
     const room = randomUUID(), member = randomUUID(), post = randomUUID(), person = `corp/${randomUUID()}`;
@@ -70,5 +70,21 @@ it("keeps pre-sign-in room labels separate from permanent Hub sign-in rows", () 
     expect(db.prepare("SELECT COUNT(*) n FROM hub_people").get()).toEqual({ n: 0 });
     expect(db.prepare("SELECT COUNT(*) n FROM hub_sessions").get()).toEqual({ n: 0 });
     expect(() => applyHubMigrations(db, r3)).toThrow(/s3-room-directory/);
+  } finally { db.close(); }
+});
+
+it("adds retry time without rewriting an issued delivery, and refuses the pre-retry registry", () => {
+  const db = new Database(":memory:"), beforeRetry = HUB_HTTP_MIGRATIONS.filter(m => m.component !== "s3-room-retry");
+  try {
+    applyHubMigrations(db, beforeRetry);
+    const room = randomUUID(), parent = randomUUID(), reply = randomUUID(), person = `corp/${randomUUID()}`;
+    db.prepare("INSERT INTO hub_group_rooms(id,name,created_by,created_at) VALUES(?,'Retained',?,123)").run(room, person);
+    for (const [id, sequence] of [[parent, 1], [reply, 2]] as const) db.prepare("INSERT INTO hub_room_posts(id,room_id,sequence,author_kind,author_id,author_subject,author_name,content_ref,digest,mentions,created_at) VALUES(?,?,?,'person',?,?,'Alex','opaque',?,'[]',123)").run(id, room, sequence, person, person, "c".repeat(64));
+    db.prepare(`INSERT INTO hub_room_deliveries(id,room_id,parent_id,reply_id,exposure_id,exposure_revision,fleet_id,owner,asker,asker_member,agent_member,payload_ref,payload_digest,state,sent_epoch,created_at,expires_at)
+      VALUES(?,?,?,?,?,3,?,?,?, ?,?,'retained-payload',?,'sent',7,123,999999)`).run(randomUUID(), room, parent, reply, randomUUID(), randomUUID(), person, person, randomUUID(), randomUUID(), "d".repeat(64));
+    const before = db.prepare("SELECT * FROM hub_room_deliveries").get();
+    applyHubMigrations(db, HUB_HTTP_MIGRATIONS); applyHubMigrations(db, HUB_HTTP_MIGRATIONS);
+    expect(db.prepare("SELECT * FROM hub_room_deliveries").get()).toEqual({ ...before as object, last_sent_at: 0 });
+    expect(() => applyHubMigrations(db, beforeRetry)).toThrow(/s3-room-retry/);
   } finally { db.close(); }
 });

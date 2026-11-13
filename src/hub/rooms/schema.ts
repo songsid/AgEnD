@@ -73,3 +73,8 @@ CREATE INDEX hub_room_assistant_queued ON hub_room_assistant_calls(state,created
 export const HUB_ROOM_DIRECTORY_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-directory", version: 1, up(db: Database.Database) {
   db.exec("CREATE TABLE hub_room_people(person TEXT PRIMARY KEY,display_name TEXT NOT NULL,login_label TEXT NOT NULL,observed_at INTEGER NOT NULL)");
 } });
+
+/** Preserve issued deliveries while enabling bounded same-link retries after transient Fleet refusals. */
+export const HUB_ROOM_RETRY_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-retry", version: 1, up(db: Database.Database) {
+  db.exec("ALTER TABLE hub_room_deliveries ADD COLUMN last_sent_at INTEGER NOT NULL DEFAULT 0");
+} });
