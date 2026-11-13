@@ -1,21 +1,24 @@
 
  RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
 
- ❯ tests/claude-model-checkpoint-tail.test.ts (15 tests | 6 failed) 189ms
-     × keeps pending intent  across JSON persistence and replay dedupe 17ms
-     × conservatively restores missing or invalid intent undefined 3ms
+ ❯ tests/claude-model-checkpoint-tail.test.ts (21 tests | 9 failed) 388ms
+     × keeps pending intent  across JSON persistence and replay dedupe 14ms
+     × conservatively restores missing or invalid intent undefined 2ms
      × conservatively restores missing or invalid intent {"kind":"concrete","model":"opus"} 2ms
-     × conservatively restores missing or invalid intent {"kind":"unexpected"} 2ms
-     × conservatively restores missing or invalid intent "arbitrary command text" 2ms
+     × conservatively restores missing or invalid intent {"kind":"unexpected"} 1ms
+     × conservatively restores missing or invalid intent "arbitrary command text" 1ms
      × legacy v1 intent loss stays unresolved until a new session 2ms
+     × legacy original retires a quiet incident without enabling new inference 1ms
+     × legacy configured retires a quiet incident without enabling new inference 1ms
+     × unresolved original retires a quiet incident without enabling new inference 1ms
 
  Test Files  1 failed (1)
-      Tests  6 failed | 9 passed (15)
-   Start at  18:12:40
-   Duration  567ms (transform 148ms, setup 108ms, import 112ms, tests 189ms, environment 0ms)
+      Tests  9 failed | 12 passed (21)
+   Start at  18:40:29
+   Duration  883ms (transform 217ms, setup 137ms, import 175ms, tests 388ms, environment 0ms)
 
 
-⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 9 ⎯⎯⎯⎯⎯⎯⎯
 
  FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > keeps pending intent  across JSON persistence and replay dedupe
 AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to deeply equal { configured: 'claude-opus-5-5', …(5) }
@@ -40,15 +43,15 @@ AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to deeply equ
     "observedAt": 3,
     "session": "claude-opus-5-5",
 
- ❯ tests/claude-model-checkpoint-tail.test.ts:40:80
-     38|     expect(restored.observe(intent, configured)).toBe(false); // daemo…
-     39|     for (const o of [original, restored]) o.observe(response("fresh", …
-     40|     expect(original.snapshot().active).toBeNull(); expect(restored.sna…
+ ❯ tests/claude-model-checkpoint-tail.test.ts:44:80
+     42|     expect(restored.observe(intent, configured)).toBe(false); // daemo…
+     43|     for (const o of [original, restored]) o.observe(response("fresh", …
+     44|     expect(original.snapshot().active).toBeNull(); expect(restored.sna…
        |                                                                                ^
-     41|     if (requested) {
-     42|       restored.observe(response("confirmed", 4), sonnet);
+     45|     if (requested) {
+     46|       restored.observe(response("confirmed", 4), sonnet);
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/9]⎯
 
  FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > conservatively restores missing or invalid intent undefined
  FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > conservatively restores missing or invalid intent {"kind":"concrete","model":"opus"}
@@ -69,15 +72,15 @@ null
   "since": 2,
 }
 
- ❯ tests/claude-model-checkpoint-tail.test.ts:67:40
-     65|     const original = observer(); original.observe(response("normal", 1…
-     66|     const restored = observer({ ...original.checkpoint(), intent }); r…
-     67|     expect(restored.snapshot().active).toBeNull();
+ ❯ tests/claude-model-checkpoint-tail.test.ts:71:40
+     69|     const original = observer(); original.observe(response("normal", 1…
+     70|     const restored = observer({ ...original.checkpoint(), intent }); r…
+     71|     expect(restored.snapshot().active).toBeNull();
        |                                        ^
-     68|     restored.ownIntent(sonnet); restored.ownResult(true, sonnet);
-     69|     restored.observe(response("later-difference", 3, "claude-haiku-4-5…
+     72|     restored.ownIntent(sonnet); restored.ownResult(true, sonnet);
+     73|     restored.observe(response("later-difference", 3, "claude-haiku-4-5…
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/9]⎯
 
  FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > legacy v1 intent loss stays unresolved until a new session
 AssertionError: expected { id: 'session-A:same-session', …(5) } to be null
@@ -95,13 +98,41 @@ null
   "since": 2,
 }
 
- ❯ tests/claude-model-checkpoint-tail.test.ts:76:40
-     74|     const { intent: _intent, ...saved } = original.checkpoint() as any;
-     75|     const restored = observer({ ...saved, v: 1 }); restored.observe(re…
-     76|     expect(restored.snapshot().active).toBeNull();
+ ❯ tests/claude-model-checkpoint-tail.test.ts:80:40
+     78|     const { intent: _intent, ...saved } = original.checkpoint() as any;
+     79|     const restored = observer({ ...saved, v: 1 }); restored.observe(re…
+     80|     expect(restored.snapshot().active).toBeNull();
        |                                        ^
-     77|     restored.observe({ ...response("new-session", 3), sessionId: "sess…
-     78|     expect(restored.snapshot().active?.cause).toBe("observed");
+     81|     restored.observe({ ...response("new-session", 3), sessionId: "sess…
+     82|     expect(restored.snapshot().active?.cause).toBe("observed");
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/9]⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > definite recovery while inference is unresolved > legacy original retires a quiet incident without enabling new inference
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > definite recovery while inference is unresolved > legacy configured retires a quiet incident without enabling new inference
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > definite recovery while inference is unresolved > unresolved original retires a quiet incident without enabling new inference
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "observed",
+  "id": "session-A:still-unconfirmed",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-sonnet-5-5",
+  "since": 4,
+}
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:102:40
+    100|     expect(restored.checkpoint().expected).toBe(configured);
+    101|     restored.observe(response("still-unconfirmed", 4), sonnet);
+    102|     expect(restored.snapshot().active).toBeNull(); // recovery is not …
+       |                                        ^
+    103|   });
+    104| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/9]⎯
 

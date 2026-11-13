@@ -31,3 +31,7 @@ python3 docs/evidence/claude-model-observation-main/mutations/run.py M8-daemonfe
 # Checkpoint/read-budget repair (private temp files; no browser)
 vitest run tests/claude-model-checkpoint-tail.test.ts tests/claude-model-switch-daemon.test.ts --maxWorkers=2
 vitest run tests/claude-*.test.ts tests/concepts-skill-sync.test.ts tests/grok-consumed-3810.test.ts --maxWorkers=2
+
+# R2 recovery/Log cursor (private temp files; no browser)
+python3 docs/evidence/claude-model-observation-main/checks/reproduce-r2-before.py
+vitest run tests/claude-model-checkpoint-tail.test.ts tests/claude-model-switch-daemon.test.ts --maxWorkers=2

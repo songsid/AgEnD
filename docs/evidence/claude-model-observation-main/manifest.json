@@ -1,5 +1,11 @@
 [
   {
+    "digest": "030d821163e54b0c50396a270ade477d3f2dd16e312529fade1762d070e6433b",
+    "paths": [
+      "mutations/run.py"
+    ]
+  },
+  {
     "digest": "0564c309ca58cdb8e5a857c1fcd8c2bba5e1ca88a4e13830fa358ef1233abf75",
     "paths": [
       "browser/after-desk-light-en-card.png"
@@ -12,21 +18,9 @@
     ]
   },
   {
-    "digest": "0a3f56fc56e65c953a5d4e0196257bb9110ed748fad2ec3b1a67916e31227b66",
+    "digest": "0a156c16975e2c9ac33a661027cdfab65a723777c1f00d2c1c66de0b4916ef6c",
     "paths": [
-      "mutations/results.json"
-    ]
-  },
-  {
-    "digest": "0df4e5b81701ee29568fe8a1a7e77224ad1273eefce862b66eca294aff6d61fe",
-    "paths": [
-      "mutations/C1-checkpoint-intent.log"
-    ]
-  },
-  {
-    "digest": "1229f36bae8e1c8092ac7063149582243997b38b406f3599887025e21fe9faf6",
-    "paths": [
-      "mutations/M4-recovery.log"
+      "checks/reproduce-r2-before.py"
     ]
   },
   {
@@ -36,9 +30,21 @@
     ]
   },
   {
+    "digest": "1323685b3cd4416b6c37c460ba0f6437c67306eb2d86663699fdec6029e40ac8",
+    "paths": [
+      "mutations/M14-nofallback.log"
+    ]
+  },
+  {
     "digest": "134a71ec60dfd134d7b678e4a246e5c23af1d2810d37d08c5a7d8b4b4c81ee9c",
     "paths": [
       "checks/checkpoint-tail-daemon-before.log"
+    ]
+  },
+  {
+    "digest": "155b056f4d8607c203b1af5760ede99a037440a278f81c5a1beb62ec21a1c8af",
+    "paths": [
+      "mutations/C1-checkpoint-intent.log"
     ]
   },
   {
@@ -54,6 +60,12 @@
     ]
   },
   {
+    "digest": "1ad114634ab4900ae6c7abdad40581feff87846e7148f0bdb83c830b4414d9e8",
+    "paths": [
+      "mutations/M1-sidechain.log"
+    ]
+  },
+  {
     "digest": "1b03fe946dc58afebb535064fdaf965e8c264f627fc1ecb066917974563ac93d",
     "paths": [
       "browser/after-desk-light-zh-TW-details.png"
@@ -66,15 +78,21 @@
     ]
   },
   {
-    "digest": "1c7c3011b1126e1184684e140dbba82a1af34b763b003a5229e9efe66a1133ca",
-    "paths": [
-      "mutations/M2-apierror.log"
-    ]
-  },
-  {
     "digest": "205a4836c74947ba9bfff33e2f721df876b482b8da832ccf4df23a2b0e0d2e96",
     "paths": [
       "checks/final-17-controls.log"
+    ]
+  },
+  {
+    "digest": "2205769bb1905ce40878a6d930e664b21c09cd2eb9b9e077025c023fb421feb5",
+    "paths": [
+      "mutations/M11-commandprefix.log"
+    ]
+  },
+  {
+    "digest": "22c61eef0235c5d67f44397e5811340a7af718937fe268a96bf111e48a40133b",
+    "paths": [
+      "checks/r2-recovery-log-before.log"
     ]
   },
   {
@@ -94,6 +112,12 @@
     "digest": "28d2026d2fd62b13758fce7c6073e1227e0566e22b34c995dddd89e6e7c7e25c",
     "paths": [
       "browser/availability-desk-light-en-log.png"
+    ]
+  },
+  {
+    "digest": "2911ffad891b47003af1acb4b1136c64de0ef347f32cfdec8cb226f2499db846",
+    "paths": [
+      "checks/r2-exact-before.json"
     ]
   },
   {
@@ -121,15 +145,27 @@
     ]
   },
   {
-    "digest": "3381a1b5bd948a726c82e8e4afd3f9657c7bbf54228f9ce49d13bfed974d86eb",
+    "digest": "353b1566b207d57ebf99f2d58e43cba78b72382e3cad2c57ca07b5c34fb3ff8e",
     "paths": [
-      "mutations/M5-concrete.log"
+      "checks/r2-before-tests/r2-before-model.fixture.test.ts.txt"
+    ]
+  },
+  {
+    "digest": "36efb3f1af1b7aec7d06193dadbcc81bde3b3d80bea8e0776e963374c9403517",
+    "paths": [
+      "mutations/T2-shared-budget.log"
     ]
   },
   {
     "digest": "393d7a362b76ac8f8888128f38ae9bc6845f287fec4c0b19d5d8fc8853b27bc8",
     "paths": [
       "checks/ci-fixture-controls.log"
+    ]
+  },
+  {
+    "digest": "3a7b8b9ec875c443cd86aec7f05a66fd8e3aafb1ee696872cde8f38dd576db70",
+    "paths": [
+      "checks/r2-full-claude-grok-log.log"
     ]
   },
   {
@@ -146,33 +182,21 @@
     ]
   },
   {
-    "digest": "3cfa8ff8c44d9f06e5b007733ec978b6b7f326c49fdbe7859b39aa9d0e82b207",
-    "paths": [
-      "mutations/M14-nofallback.log"
-    ]
-  },
-  {
     "digest": "3e23162805ed85e157bb4dac0594795e408c16c5df80f356ad7c65670650229c",
     "paths": [
       "browser/availability-desk-dark-zh-TW-log.png"
     ]
   },
   {
-    "digest": "441431ce8f4a11bdf4ae3f8009edefcc674fe4a39013340b77e28760b25bc365",
+    "digest": "42590e00c0931faf0bbe01ce14498a8a9113bd3bed70f4fb441356473b157974",
     "paths": [
-      "mutations/C3-legacy-conservative.log"
+      "mutations/L1-log-cursor.log"
     ]
   },
   {
     "digest": "46b4a4ebd529288e9a1e3ac12339ff445fd9f2e2da40655c33c6624abfd82022",
     "paths": [
       "checks/baseline-monitor-red.log"
-    ]
-  },
-  {
-    "digest": "49be1abf4f3bd876b19b0db2f460403f15e3dd37d87b303b187b605ca233b728",
-    "paths": [
-      "mutations/C2-restore-intent.log"
     ]
   },
   {
@@ -194,9 +218,9 @@
     ]
   },
   {
-    "digest": "5e7d24b917dad9c8a45272166a7af3c46b04f7a446a01ca37adf5997dbcd37ef",
+    "digest": "5c63d9964d08679a796d1436e9aec54666fec5ccd69eca44f59913b35a3b7969",
     "paths": [
-      "mutations/M10-original.log"
+      "mutations/C4-pending-recovery.log"
     ]
   },
   {
@@ -206,15 +230,15 @@
     ]
   },
   {
-    "digest": "6413529f7950da834d68abf65b27b2f4c0d8c2b0e0d537800802b4fe8d8cafa4",
-    "paths": [
-      "README.md"
-    ]
-  },
-  {
     "digest": "660db4e7d74687f3026a26b1cdfc11fa2b172b19f49b3442937a1704f5b9d2e3",
     "paths": [
       "browser/after-desk-dark-en-log.png"
+    ]
+  },
+  {
+    "digest": "666f20d82d0fe0eee724e30af72ac8900984c8f738d5b6e23fccf8a22bd82e06",
+    "paths": [
+      "mutations/M2-apierror.log"
     ]
   },
   {
@@ -236,6 +260,18 @@
     ]
   },
   {
+    "digest": "6d3cb42aeb6cfd532da0ce5f13c151342c51da796f6a38059339cd8223de4f7f",
+    "paths": [
+      "mutations/M4-recovery.log"
+    ]
+  },
+  {
+    "digest": "6d42681d98f88dc4659c1c8f9d52f03f25fabdbefb0a914b85585e822f28aba7",
+    "paths": [
+      "checks/r2-exact-before.log"
+    ]
+  },
+  {
     "digest": "6e05595ef6c7d34124d3226aefafe0260cde9204374ce1b9906690b64ea5cf5a",
     "paths": [
       "checks/browser-final-readable.log"
@@ -248,10 +284,28 @@
     ]
   },
   {
+    "digest": "6f50d90db54f2540d75501a475e5213073c5cfe87aa523943c53a5ecca4d44b1",
+    "paths": [
+      "mutations/results.json"
+    ]
+  },
+  {
     "digest": "70a6fdbfcf5530ebf1a773209efc7d14862da3dd8d894c04ff3871d780451faf",
     "paths": [
       "browser/after-phone-dark-zh-TW-details.png",
       "browser/retained-shell-phone-dark-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "7187193dba509fc22c53e99dab5ada36dbc11f54bb234c67cf9ff31b6d0170c2",
+    "paths": [
+      "checks/r2-before-tests/r2-before-daemon.fixture.test.ts.txt"
+    ]
+  },
+  {
+    "digest": "73d9b4916cdb1209c438f3d34fbb04c114dc1c384730cc0cd47cad08516c8308",
+    "paths": [
+      "mutations/C2-restore-intent.log"
     ]
   },
   {
@@ -273,21 +327,33 @@
     ]
   },
   {
+    "digest": "7a78aca6f52da28001b67ea317cba4f26289d213e37b506da43b164ebccf6214",
+    "paths": [
+      "checks/r2-mutations.log"
+    ]
+  },
+  {
     "digest": "7b72454dc74f3a0bbd087224f6fdf49633169aba4f5e4978c1ef4bf6d48496c9",
     "paths": [
       "browser/availability-desk-dark-zh-TW-details.png"
     ]
   },
   {
-    "digest": "7ccbce0225be4d5f1f1727e0607502648faf0082c25150610780a25d0045eef5",
+    "digest": "7d54edb689899d7dea24a8001a6dd666ad83c741a5232ce2559fde0f29187329",
     "paths": [
-      "mutations/M3-dedupe.log"
+      "checks.json"
     ]
   },
   {
     "digest": "7d9f08c7aabd3e0e6b00cd6d57ed00d7e6d7606c1b0d7b82cede5c1d07896d72",
     "paths": [
       "checks/r2-controls.log"
+    ]
+  },
+  {
+    "digest": "80196cf8e22fa240993eaa849a315f5f922b9db4228fef1546f7fff228839751",
+    "paths": [
+      "checks/r2-restored-controls.log"
     ]
   },
   {
@@ -309,9 +375,9 @@
     ]
   },
   {
-    "digest": "87a580b001d17d3bce5b032d8a882f7d77fc545a6180e4594f474349bc794db6",
+    "digest": "8531424306054eb566129032b2818ceb6f5878caa3f0db33805d370ef01e637e",
     "paths": [
-      "checks/commands.txt"
+      "README.md"
     ]
   },
   {
@@ -324,6 +390,12 @@
     "digest": "8bf2da0a66b12f54b661e9316cb8dbf272f512d102e8c2b28710a5277adc96b5",
     "paths": [
       "checks/retained-needs-before.log"
+    ]
+  },
+  {
+    "digest": "941310d5cbf7423700b029977cebd79c45b9afaef21202ec2a2340a2245784d6",
+    "paths": [
+      "mutations/T3-boundary-budget.log"
     ]
   },
   {
@@ -358,12 +430,6 @@
     ]
   },
   {
-    "digest": "9f928792bad5d6a96e4c5356d93511c35448ab09cafac070f21bc21c201f27de",
-    "paths": [
-      "mutations/run.py"
-    ]
-  },
-  {
     "digest": "a22f841dcfdc1f18630b5f6722b563f3781d719daa7db23d75f61322444a3776",
     "paths": [
       "browser/availability-desk-dark-zh-TW-needs.png"
@@ -382,6 +448,12 @@
     ]
   },
   {
+    "digest": "a911521bd7358aba59268514bfb073ddec906d8fd8ad40aa9bd1447e4efff8f9",
+    "paths": [
+      "checks/r2-final-checks.json"
+    ]
+  },
+  {
     "digest": "aa3298105e7e64fa6738d9e7d0722ad81c31a5fd50be80368f4d7ed7391dc2ee",
     "paths": [
       "mutations/M8-daemonfence.log"
@@ -391,6 +463,12 @@
     "digest": "ac615d413f024f5d1f1c9b13c7d628c726924070975fc8280f246d76c6e608b5",
     "paths": [
       "browser/availability-desk-light-en-needs.png"
+    ]
+  },
+  {
+    "digest": "ae76f9be1d6e3cc3d4534e6bca20c9794326c4239ecb59f1ba95f29e03c247f7",
+    "paths": [
+      "mutations/M6-hookowner.log"
     ]
   },
   {
@@ -406,15 +484,15 @@
     ]
   },
   {
-    "digest": "b36043bfd4f8a03e8ce593025dddeab00325232ddfad2378289d0809d9d5bae5",
+    "digest": "b26430b9b9a89aa90ddd94fc56d0b66bdd9e2a65286c05b5e0c17df12fe58352",
     "paths": [
-      "browser/after-desk-dark-zh-TW-needs.png"
+      "checks/commands.txt"
     ]
   },
   {
-    "digest": "b48ca4fabb183a35352cd5024f2e455de7c3f021ca9db206bc59b1b4dbe907ae",
+    "digest": "b36043bfd4f8a03e8ce593025dddeab00325232ddfad2378289d0809d9d5bae5",
     "paths": [
-      "mutations/T2-shared-budget.log"
+      "browser/after-desk-dark-zh-TW-needs.png"
     ]
   },
   {
@@ -431,27 +509,9 @@
     ]
   },
   {
-    "digest": "b8d6dcb294e484030c36dad5408691127f16db3c06c8d7892778ebb939191df3",
-    "paths": [
-      "checks.json"
-    ]
-  },
-  {
-    "digest": "b97982f9de25056c24f26b00ef383789adb82c0c1896cfba300c99a7aac85ef8",
-    "paths": [
-      "mutations/T3-boundary-budget.log"
-    ]
-  },
-  {
     "digest": "ba4095ce8c8428feb2c28ecd2f63678dd1d519730580daf5c4606233902e98db",
     "paths": [
       "browser/after-desk-dark-en-needs.png"
-    ]
-  },
-  {
-    "digest": "ba4f7ba3acbf08cf4ed1185cfbdaa184049ec5677e9791a56fd7ae918ba287f2",
-    "paths": [
-      "mutations/T1-cursor.log"
     ]
   },
   {
@@ -471,6 +531,12 @@
     "digest": "bdd59217d42cc91eb95ba14cf296ad5812236dc2d962ca974565c103451742ae",
     "paths": [
       "browser/after-desk-light-zh-TW-office-card.png"
+    ]
+  },
+  {
+    "digest": "bf5c464fa4912bc440aebaa069af0f49390381fd40f968de10973d54802fbe0d",
+    "paths": [
+      "review-r2.json"
     ]
   },
   {
@@ -504,27 +570,15 @@
     ]
   },
   {
-    "digest": "d5547e94131e3423b21d078cfc402c681ee61fc448ca33c5410015ff57889227",
+    "digest": "d1dcc5a052c48d2666dcae456f999b501e09b0bfc52559142cd70a207b588609",
     "paths": [
-      "mutations/M1-sidechain.log"
+      "mutations/M5-concrete.log"
     ]
   },
   {
     "digest": "d807cf46ed80495d47d846817c7cd2bb59fd8d43b71d2da0954abd577d66057a",
     "paths": [
       "browser/after-desk-dark-zh-TW-office-card.png"
-    ]
-  },
-  {
-    "digest": "dae7af8ace0837942ce984ddb1da1816204b96e671b511ef8d2ea17eebb5326d",
-    "paths": [
-      "mutations/M11-commandprefix.log"
-    ]
-  },
-  {
-    "digest": "dda021598e31cd8f3f76fbc5f8aaed29b1cfa3343620a084ee87e21e7d4b9dbc",
-    "paths": [
-      "mutations/M7-launchtime.log"
     ]
   },
   {
@@ -561,6 +615,8 @@
       "mutations/C1-checkpoint-intent-types.log",
       "mutations/C2-restore-intent-types.log",
       "mutations/C3-legacy-conservative-types.log",
+      "mutations/C4-pending-recovery-types.log",
+      "mutations/L1-log-cursor-types.log",
       "mutations/M1-sidechain-types.log",
       "mutations/M10-original-types.log",
       "mutations/M11-commandprefix-types.log",
@@ -578,13 +634,38 @@
       "mutations/M9-resumequiet-types.log",
       "mutations/T1-cursor-types.log",
       "mutations/T2-shared-budget-types.log",
-      "mutations/T3-boundary-budget-types.log"
+      "mutations/T3-boundary-budget-types.log",
+      "mutations/T4-startup-lane-types.log"
     ]
   },
   {
-    "digest": "e4fd94add3595879c2a56aeb2d75016ae78b871585824b0b0185724d2fa17b3f",
+    "digest": "e40cbd75e781f5e7fe437b1791099ddec2cafd9d1c6440ec5f1c4ec45d7ffb82",
+    "paths": [
+      "mutations/T4-startup-lane.log"
+    ]
+  },
+  {
+    "digest": "e5222704104480edcd4a2eff4f09938d5c49d2cacfd7d192b9b211dd843cad2a",
     "paths": [
       "mutations/M15-intent-session.log"
+    ]
+  },
+  {
+    "digest": "e5476b78e42c7065e661d2a578e2644bec59e682be1931329b267fe9f016fb38",
+    "paths": [
+      "mutations/M10-original.log"
+    ]
+  },
+  {
+    "digest": "e94e61155e153666007bdaf2c07d268b1ad35a79a58e6acda056fa0c66be5be7",
+    "paths": [
+      "mutations/T1-cursor.log"
+    ]
+  },
+  {
+    "digest": "e9687d5e741ac1bacafa33aef7fc36ae9b85d40bf8955893a8a3b961ab72058d",
+    "paths": [
+      "mutations/M7-launchtime.log"
     ]
   },
   {
@@ -594,15 +675,15 @@
     ]
   },
   {
-    "digest": "ede622532273f5b02e72ddffaa689a67726e5c73f0f37749594c85636d5a7aaf",
+    "digest": "edb050cf9b73ba49869fd123a40752bf9043b355b22f26a5b68f1e4e1c735945",
     "paths": [
-      "browser/after-phone-light-zh-TW-log.png"
+      "checks/r2-recovery-log-controls.log"
     ]
   },
   {
-    "digest": "ef93c9dceb6778fa8aa93849f2579d82796518c48eb4207dc21ce8a5939795f9",
+    "digest": "ede622532273f5b02e72ddffaa689a67726e5c73f0f37749594c85636d5a7aaf",
     "paths": [
-      "mutations/M6-hookowner.log"
+      "browser/after-phone-light-zh-TW-log.png"
     ]
   },
   {
@@ -630,9 +711,21 @@
     ]
   },
   {
+    "digest": "fc2cef6d9c82499c4870be9af019056ae669cee6931f14afe77be19f61fa5e8e",
+    "paths": [
+      "mutations/C3-legacy-conservative.log"
+    ]
+  },
+  {
     "digest": "fd125c31395c09a9a2e9ae56fb63f6eb4150474af60229fbb727b8bab90f4aac",
     "paths": [
       "checks/metadata-only-before.log"
+    ]
+  },
+  {
+    "digest": "fe0e737d7cb15d75695dc67470a60537d61609ee39210d7949c7e4bc2243d08c",
+    "paths": [
+      "mutations/M3-dedupe.log"
     ]
   }
 ]

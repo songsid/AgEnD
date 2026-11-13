@@ -1,0 +1,35 @@
+[
+  {
+    "command": [
+      "./node_modules/.bin/tsc",
+      "--noEmit",
+      "--pretty",
+      "false"
+    ],
+    "log": "r2-source-types.log",
+    "exit": 0
+  },
+  {
+    "command": [
+      "./node_modules/.bin/tsc",
+      "--noEmit",
+      "--pretty",
+      "false",
+      "-p",
+      "tsconfig.test.json"
+    ],
+    "log": "r2-test-types.log",
+    "exit": 0
+  },
+  {
+    "command": [
+      "./node_modules/.bin/vitest",
+      "run",
+      "tests/claude-model-checkpoint-tail.test.ts",
+      "tests/claude-model-switch-daemon.test.ts",
+      "--maxWorkers=2"
+    ],
+    "log": "r2-restored-controls.log",
+    "exit": 0
+  }
+]

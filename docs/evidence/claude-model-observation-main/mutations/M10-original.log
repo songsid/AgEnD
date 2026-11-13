@@ -1,32 +1,32 @@
 
  RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
 
- ❯ tests/claude-model-switch.test.ts (58 tests | 20 failed) 75ms
-   × observes a typed main-thread fallback only through this launch's hook, without copying content 13ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 20 failed) 83ms
+   × observes a typed main-thread fallback only through this launch's hook, without copying content 12ms
      × retains typed originalModel even though requestedModel already names the fallback 2ms
-     × refusal scope local is turn 0ms
+     × refusal scope local is turn 1ms
      × refusal scope turn is turn 0ms
      × refusal scope session is session 0ms
      × refusal scope undefined is session 0ms
      × refusal scope unsupported is unknown 0ms
      × availability is distinct, with an unknown scope when the producer omits it 2ms
-     × one incident survives repeated notices and response blocks, recovers, then allows a new incident 0ms
-     × a local fallback does not rewrite session selection and is recovered by a later configured response 0ms
+     × one incident survives repeated notices and response blocks, recovers, then allows a new incident 1ms
+     × a local fallback does not rewrite session selection and is recovered by a later configured response 1ms
      × a return to the configured model recovers a fallback that followed next-spawn failover 0ms
      × a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers 0ms
      × a corrupt or differently configured checkpoint is not adopted 0ms
      × raw concrete intent needs both session and served confirmation before replacing an active switch 0ms
-     × an unresolved alias intent keeps inference unconfirmed until a concrete selection or typed notice 1ms
-     × an unconfirmed command is not an applied switch; a typed provider notice still proves fallback 1ms
-     × Needs you uses the incident identity for quiet updates, and removes it on recovery 1ms
-   × Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records 2ms
-     × baselines a resumed file, observes only appends, and does not replay after resetting 8ms
-     × keeps first records written by this launch before the monitor was constructed 23ms
+     × an unresolved alias intent keeps inference unconfirmed until a concrete selection or typed notice 0ms
+     × an unconfirmed command is not an applied switch; a typed provider notice still proves fallback 0ms
+     × Needs you uses the incident identity for quiet updates, and removes it on recovery 0ms
+   × Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records 1ms
+     × baselines a resumed file, observes only appends, and does not replay after resetting 12ms
+     × keeps first records written by this launch before the monitor was constructed 28ms
 
  Test Files  1 failed (1)
       Tests  20 failed | 38 passed (58)
-   Start at  18:12:26
-   Duration  550ms (transform 183ms, setup 107ms, import 149ms, tests 75ms, environment 0ms)
+   Start at  18:40:09
+   Duration  559ms (transform 178ms, setup 111ms, import 141ms, tests 83ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯ Failed Tests 20 ⎯⎯⎯⎯⎯⎯⎯

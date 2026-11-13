@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts (21 tests | 1 failed) 414ms
+   × the actual monitor uses the bounded startup lane after its inherited baseline lookup 223ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 20 passed (21)
+   Start at  18:41:09
+   Duration  812ms (transform 183ms, setup 89ms, import 156ms, tests 414ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > the actual monitor uses the bounded startup lane after its inherited baseline lookup
+AssertionError: expected 16777615 to be less than or equal to 8388608
+ ❯ tests/claude-model-checkpoint-tail.test.ts:183:37
+    181|   await monitor.pollIncrement();
+    182|   expect(observations).toHaveLength(1);
+    183|   expect(io.bytes - inheritedReads).toBeLessThanOrEqual(8 * 1024 * 102…
+       |                                     ^
+    184| });
+    185|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

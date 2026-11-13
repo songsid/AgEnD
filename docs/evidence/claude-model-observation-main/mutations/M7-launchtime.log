@@ -1,14 +1,14 @@
 
  RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
 
- ❯ tests/claude-model-switch.test.ts (58 tests | 2 failed) 72ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 2 failed) 75ms
      × rejects bootstrap history even within the old 5-second alarm skew window 11ms
-     × baselines a resumed file, observes only appends, and does not replay after resetting 6ms
+     × baselines a resumed file, observes only appends, and does not replay after resetting 5ms
 
  Test Files  1 failed (1)
       Tests  2 failed | 56 passed (58)
-   Start at  17:30:52
-   Duration  503ms (transform 188ms, setup 130ms, import 129ms, tests 72ms, environment 0ms)
+   Start at  18:39:53
+   Duration  494ms (transform 170ms, setup 103ms, import 130ms, tests 75ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
@@ -22,7 +22,7 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 - []
 + [
 +   {
-+     "at": 1794562251634,
++     "at": 1794566392436,
 +     "cause": "safeguards",
 +     "id": "notice:notice-A",
 +     "kind": "switch",
@@ -52,7 +52,7 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 - []
 + [
 +   {
-+     "at": 1794562192646,
++     "at": 1794566333449,
 +     "cause": "safeguards",
 +     "id": "notice:notice-A",
 +     "kind": "switch",

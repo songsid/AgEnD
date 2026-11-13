@@ -1,17 +1,11 @@
 {
-  "sourceHead": "951b510c3e4009fa2cf654f7d46ac77fd34f5091",
+  "sourceHead": "90c41b38b4a46325fbcdf07f38a0b98275a4ec1e",
   "baseline": "3e4c2b657b86d343a5f70ab9d6f47e844fddeb46",
   "sourceInputs": [
     {
       "digest": "0523431fa73d3c79c52ac464dbd2d131e9cfe26753b1e383a47fbf874129e9cc",
       "paths": [
         "src/ui/fleet-office-card.js"
-      ]
-    },
-    {
-      "digest": "07a20a60c3d32e3fe1ed7ec337c0338f9952390c3cdfb304d464744c2099c536",
-      "paths": [
-        "src/log-steps.ts"
       ]
     },
     {
@@ -45,12 +39,6 @@
       ]
     },
     {
-      "digest": "26829691cb6a830379f8c16ac67408690d1232d35b7c11a90ba3e23e2db22bf1",
-      "paths": [
-        "docs/design/claude-model-observation.md"
-      ]
-    },
-    {
       "digest": "2a8866383a61939e9b352639b49389074eb927327dd5333791ccd6738da685b8",
       "paths": [
         "src/outbound-handlers.ts"
@@ -75,21 +63,9 @@
       ]
     },
     {
-      "digest": "3e64b064f90f79c102ec4c148cbfb1e7be729206ca7a421856ff37a30a30e27b",
-      "paths": [
-        "src/claude-model-observation.ts"
-      ]
-    },
-    {
       "digest": "450ef9e8c433953d3d08a1d457c02564dc541b3af41e6e369446df6fc0d58865",
       "paths": [
         "tests/needs-you-hub-1386.test.ts"
-      ]
-    },
-    {
-      "digest": "4552a5780ecebea8b60ac1e3b7682ce70016c3b95f821bd3f8b569065f73968b",
-      "paths": [
-        "tests/claude-model-checkpoint-tail.test.ts"
       ]
     },
     {
@@ -105,6 +81,12 @@
       ]
     },
     {
+      "digest": "57ccec33bf378f8f44a1c0c6b1c70e208ffe0c5e3956d81d0e619a8f9e30c9a8",
+      "paths": [
+        "tests/claude-model-checkpoint-tail.test.ts"
+      ]
+    },
+    {
       "digest": "57f50595575ed3749c5b68b1c930a13f3fd6f3d1807b7a5071e6b62384a84407",
       "paths": [
         "src/ui/shared/app-i18n.js"
@@ -117,9 +99,21 @@
       ]
     },
     {
+      "digest": "62392932ff176d501fc06876b2a1e797c19d70b9605494ecec647e803cbcbc1b",
+      "paths": [
+        "src/claude-model-observation.ts"
+      ]
+    },
+    {
       "digest": "655f7779c4925449abe19336bf0a60e04492a2294bc1eede9d4fdc8d43181ca6",
       "paths": [
         "scripts/manual/claude-model-observation-browser.mts"
+      ]
+    },
+    {
+      "digest": "7187193dba509fc22c53e99dab5ada36dbc11f54bb234c67cf9ff31b6d0170c2",
+      "paths": [
+        "tests/claude-model-switch-daemon.test.ts"
       ]
     },
     {
@@ -153,6 +147,12 @@
       ]
     },
     {
+      "digest": "7ba4e39a013bdba99c33ca181b9fbf21b5498b2eac3e9d2023382376a564a616",
+      "paths": [
+        "src/log-steps.ts"
+      ]
+    },
+    {
       "digest": "7e1cb01e73efb600e7187c7d713ff71762ab35dff6001c8bda3cdde12ccc8184",
       "paths": [
         "src/needs-you-hub.ts"
@@ -183,12 +183,6 @@
       ]
     },
     {
-      "digest": "990ad1252d175c4083eef414969f3782d6af0f6ece882e794f2d11d9692d3e34",
-      "paths": [
-        "tests/claude-model-switch-daemon.test.ts"
-      ]
-    },
-    {
       "digest": "a5bf15c42f5b8ddb0f0034d9cbb5a61e78cacc586fb54e50a67c982d598f12e0",
       "paths": [
         "src/ui/panel-needs.js"
@@ -213,7 +207,13 @@
       ]
     },
     {
-      "digest": "bca0dbe8f26f54068acb2a239b0b5285109a534c95a18f44234e4ef861a418c5",
+      "digest": "b4002c3424e485a844921175dd904f0f17a989ae36b15c58cd821ad20684b12d",
+      "paths": [
+        "docs/design/claude-model-observation.md"
+      ]
+    },
+    {
+      "digest": "b7aafe3c7c00f717937c9b65a51f4349682a464aabf292c45d46972c88626a04",
       "paths": [
         "src/transcript-monitor.ts"
       ]
@@ -279,7 +279,7 @@
     "tests": 0
   },
   "mutations": {
-    "caught": 21,
+    "caught": 24,
     "isolated": true,
     "allRestored": true,
     "record": "mutations/results.json"
@@ -304,6 +304,11 @@
         "sourceHead": "951b510c3e4009fa2cf654f7d46ac77fd34f5091",
         "uiFleetManagerHarnessAndPngsUnchanged": true,
         "observerDelta": "Checkpoint intent only; tail reader shares boundary/payload budget; no new browser execution"
+      },
+      "reviewRepairR2": {
+        "sourceHead": "90c41b38b4a46325fbcdf07f38a0b98275a4ec1e",
+        "nativeSourceUiFleetManagerHarnessPngsUnchanged": true,
+        "newBrowserExecution": false
       }
     }
   },
@@ -401,5 +406,39 @@
       "pngs": 53,
       "newExecution": false
     }
+  },
+  "reviewRepairR2": {
+    "sourceHead": "90c41b38b4a46325fbcdf07f38a0b98275a4ec1e",
+    "priorHead": "3591e7c32bebff3240c65ff3a59a3e0380c0d873",
+    "historicalFailFirst": {
+      "semanticReds": 6,
+      "controls": 21,
+      "log": "checks/r2-recovery-log-before.log"
+    },
+    "exactBefore": {
+      "semanticReds": 6,
+      "otherCases": "excluded, not counted",
+      "receipt": "checks/r2-exact-before.json",
+      "testSources": "checks/r2-before-tests"
+    },
+    "full": {
+      "passed": 1042,
+      "files": 57,
+      "workers": 2,
+      "log": "checks/r2-full-claude-grok-log.log"
+    },
+    "nativeTypes": {
+      "source": 0,
+      "tests": 0
+    },
+    "newReversals": [
+      "C4-pending-recovery",
+      "L1-log-cursor",
+      "T4-startup-lane"
+    ],
+    "allMutationBindingsCurrent": 24,
+    "receipt": "review-r2.json",
+    "nativeSourceUiHarnessPngDelta": false,
+    "newBrowserExecution": false
   }
 }
