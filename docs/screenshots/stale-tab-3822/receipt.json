@@ -1,0 +1,510 @@
+{
+  "base": "71dbc782956047c413b9f367a572e38c39d53651",
+  "oldSelect": "497d56e10^:src/ui/credential-profile-select.js",
+  "results": [
+    {
+      "name": "desk-light-en lazy after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "desk-light-en lazy after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en lazy after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "desk-light-en lazy after: Reload reloads the tab",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en lazy before: (base) no reload prompt — the skeleton stays",
+      "ok": true,
+      "detail": "skeleton=1 retry=0"
+    },
+    {
+      "name": "desk-light-en lazy before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "desk-light-en outlet after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "desk-light-en outlet after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en outlet after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "desk-light-en outlet before: (base) no reload prompt — a Retry that cannot help",
+      "ok": true,
+      "detail": "skeleton=0 retry=1"
+    },
+    {
+      "name": "desk-light-en outlet before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "desk-light-zh-TW lazy after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "desk-light-zh-TW lazy after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW lazy after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "desk-light-zh-TW lazy before: (base) no reload prompt — the skeleton stays",
+      "ok": true,
+      "detail": "skeleton=1 retry=0"
+    },
+    {
+      "name": "desk-light-zh-TW lazy before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "desk-light-zh-TW outlet after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "desk-light-zh-TW outlet after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW outlet after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "desk-light-zh-TW outlet before: (base) no reload prompt — a Retry that cannot help",
+      "ok": true,
+      "detail": "skeleton=0 retry=1"
+    },
+    {
+      "name": "desk-light-zh-TW outlet before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "desk-dark-en lazy after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "desk-dark-en lazy after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en lazy after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "desk-dark-en lazy before: (base) no reload prompt — the skeleton stays",
+      "ok": true,
+      "detail": "skeleton=1 retry=0"
+    },
+    {
+      "name": "desk-dark-en lazy before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "desk-dark-en outlet after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "desk-dark-en outlet after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en outlet after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "desk-dark-en outlet before: (base) no reload prompt — a Retry that cannot help",
+      "ok": true,
+      "detail": "skeleton=0 retry=1"
+    },
+    {
+      "name": "desk-dark-en outlet before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "desk-dark-zh-TW lazy after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "desk-dark-zh-TW lazy after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW lazy after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "desk-dark-zh-TW lazy before: (base) no reload prompt — the skeleton stays",
+      "ok": true,
+      "detail": "skeleton=1 retry=0"
+    },
+    {
+      "name": "desk-dark-zh-TW lazy before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "desk-dark-zh-TW outlet after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "desk-dark-zh-TW outlet after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW outlet after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "desk-dark-zh-TW outlet before: (base) no reload prompt — a Retry that cannot help",
+      "ok": true,
+      "detail": "skeleton=0 retry=1"
+    },
+    {
+      "name": "desk-dark-zh-TW outlet before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "phone-light-en lazy after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-en lazy after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "130×44"
+    },
+    {
+      "name": "phone-light-en lazy after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en lazy after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "phone-light-en lazy before: (base) no reload prompt — the skeleton stays",
+      "ok": true,
+      "detail": "skeleton=1 retry=0"
+    },
+    {
+      "name": "phone-light-en lazy before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "phone-light-en outlet after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-en outlet after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "130×44"
+    },
+    {
+      "name": "phone-light-en outlet after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en outlet after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "phone-light-en outlet before: (base) no reload prompt — a Retry that cannot help",
+      "ok": true,
+      "detail": "skeleton=0 retry=1"
+    },
+    {
+      "name": "phone-light-en outlet before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "phone-light-zh-TW lazy after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-zh-TW lazy after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "138×44"
+    },
+    {
+      "name": "phone-light-zh-TW lazy after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW lazy after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "phone-light-zh-TW lazy before: (base) no reload prompt — the skeleton stays",
+      "ok": true,
+      "detail": "skeleton=1 retry=0"
+    },
+    {
+      "name": "phone-light-zh-TW lazy before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "phone-light-zh-TW outlet after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-zh-TW outlet after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "138×44"
+    },
+    {
+      "name": "phone-light-zh-TW outlet after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW outlet after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "phone-light-zh-TW outlet before: (base) no reload prompt — a Retry that cannot help",
+      "ok": true,
+      "detail": "skeleton=0 retry=1"
+    },
+    {
+      "name": "phone-light-zh-TW outlet before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "phone-dark-en lazy after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-dark-en lazy after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "130×44"
+    },
+    {
+      "name": "phone-dark-en lazy after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en lazy after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "phone-dark-en lazy before: (base) no reload prompt — the skeleton stays",
+      "ok": true,
+      "detail": "skeleton=1 retry=0"
+    },
+    {
+      "name": "phone-dark-en lazy before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "phone-dark-en outlet after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-dark-en outlet after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "130×44"
+    },
+    {
+      "name": "phone-dark-en outlet after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en outlet after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "phone-dark-en outlet before: (base) no reload prompt — a Retry that cannot help",
+      "ok": true,
+      "detail": "skeleton=0 retry=1"
+    },
+    {
+      "name": "phone-dark-en outlet before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "phone-dark-zh-TW lazy after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-dark-zh-TW lazy after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "138×44"
+    },
+    {
+      "name": "phone-dark-zh-TW lazy after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW lazy after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "phone-dark-zh-TW lazy before: (base) no reload prompt — the skeleton stays",
+      "ok": true,
+      "detail": "skeleton=1 retry=0"
+    },
+    {
+      "name": "phone-dark-zh-TW lazy before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "phone-dark-zh-TW outlet after: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-dark-zh-TW outlet after: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "138×44"
+    },
+    {
+      "name": "phone-dark-zh-TW outlet after: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW outlet after: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "phone-dark-zh-TW outlet before: (base) no reload prompt — a Retry that cannot help",
+      "ok": true,
+      "detail": "skeleton=0 retry=1"
+    },
+    {
+      "name": "phone-dark-zh-TW outlet before: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "phone-light-en lazy after-oldcss: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-en lazy after-oldcss: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "130×44"
+    },
+    {
+      "name": "phone-light-en lazy after-oldcss: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en lazy after-oldcss: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "phone-light-en outlet after-oldcss: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-en outlet after-oldcss: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "130×44"
+    },
+    {
+      "name": "phone-light-en outlet after-oldcss: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en outlet after-oldcss: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    },
+    {
+      "name": "phone-light-zh-TW lazy after-oldcss: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-zh-TW lazy after-oldcss: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "138×44"
+    },
+    {
+      "name": "phone-light-zh-TW lazy after-oldcss: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW lazy after-oldcss: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module '/assets/app-html.js' does not provide an export named 'notExported3822'"
+    },
+    {
+      "name": "phone-light-zh-TW outlet after-oldcss: the reload prompt in place, no skeleton",
+      "ok": true,
+      "detail": "prompt=1 skeleton=0"
+    },
+    {
+      "name": "phone-light-zh-TW outlet after-oldcss: Reload is a touch target (≥ 44 px)",
+      "ok": true,
+      "detail": "138×44"
+    },
+    {
+      "name": "phone-light-zh-TW outlet after-oldcss: in the page's language",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW outlet after-oldcss: the browser really refused to link",
+      "ok": true,
+      "detail": "SyntaxError: The requested module './credential-profile-select.js' does not provide an export named 'accountCli'"
+    }
+  ]
+}
