@@ -14,7 +14,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  REDUCED_AGY_CANCELLED, REDUCED_AGY_CODE_PROMPT, REDUCED_AGY_REJECTED, REDUCED_AGY_URL_PREFIX, RuntimeSignIn, checkedSignInInput, reduceAgyLoginScreen, reduceLoginScreen,
+  REDUCED_AGY_CANCELLED, REDUCED_AGY_UNRECOGNIZED, REDUCED_AGY_CODE_PROMPT, REDUCED_AGY_REJECTED, REDUCED_AGY_URL_PREFIX, RuntimeSignIn, checkedSignInInput, reduceAgyLoginScreen, reduceLoginScreen,
 } from "../src/runtime-signin.js";
 import { RUNTIME_SIGNIN_CLIS, createRuntimeSignInTransport, runtimeDefaultLoginStatus, type AccountCaller } from "../src/runtime-signin-transport.js";
 import { StructuredSignIn, structuredSignInPrompt, type StructuredSignInTransport } from "../src/structured-signin.js";
@@ -57,17 +57,19 @@ describe("the screen of `agy acp --login`", () => {
   });
   it("asks for the code only while the prompt is the last line", () => {
     expect(reduceAgyLoginScreen(`Open this link in a browser to log in with Google:\n\n  ${AGY_URL}\n`)).toBe(`${REDUCED_AGY_URL_PREFIX}${HREF}\n`);
-    expect(reduceAgyLoginScreen(`${AGY_SCREEN}something else\n`)).toBe(`${REDUCED_AGY_URL_PREFIX}${HREF}\n`);
+    // AGEND-250 (P2-5): a LATER line that is none of the table's forms turns the screen into an unknown one (the link is not kept in front of it); a typed code echoed on the prompt's own line does not.
+    expect(reduceAgyLoginScreen(`${AGY_SCREEN}something else\n`)).toBe(`${REDUCED_AGY_UNRECOGNIZED}\n`);
+    expect(reduceAgyLoginScreen(`${AGY_SCREEN.trimEnd()} ${AGY_CODE}\n`)).toBe(`${REDUCED_AGY_URL_PREFIX}${HREF}\n`);
   });
   it("says only 'Login failed' or 'Login cancelled' for the two endings, never the CLI's own sentence", () => {
     expect(reduceAgyLoginScreen(`${AGY_SCREEN}\n${WRONG}\n`)).toBe(`${REDUCED_AGY_REJECTED}\n`);
     expect(reduceAgyLoginScreen(`${AGY_SCREEN}\n${CANCELLED}\n`)).toBe(`${REDUCED_AGY_CANCELLED}\n`);
     expect(reduceAgyLoginScreen(`${AGY_SCREEN}\n${WRONG}\n`)).not.toMatch(/invalid_grant|Malformed|oauth2/);
     // The CLI's words only count at the start of a line.
-    expect(reduceAgyLoginScreen(`${AGY_SCREEN}error: couldn't log in\n`)).toBe(`${REDUCED_AGY_URL_PREFIX}${HREF}\n`);
+    expect(reduceAgyLoginScreen(`${AGY_SCREEN}error: couldn't log in\n`)).toBe(`${REDUCED_AGY_UNRECOGNIZED}\n`);
   });
   it("reducing a reduced screen changes nothing (the server reads what the Runtime already reduced)", () => {
-    for (const raw of [AGY_SCREEN, `Open this link in a browser to log in with Google:\n\n  ${AGY_URL}\n`, `${AGY_SCREEN}\n${WRONG}\n`, `${AGY_SCREEN}\n${CANCELLED}\n`, "", "Starting…"]) {
+    for (const raw of [AGY_SCREEN, `Open this link in a browser to log in with Google:\n\n  ${AGY_URL}\n`, `${AGY_SCREEN}\n${WRONG}\n`, `${AGY_SCREEN}\n${CANCELLED}\n`, "", "Starting…", `${AGY_SCREEN}Trust this folder? [y/N]\n`]) {
       const once = reduceAgyLoginScreen(raw);
       expect(reduceAgyLoginScreen(once), JSON.stringify(raw.slice(0, 40))).toBe(once);
     }
@@ -88,7 +90,8 @@ describe("the screen of `agy acp --login`", () => {
     // The prompt without a usable link still asks for the code, with no link to offer.
     expect(structuredSignInPrompt("antigravity", AGY_SCREEN.replace("https://accounts.google.com", "https://example.com"))).toEqual({ phase: "code", url: null });
     // No screen of agy's ever reads as "success": that is the exit code and `agy models`.
-    for (const word of ["Login successful", "Logged in as ada@example.com", "Successfully logged in", "? for shortcuts"]) expect(structuredSignInPrompt("antigravity", `${AGY_SCREEN}${word}\n`).phase, word).toBe("authorization");
+    // AGEND-250 (P2-5): any other line after the real screen is an unknown screen ("waiting": the 5-second rule ends it), never "authorization" with the old link in front.
+    for (const word of ["Login successful", "Logged in as ada@example.com", "Successfully logged in", "? for shortcuts"]) expect(structuredSignInPrompt("antigravity", `${AGY_SCREEN}${word}\n`).phase, word).toBe("waiting");
     expect(structuredSignInPrompt("antigravity", AGY_SCREEN.replace("Then paste", "Then paste")).phase).toBe("code");
   });
 });

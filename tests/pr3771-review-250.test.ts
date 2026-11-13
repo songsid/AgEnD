@@ -11,12 +11,15 @@ import { createStructuredSignInTransport } from "../src/structured-signin-transp
 import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecycle.js";
 import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { StructuredSignIn, type StructuredSignInTransport } from "../src/structured-signin.js";
+import { AGY_CODE, AGY_SCREEN, ID, runtimeRig, cleanScratch, waitFor } from "./helpers/machine-runtime.js";
 import { LoginWindowLock } from "../src/login-window-lock.js";
 
 const dirs: string[] = [];
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-250-")); dirs.push(d); return d; };
 const savedAgend = process.env.AGEND_HOME, savedGemini = process.env.GEMINI_HOME;
 afterEach(() => {
+  vi.useRealTimers(); cleanScratch();
   setAuthCheckRunnerForTests(null);
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
   if (savedAgend === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = savedAgend;
@@ -143,5 +146,60 @@ describe("P2-3: Disconnect treats a network failure as unknown (host), and a del
       accountSignOutDeps: { platform: "linux", run: async () => ({ code: 0 }), keychainHas: async () => false } };
     await (FleetManager.prototype as any).signOutAccount.call(fm, "antigravity", "work", true, "test");
     expect(seen).toHaveLength(1); expect(seen[0]!.argv).toContain("--app_data_dir"); expect(seen[0]!.env).toMatchObject({ SSH_CONNECTION: "127.0.0.1 0 127.0.0.1 0" });
+  });
+});
+
+describe("P2-5: a real login screen followed by unknown text is an unknown screen (host and Runtime), ended in 5 s with nothing sent", () => {
+  const UNKNOWN = "Trust this folder and allow agy to run commands?  [y/N]\n> ";
+  const fake = (pane: string) => {
+    const state = { pane };
+    const transport = { start: vi.fn().mockResolvedValue(undefined), capture: vi.fn(async () => state.pane), status: vi.fn(async () => ({ alive: true })),
+      write: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) };
+    return { state, transport };
+  };
+  const hostSession = (t: ReturnType<typeof fake>, lock: LoginWindowLock, owner: object) =>
+    new StructuredSignIn("antigravity", owner, { transport: t.transport as StructuredSignInTransport, lock, current: () => true, checkAuth: async () => "invalid", now: () => Date.now() });
+  it("host: the link screen, then unknown text APPENDED to the same pane (scrollback keeps the link): unsupported_prompt within 5 s (at 6 s), process reaped, window freed, no input, no code box", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(1_000_000);
+    const lock = new LoginWindowLock(), owner = {}, t = fake(AGY_SCREEN), s = hostSession(t, lock, owner);
+    await s.start();
+    expect(s.view(owner).phase).toBe("code");
+    t.state.pane = `${AGY_SCREEN}${UNKNOWN}`;
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(s.view(owner).phase, "inside the 5-second grace").toBe("waiting");
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(s.view(owner)).toMatchObject({ phase: "failed", reason: "unsupported_prompt" });
+    expect(s.view(owner).canAct).not.toBe(true);
+    expect(t.transport.write).not.toHaveBeenCalled(); expect(t.transport.close).toHaveBeenCalledTimes(1); expect(lock.isHeld).toBe(false);
+  });
+  it("host (positive control): the same real screen alone stays a code prompt for as long as it is shown", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(1_000_000);
+    const lock = new LoginWindowLock(), owner = {}, t = fake(AGY_SCREEN), s = hostSession(t, lock, owner);
+    await s.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(s.view(owner).phase).toBe("code"); expect(t.transport.close).not.toHaveBeenCalled();
+    await s.cancel();
+  });
+  it("Runtime: the process prints the link screen and then unknown text; the reduced screen the server reads is not an authorization step, the sign-in ends as unsupported_prompt (5 s), the child is killed, nothing was written to it", async () => {
+    const f = runtimeRig({ agy: true }); f.agyAnswer(false);
+    await f.signIns.begin(f.owner, f.agyTarget);
+    f.children[0]!.say(AGY_SCREEN);
+    await waitFor(() => expect(f.agyPhase()).toBe("code"));
+    f.children[0]!.say(UNKNOWN);
+    await waitFor(() => expect(f.agyPhase()).toBe("waiting"));
+    await vi.waitFor(() => expect(f.agyView()).toMatchObject({ phase: "failed", reason: "unsupported_prompt" }), { timeout: 9_000, interval: 100 });
+    expect(f.children[0]!.killed).toBe(true); expect(f.children[0]!.written).toBe("");
+    expect(f.signIns.busy(ID)).toBe(false);
+    await f.stop();
+  }, 20_000);
+  it("Runtime (positive control): the real screen alone is a code prompt, and a code is still taken", async () => {
+    const f = runtimeRig({ agy: true }); f.agyAnswer(false);
+    await f.signIns.begin(f.owner, f.agyTarget);
+    f.children[0]!.say(AGY_SCREEN);
+    await waitFor(() => expect(f.agyPhase()).toBe("code"));
+    const login = f.agyView()!;
+    await f.signIns.input(f.owner, f.agyTarget, login.id, login.revision, { kind: "code", value: AGY_CODE });
+    expect(f.children[0]!.written).toBe(`${AGY_CODE}\n`);
+    await f.stop();
   });
 });

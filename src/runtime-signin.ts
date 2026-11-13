@@ -59,13 +59,15 @@ export const REDUCED_INVALID_CODE = "Invalid code";
  * The Antigravity screen's closed vocabulary. `agy acp --login` prints (measured with agy 1.5.3, the same through pipes and a terminal): "Open this link in a browser to log in with Google:",
  * a blank line and the link on its own line, then "Then paste the authorization code, or the full URL of the page you land on, and press Enter:". It prints no success line that has been
  * seen (success is the process ending with exit 0 and `agy models` working, never a word on the screen), "login cancelled: ..." when no code was entered, and "couldn't log in: ..." when
- * the code was refused. The reduced screen has exactly these four forms and nothing else of the CLI's text. Each form is also a line the CLI itself writes (the link on the sentence's own
+ * the code was refused. The reduced screen has exactly these four forms (and, since AGEND-250, one fixed line for a screen that ends in something else) and nothing else of the CLI's text. Each form is also a line the CLI itself writes (the link on the sentence's own
  * line, the prompt as printed, the two endings cut to their first words), so reducing a reduced screen changes nothing: the server reads it once more, as the table says.
  */
 export const REDUCED_AGY_URL_PREFIX = "Open this link in a browser to log in with Google: ";
 export const REDUCED_AGY_CODE_PROMPT = "Then paste the authorization code, or the full URL of the page you land on, and press Enter:";
 export const REDUCED_AGY_REJECTED = "couldn't log in";
 export const REDUCED_AGY_CANCELLED = "login cancelled";
+/** AGEND-250: the one line that stands for a screen that ends in something this table does not know (fixed text: nothing of the CLI's own). */
+export const REDUCED_AGY_UNRECOGNIZED = "unrecognized screen";
 
 /** A refusal with our own text: no URL, code, output or path in it. */
 export class SignInRefusal extends Error { constructor(message: string, readonly reason: "busy" | "rate_limited" | "invalid_request" | "timeout" | "failed") { super(message); this.name = "SignInRefusal"; } }
@@ -114,22 +116,30 @@ function checkedLoginUrl(text: string, cli: SignInCli = "claude-code"): string |
  */
 export function reduceAgyLoginScreen(raw: string): string {
   const lines = raw.replace(ANSI, "").replace(/\r/g, "\n").split("\n").map(line => line.trim()).filter(Boolean);
-  let url: string | undefined, outcome: string | undefined, announced = false;
-  for (const line of lines) {
-    if (line.length > MAX_LINE) continue;
-    if (/^Open this link in a browser to log in with Google:?$/.test(line)) { announced = true; continue; }
+  let url: string | undefined, outcome: string | undefined, announced = false, recognized = -1;
+  lines.forEach((line, index) => {
+    if (line.length > MAX_LINE) return;
+    if (/^Open this link in a browser to log in with Google:?$/.test(line)) { announced = true; recognized = index; return; }
     // The link is the line that follows the sentence (or the sentence's own line, in case a later agy joins them); only what follows the sentence is taken as the link.
     const inline = /^Open this link in a browser to log in with Google:\s*(https:\/\/[\x21-\x7e]+)$/.exec(line);
     const alone = announced ? /^(https:\/\/[\x21-\x7e]+)$/.exec(line) : null;
     const candidate = inline?.[1] ?? alone?.[1];
-    if (candidate) { announced = false; const href = checkedLoginUrl(candidate, "antigravity"); if (href) url = href; continue; }
+    if (candidate) { announced = false; recognized = index; const href = checkedLoginUrl(candidate, "antigravity"); if (href) url = href; return; }
     announced = false;
-    if (/^login cancelled\b/i.test(line)) outcome = REDUCED_AGY_CANCELLED;
-    else if (/^couldn't log in\b/i.test(line)) outcome = REDUCED_AGY_REJECTED;
-  }
+    if (/^login cancelled\b/i.test(line)) { outcome = REDUCED_AGY_CANCELLED; recognized = index; }
+    else if (/^couldn't log in\b/i.test(line)) { outcome = REDUCED_AGY_REJECTED; recognized = index; }
+    // The code prompt (what the CLI echoes after it, a code that was typed, is still its line: the screen does not change meaning while the code is being sent).
+    else if (/^Then paste the authorization code\b/.test(line)) recognized = index;
+  });
   if (outcome) return `${outcome}\n`;
   const last = lines[lines.length - 1];
   const asking = last !== undefined && /^Then paste the authorization code\b.*press Enter:$/.test(last);
+  // AGEND-250 (#3771 review P2-5): a link that was seen EARLIER and a last line that is none of the forms above (an unsupported prompt after the real login screen: the terminal's scrollback and this
+  // process's accumulated output both keep the earlier lines) is an unknown screen, not an authorization step. Keeping the link in front of it made `authorization` of it, so the 5-second unknown-screen
+  // rule never started. It is reported as one fixed line that carries none of the CLI's text, so that whoever reads the reduced screen (the server, for a Runtime) sees a non-empty screen it cannot use, as
+  // the host does for the raw one. A screen with no link in it is unchanged (reduced to nothing, as before).
+  // The fixed line itself, as the last line, stands for the same thing (so reducing an already reduced screen changes nothing).
+  if (last === REDUCED_AGY_UNRECOGNIZED || (url && recognized !== lines.length - 1)) return `${REDUCED_AGY_UNRECOGNIZED}\n`;
   return `${url ? `${REDUCED_AGY_URL_PREFIX}${url}\n` : ""}${asking ? `${REDUCED_AGY_CODE_PROMPT}\n` : ""}`;
 }
 /**
