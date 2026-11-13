@@ -30,6 +30,7 @@
   --font-emoji: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", emoji;
   --font-ui: Inter, "PingFang TC", "PingFang SC", "Noto Sans TC", "Noto Sans SC", "Noto Sans CJK TC", "Noto Sans CJK SC", "Microsoft JhengHei", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif, var(--font-emoji);
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace, var(--font-emoji);
+  --fs-count: 10.5px;           /* compact unread counts on a roster's second line */
   --fs-xs: 12px;  --lh-xs: 16px;
   --fs-sm: 13px;  --lh-sm: 18px;
   --fs-md: 15px;  --lh-md: 24px;   /* message text */

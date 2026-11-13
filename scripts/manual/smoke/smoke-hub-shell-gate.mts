@@ -234,7 +234,8 @@ try {
       if (phone) { await page.click("#sbOpen"); await page.waitForTimeout(600); await page.screenshot({ path: shotPath(SMOKE, cn, `${p.key}-drawer`) }); }
       const sb = await page.evaluate(SIDEBAR) as any;
       if (sb.missing) { check(`${tag}:sidebar`, false, "no #sidebar"); continue; }
-      const want = c.lang === "zh-TW" ? ["對話", "我分享的 Agent", "管理", "通知", "搜尋", "新對話"] : ["Chats", "My shared agents", "Administration", "Notices", "Search", "New chat"];
+      // This mounted rig advertises rooms-v1 and its administrator can create rooms.
+      const want = c.lang === "zh-TW" ? ["對話", "我分享的 Agent", "管理", "通知", "搜尋", "新對話", "新房間"] : ["Chats", "My shared agents", "Administration", "Notices", "Search", "New chat", "New room"];
       const rows = sb.rows as any[];
       check(`${tag}:sidebar:brand`, !!sb.brand && sb.brand.text === "AgEnD Hub" && sb.brand.title === "Team Hub" && sb.brand.lines === 1, sb.brand);
       check(`${tag}:sidebar:rows`, JSON.stringify(rows.map((x) => x.text)) === JSON.stringify(want), rows.map((x) => x.text));
