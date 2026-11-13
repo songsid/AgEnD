@@ -1,0 +1,45 @@
+{
+  "sourceCheckpoint": "b818ea33b05c4ea68dc134af6510b90b114394fc",
+  "previousApprovedHead": "11122e1ae71a86a321af787c413e139e91f9fd6f",
+  "alpha": "0cff950be6ce7ef56fe7137ae2d315da3739070f",
+  "parents": [
+    "11122e1ae71a86a321af787c413e139e91f9fd6f",
+    "0cff950be6ce7ef56fe7137ae2d315da3739070f"
+  ],
+  "previousTree": "a9b17c600c1fef0af6d5337ff5ad24ea58b29e8f",
+  "mergedTree": "a9b17c600c1fef0af6d5337ff5ad24ea58b29e8f",
+  "treeUnchanged": true,
+  "manualResolutionBlobs": {
+    "src/hub/http/compose.ts": {
+      "blob": "17e8e753ec6db9db1ff15d9e7949cf37a0bba5c5",
+      "unchanged": true
+    },
+    "src/hub/http/schema.ts": {
+      "blob": "be8c48c59c9db3c756c800e339b0fd2092b950ed",
+      "unchanged": true
+    },
+    "src/hub/rooms/agents.ts": {
+      "blob": "484ca738d0d748d4c7044bc8626c4e618bb0352d",
+      "unchanged": true
+    },
+    "src/hub/rooms/schema.ts": {
+      "blob": "62373776285d09b05da55bb0fe09287f248381d1",
+      "unchanged": true
+    },
+    "src/hub/rooms/service.ts": {
+      "blob": "c4c7bf04e8a34ee82f9317ad2fcebe023d5e3065",
+      "unchanged": true
+    },
+    "tests/hub-rooms-migration-r1.test.ts": {
+      "blob": "071f5d4b7f46a1e7b27375703d813316e4cb1b25",
+      "unchanged": true
+    }
+  },
+  "freshAcceptance": {
+    "command": "nice -n10 node_modules/.bin/vitest run tests/hub-rooms-migration-r1.test.ts tests/hub-room-system-r3.test.ts tests/hub-room-client-contract-r3.test.ts tests/hub-room-agents-r2.test.ts --maxWorkers=2",
+    "files": 4,
+    "passed": 29,
+    "failed": 0
+  },
+  "carriedAcceptance": "Historical96/13,166/5 and both native programs0 retain exactly identical inputs; not rerun or added to29. Final candidate adds evidence only."
+}
