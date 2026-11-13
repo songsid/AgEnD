@@ -48,7 +48,7 @@ describe("#3429 Settings → Hub → Fleet connection address", () => {
     ["zh-TW", "Fleet 連線位址", "變更連線位址", "確認變更", "會移動的 Fleet（2）", "目前在線上的 Fleet 會自動跟著移動", "完成。全部 2 個 Fleet 都已跟著移動到新位址。"],
   ])("%s: shows the address and how many Fleets; Check lists those that move; Confirm says who followed", async (language, title, change, confirm, moving, effect, done) => {
     const f = await fixture({ language });
-    expect(f.text()).toContain(title);
+    expect(f.q("summary").textContent).toContain(title);
     expect(f.text()).toContain("hub.example.com:9443");
     expect(f.text()).not.toMatch(/hubMemberAddress\\.|err_/);
     await f.click(change); await f.type("#hubMemberNew", "hub.example.com:9555"); await f.submit();

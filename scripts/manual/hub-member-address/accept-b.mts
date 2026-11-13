@@ -138,10 +138,58 @@ try {
     const transportFleet = async (id: string) => { const { default: Db } = await import("better-sqlite3"); const d = new Db(join(home, "hub/hub.sqlite"), { readonly: true });
         try { return JSON.parse((d.prepare("SELECT state FROM hub_transport_state").get() as any).state).fleets.find((f: any) => f.id === id); } finally { d.close(); } };
     const fleetBefore = await transportFleet(profile.fleetId);
+    // The Settings card (#3429 UI): every state short of Confirm, EN/zh-TW × desktop/phone × light/dark; Back changes nothing.
+    const shots = join(out, "png"); mkdirSync(shots, { recursive: true });
+    const VIEW = { desktop: { width: 1366, height: 900 }, phone: { width: 390, height: 844 } } as const;
+    const shot = async (loc: any, name: string) => { await loc.screenshot({ path: join(shots, name) }); receipt.screenshots.push("png/" + name); };
+    const themes = async (pg: any, fn: (theme: string) => Promise<void>) => { for (const theme of ["light", "dark"]) { await pg.emulateMedia({ colorScheme: theme }); await pg.waitForTimeout(120); await fn(theme); } await pg.emulateMedia({ colorScheme: "light" }); };
+    const cardPage = async (lang: "en" | "zh-TW", view: keyof typeof VIEW) => {
+        const ctx = await browser.newContext({ locale: lang === "en" ? "en-US" : "zh-TW", viewport: VIEW[view], isMobile: view === "phone", hasTouch: view === "phone" });
+        await ctx.addCookies([{ name: cookieName, value: cookieValue, url: origin }]);
+        // The page's language comes from the browser locale (an explicit choice would sync to every later page of this person).
+        await ctx.addInitScript(() => { localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1"); });
+        const pg = await ctx.newPage(); await pg.goto(origin + "/settings/hub");
+        const card = pg.locator(".hub-member-address"); await card.waitFor();
+        await card.locator("summary").first().click(); await card.locator(".hub-addr-now").waitFor();
+        return { ctx, pg, card };
+    };
+    const nextHost = new URL(nextOrigin).host;
+    for (const lang of ["en", "zh-TW"] as const) for (const view of ["desktop", "phone"] as const) {
+        const { ctx, pg, card } = await cardPage(lang, view);
+        check(`${lang} ${view}: the card shows the address and one connected Fleet`, (await card.locator(".hub-addr-now").innerText()).includes(new URL(memberOrigin).host));
+        await themes(pg, async theme => { await shot(card, `card-show.${lang}.${view}.${theme}.png`); });
+        await card.locator("#hubMemberChange").click(); await card.locator("#hubMemberNew").fill(nextHost);
+        await card.locator(".hub-addr-advanced summary").click();
+        await themes(pg, async theme => { await shot(card, `card-edit.${lang}.${view}.${theme}.png`); });
+        await card.locator('.hub-addr-form button[type="submit"]').click(); await card.locator(".hub-addr-confirm").waitFor();
+        check(`${lang} ${view}: Check lists the Fleet that moves`, (await card.locator(".hub-member-moving .hub-member-fleet").count()) === 1);
+        await themes(pg, async theme => { await shot(card, `card-confirm.${lang}.${view}.${theme}.png`); });
+        await card.locator(".hub-addr-confirm .btn:not(.btn-primary)").click(); await card.locator("#hubMemberNew").waitFor();
+        await ctx.close();
+    }
+    check("Check and Back changed nothing", fm.getRawFleetConfig().hub.memberOrigin === memberOrigin);
     // #3429 option B, leg 1: the member is ONLINE at the change — it follows the issuer-signed relocation, keeps its credential.
-    const move = await api("/api/settings/hub/member-address/prepare", { origin: nextOrigin, listen: { host: "127.0.0.1", port: nextPort } });
-    check("browser prepares affected fleet", move.status === 200 && move.body.summary.fleets.length === 1 && move.body.summary.fleets[0].id === profile.fleetId);
-    const result = await api("/api/settings/hub/member-address/commit", { ref: move.body.ref });
+    // Through the card's Confirm (EN); the server's answer is read from the commit response.
+    const confirmVia = async (lang: "en" | "zh-TW", target: string) => {
+        const { ctx, pg, card } = await cardPage(lang, "desktop");
+        await card.locator("#hubMemberChange").click(); await card.locator("#hubMemberNew").fill(new URL(target).host);
+        await card.locator('.hub-addr-form button[type="submit"]').click(); await card.locator(".hub-addr-confirm").waitFor();
+        const prepared = await pg.evaluate(() => document.querySelectorAll(".hub-member-moving .hub-member-fleet").length);
+        const committed = pg.waitForResponse((r: any) => r.url().endsWith("/api/settings/hub/member-address/commit"), { timeout: 60000 });
+        await card.locator(".hub-addr-confirm .btn-primary").click();
+        const response = await committed; const body = await response.json();
+        await card.locator('[role="status"]').waitFor({ timeout: 30000 });
+        const said = await card.locator('[role="status"]').innerText();
+        await themes(pg, async theme => { await shot(card, `card-done.${lang}.desktop.${theme}.png`); });
+        await pg.setViewportSize(VIEW.phone);
+        await themes(pg, async theme => { await shot(card, `card-done.${lang}.phone.${theme}.png`); });
+        await ctx.close();
+        return { status: response.status(), body, said, prepared };
+    };
+    const ui1 = await confirmVia("en", nextOrigin);
+    check("browser prepares affected fleet", ui1.prepared === 1);
+    const result = { status: ui1.status, body: ui1.body };
+    check("the card says the Fleet followed", ui1.said.includes("Done. All 1 Fleets followed to the new address."));
     receipt.leg1 = { status: result.status, state: result.body.state, followed: result.body.followed, reconnect: result.body.reconnect };
     check("saved exact member mount ready; the online Fleet followed", result.status === 200 && result.body.state === "ready" && result.body.followed === 1 && result.body.reconnect.length === 0);
     await wait(() => memberFm.hubMemberLink === "online" && reloc()?.pending === null && reloc()?.confirmed?.length === 1);
@@ -167,8 +215,9 @@ try {
     let thirdPort = await freeHubPort();
     while ([webPort, memberPort, nextPort, port, port + 1].includes(thirdPort)) thirdPort = await freeHubPort();
     const thirdOrigin = `https://127.0.0.1:${thirdPort}`;
-    const move2 = await api("/api/settings/hub/member-address/prepare", { origin: thirdOrigin, listen: { host: "127.0.0.1", port: thirdPort } });
-    const result2 = await api("/api/settings/hub/member-address/commit", { ref: move2.body.ref });
+    const ui2 = await confirmVia("zh-TW", thirdOrigin);
+    const result2 = { status: ui2.status, body: ui2.body };
+    check("the card names the Fleet that must reconnect", ui2.said.includes("需要在它自己的「設定 → Hub」重新連接"));
     receipt.leg2 = { status: result2.status, state: result2.body.state, followed: result2.body.followed, reconnect: result2.body.reconnect };
     check("the offline Fleet did not follow and must reconnect", result2.status === 200 && result2.body.state === "ready" && result2.body.followed === 0
         && result2.body.reconnect.length === 1 && result2.body.reconnect[0].id === profile.fleetId);

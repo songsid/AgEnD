@@ -113,7 +113,7 @@ export function HubMemberAddressSettings({ client: given = null } = {}) {
     return () => { live = false; };
   }, []);
   if (view === null) return null;
-  const head = html`<h3>${copy("title")}</h3><p class="note">${copy("lead")}</p>`;
+  const head = html`<p class="note">${copy("lead")}</p>`;                // the disclosure's summary is the title
   const wrap = (body) => html`<section class="card hub-member-address" data-section="hub-member-address">
     <details class="s-ui-disclosure" open=${step !== "show" || !!outcome || !!error}><summary>${copy("title")}</summary><div class="s-ui-disclosure-body">${body}</div></details></section>`;
   if (view === undefined) return wrap(html`${head}<${Skeleton} variant="rows" lines=${3} />`);
@@ -160,8 +160,8 @@ export function HubMemberAddressSettings({ client: given = null } = {}) {
           <dt>${copy("to")}</dt><dd><strong>${shownAddress(s.to)}</strong></dd>
           ${s.listen ? html`<dt>${copy("listens")}</dt><dd><code>${s.listen.host}:${s.listen.port}</code></dd>` : null}
         </dl>
-        ${moving.length ? html`<p class="note"><strong>${copy("moving", String(moving.length))}</strong></p>
-          <ul class="hub-member-moving">${moving.map((f) => html`<li key=${f.id}>${f.label || copy("unnamed")}</li>`)}</ul>` : html`<p class="note">${copy("noneMoving")}</p>`}
+        ${moving.length ? html`<p class="note hub-member-moving"><strong>${copy("moving", String(moving.length))}</strong> ${moving.map((f, i) => html`<span key=${f.id} class="hub-member-fleet">${i ? copy("sep") : ""}${f.label || copy("unnamed")}</span>`)}</p>`
+          : html`<p class="note">${copy("noneMoving")}</p>`}
         <p class="note hub-addr-effect">${copy("effect")}</p>
         <div class="s-row">
           <button type="button" class="btn btn-primary" disabled=${busy} onClick=${confirm}>${busy ? copy("saving") : copy("confirm")}</button>
