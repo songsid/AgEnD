@@ -10,6 +10,7 @@ import { directoryCaInfo } from "./init/directory-certificate.js";
 import { pemCertificates } from "./init/browser-tls.js";
 import { BIND_PASSWORD_REF } from "./init/layout.js";
 import { scalarString, person, validated } from "./validation.js";
+import { MAX_POLICY_DIRECTORY_GROUPS } from "./roles/read.js";
 import { parseHubDirectoryDecisionMetadata, type HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import type { HubDirectorySettingsCandidate, HubDirectorySettingsWriter } from "./settings-commit.js";
 import type { HubDirectorySessionRotation } from "./session-directory-transition.js";
@@ -125,7 +126,8 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
     const s = deps.source(), config = structuredClone(s.config), administrator = validated(person, s.administrator);
     const groups = structuredClone(s.groups);
     if (!/^[a-f0-9]{64}$/.test(s.image) || !Number.isSafeInteger(s.epoch) || s.epoch < 0 || !opaqueSecret(s.bindPassword)
-      || groups.length > 32 || groups.some(g => !person.safeParse(g.key).success || g.key.realm !== administrator.realm)) refuse("unavailable");
+      || groups.length > MAX_POLICY_DIRECTORY_GROUPS || groups.some(g => !person.safeParse(g.key).success || g.key.realm !== administrator.realm
+        || typeof g.dn !== "string" || g.dn.length < 1 || g.dn.length > 1024 || /[\u0000-\u001f\u007f]/.test(g.dn))) refuse("unavailable");
     const resolved = resolveDirectoryConfig(config);
     if (resolved.realm !== administrator.realm || s.directory.realm !== administrator.realm) refuse("unavailable");
     return { ...s, config, administrator, groups, resolved };

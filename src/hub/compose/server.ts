@@ -56,7 +56,7 @@ import { createHubWebAddressDecision, HUB_WEB_ADDRESS_MIGRATION, type HubWebAddr
 import { createHubDirectoryNotices, HUB_DIRECTORY_HOST_NOTICE_SINK, type HubDirectoryNotices } from "../settings-directory-notices.js";
 import { createHubDirectoryMountBarrier } from "../settings-directory-mount.js";
 import type { HubMountedDirectory, HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
-import { parseGroupPolicy } from "../group-policy/model.js";
+import { collectPolicyDirectoryGroups, parseCanonicalPolicy } from "../roles/read.js";
 import type { HubDirectoryResponse, HubDirectoryResponseListener, HubDirectoryResponseOwner } from "../directory-response-owner.js";
 
 import { SERVER_SET, createKeyFile, readKeyFile } from "./storage.js";
@@ -341,10 +341,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         current: live,
         source: () => db.transaction(() => {
           const stamp = directoryBarrier.capture();
-          const previous = directoryDecision.proofBasis()?.policy ?? parseGroupPolicy(JSON.parse(
-            (db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string }).body));
+          const previous = directoryDecision.proofBasis()?.policy ?? parseCanonicalPolicy(
+            (db.prepare("SELECT body FROM hub_group_policy WHERE singleton=1").get() as { body: string }).body).policy;
           return { directory, config: structuredClone(directoryConfig), bindPassword, administrator: { ...settings.administrator },
-            groups: previous.groups.map(g => ({ key: { ...g.group }, dn: g.dn })), ...stamp, current: live };
+            groups: collectPolicyDirectoryGroups(previous), ...stamp, current: live };
         })(),
         sessions() {
           if (!live() || !http.directorySessions) throw new HubStateError("service-unavailable", "The directory session adapter is unavailable");

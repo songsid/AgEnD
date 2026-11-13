@@ -9,6 +9,8 @@ import { HUB_HTTP_MIGRATIONS } from "../src/hub/http/schema.js";
 import { createHubAudit, HUB_AUDIT_MIGRATION } from "../src/hub/audit/index.js";
 import { groupPolicyMigration } from "../src/hub/group-policy/store.js";
 import { parseGroupPolicy } from "../src/hub/group-policy/model.js";
+import { convertGroupPolicy } from "../src/hub/roles/convert.js";
+import { collectPolicyDirectoryGroups, parseCanonicalPolicy } from "../src/hub/roles/read.js";
 import { HUB_TRANSPORT_MIGRATION, HubTransportStore } from "../src/hub/store.js";
 import { HubFileVersionFloor } from "../src/hub/version-floor.js";
 import { readHubSessionEpoch } from "../src/hub/session-epoch.js";
@@ -73,6 +75,27 @@ function rig(options: { home?: string; hubId?: string } = {}) {
 afterEach(() => { for (const close of cleanup.splice(0)) close(); });
 
 describe("one durable directory decision", () => {
+  it("rebinds a complete roles graph through the existing decision and compensation without restoring old assignments", () => {
+    const r = rig(), roles = convertGroupPolicy(r.policy(), { root: admin, now: 1000, rolesActive: true });
+    roles.rolesActive = false;
+    roles.assignments.push({ id: "retained", roleId: "builtin:member", subject: { kind: "person", person: other }, scope: { kind: "hub" },
+      maxFleets: 0, startsAt: 5000, expiresAt: 6000, assignedBy: admin, assignedAt: 1000 });
+    r.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(roles));
+    let input!: HubDirectoryDecisionRequest;
+    expect(() => { input = r.request(); }).not.toThrow();
+    const proofs: unknown[] = [];
+    const first = r.decision.decide(input, () => { proofs.push(r.decision.proofBasis()?.policy); });
+    expect(proofs).toEqual([roles, roles]); expect(r.decision.proofBasis()).toBe(null);
+    const current = parseCanonicalPolicy((r.db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body);
+    expect(current.policy).toEqual({ ...roles, generation: "generation-new", revision: 2 });
+    if (current.kind !== "roles") throw Error("role graph lost");
+    current.policy.assignments = []; current.policy.denies = [{ person: other, deny: ["publish_agents"] }]; current.policy.revision++;
+    r.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(current.policy));
+    const compensate = r.request({ before: after, after: before, generation: "generation-old", actor: first.actor, changes: first.changes, recipients: first.recipients });
+    r.decision.compensate(first.id, compensate, () => {});
+    expect(parseCanonicalPolicy((r.db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body).policy)
+      .toEqual({ ...current.policy, generation: "generation-old", revision: 4 });
+  });
   it("commits exact staged hashes, binding/version, epoch/session end, audit and FULL old-recipient notice together", () => {
     const r = rig(), input = r.request();
     const saved = r.decision.decide(input, () => {});
@@ -575,7 +598,7 @@ it.each(["own", "before-policy-change", "audit-change"])("a real proof-source im
     source() {
       const stamp = mounted.capture(), ownBasis = r.decision.proofBasis();
       return { directory, config: { ...r.readHub().directory, profile: "ad" as const }, bindPassword: r.secret(), administrator: admin,
-        groups: (ownBasis?.policy ?? r.policy()).groups.map(g => ({ key: g.group, dn: g.dn })), ...stamp, current: mounted.current };
+        groups: collectPolicyDirectoryGroups(ownBasis?.policy ?? r.policy()), ...stamp, current: mounted.current };
     },
     withDirectoryRead: async (_person, work) => work(), createDirectory: () => directory,
     writer: () => writer.directory!, probeTls: async () => "a".repeat(64), now: () => 1000,

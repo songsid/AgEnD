@@ -5,7 +5,7 @@
  * its own permit. Unknown stays "unknown" (never a cached yes). No GUID or DN leaves here: only outcome, a whitelisted reason,
  * the fleet limit and this person's own fleets (label, status).
  */
-import type { HubGroupDecision } from "./model.js";
+import type { HubSelfUseDecision } from "./store.js";
 import type { HubGroupPolicyStore } from "./store.js";
 import type { GroupWelcomeContext, GroupWelcomeResponse, WelcomeEntry } from "./admin-dto.js";
 import type { PersonKey } from "../types.js";
@@ -32,7 +32,7 @@ export interface HubGroupWelcomeOptions {
 }
 type FleetRow = GroupWelcomeResponse["connect"]["fleets"][number];
 const REASONS = new Set(["group", "person-denied", "no-group", "ineligible", "unknown", "suspended"]);
-function entry(d: HubGroupDecision): WelcomeEntry {
+function entry(d: HubSelfUseDecision): WelcomeEntry {
   const state = d.outcome === "allow" ? "allow" : d.outcome === "unknown" ? "unknown" : "deny";
   return REASONS.has(d.reason) ? { state, reason: d.reason as NonNullable<WelcomeEntry["reason"]> } : { state };
 }

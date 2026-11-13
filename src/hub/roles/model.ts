@@ -11,6 +11,7 @@ export const ROLE_PERMISSIONS = Object.freeze([...SELF_PERMISSIONS, ...TEAM_PERM
 export const ROLE_APPROVAL_PERMISSIONS = Object.freeze(["team.approve_join", "team.approve_ask"] as const);
 export type RolePermission = typeof ROLE_PERMISSIONS[number];
 export const ROLE_POLICY_MAX_BYTES = 256 * 1024;
+export const ROLE_POLICY_MAX_ASSIGNMENTS = 256;
 export const BUILTIN_ROLE_IDS = Object.freeze({ admin: "builtin:admin", manager: "builtin:manager", member: "builtin:member" });
 const label = plain(120).refine(s => s.trim().length > 0 && !/[\u0000-\u001f\u007f]/.test(s));
 const dn = z.string().min(1).max(1024).regex(/^[^\u0000-\u001f\u007f]+$/);
@@ -27,7 +28,7 @@ const assignmentSchema = z.strictObject({ id: identifier, roleId: identifier,
 export type HubRoleAssignment = z.infer<typeof assignmentSchema>;
 const policySchema = z.strictObject({ realm: person.shape.realm, generation: identifier, revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   rolesActive: z.boolean(), state: z.enum(["never-enabled", "enabled", "suspended"]), everEnabled: z.boolean(),
-  roles: z.array(roleSchema).min(3).max(32), assignments: z.array(assignmentSchema).max(256),
+  roles: z.array(roleSchema).min(3).max(32), assignments: z.array(assignmentSchema).max(ROLE_POLICY_MAX_ASSIGNMENTS),
   denies: z.array(z.strictObject({ person, deny: z.array(z.enum(SELF_PERMISSIONS)).max(3).refine(a => new Set(a).size === a.length) })).max(256),
 });
 export type HubRolePolicy = z.infer<typeof policySchema>;
