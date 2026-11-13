@@ -96,18 +96,18 @@ describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
     const rooms = [{ id: "11111111-2222-4333-8444-555555555555", exposureId: "e1", grantId: "g1", state: "active", exposureName: "Sales numbers", ownerName: "Olivia", lastAt: 1, waiting: false, features: [] },
       { id: "21111111-2222-4333-8444-555555555555", exposureId: "e2", grantId: "g2", state: "active", exposureName: "Design guide", ownerName: "Olivia", lastAt: 2, waiting: false, features: [] }];
     const pg = await hub({ rooms });
-    await until(() => pg.root.querySelectorAll("#sidebar .hub-side-rooms .hub-room-row").length === 2);
-    expect([pg.root.querySelector("#sidebar .hub-side-filter"), pg.root.querySelector("#sidebar .hub-side-rooms .inst-head .count")!.textContent]).toEqual([null, "2"]);
+    await until(() => pg.root.querySelectorAll("#sidebar .hub-side-rooms .v-inst").length === 2);
+    expect([pg.root.querySelector("#sidebar .hub-side-filter"), pg.root.querySelector("#sidebar .hub-side-rooms .inst-head .count")!.textContent]).toEqual([null, "2"]);   // M-3092: the 「Agent」 group's count
     fire(pg.document as any, "keydown", { key: "k", ctrlKey: true });
     await settle(10);
     const input = pg.root.querySelector("#sidebar .hub-side-filter input") as any;
     expect(!!input).toBe(true);
     input.value = "design"; fire(input, "input"); await settle(5);
-    expect([...pg.root.querySelectorAll("#sidebar .hub-side-rooms .hub-room-row .t")].map((x: any) => x.textContent)).toEqual(["Design guide"]);
+    expect([...pg.root.querySelectorAll("#sidebar .hub-side-rooms .v-inst .inst-name")].map((x: any) => x.textContent)).toEqual(["Design guide"]);
     fire(input, "keydown", { key: "Escape" }); await settle(5);
-    expect([pg.root.querySelector("#sidebar .hub-side-filter"), pg.root.querySelectorAll("#sidebar .hub-side-rooms .hub-room-row").length]).toEqual([null, 2]);
+    expect([pg.root.querySelector("#sidebar .hub-side-filter"), pg.root.querySelectorAll("#sidebar .hub-side-rooms .v-inst").length]).toEqual([null, 2]);
     // Argon #9: the phone's home page draws the same roster (its filter in place, its own New chat row) — not the old list.
-    expect([pg.root.querySelectorAll(".hub-home-list .hub-side-rooms .hub-room-row").length, !!pg.root.querySelector(".hub-home-list .hub-side-filter input"),
+    expect([pg.root.querySelectorAll(".hub-home-list .hub-side-rooms .v-inst").length, !!pg.root.querySelector(".hub-home-list .hub-side-filter input"),
       !!pg.root.querySelector(".hub-home-list .side-new"), pg.root.querySelector(".hub-home-list .hub-nav")]).toEqual([2, true, true, null]);
   });
   it("no conversation yet: said once per screen, in one line — no paragraph (zh-TW)", async () => {

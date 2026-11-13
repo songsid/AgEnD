@@ -4,7 +4,8 @@
  *
  * The seed (the split's ask, in the spec's own names):
  * - 研一主管週會: 王經理 (me, manager), 陳主任, 吳小安; 12 agents in every presence state; the room assistant.
- *   An @all with 8 answers, 1 still working (project-helper) and 3 that reply later (answerLater() brings one), and an assistant
+ *   An @all with 6 answers, 1 still working (project-helper) and 5 that reply later (paused, offline, reply-later;
+ *   answerLater() brings one), and an assistant
  *   summary of the answers. One invitation waits for its owner (the room's own list).
  * - 研發例會: I am a member (not a manager) and members may not @all (allMention off).
  * - 去年專案: archived (read-only).
@@ -12,8 +13,8 @@
  *   and 「Hub 助理」 (the assistant). One invitation to my own agent waits for me (GET /hub/v1/invitations).
  *
  * Fields beyond the split's table, added on the U side and told to R:
- * - list item: `agent` { exposureId, owner: { name }, presence, presenceNote? } on a direct chat; `assistant: true` on the
- *   Hub assistant's; `mentioned` (an @ to me is unread); `archived`;
+ * - list item: `agent` { exposureId, owner: { name }, presence, presenceNote? } on a direct chat; `assistant: true` and
+ *   its `presence` on the Hub assistant's; `mentioned` (an @ to me is unread); `archived`;
  * - events (Lumen): message.updated carries `parent` { id, ask } when a reply changes its question's counts;
  *   room.changed { roomId, removed: true } when I am no longer a member; member.changed { roomId };
  * - the list answer: `me` { canCreateRooms, assistant }, `invitations` (pending count);
@@ -94,12 +95,13 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   say(group, people[1]!, minutes(5), "這週的進度先各自看一下，十點前整理。");
   say(group, people[0]!, minutes(8), "好，我請大家的 Agent 先回報。");
   const all = say(group, people[0]!, minutes(9), "@所有 Agent 請各自用三行回報這週的進度與風險。", { mentions: ["all"] });
-  const answering = agentMembers.filter(a => a.presence === "idle" || a.presence === "working" || a.presence === "paused");
+  // One rule with send (spec 1.7): 待命 and 處理中 get the question now; 暫停, 離線 and 上線時回答 answer later (Fable via Muse).
+  const answering = agentMembers.filter(a => a.presence === "idle" || a.presence === "working");
   answering.forEach((a, i) => {
     if (a.name === "project-helper") return;                            // still working on it
     say(group, a, minutes(10 + i), `${a.name}：進度 ${60 + i * 3}%；風險：${i % 2 ? "測試資料不足" : "無"}；下週：整理文件。`, { replyTo: all.id, answerTo: all.id, stage: "answered" });
   });
-  for (const a of agentMembers.filter(x => x.presence === "offline" || x.presence === "later"))
+  for (const a of agentMembers.filter(x => x.presence === "paused" || x.presence === "offline" || x.presence === "later"))
     say(group, a, minutes(25), "", { replyTo: all.id, answerTo: all.id, stage: "queued" });
   const answers = group.messages.filter(x => x.answerTo === all.id);
   all.ask = { total: 12, answered: answers.filter(x => x.stage === "answered").length, working: 1, later: answers.filter(x => x.stage === "queued").length };
@@ -120,7 +122,8 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   const helper = direct("room-helper", agentMembers[0]!, [[50, "me", "幫我看一下這份需求的風險。"], [52, "agent", "主要有三點：時程、測試資料、權限。"]]);
   const report = direct("room-report", agentMembers[9]!, [[20, "me", "上週的報表在哪裡？"]]);
   report.messages[0]!.stage = "queued";
-  const hubAssistant = direct("room-assistant", { ...assistant, name: "Hub 助理" }, []);
+  // Stored as the server stores it: an English fallback name; the page names it by its flag in the viewer's words (Ridge).
+  const hubAssistant = direct("room-assistant", { ...assistant, name: "Hub assistant" }, []);
   // 研發例會: I am only a member here, and members may not @all.
   const meeting: FixtureRoom = { id: "room-rd", kind: "group", name: "研發例會", members: [{ ...people[0]!, role: "member" }, { ...people[1]!, role: "manager" }, ...agentMembers.slice(0, 4)],
     messages: [], settings: { allMention: false, historyForNew: "since-join" }, archived: false, readUpTo: null, assistant: false, invited: [] };
@@ -151,7 +154,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       online: r.members.filter(m => ["online", "idle", "working"].includes(m.presence)).length, unread: unread(r).length,
       lastAt: last?.at ?? 0, lastText: last?.text.slice(0, 120) ?? "", lastAuthor: last?.author.name ?? "",
       mentioned: unread(r).some(m => m.mentions.includes(FIXTURE_ME.id)), ...(r.archived ? { archived: true } : {}),
-      ...(agent ? agent.kind === "assistant" ? { assistant: true } : { agent: { exposureId: agent.id, owner: agent.owner, presence: agent.presence, ...(agent.presenceNote ? { presenceNote: agent.presenceNote } : {}) } } : {}) };
+      ...(agent ? agent.kind === "assistant" ? { assistant: true, presence: agent.presence } : { agent: { exposureId: agent.id, owner: agent.owner, presence: agent.presence, ...(agent.presenceNote ? { presenceNote: agent.presenceNote } : {}) } } : {}) };
   };
   const roomOf = (id: string) => rooms.find(r => r.id === id);
   const fail = (status: number, code: string, extra: Record<string, unknown> = {}): Reply => ({ status, body: { code, ...extra } });
