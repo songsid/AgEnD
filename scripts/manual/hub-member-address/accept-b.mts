@@ -1,5 +1,9 @@
-/** Backend rehearsal only. Actual browser/Hub/fake LDAPS/pinned member, inside an owned isolated container.
- * No proposed Settings controls, no UI approval claim, no full Fleet/CLI/tmux/service or live directory.
+/** #3429 option B rehearsal: actual browser/Hub/fake LDAPS/pinned member, inside an owned isolated container (run.sh).
+ * Covers the Settings card (Settings → Hub → Fleet connection address) with before/after and SKEW captures, leg 1 (an
+ * online member follows) and leg 2 (an offline member is revoked, then re-joins: manual pairing → explicit Disconnect /
+ * Start over → company sign-in in the one-box join — NOT the existing-company one-button Reconnect, which is covered
+ * by tests/hub-company-join-local.test.ts and tests/hub-company-join-http.test.ts). No full Fleet/CLI/tmux/service or
+ * live directory. run.sh binds the receipt to the executed source, base modules, dependencies, image and pictures.
  */
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,7 +27,7 @@ process.env.AGEND_HOME = join(root, "environment");
 mkdirSync(process.env.AGEND_HOME, { mode: 0o700 });
 const { FleetManager } = await import("../../../src/fleet-manager.js"), { csrfTokenFor } = await import("../../../src/web-session.js"), { WEB_CSRF_HEADER } = await import("../../../src/web-auth.js");
 const { chromium } = await import("playwright-core");
-const receipt: any = { checks: [], screenshots: [], boundary: "Owned container, --network none, explicit uid1000, no capabilities. Real Fleet health/Settings shell, D3, Hub HTTPS, synthetic verified LDAPS, legacy manual pairing followed by explicit shipped Disconnect/Start over and real browser company sign-in through the second FleetManager/member runtime with empty Agent inventory. Explicit per-client fixture CA/hostname mapping and exact :636-to-owned-wire-port mapping only; no new reconnect widget or automatic trust reset. No new address UI, full fleet daemon lifecycle, agent/model/CLI/tmux/native/real AD/pilot." };
+const receipt: any = { checks: [], screenshots: [], boundary: "Owned container, --network none, explicit uid1000, no capabilities. Real Fleet health/Settings shell, D3, Hub HTTPS, synthetic verified LDAPS, the Settings → Hub → Fleet connection address card (before/after: base modules served by route; SKEW: base shared modules and app.css under the new card), option B leg 1 (online member follows the issuer-signed relocation) and leg 2 (offline member revoked; re-joined by legacy manual pairing → explicit shipped Disconnect/Start over → real browser company sign-in in the one-box join — not the one-button Reconnect). Explicit per-client fixture CA/hostname mapping and exact :636-to-owned-wire-port mapping only. No full fleet daemon lifecycle, agent/model/CLI/tmux/native/real AD/pilot." };
 const check = (name: string, value: boolean) => { receipt.checks.push({ name, pass: value }); if (!value)
     throw Error(name); };
 const wait = async (fn: () => boolean) => { const end = Date.now() + 15000; while (!fn() && Date.now() < end)
@@ -168,6 +172,52 @@ try {
         await ctx.close();
     }
     check("Check and Back changed nothing", fm.getRawFleetConfig().hub.memberOrigin === memberOrigin);
+    // Before/after of the affected surface (Settings → Hub on the Hub's computer): "before" serves the base's own section,
+    // connection and strings modules (run.sh exports them from BASE_REF into /work/.base) — the base never mounts the card.
+    // SKEW: a tab holding the base's shared modules and stylesheet lazily loads the new card (it must link and render).
+    const baseUi = (path: string) => readFileSync(join("/work/.base", path), "utf8");
+    const JS = "text/javascript";
+    const BEFORE: Record<string, [string, string]> = {
+        "**/ui/js/settings-hub-section.js": [JS, baseUi("src/ui/settings-hub-section.js")],
+        "**/ui/js/settings-hub-connection.js": [JS, baseUi("src/ui/settings-hub-connection.js")],
+        "**/ui/js/hub-join-one-strings.js": [JS, baseUi("src/ui/hub-join-one-strings.js")] };
+    const SKEW: Record<string, [string, string]> = {
+        "**/ui/js/settings-confirm.js": [JS, baseUi("src/ui/settings-confirm.js")],
+        "**/ui/js/settings-hub-web-address.js": [JS, baseUi("src/ui/settings-hub-web-address.js")],
+        "**/assets/ui-states.js": [JS, baseUi("src/ui/shared/ui-states.js")],
+        "**/assets/app.css": ["text/css", baseUi("src/ui/shared/app.css")] };
+    const sectionPage = async (lang: "en" | "zh-TW", view: keyof typeof VIEW, routes: Record<string, [string, string]>) => {
+        const ctx = await browser.newContext({ locale: lang === "en" ? "en-US" : "zh-TW", viewport: VIEW[view], isMobile: view === "phone", hasTouch: view === "phone" });
+        await ctx.addCookies([{ name: cookieName, value: cookieValue, url: origin }]);
+        await ctx.addInitScript(() => { localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1"); });
+        for (const [glob, [type, body]] of Object.entries(routes)) await ctx.route(glob, (r: any) => r.fulfill({ status: 200, contentType: type, body }));
+        const pg = await ctx.newPage(), errors: string[] = [];
+        pg.on("pageerror", (e: any) => errors.push(String(e).slice(0, 200)));
+        pg.on("console", (m: any) => { if (m.type() === "error") errors.push(m.text().slice(0, 200)); });
+        await pg.goto(origin + "/settings/hub"); const section = pg.locator(".s-hub-section"); await section.waitFor();
+        await pg.waitForLoadState("networkidle"); await pg.waitForTimeout(400);
+        return { ctx, pg, section, errors };
+    };
+    receipt.surface = [];
+    for (const lang of ["en", "zh-TW"] as const) for (const view of ["desktop", "phone"] as const) for (const variant of ["before", "after"] as const) {
+        const { ctx, pg, section, errors } = await sectionPage(lang, view, variant === "before" ? BEFORE : {});
+        const cards = await section.locator(".hub-member-address").count();
+        check(`${variant} ${lang} ${view}: the card is ${variant === "before" ? "absent (base)" : "present, folded"}; no page error`, cards === (variant === "before" ? 0 : 1) && errors.length === 0);
+        await themes(pg, async theme => { await shot(section, `surface-${variant}.${lang}.${view}.${theme}.png`); });
+        receipt.surface.push({ variant, lang, view, cards, errors }); await ctx.close();
+    }
+    receipt.skew = [];
+    for (const [lang, view, theme] of [["en", "desktop", "light"], ["zh-TW", "phone", "dark"]] as const) {
+        const { ctx, pg, section, errors } = await sectionPage(lang, view, SKEW);
+        await pg.emulateMedia({ colorScheme: theme });
+        const card = section.locator(".hub-member-address"); await card.waitFor();
+        await card.locator("summary").first().click(); await card.locator(".hub-addr-now").waitFor();
+        const text = await card.innerText();
+        check(`SKEW ${lang} ${view}: the new card links and renders under the base's shared modules and stylesheet; no raw key, no page error`,
+            text.includes(new URL(memberOrigin).host) && !/hubMemberAddress\.|err_/.test(text) && errors.length === 0);
+        await shot(card, `skew-card.${lang}.${view}.${theme}.png`);
+        receipt.skew.push({ lang, view, theme, errors }); await ctx.close();
+    }
     // #3429 option B, leg 1: the member is ONLINE at the change — it follows the issuer-signed relocation, keeps its credential.
     // Through the card's Confirm (EN); the server's answer is read from the commit response.
     const confirmVia = async (lang: "en" | "zh-TW", target: string) => {
@@ -218,7 +268,8 @@ try {
     const ui2 = await confirmVia("zh-TW", thirdOrigin);
     const result2 = { status: ui2.status, body: ui2.body };
     check("the card names the Fleet that must reconnect", ui2.said.includes("需要在它自己的「設定 → Hub」重新連接"));
-    receipt.leg2 = { status: result2.status, state: result2.body.state, followed: result2.body.followed, reconnect: result2.body.reconnect };
+    receipt.leg2 = { status: result2.status, state: result2.body.state, followed: result2.body.followed, reconnect: result2.body.reconnect,
+        rejoin: "manual pairing → explicit Disconnect/Start over → company sign-in (one-box join): a new Fleet ID; not the one-button Reconnect" };
     check("the offline Fleet did not follow and must reconnect", result2.status === 200 && result2.body.state === "ready" && result2.body.followed === 0
         && result2.body.reconnect.length === 1 && result2.body.reconnect[0].id === profile.fleetId);
     check("the Hub revoked it", (await transportFleet(profile.fleetId)).status === "revoked");
