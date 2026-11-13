@@ -16,6 +16,7 @@ import { detailsPath } from "/assets/app-route.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
+import { StaleTabPrompt, isStaleModuleError } from "/assets/stale-tab.js";
 import { PageHead } from "/assets/page-head.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";
@@ -128,7 +129,14 @@ export function useAgentSettings({ name, lease, enabled, navKey }) {
   }, [lease]);
 
   const reload = async () => {
-    const m = await loadSettingsModule();
+    let m;
+    try { m = await loadSettingsModule(); } catch (err) {
+      // #3822: the Settings module did not load. Forget the attempt (a later one loads afresh) and say so in place —
+      // never a skeleton that waits for ever. A tab older than AgEnD (the module would not link) is told to reload.
+      settingsModule = null;
+      if (lease.current()) setData((prev) => (prev && !prev.error ? prev : { error: true, stale: isStaleModuleError(err) }));
+      return false;
+    }
     const mine = ++gen.current;
     const next = await m.loadAll(lease);
     if (!next || mine !== gen.current || !lease.current()) return;
@@ -303,6 +311,7 @@ export function AgentSettingsPanels({ name, kind, cat, sess, onDirty }) {
   const del = staged.get(kind === "classic" ? "" : `agent:${name}`);
   const deleting = !!del && del.request && del.request.method === "DELETE";
   if (!data) return html`<${Skeleton} lines=${6} label=${pt("loading")} />`;
+  if (data.error && data.stale) return html`<${StaleTabPrompt} />`;
   if (data.error || !ctx) return html`<${ErrorState} message=${pt("loadFailed")} onRetry=${sess.reload} />`;
   const insts = (ctx.fleet && ctx.fleet.instances) || {};
   const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
