@@ -294,8 +294,8 @@ export function handleAgentRequest(
       const result = await dispatchAgentOperation(ctx, instance, op, args);
       res.writeHead(200, { "Content-Type": "application/json" });
       const operationId = result && typeof result === "object" && !Array.isArray(result)
-        && typeof (result as Record<string, unknown>).operation_id === "string"
-        ? (result as Record<string, unknown>).operation_id as string
+        ? durableResponseOperations.get(result) ?? (typeof (result as Record<string, unknown>).operation_id === "string"
+          ? (result as Record<string, unknown>).operation_id as string : undefined)
         : undefined;
       res.end(JSON.stringify(result), () => {
         if (operationId) ctx.markDurableResponseDelivered?.(instance, operationId);
@@ -345,6 +345,10 @@ export function toolForAgentOp(op: string): string | null {
   return null;
 }
 
+// HTTP response completion still acknowledges the durable operation without putting it in compact JSON.
+const durableResponseOperations = new WeakMap<object, string>();
+const COMPACT_ACK_TOOLS = new Set(["send_to_instance", "delegate_task", "request_information", "report_result", "broadcast"]);
+
 export async function dispatchAgentOperation(
   ctx: AgentEndpointContext,
   instance: string,
@@ -380,8 +384,8 @@ export async function dispatchAgentOperation(
 
   // HTTP/CLI agents do not pass through mcp-server.ts, so assign the same
   // durable-operation identity at this ingress before invoking an outbound
-  // handler. The returned operation_id lets the CLI report/query the exact
-  // accepted operation instead of retrying it as a new tool call.
+  // handler. Compact communication replies expose delivery IDs; the operation ID
+  // remains internal for response completion and is exposed with detail.
   const operationId = requestedTool && DURABLE_HTTP_TOOLS.has(requestedTool)
     ? trustedOperationId ?? randomUUID()
     : undefined;
@@ -560,7 +564,10 @@ export async function dispatchAgentOperation(
       if (!operationId) {
         resolve(response);
       } else if (response && typeof response === "object" && !Array.isArray(response)) {
-        resolve({ ...(response as Record<string, unknown>), operation_id: operationId });
+        if (COMPACT_ACK_TOOLS.has(tool) && args.detail !== true) {
+          durableResponseOperations.set(response, operationId);
+          resolve(response);
+        } else resolve({ ...(response as Record<string, unknown>), operation_id: operationId });
       } else {
         resolve({ result: response, operation_id: operationId });
       }

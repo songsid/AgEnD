@@ -1,3 +1,4 @@
+import { compactDeliveryStatus, compactSendAck } from "./tool-receipt-output.js";
 import { KNOWN_BACKENDS, validateFleetConfig, type ValidationResult } from "./config-validator.js";
 import { resolve as pathResolve, isAbsolute } from "node:path";
 import { homedir } from "node:os";
@@ -712,7 +713,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(hideInternalMessageIds(message ?? ""), 500)}`);
   const targetStateWarning = recipientWarning(ctx.lifecycle.daemons.get(targetInstanceName), targetName, state === "paused");
   const warnings = [steerFallbackWarning, targetStateWarning].filter((value): value is string => !!value);
-  respond({ sent: true, queued: true, target: targetName, target_state: state,
+  respond(compactSendAck({ sent: true, queued: true, target: targetName, target_state: state,
     ...(forwards?.length ? { forwards } : {}),
     ...(durableReceipt ? {
       durable: true,
@@ -725,7 +726,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     ...(effectiveUseSteer ? { delivery_mode: "steer" } : {}),
     ...(steer === true && !effectiveUseSteer ? { delivery_mode: "idle_queue" } : {}),
     ...(warnings.length > 0 ? { warning: warnings.join(" ") } : {}),
-  });
+  }, v.data.detail, parsedCorrelationId !== undefined));
 };
 
 /**
@@ -1862,6 +1863,7 @@ function wrapAsSend<T>(
       : {};
     const newArgs = {
       ...extra,
+      detail: (v.data as { detail?: boolean }).detail,
       instance_name: targetName,
       message: body,
       ...((v.data as { steer?: boolean }).steer !== undefined
@@ -2056,6 +2058,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   // target's idle gate blocked for as long as the BUSIEST recipient. Connectivity
   // is decided synchronously (that's the real failure), delivery runs in background.
   const sentTo: string[] = [];
+  const deliveryIds: string[] = [];
   const sentMeta = new Map<string, Record<string, string>>();
   const failed: string[] = [];
   for (const targetName of targetNames) {
@@ -2069,7 +2072,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     let duplicate = false;
     if (ctx.admitDurableDelivery) {
       try {
-        duplicate = ctx.admitDurableDelivery({
+        const receipt = ctx.admitDurableDelivery({
           operationId: operationId!,
           sourceDaemonBootId: meta.sourceDaemonBootId ?? ctx.getDaemonBootId?.(meta.instanceName),
           sourceInstance: meta.instanceName,
@@ -2078,7 +2081,9 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
           kind: "broadcast",
           correlationId,
           payload,
-        })?.duplicate === true;
+        });
+        duplicate = receipt.duplicate === true;
+        deliveryIds.push(receipt.deliveryId);
       } catch (err) {
         ctx.logger.error({ err, target: targetName, source: meta.instanceName }, "Durable broadcast admission failed closed");
         failed.push(targetName);
@@ -2117,14 +2122,14 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   const bDisplay = (name: string) =>
     bLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
   ctx.queueMirrorMessage?.(`📢 ${bDisplay(senderLabel)} → [${sentTo.map(bDisplay).join(", ")}]: ${truncatePreview(hideInternalMessageIds(message), 500)}`);
-  respond({
+  respond(v.data.detail ? {
     sent_to: sentTo,
     failed,
     count: sentTo.length,
     queued: true,
     ...(operationId ? { operation_id: operationId } : {}),
     ...(ctx.admitDurableDelivery ? { durable: true, delivery_state: "queued" } : { durable: false }),
-  });
+  } : { sent: sentTo.length, queued: true, ...(deliveryIds.length ? { delivery_ids: deliveryIds } : {}), ...(failed.length ? { failed } : {}) });
 };
 
 // ── Teams ────────────────────────────────────────────────────────────────
@@ -2533,7 +2538,7 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
       respond(null, t("delivery.not_found"));
       return;
     }
-    respond(page);
+    respond(compactDeliveryStatus(page, v.data.detail, v.data.contains));
   } catch (err) {
     ctx.logger.warn({ err, caller: meta.instanceName }, "Delivery status query failed");
     respond(null, t("delivery.unavailable"));

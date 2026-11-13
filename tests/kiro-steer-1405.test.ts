@@ -224,7 +224,7 @@ describe("the hub asks the target's running launch (send_to_instance steer:true,
   }
   async function send(ctx: any) {
     let result: any;
-    await outboundHandlers.get("send_to_instance")!(ctx, { instance_name: "target", message: "correction", steer: true },
+    await outboundHandlers.get("send_to_instance")!(ctx, { instance_name: "target", message: "correction", steer: true, detail: true },
       r => { result = r; }, { instanceName: "sender", requestId: 1 } as any);
     return result;
   }
