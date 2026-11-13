@@ -1,0 +1,213 @@
+Merge made by the 'ort' strategy.
+ changes/3429-fleet-connection-address.md           |   4 +
+ changes/3429-fleet-connection-address.zh-TW.md     |   4 +
+ changes/3429-member-address-backend.md             |   4 +
+ changes/3429-member-address-backend.zh-TW.md       |   4 +
+ docs/design/hub-member-address-3429.md             | 142 ++++
+ .../backend-after-reconnect.zh-TW.png              | Bin 0 -> 120246 bytes
+ .../backend-before-hub.zh-TW.png                   | Bin 0 -> 87661 bytes
+ .../debug-before-signin.png                        | Bin 0 -> 94044 bytes
+ .../png/card-confirm.en.desktop.dark.png           | Bin 0 -> 28889 bytes
+ .../png/card-confirm.en.desktop.light.png          | Bin 0 -> 28342 bytes
+ .../png/card-confirm.en.phone.dark.png             | Bin 0 -> 22870 bytes
+ .../png/card-confirm.en.phone.light.png            | Bin 0 -> 22936 bytes
+ .../png/card-confirm.zh-TW.desktop.dark.png        | Bin 0 -> 35847 bytes
+ .../png/card-confirm.zh-TW.desktop.light.png       | Bin 0 -> 36389 bytes
+ .../png/card-confirm.zh-TW.phone.dark.png          | Bin 0 -> 30083 bytes
+ .../png/card-confirm.zh-TW.phone.light.png         | Bin 0 -> 30845 bytes
+ .../png/card-done.en.desktop.dark.png              | Bin 0 -> 18033 bytes
+ .../png/card-done.en.desktop.light.png             | Bin 0 -> 17239 bytes
+ .../png/card-done.en.phone.dark.png                | Bin 0 -> 13406 bytes
+ .../png/card-done.en.phone.light.png               | Bin 0 -> 13296 bytes
+ .../png/card-done.zh-TW.desktop.dark.png           | Bin 0 -> 26068 bytes
+ .../png/card-done.zh-TW.desktop.light.png          | Bin 0 -> 26401 bytes
+ .../png/card-done.zh-TW.phone.dark.png             | Bin 0 -> 22827 bytes
+ .../png/card-done.zh-TW.phone.light.png            | Bin 0 -> 22980 bytes
+ .../png/card-edit.en.desktop.dark.png              | Bin 0 -> 35606 bytes
+ .../png/card-edit.en.desktop.light.png             | Bin 0 -> 34798 bytes
+ .../png/card-edit.en.phone.dark.png                | Bin 0 -> 32578 bytes
+ .../png/card-edit.en.phone.light.png               | Bin 0 -> 32401 bytes
+ .../png/card-edit.zh-TW.desktop.dark.png           | Bin 0 -> 42124 bytes
+ .../png/card-edit.zh-TW.desktop.light.png          | Bin 0 -> 42644 bytes
+ .../png/card-edit.zh-TW.phone.dark.png             | Bin 0 -> 39576 bytes
+ .../png/card-edit.zh-TW.phone.light.png            | Bin 0 -> 40116 bytes
+ .../png/card-show.en.desktop.dark.png              | Bin 0 -> 16044 bytes
+ .../png/card-show.en.desktop.light.png             | Bin 0 -> 15213 bytes
+ .../png/card-show.en.phone.dark.png                | Bin 0 -> 11879 bytes
+ .../png/card-show.en.phone.light.png               | Bin 0 -> 11783 bytes
+ .../png/card-show.zh-TW.desktop.dark.png           | Bin 0 -> 18237 bytes
+ .../png/card-show.zh-TW.desktop.light.png          | Bin 0 -> 18283 bytes
+ .../png/card-show.zh-TW.phone.dark.png             | Bin 0 -> 15284 bytes
+ .../png/card-show.zh-TW.phone.light.png            | Bin 0 -> 15311 bytes
+ .../png/skew-old-section.en.desktop.light.png      | Bin 0 -> 194109 bytes
+ .../png/skew-old-section.zh-TW.phone.dark.png      | Bin 0 -> 203453 bytes
+ .../png/skew-old-strings.en.desktop.light.png      | Bin 0 -> 197480 bytes
+ .../png/skew-old-strings.zh-TW.phone.dark.png      | Bin 0 -> 206327 bytes
+ .../png/surface-after.en.desktop.dark.png          | Bin 0 -> 203156 bytes
+ .../png/surface-after.en.desktop.light.png         | Bin 0 -> 197480 bytes
+ .../png/surface-after.en.phone.dark.png            | Bin 0 -> 167797 bytes
+ .../png/surface-after.en.phone.light.png           | Bin 0 -> 166676 bytes
+ .../png/surface-after.zh-TW.desktop.dark.png       | Bin 0 -> 237987 bytes
+ .../png/surface-after.zh-TW.desktop.light.png      | Bin 0 -> 238441 bytes
+ .../png/surface-after.zh-TW.phone.dark.png         | Bin 0 -> 206275 bytes
+ .../png/surface-after.zh-TW.phone.light.png        | Bin 0 -> 208108 bytes
+ .../png/surface-before.en.desktop.dark.png         | Bin 0 -> 199563 bytes
+ .../png/surface-before.en.desktop.light.png        | Bin 0 -> 194109 bytes
+ .../png/surface-before.en.phone.dark.png           | Bin 0 -> 165136 bytes
+ .../png/surface-before.en.phone.light.png          | Bin 0 -> 164011 bytes
+ .../png/surface-before.zh-TW.desktop.dark.png      | Bin 0 -> 234372 bytes
+ .../png/surface-before.zh-TW.desktop.light.png     | Bin 0 -> 234892 bytes
+ .../png/surface-before.zh-TW.phone.dark.png        | Bin 0 -> 203435 bytes
+ .../png/surface-before.zh-TW.phone.light.png       | Bin 0 -> 205210 bytes
+ .../hub-member-address-3429-b/receipt.json         | 872 +++++++++++++++++++++
+ .../backend-after-reconnect.zh-TW.png              | Bin 0 -> 105145 bytes
+ .../backend-before-hub.zh-TW.png                   | Bin 0 -> 46772 bytes
+ .../hub-member-address-3429/receipt.json           | 325 ++++++++
+ scripts/manual/hub-member-address/README.md        |  23 +
+ scripts/manual/hub-member-address/accept-b.mts     | 419 ++++++++++
+ scripts/manual/hub-member-address/accept.mts       | 256 ++++++
+ scripts/manual/hub-member-address/run.sh           |  68 ++
+ scripts/manual/mutation/hub-member-address.py      |  24 +
+ src/fleet-manager.ts                               |  13 +
+ src/general-knowledge/skills/hub/SKILL.md          |  15 +
+ src/hub/client.ts                                  |  43 +-
+ src/hub/compose/member.ts                          |  44 +-
+ src/hub/compose/server.ts                          |  29 +-
+ src/hub/http/compose.ts                            |  25 +-
+ src/hub/http/deps.ts                               |   1 +
+ src/hub/init/member-certificate.ts                 |  34 +
+ src/hub/init/plan-digest.ts                        |   1 +
+ src/hub/join/client.ts                             |  18 +-
+ src/hub/join/http.ts                               |   7 +-
+ src/hub/join/local.ts                              |  64 +-
+ src/hub/join/service.ts                            |  11 +
+ src/hub/join/trust.ts                              |  23 +
+ src/hub/member-origin.ts                           | 283 +++++++
+ src/hub/member/pairing-api.ts                      |  11 +-
+ src/hub/pairing.ts                                 |  10 +
+ src/hub/protocol.ts                                |   8 +-
+ src/hub/runtime.ts                                 |  39 +-
+ src/hub/server.ts                                  |  63 +-
+ src/hub/settings-commit.ts                         |  21 +-
+ src/hub/settings-directory-recovery.ts             |  13 +-
+ src/hub/settings-member-address-control.ts         | 180 +++++
+ src/hub/settings-member-address-decision.ts        | 268 +++++++
+ src/hub/settings-member-address-http.ts            |  85 ++
+ src/hub/settings-member-address-network.ts         |  18 +
+ src/hub/settings-member-address-notices.ts         |  23 +
+ src/hub/settings-member-address-policy.ts          |  22 +
+ src/hub/settings-member-address.ts                 | 308 ++++++++
+ src/hub/socket.ts                                  |   2 +
+ src/hub/tls.ts                                     |  29 +-
+ src/hub/types.ts                                   |   8 +-
+ src/hub/web-origin.ts                              |  44 +-
+ src/settings-api.ts                                |   3 +
+ src/ui/hub-join-one-strings.js                     |   2 +
+ src/ui/settings-hub-connection.js                  |   1 +
+ src/ui/settings-hub-member-address.js              | 205 +++++
+ src/ui/settings-hub-section.js                     |   2 +
+ src/web-api.ts                                     |   6 +-
+ tests/helpers/hub-rig.ts                           |   6 +-
+ tests/hub-company-join-http.test.ts                |  13 +
+ tests/hub-company-join-local.test.ts               |  80 +-
+ tests/hub-compose.test.ts                          |   2 +-
+ tests/hub-member-address-decision-3429.test.ts     | 180 +++++
+ tests/hub-member-address-http-3429.test.ts         | 179 +++++
+ tests/hub-member-address-notices-3429.test.ts      |  28 +
+ tests/hub-member-address-policy-3429.test.ts       |  33 +
+ tests/hub-member-address-ui-3429.test.ts           | 148 ++++
+ tests/hub-member-address-writer-3429.test.ts       | 196 +++++
+ tests/hub-member-identity-3429.test.ts             |  41 +
+ tests/hub-member-reconciliation.test.ts            |   2 +-
+ tests/hub-member-relocation-3429.test.ts           | 237 ++++++
+ tests/hub-pairing-inbox.test.ts                    |   2 +-
+ tests/hub-relocation-network-3429.test.ts          | 154 ++++
+ 123 files changed, 5350 insertions(+), 78 deletions(-)
+ create mode 100644 changes/3429-fleet-connection-address.md
+ create mode 100644 changes/3429-fleet-connection-address.zh-TW.md
+ create mode 100644 changes/3429-member-address-backend.md
+ create mode 100644 changes/3429-member-address-backend.zh-TW.md
+ create mode 100644 docs/design/hub-member-address-3429.md
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/backend-after-reconnect.zh-TW.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/backend-before-hub.zh-TW.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/debug-before-signin.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-confirm.en.desktop.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-confirm.en.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-confirm.en.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-confirm.en.phone.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-confirm.zh-TW.desktop.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-confirm.zh-TW.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-confirm.zh-TW.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-confirm.zh-TW.phone.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-done.en.desktop.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-done.en.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-done.en.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-done.en.phone.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-done.zh-TW.desktop.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-done.zh-TW.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-done.zh-TW.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-done.zh-TW.phone.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-edit.en.desktop.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-edit.en.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-edit.en.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-edit.en.phone.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-edit.zh-TW.desktop.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-edit.zh-TW.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-edit.zh-TW.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-edit.zh-TW.phone.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-show.en.desktop.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-show.en.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-show.en.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-show.en.phone.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-show.zh-TW.desktop.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-show.zh-TW.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-show.zh-TW.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/card-show.zh-TW.phone.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/skew-old-section.en.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/skew-old-section.zh-TW.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/skew-old-strings.en.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/skew-old-strings.zh-TW.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-after.en.desktop.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-after.en.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-after.en.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-after.en.phone.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-after.zh-TW.desktop.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-after.zh-TW.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-after.zh-TW.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-after.zh-TW.phone.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-before.en.desktop.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-before.en.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-before.en.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-before.en.phone.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-before.zh-TW.desktop.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-before.zh-TW.desktop.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-before.zh-TW.phone.dark.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/png/surface-before.zh-TW.phone.light.png
+ create mode 100644 docs/screenshots/hub-member-address-3429-b/receipt.json
+ create mode 100644 docs/screenshots/hub-member-address-3429/backend-after-reconnect.zh-TW.png
+ create mode 100644 docs/screenshots/hub-member-address-3429/backend-before-hub.zh-TW.png
+ create mode 100644 docs/screenshots/hub-member-address-3429/receipt.json
+ create mode 100644 scripts/manual/hub-member-address/README.md
+ create mode 100644 scripts/manual/hub-member-address/accept-b.mts
+ create mode 100644 scripts/manual/hub-member-address/accept.mts
+ create mode 100755 scripts/manual/hub-member-address/run.sh
+ create mode 100644 scripts/manual/mutation/hub-member-address.py
+ create mode 100644 src/hub/init/member-certificate.ts
+ create mode 100644 src/hub/member-origin.ts
+ create mode 100644 src/hub/settings-member-address-control.ts
+ create mode 100644 src/hub/settings-member-address-decision.ts
+ create mode 100644 src/hub/settings-member-address-http.ts
+ create mode 100644 src/hub/settings-member-address-network.ts
+ create mode 100644 src/hub/settings-member-address-notices.ts
+ create mode 100644 src/hub/settings-member-address-policy.ts
+ create mode 100644 src/hub/settings-member-address.ts
+ create mode 100644 src/ui/settings-hub-member-address.js
+ create mode 100644 tests/hub-member-address-decision-3429.test.ts
+ create mode 100644 tests/hub-member-address-http-3429.test.ts
+ create mode 100644 tests/hub-member-address-notices-3429.test.ts
+ create mode 100644 tests/hub-member-address-policy-3429.test.ts
+ create mode 100644 tests/hub-member-address-ui-3429.test.ts
+ create mode 100644 tests/hub-member-address-writer-3429.test.ts
+ create mode 100644 tests/hub-member-identity-3429.test.ts
+ create mode 100644 tests/hub-member-relocation-3429.test.ts
+ create mode 100644 tests/hub-relocation-network-3429.test.ts
