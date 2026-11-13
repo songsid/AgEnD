@@ -8,7 +8,7 @@ import { personKeyString } from "./identity.js";
 import { HubProtocolError, identifier, person, validated } from "./validation.js";
 import { readHubSessionEpoch } from "./session-epoch.js";
 import { z } from "zod";
-import { assertHubDirectoryAdministration, type HubDirectoryAdministration, type HubDirectoryAdministrationBinding, type HubDirectoryPreparation } from "./roles/directory-authority.js";
+import { assertHubDirectoryAdministration, assertHubDirectoryPreparation, type HubDirectoryAdministration, type HubDirectoryAdministrationBinding, type HubDirectoryPreparation } from "./roles/directory-authority.js";
 import type { HubRequestContext } from "./types.js";
 
 const RECENT_MS = 5 * 60_000, IDLE_MS = 60 * 60_000;
@@ -25,12 +25,20 @@ function administration(core: HubCore, actor: Actor, proof?: HubDirectorySession
     if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError("denied");
     return;
   }
-  if ("preparation" in proof) throw new HubProtocolError("unavailable");
+  const source = proof.source, prepared = "preparation" in proof, witnessed = "witness" in proof;
+  if (prepared === witnessed) throw new HubProtocolError("unavailable");
+  const preparation = "preparation" in proof ? proof.preparation : undefined, witness = "witness" in proof ? proof.witness : undefined;
   const check = () => {
-    if (proof.source.directory !== core.deps.directory || proof.source.epoch !== core.directoryEpoch
-      || personKeyString(proof.source.administrator) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError("unavailable");
+    if (proof.source !== source || ("preparation" in proof) !== prepared || ("witness" in proof) !== witnessed
+      || ("preparation" in proof ? proof.preparation : undefined) !== preparation || ("witness" in proof ? proof.witness : undefined) !== witness
+      || source.directory !== core.deps.directory || source.epoch !== core.directoryEpoch
+      || personKeyString(source.administrator) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError("unavailable");
   };
-  check(); assertHubDirectoryAdministration(proof.witness, actor, proof.source); check();
+  check();
+  // These two callers only attest sign-in or stage a rotation. SQL publication still needs a fresh effect witness.
+  if (prepared) assertHubDirectoryPreparation(preparation!, actor, source);
+  else assertHubDirectoryAdministration(witness!, actor, source);
+  check();
 }
 
 /** Legacy sessions have no attestation. A rotated session never inherits one from its predecessor. */

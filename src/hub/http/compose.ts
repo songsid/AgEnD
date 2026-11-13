@@ -589,8 +589,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   rooms.buttons.start();
   return {
     directorySessions: Object.freeze({
-      recentAuthentication: actor => sessions.recentAuthentication(actor),
-      prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
+      recentAuthentication: (actor, proof) => sessions.recentAuthentication(actor, proof),
+      prepareDirectoryRotation: (token, actor, proof) => sessions.prepareDirectoryRotation(token, actor, proof),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
     handle, receive, features: Object.freeze([...(roleAuditOffered() ? [HUB_ROLE_AUDIT_FEATURE] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
