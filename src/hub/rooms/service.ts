@@ -105,7 +105,7 @@ export class HubGroupRooms {
       ? { kind: row.author_id as RoomSystemEvent["kind"], name: row.author_name } : undefined;
     // Agent rows retain their owner-at-message in author_subject; a later exposure transfer must not relabel history.
     const owner = row.author_kind === "agent" ? this.core.atomic(db => ({ name: this.name(db, row.author_subject) })) : undefined;
-    return { id: row.id, roomId: row.room_id, at: row.created_at, author: { kind: row.author_kind, id: row.author_id, name: row.author_name, ...(owner ? { owner } : {}) },
+    return { id: row.id, roomId: row.room_id, at: row.created_at, sequence: row.sequence, author: { kind: row.author_kind, id: row.author_id, name: row.author_name, ...(owner ? { owner } : {}) },
       ...(system ? { system } : {}), text: this.core.deps.content.get(row.content_ref)?.question ?? "", mentions: JSON.parse(row.mentions) as string[],
       ...(row.reply_to ? { replyTo: row.reply_to } : {}), ...(row.idempotency_key ? { idempotencyKey: row.idempotency_key } : {}),
       ...(row.stage ? { stage: row.stage } : {}), ...(row.answer_to ? { answerTo: row.answer_to } : {}),
