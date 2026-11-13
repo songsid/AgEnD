@@ -110,3 +110,5 @@ Fleet manager 維護 `sessionRegistry: Map<sessionName, instanceName>`；`mcp_re
 二進制是 `agend`（不是 `ccd`）。開發 daemon 功能改完 code：`npm run build`，再 `agend restart` 載入新代碼（透過 systemd／launchd 重啟服務；`agend fleet restart --reload` 已淘汰，會改執行 `agend restart`，#2356）。
 
 聊天的 `/restart`（全 fleet、不加 `full`）會等每個 instance idle（各等最多 10 秒），整體最多等 **5 分鐘**，超時就強制重啟、不再無限等。Telegram/Discord 會收到開始與完成通知。
+
+Full verification evidence must be fetched with `delivery_status {message_id: ID, detail: true}` (CLI `agend-agent delivery-status --detail --message-id ID`). Compact excerpts and `contains` matches do not establish the complete original intent and cannot replace full merge-gate evidence. Existing ACL/proof/actor/current-authority checks remain mandatory; never log secret-bearing originals.

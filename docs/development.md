@@ -486,7 +486,7 @@ coordinator runs an installed copy, `~/.agend/scripts/gate-merge.sh`, when the
 reviewer's approval arrives:
 
 ```bash
-# delivery_status is an MCP tool: save its result for the approval message and pipe it in.
+# delivery_status is an MCP tool: request detail:true for the approval message, save the exact full result and pipe it in.
 gate-merge.sh [--dry-run] [--delivery-json <file>|-] <pr> <approved-sha> <approval-message-id>
 ```
 
@@ -625,3 +625,5 @@ relative to the script):
 install -m 755 scripts/gate-merge.sh ~/.agend/scripts/gate-merge.sh
 install -m 644 scripts/gate-support.mjs ~/.agend/scripts/gate-support.mjs
 ```
+
+Full verification evidence must be fetched with `delivery_status {message_id: ID, detail: true}` (CLI `agend-agent delivery-status --detail --message-id ID`). Compact excerpts and `contains` matches do not establish the complete original intent and cannot replace full merge-gate evidence. Existing ACL/proof/actor/current-authority checks remain mandatory; never log secret-bearing originals.

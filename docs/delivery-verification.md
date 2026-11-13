@@ -17,10 +17,10 @@ Fresh trusted Discord and Telegram ingress captures the actual adapter, actor ID
 The target receives a separate `[agend-human-id:hmsg-…]` header and `verification_id`. Platform `message_id` stays intact for replies and reactions. Use the verification ID for an original human lookup:
 
 ```json
-{"message_id":"hmsg-<receipt UUID>"}
+{"message_id":"hmsg-<receipt UUID>","detail":true}
 ```
 
-The result contains original `content`, `origin`, `content_sha256`, `wire_content_sha256`, `proof_kind` and `delivered_at`. Original input is snapshotted before attachments, Classic chat context and Web/slash action argument trimming; the wire digest covers the actual formatted, sanitized bytes. A receiver with an explicit grant reads the same immutable original, not the relay's summary. Other status selectors keep content redacted.
+With `detail:true`, the result contains original `content`, `origin`, `content_sha256`, `wire_content_sha256`, `proof_kind` and `delivered_at`. Original input is snapshotted before attachments, Classic chat context and Web/slash action argument trimming; the wire digest covers the actual formatted, sanitized bytes. A receiver with an explicit grant reads the same immutable original, not the relay's summary. Other status selectors keep content redacted.
 
 - Native messages: `origin.platform`, `adapter_id` and `user_id` are separate authority facts. A display label is not an actor ID.
 - Button/slash actions: origin identifies the click/interaction and its anchor when available; `platform_message_id` is null because the bot reply is not a human-authored message. A button receipt's original content is its visible label; a hidden value is only in the wire body.
@@ -40,8 +40,10 @@ Every proof matches the receipt ID, mode and wire hash and revalidates the Daemo
 
 `Delivery not found` includes hidden, expired and absent rows. Do not infer consent or resend from it; ask for an explicit forward or fresh consent. Uncertain/queued human receipts cannot be forwarded as consent. Human receipts are evidence only, never pumped or re-delivered. A new process marks unfinished old receipts uncertain; retention removes original evidence and its grants together, while pruning a relay does not remove its original grant.
 
-CLI mode supports repeatable `--forward` on `agend-agent send` / `delegate`, and `agend-agent delivery-status --message-id <verification_id>`.
+CLI mode supports repeatable `--forward` on `agend-agent send` / `delegate`, and `agend-agent delivery-status --detail --message-id <verification_id>`.
 
 Same-uid shell-capable agents are not isolated from one another. These grants protect the authenticated tool path, not mutually hostile processes sharing an OS user. Use distinct OS users/containers for that threat model. Rolling back code hides forwarded reads under the previous source/target policy; additive evidence tables can remain on disk. Do not delete or replay the outbox to roll back.
 
 [繁體中文](delivery-verification.zh-TW.md)
+
+Full verification evidence must be fetched with `delivery_status {message_id: ID, detail: true}` (CLI `agend-agent delivery-status --detail --message-id ID`). Compact excerpts and `contains` matches do not establish the complete original intent and cannot replace full merge-gate evidence. Existing ACL/proof/actor/current-authority checks remain mandatory; never log secret-bearing originals.
