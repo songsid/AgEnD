@@ -15,3 +15,10 @@ acceptance remains on S-129.
 No UI/PNG applies. SKEW review: no UI asset, member protocol, HTTP result shape,
 configuration field or migration is added. Retained clients keep the existing
 backpressure body/status and sign-in failure policy.
+
+Final clean sync: parent R1 at e0fbb2b3c is merged, then alpha f73ad9187.
+Both incoming source overlap sequences (compose/server and types) exactly match
+alpha; the other38incoming files match alpha byte for byte. The sync receipt
+binds all current candidate files and records496/496 tests across19files, zero
+skips, plus native source/test checks. These counts overlap the earlier409;
+they are not additive. No authority activation is added by either merge.
