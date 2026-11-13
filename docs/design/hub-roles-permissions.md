@@ -106,7 +106,7 @@ Hub 現在只有兩種人：
 ### 防止升級的規則
 
 1. **「編輯角色」「Hub 設定」不能授予。** 只有內建的管理員角色有，自訂角色的編輯畫面上是鎖住的。所以沒有人能做出一個「幾乎是管理員」的角色再指派給自己。
-2. **只能指派自己權限以內的角色。** 逐項比對，不是合起來比：每一項權限，指派者自己都要在**同一個範圍**（同一個 AD 群組，或自己是整個 Hub）有這一項，連接 Fleet 的台數也不能超過自己的。在「RD 一部」能看名單、在「RD 二部」能看用量的人，不能把兩項一起指派在「RD 一部」。Hub 無法證明「群組 A 是群組 B 的一部分」，所以不做這種推論。指派的到期日不能晚於指派者自己那一項權限的到期日。
+2. **只能指派、也只能移除自己權限以內的角色。** 逐項比對，不是合起來比：每一項權限，指派者自己都要在**同一個範圍**（同一個 AD 群組，或自己是整個 Hub）有這一項，連接 Fleet 的台數也不能超過自己的。在「RD 一部」能看名單、在「RD 二部」能看用量的人，不能把兩項一起指派在「RD 一部」。Hub 無法證明「群組 A 是群組 B 的一部分」，所以不做這種推論。指派的到期日不能晚於指派者自己那一項權限的到期日。移除或縮小別人的指派也一樣：那筆指派裡有自己沒有的權限，就不能動它，所以權限有限的指派者拿不掉其他管理員。
 3. **不能改自己的指派。** 新增、移除、延長自己的角色都要另一位有權限的人來做。唯一的例外是第 8 節那一次：第一位管理員替自己開啟對話、分享、連接這三項預設；只限這三項、只限他本人，會留稽核並通知所有管理員。
 4. **第一位管理員拿不掉。** 設定檔裡指定的那一位（今天的 `config.administrator`）永遠是管理員，只有在 Hub 主機上才能更換。這是救援用的：就算角色全被改壞，仍有一個人進得來。
 5. **一定有一位管理員。** 第 4 點的第一位管理員永遠在，所以其他管理員的指派都可以移除，包括最後一筆。第一位管理員仍然要通過 AD 的帳號檢查（帳號停用就進不來），只是不看群組。
@@ -248,6 +248,7 @@ Not a route rename. Each protected operation captures: actor and session, the ex
 3. Delegation authority is the actor's **held bundle**, not the result of `can()`. The bundle is what the actor's live assignments carry after the fresh checks (actor eligibility, group membership, assignment time window). The self-use `state` does not enter it: on a never-enabled or suspended Hub an admin can still assign the member role.
    - **Holders of `hub.admin`**, the configured root included through its immutable virtual admin bundle, may assign any role to **other** people, with any scope and any fleet limit up to 8. The root's bundle is for delegating to others only; it never implies self-use for the root (A.5).
    - **Other holders of `roles.assign`** are bounded per permission, never on flattened unions: they must hold that permission on the identical scope (same realm + GUID) or hub-wide; `maxFleets` granted ≤ theirs; `expiresAt` granted ≤ the expiry of their own authority for that permission; no subset inference between groups. A person-level deny on the actor removes that permission from their bundle.
+   - Removing, narrowing or shortening someone else's assignment is bounded the same way as creating it: a non-admin `roles.assign` holder must dominate the assignment's **old** bundle (every permission, on its scope, with its fleet limit). They cannot remove or cut down an assignment that carries anything they do not hold, so a limited assigner cannot strip an auxiliary admin. `hub.admin` holders are unbounded here too.
    - Self-target guards (item 4) apply to everyone, admins included.
    - Editing a role is a grant to every current assignee of that role. It needs `hub.admin`, goes through the same preview (who gains what), re-runs the persons-only check (item 2), and is refused when it would add a permission to the editing actor through any assignment they hold.
    - `team.approve_join` and `team.approve_ask` belong to phase 3. Until that phase and its protocol review land, the writer refuses both bits in any role, so there is no first-introduction path to reason about.
