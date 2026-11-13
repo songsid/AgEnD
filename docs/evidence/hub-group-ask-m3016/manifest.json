@@ -1,6 +1,6 @@
 {
   "sha256": {
-    "a89855765ff5135201d74929293c3081679c99404d8f956cba80c02c64d90f2b": [
+    "f75e0be19367dbd90aa02e83b6089289f5864eb2e4e62a843e4a0dfa13ae7265": [
       "README.md"
     ],
     "0eed5ebd5fd446ac16f802016b2e601a228f652cf6c8e7844d568df7bda6405b": [
@@ -225,7 +225,8 @@
     "fd239a92a438ffc6952c3735ea6de6c7de0fd9475191efe3da7c617c7998c40a": [
       "browser-current/current-phone-dark-en-allowed.png",
       "browser-initial/current-phone-dark-en-allowed.png",
-      "r1/browser-current/current-phone-dark-en-allowed.png"
+      "r1/browser-current/current-phone-dark-en-allowed.png",
+      "r2/browser-retained-css/current-phone-dark-en-allowed.png"
     ],
     "2c218dc16c5b9ec09195bfc734f93c68070e21d3d21a8053fc83e2458cabdc14": [
       "browser-current/current-phone-dark-en-empty.png",
@@ -248,7 +249,8 @@
     "ab9d6c96cb9d7c9cd0f7dea94f131300a21d352c72a9fa118e0c4dcf7ed26b07": [
       "browser-current/current-phone-dark-zh-TW-allowed.png",
       "browser-initial/current-phone-dark-zh-TW-allowed.png",
-      "r1/browser-current/current-phone-dark-zh-TW-allowed.png"
+      "r1/browser-current/current-phone-dark-zh-TW-allowed.png",
+      "r2/browser-retained-css/current-phone-dark-zh-TW-allowed.png"
     ],
     "d08ae0d9e76b4c4c095e7261962d39a2d29d0792a94942b8476950e26eab35db": [
       "browser-current/current-phone-dark-zh-TW-empty.png",
@@ -272,7 +274,8 @@
     "82639c4529cc84e4f31470a5202b17e2083d9db15416396f76c324158d7be758": [
       "browser-current/current-phone-light-en-allowed.png",
       "browser-initial/current-phone-light-en-allowed.png",
-      "r1/browser-current/current-phone-light-en-allowed.png"
+      "r1/browser-current/current-phone-light-en-allowed.png",
+      "r2/browser-retained-css/current-phone-light-en-allowed.png"
     ],
     "96139c4d4e8567941d584c0c21a919247efe7bd4b2ba352c1d7dd390da2a7985": [
       "browser-current/current-phone-light-en-empty.png",
@@ -296,7 +299,8 @@
     "1b1e9a010a1d9cb25066a9c631a41a0b71d7d6b77624897d8ce4389b0425e06a": [
       "browser-current/current-phone-light-zh-TW-allowed.png",
       "browser-initial/current-phone-light-zh-TW-allowed.png",
-      "r1/browser-current/current-phone-light-zh-TW-allowed.png"
+      "r1/browser-current/current-phone-light-zh-TW-allowed.png",
+      "r2/browser-retained-css/current-phone-light-zh-TW-allowed.png"
     ],
     "1a2f47be7a13b55b778d56595ce964dd51794968bde9e836a02657334799fc7e": [
       "browser-current/current-phone-light-zh-TW-empty.png",
@@ -386,7 +390,9 @@
       "logs/test-types-final-source.log.gz",
       "logs/test-types-postsync.log.gz",
       "r1/final-source-types.log.gz",
-      "r1/final-test-types.log.gz"
+      "r1/final-test-types.log.gz",
+      "r2/source-types.log.gz",
+      "r2/test-types.log.gz"
     ],
     "de4b24d2f6e8022858062bf0367a16acd4949d2b5f063a545a3fee720eac394a": [
       "logs/sync-focused.log.gz"
@@ -467,61 +473,74 @@
       "r1/K3.log.gz"
     ],
     "2bbaade013e50bf5a799dca9ed054ff29d772182f054fda1574fbfbb7761b50a": [
-      "r1/browser-current/current-phone-dark-en-empty.png"
+      "r1/browser-current/current-phone-dark-en-empty.png",
+      "r2/browser-retained-css/current-phone-dark-en-empty.png"
     ],
     "dd6dacdf0b284cdeed18ce1ec02aede79dc50c47844ae59d99013be36d3aac62": [
       "r1/browser-current/current-phone-dark-en-group-selected.png"
     ],
     "15c1c192bdb75b9a10755aa4dcabcd7c9a4a3a58457050514a50d02509891235": [
-      "r1/browser-current/current-phone-dark-en-groups.png"
+      "r1/browser-current/current-phone-dark-en-groups.png",
+      "r2/browser-retained-css/current-phone-dark-en-groups.png"
     ],
     "a501d340bcbf473c8417d34917f1f2a3eb618b331babb644006fc30d29253291": [
-      "r1/browser-current/current-phone-dark-en-people.png"
+      "r1/browser-current/current-phone-dark-en-people.png",
+      "r2/browser-retained-css/current-phone-dark-en-people.png"
     ],
     "0d6334dfdce0e2f852f507b6d20f371885aee83b5daf98c738f6c504b4c52070": [
       "r1/browser-current/current-phone-dark-en-person-selected.png"
     ],
     "4509105df71ca268829dea8c3af7e3cef78f71981e7057836c66590ce6f4a29c": [
-      "r1/browser-current/current-phone-dark-zh-TW-empty.png"
+      "r1/browser-current/current-phone-dark-zh-TW-empty.png",
+      "r2/browser-retained-css/current-phone-dark-zh-TW-empty.png"
     ],
     "3941f7a559fc558e33080d22a25856fca47fc7b80fe6da0ee1e02be09eb16c24": [
       "r1/browser-current/current-phone-dark-zh-TW-group-selected.png"
     ],
     "a6a47bac8ac707858df471a85e3462c705a620438594a6d80b54847c91a53b85": [
-      "r1/browser-current/current-phone-dark-zh-TW-groups.png"
+      "r1/browser-current/current-phone-dark-zh-TW-groups.png",
+      "r2/browser-retained-css/current-phone-dark-zh-TW-groups.png"
     ],
     "a1764fb3b03a27529013c03ced3acee9ec36a2cb14499eb709e7a7474b8cc257": [
-      "r1/browser-current/current-phone-dark-zh-TW-people.png"
+      "r1/browser-current/current-phone-dark-zh-TW-people.png",
+      "r2/browser-retained-css/current-phone-dark-zh-TW-people.png"
     ],
     "fff2a2ab8109b45cc30e74650f632cddecf7cfcd70ebcf74ef8aebf4c1302ec9": [
       "r1/browser-current/current-phone-dark-zh-TW-person-selected.png"
     ],
     "c5b08d98064177b6a9c91ea1fe70b534169764560438a8d8c0fea359d2bbe72c": [
-      "r1/browser-current/current-phone-light-en-empty.png"
+      "r1/browser-current/current-phone-light-en-empty.png",
+      "r2/browser-retained-css/current-phone-light-en-empty.png"
     ],
     "4dcf2f9a3dcd5cf4e4538bad3140e3ca5858dece87b9f8d80508d6bc6127f833": [
-      "r1/browser-current/current-phone-light-en-group-selected.png"
+      "r1/browser-current/current-phone-light-en-group-selected.png",
+      "r2/browser-retained-css/current-phone-light-en-group-selected.png"
     ],
     "e7ca2992f91cac53fee1d313e0f2c6dd2b12cd51a51caf07676aa829727217ed": [
-      "r1/browser-current/current-phone-light-en-groups.png"
+      "r1/browser-current/current-phone-light-en-groups.png",
+      "r2/browser-retained-css/current-phone-light-en-groups.png"
     ],
     "9558b4d70ba12308de85aa65588ffc43f06102c77b2d0ecf732ce794c61a79ae": [
-      "r1/browser-current/current-phone-light-en-people.png"
+      "r1/browser-current/current-phone-light-en-people.png",
+      "r2/browser-retained-css/current-phone-light-en-people.png"
     ],
     "54884e806018839ee726b6056d410e2a1d78516404fe77e5ab620aa2fdf82d95": [
       "r1/browser-current/current-phone-light-en-person-selected.png"
     ],
     "4848d9873f58636403a78d8a4de8a2755ce44ef8ad263575e7f46c05c25d589f": [
-      "r1/browser-current/current-phone-light-zh-TW-empty.png"
+      "r1/browser-current/current-phone-light-zh-TW-empty.png",
+      "r2/browser-retained-css/current-phone-light-zh-TW-empty.png"
     ],
     "095d39efa458f75750549b3c5f0b27f0c4e7f8b59fe3240cd6f5049318c70a60": [
       "r1/browser-current/current-phone-light-zh-TW-group-selected.png"
     ],
     "3d9521418153293737332a7e5cd58c46c25db36293cdbb62cac8386f6fb24cde": [
-      "r1/browser-current/current-phone-light-zh-TW-groups.png"
+      "r1/browser-current/current-phone-light-zh-TW-groups.png",
+      "r2/browser-retained-css/current-phone-light-zh-TW-groups.png"
     ],
     "3f0e1de0eb6c2c89ee5b6934f69ba02a3cc791c84e3475a2965f5f96c7a54e01": [
-      "r1/browser-current/current-phone-light-zh-TW-people.png"
+      "r1/browser-current/current-phone-light-zh-TW-people.png",
+      "r2/browser-retained-css/current-phone-light-zh-TW-people.png"
     ],
     "911dc595d675ffaf01e53b917f0f2282690da1a0a3f22ac6f55fb0ac70425175": [
       "r1/browser-current/current-phone-light-zh-TW-person-selected.png"
@@ -558,6 +577,72 @@
     ],
     "dcd2776488c928932adae24e0887a8b4f2f22b873d51d62550314a42e94fb3c7": [
       "r1/visual.json"
+    ],
+    "d0b6fbe88ffea7fc96abedeff7e59e4998c54015597c3de67f8433cfc04c6320": [
+      "r2/L1.log.gz"
+    ],
+    "0ed964603b2395f093319aeba320d444fdbfad10b3bab729a6e6a16cd858e6da": [
+      "r2/L2.log.gz"
+    ],
+    "7f453ad807dcff50f2ecdead7a826a4e16a3b3e7c496718d18608d2fc046a296": [
+      "r2/L3.log.gz"
+    ],
+    "7d867a58bc7bff6ec4ecec40a5c5d7f50b9d80205441901f36034b09686ac286": [
+      "r2/browser-retained-css/current-phone-dark-en-group-selected.png"
+    ],
+    "98f944f65aed6b3434864b8d31cfa9e1a9a1368303fc4c51ce72593b49b5a7da": [
+      "r2/browser-retained-css/current-phone-dark-en-person-selected.png"
+    ],
+    "7f6fc32ed3c4034fcfcbf8c3fcca46a60a949c835dd45c45343ce0a92af24231": [
+      "r2/browser-retained-css/current-phone-dark-zh-TW-group-selected.png"
+    ],
+    "0b55ed618369ecc20f64ce8cb8317be0cb7a638550c3a8a5d2785e3761f624fa": [
+      "r2/browser-retained-css/current-phone-dark-zh-TW-person-selected.png"
+    ],
+    "eea3bfa7e79f1585f66b532cbcb519d631b18adf11298cb2805325090c3d6ae2": [
+      "r2/browser-retained-css/current-phone-light-en-person-selected.png"
+    ],
+    "16fd35ad86e0087d708ac19b46e8161884a51a31c759ae16b3fc4d9c8ae6f7c6": [
+      "r2/browser-retained-css/current-phone-light-zh-TW-group-selected.png"
+    ],
+    "0fbf63695b1ea49843d4e1d47458d151dc08f01cc1a98461799d7db1d5b9dbff": [
+      "r2/browser-retained-css/current-phone-light-zh-TW-person-selected.png"
+    ],
+    "86f635c775133acd9d7d3a9bd3b4fe3ca102d95016763a158506e552a1a250a0": [
+      "r2/browser-retained-css/receipt.json"
+    ],
+    "fe368b29dfb24f671d0ac845dc9bba31813f7f642ce4f3fe9856bd7039e89b00": [
+      "r2/browser-retained-css.log.gz"
+    ],
+    "f3252f5594c0ae7d9a5e2740abfbf4c002ccb7de0f6c0f3482abc23192ccd8bd": [
+      "r2/checks.json"
+    ],
+    "f33c3b5479dfc8fdf077aad131c18f740721030a1c1c4bf93cbaeab4640fa855": [
+      "r2/comparison.json"
+    ],
+    "b35566a7db8278a19ba5c058d8a20b7b902617e4551db38b519a4fc358f0b098": [
+      "r2/fail-first.json"
+    ],
+    "b1abc6d3db6e8235272b1e13635df38bc91e4b329830d7c6168f8ab267b350c5": [
+      "r2/fail-first.log.gz"
+    ],
+    "bca8bfc632589c4985c37ca18449944abc1bc236a2595c387661a4b264e8006f": [
+      "r2/focused.log.gz"
+    ],
+    "eac3b5c725d02b84701897c88b534bd181a4be295695177d177df1db978ff601": [
+      "r2/mutations.json"
+    ],
+    "6071086fa72bb9ce66009e908d031bdefe6b6f0522904c297cd7143c429dda4a": [
+      "r2/restored.json"
+    ],
+    "21f2d9decada9d5da9fcdce80728854379e1bc0604d6f745b2604310b2d870ef": [
+      "r2/restored.log.gz"
+    ],
+    "050805d067daffa7862e021505fe8ee02a0eb0d58d2dfe25320074b2be336c38": [
+      "r2/scope.json"
+    ],
+    "1bae67545853eb36aa5c1ba8c237305fa5129a7eb246ca0b2ca87a4dd539da20": [
+      "r2/visual.json"
     ],
     "dbdb8cd011adc132ea3004529747be7c5fbbc37e5a56446af1f4cb24fa32e7c4": [
       "source-parity.json"

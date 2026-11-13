@@ -1,0 +1,31 @@
+{
+  "head": "e6eaf1c4c99c4d0ba81384376e069a9b9fc74d7e",
+  "equal": [
+    "current-phone-dark-en-allowed.png",
+    "current-phone-dark-en-empty.png",
+    "current-phone-dark-en-groups.png",
+    "current-phone-dark-en-people.png",
+    "current-phone-dark-zh-TW-allowed.png",
+    "current-phone-dark-zh-TW-empty.png",
+    "current-phone-dark-zh-TW-groups.png",
+    "current-phone-dark-zh-TW-people.png",
+    "current-phone-light-en-allowed.png",
+    "current-phone-light-en-empty.png",
+    "current-phone-light-en-group-selected.png",
+    "current-phone-light-en-groups.png",
+    "current-phone-light-en-people.png",
+    "current-phone-light-zh-TW-allowed.png",
+    "current-phone-light-zh-TW-empty.png",
+    "current-phone-light-zh-TW-groups.png",
+    "current-phone-light-zh-TW-people.png"
+  ],
+  "different": [
+    "current-phone-dark-en-group-selected.png",
+    "current-phone-dark-en-person-selected.png",
+    "current-phone-dark-zh-TW-group-selected.png",
+    "current-phone-dark-zh-TW-person-selected.png",
+    "current-phone-light-en-person-selected.png",
+    "current-phone-light-zh-TW-group-selected.png",
+    "current-phone-light-zh-TW-person-selected.png"
+  ]
+}

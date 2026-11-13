@@ -4,6 +4,14 @@ An owner can choose a person by name/login prefix or an AD security group in the
 
 The implementation and shared M-3014 boundary are in [the design note](../../design/hub-owner-group-grants.md). The shipped `hub` skill describes the controls and limits.
 
+## R2 retained-stylesheet correction
+
+The lazy picker now links its own `/assets/hub-grant-picker.css`, following the existing feature-stylesheet pattern. The44px rule moved out of `app.css`; a tab retaining the0eb shell stylesheet still receives the new picker rules. No `src/hub` server/grant code changed from the source-cleared R1.
+
+The mounted loader test is fail-first;97/97 across six focused UI/module/SKEW suites and both native typechecks pass on the recorded modified source. Their product/test input digests match clean `e6eaf1c4`; only a later capture-harness input-binding extension differs, and is exercised by that clean-head browser run. Three isolated loader/asset-map/dedup reversals are caught/restored; the restored mounted control passes at clean e6. At that same clean head, the retained0eb CSS case now passes in four phone EN/zh-TW light/dark combinations:77checks/24PNGs, with the fresh feature stylesheet's served digest matching its source and all measured fields44px. This is the bounded retained-sheet supplement, not another full gallery. Seventeen PNGs are byte-identical to R1; seven changed pairs were compared visually and are clear within that static scope.
+
+Original R1 negative evidence remains historical and unchanged; it is not relabeled. The accepted combined gallery is48cases/484checks/232PNGs, plus that one separately retained negative original. `r2/` holds commands, digests, original receipts, reversals, comparison and visual scope. Browser/server/rig/home cleanup is confirmed and the slot is released. No live, native-platform or real-device claim is added.
+
 ## R1 review correction
 
 The action proof now tracks its latest clock observation and permanently refuses after rollback or expiry. Its separate data-only selection fence remains available after ordinary action expiry for a fresh catalog observation; clock rollback also permanently retires that selection. Six person/group controls reproduce the original clock finding. At clean `627992254`, seven focused suites pass132/132 and both native typechecks pass. Three isolated semantic reversals are caught and restored. Original pre-R1 checks below keep their original scope.
