@@ -37,6 +37,7 @@ export interface HubHttpDeps {
   companyJoin?: import("../join/service.js").HubCompanyJoin;
   /** Server-owned group permits; absent only in legacy injected compositions. */
   groups?: import("../group-policy/authorization.js").HubGroupAuthorization;
+  management?: Pick<import("../roles/authority.js").HubManagementAuthority, "require">;
   /**
    * #3298 S-89: Administration → Group permissions and the signed-in welcome. Composed only with S-88's complete control; absent,
    * the routes answer 404 and the session carries no "group-policy-v1" mark (the pages show nothing of it).

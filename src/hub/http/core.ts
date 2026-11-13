@@ -13,6 +13,7 @@ import { HubGroupPolicyError, HubGroupReadOverload, type GroupCheckContext } fro
 import { prepareGrantAccess, type HubGrantSubjectProof } from "../grant-access.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { readHubSessionEpoch } from "../session-epoch.js";
+import type { HubManagementPermission } from "../roles/authority.js";
 
 export type HubAuditEvent = Omit<HubAuditRecord, "id" | "sequence" | "at" | "policyVersion"> & { at?: number };
 
@@ -35,6 +36,13 @@ export class HubCore {
   /** Refuses once the server is fenced (and before every write: a stale continuation never commits). */
   live(): boolean { try { return this.lifetime() === true && this.deps.current().serverEnabled() === true; } catch { return false; } }
   check(): void { if (!this.live()) throw new HubProtocolError("unavailable"); }
+  async management(ctx: HubRequestContext, permission: HubManagementPermission) {
+    this.check();
+    if (this.deps.management) return this.deps.management.require(ctx, permission);
+    const actor = await ctx.requireAdmin(), current = ctx.isCurrent?.bind(ctx);
+    const assertCurrent = () => { this.check(); if (current && current() !== true) throw new HubProtocolError("revoked"); };
+    assertCurrent(); return { actor, assertCurrent };
+  }
   /** One synchronous unit of work on the Hub DB; a promise returned from `work` is refused. */
   atomic<T>(work: (db: Database.Database, tx: HubTx) => T, permit?: HubOperationPermit): T {
     this.check();
@@ -263,10 +271,11 @@ export async function personByLogin(core: HubCore, login: string): Promise<Perso
 
 /** Only the existing authenticated Hub-admin pairing operation may select an unsigned-in directory owner. */
 export async function pairingOwnerByLogin(core: HubCore, ctx: HubRequestContext, input: string): Promise<PersonKey | null> {
-  await ctx.requireAdmin();
+  const permit = await core.management(ctx, "join.manage"); permit.assertCurrent();
   const login = input.trim();
   if (!login || login.length > 256) return null;
   const owner = await core.lookupPairingOwner(login);
   await ctx.current(); // No stale admin session may use a lookup completed after it was signed out.
+  permit.assertCurrent();
   return owner;
 }

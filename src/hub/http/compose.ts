@@ -186,7 +186,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       return send(res, 200, await deps.companyJoin.createInvitation(ctx, owner));
     }
     if (deps.companyJoin && path === "/hub/v1/admin/company-join") {
-      if (method === "GET") { signedIn(); await ctx.requireAdmin(); return send(res, 200, deps.companyJoin.adminView()); }
+      if (method === "GET") { signedIn(); const permit = await core.management(ctx, "join.manage"), view = deps.companyJoin.adminView(); permit.assertCurrent(); return send(res, 200, view); }
       if (method !== "PUT") throw new HttpError(405, "method");
       csrf(); return send(res, 200, await deps.companyJoin.configure(ctx, await body()));
     }

@@ -1,0 +1,143 @@
+{
+  "ownOriginal": "dc922e3d059c3660f94047dcc711297cb149e2b2",
+  "base": "a1f0f141f3183356323045450680c98b3d42f0cf",
+  "old": "e0fbb2b3c999719b0fc32a5940864c5dfdd36d46",
+  "incoming": "d82bbc4d3283d353a2b598d9d5827fbf3b30b16c",
+  "merge": "8d46c4e183c13d1e01eca6b45428d3f8ea655476",
+  "parents": [
+    "e0fbb2b3c999719b0fc32a5940864c5dfdd36d46",
+    "d82bbc4d3283d353a2b598d9d5827fbf3b30b16c"
+  ],
+  "product": [
+    {
+      "file": "src/hub/compose/server.ts",
+      "sameSequence": true
+    },
+    {
+      "file": "src/hub/enrolment-code.ts",
+      "sameSequence": true
+    },
+    {
+      "file": "src/hub/group-policy/authorization.ts",
+      "sameSequence": true
+    },
+    {
+      "file": "src/hub/http/compose.ts",
+      "sameSequence": true
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sameSequence": true
+    },
+    {
+      "file": "src/hub/http/deps.ts",
+      "sameSequence": true
+    },
+    {
+      "file": "src/hub/join/service.ts",
+      "sameSequence": true
+    },
+    {
+      "file": "src/hub/pairing.ts",
+      "sameSequence": true
+    },
+    {
+      "file": "src/hub/roles/authority.ts",
+      "sameSequence": true
+    },
+    {
+      "file": "src/hub/store.ts",
+      "sameSequence": true
+    }
+  ],
+  "tests": [
+    {
+      "file": "tests/hub-roles-company-issuer-s129.test.ts",
+      "sameBytesAsClearedHead": true
+    },
+    {
+      "file": "tests/hub-roles-issuer-s129.test.ts",
+      "sameBytesAsClearedHead": true
+    },
+    {
+      "file": "tests/hub-store-publication-s1.test.ts",
+      "sameBytesAsClearedHead": true
+    },
+    {
+      "file": "tests/support/hub-role-authority-rig.ts",
+      "sameBytesAsClearedHead": true
+    }
+  ],
+  "unexpectedProductPaths": [],
+  "conflicts": [
+    "src/hub/roles/authority.ts",
+    "src/hub/group-policy/authorization.ts"
+  ],
+  "conflictIncomingEqualsApprovedParent": true,
+  "excluded": "An initial parity attempt incorrectly included unrelated earlier incoming alpha changes when comparing a1f to e0. Replaced with original issuer commit delta and explicit current cleared test bytes; that failed audit is not evidence.",
+  "checks": {
+    "passed": 102,
+    "files": 5,
+    "skipped": 0,
+    "sourceTypes": 0,
+    "testTypes": 0
+  },
+  "bindings": [
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "88c3f75757771ed888f89edda22b49ab269eb3f23e5b47eeb39c466a45d3d15b"
+    },
+    {
+      "file": "src/hub/enrolment-code.ts",
+      "sha256": "03c06d7a8429a90d3a2c36b1362ef2c3e75368b35d829a18f9a303ea4a06a036"
+    },
+    {
+      "file": "src/hub/group-policy/authorization.ts",
+      "sha256": "924b3a40bfeefe6ee411303058adf6338e770ebb28db21373948fad4b5c95171"
+    },
+    {
+      "file": "src/hub/http/compose.ts",
+      "sha256": "e08ab280662835f7a2673f5b96c35b93bba2e3df91b616a21d24b63ecd77245e"
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "c98b8bd16b41d0ce302d70438f9a70682fc68908610e3940ab9e4ba560bb2a48"
+    },
+    {
+      "file": "src/hub/http/deps.ts",
+      "sha256": "7af7a479bc3b5ac62b57b25877816a6036767e60bdf4fda15f99b6123a1bdd0b"
+    },
+    {
+      "file": "src/hub/join/service.ts",
+      "sha256": "a2c45804be0626100fd1149ee78787ac38bfb01f0e6a4bba75222fc59ae32ec0"
+    },
+    {
+      "file": "src/hub/pairing.ts",
+      "sha256": "b05efa96250c79487f485b37c4b0619f0e4fc01f1872855e26319afe3aafaae9"
+    },
+    {
+      "file": "src/hub/roles/authority.ts",
+      "sha256": "8d30d807e9572e5bffbea3dadfb3071ea7234bed0c4ad699dd90d8aec459a80a"
+    },
+    {
+      "file": "src/hub/store.ts",
+      "sha256": "0550f7555c6ee382dbf2410e8229730a30f14636c3377781c1e9b8cc302a5bcf"
+    },
+    {
+      "file": "tests/hub-roles-company-issuer-s129.test.ts",
+      "sha256": "c427e0d8e39a03337d3d466c9527afc240a9bec8f51de814cebe438560f50da3"
+    },
+    {
+      "file": "tests/hub-roles-issuer-s129.test.ts",
+      "sha256": "281f935ebeddeab29153831bc978271751137d323478606258478d6c8da0e2c9"
+    },
+    {
+      "file": "tests/hub-store-publication-s1.test.ts",
+      "sha256": "ec8cdf835cab600b0af37b1bfc291acec54c1c1974076b0440a32e7f60b0204e"
+    },
+    {
+      "file": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "687de604fd18763c4abdbef9324aed30ba9315194d412e6e4ce39ffd29ff86ce"
+    }
+  ]
+}

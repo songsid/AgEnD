@@ -75,6 +75,7 @@ export interface HubHttpDeps {
   pairing: HubPairingService;
   companyJoin?: HubCompanyJoin;
   groups?: HubGroupAuthorization;
+  management?: Pick<import("../roles/authority.js").HubManagementAuthority, "require">;
   groupHttp?: import("../group-policy/admin-api.js").GroupHttpDeps;
   grantDirectory?: import("../http/deps.js").HubHttpDeps["grantDirectory"];
   pairingNotices?: HubPairingNotices;
