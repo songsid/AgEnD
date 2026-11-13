@@ -212,7 +212,8 @@ export class HubServer {
    */
   relocationLinkCurrent(proof: HubRelocationAck, advanced = 0): boolean {
     const connection = this.connections.get(proof.fleetId);
-    if (!connection || connection !== proof.link || !connection.ready || connection.context.linkEpoch !== proof.linkEpoch || this.stopped) return false;
+    // The socket itself must still be open: a CLOSING/ended link can keep its map entry until its close event runs.
+    if (!connection || connection !== proof.link || !connection.ready || !connection.link.open() || connection.context.linkEpoch !== proof.linkEpoch || this.stopped) return false;
     return advanced === 0 ? this.current() && connection.context.current()
       : this.options.pairing.bindingRow(proof.fleetId, connection.binding.generation, connection.binding.revocationVersion + advanced);
   }

@@ -70,6 +70,18 @@ describe("#3429 B — relocate and its ack over the pinned link", () => {
     expect(r.server.relocationLinkCurrent(proof, 1)).toBe(false);
     void c;
   });
+  it.each([0, 1] as const)("the acked socket already CLOSING (its close event not yet run, still mapped) is no keeper — mode %s (Prism)", async mode => {
+    const { r, p, st, onFrame } = await setup();
+    const c = r.client(onFrame()); await c.value.start();
+    const s = st(B, 1), proof = (await r.server.relocate(p.fleetId, s, relocationDigest(s), Date.now() + 5_000))!;
+    if (mode === 1) r.store.mutate({ at: 1, requestId: "bump", actor: { kind: "local-host" }, action: "fixture.bump", result: "completed" }, (x: any) => { x.revocationVersion++; });
+    expect(r.server.relocationLinkCurrent(proof, mode)).toBe(true);                                    // the OPEN positive
+    const ws = (proof.link as any).link.ws;
+    ws.close(1000);
+    expect(ws.readyState).toBe(2);                                                                      // CLOSING; no await before the recheck
+    expect(r.server.relocationLinkCurrent(proof, mode)).toBe(false);
+    void c;
+  });
   it("an older member (no capability): nothing sent, null at once", async () => {
     const { r, p, st, onFrame } = await setup();
     const c = r.client(onFrame(), undefined, HUB_OPTIONAL_CAPABILITIES.filter(x => x !== HUB_MEMBER_RELOCATION_CAPABILITY)); await c.value.start();
