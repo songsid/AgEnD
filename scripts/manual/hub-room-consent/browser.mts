@@ -25,13 +25,14 @@ server.on("request", (req, res) => {
   if (!r.http.handle(req, res)) { res.writeHead(404); res.end(); }
 });
 const pw = createRequire(resolve(process.env.PW_DIR!, "package.json"))("playwright-core");
-const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
+let browser: any;
 const sha = (data: Buffer | string) => createHash("sha256").update(data).digest("hex");
 const receipt: any = { sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   scope: "Owned HTTPS/SQLite real C consent/R HTTP with the public U owner/sidebar mounts. Fake directory/transport; no real agent, AD or input; no API response fixtures.",
   checks: [], pictures: [], requests: [], served: {} };
 const check = (name: string, ok: unknown) => { receipt.checks.push({ name, ok: !!ok }); if (!ok) throw Error(name); };
 try {
+  browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
   for (const device of ["desktop", "phone"]) for (const lang of ["en", "zh-TW"]) for (const theme of ["light", "dark"]) {
     const tag = `${device}-${lang}-${theme}`, id = randomUUID(), errors: string[] = [];
     exposures.push({ id, fleetId, owner, displayName: "Notes", revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) });
@@ -52,6 +53,10 @@ try {
     });
     const shot = async (name: string) => { const file = `${tag}-${name}.png`; await page.screenshot({ path: join(out, file), fullPage: true }); receipt.pictures.push({ path: file, sha256: sha(readFileSync(join(out, file))) }); };
     const open = () => page.goto(`${origin}/ui/hub?view=invitations`);
+    await page.goto(`${origin}/ui/hub/exposures`); await page.locator(".hub-invitation").waitFor();
+    check(tag + " owner list mount", await page.locator(".p-hub .hub-invitation").count() === 1);
+    await page.locator("#sidebar button.hub-invitations-row").waitFor({ state: "attached" });
+    check(tag + " sidebar invitation mount", await page.locator("#sidebar button.hub-invitations-row").count() === 1);
     await open(); await page.locator(".hub-invitation").waitFor();
     check(tag + " participant disclosure", (await page.locator(".hub-invitation").innerText()).includes(lang === "en" ? "2 people" : "2 個人"));
     const sizes = await page.locator(".hub-invitation button").evaluateAll((buttons: HTMLElement[]) => buttons.map(b => b.getBoundingClientRect().height));
@@ -60,7 +65,8 @@ try {
     await page.locator(".hub-invitation").waitFor({ state: "detached" });
     await page.goto(`${origin}/ui/hub/exposures?agent=${id}`); await page.locator(".hub-agent-rooms li").waitFor();
     check(tag + " accepted in SQLite", !!r.db.prepare("SELECT 1 FROM hub_room_members WHERE kind='agent' AND room_id=? AND subject=? AND owner_at_join=?").get(roomId, id, personKeyString(owner)));
-    check(tag + " owner not made room person", !r.db.prepare("SELECT 1 FROM hub_room_members WHERE kind='person' AND room_id=? AND subject=?").get(roomId, personKeyString(owner))); await shot("accepted");
+    check(tag + " owner not made room person", !r.db.prepare("SELECT 1 FROM hub_room_members WHERE kind='person' AND room_id=? AND subject=?").get(roomId, personKeyString(owner)));
+    check(tag + " owner cannot read room history", (await r.call(actor, "GET", `/hub/v1/rooms/${roomId}`)).status === 403); await shot("accepted");
     await page.locator(".hub-agent-rooms button").click(); await page.locator(".hub-agent-rooms").waitFor({ state: "detached" });
     check(tag + " owner leave saved", !r.db.prepare("SELECT 1 FROM hub_room_members WHERE kind='agent' AND room_id=? AND subject=?").get(roomId, id));
     const again = await r.call(admin, "POST", `/hub/v1/rooms/${roomId}/invitations`, { agents: [id] }); check(tag + " manager can invite again", again.status === 200);
@@ -71,7 +77,7 @@ try {
   }
 } catch (error) { receipt.checks.push({ name: "run completed", ok: false, error: String(error) }); }
 finally {
-  await browser.close(); server.closeAllConnections(); await new Promise<void>(yes => server.close(() => yes())); await r.close(); rmSync(keys, { recursive: true, force: true });
+  await browser?.close(); server.closeAllConnections(); await new Promise<void>(yes => server.close(() => yes())); await r.close(); rmSync(keys, { recursive: true, force: true });
   writeFileSync(join(out, "receipt.json"), JSON.stringify(receipt, null, 2));
 }
 console.log(JSON.stringify({ checks: receipt.checks.length, failed: receipt.checks.filter((x: any) => !x.ok).length, pictures: receipt.pictures.length }));
