@@ -50,17 +50,21 @@ async function world(mode: "preparation" | "witness" | "root" | "host" = "prepar
   const writer = { prepare, commit, compensate(): never { throw Error("unmounted compensation"); } };
   const sessions = { recentAuthentication: recent, prepareDirectoryRotation: w.sessions.prepareDirectoryRotation.bind(w.sessions),
     completeDirectoryRotation: w.sessions.completeDirectoryRotation.bind(w.sessions) };
+  let physical = 0;
   const mounted: HubMountedDirectory = { decision, current: w.options.current, source: () => source, sessions: () => sessions,
-    withDirectoryRead: (person, work) => w.pool.withDirectoryRead(person, work) };
+    withDirectoryRead: (person, work) => w.pool.withDirectoryRead(person, async () => { physical++; try { return await work(); } finally { physical--; } }) };
+  const probe = vi.fn(async () => "A".repeat(64));
   const deps = { source: () => source, writer: () => writer, withDirectoryRead: mounted.withDirectoryRead,
-    recentAuthentication: recent, now: w.options.now, createDirectory: () => candidate, probeTls: async () => "A".repeat(64) };
+    recentAuthentication: recent, now: w.options.now, createDirectory: () => candidate, probeTls: probe };
   const engine = createHubDirectorySettingsProof(deps);
   const control = createHubDirectorySettingsControl({ hubId: w.hubId, mounted: () => mounted, writer: () => writer,
     withDecision: async work => work(decision), remount: async () => {}, current: w.options.current,
     now: w.options.now, createDirectory: deps.createDirectory, probeTls: deps.probeTls });
   const input = () => ({ directory: { ...source.config, baseDn: "OU=Next,DC=example,DC=test" }, changes: ["search" as const],
     recipients: [{ kind: "host" as const, sink: "owner" }] });
-  return { ...w, decision, actor, source, selected, context, preparation, recent, candidate, prepare, commit, control, engine, input,
+  const request = () => { const { realm: _realm, profile: _profile, bindPasswordRef: _ref, ...directory } = input().directory; return { directory }; };
+  return { ...w, decision, actor, source, selected, context, preparation, recent, candidate, prepare, commit, control, engine, input, request, mounted, probe,
+    get physical() { return physical; },
     async finish() { engine.close(); await control.close(); } };
 }
 
@@ -89,5 +93,114 @@ describe("S129 preparation-aware directory controller", () => {
     const w = await world(mode);
     try { expect(w.control.read(w.context).reauthentication).toBe(mode === "host" ? "host" : "recent"); }
     finally { await w.finish(); }
+  });
+  it("does not acquire browser sessions for a D3 host read", async () => {
+    const w = await world("host"); w.mounted.sessions = () => { throw Error("host read acquired browser sessions"); };
+    try { expect(w.control.read(w.context).reauthentication).toBe("host"); expect(w.recent).not.toHaveBeenCalled(); }
+    finally { await w.finish(); }
+  });
+  it("passes a frozen narrow binding and the exact opaque preparation to the real session helper", async () => {
+    const w = await world();
+    try {
+      w.control.read(w.context);
+      const proof = w.recent.mock.calls[0]![1]!;
+      expect(proof).toHaveProperty("preparation", w.context.preparation);
+      expect(Object.isFrozen(proof)).toBe(true); expect(Object.isFrozen(proof.source)).toBe(true);
+      expect(Object.keys(proof.source).sort()).toEqual(["administrator", "decisionProof", "directory", "epoch", "image"]);
+      expect(proof.source.directory).toBe(w.source.directory); expect(proof.source.decisionProof).toBe(w.source.decisionProof);
+      expect(proof.source.administrator).toEqual(w.root);
+    } finally { await w.finish(); }
+  });
+  it("keeps a slow preparation usable without refreshing its recorded authentication", async () => {
+    const w = await world(); w.time(90000); w.elapsed(90000);
+    try {
+      expect(w.control.read(w.context).reauthentication).toBe("recent");
+      expect(w.db.prepare("SELECT authenticated_at FROM hub_session_authentication WHERE session_id=?").get(w.actor.sessionId)).toEqual({ authenticated_at: 100 });
+      const draft = await w.control.prepare(w.request(), w.context);
+      await expect(w.control.test({ ref: draft.ref }, w.context)).resolves.toEqual({ ok: true });
+      expect(w.candidate.checkEligibility).toHaveBeenCalledWith(w.root);
+      expect(w.candidate.checkEligibility).toHaveBeenCalledWith(w.admin);
+      expect(w.commit).not.toHaveBeenCalled();
+    } finally { await w.finish(); }
+  });
+  it("does not extend an ordinary effect witness to the preparation budget", async () => {
+    const w = await world("witness"); w.time(5000);
+    try { expect(() => w.control.read(w.context)).toThrow(); expect(w.recent).not.toHaveBeenCalled(); }
+    finally { await w.finish(); }
+  });
+  it("keeps a missing attestation missing and requires reauthentication", async () => {
+    const w = await world(); w.db.prepare("DELETE FROM hub_session_authentication WHERE session_id=?").run(w.actor.sessionId);
+    try {
+      expect(w.control.read(w.context).reauthentication).toBe("required");
+      const draft = await w.engine.prepare(w.input(), w.context);
+      await expect(w.engine.apply(draft.ref, {}, w.context)).rejects.toMatchObject({ code: "reauthentication" });
+      expect(w.commit).not.toHaveBeenCalled();
+      expect(w.db.prepare("SELECT authenticated_at FROM hub_session_authentication WHERE session_id=?").get(w.actor.sessionId)).toBeUndefined();
+    } finally { await w.finish(); }
+  });
+  it("does not let a new preparation renew an expired sign-in attestation", async () => {
+    const w = await world(); w.time(200000); w.elapsed(200000);
+    w.context.preparation = bindHubDirectoryPreparation(await w.core.directoryPreparation(w.selected.ctx), w.actor, w.source);
+    w.time(100001); w.elapsed(100001);
+    try {
+      expect(w.control.read(w.context).reauthentication).toBe("required");
+      const draft = await w.engine.prepare(w.input(), w.context);
+      await expect(w.engine.apply(draft.ref, {}, w.context)).rejects.toMatchObject({ code: "reauthentication" });
+      expect(w.commit).not.toHaveBeenCalled();
+    } finally { await w.finish(); }
+  });
+  it("keeps fresh old-directory eligibility mandatory despite a recent authentication", async () => {
+    const w = await world();
+    try {
+      const draft = await w.engine.prepare(w.input(), w.context);
+      w.eligible.mockResolvedValueOnce({ eligible: false, reason: "unavailable" });
+      await expect(w.engine.apply(draft.ref, {}, w.context)).rejects.toMatchObject({ code: "unavailable" });
+      expect(w.candidate.checkEligibility).not.toHaveBeenCalled(); expect(w.commit).not.toHaveBeenCalled();
+    } finally { await w.finish(); }
+  });
+  it.each(["image", "epoch", "root", "frame", "signout", "time", "lifetime"] as const)("withholds a read when %s changes during authentication lookup", async mode => {
+    const w = await world();
+    w.recent.mockImplementation((actor, proof) => {
+      const at = w.sessions.recentAuthentication(actor, proof);
+      if (mode === "image") w.source.image = "b".repeat(64);
+      if (mode === "epoch") w.source.epoch++;
+      if (mode === "root") w.source.administrator = w.other;
+      if (mode === "frame") w.source.decisionProof = () => null;
+      if (mode === "signout") w.sessions.signOut(w.selected.token);
+      if (mode === "time") w.time(300000);
+      if (mode === "lifetime") w.stop();
+      return at;
+    });
+    try { expect(() => w.control.read(w.context)).toThrow(); expect(w.commit).not.toHaveBeenCalled(); }
+    finally { await w.finish(); }
+  });
+  it("withholds writer effects when source authority changes during the engine's attestation callback", async () => {
+    const w = await world();
+    w.recent.mockImplementation((actor, proof) => { const at = w.sessions.recentAuthentication(actor, proof); w.source.image = "b".repeat(64); return at; });
+    try {
+      const draft = await w.engine.prepare(w.input(), w.context);
+      await expect(w.engine.apply(draft.ref, {}, w.context)).rejects.toThrow();
+      expect(w.candidate.checkEligibility).not.toHaveBeenCalled(); expect(w.prepare).not.toHaveBeenCalled(); expect(w.commit).not.toHaveBeenCalled();
+    } finally { await w.finish(); }
+  });
+  it("does not revive the retired preparation when a changed source comes back", async () => {
+    const w = await world();
+    w.recent.mockImplementation((actor, proof) => { const at = w.sessions.recentAuthentication(actor, proof); w.source.image = "b".repeat(64); return at; });
+    try {
+      expect(() => w.control.read(w.context)).toThrow();
+      w.source.image = "a".repeat(64); w.recent.mockImplementation((actor, proof) => w.sessions.recentAuthentication(actor, proof));
+      expect(() => w.control.read(w.context)).toThrow();
+    } finally { await w.finish(); }
+  });
+  it("holds the shared physical slot through a cancelled preparation until its probe settles", async () => {
+    const w = await world(); let release!: () => void, enter!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; }), entered = new Promise<void>(resolve => { enter = resolve; });
+    w.probe.mockImplementation(async () => { enter(); await held; return "A".repeat(64); });
+    const preparing = w.control.prepare(w.request(), w.context); void preparing.catch(() => {}); await entered;
+    let settled = false; const closing = w.control.close().then(() => { settled = true; });
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve)); expect(settled).toBe(false); expect(w.physical).toBe(1);
+      release(); await expect(preparing).rejects.toThrow(); await closing; expect(w.physical).toBe(0); expect(w.commit).not.toHaveBeenCalled();
+    } finally { release(); await preparing.catch(() => {}); await closing; await w.finish(); }
   });
 });

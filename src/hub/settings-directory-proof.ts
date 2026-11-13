@@ -13,7 +13,7 @@ import { scalarString, person, validated } from "./validation.js";
 import { MAX_POLICY_DIRECTORY_GROUPS } from "./roles/read.js";
 import { parseHubDirectoryDecisionMetadata, type HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import type { HubDirectorySettingsCandidate, HubDirectorySettingsWriter } from "./settings-commit.js";
-import type { HubDirectorySessionRotation } from "./session-directory-transition.js";
+import type { HubDirectorySessionProof, HubDirectorySessionRotation } from "./session-directory-transition.js";
 import { assertHubDirectoryActor, authorizeHubDirectoryPreparation, type HubDirectoryAdministration, type HubDirectoryPreparation } from "./roles/directory-authority.js";
 import type { HubDirectoryDecisionProof } from "./directory-decision-proof.js";
 
@@ -32,6 +32,15 @@ export function captureHubDirectoryProofContext(input: HubDirectoryProofContext)
   const actor = parseHubDirectoryDecisionMetadata({ actor: input.actor, changes: ["search"], recipients: [{ kind: "host", sink: "owner" }] }).actor;
   return { actor, current: input.current, signal: input.signal, ...(input.administration !== undefined ? { administration: input.administration } : {}),
     ...(input.preparation !== undefined ? { preparation: input.preparation } : {}) };
+}
+/** Narrow internal adapter packet. The actual session helper still proves its opaque handle and Core binding. */
+export function captureHubDirectorySessionProof(ctx: HubDirectoryProofContext, source: HubDirectoryProofSource): HubDirectorySessionProof | undefined {
+  if (ctx.preparation === undefined && ctx.administration === undefined) return undefined;
+  if (ctx.preparation !== undefined && ctx.administration !== undefined) refuse("denied");
+  const binding = Object.freeze({ directory: source.directory, administrator: Object.freeze({ ...source.administrator }),
+    image: source.image, epoch: source.epoch, ...(source.decisionProof === undefined ? {} : { decisionProof: source.decisionProof }) });
+  return ctx.preparation !== undefined ? Object.freeze({ preparation: ctx.preparation, source: binding })
+    : Object.freeze({ witness: ctx.administration!, source: binding });
 }
 export interface HubDirectoryProofSource {
   directory: HubDirectory;
@@ -53,7 +62,7 @@ export interface HubDirectoryProofDeps {
   createDirectory(config: HubDirectoryConfig, secrets: { bindPassword: string }, options: { expectedServerFingerprint?: string }): HubDirectory;
   writer(): HubDirectorySettingsWriter;
   /** Optional SERVER attestation from the current HubSessions row's AD sign-in, not a client timestamp. */
-  recentAuthentication?(actor: Extract<Actor, { kind: "hub-administrator" }>): number | null;
+  recentAuthentication?(actor: Extract<Actor, { kind: "hub-administrator" }>, proof?: HubDirectorySessionProof): number | null;
   now?(): number;
   /** Inert tests only; production uses the verified TLS probe below. */
   probeTls?(config: ResolvedDirectoryConfig): Promise<string>;
@@ -196,7 +205,9 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
     const actor = ctx.actor;
     if (actor.kind === "host-owner") { if (credentials !== undefined) refuse("invalid"); return d.createdAt; }
     const key = actorKey(actor), stored = recent.get(key);
-    const attested = stored?.image === d.source.image && stored.epoch === d.source.epoch ? stored.at : deps.recentAuthentication?.(actor);
+    const sessionProof = captureHubDirectorySessionProof(ctx, d.source);
+    const attested = stored?.image === d.source.image && stored.epoch === d.source.epoch ? stored.at
+      : sessionProof === undefined ? deps.recentAuthentication?.(actor) : deps.recentAuthentication?.(actor, sessionProof);
     current(d, ctx);
     const t = time();
     if (credentials === undefined && attested !== undefined && attested !== null && Number.isSafeInteger(attested) && attested >= 0 && attested <= t && t - attested < TTL) {

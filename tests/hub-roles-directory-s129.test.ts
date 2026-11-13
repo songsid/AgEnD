@@ -103,7 +103,8 @@ describe("S129 directory proof administrator identity", () => {
       expect(w.prepare.mock.calls[0]![1]).toEqual(w.adminActor);
       // Fresh old-directory eligibility is independent of candidate eligibility.
       expect(w.oldEligibility).toHaveBeenCalledExactlyOnceWith(w.admin);
-      expect(recent).toHaveBeenCalledExactlyOnceWith(w.adminActor);
+      expect(recent).toHaveBeenCalledExactlyOnceWith(w.adminActor, { witness: w.administration,
+        source: { directory: w.source.directory, administrator: w.source.administrator, image: w.source.image, epoch: w.source.epoch } });
     } finally { await w.finish(); }
   });
   it("refuses unknown old-directory eligibility despite a recent server authentication", async () => {
