@@ -47,7 +47,7 @@ export async function searchGroups(client, q) {
 }
 
 /** The search box: 300 ms after typing stops, the newest answer for the text in the box only. */
-export function GroupSearch({ client, disabled = false, exclude = [], label, onPick, onUnsupported, id = "hubGroupSearch" } = {}) {
+export function GroupSearch({ client, disabled = false, exclude = [], label, onPick, onUnsupported, unknownHint, id = "hubGroupSearch" } = {}) {
   const noteId = `${id}Note`;
   const [q, setQ] = useState(""), [answer, setAnswer] = useState(null), [busy, setBusy] = useState(false);
   const seq = useRef(0), told = useRef(false), live = useRef(true);
@@ -69,7 +69,7 @@ export function GroupSearch({ client, disabled = false, exclude = [], label, onP
   const message = busy ? g("searching")
     : !answer ? (q.trim() && q.trim().length < 2 ? g("hint") : null)
     : answer.ok ? (hits.length ? (answer.truncated ? g("more") : null) : g("none", answer.q))
-    : answer.reason === "limited" ? g("limited", answer.retryAfter ?? 60) : answer.reason === "invalid" ? g("invalid") : g("unknown");
+    : answer.reason === "limited" ? g("limited", answer.retryAfter ?? 60) : answer.reason === "invalid" ? g("invalid") : unknownHint || g("unknown");
   return html`<div class="hub-group-search">
     <label class="field" for=${id}><span>${label || g("label")}</span>
       <input id=${id} type="search" value=${q} disabled=${disabled} autocomplete="off" spellcheck=${false} placeholder=${g("placeholder")}

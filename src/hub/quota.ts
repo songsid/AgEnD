@@ -7,6 +7,7 @@ import type { HubCore } from "./http/core.js";
 import type { HubLinkContext } from "./server.js";
 import type { HubExposureQuota, HubQuota, HubRequestContext, HubRoom } from "./types.js";
 import { HUB_QUOTA_CAPABILITY, HUB_QUOTA_INTERVAL_MS } from "./member/quota.js";
+import type { HubGrantSubjectProof } from "./grant-access.js";
 
 export class HubQuotaService {
   private readonly links = new Map<string, HubLinkContext>();
@@ -58,11 +59,11 @@ export class HubQuotaService {
   visible(exposureId: string): boolean {
     return this.core.atomic(db => (db.prepare("SELECT visible FROM hub_quota_preferences WHERE exposure_id=?").get(exposureId) as { visible: number } | undefined)?.visible !== 0);
   }
-  roomProjection(room: HubRoom): { quota?: HubQuota } {
+  roomProjection(room: HubRoom, proof?: HubGrantSubjectProof): { quota?: HubQuota } {
     const allowed = this.core.atomic(db => {
       const e = readExposure(db, room.exposureId), g = readGrant(db, room.grantId);
       return room.state === "active" && !!e && !!g && exposureOf(e).state === "published"
-        && grantApplies(grantOf(g), exposureOf(e), room.asker, this.core.now()) && grantOf(g).permissions.includes("read-own-room");
+        && grantApplies(grantOf(g), exposureOf(e), room.asker, this.core.now(), proof) && grantOf(g).permissions.includes("read-own-room");
     });
     return allowed ? this.projection(room.exposureId) : {};
   }

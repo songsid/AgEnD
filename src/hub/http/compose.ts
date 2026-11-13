@@ -28,6 +28,7 @@ import type { HubLinkContext } from "../server.js";
 import type { HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
 import { HubSessions, hubClearCookie, hubSetCookie } from "../sessions.js";
 import { HubCatalogService } from "../catalog.js";
+import { HubGrantSearch } from "../grant-search.js";
 import { HubPolicyService } from "../policy.js";
 import { HubRoomsService } from "../rooms.js";
 import { HubAttachmentRefused } from "../attachments/store.js";
@@ -50,7 +51,7 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   // #3298 S-89 (lazy; loaded only when the session says "group-policy-v1"): the welcome, Group permissions and their words.
   "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js",
   // Hub UX U2 (M-2932): the group-search picker (its own words inside), shared with B2's join-code scope.
-  "hub-group-search.js", "hub-join-steps.js",
+  "hub-group-search.js", "hub-join-steps.js", "hub-grant-picker.js",
   // B2: code management and the same-request Hub approval queue.
   "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js"]);
 const BODY_LIMIT = 96 * 1024;
@@ -122,10 +123,14 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   let closed = false;
   const core = new HubCore(deps, sql, () => !closed);
   const sessions = new HubSessions(core), catalog = new HubCatalogService(core), policy = new HubPolicyService(core);
+  const grantSearch = new HubGrantSearch(core);
   const rooms = new HubRoomsService(core, policy);
   const quota = new HubQuotaService(core);
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
   const live = () => !closed && core.live();
+  const grantSubjectsOffered = () => !!deps.grantDirectory && deps.directory.groupPolicy === "ad-direct-guid"
+    && typeof deps.directory.searchPolicyGroups === "function" && typeof deps.directory.searchGrantPeople === "function"
+    && typeof deps.directory.resolvePolicyGroup === "function" && typeof deps.directory.readPolicyGroups === "function";
   /** Upload bodies being read now, per session and in all (each up to the file limit in memory). */
   const uploading = new Map<string, number>(); let uploadingTotal = 0;
   const streams = new Set<() => void>();
@@ -146,7 +151,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     };
     const m = (re: RegExp) => re.exec(path);
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
-    const offered = [...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
+    const offered = [...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     const features = offered.length ? { features: offered } : {};
@@ -286,6 +291,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         return;
       }
     }
+    if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/grant-subjects\/search$/))) {
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const input = await body(), response = await guard(() => grantSearch.search(ctx, uuid(r![1]), input));
+      const limited = (response as { reason?: string })?.reason === "limited";
+      return send(res, limited ? 429 : 200, response, limited ? { "Retry-After": "60" } : {});
+    }
     if (path === "/hub/v1/exposures" || path === "/hub/v1/grants") {
       if (method === "GET") {
         signedIn(); const view = await guard(() => catalog.visible(ctx));
@@ -293,7 +304,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       }
       if (path === "/hub/v1/grants" && method === "POST") {
         csrf(); const b = await body();
-        const g = await guard(() => catalog.grant(ctx, { exposureId: uuid(b.exposureId), exposureRevision: int(b.exposureRevision), login: str(b.login), days: int(b.days) }));
+        const g = await guard(() => catalog.grant(ctx, { exposureId: uuid(b.exposureId), exposureRevision: int(b.exposureRevision),
+          ...(b.login !== undefined ? { login: str(b.login) } : {}), ...(b.subject !== undefined ? { subject: b.subject } : {}), days: int(b.days) }));
         return send(res, 200, { grant: g });
       }
       throw new HttpError(405, "method");
@@ -320,11 +332,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       return send(res, 200, { quotaVisible: b.visible, ...quota.projection(exposureId) });
     }
     if (path === "/hub/v1/rooms") {
-      if (method === "GET") { signedIn(); return send(res, 200, { rooms: (await guard(() => rooms.list(ctx))).map(room => ({ ...room, ...quota.roomProjection(room) })) }); }
+      if (method === "GET") { signedIn(); const view = await guard(() => rooms.listAuthorized(ctx)); return send(res, 200, { rooms: view.rooms.map(room => ({ ...room, ...quota.roomProjection(room, view.grantProof) })) }); }
       if (method === "POST") {
         csrf(); const b = await body();
         const room = await guard(() => rooms.open(ctx, uuid(b.exposureId), uuid(b.grantId)));
-        return send(res, 200, { room: { id: room.id, exposureId: room.exposureId, grantId: room.grantId, state: room.state, exposureName: room.exposure.displayName, features: rooms.features(room.exposure.fleetId), ...quota.projection(room.exposureId) } });
+        return send(res, 200, { room: { id: room.id, exposureId: room.exposureId, grantId: room.grantId, state: room.state, exposureName: room.exposure.displayName, features: rooms.features(room.exposure.fleetId), ...quota.roomProjection(room, room.grantProof) } });
       }
       throw new HttpError(405, "method");
     }
@@ -339,8 +351,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         const s = signedIn();
         // #3226 B + G: the room comes with its entries, fresh each poll — its view (state, grant's end, what its link
         // negotiated) and its quota projection (G; absent when hidden or not shared).
-        const { entries, room: view } = await guard(() => rooms.readPage(ctx, roomId, int(query.get("after") ?? "0"), s.sessionId));
-        return send(res, 200, { entries, room: { ...view, ...quota.roomProjection(view) } });
+        const { entries, room: view, grantProof } = await guard(() => rooms.readPage(ctx, roomId, int(query.get("after") ?? "0"), s.sessionId));
+        return send(res, 200, { entries, room: { ...view, ...quota.roomProjection(view, grantProof) } });
       }
       if (method === "POST") {
         csrf(); const b = await body();
@@ -554,8 +566,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, features: Object.freeze([...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []),
+    handle, receive, features: Object.freeze([...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
-    async close() { closed = true; for (const end of streams) end(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
+    async close() { closed = true; grantSearch.close(); for (const end of streams) end(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

@@ -42,7 +42,7 @@ it("reconnects nonempty history after a committed receipt loses its ACK, converg
     let journal = new HubMemberJournal(memberDb, options); journal.initialize();
     const exposureId = randomUUID(), grantId = randomUUID(), roomId = randomUUID(), owner = personKeyString(r.owner), now = Date.now();
     r.db.prepare("INSERT INTO hub_exposures VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(exposureId, profile.fleetId, owner, "test", 1, "published", "test-view", "[]", "a".repeat(64), -1, now);
-    r.db.prepare("INSERT INTO hub_grants VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(grantId, 1, owner, exposureId, 1, owner, now, owner, '["ask"]', now, now + 60000, "active");
+    r.db.prepare("INSERT INTO hub_grants(id,revision,owner,exposure_id,exposure_revision,approved_by,approved_at,subject,permissions,starts_at,expires_at,state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(grantId, 1, owner, exposureId, 1, owner, now, owner, '["ask"]', now, now + 60000, "active");
     r.db.prepare("INSERT INTO hub_rooms VALUES(?,?,?,?,?,?,?)").run(roomId, owner, exposureId, owner, grantId, "active", now);
     const fence = { current: () => true, linkEpoch: 1, revocationVersion: 0 };
     const lease = (req: HubAuthorizationRequest) => ({ decisionId: randomUUID(), ...req, operationDigest: operationDigest(req), revocationVersion: 0, linkEpoch: 1, expiresAt: Date.now() + 5000 });

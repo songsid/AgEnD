@@ -1,0 +1,15 @@
+{
+  "checkedHead": "94f5433ccff2be2640d43c436ce168ddbb98d319",
+  "captureHead": "a87be1c4da61499c730d1d3916b3645f5bd0c15f",
+  "productAndTestsByteEqual": true,
+  "command": [
+    "git",
+    "diff",
+    "--exit-code",
+    "94f5433ccff2be2640d43c436ce168ddbb98d319",
+    "a87be1c4da61499c730d1d3916b3645f5bd0c15f",
+    "--",
+    "src",
+    "tests"
+  ]
+}

@@ -63,7 +63,7 @@ function idleSnapshot() {
   return { state: "idle", unchangedForMs: 0, observedAt: now, stateChangedAt: now } as any;
 }
 
-const INBOUND_MARKER = "(Reply using the reply tool — do NOT respond with direct text)";
+const INBOUND_MARKER = "(Answer with the reply tool; terminal text does not reach them.)";
 const INBOUND = `[user:han via discord, id:123] status?\n${INBOUND_MARKER}`;
 const resumedCodexPane = readFileSync(new URL("./fixtures/codex-01561-inline-resumed.pane.txt", import.meta.url), "utf8");
 const CODEX_CHROME = resumedCodexPane.slice(resumedCodexPane.lastIndexOf("› Ask Codex to do anything")).trim().split("\n");

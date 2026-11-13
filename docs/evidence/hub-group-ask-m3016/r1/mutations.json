@@ -1,0 +1,35 @@
+[
+  {
+    "id": "K1",
+    "file": "tests/hub-grant-subjects-m3016.test.ts",
+    "selector": "permanently retires",
+    "caught": true,
+    "exit": 1,
+    "sourceDigest": "293fd6ee1f5b7689e567c46424e489a8e0db7b316d2a191e98487eb8e2a4fdb0",
+    "logDigest": "1cf6c243a054599813fa0af2214e657bfeee57e3ade9ebee800c2d0f6d0c4a16",
+    "seconds": 4.48,
+    "restored": true
+  },
+  {
+    "id": "K2",
+    "file": "tests/hub-grant-subjects-m3016.test.ts",
+    "selector": "permanently retires",
+    "caught": true,
+    "exit": 1,
+    "sourceDigest": "293fd6ee1f5b7689e567c46424e489a8e0db7b316d2a191e98487eb8e2a4fdb0",
+    "logDigest": "8fa07a320cc771253914e0fd56f56faa027f7e6334f0b9740e17dd0419de4788",
+    "seconds": 4.18,
+    "restored": true
+  },
+  {
+    "id": "K3",
+    "file": "tests/hub-grant-subjects-m3016.test.ts",
+    "selector": "permanently retires",
+    "caught": true,
+    "exit": 1,
+    "sourceDigest": "293fd6ee1f5b7689e567c46424e489a8e0db7b316d2a191e98487eb8e2a4fdb0",
+    "logDigest": "7a56d08f7c150ea799694074c366f719a5924cfacc9c44821464a46206bd9e3f",
+    "seconds": 3.831,
+    "restored": true
+  }
+]

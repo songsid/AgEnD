@@ -10,6 +10,8 @@ import type { GroupImpact, GroupImpactPerson, GroupImpactResource } from "./admi
 
 export interface HubGroupImpactPerson {
   readonly key: PersonKey; readonly name: string | null; readonly login: string | null; readonly hasAskGrant: boolean;
+  /** Candidate immutable group subjects, evaluated only against this preview's fresh known-person facts. */
+  readonly askGroups?: readonly PersonKey[];
 }
 export interface HubGroupImpactResource {
   readonly resource: HubGroupResource; readonly display: GroupImpactResource;
@@ -36,7 +38,9 @@ export function buildHubGroupImpact(input: {
   const add = (value: HubGroupImpactPerson) => {
     const key = validated(person, value.key), id = personKeyString(key);
     if (key.realm !== before.realm || people.has(id)) throw new HubGroupPolicyError("invalid");
-    people.set(id, { key, name: value.name, login: value.login, hasAskGrant: value.hasAskGrant });
+    const askGroups = value.askGroups?.map(g => validated(person, g));
+    if (askGroups?.some(g => g.realm !== before.realm)) throw new HubGroupPolicyError("invalid");
+    people.set(id, { key, name: value.name, login: value.login, hasAskGrant: value.hasAskGrant, ...(askGroups?.length ? { askGroups } : {}) });
   };
   for (const p of input.people) add(p);
   if (!people.has(personKeyString(administrator))) add({ key: administrator, name: null, login: null, hasAskGrant: false });
@@ -51,14 +55,18 @@ export function buildHubGroupImpact(input: {
   const losingActions: GroupImpactPerson[] = [], losingPublication: GroupImpactPerson[] = [], held: HubGroupHeldImpact[] = [];
   for (const [id, p] of [...people].sort(([a], [b]) => a.localeCompare(b))) {
     const facts = input.facts.get(id) ?? { kind: "unknown" as const }, losing: GroupCapability[] = [], uncertain: GroupCapability[] = [];
+    const groupGrant = !p.askGroups?.length ? false : facts.kind === "unknown" ? undefined
+      : facts.kind === "complete" && personKeyString(facts.person) === id ? p.askGroups.some(g => facts.groups.includes(g.objectId))
+      : facts.kind === "ineligible" && personKeyString(facts.person) === id ? false : undefined;
     for (const cap of GROUP_CAPABILITIES) {
       const current = decision(before, p.key, cap, facts), after = decision(next, p.key, cap, facts);
       if (after.outcome === "unknown") uncertain.push(cap);
       else if (after.outcome === "deny") {
-        const grantOrAdmin = p.hasAskGrant || id === personKeyString(administrator);
+        const grantOrAdmin = p.hasAskGrant || groupGrant === true || id === personKeyString(administrator);
         const legacyAction = current.outcome === "legacy" && (cap === "ask_agents" ? grantOrAdmin : cap === "publish_agents" && owners.has(id));
         if (current.outcome === "allow" || legacyAction || (cap === "ask_agents" && grantOrAdmin)) losing.push(cap);
       }
+      if (cap === "ask_agents" && groupGrant === undefined && !uncertain.includes(cap)) uncertain.push(cap);
     }
     const display = { personId: id, name: p.name, login: p.login };
     if (losing.length) losingActions.push({ ...display, capabilities: losing });

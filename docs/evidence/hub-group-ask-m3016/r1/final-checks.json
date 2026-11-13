@@ -1,0 +1,68 @@
+{
+  "head": "627992254a19784935a2e32446e7dc9721e1ab68",
+  "trackedDirty": "",
+  "checks": [
+    {
+      "name": "final-focused",
+      "command": [
+        "node",
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "tests/hub-grant-subjects-m3016.test.ts",
+        "tests/hub-grant-person-search-m3016.test.ts",
+        "tests/hub-grant-picker-m3016.test.ts",
+        "tests/hub-s3b-server.test.ts",
+        "tests/hub-room-reload.test.ts",
+        "tests/hub-group-admin-impact.test.ts",
+        "tests/hub-group-message-boundaries.test.ts",
+        "--maxWorkers=2",
+        "--reporter=dot",
+        "--no-color"
+      ],
+      "exit": 0,
+      "startLoad": 5.17822265625,
+      "seconds": 14.718,
+      "completedAt": "2026-11-13T04:42:50.873431+00:00"
+    },
+    {
+      "name": "final-source-types",
+      "command": [
+        "node",
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit"
+      ],
+      "exit": 0,
+      "startLoad": 6.1552734375,
+      "seconds": 10.826,
+      "completedAt": "2026-11-13T04:43:01.699830+00:00"
+    },
+    {
+      "name": "final-test-types",
+      "command": [
+        "node",
+        "node_modules/@typescript/native/bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad": 7.13427734375,
+      "seconds": 26.104,
+      "completedAt": "2026-11-13T04:43:27.802497+00:00"
+    }
+  ],
+  "inputDigests": {
+    "293fd6ee1f5b7689e567c46424e489a8e0db7b316d2a191e98487eb8e2a4fdb0": [
+      "src/hub/grant-access.ts"
+    ],
+    "58c7f04e125e836b19fb51b342f759fa88830ffb347281067d9ba5ef3c42fa20": [
+      "tests/hub-grant-subjects-m3016.test.ts"
+    ],
+    "a9fe5a4fedb95a3999b15d1eadd6e586243fd5968ba590c82928278e2eced72c": [
+      "src/ui/shared/app.css"
+    ],
+    "8747bd879e36c6ee52af053597a1512e03a5c1abd4f69e1506e5551ea504c907": [
+      "scripts/manual/hub-group-ask-m3016/browser.mts"
+    ]
+  }
+}

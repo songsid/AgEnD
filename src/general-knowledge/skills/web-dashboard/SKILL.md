@@ -826,3 +826,6 @@ no instance uses that provider.
 **Settings won't change something.** Over a public link, Web settings and appearance are read only; a loosening
 change waits for an admin's confirmation in General chat; a value in the "Set in fleet.yaml" list must be edited in
 fleet.yaml (Advanced, or the file) and `agend reload`.
+
+
+For the Hub's **My shared agents → Who may ask** person/name search, AD group grants, expiry and revoke controls, load the `hub` skill. Those controls use the Hub's company-account session, not this Fleet dashboard's guest grants.

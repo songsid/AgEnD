@@ -18,7 +18,7 @@ Use fleet tools only (`send_to_instance`, `delegate_task`, `request_information`
 
 Only when a result is unclear: `delivery_status` with the `operation_id` / `delivery_id` / `correlation_id` you got.
 - `queued`, `delivering`, `retry_wait` — not handed over yet; the fleet keeps trying.
-- `submission_started`, `reconciliation_pending`, `uncertain` — it may already have arrived: **do not resend**.
+- `submission_started`, `reconciliation_pending`, `uncertain` — it may already have arrived: confirm it (tell the waiting side "it may already have arrived; I'm checking"), and **resend only if it later shows `failed`**.
 - `delivered` — the target received it (not necessarily processed it yet; `consumed_at` says when it did).
 - `failed`, `cancelled` — not delivered; fix the cause, then send again.
 

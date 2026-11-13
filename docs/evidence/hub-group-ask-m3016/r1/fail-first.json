@@ -1,0 +1,25 @@
+{
+  "head": "0eb132631713e519d5292ae1501b5d60c4d29d7c",
+  "trackedDirty": true,
+  "scope": "new proof-clock controls on unchanged published product",
+  "command": [
+    "node",
+    "node_modules/vitest/vitest.mjs",
+    "run",
+    "tests/hub-grant-subjects-m3016.test.ts",
+    "--no-file-parallelism",
+    "--reporter=verbose",
+    "--no-color",
+    "-t",
+    "permanently retires"
+  ],
+  "exit": 1,
+  "inputDigests": {
+    "e0c1d2202461bdd8314b0e5ded32e02bac64cac6931d4848caaf29a9245cb8d2": [
+      "src/hub/grant-access.ts"
+    ],
+    "b5af5e42561a1b1eeefb6a2dba447c16ae48366aa5ae9ec0b38bbd7a373ffe55": [
+      "tests/hub-grant-subjects-m3016.test.ts"
+    ]
+  }
+}
