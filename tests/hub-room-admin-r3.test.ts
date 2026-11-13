@@ -16,7 +16,7 @@ it("lets a current selected person create rooms, and removal affects future crea
   expect((await r!.call(w.a, "PUT", path, selected)).status).toBe(403);
   expect((await r!.call(w.admin, "PUT", path, selected)).json).toEqual(selected);
   expect((await r!.call(w.a, "GET", "/hub/v1/rooms?v=2")).json.me.canCreateRooms).toBe(true);
-  expect((await r!.call(w.a, "GET", "/hub/v1/rooms/candidates?kind=person&q=Ca")).json).toEqual([{ kind: "person", id: personKeyString(w.cara), name: "Cara" }]);
+  expect((await r!.call(w.a, "GET", "/hub/v1/rooms/candidates?kind=person&q=Ca")).json.candidates).toEqual([{ kind: "person", id: personKeyString(w.cara), name: "Cara" }]);
   const made = await r!.call(w.a, "POST", "/hub/v1/rooms", { name: "My room", people: [personKeyString(w.cara)] }); expect(made.status).toBe(200);
   await r!.call(w.admin, "PUT", path, { people: [], teams: [] });
   expect((await r!.call(w.a, "POST", "/hub/v1/rooms", { name: "Another" })).status).toBe(403);

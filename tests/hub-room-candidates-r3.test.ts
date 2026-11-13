@@ -18,7 +18,7 @@ async function world() {
 it("finds a directory person before first Hub sign-in without creating a session or granting anything", async () => {
   const w = await world(), key = personKeyString(w.unseen), before = r!.db.prepare("SELECT COUNT(*) n FROM hub_sessions").get();
   const found = await r!.call(w.admin, "GET", "/hub/v1/rooms/candidates?kind=person&q=Ne");
-  expect(found.json).toEqual([{ kind: "person", id: key, name: "New Person" }]); expect(w.entered()).toBeGreaterThan(0);
+  expect(found.json.candidates).toEqual([{ kind: "person", id: key, name: "New Person" }]); expect(w.entered()).toBeGreaterThan(0);
   expect(r!.db.prepare("SELECT * FROM hub_people WHERE person=?").get(key)).toBeUndefined();
   expect(r!.db.prepare("SELECT COUNT(*) n FROM hub_sessions").get()).toEqual(before);
   const made = await r!.call(w.admin, "POST", "/hub/v1/rooms", { name: "Fresh selection", people: [key] }); expect(made.status).toBe(200);
@@ -30,7 +30,7 @@ it("finds a directory person before first Hub sign-in without creating a session
 });
 it("lists AD group IDs and names without exposing their directory DNs", async () => {
   const w = await world(), found = await r!.call(w.admin, "GET", "/hub/v1/rooms/candidates?kind=group&q=Pr");
-  expect(found.status).toBe(200); expect(found.json).toEqual([{ kind: "group", id: "11111111-2222-4333-8444-555555555555", name: "Project" }]);
+  expect(found.status).toBe(200); expect(found.json.candidates).toEqual([{ kind: "group", id: "11111111-2222-4333-8444-555555555555", name: "Project" }]);
   expect(found.text).not.toContain("DC=test");
   expect((await r!.call(w.a, "GET", "/hub/v1/rooms/candidates?kind=group&q=Pr")).status).toBe(403);
 });
@@ -72,7 +72,7 @@ it("adds complete group/Team snapshots to an existing room and keeps their membe
   r!.directory.roomGroupMembers = async key => ({ ok: true, group: { key, name: "Project" }, people: active ? [{ key: w.unseen, login: "new-person", displayName: "New Person", dn: "private", groups: [] }] : [] });
   r!.httpDeps.roomTeams = { read: () => null, expand: (_db, ids) => ({ teams: ids.map(id => ({ id, revision: active ? 1 : 2 })), people: active ? [personKeyString(teamPerson)] : [], missing: [] }), isMember: () => null };
   r!.httpDeps.roomTeamCandidates = () => [{ id: team, name: "Small team", people: 1 }]; await r!.restartHttp();
-  expect((await r!.call(w.admin, "GET", "/hub/v1/rooms/candidates?kind=team&q=Sm")).json).toEqual([{ kind: "team", id: team, name: "Small team", people: 1 }]);
+  expect((await r!.call(w.admin, "GET", "/hub/v1/rooms/candidates?kind=team&q=Sm")).json.candidates).toEqual([{ kind: "team", id: team, name: "Small team", people: 1 }]);
   const made = await r!.call(w.admin, "POST", "/hub/v1/rooms", { name: "Add members" }), id = made.json.room.id;
   expect((await r!.call(w.a, "POST", `/hub/v1/rooms/${id}/members`, { kind: "group", id: group })).status).toBe(403);
   expect((await r!.call(w.admin, "POST", `/hub/v1/rooms/${id}/members`, { kind: "group", id: group })).status).toBe(200);
