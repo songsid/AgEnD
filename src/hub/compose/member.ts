@@ -9,7 +9,7 @@
  * The data-view registry comes from a HubViewSource: EMPTY until the owner-approval flow exists (§7 Q2), so nothing
  * is publishable or askable — fail closed.
  */
-import { createPublicKey, randomBytes } from "node:crypto";
+import { createPublicKey, randomBytes, randomUUID } from "node:crypto";
 import { closeSync, openSync, writeSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { createHubAudit, HUB_AUDIT_MIGRATION, type HubAuditStore } from "../audit/index.js";
@@ -30,6 +30,7 @@ import { HubMemberClient, type HubMemberLink } from "../client.js";
 import { HUB_MEMBER_JOURNAL_MIGRATION, HubMemberJournal, type HubRestrictedOutbox } from "../member-journal.js";
 import { createHubMemberHandshake } from "../member-reconciliation.js";
 import { HubMemberProfileStore, type HubMemberProfile } from "../profile.js";
+import { learnHubWebOrigin } from "../web-origin.js";
 import { createQuotaPublisher } from "../member/quota.js";
 import { HubFileVersionFloor } from "../version-floor.js";
 import type { HubAuditRecord, HubServerFrame } from "../types.js";
@@ -488,6 +489,17 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
         },
         receive,
+        // M-2901: where the Hub's pages are now. Kept beside the pairing (never in it), only when it verifies against the
+        // issuer key pinned at pairing and moves forward; audited in this member's own log either way it is decided.
+        webOrigin: (statement, l) => {
+          if (!live() || !l.current()) return;
+          learnHubWebOrigin({ home: options.home, profile, current: () => live() && l.current(), log: options.log,
+            record: (entry, inTransaction) => db.transaction(() => {
+              audit.appendInTransaction({ id: randomUUID(), sequence: 0, at: now(), requestId: randomUUID(), actor: { kind: "local-host" }, ...entry,
+                fleetId: profile.fleetId, policyVersion: l.revocationVersion }, db);
+              inTransaction();
+            }).immediate() }, statement);
+        },
         hold: (code) => {
           quota.stop();
           const state = code === "revoked" ? "revoked" : code === "rejected" || code === "invalid" ? "rejected" : "offline";

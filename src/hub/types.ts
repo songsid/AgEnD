@@ -23,6 +23,8 @@ export interface HubWelcome {
   selectedVersion: 1; hubId: HubId; fleetId: FleetId;
   linkEpoch: Epoch; revocationVersion: Epoch;
   capabilities?: readonly string[]; // only when the hello offered welcome-caps-v1
+  /** web-origin-v1 (M-2901): the Hub's issuer-signed current web address (web-origin.ts); only when both ends listed it. */
+  webOrigin?: { v: 1; webOrigin: string; revision: Epoch; signature: string };
 }
 /** attachments-v1: a file carried with a question (Hub → member) or an answer (member → Hub). */
 export interface HubAttachmentRef { id: string; name: string; size: number; mime: string; sha256: Sha256 }
