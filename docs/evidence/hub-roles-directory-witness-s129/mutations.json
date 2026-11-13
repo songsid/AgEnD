@@ -1,0 +1,177 @@
+{
+  "sourceCommit": "06ada43a3e893425985ed1bbb3a7b7c6574b60ce",
+  "baseline": {
+    "passed": 14,
+    "failed": 0
+  },
+  "typeCommand": "GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.json",
+  "testCommand": "nice -n 10 node_modules/.bin/vitest run tests/hub-roles-directory-witness-s129.test.ts --maxWorkers=2",
+  "cases": [
+    {
+      "id": "W01-explicit-dispatch",
+      "file": "src/hub/roles/directory-authority.ts",
+      "originalSha256": "a9fcc152ab168c74fdcbd85b3be98dec5bb1eb736d99052411b87917bf07276f",
+      "mutantSha256": "bdb5bdc3c79ea4499c66d77908eeb7c8c5754549e159fcb8d1670c3c6d8f5db9",
+      "restoredSha256": "a9fcc152ab168c74fdcbd85b3be98dec5bb1eb736d99052411b87917bf07276f",
+      "replacements": [
+        {
+          "old": "answer = state.decisionMethod.call(state.permit, frame);",
+          "new": "answer = state.method.call(state.permit);",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 11,
+      "failed": 3,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 administration witness through the exact decision retains the same opaque witness across the legitimate final SQL rebind",
+          "firstLine": "AssertionError: expected [Function] to not throw an error but 'Error: group_policy_unavailable' was thrown"
+        },
+        {
+          "name": "S129 witness getter and provider ownership refuses a getter returning forged",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 witness getter and provider ownership refuses an actual frame from another database through the unchanged getter",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "W02-getter-identity",
+      "file": "src/hub/roles/directory-authority.ts",
+      "originalSha256": "a9fcc152ab168c74fdcbd85b3be98dec5bb1eb736d99052411b87917bf07276f",
+      "mutantSha256": "8c7c6c22e0848ae0298cd854620680f7336013422812b8b517a88de7dfcca3cd",
+      "restoredSha256": "a9fcc152ab168c74fdcbd85b3be98dec5bb1eb736d99052411b87917bf07276f",
+      "replacements": [
+        {
+          "old": "source.decisionProof !== state.frame || ",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 12,
+      "failed": 2,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 witness getter and provider ownership refuses a replaced getter and never revives the observed stale witness",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 witness getter and provider ownership rechecks the getter binding after the getter callback",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "W03-permit-method-identity",
+      "file": "src/hub/roles/directory-authority.ts",
+      "originalSha256": "a9fcc152ab168c74fdcbd85b3be98dec5bb1eb736d99052411b87917bf07276f",
+      "mutantSha256": "9916b9863aca0bf2274343c11b1bbb4e60c67e9ad80d14144d94df15b8959a6f",
+      "restoredSha256": "a9fcc152ab168c74fdcbd85b3be98dec5bb1eb736d99052411b87917bf07276f",
+      "replacements": [
+        {
+          "old": "state.permit.assertDirectoryDecision !== state.decisionMethod || ",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 13,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 witness getter and provider ownership refuses a substituted explicit permit method before consuming a frame",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "W04-final-binding",
+      "file": "src/hub/roles/directory-authority.ts",
+      "originalSha256": "a9fcc152ab168c74fdcbd85b3be98dec5bb1eb736d99052411b87917bf07276f",
+      "mutantSha256": "7e6caa2a10b394a00d22aee921b574108012899c8bc9eecbbc130661c49d3e0e",
+      "restoredSha256": "a9fcc152ab168c74fdcbd85b3be98dec5bb1eb736d99052411b87917bf07276f",
+      "replacements": [
+        {
+          "old": "    synchronous(answer);\n    check();",
+          "new": "    synchronous(answer);",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 13,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 witness getter and provider ownership rechecks the source after the retained permit callback",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "W05-permanent-retirement",
+      "file": "src/hub/roles/directory-authority.ts",
+      "originalSha256": "a9fcc152ab168c74fdcbd85b3be98dec5bb1eb736d99052411b87917bf07276f",
+      "mutantSha256": "e14e3d91ef74cafcf49aa7e0c4dc794d14e009d0096bc699937a6281d81df23b",
+      "restoredSha256": "a9fcc152ab168c74fdcbd85b3be98dec5bb1eb736d99052411b87917bf07276f",
+      "replacements": [
+        {
+          "old": "state.retired = true; ",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 13,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 witness getter and provider ownership refuses a replaced getter and never revives the observed stale witness",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "W06-exact-source-image",
+      "file": "src/hub/roles/directory-authority.ts",
+      "originalSha256": "a9fcc152ab168c74fdcbd85b3be98dec5bb1eb736d99052411b87917bf07276f",
+      "mutantSha256": "9efeab81e29f8a10cd96284ef95df373e8069e1c39371266bf68ec6b375175ea",
+      "restoredSha256": "a9fcc152ab168c74fdcbd85b3be98dec5bb1eb736d99052411b87917bf07276f",
+      "replacements": [
+        {
+          "old": "state.binding.image !== source.image || ",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 12,
+      "failed": 2,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 witness getter and provider ownership rechecks the image binding after the getter callback",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 witness getter and provider ownership rechecks the source after the retained permit callback",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    }
+  ]
+}
