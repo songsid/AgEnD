@@ -1,0 +1,10 @@
+b1382a48f7c74289e58eb23980ae066bc8c65956f2a2609a451a596b326de201  src/hub-pilot-trust-settings.ts
+cb0a5717d967c034bf0cf91c2d6ae5fb86f8fa06ece3b0a1a34bb1a7c5bc457d  src/hub/join/certificate.ts
+9896806eb19f302c166eb3d221a681650c54293cc998f229d47d041949fdefc7  src/hub/join/certificate-trust.ts
+87854965036b75e195ddf76126ccb0ed253d38b370bc281f1f88c84634976063  src/hub/join/client.ts
+53adeab7b172321f146fcc31fa8309ba2a07adb44c872b182697abec6aa76bab  src/hub/join/local.ts
+c9d2d09a9c6cf425074747680b42c8168bae0e36bf6389db391780098f57ebab  src/ui/hub-pilot-trust.js
+7ccc17d9a0a87029dd08be50c2bc95d51e4fd9655980225d549811397a2bace4  src/ui/hub-pilot-trust-strings.js
+d4fbed4ffae44e2edb240295d75e26af92d89533398e85c152d15571d3886e75  src/ui/settings-hub-company-join.js
+d596ea2d488023f10a93dce29964c5cadf29448557821afec39b740b4eb810e8  src/ui/settings-hub-connection.js
+225a5f1860d7476597af1c7ffc4c6fdfedec663b92f9c8c712bcda149d3b67e7  src/ui/shared/app.css
