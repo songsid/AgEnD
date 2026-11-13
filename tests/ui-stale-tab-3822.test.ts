@@ -10,7 +10,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -56,16 +56,14 @@ describe("#3822 what a tab older than the server meets", () => {
 });
 
 describe("#3825 r1 (Prism P2): the Reload is a touch target on a phone, whatever app.css the old tab kept", () => {
-  it("phone: the button itself carries min-height/min-width var(--tap); a wide screen leaves it to the stylesheet", async () => {
-    const p = open(undefined, true);
+  it("the prompt links its own public stylesheet once; it makes the Reload a --tap target on a phone or a coarse pointer", async () => {
+    const p = open();
     const S = await import("/assets/stale-tab.js");
-    await p.mount(h(S.StaleTabPrompt, {})); await settle(4);
-    const style = (p.root.querySelector("[data-stale-tab] button") as any).style;
-    expect([style.minHeight, style.minWidth]).toEqual(["var(--tap, 44px)", "var(--tap, 44px)"]);
-    await p.unmount(); pages.pop()!.restore();
-    const wide = open(undefined, false);
-    await wide.mount(h(S.StaleTabPrompt, {})); await settle(4);
-    expect((wide.root.querySelector("[data-stale-tab] button") as any).style.minHeight || "").toBe("");
+    await p.mount(h("div", null, h(S.StaleTabPrompt, {}), h(S.StaleTabPrompt, {}))); await settle(4);
+    expect(p.document.querySelectorAll('link[href="/assets/stale-tab.css"]')).toHaveLength(1);
+    expect((p.root.querySelector("[data-stale-tab] button") as any).getAttribute("style")).toBeNull();    // style guide §5: no inline style
+    const css = readFileSync(join(__dirname, "..", "src", "ui", "shared", "stale-tab.css"), "utf8");
+    expect(css).toMatch(/@media \(max-width: 899px\), \(pointer: coarse\) \{\s*\.stale-tab \.btn \{ min-height: var\(--tap, 44px\); min-width: var\(--tap, 44px\); \}/);
   });
 });
 

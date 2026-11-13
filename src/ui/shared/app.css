@@ -1502,8 +1502,6 @@ img.amb-p { object-fit: contain; }
   .dlg-actions .btn { flex: 1; min-height: var(--tap); }
   .dlg-head .dlg-x { min-width: var(--tap); min-height: var(--tap); }
   .row-item .btn, .s-row .btn, .n-actions .btn { min-height: var(--tap); }
-  /* #3822: the "this tab is older than AgEnD" prompt's Reload (its component also sets this, for a tab with an older app.css). */
-  .stale-tab .btn { min-height: var(--tap); min-width: var(--tap); }
   .s-row .icon-btn { min-width: var(--tap); min-height: var(--tap); }
   .p-settings .s-company-join :is(.field input, .btn) { min-height: var(--tap); }
   /* AGEND-122: Owner verification's own buttons, dialog fields and switches are phone tap targets (style guide rule 7); the Devices

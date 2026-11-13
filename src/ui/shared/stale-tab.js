@@ -31,18 +31,20 @@ export function isStaleModuleError(err) {
   return err instanceof SyntaxError || (!!err && typeof err === "object" && err.cause instanceof SyntaxError);
 }
 
-/** A phone or a coarse pointer: the button is a full touch target (style guide rule 7). */
-const TOUCH = "(max-width: 899px), (pointer: coarse)";
-const touch = () => { try { return typeof globalThis.matchMedia === "function" && globalThis.matchMedia(TOUCH).matches; } catch { return false; } };
-
 /**
- * In place of what could not load: why, and one button that reloads the tab. On a phone the button's own style makes it
- * a touch target: the tab that shows this kept its OLD app.css (the rule for .stale-tab there is new), and --tap is a
- * token every version has.
+ * The prompt's own public stylesheet (its phone touch target), linked once: the tab that shows this kept its OLD
+ * app.css, which has no rule for it (as Skeleton links loading.css).
  */
+function staleStyles() {
+  if (typeof document === "undefined" || !document.head || document.querySelector('link[href="/assets/stale-tab.css"]')) return;
+  const link = document.createElement("link"); link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/stale-tab.css");
+  document.head.appendChild(link);
+}
+
+/** In place of what could not load: why, and one button that reloads the tab. */
 export function StaleTabPrompt({ reload = () => globalThis.location?.reload() } = {}) {
-  const size = touch() ? { minHeight: "var(--tap, 44px)", minWidth: "var(--tap, 44px)" } : undefined;
+  staleStyles();
   return html`<div class="error-state stale-tab" role="alert" data-stale-tab="1"><${Icon} name="alert" size=${24} />
     <p>${t("staleTab.title")}</p><p class="muted">${t("staleTab.hint")}</p>
-    <button type="button" class="btn btn-primary" style=${size} onClick=${() => reload()}>${t("staleTab.reload")}</button></div>`;
+    <button type="button" class="btn btn-primary" onClick=${() => reload()}>${t("staleTab.reload")}</button></div>`;
 }
