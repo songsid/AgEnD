@@ -1,0 +1,25 @@
+{
+  "scope": "clean plain alpha sync; no own product/test conflict or resolution",
+  "testedSourceHead": "001ff05e33a8086f7f9f60b8ff1ee64010a98a1f",
+  "parents": [
+    "358fbc0031ccb1a551b9e6f54530beaa9d0b9a2b",
+    "829733669ec316a8a98f33ebcc34e2621c3cb0b2"
+  ],
+  "ownFileBindingsUnchanged": 19,
+  "receiptDigest": "aac256d227ac9d404257a845210d828e599d13aea6400f4dfe0da97977ecc7fd",
+  "incomingFileDigests": {
+    "changes/3027-codex-persistence.md": "493bf683a195ea03da8b2ce6241c409c33f1e671b4fea97309bf155fe2bf71cc",
+    "changes/3027-codex-persistence.zh-TW.md": "2285481e083c75a0337916f2ef13ed3a6149888db5181d1801424640228a95d1",
+    "docs/configuration.md": "987076f6fef89219b6a845745f56b4d5da5228ca1aeffc79c58b424172d48569",
+    "docs/configuration.zh-TW.md": "555c96cb7f64116f05ae96264db045bb31d84195a4a85e85069c8cf9af7d4808",
+    "src/instructions.ts": "d74f3556bffe48f385b54d8252b3d1c0c42cbabe7cf881bdf6338357bf5737f9",
+    "tests/codex-persistence-3027.test.ts": "d737e86501be7c62c789c07484ee67af81ffcc048c054892e69a11976e98e74e",
+    "tests/fixtures/instructions-matrix.json": "9d11e76155d4889c74600ba706ac90c05c6bc83591b66ef298e468652af4e696"
+  },
+  "postSyncSourceTypes": 0,
+  "postSyncTestTypes": 0,
+  "changelogFragments": 428,
+  "focusedCarry": "468/12, then3selected proof-source fixture controls; source and own test hashes unchanged by sync",
+  "mutationCarry": "23 unique source-digest-bound compiling semantic reversals, restored; same own production bytes",
+  "activation": false
+}
