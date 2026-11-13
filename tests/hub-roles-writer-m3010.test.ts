@@ -144,6 +144,40 @@ describe("inactive SQL role writer", () => {
     const rootBrowser = await w.context(w.root), rootNotices = await w.writer.notices(rootBrowser.ctx);
     if(!rootNotices.ok) throw Error("root notice read refused"); expect(rootNotices.notices).toHaveLength(2);
   });
+  it("refuses group-administrator documents at both proposal and notice boundaries", async () => {
+    const w = await fixture(), p = w.proposal();
+    p.assignments.at(-1)!.roleId = BUILTIN_ROLE_IDS.admin;
+    p.assignments.at(-1)!.subject = { kind: "group", group: w.group, dn: "CN=Admins,DC=test" };
+    w.memberships.set(w.target.objectId, [w.group.objectId]);
+    expect(await w.writer.preview(p, w.browser.ctx)).toMatchObject({ ok: false, code: "invalid" });
+    expect(w.saved().revision).toBe(1); expect(w.commit).not.toHaveBeenCalled();
+    // A corrupt/externally written row must not manufacture the unsupported administrator shape.
+    w.db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(p));
+    const member = await w.context(w.target);
+    expect(await w.writer.notices(member.ctx)).toMatchObject({ ok: false, code: "invalid" });
+    expect(await w.writer.acknowledge("synthetic-notice", member.ctx)).toMatchObject({ ok: false });
+    expect(w.db.prepare("SELECT * FROM hub_role_notices").all()).toEqual([]);
+  });
+  it("includes a personal administrator outside inventory and proves current authority for read and acknowledgement", async () => {
+    const w = await fixture(), p = w.proposal(); p.assignments.at(-1)!.roleId = BUILTIN_ROLE_IDS.admin;
+    const original = w.effects.snapshot;
+    vi.spyOn(w.effects, "snapshot").mockImplementation(() => ({ ...original(), people: [w.actor] }));
+    expect(await w.apply(p)).toMatchObject({ ok: true });
+    const target = await w.context(w.target), result = await w.writer.notices(target.ctx);
+    if (!result.ok) throw Error("current administrator notice refused"); expect(result.notices).toHaveLength(1);
+    expect(await w.writer.acknowledge(result.notices[0]!.id, target.ctx)).toEqual({ ok: true });
+    const next = w.saved(); next.assignments = next.assignments.filter(a => a.id !== "member1");
+    expect(await w.apply(next)).toMatchObject({ ok: true });
+    expect(await w.writer.notices(target.ctx)).toMatchObject({ ok: false, code: "denied" });
+    expect(await w.writer.acknowledge(result.notices[0]!.id, target.ctx)).toMatchObject({ ok: false, code: "denied" });
+  });
+  it("reserves root-self assignment ids without obstructing the genuine root operation", async () => {
+    const w = await fixture(), p = w.proposal(); p.assignments.at(-1)!.id = `root-self:${w.root.objectId}`;
+    expect(await w.writer.preview(p, w.browser.ctx)).toMatchObject({ ok: false, code: "invalid" });
+    expect(w.saved().revision).toBe(1); expect(w.commit).not.toHaveBeenCalled();
+    const root = await w.context(w.root);
+    expect(await w.writer.previewRootSelf(root.ctx)).toMatchObject({ ok: true });
+  });
   it("keeps root self-use out of migration and permits only its once-only separate previewed operation", async () => {
     const w = await fixture(), rootBrowser = await w.context(w.root), before = w.saved();
     expect(before.assignments.some(a => a.subject.kind === "person" && a.subject.person.objectId === w.root.objectId)).toBe(false);

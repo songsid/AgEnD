@@ -17,11 +17,11 @@
     "src/hub/roles/evaluate.ts": "ffd6fb47ef95ccecc3b4e282cd891ad38a5d104ffaa344e220cfab2c0dfd29bd",
     "src/hub/roles/change.ts": "9d71fdb2c14ab9425f5f0e3c2ac9f051f236de91c4308badb1cf29fbfb788aa7",
     "src/hub/roles/delegation.ts": "a262adcbc4ff40815e6ed847c2642c3e2c2d8462c722b16221b8925b1c76aaec",
-    "src/hub/roles/writer.ts": "67f51b5c65f1f7aa1a0af2d56aa49992ba05fac7ca8012e54fece76c1683a6b6",
+    "src/hub/roles/writer.ts": "e2a649f2b630702368a422cac1756e0dd267d3228cce6a81737eb3908bee9884",
     "tests/hub-roles-model-m3010.test.ts": "5d758915b1168c87f987de123628830f53b27daf6b9e2e4bdfded84a163433b9",
     "tests/hub-roles-change-m3010.test.ts": "cd7c52e6d044a982d60434f8c5e21ea6f82eb2412f15e7c36af8c2a264864448",
     "tests/hub-roles-delegation-m3010.test.ts": "b6ad5cc4bc6c9e1b33c4aa38954dcb472568d979cd890c56215b9fdad83fc54e",
-    "tests/hub-roles-writer-m3010.test.ts": "a7874075b1b32ff1e842770c5da552b5248e64b335ec50eab0a681ca4eb53aaf"
+    "tests/hub-roles-writer-m3010.test.ts": "1211a39adf5c528331a2cc7cb37893e7dec97ada7161d15b55a18e057f66f510"
   },
   "mutations": [
     {
@@ -304,5 +304,52 @@
     "idempotent expiry settlement/scheduling",
     "real manual/code/invitation/resource/pending-join consequences",
     "live role permits, routes, member leases and SSE"
-  ]
+  ],
+  "revision1": {
+    "previousHead": "a534988977610142ed381fb3470674ba9e5ba26f",
+    "focusedFiles": 9,
+    "focusedTests": 149,
+    "skips": 0,
+    "failFirst": "reserved root assignment proposal was accepted before the reservation fix",
+    "reviewResolution": "Management permissions are person-only and Hub-wide; group-admin policies refuse at parse, not a deferred supported recipient. Personal admin subjects are included without inventory membership.",
+    "reversals": [
+      {
+        "name": "reserved-assignment",
+        "typecheckExit": 0,
+        "testExit": 1,
+        "load1": 7.62939453125,
+        "failedTests": [
+          "inactive SQL role writer reserves root-self assignment ids without obstructing the genuine root operation"
+        ],
+        "caught": true
+      },
+      {
+        "name": "group-management",
+        "typecheckExit": 0,
+        "testExit": 1,
+        "load1": 8.25927734375,
+        "failedTests": [
+          "inactive Hub role model refuses group-assigned fleets.manage even when added by a role edit",
+          "inactive Hub role model refuses group-assigned join.manage even when added by a role edit",
+          "inactive Hub role model refuses group-assigned roles.assign even when added by a role edit",
+          "inactive Hub role model refuses group-assigned audit.view even when added by a role edit",
+          "inactive Hub role model keeps management hub-wide and checks every realm and graph reference",
+          "inactive SQL role writer refuses group-administrator documents at both proposal and notice boundaries"
+        ],
+        "caught": true
+      },
+      {
+        "name": "current-admin",
+        "typecheckExit": 0,
+        "testExit": 1,
+        "load1": 8.87646484375,
+        "failedTests": [
+          "inactive SQL role writer records management notices for every effective admin and ends access after role loss",
+          "inactive SQL role writer includes a personal administrator outside inventory and proves current authority for read and acknowledgement"
+        ],
+        "caught": true
+      }
+    ],
+    "previousCI": "43354270477 shard2 listen EADDRINUSE in pre-existing hub-quick-pairing-http; build aggregate red, no roles failure inferred"
+  }
 }
