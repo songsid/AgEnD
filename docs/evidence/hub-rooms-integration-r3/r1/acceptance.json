@@ -1,0 +1,203 @@
+{
+  "sourceHead": "7ce5d52798704ca3000b313a30bc7d1da111c5ef",
+  "priorCheckpoint": "0529469f0466da2e2a5e0e6f2c162f9d2eb441db",
+  "parents": {
+    "R2": "8cfe0d5dec79468478246becac2bdc4ed788c3e9",
+    "R3": "5b71d3f4d0d2496278fb90f26f326ebabf19c8ed",
+    "R4": "ddd450f07f7113007926b5b5807448a41eba0bf9",
+    "AService": "65d1433cb724a15f1c0f00b809962a02e7e06971",
+    "AUI": "f2b896ca699e16927808c72932f4aa96d346a642",
+    "U1": "485f0d30f245067e28898b017df8d483304f1d25",
+    "U2": "8443594357f63352e22f6dc7fd645828e5513b67",
+    "C2": "548b06e4c83e7aef73ad3e1f8621b7ba3ae05ba2"
+  },
+  "integratedUpdates": {
+    "R4": "509b940cb371a92f56f427432170179beab860a8",
+    "U1": "249c2d6e77ce3bf559cca0e6e77e68599ad6490c",
+    "U2": "2925fc93a",
+    "strings": "Three official U1 keys copied locally by owner instruction until its PR1b lands; sysAdminJoined/composerAssistant/composerDirect"
+  },
+  "checks": [
+    {
+      "name": "focused-server-and-UI",
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-system-r3.test.ts tests/hub-room-client-contract-r3.test.ts tests/hub-room-candidates-r3.test.ts tests/hub-room-admin-r3.test.ts tests/hub-room-integration-r3.test.ts tests/hub-room-assistant-integration-r3.test.ts tests/hub-room-rc-integration-r3.test.ts tests/hub-room-agents-r2.test.ts tests/hub-room-link-r2.test.ts tests/hub-rooms-r1.test.ts tests/hub-room-new.test.ts tests/hub-room-settings.test.ts tests/hub-room-members.test.ts tests/hub-room-thread-3092.test.ts tests/hub-room-list-3092.test.ts --maxWorkers=2",
+      "result": "106/106 across15 files; runtime/test bodies unchanged since this run, later commits change browser script only."
+    },
+    {
+      "name": "native-source",
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+      "exitCode": 0
+    },
+    {
+      "name": "native-tests",
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exitCode": 0
+    },
+    {
+      "name": "browser",
+      "checks": 38,
+      "pictures": 12,
+      "outcome": "pass on sourceHead",
+      "command": "PW_DIR=<owned browser install> PLAYWRIGHT_BROWSERS_PATH=<owned browser cache> OUT=.artifacts/rooms-integration/r1/browser-verified nice -n10 node_modules/.bin/tsx scripts/manual/hub-rooms/real-server.mts"
+    },
+    {
+      "name": "changelog",
+      "outcome": "465 fragments OK"
+    }
+  ],
+  "bindings": [
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "0cb41071e33cc758f061bdece3191b84f700edd29a38e28d89f29d765af14ae5"
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "sha256": "85cc6620f8408fe97058839541635568408ca1be9a4b361131c699f253ddd06a"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "2ad90b5d2f5877ae2e06936665d6c291e9b67134343275b39890bfd94116fa9f"
+    },
+    {
+      "path": "src/hub/rooms/admin.ts",
+      "sha256": "6c9acbfd88226cea40d942efade23fc56be061c5fdb2e2b43b61692721375494"
+    },
+    {
+      "path": "src/hub/rooms/assistant.ts",
+      "sha256": "6edc4304b8ead380c43b9c76fd741d823c8fc0ace19df48eb24f9eb3cee51904"
+    },
+    {
+      "path": "src/hub/rooms/directory.ts",
+      "sha256": "2e2fe034190b84b6d2d3d6afeac497f1804e631ad7c4d2003bc2608e828b0061"
+    },
+    {
+      "path": "src/hub/assistant/service.ts",
+      "sha256": "f08f8287bf02920615c7ac05d00d5be672c7bdceb9e76cd8eb21700340a345e6"
+    },
+    {
+      "path": "src/hub/assistant/runner.ts",
+      "sha256": "659cf7aeb5b0d9d4f92af72f408bbc424b72ab8e34e942b031f2c2f3ab947a00"
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "sha256": "36d930616bb9fdd6dc35c726271bf5a406270699127e0ab96ffc01a512c4b581"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "cca7ea85c2288b67a7c7b6292625ebd4ca11682be5fca105ac1293972b35035a"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "sha256": "f4ea77e0d2ad4b820728e6ec4e511efff710a850b6cd777404ee1fbede6b5b63"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "sha256": "16c865fa7ce2f556818918a1a86e72d4b2744590c532c209e4f0e23626488fc8"
+    },
+    {
+      "path": "src/ui/hub-room-list.js",
+      "sha256": "407952de0a63ebae59adc7870258e4ae69396fc79507fccf61d06cd8323b7f31"
+    },
+    {
+      "path": "src/ui/hub-room-thread.js",
+      "sha256": "bbec7589f17896c6f73a6a3d56f4dc82638d4d916bda9ac1ca44ae65bcf0f5a2"
+    },
+    {
+      "path": "src/ui/hub-room-composer.js",
+      "sha256": "ed79763edea2363578f061ea21697f94066b298ae4e14b610b0ea585011ac31f"
+    },
+    {
+      "path": "src/ui/hub-room-new.js",
+      "sha256": "f4ade027d0733418d22f42d333dca9453f2f496eb58eaec4cd2ab0ee76459286"
+    },
+    {
+      "path": "src/ui/hub-room-members.js",
+      "sha256": "6412d130351d049dcad325732b3f3cbbc42e24eb2655ca9f7c7cc109eaf085e3"
+    },
+    {
+      "path": "scripts/manual/hub-rooms/real-server.mts",
+      "sha256": "4eb89c767d945f034a43ab0354edd7a1f4d5717d5bd0cd28441f1fb00d9873f3"
+    },
+    {
+      "path": "tests/hub-room-assistant-integration-r3.test.ts",
+      "sha256": "5dadcf4c1f6641ee9cdd4f0ead2a2786c3ff41a30f40bd28d3b6045fdb9ce8ad"
+    },
+    {
+      "path": "tests/hub-room-rc-integration-r3.test.ts",
+      "sha256": "66d01cdecf39200501609e115cd7fb9b147db5682e0df06489628948f5b3a1f7"
+    },
+    {
+      "path": "tests/hub-room-client-contract-r3.test.ts",
+      "sha256": "055ff308969294778499efbaec5d0ecdf0bf80c02c5a17a72b73917cfbe364e6"
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "sha256": "d416279bac416c4b616a9660f1d7d1104199ea6a832361c17051fe3909b59da5"
+    },
+    {
+      "path": "src/ui/hub-room-strings.js",
+      "sha256": "a854bad193477756a421d4d4a01af8ef56c53b6fb2af5ab4c18b846224dff6c9"
+    },
+    {
+      "path": "src/ui/hub-room-new-strings.js",
+      "sha256": "33f6cca50137fb9bc3c60bb878299ff452dbe1378b8907888e5fd02c051c397e"
+    },
+    {
+      "path": "src/ui/hub-room-members-strings.js",
+      "sha256": "109ecc9238c2a5ccbd77f5faaf20148fdad12b1502c50d70277ef36ff69ea32a"
+    },
+    {
+      "path": "src/ui/hub-room-settings.js",
+      "sha256": "4ca8f7bf194733c9039e6b236ba9411707e336029bc3772c7f6f988d94790f13"
+    },
+    {
+      "path": "src/ui/hub-admin-rooms.js",
+      "sha256": "9263e3d8afb9c5a00082059e9cdb116a39e2c2fd2ff35f65c191afc387e0ac95"
+    },
+    {
+      "path": "src/ui/shared/chat-thread.js",
+      "sha256": "94572a0b13850df731507e44a8f160083ea08fb1fc36ea7fc5450d163e911075"
+    },
+    {
+      "path": "tests/hub-room-system-r3.test.ts",
+      "sha256": "4428bc5176e1bd82314a562cdfa91766df1954737f9f401329d4f25be923a75f"
+    },
+    {
+      "path": "tests/hub-rooms-r1.test.ts",
+      "sha256": "4d0f39f5feef8aa330f71dbe55c89f9f1a8411cc5c0b68805df33f3555e2bc79"
+    },
+    {
+      "path": "tests/hub-room-new.test.ts",
+      "sha256": "3ac5b61792fa834fcd8df8527ee1b5d0a37beda73adc4d653ba3e0b19d3ce0d6"
+    },
+    {
+      "path": "tests/hub-room-members.test.ts",
+      "sha256": "dfa48672593d1dec806c3abd02bb151dbf7f18bd8d8d59fa1dfc141381508c74"
+    },
+    {
+      "path": "tests/hub-room-settings.test.ts",
+      "sha256": "c684ffbd9a0db4da7246d5759ba46c04999cdb08c8fcfd0ad0326d84df05086a"
+    },
+    {
+      "path": "tests/hub-room-thread-3092.test.ts",
+      "sha256": "928b1dcd2732e7d5d7a65b18cd76ad306abb7671f02ecbc40bd98b451b549561"
+    },
+    {
+      "path": "tests/hub-room-list-3092.test.ts",
+      "sha256": "0f8a6ec74ee161fa3a3171da857f80b412f3850228db80e07b086748225c17ff"
+    }
+  ],
+  "scope": "Real R HTTPS/SQLite, actual A service/runner with inert physical worker, actual shared U1/U2 shell for list/NewRoom/thread/settings/private assistant/admin. Actual R/C adapter TLS lost-ACK test retained; concrete C invitation/Team services are not composed.",
+  "harnessCorrections": [
+    "Initial38-check attempt:36 pass and2 direct-prompt assertions fail because the harness inspected textarea native placeholder, which shared ComposerInput intentionally sets to one space.",
+    "A wait on that same native attribute timed out; image-only inspection confirmed the actual drawn prompts were correct.",
+    "Final harness asserts .composer-ph plus textarea aria-label after real detail settles. No product code change for these harness corrections."
+  ],
+  "remaining": [
+    "C invitation consent service and Team store/migration/factory are still interfaces only at the supplied checkpoint; keep optional ports uncomposed.",
+    "Actual invitations/Team/agent @all/presence full walkthrough awaits those C implementations and remaining parent merges.",
+    "R3/R4 source clearance is ordinary pilot source review. Parent-first plain-sync/currentCI and coordinator-only merge remain; this WIP checkpoint is not fullS142 completion."
+  ],
+  "rollback": "Keep DB, content keys and room/input history; deploy a compatible fix. Do not remove retained state to undo display or integration changes.",
+  "imageReview": "Image-only child inspected all12 final browser-verified PNGs: no visible clipping/overlap/readability blocker; all four PM corrections confirmed. This is not a formal parity or fullS142 verdict."
+}
