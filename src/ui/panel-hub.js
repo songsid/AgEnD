@@ -1023,8 +1023,25 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
     <div class="s-section-layout">
       ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
       ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
+      ${/* Lumen's order (M-3092): Let colleagues join → Rooms → Room assistant (track A's card, next) → Connected fleets → pairing. */ ""}
+      ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
+      <section class="card hub-fleet-list"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
+        ${fleets.length ? (() => {
+          // Spec 1.2: the row's title is the Fleet's label (S1 overview), its subtitle the owner; active first, revoked folded.
+          const row = (f) => html`<div key=${f.id} class="s-row hub-row" data-fleet=${f.id}>
+            <${Avatar} name=${f.owner ? f.owner.name : "?"} size="sm" />
+            <span class="hub-row-text"><strong>${typeof f.label === "string" && f.label ? f.label : ho("fleetOf", f.owner ? f.owner.name : "—")}</strong>${f.owner ? html`<small class="note">${f.owner.name}${f.owner.login ? html` · <code>${f.owner.login}</code>` : null}</small>` : null}</span>
+            ${f.status === "active" ? html`<span class="tag ok">${ho("active")}</span><${Menu} label=${ho("rowMenu", f.label || (f.owner ? f.owner.name : f.id))} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(f) }]} />`
+              : html`<span class="tag">${ho("revokedTag")}</span>`}
+          </div>`;
+          const current = fleets.filter((f) => f.status !== "revoked").sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1));
+          const revoked = fleets.filter((f) => f.status === "revoked");
+          return html`${current.length ? html`<div class="hub-rows">${current.map(row)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
+            ${revoked.length ? html`<details class="s-ui-disclosure hub-fleets-revoked"><summary>${t("hubFleetList.revoked", revoked.length)}</summary><div class="hub-rows">${revoked.map(row)}</div></details>` : null}`;
+        })() : html`<p class="note">${ho("noFleets")}</p>`}
+      </section>
       <${ManualFrame} class=${accessEntry ? "s-ui-disclosure hub-admin-manual" : ""} open=${accessEntry && (!!offer || pairings.some(p => p.ownerConfirmed && !p.adminApproved))}>${accessEntry ? html`<summary>${ho("manualAdvanced")}</summary>` : null}<section class="card"><h3>${ho("pairSteps")}</h3>
         <ol class="hub-steps">
           <li class=${offer || pairings.length ? "done" : "now"}><div class="hub-step-body"><span><b>${ho("stepCode")}</b><small class="note">${ho("stepCodeHint")}</small></span>
@@ -1046,23 +1063,7 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
             : html`<span class="tag warn">${ho("waitingOwner")}</span>`}
         </div>`)}</div>` : null}
       </section></${ManualFrame}>
-      <section class="card hub-fleet-list"><h3>${ho("pairedFleets", fleets.filter((f) => f.status !== "revoked").length)}</h3>
-        ${fleets.length ? (() => {
-          // Spec 1.2: the row's title is the Fleet's label (S1 overview), its subtitle the owner; active first, revoked folded.
-          const row = (f) => html`<div key=${f.id} class="s-row hub-row" data-fleet=${f.id}>
-            <${Avatar} name=${f.owner ? f.owner.name : "?"} size="sm" />
-            <span class="hub-row-text"><strong>${typeof f.label === "string" && f.label ? f.label : ho("fleetOf", f.owner ? f.owner.name : "—")}</strong>${f.owner ? html`<small class="note">${f.owner.name}${f.owner.login ? html` · <code>${f.owner.login}</code>` : null}</small>` : null}</span>
-            ${f.status === "active" ? html`<span class="tag ok">${ho("active")}</span><${Menu} label=${ho("rowMenu", f.label || (f.owner ? f.owner.name : f.id))} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(f) }]} />`
-              : html`<span class="tag">${ho("revokedTag")}</span>`}
-          </div>`;
-          const current = fleets.filter((f) => f.status !== "revoked").sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1));
-          const revoked = fleets.filter((f) => f.status === "revoked");
-          return html`${current.length ? html`<div class="hub-rows">${current.map(row)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
-            ${revoked.length ? html`<details class="s-ui-disclosure hub-fleets-revoked"><summary>${t("hubFleetList.revoked", revoked.length)}</summary><div class="hub-rows">${revoked.map(row)}</div></details>` : null}`;
-        })() : html`<p class="note">${ho("noFleets")}</p>`}
-      </section>
       <${LazyThisHub} directory=${directory} />
-      ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
     </div></div>`;
 }
 
