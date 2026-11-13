@@ -9,20 +9,20 @@ import { createRequire } from "node:module";
 
 const repo = process.env.REPO ?? process.cwd(), out = process.env.OUT!, mode = process.env.MODE ?? "current";
 mkdirSync(out, { recursive: true });
-const home = mkdtempSync(join(tmpdir(), "hub-group-label-3824-")); process.env.AGEND_HOME = home;
 const hash = (value: any) => createHash("sha256").update(value).digest("hex");
 const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" }).trim();
 const receipt: any = { mode, head: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"),
   trackedDirty: git("status", "--porcelain", "--untracked-files=no"), inputs: {}, served: {}, cases: [], checks: [], errors: [],
   scope: "Actual baseline/candidate server and unchanged production UI over owned HTTPS. Inert AD and authenticated member publication; no live AD, Fleet, account, model or input. Fixture grant writes only; revoke dialogs cancelled." };
-for (const path of ["src/hub/catalog.ts", "src/ui/panel-hub.js", "src/ui/hub-owner-strings.js", "src/ui/hub-owner.css", "tests/helpers/hub-s3b-rig.ts"])
+for (const path of ["src/hub/catalog.ts", "src/ui/panel-hub.js", "src/ui/hub-owner-strings.js", "src/ui/shared/hub-owner.css", "tests/helpers/hub-s3b-rig.ts"])
   receipt.inputs[path] = hash(readFileSync(join(repo, path)));
 receipt.harness = hash(readFileSync(new URL(import.meta.url)));
 receipt.font = execFileSync("fc-match", ["sans:lang=zh-tw"], { encoding: "utf8" }).trim();
 const check = (name: string, ok: unknown) => { receipt.checks.push({ name, ok: !!ok }); if (!ok) throw Error(name); };
-let rig: any, browser: any;
+let rig: any, browser: any, home: string | undefined;
 const server = createServer((q, p) => { if (!rig?.http.handle(q, p)) { p.writeHead(404); p.end(); } });
 try {
+  home = mkdtempSync(join(tmpdir(), "hub-group-label-3824-")); process.env.AGEND_HOME = home;
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const origin = "https://127.0.0.1:" + (server.address() as any).port;
   const { createBrowserCertificate } = await import(repo + "/src/hub/init/browser-certificate.ts");
@@ -89,7 +89,7 @@ try {
 } catch (e: any) { receipt.status = "FAIL"; receipt.error = e.stack; throw e; }
 finally {
   await browser?.close(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
-  await rig?.close(); rmSync(home, { recursive: true, force: true }); receipt.cleaned = true;
+  await rig?.close(); if (home) rmSync(home, { recursive: true, force: true }); receipt.cleaned = true;
   writeFileSync(join(out, "receipt.json"), JSON.stringify(receipt, null, 2));
 }
 console.log(JSON.stringify({ status: receipt.status, cases: receipt.cases.length, checks: receipt.checks.length, out }));
