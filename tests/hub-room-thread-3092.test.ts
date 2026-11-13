@@ -147,6 +147,42 @@ describe("a send answered with the bare message, before any stream (Ridge's serv
   });
 });
 
+describe("a room's committed order (Ridge's `sequence`)", () => {
+  const room = { id: "g1", kind: "group", name: "Order", people: 2, agents: 2 };
+  const msg = (id: string, sequence: number | undefined, extra: any = {}) => ({ id, roomId: "g1", at: 1, author: { kind: "person", id: "p1", name: "Sam" }, text: id, mentions: [], ...(sequence === undefined ? {} : { sequence }), ...extra });
+  function fake(history: any[]) {
+    const h: Record<string, (d: any) => void> = {};
+    const client = { room: async () => ({ ok: true, room, me: { id: "me", role: "member" }, members: [], settings: {} }),
+      roomMessages: async () => ({ ok: true, messages: history, more: false }), subscribeRooms: (handlers: any) => { Object.assign(h, handlers); return () => {}; },
+      markRoomRead: async () => ({ ok: true }) };
+    return { client, h };
+  }
+  it("placeholders that arrive out of order, a person between answers, answers in place: drawn by sequence", async () => {
+    const q = msg("q", 1, { mentions: ["all"], ask: { total: 3, answered: 0, working: 3, later: 0 } });
+    const ph = (id: string, seq: number, name: string) => msg(id, seq, { author: { kind: "agent", id: `e-${id}`, name }, text: "", answerTo: "q", stage: "working" });
+    const { client, h } = fake([q]);
+    const st = thread.createRoomStore("g1", { client });
+    await until(() => st.loaded());
+    h["message.added"]({ roomId: "g1", message: ph("a3", 4, "C") });                       // events out of order
+    h["message.added"]({ roomId: "g1", message: ph("a1", 2, "A") });
+    h["message.added"]({ roomId: "g1", message: msg("human", 5, { text: "between" }) });
+    h["message.added"]({ roomId: "g1", message: ph("a2", 3, "B") });
+    for (const [id, seq, name] of [["a2", 3, "B"], ["a3", 4, "C"], ["a1", 2, "A"]] as const)   // answered in place, in another order
+      h["message.updated"]({ roomId: "g1", message: { ...ph(id, seq, name), text: `${name} done`, stage: "answered" } });
+    expect(st.raw().map((m: any) => m.id)).toEqual(["q", "a1", "a2", "a3", "human"]);
+    expect(st.messages().filter((x: any) => x.role !== "status" && !x.action).map((x: any) => x.text)).toEqual(["q", "A done", "B done", "C done", "between"]);
+    st.stop();
+  });
+  it("without a sequence (a direct chat, an older Hub) the arrival order stays", async () => {
+    const { client, h } = fake([msg("a", undefined), msg("b", undefined)]);
+    const st = thread.createRoomStore("g1", { client });
+    await until(() => st.loaded());
+    h["message.added"]({ roomId: "g1", message: msg("c", undefined) });
+    expect(st.raw().map((m: any) => m.id)).toEqual(["a", "b", "c"]);
+    st.stop();
+  });
+});
+
 describe("the shared renderer's mention labels (Hub-only opt-in)", () => {
   it("accents exact labels with a space, CJK or a hyphen as it accents @Notes; without labels nothing changes", async () => {
     const R = (globalThis as any).AgendChatRender || (await import("/assets/chat-render.js"), (globalThis as any).AgendChatRender);
