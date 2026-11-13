@@ -78,13 +78,13 @@ describe("S129 long directory preparation", () => {
   it("holds the actual pool slot through fresh eligibility and keeps one acquisition flight", async () => {
     const w = await roleAuthorityWorld(), p = await w.authority.prepareDirectory(w.ctx.ctx), gate = held();
     w.eligible.mockImplementationOnce(async who => { gate.enter(); await gate.wait; return { eligible: true, person: w.person(who) }; });
-    const flight = p.authorize(); await gate.entered;
+    const flight = p.authorize().then(value => ({ value }), error => ({ error })); await gate.entered;
     const slots: (() => void)[] = [], readers = Array.from({ length: 3 }, () => w.pool.withDirectoryRead(w.admin, () => new Promise<void>(r => slots.push(r))));
     try {
       await expect(p.authorize()).rejects.toMatchObject({ code: "backpressure" });
       await expect(w.authority.require(w.ctx.ctx, "hub.admin")).rejects.toMatchObject({ code: "backpressure" });
-    } finally { slots.forEach(r => r()); gate.release(); await Promise.all(readers); }
-    expect((await flight).actor.person).toEqual(w.admin); expect(() => p.assertCurrent()).toThrow();
+    } finally { slots.forEach(r => r()); gate.release(); await Promise.all(readers); await flight; }
+    expect(await flight).toMatchObject({ value: { actor: { person: w.admin } } }); expect(() => p.assertCurrent()).toThrow();
   });
   it.each(["cancel", "role", "session", "provider", "deadline"] as const)("refuses %s while fresh physical eligibility is held", async mode => {
     const w = await roleAuthorityWorld(), p = await w.authority.prepareDirectory(w.ctx.ctx), gate = held();
