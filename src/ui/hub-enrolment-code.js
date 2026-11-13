@@ -78,7 +78,7 @@ export function HubEnrolmentCode({ client = hubClient(), enabled = false, host =
     if (!current(mine) || writing.current) return;
     setLoading(false);
     if (r.ok && Array.isArray(r.codes)) { setData({ client, codes: r.codes }); setError(null); return true; }
-    else { if (r.code !== "backpressure") setData(null); setError(errorText(r, "loadFailed")); }
+    else { if (r.code !== "backpressure" && r.timedOut !== true) setData(null); setError(errorText(r, "loadFailed")); }
   };
   refresh.current = read;
   useEffect(() => {

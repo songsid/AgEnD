@@ -200,7 +200,7 @@ export function HubJoinCard({ view, busy = false, error = null, onToggle, onRetr
         let r; try { r = await client[method](); } catch { r = { ok: false }; }
         if (!live) return;
         if (r?.ok) save(method === "groupPolicy" ? r.policy : Array.isArray(r.codes) ? r.codes : null);
-        else { failed = true; if (r?.code !== "backpressure") save(null); }
+        else { failed = true; if (r?.code !== "backpressure" && r?.timedOut !== true) save(null); }
       }
       if (live) { setReadError(failed); setReading(false); }
     };

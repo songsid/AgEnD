@@ -139,11 +139,12 @@ describe("mounted Administration", () => {
     expect(max).toBe(1); expect(reads).toContain("/hub/v1/admin/company-join");
     await p.unmount();
   });
-  it("keeps known completed steps across a backpressured refresh, but a successful disabled policy clears step 2", async () => {
+  it.each(["backpressure", "timeout"])("keeps known completed steps across a %s refresh, but a successful disabled policy clears step 2", async failure => {
+    const unavailable = failure === "timeout" ? { ok: false, status: 0, code: "unreachable", timedOut: true } : { ok: false, status: 429, code: "backpressure" };
     let fail = false, disabled = false, n = 0;
     const c = { enrolmentCodeV1: true, onSignedOut: () => () => {},
-      groupPolicy: vi.fn(async () => fail ? { ok: false, status: 429, code: "backpressure" } : { ok: true, supported: true, binding: "ready", policy: disabled ? { ...policy, state: "disabled", groups: [] } : policy }),
-      enrolmentCodes: vi.fn(async () => fail ? { ok: false, status: 429, code: "backpressure" } : { ok: true, codes: [] }),
+      groupPolicy: vi.fn(async () => fail ? unavailable : { ok: true, supported: true, binding: "ready", policy: disabled ? { ...policy, state: "disabled", groups: [] } : policy }),
+      enrolmentCodes: vi.fn(async () => fail ? unavailable : { ok: true, codes: [] }),
       createEnrolmentCode: vi.fn(async () => { n++; fail = n === 1; return { ok: true }; }), revokeEnrolmentCode: vi.fn(), searchGroups: vi.fn(async () => ({ ok: true, groups: [] })) };
     const p = await mount(h(steps.HubJoinCard, { view: { enabled: true }, groups: true, client: c, features: ["enrolment-code-v1"] }));
     await until(() => button(p, "Create join code")); expect(p.root.querySelector('li[data-step="2"]').classList.contains("done")).toBe(true);
@@ -155,11 +156,12 @@ describe("mounted Administration", () => {
     expect(retry).toBeTruthy(); fire(retry, "click"); await settle(12);
     expect(p.root.querySelector('li[data-step="2"]').classList.contains("done")).toBe(false); expect(c.createEnrolmentCode).toHaveBeenCalledTimes(1);
   });
-  it("a backpressured code-list refresh retains known rows and Retry clears the error without a write", async () => {
+  it.each(["backpressure", "timeout"])("a %s code-list refresh retains known rows and Retry clears the error without a write", async failure => {
+    const unavailable = failure === "timeout" ? { ok: false, status: 0, code: "unreachable", timedOut: true } : { ok: false, status: 429, code: "backpressure" };
     let fail = false;
     const timers: Array<() => void> = [], original = globalThis.setTimeout;
     vi.spyOn(globalThis, "setTimeout").mockImplementation((fn: any, ms: any, ...args: any[]) => ms === 5000 ? (timers.push(fn), 123 as any) : original(fn, ms, ...args));
-    const c = { enrolmentCodeV1: true, enrolmentCodes: vi.fn(async () => fail ? { ok: false, code: "backpressure", status: 429 } : { ok: true, codes: [{ id: "owned", code: "1234-ABCD", state: "live", scope: { kind: "directory" }, expiresAt: Date.now() + 60000 }] }), createEnrolmentCode: vi.fn(), revokeEnrolmentCode: vi.fn() };
+    const c = { enrolmentCodeV1: true, enrolmentCodes: vi.fn(async () => fail ? unavailable : { ok: true, codes: [{ id: "owned", code: "1234-ABCD", state: "live", scope: { kind: "directory" }, expiresAt: Date.now() + 60000 }] }), createEnrolmentCode: vi.fn(), revokeEnrolmentCode: vi.fn() };
     const p = await mount(h(codeUI.HubEnrolmentCode, { client: c, enabled: true })); expect(p.root.textContent).toContain("1234-ABCD");
     fail = true; timers.shift()!(); await settle(10); expect(p.root.textContent).toContain("1234-ABCD"); expect(button(p, "Try again")).toBeTruthy();
     fail = false; fire(button(p, "Try again"), "click"); await settle(10); expect(button(p, "Create join code").disabled).toBe(false);
