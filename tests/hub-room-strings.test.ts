@@ -62,32 +62,12 @@ describe("hub-room-strings.js", () => {
     expect(byKey.askSummarise).toMatch(/summarise/);          // §10
     expect(byKey.whoCanCreate).toBe("Who can start rooms");   // §11
     expect(byKey.unreadPrefix).toBe("({0})");                 // §12
+    expect(byKey.unreadN).toBe("{0} unread");
+    expect(byKey.mentionedYou).toBe("Mentioned you");
     const zhBy = Object.fromEntries(zh.map((s) => [s.key, s.text]));
     expect(zhBy.addPeople).toContain("AD 群組");
     expect(zhBy.room).toBe("房間");
-  });
-
-  it("exposes the list.* keys the list (PR 1b) reads, as written", () => {
-    const enBy = Object.fromEntries(en.map((s) => [s.key, s.text]));
-    const zhBy = Object.fromEntries(zh.map((s) => [s.key, s.text]));
-    const list = {
-      "list.groupRooms": ["房間", "Rooms"],
-      "list.groupAgents": ["Agent", "Agents"],
-      "list.roomLine": ["{0} 人 · {1} 個 Agent", "{0} people · {1} agents"],
-      "list.hubProvided": ["Hub 提供", "Provided by the Hub"],
-      "list.hubAssistant": ["Hub 助理", "Hub assistant"],
-      "list.unread": ["{0} 則未讀", "{0} unread"],
-      "list.mentioned": ["有人 @ 你", "Mentioned you"],
-      "list.archived": ["已封存", "Archived"],
-      "list.newChat": ["新對話", "New chat"],
-      "list.newRoom": ["新房間", "New room"],
-      "list.search": ["搜尋", "Search"],
-      "list.empty": ["還沒有對話", "No chats yet"],
-      "list.emptyHint": ["用「新對話」開始；清單裡是允許你提問的 Agent。", "Start with New chat; the list shows the agents you're allowed to ask."],
-      "list.emptyHintRooms": ["也可以開一個房間，把人和 Agent 放在一起。", "You can also open a room to bring people and agents together."],
-    };
-    for (const [key, [zhText, enText]] of Object.entries(list)) {
-      expect([key, zhBy[key], enBy[key]]).toEqual([key, zhText, enText]);
-    }
+    expect(zhBy.unreadN).toBe("{0} 則未讀");
+    expect(zhBy.mentionedYou).toBe("有人 @ 你");
   });
 });

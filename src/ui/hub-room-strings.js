@@ -18,15 +18,6 @@ register("hubRoom", {
     noChats: "No chats yet",
     noChatsHint: "Start with New chat; the list is the agents you may ask.",
     noChatsHintRooms: "You can also start a room that holds people and agents together.",
-    // §2 list (PR 1b reads these exact keys via hroom("list.*"))
-    "list.groupRooms": "Rooms", "list.groupAgents": "Agents",
-    "list.roomLine": "{0} people · {1} agents",
-    "list.hubProvided": "Provided by the Hub", "list.hubAssistant": "Hub assistant",
-    "list.unread": "{0} unread", "list.mentioned": "Mentioned you", "list.archived": "Archived",
-    "list.newChat": "New chat", "list.newRoom": "New room", "list.search": "Search",
-    "list.empty": "No chats yet",
-    "list.emptyHint": "Start with New chat; the list shows the agents you're allowed to ask.",
-    "list.emptyHintRooms": "You can also open a room to bring people and agents together.",
     // §3 thread
     roomTitle: "{0} people · {1} agents · Room assistant",
     roomSettings: "Room settings", leaveRoom: "Leave room", menu: "Menu",
@@ -115,7 +106,7 @@ register("hubRoom", {
     noContent: "Room content is not visible here.",
     joinAsManager: "Join as a room manager",
     // §12 unread
-    unreadPrefix: "({0})", mentionMark: "@",
+    unreadPrefix: "({0})", unreadN: "{0} unread", mentionMark: "@", mentionedYou: "Mentioned you",
   },
   "zh-TW": {
     chat: "對話", room: "房間", members: "成員", roomManager: "房間管理",
@@ -127,14 +118,6 @@ register("hubRoom", {
     noChats: "還沒有對話",
     noChatsHint: "用「新對話」開始；清單裡是允許你提問的 Agent。",
     noChatsHintRooms: "也可以開一個房間，把人和 Agent 放在一起。",
-    "list.groupRooms": "房間", "list.groupAgents": "Agent",
-    "list.roomLine": "{0} 人 · {1} 個 Agent",
-    "list.hubProvided": "Hub 提供", "list.hubAssistant": "Hub 助理",
-    "list.unread": "{0} 則未讀", "list.mentioned": "有人 @ 你", "list.archived": "已封存",
-    "list.newChat": "新對話", "list.newRoom": "新房間", "list.search": "搜尋",
-    "list.empty": "還沒有對話",
-    "list.emptyHint": "用「新對話」開始；清單裡是允許你提問的 Agent。",
-    "list.emptyHintRooms": "也可以開一個房間，把人和 Agent 放在一起。",
     roomTitle: "{0} 人 · {1} 個 Agent · 房間助理",
     roomSettings: "房間設定", leaveRoom: "離開房間", menu: "選單",
     authorAgent: "{0} · {1}的 Agent", authorAssistant: "房間助理 · Hub 提供",
@@ -213,7 +196,7 @@ register("hubRoom", {
     allRooms: "所有房間", active: "使用中", archived: "已封存",
     noContent: "這裡看不到任何房間的內容。",
     joinAsManager: "加入自己成為房間管理",
-    unreadPrefix: "({0})", mentionMark: "@",
+    unreadPrefix: "({0})", unreadN: "{0} 則未讀", mentionMark: "@", mentionedYou: "有人 @ 你",
   },
 });
 
