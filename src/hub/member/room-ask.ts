@@ -38,7 +38,8 @@ export interface RoomAskOptions {
   locale?: "en" | "zh-TW";
 }
 export function migrateRoomAsks(db: Database.Database): void {
-  db.exec("CREATE TABLE IF NOT EXISTS hub_room_asks(message_id TEXT PRIMARY KEY,binding TEXT NOT NULL,state TEXT NOT NULL,cid TEXT NOT NULL UNIQUE,value TEXT NOT NULL)");
+  db.exec(`CREATE TABLE IF NOT EXISTS hub_room_asks(message_id TEXT PRIMARY KEY,binding TEXT NOT NULL,state TEXT NOT NULL,cid TEXT NOT NULL UNIQUE,value TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS hub_room_asks_state ON hub_room_asks(state)`);
 }
 export const HUB_ROOM_ASK_MIGRATION = Object.freeze({ component: "room-ask-v1", version: 1, up: migrateRoomAsks });
 const askSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, roomName: plain(4096),
@@ -76,7 +77,10 @@ export class HubRoomAskAdapter {
       }
     }).immediate();
   }
-  private rows(): Row[] { return this.options.db.prepare("SELECT * FROM hub_room_asks ORDER BY rowid").all() as Row[]; }
+  private rows(state?: State): Row[] {
+    return (state ? this.options.db.prepare("SELECT * FROM hub_room_asks WHERE state=? ORDER BY rowid").all(state)
+      : this.options.db.prepare("SELECT * FROM hub_room_asks ORDER BY rowid").all()) as Row[];
+  }
   private row(id: string): Row | undefined { return this.options.db.prepare("SELECT * FROM hub_room_asks WHERE message_id=?").get(id) as Row | undefined; }
   private aad(id: string, state: State): Buffer { return Buffer.from(JSON.stringify(["hub-room-ask-v1", this.binding, id, state])); }
   private read(row: Row): Saved {
@@ -171,9 +175,8 @@ export class HubRoomAskAdapter {
   async flush(): Promise<void> {
     const source = this.link;
     if (!this.usable(source)) return;
-    for (const row of this.rows()) {
+    for (const row of this.rows("answered")) {
       if (!this.usable(source)) return;
-      if (row.state !== "answered") continue;
       const saved = this.read(row);
       if (this.current(saved)) await this.send(saved, source);
     }
@@ -227,7 +230,8 @@ export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale:
   const context = ask.context.map(row => `${row.repliedTo ? (zh ? "[回覆的訊息] " : "[Replied-to message] ") : ""}${row.author}: ${row.text}`).join("\n");
   return [zh ? `Hub 房間「${ask.roomName}」｜${ask.asker.name} 提問` : `Hub room “${ask.roomName}” | Question from ${ask.asker.name}`,
     zh ? "房間裡的每個人都能看到你的回答。請在你目前的對話中處理。" : "Everyone in this room can read your answer. Work in your existing conversation.",
-    `Use report_result with target_instance="agend-hub" and correlation_id="${correlationId}" to send your text answer to this room.`,
+    zh ? `請用 report_result，指定 target_instance="agend-hub" 和 correlation_id="${correlationId}"，把純文字回答送回這個房間。`
+      : `Use report_result with target_instance="agend-hub" and correlation_id="${correlationId}" to send your text answer to this room.`,
     context ? `${zh ? "最近的房間對話（由舊到新）" : "Recent room conversation (oldest first)"}:\n${context}` : "",
     `${zh ? "這次的問題" : "Current question"}:\n${ask.text}`].filter(Boolean).join("\n\n");
 }
