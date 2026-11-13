@@ -1,7 +1,7 @@
 [
   {
     "path": "docs/evidence/hub-room-compose-track-c/README.md",
-    "sha256": "c4cc7da0598fcf67a95633745d9c91fb88764360ee7d74dc9f0de22a3c27b379"
+    "sha256": "1106806fb505d9bce3c0958effd8dd45eaee999066e563d7e831476bff46566b"
   },
   {
     "path": "docs/evidence/hub-room-compose-track-c/baseline-before.log",
@@ -9,7 +9,7 @@
   },
   {
     "path": "docs/evidence/hub-room-compose-track-c/bindings.json",
-    "sha256": "ed6b0c08c5e701fe0ac3b0e779a872bd660408c6915e7b7e8b5a82d7ae9cfff1"
+    "sha256": "b62ed1ee446217f336cb232faa2f505be2166938e228f0329719835f8a0b9e73"
   },
   {
     "path": "docs/evidence/hub-room-compose-track-c/final-focused.log",
@@ -302,6 +302,34 @@
   {
     "path": "docs/evidence/hub-room-compose-track-c/r3-alpha-sync/sync.json",
     "sha256": "e002ec67a67730901e60e2ea9953bed86a762179d8f04b688d4be8a9603adac4"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r4-current-alpha/README.md",
+    "sha256": "63c9cc40d4bacb9634dcde794876a18232b711e5203cd78b1d5888a0515446d2"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r4-current-alpha/binding.json",
+    "sha256": "a07ac090708a4095d8214aef163ac1b94f594288508a8069f194591c5c4c6e78"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r4-current-alpha/focused.log",
+    "sha256": "5f27fe959b7612b04bd7fbb49a61abc0c9b1ae026063160d39016aa3782d232b"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r4-current-alpha/prior-bindings.json",
+    "sha256": "ed6b0c08c5e701fe0ac3b0e779a872bd660408c6915e7b7e8b5a82d7ae9cfff1"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r4-current-alpha/source-types.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r4-current-alpha/test-types.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r4-current-alpha/verification.json",
+    "sha256": "dd502caa04932e205d7a062fdfdcc8f083720a2bc4ddda4f7a7a57597d07e45b"
   },
   {
     "path": "docs/evidence/hub-room-compose-track-c/supplement.log",

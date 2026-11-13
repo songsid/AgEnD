@@ -21,3 +21,7 @@ This is a draft composition slice, stacked on #3860 and #3863. The shared UI's r
 ## R2 current integration and shell gate
 
 See [r2/README.md](r2/README.md): clean R2/alpha plain merge,70/6 focused controls, exact two-failure local baseline and174-check shell gate positive. Own product runtime is unchanged from R1. The18 current shell PNGs are not the outstanding integrated room presence gallery; only two Notices originals were visually inspected. R0/R1 results above remain historical.
+
+## Current alpha composition
+
+See r4-current-alpha:136/8focused, both native programs0. All three own runtime blobs equal the cleared R1. No new browser claim; the prior gallery keeps its capture heads.
