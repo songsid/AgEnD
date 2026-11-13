@@ -56,7 +56,7 @@ const webMeta = (bound: boolean) => ({
   user: "web-user", user_id: "web-user", ts: "2026-10-10T00:00:00.000Z", source: "web", ...(bound ? { adapter_id: "dc" } : {}),
 });
 const discordMeta = { chat_id: "guild-1", thread_id: "topic-7", message_id: "999", user: "han", user_id: "42", ts: "2026-10-10T00:00:00.000Z", source: "discord", adapter_id: "dc" };
-const REPLY_LINE = "(Reply using the reply tool — do NOT respond with direct text)";
+const REPLY_LINE = "(Answer with the reply tool.)";
 
 describe("a web message reaches the agent with the full envelope, on every backend", () => {
   for (const b of BACKENDS) {
