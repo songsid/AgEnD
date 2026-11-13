@@ -28,7 +28,7 @@
 .hub-room-group + .hub-room-group { margin-top: var(--s-2); }
 .av.av-square { border-radius: var(--r-sm); }
 .hub-room-at { flex: none; color: var(--accent); font-weight: var(--fw-semibold); font-size: var(--fs-xs); }
-.inst-line2 > .nav-count { flex: none; height: 18px; min-width: 18px; line-height: 18px; font-size: var(--fs-count, calc(var(--fs-xs) * .875)); }
+.inst-line2 > .nav-count { flex: none; height: 18px; min-width: 18px; line-height: 18px; font-size: 10.5px; }
 .hub-room-archived .inst-name { color: var(--text-3); }
 
 /* a name's letter on a tone (the same tones in both themes) */
@@ -101,3 +101,4 @@
 .side-foot > .hub-session-row, .hub-session-row > .menu, .hub-session-row > .menu > .side-row { width: 100%; min-width: 0; }
 /* The foot is the sidebar's bottom: its session menu opens upward (as the dashboard's), never below the screen. */
 .hub-session-row .hub-session-menu .menu-list { top: auto; bottom: calc(100% + 6px); left: auto; right: 0; max-width: calc(var(--sidebar-w, 260px) - 2 * var(--s-2)); }
+
