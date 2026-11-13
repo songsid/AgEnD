@@ -33,6 +33,7 @@ import { createHubGroupWelcome } from "../group-policy/welcome.js";
 import { signAsker, canonicalArguments, sha256, personKeyString } from "../identity.js";
 import { signHubWebOrigin } from "../web-origin.js";
 import { signHubRelocation } from "../member-origin.js";
+import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY } from "../protocol.js";
 import { BIND_SECRET_REL, bindSecretPath } from "../init/layout.js";
 import type { HubMountedService } from "../mount.js";
 import { HubPairingService } from "../pairing.js";
@@ -486,6 +487,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         listen: settings.memberListen,
         pairing,
         companyJoin,
+        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY] : [])],
         current: live,
         receive: (frame, link) => http.receive(frame, link),
         hold: (fleetId, code) => options.log("warn", "Hub member link held", { fleetId, code }),

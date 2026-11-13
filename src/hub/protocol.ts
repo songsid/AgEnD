@@ -63,7 +63,8 @@ export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roo
     .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1) });
 export const roomAnswerSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer) });
 export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid });
-export const agentStateSchema = z.strictObject({ exposureId: uuid, state: z.enum(["idle", "working", "paused"]), note: plain(256).optional() });
+export const agentStateSchema = z.strictObject({ exposureId: uuid, state: z.enum(["idle", "working", "paused"]),
+  reason: z.enum(["quota", "auth", "approval", "update", "operator", "idle", "capacity", "error", "stopped", "crashed", "stuck", "unknown"]).optional(), note: plain(256).optional() });
 export const revocationSchema = z.strictObject({ revocationVersion: epoch, reasonCode: reason, scope: z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("person"), personId: z.string().regex(/^[a-z][a-z0-9_-]{0,63}\/[a-f0-9-]{36}$/) }),
   z.strictObject({ kind: z.literal("fleet"), fleetId: uuid }),

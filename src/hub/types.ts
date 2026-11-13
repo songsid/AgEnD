@@ -62,7 +62,8 @@ export interface HubRoomAsk { messageId: MessageId; roomId: RoomId; roomName: st
   asker: { name: string }; text: string; context: readonly HubRoomContextRow[] }
 export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string }
 export interface HubRoomAnswerAck { messageId: MessageId; answerId: string }
-export interface HubAgentState { exposureId: ExposureId; state: "idle" | "working" | "paused"; note?: string }
+export type HubAgentStateReason = "quota" | "auth" | "approval" | "update" | "operator" | "idle" | "capacity" | "error" | "stopped" | "crashed" | "stuck" | "unknown";
+export interface HubAgentState { exposureId: ExposureId; state: "idle" | "working" | "paused"; reason?: HubAgentStateReason; note?: string }
 export interface HubAnswerButtons {
   id: string; labels: readonly string[]; values?: readonly string[];
   poll?: import("../reply-polls.js").PollConfig;
