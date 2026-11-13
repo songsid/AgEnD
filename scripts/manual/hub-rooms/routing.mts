@@ -17,7 +17,7 @@ import type { HubMemberLink } from "../../../src/hub/client.js";
 const out = resolve(process.env.OUT ?? ".artifacts/rooms-integration/routing/browser"); mkdirSync(out, { recursive: true });
 const sha = (value: Buffer | string) => createHash("sha256").update(value).digest("hex");
 const receipt: any = { sourceHead: execFileSync("git", ["-c", "gc.auto=0", "rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
-  scope: "Actual R HTTP/SQLite and HubServer/HubMemberClient TLS/WSS, C durable adapter/state publisher, shared U1/U2 browser UI. Two owned Fleet fixtures; inert directory and physical input/report hook. Captured bridge composes the two existing test rigs, not a complete FleetManager mount. No Team provider, external service, real agent, account or vendor API.",
+  scope: `Actual R HTTP/SQLite and HubServer/HubMemberClient TLS/WSS, C durable adapter/state publisher, shared U1/U2 browser UI. ${process.env.EXTRA_ANSWERS === "1" ? "Four" : "Two"} owned Fleet fixtures; inert directory and physical input/report hook. Captured bridge composes the two existing test rigs, not a complete FleetManager mount. No Team provider, external service, real agent, account or vendor API.`,
   checks: [], pictures: [], requests: [], served: {}, wire: [], events: [] };
 const check = (name: string, value: unknown, detail?: unknown) => { receipt.checks.push({ name, ok: !!value, ...(value ? {} : { detail }) }); console.log(`${value ? "PASS" : "FAIL"} ${name}`); };
 const until = async (test: () => unknown | Promise<unknown>, label: string) => {
@@ -188,6 +188,8 @@ try {
       check(tag + " expanding shows all four answers", await answerRows.count() === 4);
       check(tag + " interleaved answers all quote the original question", (await answerRows.locator(".msg-quote .quote-text").allTextContents()).every((text: string) => text.includes(batchQuestion)));
       await shot("four-answers-expanded");
+      const groupedEvents = await page.evaluate(() => (window as any).__roomEvents); receipt.events.push({ device, phase: "four-answers", events: groupedEvents });
+      check(tag + " four-answer SSE retains original question progress", groupedEvents.some((e: any) => e.type === "message.updated" && e.data.parent?.ask?.answered === 4));
     }
     check(tag + " no browser error", errors.length === 0, errors);
     check(tag + " no horizontal document overflow", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
