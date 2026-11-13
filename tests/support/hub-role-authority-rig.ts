@@ -22,8 +22,8 @@ import type { PersonKey } from "../../src/hub/types.js";
 const dbs: Database.Database[] = [];
 afterEach(() => { for (const db of dbs.splice(0)) db.close(); vi.restoreAllMocks(); });
 const key = (): PersonKey => ({ realm: "corp", objectId: randomUUID() });
-export async function roleAuthorityWorld() {
-  const db = new Database(":memory:"); dbs.push(db); db.pragma("foreign_keys=ON"); const hubId = randomUUID();
+export async function roleAuthorityWorld(input: { hubId?: string } = {}) {
+  const db = new Database(":memory:"); dbs.push(db); db.pragma("foreign_keys=ON"); const hubId = input.hubId ?? randomUUID();
   for (const m of [HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...HUB_HTTP_MIGRATIONS,
     groupPolicyMigration(hubId, "corp", "g1"), HUB_GROUP_RESOURCES_MIGRATION, HUB_ROLE_WRITER_MIGRATION, HUB_ROLE_EXPIRY_MIGRATION]) m.up(db);
   const root = key(), admin = key(), other = key(); let time = 100, elapsed = 0, live = true, floor = 0;

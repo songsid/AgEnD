@@ -39,24 +39,30 @@ export class HubCore {
     const management = this.deps.management;
     if (management) {
       const require = management.require;
-      const permit = await require.call(management, ctx, permission);
-      let retired = false;
-      const assertCurrent = () => {
-        try {
-          this.check();
-          if (retired || this.deps.management !== management || management.require !== require) throw new HubProtocolError("unavailable");
-          permit.assertCurrent();
-        } catch (error) { retired = true; throw error; }
-      };
-      assertCurrent();
-      return { ...permit, assertCurrent };
+      try {
+        const permit = await require.call(management, ctx, permission);
+        let retired = false;
+        const assertCurrent = () => {
+          try {
+            this.check();
+            if (retired || this.deps.management !== management || management.require !== require) throw new HubProtocolError("unavailable");
+            permit.assertCurrent();
+          } catch (error) { retired = true; throw error; }
+        };
+        assertCurrent();
+        return { ...permit, assertCurrent };
+      } catch (error) {
+        // Preserve the real session's signed-out answer after a held proof read; a stale reader never restores the permit.
+        if (ctx.isCurrent?.() === false) await ctx.current();
+        throw error;
+      }
     }
     const actor = await ctx.requireAdmin(), current = ctx.isCurrent?.bind(ctx);
     const assertCurrent = () => { this.check(); if (current && current() !== true) throw new HubProtocolError("revoked"); };
     assertCurrent(); return { actor, assertCurrent };
   }
   /** One synchronous unit of work on the Hub DB; a promise returned from `work` is refused. */
-  atomic<T>(work: (db: Database.Database, tx: HubTx) => T, permit?: HubOperationPermit): T {
+  atomic<T>(work: (db: Database.Database, tx: HubTx) => T, permit?: Pick<HubOperationPermit, "assertCurrent">): T {
     this.check();
     return this.deps.uow.atomic((tx) => {
       this.check();

@@ -24,6 +24,8 @@ export interface HubSettingsHttpRequest {
   readonly ctx: { readonly requestId: string; current(): boolean; requireAdmin(): Promise<HubActor> };
   signedIn(): unknown; csrf(): unknown; body(): Promise<Record<string, unknown>>;
   send(status: number, body: unknown): void;
+  /** Composed named hub.admin proof; actor-only legacy adapters retain their original gate. */
+  authorize?(): Promise<{ actor: HubActor; assertCurrent(): void }>;
   /** Synchronous audit append (its own transaction); throws when it can't be recorded. */
   audit(event: { requestId: string; actor: Extract<HubActor, { kind: "directory" }>; action: string; result: "held" | "completed" | "denied"; reasonCode?: string }): void;
 }
@@ -34,10 +36,18 @@ export async function handleHubSettingsHttp(deps: HubSettingsHttpDeps | undefine
   const { path, method } = q;
   if (path !== "/hub/v1/admin/hub" && path !== "/hub/v1/admin/hub/name/prepare" && path !== "/hub/v1/admin/hub/name/commit") return false;
   if (!deps) { q.send(404, { code: "not-found" }); return true; }
-  const admin = async (): Promise<Extract<HubActor, { kind: "directory" }>> => {
-    const actor = await q.ctx.requireAdmin();
-    if (actor.kind !== "directory" || !q.ctx.current()) throw new HubSettingsError("denied");
-    return actor;
+  const admin = async () => {
+    const authorize = q.authorize, permit = authorize ? await authorize() : undefined;
+    const actor = permit?.actor ?? await q.ctx.requireAdmin();
+    if (actor.kind !== "directory") throw new HubSettingsError("denied");
+    let retired = false;
+    const assertCurrent = () => {
+      try {
+        if (retired || q.authorize !== authorize || !q.ctx.current()) throw new HubSettingsError("denied");
+        permit?.assertCurrent();
+      } catch (error) { retired = true; throw error; }
+    };
+    assertCurrent(); return { actor, assertCurrent };
   };
   const refused = (e: unknown) => {
     if (e instanceof HubSettingsError) { q.send(STATUS[e.code] ?? 409, { ok: false, code: e.code }); return; }
@@ -45,27 +55,33 @@ export async function handleHubSettingsHttp(deps: HubSettingsHttpDeps | undefine
   };
   if (path === "/hub/v1/admin/hub") {
     if (method !== "GET") { q.send(405, { code: "method" }); return true; }
-    q.signedIn(); await admin();
-    q.send(200, { ok: true, name: deps.name || null, ...deps.info, rename: !!deps.writer });
+    q.signedIn(); const permit = await admin(); permit.assertCurrent();
+    const view = { ok: true, name: deps.name || null, ...deps.info, rename: !!deps.writer };
+    permit.assertCurrent(); q.send(200, view);
     return true;
   }
   if (method !== "POST") { q.send(405, { code: "method" }); return true; }
   q.signedIn(); q.csrf();
   try {
     const body = await q.body();
-    const actor = await admin();
+    const permit = await admin(), actor = permit.actor;
+    permit.assertCurrent();
     if (!deps.writer) throw new HubSettingsError("unavailable");
     const who = { person: actor.person, sessionId: actor.sessionId, requestId: q.ctx.requestId };
     if (path.endsWith("/prepare")) {
       if (!Object.hasOwn(body, "name")) throw new HubSettingsError("invalid");
-      q.send(200, { ok: true, ...deps.writer.prepare({ kind: "rename", name: body.name as string | null }, who) });
+      const prepared = deps.writer.prepare({ kind: "rename", name: body.name as string | null }, who);
+      permit.assertCurrent(); q.send(200, { ok: true, ...prepared });
       return true;
     }
     if (typeof body.ref !== "string") throw new HubSettingsError("invalid");
     // No await from here: the audit, the commit and its record run as one synchronous step.
     q.audit({ requestId: q.ctx.requestId, actor, action: "hub.settings.rename", result: "held" });
+    permit.assertCurrent();
     let done: ReturnType<HubSettingsWriter["commit"]>;
-    try { done = deps.writer.commit(body.ref, who, () => q.ctx.current()); }
+    try { done = deps.writer.commit(body.ref, who, () => {
+      try { permit.assertCurrent(); return true; } catch { return false; }
+    }); }
     catch (e) {
       // The attempt's outcome beside its held record (Fable #3426 N2): why it didn't commit. Best effort, as the completed record.
       if (e instanceof HubSettingsError) try { q.audit({ requestId: q.ctx.requestId, actor, action: "hub.settings.rename", result: "denied", reasonCode: e.code }); } catch { /* the held record remains */ }
@@ -73,7 +89,7 @@ export async function handleHubSettingsHttp(deps: HubSettingsHttpDeps | undefine
     }
     // The rename is committed and its receipt kept; a failure to add this second record doesn't undo it.
     try { q.audit({ requestId: q.ctx.requestId, actor, action: "hub.settings.rename", result: "completed", reasonCode: done.receiptId }); } catch { /* the held record and the receipt remain */ }
-    q.send(200, { ok: true, summary: done.summary });
+    permit.assertCurrent(); q.send(200, { ok: true, summary: done.summary });
   } catch (e) { refused(e); }
   return true;
 }

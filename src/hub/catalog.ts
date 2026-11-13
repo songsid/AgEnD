@@ -391,7 +391,8 @@ export class HubCatalogService {
    * the current one; the member re-consenting a newer revision lifts it.
    */
   async freeze(ctx: HubRequestContext, id: string, revision: number, admin: boolean): Promise<void> {
-    const actor = admin ? await ctx.requireAdmin() : null;
+    const management = admin ? await this.core.management(ctx, "hub.admin") : undefined;
+    const actor = management?.actor;
     const person = actor?.kind === "directory" ? actor.person : await ctx.requirePerson();
     this.core.atomic((db, tx) => {
       const row = readExposure(db, id);
@@ -400,6 +401,6 @@ export class HubCatalogService {
       db.prepare("UPDATE hub_exposures SET frozen_through=MAX(frozen_through, ?), sharing_paused=0, sharing_epoch=sharing_epoch+1, updated_at=? WHERE id=?").run(row.revision, this.core.now(), id);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person }, action: "exposure.frozen", result: "completed",
         fleetId: row.fleet_id, exposureId: id, ownerAtEvent: personFromString(row.owner) });
-    });
+    }, management);
   }
 }

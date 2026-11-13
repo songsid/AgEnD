@@ -440,6 +440,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (await handleHubSettingsHttp(deps.hubSettings ? { ...deps.hubSettings, name: deps.config.name } : undefined, { path, method, signedIn, csrf, body,
       send: (status, value) => send(res, status, value),
       ctx: { requestId: ctx.requestId, current: () => live() && ctx.isCurrent?.() === true, requireAdmin: () => ctx.requireAdmin() },
+      authorize: () => core.management(ctx, "hub.admin"),
       audit: (event) => core.atomic((_db, tx) => core.audit(tx, { requestId: event.requestId, actor: { kind: "person", person: event.actor.person }, action: event.action,
         result: event.result, ...(event.reasonCode ? { reasonCode: event.reasonCode } : {}) })) })) return;
     if (path.startsWith("/hub/v1/admin/")) return admin(req, res, path, ctx, method, signedIn, csrf, body, guard);
@@ -451,19 +452,22 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     let r: RegExpExecArray | null;
     if (path === "/hub/v1/admin/overview") {
       if (method !== "GET") throw new HttpError(405, "method");
-      signedIn(); await guard(() => ctx.requireAdmin());
-      const state = deps.store.read(), now = core.now();
-      const name = (key: { realm: string; objectId: string }) => {
-        const id = personKeyString(key);
-        const row = core.atomic((db) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined);
-        return row ? { name: row.display_name, login: row.login_label } : null;
-      };
-      return send(res, 200, {
-        fleets: state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null,
-          ...(deps.companyJoin?.fleetDisplay(f.id) ?? { source: null, createdAt: null }) })),
-        pairings: state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
-          .map((p) => ({ id: p.id, state: p.state, expiresAt: p.expiresAt, fingerprint: p.fingerprint, ownerConfirmed: p.ownerConfirmed, adminApproved: p.adminApproved, owner: name(p.owner) })),
-      });
+      signedIn(); const permit = await guard(() => core.management(ctx, "hub.admin"));
+      const view = core.atomic(db => {
+        const state = deps.store.read(), now = core.now();
+        const name = (key: { realm: string; objectId: string }) => {
+          const id = personKeyString(key);
+          const row = db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined;
+          return row ? { name: row.display_name, login: row.login_label } : null;
+        };
+        return {
+          fleets: state.fleets.map((f) => ({ id: f.id, status: f.status, generation: f.generation, owner: name(f.owner), label: f.label ?? null,
+            ...(deps.companyJoin?.fleetDisplay(f.id) ?? { source: null, createdAt: null }) })),
+          pairings: state.pairings.filter((p) => p.expiresAt > now && (p.state === "offered" || p.state === "pending"))
+            .map((p) => ({ id: p.id, state: p.state, expiresAt: p.expiresAt, fingerprint: p.fingerprint, ownerConfirmed: p.ownerConfirmed, adminApproved: p.adminApproved, owner: name(p.owner) })),
+        };
+      }, permit);
+      permit.assertCurrent(); return send(res, 200, view);
     }
     if (path === "/hub/v1/admin/pairings") {
       if (method !== "POST") throw new HttpError(405, "method");
