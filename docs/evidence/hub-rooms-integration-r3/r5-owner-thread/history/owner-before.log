@@ -1,0 +1,97 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3
+
+ ❯ tests/hub-room-agents-r2.test.ts (19 tests | 1 failed | 18 skipped) 241ms
+   × attributes answers to their recorded owner in history and live events after an exposure changes owner 239ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-agents-r2.test.ts > attributes answers to their recorded owner in history and live events after an exposure changes owner
+AssertionError: expected { …(8) } to match object { …(2) }
+(7 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "answerTo": "d307025f-c6d9-49f7-b034-23085c8006c7",
+    "author": {
+      "kind": "agent",
+      "name": "Notes",
+-     "owner": {
+-       "name": "Hub Admin",
+-     },
+    },
+  }
+
+ ❯ tests/hub-room-agents-r2.test.ts:78:23
+     76|       .find(event => event.message?.text === text).message;
+     77|     const expected = { answerTo: parent.id, author: { kind: "agent", n…
+     78|     expect.soft(live).toMatchObject(expected);
+       |                       ^
+     79|     const history = () => r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/m…
+     80|     expect.soft((await history()).json.messages.find((m: any) => m.tex…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-room-agents-r2.test.ts > attributes answers to their recorded owner in history and live events after an exposure changes owner
+AssertionError: expected { …(8) } to match object { …(2) }
+(7 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "answerTo": "d307025f-c6d9-49f7-b034-23085c8006c7",
+    "author": {
+      "kind": "agent",
+      "name": "Notes",
+-     "owner": {
+-       "name": "Hub Admin",
+-     },
+    },
+  }
+
+ ❯ tests/hub-room-agents-r2.test.ts:80:84
+     78|     expect.soft(live).toMatchObject(expected);
+     79|     const history = () => r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/m…
+     80|     expect.soft((await history()).json.messages.find((m: any) => m.tex…
+       |                                                                                    ^
+     81|     r!.db.prepare("UPDATE hub_exposures SET owner=? WHERE id=?").run(p…
+     82|     await r!.restartHttp();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/hub-room-agents-r2.test.ts > attributes answers to their recorded owner in history and live events after an exposure changes owner
+AssertionError: expected { …(8) } to match object { …(2) }
+(7 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "answerTo": "d307025f-c6d9-49f7-b034-23085c8006c7",
+    "author": {
+      "kind": "agent",
+      "name": "Notes",
+-     "owner": {
+-       "name": "Hub Admin",
+-     },
+    },
+  }
+
+ ❯ tests/hub-room-agents-r2.test.ts:83:79
+     81|     r!.db.prepare("UPDATE hub_exposures SET owner=? WHERE id=?").run(p…
+     82|     await r!.restartHttp();
+     83|     expect((await history()).json.messages.find((m: any) => m.text ===…
+       |                                                                               ^
+     84|   } finally { clearTimeout(deadline); stop.abort(); }
+     85| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 skipped (19)
+   Start at  04:08:48
+   Duration  6.19s (transform 4.41s, setup 162ms, import 5.50s, tests 241ms, environment 0ms)

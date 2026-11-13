@@ -1,0 +1,4626 @@
+{
+  "sourceHead": "f22af317bf7173fe3ca4ab2712c9c44ae609a126",
+  "scope": "Actual R HTTP/SQLite and HubServer/HubMemberClient TLS/WSS, C durable adapter/state publisher, shared U1/U2 browser UI. Four owned Fleet fixtures; inert directory and physical input/report hook. Captured bridge composes the two existing test rigs, not a complete FleetManager mount. No Team provider, external service, real agent, account or vendor API.",
+  "checks": [
+    {
+      "name": "desktop-en-light members panel uses the intended width layout",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light room counts use viewer language and singular person",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Notes Idle dot",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Planner Idle dot",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light member rows show owner without hover",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light plain message has no agent deliveries",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light @agent routes only to Notes",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Notes Working dot",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light working answer uses the shared work bar",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light working answers create no empty message bubble",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light real answer carries its recorded owner",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light answer shows owner in the author line",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light C answer is acknowledged durably",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Planner Offline dot",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light @all preflight describes one online and one later",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Notes Working dot",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light @all sent mention has the same accent",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light progress follows its question without a second time",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light offline Fleet retains exactly one queued delivery",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Planner Working dot",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Planner Idle dot",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light completed question returns to the delivered tick",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light answer quotes the @all question: Notes team answer desktop",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light answer quotes the @all question: Planner team answer desktop",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light both @all answers persisted exactly once",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Notes Paused dot",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light quota reason uses viewer language in live panel",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light quota reason reaches real HTTP projection",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light live SSE carries state reason and completed progress",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light Notes Idle dot",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light idle event clears prior quota reason",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light fourth answer starts collapsed",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light expanding shows all four answers",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light interleaved answers all quote the original question",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light four-answer SSE retains original question progress",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light no browser error",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light no horizontal document overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark members panel uses the intended width layout",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark room counts use viewer language and singular person",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Notes 待命 dot",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Planner 待命 dot",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark member rows show owner without hover",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark plain message has no agent deliveries",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark @agent routes only to Notes",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Notes 處理中 dot",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark working answer uses the shared work bar",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark working answers create no empty message bubble",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark real answer carries its recorded owner",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark answer shows owner in the author line",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark C answer is acknowledged durably",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Planner 離線 dot",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark @all preflight describes one online and one later",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Notes 處理中 dot",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark @all sent mention has the same accent",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark progress follows its question without a second time",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark offline Fleet retains exactly one queued delivery",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Planner 處理中 dot",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Planner 待命 dot",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark completed question returns to the delivered tick",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark answer quotes the @all question: Notes team answer phone",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark answer quotes the @all question: Planner team answer phone",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark both @all answers persisted exactly once",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Notes 暫停 dot",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark quota reason uses viewer language in live panel",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Notes 暫停 dot",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark reason survives members-sheet reopen",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark quota reason reaches real HTTP projection",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark live SSE carries state reason and completed progress",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark Notes 待命 dot",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark idle event clears prior quota reason",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark fourth answer starts collapsed",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark expanding shows all four answers",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark interleaved answers all quote the original question",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark four-answer SSE retains original question progress",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark no browser error",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark no horizontal document overflow",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "desktop-en-light-idle.png",
+      "sha256": "e161ad46d5276baf1404c9d859a0acbcc82e00334e63128b15cfa6f3b6f63078"
+    },
+    {
+      "path": "desktop-en-light-agent-working.png",
+      "sha256": "536cfa2ea0482cf99504feefda9e4de171693e607fc1665e09f6337c58337f21"
+    },
+    {
+      "path": "desktop-en-light-all-queued.png",
+      "sha256": "2ec89bcda112b7d90941b1850d48fef66b4e4178330fa2874af2637bc58b77a2"
+    },
+    {
+      "path": "desktop-en-light-all-reconnected.png",
+      "sha256": "35983c6c20c94fd9e91ed681933a040ffd246697391cb67aa0a570a162df46d6"
+    },
+    {
+      "path": "desktop-en-light-all-answered.png",
+      "sha256": "2f3d2306ddf7c00b037528f9b678d825dc7c5d7f7dfb7a08a49ec72f199362b5"
+    },
+    {
+      "path": "desktop-en-light-four-answers-collapsed.png",
+      "sha256": "764be6c17f59c98e4b8d9ae2f8ace25552f7e384b54f2c285becfc1ebfa5334a"
+    },
+    {
+      "path": "desktop-en-light-four-answers-expanded.png",
+      "sha256": "332b0ebe4e6230e79ebbda2caa3d3e42c5454d5029afea1b477f8f0f03213d51"
+    },
+    {
+      "path": "phone-zh-TW-dark-idle.png",
+      "sha256": "9d6ce3367be607aabd67ee08a98518ea962cd1d55d9a2df23cbc5bbca18038a3"
+    },
+    {
+      "path": "phone-zh-TW-dark-agent-working.png",
+      "sha256": "91a3fcbf80cbe0438220d27007f87ee753e85de95d440dce576df859c13f2214"
+    },
+    {
+      "path": "phone-zh-TW-dark-all-queued.png",
+      "sha256": "bca7fcd6d318de561cac09420673e94e9cd32424167dc5688b7cc0ef037ea982"
+    },
+    {
+      "path": "phone-zh-TW-dark-all-reconnected.png",
+      "sha256": "196fad63f697291fe2afecab7e723f547a552a30e8c36fd149c5e5db0100007c"
+    },
+    {
+      "path": "phone-zh-TW-dark-all-answered.png",
+      "sha256": "7df6f81a2d12c1559c3bba90278851ef9ef0d022550b7bfdf36269c0686f3f6a"
+    },
+    {
+      "path": "phone-zh-TW-dark-four-answers-collapsed.png",
+      "sha256": "3915ffc8c778d19625819d4720fb15dd772e803cd212662238ebd0b059d1cbaa"
+    },
+    {
+      "path": "phone-zh-TW-dark-four-answers-expanded.png",
+      "sha256": "9e76e902d10439e2666dd876ff32acf09ed706b09543d3d7793b7dd196f38320"
+    }
+  ],
+  "requests": [
+    {
+      "device": "desktop",
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "GET",
+      "path": "/hub/v1/rooms/59c21fce-d78b-4d90-bca9-edd863f4bed8",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "GET",
+      "path": "/hub/v1/rooms/59c21fce-d78b-4d90-bca9-edd863f4bed8/messages?limit=50",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/59c21fce-d78b-4d90-bca9-edd863f4bed8/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/59c21fce-d78b-4d90-bca9-edd863f4bed8/messages",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/59c21fce-d78b-4d90-bca9-edd863f4bed8/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/59c21fce-d78b-4d90-bca9-edd863f4bed8/messages",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/59c21fce-d78b-4d90-bca9-edd863f4bed8/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/59c21fce-d78b-4d90-bca9-edd863f4bed8/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/59c21fce-d78b-4d90-bca9-edd863f4bed8/messages",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/59c21fce-d78b-4d90-bca9-edd863f4bed8/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/59c21fce-d78b-4d90-bca9-edd863f4bed8/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/59c21fce-d78b-4d90-bca9-edd863f4bed8/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "GET",
+      "path": "/hub/v1/rooms/94d709c6-4af1-49e3-9896-12d02696c853",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "GET",
+      "path": "/hub/v1/rooms/94d709c6-4af1-49e3-9896-12d02696c853/messages?limit=50",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/94d709c6-4af1-49e3-9896-12d02696c853/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/94d709c6-4af1-49e3-9896-12d02696c853/messages",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/94d709c6-4af1-49e3-9896-12d02696c853/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/94d709c6-4af1-49e3-9896-12d02696c853/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/94d709c6-4af1-49e3-9896-12d02696c853/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/94d709c6-4af1-49e3-9896-12d02696c853/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/94d709c6-4af1-49e3-9896-12d02696c853/read",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/94d709c6-4af1-49e3-9896-12d02696c853/messages",
+      "status": 200
+    },
+    {
+      "device": "desktop",
+      "method": "POST",
+      "path": "/hub/v1/rooms/94d709c6-4af1-49e3-9896-12d02696c853/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "GET",
+      "path": "/hub/v1/rooms/223d337b-8601-4f23-b122-9cbebc3c7727",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "GET",
+      "path": "/hub/v1/rooms/223d337b-8601-4f23-b122-9cbebc3c7727/messages?limit=50",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/223d337b-8601-4f23-b122-9cbebc3c7727/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/223d337b-8601-4f23-b122-9cbebc3c7727/messages",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/223d337b-8601-4f23-b122-9cbebc3c7727/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/223d337b-8601-4f23-b122-9cbebc3c7727/messages",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/223d337b-8601-4f23-b122-9cbebc3c7727/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/223d337b-8601-4f23-b122-9cbebc3c7727/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/223d337b-8601-4f23-b122-9cbebc3c7727/messages",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/223d337b-8601-4f23-b122-9cbebc3c7727/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/223d337b-8601-4f23-b122-9cbebc3c7727/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/223d337b-8601-4f23-b122-9cbebc3c7727/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "GET",
+      "path": "/hub/v1/rooms/3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "GET",
+      "path": "/hub/v1/rooms/3c9eccd4-e6b6-4738-9b8d-ebda9fd67705/messages?limit=50",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/3c9eccd4-e6b6-4738-9b8d-ebda9fd67705/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/3c9eccd4-e6b6-4738-9b8d-ebda9fd67705/messages",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/3c9eccd4-e6b6-4738-9b8d-ebda9fd67705/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/3c9eccd4-e6b6-4738-9b8d-ebda9fd67705/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/3c9eccd4-e6b6-4738-9b8d-ebda9fd67705/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/3c9eccd4-e6b6-4738-9b8d-ebda9fd67705/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/3c9eccd4-e6b6-4738-9b8d-ebda9fd67705/read",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/3c9eccd4-e6b6-4738-9b8d-ebda9fd67705/messages",
+      "status": 200
+    },
+    {
+      "device": "phone",
+      "method": "POST",
+      "path": "/hub/v1/rooms/3c9eccd4-e6b6-4738-9b8d-ebda9fd67705/read",
+      "status": 200
+    }
+  ],
+  "served": {
+    "/assets/theme.js": "ffc4f54dd8a2511eeb931a77d25d65ddd0a187e414b9deabe9290184399fe22d",
+    "/assets/tokens.css": "cd62669f84666fb16e49cf63ebdc8376d3965106eeaf0531744372bdcf70f3c9",
+    "/assets/app.js": "ca27cd9ab9bbee60a0ecb427fa05d5322c1eab3606154bf64a8947948ae6154c",
+    "/assets/app.css": "225a5f1860d7476597af1c7ffc4c6fdfedec663b92f9c8c712bcda149d3b67e7",
+    "/assets/loading.css": "68dd23194827d7a83f532b1d7b3161fd27a2e696ef14cf6d593b0a65e3ad9ce8",
+    "/assets/app-swipe.js": "feb36efef72b92a5510f881902c0a08140d6940f62304766e3857d13f5e188fa",
+    "/assets/text-undo.js": "3c59e5ba9039ad05e18be88b71270c232f6d73bac2dc681cdec70c1825f7027a",
+    "/assets/app-html.js": "8949e374c68b9252d5ee3ee788ec1b0340d12c4a6999ef8b734fe89562266bd9",
+    "/assets/app-prefs.js": "d223ea3ca62d93e8991f3a92efa92de9eb0bb5ad4e72b11ce18f286e372580c2",
+    "/assets/app-shell.js": "e53a87d9ca8f4d97c811f9380b9f8b674db518fce92a268322f1b3c0342a5c9a",
+    "/assets/app-nav.js": "5dfa69d440e16e949c469acbe9945daa6fe65bd41320d18041d6ee9981171d5f",
+    "/assets/app-route.js": "d89c2578c4f45f9619ddd7529041d7e774474ead7f657c93d1eec335f6fa4bdd",
+    "/assets/app-store.js": "cc0afbe551e1b5857bcfb79447bc24ce59b7a1988972101718c2994b49a95842",
+    "/assets/app-stream.js": "49234d50df7b41e005d0221a1a5b5614d30f9b27a9c0d82312c56c694184b58b",
+    "/assets/app-needs.js": "47fdfcbd3dd53d6d2ef90943ce3cdd2aabb5178454f01a6c90968497a805c8c2",
+    "/assets/header-tools.js": "fa17fa458645e5f9b747163854449c1a5cb0c45d51379fea86ff601dc03e682d",
+    "/assets/owner-css.js": "d38412dd2327ffb4a98248ab8a847eb6abcf18470cd8f5f9635a20df3aace05e",
+    "/assets/app-themes.js": "886b72a54b88f65fbc27a9b86fe786d5a1f2774a24c0cc16dddfd1c6ce1fc2b4",
+    "/assets/ui-toast.js": "601074179fe7c9156d05d507f28e3d22f93b49aba43f8d903b40ae4b8b1bba8d",
+    "/assets/app-i18n.js": "efa73d2f985b029c8f81e9893c9f8a67df75e67cfb85b8bf7bf070d4c55303cf",
+    "/assets/preact.module.js": "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8",
+    "/assets/htm.module.js": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4",
+    "/assets/preact-hooks.module.js": "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38",
+    "/assets/ui-icons.js": "6f55664e3748e3837474f252035ba1dccac885385ae57ebea6be5e464deb3f50",
+    "/assets/ui-confirm.js": "c1fe9587644da4bb37524c6dcd1a64c95b6acd9cff4ad5b78eca9844c6f16c5b",
+    "/assets/identity-color.js": "e3e03f14648322ac8c159ebc16de5c44ad02be82bd83d79478e71fae91e52c5a",
+    "/assets/app-session.js": "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec",
+    "/assets/ui-states.js": "0d9ae9002f0cf2a8388ea9177430ce382b91abe630ea68f3a7579c80d4c28c31",
+    "/assets/ui-dialog.js": "25c22c87ff575b89b52ef1ab58ff921d02aaf2744122e064d824a1fa2fd95ff6",
+    "/assets/stale-tab.js": "c951cb7122e5c3f7c76f3e01ab072f0a5d0ac7433ad1088a9a9e1cffc3fcf657",
+    "/assets/instance-nav.js": "9d70a93221aa1c0499cd01ead1dd548a465e2388c5c63049457cc4efd65a7b64",
+    "/assets/settings-width.js": "46dc2cb17194565a8ed15d5c3477954c98323bfd4874cdbf6ee69df4b34939e1",
+    "/assets/side-panel.js": "aefbba84067328f2bb16c86bdbe7328cf125f63f40795ee88b3b87e09c27f946",
+    "/assets/app-update.js": "0b675a3860b2f10a40d9557b18d609cb60ddd0e766b6cf9c1b2f27211d930596",
+    "/assets/app-ctx.js": "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6",
+    "/assets/agent-widget.js": "8e90812b94bad0b93c744a0daa3fc4fe6e02249106604ca013c9d6df4ef25a43",
+    "/assets/side-rail.js": "80827afbb28969692e1575339c9e4b54a372812653ede0221a361a2c6a14ad56",
+    "/assets/usage-dialog.js": "b7cb7d8f4df081e3d514c869cf6f99d8f64b0b730ddecaf955a8d0ccedf3ca43",
+    "/assets/model-observation.js": "97a150ad0798f61a0976de36f9c9f179f87fca9833e3fa72beacaa19488524ef",
+    "/assets/web-authorize.js": "3c87a7c99b39adb87e624cd7292b37547e33e418b955466109e178795af927b1",
+    "/assets/device-roles.js": "ca93209e235040a5ff9ee7f73a39b98fc9412c9a12e46d812a961d6eec95578d",
+    "/assets/ui-menu.js": "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48",
+    "/assets/view-roster-store.js": "f73502bef7f44e8fe028b1bf9f4ee304af6d6318be61523006e316e38638b4d8",
+    "/assets/view-strings.js": "05aa2e9500aef1e4c9f2e89d80fdc4e2dae86cb552583ce4b5e6db29096e5447",
+    "/assets/machine-name.js": "9897ad69ca4983e96ede71578f6b53a47b6f2a6bcb53832aba5d8e1bcc1542ae",
+    "/assets/read-stream.js": "01e6cd78752e902232b60c87fdb5281947dbdc11ae9b1a09b17e9e0241d48c41",
+    "/assets/usage-meter.js": "2766db3d5d230dd18fdacdf44719c49ba9e25eff02ffb500c6345dcfee090200",
+    "/assets/inter.woff2": "6dc9db6cb53e6ce9c82b760d5c94c3a773003abac2c8efa2cb535a9d87c7ecea",
+    "/ui/js/panel-hub.js": "df63ef67841a442e752a9c201945abde074f42e0037e5e6baa00a4c6992a7c98",
+    "/ui/js/hub-owner-strings.js": "696e5db1efc6388e3059b9651e3e6a9fa8d4f279010eb53152b85d293ad9a112",
+    "/ui/js/hub-company-join.js": "7840122cfb793af9b9ae44e9081252064c8993274d3fc0a9e485c908259b9f58",
+    "/ui/js/hub-company-join-strings.js": "e11e7cd022cb23c758726f1cd7f07d530608ab38f1907085ae86a8926ac29676",
+    "/ui/js/hub-join-approval.js": "abfdaf90a367c11b1c229e6b5d8e00b75ead6b1b799fcfdfcb7d28414616c2e1",
+    "/ui/js/hub-joincode-flow-strings.js": "4c48aed807c6249f2f7695be97cf773ddabb8e4c99a47ce496ad2c3d0d0383e3",
+    "/ui/js/hub-quick-pairing.js": "a65e96967cc72e25e6f14fb286b430c95cf6a9209316982f648a97dba431ac13",
+    "/ui/js/hub-directory-notice-strings.js": "90f089c96321bdf5a45be4921fb6133f9203f0aa4826e796c02f1dc9dcb8896e",
+    "/ui/js/hub-directory-notices.js": "c4d0a6cf1b12d7fde9bb1e30ab005da1ca9c7916b693cc86e9bf0d28f5a8f9eb",
+    "/assets/preview-panel.js": "1f159b7a9c9e2ed01a7ab1468f2990101c69162f21210b3ca78d2d170a4ae076",
+    "/assets/chat-thread.js": "a05b6f541c106bcb11d91bb3b765a4426832fbc68df2ed8db749b5e67651d75e",
+    "/assets/chat-composer.js": "20b0ec2db04b564054aee01c3b013b45eb318314ea1e9e38826f36efe11d4227",
+    "/assets/chat-strings.js": "cc1690aa8931b111e35166fd8f29120c3a7a4ec7a6720108dc7b7ef7e515ac8c",
+    "/ui/js/hub-room-list.js": "d485fa5ab212a0e852fef4a248e0973d5a01117ce4b7ecd364cc4e0cc2b12040",
+    "/ui/js/hub-room-thread.js": "620837cdda80b5d0b5458f8d76708f7921c3685f529bcea3846d8a484cc4f307",
+    "/ui/js/hub-strings.js": "f12b3db0cc675c4fde91b793641cd43b8bd9ea1d87afe318bbf6c90cb3a737f2",
+    "/ui/js/hub-client.js": "16c865fa7ce2f556818918a1a86e72d4b2744590c532c209e4f0e23626488fc8",
+    "/ui/js/hub-chat-strings.js": "7903f0a70ae974c4f562d54efdbf698e4186293db3a2c6067ed1557ece11d76f",
+    "/ui/js/hub-read-strings.js": "1be8bee71352ed41e8b71592b6acc404829f574327f3ab2aab433c64ace4a046",
+    "/ui/js/hub-room-strings.js": "5f234b9328b468ca26af298b5845a1add42615044d6be9f1ac70cf5d538e47cd",
+    "/ui/js/hub-grant-strings.js": "63d4e7dffad21cb5262d4feb959ed9d04d1c79b68b94dc83a54e9ae2088433c4",
+    "/ui/js/hub-chat-store.js": "f75ed0aaf89169e60885b0e127167122ffddb174f9412d335914004d73c2d01b",
+    "/assets/page-head.js": "a9e9e71b8e64b54a69e3265395948d15f512f811a03353ccf3c0fa04e2788f2a",
+    "/ui/js/hub-preview.js": "b653dd4b49b92b91c1db71d6e652a08da06cc8164db5dfad4bdb46fe6ef711d5",
+    "/ui/js/hub-attachments.js": "dedbf75e56c51d5a8d22c449a2869bc04e7c5a9e59bda8d5e0c139e856ba5c09",
+    "/ui/js/hub-quota.js": "b4cf4c2c4976b3b0ba5d1440579bd89c7b54f1231a33a38b1aef4bd49bdc14d1",
+    "/ui/js/hub-enrolment-code-strings.js": "1ae6496f5838934df8008c782b0f249404a3d3dfdff96769c39879f24a2b6324",
+    "/ui/js/hub-join-queue.js": "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764",
+    "/ui/js/hub-quick-strings.js": "0a6b59ad416fe04765c9ec8fcb06aea0d75f1c22cededf746415377fe19c4c35",
+    "/assets/html-attachment.js": "45ce6f2b941c6f0d8e154c51e7d6977cea9241a6ddfc03c6bf8b848323448643",
+    "/assets/chat-render.js": "04e3d70c93ffa973c154963d26c3a88f40c477636a33d5978a859d6cf26692c0",
+    "/ui/js/hub-join-steps.js": "958ee0b43bc94eb33f1accc2ccf0bd0d70cfeaba6f0d10fbfba22c411824be8b",
+    "/assets/chat-time.js": "ca3dacd41ddf8284ce6542f529cdacb9fc333722f41d1ce2beb6fb019e4b8538",
+    "/assets/preview-panel-actions.js": "8e2665b14f5df60a7698ba5852a5d217257c495bd4c5c4e81b70acda8c65431f",
+    "/assets/preview-pages.js": "6a1fd446d3200fa3ebebafec1f814c95b365315d1e7553924a2bf587a9553925",
+    "/assets/preview-versions.js": "0583433c1027b8ca25410392c623e4f83f92dd1db6f62f46e40be23b71431814",
+    "/assets/chat-md-strings.js": "31a90eea31b3f957965ffce28897cf6fb1571698ecc4a320dd95d310c4c37d3b",
+    "/assets/preview.js": "d179862fd1d2535bf1c06776cb20cce601d874d5fa42e47eca0fbd7835023ff1",
+    "/ui/js/hub-room-composer.js": "ed79763edea2363578f061ea21697f94066b298ae4e14b610b0ea585011ac31f",
+    "/ui/js/hub-button-actions.js": "0ed438dca5c96bedafd603761e786287a8465a9fc7c6bda1aca1fb6affb65063",
+    "/ui/js/hub-group-search.js": "b2dbde89981e82b69cc258f7b932ad875a175af25274574463fda7bff89faf2a",
+    "/assets/hub-quota.css": "dbb490b50f06f45d538259cad57f5d130ed29c17f4295d8d3c4c848b037190fb",
+    "/assets/hub.css": "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472",
+    "/assets/hub-owner.css": "e8d9234628f8ac9e1e5a9732d15b6ddefc00fa2eba98d2a32fe52185164264bc",
+    "/assets/hub-chat.css": "2529d96ed15fecb4060866c3468007f126dab8b5443802313e1287bda6381322",
+    "/ui/js/hub-room-members.js": "ea683b8ffe10409438a262d05097763a687607b0cc9b2229d307f60adeb15f45",
+    "/ui/js/hub-room-members-strings.js": "38ce0a6809491508aacb7b1a6180dd22aa91cfbb91e51e5eff6428ff2f94e84e",
+    "/ui/js/hub-room-new-strings.js": "33f6cca50137fb9bc3c60bb878299ff452dbe1378b8907888e5fd02c051c397e",
+    "/ui/js/hub-room-presence.js": "1dbfbfcf3b813e530631571f49e5a55cc0cb079af148138d040fce94a85828eb",
+    "/assets/hub-rooms-u2.css": "33a2fad62e9d7a7c09e0fdc154085bfe4d25b70d09ba273192329bd0922e8505"
+  },
+  "wire": [
+    {
+      "type": "room.ask",
+      "agent": "Notes",
+      "messageId": "f2b9a1aa-c02b-45a7-b3cc-0a06df8553fc",
+      "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Notes",
+      "messageId": "f2b9a1aa-c02b-45a7-b3cc-0a06df8553fc",
+      "answerId": "70c3c3e0-0dc2-4aaa-b053-04329af8a2e8"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Notes",
+      "messageId": "b56c6bb1-07c1-45d8-88f8-aa668dd21ec8",
+      "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Notes",
+      "messageId": "b56c6bb1-07c1-45d8-88f8-aa668dd21ec8",
+      "answerId": "adb92f42-bebb-4c90-b754-3c6aebafd654"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Planner",
+      "messageId": "3be6dcfa-ffe9-405d-90a0-4f29d5cdcbf4",
+      "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Planner",
+      "messageId": "3be6dcfa-ffe9-405d-90a0-4f29d5cdcbf4",
+      "answerId": "e6fe549f-b21c-45eb-aede-9606a15e7d60"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Notes",
+      "messageId": "7c79296d-f733-44ab-bc1d-b496d7f6f267",
+      "roomId": "94d709c6-4af1-49e3-9896-12d02696c853"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Reviewer",
+      "messageId": "8ee71c43-cea0-441c-8d5a-0d9e98680804",
+      "roomId": "94d709c6-4af1-49e3-9896-12d02696c853"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Writer",
+      "messageId": "faf957f9-0a14-468f-9c17-80edcaca108a",
+      "roomId": "94d709c6-4af1-49e3-9896-12d02696c853"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Planner",
+      "messageId": "f510ab54-373d-4b70-a654-36ed034248b6",
+      "roomId": "94d709c6-4af1-49e3-9896-12d02696c853"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Notes",
+      "messageId": "7c79296d-f733-44ab-bc1d-b496d7f6f267",
+      "answerId": "6513ff75-6945-4d48-8395-76eaa0951df8"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Planner",
+      "messageId": "f510ab54-373d-4b70-a654-36ed034248b6",
+      "answerId": "b826f57d-61e3-4c02-9dd2-066a280ecc37"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Writer",
+      "messageId": "faf957f9-0a14-468f-9c17-80edcaca108a",
+      "answerId": "1cc55a0c-42cc-446f-b344-e537fea52ef2"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Reviewer",
+      "messageId": "8ee71c43-cea0-441c-8d5a-0d9e98680804",
+      "answerId": "e4b2ed55-5fc5-461d-8879-2c033e16a7de"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Notes",
+      "messageId": "7b310386-2cf8-4029-ab55-77dd30b6a519",
+      "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Notes",
+      "messageId": "7b310386-2cf8-4029-ab55-77dd30b6a519",
+      "answerId": "0b364b89-7104-4129-9f67-b4def4f623bf"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Notes",
+      "messageId": "63e16e85-a152-4557-9e2c-fb15c8089199",
+      "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Notes",
+      "messageId": "63e16e85-a152-4557-9e2c-fb15c8089199",
+      "answerId": "d5fe9907-9252-4f22-a2e3-c2831c46b4ad"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Planner",
+      "messageId": "15e0d7ee-53c8-4a7f-bdba-978655b81d66",
+      "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Planner",
+      "messageId": "15e0d7ee-53c8-4a7f-bdba-978655b81d66",
+      "answerId": "a95a4b7f-8105-4641-a4c4-60a6f2736817"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Notes",
+      "messageId": "65e2715a-97f6-49db-99f9-2aa6eac23632",
+      "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Reviewer",
+      "messageId": "e86b2794-544e-4344-a82d-cd0dd08e680b",
+      "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Writer",
+      "messageId": "66493f0c-fe3e-4b36-8e95-6cc313c64d7c",
+      "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705"
+    },
+    {
+      "type": "room.ask",
+      "agent": "Planner",
+      "messageId": "b9a86c54-b8e0-4bf8-81ef-0746b917387d",
+      "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Notes",
+      "messageId": "65e2715a-97f6-49db-99f9-2aa6eac23632",
+      "answerId": "d4230ae1-9828-4acd-be01-394ea6a23e00"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Planner",
+      "messageId": "b9a86c54-b8e0-4bf8-81ef-0746b917387d",
+      "answerId": "4ed1e8f6-9342-4f41-bf7e-a2b01bb62dc0"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Writer",
+      "messageId": "66493f0c-fe3e-4b36-8e95-6cc313c64d7c",
+      "answerId": "0d07465d-1916-4cfe-aa4a-b3ea52d24491"
+    },
+    {
+      "type": "room.answer",
+      "agent": "Reviewer",
+      "messageId": "e86b2794-544e-4344-a82d-cd0dd08e680b",
+      "answerId": "38d09302-aa1d-498a-bcc1-cff94ff1aa86"
+    }
+  ],
+  "events": [
+    {
+      "device": "desktop",
+      "events": [
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "message": {
+              "id": "6cf4d43f-496c-4990-8aab-a2613ab1bfe5",
+              "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+              "at": 1794601616799,
+              "author": {
+                "kind": "person",
+                "id": "631d9108-2ac7-4fab-b199-4331e2834a32",
+                "name": "Alex"
+              },
+              "text": "Plain room conversation desktop",
+              "mentions": [],
+              "idempotencyKey": "21e0a493-6489-4453-b98c-bed9286ba4c9"
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "message": {
+              "id": "0144b303-cdaa-441e-b3c6-09f288845c2b",
+              "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+              "at": 1794601616879,
+              "author": {
+                "kind": "person",
+                "id": "631d9108-2ac7-4fab-b199-4331e2834a32",
+                "name": "Alex"
+              },
+              "text": "@Notes Please summarize desktop",
+              "mentions": [
+                "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad"
+              ],
+              "idempotencyKey": "e4e9f469-ab77-4ceb-b750-ff1de52cd600",
+              "ask": {
+                "total": 1,
+                "answered": 0,
+                "working": 0,
+                "later": 1
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "message": {
+              "id": "a51f5cdb-1531-4417-93bc-8ff7d24aa1b2",
+              "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+              "at": 1794601616881,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "0144b303-cdaa-441e-b3c6-09f288845c2b"
+            },
+            "parent": {
+              "id": "0144b303-cdaa-441e-b3c6-09f288845c2b",
+              "ask": {
+                "total": 1,
+                "answered": 0,
+                "working": 0,
+                "later": 1
+              }
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "message": {
+              "id": "a51f5cdb-1531-4417-93bc-8ff7d24aa1b2",
+              "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+              "at": 1794601616881,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "0144b303-cdaa-441e-b3c6-09f288845c2b"
+            },
+            "parent": {
+              "id": "0144b303-cdaa-441e-b3c6-09f288845c2b",
+              "ask": {
+                "total": 1,
+                "answered": 0,
+                "working": 1,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "message": {
+              "id": "a51f5cdb-1531-4417-93bc-8ff7d24aa1b2",
+              "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+              "at": 1794601617051,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Notes summary desktop",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "0144b303-cdaa-441e-b3c6-09f288845c2b"
+            },
+            "parent": {
+              "id": "0144b303-cdaa-441e-b3c6-09f288845c2b",
+              "ask": {
+                "total": 1,
+                "answered": 1,
+                "working": 0,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "offline"
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "message": {
+              "id": "8da437e7-fd86-4534-b571-c1a807f54e99",
+              "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+              "at": 1794601617194,
+              "author": {
+                "kind": "person",
+                "id": "631d9108-2ac7-4fab-b199-4331e2834a32",
+                "name": "Alex"
+              },
+              "text": "@All agents Plan together desktop",
+              "mentions": [
+                "all"
+              ],
+              "idempotencyKey": "eedf427b-ad8d-4cb1-8d31-2eac0520464e",
+              "ask": {
+                "total": 2,
+                "answered": 0,
+                "working": 0,
+                "later": 2
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "message": {
+              "id": "51d15236-c220-44df-9cac-cdc59c86fe93",
+              "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+              "at": 1794601617195,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "8da437e7-fd86-4534-b571-c1a807f54e99"
+            },
+            "parent": {
+              "id": "8da437e7-fd86-4534-b571-c1a807f54e99",
+              "ask": {
+                "total": 2,
+                "answered": 0,
+                "working": 0,
+                "later": 2
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "message": {
+              "id": "7c302d29-7e35-4b42-86d9-0c2e010e7b3b",
+              "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+              "at": 1794601617195,
+              "author": {
+                "kind": "agent",
+                "id": "8a49ef09-854a-4794-b855-8afff893c4d5",
+                "name": "Planner",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "8da437e7-fd86-4534-b571-c1a807f54e99"
+            },
+            "parent": {
+              "id": "8da437e7-fd86-4534-b571-c1a807f54e99",
+              "ask": {
+                "total": 2,
+                "answered": 0,
+                "working": 0,
+                "later": 2
+              }
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "message": {
+              "id": "51d15236-c220-44df-9cac-cdc59c86fe93",
+              "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+              "at": 1794601617195,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "8da437e7-fd86-4534-b571-c1a807f54e99"
+            },
+            "parent": {
+              "id": "8da437e7-fd86-4534-b571-c1a807f54e99",
+              "ask": {
+                "total": 2,
+                "answered": 0,
+                "working": 1,
+                "later": 1
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "message": {
+              "id": "51d15236-c220-44df-9cac-cdc59c86fe93",
+              "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+              "at": 1794601617358,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Notes team answer desktop",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "8da437e7-fd86-4534-b571-c1a807f54e99"
+            },
+            "parent": {
+              "id": "8da437e7-fd86-4534-b571-c1a807f54e99",
+              "ask": {
+                "total": 2,
+                "answered": 1,
+                "working": 0,
+                "later": 1
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "message": {
+              "id": "7c302d29-7e35-4b42-86d9-0c2e010e7b3b",
+              "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+              "at": 1794601617195,
+              "author": {
+                "kind": "agent",
+                "id": "8a49ef09-854a-4794-b855-8afff893c4d5",
+                "name": "Planner",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "8da437e7-fd86-4534-b571-c1a807f54e99"
+            },
+            "parent": {
+              "id": "8da437e7-fd86-4534-b571-c1a807f54e99",
+              "ask": {
+                "total": 2,
+                "answered": 1,
+                "working": 1,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "message": {
+              "id": "7c302d29-7e35-4b42-86d9-0c2e010e7b3b",
+              "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+              "at": 1794601617527,
+              "author": {
+                "kind": "agent",
+                "id": "8a49ef09-854a-4794-b855-8afff893c4d5",
+                "name": "Planner",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Planner team answer desktop",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "8da437e7-fd86-4534-b571-c1a807f54e99"
+            },
+            "parent": {
+              "id": "8da437e7-fd86-4534-b571-c1a807f54e99",
+              "ask": {
+                "total": 2,
+                "answered": 2,
+                "working": 0,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "paused",
+            "presenceReason": "quota"
+          }
+        }
+      ]
+    },
+    {
+      "device": "desktop",
+      "phase": "four-answers",
+      "events": [
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618095,
+              "author": {
+                "kind": "person",
+                "id": "4e1d6c0a-a4a0-42a7-95e1-d112f8566bec",
+                "name": "Alex"
+              },
+              "text": "@All agents Compare four answers desktop",
+              "mentions": [
+                "all"
+              ],
+              "idempotencyKey": "593374b2-bd81-47f1-8a02-1c459d917516",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 0,
+                "later": 4
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "36ba721c-32ba-4c7c-920d-4762f5d6f3f5",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618096,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "cce694a4-ea48-4741-adfe-be6946f99016"
+            },
+            "parent": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 0,
+                "later": 4
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "bb32a10f-07a9-47e4-9505-2bf5d91150c7",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618097,
+              "author": {
+                "kind": "agent",
+                "id": "8a49ef09-854a-4794-b855-8afff893c4d5",
+                "name": "Planner",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "cce694a4-ea48-4741-adfe-be6946f99016"
+            },
+            "parent": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 0,
+                "later": 4
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "750d2a3c-e174-49d0-b343-efd0d4300cd0",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618097,
+              "author": {
+                "kind": "agent",
+                "id": "c2b7135c-ecbb-4b3a-a286-068d7c73f9b7",
+                "name": "Reviewer",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "cce694a4-ea48-4741-adfe-be6946f99016"
+            },
+            "parent": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 0,
+                "later": 4
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "fdda468e-d47b-439d-97ca-953ff367fc85",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618097,
+              "author": {
+                "kind": "agent",
+                "id": "f104c68b-a6c6-4523-9717-01fcabba2051",
+                "name": "Writer",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "cce694a4-ea48-4741-adfe-be6946f99016"
+            },
+            "parent": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 0,
+                "later": 4
+              }
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "36ba721c-32ba-4c7c-920d-4762f5d6f3f5",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618096,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "cce694a4-ea48-4741-adfe-be6946f99016"
+            },
+            "parent": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 4,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "750d2a3c-e174-49d0-b343-efd0d4300cd0",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618097,
+              "author": {
+                "kind": "agent",
+                "id": "c2b7135c-ecbb-4b3a-a286-068d7c73f9b7",
+                "name": "Reviewer",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "cce694a4-ea48-4741-adfe-be6946f99016"
+            },
+            "parent": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 4,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "fdda468e-d47b-439d-97ca-953ff367fc85",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618097,
+              "author": {
+                "kind": "agent",
+                "id": "f104c68b-a6c6-4523-9717-01fcabba2051",
+                "name": "Writer",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "cce694a4-ea48-4741-adfe-be6946f99016"
+            },
+            "parent": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 4,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "bb32a10f-07a9-47e4-9505-2bf5d91150c7",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618097,
+              "author": {
+                "kind": "agent",
+                "id": "8a49ef09-854a-4794-b855-8afff893c4d5",
+                "name": "Planner",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "cce694a4-ea48-4741-adfe-be6946f99016"
+            },
+            "parent": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 4,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "f104c68b-a6c6-4523-9717-01fcabba2051",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "c2b7135c-ecbb-4b3a-a286-068d7c73f9b7",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "36ba721c-32ba-4c7c-920d-4762f5d6f3f5",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618297,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Four-answer 1 desktop",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "cce694a4-ea48-4741-adfe-be6946f99016"
+            },
+            "parent": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "ask": {
+                "total": 4,
+                "answered": 1,
+                "working": 3,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "bb32a10f-07a9-47e4-9505-2bf5d91150c7",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618339,
+              "author": {
+                "kind": "agent",
+                "id": "8a49ef09-854a-4794-b855-8afff893c4d5",
+                "name": "Planner",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Four-answer 2 desktop",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "cce694a4-ea48-4741-adfe-be6946f99016"
+            },
+            "parent": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "ask": {
+                "total": 4,
+                "answered": 2,
+                "working": 2,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "70f5e1ab-9268-4234-81d2-44a7fc177059",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618409,
+              "author": {
+                "kind": "person",
+                "id": "4e1d6c0a-a4a0-42a7-95e1-d112f8566bec",
+                "name": "Alex"
+              },
+              "text": "Human conversation between answers desktop",
+              "mentions": [],
+              "idempotencyKey": "e4cf6369-e415-4a5e-b679-0d88f2917fc2"
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "fdda468e-d47b-439d-97ca-953ff367fc85",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618439,
+              "author": {
+                "kind": "agent",
+                "id": "f104c68b-a6c6-4523-9717-01fcabba2051",
+                "name": "Writer",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Four-answer 3 desktop",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "cce694a4-ea48-4741-adfe-be6946f99016"
+            },
+            "parent": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "ask": {
+                "total": 4,
+                "answered": 3,
+                "working": 1,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "f104c68b-a6c6-4523-9717-01fcabba2051",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "message": {
+              "id": "750d2a3c-e174-49d0-b343-efd0d4300cd0",
+              "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+              "at": 1794601618466,
+              "author": {
+                "kind": "agent",
+                "id": "c2b7135c-ecbb-4b3a-a286-068d7c73f9b7",
+                "name": "Reviewer",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Four-answer 4 desktop",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "cce694a4-ea48-4741-adfe-be6946f99016"
+            },
+            "parent": {
+              "id": "cce694a4-ea48-4741-adfe-be6946f99016",
+              "ask": {
+                "total": 4,
+                "answered": 4,
+                "working": 0,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "c2b7135c-ecbb-4b3a-a286-068d7c73f9b7",
+            "presence": "idle"
+          }
+        }
+      ]
+    },
+    {
+      "device": "phone",
+      "events": [
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "message": {
+              "id": "a91490a7-af52-458e-9c91-34f3b85816c2",
+              "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+              "at": 1794601619362,
+              "author": {
+                "kind": "person",
+                "id": "2567f9f7-9f79-4c86-ad7f-c8db8831fc81",
+                "name": "Alex"
+              },
+              "text": "Plain room conversation phone",
+              "mentions": [],
+              "idempotencyKey": "c11d7194-e12e-41ac-96ca-9188d684ceaf"
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "message": {
+              "id": "800d2024-d478-43b7-9f19-fa3a3f4fab43",
+              "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+              "at": 1794601619426,
+              "author": {
+                "kind": "person",
+                "id": "2567f9f7-9f79-4c86-ad7f-c8db8831fc81",
+                "name": "Alex"
+              },
+              "text": "@Notes Please summarize phone",
+              "mentions": [
+                "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad"
+              ],
+              "idempotencyKey": "a1b5642b-6968-4eab-a2ca-8571cf2e2c46",
+              "ask": {
+                "total": 1,
+                "answered": 0,
+                "working": 0,
+                "later": 1
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "message": {
+              "id": "efe91ba6-29b6-4555-af04-1467f7dce4d8",
+              "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+              "at": 1794601619426,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "800d2024-d478-43b7-9f19-fa3a3f4fab43"
+            },
+            "parent": {
+              "id": "800d2024-d478-43b7-9f19-fa3a3f4fab43",
+              "ask": {
+                "total": 1,
+                "answered": 0,
+                "working": 0,
+                "later": 1
+              }
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "message": {
+              "id": "efe91ba6-29b6-4555-af04-1467f7dce4d8",
+              "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+              "at": 1794601619426,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "800d2024-d478-43b7-9f19-fa3a3f4fab43"
+            },
+            "parent": {
+              "id": "800d2024-d478-43b7-9f19-fa3a3f4fab43",
+              "ask": {
+                "total": 1,
+                "answered": 0,
+                "working": 1,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "message": {
+              "id": "efe91ba6-29b6-4555-af04-1467f7dce4d8",
+              "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+              "at": 1794601619658,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Notes summary phone",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "800d2024-d478-43b7-9f19-fa3a3f4fab43"
+            },
+            "parent": {
+              "id": "800d2024-d478-43b7-9f19-fa3a3f4fab43",
+              "ask": {
+                "total": 1,
+                "answered": 1,
+                "working": 0,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "offline"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "offline"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "offline"
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "message": {
+              "id": "5fb611c3-64c9-407f-a03f-9dddd3262dae",
+              "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+              "at": 1794601619875,
+              "author": {
+                "kind": "person",
+                "id": "2567f9f7-9f79-4c86-ad7f-c8db8831fc81",
+                "name": "Alex"
+              },
+              "text": "@所有 Agent Plan together phone",
+              "mentions": [
+                "all"
+              ],
+              "idempotencyKey": "59b1c2f1-6481-4d0a-ba5b-7055337f380a",
+              "ask": {
+                "total": 2,
+                "answered": 0,
+                "working": 0,
+                "later": 2
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "message": {
+              "id": "a9429212-76ed-4a0f-9937-a294ff75e299",
+              "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+              "at": 1794601619876,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "5fb611c3-64c9-407f-a03f-9dddd3262dae"
+            },
+            "parent": {
+              "id": "5fb611c3-64c9-407f-a03f-9dddd3262dae",
+              "ask": {
+                "total": 2,
+                "answered": 0,
+                "working": 0,
+                "later": 2
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "message": {
+              "id": "5de1a051-31b5-475c-95f9-ec4a0fe9ac37",
+              "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+              "at": 1794601619876,
+              "author": {
+                "kind": "agent",
+                "id": "8a49ef09-854a-4794-b855-8afff893c4d5",
+                "name": "Planner",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "5fb611c3-64c9-407f-a03f-9dddd3262dae"
+            },
+            "parent": {
+              "id": "5fb611c3-64c9-407f-a03f-9dddd3262dae",
+              "ask": {
+                "total": 2,
+                "answered": 0,
+                "working": 0,
+                "later": 2
+              }
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "message": {
+              "id": "a9429212-76ed-4a0f-9937-a294ff75e299",
+              "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+              "at": 1794601619876,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "5fb611c3-64c9-407f-a03f-9dddd3262dae"
+            },
+            "parent": {
+              "id": "5fb611c3-64c9-407f-a03f-9dddd3262dae",
+              "ask": {
+                "total": 2,
+                "answered": 0,
+                "working": 1,
+                "later": 1
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "message": {
+              "id": "a9429212-76ed-4a0f-9937-a294ff75e299",
+              "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+              "at": 1794601620091,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Notes team answer phone",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "5fb611c3-64c9-407f-a03f-9dddd3262dae"
+            },
+            "parent": {
+              "id": "5fb611c3-64c9-407f-a03f-9dddd3262dae",
+              "ask": {
+                "total": 2,
+                "answered": 1,
+                "working": 0,
+                "later": 1
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "message": {
+              "id": "5de1a051-31b5-475c-95f9-ec4a0fe9ac37",
+              "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+              "at": 1794601619876,
+              "author": {
+                "kind": "agent",
+                "id": "8a49ef09-854a-4794-b855-8afff893c4d5",
+                "name": "Planner",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "5fb611c3-64c9-407f-a03f-9dddd3262dae"
+            },
+            "parent": {
+              "id": "5fb611c3-64c9-407f-a03f-9dddd3262dae",
+              "ask": {
+                "total": 2,
+                "answered": 1,
+                "working": 1,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "message": {
+              "id": "5de1a051-31b5-475c-95f9-ec4a0fe9ac37",
+              "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+              "at": 1794601620326,
+              "author": {
+                "kind": "agent",
+                "id": "8a49ef09-854a-4794-b855-8afff893c4d5",
+                "name": "Planner",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Planner team answer phone",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "5fb611c3-64c9-407f-a03f-9dddd3262dae"
+            },
+            "parent": {
+              "id": "5fb611c3-64c9-407f-a03f-9dddd3262dae",
+              "ask": {
+                "total": 2,
+                "answered": 2,
+                "working": 0,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "paused",
+            "presenceReason": "quota"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "paused",
+            "presenceReason": "quota"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "paused",
+            "presenceReason": "quota"
+          }
+        }
+      ]
+    },
+    {
+      "device": "phone",
+      "phase": "four-answers",
+      "events": [
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621197,
+              "author": {
+                "kind": "person",
+                "id": "ce844d36-bfef-4ab1-b614-9f3d89c1876a",
+                "name": "Alex"
+              },
+              "text": "@所有 Agent Compare four answers phone",
+              "mentions": [
+                "all"
+              ],
+              "idempotencyKey": "7c261ac8-73c7-4697-83fa-ede29da6a0c8",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 0,
+                "later": 4
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "798eab0e-5dee-4d7e-a4ea-7fcf42ab9127",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621198,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "a376c9dc-af34-4ae5-a80f-da6170fff358"
+            },
+            "parent": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 0,
+                "later": 4
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "30f4c131-3df5-4260-bdab-ff676a5b379d",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621198,
+              "author": {
+                "kind": "agent",
+                "id": "8a49ef09-854a-4794-b855-8afff893c4d5",
+                "name": "Planner",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "a376c9dc-af34-4ae5-a80f-da6170fff358"
+            },
+            "parent": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 0,
+                "later": 4
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "cdd6142c-2902-49d3-bf64-ce26ffb932f1",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621198,
+              "author": {
+                "kind": "agent",
+                "id": "c2b7135c-ecbb-4b3a-a286-068d7c73f9b7",
+                "name": "Reviewer",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "a376c9dc-af34-4ae5-a80f-da6170fff358"
+            },
+            "parent": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 0,
+                "later": 4
+              }
+            }
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "e4163f73-3773-4638-bd6e-b597a7b0c53b",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621199,
+              "author": {
+                "kind": "agent",
+                "id": "f104c68b-a6c6-4523-9717-01fcabba2051",
+                "name": "Writer",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "queued",
+              "answerTo": "a376c9dc-af34-4ae5-a80f-da6170fff358"
+            },
+            "parent": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 0,
+                "later": 4
+              }
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "798eab0e-5dee-4d7e-a4ea-7fcf42ab9127",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621198,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "a376c9dc-af34-4ae5-a80f-da6170fff358"
+            },
+            "parent": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 4,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "cdd6142c-2902-49d3-bf64-ce26ffb932f1",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621198,
+              "author": {
+                "kind": "agent",
+                "id": "c2b7135c-ecbb-4b3a-a286-068d7c73f9b7",
+                "name": "Reviewer",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "a376c9dc-af34-4ae5-a80f-da6170fff358"
+            },
+            "parent": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 4,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "e4163f73-3773-4638-bd6e-b597a7b0c53b",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621199,
+              "author": {
+                "kind": "agent",
+                "id": "f104c68b-a6c6-4523-9717-01fcabba2051",
+                "name": "Writer",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "a376c9dc-af34-4ae5-a80f-da6170fff358"
+            },
+            "parent": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 4,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "30f4c131-3df5-4260-bdab-ff676a5b379d",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621198,
+              "author": {
+                "kind": "agent",
+                "id": "8a49ef09-854a-4794-b855-8afff893c4d5",
+                "name": "Planner",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "",
+              "mentions": [],
+              "stage": "working",
+              "answerTo": "a376c9dc-af34-4ae5-a80f-da6170fff358"
+            },
+            "parent": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "ask": {
+                "total": 4,
+                "answered": 0,
+                "working": 4,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "memberId": "f104c68b-a6c6-4523-9717-01fcabba2051",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "f104c68b-a6c6-4523-9717-01fcabba2051",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "memberId": "c2b7135c-ecbb-4b3a-a286-068d7c73f9b7",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "c2b7135c-ecbb-4b3a-a286-068d7c73f9b7",
+            "presence": "working"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "798eab0e-5dee-4d7e-a4ea-7fcf42ab9127",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621413,
+              "author": {
+                "kind": "agent",
+                "id": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+                "name": "Notes",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Four-answer 1 phone",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "a376c9dc-af34-4ae5-a80f-da6170fff358"
+            },
+            "parent": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "ask": {
+                "total": 4,
+                "answered": 1,
+                "working": 3,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "3b778750-3c5e-4c6a-a0b5-5b9149c6cdad",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "30f4c131-3df5-4260-bdab-ff676a5b379d",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621445,
+              "author": {
+                "kind": "agent",
+                "id": "8a49ef09-854a-4794-b855-8afff893c4d5",
+                "name": "Planner",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Four-answer 2 phone",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "a376c9dc-af34-4ae5-a80f-da6170fff358"
+            },
+            "parent": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "ask": {
+                "total": 4,
+                "answered": 2,
+                "working": 2,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "223d337b-8601-4f23-b122-9cbebc3c7727",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "59c21fce-d78b-4d90-bca9-edd863f4bed8",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "8a49ef09-854a-4794-b855-8afff893c4d5",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "message.added",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "5c4fda0b-2bc0-4f24-be9e-a4765ef155f7",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621529,
+              "author": {
+                "kind": "person",
+                "id": "ce844d36-bfef-4ab1-b614-9f3d89c1876a",
+                "name": "Alex"
+              },
+              "text": "Human conversation between answers phone",
+              "mentions": [],
+              "idempotencyKey": "9561e902-06e4-430e-8ea0-2a099e3e6cff"
+            }
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "e4163f73-3773-4638-bd6e-b597a7b0c53b",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621572,
+              "author": {
+                "kind": "agent",
+                "id": "f104c68b-a6c6-4523-9717-01fcabba2051",
+                "name": "Writer",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Four-answer 3 phone",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "a376c9dc-af34-4ae5-a80f-da6170fff358"
+            },
+            "parent": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "ask": {
+                "total": 4,
+                "answered": 3,
+                "working": 1,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "memberId": "f104c68b-a6c6-4523-9717-01fcabba2051",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "f104c68b-a6c6-4523-9717-01fcabba2051",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "message.updated",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "message": {
+              "id": "cdd6142c-2902-49d3-bf64-ce26ffb932f1",
+              "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+              "at": 1794601621597,
+              "author": {
+                "kind": "agent",
+                "id": "c2b7135c-ecbb-4b3a-a286-068d7c73f9b7",
+                "name": "Reviewer",
+                "owner": {
+                  "name": "Alex"
+                }
+              },
+              "text": "Four-answer 4 phone",
+              "mentions": [],
+              "stage": "answered",
+              "answerTo": "a376c9dc-af34-4ae5-a80f-da6170fff358"
+            },
+            "parent": {
+              "id": "a376c9dc-af34-4ae5-a80f-da6170fff358",
+              "ask": {
+                "total": 4,
+                "answered": 4,
+                "working": 0,
+                "later": 0
+              }
+            }
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+            "memberId": "c2b7135c-ecbb-4b3a-a286-068d7c73f9b7",
+            "presence": "idle"
+          }
+        },
+        {
+          "type": "presence.changed",
+          "data": {
+            "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+            "memberId": "c2b7135c-ecbb-4b3a-a286-068d7c73f9b7",
+            "presence": "idle"
+          }
+        }
+      ]
+    }
+  ],
+  "streams": [
+    {
+      "opened": 1794601616595,
+      "writes": [
+        {
+          "at": 1794601616597,
+          "event": ": connected",
+          "bytes": 13,
+          "ok": true
+        },
+        {
+          "at": 1794601616638,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601616802,
+          "event": "event: message.added",
+          "bytes": 397,
+          "ok": true
+        },
+        {
+          "at": 1794601616804,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601616819,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601616888,
+          "event": "event: message.added",
+          "bytes": 488,
+          "ok": true
+        },
+        {
+          "at": 1794601616895,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601616895,
+          "event": "event: message.added",
+          "bytes": 509,
+          "ok": true
+        },
+        {
+          "at": 1794601616896,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601616899,
+          "event": "event: message.updated",
+          "bytes": 512,
+          "ok": true
+        },
+        {
+          "at": 1794601616902,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601616947,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601616953,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601616957,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601617054,
+          "event": "event: message.updated",
+          "bytes": 534,
+          "ok": true
+        },
+        {
+          "at": 1794601617055,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601617096,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601617140,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601617200,
+          "event": "event: message.added",
+          "bytes": 457,
+          "ok": true
+        },
+        {
+          "at": 1794601617206,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601617207,
+          "event": "event: message.added",
+          "bytes": 509,
+          "ok": true
+        },
+        {
+          "at": 1794601617208,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601617209,
+          "event": "event: message.added",
+          "bytes": 511,
+          "ok": true
+        },
+        {
+          "at": 1794601617210,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601617212,
+          "event": "event: message.updated",
+          "bytes": 512,
+          "ok": true
+        },
+        {
+          "at": 1794601617213,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601617250,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601617267,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601617271,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601617275,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601617360,
+          "event": "event: message.updated",
+          "bytes": 538,
+          "ok": true
+        },
+        {
+          "at": 1794601617362,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601617367,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601617403,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601617443,
+          "event": "event: message.updated",
+          "bytes": 514,
+          "ok": true
+        },
+        {
+          "at": 1794601617445,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601617451,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601617454,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601617458,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601617530,
+          "event": "event: message.updated",
+          "bytes": 542,
+          "ok": true
+        },
+        {
+          "at": 1794601617531,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601617535,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601617626,
+          "event": "event: presence.changed",
+          "bytes": 176,
+          "ok": true
+        },
+        {
+          "at": 1794601617659,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601617700,
+          "event": "event: room.changed",
+          "bytes": 402,
+          "ok": true
+        }
+      ],
+      "closed": 1794601617718
+    },
+    {
+      "opened": 1794601617986,
+      "writes": [
+        {
+          "at": 1794601617988,
+          "event": ": connected",
+          "bytes": 13,
+          "ok": true
+        },
+        {
+          "at": 1794601618030,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618137,
+          "event": "event: message.added",
+          "bytes": 464,
+          "ok": true
+        },
+        {
+          "at": 1794601618138,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618139,
+          "event": "event: message.added",
+          "bytes": 509,
+          "ok": true
+        },
+        {
+          "at": 1794601618140,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618140,
+          "event": "event: message.added",
+          "bytes": 511,
+          "ok": true
+        },
+        {
+          "at": 1794601618141,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618142,
+          "event": "event: message.added",
+          "bytes": 512,
+          "ok": true
+        },
+        {
+          "at": 1794601618143,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618144,
+          "event": "event: message.added",
+          "bytes": 510,
+          "ok": true
+        },
+        {
+          "at": 1794601618145,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618145,
+          "event": "event: message.updated",
+          "bytes": 512,
+          "ok": true
+        },
+        {
+          "at": 1794601618146,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618147,
+          "event": "event: message.updated",
+          "bytes": 515,
+          "ok": true
+        },
+        {
+          "at": 1794601618148,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618148,
+          "event": "event: message.updated",
+          "bytes": 513,
+          "ok": true
+        },
+        {
+          "at": 1794601618149,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618150,
+          "event": "event: message.updated",
+          "bytes": 514,
+          "ok": true
+        },
+        {
+          "at": 1794601618151,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618252,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618263,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601618263,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601618270,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601618270,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601618275,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601618283,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601618301,
+          "event": "event: message.updated",
+          "bytes": 534,
+          "ok": true
+        },
+        {
+          "at": 1794601618302,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618305,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618308,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618311,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618313,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618320,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601618321,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601618341,
+          "event": "event: message.updated",
+          "bytes": 536,
+          "ok": true
+        },
+        {
+          "at": 1794601618342,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618347,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601618348,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601618413,
+          "event": "event: message.added",
+          "bytes": 408,
+          "ok": true
+        },
+        {
+          "at": 1794601618414,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618435,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618442,
+          "event": "event: message.updated",
+          "bytes": 535,
+          "ok": true
+        },
+        {
+          "at": 1794601618443,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618449,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601618470,
+          "event": "event: message.updated",
+          "bytes": 537,
+          "ok": true
+        },
+        {
+          "at": 1794601618471,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601618476,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        }
+      ],
+      "closed": 1794601618683
+    },
+    {
+      "opened": 1794601619076,
+      "writes": [
+        {
+          "at": 1794601619078,
+          "event": ": connected",
+          "bytes": 13,
+          "ok": true
+        },
+        {
+          "at": 1794601619106,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619366,
+          "event": "event: message.added",
+          "bytes": 395,
+          "ok": true
+        },
+        {
+          "at": 1794601619367,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619379,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619431,
+          "event": "event: message.added",
+          "bytes": 486,
+          "ok": true
+        },
+        {
+          "at": 1794601619437,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619438,
+          "event": "event: message.added",
+          "bytes": 509,
+          "ok": true
+        },
+        {
+          "at": 1794601619439,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619442,
+          "event": "event: message.updated",
+          "bytes": 512,
+          "ok": true
+        },
+        {
+          "at": 1794601619444,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619485,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619489,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619497,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601619500,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601619500,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601619661,
+          "event": "event: message.updated",
+          "bytes": 532,
+          "ok": true
+        },
+        {
+          "at": 1794601619662,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619696,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601619697,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601619698,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601619737,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601619739,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601619739,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601619883,
+          "event": "event: message.added",
+          "bytes": 457,
+          "ok": true
+        },
+        {
+          "at": 1794601619891,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619892,
+          "event": "event: message.added",
+          "bytes": 509,
+          "ok": true
+        },
+        {
+          "at": 1794601619893,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619894,
+          "event": "event: message.added",
+          "bytes": 511,
+          "ok": true
+        },
+        {
+          "at": 1794601619895,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619899,
+          "event": "event: message.updated",
+          "bytes": 512,
+          "ok": true
+        },
+        {
+          "at": 1794601619901,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619937,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601619938,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601619938,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601619946,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619954,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601619957,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601620094,
+          "event": "event: message.updated",
+          "bytes": 536,
+          "ok": true
+        },
+        {
+          "at": 1794601620095,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601620099,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620100,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620100,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620128,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620130,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620130,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620168,
+          "event": "event: message.updated",
+          "bytes": 514,
+          "ok": true
+        },
+        {
+          "at": 1794601620169,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601620175,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620177,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620179,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620183,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620184,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620185,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620190,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601620191,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601620192,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601620329,
+          "event": "event: message.updated",
+          "bytes": 540,
+          "ok": true
+        },
+        {
+          "at": 1794601620330,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601620335,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620336,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620337,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620517,
+          "event": "event: presence.changed",
+          "bytes": 176,
+          "ok": true
+        },
+        {
+          "at": 1794601620520,
+          "event": "event: presence.changed",
+          "bytes": 176,
+          "ok": true
+        },
+        {
+          "at": 1794601620521,
+          "event": "event: presence.changed",
+          "bytes": 176,
+          "ok": true
+        },
+        {
+          "at": 1794601620733,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620734,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620736,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601620771,
+          "event": "event: room.changed",
+          "bytes": 400,
+          "ok": true
+        }
+      ],
+      "closed": 1794601620783
+    },
+    {
+      "opened": 1794601621047,
+      "writes": [
+        {
+          "at": 1794601621048,
+          "event": ": connected",
+          "bytes": 13,
+          "ok": true
+        },
+        {
+          "at": 1794601621080,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621323,
+          "event": "event: message.added",
+          "bytes": 464,
+          "ok": true
+        },
+        {
+          "at": 1794601621324,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621325,
+          "event": "event: message.added",
+          "bytes": 509,
+          "ok": true
+        },
+        {
+          "at": 1794601621326,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621327,
+          "event": "event: message.added",
+          "bytes": 511,
+          "ok": true
+        },
+        {
+          "at": 1794601621328,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621329,
+          "event": "event: message.added",
+          "bytes": 512,
+          "ok": true
+        },
+        {
+          "at": 1794601621330,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621330,
+          "event": "event: message.added",
+          "bytes": 510,
+          "ok": true
+        },
+        {
+          "at": 1794601621331,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621332,
+          "event": "event: message.updated",
+          "bytes": 512,
+          "ok": true
+        },
+        {
+          "at": 1794601621333,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621333,
+          "event": "event: message.updated",
+          "bytes": 515,
+          "ok": true
+        },
+        {
+          "at": 1794601621334,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621335,
+          "event": "event: message.updated",
+          "bytes": 513,
+          "ok": true
+        },
+        {
+          "at": 1794601621336,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621336,
+          "event": "event: message.updated",
+          "bytes": 514,
+          "ok": true
+        },
+        {
+          "at": 1794601621337,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621344,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621355,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621361,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621364,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621367,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621375,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601621376,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601621376,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601621377,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601621381,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601621382,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601621382,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601621383,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601621391,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601621392,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601621396,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601621396,
+          "event": "event: presence.changed",
+          "bytes": 152,
+          "ok": true
+        },
+        {
+          "at": 1794601621416,
+          "event": "event: message.updated",
+          "bytes": 532,
+          "ok": true
+        },
+        {
+          "at": 1794601621417,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621422,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601621423,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601621424,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601621424,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601621447,
+          "event": "event: message.updated",
+          "bytes": 534,
+          "ok": true
+        },
+        {
+          "at": 1794601621448,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621454,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601621455,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601621455,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601621456,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601621533,
+          "event": "event: message.added",
+          "bytes": 406,
+          "ok": true
+        },
+        {
+          "at": 1794601621534,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621547,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621575,
+          "event": "event: message.updated",
+          "bytes": 533,
+          "ok": true
+        },
+        {
+          "at": 1794601621577,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621580,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601621581,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601621600,
+          "event": "event: message.updated",
+          "bytes": 535,
+          "ok": true
+        },
+        {
+          "at": 1794601621601,
+          "event": "event: unread.changed",
+          "bytes": 90,
+          "ok": true
+        },
+        {
+          "at": 1794601621604,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        },
+        {
+          "at": 1794601621605,
+          "event": "event: presence.changed",
+          "bytes": 149,
+          "ok": true
+        }
+      ],
+      "closed": 0
+    }
+  ],
+  "eventFailures": [
+    {
+      "at": 1794601618104,
+      "type": "message.added",
+      "roomId": "94d709c6-4af1-49e3-9896-12d02696c853",
+      "code": "backpressure",
+      "message": "Hub protocol: backpressure",
+      "stack": "Error: Hub protocol: backpressure\n    at HubCore.current (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/src/hub/http/core.ts:257:56)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async HubCore.eligible (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/src/hub/http/core.ts:238:65)\n    at async Object.requirePerson (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/src/hub/sessions.ts:184:13)\n    at async HubGroupRooms.who (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/src/hub/rooms/service.ts:88:79)\n    at async HubGroupRooms.event (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/src/hub/rooms/service.ts:410:16)\n    at async HubGroupRooms.HubGroupRooms.event (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/scripts/manual/hub-rooms/routing.mts:25:16)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/src/hub/http/compose.ts:476:29)"
+    },
+    {
+      "at": 1794601621205,
+      "type": "message.added",
+      "roomId": "3c9eccd4-e6b6-4738-9b8d-ebda9fd67705",
+      "code": "backpressure",
+      "message": "Hub protocol: backpressure",
+      "stack": "Error: Hub protocol: backpressure\n    at HubCore.current (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/src/hub/http/core.ts:257:56)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async HubCore.eligible (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/src/hub/http/core.ts:238:65)\n    at async Object.requirePerson (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/src/hub/sessions.ts:184:13)\n    at async HubGroupRooms.who (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/src/hub/rooms/service.ts:88:79)\n    at async HubGroupRooms.event (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/src/hub/rooms/service.ts:410:16)\n    at async HubGroupRooms.HubGroupRooms.event (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/scripts/manual/hub-rooms/routing.mts:25:16)\n    at async <anonymous> (/home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-rooms-integration-r3/src/hub/http/compose.ts:476:29)"
+    }
+  ],
+  "layouts": [
+    [
+      "desktop",
+      "en",
+      "light"
+    ],
+    [
+      "phone",
+      "zh-TW",
+      "dark"
+    ]
+  ]
+}
