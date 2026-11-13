@@ -1,0 +1,158 @@
+{
+  "sourceAndTestCheckpoint": "f06547b8ce89f6b3292ee66f6b280258f606c4c8",
+  "sourceCheckpoint": "76fc19d92e6254232e30de5f4866f906202e87cc",
+  "parent": "5aed0e4f09e5e0cb38ae01e6e3138c945dd67af6",
+  "parentPR": 3835,
+  "scope": "Unactivated private controller/preparation/attestation argument plumbing, not mounted Save or full S129",
+  "failFirst": {
+    "checkpoint": "6771723007eefab78c85c366655a23d35d275d51",
+    "semanticAssertionReds": 3,
+    "rootHostControls": 2,
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "exclusions": "Initial fixture Core management union narrowing type error was corrected to actual authority.require before the typed baseline; not counted as a semantic red."
+  },
+  "checks": {
+    "restoredPassed": 344,
+    "files": 8,
+    "skipped": 0,
+    "newControllerCases": 26,
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "compiler": "native TypeScript7.0.2/GOMAXPROCS2",
+    "compilingSemanticReversals": 7,
+    "changelog": "changelog-assemble: 456 fragment(s) OK"
+  },
+  "suites": [
+    {
+      "file": "hub-compose.test.ts",
+      "passed": 143
+    },
+    {
+      "file": "hub-directory-settings-ca.test.ts",
+      "passed": 36
+    },
+    {
+      "file": "hub-directory-settings-control.test.ts",
+      "passed": 14
+    },
+    {
+      "file": "hub-directory-settings-proof-wire.test.ts",
+      "passed": 7
+    },
+    {
+      "file": "hub-directory-settings-proof.test.ts",
+      "passed": 60
+    },
+    {
+      "file": "hub-roles-directory-control-preparation-s129.test.ts",
+      "passed": 26
+    },
+    {
+      "file": "hub-roles-directory-s129.test.ts",
+      "passed": 26
+    },
+    {
+      "file": "hub-roles-directory-session-preparation-s129.test.ts",
+      "passed": 32
+    }
+  ],
+  "bindings": [
+    {
+      "path": "src/hub/settings-directory-control.ts",
+      "sha256": "0517cdb469ae1b2180d3bd9422bf459f85f15d3be127e4d3a74bafeacb606bd8"
+    },
+    {
+      "path": "src/hub/settings-directory-proof.ts",
+      "sha256": "efa8702c958584f351da9ffec4271a23009615f7889b18e4bfa197b535299b21"
+    },
+    {
+      "path": "src/hub/settings-directory-save.ts",
+      "sha256": "ee26a5788898db9bbc4ae9c663f25f7520d3a1e58e37f9d6d3681bbbf6c46a48"
+    },
+    {
+      "path": "src/hub/session-directory-transition.ts",
+      "sha256": "b1b8d8eb871f1face7c62ae5fc9f591d750c04dfadc5caf4585e8ce785c82730"
+    },
+    {
+      "path": "src/hub/sessions.ts",
+      "sha256": "896996e9a322bc7784d6d406fc8515b8a94386fdc4a5c3c5253dd1c34f8902f5"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "a899c095c086579c2193d2b5e60addafd8f138be34d1600bb310872537cd622a"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18"
+    },
+    {
+      "path": "src/hub/roles/directory-authority.ts",
+      "sha256": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d"
+    },
+    {
+      "path": "src/hub/settings-directory-runtime.ts",
+      "sha256": "10bda593f3795493781495fb230a9cc75304385232393a65d99e76a877a2f303"
+    },
+    {
+      "path": "src/hub/settings-commit.ts",
+      "sha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+    },
+    {
+      "path": "tests/hub-roles-directory-control-preparation-s129.test.ts",
+      "sha256": "c29970043dd889ad1b7097b5270b5da60643d00d1a7eb5706f8ae4a59e8d25ef"
+    },
+    {
+      "path": "tests/hub-roles-directory-s129.test.ts",
+      "sha256": "9a1a7016fb4824e00b687eff9b9584d758c2d3d92072c9f7ff47b5b5d8e110f4"
+    },
+    {
+      "path": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "c886cf7218dcb2e713259fa2be29bd27b42a134d61535a520ddf96e85ffd8b28"
+    }
+  ],
+  "privateLogBindings": [
+    {
+      "path": "fail-first.log",
+      "sha256": "75da43de986ed1b02c7af80f156d5ce7c7c1eb5f6fa961dbc836413cd9814a3d"
+    },
+    {
+      "path": "fail-first-source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "fail-first-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "final-source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "expanded-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "restored.log",
+      "sha256": "4025103b77c94fa803c10cb2b676f6e6cf7a46c3cb64913e75b4ead78bacdd4a"
+    },
+    {
+      "path": "restored.json",
+      "sha256": "3365025881d3512187f025e621dab3d87f6286fee9a2bc8302d75d2d4e474064"
+    },
+    {
+      "path": "changelog.log",
+      "sha256": "8a585135cc0acfb659a608cae6492a3ca4788e2476e02694de2653396969c277"
+    }
+  ],
+  "commands": [
+    "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+    "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+    "nice -n10 node_modules/.bin/vitest run <eight named suites> --maxWorkers=2",
+    "python3 .artifacts/roles-directory-control-preparation-m3010/mutate.py"
+  ],
+  "mutantClassification": "C03 originally had caught=false because the runner accepted only AssertionError prefix; raw Error: expected ... to match object, _Assertion.__VITEST_REJECTS__, native0/test1/one assertion failure was independently inspected. Corrected semantic classifier/receipt keeps initialClassifierCaught=false and explanation. No product/test alteration or false-positive proof. All seven now caught; source restored exactly.",
+  "fixtureChanges": "The existing directory test retains the actor assertion and additionally requires the exact opaque witness and narrow source packet. No prior assertion removed. Initial bare host session access in uncommitted implementation was corrected and pinned.",
+  "limits": "Actual canonical Core/HubSessions/SQL/clock/pool; fictional directory, inert probe/candidate/writer. Save negative refuses before candidate/writer/response capture. No real LDAP/account/Fleet/backend CLI/browser/container/native/pilot, physical file install, mounted auxiliary Save, successor cookie, crash recovery or startup cutover. No UI/assets/payload/protocol/config change or PNG/SKEW claim.",
+  "gate": "Draft only; parent-first plain alpha sync, resolution review and new-head CI before any coordinator gate. Full S1290/4 remains."
+}

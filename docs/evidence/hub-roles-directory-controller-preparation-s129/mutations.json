@@ -1,0 +1,267 @@
+[
+  {
+    "id": "C01",
+    "file": "src/hub/settings-directory-control.ts",
+    "before": "assertHubDirectoryActor(ctx, s, true);",
+    "after": "assertHubDirectoryActor(ctx, s);",
+    "checkpoint": "f06547b8ce89f6b3292ee66f6b280258f606c4c8",
+    "inputs": {
+      "tests/hub-roles-directory-control-preparation-s129.test.ts": "c29970043dd889ad1b7097b5270b5da60643d00d1a7eb5706f8ae4a59e8d25ef"
+    },
+    "baseSha256": "0517cdb469ae1b2180d3bd9422bf459f85f15d3be127e4d3a74bafeacb606bd8",
+    "mutantSha256": "85d0dfbe4adde0a80e046090f9dfb4cb4f922054daf6492848b45786f1fa5497",
+    "load1": 7.3798828125,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 preparation-aware directory controller reads the auxiliary preparation's actual recent sign-in through the controller",
+      "S129 preparation-aware directory controller passes a frozen narrow binding and the exact opaque preparation to the real session helper",
+      "S129 preparation-aware directory controller keeps a slow preparation usable without refreshing its recorded authentication",
+      "S129 preparation-aware directory controller keeps a missing attestation missing and requires reauthentication",
+      "S129 preparation-aware directory controller does not let a new preparation renew an expired sign-in attestation",
+      "S129 preparation-aware directory controller preserves the preparation through Save's attestation before refusing fresh old-directory ineligibility",
+      "S129 preparation-aware directory controller holds the shared physical slot through a cancelled preparation until its probe settles"
+    ],
+    "caught": true,
+    "restoredSha256": "0517cdb469ae1b2180d3bd9422bf459f85f15d3be127e4d3a74bafeacb606bd8",
+    "elapsedSeconds": 27.08,
+    "privateLogs": [
+      {
+        "path": "mutants/C01-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/C01-tests.log",
+        "sha256": "6abd431d34a311b8a3ea12692a9ce447d89564eeeeb8778d4ba27ab0d25c77aa"
+      },
+      {
+        "path": "mutants/C01-tests.json",
+        "sha256": "ba7fbb0c310affa9b47c9d507bf982ec32ef8da9c2c6b3c892050dc8791ee6c0"
+      }
+    ]
+  },
+  {
+    "id": "C02",
+    "file": "src/hub/settings-directory-control.ts",
+    "before": "sessions.recentAuthentication(ctx.actor, sessionProof);",
+    "after": "sessions.recentAuthentication(ctx.actor);",
+    "checkpoint": "f06547b8ce89f6b3292ee66f6b280258f606c4c8",
+    "inputs": {
+      "tests/hub-roles-directory-control-preparation-s129.test.ts": "c29970043dd889ad1b7097b5270b5da60643d00d1a7eb5706f8ae4a59e8d25ef"
+    },
+    "baseSha256": "0517cdb469ae1b2180d3bd9422bf459f85f15d3be127e4d3a74bafeacb606bd8",
+    "mutantSha256": "63c3c3f1c5602c86c44684f95ea58d31e0f7768eebaa553beb6524e75a902e75",
+    "load1": 6.13720703125,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 preparation-aware directory controller reads the auxiliary preparation's actual recent sign-in through the controller",
+      "S129 preparation-aware directory controller keeps the effect witness when the controller asks its actual session adapter",
+      "S129 preparation-aware directory controller passes a frozen narrow binding and the exact opaque preparation to the real session helper",
+      "S129 preparation-aware directory controller keeps a slow preparation usable without refreshing its recorded authentication"
+    ],
+    "caught": true,
+    "restoredSha256": "0517cdb469ae1b2180d3bd9422bf459f85f15d3be127e4d3a74bafeacb606bd8",
+    "elapsedSeconds": 17.34,
+    "privateLogs": [
+      {
+        "path": "mutants/C02-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/C02-tests.log",
+        "sha256": "ac9075d9ef40c07795a04c739b3cf1897b309eb8e9c3015a6d3400cb4e103786"
+      },
+      {
+        "path": "mutants/C02-tests.json",
+        "sha256": "d7d35e79a4cc9090f4d1241950eab8d97f34da6954fa58cb275df42ada9c3639"
+      }
+    ]
+  },
+  {
+    "id": "C03",
+    "file": "src/hub/settings-directory-control.ts",
+    "before": "sessions.recentAuthentication(actor, proof);",
+    "after": "sessions.recentAuthentication(actor);",
+    "checkpoint": "f06547b8ce89f6b3292ee66f6b280258f606c4c8",
+    "inputs": {
+      "tests/hub-roles-directory-control-preparation-s129.test.ts": "c29970043dd889ad1b7097b5270b5da60643d00d1a7eb5706f8ae4a59e8d25ef"
+    },
+    "baseSha256": "0517cdb469ae1b2180d3bd9422bf459f85f15d3be127e4d3a74bafeacb606bd8",
+    "mutantSha256": "a20854d8a926793564eb3d5503592cd1470077c612b79237c682e3fca1c144c8",
+    "load1": 7.40234375,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 preparation-aware directory controller preserves the preparation through Save's attestation before refusing fresh old-directory ineligibility"
+    ],
+    "caught": true,
+    "restoredSha256": "0517cdb469ae1b2180d3bd9422bf459f85f15d3be127e4d3a74bafeacb606bd8",
+    "elapsedSeconds": 13.58,
+    "initialClassifierCaught": false,
+    "classificationCorrection": "Raw async rejects assertion is Error: expected ... to match object with _Assertion.__VITEST_REJECTS__; runner previously accepted only AssertionError prefix. Original native/test outcome unchanged, independently inspected; no product or test alteration.",
+    "privateLogs": [
+      {
+        "path": "mutants/C03-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/C03-tests.log",
+        "sha256": "585d26e7cd4b8414cebe097474f52ae4a17bcc8d3a545f8e708821e3b802a25e"
+      },
+      {
+        "path": "mutants/C03-tests.json",
+        "sha256": "628430dbe6b7e1446133ac0207404055581485cda0ab0ee59270fcbda5ebb62f"
+      }
+    ]
+  },
+  {
+    "id": "C04",
+    "file": "src/hub/settings-directory-proof.ts",
+    "before": "deps.recentAuthentication?.(actor, sessionProof);",
+    "after": "deps.recentAuthentication?.(actor);",
+    "checkpoint": "f06547b8ce89f6b3292ee66f6b280258f606c4c8",
+    "inputs": {
+      "tests/hub-roles-directory-control-preparation-s129.test.ts": "c29970043dd889ad1b7097b5270b5da60643d00d1a7eb5706f8ae4a59e8d25ef"
+    },
+    "baseSha256": "efa8702c958584f351da9ffec4271a23009615f7889b18e4bfa197b535299b21",
+    "mutantSha256": "636d1ec6735b36fedc0ec09527ac8afa1bb891f3789c2bd0ae71bb0e199e2722",
+    "load1": 6.19970703125,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 preparation-aware directory controller uses the recent auxiliary sign-in for a preparation without asking for another password",
+      "S129 preparation-aware directory controller keeps fresh old-directory eligibility mandatory despite a recent authentication",
+      "S129 preparation-aware directory controller preserves the preparation through Save's attestation before refusing fresh old-directory ineligibility"
+    ],
+    "caught": true,
+    "restoredSha256": "efa8702c958584f351da9ffec4271a23009615f7889b18e4bfa197b535299b21",
+    "elapsedSeconds": 9.99,
+    "privateLogs": [
+      {
+        "path": "mutants/C04-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/C04-tests.log",
+        "sha256": "097b7f85cb8ae586d2196c27a393472e07c579d3d8e0f1609fc1b207f05a5117"
+      },
+      {
+        "path": "mutants/C04-tests.json",
+        "sha256": "9898e5c11ba57d8c148a1528cab19899b1e6781e3833111ffcd46aeb9194b8a4"
+      }
+    ]
+  },
+  {
+    "id": "C05",
+    "file": "src/hub/settings-directory-proof.ts",
+    "before": "const binding = Object.freeze({ directory: source.directory, administrator: Object.freeze({ ...source.administrator }),\n    image: source.image, epoch: source.epoch, ...(source.decisionProof === undefined ? {} : { decisionProof: source.decisionProof }) });",
+    "after": "const binding = Object.freeze({ ...source });",
+    "checkpoint": "f06547b8ce89f6b3292ee66f6b280258f606c4c8",
+    "inputs": {
+      "tests/hub-roles-directory-control-preparation-s129.test.ts": "c29970043dd889ad1b7097b5270b5da60643d00d1a7eb5706f8ae4a59e8d25ef"
+    },
+    "baseSha256": "efa8702c958584f351da9ffec4271a23009615f7889b18e4bfa197b535299b21",
+    "mutantSha256": "037acddb564ccd77da3fe6b97feea1ad02cccc77f283db41d16abf597841712a",
+    "load1": 5.72705078125,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 preparation-aware directory controller passes a frozen narrow binding and the exact opaque preparation to the real session helper"
+    ],
+    "caught": true,
+    "restoredSha256": "efa8702c958584f351da9ffec4271a23009615f7889b18e4bfa197b535299b21",
+    "elapsedSeconds": 9.38,
+    "privateLogs": [
+      {
+        "path": "mutants/C05-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/C05-tests.log",
+        "sha256": "25f38961e72040e1bbae950a979ea84c757197457bde22f367b09e9e385ee825"
+      },
+      {
+        "path": "mutants/C05-tests.json",
+        "sha256": "b953d574f63f4bf7e2304144a67e027d595a90a6d334ac5afb0c34ab38a873b3"
+      }
+    ]
+  },
+  {
+    "id": "C06",
+    "file": "src/hub/settings-directory-proof.ts",
+    "before": "return ctx.preparation !== undefined ? Object.freeze({ preparation: ctx.preparation, source: binding })\n    : Object.freeze({ witness: ctx.administration!, source: binding });",
+    "after": "return ctx.preparation !== undefined ? { preparation: ctx.preparation, source: binding }\n    : { witness: ctx.administration!, source: binding };",
+    "checkpoint": "f06547b8ce89f6b3292ee66f6b280258f606c4c8",
+    "inputs": {
+      "tests/hub-roles-directory-control-preparation-s129.test.ts": "c29970043dd889ad1b7097b5270b5da60643d00d1a7eb5706f8ae4a59e8d25ef"
+    },
+    "baseSha256": "efa8702c958584f351da9ffec4271a23009615f7889b18e4bfa197b535299b21",
+    "mutantSha256": "cfd93d842ad3c3dcedda3cc2cc5926007ac953a810775a4ab7967a55a6fb15ea",
+    "load1": 5.82958984375,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 preparation-aware directory controller passes a frozen narrow binding and the exact opaque preparation to the real session helper"
+    ],
+    "caught": true,
+    "restoredSha256": "efa8702c958584f351da9ffec4271a23009615f7889b18e4bfa197b535299b21",
+    "elapsedSeconds": 11.14,
+    "privateLogs": [
+      {
+        "path": "mutants/C06-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/C06-tests.log",
+        "sha256": "402ea91734284cc17a03ae4beca2a08d82e101fdea5bfceb76a7401d468986b8"
+      },
+      {
+        "path": "mutants/C06-tests.json",
+        "sha256": "cd16814f4b33e9a3eed5e89bb795b22b96c789c2eec1e29a2f612ae849294da8"
+      }
+    ]
+  },
+  {
+    "id": "C07",
+    "file": "src/hub/settings-directory-control.ts",
+    "before": "if (!s.current() || source(ctx).image !== s.image) throw new HubProtocolError(\"revoked\");\n      return { directory, bindPasswordSet: true, reauthentication, epoch: s.epoch };",
+    "after": "return { directory, bindPasswordSet: true, reauthentication, epoch: s.epoch };",
+    "checkpoint": "f06547b8ce89f6b3292ee66f6b280258f606c4c8",
+    "inputs": {
+      "tests/hub-roles-directory-control-preparation-s129.test.ts": "c29970043dd889ad1b7097b5270b5da60643d00d1a7eb5706f8ae4a59e8d25ef"
+    },
+    "baseSha256": "0517cdb469ae1b2180d3bd9422bf459f85f15d3be127e4d3a74bafeacb606bd8",
+    "mutantSha256": "8bb2ea254f2fd19727c61a4aa4c8bf85d4c8f9a860e2ce7feef6e17afb8d239f",
+    "load1": 5.68896484375,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 preparation-aware directory controller withholds a read when image changes during authentication lookup",
+      "S129 preparation-aware directory controller withholds a read when epoch changes during authentication lookup",
+      "S129 preparation-aware directory controller withholds a read when root changes during authentication lookup",
+      "S129 preparation-aware directory controller withholds a read when frame changes during authentication lookup",
+      "S129 preparation-aware directory controller withholds a read when signout changes during authentication lookup",
+      "S129 preparation-aware directory controller withholds a read when time changes during authentication lookup",
+      "S129 preparation-aware directory controller withholds a read when lifetime changes during authentication lookup",
+      "S129 preparation-aware directory controller does not revive the retired preparation when a changed source comes back"
+    ],
+    "caught": true,
+    "restoredSha256": "0517cdb469ae1b2180d3bd9422bf459f85f15d3be127e4d3a74bafeacb606bd8",
+    "elapsedSeconds": 13.35,
+    "privateLogs": [
+      {
+        "path": "mutants/C07-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/C07-tests.log",
+        "sha256": "3c9254ffccda9932f35724c47e7063b121f250063f301aa90cc894812dbf7509"
+      },
+      {
+        "path": "mutants/C07-tests.json",
+        "sha256": "5bc87f595008adcd4cc9505ca21a6238d80fc2a9c7abe29dc51d857dc052ce77"
+      }
+    ]
+  }
+]
