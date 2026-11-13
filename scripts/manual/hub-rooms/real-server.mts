@@ -113,6 +113,16 @@ try {
       return nodes.every((node, i) => !!node && (i === 0 || !!(nodes[i - 1]!.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)));
     })); await shot("admin");
     check(tag + " admin view has no horizontal document overflow", await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    if (device === "phone") {
+      const tableViewport = p.locator(".hub-admin-all-rooms"); await tableViewport.scrollIntoViewIfNeeded();
+      await tableViewport.evaluate((el: HTMLElement) => { el.scrollLeft = el.scrollWidth; });
+      const rowMenu = p.locator(".hub-admin-rooms-table tbody tr").first().locator("td").last().getByRole("button");
+      const box = await rowMenu.boundingBox(); await rowMenu.click(); await p.getByRole("menuitem").first().waitFor();
+      check(tag + " internal room-table scroll exposes row actions", !!box && box.x >= 0 && box.x + box.width <= 391 && await p.getByRole("menuitem").count() >= 2);
+      await shot("admin-table-actions"); await p.keyboard.press("Escape"); await tableViewport.evaluate((el: HTMLElement) => { el.scrollLeft = 0; });
+      await assistantCard.locator(".s-group .note").first().scrollIntoViewIfNeeded(); await shot("admin-account");
+    }
+    await p.locator(".hub-fleet-list").scrollIntoViewIfNeeded(); await shot("admin-tail");
     await context.close();
   }
 } catch (error) { check("run completed", false, String(error)); }
