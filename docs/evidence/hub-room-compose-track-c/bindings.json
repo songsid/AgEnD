@@ -83,5 +83,40 @@
     "Owned TLS/WSS and private SQLite; Fleet delivery/state and directory callbacks inert.",
     "No browser, PNG, model call, live agent input, real directory, container or production Fleet operation.",
     "UI presence integration and shared gallery remain separate release prerequisites; this is a composition checkpoint."
-  ]
+  ],
+  "r4CurrentAlpha": {
+    "sourceHead": "f23658e9ee58d005177820091741c4542bc066f1",
+    "parents": [
+      "be465b5fe362ba3d2d6fc7102fbcf9cfe9f346f2",
+      "0aedcd3e86ecb159789a7000264815f1abb36e51"
+    ],
+    "currentAlpha": "0aedcd3e86ecb159789a7000264815f1abb36e51",
+    "focusedFiles": 8,
+    "focusedCases": 136,
+    "nativeSourceExit": 0,
+    "nativeTestExit": 0,
+    "ownRuntime": [
+      {
+        "path": "src/hub/compose/member.ts",
+        "sha256": "cca7ea85c2288b67a7c7b6292625ebd4ca11682be5fca105ac1293972b35035a",
+        "equalsClearedR1": true
+      },
+      {
+        "path": "src/hub/member/room-ask.ts",
+        "sha256": "36d930616bb9fdd6dc35c726271bf5a406270699127e0ab96ffc01a512c4b581",
+        "equalsClearedR1": true
+      },
+      {
+        "path": "src/fleet-manager.ts",
+        "sha256": "693c08ef6faddec7a1d1cd799cbc9845e4cad3b8a2a87e46c600f9405d437e66",
+        "equalsClearedR1": true
+      }
+    ],
+    "resolutions": {
+      "R": "All conflicted R server/schema/service/tests equal incoming alpha. No C edit to protocol/client/HTTP behavior.",
+      "roomAsk": "Retain reviewed own helper extraction/verifyRoomAskJournal and deliveryFailed. Other two own runtime files auto-merge byte-identically.",
+      "skill": "Keeps both current alpha room/assistant help and own Fleet room-ask help.",
+      "evidence": "Incoming adapter sync manifest kept, historic composition gallery retains its original capture source; no new browser claim."
+    }
+  }
 }
