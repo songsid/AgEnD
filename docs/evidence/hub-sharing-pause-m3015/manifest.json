@@ -1,8 +1,8 @@
 [
   {
     "path": "README.md",
-    "sha256": "9934af77ab7b53cecf317313e9426c23d93405336957bbd4120729334ec8de0b",
-    "bytes": 5838
+    "sha256": "3119592b37b8f35b69f91f091af8a77776212d9a831fe342290b75afbe7514ea",
+    "bytes": 6780
   },
   {
     "path": "baseline.json",
@@ -323,6 +323,26 @@
     "path": "checks.json",
     "sha256": "ed4aa62703e4e5f05f43ae9e67af926a8345f2e3c7d75ceb00686d340fc04867",
     "bytes": 5988
+  },
+  {
+    "path": "ci-repair/ci-repair-changelog.log",
+    "sha256": "9ba0fd5802e9ed7596a39a85bf3a1cb90410ddc15f7caf5478e895a7fd76e712",
+    "bytes": 39
+  },
+  {
+    "path": "ci-repair/ci-repair-focused.log",
+    "sha256": "ae2dd362470d02fdde4f253aeff792a22b2e06eb7e64395939e4b4513e8b1476",
+    "bytes": 462
+  },
+  {
+    "path": "ci-repair/ci-repair-test-types.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "path": "ci-repair/receipt.json",
+    "sha256": "717be0108e36cc5f270f2da684a1b295a0cfd35d89d88cbf8c1acc32ad5c1f28",
+    "bytes": 1404
   },
   {
     "path": "current-tests-baseline.log",

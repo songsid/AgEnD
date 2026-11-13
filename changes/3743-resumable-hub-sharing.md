@@ -1,1 +1,4 @@
-Hub owners can now pause and resume sharing without clearing the people and AD groups allowed to ask. Paused agents disappear from new-chat choices; existing authorized chats show the pause and stay readable. Original grant expiry dates keep running, including retained longer grants. Resume cannot restore expired/revoked grants or undo a Hub policy hold. Stop sharing remains a separate permanent action. Pauses survive Fleet reconnects and Hub restarts, both actions are audited, and pre-pause authorization leases are retired.
+---
+section: Added
+---
+- Hub owners can now pause and resume sharing without clearing the people and AD groups allowed to ask. Paused agents disappear from new-chat choices; existing authorized chats show the pause and stay readable. Original grant expiry dates keep running, including retained longer grants. Resume cannot restore expired/revoked grants or undo a Hub policy hold. Stop sharing remains a separate permanent action. Pauses survive Fleet reconnects and Hub restarts, both actions are audited, and pre-pause authorization leases are retired.

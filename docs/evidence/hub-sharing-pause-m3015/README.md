@@ -30,3 +30,9 @@ Useful zh-TW originals: [desktop paused](browser-current/current-desk-light-zh-T
 ## Limits and authority
 
 Pause/resume is offered only with matching server/client `sharing-pause-v1` capability. Retained clients keep permanent Stop sharing; old renderers may lack the new pause presentation but cannot bypass server checks. Member snapshot and authorization wire schemas stay unchanged; `paused` and `sharingEpoch` are Hub browser projections. The Fleet Share switch still means local publication; the card points to My shared agents for a resumable pause. The Hub skill is updated. No roles helpers are activated and no M-3014 guest rooms are implemented.
+
+## CI-only fixture repair
+
+Initial-head CI43378316649 found missing changelog front matter (also the shard3 repository-fragment test), the old skill assertion that pause/resume is not built, and the old exact group-route feature lists. The repair adds matching `Added` front matter/list syntax, pins pause/resume in the built Sharing section while keeping roles/guest-room/2FA unavailable, and adds the always-composed sharing marker to exact feature lists while retaining all group-route404/admin/CSRF negatives.
+
+`ci-repair/`:51/51 across the two changed suites and the new sharing server/UI controls;432fragments pass the real parser; native test types pass. Runtime/source, harness and all60PNGs remain byte-identical to the reviewed parent. All original107manifest paths were verified before adding this receipt. No browser rerun or old-head hosted-green carry is claimed. The replacement head requires its own CI and reviewer verdict.
