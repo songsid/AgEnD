@@ -37,6 +37,7 @@ export class HubRoomAgents {
   private states = new Map<string, { link: HubLinkContext; value: HubAgentState }>();
   private flights = new Map<string, Promise<boolean>>();
   private timer: NodeJS.Timeout | null = null;
+  private timerAt = Number.POSITIVE_INFINITY;
   private stopped = false;
   constructor(private readonly core: HubCore, private readonly emit: (event: RoomEvent) => void,
     private readonly project: (post: RoomPostRow) => RoomMessage) {}
@@ -68,8 +69,11 @@ export class HubRoomAgents {
       return { presence: value?.state ?? "idle", ...(value?.reason ? { presenceReason: value.reason } : {}), ...(value?.note ? { presenceNote: value.note } : {}) };
     });
   }
-  publicationChanged(): void {
-    const ids = this.core.atomic(db => db.prepare("SELECT DISTINCT subject FROM hub_room_members WHERE kind='agent'").all() as { subject: string }[]);
+  publicationChanged(fleetId?: string, exposureId?: string): void {
+    if (fleetId) this.sweepScope("fleet_id=?", fleetId);
+    if (exposureId) this.sweepScope("exposure_id=?", exposureId);
+    const ids = this.core.atomic(db => db.prepare(`SELECT DISTINCT m.subject FROM hub_room_members m JOIN hub_exposures e ON e.id=m.subject
+      WHERE m.kind='agent' AND (? IS NULL OR e.fleet_id=?) AND (? IS NULL OR e.id=?)`).all(fleetId ?? null, fleetId ?? null, exposureId ?? null, exposureId ?? null) as { subject: string }[]);
     for (const row of ids) this.presenceChanged(row.subject); this.wake();
   }
   private presenceChanged(exposureId: string): void {
@@ -145,14 +149,18 @@ export class HubRoomAgents {
     });
     this.emit({ type: added ? "message.added" : "message.updated", roomId: d.room_id, data: data.value, sequence: data.sequence }); this.emit({ type: "unread.changed", roomId: d.room_id, data: { roomId: d.room_id } });
   }
-  /** Missing consent and deadlines are terminal; pause and unavailable observations remain queued. */
-  sweep(): void {
+  /** Room reads/changes scope validity work; the global timer loads due expirations only. */
+  sweep(roomId?: string): void {
     if (!this.live()) return;
+    if (roomId) this.sweepScope("room_id=?", roomId);
+    else this.sweepScope("expires_at<=?", this.core.now(), true);
+  }
+  private sweepScope(where: string, value: string | number, dueOnly = false): void {
     const changed = this.core.atomic(db => {
-      const rows = db.prepare("SELECT * FROM hub_room_deliveries WHERE state IN ('queued','sent')").all() as Delivery[];
+      const rows = db.prepare(`SELECT * FROM hub_room_deliveries WHERE state IN ('queued','sent') AND ${where}`).all(value) as Delivery[];
       return rows.filter(d => {
         const expired = this.core.now() >= d.expires_at;
-        if (!expired && this.valid(db, d)) return false;
+        if (!expired && (dueOnly || this.valid(db, d))) return false;
         db.prepare("UPDATE hub_room_deliveries SET state=? WHERE id=?").run(expired ? "expired" : "retired", d.id);
         db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(d.reply_id); return true;
       });
@@ -162,9 +170,22 @@ export class HubRoomAgents {
   wake(): void {
     if (!this.live()) return;
     this.sweep();
-    const fleets = this.core.atomic(db => db.prepare("SELECT DISTINCT fleet_id FROM hub_room_deliveries WHERE state IN ('queued','sent')").all() as { fleet_id: string }[]);
-    for (const { fleet_id } of fleets) void this.flush(fleet_id).catch(() => {});
-    if (fleets.length && !this.timer) { this.timer = setTimeout(() => { this.timer = null; this.wake(); }, 1000); this.timer.unref(); }
+    const targets = this.core.atomic(db => ({
+      fleets: db.prepare("SELECT DISTINCT fleet_id FROM hub_room_deliveries WHERE state IN ('queued','sent')").all() as { fleet_id: string }[],
+      deadline: (db.prepare("SELECT MIN(expires_at) at FROM hub_room_deliveries WHERE state IN ('queued','sent')").get() as { at: number | null }).at,
+    }));
+    let retry = false;
+    for (const { fleet_id } of targets.fleets) {
+      const link = this.links.get(fleet_id);
+      if (!link || !this.supports(link) || !this.core.deps.transport()) continue;
+      retry = true; void this.flush(fleet_id).catch(() => {});
+    }
+    // Offline fleets need no polling. Live transient failures retry at30s; link/state/post/publication changes wake immediately.
+    const at = Math.min(targets.deadline ?? Infinity, retry ? this.core.now() + 30_000 : Infinity);
+    if (at < this.timerAt) {
+      if (this.timer) clearTimeout(this.timer);
+      this.timerAt = at; this.timer = setTimeout(() => { this.timer = null; this.timerAt = Infinity; this.wake(); }, Math.max(1, at - this.core.now())); this.timer.unref();
+    }
   }
   flush(fleetId: string): Promise<boolean> {
     const prior = this.flights.get(fleetId); if (prior) return prior;

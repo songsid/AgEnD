@@ -75,9 +75,9 @@ export class HubGroupRooms {
   private summary(db: DB, room: RoomRow, member: MemberRow) {
     const counts = db.prepare("SELECT kind,COUNT(*) AS n FROM hub_room_members WHERE room_id=? GROUP BY kind").all(room.id) as { kind: string; n: number }[];
     const floor = member.joined_sequence;
-    const last = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND sequence>=? AND (stage IS NULL OR stage='answered') ORDER BY sequence DESC LIMIT 1").get(room.id, floor) as PostRow | undefined;
-    const unread = (db.prepare("SELECT COUNT(*) AS n FROM hub_room_posts WHERE room_id=? AND sequence>=? AND sequence>? AND (author_kind<>'person' OR author_subject<>?) AND author_kind<>'system' AND (stage IS NULL OR stage='answered')")
-      .get(room.id, floor, member.read_sequence, member.subject) as { n: number }).n;
+    const last = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND sequence>=? AND (stage IS NULL OR stage='answered') AND (answer_to IS NULL OR EXISTS(SELECT 1 FROM hub_room_posts original WHERE original.id=hub_room_posts.answer_to AND original.sequence>=?)) ORDER BY sequence DESC LIMIT 1").get(room.id, floor, floor) as PostRow | undefined;
+    const unread = (db.prepare("SELECT COUNT(*) AS n FROM hub_room_posts WHERE room_id=? AND sequence>=? AND sequence>? AND (author_kind<>'person' OR author_subject<>?) AND author_kind<>'system' AND (stage IS NULL OR stage='answered') AND (answer_to IS NULL OR EXISTS(SELECT 1 FROM hub_room_posts original WHERE original.id=hub_room_posts.answer_to AND original.sequence>=?))")
+      .get(room.id, floor, member.read_sequence, member.subject, floor) as { n: number }).n;
     const mentioned = !!db.prepare(`SELECT 1 FROM hub_room_posts p,json_each(p.mentions) j WHERE p.room_id=? AND p.sequence>=? AND p.sequence>?
       AND p.author_subject<>? AND j.value IN (?,?) LIMIT 1`).get(room.id, floor, member.read_sequence, member.subject, member.id, member.subject);
     const online = (db.prepare(`SELECT COUNT(*) AS n FROM hub_room_members m WHERE m.room_id=? AND m.kind='person' AND EXISTS
@@ -134,7 +134,7 @@ export class HubGroupRooms {
     this.emit({ type: "room.changed", roomId: room.id, data: { roomId: room.id } }); return { room };
   }
   async detail(ctx: HubRequestContext, id: string) {
-    const me = await this.who(ctx); this.agents.sweep();
+    const me = await this.who(ctx); this.agents.sweep(id);
     this.core.atomic(db => { this.member(db, id, me); }, this.fence(ctx));
     const canAsk = new Set<string>(), directProofs: HubOperationPermit[] = [];
     const candidates = this.core.atomic(db => db.prepare(`SELECT g.id,g.exposure_id FROM hub_grants g JOIN hub_room_members m ON m.subject=g.exposure_id
@@ -165,7 +165,7 @@ export class HubGroupRooms {
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.updated", result: "completed", roomId: id });
     }, this.fence(ctx));
     if (body.archived) this.core.deps.roomAssistant?.forget(id);
-    this.agents.sweep();
+    this.agents.sweep(id);
     this.emit({ type: "room.changed", roomId: id, data: { roomId: id } }); return this.detail(ctx, id);
   }
   async add(ctx: HubRequestContext, id: string, input: unknown) {
@@ -221,18 +221,18 @@ export class HubGroupRooms {
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: role ? "room.member-role" : "room.member-removed", result: "completed", roomId: id });
       return !role && target.kind === "person" ? target.subject : null;
     }, this.fence(ctx));
-    this.agents.sweep();
+    this.agents.sweep(id);
     if (removed) this.emit({ type: "room.changed", roomId: id, data: { roomId: id, removed: true }, removedPerson: removed });
     this.emit({ type: "member.changed", roomId: id, data: { roomId: id } }); return { ok: true };
   }
   async messages(ctx: HubRequestContext, id: string, before: string | null, limit = 50) {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new HubProtocolError("invalid");
-    const me = await this.who(ctx); this.agents.sweep();
+    const me = await this.who(ctx); this.agents.sweep(id);
     return this.core.atomic(db => {
       const member = this.member(db, id, me); let until = Number.MAX_SAFE_INTEGER;
       if (before) { const row = db.prepare("SELECT sequence FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(validated(uuid, before), id, member.joined_sequence) as { sequence: number } | undefined;
         if (!row) throw new HubRoomRefusal(404, "not-found"); until = row.sequence; }
-      const rows = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND sequence>=? AND sequence<? ORDER BY sequence DESC LIMIT ?").all(id, member.joined_sequence, until, limit + 1) as PostRow[];
+      const rows = db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? AND sequence>=? AND sequence<? AND (answer_to IS NULL OR EXISTS(SELECT 1 FROM hub_room_posts original WHERE original.id=hub_room_posts.answer_to AND original.sequence>=?)) ORDER BY sequence DESC LIMIT ?").all(id, member.joined_sequence, until, member.joined_sequence, limit + 1) as PostRow[];
       return { messages: rows.slice(0, limit).reverse().map(row => this.projection(row)), more: rows.length > limit };
     }, this.fence(ctx));
   }
@@ -273,6 +273,8 @@ export class HubGroupRooms {
       if (event.removedPerson) return event.removedPerson === me ? event.data : null;
       const member = db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=?").get(event.roomId, me) as MemberRow | undefined;
       if (!member || event.sequence !== undefined && event.sequence < member.joined_sequence) return null;
+      const message = event.data.message as RoomMessage | undefined;
+      if (message?.answerTo && !db.prepare("SELECT 1 FROM hub_room_posts WHERE id=? AND room_id=? AND sequence>=?").get(message.answerTo, event.roomId, member.joined_sequence)) return null;
       if (event.type === "unread.changed") return { roomId: event.roomId, unread: this.summary(db, this.room(db, event.roomId), member).unread };
       if (event.type === "room.changed") return { roomId: event.roomId, room: this.summary(db, this.room(db, event.roomId), member) };
       return event.data;
