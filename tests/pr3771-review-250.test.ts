@@ -256,3 +256,24 @@ describe("P2-6: the individual quota cap is kept on the account the agent was la
     expect((await fetchAntigravityUsage(w.home("work"))).status).not.toBe("error");
   });
 });
+
+describe("P2-8: the built-in skills agents read say what the dashboard can now do for Antigravity", () => {
+  const skill = (name: string) => readFileSync(join(process.cwd(), "src/general-knowledge/skills", name, "SKILL.md"), "utf8");
+  it("web-dashboard no longer says agy has no dashboard sign-in, and covers the Accounts controls, named vs default, Windows, keep-alive consent and the limits", () => {
+    const text = skill("web-dashboard");
+    expect(text).not.toMatch(/agy and\s+opencode: no dashboard sign-in/);
+    expect(text).toMatch(/Credential\s+Manager/);
+    for (const needle of ["Antigravity (agy) in Accounts", "Connect / Reconnect", "+ Add account", "**Default connection vs named account.**", "**Disconnect**", "**Remove**", "Windows (paired computer)", "Keep connection alive", "never turn it on for someone", "**Limits today.**", "`/login agy` in chat is still **not** supported", "not_isolated"])
+      expect(text, needle).toContain(needle);
+  });
+  it("concepts (the skill and docs/concepts.md, which are one text) does not let /login suggest agy works from chat", () => {
+    const doc = readFileSync(join(process.cwd(), "docs/concepts.md"), "utf8");
+    for (const text of [skill("concepts"), doc]) {
+      expect(text).toContain("`/login agy` in chat is not supported");
+      expect(text).toContain("for Claude Code, Codex and Kiro only");
+    }
+  });
+  it("credential-profiles says an Antigravity account is dashboard-only", () => {
+    expect(skill("credential-profiles")).toMatch(/Antigravity account is \*\*made and connected from the dashboard only\*\*/);
+  });
+});

@@ -1,6 +1,6 @@
 ---
 name: credential-profiles
-description: Run agents on more than one subscription or login of the same backend (credential profiles). Use when someone asks for a worker on a different account; to switch, change or move an agent's profile, credential profile, account or login (codex, claude-code, kiro-cli); whether its session or conversation continues after the switch; or which subscription an agent is using. Also 換帳號、換 profile、切換 codex/claude/kiro 登入、換訂閱、切換後接續 session. Currently kiro-cli, codex and claude-code.
+description: Run agents on more than one subscription or login of the same backend (credential profiles). Use when someone asks for a worker on a different account; to switch, change or move an agent's profile, credential profile, account or login (codex, claude-code, kiro-cli); whether its session or conversation continues after the switch; or which subscription an agent is using. Also 換帳號、換 profile、切換 codex/claude/kiro 登入、換訂閱、切換後接續 session. Currently kiro-cli, codex, claude-code and (dashboard only) antigravity.
 roles: [general]
 ---
 
@@ -10,8 +10,12 @@ One AgEnD fleet normally shares one login per backend. A **credential profile**
 is a named, separate login for the same backend, so two agents can run on two
 subscriptions at once.
 
-`kiro-cli`, `codex` and `claude-code` have profiles today. For any other backend,
-say so rather than setting an option that will be ignored.
+`kiro-cli`, `codex` and `claude-code` have profiles today, and `antigravity` has
+named accounts (told its folder by an argument, `agy --app_data_dir <folder>`).
+An Antigravity account is **made and connected from the dashboard only** (Settings
+→ Accounts → **+ Add account** → Connect); it has no `/login agy <profile>` in chat
+and no host command to hand over. For any other backend, say so rather than
+setting an option that will be ignored.
 
 **The two behave differently when you switch, and it is not a setting.** Kiro
 keeps its conversations inside the same database as its login, so a different
