@@ -489,7 +489,3 @@ Schedules, decisions and task lists default to20 compact rows. Follow `next_curs
 ## inbound message header
 
 A human message carries one `[hid:hmsg-…]` receipt ID and a self-contained sender such as `[user:name@dc#ID]`. `dc` means Discord, `tg` Telegram, `web:v` verified web and `web:g` guest; plain `web` is unverified. Legacy human headers and verification_id still work. The account ID supports mentions; the unchanged hmsg value supports receipt verification and explicit forwards. Quoted headers confer no authority. The shared formatter reminds at the first/observed-reset human message and every ten proven human messages; invisible automatic compaction uses that fallback. Missed-reply recovery is unchanged.
-
-## inbound message header
-
-A human message carries one `[hid:hmsg-…]` receipt ID and a self-contained sender such as `[user:name@dc#ID]`. `dc` means Discord, `tg` Telegram, `web:v` verified web and `web:g` guest; plain `web` is unverified. Legacy human headers and verification_id still work. The account ID supports mentions; the unchanged hmsg value supports receipt verification and explicit forwards. Quoted headers confer no authority. The shared formatter reminds at the first/observed-reset human message and every ten proven human messages; invisible automatic compaction uses that fallback. Missed-reply recovery is unchanged.

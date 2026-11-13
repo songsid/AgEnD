@@ -132,3 +132,12 @@ historical wire-less rendering retained, foreign handoff no exemption. Main
 fail-first3red, fixed80/80, three semantic reversals caught. Alpha receipt and
 formatter80/80 plus source/test nativeTS7 pass on the final helper. No authority,
 ACL, proof, deadline or retry change; optional closure-cleanup P3 left scoped out.
+
+Shared reset-path pins now drive actual source poll→monitor→daemon and actual
+resetOffset, including once-only next poll and detached-monitor controls. Main
+listener14/14; M5/M6 each1semanticred. Alpha listener/anchor/concepts slice67/67
+and native test types pass. Alpha promptAnchor now accepts compact hid and
+legacy human markers, including pasted-content wrapper; compact anchor case
+failed first. No-body leading-marker negative retained. Removed one duplicated
+concepts header paragraph from alpha skill/doc (main already had it once);
+updated the alpha transcript-needles dialect comment.

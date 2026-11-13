@@ -156,3 +156,27 @@ it("a first known model does not retire an owned human stamp from an unknown-mod
   m.emit("model_context", "session-A", "claude-opus-5-5");
   expect(d.humanReminders.current(first)).toBe(true); expect(d.humanReminders.prepare("next").replyHint).toBe(false);
 });
+
+it("source-poll compaction reaches the owned daemon reminder exactly once (#3074)", async () => {
+  const { d } = rig();
+  const empty = { toolUses: [], toolResults: [], assistantTexts: [] };
+  const source = { poll: vi.fn().mockResolvedValueOnce({ ...empty, contextResets: 1 }).mockResolvedValue(empty), reset: vi.fn() };
+  const m = d.buildTranscriptMonitor(source); d.transcriptMonitor = m; d.installCompactInboundInstructions();
+  let resets = 0; m.on("context_reset", () => resets++);
+  const old = d.humanReminders.prepare("old"); d.humanReminders.settle(old, true);
+  await m.pollIncrement();
+  expect(resets).toBe(1); expect(d.humanReminders.current(old)).toBe(false);
+  const next = d.humanReminders.prepare("next"); expect(next.replyHint).toBe(true); d.humanReminders.settle(next, true);
+  await m.pollIncrement();
+  expect(resets).toBe(1); expect(d.humanReminders.current(next)).toBe(true);
+  expect(d.humanReminders.prepare("quiet").replyHint).toBe(false);
+});
+it("actual monitor reset invalidates an outstanding stamp only for the attached monitor (#3074)", () => {
+  const { d, m } = rig(); d.installCompactInboundInstructions();
+  const old = d.humanReminders.prepare("old"); d.humanReminders.settle(old, true);
+  m.resetOffset();
+  expect(d.humanReminders.current(old)).toBe(false);
+  const next = d.humanReminders.prepare("next"); expect(next.replyHint).toBe(true); d.humanReminders.settle(next, true);
+  d.transcriptMonitor = null; m.resetOffset();
+  expect(d.humanReminders.current(next)).toBe(true); expect(d.humanReminders.prepare("quiet").replyHint).toBe(false);
+});
