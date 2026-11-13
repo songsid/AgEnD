@@ -24,6 +24,7 @@ import { verifyCompanyInvitation, type CompanyInvitationClaims } from "./invitat
 import { HubEnrolmentCodes, enrolmentCreate, type EnrolmentCode } from "../enrolment-code.js";
 import { parseStoredHubGroupResource } from "../group-policy/resources.js";
 import { revokeHubFleet } from "../fleet-revocation.js";
+import type { HubManagementAuthority } from "../roles/authority.js";
 
 export class CompanyJoinLimit extends HubProtocolError { constructor() { super("backpressure"); } }
 /** Retryable browser refusal, never a terminal result or an ambiguous issuance. */
@@ -44,6 +45,7 @@ export interface CompanyJoinOptions {
   descriptor: ReturnType<typeof import("./descriptor.js").signCompanyDescriptor>;
   name?: string;
   refreshAuthorization?(): void;
+  management?: Pick<HubManagementAuthority, "require">;
 }
 export class HubCompanyJoin {
   readonly records: CompanyJoinRecords;
@@ -54,7 +56,7 @@ export class HubCompanyJoin {
     this.directoryEpoch = readHubSessionEpoch(options.db);
     this.records = new CompanyJoinRecords(options.db, () => this.now());
     this.codes = new HubEnrolmentCodes({ db: options.db, home: options.home, hubId: options.identity.hubId, now: () => this.now(),
-      audit: (action, codeId, use) => this.audit(action, use?.requestId ?? codeId, use?.owner ?? this.options.administrator, use?.fleetId, codeId) });
+      audit: (action, codeId, use, actor) => this.audit(action, use?.requestId ?? codeId, use?.owner ?? actor ?? this.options.administrator, use?.fleetId, codeId) });
   }
   private now(): number { return this.options.now?.() ?? Date.now(); }
   private check(): void { if (!this.options.current() || readHubSessionEpoch(this.options.db) !== this.directoryEpoch) throw new HubProtocolError("unavailable"); }
@@ -97,9 +99,10 @@ export class HubCompanyJoin {
   }
   async configure(ctx: HubRequestContext, input: unknown) {
     const body = validated(z.strictObject({ enabled: z.boolean(), expectedRevision: z.number().int().min(1) }), input);
-    await ctx.requireAdmin(); if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
+    const admin = await this.codeAdmin(ctx);
     if (body.enabled) this.seal();
     this.atomic(() => {
+      admin.assertCurrent();
       const before = this.control();
       if (before.revision !== body.expectedRevision) throw new HubProtocolError("conflict");
       if (before.revision === Number.MAX_SAFE_INTEGER) throw new HubProtocolError("unavailable");
@@ -109,8 +112,8 @@ export class HubCompanyJoin {
         const rows = this.options.db.prepare("SELECT id FROM hub_company_join_requests WHERE stage IN('pending','identity-approved','issued')").all() as { id: string }[];
         for (const { id } of rows) this.end(this.records.get(id), "disabled");
       }
-      this.audit("company-join.configured", ctx.requestId, this.options.administrator);
-      if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
+      this.audit("company-join.configured", ctx.requestId, admin.person);
+      admin.assertCurrent();
     });
     return this.adminView();
   }
@@ -130,21 +133,18 @@ export class HubCompanyJoin {
     const row = this.readInvitation(r.invitationId);
     if (row.requestId !== r.binding.requestId || row.consumed !== (r.issuedHash !== null)
       || !r.approvedBy || personKeyString(row.claims.approvedBy) !== personKeyString(r.approvedBy)
-      || personKeyString(row.claims.approvedBy) !== personKeyString(this.options.administrator)
       || r.owner && personKeyString(row.claims.owner) !== personKeyString(r.owner)
       || companyIdentityDigest(row.claims.hub) !== companyIdentityDigest(r.binding.hub)) throw new HubProtocolError("denied");
     return row;
   }
   async createInvitation(ctx: HubRequestContext, input: PersonKey) {
-    this.enabled(); const admin = await ctx.requireAdmin(), owner = validated(person, input);
-    if (admin.kind !== "directory" || personKeyString(admin.person) !== personKeyString(this.options.administrator) || ctx.isCurrent?.() !== true)
-      throw new HubProtocolError("denied");
+    this.enabled(); const owner = validated(person, input), admin = await this.codeAdmin(ctx, true);
     const now = this.now(), claims: CompanyInvitationClaims = { v: 2, id: randomUUID(), hub: this.options.identity, owner,
       approvedBy: admin.person, nonce: randomBytes(32).toString("hex"), createdAt: now, expiresAt: now + 600_000 };
     const invitation = this.options.signInvitation(claims);
     if (canonicalArguments(verifyCompanyInvitation(invitation, now)) !== canonicalArguments(claims)) throw new HubProtocolError("uncertain");
     this.atomic(() => {
-      if (ctx.isCurrent?.() !== true || !this.control().enabled) throw new HubProtocolError("revoked");
+      admin.assertCurrent(); if (!this.control().enabled) throw new HubProtocolError("revoked");
       const pending = this.options.store.read().pairings.filter(p => p.expiresAt > this.now()).length;
       if (pending + this.retained() >= 64) throw new HubProtocolError("backpressure");
       this.options.db.prepare("DELETE FROM hub_company_join_invites WHERE json_extract(body,'$.claims.expiresAt')<=?").run(this.now());
@@ -152,27 +152,29 @@ export class HubCompanyJoin {
       if (count >= 1024) throw new HubProtocolError("backpressure");
       this.options.db.prepare("INSERT INTO hub_company_join_invites VALUES(?,?)").run(claims.id, canonicalArguments({ claims, digest: sha256(invitation), requestId: null, consumed: false }));
       this.audit("company-join.invitation-issued", ctx.requestId, admin.person);
-      if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
+      admin.assertCurrent();
     });
     return { invitation, url: this.options.identity.webOrigin + "/join-info#invite=" + invitation, expiresAt: claims.expiresAt };
   }
   private async codeAdmin(ctx: HubRequestContext, creating = false) {
-    this.check(); if (creating) this.enabled(); const actor = await ctx.requireAdmin();
-    if (actor.kind !== "directory" || personKeyString(actor.person) !== personKeyString(this.options.administrator) || ctx.isCurrent?.() !== true) throw new HubProtocolError("denied");
-    return Object.freeze({ ...actor, person: Object.freeze({ ...actor.person }) });
+    this.check(); if (creating) this.enabled();
+    const permit = this.options.management ? await this.options.management.require(ctx, "join.manage") : null;
+    const actor = permit?.actor ?? await ctx.requireAdmin(), caller = ctx.isCurrent?.bind(ctx);
+    if (actor.kind !== "directory" || !permit && personKeyString(actor.person) !== personKeyString(this.options.administrator)) throw new HubProtocolError("denied");
+    const assertCurrent = () => { this.check(); permit?.assertCurrent(); if (caller?.() !== true) throw new HubProtocolError("revoked"); };
+    assertCurrent(); return Object.freeze({ ...actor, person: Object.freeze({ ...actor.person }), assertCurrent });
   }
   async createCode(ctx: HubRequestContext, input: unknown) {
     const actor = await this.codeAdmin(ctx, true), body = validated(enrolmentCreate, input), revision = this.control().revision;
-    const scopeProof = await this.options.groups.validateCodeScope(body.scope, { requestId: ctx.requestId, current: () => ctx.isCurrent?.() === true });
-    const again = await this.codeAdmin(ctx, true);
-    if (again.sessionId !== actor.sessionId || personKeyString(again.person) !== personKeyString(actor.person)) throw new HubProtocolError("denied");
-    return this.atomic(() => { scopeProof.assertCurrent(); if (ctx.isCurrent?.() !== true || !this.control().enabled || this.control().revision !== revision) throw new HubProtocolError("revoked");
-      const result = { ...this.codes.create(actor.person, body), freeFleetRows: Math.max(0, 256 - this.options.store.read().fleets.length) }; scopeProof.assertCurrent(); if (ctx.isCurrent?.() !== true || !this.control().enabled || this.control().revision !== revision) throw new HubProtocolError("revoked"); return result;
+    const scopeProof = await this.options.groups.validateCodeScope(body.scope, { requestId: ctx.requestId, current: () => { actor.assertCurrent(); return true; } }, actor.person);
+    actor.assertCurrent();
+    return this.atomic(() => { actor.assertCurrent(); scopeProof.assertCurrent(); if (!this.control().enabled || this.control().revision !== revision) throw new HubProtocolError("revoked");
+      const result = { ...this.codes.create(actor.person, body), freeFleetRows: Math.max(0, 256 - this.options.store.read().fleets.length) }; actor.assertCurrent(); scopeProof.assertCurrent(); if (!this.control().enabled || this.control().revision !== revision) throw new HubProtocolError("revoked"); return result;
     });
   }
   async listCodes(ctx: HubRequestContext) {
-    await this.codeAdmin(ctx);
-    return this.atomic(() => { if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
+    const actor = await this.codeAdmin(ctx);
+    return this.atomic(() => { actor.assertCurrent();
       this.maintainCodes();
       const codes = this.codes.list().map(code => {
         // Display all unissued joins, including people who have not signed in yet. Quota reservations stay separate.
@@ -184,15 +186,15 @@ export class HubCompanyJoin {
           const fleet = this.options.store.read().fleets.find(f => f.id === use.fleet_id);
           return { label: fleet?.label ?? "", owner: { name: person?.display_name ?? "", login: person?.login_label ?? "" }, at: use.at };
         }) }; });
-      if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked"); return { codes };
+      actor.assertCurrent(); return { codes };
     });
   }
   async revokeCode(ctx: HubRequestContext, id: string) {
     const actor = await this.codeAdmin(ctx);
-    this.atomic(() => { if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked"); this.codes.revoke(id, actor.person);
+    this.atomic(() => { actor.assertCurrent(); this.codes.revoke(id, actor.person);
       const rows = this.options.db.prepare("SELECT id FROM hub_company_join_requests WHERE json_extract(body,'$.enrolmentCodeId')=? AND stage IN('pending','identity-approved')").all(id) as { id: string }[];
       for (const row of rows) this.endCode(this.records.get(row.id));
-      if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked");
+      actor.assertCurrent();
     });
     return (await this.listCodes(ctx)).codes.find(code => code.id === id)!;
   }
@@ -269,8 +271,7 @@ export class HubCompanyJoin {
       }
     }
     const invite = p.invitation ? verifyCompanyInvitation(p.invitation, this.now()) : null;
-    if (invite && (companyIdentityDigest(invite.hub) !== companyIdentityDigest(b.hub)
-      || personKeyString(invite.approvedBy) !== personKeyString(this.options.administrator))) throw new HubProtocolError("denied");
+    if (invite && companyIdentityDigest(invite.hub) !== companyIdentityDigest(b.hub)) throw new HubProtocolError("denied");
     const now = invite?.createdAt ?? this.now(), outerDeadline = now + 600_000;
     const record: JoinRecord = { v: 1, binding: b, version: 1, label: p.label, stateHash: p.stateHash, stage: "pending", createdAt: now,
       outerDeadline, retainUntil: Math.max(outerDeadline, now + this.options.eventDays * 86_400_000), browserHash: null, browserOrigin: null,
@@ -555,6 +556,7 @@ export class HubCompanyJoin {
       eligibility.assertCurrent(); permit.assertCurrent(); if (!live()) throw new HubProtocolError("revoked");
       // A last-use/revoke refusal occurs before the transport's independent floor advances.
       if (code) { consumedCode = this.codes.assertDefinition(code); this.codes.consume(consumedCode, { requestId: b.requestId, fleetId: b.fleetId, owner }); }
+      eligibility.assertCurrent(); permit.assertCurrent(); if (!live()) throw new HubProtocolError("revoked");
       this.options.store.mutate({ at: this.now(), requestId: b.requestId, actor: { kind: "person", person: owner },
         fleetId: b.fleetId, action: expected.enrolmentCodeId ? "company-join.code-approved" : expected.invitationId ? "company-join.admin-approved" : "company-join.group-approved", result: "allowed", ...(expected.enrolmentCodeId ? { codeId: expected.enrolmentCodeId, reasonCode: "code" } : {}) }, state => {
         if (!live()) throw new HubProtocolError("revoked");
@@ -562,7 +564,7 @@ export class HubCompanyJoin {
         if (!expected.invitationId && automaticFleetSlots(state, owner, this.now(), this.records.reservations(owner, b.requestId)) - Number(!!old) >= permit.maxFleets) throw new CompanyJoinLimit();
         if (state.fleets.length >= 256 || state.fleets.some(f => f.id === b.fleetId)) throw new HubProtocolError("backpressure");
         state.fleets.push({ id: b.fleetId, owner, credentialHash: issuedHash, generation: 1, status: "active", label: expected.label });
-      });
+      }, () => { eligibility.assertCurrent(); permit.assertCurrent(); if (!live()) throw new HubProtocolError("revoked"); finalCode(); });
       permit.commit(this.options.db);
       const source = this.provenance({ ...expected, owner });
       const issuedAt = this.now(), deliveryDeadline = Math.min(issuedAt + 120_000, expected.outerDeadline);
