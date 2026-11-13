@@ -12,7 +12,7 @@
  *
  * Nothing here reads a file except `readTailRecords` (bounded, async, for an on-demand backfill).
  */
-import { LINE_MAX_BYTES, LONG_HEAD_BYTES, lastLineBoundary, openTranscript, type LongLine } from "./transcript-jsonl.js";
+import { LINE_MAX_BYTES, LONG_HEAD_BYTES, boundaryBefore, openTranscript, type LongLine } from "./transcript-jsonl.js";
 import { redactSecrets, shellProgramName, type ToolProgressLevel } from "./tool-progress.js";
 
 export type StepKind = "user" | "assistant" | "thinking" | "tool" | "error" | "turn_end" | "state";
@@ -661,29 +661,44 @@ export class CodexStepParser extends StepParser {
         const one = name === "exec" && typeof input === "string" ? scriptCommand(input) : undefined;
         const s = this.add({ ...(id ? { id } : {}), kind: "tool", ts, tool: name, ...described, ...(one ? { subject: subjectOf(one) } : {}), status: "running", ...(anchor ? { anchor } : {}) });
         inputOf(s, input);
-        if (ts && id) this.started.set(id, ts);
-        if (id && p.type === "custom_tool_call" && name === "exec") this.wrapper = id;
+        this.called(id, p.type, name, ts);
         return [s];
       }
-      case "function_call_output": case "custom_tool_call_output": {
-        const id = String(p.call_id ?? "");
-        if (id && this.wrapper === id) this.wrapper = "";
-        // An item already took this script's step over (it has the command, its output and its exit code): nothing to add.
-        if (id && this.adopted.delete(id)) { this.started.delete(id); return []; }
-        const s = this.close(id) ?? this.add({ id: id || undefined, kind: "tool", ts, tool: "", cat: "other", status: "done" });
-        const text = resultText(p.output);
-        const exit = CODEX_EXIT.exec(text), wall = CODEX_WALL.exec(text);
-        s.status = (exit && exit[1] !== "0") || /^failed to /.test(text) ? "failed" : "done";
-        if (exit) s.exitCode = Number(exit[1]);
-        const t0 = this.started.get(id); this.started.delete(id);
-        if (wall) s.durationMs = Math.round(Number(wall[1]) * 1000);
-        else if (t0 && ts >= t0) s.durationMs = ts - t0;
-        const out = /\nOutput:\n([\s\S]*)$/.exec(text);
-        if (text) { bodyOf(s, out ? out[1]! : text, RESULT_MAX); replyResult(s, text); }
-        return [{ ...s }];
-      }
+      case "function_call_output": case "custom_tool_call_output":
+        return this.answered(String(p.call_id ?? ""), resultText(p.output), ts);
     }
     return [];
+  }
+
+  /**
+   * What a call leaves behind for its output and for the items that may take it over — the one place both the whole record and a
+   * long one (`long()`) go through, so a call over the line limit is bookkept exactly as a short one: its start time, and an `exec`
+   * script call as the `wrapper` the first item takes over.
+   */
+  private called(id: string, type: string, name: string, ts: number): void {
+    if (ts && id) this.started.set(id, ts);
+    if (id && type === "custom_tool_call" && name === "exec") this.wrapper = id;
+  }
+
+  /**
+   * A call's output (`text`: all of it, or the start of one too long to parse; `bytes`: its size then). An item already took the
+   * script's step over (it has the command, its output and its exit code): nothing to add, and above all not a second, nameless
+   * step of the same id — the page would lay it over the item's.
+   */
+  private answered(id: string, text: string, ts: number, bytes?: number): Emission {
+    if (id && this.wrapper === id) this.wrapper = "";
+    if (id && this.adopted.delete(id)) { this.started.delete(id); return []; }
+    const s = this.close(id) ?? this.add({ id: id || undefined, kind: "tool", ts, tool: "", cat: "other", status: "done" });
+    const exit = CODEX_EXIT.exec(text), wall = CODEX_WALL.exec(text);
+    s.status = (exit && exit[1] !== "0") || /^failed to /.test(text) ? "failed" : "done";
+    if (exit) s.exitCode = Number(exit[1]);
+    const t0 = this.started.get(id); this.started.delete(id);
+    if (wall) s.durationMs = Math.round(Number(wall[1]) * 1000);
+    else if (t0 && ts >= t0) s.durationMs = ts - t0;
+    if (bytes !== undefined) s.bodyBytes = bytes;
+    const out = /\nOutput:\n([\s\S]*)$/.exec(text);
+    if (text) { bodyOf(s, out ? out[1]! : text, RESULT_MAX); replyResult(s, text); }
+    return [{ ...s }];
   }
 
   /** AGEND-181: a reasoning summary as a `thinking` step (none unless asked for, empty, or already shown this turn). */
@@ -775,15 +790,13 @@ export class CodexStepParser extends StepParser {
     const id = /"call_id":"([^"]{1,200})"/.exec(head)?.[1];
     if (!type || !id) return [];
     const ts = tsOf(/"timestamp":"([^"]{10,40})"/.exec(head)?.[1]);
-    if (type.endsWith("_output")) {
-      const s = this.close(id) ?? this.add({ id, kind: "tool", ts, tool: "", cat: "other", status: "done" });
-      s.status = "done"; s.bodyBytes = bytes;
-      const text = headString(head, "text") ?? headString(head, "output");
-      if (text) bodyOf(s, text, RESULT_MAX);
-      return [{ ...s }];
-    }
+    if (type.endsWith("_output")) return this.answered(id, headString(head, "text") ?? headString(head, "output") ?? "", ts, bytes);
     const name = /"name":"([^"]{1,200})"/.exec(head)?.[1] ?? "tool";
-    return [this.add({ id, kind: "tool", ts, tool: name, ...describeTool(name, undefined), status: "running", bodyBytes: bytes })];
+    // Its input is not read (too long): the head can still say it sends a reply.
+    if (isReplyTool(name) || REPLY_IN_SCRIPT.test(head)) this.spoke = true;
+    const s = this.add({ id, kind: "tool", ts, tool: name, ...describeTool(name, undefined), status: "running", bodyBytes: bytes });
+    this.called(id, type, name, ts);
+    return [s];
   }
 }
 
@@ -964,20 +977,29 @@ const BACKFILL_CHUNK = 256 * 1024;
 /** A record and where it starts in the file (its byte offset). */
 export interface TailRecord { record: string | LongLine; at: number }
 
-export async function readTailRecords(path: string, opts: { maxBytes?: number; maxLines?: number; end?: number } = {}): Promise<{ records: TailRecord[]; truncated: boolean; end: number }> {
+export async function readTailRecords(path: string, opts: { maxBytes?: number; maxLines?: number; end?: number } = {}): Promise<{ records: TailRecord[]; truncated: boolean; end: number; skip?: true }> {
   const maxBytes = Math.max(1, opts.maxBytes ?? BACKFILL_MAX_BYTES);
   const maxLines = Math.max(1, opts.maxLines ?? 2000);
-  // `end`: read the records before this offset (a record start, from an earlier read: a line boundary) — older ones.
-  const end = opts.end !== undefined ? Math.min(opts.end, await lastLineBoundary(path)) : await lastLineBoundary(path);
   const out: TailRecord[] = [];
-  if (end === 0) return { records: out, truncated: false, end };
   const KEEP = LINE_MAX_BYTES + LONG_HEAD_BYTES;
   const fh = await openTranscript(path);
   try {
+    // The last complete record ends at a line boundary. Finding it is part of the read, so it is inside the budget too: an
+    // unfinished record after it (a record being written, or one of megabytes) is never scanned past `maxBytes`.
+    // `end` (a record start from an earlier read: a boundary) is where the look begins — the older records before it — and
+    // nothing after it is read; with none, the file's end.
+    const size = (await fh.stat()).size;
+    const from = opts.end !== undefined ? Math.min(opts.end, size) : size;
+    const found = await boundaryBefore(fh, path, from, maxBytes);
+    // No line end within the budget: an unfinished record longer than it. Complete lines only — none is returned. The cursor of a
+    // read from the file's end is inside that record (`skip`: the next forward read drops through its end), not a boundary.
+    if (found.at === null) return { records: out, truncated: true, end: from, ...(opts.end === undefined ? { skip: true as const } : {}) };
+    const end = found.at;
+    if (end === 0) return { records: out, truncated: false, end };
     let pos = end - 1;                 // the last record's line end (excluded); records lie between line ends
     let recEnd = end - 1;              // where the record being assembled ends (its line end)
     let acc: Buffer = Buffer.alloc(0); // its bytes after the current chunk: its first KEEP bytes at most
-    let read = 0;
+    let read = found.read;             // the boundary search's reads count against the budget
     const emit = (bytes: Buffer, total: number, at: number) => { if (total > 0) out.push({ record: toRecord(bytes, total, at), at }); };
     while (pos > 0 && read < maxBytes && out.length < maxLines) {
       const length = Math.min(BACKFILL_CHUNK, pos, maxBytes - read);

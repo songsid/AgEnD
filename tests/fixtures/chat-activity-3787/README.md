@@ -33,6 +33,11 @@ user ids of `session_meta`, developer messages, token counts, world state, threa
 (`/home/user/project`, `user`), the time zone (`UTC`), the encrypted reasoning blob (a fixed placeholder), every opaque id (turn,
 thread, call, message, response, process) by a numbered one, and the `compacted` record's replacement history (a stub).
 
+The check also refuses a one-time, verification or authorization code — on either side of its label (`code: 123456`, `123456 is your
+code`) — an OAuth code (a callback URL's `code=` / `state=`, a provider's `4/0A…` style, a `code` / token field) and the key, token,
+email and path shapes above. A refusal says the category and where the record is (its line in the rollout), never the value; a line
+that is not JSON is refused the same way. `tests/codex-activity-fixture-redact-3787.test.ts` runs the script on invented values.
+
 Checked with grep before commit (independently of the redactor's own check): no home directory but `/home/user`, no user name, no token / key / JWT / bearer / email shape, no
 one-time code, no connector or account name, no host or tailnet name.
 

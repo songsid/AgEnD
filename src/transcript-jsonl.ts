@@ -215,22 +215,45 @@ const BOUNDARY_CHUNK = 64 * 1024;
 export async function lastLineBoundary(path: string, size?: number): Promise<number> {
   const fh = await openTranscript(path);
   try {
-    let position = size ?? (await fh.stat()).size;
-    while (position > 0) {
-      const length = Math.min(BOUNDARY_CHUNK, position);
-      const start = position - length;
-      const buffer = Buffer.alloc(length);
-      for (let filled = 0; filled < length;) {
-        const { bytesRead } = await fh.read(buffer, filled, length - filled, start + filled);
-        if (bytesRead <= 0) throw new Error(`lastLineBoundary: no progress reading ${path} at ${start + filled}`);
-        filled += bytesRead;
-      }
-      const at = buffer.lastIndexOf(0x0a);
-      if (at >= 0) return start + at + 1;
-      position = start;
-    }
-    return 0;
+    const found = await boundaryBefore(fh, path, size ?? (await fh.stat()).size, Infinity);
+    return found.at as number;                      // unbounded: there is always an answer (0 when no LF)
   } finally {
     await fh.close();
   }
+}
+
+/**
+ * Where the last complete record at or before `position` ends (just after the last LF at or before it), looking back at most
+ * `maxScan` bytes: `at` is null when no LF lies within them (a record longer than that is still unfinished there), and `read`
+ * is what the search read — it counts against the caller's budget. Start at `position` itself, never at the file's end: an
+ * unfinished record after it is not this search's business. When the byte just before `position` is an LF (a cursor taken at a
+ * record boundary, the usual case) one byte is read. `maxScan` of Infinity is `lastLineBoundary`: every byte is read before it is judged.
+ */
+export async function boundaryBefore(fh: FileHandle, path: string, position: number, maxScan: number): Promise<{ at: number | null; read: number }> {
+  let read = 0;
+  const fill = async (start: number, length: number): Promise<Buffer> => {
+    const buffer = Buffer.alloc(length);
+    for (let filled = 0; filled < length;) {
+      const { bytesRead } = await fh.read(buffer, filled, length - filled, start + filled);
+      if (bytesRead <= 0) throw new Error(`lastLineBoundary: no progress reading ${path} at ${start + filled}`);
+      filled += bytesRead;
+    }
+    read += length;
+    return buffer;
+  };
+  if (position > 0 && maxScan >= 1) {
+    const last = await fill(position - 1, 1);
+    if (last[0] === 0x0a) return { at: position, read };
+  }
+  let pos = position > 0 && read ? position - 1 : position;    // the byte before `position` was judged
+  while (pos > 0) {
+    const length = Math.min(BOUNDARY_CHUNK, pos, maxScan - read);
+    if (length <= 0) return { at: null, read };
+    const start = pos - length;
+    const buffer = await fill(start, length);
+    const at = buffer.lastIndexOf(0x0a);
+    if (at >= 0) return { at: start + at + 1, read };
+    pos = start;
+  }
+  return { at: 0, read };
 }

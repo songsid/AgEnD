@@ -256,7 +256,7 @@ export class LogService {
   }
 
   /** The steps before `end` (the newest when undefined), at most `limit`, and where older ones start. */
-  private async backward(path: string, format: LogFormat, end: number | undefined, limit: number, thinking = false): Promise<{ steps: LogStep[]; before: number | null; after: number }> {
+  private async backward(path: string, format: LogFormat, end: number | undefined, limit: number, thinking = false): Promise<{ steps: LogStep[]; before: number | null; after: number; skip?: true }> {
     const tail = await readTailRecords(path, { maxLines: 4000, ...(end !== undefined ? { end } : {}) });
     const parser = parserFor(format, thinking);
     const whole = wholeFor(format);
@@ -282,7 +282,8 @@ export class LogService {
     const all = !tail.truncated && steps.length === parser.steps.length;
     const first = steps.length ? Math.min(...steps.map(s => firstAt.get(s.id) ?? Infinity)) : (tail.records[0]?.at ?? 0);
     const before = !all && Number.isFinite(first) && first > 0 ? first : null;
-    return { steps, before, after: tail.end };
+    // `skip`: the file ends inside an unfinished record longer than the read's budget — the cursor is in it, not at a boundary.
+    return { steps, before, after: tail.end, ...(tail.skip ? { skip: true as const } : {}) };
   }
 
   /** The steps after `from` (≤ LOOKS_PER_POLL looks), and the cursor after them. */

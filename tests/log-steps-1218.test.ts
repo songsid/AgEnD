@@ -397,7 +397,7 @@ describe("codex: the rollout as steps", () => {
     const p = new CodexStepParser();
     p.push(JSON.stringify({ type: "response_item", payload: { type: "function_call", call_id: "cx", name: "exec_command", arguments: '{"cmd":"cat big"}' } }));
     const head = '{"timestamp":"2026-10-13T08:00:00.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"cx","output":"Chunk ID: 1\\nOutput:\\nfirst lines of a big file';
-    expect(p.push({ at: 0, head, bytes: 5_000_000, complete: true, offset: 0 })).toMatchObject([{ id: "cx", status: "done", bodyBytes: 5_000_000, body: "Chunk ID: 1\nOutput:\nfirst lines of a big file" }]);
+    expect(p.push({ at: 0, head, bytes: 5_000_000, complete: true, offset: 0 })).toMatchObject([{ id: "cx", status: "done", bodyBytes: 5_000_000, body: "first lines of a big file" }]);   // the body is what follows `Output:`, as for a whole record
   });
 });
 

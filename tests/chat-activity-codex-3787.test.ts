@@ -439,3 +439,175 @@ describe("a transcript is read only if it is a regular file: a symbolic link is 
     const fh = await openTranscript(ROLLOUT); await fh.close();
   });
 });
+
+describe("a call or output over the line limit is bookkept like a short one (the bounded reader, as the page reads)", () => {
+  const BIG = "z".repeat(LINE_MAX_BYTES + 4096);
+  const call = (id: string, input: string) => ri({ type: "custom_tool_call", id: `ctc_${id}`, status: "completed", call_id: id, name: "exec", input });
+  const done = (id: string, text: string) => ri({ type: "custom_tool_call_output", call_id: id, output: [{ type: "input_text", text }] });
+  const item = (it: Record<string, unknown>) => ev({ type: "item_completed", turn_id: "t1", item: it });
+  const command = (id: string, exitCode: number) => item({ type: "CommandExecution", id, command: ["/bin/bash", "-lc", "false"], status: exitCode ? "failed" : "completed", exit_code: exitCode, aggregated_output: "nope", duration: { secs: 0, nanos: 5_000_000 } });
+  const replyItem = (id: string, messageId: string) => item({ type: "McpToolCall", id, server: "agend", tool: "reply", arguments: { text: "hello" }, status: "completed", result: { content: [{ type: "text", text: JSON.stringify({ chatId: "web", messageId }) }] }, duration: { secs: 0, nanos: 1_000_000 } });
+  const REPLY_SCRIPT = "text(await tools.mcp__agend__reply({text:'hello'}));";
+  const start = [ev({ type: "task_started", turn_id: "t1" }), userMsg("work on it (message_id: web-u1)")];
+  const rowsOf = [
+    { boot: "b", id: 1, instance: "x", role: "user", sender: "u", text: "work on it", ts: "2026-11-13T05:00:00.000Z", anchor: "web-u1" },
+    { boot: "b", id: 2, instance: "x", role: "agent", sender: "x", text: "an unrelated answer", ts: "2026-11-13T05:00:01.000Z", anchor: "web-unrelated" },
+  ];
+  const shaped = (steps: LogStep[]) => groups.groupSteps(rowsOf, steps, { now: Date.parse("2026-11-13T05:30:00Z"), complete: true }).groups
+    .map((g: any) => [g.rowKey, g.level, g.items.map((i: LogStep) => `${i.tool ?? i.kind}:${i.status ?? ""}`)]);
+  /** The file's records, written as a rollout; the steps of the page's cold read (the service) and of a whole-record parse. */
+  async function cold(all: string[]): Promise<{ file: string; steps: LogStep[]; whole: LogStep[] }> {
+    const file = join(temp(), "rollout.jsonl");
+    writeFileSync(file, all.join("\n") + "\n");
+    const read: any = await serviceOn(file).steps("w", { chat: true });
+    return { file, steps: read.steps, whole: parse(all) };
+  }
+  /** What the page holds after every poll split: the cold read of the first k records merged with the poll after them. */
+  async function splits(all: string[], file: string): Promise<Array<[number, LogStep[]]>> {
+    const out: Array<[number, LogStep[]]> = [];
+    for (let k = 1; k < all.length; k++) {
+      const first = parse(all.slice(0, k));
+      const next: any = await serviceOn(file).steps("w", { chat: true, after: all.slice(0, k).reduce((n, l) => n + Buffer.byteLength(l) + 1, 0) });
+      out.push([k, row.mergeSteps(first, next.steps)]);
+    }
+    return out;
+  }
+
+  it("a failed command whose script's output is over the limit stays failed: the output adds no nameless `done` step over it", async () => {
+    const all = [...start, call("c1", "text(await tools.exec_command({cmd:'false'}));"), command("exec-1", 1), done("c1", `Script completed\nWall time 0.1 seconds\nOutput:\n${BIG}`)];
+    const { file, steps, whole } = await cold(all);
+    expect(whole.filter((s) => s.kind === "tool").map((s) => [s.id, s.tool, s.status, s.exitCode])).toEqual([["c1", "command", "failed", 1]]);
+    expect(steps.filter((s) => s.kind === "tool").map((s) => [s.id, s.tool, s.status, s.exitCode])).toEqual([["c1", "command", "failed", 1]]);
+    // the page merges the cold read, and every poll after a split, into what it holds: the command is still failed
+    expect(row.mergeSteps([], steps).filter((s: LogStep) => s.kind === "tool").map((s: LogStep) => s.status)).toEqual(["failed"]);
+    for (const [k, merged] of await splits(all, file)) {
+      expect(merged.filter((s: LogStep) => s.kind === "tool").map((s: LogStep) => [s.id, s.tool, s.status]), `split at record ${k}`).toEqual([["c1", "command", "failed"]]);
+    }
+  });
+  it("an output over the limit with no item takes its script's step over like a short one: finished, named, with the exit code its head says", async () => {
+    const all = [...start, call("c1", "text(1 + 1)"), done("c1", `Script failed\nWall time 0.1 seconds\nProcess exited with code 3\nOutput:\n${BIG}`)];
+    const { steps, whole } = await cold(all);
+    const mine = (l: LogStep[]) => l.filter((s) => s.kind === "tool").map((s) => [s.id, s.tool, s.status, s.exitCode]);
+    expect(mine(whole)).toEqual([["c1", "exec", "failed", 3]]);
+    expect(mine(steps)).toEqual(mine(whole));
+  });
+  it("a reply whose own id is not in the ledger stays unattached through the bounded reader, as in a whole-record parse (no row of someone else's)", async () => {
+    const all = [...start, call("c1", REPLY_SCRIPT), replyItem("exec-1", "web-a1"), done("c1", `Script completed\nWall time 0.1 seconds\nOutput:\n${BIG}`)];
+    const { file, steps, whole } = await cold(all);
+    const want = shaped(whole);
+    expect(want.some((g: any[]) => g[1] === "none")).toBe(true);                 // explicit id, no such row: level none
+    expect(want.every((g: any[]) => g[1] !== "turn" && g[0] !== "b-2")).toBe(true);
+    expect(steps.filter((s) => s.kind === "tool")).toHaveLength(1);
+    expect(shaped(steps)).toEqual(want);
+    expect(shaped(row.mergeSteps([], steps))).toEqual(want);
+    for (const [k, merged] of await splits(all, file)) expect(shaped(merged), `split at record ${k}`).toEqual(want);
+  });
+  it("an exec call whose input is over the limit is still the wrapper its first item takes over: one action, not two", async () => {
+    const all = [...start, call("c1", `text(await tools.exec_command({cmd:'a'}));/*${BIG}*/`), command("exec-1", 0), done("c1", "Script completed\nWall time 0.1 seconds\nOutput:\n")];
+    const { file, steps, whole } = await cold(all);
+    const mine = (l: LogStep[]) => l.filter((s) => s.kind === "tool").map((s) => [s.id, s.tool, s.status]);
+    expect(mine(whole)).toEqual([["c1", "command", "done"]]);
+    expect(mine(steps)).toEqual([["c1", "command", "done"]]);
+    // A poll that begins between such a call and its item cannot learn the call: the priming read is bounded to 256 KiB and the
+    // call is longer than that, so its start is out of reach (a known limit — one extra step then, never a wrong one). Every other split is exact.
+    for (const [k, merged] of await splits(all, file)) {
+      if (k === start.length + 1) continue;
+      expect(mine(merged), `split at record ${k}`).toEqual([["c1", "command", "done"]]);
+    }
+  });
+  it("a long call that sends a reply is a turn that spoke: its `task_complete` with no last message is not a failure", async () => {
+    const all = [...start, call("c1", `${REPLY_SCRIPT}/*${BIG}*/`), done("c1", "Script completed\nWall time 0.1 seconds\nOutput:\n"), ev({ type: "task_complete", turn_id: "t1", last_agent_message: null })];
+    const { steps } = await cold(all);
+    expect(steps.find((s) => s.kind === "turn_end")?.status).not.toBe("failed");
+  });
+});
+
+describe("the reads that find a record boundary stay inside their byte budget, whatever unfinished record follows", () => {
+  /** Every byte any file handle hands back while `fn` runs. */
+  async function counting<T>(fn: () => Promise<T>): Promise<{ result: T; bytes: number; reads: number }> {
+    const probe = await openTranscript(ROLLOUT);
+    const proto = Object.getPrototypeOf(probe) as { read: (...a: any[]) => Promise<{ bytesRead: number }> };
+    await probe.close();
+    const real = proto.read;
+    let bytes = 0, reads = 0;
+    proto.read = async function (this: unknown, ...args: any[]) { const r = await real.apply(this, args); bytes += r.bytesRead; reads++; return r; };
+    try { const result = await fn(); return { result, bytes, reads }; } finally { proto.read = real; }
+  }
+  const MB = 1024 * 1024;
+  const prefix = (): string => ev({ type: "task_started", turn_id: "t1" }) + "\n";           // a complete record
+  /** A file of one complete record and `tail` bytes with no line end after it (a record being written). */
+  const unfinished = (tail: number): { file: string; end: number } => {
+    const file = join(temp(), "rollout.jsonl");
+    const head = prefix();
+    writeFileSync(file, head + '{"timestamp":"2026-11-13T05:00:00.000Z","type":"response_item","payload":{"type":"custom_tool_call_output","output":"' + "q".repeat(tail));
+    return { file, end: Buffer.byteLength(head) };
+  };
+  const PRIME = { maxBytes: 256 * 1024, maxLines: 300 };
+
+  it("priming from an explicit cursor reads the records before it, not the unfinished record after it (a short complete prefix, then 8 MiB without a line end)", async () => {
+    const { file, end } = unfinished(8 * MB);
+    const r = await counting(() => readTailRecords(file, { ...PRIME, end }));
+    expect(r.result.records.map((x) => x.record)).toEqual([prefix().trimEnd()]);                     // the complete line is still returned
+    expect(r.result.end).toBe(end);
+    expect(r.bytes).toBeLessThanOrEqual(PRIME.maxBytes);
+    expect(r.bytes).toBeLessThanOrEqual(end + 1);                                                   // in fact: the prefix and one byte
+  });
+  it("the read does not grow with the unfinished record: 8 MiB and 32 MiB after it cost the same", async () => {
+    const small = unfinished(8 * MB), big = unfinished(32 * MB);
+    const a = await counting(() => readTailRecords(small.file, { ...PRIME, end: small.end }));
+    const b = await counting(() => readTailRecords(big.file, { ...PRIME, end: big.end }));
+    expect(b.bytes).toBe(a.bytes);
+    expect(b.reads).toBe(a.reads);
+  });
+  it("a priming poll through the service: its reads do not scale with the unfinished record either", async () => {
+    const small = unfinished(8 * MB), big = unfinished(32 * MB);
+    const a = await counting(() => serviceOn(small.file).steps("w", { chat: true, after: small.end }));
+    const b = await counting(() => serviceOn(big.file).steps("w", { chat: true, after: big.end }));
+    expect(b.bytes).toBe(a.bytes);
+  });
+  it("the initial backfill (no cursor) reads at most its budget when the file ends in an unfinished record of 20 MiB, and says where it stands", async () => {
+    const { file } = unfinished(20 * MB);
+    const size = readFileSync(file).length;
+    const r = await counting(() => readTailRecords(file, { maxBytes: 4 * MB }));
+    expect(r.bytes).toBeLessThanOrEqual(4 * MB);
+    expect(r.result.records).toEqual([]);                      // unknown state: no complete line within the budget — none is guessed
+    expect(r.result).toMatchObject({ truncated: true, end: size, skip: true });
+    const svc = await counting(() => serviceOn(file).steps("w", { chat: true }));
+    expect(svc.bytes).toBeLessThanOrEqual(8 * MB);               // BACKFILL_MAX_BYTES, boundary search included
+    expect(svc.result).toMatchObject({ steps: [], after: size, skip: true });
+  });
+  it("the backfill's cost does not grow with the unfinished record (20 MiB and 40 MiB after a short prefix)", async () => {
+    const a = await counting(() => readTailRecords(unfinished(20 * MB).file, {}));
+    const b = await counting(() => readTailRecords(unfinished(40 * MB).file, {}));
+    expect(b.bytes).toBe(a.bytes);
+  });
+  it("after such a backfill the next poll drops through the unfinished record and loses nothing after it", async () => {
+    const { file } = unfinished(9 * MB);                                                                    // longer than the backfill budget
+    const svc = serviceOn(file);
+    const first: any = await svc.steps("w", { chat: true });
+    expect(first).toMatchObject({ steps: [], skip: true });
+    appendFileSync(file, '"}}\n' + lines.slice(0, 14).join("\n") + "\n");                             // the record ends; real ones follow
+    const next: any = await svc.steps("w", { chat: true, after: first.after, skip: first.skip });
+    expect(next.steps.map(brief)).toEqual(parse(lines.slice(0, 14)).map(brief));
+    expect(next.steps.length).toBeGreaterThan(0);
+  });
+  it("a record being written within the budget is still not returned, and the complete ones before it are", async () => {
+    const f = join(temp(), "rollout.jsonl");
+    writeFileSync(f, lines.slice(0, 5).join("\n") + "\n" + lines[5]!.slice(0, 100));
+    const r = await readTailRecords(f, { maxBytes: 64 * 1024 });
+    expect(r.records.map((x) => x.record)).toEqual(lines.slice(0, 5));
+    expect(r.end).toBe(offsetOf(5));
+    expect(r.skip).toBeUndefined();
+    const older = await readTailRecords(f, { maxBytes: 64 * 1024, end: offsetOf(3) });             // the older page: before a cursor
+    expect(older.records.map((x) => x.record)).toEqual(lines.slice(0, 3));
+    expect(older.end).toBe(offsetOf(3));
+  });
+  it("a cursor that is not at a line end looks back from itself: the complete lines before it, never the data after", async () => {
+    const f = join(temp(), "rollout.jsonl");
+    writeFileSync(f, lines.slice(0, 6).join("\n") + "\n");
+    const mid = offsetOf(4) + 10;
+    const r = await readTailRecords(f, { end: mid });
+    expect(r.end).toBe(offsetOf(4));
+    expect(r.records.map((x) => x.record)).toEqual(lines.slice(0, 4));
+  });
+});
