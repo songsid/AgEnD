@@ -1,0 +1,429 @@
+{
+  "parent": "44d4d502035d8d2f5aa81d6aa3f59dc386da3478",
+  "sourceCommit": "ae4e85609149c9ac2cc552bd1764e63bfc579017",
+  "merge": "7a6c2ee4c6570b7276d0e607fb8c5b038c8382a8",
+  "alpha": "27de80266b6820e960bfe2c10f79a196b76487e5",
+  "scope": "unmounted role resource effects and private audit provenance; no runtime activation",
+  "sync": {
+    "base": "f73ad9187a4bb63d87e72ee4229a41d1a54a7cc7",
+    "parents": [
+      "ae4e85609149c9ac2cc552bd1764e63bfc579017",
+      "27de80266b6820e960bfe2c10f79a196b76487e5"
+    ],
+    "disjointIncomingBlobsEqual": 306,
+    "conflicts": [
+      {
+        "file": "src/hub/compose/server.ts",
+        "choice": "ours in conflict blocks only; preserve all automatic incoming hunks",
+        "blocks": 1,
+        "ours": "b012f66e6ac5e6e9540e509402a0d6437c181f776784e5a893ff0f0107c05315",
+        "theirs": "11a191b33f2aafb94459564b5f4bc5eac4b12c37f0b00f89f67cdb16a73155ff"
+      },
+      {
+        "file": "src/hub/group-policy/authorization.ts",
+        "choice": "ours in conflict blocks only; preserve all automatic incoming hunks",
+        "blocks": 3,
+        "ours": "924b3a40bfeefe6ee411303058adf6338e770ebb28db21373948fad4b5c95171",
+        "theirs": "7dc89267b2431a71b57bbff4cfeadce80fde2936343daa5b33b7e8bef51d3bc6"
+      },
+      {
+        "file": "src/hub/group-policy/store.ts",
+        "choice": "ours in conflict blocks only; preserve all automatic incoming hunks",
+        "blocks": 2,
+        "ours": "c4396cc2d396a5e84108015787f61b7297b65f78fa30ae60fdd706db4d24072d",
+        "theirs": "65e140151a5229750bf3578e98bd73660306c89c65339e56af1e559190cf9546"
+      },
+      {
+        "file": "src/hub/roles/authority.ts",
+        "choice": "ours in conflict blocks only; preserve all automatic incoming hunks",
+        "blocks": 4,
+        "ours": "8d30d807e9572e5bffbea3dadfb3071ea7234bed0c4ad699dd90d8aec459a80a",
+        "theirs": "22e60c9736d4f66cabd44759296230842eae7731f9cab02df161cc200b1f91dc"
+      },
+      {
+        "file": "src/hub/roles/read.ts",
+        "choice": "ours in conflict blocks only; preserve all automatic incoming hunks",
+        "blocks": 2,
+        "ours": "37e50394e706e9be2bca8c87344c1f138ab42dbfa4bb0030087b51f33fb2e4dc",
+        "theirs": "20c4285f6b05e56592b88343eb672fac2651bed2eaf98a947e51847664f45982"
+      }
+    ],
+    "resourceProductBlobsEqualPreSync": true
+  },
+  "checks": {
+    "passed": 248,
+    "files": 9,
+    "skipped": 0,
+    "resourceCases": 37,
+    "sourceTypes": 0,
+    "testTypes": 0,
+    "compiler": "native TypeScript 7.0.2 / GOMAXPROCS=2",
+    "command": "vitest run [nine related files] --maxWorkers=2; tsc --noEmit; tsc --noEmit -p tsconfig.test.json",
+    "isolatedCompilingSemanticReversals": 17,
+    "ordinaryPauseReversalRepeatedAfterRealSchemaMerge": true,
+    "changelog": "changelog-assemble.mjs --check exit0"
+  },
+  "baseline": {
+    "adapter": "actual existing createHubRoleModeEffects with initial three-case unmounted resource contract",
+    "semanticRefusals": 2,
+    "passedControls": 1,
+    "exclusions": "No missing-module, transform, setup, fixture or type error counts. Historical simulated pause columns superseded by actual merged schema/Pause service in final tests."
+  },
+  "bindings": [
+    {
+      "file": "src/hub/roles/effects.ts",
+      "sha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9"
+    },
+    {
+      "file": "src/hub/roles/writer.ts",
+      "sha256": "1bab3a2b6aae6f35dc65fe31dbf60fc5d66dc12bffea1e2fcfacdf09b174cbaa"
+    },
+    {
+      "file": "tests/hub-roles-effects-s129.test.ts",
+      "sha256": "f6c6e81dc2de4cb2946f2244926c94980235acb4d402617d0b5c4ebac6197a48"
+    },
+    {
+      "file": "docs/design/hub-roles-resource-effects.md",
+      "sha256": "8f2b9b45168df0452df4756e5ee94e898fb3cc2832a9b97a055fe0bebc1f1ecc"
+    },
+    {
+      "file": "changes/3743-roles-resource-effects.md",
+      "sha256": "0c2b8f7e5748a933f93dd2b7fa9fe027a21df2645a6e5853a373322916d77d8d"
+    },
+    {
+      "file": "changes/3743-roles-resource-effects.zh-TW.md",
+      "sha256": "73e4d3bac376192a5d32557a2b63f4d3a0a59132df44e0197863012c1f04539c"
+    }
+  ],
+  "mutations": [
+    {
+      "name": "unknown-not-denial",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "unknown membership",
+      "before": "result.outcome === \"deny\" && result.authoritative",
+      "after": "result.outcome !== \"allow\"",
+      "mutantSha256": "4372c335cb7f45d7f1d2b051390b34a2ea5f2db532acc177c07cd4487cecc250",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 exact resource effects and retirement keeps unknown membership held but an explicit deny still suspends"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "explicit-group-deny",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "unknown membership",
+      "before": "? explicit || result.outcome",
+      "after": "? result.outcome",
+      "mutantSha256": "fd4400231b0e4ec7b8c08da3e446551bb752379f9267d1bd92cd4e3e1a631241",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 exact resource effects and retirement keeps unknown membership held but an explicit deny still suspends"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "retained-consent",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "consent when self-service",
+      "before": ": explicit || ineligible",
+      "after": ": explicit || ineligible || result.outcome === \"deny\" && result.authoritative",
+      "mutantSha256": "5f01a7df2a2cda92bbdc8991c318736648f22c8bd6f884556029879747fc82ca",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 exact resource effects and retirement keeps manual consent when self-service roles are removed",
+        "S129 exact resource effects and retirement keeps code consent when self-service roles are removed"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "first-activation",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "grandfathers first activation",
+      "before": "firstEnable && !row && r.kind !== \"asker\"",
+      "after": "!firstEnable && !row && r.kind !== \"asker\"",
+      "mutantSha256": "2c7edee94eb2462965340f9676985eebf45d4d07b4e656bb36e6e4fa87306837",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 exact resource effects and retirement grandfathers first activation without rewriting ordinary fleet bytes"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "actual-audit-actor",
+      "file": "src/hub/roles/writer.ts",
+      "baselineSha256": "1bab3a2b6aae6f35dc65fe31dbf60fc5d66dc12bffea1e2fcfacdf09b174cbaa",
+      "selected": "auxiliary administrator",
+      "before": "actor: Object.freeze({ ...actor.person }), requestId: ctx.requestId",
+      "after": "actor: Object.freeze({ ...root }), requestId: ctx.requestId",
+      "mutantSha256": "98c2fdd30a6f2e176e8fe0afd932e09a2a81c1bb5889a9ff4d65b4ce74a5f70c",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 expiry timing, physical ownership and audit controls keeps an auxiliary administrator as the real policy and resource audit actor"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "ordinary-image",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "owner-pause ABA",
+      "before": "snapshot().ordinaryFingerprint !== initial.ordinaryFingerprint || ",
+      "after": "",
+      "mutantSha256": "04d9ed37486e2d21b7c1c758ec4254904f0c711926802f2d6f2eaad429e30e28",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 ordinary sharing boundaries and actual writer/expiry rolls back an owner-pause ABA observed during required audit"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "complete-ledger",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "unrelated ledger history",
+      "before": "ledgerDigest(expected) !== oldLedger",
+      "after": "oldLedger !== oldLedger",
+      "mutantSha256": "7a45c18f40ce50184b8cddfd3b0a41537d5d8251407f3a564b9c330ac77fa118",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 normalized-history and clock boundaries retains exact unrelated ledger history through required audit"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "complete-events",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "unrelated event history",
+      "before": "eventDigest(additions) !== oldEvents",
+      "after": "oldEvents !== oldEvents",
+      "mutantSha256": "184fd69c1bb06c11086a24274d590eed1d3ab981e2b48b88980b4494b9d50e53",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 normalized-history and clock boundaries retains exact unrelated event history through required audit"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "final-audit-image",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "thenable required audit",
+      "before": "[...auditImages].some(([id, image]) => json(db.prepare(\"SELECT * FROM hub_audit WHERE id=?\").get(id)) !== image)",
+      "after": "false",
+      "mutantSha256": "a2838c5f6c0e97cfc6d536a0c4494edbcd103828e69446d598c939654e113378",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 expiry timing, physical ownership and audit controls refuses a thenable required audit and a changed final receipt without retaining effects"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "audit-actor-receipt",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "required-audit audit mutation",
+      "before": " || receipt.actor !== canonicalArguments(actor)",
+      "after": "",
+      "mutantSha256": "325e04330392be3d8b730033df2a7c36f6aefcf577ca67bf48dc75dd86927b23",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 exact resource effects and retirement rolls back a required-audit audit mutation"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "permanent-retirement",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "policy ABA",
+      "before": "const retire = (work: () => void) => {\n            try {\n                work();\n            }\n            catch (error) {\n                retired = true;",
+      "after": "const retire = (work: () => void) => {\n            try {\n                work();\n            }\n            catch (error) {",
+      "mutantSha256": "08761487196d90ef68725ad0a1b5b8abfc244fe3f69d0dc7ed9c4765855b1c36",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 exact resource effects and retirement permanently retires a prepare after a policy ABA was observed"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "late-decision-expiry",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "another person",
+      "before": " || json(resourcePlan()) !== stablePlan",
+      "after": "",
+      "mutantSha256": "5b1791ae5721e7164e8d75b4ce20bb4211cc0f51cf3a0a920f8d3d35be08a7c9",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 expiry timing, physical ownership and audit controls rolls back when another person's assignment expires during the policy audit"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "persisted-clock",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "real persisted clock",
+      "before": "live(); sync(assertAuthorizationTime()); live();",
+      "after": "live(); live();",
+      "mutantSha256": "84cf10b0b5a8b944aaed281051654257ecda257176cec8dbcd30228431d1405f",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 normalized-history and clock boundaries requires the real persisted clock before preparing a narrowing"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "own-database",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "foreign database argument",
+      "before": "database !== db || ",
+      "after": "",
+      "mutantSha256": "99ab22dd7e2aeb2c384b6617a2cd9e01e9cc177bdbda057648dd8d8b5b5b5788",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 normalized-history and clock boundaries refuses a foreign database argument even inside the actual owning transaction"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "physical-read-owner",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "holds the actual directory slot",
+      "before": "readMethod.call(reads, who, work) as Promise<T>",
+      "after": "work()",
+      "mutantSha256": "299ec9d71567898b56bf6a7a15e95fbd6a7c73dfff02a1dcf815bc7694e17644",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 expiry timing, physical ownership and audit controls holds the actual directory slot until an expiry observation settles"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "fresh-observation",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "old AD observation",
+      "before": "fact && fact.observedAt >= began ? fact",
+      "after": "fact ? fact",
+      "mutantSha256": "43032ff942e7b0dd5a653e2e1d4feaa9002d23e6642294f469a1c91c769d47d9",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 fresh observation and monotonic retirement keeps an old AD observation unknown instead of treating it as a new expiry refusal"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "monotonic-budget",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "monotonic preparation budget",
+      "before": " || tick >= started + 20000",
+      "after": "",
+      "mutantSha256": "355a93d9702bf1fac7dd7decd3ec824a35a065ac8da375a26fd8485776ddbab2",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 fresh observation and monotonic retirement retires an effect after its monotonic preparation budget without reviving it"
+      ],
+      "semanticRed": true,
+      "restored": true
+    }
+  ],
+  "realPauseMutation": [
+    {
+      "name": "ordinary-image",
+      "file": "src/hub/roles/effects.ts",
+      "baselineSha256": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+      "selected": "owner-pause ABA",
+      "before": "snapshot().ordinaryFingerprint !== initial.ordinaryFingerprint || ",
+      "after": "",
+      "mutantSha256": "04d9ed37486e2d21b7c1c758ec4254904f0c711926802f2d6f2eaad429e30e28",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 ordinary sharing boundaries and actual writer/expiry rolls back an owner-pause ABA observed during required audit"
+      ],
+      "semanticRed": true,
+      "restored": true
+    }
+  ],
+  "testFiles": [
+    {
+      "file": "hub-roles-clock-s129.test.ts",
+      "passed": 29
+    },
+    {
+      "file": "hub-roles-company-issuer-s129.test.ts",
+      "passed": 8
+    },
+    {
+      "file": "hub-roles-cutover-m3010.test.ts",
+      "passed": 51
+    },
+    {
+      "file": "hub-roles-effects-s129.test.ts",
+      "passed": 37
+    },
+    {
+      "file": "hub-roles-expiry-m3010.test.ts",
+      "passed": 30
+    },
+    {
+      "file": "hub-roles-lifecycle-s129.test.ts",
+      "passed": 15
+    },
+    {
+      "file": "hub-roles-management-reader-s129.test.ts",
+      "passed": 14
+    },
+    {
+      "file": "hub-roles-writer-m3010.test.ts",
+      "passed": 40
+    },
+    {
+      "file": "hub-sharing-pause-m3015.test.ts",
+      "passed": 24
+    }
+  ]
+}

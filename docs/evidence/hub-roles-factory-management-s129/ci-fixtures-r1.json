@@ -1,0 +1,33 @@
+{
+  "oldHead": "44d4d502035d8d2f5aa81d6aa3f59dc386da3478",
+  "parentCorrection": "cd0d4804654726cd236ce63d505b182c9e40e72b",
+  "merge": "326424cd0",
+  "scope": "complete inert direct contexts and stable answer injection; preserve revoked401 via management parent R2",
+  "originalAssertionLines": 92,
+  "checks": {
+    "passed": 43,
+    "files": 2,
+    "skipped": 0,
+    "sourceTypes": 0,
+    "testTypes": 0
+  },
+  "bindings": [
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "b012f66e6ac5e6e9540e509402a0d6437c181f776784e5a893ff0f0107c05315"
+    },
+    {
+      "file": "src/hub/pairing.ts",
+      "sha256": "99c75843f7ea821a6262f7d7bc26f6cfa4ae1d87c5c0bbc8600fb4427336dc7e"
+    },
+    {
+      "file": "tests/hub-group-composition.test.ts",
+      "sha256": "db0869c33f1ed0837cfc090826c5c1a3547ba4370f49a5707661208d95625e16"
+    },
+    {
+      "file": "tests/hub-roles-issuer-s129.test.ts",
+      "sha256": "26eb319c39a7c85a5eb18238c5ab3ef84f836af33d48b150afd1ff65f8756143"
+    }
+  ],
+  "exclusions": "Initial incomplete fixtures and missing deny-only requireAdmin type corrected; not successful or fail-first evidence. Original full-source clearance carries only unchanged bytes; two pairing lines are parent3802 R2 pending review."
+}

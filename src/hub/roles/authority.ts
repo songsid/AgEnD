@@ -2,7 +2,7 @@
 import { performance } from "node:perf_hooks";
 import { z } from "zod";
 import type { HubDirectory } from "../directory/types.js";
-import { HubGroupReadOverload, type HubGroupPolicyStore } from "../group-policy/store.js";
+import { HubGroupReadOverload, type GroupCheckContext, type HubGroupPolicyStore } from "../group-policy/store.js";
 import { personKeyString } from "../identity.js";
 import type { HubActor, HubRequestContext, PersonKey } from "../types.js";
 import { epoch, HubProtocolError, identifier, person, validated } from "../validation.js";
@@ -20,6 +20,12 @@ export interface HubManagementPermit {
   readonly source: "legacy" | "roles";
   readonly expiresAt: number;
   /** Mandatory before each effect/disclosure, including after any await or reentrant callback. */
+  assertCurrent(): void;
+}
+/** First issuance only: the issuer identity comes from the server's retained approval, never browser input. */
+export interface HubJoinIssuerPermit {
+  readonly approvedBy: PersonKey;
+  readonly source: "legacy" | "roles";
   assertCurrent(): void;
 }
 export interface HubManagementAuthorityOptions {
@@ -61,6 +67,49 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
     validated(epoch, version()); return selected;
   };
   return {
+    /** No fabricated browser session. Committed receipt recovery must run before requesting this fresh proof. */
+    async requireJoinIssuer(input: PersonKey, incoming: GroupCheckContext): Promise<HubJoinIssuerPermit> {
+      const who = Object.freeze(validated(person, input)); validated(identifier, incoming.requestId);
+      if (who.realm !== root.realm || typeof incoming.current !== "function") throw new HubProtocolError("denied");
+      const caller = incoming.current.bind(incoming), started = time(), before = read(), authEpoch = version();
+      let retired = false;
+      const common = () => {
+        try {
+          if (retired || caller() !== true) throw new HubProtocolError("unavailable");
+          const at = time();
+          if (at.wall - started.wall >= PREPARATION_BUDGET || at.elapsed - started.elapsed >= PREPARATION_BUDGET
+            || read().raw !== before.raw || version() !== authEpoch) throw new HubProtocolError("unavailable");
+          return at;
+        } catch (error) { retired = true; throw error; }
+      };
+      common();
+      let result;
+      try { result = await reads.withDirectoryRead(who, async () => {
+        const value = await method.call(directory, Object.freeze({ ...who }));
+        return value.eligible === true ? { eligible: true as const, person: validated(person, value.person.key) }
+          : { eligible: false as const, reason: value.eligible === false ? value.reason : "unavailable" };
+      }); } catch (error) {
+        if (error instanceof HubGroupReadOverload) throw new HubProtocolError("backpressure");
+        throw new HubProtocolError("unavailable");
+      }
+      const observed = common();
+      if (result.eligible !== true) throw new HubProtocolError(result.reason === "gone" || result.reason === "disabled" ? "denied" : "unavailable");
+      if (personKeyString(result.person) !== personKeyString(who)) throw new HubProtocolError("unavailable");
+      const facts = Object.freeze({ kind: "eligible" as const, person: who, observedAt: observed.wall });
+      const allowed = (at: number) => before.kind === "group" ? personKeyString(who) === personKeyString(root)
+        : evaluateRolePolicy(before.policy, who, "join.manage", null, { subject: facts }, at, root).outcome === "allow";
+      if (!allowed(observed.wall)) throw new HubProtocolError("denied");
+      const permit: HubJoinIssuerPermit = Object.freeze({ approvedBy: who, source: before.kind === "group" ? "legacy" : "roles",
+        assertCurrent() {
+          try {
+            const at = common();
+            if (at.wall >= observed.wall + HUB_MANAGEMENT_PROOF_TTL || at.elapsed >= observed.elapsed + HUB_MANAGEMENT_PROOF_TTL
+              || !allowed(at.wall)) throw new HubProtocolError("unavailable");
+          } catch (error) { retired = true; throw error; }
+        },
+      });
+      permit.assertCurrent(); return permit;
+    },
     async require(incoming: HubRequestContext, permission: HubManagementPermission): Promise<HubManagementPermit> {
       const cap = validated(z.enum(MANAGEMENT_PERMISSIONS), permission);
       validated(identifier, incoming.requestId);
@@ -122,3 +171,4 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
     close() { closed = true; },
   };
 }
+export type HubManagementAuthority = ReturnType<typeof createHubManagementAuthority>;

@@ -1,0 +1,212 @@
+{
+  "parent": "529b06d3c37713b70a6e07db98ddd1ed26a14138",
+  "sourceCheckpoint": "d08480f57d2530502242a29942b4a6d8875093e5",
+  "parentMerge": "7bbd7c58cc1b053ee7fce9b988f2584220c91166",
+  "scope": "scheduler/settlement ownership only on an already-valid canonical image; startup registry/cutover/role APIs/member/stream activation excluded",
+  "checks": {
+    "uniquePassed": 175,
+    "files": 3,
+    "skipped": 0,
+    "fullFactoryAndRuntime": 145,
+    "restoredRuntimeAndExistingExpiry": 43,
+    "countsOverlap": true,
+    "originalFactoryExpectLinesRetained": 465,
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "compiler": "native TypeScript 7.0.2; GOMAXPROCS=2",
+    "changelogFragments": 443
+  },
+  "baseline": {
+    "scope": "exact new factory controls with only worker startup disabled, original factory code retained",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 1,
+    "failed": 2,
+    "unselected": 129,
+    "failures": [
+      {
+        "test": "S129 actual factory expiry ownership starts the actual settlement after the listener and refreshes only its committed version",
+        "message": "AssertionError: expected false to be true // Object.is equality"
+      },
+      {
+        "test": "S129 actual factory expiry ownership drains the held worker before closing its owned database and refuses the late result",
+        "message": "AssertionError: expected false to be true // Object.is equality"
+      }
+    ]
+  },
+  "mutations": [
+    {
+      "name": "startup",
+      "before": "      arm(0);\n    },",
+      "after": "      /* disabled startup */\n    },",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 role expiry runtime settles an already-expired term at start without an explicit caller",
+          "message": "AssertionError: expected [] to have a length of 1 but got +0"
+        }
+      ],
+      "unselected": 12,
+      "sourceSHA256": "3fa782bcc0827f59ba5bc62180a80e21a8ae6840ceb3a890d7448bc82f7135cb"
+    },
+    {
+      "name": "deadline",
+      "before": "arm(deadline - now())",
+      "after": "arm(1000)",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 role expiry runtime waits for the actual deadline, then settles once with committed refresh",
+          "message": "AssertionError: expected { state: 'active', revision: 1 } to deeply equal { state: 'suspended', revision: 2 }"
+        }
+      ],
+      "unselected": 12,
+      "sourceSHA256": "a9aff06d8915ad15305ee3e7e8558cf7d958a78f7d14ae7a6e3aecf24afec169"
+    },
+    {
+      "name": "retry",
+      "before": "else if (failed) arm(1000);",
+      "after": "else if (failed) arm(2000);",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 role expiry runtime retries unknown directory facts at one second without a hot loop or fabricated narrowing",
+          "message": "AssertionError: expected 1 to be greater than 1"
+        }
+      ],
+      "unselected": 12,
+      "sourceSHA256": "39aff08be0560be7da5475aa24d0a6929ebbc55d6ef7c3ad0062de2d28162e89"
+    },
+    {
+      "name": "drain",
+      "before": "return closing ??= Promise.resolve(flight).then(() => undefined);",
+      "after": "return closing ??= Promise.resolve();",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 role expiry runtime holds close until its actual physical read settles and never commits after fence",
+          "message": "AssertionError: expected true to be false // Object.is equality"
+        }
+      ],
+      "unselected": 12,
+      "sourceSHA256": "592b617efd64c95a2ff35ff34bdd2134627389114926a6d76d04f59ad052ee6c"
+    },
+    {
+      "name": "owner-latch",
+      "before": "    lost = true;",
+      "after": "    /* owner can spuriously return */",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 role expiry runtime stops scheduled work when the owning mount is no longer current",
+          "message": "AssertionError: expected \"vi.fn()\" to not be called at all, but actually been called 3 times"
+        }
+      ],
+      "unselected": 12,
+      "sourceSHA256": "159b4d24769868707546b968b43d189324b2be4de80b8d7ec1d59f84c10cd61a"
+    },
+    {
+      "name": "clamp",
+      "before": "Math.max(0, Math.min(2_147_483_647, delay))",
+      "after": "Math.max(0, delay)",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 role expiry runtime bounds a far-future timer instead of overflowing into a one-millisecond loop",
+          "message": "AssertionError: expected last \"setTimeout\" call to have been called with [ Any<Function>, 2147483647 ]"
+        }
+      ],
+      "unselected": 12,
+      "sourceSHA256": "7eb10620f1f103fc5b99fbd9ead2d4e692d9f754fc04cde2a48176278101f25c"
+    },
+    {
+      "name": "replan",
+      "before": "if (dirty) { dirty = false; arm(0); }",
+      "after": "if (dirty) { dirty = false; }",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 role expiry runtime replans a policy changed during a held settlement without retaining its stale deadline",
+          "message": "AssertionError: expected [] to have a length of 1 but got +0"
+        }
+      ],
+      "unselected": 12,
+      "sourceSHA256": "be0f722d034de617d4815fdcdafec31e90553dbd35abdcb32506458e1b30cd4f"
+    },
+    {
+      "name": "fence",
+      "before": "    closed = true;",
+      "after": "    /* owner fence omitted */",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 role expiry runtime never rearms a closed runtime even when start and changed are repeated",
+          "message": "AssertionError: expected 1 to be +0 // Object.is equality"
+        }
+      ],
+      "unselected": 12,
+      "sourceSHA256": "726c64cb0d9922d4e396726055da52bc85d05444df6b8bc63a908ab3fedb931a"
+    }
+  ],
+  "restoration": {
+    "sha256": "5619b9d2da11ab637f45f54b25aba3e59c5c0dac510e3f56a274607c62a97a55",
+    "exact": true
+  },
+  "commands": [
+    "vitest run tests/hub-roles-expiry-runtime-s129.test.ts tests/hub-compose.test.ts --maxWorkers=2",
+    "vitest run tests/hub-roles-expiry-runtime-s129.test.ts tests/hub-roles-expiry-m3010.test.ts --maxWorkers=2",
+    "tsc --noEmit -p tsconfig.json",
+    "tsc --noEmit -p tsconfig.test.json",
+    "node scripts/changelog-assemble.mjs --check"
+  ],
+  "excludedSetup": [
+    "Initial two factory failures were shared spy history; scoped restore corrected them.",
+    "Initial spy lacked an explicit this type; corrected before final native test types.",
+    "An initial disabled-entire-branch baseline was not compiler-valid and is excluded; disabling only worker.start compiled and gives two semantic failures plus the unchanged legacy control.",
+    "An extra nonexistent expiry filename matched no file in the 145-test run; the actual existing expiry file has 30 tests, all passed in the restored 43-test run.",
+    "Earlier own-code extra timer on settlement refresh corrected before final tests; not a deployed-defect claim."
+  ],
+  "evidenceBoundary": "Actual owned SQLite/audit/clock/crypto/shared admission and loopback TLS factory; fake unit timers and fictional directory. Factory uses private in-construction cutover, not supported cold startup. No browser/container/real AD/accounts/native/backend CLI/pilot/live fleet.",
+  "bindings": [
+    {
+      "file": "src/hub/roles/expiry.ts",
+      "sha256": "a7522c390e0b1faf1d1450791733f2f24c44bf65ad4063bbcb740d20c50a9333"
+    },
+    {
+      "file": "src/hub/roles/expiry-runtime.ts",
+      "sha256": "5619b9d2da11ab637f45f54b25aba3e59c5c0dac510e3f56a274607c62a97a55"
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "df2b13ce2ab73c426a9851877b573ad599b56d96b8e9031b3d62990427f5ca10"
+    },
+    {
+      "file": "tests/hub-roles-expiry-runtime-s129.test.ts",
+      "sha256": "ef872d83679092c32cf7648080e87673138dd903df74231ec9b47a54274f8250"
+    },
+    {
+      "file": "tests/hub-compose.test.ts",
+      "sha256": "2dc636a7f2124f0f95ede633ff947270ebb6736baa1aeea566e9bb07117cac7e"
+    },
+    {
+      "file": "docs/design/hub-roles-expiry-runtime.md",
+      "sha256": "36a97a0fde43fc58c90d9a1728199265bc3f31add15c318ce979ac443150642e"
+    }
+  ]
+}

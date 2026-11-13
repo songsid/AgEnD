@@ -56,10 +56,10 @@ export class HubEnrolmentCodes {
   readonly hubId: string;
   private keyIdentity?: string;
   constructor(private readonly deps: { db: Database.Database; home: string; hubId: string; now(): number;
-    audit(action: string, codeId: string, use?: EnrolmentUse): unknown }) { this.hubId = validated(uuid, deps.hubId); }
+    audit(action: string, codeId: string, use?: EnrolmentUse, actor?: PersonKey): unknown }) { this.hubId = validated(uuid, deps.hubId); }
   private transaction(): void { if (!this.deps.db.inTransaction) throw new HubProtocolError("uncertain"); }
-  private audit(action: string, id: string, use?: EnrolmentUse): void {
-    const result = this.deps.audit(action, id, use);
+  private audit(action: string, id: string, use?: EnrolmentUse, actor?: PersonKey): void {
+    const result = this.deps.audit(action, id, use, actor);
     if (result && typeof (result as PromiseLike<unknown>).then === "function") { void Promise.resolve(result).catch(() => {}); throw new HubProtocolError("uncertain"); }
   }
   private material(create = false) {
@@ -146,7 +146,7 @@ export class HubEnrolmentCodes {
       maxUses: p.maxUses, uses: 0, perPersonFleets: p.perPersonFleets, scope: p.scope, revokedAt: null, revokedBy: null, endedAt: null };
     c.sealed = this.seal(c, code);
     this.deps.db.prepare("INSERT INTO hub_enrolment_codes VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").run(c.id, c.mac, c.sealed, personKeyString(actor), now, expiresAt, c.maxUses, 0, c.perPersonFleets, canonicalArguments(c.scope), null, null, null);
-    this.audit("enrolment-code.created", c.id);
+    this.audit("enrolment-code.created", c.id, undefined, actor);
     const retained = this.assertDefinition(c); if (retained.uses !== 0) throw new HubProtocolError("revoked");
     return { id: c.id, code: code.slice(0, 4) + "-" + code.slice(4), expiresAt, maxUses: c.maxUses, perPersonFleets: c.perPersonFleets, scope: structuredClone(c.scope) };
   }
@@ -165,7 +165,7 @@ export class HubEnrolmentCodes {
     this.transaction(); const c = this.get(id);
     if (c.revokedAt === null) {
       if (this.deps.db.prepare("UPDATE hub_enrolment_codes SET revoked_at=?,revoked_by=?,sealed=NULL,ended_at=COALESCE(ended_at,?) WHERE id=? AND revoked_at IS NULL").run(this.deps.now(), personKeyString(validated(person, actor)), Math.min(c.expiresAt, this.deps.now()), c.id).changes !== 1) throw new HubProtocolError("conflict");
-      this.audit("enrolment-code.revoked", c.id);
+      this.audit("enrolment-code.revoked", c.id, undefined, validated(person, actor));
     }
     return this.get(id);
   }

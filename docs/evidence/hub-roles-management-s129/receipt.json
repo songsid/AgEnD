@@ -1,0 +1,276 @@
+{
+  "scope": "S129 optional named management and retained-issuer service/HTTP consumers; production factory not injected, no activation",
+  "parent": "a1f0f141f3183356323045450680c98b3d42f0cf",
+  "design": "9e000625658d55c6d8f522cfbae2a01448a9cc37",
+  "failFirst": {
+    "issuer": "3 intended semantic failures at prior root-only manual/code/pairing gates",
+    "transport": "valid unchanged SQL row with different key order refused before stored-byte snapshot fix",
+    "fixtureCorrection": "First post-fix run had2 audit JSON key-order assertion mismatches; changed assertions to parse the recorded JSON, retaining exact actor identity assertions."
+  },
+  "checks": {
+    "focusedPassed": 227,
+    "focusedFiles": 14,
+    "skipped": 0,
+    "sourceTypes": 0,
+    "testTypes": 0,
+    "typeVersion": "TypeScript7.0.2",
+    "isolatedCompilingSemanticReversals": 11,
+    "restored": 11,
+    "changelogFragments": 429,
+    "diff": "pass"
+  },
+  "focusedFiles": [
+    "tests/hub-roles-authority-s129.test.ts",
+    "tests/hub-roles-lifecycle-s129.test.ts",
+    "tests/hub-roles-issuer-s129.test.ts",
+    "tests/hub-roles-company-issuer-s129.test.ts",
+    "tests/hub-store-publication-s1.test.ts",
+    "tests/hub-pairing.test.ts",
+    "tests/hub-pairing-owner.test.ts",
+    "tests/hub-group-pairing-enrollment.test.ts",
+    "tests/hub-quick-pairing.test.ts",
+    "tests/hub-company-join-http.test.ts",
+    "tests/hub-company-join-invitation.test.ts",
+    "tests/hub-enrolment-code-http-b1.test.ts",
+    "tests/hub-enrolment-code-store-b1.test.ts",
+    "tests/hub-enrolment-code-audit-b1.test.ts"
+  ],
+  "bindings": [
+    {
+      "file": "changes/3743-roles-issuer-consumers.md",
+      "sha256": "b7590c7e20a4555d943a8416fd3386b4815856856b828e44b48de85f583da33c"
+    },
+    {
+      "file": "changes/3743-roles-issuer-consumers.zh-TW.md",
+      "sha256": "cb1fa1ef57d3f5888df6b9eccee63e7c4656dce476185dc02448b174f98bcfe6"
+    },
+    {
+      "file": "docs/design/hub-roles-management.md",
+      "sha256": "e60d5a0ab7795977b0b4f81924162ee34364a38919cd9f1dc2dcb29cfa816a77"
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "bea6e23a9b9b1ebed315d0e2778a55d9e185e0056e8b3e75dcb4f9f1e6da62eb"
+    },
+    {
+      "file": "src/hub/enrolment-code.ts",
+      "sha256": "03c06d7a8429a90d3a2c36b1362ef2c3e75368b35d829a18f9a303ea4a06a036"
+    },
+    {
+      "file": "src/hub/group-policy/authorization.ts",
+      "sha256": "924b3a40bfeefe6ee411303058adf6338e770ebb28db21373948fad4b5c95171"
+    },
+    {
+      "file": "src/hub/http/compose.ts",
+      "sha256": "3ebc160c7e005aa6cdeea506fab7c506ca1ed4e863b498b2443043314ff9b616"
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "222250dcc9098062ba9975674519607727df81a94168259fd3e2351a4f79f499"
+    },
+    {
+      "file": "src/hub/http/deps.ts",
+      "sha256": "38fb026ed50752aa6026ba6ece20618d99e18f0921e846bbab4aae5dc013c021"
+    },
+    {
+      "file": "src/hub/join/service.ts",
+      "sha256": "a2c45804be0626100fd1149ee78787ac38bfb01f0e6a4bba75222fc59ae32ec0"
+    },
+    {
+      "file": "src/hub/pairing.ts",
+      "sha256": "b05efa96250c79487f485b37c4b0619f0e4fc01f1872855e26319afe3aafaae9"
+    },
+    {
+      "file": "src/hub/roles/authority.ts",
+      "sha256": "8d30d807e9572e5bffbea3dadfb3071ea7234bed0c4ad699dd90d8aec459a80a"
+    },
+    {
+      "file": "src/hub/store.ts",
+      "sha256": "0550f7555c6ee382dbf2410e8229730a30f14636c3377781c1e9b8cc302a5bcf"
+    },
+    {
+      "file": "tests/hub-roles-company-issuer-s129.test.ts",
+      "sha256": "d02f8adc1c732cfff15fddec4b28b5a9d27c1ef8eaf885cbb3af77ef2ddb2d65"
+    },
+    {
+      "file": "tests/hub-roles-issuer-s129.test.ts",
+      "sha256": "281f935ebeddeab29153831bc978271751137d323478606258478d6c8da0e2c9"
+    },
+    {
+      "file": "tests/hub-store-publication-s1.test.ts",
+      "sha256": "ec8cdf835cab600b0af37b1bfc291acec54c1c1974076b0440a32e7f60b0204e"
+    },
+    {
+      "file": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "687de604fd18763c4abdbef9324aed30ba9315194d412e6e4ce39ffd29ff86ce"
+    }
+  ],
+  "mutations": [
+    {
+      "name": "issuer-raw",
+      "file": "src/hub/roles/authority.ts",
+      "sourceDigest": "8d30d807e9572e5bffbea3dadfb3071ea7234bed0c4ad699dd90d8aec459a80a",
+      "test": "tests/hub-roles-issuer-s129.test.ts",
+      "selected": "at policy",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 first-issuance approver permission permanently retires the session-independent issuer proof at policy"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "issuer-epoch",
+      "file": "src/hub/roles/authority.ts",
+      "sourceDigest": "8d30d807e9572e5bffbea3dadfb3071ea7234bed0c4ad699dd90d8aec459a80a",
+      "test": "tests/hub-roles-issuer-s129.test.ts",
+      "selected": "at epoch",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 first-issuance approver permission permanently retires the session-independent issuer proof at epoch"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "issuer-deadline",
+      "file": "src/hub/roles/authority.ts",
+      "sourceDigest": "8d30d807e9572e5bffbea3dadfb3071ea7234bed0c4ad699dd90d8aec459a80a",
+      "test": "tests/hub-roles-issuer-s129.test.ts",
+      "selected": "at deadline|at elapsed",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 first-issuance approver permission permanently retires the session-independent issuer proof at deadline",
+        "S129 first-issuance approver permission permanently retires the session-independent issuer proof at elapsed"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "issuer-allowed",
+      "file": "src/hub/roles/authority.ts",
+      "sourceDigest": "8d30d807e9572e5bffbea3dadfb3071ea7234bed0c4ad699dd90d8aec459a80a",
+      "test": "tests/hub-roles-issuer-s129.test.ts",
+      "selected": "recorded issuer is assignment|recorded issuer is off|at expiry",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 first-issuance approver permission refuses first issuance when the recorded issuer is assignment",
+        "S129 first-issuance approver permission refuses first issuance when the recorded issuer is off",
+        "S129 first-issuance approver permission permanently retires the session-independent issuer proof at expiry"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "issuer-pool",
+      "file": "src/hub/roles/authority.ts",
+      "sourceDigest": "8d30d807e9572e5bffbea3dadfb3071ea7234bed0c4ad699dd90d8aec459a80a",
+      "test": "tests/hub-roles-issuer-s129.test.ts",
+      "selected": "same physical directory admission",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 first-issuance approver permission holds the same physical directory admission until the issuer read settles"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "issuer-budget",
+      "file": "src/hub/roles/authority.ts",
+      "sourceDigest": "8d30d807e9572e5bffbea3dadfb3071ea7234bed0c4ad699dd90d8aec459a80a",
+      "test": "tests/hub-roles-issuer-s129.test.ts",
+      "selected": "late issuer observation",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 first-issuance approver permission refuses a late issuer observation after the preparation budget without releasing a held physical read early"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "issuer-retirement",
+      "file": "src/hub/roles/authority.ts",
+      "sourceDigest": "8d30d807e9572e5bffbea3dadfb3071ea7234bed0c4ad699dd90d8aec459a80a",
+      "test": "tests/hub-roles-issuer-s129.test.ts",
+      "selected": "at policy",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 first-issuance approver permission permanently retires the session-independent issuer proof at policy"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "pairing-final-audit",
+      "file": "src/hub/pairing.ts",
+      "sourceDigest": "b05efa96250c79487f485b37c4b0619f0e4fc01f1872855e26319afe3aafaae9",
+      "test": "tests/hub-roles-issuer-s129.test.ts",
+      "selected": "lost at audit",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 first-issuance approver permission does not publish a pairing after join.manage is lost at audit"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "issuer-first-issuance",
+      "file": "src/hub/group-policy/authorization.ts",
+      "sourceDigest": "924b3a40bfeefe6ee411303058adf6338e770ebb28db21373948fad4b5c95171",
+      "test": "tests/hub-roles-company-issuer-s129.test.ts",
+      "selected": "already issued",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 company issuer and exact committed recovery retains an auxiliary issuer and recovers an already issued code after role loss while refusing a new issuance",
+        "S129 company issuer and exact committed recovery retains an auxiliary issuer and recovers an already issued invitation after role loss while refusing a new issuance"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "company-actor",
+      "file": "src/hub/join/service.ts",
+      "sourceDigest": "a2c45804be0626100fd1149ee78787ac38bfb01f0e6a4bba75222fc59ae32ec0",
+      "test": "tests/hub-roles-company-issuer-s129.test.ts",
+      "selected": "already issued code",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 company issuer and exact committed recovery retains an auxiliary issuer and recovers an already issued code after role loss while refusing a new issuance"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "transport-stored-order",
+      "file": "src/hub/store.ts",
+      "sourceDigest": "0550f7555c6ee382dbf2410e8229730a30f14636c3377781c1e9b8cc302a5bcf",
+      "test": "tests/hub-store-publication-s1.test.ts",
+      "selected": "field order",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "final narrowing proof after required audit accepts an unchanged valid stored image whose field order differs from the parsed schema"
+      ],
+      "semanticRed": true,
+      "restored": true
+    }
+  ],
+  "commands": [
+    "vitest run [focusedFiles] --maxWorkers=2",
+    "GOMAXPROCS=2 tsc --noEmit",
+    "GOMAXPROCS=2 tsc --noEmit -p tsconfig.test.json",
+    "node scripts/changelog-assemble.mjs --check",
+    "git diff --check"
+  ],
+  "limits": "Actual SQL/audit/transport/floor/HubSessions/company receipt crypto with inert directory in new auxiliary cases. Existing root-only HTTPS fake-directory company/code/invitation tests retained. No production factory authority injection, startup cutover, registry, real resource effects, expiry scheduling, role routes, SSE/member lease integration or new live/native/browser/container/real AD/account/Fleet claim. Mounted canonical factory recovery/root-self acceptance remains S129 item4. Capacity pause respected; no owned process was killed because test typecheck completed before attempted stop."
+}

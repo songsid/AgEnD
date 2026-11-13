@@ -35,6 +35,9 @@ import { withHubDirectoryRecovery } from "../src/hub/settings-directory-recovery
 import type { HubDirectorySettingsDecision } from "../src/hub/settings-directory-decision.js";
 import { createHubDirectorySettingsControl, type HubDirectorySettingsControl } from "../src/hub/settings-directory-control.js";
 import type { HubDirectoryProofContext } from "../src/hub/settings-directory-proof.js";
+import { hubTxDatabase } from "../src/hub/db.js";
+import { createHubRoleCutover } from "../src/hub/roles/cutover.js";
+import { parseRolePolicy } from "../src/hub/roles/model.js";
 
 const roots: string[] = [];
 let sourceCerts: TestCerts;
@@ -192,8 +195,9 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
       Object.assign(policy, { state: "enabled", revision: policy.revision + 1,
         groups: [{ group: { realm: "corp", objectId: groupId }, dn: "CN=Members,DC=example,DC=test", allow: ["pair_fleet"], maxFleets: 1 }] });
       db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
-      const { pairing, store } = http.state.deps!, ctx = { requestId: randomUUID(), current: vi.fn(), requirePerson: async () => ADMIN.key,
-        requireAdmin: async () => ({ kind: "directory" as const, person: ADMIN.key, sessionId: "admin" }) };
+      const actor = { kind: "directory" as const, person: ADMIN.key, sessionId: "admin" };
+      const { pairing, store } = http.state.deps!, ctx = { requestId: randomUUID(), current: vi.fn(async () => actor), requirePerson: async () => ADMIN.key,
+        isCurrent: () => true, isIdentityCurrent: () => true, requireAdmin: async () => actor };
       const offer = await pairing.create(ctx, ADMIN.key), pending = pairing.pair({ code: offer.code });
       await pairing.confirmOwner(ctx, pending.pairingId, pending.fingerprint); await pairing.approve(ctx, pending.pairingId, pending.fingerprint);
       const input = { pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret };
@@ -254,7 +258,8 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
   });
 
   it("wires an existing administrator revoke to the live member server's post-commit authorization refresh", async () => {
-    const hub = await initializedHub(), http = fakeHttp(), f = factory(hub.home, http.entry);
+    const hub = await initializedHub(), http = fakeHttp(), f = factory(hub.home, http.entry, { createDirectory: () => ({ realm: "corp",
+      signIn: vi.fn(), checkEligibility: async () => ({ eligible: true, person: ADMIN }), close: async () => {} }) });
     const service = await f.create(hub.config.hub, () => true), refresh = vi.spyOn(HubServer.prototype, "refreshAuthorization");
     try {
       await service.start();
@@ -262,8 +267,9 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
       store.mutate({ at: Date.now(), requestId: randomUUID(), actor: { kind: "person", person: ADMIN.key }, action: "test.fleet", result: "completed" }, state => {
         state.fleets.push({ id: fleetId, owner: ADMIN.key, credentialHash: "a".repeat(64), generation: 1, status: "active" });
       });
-      await pairing.revoke({ requestId: randomUUID(), current: async () => ({ kind: "directory", person: ADMIN.key, sessionId: randomUUID() }), requirePerson: async () => ADMIN.key,
-        requireAdmin: async () => ({ kind: "local-host", sessionId: randomUUID(), directoryBinding: ADMIN.key }) }, fleetId);
+      const actor = { kind: "directory" as const, person: ADMIN.key, sessionId: randomUUID() };
+      await pairing.revoke({ requestId: randomUUID(), current: async () => actor, requirePerson: async () => ADMIN.key,
+        isCurrent: () => true, isIdentityCurrent: () => true, requireAdmin: async () => actor }, fleetId);
       expect(refresh).toHaveBeenCalledExactlyOnceWith();
       expect(store.read()).toMatchObject({ revocationVersion: 1, fleets: [{ id: fleetId, status: "revoked" }] });
     } finally { refresh.mockRestore(); await service.close(); }
@@ -705,6 +711,8 @@ describe.skipIf(process.platform === "win32")("browser certificate composition",
 async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => HubHttp = http => http,
   options: { people?: Array<typeof ADMIN>; noGroupHttp?: boolean; noDirectoryNotices?: boolean; now?: () => number;
     beforeStart?: (hub: Awaited<ReturnType<typeof initializedHub>>, attempt: number) => Promise<void>;
+    beforeHttp?: (hub: Awaited<ReturnType<typeof initializedHub>>, deps: HubHttpDeps, entry: HubHttpEntry) => void;
+    eligibilityGate?: () => Promise<void>;
     directorySettings?: () => Promise<HubDirectorySettingsControl> } = {}) {
   let hub = await initializedHub();
   const real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
@@ -715,6 +723,7 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
   const people = [ADMIN, ...options.people ?? []];
   const entry: HubHttpEntry = { ...real, createHubHttp(deps) {
     lastDeps = { ...deps, ...(options.noGroupHttp ? { groupHttp: undefined } : {}), ...(options.noDirectoryNotices ? { directoryNotices: undefined } : {}) };
+    options.beforeHttp?.(hub, lastDeps, entry);
     lastHttp = wrap(real.createHubHttp(lastDeps), lastDeps); return lastHttp;
   } };
   const build = (http: () => Promise<HubHttpEntry> = async () => entry, readConfig = () => hub.config) => {
@@ -737,7 +746,7 @@ async function directoryRuntimeRig(wrap: (http: HubHttp, deps: HubHttpDeps) => H
           const person = people.find(p => p.login === login);
           return person && password === "Dummy-browser-only" ? { ok: true, person } : { ok: false, reason: "invalid-credentials" };
         },
-        checkEligibility: async key => { eligibility++; const person = people.find(p => p.key.realm === key.realm && p.key.objectId === key.objectId);
+        checkEligibility: async key => { eligibility++; await options.eligibilityGate?.(); const person = people.find(p => p.key.realm === key.realm && p.key.objectId === key.objectId);
           return person ? { eligible: true, person } : { eligible: false, reason: "disabled" }; }, close: async () => {} }; } });
     return runtime;
   };
@@ -926,6 +935,50 @@ describe.skipIf(process.platform === "win32")("directory decision joins the moun
       expect(r.eligibility).toBe(1);
     } finally { release(); await r.runtime.close(); }
   });
+  it("mounted HTTP and pairing eligibility share the proof-source admission owner", async () => {
+    const r = await directoryRuntimeRig(); let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const signed = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+    const mounted = r.runtime.directorySettings()!, pending = Array.from({ length: 4 }, () => mounted.withDirectoryRead(ADMIN.key, () => held));
+    const before = r.eligibility, actor = { kind: "directory" as const, person: ADMIN.key, sessionId: "owned-test-session" };
+    try {
+      const response = await directoryBrowser(r.hub, signed.cookie, undefined, "/hub/v1/admin/enrolment-codes");
+      expect(response).toMatchObject({ status: 429, json: { code: "backpressure" } });
+      await expect(r.deps.pairing.create({ requestId: randomUUID(), current: async () => actor,
+        isCurrent: () => true, isIdentityCurrent: () => true, requirePerson: async () => ADMIN.key, requireAdmin: async () => actor }, ADMIN.key))
+        .rejects.toMatchObject({ code: "backpressure" });
+      expect(r.eligibility).toBe(before);
+      release(); await Promise.all(pending);
+      expect((await directoryBrowser(r.hub, signed.cookie, undefined, "/hub/v1/admin/enrolment-codes")).status).toBe(200);
+    } finally { release(); await Promise.allSettled(pending); await r.runtime.close(); }
+  });
+  it("mounted sign-in shares the total physical directory admission bound", async () => {
+    const r = await directoryRuntimeRig(), release: (() => void)[] = [];
+    const read = r.deps.directoryReads!, signIn = vi.spyOn(r.deps.directory, "signIn");
+    const pending = Array.from({ length: 32 }, (_, i) => read.withDirectoryRead({ realm: "corp",
+      objectId: `${String(i).padStart(8, "0")}-1111-4111-8111-111111111111` }, () => new Promise<void>(resolve => release.push(resolve))));
+    try {
+      const response = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+      expect(response).toMatchObject({ status: 429, json: { code: "backpressure" } }); expect(signIn).not.toHaveBeenCalled();
+      release.forEach(resolve => resolve()); await Promise.all(pending);
+      expect((await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" })).status).toBe(200);
+      expect(signIn).toHaveBeenCalledOnce();
+    } finally { release.forEach(resolve => resolve()); await Promise.allSettled(pending); signIn.mockRestore(); await r.runtime.close(); }
+  });
+  it("mounted teardown drains admitted physical work before closing its directory client", async () => {
+    const r = await directoryRuntimeRig(); let release!: () => void, entered!: () => void;
+    const physical = new Promise<void>(resolve => { release = resolve; }), draining = new Promise<void>(resolve => { entered = resolve; });
+    const owner = r.deps.directoryReads! as NonNullable<HubHttpDeps["directoryReads"]> & { drain(): Promise<void> };
+    const originalDrain = owner.drain.bind(owner), drain = vi.spyOn(owner, "drain").mockImplementation(() => { entered(); return originalDrain(); });
+    const close = vi.spyOn(r.deps.directory, "close"), read = owner.withDirectoryRead(ADMIN.key, () => physical);
+    let stopped = false; const stopping = r.runtime.close().then(() => { stopped = true; });
+    try {
+      expect(await Promise.race([draining.then(() => "draining"), stopping.then(() => "stopped")])).toBe("draining");
+      expect(stopped).toBe(false); expect(close).not.toHaveBeenCalled();
+      await expect(owner.withDirectoryRead(ADMIN.key, async () => true)).rejects.toThrow("unavailable");
+      release(); await read; await stopping; expect(close).toHaveBeenCalledOnce(); expect(stopped).toBe(true);
+    } finally { release(); await Promise.allSettled([read, stopping]); drain.mockRestore(); close.mockRestore(); await r.runtime.close(); }
+  });
   it("rechecks material after a held HTTP import before constructing a directory client", async () => {
     const r = await directoryRuntimeRig();
     try {
@@ -1000,6 +1053,134 @@ const NOTICE_READER: typeof ADMIN = { ...ADMIN, key: { realm: "corp", objectId: 
 const NOTICE_OTHER: typeof ADMIN = { ...NOTICE_READER, key: { realm: "corp", objectId: "22222222-2222-4222-8222-222222222222" },
   login: "notice-other", displayName: "Fictional Other", dn: "uid=notice-other,dc=example,dc=test" };
 const NOTICE_PATH = "/hub/v1/security-notices/directory";
+
+/** Private fixture cutover only. Runtime still registers no role migration or activation operation. */
+function provisionMountedRoles(r: Pick<Awaited<ReturnType<typeof directoryRuntimeRig>>, "hub" | "entry" | "deps">) {
+  const plan = hubServerDatabasePlan(r.hub.config.hub, r.entry.migrations);
+  let owning!: Database.Database;
+  r.deps.uow.atomic(tx => { owning = hubTxDatabase(tx); }); // Test-only access to the actual factory-owned database.
+  expect(createHubRoleCutover({ db: owning, hubId: plan.settings.hubId, root: ADMIN.key, realm: "corp", generation: plan.groupGeneration,
+    migrations: plan.migrations, transport: r.deps.store, current: () => true, refreshAuthorization() {}, now: r.deps.now }).migrate())
+    .toMatchObject({ ok: true, changed: true });
+  r.deps.uow.atomic(tx => {
+    const db = hubTxDatabase(tx);
+    const policy = parseRolePolicy(JSON.parse((db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body));
+    policy.revision++;
+    policy.roles.push({ id: "join-only", kind: "custom", name: "Join", permissions: ["join.manage"], defaultMaxFleets: 0 });
+    policy.assignments.push({ id: "join-manager", roleId: "join-only", subject: { kind: "person", person: NOTICE_READER.key },
+      scope: { kind: "hub" }, maxFleets: null, startsAt: 0, expiresAt: null, assignedAt: 0, assignedBy: ADMIN.key });
+    db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+  });
+}
+
+describe.skipIf(process.platform === "win32")("S129 mounted management factory", () => {
+  it("keeps legacy root access and applies a join-only assignment on the actual HTTPS routes", async () => {
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER] });
+    try {
+      const root = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+      const join = await directoryBrowser(r.hub, undefined, { login: NOTICE_READER.login, password: "Dummy-browser-only" });
+      const path = "/hub/v1/admin/company-join";
+      expect((await directoryBrowser(r.hub, root.cookie, undefined, path)).status).toBe(200);
+      expect((await directoryBrowser(r.hub, join.cookie, undefined, path)).status).toBe(403);
+      provisionMountedRoles(r);
+      const configured = await directoryBrowser(r.hub, join.cookie, { enabled: true, expectedRevision: 1 }, path,
+        { method: "PUT", headers: { "X-AgEnD-Hub-CSRF": join.json.csrf } });
+      expect(configured.status).toBe(200);
+      const created = await directoryBrowser(r.hub, join.cookie,
+        { expires: "1h", maxUses: 5, perPersonFleets: 1, scope: { kind: "directory" } }, "/hub/v1/admin/enrolment-codes",
+        { headers: { "X-AgEnD-Hub-CSRF": join.json.csrf } });
+      expect(created.status).toBe(201);
+      expect((await directoryBrowser(r.hub, join.cookie, undefined, path)).status).toBe(200);
+      expect((await directoryBrowser(r.hub, join.cookie, { login: NOTICE_READER.login }, "/hub/v1/admin/pairings",
+        { headers: { "X-AgEnD-Hub-CSRF": join.json.csrf } })).status).toBe(200);
+      expect((await directoryBrowser(r.hub, join.cookie, undefined, "/hub/v1/admin/overview")).status).toBe(403);
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx), row = db.prepare("SELECT body FROM hub_group_policy").get() as { body: string };
+        const policy = parseRolePolicy(JSON.parse(row.body)); policy.assignments = []; policy.revision++;
+        db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+      });
+      expect((await directoryBrowser(r.hub, join.cookie, undefined, path)).status).toBe(403);
+      expect((await directoryBrowser(r.hub, root.cookie, undefined, path)).status).toBe(200);
+    } finally { await r.runtime.close(); }
+  });
+
+  it("uses the same role issuer and clock in the actual manual-enrollment preparation", async () => {
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER] });
+    try {
+      provisionMountedRoles(r);
+      const prepared = await r.deps.groups!.prepareManualEnrollment({ kind: "fleet", id: randomUUID(), revision: 1, owner: NOTICE_READER.key },
+        NOTICE_READER.key, { requestId: randomUUID(), current: () => true });
+      expect(prepared).toBeDefined(); prepared.assertCurrent();
+      // Losing join.manage retires this exact first-issuance proof; no browser/root impersonation.
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx), row = db.prepare("SELECT body FROM hub_group_policy").get() as { body: string };
+        const policy = parseRolePolicy(JSON.parse(row.body)); policy.rolesActive = false; policy.revision++;
+        db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+      });
+      expect(() => prepared.assertCurrent()).toThrow();
+      await expect(r.deps.groups!.prepareManualEnrollment({ kind: "fleet", id: randomUUID(), revision: 1, owner: NOTICE_READER.key },
+        NOTICE_READER.key, { requestId: randomUUID(), current: () => true })).rejects.toThrow();
+    } finally { await r.runtime.close(); }
+  });
+
+  it.each(["rollback", "settled"])("refuses a persisted role clock %s on a mounted root route", async mode => {
+    let at = Date.now();
+    const r = await directoryRuntimeRig(undefined, { now: () => at });
+    try {
+      const root = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+      provisionMountedRoles(r);
+      const path = "/hub/v1/admin/company-join";
+      expect((await directoryBrowser(r.hub, root.cookie, undefined, path)).status).toBe(200);
+      if (mode === "rollback") at--;
+      else r.deps.uow.atomic(tx => hubTxDatabase(tx).prepare("INSERT INTO hub_role_expiry_terms VALUES(?,?,?,?,?)")
+        .run("synthetic-clock-floor", "synthetic-assignment", at, randomUUID(), at + 1));
+      expect((await directoryBrowser(r.hub, root.cookie, undefined, path)).status).toBe(503);
+    } finally { await r.runtime.close(); }
+  });
+
+
+  it.each(["legacy", "roles"])("keeps the generation repair exception restricted to an intact %s image", async image => {
+    const r = await directoryRuntimeRig();
+    try {
+      const root = await directoryBrowser(r.hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+      if (image === "roles") provisionMountedRoles(r);
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx), row = db.prepare("SELECT body FROM hub_group_policy").get() as { body: string };
+        const policy = JSON.parse(row.body); policy.generation = "owned-old-generation";
+        db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+      });
+      expect((await directoryBrowser(r.hub, root.cookie, undefined, "/hub/v1/admin/company-join")).status)
+        .toBe(image === "legacy" ? 200 : 503);
+    } finally { await r.runtime.close(); }
+  });
+
+  it("retires a mounted write when join authority changes during its owned directory read", async () => {
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER] });
+    let release!: () => void, entered!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; }), pendingRead = new Promise<void>(resolve => { entered = resolve; });
+    let write: ReturnType<typeof directoryBrowser> | undefined;
+    try {
+      const join = await directoryBrowser(r.hub, undefined, { login: NOTICE_READER.login, password: "Dummy-browser-only" });
+      // Preserve the directory method identity: hold its original implementation through the shared owner.
+      const owner = r.deps.directoryReads!, method = owner.withDirectoryRead.bind(owner);
+      const spy = vi.spyOn(owner, "withDirectoryRead").mockImplementation(async (person, work) => method(person, async () => {
+        entered(); await gate; return work();
+      }));
+      provisionMountedRoles(r);
+      write = directoryBrowser(r.hub, join.cookie, { enabled: true, expectedRevision: 1 }, "/hub/v1/admin/company-join",
+        { method: "PUT", headers: { "X-AgEnD-Hub-CSRF": join.json.csrf } });
+      await pendingRead;
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx), row = db.prepare("SELECT body FROM hub_group_policy").get() as { body: string };
+        const policy = parseRolePolicy(JSON.parse(row.body)); policy.assignments = []; policy.revision++;
+        db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+      });
+      release(); expect((await write).status).toBe(503);
+      expect(r.deps.companyJoin!.control()).toMatchObject({ enabled: false, revision: 1 });
+      spy.mockRestore();
+    } finally { release(); if (write) await Promise.allSettled([write]); await r.runtime.close(); }
+  });
+});
 async function directoryNoticeCommit(r: Awaited<ReturnType<typeof directoryRuntimeRig>>, n: number, remount = true) {
   const source = r.runtime.directorySettings()!, candidate = r.candidate();
   const draft = r.writer.directory!.prepare({ ...candidate, directory: { ...candidate.directory, url: `ldaps://notice-${n}.example.test` },
@@ -2089,5 +2270,65 @@ describe.skipIf(process.platform === "win32")("directory Save decision borrowing
       await r.runtime.withDirectoryDecision(String(r.hub.config.hub.hubId), d => { retained = d; return 0; }, () => true);
       expect(() => retained!.inspect()).toThrow("owner changed");
     } finally { await r.runtime.close(); }
+  });
+});
+
+/** Private in-construction SQL cutover only; not a supported cold role mount or production activation. */
+describe.skipIf(process.platform === "win32")("S129 actual factory expiry ownership", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+  const provisionExpired = (hub: Awaited<ReturnType<typeof initializedHub>>, deps: HubHttpDeps, entry: HubHttpEntry) => {
+    provisionMountedRoles({ hub, deps, entry });
+    deps.uow.atomic(tx => {
+      const db = hubTxDatabase(tx), row = db.prepare("SELECT body FROM hub_group_policy").get() as { body: string };
+      const policy = parseRolePolicy(JSON.parse(row.body));
+      policy.assignments[0]!.expiresAt = deps.now!();
+      db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy));
+    });
+  };
+  const signal = () => { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return { promise, resolve }; };
+  const observedWithin = async (event: Promise<void>) => {
+    let timer!: NodeJS.Timeout;
+    try { return await Promise.race([event.then(() => true), new Promise<false>(r => { timer = setTimeout(() => r(false), 1000); })]); }
+    finally { clearTimeout(timer); }
+  };
+  it("starts the actual settlement after the listener and refreshes only its committed version", async () => {
+    const done = signal(), original = HubServer.prototype.refreshAuthorization;
+    const refresh = vi.spyOn(HubServer.prototype, "refreshAuthorization").mockImplementation(function (this: HubServer) { original.call(this); done.resolve(); });
+    const at = Date.now(), r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER], now: () => at, beforeHttp: provisionExpired });
+    try {
+      expect(await observedWithin(done.promise)).toBe(true);
+      expect(refresh).toHaveBeenCalledOnce();
+      r.deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx);
+        expect(db.prepare("SELECT COUNT(*) n FROM hub_role_expiry_terms").get()).toEqual({ n: 1 });
+        expect(db.prepare("SELECT actor FROM hub_audit WHERE action='role.assignment-expired'").all()).toEqual([{ actor: JSON.stringify({ kind: "local-host" }) }]);
+      });
+      expect(r.deps.store.read().revocationVersion).toBe(2);
+    } finally { await r.runtime.close(); }
+  });
+  it("keeps legacy factory mounts without a role worker or role schema", async () => {
+    const refresh = vi.spyOn(HubServer.prototype, "refreshAuthorization"), r = await directoryRuntimeRig();
+    try {
+      await new Promise<void>(r => setImmediate(r));
+      expect(refresh).not.toHaveBeenCalled();
+      r.deps.uow.atomic(tx => expect(hubTxDatabase(tx).prepare("SELECT name FROM sqlite_master WHERE name='hub_role_expiry_terms'").get()).toBeUndefined());
+    } finally { await r.runtime.close(); }
+  });
+  it("drains the held worker before closing its owned database and refuses the late result", async () => {
+    const entered = signal(), release = signal(), refresh = vi.spyOn(HubServer.prototype, "refreshAuthorization");
+    const at = Date.now(), r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER], now: () => at, beforeHttp: provisionExpired,
+      eligibilityGate: async () => { entered.resolve(); await release.promise; } });
+    try {
+      expect(await observedWithin(entered.promise)).toBe(true);
+      let closed = false;
+      const closing = r.runtime.close().then(() => { closed = true; });
+      await new Promise<void>(r => setImmediate(r));
+      expect(closed).toBe(false);
+      release.resolve(); await closing;
+      expect(refresh).not.toHaveBeenCalled();
+      const db = new Database(join(r.hub.home, "hub/hub.sqlite"), { readonly: true });
+      try { expect(db.prepare("SELECT COUNT(*) n FROM hub_role_expiry_terms").get()).toEqual({ n: 0 }); }
+      finally { db.close(); }
+    } finally { release.resolve(); await r.runtime.close(); }
   });
 });

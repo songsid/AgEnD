@@ -59,7 +59,11 @@ export class HubTransportStore {
     let writing = false;
     try {
       return this.db.transaction(() => {
-        const state = this.read(), previous = JSON.stringify(state), result = change(state, this.db);
+        const state = this.read(), previous = JSON.stringify(state);
+        // Schema parsing may reorder known keys. Fence the exact stored image, not a
+        // serialization of the parsed value; valid unchanged rows need not share its order.
+        const previousStored = beforePublish ? (this.db.prepare("SELECT state FROM hub_transport_state WHERE singleton=1").get() as { state: string }).state : undefined;
+        const result = change(state, this.db);
         if (result && typeof (result as { then?: unknown }).then === "function") throw new HubProtocolError();
         state.revision++;
         validated(stateSchema, state);
@@ -75,7 +79,7 @@ export class HubTransportStore {
           // The independent floor is already raised. Inside this uncommitted transaction only, match that revision
           // while retaining the previous authorization image so captured permits can fence the last audit.
           const readImage = () => (this.db.prepare("SELECT state FROM hub_transport_state WHERE singleton=1").get() as { state: string }).state;
-          if (readImage() !== previous) throw new HubProtocolError("uncertain");
+          if (readImage() !== previousStored) throw new HubProtocolError("uncertain");
           const staged = JSON.stringify({ ...JSON.parse(previous), revision: state.revision });
           this.db.prepare("UPDATE hub_transport_state SET state=? WHERE singleton=1").run(staged);
           const checked: unknown = beforePublish();

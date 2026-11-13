@@ -13,6 +13,18 @@ function world(audit = (_db: Database.Database) => {}) {
   return { db, store, event, raw, floor: () => floor };
 }
 describe("final narrowing proof after required audit", () => {
+  it("accepts an unchanged valid stored image whose field order differs from the parsed schema", () => {
+    const r = world(), owner = { realm: "corp", objectId: randomUUID() };
+    r.store.mutate(r.event, state => state.pairings.push({ id: randomUUID(), owner, codeHash: null, expiresAt: 1000,
+      fleetId: randomUUID(), claimHash: null, fingerprint: null, ownerConfirmed: true, adminApproved: true, state: "pending", approvedBy: owner }));
+    const stored = (r.db.prepare("SELECT state FROM hub_transport_state").get() as { state: string }).state;
+    expect(stored).not.toBe(JSON.stringify(r.store.read()));
+    r.store.mutate(r.event, state => { state.revocationVersion++; }, () => {
+      expect(r.store.read()).toMatchObject({ revision: 2, revocationVersion: 0 });
+    });
+    expect(r.store.read()).toMatchObject({ revision: 2, revocationVersion: 1 });
+    expect(r.store.read().pairings[0]!.approvedBy).toEqual(owner);
+  });
   it("keeps the old authority readable by the permit after audit, then publishes the narrowing atomically", () => {
     let audited = false;
     const r = world(() => { audited = true; });

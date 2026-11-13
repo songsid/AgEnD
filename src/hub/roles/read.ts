@@ -38,17 +38,26 @@ export function rebindCanonicalPolicy(document: HubCanonicalPolicy, generation: 
   return next;
 }
 
-/** One physical row and exact selected Hub/directory binding; no creation, repair or migration. */
-export function createHubCanonicalPolicyReader(options: {
+interface PolicyReaderOptions {
   db: Database.Database; hubId: string; realm: string; generation: string; current(): boolean;
-}): () => HubCanonicalPolicy {
+}
+/** One physical row and exact selected Hub/directory binding; no creation, repair or migration. */
+export function createHubCanonicalPolicyReader(options: PolicyReaderOptions): () => HubCanonicalPolicy {
+  return createReader(options, false);
+}
+/** Management only: retain the existing configured-root repair route for an intact legacy never-enabled image. */
+export function createHubManagementPolicyReader(options: PolicyReaderOptions): () => HubCanonicalPolicy {
+  return createReader(options, true);
+}
+function createReader(options: PolicyReaderOptions, legacyRepair: boolean): () => HubCanonicalPolicy {
   const hubId = validated(identifier, options.hubId), binding = initialGroupPolicy(options.realm, options.generation), current = options.current;
   return () => {
     if (current() !== true) throw new HubProtocolError("unavailable");
     const row = options.db.prepare("SELECT hub_id,body FROM hub_group_policy WHERE singleton=1").get() as { hub_id: string; body: string } | undefined;
     if (!row || row.hub_id !== hubId) throw new HubProtocolError("unavailable");
     const result = parseCanonicalPolicy(row.body);
-    if (result.policy.realm !== binding.realm || result.policy.generation !== binding.generation
+    const repair = legacyRepair && result.kind === "group" && result.policy.state === "never-enabled";
+    if (result.policy.realm !== binding.realm || result.policy.generation !== binding.generation && !repair
       || current() !== true) throw new HubProtocolError("unavailable");
     return result;
   };

@@ -18,7 +18,8 @@ import type { HubRolePolicy } from "./model.js";
 import type { RoleChangePlan } from "./change.js";
 export interface RoleWriteEffects {
   /** Private server inventory/impact preparation; never a browser-supplied callback or effect. */
-  prepare(plan: RoleChangePlan, facts: ReadonlyMap<string, RolePersonFacts>, current: () => void): Promise<{
+  prepare(plan: RoleChangePlan, facts: ReadonlyMap<string, RolePersonFacts>, current: () => void,
+    provenance?: Readonly<{ actor: PersonKey; requestId: string }>): Promise<{
     fingerprint: string; changed: boolean; impact: unknown;
     assertCurrent(): void;
     /** Exact retained-resource consequences, synchronously in the policy transaction. */
@@ -180,7 +181,8 @@ export function createHubRoleWriter(options: RoleWriterOptions) {
     plan = planRoleChange(before.policy, input, actor.person, now());
     const finalBundle = heldRoleBundle(before.policy, actor.person, facts.get(personKeyString(actor.person))!, now(), root);
     authorize(finalBundle);
-    const value = await effects.prepare(plan, new Map([...facts].map(([id, fact]) => [id, structuredClone(fact)])), assertBefore); assertBefore();
+    const value = await effects.prepare(plan, new Map([...facts].map(([id, fact]) => [id, structuredClone(fact)])), assertBefore,
+      Object.freeze({ actor: Object.freeze({ ...actor.person }), requestId: ctx.requestId })); assertBefore();
     if (typeof value.fingerprint !== "string" || value.fingerprint.length > 1024 || typeof value.changed !== "boolean") throw new Refusal("unknown");
     const impact = structuredClone(value.impact), serializedImpact = json(impact);
     if (typeof serializedImpact !== "string" || Buffer.byteLength(serializedImpact,"utf8") > 256 * 1024) throw new Refusal("unknown");

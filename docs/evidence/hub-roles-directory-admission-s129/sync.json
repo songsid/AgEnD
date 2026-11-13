@@ -1,0 +1,292 @@
+{
+  "head": "1cea78ad5f6b4607f6bee4cf4c0c8491e2447ef4",
+  "parents": [
+    "11565199533326e91670ff1c1311f490d1cd064d",
+    "f73ad9187a4bb63d87e72ee4229a41d1a54a7cc7"
+  ],
+  "clean": true,
+  "incomingPaths": 40,
+  "overlaps": [
+    "src/hub/compose/server.ts",
+    "src/hub/types.ts"
+  ],
+  "disjointBlobs": [
+    {
+      "file": "changes/3428-hub-web-origin-members.md",
+      "matchesIncoming": true
+    },
+    {
+      "file": "changes/3428-hub-web-origin-members.zh-TW.md",
+      "matchesIncoming": true
+    },
+    {
+      "file": "changes/3788-usage-agent-compact.md",
+      "matchesIncoming": true
+    },
+    {
+      "file": "changes/3788-usage-agent-compact.zh-TW.md",
+      "matchesIncoming": true
+    },
+    {
+      "file": "changes/3798.md",
+      "matchesIncoming": true
+    },
+    {
+      "file": "changes/3798.zh-TW.md",
+      "matchesIncoming": true
+    },
+    {
+      "file": "docs/concepts.md",
+      "matchesIncoming": true
+    },
+    {
+      "file": "docs/design/hub-web-address-3428.md",
+      "matchesIncoming": true
+    },
+    {
+      "file": "scripts/manual/hub-web-address/accept.mts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "scripts/manual/smoke/smoke-agend-256-settings-columns.mts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "scripts/manual/usage-agent-compact/README.md",
+      "matchesIncoming": true
+    },
+    {
+      "file": "scripts/manual/usage-agent-compact/measure.mts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/agent-cli-instructions.md",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/agent-cli.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/agent-endpoint.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/channel/mcp-tools.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/general-knowledge/skills/concepts/SKILL.md",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/general-knowledge/skills/credential-profiles/SKILL.md",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/hub/client.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/hub/compose/member.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/hub/join/local.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/hub/member/pairing-api.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/hub/protocol.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/hub/server.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/hub/web-origin.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/outbound-handlers.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/outbound-schemas.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/ui/panel-settings.js",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/ui/shared/app.css",
+      "matchesIncoming": true
+    },
+    {
+      "file": "src/usage/agent-output.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "tests/agent-cli-usage-flags.test.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "tests/agent-cli-usage.test.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "tests/helpers/hub-rig.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "tests/hub-company-join-local.test.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "tests/hub-web-origin.test.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "tests/settings-shared-columns-agend-256.test.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "tests/usage-agent-compact.test.ts",
+      "matchesIncoming": true
+    },
+    {
+      "file": "tests/usage-report-2122.test.ts",
+      "matchesIncoming": true
+    }
+  ],
+  "overlapDeltas": {
+    "src/hub/compose/server.ts": "diff --git a/src/hub/compose/server.ts b/src/hub/compose/server.ts\nindex d10fd1b11..f655854f9 100644\n--- a/src/hub/compose/server.ts\n+++ b/src/hub/compose/server.ts\n@@ -32,4 +32,5 @@ import { createHubGroupAdminInventory } from \"../group-policy/admin-inventory.js\n import { createHubGroupWelcome } from \"../group-policy/welcome.js\";\n import { signAsker, canonicalArguments, sha256, personKeyString } from \"../identity.js\";\n+import { signHubWebOrigin } from \"../web-origin.js\";\n import { BIND_SECRET_REL, bindSecretPath } from \"../init/layout.js\";\n import type { HubMountedService } from \"../mount.js\";\n@@ -157,4 +158,6 @@ interface ServerSettings {\n   administrator: PersonKey;\n   retention: { contentDays: number; eventDays: number };\n+  /** M-2901: the sealed hub.webAddress.revision (#3428), 0 for a Hub whose web address never changed. */\n+  webAddressRevision: number;\n }\n \n@@ -197,4 +200,5 @@ export function settingsOf(cfg: Record<string, unknown>): ServerSettings {\n     administrator: { realm: admin.realm, objectId: admin.objectId },\n     retention: { contentDays: retention.contentDays as number, eventDays: retention.eventDays as number },\n+    webAddressRevision: Number.isSafeInteger(obj(cfg.webAddress).revision) && (obj(cfg.webAddress).revision as number) > 0 ? obj(cfg.webAddress).revision as number : 0,\n   };\n }\n@@ -457,4 +461,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {\n         receive: (frame, link) => http.receive(frame, link),\n         hold: (fleetId, code) => options.log(\"warn\", \"Hub member link held\", { fleetId, code }),\n+        // M-2901: a connected Fleet learns where this Hub's pages are now (web-origin.ts), signed for its own link.\n+        webOrigin: (fleetId) => signHubWebOrigin({ hubId: settings.hubId, issuerKeyId: identity.issuerKeyId, fleetId, memberOrigin: settings.memberOrigin },\n+          settings.webOrigin, settings.webAddressRevision, issuerKey),\n       });\n       teardown.add(\"the member listener\", () => memberServer?.close());",
+    "src/hub/types.ts": "diff --git a/src/hub/types.ts b/src/hub/types.ts\nindex 76ffd0665..99535e341 100644\n--- a/src/hub/types.ts\n+++ b/src/hub/types.ts\n@@ -24,4 +24,6 @@ export interface HubWelcome {\n   linkEpoch: Epoch; revocationVersion: Epoch;\n   capabilities?: readonly string[]; // only when the hello offered welcome-caps-v1\n+  /** web-origin-v1 (M-2901): the Hub's issuer-signed current web address (web-origin.ts); only when both ends listed it. */\n+  webOrigin?: { v: 1; webOrigin: string; revision: Epoch; signature: string };\n }\n /** attachments-v1: a file carried with a question (Hub \u2192 member) or an answer (member \u2192 Hub). */"
+  },
+  "overlapSequencesMatchIncoming": {
+    "src/hub/compose/server.ts": true,
+    "src/hub/types.ts": true
+  },
+  "checks": {
+    "passed": 496,
+    "failed": 0,
+    "skipped": 0,
+    "files": 19,
+    "sourceTypes": 0,
+    "testTypes": 0,
+    "compiler": "native TypeScript7.0.2, GOMAXPROCS=2"
+  },
+  "issuerParentMerge": {
+    "head": "11565199533326e91670ff1c1311f490d1cd064d",
+    "parents": [
+      "bd1e6c5c8",
+      "e0fbb2b3c999719b0fc32a5940864c5dfdd36d46"
+    ],
+    "clean": true,
+    "scope": "only the already-reviewed company test pin, design verification note and R1 receipt; no production delta"
+  },
+  "bindings": [
+    {
+      "file": "changes/3743-roles-directory-admission.md",
+      "sha256": "3397b34d0c8aace04aaaa674ffadb796f26e1daa11008f84986d3baff5c58a3a"
+    },
+    {
+      "file": "changes/3743-roles-directory-admission.zh-TW.md",
+      "sha256": "62a240562adaff3cf3bfd3fdf113ba037aead61041a3cbf4bfac13f2d447803b"
+    },
+    {
+      "file": "docs/design/hub-roles-directory-admission.md",
+      "sha256": "c26df5e15e81bc5af7d001314c9a2ecab9ff138d52413d54083a288ab609a901"
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "e39ed50be5444baaccf49c02360ebab0970b30f25e6d1b541169c733fcca3253"
+    },
+    {
+      "file": "src/hub/directory/admission.ts",
+      "sha256": "c48f8592825121403e4ec04ed32999a4544678f8876dd34e130b1908e6811dd4"
+    },
+    {
+      "file": "src/hub/group-policy/admin-control.ts",
+      "sha256": "1cacf76748d9955ca0c6a709b8e8ad6874220d7917131b61b64d748259ecf96f"
+    },
+    {
+      "file": "src/hub/group-policy/admin-facts.ts",
+      "sha256": "76424ea46fd1838a815d7cfc8b4b6cfab4b0b47246039cf33ad003cfd4321dae"
+    },
+    {
+      "file": "src/hub/group-policy/admin-read.ts",
+      "sha256": "4b6f12ac420e98b11ce7674baa5f767196a18de496c81ad142d53399655e5a74"
+    },
+    {
+      "file": "src/hub/group-policy/errors.ts",
+      "sha256": "3ff8683d230c49a965d2e1eb7843b9a8fca018fbc14b1a24932ad373f246e3a6"
+    },
+    {
+      "file": "src/hub/group-policy/store.ts",
+      "sha256": "c4396cc2d396a5e84108015787f61b7297b65f78fa30ae60fdd706db4d24072d"
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "ec536e6d34ffcc5758056ad36df9cca45a20b8f71b4eabc02ed4dd0894b86173"
+    },
+    {
+      "file": "src/hub/http/deps.ts",
+      "sha256": "fd21af001816f72587b34d0d2450b2d481c70f4f9dd413b53656eb6da2f8d573"
+    },
+    {
+      "file": "src/hub/pairing-notices.ts",
+      "sha256": "0a0e83805201dd5358f0e7bd7cbd8f1f67f321a1ac6425b2e926ebfe1b9382e1"
+    },
+    {
+      "file": "src/hub/pairing.ts",
+      "sha256": "55f3d90b1c5ffab2a87530273b33d0d58a34683209f0f2be0cc483ee9d31f16f"
+    },
+    {
+      "file": "src/hub/roles/read.ts",
+      "sha256": "37e50394e706e9be2bca8c87344c1f138ab42dbfa4bb0030087b51f33fb2e4dc"
+    },
+    {
+      "file": "src/hub/sessions.ts",
+      "sha256": "f49bfa0fc057206da9e33e785c9c95c8e29f6345b7aaa1077e1919ecb4934b0f"
+    },
+    {
+      "file": "tests/hub-compose.test.ts",
+      "sha256": "1402f396ea0d34263fed62b5c7194c1f80fa03dd7c122feec02ea62e441cef25"
+    },
+    {
+      "file": "tests/hub-directory-admission-s129.test.ts",
+      "sha256": "d28dc81043a2229d07da09e430913d583f0565d691bd265ce0d312a86392c14d"
+    },
+    {
+      "file": "tests/hub-roles-management-reader-s129.test.ts",
+      "sha256": "c3a2f30aeb49841f25482e1dd41c3e6418345f263a515ebca7de81d9af082703"
+    }
+  ],
+  "tests": [
+    "tests/hub-company-join-local.test.ts",
+    "tests/hub-compose.test.ts",
+    "tests/hub-directory-admission-s129.test.ts",
+    "tests/hub-grant-subjects-m3016.test.ts",
+    "tests/hub-group-admin-control.test.ts",
+    "tests/hub-group-admin-facts.test.ts",
+    "tests/hub-group-admin-read.test.ts",
+    "tests/hub-group-policy-store.test.ts",
+    "tests/hub-group-search-boundary-s2.test.ts",
+    "tests/hub-pairing-notices.test.ts",
+    "tests/hub-pairing-owner.test.ts",
+    "tests/hub-pairing.test.ts",
+    "tests/hub-roles-canonical-s129.test.ts",
+    "tests/hub-roles-company-issuer-s129.test.ts",
+    "tests/hub-roles-issuer-s129.test.ts",
+    "tests/hub-roles-management-reader-s129.test.ts",
+    "tests/hub-s3b-flow.test.ts",
+    "tests/hub-store-publication-s1.test.ts",
+    "tests/hub-web-origin.test.ts"
+  ]
+}
