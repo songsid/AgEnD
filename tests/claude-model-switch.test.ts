@@ -125,6 +125,22 @@ describe("incident lifecycle without a model/policy action", () => {
     expect(new ClaudeModelObserver("claude-sonnet-5-5", "claude-sonnet-5-5", prior.checkpoint()).snapshot().active).toBeNull();
     expect(new ClaudeModelObserver("claude-opus-5-5", "claude-opus-5-5", { ...prior.checkpoint(), seen: ["secret path / invalid"] }).snapshot().active).toBeNull();
   });
+  it("raw concrete intent needs both session and served confirmation before replacing an active switch", () => {
+    const o = new ClaudeModelObserver("claude-opus-5-5", "claude-opus-5-5");
+    o.observe(parse(notice()), "claude-opus-4-8"); const active = o.snapshot().active;
+    o.observe({ kind: "intent", id: "model-intent", sessionId: "session-A", at: Date.now(), served: "claude-sonnet-5-5" }, "claude-opus-5-5");
+    o.observe(parse(served("claude-sonnet-5-5", "unconfirmed")), "claude-opus-5-5");
+    expect(o.checkpoint().expected).toBe("claude-opus-5-5"); expect(o.snapshot().active).toEqual(active);
+    o.observe(parse(served("claude-sonnet-5-5", "confirmed")), "claude-sonnet-5-5");
+    expect(o.checkpoint().expected).toBe("claude-sonnet-5-5"); expect(o.snapshot().active).toBeNull();
+  });
+  it("an unresolved alias intent keeps inference unconfirmed until a concrete selection or typed notice", () => {
+    const o = new ClaudeModelObserver("claude-opus-5-5", "claude-opus-5-5");
+    o.ownIntent("opus"); o.observe(parse(served("claude-sonnet-5-5", "alias-first")), "claude-sonnet-5-5");
+    o.observe(parse(served("claude-haiku-4-5", "alias-next")), "claude-sonnet-5-5");
+    expect(o.snapshot().active).toBeNull(); expect(o.checkpoint().expected).toBe("claude-opus-5-5");
+    o.observe(parse(notice()), "claude-sonnet-5-5"); expect(o.snapshot().active?.cause).toBe("safeguards");
+  });
   it("an owned applied switch changes the expected selection without creating an incident", () => {
     const o = new ClaudeModelObserver("claude-opus-5-5", "claude-opus-5-5"); o.ownIntent("claude-sonnet-5-5"); o.ownResult(true, "claude-sonnet-5-5");
     o.observe(parse(served("claude-sonnet-5-5")), "claude-sonnet-5-5"); expect(o.snapshot().active).toBeNull();
