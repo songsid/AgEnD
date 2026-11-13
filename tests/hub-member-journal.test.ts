@@ -87,10 +87,19 @@ describe("#3823 durable pairing ownership", () => {
   it("R1: a matching representative source with the wrong exposure revision refuses adoption; exact revision adopts", async () => {
     const f = fixture(); await f.admission.admit(f.q); migrateHubRepresentative(f.db);
     f.db.prepare("INSERT INTO hub_representative_questions(source,id,message_id,digest,exposure_id,revision,consent_id,agent,token,state,at) VALUES(?,?,?,?,?,?,?,?,?,'queued',?)")
-      .run(`hub:${f.profile.hub.hubId}:${f.q.identity.messageId}`, randomUUID(), f.q.identity.messageId, f.q.identity.contentDigest, f.exposure.id, 2, randomUUID(), "fixture", "token", Date.now());
+      .run(`hub:${f.profile.hub.hubId}:${f.q.identity.messageId}`, randomUUID(), f.q.identity.messageId, questionContextDigest(f.q), f.exposure.id, 2, randomUUID(), "fixture", "token", Date.now());
     expect(() => f.journal.bindPairing(f.profile, [])).toThrow("uncertain");
     expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).toEqual({ binding: null });
     f.db.prepare("UPDATE hub_representative_questions SET revision=1").run();
+    expect(f.journal.bindPairing(f.profile, [])).toBe(true);
+  });
+  it("#3878: a representative content digest is not a valid context binding", async () => {
+    const f = fixture(); await f.admission.admit(f.q); migrateHubRepresentative(f.db);
+    f.db.prepare("INSERT INTO hub_representative_questions(source,id,message_id,digest,exposure_id,revision,consent_id,agent,token,state,at) VALUES(?,?,?,?,?,?,?,?,?,'held',?)")
+      .run(`hub:${f.profile.hub.hubId}:${f.q.identity.messageId}`, randomUUID(), f.q.identity.messageId, f.q.identity.contentDigest, f.exposure.id, 1, randomUUID(), "fixture", "token", Date.now());
+    expect(() => f.journal.bindPairing(f.profile, [])).toThrow("uncertain");
+    expect(f.db.prepare("SELECT binding FROM hub_member_meta").get()).toEqual({ binding: null });
+    f.db.prepare("UPDATE hub_representative_questions SET digest=?").run(questionContextDigest(f.q));
     expect(f.journal.bindPairing(f.profile, [])).toBe(true);
   });
   it("R1: a bound retained read independently rejects foreign pairing metadata without prepare", async () => {

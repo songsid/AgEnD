@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-reconnect-3878
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  07:46:05
+   Duration  5.64s (transform 2.16s, setup 104ms, import 2.58s, tests 2.80s, environment 0ms)
+
