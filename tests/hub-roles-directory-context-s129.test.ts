@@ -79,6 +79,7 @@ describe("S129 Core owner retirement and preparation consumption", () => {
     const w = await world(), p = await w.core.directoryPreparation(w.ctx.ctx); w.time(90000); w.elapsed(90000);
     const permit = await p.authorize(); p.retire();
     expect(() => p.assertCurrent()).toThrow(); await expect(p.authorize()).rejects.toThrow();
+    expect(() => permit.assertCurrent()).not.toThrow();
     expect(permit.assertCurrent()).toBe(90100);
     w.time(5000); expect(() => permit.assertCurrent()).toThrow();
   });
