@@ -111,6 +111,12 @@
       var href = safeHref(url);
       return href ? pre + stash(store, link(href, url)) : m;
     });
+    // M-3092: a Hub room's own mention labels (「@所有 Agent」, "@project-helper"), exact, longest first, before the
+    // @username rule (which cannot take a space, a hyphen or CJK). Only a page that passes them gets any: the fleet passes none.
+    if (store.labels) for (var li = 0; li < store.labels.length; li++) {
+      var lab = escapeHtml(store.labels[li]);
+      s = s.replace(new RegExp(lab.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\w-])", "g"), function () { return stash(store, '<span class="mention tg">' + lab + "</span>"); });
+    }
     // #1682: a Telegram @username — after the links (a link is stashed by now, so an @ inside a URL is never touched).
     s = s.replace(TG_MENTION_RE, function (_m, pre, user) { return pre + stash(store, '<span class="mention tg">@' + user + "</span>"); });
     return emphasis(s);
@@ -337,6 +343,9 @@
     store.emojis = opts && typeof opts.emojis === "function" ? opts.emojis : null;
     // #1682: the names the page knows for mentions (a function (kind "u" | "r" | "c", id) → name or null).
     store.mentions = opts && typeof opts.mentions === "function" ? opts.mentions : null;
+    // M-3092: exact mention labels a Hub room accents (none elsewhere); longest first so a name never splits a longer one.
+    store.labels = opts && Array.isArray(opts.mentionLabels) ? opts.mentionLabels.filter(function (x) { return typeof x === "string" && x.length > 1; })
+      .sort(function (a, b) { return b.length - a.length; }) : null;
     var html = "";
     var re = new RegExp(FENCE_RE.source, "g");
     var last = 0;
