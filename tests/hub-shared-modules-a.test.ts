@@ -44,7 +44,7 @@ describe("where the shared chat modules are served (#3226 PR A)", () => {
       "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js",   // #3298 S-89/S-90
       "hub-group-search.js", "hub-join-steps.js", "hub-grant-picker.js",
       "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js",   // Hub UX U2 (M-2932)
-      "hub-room-presence.js"]);   // Hub rooms §§2,5: presence helper (pure, no DOM)
+      "hub-room-presence.js", "hub-room-list-model.js"]);   // Hub rooms: presence (§§2,5) + list model (§2), pure, no DOM
   });
 });
 

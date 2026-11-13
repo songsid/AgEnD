@@ -57,7 +57,9 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   // B2: code management and the same-request Hub approval queue.
   "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js",
   // Hub rooms (hub-rooms-ux.md §§2,5): the presence helper (pure, no DOM).
-  "hub-room-presence.js"]);
+  "hub-room-presence.js",
+  // Hub rooms (hub-rooms-ux.md §2): the list grouping + row view (pure, no DOM).
+  "hub-room-list-model.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
