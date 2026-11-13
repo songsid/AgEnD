@@ -319,6 +319,12 @@ after an upgrade. Do not offer an assistant when the Hub has no enabled assistan
 - The Hub administrator chooses the people or Teams who may create rooms. Team-based creation follows the current
   roster. Removing that permission prevents new rooms; existing room managers keep their rooms.
 - People expanded from a Team when a room is created stay room members if the Team later changes or is deleted.
+- An AD group adds its currently eligible direct members, including people who have not signed in to the Hub yet;
+  nested groups are not expanded. Later directory changes do not rewrite the room's member list. A room holds at
+  most 100 people, counting the creator and deduplicating all selected people, groups and Teams. An incomplete
+  directory read or an over-limit selection creates nothing; choose a smaller group or Team, or try again later.
+- A selected person can see the room on their first Hub sign-in. Until then the member list can mark them as not
+  having signed in; selection does not sign them in or create a session.
 - Administration shows room names, member counts, managers and activity times. It does not grant access to room
   messages. An administrator must explicitly join as a room manager to read or participate, under the room's history
   setting. Archiving keeps members and saved history, and stops new messages.

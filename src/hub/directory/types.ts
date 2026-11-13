@@ -53,6 +53,9 @@ export type DirectoryLookupResult =
 export type GrantPersonSearch = { readonly ok: true; readonly people: readonly {
   readonly person: PersonKey; readonly login: string; readonly displayName: string;
 }[]; readonly truncated: boolean } | { readonly ok: false; readonly reason: "unknown" };
+/** Complete direct-members snapshot only; partial pages/referrals are never a smaller successful roster. */
+export type RoomGroupRoster = { readonly ok: true; readonly group: { readonly key: PersonKey; readonly name: string }; readonly people: readonly DirectoryPerson[] }
+  | { readonly ok: false; readonly reason: "unsupported" | "unknown" | "not-found" };
 
 /** The local initializer retains its existing signature. */
 export type InitializationLookupResult = DirectoryLookupResult;
@@ -71,6 +74,7 @@ export interface HubDirectory {
   readonly groupPolicy?: "ad-direct-guid";
   resolvePolicyGroup?(dn: string): Promise<import("./groups.js").PolicyGroupLookup>;
   searchPolicyGroups?(q: string): Promise<import("./groups.js").PolicyGroupSearch>;
+  roomGroupMembers?(key: PersonKey): Promise<RoomGroupRoster>;
   /** Directory reconfiguration continuity only: security group read by immutable key, not an old DN label. */
   checkPolicyGroup?(key: PersonKey): Promise<import("./groups.js").PolicyGroupLookup>;
   readPolicyGroups?(key: PersonKey): Promise<import("./groups.js").PolicyGroupFacts>;

@@ -68,3 +68,8 @@ CREATE TABLE hub_room_assistant_calls(id TEXT PRIMARY KEY,room_id TEXT NOT NULL,
   state TEXT NOT NULL CHECK(state IN ('queued','working','answered','failed')),reason TEXT,created_at INTEGER NOT NULL);
 CREATE INDEX hub_room_assistant_queued ON hub_room_assistant_calls(state,created_at) WHERE state='queued';`);
 } });
+
+/** Pre-sign-in display feedback must not manufacture hub_people's successful-sign-in witness. */
+export const HUB_ROOM_DIRECTORY_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-directory", version: 1, up(db: Database.Database) {
+  db.exec("CREATE TABLE hub_room_people(person TEXT PRIMARY KEY,display_name TEXT NOT NULL,login_label TEXT NOT NULL,observed_at INTEGER NOT NULL)");
+} });

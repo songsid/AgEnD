@@ -43,8 +43,9 @@ export class HubRoomAdmin {
       (SELECT COUNT(*) FROM hub_room_members m WHERE m.room_id=r.id AND m.kind='agent') agents,
       COALESCE((SELECT MAX(p.created_at) FROM hub_room_posts p WHERE p.room_id=r.id),r.created_at) lastAt
       FROM hub_group_rooms r WHERE r.assistant_for IS NULL ORDER BY lastAt DESC,r.id`).all() as { id: string; name: string; archived: number; people: number; agents: number; lastAt: number }[]).map(r => ({
-        id: r.id, name: r.name, people: r.people, agents: r.agents, managers: (db.prepare(`SELECT COALESCE(p.display_name,m.subject) name FROM hub_room_members m
-          LEFT JOIN hub_people p ON p.person=m.subject WHERE m.room_id=? AND m.kind='person' AND m.role='manager' ORDER BY name,m.id`).all(r.id) as { name: string }[]).map(x => x.name),
+        id: r.id, name: r.name, people: r.people, agents: r.agents, managers: (db.prepare(`SELECT COALESCE(p.display_name,rp.display_name,m.subject) name FROM hub_room_members m
+          LEFT JOIN hub_people p ON p.person=m.subject LEFT JOIN hub_room_people rp ON rp.person=m.subject
+          WHERE m.room_id=? AND m.kind='person' AND m.role='manager' ORDER BY name,m.id`).all(r.id) as { name: string }[]).map(x => x.name),
         lastAt: r.lastAt, archived: r.archived === 1,
       })) }), { assertCurrent: () => permit.assertCurrent() });
   }

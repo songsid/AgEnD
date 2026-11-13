@@ -409,6 +409,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method !== "GET") throw new HttpError(405, "method");
       signedIn(); return send(res, 200, await guard(() => groupRooms.candidates(ctx, query.get("q") ?? "", query.get("kind") ?? "person")));
     }
+    if ((r = m(/^\/hub\/v1\/rooms\/candidates\/group\/([^/]+)$/))) {
+      if (method !== "GET") throw new HttpError(405, "method");
+      signedIn(); return send(res, 200, await guard(() => groupRooms.groupCandidate(ctx, uuid(r![1]))));
+    }
     if (path === "/hub/v1/invitations") {
       if (!invitations) throw new HttpError(404, "not-found");
       if (method !== "GET") throw new HttpError(405, "method");
@@ -508,7 +512,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (groupRooms.has(roomId)) {
         if (method === "GET") {
           const view = await guard(() => groupRooms.detail(ctx, roomId));
-          const invited = invitations && view.me.role === "manager" ? await guard(() => invitations.forRoom(ctx, roomId)) : [];
+          const invited = invitations && view.me.role === "manager" && !view.room.archived ? await guard(() => invitations.forRoom(ctx, roomId)) : [];
           return send(res, 200, { ...view, invited });
         }
         if (method === "PATCH") { csrf(); const b = await body(); return send(res, 200, await guard(() => groupRooms.patch(ctx, roomId, b))); }
@@ -692,7 +696,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   }
 
   function fail(res: ServerResponse, e: unknown): void {
-    if (e instanceof HubRoomRefusal) return send(res, e.status, { code: e.code });
+    if (e instanceof HubRoomRefusal) return send(res, e.status, { code: e.code, ...e.details });
     if (e instanceof HubEnrolmentCodeLimit) return send(res, 429, { code: "backpressure", reason: e.reason });
     if (e instanceof CompanyJoinCodeRefusal) return send(res, 403, { code: "denied", reason: e.reason });
     if (e instanceof CompanyJoinOfferPending) return send(res, 409, { code: "offer-pending" });
