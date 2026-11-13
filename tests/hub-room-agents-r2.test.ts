@@ -62,6 +62,37 @@ it("persists one exact answer and ACKs retries without duplicate room posts", as
   await expect(r!.http.receive(r!.frame("room.answer", { ...answer, text: "Changed" }, w.link) as never, w.link)).rejects.toThrow();
 });
 
+it("retries a transiently refused ask on the same live link only when due, retaining one exact answer", async () => {
+  const w = await world(); await send(w); await vi.waitFor(() => expect(asks()).toHaveLength(1));
+  // The Fleet refused local admission without disconnecting or acknowledging the input.
+  const input = lastAsk(), wake = () => r!.http.receive(r!.frame("agent.state", { exposureId: w.e.id, state: "idle" }, w.link) as never, w.link);
+  w.advance(29_999); await wake();
+  await new Promise(resolve => setTimeout(resolve, 20)); expect(asks()).toHaveLength(1);
+  w.advance(1); await wake(); await vi.waitFor(() => expect(asks()).toHaveLength(2));
+  expect(lastAsk()).toEqual(input); expect(asks()[1]!.frame.linkEpoch).toBe(w.link.linkEpoch);
+  await wake(); await new Promise(resolve => setTimeout(resolve, 20)); expect(asks()).toHaveLength(2);
+  const answer = { messageId: input.messageId, roomId: w.id, exposureId: w.e.id, answerId: randomUUID(), text: "Recovered once" };
+  for (let n = 0; n < 2; n++) expect(await r!.http.receive(r!.frame("room.answer", answer, w.link) as never, w.link)).toMatchObject({ type: "room.answer-ack" });
+  w.advance(30_000); await wake(); await new Promise(resolve => setTimeout(resolve, 20)); expect(asks()).toHaveLength(2);
+  const page = (await r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/messages`)).json.messages;
+  expect(page.filter((m: any) => m.text === answer.text)).toHaveLength(1);
+});
+
+it("retries from the live-link timer without another state event, then stops after consent removal", async () => {
+  const w = await world(); await send(w); await vi.waitFor(() => expect(asks()).toHaveLength(1));
+  const input = lastAsk(), page = (await r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/messages`)).json.messages;
+  const { HubCore } = await import("../src/hub/http/core.js"), { HubRoomAgents } = await import("../src/hub/rooms/agents.js");
+  const agent = new HubRoomAgents(new HubCore(r!.httpDeps, r!.sql), () => {}, post => page.find((m: any) => m.id === post.id));
+  agent.noteLink(w.link); vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    agent.wake(); w.advance(30_000); await vi.advanceTimersByTimeAsync(30_000);
+    expect(asks()).toHaveLength(2); expect(lastAsk()).toEqual(input);
+    r!.db.prepare("DELETE FROM hub_room_members WHERE room_id=? AND kind='agent'").run(w.id);
+    w.advance(30_000); await vi.advanceTimersByTimeAsync(30_000);
+    expect(asks()).toHaveLength(2);
+  } finally { await agent.close(); vi.useRealTimers(); }
+});
+
 it("keeps paused membership and queues until Resume, but removal retires queued consent", async () => {
   const w = await world(); r!.db.prepare("UPDATE hub_exposures SET sharing_paused=1,sharing_epoch=1 WHERE id=?").run(w.e.id);
   await send(w); await new Promise(resolve => setTimeout(resolve, 30)); expect(asks()).toHaveLength(0);

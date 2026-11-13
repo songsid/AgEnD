@@ -1,0 +1,74 @@
+{
+  "own": "6bb7a349b",
+  "incoming": "440e613d9346394ea8ef4b129d2e6c8f79bfce06",
+  "paths": [
+    {
+      "path": "src/hub/http/compose.ts",
+      "r1": "845bc9b18f8772256ca2cc1b28075d1da2249c47",
+      "incoming": "845bc9b18f8772256ca2cc1b28075d1da2249c47",
+      "own": "18071deedab968802bca805ca4d7289c9d5ab7a2",
+      "resolution": "own; incoming equals merged R1 source"
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "r1": "8ae8c723c03b2065c9aa367e451728e673709ddc",
+      "incoming": "8ae8c723c03b2065c9aa367e451728e673709ddc",
+      "own": "c40f6162ba13b741954848cc4ce4dadacd6b701e",
+      "resolution": "own; incoming equals merged R1 source"
+    },
+    {
+      "path": "src/hub/protocol.ts",
+      "r1": "b8ec46e803e64230d7db42697d7e6a601a145f68",
+      "incoming": "b8ec46e803e64230d7db42697d7e6a601a145f68",
+      "own": "4746db5e930f30ca5f49b92fd308c06a551545c6",
+      "resolution": "own; incoming equals merged R1 source"
+    },
+    {
+      "path": "src/hub/rooms/schema.ts",
+      "r1": "aa8587bb62e5d8804cdb0271862e4d27541ba90a",
+      "incoming": "aa8587bb62e5d8804cdb0271862e4d27541ba90a",
+      "own": "37b35074f4cc46b0a797ee94a72a72481331aca0",
+      "resolution": "own; incoming equals merged R1 source"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "r1": "91c40bfcaf88592ad9c6bb95567a965414cc8603",
+      "incoming": "91c40bfcaf88592ad9c6bb95567a965414cc8603",
+      "own": "62cf8586fd92cfe2c237686987f97c83fdeccb8d",
+      "resolution": "own; incoming equals merged R1 source"
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "r1": "4987f43f1a08027e7947416f840794c990d6e865",
+      "incoming": "4987f43f1a08027e7947416f840794c990d6e865",
+      "own": "422cb873432d291f93298b33d9dd21b28793881f",
+      "resolution": "own; incoming equals merged R1 source"
+    },
+    {
+      "path": "src/hub/types.ts",
+      "r1": "0292025b27e1e199040313b649f66ecaab5dbdd7",
+      "incoming": "0292025b27e1e199040313b649f66ecaab5dbdd7",
+      "own": "83901aca7cfadeb9f203d8fb7e62b2525df41f25",
+      "resolution": "own; incoming equals merged R1 source"
+    },
+    {
+      "path": "tests/hub-groups-mount-s89.test.ts",
+      "r1": "779e04c005e00baeb6eac1557f82073e07211769",
+      "incoming": "779e04c005e00baeb6eac1557f82073e07211769",
+      "own": "19474a2a6094ac0deaec7b0a4f0c9d37c11bedc9",
+      "resolution": "own; incoming equals merged R1 source"
+    },
+    {
+      "path": "tests/hub-rooms-migration-r1.test.ts",
+      "r1": "37ae0a4a3667b9c8a7c6e455a082d890c38227b5",
+      "incoming": "37ae0a4a3667b9c8a7c6e455a082d890c38227b5",
+      "own": "bf6fdb2a1ee1dd5e0fa36b0aabaf9ec8dd34618b",
+      "resolution": "own; incoming equals merged R1 source"
+    }
+  ],
+  "merge": "8598a330a61fb28bb1366e140dd1ba04fb041c49",
+  "ownDeltaPaths": 21,
+  "incomingOnlyPaths": 7,
+  "unchangedPaths": 13335,
+  "allBlobModesMatch": true
+}

@@ -55,3 +55,8 @@ CREATE INDEX hub_room_deliveries_parent ON hub_room_deliveries(parent_id);
 CREATE INDEX hub_room_deliveries_expiry ON hub_room_deliveries(expires_at) WHERE state IN ('queued','sent');
 `);
 } });
+
+/** Preserve issued deliveries while enabling bounded same-link retries after transient Fleet refusals. */
+export const HUB_ROOM_RETRY_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-retry", version: 1, up(db: Database.Database) {
+  db.exec("ALTER TABLE hub_room_deliveries ADD COLUMN last_sent_at INTEGER NOT NULL DEFAULT 0");
+} });

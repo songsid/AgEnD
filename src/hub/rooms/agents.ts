@@ -19,7 +19,7 @@ export interface RoomPostRow {
 interface Delivery {
   id: string; room_id: string; parent_id: string; reply_id: string; exposure_id: string; exposure_revision: number; fleet_id: string; owner: string;
   asker: string; asker_member: string; agent_member: string; payload_ref: string; payload_digest: string;
-  state: "queued" | "sent" | "answered" | "retired" | "expired"; sent_epoch: number; created_at: number; expires_at: number;
+  state: "queued" | "sent" | "answered" | "retired" | "expired"; sent_epoch: number; last_sent_at: number; created_at: number; expires_at: number;
   answer_id: string | null; answer_digest: string | null;
 }
 interface Member { id: string; subject: string; joined_sequence: number; owner_at_join: string | null }
@@ -196,7 +196,7 @@ export class HubRoomAgents {
     if (!this.live()) return false;
     const link = this.links.get(fleetId), transport = this.core.deps.transport();
     if (!link || !this.supports(link) || !transport) return false;
-    const rows = this.core.atomic(db => db.prepare("SELECT * FROM hub_room_deliveries WHERE fleet_id=? AND state IN ('queued','sent') AND sent_epoch<>? ORDER BY created_at,rowid LIMIT 64").all(fleetId, link.linkEpoch) as Delivery[]);
+    const rows = this.core.atomic(db => db.prepare("SELECT * FROM hub_room_deliveries WHERE fleet_id=? AND state IN ('queued','sent') AND (sent_epoch<>? OR last_sent_at<=?) ORDER BY created_at,rowid LIMIT 64").all(fleetId, link.linkEpoch, this.core.now() - 30_000) as Delivery[]);
     for (const d of rows) {
       if (!this.live() || !this.supports(link) || this.links.get(fleetId) !== link) return false;
       try {
@@ -215,7 +215,7 @@ export class HubRoomAgents {
         // Persist dispatch intent before the socket write: a fast member answer may arrive before send() settles.
         this.core.atomic(db => {
           if (!this.valid(db, d) || this.core.now() >= d.expires_at) throw new HubProtocolError("stale");
-          db.prepare("UPDATE hub_room_deliveries SET state='sent',sent_epoch=? WHERE id=? AND state IN ('queued','sent')").run(link.linkEpoch, d.id);
+          db.prepare("UPDATE hub_room_deliveries SET state='sent',sent_epoch=?,last_sent_at=? WHERE id=? AND state IN ('queued','sent')").run(link.linkEpoch, this.core.now(), d.id);
           db.prepare("UPDATE hub_room_posts SET stage='working' WHERE id=? AND stage='queued'").run(d.reply_id);
         }, permit);
         try {
@@ -223,7 +223,7 @@ export class HubRoomAgents {
           await transport.send(fleetId, { v: 1, type: "room.ask", requestId: d.id, linkEpoch: link.linkEpoch, payload });
         } catch {
           if (this.live()) this.core.atomic(db => {
-            db.prepare("UPDATE hub_room_deliveries SET state='queued',sent_epoch=0 WHERE id=? AND state='sent' AND sent_epoch=? AND answer_id IS NULL").run(d.id, link.linkEpoch);
+            db.prepare("UPDATE hub_room_deliveries SET state='queued',sent_epoch=0,last_sent_at=0 WHERE id=? AND state='sent' AND sent_epoch=? AND answer_id IS NULL").run(d.id, link.linkEpoch);
             db.prepare("UPDATE hub_room_posts SET stage='queued' WHERE id=? AND stage='working' AND EXISTS(SELECT 1 FROM hub_room_deliveries WHERE id=? AND state='queued')").run(d.reply_id, d.id);
           });
         }
