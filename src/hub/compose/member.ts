@@ -9,7 +9,7 @@
  * The data-view registry comes from a HubViewSource: EMPTY until the owner-approval flow exists (§7 Q2), so nothing
  * is publishable or askable — fail closed.
  */
-import { createHash, createPublicKey, randomBytes } from "node:crypto";
+import { createHash, createPublicKey, hkdfSync, randomBytes, randomUUID } from "node:crypto";
 import { closeSync, existsSync, openSync, writeSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { createHubAudit, HUB_AUDIT_MIGRATION, type HubAuditStore } from "../audit/index.js";
@@ -41,6 +41,10 @@ import { HUB_REPRESENTATIVE_MIGRATION, HubRepresentativeExecution, type HubRepor
 import { HUB_PROVIDER_SETUP_REASONS, hubProviderSetupReason, type HubProviderSetupReason } from "../execution/provider-setup.js";
 import { HubMemberFiles } from "../member/attachments.js";
 import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../member/pairing-notices.js";
+import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY } from "../protocol.js";
+import { createRoomStatePublisher, HubRoomAskAdapter, HUB_ROOM_ASK_MIGRATION, verifyRoomAskJournal,
+  type AgentStateInput, type RoomAskLink, type RoomStateLink } from "../member/room-ask.js";
+import { HubProtocolError } from "../validation.js";
 
 /** The legacy location remains assigned to its first proven binding; later pairings get separate complete sets. */
 export function memberSet(hubId: string, profile?: Pick<HubMemberProfile, "fleetId" | "owner" | "issuerKeyId">): HubStateSet {
@@ -99,6 +103,9 @@ export interface HubMemberFactoryOptions {
 export interface HubRepresentativeHost {
   /** Derive only a coarse band from this agent's local CLI/profile. Never hands exact usage to the Hub layer. */
   quota?(agent: string): Promise<import("../types.js").HubQuota>;
+  /** Room composition opt-in: cached Fleet state only, no pane probe or vendor request. */
+  readState?(agent: string): AgentStateInput | Promise<AgentStateInput>;
+  locale?: "en" | "zh-TW";
   /** Ordinary cross-instance delivery to the published agent, with beforeInput run immediately before the IPC hand-off. */
   deliver(input: HubRepresentativeDelivery): Promise<boolean>;
   /** The agent's current lifecycle token (null: not a deliverable agent now). */
@@ -297,7 +304,7 @@ function openMemberState(options: {
       }
       applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_MEMBER_JOURNAL_MIGRATION,
         { component: "s4-execution", version: 1, up: execution.migrateHubExecution }, exposureStore.HUB_EXPOSURE_MIGRATION,
-        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION]);
+        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION, HUB_ROOM_ASK_MIGRATION]);
       bindHubInstance(db, hubId, state, now());
       // P1 never initialized S4, so its absent meta row is valid only with the untouched zero floor.
       const executionMeta = db.prepare("SELECT revision FROM hub_execution_meta WHERE singleton=1").get() as { revision: number } | undefined;
@@ -307,13 +314,23 @@ function openMemberState(options: {
       const exposures = new exposureStore.HubExposureStore(db, { floor: exposureFloor!, audit,
         binding: () => ({ owner: profile.owner, fleetId: profile.fleetId }), views: options.views.load(), now });
       if (state === "new") { journal.initialize(); exposures.initialize(); }
-      if (!db.transaction(() => journal.bindPairing(profile, exposures.list())).immediate()) {
+      const roomBinding = memberSet(hubId, profile).database;
+      const roomKey = Buffer.from(hkdfSync("sha256", readKey(home, set.keys[1]!), Buffer.alloc(0),
+        Buffer.from(JSON.stringify(["agend-hub-room-journal-key-v1", roomBinding])), 32));
+      if (!db.transaction(() => {
+        // An unbound legacy set must authenticate room history before bindPairing can advance its durable floor.
+        const meta = db.prepare("SELECT binding FROM hub_member_meta WHERE singleton=1").get() as { binding: string | null };
+        if (meta.binding === null) verifyRoomAskJournal(db, { bindingKey: roomBinding, encryptionKey: roomKey });
+        if (!journal.bindPairing(profile, exposures.list())) return false;
+        verifyRoomAskJournal(db, { bindingKey: roomBinding, encryptionKey: roomKey });
+        return true;
+      }).immediate()) {
         if (set.database === scoped.database) throw new HubStateError("hub-state-mismatch", "the scoped member database belongs to another pairing");
         continue; // Proven legacy mismatch only. Keep that entire state set, including its floors and keys.
       }
       if (!options.current()) throw new HubStateError("hub-member-pairing", "the pairing changed while opening its state");
       selected = true;
-      return { db, journal, exposures, audit };
+      return { db, journal, exposures, audit, roomKey, roomBinding };
     } finally { if (!selected) db.close(); }
   }
   throw new HubStateError("hub-state-mismatch", "no member state belongs to this pairing");
@@ -409,7 +426,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       };
       const profileCurrent = () => current() && options.boundHub() === hubId
         && new HubMemberProfileStore(options.home, hubId).profileDigest() === profileDigest;
-      const { db, journal, exposures, audit } = openMemberState({ home: options.home, hubId, profile, execution,
+      const { db, journal, exposures, audit, roomKey, roomBinding } = openMemberState({ home: options.home, hubId, profile, execution,
         exposureStore: exposureMods.store, views, outbox: forwarding, now, current: profileCurrent });
       teardown.add("the member database", () => db.close());
       if ((cfg as { execution?: { provider?: unknown } }).execution?.provider !== undefined) {
@@ -460,6 +477,48 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       teardown.add("the representative adapter", () => service.close());
       service.recover();
       outbox = service.restrictedOutbox();
+
+      const roomCurrent = () => live() && profileCurrent() && !terminalHold;
+      const room = new HubRoomAskAdapter({ db, bindingKey: roomBinding, encryptionKey: roomKey, current: roomCurrent,
+        locale: options.representative.locale,
+        localExposure: id => {
+          if (!roomCurrent()) return null;
+          const local = exposures.localExposure(id);
+          if (!local || !service.readiness(id, local.exposure.revision).ok) return null;
+          const consent = db.prepare("SELECT agent,token FROM hub_representative_consents WHERE consent_id=?").get(local.consentId) as { agent: string; token: string } | undefined;
+          if (!consent || consent.agent !== local.agent || options.representative.agentToken(local.agent) !== consent.token) return null;
+          return { agent: local.agent, consentId: local.consentId, revision: local.exposure.revision, token: consent.token };
+        },
+        deliver: input => options.representative.deliver(input) });
+      const roomState = createRoomStatePublisher({
+        exposures: () => exposures.list().flatMap(row => row.committed?.exposure.state === "published"
+          ? [{ exposureId: row.committed.exposure.id, agent: row.agent }] : []),
+        read: agent => options.representative.readState!(agent),
+      });
+      const roomLinks = new WeakMap<HubMemberLink, RoomAskLink & RoomStateLink>();
+      const roomLink = (l: HubMemberLink) => {
+        let view = roomLinks.get(l);
+        if (!view) {
+          const version = l.revocationVersion;
+          view = { features: l.features,
+            current: () => roomCurrent() && online === l && links.link() === l && l.current() && l.revocationVersion === version,
+            sendAnswer: payload => l.send({ v: 1, type: "room.answer", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }),
+            sendState: payload => l.send({ v: 1, type: "agent.state", requestId: randomUUID(), linkEpoch: l.linkEpoch, payload }) };
+          roomLinks.set(l, view);
+        }
+        return view;
+      };
+      let roomTimer: NodeJS.Timeout | null = null;
+      const stopRooms = () => { if (roomTimer) clearInterval(roomTimer); roomTimer = null; room.connected(null); roomState.connected(null); };
+      const refreshRooms = () => Promise.all([room.flush(), roomState.refresh()]).then(() => undefined);
+      const startRooms = (l: HubMemberLink) => {
+        stopRooms();
+        if (!options.representative.readState || !l.features.has(HUB_ROOM_ASK_CAPABILITY) || !l.features.has("welcome-caps-v1")) return;
+        const view = roomLink(l); room.connected(view); roomState.connected(view);
+        roomTimer = setInterval(() => { void refreshRooms().catch(() => {}); }, 5_000); roomTimer.unref();
+        void refreshRooms().catch(() => {});
+      };
+      teardown.add("room asks and presence", () => { stopRooms(); roomState.close(); room.close(); });
 
       // 6. S1 admission + client: #3116's handshake on (re)connect, S5's receive routing.
       const sender = exposureMods.store.exposureSnapshotSender(exposures);
@@ -514,11 +573,13 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       client = new HubMemberClient({
         home: options.home,
         hubId,
+        ...(options.representative.readState ? { capabilities: [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY] } : {}),
         memberOrigin: profile.hub.memberOrigin,
         // #3429 B: a pending relocation's `to` first, then the anchor; a relocation state that does not verify: none.
         ...(profileDigest ? { dial: () => relocations.dialOrder(profile, profileDigest) } : {}),
         current: live,
         reconcile: async (l) => {
+          stopRooms();
           links.relink(l);
           online = null;
           await handshake(l);
@@ -536,11 +597,24 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             online = l;
             quota.start(l);
             terminalHold = false; reportLink("online");
+            startRooms(l);
             // Questions admitted while offline (or before a restart, with no input yet) go out on this link.
             service.pump();
           }
         },
-        receive,
+        receive: (frame, l) => {
+          if (frame.type === "room.ask") {
+            try { room.accept(frame.payload, roomLink(l)); }
+            catch (error) {
+              // A racing withdrawal or unready agent refuses only this ask, not unrelated work on the shared link.
+              if (!(error instanceof HubProtocolError) || error.code === "backpressure") throw error;
+              options.log("warn", "Hub room ask not admitted", { messageId: frame.payload.messageId, reason: error.code });
+            }
+            return Promise.resolve();
+          }
+          if (frame.type === "room.answer-ack") { room.acknowledge(frame.payload, roomLink(l)); return Promise.resolve(); }
+          return receive(frame, l);
+        },
         // M-2901: where the Hub's pages are now. Kept beside the pairing (never in it), only when it verifies against the
         // issuer key pinned at pairing and moves forward; audited in this member's own log either way it is decided.
         webOrigin: (statement, l) => {
@@ -555,6 +629,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
         },
         hold: (code) => {
+          stopRooms();
           quota.stop();
           const state = code === "revoked" ? "revoked" : code === "rejected" || code === "invalid" ? "rejected" : "offline";
           terminalHold = state === "revoked" || state === "rejected";
@@ -569,7 +644,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         store: exposures,
         // P1 representative agent (docs/design/hub-representative-agent.md): the owner shares a configured agent.
         agents: options.agents,
-        afterCommit: () => sender.afterCommit(),
+        afterCommit: async () => { const result = await sender.afterCommit(); void refreshRooms().catch(() => {}); return result; },
         refused: () => sender.isRefused(),
         // S5's readiness: the agent's lifecycle token, recorded against the consent inside S3c's atomic publish.
         readinessCandidate: (candidate) => service.readinessCandidate(candidate),
@@ -581,7 +656,9 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (!live()) throw new HubStateError("service-unavailable", "the Hub member was switched off while starting");
           options.attachAttention(() => service.attentionItems());
           options.attachExposures(api);
-          options.representative.attachReports((input) => service.report(input), (cid, agent) => service.deliveryFailed(cid, agent));
+          options.representative.attachReports(input => room.report(input) ?? service.report(input), (cid, agent) => {
+            room.deliveryFailed(cid, agent); service.deliveryFailed(cid, agent);
+          });
           teardown.add("the fleet attachments", () => {
             options.representative.attachReports(null, null);
             options.attachExposures(null);
@@ -591,6 +668,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         fence() {
           fenced = true;
+          stopRooms();
           quota.stop();
           links.fence();
           client?.fence();

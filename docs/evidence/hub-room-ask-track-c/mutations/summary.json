@@ -1,0 +1,87 @@
+{
+  "baseline": "f83766db08581ffefd818bc2393b9c88fbf421471c94caebc15d29d51aaae979",
+  "testSha256": "8a9a436470a3f54f6dc745d33a1b1bfcb5e3da00b9df770e0b62839ae3e220f3",
+  "cases": [
+    {
+      "name": "R1-replay-payload",
+      "sourceSha256": "e691914b7bdd15be063a7997598c29f9fad373d6f27f37c8ccaca3daf27a6257",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 3.98291015625
+    },
+    {
+      "name": "R2-local-lifecycle",
+      "sourceSha256": "5e906cafcec7c2227e31d7e7e0ec790e50a3eb2d10f15087e622b2de48195865",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.7060546875
+    },
+    {
+      "name": "R3-input-intent",
+      "sourceSha256": "684957bf00932d1e6d49b7fa7a3b08f0375cc9fd64e6b4e66312a18251a8b872",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.73193359375
+    },
+    {
+      "name": "R4-exact-answer-ack",
+      "sourceSha256": "8859b8ce40ea4aedcf2ddc04b6641ec50027dbf1946b972180dc52df67633569",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.91357421875
+    },
+    {
+      "name": "R5-recover-input",
+      "sourceSha256": "05accf9132a7e6e126f70f0912c4e340b02aade3c9212452ea4486d6240e2d84",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 6.4814453125
+    },
+    {
+      "name": "R6-once-before-input",
+      "sourceSha256": "fc7a01fa234494150262944d42d87d53d8453fc475048d8db743048e20ef1866",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 6.2470703125
+    },
+    {
+      "name": "R7-frozen-answer-id",
+      "sourceSha256": "589c6026822ae288b162f64beebe2b6221db5e4d5e94e0913f1c117cf8220c26",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 6.3076171875
+    },
+    {
+      "name": "R8-held-presence-fence",
+      "sourceSha256": "6cd94ae8a8590d9300ef9b7d6e55930c683ce2feec7d646146dde5ec03b92286",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 6.68359375
+    },
+    {
+      "name": "R9-presence-dedupe",
+      "sourceSha256": "2d1ce8017f6f4d74b32d3e7887eaaf950a3a8e2ed9da1cae88df755014e45d79",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 7.54931640625
+    },
+    {
+      "name": "R10-context-reply-bound",
+      "sourceSha256": "285c1d24232ae439a4e2db7520b7cc82ad25e138163270e3a92a5e141d886b74",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 8.06591796875
+    }
+  ],
+  "restored": true
+}

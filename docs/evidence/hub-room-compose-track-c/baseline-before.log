@@ -1,0 +1,50 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c
+
+x·xx
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > composes negotiated room delivery, text reports, exact ACK and viewer-neutral presence
+AssertionError: promise rejected "Error: Hub protocol: incompatible { code: '…' }" instead of resolving
+ ❯ tests/hub-room-compose-track-c.test.ts:55:40
+     53|   const h = await harness(); await h.start(); const exposure = h.publi…
+     54|   const ask = h.ask(exposure.exposureId!);
+     55|   await expect(h.send("room.ask", ask)).resolves.toBeUndefined();
+       |                                        ^
+     56|   await vi.waitFor(() => expect(h.inputs).toHaveLength(1));
+     57|   expect(h.inputs[0]!.text).toContain("Weekly"); expect(h.row(ask.mess…
+
+Caused by: Error: Hub protocol: incompatible
+ ❯ HubServer.send src/hub/server.ts:188:198
+ ❯ Object.send tests/hub-room-compose-track-c.test.ts:40:81
+ ❯ tests/hub-room-compose-track-c.test.ts:55:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'incompatible' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > flushes the same frozen answer after same-binding restart without replaying agent input
+Error: Hub protocol: incompatible
+ ❯ HubServer.send src/hub/server.ts:188:198
+
+ ❯ Object.send tests/hub-room-compose-track-c.test.ts:40:81
+ ❯ tests/hub-room-compose-track-c.test.ts:80:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > routes delayed IPC failure to the room intent and detaches reports on fence
+Error: Hub protocol: incompatible
+ ❯ HubServer.send src/hub/server.ts:188:198
+
+ ❯ Object.send tests/hub-room-compose-track-c.test.ts:40:81
+ ❯ tests/hub-room-compose-track-c.test.ts:93:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 1 passed (4)
+   Start at  01:42:07
+   Duration  3.10s (transform 1.56s, setup 132ms, import 1.92s, tests 890ms, environment 0ms)
+

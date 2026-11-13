@@ -31,12 +31,13 @@ For signing in to a person's *own* dashboard (`/web`, codes, the authenticator a
 | Allow someone to ask, AD group, name search, how long, Revoke, Recent questions | [Who may ask](#who-may-ask) |
 | New chat, asking someone's agent, Waiting / Answered | [Asking an agent](#asking-an-agent) |
 | room creators, room administration, Hub assistant | [Rooms and the Hub assistant](#rooms-and-the-hub-assistant) |
+| @agent, @all, room answers, Idle, Paused, Stopped | [Agents in a Hub room](#agents-in-a-hub-room) |
 | Chat with agents / Share agents / Connect a fleet by AD group, Paused | [Group permissions](#group-permissions) |
 | Room assistant, backend/account, cap, idle stop, answer counts | [Room assistant administration](#room-assistant-administration) |
 | Connected fleets, Revoke, Individual invitations, pairing code, Notices | [Administration](#administration) |
 | `hub`, `hub_member` in fleet.yaml | [Config keys](#config-keys) |
 | how many, how long | [Limits](#limits) |
-| roles, managers, rooms | [Not available yet](#not-available-yet) |
+| custom roles, virtual teams, sharing a ClassicBot room | [Not available yet](#not-available-yet) |
 | can't connect, certificate, different host names, old tab | [Troubleshooting](#troubleshooting) |
 
 ## What the Hub is
@@ -342,6 +343,25 @@ after an upgrade. Do not offer an assistant when the Hub has no enabled assistan
   room's queued inputs. An interrupted answer is not automatically repeated after a restart.
 - Agent owners can see which rooms their agent is in and remove it. Pausing sharing keeps its room membership;
   invitations to another owner's agent still require that owner's acceptance when the invitation service is available.
+## Agents in a Hub room
+
+On a Hub with rooms, mention a shared agent with **@agent**, or **@all** when the room allows it. A room manager can
+add their own shared agent. Its owner consents to room questions by adding it; this does not grant anyone a private
+one-to-one chat. The separate **Who may ask** list still controls private chats.
+
+- The question reaches the agent's existing conversation on its owner's Fleet. It names the room and asker and
+  includes recent room messages. The agent keeps its own folder and tools; any required approval goes to its owner.
+- Everyone in the room can see the question and answer. The answer returns to the same question, and a reconnect
+  retries the saved answer without entering the question again. Room agent answers are text only for now.
+- **Idle** (待命) means the agent can be woken by a question. **Working** means it is busy. **Paused** (暫停) names a
+  known reason such as quota, sign-in or approval. **Stopped** (已停止, grey) means the Fleet is reachable but its owner
+  must start the agent. **Offline** (離線) means the Fleet cannot be reached; an older Fleet can instead show an update
+  requirement.
+- Offline, stopped or paused targets wait; unanswered room questions expire after 24 hours. A question whose input
+  outcome is uncertain is held rather than automatically entered a second time.
+
+Inviting another owner's agent and virtual-team management arrive in separate slices; do not invent those controls
+on a Hub that does not provide them. The room assistant is also separate.
 
 ## Group permissions
 
@@ -431,6 +451,7 @@ Say plainly that these are not in the product yet:
 - **Custom roles and a manager's team view** (several administrators, roles assigned to people or AD groups, a team
   list with usage counts). Designed and decided; not shipped. Today there is one Hub administrator.
 - **Sharing a ClassicBot room.** Only fleet agents can be shared.
+- **Virtual teams and team-based grants.** They are separate from the existing AD-group grants.
 - **A second sign-in factor on the Hub.** It uses the company account and password only.
 - **Adding to People excluded from the editor.** The list is shown; it cannot be edited there in this release.
 - **Per-person cost or quota figures on the Hub.** Exact usage stays in each Fleet.

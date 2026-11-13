@@ -1,0 +1,12 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c
+
+························(node:65508) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+·························
+
+ Test Files  4 passed (4)
+      Tests  49 passed (49)
+   Start at  02:05:42
+   Duration  17.99s (transform 7.18s, setup 225ms, import 10.45s, tests 21.05s, environment 0ms)
+

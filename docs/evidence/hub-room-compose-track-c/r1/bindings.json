@@ -1,0 +1,81 @@
+{
+  "sourceCommit": "386f0c03a85e7c602012b2a63406ff32b75dd70e",
+  "reviewedBefore": "f0a743f7455292a80cfa2a6066be32cf2da33c6e",
+  "sources": [
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "693c08ef6faddec7a1d1cd799cbc9845e4cad3b8a2a87e46c600f9405d437e66"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "cca7ea85c2288b67a7c7b6292625ebd4ca11682be5fca105ac1293972b35035a"
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "sha256": "36d930616bb9fdd6dc35c726271bf5a406270699127e0ab96ffc01a512c4b581"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "900a927e3137df86e5e92a9b85918525d065f307122fa131ce9f42c1e78ea0f1"
+    },
+    {
+      "path": "tests/hub-room-compose-track-c.test.ts",
+      "sha256": "b74464cbaeac82b0e4dbe8fe0374f466d146454eb58ee8d329ede74b0c2c737d"
+    },
+    {
+      "path": "tests/hub-compose-member.test.ts",
+      "sha256": "bef4d40cd336d68100def136105fff06edbbc6df4c7b715d7af9e84fb866e53e"
+    },
+    {
+      "path": "tests/hub-fleet-hooks.test.ts",
+      "sha256": "e196e65bcb8b1c9c3ed194ad636234c9b325b73c4dad38b19e473f1023243a42"
+    },
+    {
+      "path": "docs/design/hub-room-member-composition.md",
+      "sha256": "ccc3dd740def3dfff07fda5e8b77794cfa922c14276be81362dc7939289b514b"
+    },
+    {
+      "path": "changes/3095-room-member-composition.md",
+      "sha256": "57b6b0dbe0f186b91511877c0b08a9b2a81a5106ffc85dfbce888cc3b2e5c733"
+    },
+    {
+      "path": "changes/3095-room-member-composition.zh-TW.md",
+      "sha256": "c2d985fffce2c2a0736c844625d9ed07eee5e0a2483d9ab7b25ae1ca3ec7aa18"
+    },
+    {
+      "path": "tests/helpers/hub-rig.ts",
+      "sha256": "32882f2454335f6cd463881afa5633519ddf8c825affe496c27dbbd7427983e7"
+    },
+    {
+      "path": "src/hub/protocol.ts",
+      "sha256": "0f61a27e699c0d2613c88df047adca11518749b250a8fcd45ac765370765513c"
+    },
+    {
+      "path": "src/hub/client.ts",
+      "sha256": "0e3c0755d24273172d997361787d76772e6d6bd9fb45b4870bbe60964b0ad6ad"
+    },
+    {
+      "path": "src/hub/server.ts",
+      "sha256": "7bf80bbeea018c3dbfd01c1baacfa7d8d29505322aa5802932e646ed6e43a128"
+    }
+  ],
+  "checks": {
+    "before": {
+      "semanticRed": 2,
+      "unselected": 9
+    },
+    "current": {
+      "pass": 49,
+      "files": 4,
+      "compositionCases": 13
+    },
+    "sourceTypes": 0,
+    "testTypes": 0,
+    "isolatedNativeCompilingAssertionReversals": 3
+  },
+  "limits": [
+    "No new browser/PNG/model/real directory/Fleet/container work.",
+    "R0 receipts and seven reversals are historical at their recorded source; not a new 185-test run.",
+    "All parent/UI/gallery/ordinary review/exact-CI holds remain."
+  ]
+}

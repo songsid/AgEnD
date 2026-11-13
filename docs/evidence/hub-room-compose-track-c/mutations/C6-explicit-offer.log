@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c
+
+x--------
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > composes negotiated room delivery, text reports, exact ACK and viewer-neutral presence
+AssertionError: promise rejected "Error: Hub protocol: incompatible { code: '…' }" instead of resolving
+ ❯ tests/hub-room-compose-track-c.test.ts:61:40
+     59|   const h = await harness(); await h.start(); const exposure = h.publi…
+     60|   const ask = h.ask(exposure.exposureId!);
+     61|   await expect(h.send("room.ask", ask)).resolves.toBeUndefined();
+       |                                        ^
+     62|   await vi.waitFor(() => expect(h.inputs).toHaveLength(1));
+     63|   expect(h.inputs[0]!.text).toContain("Weekly"); expect(h.row(ask.mess…
+
+Caused by: Error: Hub protocol: incompatible
+ ❯ HubServer.send src/hub/server.ts:188:198
+ ❯ Object.send tests/hub-room-compose-track-c.test.ts:45:81
+ ❯ tests/hub-room-compose-track-c.test.ts:61:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'incompatible' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  01:49:55
+   Duration  2.68s (transform 1.66s, setup 133ms, import 1.96s, tests 421ms, environment 0ms)
+

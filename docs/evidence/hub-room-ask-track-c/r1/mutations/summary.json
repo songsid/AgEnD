@@ -1,0 +1,143 @@
+{
+  "baseline": "e05091c211ec5c3521b2ee81ad8d46533370596de8da57a218a4d4602ba433bb",
+  "testSha256": "d0995f3a18cde51ba851fb8683949905b37105055970ca1dcb29dd7299ff3049",
+  "cases": [
+    {
+      "name": "R1-replay-payload",
+      "sourceSha256": "c8451e09b1cf42e1810d0f32b7b9449cb620e2743cd664a5617dee55b97f0908",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 2.9296875
+    },
+    {
+      "name": "R2-local-lifecycle",
+      "sourceSha256": "1e6c3bea7bf4f4294bcf57b112974d4a11d67954f8d665d8c257b9e8fa45b31e",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 3.416015625
+    },
+    {
+      "name": "R3-input-intent",
+      "sourceSha256": "79acd8dc74df857a674060db5a9298e80664debe7cce2c7e7213b902f8d73fae",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 3.3662109375
+    },
+    {
+      "name": "R4-exact-answer-ack",
+      "sourceSha256": "b7d78cccdcc5b345ed8e1fc1d9a1ff680ae545913bd460b3e95910d24924638e",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 3.6572265625
+    },
+    {
+      "name": "R5-recover-input",
+      "sourceSha256": "6af0c56f2a29580c5218ba2be1686631dc8e7600eb5da84d387cb6aba5368fd1",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 4.8349609375
+    },
+    {
+      "name": "R6-once-before-input",
+      "sourceSha256": "2ff2309a5ad2590a56ff8b87570fd7f4ac61328b247b0e76c581f9125ad7ed68",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.0888671875
+    },
+    {
+      "name": "R7-frozen-answer-id",
+      "sourceSha256": "244b92abb54835ad6fd518057f59195e3f24d8a4ebcd538de0c99e1d55c8bb2e",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.40234375
+    },
+    {
+      "name": "R8-held-presence-fence",
+      "sourceSha256": "f7bacd396b0a306b4894238b82d9c8769366aa1b5f2cb829be934dc92489b948",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.2900390625
+    },
+    {
+      "name": "R9-presence-dedupe",
+      "sourceSha256": "4d1b74f49fbca5ccb35fc2cb3b3a0f4fd2790002fd266eb68d52b6a3b0cbda93",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.34716796875
+    },
+    {
+      "name": "R10-context-reply-bound",
+      "sourceSha256": "1d17afb0546a5088002ec6a53ef8d07c491f2578a216ee4a063659a06130638e",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.44140625
+    },
+    {
+      "name": "R11-current-room-capability",
+      "sourceSha256": "7e55f6c18f9bf97bf4fd885c86686985dffe3888c53cbc3bd024221fd0005f8f",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.32568359375
+    },
+    {
+      "name": "R12-presence-room-capability",
+      "sourceSha256": "3040b261b814dc664324af7f8588adf763be1934bf07e99730f2d35f043ee71c",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.7802734375
+    },
+    {
+      "name": "R13-dispatch-teardown",
+      "sourceSha256": "014d526534b546a960504f07ca1ba04beacc1b8045b6868a37febae06372cb27",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.6376953125
+    },
+    {
+      "name": "R14-report-teardown",
+      "sourceSha256": "2da689a0e8b08819992c31c46211ec4f5c93730315c40f1c6da94dc62ec31d9c",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 6.0673828125
+    },
+    {
+      "name": "R15-wakeable-sleep",
+      "sourceSha256": "9d5fecb3086934305bfaa336ac4fffea6ada1d8e70887578e5b85f3be29fef33",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 6.2041015625
+    },
+    {
+      "name": "R16-crash-normalization",
+      "sourceSha256": "f418bcc5c154dc9e283f06de2df79c24d41003b103cb965f905abb0410c3d03c",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.947265625
+    },
+    {
+      "name": "R17-viewer-reason",
+      "sourceSha256": "088086409d5369475f81c9beabf5d84ea9b7540650d459d71233feea60f615e1",
+      "compileExit": 0,
+      "testExit": 1,
+      "assertionRed": true,
+      "load": 5.7109375
+    }
+  ],
+  "restored": true
+}
