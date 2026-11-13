@@ -73,8 +73,9 @@ function fixture(roleMode = false) {
 }
 
 describe("S129 Save successor release", () => {
-  it("acquires after mount completion and releases only inside the originating response", async () => {
+  it.each(["administration", "preparation"] as const)("acquires after mount completion and releases only inside the originating %s response", async mode => {
     const r = fixture(true);
+    if (mode === "preparation") { delete r.context.administration; r.context.preparation = { directoryPreparation: true }; }
     try {
       await expect(r.save()).resolves.toMatchObject({ state: "ready" });
       expect(r.prepareRole).toHaveBeenCalledExactlyOnceWith(r.rotation, r.id); expect(r.complete).not.toHaveBeenCalled();
