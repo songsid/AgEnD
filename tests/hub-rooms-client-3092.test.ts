@@ -42,9 +42,10 @@ describe("before the Hub has rooms (today's server)", () => {
 
 describe("rooms (seam 1) against the fixture", () => {
   it("the list: the spec's rooms, unread first then by last message; my permission to open rooms; invitations waiting", async () => {
-    const { client } = await live();
+    const { client, calls } = await live();
     expect(client.roomsLive()).toBe(true);
     const r = await client.roomList();
+    expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/rooms?v=2" });              // Ridge #3858: /rooms stays direct-only for old tabs
     expect(r.me).toEqual({ canCreateRooms: true }); expect(r.invitations).toBe(1);
     expect(r.rooms.map((x: any) => x.name)).toEqual(["研一主管週會", "project-helper", "研發例會", "report-bot", "去年專案", "Hub 助理"].filter(n => r.rooms.some((x: any) => x.name === n)).sort((a, b) =>
       r.rooms.findIndex((x: any) => x.name === a) - r.rooms.findIndex((x: any) => x.name === b)));
@@ -58,13 +59,14 @@ describe("rooms (seam 1) against the fixture", () => {
   it("a room: every presence state, both notes, the assistant, my role and its settings; members only @all where allowed", async () => {
     const { client } = await live();
     const weekly = await client.room("room-weekly");
-    expect(weekly.me).toEqual({ role: "manager" });
+    expect(weekly.me).toEqual({ id: FIXTURE_ME.id, role: "manager" });
+    expect(weekly.members.filter((m: any) => m.canAsk).map((m: any) => m.name)).toEqual(["project-helper", "test-runner", "design-review", "report-bot", "old-helper"]);
     expect(new Set(weekly.members.map((m: any) => m.presence))).toEqual(new Set(["online", "offline", "idle", "working", "paused", "later"]));
     expect(weekly.members.map((m: any) => m.presenceNote).filter(Boolean)).toEqual(["額度用完", "等待登入", "需要更新 AgEnD"]);
     expect(weekly.members.filter((m: any) => m.kind === "assistant")).toHaveLength(1);
     expect(weekly.invited).toHaveLength(1);
     const rd = await client.room("room-rd");
-    expect(rd).toMatchObject({ me: { role: "member" }, settings: { allMention: false } });
+    expect(rd).toMatchObject({ me: { id: FIXTURE_ME.id, role: "member" }, settings: { allMention: false } });
   });
   it("messages: a page newest last; the @all's counts, its answers as replies, the late ones queued; the assistant's summary", async () => {
     const { client, calls } = await live();
@@ -155,6 +157,34 @@ describe("rooms (seam 1) against the fixture", () => {
     stopRooms();
     fx.emit("message.added", { roomId: "r", message: { id: "m3" } });
     expect(added).toHaveLength(2); expect(made).toBe(1);                                                  // closed with the last
+  });
+  it("the notices ride the rooms stream at the session's notice version — the contract the rooms server honours (#3858)", async () => {
+    const { client, fx } = await live();
+    const urls: string[] = [], Real = fx.EventSource;
+    (globalThis as any).EventSource = class extends Real { constructor(url: string) { super(url); urls.push(url); } };
+    const got: any[] = [];
+    const off = client.subscribePairingNotices((n: any) => got.push(n), () => {}, 3);
+    expect(urls).toEqual(["/hub/v1/rooms/events?notices=2"]);                                           // this session has no enrolment-code-v1: v2
+    fx.emit("notices", { notices: [{ id: "n1" }] });
+    expect(got).toEqual([[{ id: "n1" }]]);
+    off();
+  });
+  it("a name that listens again while the stream stays open is heard once, however often (Fable on #3848)", async () => {
+    const { client, fx } = await live();
+    const stopRooms = client.subscribeRooms({ "message.added": () => {} });                              // keeps the stream open
+    let n = 0;
+    for (let cycle = 0; cycle < 3; cycle++) { const off = client.subscribePairingNotices(() => {}, () => {}, 3); off(); }
+    const off = client.subscribePairingNotices(() => { n++; }, () => {}, 3);
+    fx.emit("notices", { notices: [{ id: "n1" }] });
+    expect(n).toBe(1);
+    // A room view that remounts: its handler again, once.
+    let added = 0; stopRooms();
+    const keep = client.subscribePairingNotices(() => {}, () => {}, 3);
+    for (let cycle = 0; cycle < 2; cycle++) client.subscribeRooms({ "message.added": () => {} })();
+    const stop = client.subscribeRooms({ "message.added": () => { added++; } });
+    fx.emit("message.added", { roomId: "r", message: { id: "m" } });
+    expect(added).toBe(1);
+    off(); keep(); stop();
   });
   it("a write without the session's CSRF is refused by the fixture as by the Hub", async () => {
     const fx = createHubRoomsFixture();

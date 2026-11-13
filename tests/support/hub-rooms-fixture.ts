@@ -17,6 +17,7 @@
  * - events (Lumen): message.updated carries `parent` { id, ask } when a reply changes its question's counts;
  *   room.changed { roomId, removed: true } when I am no longer a member; member.changed { roomId };
  * - the list answer: `me` { canCreateRooms }, `invitations` (pending count);
+ * - room detail: `me` { id, role } (the panel marks 「你」); an agent member's `canAsk` (dev-claude2);
  * - a Message echoes the `idempotencyKey` it was sent with; `warning: "assistant-unavailable"` (Ridge) when an @ of the
  *   assistant was stored but the assistant cannot answer now (setAssistant("paused")). Refusals: all-mention-off (403),
  *   not-member (403), archived (409).
@@ -28,6 +29,8 @@ export type Presence = "online" | "idle" | "working" | "paused" | "offline" | "l
 export interface FixtureMember {
   id: string; kind: "person" | "agent" | "assistant" | "later"; name: string; owner?: { name: string };
   role: "manager" | "member"; presence: Presence; presenceNote?: string;
+  /** dev-claude2: an agent this person may also ask one-to-one (「和它一對一對話」, spec §5). */
+  canAsk?: boolean;
 }
 export interface FixtureMessage {
   id: string; roomId: string; at: number; author: { kind: "person" | "agent" | "assistant" | "system"; id: string; name: string; owner?: { name: string } };
@@ -61,7 +64,9 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   let seq = 0;
   const nextId = (p: string) => `${p}-${String(++seq).padStart(4, "0")}`;
   const agentMembers: FixtureMember[] = AGENTS.map(([name, owner, presence, note], i) => ({ id: `exp-${String(i + 1).padStart(2, "0")}`, kind: presence === "later" ? "later" : "agent",
-    name, owner: { name: owner }, role: "member", presence, ...(note ? { presenceNote: note } : {}) }));
+    name, owner: { name: owner }, role: "member", presence, ...(note ? { presenceNote: note } : {}),
+    // I may ask 林小華's agents one-to-one (project-helper's chat below is one of them) and report-bot (its chat too).
+    ...(owner === "林小華" || name === "report-bot" ? { canAsk: true } : {}) }));
   const people: FixtureMember[] = [
     { id: FIXTURE_ME.id, kind: "person", name: FIXTURE_ME.name, role: "manager", presence: "online" },
     { id: "person-chen", kind: "person", name: "陳主任", role: "member", presence: "online" },
@@ -168,7 +173,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       const room = roomOf(decodeURIComponent(m[1]!));
       if (!room) return fail(404, "not-found");
       const sub = m[2];
-      if (!sub && method === "GET") return { status: 200, body: { room: listItem(room), me: { role: room.members.find(x => x.id === FIXTURE_ME.id)?.role ?? "member" },
+      if (!sub && method === "GET") return { status: 200, body: { room: listItem(room), me: { id: FIXTURE_ME.id, role: room.members.find(x => x.id === FIXTURE_ME.id)?.role ?? "member" },
         members: room.members, settings: room.settings, invited: room.invited } };
       if (!sub && method === "PATCH") {
         const b = req.body ?? {};
@@ -281,6 +286,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       if (this.readyState !== 1) return; for (const fn of this.listeners.get(name) ?? []) fn({ data: JSON.stringify(data) }); } };
     constructor(readonly url: string) { if (url.startsWith("/hub/v1/rooms/events")) sources.add(this.self); else this.readyState = 2; }
     addEventListener(name: string, fn: Listener) { if (!this.listeners.has(name)) this.listeners.set(name, new Set()); this.listeners.get(name)!.add(fn); }
+    removeEventListener(name: string, fn: Listener) { this.listeners.get(name)?.delete(fn); }
     close() { this.readyState = 2; sources.delete(this.self); }
   }
   /**

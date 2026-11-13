@@ -56,6 +56,14 @@ export interface HubAnswer {
   attachments?: readonly HubAttachmentRef[]; // attachments-v1 links only; bound through contentDigest
   buttons?: HubAnswerButtons; // buttons-v1 links only; all choices/settings bound through contentDigest
 }
+/** Group room delivery has its own durable per-agent ID; it is not a direct grant-backed question. */
+export interface HubRoomContextRow { author: string; text: string; at: Millis; repliedTo?: true }
+export interface HubRoomAsk { messageId: MessageId; roomId: RoomId; roomName: string; exposureId: ExposureId;
+  asker: { name: string }; text: string; context: readonly HubRoomContextRow[] }
+export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string }
+export interface HubRoomAnswerAck { messageId: MessageId; answerId: string }
+export type HubAgentStateReason = "quota" | "auth" | "approval" | "update" | "operator" | "idle" | "capacity" | "error" | "stopped" | "crashed" | "stuck" | "unknown";
+export interface HubAgentState { exposureId: ExposureId; state: "idle" | "working" | "paused"; reason?: HubAgentStateReason; note?: string }
 export interface HubAnswerButtons {
   id: string; labels: readonly string[]; values?: readonly string[];
   poll?: import("../reply-polls.js").PollConfig;
@@ -98,6 +106,8 @@ export interface HubRevocation {
 }
 
 export type HubMemberFrame =
+  | HubFrame<"room.answer", HubRoomAnswer>
+  | HubFrame<"agent.state", HubAgentState>
   | HubFrame<"hello", HubHello>
   | HubFrame<"member.leave", Record<string, never>>
   | HubFrame<"exposure.snapshot", HubExposureSnapshot>
@@ -117,6 +127,8 @@ export type HubPairingNotice = {
 /** #3429 option B: an issuer-signed member-address relocation (member-origin.ts). */
 export interface HubRelocation { v: 1; from: string; to: string; spkiSha256: Sha256; revision: Epoch; signature: string }
 export type HubServerFrame =
+  | HubFrame<"room.ask", HubRoomAsk>
+  | HubFrame<"room.answer-ack", HubRoomAnswerAck>
   | HubFrame<"welcome", HubWelcome>
   | HubFrame<"question", HubQuestion>
   | HubFrame<"receipt", HubReceipt> // acknowledgment of durably retained member evidence

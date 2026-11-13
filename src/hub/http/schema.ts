@@ -9,6 +9,7 @@ import type Database from "better-sqlite3";
 import { HUB_BUTTONS_MIGRATION } from "../buttons.js";
 import { HUB_SESSION_AUTHENTICATION_MIGRATION } from "../session-directory-transition.js";
 import { HUB_SESSION_EPOCH_MIGRATION } from "../session-epoch.js";
+import { HUB_ROOMS_MIGRATION, HUB_ROOM_AGENTS_MIGRATION, HUB_ROOM_RETRY_MIGRATION } from "../rooms/schema.js";
 
 export interface HubHttpMigration { readonly component: string; readonly version: number; up(db: Database.Database): void }
 
@@ -85,6 +86,7 @@ CREATE INDEX hub_leases_message ON hub_leases(message_id);
 `;
 
 export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
+  // Group rooms are independent of the retained direct-chat delivery tables.
   Object.freeze({ component: "s3-http" as const, version: 1, up: (db: Database.Database) => { db.exec(V1); } }),
   Object.freeze({ component: "s3-quota" as const, version: 1, up: (db: Database.Database) => {
     db.exec("CREATE TABLE hub_quota_preferences(exposure_id TEXT PRIMARY KEY REFERENCES hub_exposures(id), visible INTEGER NOT NULL CHECK(visible IN (0,1)))");
@@ -101,4 +103,7 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
     db.exec("ALTER TABLE hub_exposures ADD COLUMN sharing_paused INTEGER NOT NULL DEFAULT 0 CHECK(sharing_paused IN (0,1))");
     db.exec("ALTER TABLE hub_exposures ADD COLUMN sharing_epoch INTEGER NOT NULL DEFAULT 0 CHECK(sharing_epoch>=0)");
   } }),
+  HUB_ROOMS_MIGRATION,
+  HUB_ROOM_AGENTS_MIGRATION,
+  HUB_ROOM_RETRY_MIGRATION,
 ]);

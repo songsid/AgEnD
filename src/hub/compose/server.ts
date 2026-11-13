@@ -33,6 +33,7 @@ import { createHubGroupWelcome } from "../group-policy/welcome.js";
 import { signAsker, canonicalArguments, sha256, personKeyString } from "../identity.js";
 import { signHubWebOrigin } from "../web-origin.js";
 import { signHubRelocation } from "../member-origin.js";
+import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY } from "../protocol.js";
 import { BIND_SECRET_REL, bindSecretPath } from "../init/layout.js";
 import type { HubMountedService } from "../mount.js";
 import { HubPairingService } from "../pairing.js";
@@ -109,6 +110,7 @@ export interface HubHttp {
   handle(req: IncomingMessage, res: ServerResponse): boolean;
   receive(frame: Exclude<HubMemberFrame, { type: "hello" }>, link: HubLinkContext): Promise<HubServerFrame | void>;
   close(): Promise<void>;
+  memberClosed?(fleetId: string): void;
   /** #3298 S-89: what the Hub offers its pages ("group-policy-v1" with group permissions composed). Absent on an older entry. */
   readonly features?: readonly string[];
   /** Private adapter only; no token/ref lookup HTTP route or browser capability. */
@@ -486,9 +488,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         listen: settings.memberListen,
         pairing,
         companyJoin,
+        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY] : [])],
         current: live,
         receive: (frame, link) => http.receive(frame, link),
-        hold: (fleetId, code) => options.log("warn", "Hub member link held", { fleetId, code }),
+        hold: (fleetId, code) => { options.log("warn", "Hub member link held", { fleetId, code }); if (fleetId) http.memberClosed?.(fleetId); },
         // M-2901: a connected Fleet learns where this Hub's pages are now (web-origin.ts), signed for its own link.
         webOrigin: (fleetId) => signHubWebOrigin({ hubId: settings.hubId, issuerKeyId: identity.issuerKeyId, fleetId, memberOrigin: settings.memberOrigin },
           settings.webOrigin, settings.webAddressRevision, issuerKey),

@@ -62,8 +62,12 @@ describe("hub-room-strings.js", () => {
     expect(byKey.askSummarise).toMatch(/summarise/);          // §10
     expect(byKey.whoCanCreate).toBe("Who can start rooms");   // §11
     expect(byKey.unreadPrefix).toBe("({0})");                 // §12
+    expect(byKey.unreadN).toBe("{0} unread");
+    expect(byKey.mentionedYou).toBe("Mentioned you");
     const zhBy = Object.fromEntries(zh.map((s) => [s.key, s.text]));
     expect(zhBy.addPeople).toContain("AD 群組");
     expect(zhBy.room).toBe("房間");
+    expect(zhBy.unreadN).toBe("{0} 則未讀");
+    expect(zhBy.mentionedYou).toBe("有人 @ 你");
   });
 });

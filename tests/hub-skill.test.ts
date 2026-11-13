@@ -109,6 +109,8 @@ describe("the hub skill", () => {
       "Advanced: connect with a pairing code", "Notices", "Acknowledge", "This Hub", "Hub name", "Set up a Hub", "Set up on this computer",
       "Test connection and review", "Create Hub", "Open Hub sign-in", "Checking whether the Hub is ready…", "Only the Hub administrator can see this",
       "已帶入加入碼。", "讓同仁加入", "以公司帳號登入", "恢復這次連接", "個別邀請", "還沒登入過 Hub", "停止分享", "分享的 Agent", "登入 Hub", "Hub 位址", "加入碼",
+      "This Hub uses a self-signed test certificate", "Certificate fingerprint", "Show the full fingerprint", "Trust this Hub and continue", "Trust again and continue",
+      "Allow trusting a Hub with a self-signed certificate (for testing)", "信任這個 Hub 並繼續", "重新信任並繼續", "允許信任自簽憑證的 Hub（測試用）",
       // #3776: the colleague-join card's link to the full group editor, and the uncertain card's Check again (zh).
       "All group permissions", "所有群組權限", "再次檢查"];
     const notQuoted = labels.filter(l => !FLAT.includes(l)), notInUi = labels.filter(l => !SOURCES.includes(l));

@@ -105,8 +105,8 @@ register("hubRoom", {
     allRooms: "All rooms", active: "Active", archived: "Archived",
     noContent: "Room content is not visible here.",
     joinAsManager: "Join as a room manager",
-    // §12 unread
-    unreadPrefix: "({0})", mentionMark: "@",
+    // §12 unread: unreadN is the list-row count tooltip; mentionedYou is the row's @ mark.
+    unreadPrefix: "({0})", unreadN: "{0} unread", mentionMark: "@", mentionedYou: "Mentioned you",
   },
   "zh-TW": {
     chat: "對話", room: "房間", members: "成員", roomManager: "房間管理",
@@ -196,7 +196,7 @@ register("hubRoom", {
     allRooms: "所有房間", active: "使用中", archived: "已封存",
     noContent: "這裡看不到任何房間的內容。",
     joinAsManager: "加入自己成為房間管理",
-    unreadPrefix: "({0})", mentionMark: "@",
+    unreadPrefix: "({0})", unreadN: "{0} 則未讀", mentionMark: "@", mentionedYou: "有人 @ 你",
   },
 });
 

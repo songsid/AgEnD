@@ -57,6 +57,47 @@ describe("M-3016 owner person/group grants", () => {
       exposureId: w.exposureId, exposureRevision: 1, expiresAt: w.now() + 90 * 86_400_000 });
     expect(w.r.db.prepare("SELECT COUNT(*) n FROM hub_grants").get()).toEqual({ n: 1 });
   });
+  it.each([
+    ["CN=Owners,DC=example,DC=test", "Owners"],
+    ["cn=Owners,DC=example,DC=test", "Owners"],
+    [String.raw`CN=Ops\, East,DC=example,DC=test`, "Ops, East"],
+    [String.raw`CN=Ops\+East+UID=42,DC=example,DC=test`, "Ops+East"],
+    [String.raw`CN=R\C3\A9seau,DC=example,DC=test`, "Réseau"],
+    ["CN=研究者,DC=example,DC=test", "研究者"],
+    [String.raw`CN=\#Owners\=Core,DC=example,DC=test`, "#Owners=Core"],
+    [String.raw`CN=Back\\Office,DC=example,DC=test`, String.raw`Back\Office`],
+    [String.raw`CN=\ Owners\ ,DC=example,DC=test`, " Owners "],
+    ["Owners", "Owners"],
+    ["OU=Teams,CN=Parent,DC=example,DC=test", "OU=Teams,CN=Parent,DC=example,DC=test"],
+    ["CN=#0C064F776E657273,DC=example,DC=test", "CN=#0C064F776E657273,DC=example,DC=test"],
+    [String.raw`CN=Broken\q,DC=example,DC=test`, String.raw`CN=Broken\q,DC=example,DC=test`],
+    [String.raw`CN=Broken\C3\28,DC=example,DC=test`, String.raw`CN=Broken\C3\28,DC=example,DC=test`],
+    [String.raw`CN=Hidden\00,DC=example,DC=test`, String.raw`CN=Hidden\00,DC=example,DC=test`],
+    ["CN=,DC=example,DC=test", "CN=,DC=example,DC=test"],
+  ])("projects group label %s without rewriting its grant", async (label, name) => {
+    const w = await world(), out = await w.grant(); expect(out.status).toBe(200);
+    // Includes existing DN rows and legacy plain labels; this read must neither resolve nor rewrite them.
+    w.r.db.prepare("UPDATE hub_grants SET subject_label=? WHERE id=?").run(label, out.json.grant.id);
+    const before = w.r.db.prepare("SELECT * FROM hub_grants WHERE id=?").get(out.json.grant.id);
+    vi.mocked(w.r.directory.resolvePolicyGroup!).mockClear();
+    const view = await w.r.call(w.browser, "GET", "/hub/v1/exposures");
+    expect(view.status).toBe(200);
+    expect(view.json.mine[0].grants[0]).toMatchObject({ id: out.json.grant.id, revision: 1,
+      subject: { kind: "group", group: w.group }, subjectLabel: label, subjectName: name, subjectLogin: "",
+      startsAt: out.json.grant.startsAt, expiresAt: out.json.grant.expiresAt });
+    expect(w.r.db.prepare("SELECT * FROM hub_grants WHERE id=?").get(out.json.grant.id)).toEqual(before);
+    expect(w.r.directory.resolvePolicyGroup).not.toHaveBeenCalled();
+  });
+  it("keeps a person's display name intact even if it looks like a group DN", async () => {
+    const w = await world();
+    const out = await w.r.call(w.browser, "POST", "/hub/v1/grants", { exposureId: w.exposureId, exposureRevision: 1, login: "alex", days: 7 });
+    expect(out.status).toBe(200);
+    const name = "CN=Alex,DC=Personal name";
+    w.r.db.prepare("UPDATE hub_people SET display_name=? WHERE person=?").run(name, `${w.recipient.realm}/${w.recipient.objectId}`);
+    const view = await w.r.call(w.browser, "GET", "/hub/v1/exposures");
+    expect(view.status).toBe(200);
+    expect(view.json.mine[0].grants[0]).toMatchObject({ subject: { kind: "person", person: w.recipient }, subjectName: name });
+  });
   it("caps all new person grants at90d while a90d control still works", async () => {
     const w = await world();
     const make = (days: number) => w.r.call(w.browser, "POST", "/hub/v1/grants", { exposureId: w.exposureId, exposureRevision: 1, login: "alex", days });
