@@ -1,0 +1,260 @@
+{
+  "parent": "c7551edf98c11e00cd9c31f4f67d8df80494faac",
+  "scope": "Read-only role clock and exact existing cutover parser extraction; no production clock caller or activation",
+  "checks": {
+    "relatedPassed": 178,
+    "relatedFiles": 6,
+    "relatedSkipped": 0,
+    "restoredPassed": 80,
+    "restoredFiles": 2,
+    "restoredSkipped": 0,
+    "sourceTypes": 0,
+    "testTypes": 0,
+    "compiler": "native TypeScript7.0.2/GOMAXPROCS2",
+    "isolatedCompilingSemanticRemovals": 15
+  },
+  "baseline": {
+    "kind": "new unmounted contract adapter mirroring the existing settlement-only guard, not a deployed-role vulnerability claim",
+    "passedControls": 7,
+    "semanticRefusalMisses": 12,
+    "excluded": "One initial fixture attempted to rename the immutable built-in role; removed that invalid edit and reran the corrected baseline. No missing-module/transform/setup failure counts."
+  },
+  "bindings": [
+    {
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7"
+    },
+    {
+      "file": "src/hub/roles/cutover-marker.ts",
+      "sha256": "e37ce1469142e0b54376c63e012eb0eac77c8e5900f233c82e3ee4a2f5763c6d"
+    },
+    {
+      "file": "src/hub/roles/cutover.ts",
+      "sha256": "50d87de9970f2c934857ad7086bb953fb61c478bd512d29991488a835f7afee5"
+    },
+    {
+      "file": "tests/hub-roles-clock-s129.test.ts",
+      "sha256": "b8dca07048622bebd2d0ed091aadaa4f9e8b5ba97d47d40cd97b386d1a98f334"
+    },
+    {
+      "file": "docs/design/hub-roles-authorization-clock.md",
+      "sha256": "d5753634ea7074c79915094c440706b2a87959945e06a6b97e56f86dd7ddf529"
+    },
+    {
+      "file": "changes/3743-roles-authorization-clock.md",
+      "sha256": "814d83562af6dab2864b262b1de19954b7c630fe7ffe73d60f215eeeacdfec90"
+    },
+    {
+      "file": "changes/3743-roles-authorization-clock.zh-TW.md",
+      "sha256": "d2b105864c0ddcacf283e1dce7960b4b663893b8e2613e32db273ec6ad43021c"
+    }
+  ],
+  "mutations": [
+    {
+      "name": "cutover-floor",
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7",
+      "selected": "cutover-time rollback",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses a cutover-time rollback even when no expiry has ever settled, including after reopen"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "settled-floor",
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7",
+      "selected": "later expiry clock|actual issuer proof",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors retains the later expiry clock floor across audit retention and reopen",
+        "S129 real authorization clock floors retires an actual issuer proof on a new persisted floor without reviving that proof when time recovers"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "registry",
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7",
+      "selected": "writer-schema|expiry-schema",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses writer-schema marker/registry state without writes",
+        "S129 real authorization clock floors refuses expiry-schema marker/registry state without writes"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "old-digest",
+      "file": "src/hub/roles/cutover-marker.ts",
+      "sha256": "e37ce1469142e0b54376c63e012eb0eac77c8e5900f233c82e3ee4a2f5763c6d",
+      "selected": "old-digest",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses old-digest marker/registry state without writes"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "converted-digest",
+      "file": "src/hub/roles/cutover-marker.ts",
+      "sha256": "e37ce1469142e0b54376c63e012eb0eac77c8e5900f233c82e3ee4a2f5763c6d",
+      "selected": "converted-digest",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses converted-digest marker/registry state without writes"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "inventory-digest",
+      "file": "src/hub/roles/cutover-marker.ts",
+      "sha256": "e37ce1469142e0b54376c63e012eb0eac77c8e5900f233c82e3ee4a2f5763c6d",
+      "selected": "inventory marker",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses inventory marker/registry state without writes"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "root-binding",
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7",
+      "selected": "foreign-root",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses foreign-root marker/registry state without writes"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "authorization-floor",
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7",
+      "selected": "version loss|authorization-marker",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses authorization-marker marker/registry state without writes",
+        "S129 real authorization clock floors refuses version loss"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "transport-floor",
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7",
+      "selected": "transport-marker",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses transport-marker marker/registry state without writes"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "policy-revision",
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7",
+      "selected": "policy-revision loss",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses policy-revision loss"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "final-policy",
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7",
+      "selected": "policy replacement",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses policy replacement inside the clock callback"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "final-owner",
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7",
+      "selected": "owner replacement",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses owner replacement inside the clock callback"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "final-transport",
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7",
+      "selected": "transport replacement",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses transport replacement inside the clock callback"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "final-settled",
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7",
+      "selected": "settled replacement",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses settled replacement inside the clock callback"
+      ],
+      "semanticRed": true,
+      "restored": true
+    },
+    {
+      "name": "transport-method",
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "3d4981050666c10c34fd6d7889cce7d88be3e2412105675cb8e8f374d6434cc7",
+      "selected": "substituted transport reader",
+      "types": 0,
+      "testExit": 1,
+      "failedTests": [
+        "S129 real authorization clock floors refuses a substituted transport reader even if it returns the same valid state"
+      ],
+      "semanticRed": true,
+      "restored": true
+    }
+  ],
+  "commands": [
+    "vitest run <six files> --maxWorkers=2",
+    "GOMAXPROCS=2 tsc --noEmit",
+    "GOMAXPROCS=2 tsc --noEmit -p tsconfig.test.json",
+    "python3 .artifacts/roles-clock-m3010/mutate.py",
+    "vitest run tests/hub-roles-clock-s129.test.ts tests/hub-roles-cutover-m3010.test.ts --maxWorkers=2"
+  ],
+  "limits": "Actual in-memory SQLite/audit/cutover/transport with owned synthetic independent floor; explicit synthetic settled-term SQL, not actual expiry worker effects. Real management issuer proof consumes guard. Existing cutover suite retains owned child SIGKILL scope. No real directory/Fleet/account/browser/native/pilot. No factory call, migration registration, timer, role endpoint or member/SSE activation."
+}
