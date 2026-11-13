@@ -1,6 +1,7 @@
+import { parseClaudeModelRecord, type ClaudeModelLaunch } from "./claude-model-observation.js";
 import { EventEmitter } from "node:events";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { Logger } from "./logger.js";
 import type { TranscriptCheckpoint, TranscriptSource } from "./transcript-sources.js";
 import { LOOKS_PER_POLL, isClaudeAssistantHead, lastLineBoundary, readNewLines, resolveLongLines } from "./transcript-jsonl.js";
@@ -53,9 +54,12 @@ export class TranscriptMonitor extends EventEmitter {
     private instanceDir: string,
     private logger: Logger,
     private source: TranscriptSource | null = null,
+    private modelLaunch?: () => ClaudeModelLaunch | undefined,
   ) {
     super();
-    this.attachBoundary = Date.now();
+    // A backend-owned launch marker also proves the earlier launch boundary: do not lose its first fast response
+    // merely because the monitor was constructed after spawn. Other sources retain their monitor-time baseline.
+    this.attachBoundary = this.modelLaunch?.()?.startedAt ?? Date.now();
     this.offsetFile = join(instanceDir, "transcript-offset");
     // Persisted offsets are only meaningful for the claude-code transcript;
     // sources re-resolve and re-baseline themselves (a stale byte offset into
@@ -97,6 +101,10 @@ export class TranscriptMonitor extends EventEmitter {
     if (existsSync(statusFile)) {
       try {
         const data = JSON.parse(readFileSync(statusFile, "utf-8"));
+        const launch = this.modelLaunch?.();
+        if (launch && data._agendLaunchId === launch.id && typeof data.session_id === "string"
+          && typeof data.transcript_path === "string" && basename(data.transcript_path) === `${data.session_id}.jsonl`
+          && !/[\\/]subagents[\\/]/.test(data.transcript_path)) this.emit("model_context", data.session_id, data.model?.id);
         if (data.transcript_path) return data.transcript_path;
       } catch {
         // Status file may be partially written — retry on next poll
@@ -233,6 +241,7 @@ export class TranscriptMonitor extends EventEmitter {
         if (generation !== this.generation) return;
         this.pendingLong = resolved.pending;
         for (const record of resolved.records) {
+          if (generation !== this.generation) return;
           if ("long" in record) { this.processLongHead(record.long.head); continue; }
           try {
             const entry = JSON.parse(record.line);
@@ -281,6 +290,20 @@ export class TranscriptMonitor extends EventEmitter {
       if (history) { this.logger.debug({ at: entry.timestamp }, "Transcript history: an old status note is not told again"); return; }
       this.emit("system_informational", entry.content, Number.isFinite(at) ? at : null);
       return;
+    }
+    // Independent of text/tool parsing: main-thread metadata only, under this launch's inherited hook marker.
+    const observation = parseClaudeModelRecord(entry);
+    if (observation && !history && observation.at >= this.attachBoundary - HISTORY_SKEW_MS && observation.at <= Date.now() + HISTORY_SKEW_MS) {
+      try {
+        const hook = JSON.parse(readFileSync(join(this.instanceDir, "statusline.json"), "utf-8"));
+        const launch = this.modelLaunch?.();
+        if (launch && observation.at >= launch.startedAt && hook._agendLaunchId === launch.id && hook.session_id === observation.sessionId
+          && typeof hook.transcript_path === "string" && basename(hook.transcript_path) === `${observation.sessionId}.jsonl`
+          && !/[\\/]subagents[\\/]/.test(hook.transcript_path)
+          && (!this.transcriptPath || this.transcriptPath === hook.transcript_path)) {
+          this.emit("model_observation", observation, hook.model?.id);
+        }
+      } catch { /* An old, partial or absent hook proves no active-session ownership. */ }
     }
     const msg = entry.message;
     if (!msg?.role || !msg?.content) return;

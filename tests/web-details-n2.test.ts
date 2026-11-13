@@ -101,6 +101,18 @@ async function app(path: string, opts: { matchNarrow?: boolean } = {}) {
 /** A page load of `path`: the page before it gone first (unmounted, its globals restored). */
 async function reload(prev: AppPage, path: string) { await prev.unmount(); prev.restore(); mounted.splice(mounted.indexOf(prev), 1); return app(path); }
 const go = async (path: string) => { const { navigate } = await import("/assets/app-nav.js"); navigate(path); await settle(6); };
+it("Claude's observed model line follows the live frame and recovery without reloading Details", async () => {
+  const pg = await app("/ui/fleet/agent/web-dev");
+  const { applyStatus } = await import("/assets/app-store.js");
+  const observation = { configured: "claude-opus-5-5", launch: "claude-opus-5-5", session: "claude-opus-5-5", lastServed: "claude-opus-4-8",
+    active: { id: "incident", original: "claude-opus-5-5", served: "claude-opus-4-8", cause: "safeguards", scope: "turn", since: 1 } };
+  applyStatus({ instances: [live("web-dev", { model_observation: observation })] }); await settle(5);
+  expect(pg.root.textContent).toContain("Model switched by safeguards: Opus 5.5 → Opus 4.8 · turn");
+  expect(pg.root.textContent).toContain("Configured model"); expect(pg.root.textContent).toContain("Last served model");
+  applyStatus({ instances: [live("web-dev", { model_observation: { ...observation, lastServed: "claude-opus-5-5", active: null } })] }); await settle(5);
+  expect(pg.root.querySelector(".model-switch")).toBeNull();
+  expect(calls.filter(c => c === "GET /ui/instance/web-dev")).toHaveLength(1);
+});
 const route = async () => (await import("/assets/app-nav.js")).navStore.get().route;
 const sideLinks = (pg: AppPage) => pg.root.querySelectorAll(".side-nav a.side-row").map((a: any) => a.getAttribute("href"));
 const tabs = (pg: AppPage) => pg.root.querySelectorAll("nav.tabs a.tab").map((a: any) => [a.getAttribute("href"), a.getAttribute("aria-current") ?? null]);

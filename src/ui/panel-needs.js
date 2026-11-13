@@ -1,3 +1,4 @@
+import "/assets/model-observation.js";
 // #1408 step 4 = #1386 part (b): the "Needs you" panel (/ui/needs) — everything waiting on the person, from every
 // world, in one list. Behind the session gate (/ui/js/), loaded the first time it is opened.
 //

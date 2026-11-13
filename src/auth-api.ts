@@ -125,7 +125,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   // need a session stay behind the gate under /ui/js/ and are reached only by a dynamic import.
   ...Object.fromEntries([
     "app.js", "app-html.js", "app-i18n.js", "app-route.js", "app-nav.js", "app-ctx.js", "app-stream.js", "app-store.js",
-    "app-shell.js", "app-session.js", "web-authorize.js", "app-needs.js", "app-swipe.js", "text-undo.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
+    "model-observation.js", "app-shell.js", "app-session.js", "web-authorize.js", "app-needs.js", "app-swipe.js", "text-undo.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
     // #1408 step 2: View is public (an anonymous reader opens it under web.view_access: open), loaded on demand.
     "panel-view.js", "view-strings.js",
     // Claude history in the View: its renderer, loaded by View when a Claude agent's View is scrolled up (static code; the

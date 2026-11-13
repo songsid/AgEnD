@@ -548,6 +548,8 @@ export interface InputDraft {
 }
 
 export interface CliBackend {
+  /** Observation ownership only; never a model-selection capability. */
+  modelObservationLaunch?(): import("../claude-model-observation.js").ClaudeModelLaunch;
   /** The CLI binary name (e.g. "claude", "codex", "agy") */
   readonly binaryName: string;
 

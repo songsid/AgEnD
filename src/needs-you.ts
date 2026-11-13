@@ -1,3 +1,4 @@
+import type { ModelSwitch } from "./claude-model-observation.js";
 /**
  * #1386 "Needs you": one list of everything currently waiting on the person, derived — on demand, never stored —
  * from state the fleet already holds. Design: docs/design/1386-needs-you-inbox.md (§3 sources, §4 derivation).
@@ -21,6 +22,8 @@ export interface NeedsYouItem {
   owner?: string;
   /** Which kind of wait, for the title (localized by the renderer, not here). */
   reason: NeedsYouReason;
+  modelSwitch?: ModelSwitch;
+  quiet?: true;
   /** One line, may be "": a prompt's text, an interaction summary, "source → target · kind". */
   detail: string;
   /** Epoch ms when it started waiting. */
@@ -53,7 +56,7 @@ export interface NeedsYouItem {
 export type NeedsYouReason =
   | "hang" | "exited" | "assist" | "question"                       // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
-  | "auth_paused" | "crashed" | "usage_limit"                       // instance
+  | "model_switch" | "auth_paused" | "crashed" | "usage_limit"                       // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "missed_offline"                                                // missed while the fleet was down
   | "task_review" | "task_blocked" | "task_stalled" | "backend_signin" | "config_invalid" | "config_fallback";                                 // task
@@ -88,6 +91,7 @@ export interface InstanceInput {
   /** Paused for sign-in: the login the dashboard can sign in for it, or null (#2233). */
   signIn?: { backend: string; profile?: string } | null;
   /** #2822: on a usage-limit hold (no known reset time): the model, and since when. */
+  modelSwitch?: ModelSwitch | null;
   usageHold?: { model: string; since: number } | null;
   kiroCompatibility?: { message: string; since: number } | null;
 }
@@ -212,6 +216,10 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     if (inst.pauseReason === "auth") {
       items.push({ id: `auth:${inst.name}:${inst.pausedAt ?? 0}`, type: "instance", instance: inst.name, reason: "auth_paused", detail: "", since: inst.pausedAt ?? 0,
         ...(inst.signIn ? { signIn: { backend: inst.signIn.backend, ...(inst.signIn.profile ? { profile: inst.signIn.profile } : {}) } } : {}) });
+    }
+    if (inst.modelSwitch) {
+      items.push({ id: `model:${inst.name}:${inst.modelSwitch.id}`, type: "instance", instance: inst.name, reason: "model_switch",
+        modelSwitch: inst.modelSwitch, ...(inst.modelSwitch.baseline ? { quiet: true as const } : {}), detail: `${inst.modelSwitch.original} → ${inst.modelSwitch.served}`, since: inst.modelSwitch.since });
     }
     if (inst.usageHold) {
       items.push({ id: `usage:${inst.name}:${inst.usageHold.since}`, type: "instance", instance: inst.name, reason: "usage_limit",

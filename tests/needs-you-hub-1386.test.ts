@@ -121,6 +121,20 @@ function rig() {
 
 const delivery = (id: string, target: string): DeliveryInput => ({ deliveryId: id, state: "uncertain", source: "src", target, kind: "fleet_inbound", finishedAt: 999_000 });
 
+it("restored model incidents list quietly; one new switch notifies once and recovery removes it", async () => {
+  const r = rig(); r.state.settings.dm = true; r.hub.start(); await r.advance(0);
+  const incident = { id: "session-A:notice:old", original: "claude-opus-5-5", served: "claude-opus-4-8", cause: "safeguards" as const, scope: "session" as const, since: 999_000 };
+  r.state.instances = [{ name: "alpha", modelSwitch: { ...incident, baseline: true } }]; r.hub.poke(); await r.advance(0);
+  expect(r.hub.webItems()[0]).toMatchObject({ quiet: true, modelSwitch: { id: incident.id } });
+  expect(r.A.calls.filter(c => c.startsWith("dm "))).toEqual([]);
+  r.state.instances = [{ name: "alpha", modelSwitch: { ...incident, id: "session-A:notice:new" } }]; r.hub.poke(); await r.advance(0);
+  expect(r.A.calls.filter(c => c.startsWith("dm "))).toHaveLength(1);
+  expect(r.A.calls.find(c => c.startsWith("dm "))).toContain("needs.model_switch.safeguards");
+  r.hub.poke(); await r.advance(0); expect(r.A.calls.filter(c => c.startsWith("dm "))).toHaveLength(1);
+  r.state.instances = [{ name: "alpha", modelSwitch: null }]; r.hub.poke(); await r.advance(0); expect(r.hub.webItems()).toEqual([]);
+  r.hub.stop();
+});
+
 /** The Acknowledge callback ids a world's adapter was given on its latest post/edit. */
 function lastChoices(adapterMock: any): string[] {
   // The latest of the post/edit calls across both mocks, by call order.
@@ -497,4 +511,3 @@ describe("live_message off", () => {
     expect(r.A.calls.at(-1)).toBe("edit A-m1 needs.live_off [0]");
   });
 });
-
