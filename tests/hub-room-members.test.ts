@@ -33,7 +33,8 @@ async function detailOf(client: any, roomId: string, canAsk: string[] = []) {
   return { room: d.room, me: { ...d.me, id: FIXTURE_ME.id }, members: d.members.map((m: any) => canAsk.includes(m.id) ? { ...m, canAsk: true } : m), settings: d.settings, invited: d.invited };
 }
 const heads = (pg: AppPage) => [...pg.root.querySelectorAll(".hub-room-members h4")].map((x: any) => x.textContent);
-const agentRows = (pg: AppPage) => [...pg.root.querySelectorAll(".hub-member-agent .hub-member-open")].map((b: any) => [b.querySelector(".hub-member-name").textContent, b.querySelector(".dot").className, b.querySelector(".hub-member-state").textContent]);
+const agentRows = (pg: AppPage) => [...pg.root.querySelectorAll(".hub-member-agent .hub-member-open")].map((b: any) => [b.querySelector(".hub-member-name").textContent, b.querySelector(".dot").className, b.querySelector(".hub-member-state > span:not(.dot):not(.hub-member-owner)").textContent]);
+const owners = (pg: AppPage) => [...pg.root.querySelectorAll(".hub-member-agent .hub-member-open")].map((b: any) => [b.querySelector(".hub-member-name").textContent, b.querySelector(".hub-member-owner")?.textContent ?? null]);
 const openAgent = (pg: AppPage, name: string) => fire([...pg.root.querySelectorAll(".hub-member-agent .hub-member-open")].find((b: any) => b.querySelector(".hub-member-name").textContent === name), "click");
 const button = (pg: AppPage, label: string) => [...pg.root.querySelectorAll("button")].find((b: any) => b.textContent === label);
 
@@ -155,6 +156,20 @@ describe("Hub room members panel (section 5)", () => {
     expect(row("project-helper")).toEqual(["project-helper", "dot warn", "Paused"]);
     fx.emit("presence.changed", { roomId: "room-weekly", memberId: "exp-08", presence: "idle" }); await settle(10);   // schedule-bot's seeded note goes too
     expect(row("schedule-bot")).toEqual(["schedule-bot", "dot ok", "Idle"]);
+  });
+
+  it("every agent row's second line says whose agent it is beside its state, in the viewer's language; people and the assistant have none", async () => {
+    const { pg, client } = await fixture();
+    const d = await detailOf(client, "room-weekly");
+    // The fixture's membership contract: every agent member carries owner { name } (the panel never reads it elsewhere).
+    expect(d.members.filter((m: any) => m.kind === "agent" || m.kind === "later").every((m: any) => typeof m.owner?.name === "string" && m.owner.name)).toBe(true);
+    await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly", detail: d })); await settle(20);
+    expect(owners(pg).slice(0, 3)).toEqual([["budget-check", "· 吳小安的 Agent"], ["project-helper", "· 林小華的 Agent"], ["design-review", "· 林小華的 Agent"]]);
+    expect(pg.root.querySelector(".hub-member-agent .hub-member-state").textContent).toBe("處理中· 吳小安的 Agent");
+    expect(pg.root.querySelectorAll(".hub-member:not(.hub-member-agent) .hub-member-owner")).toHaveLength(0);
+    i18n.setLang("en", { store: false }); await pg.unmount();
+    await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly", detail: d })); await settle(20);
+    expect(owners(pg)[1]).toEqual(["project-helper", "· 林小華's agent"]);
   });
 
   it("no detail yet: an empty, busy rail", async () => {
