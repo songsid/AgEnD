@@ -240,4 +240,20 @@ describe("company join local wait",()=>{
   expect(p.root.querySelector(".hub-join-foreign").textContent).toContain("still in progress in another browser tab or session");
   expect([...p.root.querySelectorAll("a")].map((a:any)=>a.getAttribute("href")).filter((h:string)=>/bridge/.test(h))).toEqual([]);expect(btn(p,"Cancel")).toBeUndefined();expect(btn(p,"Cancel connection")).toBeUndefined();
  });
+ // Lumen's hub skill (#3773): E14 named a button that wasn't there ("Check this connection"). It names Check again, which
+ // the uncertain held card now shows, and which reads the attempt's status again (the Hub's answer settles it).
+ it.each([["en","Check again"],["zh-TW","再次檢查"]])("an uncertain held attempt: E14 names the card's own Check again button (%s)",async(lang,label)=>{
+  const uncertain={operationId:"6e2c1a0b-9e8f-4a7b-8c6d-5e4f3a2b1c0d",handoffId:null,state:"held",reason:"uncertain",hubOrigin:"https://hub.example.test",expiresAt:Date.now()+300000,issued:false,outcomeKnown:false,fleetId:null,waiting:null};
+  fetcher(()=>response({ok:true,bound:false,operation:uncertain}));
+  const p=page({url:"http://127.0.0.1:19290/settings/hub",storage:{agend_lang:lang}});mounted.push(p);
+  (await import("/assets/app-i18n.js")).setLang(lang,{store:false});
+  await p.mount(h("div", null, h(shell.PendingChanges, {inline:true}), h(panel.CompanyJoinSettings)));await settle(12);
+  const text=p.root.textContent;
+  expect(text).toContain(lang==="en"?"The result could not be confirmed. Choose Check again; do not start again.":"無法確認結果。請按「再次檢查」，不要重新開始。");
+  expect(text).not.toMatch(/Check this connection|檢查這次連接/);
+  const button=btn(p,label);expect(button).toBeTruthy();
+  const before=calls.length;fire(button,"click");await settle(10);
+  expect(calls.slice(before).some(x=>x.path.includes("operationId="+uncertain.operationId))).toBe(true);
+  (await import("/assets/app-i18n.js")).setLang("en",{store:false});
+ });
 });
