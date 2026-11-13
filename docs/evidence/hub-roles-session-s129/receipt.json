@@ -1,0 +1,307 @@
+{
+  "parent": "0b16bfc964b73a46345f53eaab4e64c9bdfff187",
+  "sourceCommit": "9a87b5b88b3c826236605afe6432e68ecab62cb0",
+  "scope": "auxiliary session context and current admin presentation, immutable root repair retained; remaining operation adapters/startup activation excluded",
+  "checks": {
+    "uniquePassed": 279,
+    "files": 8,
+    "skipped": 0,
+    "fullCompatibility": 277,
+    "additionalFactoryClassifier": 2,
+    "restoredSelected": 24,
+    "restoredIntentionallyUnselected": 132,
+    "countsOverlap": true,
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "compiler": "native TypeScript7.0.2/GOMAXPROCS=2",
+    "changelogFragments": 444,
+    "originalFactoryExpectLinesRetained": 476,
+    "originalGroupCompositionBlobEqual": true,
+    "isolatedCompilingSemanticReversals": 13
+  },
+  "baseline": {
+    "actualSessions": "two auxiliary allow contracts fail at the original configured-root gate; unchanged legacy control passes",
+    "semanticFailed": 2,
+    "passedControl": 1,
+    "setupFailureCounted": false
+  },
+  "compatibilityDiscovery": "The staged all-identities strict-reader implementation made legacy enabled-repair administration, then ordinary sign-in, unavailable. Current root repair plus server-owned canonical-kind classification fixes both with all original assertions unchanged.",
+  "mutations": [
+    {
+      "name": "admin-entry",
+      "file": "src/hub/sessions.ts",
+      "before": "      if (selected.kind === \"directory\" && !this.isAdmin(selected.person) && this.core.deps.management && this.roleSessionMode()) {\n        let permit;\n        try { permit = await this.core.management(context, \"hub.admin\"); }\n        catch (error) { await current(); throw error; }\n        if (this.core.deps.roleSessionMode !== classify || !this.roleSessionMode()) throw new HubProtocolError(\"unavailable\");\n        permit.assertCurrent();\n        return permit.actor;\n      }\n",
+      "after": "",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 1,
+      "failed": [
+        {
+          "test": "S129 session administrative authority uses the composed current hub.admin authority for the actual auxiliary session",
+          "message": "Error: Hub protocol: denied"
+        },
+        {
+          "test": "S129 session administrative authority keeps an auxiliary administrator valid across a fresh browser session without changing the root",
+          "message": "Error: Hub protocol: denied"
+        }
+      ],
+      "unselected": 19,
+      "mutantSha256": "4f60cb1f773d1e6b02473938589f790e6ce7fe388f8ca2d12b94b0d23c9be1e8"
+    },
+    {
+      "name": "positive-flag",
+      "file": "src/hub/sessions.ts",
+      "before": "admin = true;",
+      "after": "admin = selected.admin;",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation presents the real auxiliary session without returning its bearer token",
+          "message": "AssertionError: expected { …(6) } to match object { admin: true, person: { …(2) } }"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "ee687cb15b4d83e1f3d542ed23530bb6ef2e4fcd042eeebf1c1d9f861be9b7fa"
+    },
+    {
+      "name": "presentation-proof",
+      "file": "src/hub/sessions.ts",
+      "before": "      permit?.assertCurrent();",
+      "after": "      /* omitted positive proof */",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation presents the real auxiliary session without returning its bearer token",
+          "message": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "e928580f9413e3d7a090a244cb49e7efea2c10dd46d6e9f1b38dab91b323dd24"
+    },
+    {
+      "name": "presentation-retire",
+      "file": "src/hub/sessions.ts",
+      "before": "} catch (error) { retired = true; throw error; }",
+      "after": "} catch (error) { throw error; }",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation retires a presentation after observed authority replacement even if the same object returns",
+          "message": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "027446cd7cf7d5121506596560c59d11d1118d213a27e09d546adc40fc460d59"
+    },
+    {
+      "name": "get-final",
+      "file": "src/hub/http/compose.ts",
+      "before": "        presentation?.assertCurrent();",
+      "after": "        /* omitted GET final proof */",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 session presentation through actual HTTP rechecks the positive proof after the GET presentation await",
+          "message": "AssertionError: expected 200 to be 503 // Object.is equality"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "70842217eb395fc33e6943ac76fe8725ece9f6c5622045c6a28f3298a2c92a27"
+    },
+    {
+      "name": "post-final",
+      "file": "src/hub/http/compose.ts",
+      "before": "        presentation.assertCurrent();",
+      "after": "        /* omitted POST final proof */",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 session presentation through actual HTTP rechecks the positive proof after the POST presentation await",
+          "message": "AssertionError: expected 200 to be 503 // Object.is equality"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "1de767c2c31c5d7d51ad40017d0af4341f177bc02829b04cfc60146452617117"
+    },
+    {
+      "name": "management-object",
+      "file": "src/hub/http/core.ts",
+      "before": "this.deps.management !== management || ",
+      "after": "",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation permanently retires a core proof after observed management object replacement",
+          "message": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "53260fe8f0b7a31b5a2a98c3ae681902fe204a6a5cee3055d80462f00578084e"
+    },
+    {
+      "name": "management-method",
+      "file": "src/hub/http/core.ts",
+      "before": " || management.require !== require",
+      "after": "",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation permanently retires a core proof after observed management method replacement",
+          "message": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "c25b67038e6abaa3732dbc5fece0e936baeab5e87e014a25598fcf4d625242b3"
+    },
+    {
+      "name": "management-retire",
+      "file": "src/hub/http/core.ts",
+      "before": "} catch (error) { retired = true; throw error; }",
+      "after": "} catch (error) { throw error; }",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation permanently retires a core proof after observed management object replacement",
+          "message": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "c5d7289b0f2a2bc3aab020679dc30b6d84e90054d584375d6ff5f5231b73407c"
+    },
+    {
+      "name": "admin-classifier",
+      "file": "src/hub/sessions.ts",
+      "before": "this.core.deps.roleSessionMode !== classify || !this.roleSessionMode()",
+      "after": "this.core.deps.roleSessionMode !== classify",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 role session classification is never authority does not allow an auxiliary administrator when classification changes during its physical read",
+          "message": "AssertionError: expected { kind: 'directory', …(2) } to match object { code: 'unavailable' }"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "e4c7e9a8169983fcc191279af774fe1a49e9a472af9647b4b3d56287ef1a78ba"
+    },
+    {
+      "name": "unknown",
+      "file": "src/hub/sessions.ts",
+      "before": "        if (!(error instanceof HubProtocolError) || error.code !== \"denied\") throw error;",
+      "after": "        /* unknown incorrectly becomes non-admin */",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation does not turn an unavailable fresh eligibility answer into a cached positive flag",
+          "message": "Error: promise resolved \"{ view: { …(6) }, …(1) }\" instead of rejecting"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "705c9f40dfdfbc9b3741909d2c6699cef3687acc444dd9722afa4b160465cc14"
+    },
+    {
+      "name": "factory-kind",
+      "file": "src/hub/compose/server.ts",
+      "before": "return parseCanonicalPolicy(row.body).kind === \"roles\";",
+      "after": "return false;",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 1,
+      "failed": [
+        {
+          "test": "S129 factory session classification classifies the current image without becoming an operation permit and stops on fence",
+          "message": "AssertionError: expected false to be true // Object.is equality"
+        }
+      ],
+      "unselected": 132,
+      "mutantSha256": "4938ffe4fbf0b371e58f706e8d8c878883eb45ea9c52b5867b3d779efa57a1b3"
+    },
+    {
+      "name": "factory-current",
+      "file": "src/hub/compose/server.ts",
+      "before": "            if (!live()) throw new Error(\"retired\");",
+      "after": "            /* current image guard removed */",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 factory session classification classifies the current image without becoming an operation permit and stops on fence",
+          "message": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "test": "S129 factory session classification retains the mount's existing permanent refusal after an observed foreign owner and restoration",
+          "message": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "unselected": 132,
+      "mutantSha256": "960202682eae7a19e1b0d37533947b94d4c9c1972036d0330f58f404b4191f76"
+    }
+  ],
+  "excluded": [
+    "Cookie attribute order fixture error corrected to independent retained attribute checks; not a deployed-defect red.",
+    "Initial classifier fixture incorrectly expected revival after observed foreign owner; permanent refusal is correct. Three classifier-mutant probes on that invalid baseline excluded. Two rerun on green fixture are included.",
+    "Direct owner-row comparison duplicates the existing material barrier and has no independent caught-mutation claim."
+  ],
+  "commands": [
+    "vitest run tests/hub-roles-session-s129.test.ts tests/hub-roles-issuer-s129.test.ts tests/hub-s3b-server.test.ts tests/hub-enrolment-code-session-b2.test.ts tests/hub-directory-session-epoch.test.ts tests/hub-directory-session-transition.test.ts tests/hub-compose.test.ts tests/hub-group-composition.test.ts --maxWorkers=2",
+    "tsc --noEmit -p tsconfig.json",
+    "tsc --noEmit -p tsconfig.test.json",
+    "node scripts/changelog-assemble.mjs --check"
+  ],
+  "boundary": "Actual SQL/session/role authority and owned loopback HTTP; fictional directory/inert transport. Existing factory checks and private classifier cutover do not establish supported role startup. No content permission/auditor assignment, new role endpoint, UI/schema/asset/PNG/SKEW or real AD/account/native/browser/container/pilot/live-fleet claim.",
+  "next": "parent-first sync/readiness/exact CI; convert remaining administrative final permits, metadata-only audit.view, role control and session/member/stream enforcement before startup cutover",
+  "bindings": [
+    {
+      "file": "src/hub/sessions.ts",
+      "sha256": "4843c3a8af0f9bd8b8538890a06a0a449886318a8845afd9dd3b05cf85949ae3"
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "d8077bec178b4786fa10af744bbb25e27dac9ef8235944c9c7623a8c4428ec8f"
+    },
+    {
+      "file": "src/hub/http/compose.ts",
+      "sha256": "d50abaedc77e72329aba47ece36f105fe731c7c50ee822e5b128d4e8dc51bab8"
+    },
+    {
+      "file": "src/hub/http/deps.ts",
+      "sha256": "621635ae61a285c7847dbba8616cffcea80ac14c44428aeffc3c1c018f2b25fe"
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "a37e2a2c51d6291e56bce25c98ae5e4d576c7b086689fde33825f1147f06b760"
+    },
+    {
+      "file": "tests/hub-roles-session-s129.test.ts",
+      "sha256": "558e3dd66ed553d408c48fcd28ad4b2bb298be4d94211837181e4e6a9b1660e8"
+    },
+    {
+      "file": "tests/hub-compose.test.ts",
+      "sha256": "48f2a9e4a0473724509c388f67dfd4b45f02a0c561c35efae6ae28adbe238086"
+    },
+    {
+      "file": "docs/design/hub-roles-session-authority.md",
+      "sha256": "ff50589c2e4c0689344e2e8f562b10246c57ec820f1f2969d35a84572df926d6"
+    }
+  ]
+}
