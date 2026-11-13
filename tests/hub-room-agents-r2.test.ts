@@ -161,3 +161,33 @@ it("refuses adding another owner's agent without the invitation seam", async () 
   expect((await r!.call(w.admin, "POST", `/hub/v1/rooms/${w.id}/members`, { kind: "agent", id: e.id })).status).toBe(403);
   expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.id}`)).json.members.filter((m: any) => m.kind === "agent")).toHaveLength(1);
 });
+
+it("keeps offline retained work off the one-second query path", async () => {
+  const w = await world(); r!.setTransport(false);
+  for (let n = 0; n < 120; n++) await send(w, `Offline ${n}`);
+  const { HubCore } = await import("../src/hub/http/core.js"), { HubRoomAgents } = await import("../src/hub/rooms/agents.js");
+  const core = new HubCore(r!.httpDeps, r!.sql), agent = new HubRoomAgents(core, () => {}, () => { throw new Error("no changed post"); });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }); const prepare = vi.spyOn(r!.db, "prepare");
+  try {
+    agent.wake(); await vi.advanceTimersByTimeAsync(60_000);
+    expect(prepare.mock.calls.length).toBeLessThan(20); // constant queries, independent of120 retained rows
+  } finally { prepare.mockRestore(); await agent.close(); vi.useRealTimers(); }
+});
+
+it("keeps a late answer and its unread badge behind the original question's join floor", async () => {
+  const w = await world(); await send(w); await vi.waitFor(() => expect(asks()).toHaveLength(1));
+  const cara = r!.addPerson("cara", "Cara"), c = await r!.signIn("cara");
+  await r!.call(w.admin, "POST", `/hub/v1/rooms/${w.id}/members`, { kind: "person", id: personKeyString(cara) });
+  const stop = new AbortController(), deadline = setTimeout(() => stop.abort(), 5000);
+  try {
+    const response = await fetch(`${r!.base}/hub/v1/rooms/events`, { headers: { Cookie: c.cookie }, signal: stop.signal }), reader = response.body!.getReader();
+    const input = lastAsk(); await r!.http.receive(r!.frame("room.answer", { messageId: input.messageId, roomId: w.id, exposureId: w.e.id, answerId: randomUUID(), text: "Earlier question answer" }, w.link) as never, w.link);
+    await r!.call(c, "POST", `/hub/v1/rooms/${w.id}/messages`, { text: "After joining marker", mentions: [], idempotencyKey: randomUUID() });
+    let events = "";
+    while (!events.includes("After joining marker")) { const chunk = await reader.read(); if (chunk.done) throw new Error("stream closed"); events += new TextDecoder().decode(chunk.value); }
+    expect(events).not.toContain("Earlier question answer");
+  } finally { clearTimeout(deadline); stop.abort(); }
+  expect((await r!.call(c, "GET", `/hub/v1/rooms/${w.id}/messages`)).text).not.toContain("Earlier question answer");
+  expect((await r!.call(c, "GET", "/hub/v1/rooms?v=2")).json.rooms[0].unread).toBe(0);
+  expect((await r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/messages`)).text).toContain("Earlier question answer");
+});

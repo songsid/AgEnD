@@ -349,7 +349,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/sharing$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
-      csrf(); const b = await body(); await guard(() => sharing.change(ctx, uuid(r![1]), b)); groupRooms.agents.publicationChanged();
+      csrf(); const b = await body(); await guard(() => sharing.change(ctx, uuid(r![1]), b)); groupRooms.agents.publicationChanged(undefined, uuid(r![1]));
       return send(res, 200, { ok: true });
     }
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/freeze$/))) {
@@ -697,7 +697,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           throw error;
         }
       case "agent.state": groupRooms.agents.state(frame.payload, link); return;
-      case "exposure.snapshot": await catalog.receiveSnapshot(frame.payload, link, frame.requestId); quota.prune(); groupRooms.agents.publicationChanged(); return;
+      case "exposure.snapshot": await catalog.receiveSnapshot(frame.payload, link, frame.requestId); quota.prune(); groupRooms.agents.publicationChanged(link.fleetId); return;
       case "exposure.quota": quota.receive(frame.payload, link); return;
       case "pairing.notice-ack":
         if (!deps.pairingNotices) throw new HubProtocolError("incompatible");
