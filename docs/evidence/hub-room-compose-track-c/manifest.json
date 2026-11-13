@@ -296,6 +296,14 @@
     "sha256": "d8a988ef590e19833ea8a2b3e9bc70573163ccf90da02d3d251185d8cfa0912d"
   },
   {
+    "path": "docs/evidence/hub-room-compose-track-c/r3-alpha-sync/README.md",
+    "sha256": "e47be11628d36f2aece2550127e7f17c86a2bf839e8a73c44fce894afc3de231"
+  },
+  {
+    "path": "docs/evidence/hub-room-compose-track-c/r3-alpha-sync/sync.json",
+    "sha256": "e002ec67a67730901e60e2ea9953bed86a762179d8f04b688d4be8a9603adac4"
+  },
+  {
     "path": "docs/evidence/hub-room-compose-track-c/supplement.log",
     "sha256": "35bc94be7f87d2cd8ea7ee4cd6ca63e2e3af8adcf4909ade8f3b16d32685d1d4"
   }
