@@ -1,0 +1,305 @@
+[
+  {
+    "id": "S01",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "assertCurrent() { void checked(); }",
+    "after": "assertCurrent() {}",
+    "checkpoint": "000e5e36888be22018b420435ff6acf72f4943d5",
+    "inputs": {
+      "tests/hub-roles-directory-session-s129.test.ts": "d3da6915cb0cb1781574b5298e133fc24f0d575d09095a56481bc7c44e0d789d"
+    },
+    "baseSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "mutantSha256": "b10bd6e6de0221f2dd125def52150d9e6559d2c1905e24bcea0f0ae6d88d9051",
+    "load1": 4.5615234375,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 response-owned successor release refuses role loss while the originating response is held",
+      "S129 response-owned successor release does not renew the fresh effect permit during a held response",
+      "S129 response-owned successor release does not revive a release after a final SQL head refusal even if the exact head returns",
+      "S129 response-owned successor release retires when its originating rotation is cancelled",
+      "S129 response-owned successor release retains the final disclosure proof after one release, then refuses a revoked successor",
+      "S129 response-owned successor release discards the private token when the response owner is abandoned",
+      "S129 response-owned successor release withholds a prepared response after provider changes",
+      "S129 response-owned successor release withholds a prepared response after head changes",
+      "S129 response-owned successor release withholds a prepared response after declaration changes",
+      "S129 response-owned successor release withholds a prepared response after root changes",
+      "S129 response-owned successor release withholds a prepared response after config changes",
+      "S129 response-owned successor release withholds a prepared response after directory changes",
+      "S129 response-owned successor release withholds a prepared response after uow changes",
+      "S129 response-owned successor release withholds a prepared response after lifetime changes"
+    ],
+    "caught": true,
+    "restoredSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "elapsedSeconds": 18.35,
+    "privateLogs": [
+      {
+        "path": "mutants/S01-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S01-tests.log",
+        "sha256": "930460d55cdfabe45eda5492324c17d608821adf677dc4ea7b048758c0fce581"
+      },
+      {
+        "path": "mutants/S01-tests.json",
+        "sha256": "df284e34e44746fe8e6662baa4c26efe290d2fd16988ec3eae184fd01c11f6a2"
+      }
+    ]
+  },
+  {
+    "id": "S02",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "const out = checked();",
+    "after": "const out = completion(core, state, operationId, undefined, token);",
+    "checkpoint": "000e5e36888be22018b420435ff6acf72f4943d5",
+    "inputs": {
+      "tests/hub-roles-directory-session-s129.test.ts": "d3da6915cb0cb1781574b5298e133fc24f0d575d09095a56481bc7c44e0d789d"
+    },
+    "baseSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "mutantSha256": "b41288f97b1e1850511ffcb2ef212a0922ff98af18df7d9181cd9f22b4b5f46c",
+    "load1": 4.5712890625,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 response-owned successor release refuses role loss while the originating response is held",
+      "S129 response-owned successor release does not renew the fresh effect permit during a held response",
+      "S129 response-owned successor release checks effect authority inside release even without a preceding consumer assertion",
+      "S129 response-owned successor release does not revive a release after a final SQL head refusal even if the exact head returns",
+      "S129 response-owned successor release retires when its originating rotation is cancelled",
+      "S129 response-owned successor release discards the private token when the response owner is abandoned",
+      "S129 response-owned successor release withholds a prepared response after provider changes",
+      "S129 response-owned successor release withholds a prepared response after root changes",
+      "S129 response-owned successor release withholds a prepared response after config changes",
+      "S129 response-owned successor release withholds a prepared response after directory changes",
+      "S129 response-owned successor release withholds a prepared response after uow changes"
+    ],
+    "caught": true,
+    "restoredSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "elapsedSeconds": 16.47,
+    "privateLogs": [
+      {
+        "path": "mutants/S02-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S02-tests.log",
+        "sha256": "25f80533ccf573c6b65eed4cb6e4a96a27d4e72ab8351d63b909cec0108477aa"
+      },
+      {
+        "path": "mutants/S02-tests.json",
+        "sha256": "7b7d2efef4fa267d2ac4be85922f28b3f0cdac4df1ea2b66e0ddfd6a2c810a1c"
+      }
+    ]
+  },
+  {
+    "id": "S03",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "if (released) throw new HubProtocolError(\"revoked\");",
+    "after": "if (false) throw new HubProtocolError(\"revoked\");",
+    "checkpoint": "000e5e36888be22018b420435ff6acf72f4943d5",
+    "inputs": {
+      "tests/hub-roles-directory-session-s129.test.ts": "d3da6915cb0cb1781574b5298e133fc24f0d575d09095a56481bc7c44e0d789d"
+    },
+    "baseSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "mutantSha256": "c801a2a7e6e938c9b9d38dd4e91b3bc411ff985100bf0cf4b9edce1af0e7c21b",
+    "load1": 4.8935546875,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 response-owned successor release prepares without exposing a token and releases exactly once under current authority"
+    ],
+    "caught": true,
+    "restoredSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "elapsedSeconds": 11.36,
+    "privateLogs": [
+      {
+        "path": "mutants/S03-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S03-tests.log",
+        "sha256": "d57c229e8e579c47e8393c743340d81f33fb75547b5c90e5010a3b2d2db832c7"
+      },
+      {
+        "path": "mutants/S03-tests.json",
+        "sha256": "80b8540f3bcf6dd66ef97351f45e3d005770d0599b2052dfd02419c695500407"
+      }
+    ]
+  },
+  {
+    "id": "S04",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "const token = expectedToken ?? state.token;",
+    "after": "const token = (void expectedToken, state.token);",
+    "checkpoint": "000e5e36888be22018b420435ff6acf72f4943d5",
+    "inputs": {
+      "tests/hub-roles-directory-session-s129.test.ts": "d3da6915cb0cb1781574b5298e133fc24f0d575d09095a56481bc7c44e0d789d"
+    },
+    "baseSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "mutantSha256": "234a313da5b5f8c2959859e3e24c50153d6857bce2dd0b1bd0a207f0dbadd3e5",
+    "load1": 5.6875,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 response-owned successor release retains the final disclosure proof after one release, then refuses a revoked successor"
+    ],
+    "caught": true,
+    "restoredSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "elapsedSeconds": 12.11,
+    "privateLogs": [
+      {
+        "path": "mutants/S04-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S04-tests.log",
+        "sha256": "a574cabc37dfe6de6a1988c5c74c8d5b29946eb91838c8e7e696475f75f2e561"
+      },
+      {
+        "path": "mutants/S04-tests.json",
+        "sha256": "47a4fa4ecda1dc2fa90a80caa884aab173828a124bc3eb9c54a32c88a8993f62"
+      }
+    ]
+  },
+  {
+    "id": "S05",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "try { return completion(core, state, operationId, proof, token); }\n      catch (error) { handle.discard(); throw error; }",
+    "after": "try { return completion(core, state, operationId, proof, token); }\n      catch (error) { throw error; }",
+    "checkpoint": "000e5e36888be22018b420435ff6acf72f4943d5",
+    "inputs": {
+      "tests/hub-roles-directory-session-s129.test.ts": "d3da6915cb0cb1781574b5298e133fc24f0d575d09095a56481bc7c44e0d789d"
+    },
+    "baseSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "mutantSha256": "2e16c658e43391fc2778a8c58b53705b079487c151ae28da7cdd4d21c4a19995",
+    "load1": 5.662109375,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 response-owned successor release does not revive a release after a final SQL head refusal even if the exact head returns"
+    ],
+    "caught": true,
+    "restoredSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "elapsedSeconds": 10.07,
+    "privateLogs": [
+      {
+        "path": "mutants/S05-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S05-tests.log",
+        "sha256": "c96dbcc98fb2f8f3a63f83bd2388330dbf4f8103369eaed8baa0219266ae27c3"
+      },
+      {
+        "path": "mutants/S05-tests.json",
+        "sha256": "4414d3de3f1fc30ffadb06d9dd0dcc6e68fe05c0b758e7f9c7470f707e50dcfb"
+      }
+    ]
+  },
+  {
+    "id": "S06",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "(released ? state.phase !== \"released\" || state.token !== null : state.phase !== \"completing\" || state.token !== token)",
+    "after": "(state.phase !== \"completing\" || state.token !== token)",
+    "checkpoint": "000e5e36888be22018b420435ff6acf72f4943d5",
+    "inputs": {
+      "tests/hub-roles-directory-session-s129.test.ts": "d3da6915cb0cb1781574b5298e133fc24f0d575d09095a56481bc7c44e0d789d"
+    },
+    "baseSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "mutantSha256": "3ce8d95be0cb14e3caf4f61d4f68453b452e1c939b713f2b73c93dc5e83371b2",
+    "load1": 5.640625,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 response-owned successor release retains the final disclosure proof after one release, then refuses a revoked successor"
+    ],
+    "caught": true,
+    "restoredSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "elapsedSeconds": 10.6,
+    "privateLogs": [
+      {
+        "path": "mutants/S06-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S06-tests.log",
+        "sha256": "efa47decd778b3587d4cc4fa619f2a51cfb9ab6847cb56aea3b96bc4c6ab5211"
+      },
+      {
+        "path": "mutants/S06-tests.json",
+        "sha256": "10e67b6bca9ceb5991871955021d6fac2e1cbd95a8df70a6ea366fb184080000"
+      }
+    ]
+  },
+  {
+    "id": "S07",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "discard() { handle.discard(); },",
+    "after": "discard() {},",
+    "checkpoint": "000e5e36888be22018b420435ff6acf72f4943d5",
+    "inputs": {
+      "tests/hub-roles-directory-session-s129.test.ts": "d3da6915cb0cb1781574b5298e133fc24f0d575d09095a56481bc7c44e0d789d"
+    },
+    "baseSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "mutantSha256": "19ae2725d731228891f662c7bb1652bfef2e6fcfaec20f4a6251dd2399674024",
+    "load1": 6.5771484375,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 response-owned successor release discards the private token when the response owner is abandoned"
+    ],
+    "caught": true,
+    "restoredSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "elapsedSeconds": 11.36,
+    "privateLogs": [
+      {
+        "path": "mutants/S07-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S07-tests.log",
+        "sha256": "9083be249e1dc8a6ae6b2198feb515926a9138057df1c89cf6e1ae3ac3b31d29"
+      },
+      {
+        "path": "mutants/S07-tests.json",
+        "sha256": "29d5c9e1b417e4611de4b2badd4b9f9c866e4b34d2fd2d7ec124e501a28c1f1a"
+      }
+    ]
+  },
+  {
+    "id": "S08",
+    "file": "src/hub/session-directory-transition.ts",
+    "before": "return Object.freeze({\n      assertCurrent()",
+    "after": "return ({\n      assertCurrent()",
+    "checkpoint": "000e5e36888be22018b420435ff6acf72f4943d5",
+    "inputs": {
+      "tests/hub-roles-directory-session-s129.test.ts": "d3da6915cb0cb1781574b5298e133fc24f0d575d09095a56481bc7c44e0d789d"
+    },
+    "baseSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "mutantSha256": "807bb023b04533b71f52ccaa59c936d8412a4e8eebfdc460640900f1869829dd",
+    "load1": 6.01220703125,
+    "typesExit": 0,
+    "testExit": 1,
+    "failedTests": [
+      "S129 response-owned successor release prepares without exposing a token and releases exactly once under current authority"
+    ],
+    "caught": true,
+    "restoredSha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873",
+    "elapsedSeconds": 10.9,
+    "privateLogs": [
+      {
+        "path": "mutants/S08-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "mutants/S08-tests.log",
+        "sha256": "09332b6c698b893b610cdfef61dd20e169f0fcd1c525f44c9d938dc71b83a755"
+      },
+      {
+        "path": "mutants/S08-tests.json",
+        "sha256": "577162ed4bc635535b6557b244747fd0a1a71a9ba69aaff7c5fb1cccebf471d5"
+      }
+    ]
+  }
+]

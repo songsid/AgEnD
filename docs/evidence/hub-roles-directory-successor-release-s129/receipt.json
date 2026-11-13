@@ -1,0 +1,164 @@
+{
+  "sourceAndFinalTestCheckpoint": "000e5e36888be22018b420435ff6acf72f4943d5",
+  "sourceCheckpoint": "6ad2263eb041c0463874cb61048b320d650a0786",
+  "parent": "7c9d931c83879d8ad0eccce3a7f5979b8720b551",
+  "parentPR": 3841,
+  "scope": "Private two-phase successor authority acquisition/release; no mounted projection/Save consumer or startup activation",
+  "failFirst": {
+    "checkpoint": "852fcdfbc54b95e48945741ccb64fe453432fd6d",
+    "semanticMissingCapabilityReds": 5,
+    "existingControls": 2,
+    "filterExcludedCases": 37,
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "meaning": "New private capability absent before implementation; not a deployed-role vulnerability claim."
+  },
+  "checks": {
+    "focusedPassed": 171,
+    "files": 5,
+    "skipped": 0,
+    "newResponseOwnerCases": 17,
+    "restoredPassed": 56,
+    "restoredFiles": 1,
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "compiler": "native TypeScript7.0.2/GOMAXPROCS2",
+    "compilingSemanticReversals": 8,
+    "changelog": "changelog-assemble: 457 fragment(s) OK"
+  },
+  "suites": [
+    {
+      "file": "hub-directory-save.test.ts",
+      "passed": 29
+    },
+    {
+      "file": "hub-directory-session-epoch.test.ts",
+      "passed": 16
+    },
+    {
+      "file": "hub-directory-session-transition.test.ts",
+      "passed": 38
+    },
+    {
+      "file": "hub-roles-directory-session-preparation-s129.test.ts",
+      "passed": 32
+    },
+    {
+      "file": "hub-roles-directory-session-s129.test.ts",
+      "passed": 56
+    }
+  ],
+  "bindings": [
+    {
+      "path": "src/hub/session-directory-transition.ts",
+      "sha256": "142ca747d6eca798b127f29c8061a4cff879099de111a76fd927bc069c906873"
+    },
+    {
+      "path": "src/hub/sessions.ts",
+      "sha256": "fb0c811c37742242c5c94297a2b80e532adcc0309fb41049b6818fb70ef3bca2"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18"
+    },
+    {
+      "path": "src/hub/roles/authority.ts",
+      "sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "path": "src/hub/roles/clock.ts",
+      "sha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5"
+    },
+    {
+      "path": "src/hub/settings-directory-save.ts",
+      "sha256": "ee26a5788898db9bbc4ae9c663f25f7520d3a1e58e37f9d6d3681bbbf6c46a48"
+    },
+    {
+      "path": "src/hub/settings-directory-runtime.ts",
+      "sha256": "10bda593f3795493781495fb230a9cc75304385232393a65d99e76a877a2f303"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "a899c095c086579c2193d2b5e60addafd8f138be34d1600bb310872537cd622a"
+    },
+    {
+      "path": "tests/hub-roles-directory-session-s129.test.ts",
+      "sha256": "d3da6915cb0cb1781574b5298e133fc24f0d575d09095a56481bc7c44e0d789d"
+    },
+    {
+      "path": "tests/hub-roles-directory-session-preparation-s129.test.ts",
+      "sha256": "d61f520bdd577d2a26032d34198183df993d12416ba05af725a7ce62af8ddfc6"
+    },
+    {
+      "path": "tests/hub-directory-save.test.ts",
+      "sha256": "21f60b4f49d8e996a6ba2c82dd9ee3fdc9520ae1fd160a21890e0b372e4f5b3a"
+    },
+    {
+      "path": "tests/hub-directory-session-transition.test.ts",
+      "sha256": "37660f09901efad29d1e3d2da0875c6e387187b3fc92c24905be95722aa7baea"
+    },
+    {
+      "path": "tests/hub-directory-session-epoch.test.ts",
+      "sha256": "74c9b5edb8d2abbf2b4cbaba9aff9c5db0efa11646e341d2da725ad43be012d0"
+    },
+    {
+      "path": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "c886cf7218dcb2e713259fa2be29bd27b42a134d61535a520ddf96e85ffd8b28"
+    }
+  ],
+  "privateLogBindings": [
+    {
+      "path": "before.log",
+      "sha256": "263abe4e1506dbe5857ea5fee9eaf8ec1a90d624b031302566d635386ecb9cae"
+    },
+    {
+      "path": "before.json",
+      "sha256": "710a26441c46bc94610a21126ac5eaa5a1a83c792782e2ae84669d3b1383f90d"
+    },
+    {
+      "path": "before-source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "before-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "final-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "final-focused.log",
+      "sha256": "7a22ff3d2ce19fc0478ba13ea7bf121d046b7e4d5cabf1615d4e5871a8387927"
+    },
+    {
+      "path": "final-focused.json",
+      "sha256": "d688fe1f04b39fbc9fadc0a4a5113017db4fa055b0e78bca10a1ba8264e901d4"
+    },
+    {
+      "path": "restored.log",
+      "sha256": "f56e326b143b3efc71cefb3656f9c2755ab7ce8044f38efb18444e619312ed2d"
+    },
+    {
+      "path": "restored.json",
+      "sha256": "d2d1eeda0d08a79a7c8459bcd3a6fb29e4edc17537f4871a2e12721653ab8608"
+    },
+    {
+      "path": "changelog.log",
+      "sha256": "bba7c326bc7456b607b56b54c59262d9c1bc07d1b442844c5828a6829456aaf5"
+    }
+  ],
+  "commands": [
+    "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+    "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+    "nice -n10 node_modules/.bin/vitest run <five named files> --maxWorkers=2",
+    "python3 .artifacts/roles-directory-successor-release-m3010/mutate.py"
+  ],
+  "retainedAssertions": "Existing 39 role-session cases and all legacy transition/Save assertions remain; 17 new cases are additive. Existing immediate-release adapter wraps preparation/release; no other consumer changed.",
+  "limits": "Actual owned in-memory SQL/cutover/clock/Core/Sessions/pool with fictional directory; no HTTP response, file install/physical floor, mounted auxiliary Save/cookie delivery/crash/native/live AD/account/Fleet/backend CLI/browser/container/pilot. No Save/projection/factory consumer of new handle. No UI/assets/protocol/config change or new PNG/SKEW.",
+  "gate": "Draft parent-first plain alpha sync/resolution/newheadCI/readiness. No full S129 acceptance; coordinator alone gates."
+}
