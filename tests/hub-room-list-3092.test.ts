@@ -86,6 +86,12 @@ describe("the list's groups and rows (pure)", () => {
     expect(list.listRoomOf(base)).toEqual(client.legacyRoom(base));                                      // the client's mapping, exactly
     expect(list.listRoomOf(null)).toBeNull();
   });
+  it("a room's counts are singular when one (never 「1 people」)", () => {
+    expect([list.countsLine(1, 2), list.countsLine(3, 1), list.countsLine(1, 1), list.countsLine(0, 12)])
+      .toEqual(["1 person · 2 agents", "3 people · 1 agent", "1 person · 1 agent", "0 people · 12 agents"]);
+    i18n.setLang("zh-TW", { store: false });
+    expect(list.countsLine(1, 2)).toBe("1 人 · 2 個 Agent");
+  });
   it("presence as the Fleet sidebar's dots (spec §5's colours)", () => {
     expect(["online", "idle", "working", "paused", "offline", "later", undefined].map(list.presenceDot)).toEqual(["ok", "ok", "busy", "warn", "off", "off", null]);
   });
