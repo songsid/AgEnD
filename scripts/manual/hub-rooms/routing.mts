@@ -18,7 +18,7 @@ const out = resolve(process.env.OUT ?? ".artifacts/rooms-integration/routing/bro
 const sha = (value: Buffer | string) => createHash("sha256").update(value).digest("hex");
 const receipt: any = { sourceHead: execFileSync("git", ["-c", "gc.auto=0", "rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   scope: `Actual R HTTP/SQLite and HubServer/HubMemberClient TLS/WSS, C durable adapter/state publisher, shared U1/U2 browser UI. ${process.env.EXTRA_ANSWERS === "1" ? "Four" : "Two"} owned Fleet fixtures; inert directory and physical input/report hook. Captured bridge composes the two existing test rigs, not a complete FleetManager mount. No Team provider, external service, real agent, account or vendor API.`,
-  checks: [], pictures: [], requests: [], served: {}, wire: [], events: [] };
+  checks: [], pictures: [], requests: [], served: {}, wire: [], events: [], streams: [] };
 const check = (name: string, value: unknown, detail?: unknown) => { receipt.checks.push({ name, ok: !!value, ...(value ? {} : { detail }) }); console.log(`${value ? "PASS" : "FAIL"} ${name}`); };
 const until = async (test: () => unknown | Promise<unknown>, label: string) => {
   const end = Date.now() + 8_000; while (Date.now() < end) { if (await test()) return; await new Promise(r => setTimeout(r, 25)); } throw Error("Timed out: " + label);
@@ -27,6 +27,13 @@ const caps = [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY], net = awai
 let web: Awaited<ReturnType<typeof s3bRig>> | undefined, browser: any, activePage: any, activeTag = "setup";
 const peers: any[] = [];
 const server = createServer({ key: readFileSync(join(net.root, "hub/keys/tls-key.pem")), cert: readFileSync(join(net.root, "hub/keys/tls-cert.pem")) }, (req, res) => {
+  if (req.url?.startsWith("/hub/v1/rooms/events")) {
+    const stream = { opened: Date.now(), writes: [] as unknown[], closed: 0 }; receipt.streams.push(stream);
+    const write = res.write.bind(res); res.write = ((chunk: any, ...args: any[]) => {
+      const ok = (write as any)(chunk, ...args); stream.writes.push({ at: Date.now(), event: String(chunk).split("\n", 1)[0], bytes: Buffer.byteLength(chunk), ok }); return ok;
+    }) as typeof res.write;
+    res.on("close", () => { stream.closed = Date.now(); });
+  }
   if (!web?.http.handle(req, res)) { res.writeHead(404); res.end(); }
 });
 try {
@@ -87,8 +94,9 @@ try {
     await context.addCookies([{ name: admin.cookie.slice(0, at), value: admin.cookie.slice(at + 1), url: origin, httpOnly: true, secure: true, sameSite: "Strict" }]);
     await context.addInitScript(({ lang, theme }) => {
       localStorage.setItem("agend_lang", lang); localStorage.setItem("agend_theme", theme); localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1");
-      const w = window as any, Original = w.EventSource; w.__roomEvents = [];
+      const w = window as any, Original = w.EventSource; w.__roomEvents = []; w.__roomStreams = [];
       w.EventSource = class extends Original { constructor(url: string, options?: EventSourceInit) { super(url, options);
+        for (const type of ["open", "error"]) this.addEventListener(type, () => w.__roomStreams.push({ type, at: Date.now(), url, readyState: this.readyState }));
         for (const type of ["presence.changed", "message.added", "message.updated"]) this.addEventListener(type, (e: MessageEvent) => w.__roomEvents.push({ type, data: JSON.parse(e.data) }));
       } };
     }, { lang, theme });
@@ -203,7 +211,9 @@ try {
 } catch (error) {
   check("run completed", false, String(error));
   if (activePage) {
-    try { const path = activeTag + "-failure.png"; await activePage.screenshot({ path: join(out, path), fullPage: true }); receipt.pictures.push({ path, sha256: sha(readFileSync(join(out, path))) }); receipt.events.push({ device: activeTag, events: await activePage.evaluate(() => (window as any).__roomEvents) }); } catch { /* original assertion remains the result */ }
+    try { const path = activeTag + "-failure.png"; await activePage.screenshot({ path: join(out, path), fullPage: true }); receipt.pictures.push({ path, sha256: sha(readFileSync(join(out, path))) }); receipt.events.push({ device: activeTag, events: await activePage.evaluate(() => (window as any).__roomEvents) });
+      receipt.failure = { text: await activePage.locator(".hub-room-page").innerText(), streams: await activePage.evaluate(() => (window as any).__roomStreams) };
+    } catch { /* original assertion remains the result */ }
   }
 }
 finally {
