@@ -1,6 +1,6 @@
 [
   {
-    "digest": "9bc762f58ee516a92e519b005b0bfcee140487916421914b68e3b4aa4770ade1",
+    "digest": "e7c40410055ef3420281df14869f043c5420bce57eaf2c3c3a60f400f58524d5",
     "paths": [
       "README.md"
     ]
@@ -318,7 +318,39 @@
     ]
   },
   {
-    "digest": "44e232ace593a28e90bc9313e74c50d54fd651f1c2e6e86845e9eaddc203df34",
+    "digest": "393d7a362b76ac8f8888128f38ae9bc6845f287fec4c0b19d5d8fc8853b27bc8",
+    "paths": [
+      "checks/ci-fixture-controls.log"
+    ]
+  },
+  {
+    "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "paths": [
+      "checks/ci-fixture-test-types.log",
+      "checks/r1-test-types.log",
+      "checks/r2-source-types.log",
+      "checks/r2-test-types.log",
+      "checks/source-types-final.log",
+      "checks/test-types-final.log",
+      "mutations/M1-sidechain-types.log",
+      "mutations/M10-original-types.log",
+      "mutations/M11-commandprefix-types.log",
+      "mutations/M12-logpair-types.log",
+      "mutations/M13-officeshare-types.log",
+      "mutations/M14-nofallback-types.log",
+      "mutations/M15-intent-session-types.log",
+      "mutations/M2-apierror-types.log",
+      "mutations/M3-dedupe-types.log",
+      "mutations/M4-recovery-types.log",
+      "mutations/M5-concrete-types.log",
+      "mutations/M6-hookowner-types.log",
+      "mutations/M7-launchtime-types.log",
+      "mutations/M8-daemonfence-types.log",
+      "mutations/M9-resumequiet-types.log"
+    ]
+  },
+  {
+    "digest": "4ee49b7e5191cf15b561703fc3beb4382a5172f0c0161616c88193872847748f",
     "paths": [
       "checks/commands.txt"
     ]
@@ -348,6 +380,12 @@
     ]
   },
   {
+    "digest": "8b95af864be857652ac11a5d2d27ce47e15cff1e4390ce7dad6263a45f0c71a5",
+    "paths": [
+      "checks/full-claude-controls.log"
+    ]
+  },
+  {
     "digest": "fd125c31395c09a9a2e9ae56fb63f6eb4150474af60229fbb727b8bab90f4aac",
     "paths": [
       "checks/metadata-only-before.log"
@@ -363,31 +401,6 @@
     "digest": "d13cf250f8c450d7818dfb9fd03640500adff25ab31fea54478c4f377459ad8e",
     "paths": [
       "checks/r1-controls.log"
-    ]
-  },
-  {
-    "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "paths": [
-      "checks/r1-test-types.log",
-      "checks/r2-source-types.log",
-      "checks/r2-test-types.log",
-      "checks/source-types-final.log",
-      "checks/test-types-final.log",
-      "mutations/M1-sidechain-types.log",
-      "mutations/M10-original-types.log",
-      "mutations/M11-commandprefix-types.log",
-      "mutations/M12-logpair-types.log",
-      "mutations/M13-officeshare-types.log",
-      "mutations/M14-nofallback-types.log",
-      "mutations/M15-intent-session-types.log",
-      "mutations/M2-apierror-types.log",
-      "mutations/M3-dedupe-types.log",
-      "mutations/M4-recovery-types.log",
-      "mutations/M5-concrete-types.log",
-      "mutations/M6-hookowner-types.log",
-      "mutations/M7-launchtime-types.log",
-      "mutations/M8-daemonfence-types.log",
-      "mutations/M9-resumequiet-types.log"
     ]
   },
   {
@@ -409,7 +422,7 @@
     ]
   },
   {
-    "digest": "3d8e210a2d1fe0901fc3fb3d906f04dc46228d1a749f79c074e5d51ce095d298",
+    "digest": "3e78f0249fbd3d8be278fe3102d924199066089e73b1f4057391630a33a2f628",
     "paths": [
       "checks.json"
     ]

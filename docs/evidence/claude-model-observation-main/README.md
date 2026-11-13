@@ -4,7 +4,7 @@ AgEnD previously discarded the typed fallback notices and assistant model metada
 
 This is detection only: separate configured/launch/session/served values, typed safeguards/availability notices, one quiet Needs-you incident with recovery, localized runtime cards/details and Log, and compact `describe_instance` output (`detail:true` for bounded metadata). No automatic model, policy, restart or permission operation is added.
 
-Final source pin: `409472f13`; browser capture pin: `29d3a5142` (full SHAs in [checks.json](checks.json)). Main baseline: `3e4c2b657b86d343a5f70ab9d6f47e844fddeb46`. Later corrections isolate metadata startup recovery and accept a return to the configured model after launch failover. UI, FleetManager and capture harness are byte-identical to the capture. Its observer cases have configured = launch = original, where old/new recovery conditions agree. No later browser execution is claimed.
+Final source/docs pin: `8ac9d764e`; functional source pin: `409472f13`; browser capture pin: `29d3a5142` (full SHAs in [checks.json](checks.json)). Main baseline: `3e4c2b657b86d343a5f70ab9d6f47e844fddeb46`. Later corrections isolate metadata startup recovery and accept a return to the configured model after launch failover. UI, FleetManager and capture harness are byte-identical to the capture. Its observer cases have configured = launch = original, where old/new recovery conditions agree. No later browser execution is claimed.
 
 ## Verification
 
@@ -27,6 +27,10 @@ An unresolved `/model` alias/picker deliberately keeps mismatch inference unconf
 ## R2 configured-return recovery
 
 A self-found [semantic red](checks/configured-recovery-before.log) pins next-spawn failover (configured5.5 / launch4.8), then a typed provider fallback, then a served return to configured5.5. The incident now retires on that return as well as the original model. **208/208 across eight changed suites**, both native types exit0; all15 isolated reversals refreshed and caught/restored against this source. No model/policy/lifecycle write. UI/harness/PNGs are unchanged.
+
+## R3 launch contracts and concepts mirror
+
+**847/847 across all49 `claude-*` suites plus concepts sync (50 files)**, native test types exit0. The new `AGEND_CLAUDE_LAUNCH_ID=<UUID>` is an intentional, non-secret observational environment marker inherited by the CLI/statusline child. It grants no authority and selects no model/account/policy. Credential, cache TTL and memory fixtures pin that marker and preserve all remaining legacy command bytes. The marker prevents a late old hook from claiming the next launch after its script is rewritten. `docs/concepts.md` now mirrors the builtin skill exactly. Functional source is unchanged from R2; the backend comment and design explain the marker contract.
 
 ## PNGs
 

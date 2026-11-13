@@ -1,5 +1,5 @@
 {
-  "sourceHead": "409472f13166a674327f776ec931e951de8e47d0",
+  "sourceHead": "8ac9d764eae2e205981cf89d1543d9e8f7d9af92",
   "baseline": "3e4c2b657b86d343a5f70ab9d6f47e844fddeb46",
   "sourceInputs": [
     {
@@ -15,7 +15,13 @@
       ]
     },
     {
-      "digest": "a32d5a38f8995fd9b3461294cf39ccc2bed965f776b45ce80b92de8898305303",
+      "digest": "cb2d5c75c37b364ee2ddb38220fa85b8271d1021d7b83b83f06382b72888724c",
+      "paths": [
+        "docs/concepts.md"
+      ]
+    },
+    {
+      "digest": "c3588bb8dc8efa67ecaac81099dc941938562f124f82493f249142caa1fd23ef",
       "paths": [
         "docs/design/claude-model-observation.md"
       ]
@@ -33,7 +39,7 @@
       ]
     },
     {
-      "digest": "451787ab5afb6c0edfcda6cb637513da910a718a078705fa0c43a0c157f48d75",
+      "digest": "decd459b2f2edacf5bc7f293d391be7d54bf081afbe9d778cb2ddd9ca262b923",
       "paths": [
         "src/backend/claude-code.ts"
       ]
@@ -213,6 +219,18 @@
       ]
     },
     {
+      "digest": "79538d7498039996560c814daaa5e01ac7e50b48a786df3504bb78aefa82fcdb",
+      "paths": [
+        "tests/claude-prompt-cache-ttl-2010.test.ts"
+      ]
+    },
+    {
+      "digest": "84a13ef0b70384f92c9701526b3f2a7868a48a78c400971913fc3b4fd21f4e60",
+      "paths": [
+        "tests/claude-shared-memory-1754.test.ts"
+      ]
+    },
+    {
       "digest": "450ef9e8c433953d3d08a1d457c02564dc541b3af41e6e369446df6fc0d58865",
       "paths": [
         "tests/needs-you-hub-1386.test.ts"
@@ -312,5 +330,12 @@
     "testTypes": 0,
     "red": "checks/configured-recovery-before.log",
     "sourceDelta": "One recovery condition accepts configured model after launch failover; no selection/policy action. All15 isolated reversals refreshed against this source."
+  },
+  "r3": {
+    "fullClaudePassed": 847,
+    "files": 50,
+    "log": "checks/full-claude-controls.log",
+    "testTypes": 0,
+    "fixtureScope": "Credential/memory/cache TTL compare all legacy bytes after explicitly pinning the inherited marker; concepts doc mirrors skill. Product behavior unchanged from e3a19c912."
   }
 }

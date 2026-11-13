@@ -17,3 +17,7 @@ vitest run tests/claude-model-switch.test.ts tests/claude-model-switch-daemon.te
 
 # R2 configured-return delta; same eight-suite command as R1
 python3 docs/evidence/claude-model-observation-main/mutations/run.py
+
+# R3 complete Claude launch/grammar fixture inventory and concepts mirror
+vitest run tests/claude-*.test.ts tests/concepts-skill-sync.test.ts --maxWorkers=2
+tsc --noEmit -p tsconfig.test.json --pretty false
