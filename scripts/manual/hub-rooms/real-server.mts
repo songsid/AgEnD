@@ -73,6 +73,8 @@ try {
     check(tag + " human message uses actual SQL", (await r.call(actor, "GET", `/hub/v1/rooms/${id}/messages`)).text.includes("Browser human message " + tag));
     await p.locator(".hub-room-settings-open").click(); await p.locator("#hubRoomSettingsName").waitFor();
     check(tag + " room settings is mounted by the actual shell", await p.locator(".hub-room-settings").count() === 1);
+    const nameBox = await p.locator("#hubRoomSettingsName").boundingBox(), saveBox = await p.locator(".hub-room-name-row .btn").boundingBox();
+    check(tag + " Name Save button aligns with the input", !!nameBox && !!saveBox && Math.abs(nameBox.y - saveBox.y) <= 2 && Math.abs(nameBox.height - saveBox.height) <= 2);
     const renamed = "Saved room " + tag;
     await p.locator("#hubRoomSettingsName").fill(renamed);
     const saved = p.waitForResponse((res: any) => res.request().method() === "PATCH" && new URL(res.url()).pathname === `/hub/v1/rooms/${id}`);
