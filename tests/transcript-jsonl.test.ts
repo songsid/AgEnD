@@ -1,17 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const io = vi.hoisted(() => ({ stat: vi.fn(), open: vi.fn(), read: vi.fn(), close: vi.fn() }));
-vi.mock("node:fs/promises", () => ({ stat: io.stat, open: io.open }));
+// the transcript is looked at with lstat and its handle with fstat (a regular file only): both answer from `io.stat`
+vi.mock("node:fs/promises", () => ({ stat: io.stat, lstat: io.stat, open: io.open }));
 import { readNewLines } from "../src/transcript-jsonl.js";
 
 beforeEach(() => {
   vi.resetAllMocks();
-  io.open.mockResolvedValue({ read: io.read, close: io.close });
+  io.open.mockResolvedValue({ read: io.read, close: io.close, stat: async () => ({ isFile: () => true }) });
 });
 
 function scriptedRead(text: string, fromOffset = 0, size = fromOffset + Buffer.byteLength(text)) {
   const bytes = Buffer.from(text);
-  io.stat.mockResolvedValue({ size });
+  io.stat.mockResolvedValue({ size, isFile: () => true });
   io.read.mockImplementation(async (buffer: Buffer, offset: number, length: number, position: number) => {
     expect(offset).toBe(0);
     expect(length).toBe(size - fromOffset);
@@ -61,13 +62,13 @@ describe("complete JSONL byte boundaries", () => {
   });
 
   it("does not open a file that has no new bytes", async () => {
-    io.stat.mockResolvedValue({ size: 50 });
+    io.stat.mockResolvedValue({ size: 50, isFile: () => true });
     expect(await readNewLines("fixture", 50)).toEqual(R([], 50));
     expect(io.open).not.toHaveBeenCalled();
   });
 
   it("closes the handle on a read failure without advancing an offset", async () => {
-    io.stat.mockResolvedValue({ size: 50 });
+    io.stat.mockResolvedValue({ size: 50, isFile: () => true });
     io.read.mockRejectedValue(new Error("fixture read failure"));
     await expect(readNewLines("fixture", 0)).rejects.toThrow("fixture read failure");
     expect(io.close).toHaveBeenCalledOnce();

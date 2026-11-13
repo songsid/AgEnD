@@ -52,7 +52,7 @@ describe("AgEnD's remote bridge sends a profile NAME to a Runtime that can honou
     const { call, bridge: b } = bridge(["exec", "credential-profiles"]);
     for (const bad of ["C:\\x", "../x", "a/b", "", "con"]) expect(() => b.start(task(), () => true, { machineId, credentialProfile: bad }), bad).toThrow(/Credential profile names/);
     expect(() => b.start(task(), () => true, { machineId, credentialHome: "C:\\Users\\me\\.claude" })).toThrow(/never sent to a Runtime/);
-    expect(() => b.start(task("codex"), () => true, { machineId, credentialProfile: "work" })).toThrow(/Claude Code only/);
+    expect(() => b.start(task("codex"), () => true, { machineId, credentialProfile: "work" })).toThrow(/Claude Code and Antigravity only/);
     expect(call).not.toHaveBeenCalled(); b.close();
   });
 });
@@ -69,7 +69,7 @@ describe("a Windows agent's creation request names a profile, never a folder", (
   });
   it("refuses a profile without a paired computer or for another CLI, and an unknown field that would be a folder", () => {
     expect(() => parseNativeInstanceCreate({ runtime: "windows", backend: "claude-code", topic_name: "w", credentialProfile: "work" })).toThrow(/paired Runtime computer/);
-    expect(() => parseNativeInstanceCreate({ ...input, backend: "codex", credentialProfile: "work" })).toThrow(/Claude Code sign-in/);
+    expect(() => parseNativeInstanceCreate({ ...input, backend: "codex", credentialProfile: "work" })).toThrow(/Claude Code and Antigravity sign-in/);
     for (const field of ["credentialHome", "credential_profile_dir", "env", "claudeConfigDir"]) expect(() => parseNativeInstanceCreate({ ...input, [field]: "C:\\x" }), field).toThrow();
   });
 });
@@ -79,7 +79,7 @@ describe("the Change Runtime request", () => {
   it("takes a name only", () => {
     expect(AgentRuntimeChangeInput.parse({ ...base, credentialProfile: "work" }).credentialProfile).toBe("work");
     for (const bad of ["C:\\x", "../x", "", "con", 5]) expect(() => AgentRuntimeChangeInput.parse({ ...base, credentialProfile: bad })).toThrow();
-    for (const extra of [{ runtime: "wsl", machineId: undefined }, { backend: "codex" }, { machineId: undefined }]) expect(() => AgentRuntimeChangeInput.parse({ ...base, credentialProfile: "work", ...extra })).toThrow(/Claude Code sign-in/);
+    for (const extra of [{ runtime: "wsl", machineId: undefined }, { backend: "codex" }, { machineId: undefined }]) expect(() => AgentRuntimeChangeInput.parse({ ...base, credentialProfile: "work", ...extra })).toThrow(/Claude Code and Antigravity sign-in/);
     expect(() => AgentRuntimeChangeInput.parse({ ...base, credentialHome: "C:\\x" })).toThrow();
   });
 });

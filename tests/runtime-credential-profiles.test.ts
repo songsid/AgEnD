@@ -30,9 +30,9 @@ describe("credential profile names", () => {
     // Every name accepted here is accepted by the Linux rule (never the other way round).
     expect(CREDENTIAL_PROFILE_NAME.source).toBe("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
   });
-  it("only Claude Code has a credential home on a Windows Runtime", () => {
+  it("only Claude Code and Antigravity have a credential home on a Windows Runtime", () => {
     expect(assertCredentialProfileCli("claude-code")).toBe("claude-code");
-    for (const bad of ["codex", "kiro-cli", "", undefined, "__proto__", "constructor", "toString"]) expect(() => assertCredentialProfileCli(bad)).toThrow(/Claude Code only/);
+    for (const bad of ["codex", "kiro-cli", "", undefined, "__proto__", "constructor", "toString"]) expect(() => assertCredentialProfileCli(bad)).toThrow(/Claude Code and Antigravity only/);
   });
 });
 

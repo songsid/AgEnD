@@ -162,7 +162,9 @@ export interface HubFleet {
 }
 export interface HubExposure {
   id: ExposureId; fleetId: FleetId; owner: PersonKey; displayName: string;
-  revision: Epoch; state: "published" | "withdrawn" | "frozen";
+  revision: Epoch; state: "published" | "withdrawn" | "frozen" | "paused";
+  /** Hub browser projection only; member snapshots cannot set a Hub-owned pause or its epoch. */
+  sharingEpoch?: Epoch;
   dataViewId: string; allowedTools: readonly string[]; policyDigest: Sha256;
 }
 export interface HubGrant {

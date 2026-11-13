@@ -9,3 +9,13 @@ This is a backend rehearsal, not acceptance of proposed address controls. The ex
 Outputs are in `.artifacts/hub-address-3428/container-evidence`. The committed two PNGs show the existing signed-in Hub and its new-address sign-in screen. They are zh-TW desktop technical evidence, not the future EN/zh desktop/phone Settings proposal. `receipt.json` records precommit production hashes and PNG hashes; it makes no exact-commit claim. Scratch homes, credentials, browser profiles, LDAP and application listeners are removed on completion. The Docker image and inert source snapshot remain for reproduction.
 
 The first fixture attempts failed on a container UID mismatch, an obsolete Settings-card selector and the browser form-wait harness; they are superseded by the final actual-browser API rehearsal. A smaller pinned-client rehearsal passed before the second FleetManager runtime was added. Neither is counted as the final 23-check result.
+
+## Settings card leg (M-2901)
+
+`SCRIPT=accept-ui.mts OUT=<dir> scripts/manual/hub-web-address/run.sh` runs the same owned container, and drives the **Settings → Hub → Hub address** card by clicks instead of calling the API. It covers:
+- EN/zh-TW × desktop/phone × light/dark shots of each state, and of the page before (the same shell with the page mark stripped, which is what a server without the card draws) and after;
+- Check then Back changes nothing;
+- a non-host session sees no card, and the route refuses it;
+- two real changes through **Confirm change**: zh-TW keeps the certificate on the same host name, EN creates one under Advanced. Each checks the saved address and listener, an unchanged member address and issuer, the member reconnecting with identical pins, the old Hub sign-in ended, a fresh sign-in at the new address, and the old address refused.
+
+The committed PNGs and `receipt.json` are in `docs/screenshots/hub-web-address-ui/`.

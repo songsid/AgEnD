@@ -1,0 +1,51 @@
+{
+  "parent": "bb236fd4b5ed34daf1fea6d072d3bbf5739521a0",
+  "cause": {
+    "run": 43378316649,
+    "jobs": [
+      131729935023,
+      131731988922,
+      131731988955,
+      131731988977
+    ],
+    "failures": [
+      "Fragment front matter missing (changelog and shard3)",
+      "Obsolete skill Not available pin (shard2)",
+      "Exact Hub feature inventory predates sharing-pause-v1 (shard4)"
+    ]
+  },
+  "scope": [
+    "changes/3743-resumable-hub-sharing.md",
+    "changes/3743-resumable-hub-sharing.zh-TW.md",
+    "tests/hub-groups-mount-s89.test.ts",
+    "tests/hub-skill.test.ts"
+  ],
+  "inputDigests": {
+    "1f0a549bb6b3fc041609064a8e9e6915943a79f14911e8804c1f63e7d832e158": [
+      "changes/3743-resumable-hub-sharing.md"
+    ],
+    "5c4fb52d42fb4d2f0bc64e917eac2ddf36bea13a785e020335acdfe71d2ed56a": [
+      "changes/3743-resumable-hub-sharing.zh-TW.md"
+    ],
+    "a9e153a91489ed6a6f89ba59e8dcef72e8cb1a1638491253528ae82189adbe76": [
+      "tests/hub-groups-mount-s89.test.ts"
+    ],
+    "5c5982f7665cf21b3ddc4ecf642272bf3f741d78d96c96cc4e4aa6399dc607f2": [
+      "tests/hub-skill.test.ts"
+    ]
+  },
+  "focused": {
+    "suites": 4,
+    "passed": 51,
+    "workers": 2
+  },
+  "fragmentCheck": {
+    "exit": 0,
+    "fragments": 432
+  },
+  "nativeTestTypes": 0,
+  "runtimeAndHarnessIdentical": true,
+  "all60PngPreserved": true,
+  "priorManifestPathsPreserved": 107,
+  "browserRerun": false
+}

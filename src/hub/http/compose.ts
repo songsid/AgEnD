@@ -34,6 +34,7 @@ import { HubRoomsService } from "../rooms.js";
 import { HubAttachmentRefused } from "../attachments/store.js";
 import { HubQuotaService } from "../quota.js";
 import { HubCore, pairingOwnerByLogin } from "./core.js";
+import { HubSharingPaused, HubSharingService } from "../sharing.js";
 import { HUB_HTTP_MIGRATIONS } from "./schema.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { serveHubWorkspaceShell } from "../../web-api.js";
@@ -122,6 +123,7 @@ const int = (v: unknown): number => { const n = typeof v === "string" && /^\d{1,
 export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   let closed = false;
   const core = new HubCore(deps, sql, () => !closed);
+  const sharing = new HubSharingService(core);
   const sessions = new HubSessions(core), catalog = new HubCatalogService(core), policy = new HubPolicyService(core);
   const grantSearch = new HubGrantSearch(core);
   const rooms = new HubRoomsService(core, policy);
@@ -151,7 +153,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     };
     const m = (re: RegExp) => re.exec(path);
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
-    const offered = [...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    const offered = [...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     const features = offered.length ? { features: offered } : {};
@@ -318,6 +320,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/activity$/))) {
       if (method !== "GET") throw new HttpError(405, "method");
       signedIn(); return send(res, 200, { activity: await guard(() => rooms.activity(ctx, uuid(r![1]))) });
+    }
+    if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/sharing$/))) {
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const b = await body(); await guard(() => sharing.change(ctx, uuid(r![1]), b));
+      return send(res, 200, { ok: true });
     }
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/freeze$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
@@ -486,6 +493,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (e instanceof CompanyJoinLimit) return send(res, 429, { code: "limit-reached" });
     if (e instanceof SignedOut) return send(res, 401, { code: "signed-out" });
     if (e instanceof HttpError) return send(res, e.status, { code: e.code });
+    if (e instanceof HubSharingPaused) return send(res, 409, { code: "sharing-paused" });
     if (e instanceof HubAttachmentRefused) return send(res, 415, { code: e.refusal });
     if (e instanceof HubProtocolError) {
       const status = STATUS[e.code] ?? 400;
@@ -566,7 +574,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, features: Object.freeze([...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, features: Object.freeze([...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
     async close() { closed = true; grantSearch.close(); for (const end of streams) end(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };

@@ -55,6 +55,8 @@ export interface HubHttpDeps {
   /** Original security-notice recipients; independent of operational group or administrator permissions. */
   directoryNotices?: Pick<import("../settings-directory-notices.js").HubDirectoryNotices, "forSession" | "acknowledgeSession">;
   store: HubTransportStore;
+  /** Reconnect member links only after a committed authorization-version change. Absent: no resumable sharing. */
+  refreshAuthorization?(): void;
   config: HubHttpConfig;
   /** M-2682: Administration → This Hub — what it is (read-only) and, with the host's writer, its rename. Absent: 404. */
   hubSettings?: Readonly<Omit<import("../settings-api.js").HubSettingsHttpDeps, "name">>;

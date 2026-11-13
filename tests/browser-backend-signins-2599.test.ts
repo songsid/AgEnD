@@ -52,6 +52,23 @@ it("refresh probes once per explicit refresh and keeps agy console-only", async 
   expect(current.pending).toEqual(["antigravity"]); expect(current.ready).toBe(false);
   await h.c.skip(h.owner, "antigravity"); expect(h.c.ready).toBe(true);
 });
+it("AGEND-113: where the host says so (Settings → Accounts), Antigravity can be started with `agy acp --login`; the checklist still reads it as console-only, and nothing else becomes startable", async () => {
+  const dir = temp(), owner = {};
+  const AGY = "Open this link in a browser to log in with Google:\n\n  https://accounts.google.com/o/oauth2/auth?client_id=x\n\nThen paste the authorization code, or the full URL of the page you land on, and press Enter:\n";
+  const transport = { start: vi.fn(async () => {}), capture: vi.fn(async () => AGY), status: vi.fn(async () => ({ alive: true })), write: vi.fn(async () => {}), close: vi.fn(async () => {}) };
+  const checkAuth = vi.fn(async (_backend: StructuredBackend) => "invalid" as "valid" | "invalid" | "unknown");
+  const c = new BrowserBackendSignIns({ dataDir: dir, selected: ["antigravity", "codex"], current: who => who === owner, installed: async () => ["codex", "antigravity"], checkAuth, accountsPage: true, transport: () => transport });
+  coordinators.push(c);
+  expect((await c.refresh(owner)).states).toMatchObject({ antigravity: "console_only" });    // the checklist's own reading, unchanged
+  const started = await c.begin(owner, "antigravity");
+  expect(transport.start).toHaveBeenCalledTimes(1); expect((transport.start.mock.calls[0] as unknown as [{ argv: string[] }])[0].argv).toEqual(["agy", "acp", "--login"]);
+  expect(started.login).toMatchObject({ backend: "antigravity", phase: "code", url: "https://accounts.google.com/o/oauth2/auth?client_id=x" });
+  await c.cancel(owner);
+  for (const backend of ["grok", "opencode", "agy"]) await expect(c.begin(owner, backend), backend).rejects.toThrow("signin_console_only");
+  // Not selected on the checklist: still refused (the dialog selects it first, as for every other backend).
+  const other = new BrowserBackendSignIns({ dataDir: temp(), selected: ["codex"], current: who => who === owner, installed: async () => ["codex"], checkAuth, accountsPage: true, transport: () => transport }); coordinators.push(other);
+  await expect(other.begin(owner, "antigravity")).rejects.toThrow("signin_console_only");
+});
 it("duplicate begin joins the same run, owner-only hints, then skip waits for cleanup and preserves pending IDs", async () => {
   const h = rig(); const a = await h.c.begin(h.owner, "codex"); const b = await h.c.begin(h.owner, "codex");
   expect(a.login?.id).toBe(b.login?.id); expect(a.login?.code).toBe("TEST-CODE"); expect(h.transport.start).toHaveBeenCalledOnce();

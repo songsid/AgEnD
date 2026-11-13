@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts (24 tests | 1 failed | 23 skipped) 143ms
+     × commits the authorization version before refreshing links, without refreshing a rolled-back pause 139ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 23 skipped (24)
+   Start at  15:01:49
+   Duration  5.14s (transform 3.67s, setup 98ms, import 4.72s, tests 143ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > commits the authorization version before refreshing links, without refreshing a rolled-back pause
+AssertionError: expected 500 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 500
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:106:46
+    104|     expect(refresh).not.toHaveBeenCalled(); expect(w.r.store.read().re…
+    105|     w.r.setAuditFails(false);
+    106|     expect((await w.change(true, 0)).status).toBe(200); expect(refresh…
+       |                                              ^
+    107|     expect((await w.change(false, 1)).status).toBe(200); expect(refres…
+    108|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

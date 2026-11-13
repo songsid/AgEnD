@@ -292,6 +292,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     async signIn(login, password) { retireReads(); const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; } return r; },
     async signOut() { retireReads(); const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; return r; },
     catalog() { return call("GET", "/hub/v1/exposures"); },
+    sharingPauseV1: true,
+    sharing(exposureId, revision, sharingEpoch, paused) { return call("POST", `/hub/v1/exposures/${id(exposureId)}/sharing`, { revision, sharingEpoch, paused }); },
     grant(input) { return call("POST", "/hub/v1/grants", input); },
     grantSubjectsV1: true,
     async searchGrantSubjects(exposureId, exposureRevision, kind, q, signal) {

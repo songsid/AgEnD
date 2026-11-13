@@ -39,7 +39,7 @@ async function fixture(clientOptions: Partial<ConstructorParameters<typeof Runti
   server.listen(0, "127.0.0.1"); await once(server, "listening"); const address = server.address(); if (!address || typeof address === "string") throw Error("No fixture port");
   const runtimeHome = home(), root = credentialProfilesRoot(runtimeHome), store = new RuntimeClientStore(join(runtimeHome, "state")), bridge = new FakeBridge();
   store.saveCredentials({ server: `http://127.0.0.1:${address.port}`, machineId: claim.machineId, credential: claim.credential, name: "Fixture Windows" });
-  const login = vi.fn(async (_cli: "claude-code", _directory: string): Promise<boolean | null> => true);
+  const login = vi.fn(async (_cli: string, _directory: string): Promise<boolean | null> => true);
   const client = new RuntimeClient({ store, bridge, reconnectMs: 25, disconnectGraceMs: 500, pollMs: 10, ...(withRoot ? { credentialProfilesRoot: root } : {}), credentialLogin: login, ...clientOptions });
   clients.push(client); await client.start(); await vi.waitFor(() => expect(client.online()).toBe(true));
   return { hub, store, bridge, client, machineId: claim.machineId, root, login };
@@ -80,14 +80,14 @@ describe("a run that names a credential profile", () => {
     for (const bad of ["C:\\Users\\me\\.claude", "..\\x", "../x", "a/b", "\\\\server\\share", "", " ", "con", "work."]) {
       await expect(f.hub.call(f.machineId, "run", { task: claudeTask(), credentialProfile: bad }), JSON.stringify(bad)).rejects.toThrow(/Credential profile names/);
     }
-    await expect(f.hub.call(f.machineId, "run", { task: codexTask(), credentialProfile: "work" })).rejects.toThrow(/Claude Code only/);
+    await expect(f.hub.call(f.machineId, "run", { task: codexTask(), credentialProfile: "work" })).rejects.toThrow(/Claude Code and Antigravity only/);
     expect(f.bridge.launches).toBe(0);
   });
   it("is refused again by the Runtime, even for a frame AgEnD did not vet (defence in depth)", async () => {
     const f = await fixture();
     for (const bad of ["C:\\Users\\me\\.claude", "../x", "a/b", ""]) await expect(f.client.operation("run", { task: claudeTask(), credentialProfile: bad })).rejects.toThrow(/Credential profile names/);
     await expect(f.client.operation("run", { task: claudeTask(), credentialHome: "C:\\x" })).rejects.toThrow(/Invalid runtime run payload/);
-    await expect(f.client.operation("run", { task: codexTask(), credentialProfile: "work" })).rejects.toThrow(/Claude Code only/);
+    await expect(f.client.operation("run", { task: codexTask(), credentialProfile: "work" })).rejects.toThrow(/Claude Code and Antigravity only/);
     expect(f.bridge.launches).toBe(0);
   });
   it("fails closed as a confirmed failed turn when the profile does not exist here, and starts nothing", async () => {

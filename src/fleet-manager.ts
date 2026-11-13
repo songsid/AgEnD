@@ -134,7 +134,7 @@ import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, load
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
 import { deletePlannedTopic, planInstanceTopicDelete, topicDestination, topicMustStay, type InstanceTopicPlan, type TopicDeleteOutcome, type TopicOwnership } from "./instance-topic-delete.js";
-import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, findExecutableIn, resolveBackendBinary, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
+import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, versionAtLeast, hostAvailabilityProbes, findExecutableIn, resolveBackendBinary, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { OutboxOpenError } from "./outbox-open-error.js";
 import { AdapterWorld } from "./adapter-world.js";
@@ -321,8 +321,11 @@ import { envFileKeys } from "./token-env-name.js";
 import { discordGeneralChannelId } from "./discord-general.js";
 import { parseEnvText } from "./env-file.js";
 import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permissions.js";
-import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, setCapacityLookup, usageProviderIdForBackend } from "./usage/usage-api.js";
-import { LOGIN_FLOWS, checkAuthStatus, checkAuthIdentity, authIdentitySupported, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
+import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, refreshUsageAfterSignIn, setCapacityLookup, usageProviderIdForBackend } from "./usage/usage-api.js";
+import { LOGIN_FLOWS, checkAuthStatus, checkAuthSignedOut, checkAuthIdentity, authIdentitySupported, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
+import { structuredSignInSupported } from "./structured-signin.js";
+import { proveFolderIsolation } from "./account-isolation.js";
+import { STRUCTURED_PROFILE_BACKENDS } from "./structured-signin-transport.js";
 import type { AccountIdentity } from "./claude-auth-status.js";
 import { LoginSession, type LoginSessionEvents } from "./login-manager.js";
 import { runOnLoginShell } from "./login-shell.js";
@@ -348,8 +351,8 @@ import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
 import { BrowserBackendSignIns } from "./browser-backend-signins.js";
 import { createStructuredSignInTransport } from "./structured-signin-transport.js";
-import { ONBOARDING_BACKENDS, readPendingBackendSignIns } from "./backend-signin-pending.js";
-import { structuredSignInSupported } from "./structured-signin.js";
+import { ONBOARDING_BACKENDS, ONBOARDING_BROWSER_BACKENDS, readPendingBackendSignIns } from "./backend-signin-pending.js";
+import { hostFacts, runtimeAccountsCapability, runtimeFacts } from "./cli-registry.js";
 import { handleSettingsRequest, switchClassicRoomProfile, type ClassicProfileSwitch, type RawConfigPatch } from "./settings-api.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
@@ -422,6 +425,7 @@ import { AuthorityStateStore, type AuthorityState } from "./authority/authority-
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
+import { listOptions, scheduleListAnswer, taskListAnswer, taskTitle } from "./agent-list-output.js";
 import { decisionListAnswer } from "./decision-list.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { hubInitializationSession } from "./authority/hub-initialization.js";
@@ -489,10 +493,10 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, claudeStoreEnded, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, claudeStoreEnded, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLaunch, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
-import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, shortUsage, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
+import { ACCOUNT_CLIS, PROFILE_CLIS, accountUsage, buildAccountsView, profilesOnDisk, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import { accountFolderExists, addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
 import { signOutAccount, type SignOutResult } from "./accounts-signout.js";
 import { MachineAccounts, machineAgents, type MachineActor, type MachineAccountResult } from "./machine-accounts.js";
@@ -500,7 +504,7 @@ import { MachineSignIns } from "./machine-signins.js";
 import { ProfileSignIns } from "./profile-signins.js";
 import { runQuiet } from "./quiet-run.js";
 
-const ACCOUNT_SIGN_OUT_DEPS: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform"> = {
+const ACCOUNT_SIGN_OUT_DEPS: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform"> & { verify?: import("./accounts-signout.js").SignOutDeps["verify"] } = {
   platform: process.platform,
   run: (binary: string, args: readonly string[], env: NodeJS.ProcessEnv) => runQuiet(binary, args, env),   // its `gone` is kept by withAccountWriter
   // #3305 review P2-5: a deadline is a failure (runQuiet), for the Keychain query too; it only reads, so its child is not
@@ -1469,10 +1473,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if(sandbox==="read-only" && !provider.readOnlySupport)throw new Error("This runtime CLI cannot enforce read-only execution");
         if(credentialProfile!==undefined){
           // Fail closed at selection time, not at the first message: an old Runtime would ignore the name and run another account.
-          if(!machine.runtimeInfo?.capabilities.includes(RUNTIME_CREDENTIAL_CAPABILITY))throw new Error("This computer's Runtime is too old to choose a Claude account. Update the Runtime on that computer, then try again.");
-          const row=machine.inventory?.credentialProfiles?.profiles.find(profile=>profile.name===credentialProfile);
-          if(!row)throw new Error(`This computer has not reported a credential profile named "${credentialProfile}". On that computer run: agend-runtime login claude-code ${credentialProfile}, then choose Detect again in that computer's CLI diagnostics (Settings → Runtime).`);
-          if(row.loggedIn===false)throw new Error(`Credential profile "${credentialProfile}" is not signed in on that computer. Sign in there: agend-runtime login claude-code ${credentialProfile}`);
+          const product=cli==="claude-code"?"Claude":(runtimeFacts(cli,"provider")?.name??cli);
+          if(!machine.runtimeInfo?.capabilities.includes(RUNTIME_CREDENTIAL_CAPABILITY)||(cli!=="claude-code"&&!machine.runtimeInfo.capabilities.includes(runtimeAccountsCapability(cli))))throw new Error(`This computer's Runtime is too old to choose a ${product} account. Update the Runtime on that computer, then try again.`);
+          // Claude Code's profiles are the report's `profiles`; another CLI's (Antigravity) are its `byCli`.
+          const reported=cli==="claude-code"?machine.inventory?.credentialProfiles?.profiles:machine.inventory?.credentialProfiles?.byCli?.[cli];
+          const row=reported?.find(profile=>profile.name===credentialProfile);
+          const hint=cli==="claude-code"?`On that computer run: agend-runtime login claude-code ${credentialProfile}, then choose Detect again in that computer's CLI diagnostics (Settings → Runtime).`:"Add it in Settings → Agent → Accounts, under that computer's name.";
+          if(!row)throw new Error(`This computer has not reported a credential profile named "${credentialProfile}". ${hint}`);
+          if(row.loggedIn===false)throw new Error(`Credential profile "${credentialProfile}" is not signed in on that computer. ${cli==="claude-code"?`Sign in there: agend-runtime login claude-code ${credentialProfile}`:"Sign it in from Settings → Agent → Accounts."}`);
         }
       },
       emit:(event,data)=>{
@@ -14588,7 +14596,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             includeArchived: payload.include_archived as boolean | undefined,
             tags: payload.tags as string[] | undefined,
             teams: instanceTeams(this.fleetConfig?.teams, instanceName),
-          }), { id: payload.id, full: payload.full });
+          }), { id: payload.id, full: payload.full, detail: payload.detail, limit: payload.limit, cursor: payload.cursor });
           break;
         case "fleet_decision_update": {
           const id = payload.id as string;
@@ -14764,7 +14772,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ...(reply.silent !== undefined ? { silent: reply.silent } : {}),
         });
       case "list":
-        return scheduler.list(requestedTarget);
+        return scheduleListAnswer(scheduler.list(requestedTarget), args);
       case "update":
         return scheduler.update(args.id as string, args as Record<string, unknown>);
       case "delete":
@@ -14887,7 +14895,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         includeArchived: args.includeArchived === true || args.include_archived === true,
         tags: asStrArr(args.tags),
         teams: instanceTeams(this.fleetConfig?.teams, instance),
-      }), { id: op === "get" ? asStr(args.id) ?? "" : args.id, full: args.full });
+      }), { id: op === "get" ? asStr(args.id) ?? "" : args.id, full: args.full, detail: args.detail, limit: args.limit, cursor: args.cursor });
       case "update": {
         const id = asStr(args.id);
         if (!id) return { error: "id is required" };
@@ -14948,18 +14956,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // #1336 item 1: default to live-only (no done/cancelled) unless the
           // caller explicitly asked for a status.
           const effectiveStatus = explicitStatus ?? LIVE_TASK_STATUSES;
-          const verbose = args.verbose === true;
+          listOptions(args);
+          const verbose = args.verbose === true || args.detail === true;
           const tasks = verbose
             ? db.listTasks({ assignee: filterAssignee, status: effectiveStatus, verbose: true })
             : db.listTasks({ assignee: filterAssignee, status: effectiveStatus });
           // #1335: cap unfiltered list. The default live-only filter does not
           // count as an explicit filter for the cap decision.
-          return applyTaskListCap(tasks, filterAssignee, explicitStatus);
+          return args.detail === true || args.verbose === true ? applyTaskListCap(tasks, filterAssignee, explicitStatus) : taskListAnswer(tasks, args);
         }
         case "get": {
           const id = asStr(args.id);
           if (!id) return { error: "id is required" };
-          return db.getTaskByPrefix(id);
+          listOptions(args);
+          const row = db.getTaskByPrefix(id);
+          return args.detail === true ? row : taskTitle(row);
         }
         case "claim": {
           const id = asStr(args.id);
@@ -15106,17 +15117,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const explicitStatus = asStatusFilter(payload.filter_status);
           // #1336 item 1: default to live-only (no done/cancelled).
           const effectiveStatus = explicitStatus ?? LIVE_TASK_STATUSES;
-          const verbose = payload.verbose === true;
+          listOptions(payload);
+          const verbose = payload.verbose === true || payload.detail === true;
           const tasks = verbose
             ? db.listTasks({ assignee: filterAssignee, status: effectiveStatus, verbose: true })
             : db.listTasks({ assignee: filterAssignee, status: effectiveStatus });
           // #1335: cap unfiltered list — the default live-only filter does not
           // count as an explicit filter.
-          result = applyTaskListCap(tasks, filterAssignee, explicitStatus);
+          result = payload.detail === true || payload.verbose === true ? applyTaskListCap(tasks, filterAssignee, explicitStatus) : taskListAnswer(tasks, payload);
           break;
         }
         case "get":
-          result = db.getTaskByPrefix(payload.id as string);
+          listOptions(payload);
+          result = payload.detail === true ? db.getTaskByPrefix(payload.id as string) : taskTitle(db.getTaskByPrefix(payload.id as string));
           break;
         case "claim":
           logTask = db.claimTask(db.getTaskByPrefix(payload.id as string).id, meta.instance_name || instanceName, { kind: "instance", name: meta.instance_name || instanceName });
@@ -21282,13 +21295,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.machineSignInsInstance ??= new MachineSignIns({
       call: (id, operation, payload, timeoutMs) => this.runtimeCoordinator().callAccount(id, operation, payload, timeoutMs),
       current: owner => this.browserSignInOwnerCurrent(owner),
-      reported: (id, profile) => this.machineAccounts.profileState(id, profile),
-      readiness: id => this.machineAccounts.readiness(id),
+      reported: (id, profile, backend) => this.machineAccounts.profileState(id, profile, backend),
+      reportedDefault: (id, backend) => this.machineAccounts.reportedDefault(id, backend),
+      readiness: (id, backend, named) => this.machineAccounts.readiness(id, backend, named),
       actor: owner => { const handle = (owner as SessionRecord).handle; return typeof handle === "string" && /^[a-f0-9]{16}$/.test(handle) ? `admin:${handle}` : null; },
       changed: (event, owner) => {
-        // Safe fields only: the computer, the profile name, a phase and a fixed reason. Never a URL, a code, output or an e-mail address.
-        this.logger.info({ machine: event.machine, profile: event.profile, phase: event.phase, ...(event.reason ? { reason: event.reason } : {}), by: (owner as SessionRecord).label },
+        // Safe fields only: the computer, the CLI, the profile name (none for Antigravity's default login), a phase and a fixed reason. Never a URL, a code, output or an e-mail address.
+        this.logger.info({ machine: event.machine, backend: event.backend, ...(event.profile ? { profile: event.profile } : {}), phase: event.phase, ...(event.reason ? { reason: event.reason } : {}), by: (owner as SessionRecord).label },
           "Computer account sign-in from Settings → Accounts");
+        // The page reads the computer's last detection (agy is never run for a read): a login made just now is remembered until the next one.
+        // Only the computer's OWN login (no profile) is remembered here: a named account's sign-in is reported by its Runtime's inventory, which it sends before the sign-in ends.
+        if (event.phase === "done" && event.profile === undefined) this.machineAccounts.noteDefaultLogin(event.machine, event.backend, true);
         broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
         this.needsYou?.poke();
       },
@@ -21301,8 +21318,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       call: (id, operation, payload, timeoutMs) => this.runtimeCoordinator().callAccount(id, operation, payload, timeoutMs),
       machine: id => remoteRuntimeEnabled() ? this.runtimeCoordinator().machine(id) ?? undefined : undefined,
       machines: () => remoteRuntimeEnabled() ? this.runtimeCoordinator().listMachines() : [],
-      agents: id => machineAgents(this.fleetConfig?.instances, id, name => { try { return nativeCredentialProfile(this.fleetConfig?.instances[name]) ?? null; } catch { return null; } }, this.fleetConfig?.defaults?.backend ?? "claude-code"),
-      signingIn: (id, profile) => this.machineSignInsInstance?.signingIn(id, profile) ?? false,
+      agents: (id, backend = "claude-code") => machineAgents(this.fleetConfig?.instances, id, name => { try { return nativeCredentialProfile(this.fleetConfig?.instances[name]) ?? null; } catch { return null; } }, this.fleetConfig?.defaults?.backend ?? "claude-code", backend),
+      signingIn: (id, profile, backend) => this.machineSignInsInstance?.signingIn(id, profile, backend) ?? false,
+      signingInDefault: (id, backend) => this.machineSignInsInstance?.signingInDefault(id, backend) ?? false,
+      cliAgents: (id, backend) => machineAgents(this.fleetConfig?.instances, id, () => null, this.fleetConfig?.defaults?.backend ?? "claude-code", backend).map(agent => agent.name),
       log: entry => this.logger.info(entry, entry.outcome === "ok" ? "Computer account changed from Settings → Accounts" : "Computer account change refused"),
     });
   }
@@ -21328,6 +21347,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       checkAuth: backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
       checkConsoleAuth: backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
+      accountsPage: true,   // Settings → Accounts starts what the registry says can be driven (Antigravity: `agy acp --login`); the first-run page's own instance does not
       transport: () => createStructuredSignInTransport(),
       changed: (event, owner, launched) => {
         try { this.eventLog?.insert("login", "browser_backend_signin", event); } catch { /* safe metadata only */ }
@@ -21335,6 +21355,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (event.phase === "done") {
           this.forgetSignInIdentities();   // a sign-in may be a different account now
           this.keepAliveAfterSignIn(event.backend, null);   // its file changed, whoever is watching: a "needs sign-in" left from before is no longer the answer
+          this.usageAfterSignIn();   // the usage read before this sign-in is not this account's
         }
         this.needsYou?.poke();
         if (!this.browserSignInOwnerCurrent(owner)) return;
@@ -21367,8 +21388,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return result.ok;
       },
       checkAuth: (backend, profile) => {
-        const env = credentialProfileEnv(this.dataDir, backend, profile);
-        return env ? checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!, env) : Promise.resolve("unknown" as const);
+        const launch = credentialProfileLaunch(this.dataDir, backend, profile);
+        return launch ? checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!, launch.env, launch.args) : Promise.resolve("unknown" as const);
+      },
+      // AGEND-119: a CLI told its account by an argument (Antigravity) first proves the pin keeps a folder's sign-in in that folder (account-isolation.ts): asked about an empty scratch folder, never the account's own
+      // (one that already has a token file proves nothing once the CLI stops honouring the pin).
+      isolated: async (backend: string) => {
+        if (hostFacts(backend, "namedAccounts")?.home !== "launch-argument") return true;
+        return proveFolderIsolation(backend, launch => checkAuthSignedOut(LOGIN_FLOWS[backend]!.authCheck!, launch.env, launch.args));
       },
       transport: target => createStructuredSignInTransport({ backend: target.backend, dataDir: this.dataDir }),
       changed: (event, owner, launched) => {
@@ -21377,6 +21404,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (event.phase === "done") {
           this.forgetSignInIdentities();   // a sign-in may be a different account now
           this.keepAliveAfterSignIn(event.backend, event.profile);
+          this.usageAfterSignIn();
         }
         this.needsYou?.poke();
         if (!this.browserSignInOwnerCurrent(owner)) return;
@@ -21395,7 +21423,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const backend of this.pendingBackendSince?.keys() ?? []) if (!pending.includes(backend as typeof pending[number])) this.pendingBackendSince.delete(backend);
     return pending.map(backend => {
       if (!this.pendingBackendSince.has(backend)) this.pendingBackendSince.set(backend, Date.now());
-      return { backend, since: this.pendingBackendSince.get(backend)!, browser: structuredSignInSupported(backend) };
+      return { backend, since: this.pendingBackendSince.get(backend)!, browser: (ONBOARDING_BROWSER_BACKENDS as readonly string[]).includes(backend) };
     });
   }
 
@@ -21449,9 +21477,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /** One `claude auth status` for a sign-in (the default one, or a credential profile's folder). */
   private async readSignInIdentity(target: SignInTarget): Promise<AccountIdentity | undefined> {
-    let env: Record<string, string> | undefined;
-    if (target.profile) env = credentialProfileEnv(this.dataDir, target.backend, target.profile) ?? undefined;
-    return checkAuthIdentity(target.backend, env);
+    let env: Record<string, string> | undefined, launch: { args: string[]; folder: string } | undefined;
+    if (target.profile) {
+      const l = credentialProfileLaunch(this.dataDir, target.backend, target.profile);
+      env = l?.env;
+      // AGEND-119: a named account's folder (where a token-file CLI's sign-in is read) and the arguments a probe of it is given.
+      if (l) launch = { args: l.args, folder: credentialProfileHome(this.dataDir, target.backend, target.profile) };
+    }
+    return checkAuthIdentity(target.backend, env, launch);
+  }
+  /**
+   * The sign-ins whose account is read: every sign-in the Accounts list knows (`backendSignInTargets`: each CLI's default and the profiles an agent uses) AND each named account on disk that is signed in, used by an
+   * agent or not — an account that was just signed in and has no agent yet has an account too, and the page shows it as it shows the default's.
+   */
+  private identityTargets(): SignInTarget[] {
+    const out = this.backendSignInTargets(), seen = new Set(out.map(t => `${t.backend}\0${t.profile ?? ""}`));
+    for (const backend of PROFILE_CLIS) {
+      for (const profile of profilesOnDisk(this.dataDir, backend)) {
+        if (seen.has(`${backend}\0${profile}`)) continue;
+        let login: ReturnType<typeof credentialProfileLogin>["state"] = "unknown";
+        try { login = credentialProfileLogin(this.dataDir, backend, profile).state; } catch { /* unknown */ }
+        if (login === "logged-in") out.push({ backend, profile, state: "usable", signIn: false });
+      }
+    }
+    return out;
   }
   /**
    * Start reading, in the background, the account of each Claude Code sign-in that is signed in (the default and every profile an agent uses) and
@@ -21462,7 +21511,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   refreshSignInIdentities(): void {
     const now = Date.now(), fresh = (target: SignInTarget): boolean => { const entry = this.signInIdentities.get(`${target.backend}\0${target.profile ?? ""}`); return !!entry && now - entry.at < 5 * 60_000; };
     const started: Array<Promise<boolean>> = [];
-    for (const target of this.backendSignInTargets()) {
+    for (const target of this.identityTargets()) {
       const key = `${target.backend}\0${target.profile ?? ""}`;
       if (target.state !== "usable" || !authIdentitySupported(target.backend) || fresh(target) || this.signInIdentityReads.has(key)) continue;
       const generation = this.signInIdentityGeneration;
@@ -21494,7 +21543,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       for (const profile of profilesOnDisk(this.dataDir, backend)) {
         let login: ReturnType<typeof credentialProfileLogin>["state"] = "unknown";
         try { login = credentialProfileLogin(this.dataDir, backend, profile).state; } catch { /* unknown */ }
-        const signIn = dashboardSignInSupported(backend, profile);
+        const signIn = this.profileSignInSupported(backend, profile);
         const hostCommand = signIn ? null : credentialProfileLoginCommand(this.dataDir, backend, profile);
         const identity = this.signInIdentity(backend, profile);
         rows.push({ profile, state: (login === "logged-in" ? "usable" : login === "signed-out" ? "not_signed_in" : "unknown") as SignInTarget["state"], signIn,
@@ -21503,9 +21552,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       diskProfiles.set(backend, rows);
     }
     const { agents, classic, fleetDefaults } = this.accountUses();
-    // Weekly and short-window (5h) usage, from the usage panel's own (cached, never forced) read.
+    // Every pool's and every window's usage, from the usage panel's own (cached, never forced) read.
     const usage = new Map<string, AccountUsage>();
-    const shortWindow = new Map<string, AccountUsage>();
     const ids = new Map<string, string>();                                   // provider id → backend\0profile
     for (const backend of ACCOUNT_CLIS) {
       const pid = usageProviderIdForBackend(backend); if (!pid) continue;
@@ -21516,8 +21564,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const payload = await Promise.race([getUsageSnapshot(false, undefined, { allowStale: true }), new Promise<null>(r => { const tm = setTimeout(() => r(null), usageWaitMs); tm.unref?.(); })]);
       for (const provider of payload?.providers ?? []) {
         const at = ids.get(provider.id); if (!at) continue;
-        const w = weeklyUsage(provider as never); if (w) usage.set(at, w);
-        const sh = shortUsage(provider as never); if (sh) shortWindow.set(at, sh);
+        const u = accountUsage(at.split("\0")[0]!, provider as never); if (u) usage.set(at, u);
       }
     } catch { /* the view without usage */ }
     // #3292: each Claude Code / Codex row's "Keep sign-in alive" part (the setting, its last run, the dates its file says).
@@ -21533,8 +21580,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // (Keep-alive is the host's: it is built from the host's profiles above and never given to a computer's rows.)
     let machines: Awaited<ReturnType<MachineAccounts["list"]>> = [];
     if (remoteRuntimeEnabled()) { try { machines = await this.machineAccounts.list(); } catch (err) { this.logger.debug({ err: (err as Error).message }, "Computer accounts not read"); } }
-    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, shortUsage: shortWindow, keepAlive, machines, installShown: this.webHostInstalls.view()?.backend ?? null,
+    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, keepAlive, machines, installShown: this.webHostInstalls.view()?.backend ?? null,
       versions: new Map(this.backendAvailabilityRows().map(row => [row.backend, row.version ?? null] as const)) });
+  }
+
+  /**
+   * AGEND-113: a dashboard sign-in just finished: read the usage once more now (the panel's own forced read, so its 30-second floor and Retry-After hold), instead of showing what was read
+   * before it for up to five minutes, and tell the pages to read their view again when something really was fetched. Never awaited, never allowed to fail the sign-in's follow-up.
+   */
+  private usageAfterSignIn(): void {
+    try {
+      void refreshUsageAfterSignIn(() => broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"))).catch(() => {});
+    } catch { /* the usage shows itself within its own cache time */ }
   }
 
   /**
@@ -21700,7 +21757,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const owner = this.worlds.keys().next().value;
     // M-2932: only what a refresh showed (needs_sign_in, not_renewed, transient) — never a stored end date.
     return ka.attention().map(a => ({
-      backend: a.backend, profile: a.profile, kind: a.kind, since: a.since, signIn: dashboardSignInSupported(a.backend, a.profile),
+      backend: a.backend, profile: a.profile, kind: a.kind, since: a.since, signIn: this.signInFromDashboard(a.backend, a.profile),
       ...(owner ? { owner } : {}),
       detail: t(`keepalive.${a.kind}`, BACKEND_LABELS[a.backend] ?? a.backend, a.profile ?? t("keepalive.default_name"), day(a.kind === "transient" ? a.failedSince ?? a.since : a.since)),
     }));
@@ -21855,7 +21912,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * is unknown keeps sign-in admission closed (logged). Shutdown waits for these (shutdownLoginWindows), and a restart
    * reopens admission only after they are gone.
    */
-  private async withAccountWriter<T>(claim: import("./login-window-lock.js").LoginWindowClaim, work: (deps: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform" | "stillOwner">) => Promise<T>): Promise<T> {
+  private async withAccountWriter<T>(claim: import("./login-window-lock.js").LoginWindowClaim, work: (deps: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform" | "stillOwner" | "verify">) => Promise<T>): Promise<T> {
     const base = this.accountSignOutDeps ?? ACCOUNT_SIGN_OUT_DEPS;
     const children: Promise<void>[] = [];
     const watch = async (r: { code: number | null; gone?: Promise<void> }) => { if (r.gone) children.push(r.gone); return r; };
@@ -21864,6 +21921,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       run: async (b: string, a: readonly string[], e: NodeJS.ProcessEnv) => watch(await base.run(b, a, e)),
       keychainHas: base.keychainHas,
       stillOwner: () => this.loginWindow.isCurrent(claim),
+      // AGEND-119: a CLI with no logout command (Antigravity) is signed out by removing its sign-in file, and the CLI's own status probe then says whether it took effect — for this very account, launched as the agent is.
+      verify: base.verify ?? (async (backend: string, profile: string | null) => {
+        const check = LOGIN_FLOWS[backend]?.authCheck;
+        if (!check) return "unknown" as const;
+        const launch = profile ? credentialProfileLaunch(this.dataDir, backend, profile) : null;
+        // AGEND-250 (#3771 review P2-3): the strict reading. "Signed out" (`invalid`) only when the CLI exited non-zero AND said it is signed out ("Please sign in"); a DNS failure, a timeout or any other
+        // nonzero exit is `unknown`, which the sign-out reports as unverified. The permissive `checkAuthStatus` took every nonzero exit as proof, so an offline machine "proved" a sign-out that had not happened.
+        return checkAuthSignedOut(check, launch?.env, launch?.args);
+      }),
     };
     let finished!: () => void;
     const life = new Promise<void>(r => { finished = r; });
@@ -21891,8 +21957,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let result: SignOutResult;
     if (!claim) result = { ok: false, error: "signing_in" };
     else result = await this.withAccountWriter(claim, deps => signOutAccount(this.dataDir, { backend, profile: profile ?? null, confirm, signingIn: false }, deps));
+    // AGEND-119: the audit record of a sign-out — who, which backend's account (a name, never a path or an e-mail) and how it ended.
+    try { this.eventLog?.insert("login", "account_signout", { backend, profile: shown, by, ok: result.ok, ...(result.ok ? (result.unverified ? { unverified: true } : {}) : { refused: result.error }) }); } catch { /* safe metadata only */ }
     if (result.ok) {
-      this.logger.info({ backend, profile: shown, by, ...(result.keychainLeft ? { keychainLeft: true } : {}) }, "Account signed out from Settings → Accounts");
+      this.logger.info({ backend, profile: shown, by, ...(result.keychainLeft ? { keychainLeft: true } : {}), ...(result.unverified ? { unverified: true } : {}) }, "Account signed out from Settings → Accounts");
       this.forgetSignInIdentities();
       void this.backendAvailability.refresh([backend], { force: true }).catch(() => {});
       broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
@@ -21909,6 +21977,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch { return false; }
   }
 
+  /** Whether the dashboard can sign this account in — a named one (profileSignInSupported), or a CLI's default sign-in as the Accounts list says it (`backendSignInTargets`). */
+  private signInFromDashboard(backend: string, profile: string | null): boolean {
+    if (profile) return this.profileSignInSupported(backend, profile);
+    return this.backendSignInTargets().find(t => t.backend === backend && !t.profile)?.signIn ?? dashboardSignInSupported(backend, null);
+  }
+
+  /**
+   * Whether the dashboard can sign this NAMED account in: the browser-terminal flow of a CLI that supports it for profiles (`dashboardSignInSupported`), or — AGEND-119, Antigravity — the structured
+   * controls (`agy --app_data_dir <folder> acp --login`) once the CLI is installed and new enough to have the command. A CLI that is older, or whose version is not read yet, is signed in on the host.
+   */
+  private profileSignInSupported(backend: string, profile: string): boolean {
+    if (dashboardSignInSupported(backend, profile)) return true;
+    if (!structuredSignInSupported(backend) || !STRUCTURED_PROFILE_BACKENDS.has(backend)) return false;
+    const row = this.backendAvailabilityRows().find(r => r.backend === backend);
+    return !!row && row.state !== "not_installed" && row.state !== "too_old" && versionAtLeast(row.version, hostFacts(backend, "structuredSignIn")?.minVersion);
+  }
+
   backendSignInTargets(): SignInTarget[] {
     const out: SignInTarget[] = [];
     for (const row of this.backendAvailabilityRows()) {
@@ -21917,13 +22002,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // M-2825: `claude auth status` says loggedIn after a refused refresh and past the sign-in's end date — the file says
       // whether it is over, and then it is not signed in (never the other way: the file can't vouch for a login).
       const ended = row.state === "usable" && this.claudeSignInEnded(row.backend, null);
+      // A CLI the dashboard drives with the structured sign-in (registry: `host.structuredSignIn`) although chat's /login and the browser terminal decline it (Antigravity: `agy acp --login`, agy
+      // >= its `minVersion`) is signed in from Settings → Accounts. A CLI that is older, or whose version is not known, keeps "Sign in on the host" and is told to update.
+      const structured = hostFacts(row.backend, "structuredSignIn");
+      const viaStructured = !!structured && flow?.remoteLogin === "unsupported" && row.state !== "not_installed";
+      const structuredSignIn = viaStructured && versionAtLeast(row.version, structured!.minVersion);
+      // Told to update only when the version is KNOWN to be older: a version that was not read yet is not "too old".
+      const structuredUpdate = viaStructured && !structuredSignIn && typeof row.version === "string" && /\d/.test(row.version);
       out.push({
         // Not installed or too old: signing in would not help — the row says how to install (or update) it instead.
         backend: row.backend, state: ended ? "not_signed_in" : row.state, ...(ended ? { reconnect: true as const } : {}),
-        signIn: row.state !== "not_installed" && row.state !== "too_old" && dashboardSignInSupported(row.backend),
-        ...(flow?.remoteLogin === "unsupported" ? { hostCommand: flow.command } : {}),
+        signIn: row.state !== "not_installed" && row.state !== "too_old" && (viaStructured ? structuredSignIn : dashboardSignInSupported(row.backend)),
+        ...(flow?.remoteLogin === "unsupported" && !structuredSignIn ? { hostCommand: flow.command } : {}),
         ...(row.state === "not_installed" && install ? { install } : {}),
-        ...(row.state === "too_old" && install ? { update: install } : {}),
+        ...((row.state === "too_old" || structuredUpdate) && install ? { update: install } : {}),
         ...(this.signInIdentity(row.backend) ? { identity: this.signInIdentity(row.backend) } : {}),
       });
     }
@@ -21935,7 +22027,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       seen.add(`${backend}\0${profile}`);
       let login: ReturnType<typeof credentialProfileLogin>["state"] = "unknown";
       try { login = credentialProfileLogin(this.dataDir, backend, profile).state; } catch { /* unknown */ }
-      const signIn = dashboardSignInSupported(backend, profile);
+      const signIn = this.profileSignInSupported(backend, profile);
       const hostCommand = signIn ? null : credentialProfileLoginCommand(this.dataDir, backend, profile);
       out.push({ backend, profile, state: login === "logged-in" ? "usable" : login === "signed-out" ? "not_signed_in" : "unknown", signIn,
         ...(hostCommand ? { hostCommand } : {}), ...(this.signInIdentity(backend, profile) ? { identity: this.signInIdentity(backend, profile) } : {}),
@@ -24341,8 +24433,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const backend = this.backendNameForInstance(name);
       const binding = this.webModelBinding(backend, name);
       // A named agy account has no verified relocation/discovery contract. In particular,
-      // never publish the ambient account's models under that profile (#3526 / D7).
-      if (!binding || (binding.profile && !credentialHomeSpec(backend))) continue;
+      // never publish the ambient account's models under that profile (#3526 / D7). (AGEND-119: agy now HAS
+      // named accounts, but `agy models` is not run with the account's folder, so its answer would still be the
+      // default account's: only a CLI whose profile is a variable the probe inherits is discovered under one.)
+      if (!binding || (binding.profile && (!credentialHomeSpec(backend) || credentialHomeSpec(backend)!.kind === "launch-argument"))) continue;
       // A description/defaults save can retire a scoped answer's full binding even
       // though its account signature is unchanged. Keep the conservative fence and
       // re-arm the current binding, unless its answer or flight is already present.

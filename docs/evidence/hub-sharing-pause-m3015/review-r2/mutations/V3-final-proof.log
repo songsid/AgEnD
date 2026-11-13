@@ -1,0 +1,25 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts (24 tests | 1 failed | 23 skipped) 178ms
+     × rechecks the operational Resume proof after the transport audit and before publishing its own version 175ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 23 skipped (24)
+   Start at  15:02:22
+   Duration  5.32s (transform 3.74s, setup 128ms, import 4.82s, tests 178ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > rechecks the operational Resume proof after the transport audit and before publishing its own version
+AssertionError: expected 200 not to be 200 // Object.is equality
+ ❯ tests/hub-sharing-pause-m3015.test.ts:119:51
+    117|     options.appendAudit = (...args) => { append(...args); if (args[0].…
+    118|     const refresh = vi.fn(); w.r.httpDeps.refreshAuthorization = refre…
+    119|     expect((await w.change(false, 1)).status).not.toBe(200);
+       |                                                   ^
+    120|     expect(refresh).not.toHaveBeenCalled();
+    121|     expect(w.r.db.prepare("SELECT sharing_paused FROM hub_exposures WH…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

@@ -137,7 +137,7 @@ describe("2. an agent's card that asks for review", () => {
   it("through the `task` tool: done by the assignee hands it to its dispatcher; the dispatcher's done and move finish it", async () => {
     const { db, call } = fleet();
     expect(await call("lead", { action: "create", title: "Review PR 42", assignee: "dev-a", needs_review: true })).toBe("ok M-1 Review PR 42 [to do] @dev-a (v1)");
-    expect((await call("dev-a", { action: "get", id: "M-1" }) as string).split("\n")[1]).toBe("dispatched by lead · lead confirms it");
+    expect((await call("dev-a", {action:"get",detail:true, id: "M-1" }) as string).split("\n")[1]).toBe("dispatched by lead · lead confirms it");
     await call("dev-a", { action: "move", id: "M-1", to: "claimed" });
     expect(await call("dev-a", { action: "move", id: "M-1", to: "done", result: "r" })).toBe("ok M-1 in progress → waiting for confirmation (v3)");
     expect(await call("lead", { action: "mine" })).toContain("for you to confirm:\n M-1 Review PR 42 @dev-a — move it to done, or back to claimed with what is missing");

@@ -109,6 +109,19 @@ async function main(): Promise<void> {
   }
   if (!INSTANCE) die("AGEND_INSTANCE_NAME not set");
 
+  const listRead = ["schedule-list", "decision-list", "decision-get"].includes(op) || op === "task" && ["list", "get"].includes(rest[0] ?? "");
+  const listFlags: Record<string, unknown> = {};
+  if (listRead) {
+    for (let i = 0; i < rest.length; i++) {
+      if (rest[i] === "--detail") { listFlags.detail = true; rest.splice(i--, 1); }
+      else if (rest[i] === "--limit" || rest[i] === "--cursor") {
+        const key = rest[i]!.slice(2), value = rest[i + 1];
+        if (value === undefined || value.startsWith("--")) die(`Missing value for --${key}`);
+        listFlags[key] = key === "limit" ? Number(value) : value;
+        rest.splice(i, 2); i--;
+      } else if (rest[i]?.startsWith("--")) die(`Unknown list option: ${rest[i]}`);
+    }
+  }
   let args: Record<string, unknown> = {};
 
   switch (op) {
@@ -131,19 +144,29 @@ async function main(): Promise<void> {
     // Communication
     case "send":
     case "delegate": {
-      const { flags, positional } = splitFlags(rest, ["--forward"]);
+      const { flags, positional } = splitFlags(rest, ["--forward"], ["--detail"]);
       args = op === "send"
         ? { instance_name: positional[0], message: positional[1] ?? "", request_kind: positional[2] }
         : { target_instance: positional[0], task: positional[1] ?? "", success_criteria: positional[2], context: positional[3] };
       if (flags["--forward"]) args.forwards = flags["--forward"];
+      if (flags["--detail"]) args.detail = true;
       break;
     }
-    case "report": args = { target_instance: rest[0], summary: rest[1] ?? "", correlation_id: rest[2], artifacts: rest[3] }; break;
-    case "ask": args = { target_instance: rest[0], question: rest[1] ?? "", context: rest[2] }; break;
+    case "report": {
+      const { flags, positional } = splitFlags(rest, [], ["--detail"]);
+      args = { target_instance: positional[0], summary: positional[1] ?? "", correlation_id: positional[2], artifacts: positional[3], ...(flags["--detail"] ? { detail: true } : {}) };
+      break;
+    }
+    case "ask": {
+      const { flags, positional } = splitFlags(rest, [], ["--detail"]);
+      args = { target_instance: positional[0], question: positional[1] ?? "", context: positional[2], ...(flags["--detail"] ? { detail: true } : {}) };
+      break;
+    }
     case "delivery-status": {
       for (let i = 0; i < rest.length; i++) {
         const key = rest[i]!.replace(/^--/, "").replaceAll("-", "_");
-        if (!["delivery_id", "operation_id", "correlation_id", "message_id", "limit", "cursor"].includes(key)) {
+        if (key === "detail") { args.detail = true; continue; }
+        if (!["delivery_id", "operation_id", "correlation_id", "message_id", "limit", "cursor", "content_includes"].includes(key)) {
           die(`Unknown delivery-status option: ${rest[i]}`);
         }
         const value = rest[++i];
@@ -152,7 +175,11 @@ async function main(): Promise<void> {
       }
       break;
     }
-    case "broadcast": args = { message: rest[0] ?? "", team: rest[1] }; break;
+    case "broadcast": {
+      const { flags, positional } = splitFlags(rest, [], ["--detail"]);
+      args = { message: positional[0] ?? "", team: positional[1], ...(flags["--detail"] ? { detail: true } : {}) };
+      break;
+    }
 
     // Usage
     case "usage": {
@@ -401,6 +428,8 @@ async function main(): Promise<void> {
 
     default: die(`Unknown op: ${op}`);
   }
+
+  Object.assign(args, listFlags);
 
   // Strip undefined values
   for (const [k, v] of Object.entries(args)) {

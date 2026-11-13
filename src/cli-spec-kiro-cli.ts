@@ -8,7 +8,7 @@ export const KIRO_CLI_SPEC = {
     update: yes({ binary: "kiro-cli", command: "curl -fsSL https://cli.kiro.dev/install | bash -s -- --version {version} --force" }),
     chatLogin: yes({ aliases: ["kiro"], mode: "menu" }),
     dashboardSignIn: yes({ named: true }),
-    structuredSignIn: yes({ argv: ["kiro-cli", "login"], rank: 0, named: false }),
+    structuredSignIn: yes({ argv: ["kiro-cli", "login"], rank: 0, ends: "success-line", screen: "login-flow", answer: "code", named: false }),
     firstRunSignIn: yes({ mode: "browser", rank: 0 }),
     authCheck: yes({ argv: ["kiro-cli", "whoami", "--format", "json"] }),
     identity: toVerify("`kiro-cli whoami --format json` is already run as the sign-in probe; whether its JSON names the account in a form that can be masked has not been checked."),
@@ -16,7 +16,7 @@ export const KIRO_CLI_SPEC = {
     signOut: yes({ binary: "kiro-cli", args: ["logout"] }),
     keepAlive: toVerify("Whether Kiro's token needs a keep-alive run (Claude Code and Codex have one) has not been checked."),
     accountCard: yes({ rank: 2 }),
-    usage: yes({ providerId: "kiro", name: "Kiro", rank: 4, profileRows: true }),
+    usage: yes({ providerId: "kiro", name: "Kiro", rank: 4, profileRows: true, hostRows: false, pools: "single", windows: ["monthly"] }),
   },
   runtime: {
     provider: yes({
@@ -32,6 +32,7 @@ export const KIRO_CLI_SPEC = {
     update: byDesign("Kiro's Windows build is an MSI into Program Files and needs an administrator (the same reason as runtime.install); the dashboard does not update it."),
     signIn: notYetBuilt("undecided", "Only Claude Code is signed in from the dashboard on a computer."),
     namedAccounts: notYetBuilt("undecided", "The Runtime's profile folders are Claude Code's only."),
+    signOut: notYetBuilt("undecided", "The Runtime signs a Claude Code profile out only."),
     accountRows: notYetBuilt("undecided", "Accounts shows a computer's Claude Code accounts only."),
     authStatus: notYetBuilt("undecided", "The Windows adapter has no verified sign-in probe for Kiro (`authProbe` is null); its state is unknown, not signed out."),
     identity: notApplicable("Needs a sign-in probe on the computer first."),

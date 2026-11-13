@@ -64,8 +64,8 @@ describe("choosing a Claude account for an agent on a Windows Runtime computer (
   ["is not a name (a Windows path)",{credentialProfile:"C:\\Users\\me\\.claude"},/Invalid credential profile name/],
   ["is not a name (a relative path)",{credentialProfile:"../work"},/Invalid credential profile name/],
   ["is empty",{credentialProfile:""},/Invalid credential profile name/],
-  ["is for another CLI",{credentialProfile:"work",backend:"codex"},/Claude Code sign-in/],
-  ["is for a WSL/Linux target",{credentialProfile:"work",runtime:"wsl",machineId:undefined},/Claude Code sign-in/],
+  ["is for another CLI",{credentialProfile:"work",backend:"codex"},/Claude Code and Antigravity sign-in/],
+  ["is for a WSL/Linux target",{credentialProfile:"work",runtime:"wsl",machineId:undefined},/Claude Code and Antigravity sign-in/],
  ])("refuses a profile that %s, before anything is prepared or saved",async(_why,extra,message)=>{
   const r=fixture(),before=JSON.stringify(r.config());
   expect(()=>r.service.change("agent-1",r.body(extra as any),()=>true)).toThrow(message);
@@ -132,8 +132,8 @@ describe("a message to a Windows agent that has a credential profile",()=>{
  it.each([
   ["a malformed name in the saved configuration",(c:any)=>{c.backend_options={"claude-code":{credential_profile:"C:\\Users\\me\\.claude"}};},/Credential profile names/],
   ["a path-like name",(c:any)=>{c.backend_options={"claude-code":{credential_profile:"../other"}};},/Credential profile names/],
-  ["a profile on a CLI that has no credential home",(c:any)=>{c.backend="codex";},/Claude Code only/],
-  ["a profile for another CLI's options",(c:any)=>{c.backend_options={"claude-code":{credential_profile:"work"},codex:{credential_profile:"work"}};},/Claude Code only/],
+  ["a profile on a CLI that has no credential home",(c:any)=>{c.backend="codex";},/Claude Code and Antigravity only/],
+  ["a profile for another CLI's options",(c:any)=>{c.backend_options={"claude-code":{credential_profile:"work"},codex:{credential_profile:"work"}};},/Claude Code and Antigravity only/],
   ["a profile on an agent that has no paired computer",(c:any)=>{delete c.machine_id;},/does not match its saved conversation|paired Runtime computer/],
  ])("fails closed on %s: nothing is journaled or started",async(_why,tamper,message)=>{
   const r=fixture();await r.service.change("agent-1",r.body({credentialProfile:"work"}),()=>true);

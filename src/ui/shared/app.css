@@ -4440,7 +4440,23 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .s-hub-section .hub-retention .grid2 { grid-template-columns: minmax(0, 1fr); }
   .s-hub-section .hub-retention input { min-width: 0; max-width: 100%; min-height: var(--tap); font-size: var(--fs-md); }
   .s-hub-section .hub-retention button { align-self: flex-start; max-width: 100%; min-height: var(--tap); white-space: normal; }
+  /* M-2901: the Hub address card's fields, choices and buttons are phone tap targets (style guide rule 7). */
+  .s-hub-section .hub-web-address :is(input:not([type="radio"]), .btn, label.check) { min-height: var(--tap); }
+  .s-hub-section .hub-web-address input:not([type="radio"]) { font-size: var(--fs-md); }
+  .s-hub-section .hub-web-address .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .s-hub-section .hub-web-address label.check { display: flex; align-items: center; gap: var(--s-2); }
 }
+/* M-2901: Settings → Hub → Hub address. Fields fill the card; a fingerprint breaks only after a colon (<wbr>), never inside a
+   byte; an end date stays on one line; notes avoid a one-character last line (the longhand: the text-wrap shorthand would
+   reset the end date's nowrap). Chinese text keeps breaking between characters (keep-all left long clauses with a lone
+   「。」 on a phone). The certificate choices sit in the Advanced box without a frame of their own. */
+.hub-web-address :is(input:not([type="radio"]), textarea) { display: block; width: 100%; max-width: 100%; min-width: 0; }
+.hub-web-address textarea { resize: vertical; font-family: var(--font-mono, monospace); }
+.hub-web-address .hub-addr-fp { overflow-wrap: normal; word-break: normal; }
+.hub-web-address .hub-addr-exp { white-space: nowrap; }
+.hub-web-address :is(.note, [role="status"], .err) { text-wrap-style: pretty; }
+.hub-web-address fieldset.hub-addr-cert { border: 0; padding: 0; margin: 0; min-width: 0; }
+.hub-web-address .hub-addr-confirm h4 { margin: 0 0 var(--s-2); }
 
 /* S-119: the existing company, manual and sharing controls share one Settings card. */
 .s-hub-connection { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; }

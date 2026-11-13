@@ -1,0 +1,231 @@
+{
+  "reviewedParent": "961f46382687f77ebea5534416e261f5a5ca9a12",
+  "captureHead": "d37b921bf60dc1e05b09167ae07b1bfa50e4a3a6",
+  "captureClean": true,
+  "scope": "Leader-accepted bounded issued-capability window; version/reconnect, late-history fence, UI/skill wording. No acknowledged member-fence protocol.",
+  "inputDigests": {
+    "a9ef1720c478758d2b0612e2165a291f47dcaec6406acb51b40e42a048e39665": [
+      "changes/3743-resumable-hub-sharing.md"
+    ],
+    "a57e5a8e65365792ed7ea4f4be690fa827f118efa1052e77379b19542e4aa41d": [
+      "changes/3743-resumable-hub-sharing.zh-TW.md"
+    ],
+    "9fd6f8b0e6a9fc5dfbdc251df222ac45462ac09b216e0a7f28e5e19b2385e88b": [
+      "docs/design/hub-resumable-sharing.md"
+    ],
+    "4bd5f310d236971ad9b630eb7551699e27601bc31f973035c6f737e3aa6ac85d": [
+      "scripts/manual/hub-sharing-pause-m3015/review-repair.py"
+    ],
+    "7314f70d6af76c81d525f6d1782a45ad6a154dd968d74a653f174f9a7e6b85ff": [
+      "src/general-knowledge/skills/hub/SKILL.md"
+    ],
+    "940ac28178ca4a58b0de85a153202d3094e93ba59ff1b7f54529e314c98823ca": [
+      "src/hub/compose/server.ts"
+    ],
+    "3e78dd187fb5f64bf4089781dc04c3465b2f12b4bef140a6e49a8d70c68080f3": [
+      "src/hub/http/compose.ts"
+    ],
+    "5f4457ef8716d5e1f0455fc6df1a07ef57910c302a8ee20b088325141f4374f4": [
+      "src/hub/http/deps.ts"
+    ],
+    "88cfcb879f554727b22958d0541984993cea37f8232df225b9037ccb5fdc4f21": [
+      "src/hub/sharing.ts"
+    ],
+    "f75ed0aaf89169e60885b0e127167122ffddb174f9412d335914004d73c2d01b": [
+      "src/ui/hub-chat-store.js"
+    ],
+    "c3266a7411060b11f2a4f511389e7813c1558a06f33982fe1ebc2de9ba24b171": [
+      "src/ui/panel-hub.js"
+    ],
+    "db4ccc3b2424d487c8c5e94da49fc4dced7fc0c6f6d6f41671bf45e5f1f8d03a": [
+      "tests/helpers/hub-s3b-rig.ts"
+    ],
+    "f4fa474dc2ec30e5dc1a59b940bc5d5a0301d9a026c665e4c02000d494c9505a": [
+      "tests/hub-compose.test.ts"
+    ],
+    "52caf8e87ecb20c82fd9559fbb75340a947f96724825cf3a93335dbf6a5d3523": [
+      "tests/hub-sharing-pause-m3015.test.ts"
+    ],
+    "da33167ba33bf1b64dd72b6fb36b379959dca75b2d7927b15fad262e844e49a0": [
+      "tests/hub-sharing-pause-ui-m3015.test.ts"
+    ]
+  },
+  "captureInputChecks": [
+    {
+      "path": "src/agent-cli-instructions.md",
+      "same": true
+    },
+    {
+      "path": "src/agent-cli.ts",
+      "same": true
+    },
+    {
+      "path": "src/agent-endpoint.ts",
+      "same": true
+    },
+    {
+      "path": "src/auth-api.ts",
+      "same": true
+    },
+    {
+      "path": "src/channel/mcp-tools.ts",
+      "same": true
+    },
+    {
+      "path": "src/daemon.ts",
+      "same": true
+    },
+    {
+      "path": "src/general-knowledge/skills/concepts/SKILL.md",
+      "same": true
+    },
+    {
+      "path": "src/general-knowledge/skills/credential-profiles/SKILL.md",
+      "same": true
+    },
+    {
+      "path": "src/general-knowledge/skills/cross-instance-messaging/SKILL.md",
+      "same": true
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "same": true
+    },
+    {
+      "path": "src/hub/catalog.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/group-policy/admin-inventory.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/group-policy/impact-inventory.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/rooms.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/sharing.ts",
+      "same": true
+    },
+    {
+      "path": "src/hub/types.ts",
+      "same": true
+    },
+    {
+      "path": "src/human-delivery-receipts.ts",
+      "same": true
+    },
+    {
+      "path": "src/instructions.ts",
+      "same": true
+    },
+    {
+      "path": "src/locale.ts",
+      "same": true
+    },
+    {
+      "path": "src/outbound-handlers.ts",
+      "same": true
+    },
+    {
+      "path": "src/outbound-schemas.ts",
+      "same": true
+    },
+    {
+      "path": "src/ui/hub-chat-store.js",
+      "same": true
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "same": true
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "same": true
+    },
+    {
+      "path": "src/ui/settings-hub.js",
+      "same": true
+    },
+    {
+      "path": "src/ui/shared/hub-sharing.css",
+      "same": true
+    },
+    {
+      "path": "src/usage/agent-output.ts",
+      "same": true
+    },
+    {
+      "path": "tests/helpers/hub-s3b-rig.ts",
+      "same": true
+    },
+    {
+      "path": "scripts/manual/hub-sharing-pause-m3015/browser.mts",
+      "same": true
+    }
+  ],
+  "focused": {
+    "suites": 7,
+    "passed": 97,
+    "workers": 2
+  },
+  "composeWiring": {
+    "passed": 1,
+    "deselected": 118
+  },
+  "mutations": {
+    "caught": 6,
+    "nativeCompiling": 6,
+    "exactRestore": true,
+    "executionTestDelta": "Six reversal selectors executed before the final added new-begin-refusal assertion; their intended contracts are unchanged. Final33 contract controls pass after exact source restore."
+  },
+  "browser": {
+    "cases": 8,
+    "checks": 143,
+    "png": 40,
+    "cleaned": true
+  },
+  "priorPngPreserved": 60,
+  "failFirstObserved": {
+    "availability": "Expected paused / received published; 1 semantic failure and 8 controls before correction (PTY output).",
+    "versionRefresh": "Expected refresh once / called0; 1 semantic failure and14 cases deselected before writer correction (PTY output).",
+    "reversalLogs": "Isolated V1 and H1 logs repeat those semantic assertions on the final restored test contracts."
+  },
+  "limits": [
+    "Wire authentication and input sinks in the held-result member test are inert; journal/admission/client authorize/representative methods are real.",
+    "Browser is owned HTTPS/SQLite with recorded directory/member facts; no real Fleet input, account, AD or native operation.",
+    "Original screenshots are historical;8 fresh originals statically inspected; no new full retained-asset matrix."
+  ],
+  "finalContracts": {
+    "suites": 2,
+    "passed": 33,
+    "workers": 2,
+    "deltaAfter97": "Added explicit refusal of a new begin authorization while paused; the33 changed contracts were rerun. Counts overlap97."
+  },
+  "nativeSourceTypes": 0,
+  "nativeTestTypes": 0
+}

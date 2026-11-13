@@ -1,0 +1,10 @@
+{
+  "currentTier": {
+    "id": "free-tier",
+    "name": "Antigravity"
+  },
+  "paidTier": {
+    "id": "g1-ultra-lite-tier",
+    "name": "Google AI Ultra"
+  }
+}

@@ -9,7 +9,7 @@ function browser(options: Record<string, unknown> = {}, init: Record<string, unk
       append(child: any) { this.children.push(child); }, replaceChildren() { this.children = []; }, setAttribute(key: string, value: string) { this[key] = value; } };
   }
   const doc = { createElement: element, getElementById: () => null };
-  const root = element("main"), state = { selected: ["kiro-cli", "antigravity"], pending: ["kiro-cli", "antigravity"], skipped: [], states: { "kiro-cli": "invalid", antigravity: "console_only" } as Record<string, string>, login: null as any, ready: false, ...init };
+  const root = element("main"), state = { selected: ["kiro-cli", "antigravity"], pending: ["kiro-cli", "antigravity"], skipped: [], states: { "kiro-cli": "invalid", antigravity: "console_only" } as Record<string, string>, console: ["antigravity"], login: null as any, ready: false, ...init };   // `console`: what the server sends: the CLIs the first-run list only names the console command for (registry `host.firstRunSignIn.mode`)
   const fetcher = vi.fn(async (_url: string, options: any) => {
     const data = options.body ? JSON.parse(options.body) : null;
     if (data?.operation === "start") state.login = { backend: "kiro-cli", id: "a".repeat(32), revision: 3, phase: "method", choices: ["builder_id", "github"], canAct: true };

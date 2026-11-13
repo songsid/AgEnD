@@ -46,6 +46,11 @@ export interface ProfileSignInDeps {
   add(backend: StructuredBackend, profile: string): boolean;
   /** A token-free probe of THIS account's login (its folder's variable), never the default one's. */
   checkAuth(backend: StructuredBackend, profile: string): Promise<AuthCheckResult>;
+  /**
+   * AGEND-119: for a CLI told its account by an argument (Antigravity), whether the account's sign-in is kept in its own folder — checked before a login command runs (StructuredSignInDeps.isolated).
+   * Absent: a CLI that moves its home with a variable, which needs no check.
+   */
+  isolated?(backend: StructuredBackend, profile: string): Promise<boolean>;
   /** The dedicated PTY for one attempt, given the target (so it can be built for that profile's folder). */
   transport(target: ProfileSignInTarget): StructuredSignInTransport;
   /** Safe event only: a backend, a profile NAME, a phase and a fixed reason. Never a URL, code, output or e-mail. */
@@ -149,6 +154,7 @@ export class ProfileSignIns {
     const session: StructuredSignIn = new StructuredSignIn(target.backend, owner, {
       lock: this.deps.lock, current: () => this.current(owner), transport: this.deps.transport({ backend: target.backend, profile: target.profile }), profile: target.profile,
       checkAuth: () => this.deps.checkAuth(target.backend, target.profile),
+      ...(this.deps.isolated ? { isolated: () => this.deps.isolated!(target.backend, target.profile) } : {}),
       changed: event => {
         if (event.phase === "done" || (event.phase === "failed" && event.reason)) {
           // Done: signed in. Failed or cancelled: what it was before is not known any more — the next read probes again.

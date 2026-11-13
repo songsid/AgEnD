@@ -456,6 +456,36 @@ function fetchFor(owner: UsageOwner, effectiveForce: boolean, again: () => Promi
   return promise;
 }
 
+let signInRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * AGEND-113: a sign-in from the dashboard just finished. What the usage panel and the Accounts page hold was read before it (an account that was signed out then has no row; a
+ * different account has the old one's numbers), and the 5-minute cache would keep saying so. This reads once more NOW — through the very same forced read the panel's refresh button
+ * makes, so nothing is bypassed: not `FORCE_FLOOR_MS` (30 s between forced reads), not a Retry-After window (inside one the cache stands, and its TTL already reaches past it), and
+ * not the one-fetch-at-a-time rule (a read that began before the sign-in is waited out first, since it may hold the old numbers).
+ *  - Nothing was ever read in this process (no cache, nothing in flight): there is nothing stale, the next read fetches anyway, and this does nothing.
+ *  - Inside the floor, ONE retry is scheduled for when it ends (no Retry-After window, one timer at a time); the read then goes through the same checks again.
+ * `onFetched` is told each time a vendor read really happened, so the page can read its view again. Never throws and is never awaited by the sign-in.
+ */
+export async function refreshUsageAfterSignIn(onFetched?: () => void): Promise<boolean> {
+  if (!cache && !inflight) return false;
+  try {
+    if (inflight) await inflight.promise.then(() => undefined, () => undefined);
+    const before = cache;
+    await usage(true, false).catch(() => undefined);
+    if (cache !== before) { try { onFetched?.(); } catch { /* the page reads again on its own */ } return true; }   // a new snapshot was stored: a vendor read really ran
+    // Not fetched: inside the floor or a Retry-After window. Only the floor ends by itself within seconds.
+    const now = Date.now(), floorLeft = lastForcedFetchStartedAt === null ? 0 : FORCE_FLOOR_MS - (now - lastForcedFetchStartedAt);
+    const backoff = [...retryAfterUntil.values()].some(until => until > now);
+    if (floorLeft > 0 && !backoff && !signInRefreshTimer) {
+      signInRefreshTimer = setTimeout(() => { signInRefreshTimer = null; void refreshUsageAfterSignIn(onFetched); }, floorLeft + 250);
+      signInRefreshTimer.unref?.();
+    }
+  } catch { /* a refresh that failed leaves the cache as it was */ }
+  return false;
+}
+/** Tests: forget a pending post-sign-in retry. */
+export function clearUsageSignInRefreshForTests(): void { if (signInRefreshTimer) clearTimeout(signInRefreshTimer); signInRefreshTimer = null; }
+
 /**
  * The same cached snapshot the HTTP route serves, for in-process callers: the
  * `/usage` slash command and the `get_usage` MCP tool. One cache for all three

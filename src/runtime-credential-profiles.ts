@@ -8,7 +8,8 @@
  * Built-ins only: it is loaded by the standalone Runtime and by AgEnD's server for the same name check.
  */
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync } from "node:fs";
-import { isAbsolute, join, relative, win32 } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join, relative, resolve, win32 } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { parseAccountIdentity, type AccountIdentity } from "./claude-auth-status.js";
 import { runtimeFacts, runtimeIds, type RuntimeCliWith } from "./cli-registry.js";
@@ -18,12 +19,15 @@ export const CREDENTIAL_PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 /** Reported in the Runtime's capabilities so an AgEnD never asks an older Runtime for a profile it would ignore. */
 export const RUNTIME_CREDENTIAL_CAPABILITY = "credential-profiles";
 /**
- * The CLIs with named accounts on a computer, and the variable that points each at its profile's folder (cli-registry.ts: `runtime.namedAccounts`; Claude Code only for
- * now, `CLAUDE_CONFIG_DIR`). A new CLI is one more spec; the directory shape stays the same. Pinned, literally, by tests/cli-registry-golden.test.ts.
+ * The CLIs with named accounts on a computer, and how each is pointed at its profile's folder (cli-registry.ts: `runtime.namedAccounts`): a variable (`CLAUDE_CONFIG_DIR`), or — AGEND-124, Antigravity — an
+ * argument naming the folder relative to the CLI's own home (`--app_data_dir`), the file its sign-in is kept in (`store`) and the variables that keep it there (`pin`). A new CLI is one more spec; the directory
+ * shape stays the same. Pinned, literally, by tests/cli-registry-golden.test.ts.
  */
 export type CredentialProfileCli = RuntimeCliWith<"namedAccounts">;
-export const CREDENTIAL_PROFILE_CLIS: Readonly<Record<CredentialProfileCli, string>> = Object.freeze(
-  Object.fromEntries(runtimeIds("namedAccounts").map(id => [id, runtimeFacts(id, "namedAccounts")!.env])) as Record<CredentialProfileCli, string>);
+export type CredentialProfileHome = { readonly env: string } | { readonly arg: string; readonly store: string; readonly pin: Readonly<Record<string, string>> };
+export const CREDENTIAL_PROFILE_CLIS: Readonly<Record<CredentialProfileCli, CredentialProfileHome>> = Object.freeze(
+  Object.fromEntries(runtimeIds("namedAccounts").map(id => { const facts = runtimeFacts(id, "namedAccounts")!;
+    return [id, Object.freeze("env" in facts ? { env: facts.env } : { arg: facts.arg, store: facts.store, pin: Object.freeze({ ...facts.pin }) })]; })) as Record<CredentialProfileCli, CredentialProfileHome>);
 export const CREDENTIAL_PROFILES_DIRECTORY = "credential-profiles";
 const STATUS_FILE = "status.json";
 /** Windows treats these as devices whatever the extension, and silently drops trailing dots/spaces: both would alias another name. */
@@ -40,7 +44,11 @@ export class CredentialProfileRefusal extends Error { constructor(message: strin
  * computer's owner allows; absent or false, the profile is only for the person at that computer. Absent also from a Runtime that does not report it.
  */
 export interface CredentialProfileStatus { name: string; loggedIn: boolean | null; identity?: AccountIdentity; created?: boolean }
-export interface CredentialProfileReport { profiles: CredentialProfileStatus[]; default?: string }
+/**
+ * `profiles` and `default` are Claude Code's (the first CLI a computer had accounts for, and what an older server reads); `byCli` (AGEND-124) holds every other CLI's profiles, by CLI id (Antigravity). A computer has no
+ * "default profile" for those: an agent names its account.
+ */
+export interface CredentialProfileReport { profiles: CredentialProfileStatus[]; default?: string; byCli?: Record<string, CredentialProfileStatus[]> }
 
 export function isCredentialProfileCli(value: unknown): value is CredentialProfileCli {
   return typeof value === "string" && Object.hasOwn(CREDENTIAL_PROFILE_CLIS, value);
@@ -55,12 +63,19 @@ export function assertCredentialProfileName(value: unknown): string {
 }
 export function assertCredentialProfileCli(value: unknown): CredentialProfileCli {
   if (isCredentialProfileCli(value)) return value;
-  throw new Error("Credential profiles on a Windows Runtime support Claude Code only");
+  throw new Error(`Credential profiles on a Windows Runtime support ${PROFILE_CLI_NAMES()} only`);
+}
+/** "Claude Code and Antigravity": the CLIs a Runtime keeps named accounts for, as its registry says. */
+export function PROFILE_CLI_NAMES(): string {
+  const names = runtimeIds("namedAccounts").map(id => runtimeFacts(id, "provider")?.name ?? id);
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0] ?? "no CLI";
 }
 /** Why a profile cannot be used for a run, with the next step on that computer. Never says which account or what is stored. */
 export function credentialLoginRequired(cli: string, name: string, loggedIn: boolean | null): Error {
+  // A CLI whose account is signed in from AgEnD's Accounts page only (Antigravity: its login command needs the dashboard's code box) has no local login command to name.
+  const where = cli === "claude-code" ? `Sign in there: agend-runtime login ${cli} ${name}` : "Sign it in from AgEnD's Settings → Agent → Accounts";
   return new Error(loggedIn === false
-    ? `Credential profile "${name}" is not signed in on this computer. Sign in there: agend-runtime login ${cli} ${name}`
+    ? `Credential profile "${name}" is not signed in on this computer. ${where}`
     : `This computer could not confirm that credential profile "${name}" is signed in, so nothing was started. Check it there: agend-runtime profile list`);
 }
 export function credentialProfilesRoot(runtimeHome: string): string { return join(runtimeHome, CREDENTIAL_PROFILES_DIRECTORY); }
@@ -194,11 +209,14 @@ export function forgetCredentialStatus(root: string, cli: CredentialProfileCli, 
   try { atomicWriteFileSync(join(root, STATUS_FILE), JSON.stringify({ version: 1, checkedAt: plain }), { mode: 0o600 }); } catch { /* a cache; the next check writes it again */ }
 }
 /** What this computer tells AgEnD: names and a signed-in yes/no (null = not checked yet). No path, e-mail, account or token. */
-export function credentialProfileReport(root: string, defaultName?: string, created?: (name: string) => boolean): CredentialProfileReport {
-  const kind: CredentialProfileCli = "claude-code";
-  const profiles = listCredentialProfileNames(root, kind).map(name => { const known = cachedCredentialStatus(root, kind, name);
-    return { name, loggedIn: known?.loggedIn ?? null, ...(known?.identity ? { identity: known.identity } : {}), ...(created ? { created: created(name) } : {}) }; });
-  return { profiles, ...(defaultName && profiles.some(row => row.name === defaultName) ? { default: defaultName } : {}) };
+export function credentialProfileReport(root: string, defaultName?: string, created?: (cli: CredentialProfileCli, name: string) => boolean): CredentialProfileReport {
+  const rows = (kind: CredentialProfileCli): CredentialProfileStatus[] => listCredentialProfileNames(root, kind).map(name => { const known = cachedCredentialStatus(root, kind, name);
+    return { name, loggedIn: known?.loggedIn ?? null, ...(known?.identity ? { identity: known.identity } : {}), ...(created ? { created: created(kind, name) } : {}) }; });
+  const profiles = rows("claude-code");
+  // The other CLIs' accounts (Antigravity): only those that have any, so a computer with none reports exactly what it did before.
+  const byCli: Record<string, CredentialProfileStatus[]> = {};
+  for (const kind of runtimeIds("namedAccounts")) if (kind !== "claude-code") { const list = rows(kind as CredentialProfileCli); if (list.length) byCli[kind] = list; }
+  return { profiles, ...(defaultName && profiles.some(row => row.name === defaultName) ? { default: defaultName } : {}), ...(Object.keys(byCli).length ? { byCli } : {}) };
 }
 /** Bounded, closed parse of what a Runtime reports: only names and a signed-in yes/no. Anything else (a path, an e-mail) is a protocol error. */
 export function parseCredentialProfileReport(value: unknown): CredentialProfileReport {
@@ -206,9 +224,24 @@ export function parseCredentialProfileReport(value: unknown): CredentialProfileR
   const fail = (field = "report"): never => { throw new Error(`Invalid credential profile report: ${field}`); };
   if (!value || typeof value !== "object" || Array.isArray(value)) return fail();
   const input = value as Record<string, unknown>;
-  if (Object.keys(input).some(key => key !== "profiles" && key !== "default") || !Array.isArray(input.profiles) || input.profiles.length > 64) return fail();
+  if (Object.keys(input).some(key => key !== "profiles" && key !== "default" && key !== "byCli") || !Array.isArray(input.profiles) || input.profiles.length > 64) return fail();
+  const profiles = parseProfileRows(input.profiles, fail);
+  if (input.default !== undefined && (!validCredentialProfileName(input.default) || !profiles.some(row => row.name === input.default))) return fail("default");
+  let byCli: Record<string, CredentialProfileStatus[]> | undefined;
+  if (input.byCli !== undefined) {
+    if (!input.byCli || typeof input.byCli !== "object" || Array.isArray(input.byCli)) return fail("byCli");
+    byCli = {};
+    for (const [cli, rows] of Object.entries(input.byCli as Record<string, unknown>)) {
+      // Claude Code's are `profiles`; anything else must be a CLI that has named accounts here.
+      if (cli === "claude-code" || !isCredentialProfileCli(cli) || !Array.isArray(rows) || rows.length > 64) return fail("byCli");
+      byCli[cli] = parseProfileRows(rows, fail);
+    }
+  }
+  return { profiles, ...(input.default !== undefined ? { default: input.default as string } : {}), ...(byCli ? { byCli } : {}) };
+}
+function parseProfileRows(rows: readonly unknown[], fail: (field?: string) => never): CredentialProfileStatus[] {
   const seen = new Set<string>(), profiles: CredentialProfileStatus[] = [];
-  for (const row of input.profiles) {
+  for (const row of rows) {
     if (!row || typeof row !== "object" || Array.isArray(row)) return fail("profile");
     const item = row as Record<string, unknown>;
     if (Object.keys(item).some(key => key !== "name" && key !== "loggedIn" && key !== "identity" && key !== "created")) return fail("profile field");
@@ -221,18 +254,45 @@ export function parseCredentialProfileReport(value: unknown): CredentialProfileR
     catch (error) { return fail(`identity ${/^Invalid account identity: (identity|unknown field|maskedEmail|plan|apiKey)$/.exec((error as Error).message)?.[1] ?? "invalid"}`); }
     seen.add(item.name.toLowerCase()); profiles.push({ name: item.name, loggedIn: item.loggedIn as boolean | null, ...(identity ? { identity } : {}), ...(item.created !== undefined ? { created: item.created as boolean } : {}) });
   }
-  if (input.default !== undefined && (!validCredentialProfileName(input.default) || !profiles.some(row => row.name === input.default))) return fail("default");
-  return { profiles, ...(input.default !== undefined ? { default: input.default as string } : {}) };
+  return profiles;
 }
 /**
  * The environment of one CLI run on this computer, with the profile's directory in the CLI's own variable. Any ambient value of that
  * variable (whatever its letter case) is removed first, so a profile can never be combined with, or lose to, another account.
  */
 export function withCredentialProfile(env: NodeJS.ProcessEnv, cli: unknown, directory: string): NodeJS.ProcessEnv {
-  const variable = CREDENTIAL_PROFILE_CLIS[assertCredentialProfileCli(cli)], out: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(env)) if (key.toUpperCase() !== variable) out[key] = value;
-  out[variable] = directory;
+  const home = CREDENTIAL_PROFILE_CLIS[assertCredentialProfileCli(cli)];
+  // A CLI that is told its account by an argument cannot be launched with an environment alone: that would run it on the Windows user's OWN sign-in. Whoever launches it asks `credentialProfileLaunch`.
+  if (!("env" in home)) throw new Error("This CLI is told its account by an argument, not a variable; use credentialProfileLaunch");
+  const out: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) if (key.toUpperCase() !== home.env) out[key] = value;
+  out[home.env] = directory;
   return out;
+}
+/** A launch of a CLI on a named account: the environment (with the profile's variable or the `pin`), and arguments to put right after the program. */
+export interface CredentialProfileLaunch { env: NodeJS.ProcessEnv; args: string[] }
+/** Where agy resolves `--app_data_dir` from: `~/.gemini` of the Windows user the Runtime runs as. A seam for tests. */
+export const CLI_HOME_FOLDER = ".gemini";
+/**
+ * The launch of `cli` on the profile whose folder is `directory`. A variable-based CLI gets its variable (`withCredentialProfile`) and no arguments. An argument-based one (Antigravity) gets the `pin` in the
+ * environment (any ambient value of a pinned variable, whatever its letter case, is replaced) and `<arg> <folder relative to the CLI's own home>`: agy refuses an absolute path. On another drive than that
+ * home there is no relative path, and such an account is refused here, before anything is started.
+ */
+export function credentialProfileLaunch(env: NodeJS.ProcessEnv, cli: unknown, directory: string, cliHome: string = resolve(homedir(), CLI_HOME_FOLDER),
+  /** The path rules of the system the CLI runs on (a test for Windows paths on another system passes `win32`). */ paths: Pick<typeof win32, "relative" | "isAbsolute"> = { relative, isAbsolute }): CredentialProfileLaunch {
+  const home = CREDENTIAL_PROFILE_CLIS[assertCredentialProfileCli(cli)];
+  if ("env" in home) return { env: withCredentialProfile(env, cli, directory), args: [] };
+  const folder = paths.relative(cliHome, directory);
+  if (!folder || paths.isAbsolute(folder) || win32.isAbsolute(folder)) throw new CredentialProfileRefusal("This account's folder is not on the same drive as the Windows user's own profile, so Antigravity cannot be pointed at it; it needs a Runtime folder on that drive");
+  const pinned = new Set(Object.keys(home.pin).map(name => name.toUpperCase())), out: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) if (!pinned.has(key.toUpperCase())) out[key] = value;
+  Object.assign(out, home.pin);
+  return { env: out, args: [home.arg, folder] };
+}
+/** The file a named account keeps its sign-in in (`runtime.namedAccounts.store`), for the CLIs that keep it in one; undefined for a variable-based CLI. */
+export function credentialProfileStore(cli: unknown): string | undefined {
+  const home = CREDENTIAL_PROFILE_CLIS[assertCredentialProfileCli(cli)];
+  return "store" in home ? home.store : undefined;
 }
 /**
  * A cheap fingerprint of what `agend-runtime login` / `profile default` last wrote for this pairing (the sign-in cache and the default's file),
