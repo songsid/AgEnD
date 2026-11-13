@@ -16,6 +16,7 @@
 import { GROUP_POLICY_FEATURE, handleGroupHttp } from "../group-policy/admin-api.js";
 import { handleHubDirectorySettingsHttp, HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE } from "../settings-directory-http.js";
 import { handleHubSettingsHttp } from "../settings-api.js";
+import { HUB_ROLE_AUDIT_FEATURE, readHubRoleAudit } from "../roles/audit.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -130,6 +131,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const quota = new HubQuotaService(core);
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
   const live = () => !closed && core.live();
+  const roleAuditOffered = () => {
+    try { return live() && !!deps.management && deps.roleSessionMode?.() === true; }
+    catch { return false; } // Availability is not authority; the read still needs its exact current permit.
+  };
   const grantSubjectsOffered = () => !!deps.grantDirectory && deps.directory.groupPolicy === "ad-direct-guid"
     && typeof deps.directory.searchPolicyGroups === "function" && typeof deps.directory.searchGrantPeople === "function"
     && typeof deps.directory.resolvePolicyGroup === "function" && typeof deps.directory.readPolicyGroups === "function";
@@ -153,7 +158,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     };
     const m = (re: RegExp) => re.exec(path);
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
-    const offered = [...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    const offered = [...(roleAuditOffered() ? [HUB_ROLE_AUDIT_FEATURE] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     const features = offered.length ? { features: offered } : {};
@@ -412,6 +417,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method !== "GET") throw new HttpError(405, "method");
       signedIn();
       const exposureId = query.get("exposureId"), after = query.get("after");
+      if (query.has("view")) {
+        if (query.get("view") !== "metadata") throw new HubProtocolError("invalid");
+        const result = await guard(() => readHubRoleAudit(core, ctx, { ...(exposureId ? { exposureId: uuid(exposureId) } : {}), ...(after ? { after: int(after) } : {}) }));
+        result.assertCurrent(); return send(res, 200, { records: result.records });
+      }
       return send(res, 200, { records: await guard(() => deps.audit.read(ctx, { ...(exposureId ? { exposureId: uuid(exposureId) } : {}), ...(after ? { after: int(after) } : {}) })) });
     }
     if (path === "/hub/v1/pairings") {
@@ -583,7 +593,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, features: Object.freeze([...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, features: Object.freeze([...(roleAuditOffered() ? [HUB_ROLE_AUDIT_FEATURE] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
     async close() { closed = true; grantSearch.close(); for (const end of streams) end(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
