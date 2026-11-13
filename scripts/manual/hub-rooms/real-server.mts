@@ -22,7 +22,7 @@ r.directory.searchPolicyGroups = async () => ({ ok: true, groups: [{ objectId: g
 r.directory.roomGroupMembers = async key => ({ ok: true, group: { key, name: "Pilot direct group" }, people: [{ key: unseen, login: "new-person", displayName: "Never signed in", dn: "private", groups: [] }] });
 let workerCalls = 0;
 const service = new RoomAssistantService({
-  host: { start: async () => ({ ask: async () => { workerCalls++; return { text: "Owned assistant answer" }; }, stop: async () => {} }) },
+  host: { start: async () => ({ ask: async input => { workerCalls++; return { text: "Owned assistant answer: " + input.text }; }, stop: async () => {} }) },
   store: { load: async () => null, save: async () => {} },
   backends: () => [{ id: "claude-code", name: "Claude", accounts: [{ id: null, name: "Default", state: "signed-in" }] }],
 });
@@ -67,12 +67,12 @@ try {
     await p.waitForURL("**/ui/hub?room=*"); await p.locator(".hub-room-page").waitFor();
     const id = new URL(p.url()).searchParams.get("room")!, detail = await r.call(actor, "GET", `/hub/v1/rooms/${id}`);
     check(tag + " create persists complete group and never-signed-in state", detail.json.members.some((m: any) => m.kind === "person" && m.signedIn === false));
-    await p.locator(".hub-room-composer textarea").fill("Browser human message " + tag); await p.locator(".hub-room-composer textarea").press("Enter");
+    await p.locator(".hub-room-composer textarea").fill("Browser human message " + tag); await p.locator(".hub-room-composer #sendBtn").click();
     await p.getByText("Browser human message " + tag, { exact: true }).first().waitFor(); await shot("thread");
     check(tag + " human message uses actual SQL", (await r.call(actor, "GET", `/hub/v1/rooms/${id}/messages`)).text.includes("Browser human message " + tag));
     const list = await r.call(actor, "GET", "/hub/v1/rooms?v=2"), assistant = list.json.rooms.find((room: any) => room.assistant);
-    await p.goto(origin + "/ui/hub?room=" + assistant.id); await p.locator(".hub-room-composer textarea").fill("Browser plain assistant request " + tag); await p.locator(".hub-room-composer textarea").press("Enter");
-    await p.getByText("Owned assistant answer", { exact: true }).first().waitFor();
+    await p.goto(origin + "/ui/hub?room=" + assistant.id); await p.locator(".hub-room-composer textarea").fill("Browser plain assistant request " + tag); await p.locator(".hub-room-composer #sendBtn").click();
+    await p.getByText("Owned assistant answer: Browser plain assistant request " + tag, { exact: true }).first().waitFor();
     check(tag + " plain private ask reaches actual A service", workerCalls > 0);
     check(tag + " assistant label follows viewer language", lang !== "zh-TW" || !(await p.locator("body").innerText()).includes("Hub assistant")); await shot("assistant");
     check(tag + " no page errors", errors.length === 0, errors);
