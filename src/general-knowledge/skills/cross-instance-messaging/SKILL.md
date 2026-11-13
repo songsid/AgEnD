@@ -28,6 +28,8 @@ Only when a result is unclear: `delivery_status` with the `operation_id` / `deli
 - `delivered` — the target received it (not necessarily processed it yet; `consumed_at` says when it did).
 - `failed`, `cancelled` — not delivered; fix the cause, then send again.
 
+Grok `idle_submit` receipts can reconcile quietly from the exact launch session's later structured input record. Only the delivery's leading marker after its pre-write checkpoint counts; an answer, a draft, another session or a raw paste does not. The watch is bounded, stops with its launch, and never resends. Missing proof remains `uncertain`.
+
 ## requires_reply
 
 - Means “target should later answer with `report_result` / a real reply”

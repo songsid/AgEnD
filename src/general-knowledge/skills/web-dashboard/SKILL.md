@@ -776,6 +776,9 @@ installing, installed and restarting, starting ("Closing this page does not affe
 (**the update source could not be reached** / **no permission to install** / **did not finish**), whether anything changed
 ("AgEnD is still v*X*; nothing was changed."), with **Try again** and **See the full log** (**Update log**). After it:
 **AgEnD is updated to v*X*** · **Reload this tab to use the new version.** · **Reload**.
+A tab left open across an update may also show, where a page or a part of it would have loaded, **This tab is older
+than AgEnD now.** (這個分頁比 AgEnD 舊。) with **Reload this tab**: what it loads now no longer fits what it loaded before
+the update. Reloading fixes it; nothing saved is lost.
 It stays on the install's line: an alpha install updates to the newest alpha, a stable one to stable. Going from alpha
 back to stable is `agend rollback <version>` on the host, never offered here ("Updating from the web stays on the
 Alpha preview line"). Guests and agents can't update.

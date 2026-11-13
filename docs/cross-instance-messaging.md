@@ -35,6 +35,8 @@ Instance 之間、以及外部 CLI session 與 daemon instance 之間的通訊�
 
 查一則跨 instance 訊息的投遞狀態（queued / delivering / delivered / failed / uncertain）。`uncertain` 時以這裡的答案為準，不要重送。另有 `delivery_mode`（`steer` / `idle_queue`）、`submission_mode`，以及 `consumed_at` / `consumed_via`：CLI 的 transcript 顯示它真的取用了這則訊息的時間與方式（`turn` / `mid_turn`，#1201）——「已收進輸入」不等於「已讀」。還在排隊時，`waiting_reason` 會說明目標為什麼沒接收（例如「CLI 看起來卡住了。」，#1641）；是 null 就表示只是排在後面。
 
+Grok 的一般閒置投遞（`idle_submit`）也會在背景核對這次啟動指定的會話：只有投遞前檢查點之後、帶有該則訊息開頭標記的結構化使用者輸入，才會把 `uncertain` 升為 `delivered`。模型答覆、未送出的草稿、另一個會話或原樣貼上都不是證據。監看有期限，停止或重新啟動即失效，不會重送；沒有證據就維持 `uncertain`。
+
 ### `start_instance` / `create_instance` / `restart_instance` / `wake_instance`
 
 喚醒、建立、重啟 instance。只有較大的工具組才有這些動作：`worker` 工具組完全沒有（只能 `reply`、`send_to_instance`、`report_result` 等協作工具）；`general` 有其中一部分（create/start/restart/wake）；`coordinator` 與 `full` 才有全部。權限不足時工具會直接拒絕並說明它是 coordinator 的工具。所以「每個 peer 都能喚醒或建立別人」是錯的——先確認自己的工具組。

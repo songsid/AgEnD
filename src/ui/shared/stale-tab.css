@@ -1,0 +1,6 @@
+/* #3822: the "this tab is older than AgEnD" prompt. Its own public stylesheet, linked by stale-tab.js, because the tab
+   that shows it kept its OLD app.css (no rule for it there). On a phone or a coarse pointer its Reload is a full touch
+   target (style guide rule 7); --tap is a token every version has. */
+@media (max-width: 899px), (pointer: coarse) {
+  .stale-tab .btn { min-height: var(--tap, 44px); min-width: var(--tap, 44px); }
+}
