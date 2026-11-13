@@ -21,3 +21,11 @@ node scripts/changelog-assemble.mjs --check
 The directory, encrypted-content facade and agent executor are inert owned ports; real production content still uses the existing encrypted store. No browser/PNG, vendor, live account/Fleet/AD or host-lifecycle claim. No optional mutation campaign/gate is required under the pilot rule. The production TrackC adapter integration, invitations/teams/assistant/creator/admin routes and complete joined UI walkthrough follow. This packet is not full TrackR acceptance.
 
 Rollback deploys a compatible corrected build; older binaries refuse s3-room-agents. Keep the DB, content keys and retained answer/input history.
+
+## Ordinary review R1
+
+Current source checkpoint: `7df4c2a851f37c7ef0b3917cb065a51d9c3054a5`. Two new assertions first failed:120 offline retained deliveries caused38,394 SQL preparations across60 simulated seconds, and a late answer crossed a newer member's hidden-question floor. Event-driven dispatch now leaves offline work on its earliest indexed expiry only; live transient failures retry at30 seconds. Global expiry reads only due rows, while validity scans are scoped by room or changed Fleet/exposure. The bound is now fewer than20 SQL preparations in that same simulated minute. It is a deterministic query-count regression, not a live load/performance claim.
+
+History, last-message/unread and SSE all filter late answers by their original question's join floor. The test opens the new member's real SSE stream, completes the old answer, then receives their own new marker and proves the old answer was not disclosed. Existing members retain late-answer unread.
+
+Latest54/54 across five suites above, plus fresh native source/test programs exit0. This supersedes the prior source/fixture digests for the changed paths; earlier outcomes retain their stated historical scopes. No extra security or mutation gate was added.
