@@ -196,12 +196,12 @@ export class HubRoomsService {
     const asker = await ctx.requirePerson(), me = personKeyString(asker), context = this.core.groupContext(ctx);
     const askerPermit = await this.core.groupAsker(asker, context);
     const rows = this.core.atomic(db => db.prepare(`${ROOM_VIEW_SQL} WHERE r.asker=? ORDER BY (r.state='active') DESC, last_at DESC LIMIT 100`).all(me) as RoomViewRow[]);
-    const subjectProof = await this.core.grantAccess(rows.filter(r => r.state === "active").map(r => r.grant_id), asker, context);
     const proofs = new Map<string, HubOperationPermit | null>();
     for (const row of rows) if (!proofs.has(row.exposure_id)) {
       try { proofs.set(row.exposure_id, await this.core.groupExposure(row.exposure_id, null, context)); }
       catch (e) { if (e instanceof HubProtocolError && (e.code === "denied" || e.code === "revoked")) proofs.set(row.exposure_id, null); else throw e; }
     }
+    const subjectProof = await this.core.grantAccess(rows.filter(r => r.state === "active").map(r => r.grant_id), asker, context);
     askerPermit.assertCurrent();
     const rooms = this.core.atomic(db => rows.flatMap(row => {
       const proof = proofs.get(row.exposure_id); if (proof === null) return [];

@@ -270,16 +270,25 @@ export class HubCatalogService {
       const name = recipientNames.get(personKeyString(grant.subject.person));
       return name ? { ...grant, subjectLogin: name.login, subjectName: name.displayName ?? name.login } : grant;
     }) }));
-    const context = this.core.groupContext(ctx), subjectProof = await this.core.grantAccess(initial.askable.map(g => g.grant.id), person, context);
-    const proofs: HubOperationPermit[] = [subjectProof], askable: HubCatalogView["askable"][number][] = [];
+    const context = this.core.groupContext(ctx);
+    let subjectProof = await this.core.grantAccess(initial.askable.map(g => g.grant.id), person, context);
+    // Choose candidates synchronously; slow operational reads must not reuse an aged subject allow at disclosure.
+    const candidates = initial.askable.filter(c => grantApplies(c.grant, c.exposure, person, this.core.now(), subjectProof));
+    const proofs: HubOperationPermit[] = [], askable: HubCatalogView["askable"][number][] = [];
     let canAsk = true;
     try { proofs.push(await this.core.groupAsker(person, context)); }
     catch (e) { if (e instanceof HubProtocolError && e.code === "denied") canAsk = false; else throw e; }
-    for (const candidate of canAsk ? initial.askable : []) {
-      if (!grantApplies(candidate.grant, candidate.exposure, person, this.core.now(), subjectProof)) continue;
+    for (const candidate of canAsk ? candidates : []) {
       try { proofs.push(await this.core.groupExposure(candidate.exposure.id, null, context)); askable.push(candidate); }
       catch (e) { if (!(e instanceof HubProtocolError && (e.code === "denied" || e.code === "revoked"))) throw e; }
     }
+    subjectProof.assertSelectionCurrent();
+    if (this.core.now() >= subjectProof.expiresAt) {
+      const fresh = await this.core.grantAccess(askable.map(c => c.grant.id), person, context);
+      // Ending and regaining a policy/session/row cannot revive the original selection.
+      subjectProof.assertSelectionCurrent(); subjectProof = fresh;
+    }
+    proofs.push(subjectProof);
     for (const proof of proofs) proof.assertCurrent();
     // Recheck ordinary grants after all asynchronous group reads too. A person row witnesses successful Hub
     // sign-in permanently; directory eligibility checks and ended sessions cannot manufacture or erase it.

@@ -9,6 +9,8 @@ import { grantOf, readGrant } from "./catalog.js";
 
 export interface HubGrantSubjectProof extends HubOperationPermit {
   readonly expiresAt: number;
+  /** Data-only selection fence; does NOT authorize an action or extend this proof deadline. */
+  assertSelectionCurrent(): void;
   allows(grant: HubGrant, asker: PersonKey): boolean;
 }
 const same = (a: PersonKey, b: PersonKey) => personKeyString(a) === personKeyString(b);
@@ -47,16 +49,17 @@ export async function prepareGrantAccess(core: HubCore, ids: readonly string[], 
     && (g.subject.kind === "person" ? same(g.subject.person, asker) : facts.kind === "complete" && g.subject.group.realm === asker.realm && facts.groups.includes(g.subject.group.objectId))) deadline = Math.min(deadline, g.expiresAt);
   if (facts.kind === "complete" && facts.observedAt > created) throw new HubProtocolError("unavailable");
   const used = new Map<string, HubGrant>();
-  const assertCurrent = () => {
+  const assertSelectionCurrent = () => {
     assertContext(); physical?.assertCurrent();
     core.atomic(db => { for (const [id, g] of used) {
       const row = readGrant(db, id);
       if (!row || bytes(grantOf(row)) !== bytes(g) || time() < g.startsAt || time() >= g.expiresAt) throw new HubProtocolError("revoked");
     } });
-    if (time() < created || time() >= deadline || core.revocationVersion() !== epoch || core.deps.directory !== directory
+    if (time() < created || core.revocationVersion() !== epoch || core.deps.directory !== directory
       || (groupNeeded && directory.readPolicyGroups !== read)) throw new HubProtocolError("unavailable");
   };
-  const proof: HubGrantSubjectProof = { expiresAt: deadline, assertCurrent, allows(g, who) {
+  const assertCurrent = () => { assertSelectionCurrent(); if (time() >= deadline) throw new HubProtocolError("unavailable"); };
+  const proof: HubGrantSubjectProof = { expiresAt: deadline, assertCurrent, assertSelectionCurrent, allows(g, who) {
     assertCurrent();
     const captured = grants.get(g.id), now = time();
     if (!same(who, asker) || !captured || bytes(captured) !== bytes(g) || g.state !== "active" || now < g.startsAt || now >= g.expiresAt) return false;

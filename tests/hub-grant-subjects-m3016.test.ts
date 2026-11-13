@@ -239,4 +239,25 @@ describe("M-3016 owner person/group grants", () => {
     w.setMembership([]);const held=await w.r.call(w.asker,"GET","/hub/v1/rooms");expect(held.status).toBe(200);expect(held.json.rooms[0]).not.toHaveProperty("quota");expect(held.json.rooms[0].state).toBe("held");
   });
 
+  it.each([false,true])("catalog refreshes an aged subject observation after slow operational reads; memberLeft=%s", async left => {
+    const w=await world(), grant=await w.grant();expect(grant.status).toBe(200);
+    // Inert operational-policy boundary; production grant reads, HTTP/session, DB and membership remain real.
+    vi.spyOn(HubCore.prototype,"groupExposure").mockImplementation(async()=>{w.advance(6_000);if(left)w.setMembership([]);return {assertCurrent(){}};});
+    const out=await w.r.call(w.asker,"GET","/hub/v1/exposures");expect(out.status).toBe(200);
+    expect(out.json.askable.map((x:any)=>x.grant.id)).toEqual(left?[]:[grant.json.grant.id]);
+    expect(vi.mocked(w.r.directory.readPolicyGroups!)).toHaveBeenCalledTimes(2);
+  });
+  it("room-list subject proof is acquired after slow operational reads", async()=>{
+    const w=await world(), g=await w.grant();expect(g.status).toBe(200);
+    const room=await w.r.call(w.asker,"POST","/hub/v1/rooms",{exposureId:w.exposureId,grantId:g.json.grant.id});expect(room.status).toBe(200);
+    vi.spyOn(HubCore.prototype,"groupExposure").mockImplementation(async()=>{w.advance(6_000);return {assertCurrent(){}};});
+    const out=await w.r.call(w.asker,"GET","/hub/v1/rooms");expect(out.status).toBe(200);expect(out.json.rooms[0].state).toBe("active");
+  });
+
+  it("an aged catalog selection cannot revive under a replacement directory method", async()=>{
+    const w=await world(), g=await w.grant();expect(g.status).toBe(200);const read=w.r.directory.readPolicyGroups!;
+    vi.spyOn(HubCore.prototype,"groupExposure").mockImplementation(async()=>{w.advance(6_000);w.r.directory.readPolicyGroups=key=>read(key);return {assertCurrent(){}};});
+    const out=await w.r.call(w.asker,"GET","/hub/v1/exposures");expect(out.status).toBe(503);expect(w.r.db.prepare("SELECT state FROM hub_grants WHERE id=?").get(g.json.grant.id)).toEqual({state:"active"});
+  });
+
 });

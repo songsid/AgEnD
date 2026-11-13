@@ -21,6 +21,9 @@ mutants=[
  ('U2','src/ui/hub-grant-picker.js','if (writing.current || !selected || client !== hubClient())','if (!selected || client !== hubClient())',picker,'posts the selected immutable'),
  ('U3','src/ui/hub-client.js','return signal?.aborted ? { ok: false, status: 0, code: "unreachable" } : out;','return out;',picker,'aborted suggestion body'),
  ('I1','src/hub/group-policy/admin-impact.ts','facts.kind === "unknown" ? undefined','facts.kind === "unknown" ? false',subjects,'impact evaluates known-person'),
+ ('R1','src/hub/catalog.ts','subjectProof.assertSelectionCurrent();','',subjects,'replacement directory method'),
+ ('R2','src/hub/catalog.ts','if (this.core.now() >= subjectProof.expiresAt)','if (false)',subjects,'catalog refreshes an aged'),
+ ('R3','src/hub/rooms.ts','    const subjectProof = await this.core.grantAccess(rows.filter(r => r.state === "active").map(r => r.grant_id), asker, context);\n','',subjects,'room-list subject proof'),
  ('C1','src/hub/catalog.ts','askable: selectAskable(db, askable.filter(candidate => {','askable: askable.filter(candidate => {',subjects,'one askable agent'),
 ]
 chosen=set(sys.argv[1:]);manifest=[]
@@ -28,6 +31,7 @@ for id,path,old,new,file,name in mutants:
  if chosen and id not in chosen:continue
  if float(pathlib.Path('/proc/loadavg').read_text().split()[0])>10: print('DEFER load>10 before',id,flush=True);sys.exit(75)
  p=root/path;original=p.read_bytes();text=original.decode();assert old in text,(id,'missing source pattern');changed=text.replace(old,new)
+ if id=='R3':changed=changed.replace('    const proofs = new Map<string, HubOperationPermit | null>();',old+'    const proofs = new Map<string, HubOperationPermit | null>();',1)
  if id=='C1':changed=changed.replace('}), me) }), { assertCurrent:', '}) }), { assertCurrent:',1)
  log=out/(id+'.log');start=time.time()
  try:
