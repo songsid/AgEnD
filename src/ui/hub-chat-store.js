@@ -151,6 +151,7 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
       if (!q || st.closed) return { ok: false, code: "invalid" };
       let r;
       try { r = await client.ask(st.room.id, newKey(), q, extras); } catch { r = { ok: false, code: "unreachable" }; }
+      if (!r.ok && r.code === "sharing-paused" && st.live) { st.room = { ...st.room, exposureState: "paused" }; emit(); schedule(0); return r; }
       if (!r.ok) { if (r.code === "denied" && st.live) { st.accessDenied = true; st.accessEpoch++; emit(); } if (r.code === "revoked") { st.closed = true; emit(); } return r; }
       st.pending.push({ messageId: r.receipt.messageId, text: q, at: r.receipt.at || Date.now() });
       emit();

@@ -10,7 +10,7 @@ it("preserves old personal IDs/revisions/permissions and a longer recorded expir
   try {
     applyHubMigrations(db, older);
     const owner = `corp/${randomUUID()}`, subject = `corp/${randomUUID()}`, exposure = randomUUID(), id = randomUUID(), expiry = Date.now() + 365 * 86_400_000;
-    db.prepare("INSERT INTO hub_exposures VALUES(?,?,?,'Agent',1,'published','agent','[]',?, -1,0)").run(exposure, randomUUID(), owner, "a".repeat(64));
+    db.prepare("INSERT INTO hub_exposures(id,fleet_id,owner,display_name,revision,state,data_view_id,allowed_tools,policy_digest,frozen_through,updated_at) VALUES(?,?,?,'Agent',1,'published','agent','[]',?, -1,0)").run(exposure, randomUUID(), owner, "a".repeat(64));
     db.prepare("INSERT INTO hub_grants VALUES(?,7,?,?,1,?,0,?,'[\"ask\",\"read-own-room\"]',0,?,'active')").run(id, owner, exposure, owner, subject, expiry);
     const before = db.prepare("SELECT * FROM hub_grants").get() as any;
     applyHubMigrations(db, HUB_HTTP_MIGRATIONS); applyHubMigrations(db, HUB_HTTP_MIGRATIONS);

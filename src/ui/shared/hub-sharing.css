@@ -1,0 +1,4 @@
+/* Loaded with the resumable-sharing renderer, including tabs retaining an older shell stylesheet. */
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-owner .btn, .hub-owner .icon-btn { min-height: 44px; min-width: 44px; }
+}
