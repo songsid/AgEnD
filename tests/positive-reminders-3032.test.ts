@@ -74,8 +74,8 @@ describe("M-3032: the reminders keep their rules", () => {
   });
   it("the inbound hint still names the reply path (MCP and agent CLI)", () => {
     const hints = src("human-delivery-receipts.ts");
-    expect(hints).toContain('"\\n(Answer with the reply tool.)"');
-    expect(hints).toContain("'\\n(Answer with agend-agent reply \"…\".)'");
+    expect(hints).toContain('"\\n(Answer with the reply tool; terminal text does not reach them.)"');
+    expect(hints).toContain("'\\n(Answer with agend-agent reply \"…\"; terminal text does not reach them.)'");
   });
   it.each(BACKENDS)("MCP contract for %s: reply tool for users, queued is normal and a resend duplicates", (b) => {
     const s = mcp(b);
