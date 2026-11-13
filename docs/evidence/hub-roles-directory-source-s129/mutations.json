@@ -1,0 +1,382 @@
+[
+  {
+    "id": "S01",
+    "file": "src/hub/compose/server.ts",
+    "baseSha256": "34fbe576739840db20da7fcd5f361c264a7008ff09b249f9bf7485c0177f0811",
+    "mutantSha256": "355425914d1a6bf4e55f7bb9a8f09ec49ba9118e8b8eef6995c12e1ff9a79ad4",
+    "before": "hubId: settings.hubId, roleProofs: true",
+    "after": "hubId: settings.hubId, roleProofs: false",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 3.95849609375,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "34fbe576739840db20da7fcd5f361c264a7008ff09b249f9bf7485c0177f0811",
+    "elapsedSeconds": 33.79
+  },
+  {
+    "id": "S02",
+    "file": "src/hub/compose/server.ts",
+    "baseSha256": "34fbe576739840db20da7fcd5f361c264a7008ff09b249f9bf7485c0177f0811",
+    "mutantSha256": "fadb2980bb7627531f13d0a570b8e30428b299dae3b220acc22c1584ee6ad053",
+    "before": "        directoryDecision: { db, hubId: settings.hubId, assertAuthorizationTime: roleClock.assertDirectoryDecision }, now });",
+    "after": "        now });",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 6.96826171875,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "34fbe576739840db20da7fcd5f361c264a7008ff09b249f9bf7485c0177f0811",
+    "elapsedSeconds": 22.55
+  },
+  {
+    "id": "S03",
+    "file": "src/hub/compose/server.ts",
+    "baseSha256": "34fbe576739840db20da7fcd5f361c264a7008ff09b249f9bf7485c0177f0811",
+    "mutantSha256": "ed2b33728e7dab7f6d67b18202da6117271064f42faa77af6a6adecdcd60aca6",
+    "before": "...(document.kind === \"roles\" ? { decisionProof: directoryDecision.administrationProof } : {})",
+    "after": "...(document.kind === \"group\" ? { decisionProof: directoryDecision.administrationProof } : {})",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 7.77880859375,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "34fbe576739840db20da7fcd5f361c264a7008ff09b249f9bf7485c0177f0811",
+    "elapsedSeconds": 19.97
+  },
+  {
+    "id": "R02",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "cfed858c11f0eb832e5e9c73190d21fea31f9c9e358f63a8e3f74b33446862d0",
+    "before": "if (!mounted || mounted.recoveryMode !== undefined) return null;",
+    "after": "if (!mounted) return null;",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 9.16552734375,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 12.99
+  },
+  {
+    "id": "R03",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "0acc673029b7f3fdb29cd2cce405a3177aad03b23a8d50bfaf425e084cb977b9",
+    "before": "!this.stopped && this.mountedDirectory === mounted",
+    "after": "this.mountedDirectory === mounted",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 9.2265625,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 13.53
+  },
+  {
+    "id": "R04",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "450ebc4e7dc50ddf2282294e13b3137783adf8cc6a5510907b689f6004026bdb",
+    "before": "!this.stopped && this.mountedDirectory === mounted",
+    "after": "!this.stopped",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 8.87109375,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 15.54
+  },
+  {
+    "id": "R05",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "384e64307a8c5c9704e31fbbf04aef7bbbf7e86dfb6d3f9d47931c552ae14f1e",
+    "before": " && this.admissionTicket === ticket\n      && this.directoryAdmissionTicket",
+    "after": "\n      && this.directoryAdmissionTicket",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 8.8505859375,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 10.0
+  },
+  {
+    "id": "R06",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "85f074c78e0d021e9d37da62a53e83eba5185ec9ea380839d0528f9936d334c4",
+    "before": "&& this.directoryAdmissionTicket === directoryTicket && this.directoryDecision() === decision",
+    "after": "&& this.directoryDecision() === decision",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 7.95703125,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 12.41
+  },
+  {
+    "id": "R07",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "1d9e81ffcdfd5f1a0815f3a9c32280f4c673ec27e718ceea684c48856820fdb9",
+    "before": "&& this.directoryAdmissionTicket === directoryTicket && this.directoryDecision() === decision",
+    "after": "&& this.directoryAdmissionTicket === directoryTicket",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 7.4443359375,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 10.94
+  },
+  {
+    "id": "R08",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "68adc6eaa9f183f5869f0a128ab77aa5dd7c81170c2c9a20d63f692b912b4f28",
+    "before": " && mounted.current === current && mounted.source === source",
+    "after": " && mounted.source === source",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 7.06201171875,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 11.33
+  },
+  {
+    "id": "R09",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "ab416773e197d5eb357af99614cef0be66d47fd528c6318bf13cf81ceb4b4112",
+    "before": " && mounted.current === current && mounted.source === source",
+    "after": " && mounted.current === current",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 6.43701171875,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 11.85
+  },
+  {
+    "id": "R10",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "652add1a91fd998865083746698641c2c408be0fde99c892793807868ea02487",
+    "before": "      && decision.administrationProof === frame;",
+    "after": ";",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 6.0380859375,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 12.59
+  },
+  {
+    "id": "R11",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "1c3fc2557a8a7afe9435f330e62767c3a22956e35d4b7cfb2612e79fba66d0cf",
+    "before": " || view.decisionProof !== frame || view.current !== current",
+    "after": " || view.current !== current",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 6.1123046875,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 10.93
+  },
+  {
+    "id": "R12",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "936a19ce18befc52c100269a151a5cb9ab2f2769b58f0ea65330b29b3cca4c1e",
+    "before": " || view.decisionProof !== frame || view.current !== current",
+    "after": " || view.decisionProof !== frame",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 6.1943359375,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 10.84
+  },
+  {
+    "id": "R13",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "32347d8451aa70cdd1cdbe821c479d58350865aa4b0d3ed379264a441d28a81d",
+    "before": "current.call(mounted) !== true",
+    "after": "false",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 5.7333984375,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 10.01
+  },
+  {
+    "id": "R14",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "2ddf5c2552c47fd4592f248916ef6846a7a602fa890936f89863b7191e8a1817",
+    "before": "        || current.call(mounted) !== true || !owned()) return null;",
+    "after": "        || current.call(mounted) !== true) return null;",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 5.15869140625,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 14.16
+  },
+  {
+    "id": "R15",
+    "file": "src/hub/runtime.ts",
+    "baseSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "mutantSha256": "e46a6e5273f373a7992a219b8a6d67a30214e5a9de65619b951711291a371488",
+    "before": "source: Object.freeze({ directory: view.directory,\n        administrator: Object.freeze({ ...view.administrator }), image: view.image, epoch: view.epoch, decisionProof: frame })",
+    "after": "source: Object.freeze(view)",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 5.8486328125,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018",
+    "elapsedSeconds": 20.08
+  },
+  {
+    "id": "F01",
+    "file": "src/fleet-manager.ts",
+    "baseSha256": "3611085b3ecd89aeefa5c6a250003ab5a39ee28e3efa11129f509ac286d754fd",
+    "mutantSha256": "27b7c6189863dc4c084b892c488a2c556ef813922c102ac3cbb691fe8dfcf2de",
+    "before": "directoryAdministration: () => !this.shuttingDown && this.hubEffectsReady ?",
+    "after": "directoryAdministration: () => this.hubEffectsReady ?",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 8.59912109375,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "3611085b3ecd89aeefa5c6a250003ab5a39ee28e3efa11129f509ac286d754fd",
+    "elapsedSeconds": 22.91
+  },
+  {
+    "id": "F02",
+    "file": "src/fleet-manager.ts",
+    "baseSha256": "3611085b3ecd89aeefa5c6a250003ab5a39ee28e3efa11129f509ac286d754fd",
+    "mutantSha256": "f9365f9ebedae23f528abbeac00e254ed2631e7e52cf6082d49da814ec86bcc8",
+    "before": "directoryAdministration: () => !this.shuttingDown && this.hubEffectsReady ?",
+    "after": "directoryAdministration: () => !this.shuttingDown ?",
+    "checkpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+    "testInputSha256": {
+      "tests/hub-roles-directory-source-s129.test.ts": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7",
+      "tests/hub-compose.test.ts": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e",
+      "tests/hub-settings-fleet-m2682.test.ts": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    "load1": 9.138671875,
+    "typesExit": 0,
+    "testExit": 1,
+    "caught": true,
+    "restoredSha256": "3611085b3ecd89aeefa5c6a250003ab5a39ee28e3efa11129f509ac286d754fd",
+    "elapsedSeconds": 48.38
+  }
+]

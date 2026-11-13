@@ -1,0 +1,174 @@
+{
+  "task": "S-129 / M-3010",
+  "parent": {
+    "pr": 3829,
+    "head": "5c825e9f2c5b4ea42e385e01276bd3c4240d7f56",
+    "sourceClearReview": 5891804450
+  },
+  "sourceAndTestCheckpoint": "489077930c703292424b27ea9a6090c6de2d93d4",
+  "failFirst": {
+    "commit": "47066ea76",
+    "tests": 7,
+    "assertionFailures": 5,
+    "controlsPass": 2,
+    "nativeSourceAndTests": "7.0.2 both exit 0"
+  },
+  "positive": {
+    "newCases": 27,
+    "focused": {
+      "files": 8,
+      "passed": 386
+    },
+    "restored": {
+      "files": 3,
+      "passed": 175
+    },
+    "nativeSourceAndTests": "7.0.2 both exit 0",
+    "changelogFragments": 454,
+    "diffCheck": "pass"
+  },
+  "mutationSummary": {
+    "isolated": 19,
+    "nativeSourceCompiling": 19,
+    "semanticAssertionRed": 19,
+    "exactRestoration": true,
+    "scope": "S01-S03 actual factory/session/SQLite/writer; R02-R15 inert runtime owner/projection boundaries; F01-F02 actual singleton construction with recorder runtime"
+  },
+  "bindings": [
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "3611085b3ecd89aeefa5c6a250003ab5a39ee28e3efa11129f509ac286d754fd"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "34fbe576739840db20da7fcd5f361c264a7008ff09b249f9bf7485c0177f0811"
+    },
+    {
+      "path": "src/hub/runtime.ts",
+      "sha256": "340f779710ad5b35ed3032b0de9f51ba7923fbfd8c6f6d90d8e0e2c8e102c018"
+    },
+    {
+      "path": "tests/hub-compose.test.ts",
+      "sha256": "31c9577c5c44c215f56697a8e81dd14a41e60f5de4726052a3bcc8fb7e2f281e"
+    },
+    {
+      "path": "tests/hub-settings-fleet-m2682.test.ts",
+      "sha256": "62f1c3dbe540160fbaa413de3cfe44be87ce504875e1e57b3173e8accd245a86"
+    },
+    {
+      "path": "tests/hub-roles-directory-source-s129.test.ts",
+      "sha256": "8ee1795a6629e558ce3a4932a15b9005f0ee5ce4591bb841cee527bcebf12cf7"
+    },
+    {
+      "path": "docs/design/hub-roles-directory-source-s129.md",
+      "sha256": "ae9489a94ef91535467c4567766ae0420dafb2ca4ca5182a5ebd1f10253f73e7"
+    },
+    {
+      "path": "changes/3743-roles-directory-source.md",
+      "sha256": "52b22001a7bb3dc4f5a40301aa43b976c27ec32b363aa881a6c41ebe6abd8b6c"
+    },
+    {
+      "path": "changes/3743-roles-directory-source.zh-TW.md",
+      "sha256": "14369903288aa4a6611942e992693d1c0da29a43a026663b3d0a360d67529c4b"
+    },
+    {
+      "path": "src/hub/settings-commit.ts",
+      "sha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+    },
+    {
+      "path": "src/hub/settings-directory-decision.ts",
+      "sha256": "a7be86d307e22adc25cd9724aefee3ca5ed0db3aa951b15bc22cd7ae9acebf20"
+    },
+    {
+      "path": "src/hub/settings-directory-mount.ts",
+      "sha256": "f03223caf80ee21a3ff171c619d3bacaf3b5ab6530e12a67fdaf2d021ecfa365"
+    },
+    {
+      "path": "src/hub/roles/authority.ts",
+      "sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "path": "src/hub/roles/clock.ts",
+      "sha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5"
+    },
+    {
+      "path": "src/hub/roles/directory-authority.ts",
+      "sha256": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "5450a50a564d7429ed352af680eadb9fa4b81ff07a10ca005a893b253b32e3f3"
+    },
+    {
+      "path": "src/hub/settings-directory-control.ts",
+      "sha256": "0e47c1c72f1cd6f13d77ddc1afea147f2f191f74e9db37ef8e59558e7b52d19e"
+    },
+    {
+      "path": "src/hub/settings-directory-save.ts",
+      "sha256": "ee26a5788898db9bbc4ae9c663f25f7520d3a1e58e37f9d6d3681bbbf6c46a48"
+    },
+    {
+      "path": "src/hub/sessions.ts",
+      "sha256": "40d0960d0f3969454999e270e7825888668d2d4f6abfb1edf610a32c445b5e5e"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "16fda4217a90ef6c0e087494fa8650ad9f0b748e2083ece6e742ad2fd3defd18"
+    },
+    {
+      "path": "src/hub/directory-decision-proof.ts",
+      "sha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861"
+    }
+  ],
+  "privateLogs": [
+    {
+      "path": "roles-directory-source-m3010/fail-first.log",
+      "sha256": "7d8a9cec94cb8f64310e4b285ff2f0fd5b37ef867cefacc3324e56294af43f2a"
+    },
+    {
+      "path": "roles-directory-source-m3010/fail-first-source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "roles-directory-source-m3010/fail-first-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "roles-directory-source-m3010/focused.log",
+      "sha256": "062fa2ccced0fda2d8861b704920cef0e5d6dd105db57976d2d5954e07c220ed"
+    },
+    {
+      "path": "roles-directory-source-m3010/source-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "roles-directory-source-m3010/test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "roles-directory-source-m3010/restored.log",
+      "sha256": "15d5924a0be24ae23aabe205e0b881c9ae285410e016626d17cfeb1c8679bd07"
+    },
+    {
+      "path": "roles-directory-source-m3010/mutations.log",
+      "sha256": "de39662bd55a4e6a80276166ecc8b24b713a804f801b1e3f419a0e15357d4b15"
+    }
+  ],
+  "limitations": [
+    "Private valid-role cutover fixture; no registered production upgrade or automatic activation.",
+    "Actual initialized seal/keys/SQLite and loopback HTTPS sign-in; eligibility answers are synthetic.",
+    "Existing writer is invoked directly with actual session authority; no mounted HTTP directory Save/controller/candidate LDAP/successor release acceptance.",
+    "Runtime selector tests use inert mount/participant boundaries; FleetManager test uses recorder runtime and launches no agent.",
+    "No browser, container, native platform, backend CLI, live account, real AD or pilot.",
+    "Full S129, parent-first plain alpha sync, resolution review and exact-head readiness remain open.",
+    "Redundant ownership checks and frozen-handle type validation are defensive; no claim that every source line needs a distinct mutant."
+  ],
+  "notes": [
+    "Initial expanded test compiler exposed a missing inert interface shape, corrected by adding unused session/read methods before the source checkpoint. No product change was required.",
+    "The first complete focused run imported the inert fixture before its type-only method completion; the restored run uses the final exact fixture.",
+    "Initial changelog-guard invocation used HEAD text, which this script refuses; the resolved full SHA invocation passed.",
+    "The first evidence export used an incorrect Core path and stopped before writing a receipt. The corrected path is src/hub/http/core.ts; no source/test result changed.",
+    "Load exceeded 10 twice; the runner stopped before R04 and R07 and restored all source bytes. Same-input resumption skipped completed records. F02 started under the limit, then settled during a later load spike; its intended assertion failed, with its positive control passing.",
+    "Raw logs stay in the owned private artifact directory; public digests are bindings, not independent reviewer execution."
+  ]
+}
