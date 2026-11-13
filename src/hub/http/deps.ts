@@ -35,7 +35,7 @@ export interface HubHttpDeps {
   /** C-owned Team list projection; suggestions confer no creation/membership authority. */
   roomTeamCandidates?(db: Database.Database, prefix: string): readonly { id: string; name: string; people: number }[];
   /** Track A's optional host adapter; absent means the room assistant is disabled. */
-  roomAssistant?: import("../assistant/types.js").RoomAssistant;
+  roomAssistant?: import("../rooms/types.js").RoomAssistantPort;
   /** Track A owns settings validation and physical worker drain. */
   assistantAdmin?: import("../assistant/admin-types.js").RoomAssistantAdmin;
   directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
