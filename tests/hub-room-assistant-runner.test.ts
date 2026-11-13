@@ -56,7 +56,22 @@ describe("Hub room assistant host-Fleet ownership", () => {
     expect(w.sessions[0].turns[0].input).toEqual({ ...input("room-a"), context: Array.from({ length: 30 }, (_, i) => ({ author: `Person ${i + 5}`, text: `Text ${i + 5}`, at: i + 5 })) });
     w.sessions[0].answer("**Room A only**");
     expect(await result).toEqual({ text: "**Room A only**" });
-    expect(w.runner.available()).toEqual({ enabled: true, backend: "claude-code", cap: 3, running: 1, state: "idle" });
+    expect(w.runner.available()).toEqual({ enabled: true, backend: "claude-code", cap: 3, running: 0, state: "idle" });
+  });
+
+  it("preserves one older replied-to anchor alongside the recent thirty, without duplicating a recent anchor", async () => {
+    const w = world(), ask = input("a");
+    ask.context = Array.from({ length: 35 }, (_, at) => ({ author: "Han", text: `Row ${at}`, at, ...(at === 1 ? { repliedTo: true as const } : {}) }));
+    const first = w.ask(ask); await flush();
+    expect(w.sessions[0].turns[0].input.context.map(row => row.at)).toEqual([1, ...Array.from({ length: 30 }, (_, i) => i + 5)]);
+    expect(w.sessions[0].turns[0].input.context[0]).toEqual({ author: "Han", text: "Row 1", at: 1, repliedTo: true });
+    w.sessions[0].answer(); await first;
+    ask.context[1].repliedTo = undefined; ask.context[34].repliedTo = true;
+    const second = w.ask(ask); await flush();
+    expect(w.sessions[0].turns[1].input.context).toHaveLength(30);
+    expect(w.sessions[0].turns[1].input.context.at(-1)?.repliedTo).toBe(true);
+    w.sessions[0].answer(); await second;
+    await expect(w.ask({ ...ask, context: [{ author: "Han", text: "a", at: 1, repliedTo: true }, { author: "Han", text: "b", at: 2, repliedTo: true }] })).rejects.toThrow("Invalid");
   });
 
   it("reserves cap during startup and stop drain, then starts waiting rooms in arrival order", async () => {
