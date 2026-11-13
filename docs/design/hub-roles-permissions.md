@@ -187,7 +187,8 @@ One canonical JSON document (roles + assignments + denies) in the existing Hub S
 ```
 RolePolicy {
   realm, generation, revision,
-  state: "never-enabled" | "enabled" | "suspended",   // the three existing states, kept
+  rolesActive: boolean,                               // roles on / off; separate from `state` below
+  state: "never-enabled" | "enabled" | "suspended",   // the three existing states, kept: they govern the three self-use permissions only
   everEnabled: boolean,                               // the existing latch: no return to never-enabled
   roles: Role[],             // ≤ 32: 3 built-in + up to 7 "carried-over" + custom
   assignments: Assignment[], // ≤ 256
@@ -218,7 +219,8 @@ can(policy, subject, permission, target | null, facts, now)
 ```
 
 - `now` is an input: an assignment expires without a document revision, so the result carries `nextExpiry` and expiry is settled idempotently (audit `role.assignment-expired`).
-- Hub-scoped permissions need a `scope.kind === "hub"` assignment. Team permissions need a target person and a fresh membership read of that target in the assignment's scope group.
+- Scope constrains team permissions only. The three self-use permissions of a role are unscoped: they apply to the subject itself, whatever scope the assignment carries (a manager scoped to one AD group still chats, shares and connects as themself).
+- Hub-management permissions need a `scope.kind === "hub"` assignment. Team permissions need a target person: with a hub-wide assignment the target may be any currently eligible person (fresh eligibility); with a group scope the target needs a fresh membership read in that scope group.
 - The configured root administrator evaluates as admin without a group read. It still passes today's session and person-eligibility checks: break-glass skips group membership, not disabled-person validation.
 - Existing owner ask grants stay an independent AND gate. Team, usage and audit permissions confer no right to ask.
 
@@ -251,7 +253,7 @@ Losslessness, tested on a matrix of all three old states × overlapping rules ×
 - `suspended`, the ever-enabled latch, retained resource state and explicit Resume are carried unchanged;
 - the configured administrator → root admin, with **no** self-use permissions added (today it has no automatic ask / publish / pair exception). In `can()` the root's management permissions are evaluated separately from the self-use bits: a blanket "built-in admin has everything" evaluation would re-add them by accident and is not allowed. The D7 defaults (member 1, manager 2, admin 8) apply to assignments made after migration. The root gets them only through the configured-root-only activation named in A.4.4 (`role.root-self-use-activated`, previewed, audited, notified), or when another admin assigns them.
 
-Switching roles off is a new monotone transition, not a snapshot restore: it keeps current denies, revocations and suspensions. Restoring a saved pre-migration snapshot could resurrect removed permissions or revoked resources, so it is not offered. A binary downgrade is a separate schema and backup operation. Crash points and repeated disable are pinned like the migration.
+Switching roles off is a new monotone transition, not a snapshot restore. It flips `rolesActive` and never touches `state`: `suspended` keeps its one meaning (the self-use policy is suspended) and the ever-enabled latch is untouched, so off is not encoded as a suspension. With roles off, management returns to the configured root only, and team and Hub-management permissions confer nothing (their assignments stay stored, inert). The self-use rules keep working by forward projection of the current document: each assignment's three self-use permissions and its fleet limit, plus current denies, revocations and suspensions. Restoring a saved pre-migration snapshot could resurrect removed permissions or revoked resources, so it is not offered. A binary downgrade is a separate schema and backup operation. Crash points and repeated disable are pinned like the migration.
 
 ### A.6 Phase 2 reads
 
