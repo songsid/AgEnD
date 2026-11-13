@@ -163,7 +163,8 @@ describe("S129 successor release under the new role generation", () => {
   });
   it("re-proves the role after the fresh directory read and before publishing the token", async () => {
     const w = await world(), { rotation, operation } = w.commit(), n = w.next(); let proved = false, changed = false;
-    n.core.deps.management = { async require(ctx, permission) { const permit = await n.authority.require(ctx, permission); proved = true; return permit; } };
+    const require = n.core.management.bind(n.core);
+    n.core.management = async (ctx, permission) => { const permit = await require(ctx, permission); proved = true; return permit; };
     n.core.deps.now = () => {
       if (proved && !changed) { changed = true; w.save({ ...w.policy, generation: "g2", revision: 3, assignments: [] }); }
       return w.options.now();
