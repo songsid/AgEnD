@@ -72,11 +72,11 @@ The user chose B: members **online** at the change follow an issuer-signed reloc
 
 ```
 { v: 1, profile: <pairing.json digest>, highWater: n,
-  confirmed: { statement, digest } | null,      // the last relocation proven by a welcome at its `to`
+  confirmed: [ { statement, digest } ],         // the chain of relocations proven by a welcome at their `to` (≤ 8, oldest first)
   pending:   { statement, digest } | null }     // a received, acked relocation not yet proven
 ```
 
-- **Anchor** = `confirmed.to`, else the profile's member origin. It's the identity every consumer uses: the dial fallback, `pinnedHubAgent`'s origin check, the company-join anchor, and #3797's web-origin binding.
+- **Anchor** = the last confirmed `to`, else the profile's member origin. The confirmed chain is contiguous: each hop's `from` is the previous hop's `to`, and the first hop's `from` is the profile's. A chain that breaks fails closed. A ninth hop drops the oldest only after the company pin no longer needs it (below). It's the identity every consumer uses: the dial fallback, `pinnedHubAgent`'s origin check, the company-join anchor, and #3797's web-origin binding.
 - **Absent file:** legacy, the profile's address. **A corrupt or partial file, or one bound to another profile digest:** fail closed (the link holds "key-changed"; recovery is Reconnect), never silently legacy.
 - **Accepting a statement** requires all of:
   - it verifies against the issuer key pinned at pairing;
@@ -87,7 +87,7 @@ The user chose B: members **online** at the change follow an issuer-signed reloc
   - `revision > highWater`.
 
   The same revision with the same digest as the pending one is an identical retry (idempotent ack, nothing written). The same revision with another digest, or a lower one, is refused as equivocation/rollback and audited. A new pending supersedes an unconfirmed one, and `highWater` never decreases.
-- **Write order:** audit record committed (`member-origin.pending`) → private CAS write of the file (expects the bytes read at the start) → flush of the file and its parent → **then** the ack.
+- **Write order:** audit record committed (`member-origin.pending`) → private CAS write of the file (expects the bytes read at the start) → flush of the file and its parent → **then** the ack. **An identical retry** (the same pending digest is already in the file) re-flushes the retained exact bytes and their parent before acking: a prior write can be visible after its fsync failed, so equality alone isn't proof (as `trust.ts` does).
 - **Dial order:** while pending, `to` first, then the anchor, both under the same pinned key and ordinary SAN validation. With nothing pending, only the anchor. Each link records the origin it actually dialled, and that authenticated endpoint is the link's identity (a fallback link at A is an A link, and its web-origin statements bind A).
 - **Promotion** happens only when the **link dialled to the pending `to`** receives a fully validated, current-generation welcome. TCP/TLS success or a stale callback isn't enough. It's a CAS that requires the same pending digest and the same profile digest: `confirmed = pending`, `pending = null`, audited (`member-origin.confirmed`). After promotion the old origin is never dialled again. A confirmation can never carry over to a later statement, because it's bound to the exact digest.
 - **A revoked or denied result** at any address is terminal recovery (Reconnect), never a reason to try the other address.
@@ -95,7 +95,7 @@ The user chose B: members **online** at the change follow an issuer-signed reloc
 ### Member: the company trust pin (D2)
 
 - An aborted or pending relocation never touches TOFU.
-- **On promotion**, if a company pin exists for the web address and is exactly the identity with `from`, it's rewritten to the identity with `to`. This is an exact-byte CAS under the same current binding, and its proof is the issuer-signed, now-confirmed relocation. A pin that's anything else is left alone.
+- **Order:** promotion first (sidecar CAS + flush), then company-pin migration (pin CAS + flush). The two files are independent, so a crash between them leaves "confirmed, pin behind". **Completion** runs idempotently after every promotion, at every start and before every Reconnect. If the pin is exactly the identity with the `from` of some hop in the confirmed chain (for example pin = B while confirmed = A→B→C and the raw profile says A), the pin is CAS-rewritten to the identity with the current anchor. The proof is that hop's issuer-signed statement and every hop after it. A pin that matches no hop is left alone (no arbitrary mismatch repair), and a pending statement never moves a pin. A pin migration still held never lets the member dial an old address: the confirmed anchor alone decides dialling.
 - **Reconnect's repair anchor** stays distinct: the identity **in the pin**, plus its exact bytes, captured before retirement, accepted when it's the same Hub/issuer/SPKI/web address with a `memberOrigin` that is the profile's or the confirmed anchor's. So online-follow → Reconnect finds an already-migrated pin, and an aborted follow → Reconnect still uses the descriptor repair from the old pin. Composition with a #3797 web-address move uses the verified web address for both.
 
 ### Crash and abort boundaries
@@ -111,6 +111,8 @@ The user chose B: members **online** at the change follow an issuer-signed reloc
 | Member: disconnect or credential replaced during the wait | The proof no longer matches → revoked. |
 | Member: promotion write fails / restart before promotion | Still pending: `to` first, then the anchor; promotes on the next welcome at `to`. |
 | Member: restart after promotion | Anchor = `to`; the old address is never dialled. |
+| Member: promotion flushed, pin migration not | Completion rewrites the pin from the chain at the next start, promotion or Reconnect. |
+| Member: pin migration written, flush failed | Completion re-flushes the exact pin bytes (equal is not proof). |
 
 ### Old-listener grace: not in this change
 
