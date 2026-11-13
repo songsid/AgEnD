@@ -57,6 +57,9 @@ describe("#3429 B — relocate and its ack over the pinned link", () => {
     const s = st(B, 1), t = Date.now();
     expect(await r.server.relocate(p.fleetId, s, relocationDigest(s), Date.now() + 5_000)).toBeNull();
     expect(Date.now() - t).toBeLessThan(500);
+    await new Promise(res => setTimeout(res, 300));
+    expect(c.state.holds).toEqual([]);                                                                   // never sent: its link stays up
+    expect(r.server.features(p.fleetId)).not.toBeNull();
   });
   it("an ack that names another digest is ignored: null at the shared deadline", async () => {
     const { r, p, st, onFrame } = await setup();
