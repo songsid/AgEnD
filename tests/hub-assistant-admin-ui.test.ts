@@ -136,14 +136,18 @@ describe("Hub room-assistant administration with the real shared UI", () => {
   it.each([[false, true], [true, false], [true, true]])("mounts the lazy admin cards only with server feature=%s and client capability=%s", async (offered, capable) => {
     const p = page({ url: "http://127.0.0.1:19290/ui/hub/admin" }); pages.push(p); p.document.body.setAttribute("data-hub", "hub"); words.setLang("en", { store: false });
     const read = vi.fn(async () => ({ ok: true, ...view() }));
-    clients.setHubClient({ assistantAdminV1: capable, assistantSettings: read, assistantUsage: async () => ({ ok: true, ...usage() }),
+    clients.setHubClient({ roomsLive: () => true, roomCreators: async () => ({ ok: true, people: [], teams: [] }), adminRooms: async () => ({ ok: true, rooms: [] }), assistantAdminV1: capable, assistantSettings: read, assistantUsage: async () => ({ ok: true, ...usage() }),
       rooms: async () => ({ ok: true, rooms: [] }), onSignedOut: () => () => {}, session: async () => ({ ok: true, signedIn: true, admin: true, displayName: "Admin", features: offered ? ["room-assistant-v1"] : [] }),
       adminOverview: async () => ({ ok: true, fleets: [], pairings: [] }), notices: async () => ({ ok: true, notices: [] }) });
     panel.resetHubSession(); await p.mount(h(panel.HubPanel, { route: { panel: "hub", tab: "admin" } }));
-    for (let i = 0; i < 20 && offered && capable && !read.mock.calls.length; i++) await settle(5);
+    for (let i = 0; i < 20 && (!p.root.querySelector(".hub-admin-rooms")?.textContent || offered && capable && !read.mock.calls.length); i++) await settle(5);
     await settle(10);
     expect(read.mock.calls.length > 0).toBe(offered && capable);
     expect(p.root.textContent.includes("Room assistant")).toBe(offered && capable);
-    if (offered && capable) expect(p.root.textContent.indexOf("Room assistant")).toBeLessThan(p.root.textContent.indexOf(p.root.querySelector(".hub-fleet-list").textContent));
+    if (offered && capable) {
+      expect(p.root.querySelector(".hub-admin-rooms")).toBeTruthy();
+      expect(p.root.textContent.indexOf(p.root.querySelector(".hub-admin-rooms").textContent)).toBeLessThan(p.root.textContent.indexOf("Room assistant"));
+      expect(p.root.textContent.indexOf("Room assistant")).toBeLessThan(p.root.textContent.indexOf(p.root.querySelector(".hub-fleet-list").textContent));
+    }
   });
 });

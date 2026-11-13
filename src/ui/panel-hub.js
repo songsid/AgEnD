@@ -1037,7 +1037,7 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
     <div class="s-section-layout">
       ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
       ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
-      ${/* Lumen's order (M-3092): Let colleagues join → Rooms → Room assistant (track A's card, next) → Connected fleets → pairing. */ ""}
+      ${/* Lumen's order: Let colleagues join → Rooms → Room assistant → Connected fleets → pairing. */ ""}
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
       ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
