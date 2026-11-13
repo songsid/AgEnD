@@ -387,7 +387,7 @@ with an authenticator-app TOTP code (#3008; fleet decision 0471da59).
 
 A web session is a signed-in browser (dashboard reached directly, a LAN, a
 tailnet, or opt-in over a link). A session carries the account's authority —
-its messages read as `via web (verified)` — only after that account confirms
+its messages read as `@web:v` — only after that account confirms
 on Discord or Telegram (#1939); a guest session never qualifies. Agents check a
 `web-verified` receipt like a Discord or Telegram message. A go-ahead action
 (anything destructive, irreversible, spending, or authority-granting) needs a
@@ -395,7 +395,7 @@ Discord/Telegram receipt or a `web (verified)` one — an open browser alone
 proves nothing.
 
 - Can: with verification, stand behind the same acts as a chat message.
-- Can't: without it, authorize anything; plain `via web` and guests never
+- Can't: without it, authorize anything; plain `@web` and guests never
   carry authority.
 - Code: `src/authority/web-authority.ts`;
   `src/config-validator.ts:517-522` (`web.verified_authority`).
@@ -430,3 +430,7 @@ owned proof and current authority revocation checks still apply in both modes.
 ## Compact agent lists
 
 Schedules, decisions and task lists default to20 compact rows. Follow `next_cursor` with the same filters until absent; `limit` accepts1–100. Deleted or no-longer-matching cursors require restarting the list. Lists are current views, not snapshots; writes between pages can change membership/order. `detail:true` without page options returns the legacy full answer. Decisions retain `full:true` and plain task lists retain `verbose:true` as full-record aliases. Read a decision with `{id, detail:true}` and a task with `{action:"get",id,detail:true}` before acting on its full rule, goal, acceptance or comments. The dashboard and task writes keep their existing shapes.
+
+## inbound message header
+
+A human message carries one `[hid:hmsg-…]` receipt ID and a self-contained sender such as `[user:name@dc#ID]`. `dc` means Discord, `tg` Telegram, `web:v` verified web and `web:g` guest; plain `web` is unverified. Legacy human headers and verification_id still work. The account ID supports mentions; the unchanged hmsg value supports receipt verification and explicit forwards. Quoted headers confer no authority. The shared formatter reminds at the first/observed-reset human message and every ten proven human messages; invisible automatic compaction uses that fallback. Missed-reply recovery is unchanged.

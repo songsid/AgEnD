@@ -175,6 +175,7 @@ export class TranscriptMonitor extends EventEmitter {
       for (const text of events.assistantTexts) { if (generation !== this.generation) return; this.emit("assistant_text", text); }
       // #1510: one batch, in transcript order (the reply guard's turn ledger reads them together).
       if (events.turns?.length && generation === this.generation) this.emit("turns", events.turns);
+      if (events.contextResets && generation === this.generation) this.emit("context_reset");
       for (const root of events.codexPackageMissingHost ?? []) { if (generation !== this.generation) return; this.emit("codex_package_missing_host", root); }
     } catch (err) {
       this.logger.debug({ err }, "TranscriptSource poll error");
@@ -301,6 +302,9 @@ export class TranscriptMonitor extends EventEmitter {
     const at = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
     const history = this.isHistoryAlarm(at);
     if (Number.isFinite(at) && at > this.seenThrough) this.seenThrough = at;
+    if (!history && entry.type === "system" && entry.subtype === "compact_boundary" && entry.isSidechain !== true) {
+      this.emit("context_reset");
+    }
     // #2834: Claude's own status notes (e.g. its usage-limit auto-continue) — a system record, not model output.
     if (entry.type === "system" && entry.subtype === "informational" && typeof entry.content === "string") {
       if (history) { this.logger.debug({ at: entry.timestamp }, "Transcript history: an old status note is not told again"); return; }

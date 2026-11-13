@@ -118,6 +118,7 @@ describe("/clear topic command", () => {
     expect(ipcSend).toHaveBeenCalledWith({
       type: "raw_paste",
       content: "/clear",
+      context_reset: "clear",
       confirm_clear: true,
     });
   });
@@ -230,7 +231,7 @@ describe("/clear nonce confirmation", () => {
     await (fm as any).handleClearConfirmation(callback(confirmId), "telegram-main");
 
     expect(ipcSend).toHaveBeenCalledOnce();
-    expect(ipcSend).toHaveBeenCalledWith({ type: "raw_paste", content: "/clear" });
+    expect(ipcSend).toHaveBeenCalledWith({ type: "raw_paste", content: "/clear", context_reset: "clear" });
     expect(editMessage).toHaveBeenCalledWith(
       "fleet-group",
       "clear-message",
@@ -313,7 +314,7 @@ describe("/clear nonce confirmation", () => {
       userId: "classic-admin",
     }, "telegram-main");
 
-    expect(ipcSend).toHaveBeenCalledWith({ type: "raw_paste", content: "/clear" });
+    expect(ipcSend).toHaveBeenCalledWith({ type: "raw_paste", content: "/clear", context_reset: "clear" });
   });
 });
 import { installKiroCompatibilityFixture } from "./helpers/kiro-process-stub.js";

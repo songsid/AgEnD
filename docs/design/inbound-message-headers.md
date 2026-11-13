@@ -1,6 +1,7 @@
 # Compact inbound headers (M-3074)
 
-Status: design proposal; no formatter or instruction changes yet. Source baseline:
+Status: implementation in progress after leader choice and Prism/Ridge design
+reviews. Source baseline:
 main `205d120cdb56287ad88c10f1bc7811d53dacc4e5`. Main then alpha; all agent backends
 and MCP / agent-CLI modes. Receipt and acknowledgement payload changes are out of scope.
 
@@ -23,7 +24,7 @@ After, first message / reminder:
 
 ```text
 [hid:hmsg-00000000-0000-4000-8000-000000000000]
-[user:hanhanv@discord#368442276000694273] 請看這個問題
+[user:hanhanv@dc#368442276000694273] 請看這個問題
 (message_id: 1570789578372157571)
 (Answer with the reply tool; terminal text does not reach them.)
 ```
@@ -32,7 +33,7 @@ After, ordinary message:
 
 ```text
 [hid:hmsg-00000000-0000-4000-8000-000000000000]
-[user:hanhanv@discord#368442276000694273] 請看這個問題
+[user:hanhanv@dc#368442276000694273] 請看這個問題
 (message_id: 1570789578372157571)
 ```
 
@@ -41,18 +42,18 @@ After, ordinary message:
 The platform `message_id` remains for reactions and reply addressing. Do not
 substitute it for the human receipt ID.
 
-Telegram uses `[user:name@telegram#account-id]`. Web preserves its classification,
-for example `[user:name@web (verified)#account-id]` or `[user:name@web (guest)]`;
+Telegram uses `[user:name@tg#account-id]`. Web preserves its classification,
+for example `[user:name@web:v#account-id]` or `[user:name@web:g]`;
 omit the `#…` only when the existing trusted metadata has no user ID. A label is
 never authority: the complete receipt's actor/proof/origin remains decisive.
 
 Alternative for the user's choice: keep the full sender on its first message or
-when the sender changes, then use `[user:hanhanv]`. This saves another 27 bytes
+when the sender changes, then use `[user:hanhanv]`. This saves another 22 bytes
 in the Discord example, but relies on remembered identity and exact delivery order.
 It makes identical display names and forgotten context harder to interpret. Prefer
 the stable short key set above.
 
-Peer `[from:Display Name (instance-name)]` remains readable and unchanged.
+Peer `[from:Display Name (instance-name)]` remains readable; an exactly identical display/instance name is shown once.
 The leading delivery UUID and footer `xmsg-…` are different IDs, not duplicates;
 retain both. Remove only a second presentation of the same receipt ID. Keep reply
 obligations, correlations and explicit forwarded references.
@@ -102,10 +103,14 @@ No receipt database identity, authority column, ACL or forwards semantics change
 Instruction/formatter SKEW is a separate compatibility gate. Do not infer a
 consumer's dialect capability from text resembling a marker. Install instructions
 that explain both formats at a proven launch/context instruction epoch before
-using compact wire. A resumed old context without that evidence stays legacy;
-where a compatibility notice is needed, deliver it in the legacy envelope before
-switching later messages. The exact installation/acknowledgement boundary must be
-pinned for MCP and agent-CLI modes; an unproved transition falls back to legacy.
+using compact wire. A resumed context first receives a compatibility notice inside its legacy
+envelope, including its old always-present hint. Only a positive owned receipt
+for that write enables compact headers on later human messages. An uncertain
+notice leaves the producer legacy. A fresh launch with newly installed
+instructions can use compact wire immediately. This one-time legacy transition
+retains the duplicate human-ID presentation so old instructions remain valid;
+subsequent compact messages carry it once. MCP and agent-CLI modes use the same
+transition.
 Tests cover old instructions + new producer and new instructions + old prepared
 bytes without losing reply addressing, receipt proof or forwarded authority.
 
@@ -144,7 +149,7 @@ unchanged. Raw mode remains outside positive human-proof guarantees. No textual
 marker grants authority or forwarded ACL. Include malicious reply-to, reactions,
 peer metadata and labels, not only a forged header in the main body.
 
-## Compaction observability: decision needed before implementation
+## Compaction observability: approved bounded coverage
 
 AgEnD currently follows explicit compaction through Claude/Codex structured
 records and Kiro's owned pane, but does not observe every automatic compaction on
@@ -152,14 +157,13 @@ every backend (`src/compact-watch.ts:2–24`). A ten-message cadence does not pr
 that the first message after an invisible automatic compaction gets a reminder.
 
 Proposed bounded first slice: reset on every command/launch/model/session/context
-reset AgEnD observes, including explicit clear/compact before another message can
-be admitted; reuse owned Claude/Codex compaction records and Kiro outcomes. Keep
+reset AgEnD observes, including explicit clear/compact after its owned command write and before the next queued write; reuse owned Claude/Codex compaction records and Kiro outcomes. Keep
 the ten-message fallback for otherwise invisible automatic compaction. Consume
 each observed boundary once under its owned launch/session/transcript checkpoint;
-history replay, sidechains and another launch must not reset this counter. This
-limitation needs the leader's decision; do not advertise universal first-message
-coverage without additional per-backend observations/fixtures. The alternative is
-a separately scoped compaction-observation audit across all backends.
+history replay, sidechains and another launch must not reset this counter. The leader accepted this bounded coverage and the stable sender form with dc/tg.
+Do not advertise universal first-message coverage without additional per-backend
+observations/fixtures. An all-backend automatic-compaction audit is outside this
+implementation.
 
 ## Byte measurement and daily estimate
 
@@ -171,16 +175,33 @@ counts. The artifact stores counts only, no user message content.
 | Case | Header/footer bytes | Saving against current |
 | --- | ---: | ---: |
 | Current envelope | 269 | — |
-| Proposed with reminder | 189 | 80 (29.7%) |
-| Proposed without reminder | 124 | 145 (53.9%) |
-| Steady ten-message average | 130.5 | 138.5 (51.5%) |
+| Proposed with reminder | 184 | 85 (31.6%) |
+| Proposed without reminder | 119 | 150 (55.8%) |
+| Steady ten-message average | 125.5 | 143.5 (53.3%) |
 
-Savings = `80 × human_messages + 65 × omitted_reminders`, less any escaping
-expansion. Short sessions/resets give fewer omissions. With one long context:
-1,000 human messages/day saves 138.5 kB/day; 10,000 saves 1.385 MB/day. These are
-explicit scenarios, not a claim that tool-call counts equal inbound human traffic.
-An exact fleet-wide per-day figure needs the real daily human admission count and
-reset/reminder frequency. Peer envelopes above have no assumed savings.
+Savings = `85 × human_messages + 65 × omitted_reminders`, less any escaping
+expansion. The measured fleet traffic is **558 delivered human messages over
+2026-11-10–12 (Asia/Taipei), about 186/day**; the leader received 269 (48%).
+The earlier seven-day window contained 1,001 messages. Tool calls are not human
+message counts.
+
+At 186/day, the labelled direct-wire estimate is **15.8–27.9 kB/day** (every
+message has a hint through no hints); the steady ten-message policy estimates
+**26.7 kB/day**. Resets, short sessions, one-time compatibility notices and escaping
+reduce this saving. These are byte estimates from one real Discord envelope,
+not measured fleet tokenizer or billing totals; other sender/platform lengths vary.
+
+Context persistence multiplies the effect: a header remains in context and is
+read on subsequent model turns until compaction. If its average reuse is R,
+context bytes avoided are approximately direct saving × R. Illustrative R=10
+means 158–279 kB/day; R=50 means 0.79–1.40 MB/day. R is not measured here; cache
+behaviour and tokenizer differences prevent treating this as a billing estimate.
+
+Peer traffic is more frequent (about 2,059 send_to_instance calls over three
+days, roughly 686 calls/day, not necessarily delivered messages). Its delivery
+UUID and xmsg receipt are different identifiers, so this change retains both.
+Only a genuinely duplicate display/receipt value is eligible for deduplication;
+the duplicate peer name or identical footer ID is removed only on equality. No second-round tool-output reduction is included.
 
 ## Implementation and verification inventory
 
