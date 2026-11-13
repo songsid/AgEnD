@@ -235,12 +235,13 @@ export class HubSessions {
       // Preserve the configured root's existing fresh-directory repair boundary. Every role-aware
       // operation must still consume its own named management permit, including for this root.
       if (selected.kind === "directory" && !this.isAdmin(selected.person) && this.core.deps.management && this.roleSessionMode()) {
-        let permit;
-        try { permit = await this.core.management(context, "hub.admin"); }
+        try {
+          const permit = await this.core.management(context, "hub.admin");
+          if (this.core.deps.roleSessionMode !== classify || !this.roleSessionMode()) throw new HubProtocolError("unavailable");
+          permit.assertCurrent();
+          return permit.actor;
+        }
         catch (error) { await current(); throw error; }
-        if (this.core.deps.roleSessionMode !== classify || !this.roleSessionMode()) throw new HubProtocolError("unavailable");
-        permit.assertCurrent();
-        return permit.actor;
       }
       const person = await requirePerson();
       if (!this.isAdmin(person)) throw new HubProtocolError("denied");

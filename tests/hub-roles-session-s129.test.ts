@@ -174,3 +174,14 @@ describe("S129 role session classification is never authority", () => {
     w.core.deps.roleSessionMode = classify; expect(() => shown!.assertCurrent()).toThrow();
   });
 });
+
+describe("S129 administrative session final await", () => {
+  it("keeps sign-out classified as revoked after the core proof resolves but before the context returns", async () => {
+    const w = await roleAuthorityWorld(); w.core.deps.management = w.authority;
+    const original = w.core.management.bind(w.core);
+    vi.spyOn(w.core, "management").mockImplementationOnce(async (...args) => {
+      const permit = await original(...args); w.sessions.signOut(w.ctx.token); return permit;
+    });
+    await expect(w.ctx.ctx.requireAdmin()).rejects.toMatchObject({ code: "revoked" });
+  });
+});
