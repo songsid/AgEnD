@@ -123,13 +123,15 @@ try {
     await page.locator(".hub-room-allbar").waitFor();
     check(tag + " @all preflight describes one online and one later", (await page.locator(".hub-room-allbar").innerText()).includes(lang === "en" ? "2 agents, 1 online, 1 will answer after they come online" : "2 個 Agent 中 1 個在線上，1 個上線後回答")); await shot("all-preflight");
     await page.locator(".hub-room-composer #sendBtn").click(); await until(() => notes.inputs.length === n + 1, "online @all input");
+    await notes.state({ process: "running", execution: "working" }); await visiblePresence("Notes", working, "busy"); await closeRail();
     const progress = lang === "en" ? "Answered 0 · working 1 · reply later 1" : "已回答 0 · 處理中 1 · 稍後回覆 1";
     await page.getByText(progress, { exact: true }).waitFor(); await shot("all-queued");
     check(tag + " offline Fleet retains exactly one queued delivery", planner.inputs.length === b && web.db.prepare("SELECT COUNT(*) n FROM hub_room_deliveries WHERE room_id=? AND fleet_id=? AND state='queued'").get(roomId, planner.profile.fleetId).n === 1);
-    await notes.answer(notes.inputs[n], "Notes team answer " + device); await page.getByText("Notes team answer " + device, { exact: true }).waitFor();
+    await notes.answer(notes.inputs[n], "Notes team answer " + device); await notes.state({ process: "running", execution: "idle" }); await page.getByText("Notes team answer " + device, { exact: true }).waitFor();
     await planner.connect(); await until(() => planner.inputs.length === b + 1, "reconnected queued delivery");
     await planner.state({ process: "running", execution: "working" }); await visiblePresence("Planner", working, "busy"); await shot("all-reconnected");
-    await planner.answer(planner.inputs[b], "Planner team answer " + device); await page.getByText("Planner team answer " + device, { exact: true }).waitFor();
+    await planner.answer(planner.inputs[b], "Planner team answer " + device); await planner.state({ process: "running", execution: "idle" }); await page.getByText("Planner team answer " + device, { exact: true }).waitFor();
+    await visiblePresence("Planner", idle, "ok");
     await page.getByText(lang === "en" ? "All 2 answered" : "2 個都回答了", { exact: true }).waitFor(); await closeRail(); await shot("all-answered");
     check(tag + " both @all answers persisted exactly once", web.db.prepare("SELECT COUNT(*) n FROM hub_room_deliveries WHERE room_id=? AND state='answered'").get(roomId).n === 3);
     await notes.state({ process: "paused", execution: null, pauseReason: "quota" }); await visiblePresence("Notes", paused, "warn"); await shot("paused");
