@@ -13,6 +13,7 @@ import { canonicalFleetOrigin, companyIdentityDigest, pkceChallenge, requireSepa
 import { hash, uuid, epoch, person, token, validated, HubProtocolError, parseStrictJson } from "../validation.js";
 import { sha256, issuerKeyId } from "../identity.js";
 import { HubMemberProfileStore, profileSchema, validateHubBinding, type HubMemberProfile } from "../profile.js";
+import { HubMemberWebOriginStore } from "../web-origin.js";
 import { ensurePrivateDirectory, readPrivateFile } from "../private-files.js";
 import { syncJoinPrivate, writeJoinPrivate, createJoinPrivate } from "./private.js";
 import { createLocalJoin, currentLocalJoinId, readLocalJoin, saveLocalJoin, selectLocalJoin,
@@ -217,7 +218,21 @@ export class CompanyJoinController {
     try {
       if (!existsSync(join(this.options.home, "hub-member/state.json"))) return null;
       const s = parseStrictJson(readPrivateFile(this.options.home, "hub-member/state.json")) as { hubId?: string };
-      return s.hubId ? readDisplay(this.options.home, s.hubId) : null;
+      const display = s.hubId ? readDisplay(this.options.home, s.hubId) : null;
+      // M-2901: once the Hub has told this Fleet its pages moved (verified), the card shows and acts on the new address.
+      const moved = display && s.hubId ? this.movedWebOrigin(s.hubId) : null;
+      return display && moved ? { ...display, webOrigin: moved.webOrigin } : display;
+    } catch { return null; }
+  }
+  /**
+   * M-2901: the Hub's web address after a #3428 change, when this Fleet holds the Hub's own statement of it — verified
+   * against the issuer key pinned at pairing (web-origin.ts) — and it differs from the one it paired with; else null.
+   */
+  private movedWebOrigin(hubId: string, profile?: HubMemberProfile): { webOrigin: string; hub: HubMemberProfile["hub"] } | null {
+    try {
+      const p = profile ?? new HubMemberProfileStore(this.options.home, hubId).readProfile();
+      const webOrigin = new HubMemberWebOriginStore(this.options.home, hubId).effective(p);
+      return webOrigin !== p.hub.webOrigin ? { webOrigin, hub: { ...p.hub, webOrigin } } : null;
     } catch { return null; }
   }
   /**
@@ -234,13 +249,17 @@ export class CompanyJoinController {
     if (!bound || bound.hubId !== body.hubId || bound.binding !== body.binding) throw new HubProtocolError("conflict");
     const display = readDisplay(this.options.home, body.hubId);
     if (!display) throw new HubProtocolError("invalid");
-    if (display.webOrigin !== body.address) throw new HubProtocolError("conflict");    // the address the admin confirmed is the saved one
     let profile: HubMemberProfile;
     try { profile = new HubMemberProfileStore(this.options.home, body.hubId).readProfile(); } catch { throw new HubProtocolError("uncertain"); }
+    // M-2901: after a #3428 change the Hub's pages are at the address it told this Fleet (verified); its identity is the
+    // pinned one with that address — the same Hub, keys and member address — so Reconnect expects exactly that.
+    const moved = this.movedWebOrigin(body.hubId, profile), address = moved?.webOrigin ?? display.webOrigin;
+    // The address the admin confirmed is the saved one (or, after a change, the Hub's current one; an older tab sends the saved).
+    if (body.address !== address && body.address !== display.webOrigin) throw new HubProtocolError("conflict");
     await this.leaveExactly(body, authority, pairing);
     // The page's waiting tab (opened in the press) follows this handoff to the Hub's sign-in, as Start's does.
-    return this.start({ address: display.webOrigin, label: display.label || probeLabel() || "Fleet", fleetOrigin: body.fleetOrigin, ...(body.handoffId ? { handoffId: body.handoffId } : {}) }, authority,
-      { expected: companyIdentityDigest(profile.hub), supersedes: { fleetId: profile.fleetId, credential: profile.credential } });
+    return this.start({ address, label: display.label || probeLabel() || "Fleet", fleetOrigin: body.fleetOrigin, ...(body.handoffId ? { handoffId: body.handoffId } : {}) }, authority,
+      { expected: companyIdentityDigest(moved?.hub ?? profile.hub), supersedes: { fleetId: profile.fleetId, credential: profile.credential } });
   }
   /**
    * M-2921 (spec 1.3): 「移除這個連接」 — one confirmed press: disconnect (member.leave first, when the Hub takes it) and
@@ -254,7 +273,8 @@ export class CompanyJoinController {
     const display = readDisplay(this.options.home, body.hubId);                         // the address the admin confirmed (none saved: the Hub's own)
     let origin: string | null = display?.webOrigin ?? null;
     if (!origin) { try { origin = new HubMemberProfileStore(this.options.home, body.hubId).readProfile().hub.webOrigin; } catch { origin = null; } }
-    if (origin !== body.address) throw new HubProtocolError("conflict");
+    // M-2901: after a #3428 change the card shows the Hub's current address (verified); either one names this connection.
+    if (origin !== body.address && this.movedWebOrigin(body.hubId)?.webOrigin !== body.address) throw new HubProtocolError("conflict");
     return { left: await this.leaveExactly(body, authority, pairing) };
   }
   /**

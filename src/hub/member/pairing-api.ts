@@ -22,6 +22,7 @@ import { atomicWriteFileSync } from "../../atomic-write.js";
 import { ensurePrivateDirectory, privatePath, readPrivateFile } from "../private-files.js";
 import { beginHubPairing as realBegin, claimHubPairing as realClaim } from "../pairing-client.js";
 import { HubMemberProfileStore } from "../profile.js";
+import { HubMemberWebOriginStore } from "../web-origin.js";
 import { httpsOrigin, type HubConnectError, type HubPairingHold, type HubPairingView } from "../../hub-pairing-summary.js";
 import { companyBindingSettled, type CompanyBindingMarker } from "../join/local-journal.js";
 export { httpsOrigin, pairingSummary } from "../../hub-pairing-summary.js";
@@ -126,7 +127,9 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
         const unfinished = !!s.localConfirmed || f.pending || s.companyJoin && !companyBindingSettled(deps.home, s.companyJoin, s.hubId, store.profileDigest()) ? "unknown_outcome" as const : null;
         const held = memHold ?? s.held ?? unfinished ?? deps.hold?.(store.profileDigest()) ?? null;
         if (held) return { state: "held", hold: held, memberOrigin: origin, hubId: s.hubId, binding };
-        return { state: "paired", binding, hub: { hubId: p.hub.hubId, name: null, memberOrigin: p.hub.memberOrigin, webOrigin: p.hub.webOrigin, fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
+        // M-2901: the Hub's current web address when it told this Fleet (verified against the pinned issuer key), else the
+        // one it paired with — every link this Fleet's pages build to the Hub (open, who may ask, the switcher) follows it.
+        return { state: "paired", binding, hub: { hubId: p.hub.hubId, name: null, memberOrigin: p.hub.memberOrigin, webOrigin: new HubMemberWebOriginStore(deps.home, s.hubId).effective(p), fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
           link: deps.link?.(store.profileDigest()) === "online" ? "online" : "offline" };
       }
       if (f.pending) {

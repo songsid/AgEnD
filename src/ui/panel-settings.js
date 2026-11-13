@@ -954,8 +954,8 @@ function Bots({ ctx, search, openDialog }) {
         <span class="s-actions">
           <span class=${`tag${token ? "" : " warn"}`}>${token ? tn("tokenConfigured") : tn("tokenMissing")}</span>
           <span class=${`s-state ${state.cls}`} title=${stateText}>${stateText}</span>
-          ${!overPublicLink && ctx.fleetUp && meta.status !== "connected" ? html`<${ConnectionRetry} id=${channelId(ch, i)} ctx=${ctx} />` : null}
-          <button type="button" class="btn btn-sm" onClick=${() => openDialog({ kind: "bot", id: channelId(ch, i) })}>${tn("settingsButton")}</button></span>
+          <span class="s-conn-buttons">${!overPublicLink && ctx.fleetUp && meta.status !== "connected" ? html`<${ConnectionRetry} id=${channelId(ch, i)} ctx=${ctx} />` : null}
+            <button type="button" class="btn btn-sm" onClick=${() => openDialog({ kind: "bot", id: channelId(ch, i) })}>${tn("settingsButton")}</button></span></span>
       </div>`;
     })}</div>`}</section>`;
 }

@@ -232,7 +232,7 @@ describe("Integration E2E", () => {
       // Verify respond called with success
       expect(respond).toHaveBeenCalledWith(expect.objectContaining({
         sent: true,
-        target: "target",
+        queued: true,
       }));
     });
 

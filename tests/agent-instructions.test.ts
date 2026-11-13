@@ -21,7 +21,7 @@ import type { Logger } from "../src/logger.js";
 import { matrixCases } from "./helpers/instructions-matrix.js";
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
-// Recorded from compact-list workflow at6595fb5d5; full576x3 matrix retained with explicit detail reads and cursor traversal.
+// Full576x3 matrix retained: full-evidence receipt verification and paged-list rule reads.
 const GOLDEN: Record<string, string> = JSON.parse(readFileSync(new URL("./fixtures/instructions-matrix.json", import.meta.url), "utf8"));
 
 describe("the complete expected agent instructions", () => {
