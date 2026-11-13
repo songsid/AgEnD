@@ -46,8 +46,11 @@ export function handleCompanyJoin(req: IncomingMessage, res: ServerResponse, ser
     if (path === "/hub/v1/join/metadata") {
       if (req.method !== "GET") throw new HubProtocolError("invalid");
       const value = service.metadata();
-      if (req.headers["x-agend-join-display"] === "1") return send(value);
-      const { name: _name, ...legacy } = value; return send(legacy);
+      const { name: _name, ...legacy } = value;
+      const shown = req.headers["x-agend-join-display"] === "1" ? value : legacy;
+      // M-2901 (#3429): the signed descriptor only to a Fleet that asks (an older one's strict metadata schema never meets it).
+      if (req.headers["x-agend-join-descriptor"] === "1") return send({ ...shown, descriptor: service.descriptor() });
+      return send(shown);
     }
     if (req.method !== "POST") throw new HubProtocolError("invalid");
     if (path === "/hub/join/open") {

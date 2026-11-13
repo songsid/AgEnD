@@ -41,6 +41,7 @@ import { serveHubWorkspaceShell } from "../../web-api.js";
 import { servePublicAsset } from "../../auth-api.js";
 import { handleCompanyJoin, companyFlowCookie } from "../join/http.js";
 import { CompanyJoinCodeRefusal, CompanyJoinLimit, CompanyJoinOfferPending } from "../join/service.js";
+import { HubMemberAddressError } from "../settings-member-address-policy.js";
 
 export { HUB_HTTP_MIGRATIONS };
 /** S5's lazy entry (HubHttpEntry): this module itself — `createHubHttp` and `migrations`. */
@@ -154,7 +155,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     const m = (re: RegExp) => re.exec(path);
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
     const offered = [...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
-      ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []),
+      ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     const features = offered.length ? { features: offered } : {};
     let r: RegExpExecArray | null;
@@ -206,6 +207,25 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       }
       if (method === "DELETE") { csrf(); sessions.signOut(ctx.token); return send(res, 200, { signedIn: false }, { "Set-Cookie": hubClearCookie(deps.config.hubId) }); }
       throw new HttpError(405, "method");
+    }
+    if (deps.memberAddressNotices) {
+      const notices = deps.memberAddressNotices;
+      if (path === "/hub/v1/security-notices/member-address") {
+        if (method !== "GET") throw new HttpError(405, "method");
+        signedIn();
+        if ([...query.keys()].some(k => k !== "before") || query.getAll("before").length > 1
+          || query.has("before") && !/^[1-9][0-9]{0,15}$/.test(query.get("before")!)) throw new HubProtocolError("invalid");
+        const page = await guard(() => notices.forSession(ctx, query.has("before") ? Number(query.get("before")) : undefined));
+        if (!live()) throw new HubProtocolError("unavailable");
+        signedIn(); return send(res, 200, page);
+      }
+      if ((r = m(/^\/hub\/v1\/security-notices\/member-address\/([^/]+)\/ack$/))) {
+        if (method !== "POST") throw new HttpError(405, "method");
+        if ([...query.keys()].length) throw new HubProtocolError("invalid");
+        csrf(); await guard(() => notices.acknowledgeSession(ctx, uuid(r![1])));
+        if (!live()) throw new HubProtocolError("unavailable");
+        signedIn(); return send(res, 200, { ok: true });
+      }
     }
     if (deps.directoryNotices) {
       const notices = deps.directoryNotices;
@@ -494,6 +514,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (e instanceof SignedOut) return send(res, 401, { code: "signed-out" });
     if (e instanceof HttpError) return send(res, e.status, { code: e.code });
     if (e instanceof HubSharingPaused) return send(res, 409, { code: "sharing-paused" });
+    if (e instanceof HubMemberAddressError) return send(res, STATUS[e.code] ?? 503, { code: e.code });
     if (e instanceof HubAttachmentRefused) return send(res, 415, { code: e.refusal });
     if (e instanceof HubProtocolError) {
       const status = STATUS[e.code] ?? 400;
@@ -575,7 +596,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
     handle, receive, features: Object.freeze([...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
-      ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
+      ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
     async close() { closed = true; grantSearch.close(); for (const end of streams) end(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

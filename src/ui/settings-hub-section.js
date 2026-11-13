@@ -61,6 +61,8 @@ export function HubSection({ overPublicLink, hubHost, hubOrigin }) {
     ${hubHost ? html`<${Lazy} load=${() => import("./settings-hub-run.js")} pick=${(m) => m.HubRunSettings} />
       ${typeof document !== "undefined" && document.body?.dataset.hubWebAddress === "1"
         ? html`<${Lazy} load=${() => import("./settings-hub-web-address.js")} pick=${(m) => m.HubWebAddressSettings} />` : null}
+      ${typeof document !== "undefined" && document.body?.dataset.hubMemberAddress === "1"
+        ? html`<${Lazy} load=${() => import("./settings-hub-member-address.js")} pick=${(m) => m.HubMemberAddressSettings} />` : null}
       <${Lazy} load=${() => import("./settings-hub-retention.js")} pick=${(m) => m.HubRetentionSettings} />
       <${Lazy} load=${() => import("./settings-hub-browser-certificate.js")} pick=${(m) => m.HubBrowserCertificateSettings} />
       <${Lazy} load=${() => import("./settings-hub-preview.js")} pick=${(m) => m.HubPreviewSettings} />` : null}
