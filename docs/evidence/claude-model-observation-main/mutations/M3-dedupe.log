@@ -1,13 +1,13 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
 
- ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 85ms
-     × a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers 17ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 75ms
+     × a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers 9ms
 
  Test Files  1 failed (1)
       Tests  1 failed | 57 passed (58)
-   Start at  17:30:37
-   Duration  459ms (transform 156ms, setup 89ms, import 132ms, tests 85ms, environment 0ms)
+   Start at  18:11:57
+   Duration  542ms (transform 215ms, setup 133ms, import 162ms, tests 75ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯

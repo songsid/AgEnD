@@ -1,0 +1,77 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts (15 tests | 2 failed) 156ms
+     × an explicit complete cursor never scans the later 16 MiB unfinished suffix 53ms
+     × a cursor inside a record emits only earlier complete records, even with short physical reads 4ms
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 13 passed (15)
+   Start at  18:12:44
+   Duration  559ms (transform 163ms, setup 120ms, import 111ms, tests 156ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > startup metadata tail: boundary and records share one physical read budget > an explicit complete cursor never scans the later 16 MiB unfinished suffix
+AssertionError: expected { records: [], truncated: true, …(1) } to match object { end: 67, truncated: false, …(1) }
+
+- Expected
++ Received
+
+  {
+-   "end": 67,
+-   "records": [
+-     {
+-       "at": 0,
+-       "record": "{\"model\":\"claude-opus-5-5\",\"pad\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
+-     },
+-   ],
+-   "truncated": false,
++   "end": 0,
++   "records": [],
++   "truncated": true,
+  }
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:91:18
+     89|     const end = Buffer.byteLength(prefix), budget = 1024;
+     90|     const tail = await readTailRecords(path, { end, maxBytes: budget }…
+     91|     expect(tail).toMatchObject({ end, truncated: false, records: [{ at…
+       |                  ^
+     92|     expect(io.bytes).toBeLessThanOrEqual(budget);
+     93|     expect(io.ranges.every(([, right]) => right <= end)).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > startup metadata tail: boundary and records share one physical read budget > a cursor inside a record emits only earlier complete records, even with short physical reads
+AssertionError: expected { …(3) } to deeply equal { records: [ { …(2) } ], end: 8, …(1) }
+
+- Expected
++ Received
+
+  {
+-   "end": 8,
++   "end": 16,
+    "records": [
+      {
+        "at": 0,
+        "record": "{\"a\":1}",
++     },
++     {
++       "at": 8,
++       "record": "{\"b\":2}",
+      },
+    ],
+    "truncated": false,
+  }
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:106:18
+    104|     writeFileSync(path, first + next); io.maxRead = 2;
+    105|     const tail = await readTailRecords(path, { end: first.length + 4, …
+    106|     expect(tail).toEqual({ records: [{ record: first.trimEnd(), at: 0 …
+       |                  ^
+    107|     expect(io.bytes).toBeLessThanOrEqual(128);
+    108|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+

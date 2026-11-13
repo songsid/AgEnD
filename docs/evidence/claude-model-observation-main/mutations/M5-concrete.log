@@ -1,15 +1,15 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
 
- ❯ tests/claude-model-switch.test.ts (58 tests | 3 failed) 87ms
-     × serving a concrete unexpected model proves a difference, not its cause 6ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 3 failed) 86ms
+     × serving a concrete unexpected model proves a difference, not its cause 9ms
      × raw concrete intent needs both session and served confirmation before replacing an active switch 1ms
      × an unresolved alias intent keeps inference unconfirmed until a concrete selection or typed notice 1ms
 
  Test Files  1 failed (1)
       Tests  3 failed | 55 passed (58)
-   Start at  17:30:44
-   Duration  460ms (transform 159ms, setup 91ms, import 133ms, tests 87ms, environment 0ms)
+   Start at  18:12:08
+   Duration  639ms (transform 246ms, setup 140ms, import 194ms, tests 86ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯

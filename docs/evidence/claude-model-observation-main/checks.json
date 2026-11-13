@@ -1,65 +1,65 @@
 {
-  "sourceHead": "ad488fb1173565f1083a3f19a3fdf6d1c18e9e68",
+  "sourceHead": "951b510c3e4009fa2cf654f7d46ac77fd34f5091",
   "baseline": "3e4c2b657b86d343a5f70ab9d6f47e844fddeb46",
   "sourceInputs": [
     {
-      "digest": "bd5df81c11b885d6436cd5d6958777191ca0cc22367ec27efa3b8a3956d5746a",
+      "digest": "0523431fa73d3c79c52ac464dbd2d131e9cfe26753b1e383a47fbf874129e9cc",
       "paths": [
-        "changes/3812-claude-model-observations.md"
+        "src/ui/fleet-office-card.js"
       ]
     },
     {
-      "digest": "3e23424092325e5607ac6e0ecd874c06337a7377f63ae2458ca59565e0f9702c",
+      "digest": "07a20a60c3d32e3fe1ed7ec337c0338f9952390c3cdfb304d464744c2099c536",
       "paths": [
-        "changes/3812-claude-model-observations.zh-TW.md"
+        "src/log-steps.ts"
       ]
     },
     {
-      "digest": "cb2d5c75c37b364ee2ddb38220fa85b8271d1021d7b83b83f06382b72888724c",
+      "digest": "093ffa63dfc310116eb146deb121657581ef3b30577ba0f80832993a1f4195cc",
       "paths": [
-        "docs/concepts.md"
+        "tests/web-needs-1408.test.ts"
       ]
     },
     {
-      "digest": "c3588bb8dc8efa67ecaac81099dc941938562f124f82493f249142caa1fd23ef",
+      "digest": "0b2c1281e812aebf629a8090e1a5232eaf520a59e8ca0084cb63e5216b6fa612",
+      "paths": [
+        "src/web-api.ts"
+      ]
+    },
+    {
+      "digest": "0ea00968bbbb566bc0e0300fc259830be6b4e6cf175aca522c032f15d9250ceb",
+      "paths": [
+        "src/ui/panel-details.js"
+      ]
+    },
+    {
+      "digest": "19791ccf5fc61862321868d8c8e7687250f2e37fffb80c0cb61d8b20b541207f",
+      "paths": [
+        "src/locale.ts"
+      ]
+    },
+    {
+      "digest": "1e52ef26aab8abc693b160e68d6fdade8696a3ac90b8aed3de333cbe5a782840",
+      "paths": [
+        "tests/claude-credential-profile-1699.test.ts"
+      ]
+    },
+    {
+      "digest": "26829691cb6a830379f8c16ac67408690d1232d35b7c11a90ba3e23e2db22bf1",
       "paths": [
         "docs/design/claude-model-observation.md"
       ]
     },
     {
-      "digest": "655f7779c4925449abe19336bf0a60e04492a2294bc1eede9d4fdc8d43181ca6",
+      "digest": "2a8866383a61939e9b352639b49389074eb927327dd5333791ccd6738da685b8",
       "paths": [
-        "scripts/manual/claude-model-observation-browser.mts"
+        "src/outbound-handlers.ts"
       ]
     },
     {
-      "digest": "5b249b27ec31fa4d476a8d29b8aa04d05acd68af8861b57b4a1c4ae8365fc75a",
+      "digest": "2ad06ad223bbe26616c0d52e041810550fb36068ddd85651ff3c7b8a1315aa1b",
       "paths": [
-        "src/auth-api.ts"
-      ]
-    },
-    {
-      "digest": "decd459b2f2edacf5bc7f293d391be7d54bf081afbe9d778cb2ddd9ca262b923",
-      "paths": [
-        "src/backend/claude-code.ts"
-      ]
-    },
-    {
-      "digest": "c2d0d0e7fe7063a9215e2d8b95d704c587c136d37bda0021a140442b7bccf284",
-      "paths": [
-        "src/backend/types.ts"
-      ]
-    },
-    {
-      "digest": "90107e39061c985814e488567b4dd6943ed4b3a70f0f9c893adfa7e08a10bca0",
-      "paths": [
-        "src/channel/mcp-tools.ts"
-      ]
-    },
-    {
-      "digest": "d161b8a9ad7430416d75acb64ce1a6baa24ba1868890b02ee7e37d693446fee1",
-      "paths": [
-        "src/claude-model-observation.ts"
+        "src/ui/panel-log.js"
       ]
     },
     {
@@ -69,9 +69,135 @@
       ]
     },
     {
-      "digest": "f12e6f8637e68af3784fe1915714ac4ed993a89d03f00e6032c17b880f17f0d0",
+      "digest": "3e23424092325e5607ac6e0ecd874c06337a7377f63ae2458ca59565e0f9702c",
       "paths": [
-        "src/fleet-manager.ts"
+        "changes/3812-claude-model-observations.zh-TW.md"
+      ]
+    },
+    {
+      "digest": "3e64b064f90f79c102ec4c148cbfb1e7be729206ca7a421856ff37a30a30e27b",
+      "paths": [
+        "src/claude-model-observation.ts"
+      ]
+    },
+    {
+      "digest": "450ef9e8c433953d3d08a1d457c02564dc541b3af41e6e369446df6fc0d58865",
+      "paths": [
+        "tests/needs-you-hub-1386.test.ts"
+      ]
+    },
+    {
+      "digest": "4552a5780ecebea8b60ac1e3b7682ce70016c3b95f821bd3f8b569065f73968b",
+      "paths": [
+        "tests/claude-model-checkpoint-tail.test.ts"
+      ]
+    },
+    {
+      "digest": "456cd25f3e6b1942a34da410e76047706822216054b08a1919c5f5571cc26443",
+      "paths": [
+        "tests/web-log-tab-1218.test.ts"
+      ]
+    },
+    {
+      "digest": "47fdfcbd3dd53d6d2ef90943ce3cdd2aabb5178454f01a6c90968497a805c8c2",
+      "paths": [
+        "src/ui/shared/app-needs.js"
+      ]
+    },
+    {
+      "digest": "57f50595575ed3749c5b68b1c930a13f3fd6f3d1807b7a5071e6b62384a84407",
+      "paths": [
+        "src/ui/shared/app-i18n.js"
+      ]
+    },
+    {
+      "digest": "5b249b27ec31fa4d476a8d29b8aa04d05acd68af8861b57b4a1c4ae8365fc75a",
+      "paths": [
+        "src/auth-api.ts"
+      ]
+    },
+    {
+      "digest": "655f7779c4925449abe19336bf0a60e04492a2294bc1eede9d4fdc8d43181ca6",
+      "paths": [
+        "scripts/manual/claude-model-observation-browser.mts"
+      ]
+    },
+    {
+      "digest": "7546a763e2beceeee0a750692bd183b8f64b6d3c6aedd19da23c0976b03b8046",
+      "paths": [
+        "src/outbound-schemas.ts"
+      ]
+    },
+    {
+      "digest": "76dee648c7ca3636939c1bd35974dcd01ebd40a9cd7353f5c63cbf76da692ad7",
+      "paths": [
+        "tests/office-card-2661.test.ts"
+      ]
+    },
+    {
+      "digest": "79538d7498039996560c814daaa5e01ac7e50b48a786df3504bb78aefa82fcdb",
+      "paths": [
+        "tests/claude-prompt-cache-ttl-2010.test.ts"
+      ]
+    },
+    {
+      "digest": "7a6e478644f8b4d3c8073debe1a89be2027f5ea7635b675205d41efd957d2117",
+      "paths": [
+        "src/office-share-page.ts"
+      ]
+    },
+    {
+      "digest": "7ab4ee299c0f3a4641bca0d7f2a863ee74cd8ab1208040784a449b1e9fd4476e",
+      "paths": [
+        "src/ui/fleet-org.js"
+      ]
+    },
+    {
+      "digest": "7e1cb01e73efb600e7187c7d713ff71762ab35dff6001c8bda3cdde12ccc8184",
+      "paths": [
+        "src/needs-you-hub.ts"
+      ]
+    },
+    {
+      "digest": "84a13ef0b70384f92c9701526b3f2a7868a48a78c400971913fc3b4fd21f4e60",
+      "paths": [
+        "tests/claude-shared-memory-1754.test.ts"
+      ]
+    },
+    {
+      "digest": "898817ba61a5cf8d1a94dc488a384687e50c1d510474a11e6c9ef9da99777d48",
+      "paths": [
+        "src/ui/fleet-canvas.js"
+      ]
+    },
+    {
+      "digest": "90107e39061c985814e488567b4dd6943ed4b3a70f0f9c893adfa7e08a10bca0",
+      "paths": [
+        "src/channel/mcp-tools.ts"
+      ]
+    },
+    {
+      "digest": "97a150ad0798f61a0976de36f9c9f179f87fca9833e3fa72beacaa19488524ef",
+      "paths": [
+        "src/ui/shared/model-observation.js"
+      ]
+    },
+    {
+      "digest": "990ad1252d175c4083eef414969f3782d6af0f6ece882e794f2d11d9692d3e34",
+      "paths": [
+        "tests/claude-model-switch-daemon.test.ts"
+      ]
+    },
+    {
+      "digest": "a5bf15c42f5b8ddb0f0034d9cbb5a61e78cacc586fb54e50a67c982d598f12e0",
+      "paths": [
+        "src/ui/panel-needs.js"
+      ]
+    },
+    {
+      "digest": "acae404f710c2a911e580c598c67fce9613a93c32aa4b40429c56e7186c3c451",
+      "paths": [
+        "tests/claude-model-switch.test.ts"
       ]
     },
     {
@@ -87,27 +213,27 @@
       ]
     },
     {
-      "digest": "ea87fd79e940615c3fbdcc6bc0679f19c0c0c1fdef4fd285a8ce43372047b9b3",
+      "digest": "bca0dbe8f26f54068acb2a239b0b5285109a534c95a18f44234e4ef861a418c5",
       "paths": [
-        "src/instance-lifecycle.ts"
+        "src/transcript-monitor.ts"
       ]
     },
     {
-      "digest": "19791ccf5fc61862321868d8c8e7687250f2e37fffb80c0cb61d8b20b541207f",
+      "digest": "bd5df81c11b885d6436cd5d6958777191ca0cc22367ec27efa3b8a3956d5746a",
       "paths": [
-        "src/locale.ts"
+        "changes/3812-claude-model-observations.md"
       ]
     },
     {
-      "digest": "3f06c5b459f281519e4ff1138f845b1feba68090e979455455c5509b1a41f57e",
+      "digest": "c2d0d0e7fe7063a9215e2d8b95d704c587c136d37bda0021a140442b7bccf284",
       "paths": [
-        "src/log-steps.ts"
+        "src/backend/types.ts"
       ]
     },
     {
-      "digest": "7e1cb01e73efb600e7187c7d713ff71762ab35dff6001c8bda3cdde12ccc8184",
+      "digest": "cb2d5c75c37b364ee2ddb38220fa85b8271d1021d7b83b83f06382b72888724c",
       "paths": [
-        "src/needs-you-hub.ts"
+        "docs/concepts.md"
       ]
     },
     {
@@ -117,147 +243,27 @@
       ]
     },
     {
-      "digest": "7a6e478644f8b4d3c8073debe1a89be2027f5ea7635b675205d41efd957d2117",
-      "paths": [
-        "src/office-share-page.ts"
-      ]
-    },
-    {
-      "digest": "2a8866383a61939e9b352639b49389074eb927327dd5333791ccd6738da685b8",
-      "paths": [
-        "src/outbound-handlers.ts"
-      ]
-    },
-    {
-      "digest": "7546a763e2beceeee0a750692bd183b8f64b6d3c6aedd19da23c0976b03b8046",
-      "paths": [
-        "src/outbound-schemas.ts"
-      ]
-    },
-    {
-      "digest": "bca0dbe8f26f54068acb2a239b0b5285109a534c95a18f44234e4ef861a418c5",
-      "paths": [
-        "src/transcript-monitor.ts"
-      ]
-    },
-    {
-      "digest": "898817ba61a5cf8d1a94dc488a384687e50c1d510474a11e6c9ef9da99777d48",
-      "paths": [
-        "src/ui/fleet-canvas.js"
-      ]
-    },
-    {
-      "digest": "0523431fa73d3c79c52ac464dbd2d131e9cfe26753b1e383a47fbf874129e9cc",
-      "paths": [
-        "src/ui/fleet-office-card.js"
-      ]
-    },
-    {
-      "digest": "7ab4ee299c0f3a4641bca0d7f2a863ee74cd8ab1208040784a449b1e9fd4476e",
-      "paths": [
-        "src/ui/fleet-org.js"
-      ]
-    },
-    {
-      "digest": "0ea00968bbbb566bc0e0300fc259830be6b4e6cf175aca522c032f15d9250ceb",
-      "paths": [
-        "src/ui/panel-details.js"
-      ]
-    },
-    {
-      "digest": "2ad06ad223bbe26616c0d52e041810550fb36068ddd85651ff3c7b8a1315aa1b",
-      "paths": [
-        "src/ui/panel-log.js"
-      ]
-    },
-    {
-      "digest": "a5bf15c42f5b8ddb0f0034d9cbb5a61e78cacc586fb54e50a67c982d598f12e0",
-      "paths": [
-        "src/ui/panel-needs.js"
-      ]
-    },
-    {
-      "digest": "57f50595575ed3749c5b68b1c930a13f3fd6f3d1807b7a5071e6b62384a84407",
-      "paths": [
-        "src/ui/shared/app-i18n.js"
-      ]
-    },
-    {
-      "digest": "47fdfcbd3dd53d6d2ef90943ce3cdd2aabb5178454f01a6c90968497a805c8c2",
-      "paths": [
-        "src/ui/shared/app-needs.js"
-      ]
-    },
-    {
-      "digest": "97a150ad0798f61a0976de36f9c9f179f87fca9833e3fa72beacaa19488524ef",
-      "paths": [
-        "src/ui/shared/model-observation.js"
-      ]
-    },
-    {
-      "digest": "0b2c1281e812aebf629a8090e1a5232eaf520a59e8ca0084cb63e5216b6fa612",
-      "paths": [
-        "src/web-api.ts"
-      ]
-    },
-    {
-      "digest": "1e52ef26aab8abc693b160e68d6fdade8696a3ac90b8aed3de333cbe5a782840",
-      "paths": [
-        "tests/claude-credential-profile-1699.test.ts"
-      ]
-    },
-    {
-      "digest": "841c72520055a42efd122729e339d79e137c7d922d6bf110842c70d8089fd246",
-      "paths": [
-        "tests/claude-model-switch-daemon.test.ts"
-      ]
-    },
-    {
-      "digest": "acae404f710c2a911e580c598c67fce9613a93c32aa4b40429c56e7186c3c451",
-      "paths": [
-        "tests/claude-model-switch.test.ts"
-      ]
-    },
-    {
-      "digest": "79538d7498039996560c814daaa5e01ac7e50b48a786df3504bb78aefa82fcdb",
-      "paths": [
-        "tests/claude-prompt-cache-ttl-2010.test.ts"
-      ]
-    },
-    {
-      "digest": "84a13ef0b70384f92c9701526b3f2a7868a48a78c400971913fc3b4fd21f4e60",
-      "paths": [
-        "tests/claude-shared-memory-1754.test.ts"
-      ]
-    },
-    {
-      "digest": "450ef9e8c433953d3d08a1d457c02564dc541b3af41e6e369446df6fc0d58865",
-      "paths": [
-        "tests/needs-you-hub-1386.test.ts"
-      ]
-    },
-    {
-      "digest": "76dee648c7ca3636939c1bd35974dcd01ebd40a9cd7353f5c63cbf76da692ad7",
-      "paths": [
-        "tests/office-card-2661.test.ts"
-      ]
-    },
-    {
       "digest": "d9336da0676b0609b3f6005df172a854999d00f8919761501920f1c3a91ebe8a",
       "paths": [
         "tests/web-details-n2.test.ts"
       ]
     },
     {
-      "digest": "456cd25f3e6b1942a34da410e76047706822216054b08a1919c5f5571cc26443",
+      "digest": "decd459b2f2edacf5bc7f293d391be7d54bf081afbe9d778cb2ddd9ca262b923",
       "paths": [
-        "tests/web-log-tab-1218.test.ts"
+        "src/backend/claude-code.ts"
       ]
     },
     {
-      "digest": "093ffa63dfc310116eb146deb121657581ef3b30577ba0f80832993a1f4195cc",
+      "digest": "ea87fd79e940615c3fbdcc6bc0679f19c0c0c1fdef4fd285a8ce43372047b9b3",
       "paths": [
-        "tests/web-needs-1408.test.ts"
+        "src/instance-lifecycle.ts"
+      ]
+    },
+    {
+      "digest": "f12e6f8637e68af3784fe1915714ac4ed993a89d03f00e6032c17b880f17f0d0",
+      "paths": [
+        "src/fleet-manager.ts"
       ]
     }
   ],
@@ -273,7 +279,7 @@
     "tests": 0
   },
   "mutations": {
-    "caught": 15,
+    "caught": 21,
     "isolated": true,
     "allRestored": true,
     "record": "mutations/results.json"
@@ -293,7 +299,12 @@
         "src/fleet-manager.ts",
         "scripts/manual/claude-model-observation-browser.mts"
       ],
-      "laterDelta": "Monitor-only startup isolation, credential tests/docs, and configured-return recovery after launch failover. UI/FleetManager/harness bytes unchanged; capture observer fixtures have configured=launch=original, where both recovery conditions agree. No later browser execution claimed. Plain merge of main3814 retains its Grok delivery proof, with only an import conflict; all UI/observer/FM/harness bytes unchanged from f773."
+      "laterDelta": "Monitor-only startup isolation, credential tests/docs, and configured-return recovery after launch failover. UI/FleetManager/harness bytes unchanged; capture observer fixtures have configured=launch=original, where both recovery conditions agree. No later browser execution claimed. Plain merge of main3814 retains its Grok delivery proof, with only an import conflict; all UI/observer/FM/harness bytes unchanged from f773.",
+      "reviewRepair": {
+        "sourceHead": "951b510c3e4009fa2cf654f7d46ac77fd34f5091",
+        "uiFleetManagerHarnessAndPngsUnchanged": true,
+        "observerDelta": "Checkpoint intent only; tail reader shares boundary/payload budget; no new browser execution"
+      }
     }
   },
   "liveVendorCalls": 0,
@@ -348,5 +359,47 @@
     "refreshedMutation": "M8-daemonfence",
     "receipt": "sync-main3814.json",
     "log": "checks/sync-claude-grok-controls.log"
+  },
+  "reviewFixes": {
+    "sourceHead": "951b510c3e4009fa2cf654f7d46ac77fd34f5091",
+    "priorHead": "2a5880612eb1d411a2f65e9e77bbabe777bafe1e",
+    "checkpointVersion": 2,
+    "intent": "Explicit none/unresolved/concrete; v1 or invalid/missing intent restores unresolved until confirmation/typed notice/new session",
+    "tailBudget": "Boundary and payload share maxBytes; explicit cursor is applied before any boundary read; separate inherited baseline lookup unchanged",
+    "failFirst": {
+      "semanticReds": 16,
+      "controls": 5,
+      "log": "checks/checkpoint-tail-daemon-before.log"
+    },
+    "targeted": {
+      "passed": 159,
+      "files": 6,
+      "log": "checks/checkpoint-tail-controls.log"
+    },
+    "full": {
+      "passed": 906,
+      "files": 52,
+      "workers": 2,
+      "log": "checks/checkpoint-tail-full-claude-grok.log"
+    },
+    "nativeTypes": {
+      "source": 0,
+      "tests": 0
+    },
+    "newReversals": [
+      "C1-checkpoint-intent",
+      "C2-restore-intent",
+      "C3-legacy-conservative",
+      "T1-cursor",
+      "T2-shared-budget",
+      "T3-boundary-budget"
+    ],
+    "allMutationBindingsCurrent": 21,
+    "browserUnchanged": {
+      "priorHead": "2a5880612eb1d411a2f65e9e77bbabe777bafe1e",
+      "entries": 54,
+      "pngs": 53,
+      "newExecution": false
+    }
   }
 }

@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
 
  ❯ tests/office-card-2661.test.ts (19 tests | 1 failed) 445ms
      × observations appear only on the authenticated card, never the Office share 10ms

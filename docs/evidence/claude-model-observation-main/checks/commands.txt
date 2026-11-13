@@ -27,3 +27,7 @@ vitest run tests/claude-*.test.ts tests/concepts-skill-sync.test.ts tests/grok-c
 tsc --noEmit --pretty false
 tsc --noEmit -p tsconfig.test.json --pretty false
 python3 docs/evidence/claude-model-observation-main/mutations/run.py M8-daemonfence
+
+# Checkpoint/read-budget repair (private temp files; no browser)
+vitest run tests/claude-model-checkpoint-tail.test.ts tests/claude-model-switch-daemon.test.ts --maxWorkers=2
+vitest run tests/claude-*.test.ts tests/concepts-skill-sync.test.ts tests/grok-consumed-3810.test.ts --maxWorkers=2

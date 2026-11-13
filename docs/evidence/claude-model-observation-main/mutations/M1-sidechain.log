@@ -1,15 +1,15 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
 
- ❯ tests/claude-model-switch.test.ts (58 tests | 3 failed) 91ms
-     × excludes sidechain notice 8ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 3 failed) 65ms
+     × excludes sidechain notice 6ms
      × excludes sidechain response 1ms
    × Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records 3ms
 
  Test Files  1 failed (1)
       Tests  3 failed | 55 passed (58)
-   Start at  17:30:29
-   Duration  494ms (transform 166ms, setup 98ms, import 135ms, tests 91ms, environment 0ms)
+   Start at  18:11:48
+   Duration  454ms (transform 169ms, setup 109ms, import 128ms, tests 65ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
@@ -22,7 +22,7 @@ null
 
 + Received:
 {
-  "at": 1794562229947,
+  "at": 1794564708471,
   "cause": "safeguards",
   "id": "notice:notice-A",
   "kind": "switch",
@@ -50,7 +50,7 @@ null
 
 + Received:
 {
-  "at": 1794562229947,
+  "at": 1794564708471,
   "id": "response:response-A:opus-4.8",
   "kind": "served",
   "served": "claude-opus-4-8",
@@ -84,10 +84,10 @@ AssertionError: expected [ { …(6) } ] to deeply equal []
 +       "original": "claude-opus-5-5",
 +       "scope": "session",
 +       "served": "claude-opus-4-8",
-+       "since": 1794562229983,
++       "since": 1794564708502,
 +     },
 +     "note": "Model switched: claude-opus-5-5 → claude-opus-4-8",
-+     "ts": 1794562229983,
++     "ts": 1794564708502,
 +     "turn": "",
 +   },
 + ]

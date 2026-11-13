@@ -1,0 +1,28 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts (15 tests | 2 failed) 186ms
+     × a boundary search within a long unfinished record is bounded (cursor=false) 42ms
+     × a boundary search within a long unfinished record is bounded (cursor=true) 64ms
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 13 passed (15)
+   Start at  18:12:53
+   Duration  579ms (transform 147ms, setup 110ms, import 104ms, tests 186ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > startup metadata tail: boundary and records share one physical read budget > a boundary search within a long unfinished record is bounded (cursor=false)
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > startup metadata tail: boundary and records share one physical read budget > a boundary search within a long unfinished record is bounded (cursor=true)
+AssertionError: expected 262145 to be less than or equal to 1024
+ ❯ tests/claude-model-checkpoint-tail.test.ts:98:24
+     96|     const path = join(root, "session.jsonl"); writeFileSync(path, '{"o…
+     97|     return readTailRecords(path, { ...(explicit ? { end: 8 * 1024 * 10…
+     98|       expect(io.bytes).toBeLessThanOrEqual(1024); expect(tail.records)…
+       |                        ^
+     99|       expect(tail.truncated).toBe(true);
+    100|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+

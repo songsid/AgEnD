@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
 
  ❯ tests/needs-you-hub-1386.test.ts (32 tests | 1 failed) 93ms
    × restored model incidents list quietly; one new switch notifies once and recovery removes it 15ms

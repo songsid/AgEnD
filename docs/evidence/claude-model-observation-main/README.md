@@ -65,3 +65,14 @@ The inherited launch marker, session/main-path ownership, append/history boundar
 Retained-asset claims cover only the substitutions listed in each receipt. An entirely old already-loaded tab cannot gain the new presentation without loading current modules. Launches predating the marker become observable at their normal next restart; detection itself never restarts them.
 
 Rollback removes the observer, optional projections and checkpoint. Saved model selections, failover policy, transcript bytes and runtime permissions are unaffected.
+
+
+## Checkpoint intent and startup read-budget repair
+
+The review found two shared problems: pending `/model` intent was missing from the checkpoint despite saved replay dedupe, and the metadata tail's explicit cursor still triggered an unbounded lookup from current EOF. The v2 checkpoint now records no intent, unresolved intent and concrete unconfirmed intent separately. Legacy v1 and invalid/missing intent restore conservatively as unresolved; a typed notice, a concrete owned confirmation or a new session can end that suppression. Served metadata remains visible.
+
+The tail now verifies a complete record at or before its captured cursor. Boundary discovery and payload share the same physical byte budget; it never touches a later unfinished suffix. A boundary or record that does not fit is omitted, without emitting a partial record. The earlier inherited monitor baseline lookup and the separate whole-line recovery bound are unchanged.
+
+Fail-first controls use private temp files and real file handles with byte counters, including a 16 MiB unfinished suffix, mid-record cursors, short reads and no-progress reads. Observer JSON round trips and actual daemon checkpoint files cover aliases, picker intent, concrete unconfirmed intent, quiet active incidents, confirmed/no-intent positives and legacy recovery. These changes add no UI, launch, native-source or lifecycle action. Existing harness, receipts and all 53 PNGs are unchanged; no new browser execution is claimed.
+
+Repair verification at `951b510c3e4009fa2cf654f7d46ac77fd34f5091`: **906/906 across 52 suites**, both native type projects exit0, and all **21** isolated reversals have current baseline digests and exact restoration. Six new reversals pin intent serialization/restore/legacy handling and cursor/shared/boundary budgets. The paired fail-first run has16 semantic reds and5 controls. [Repair receipt](review-fixes.json), [checks](checks.json).
