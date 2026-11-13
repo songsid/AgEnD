@@ -29,7 +29,7 @@ import { createHubSettingsWriter, HubSettingsError, type HubSettingsWriterDeps }
 import { atomicWriteFileSync } from "../src/atomic-write.js";
 import { hubSetCookie, HubSessions } from "../src/hub/sessions.js";
 import { HubCore } from "../src/hub/http/core.js";
-import { bindHubDirectoryAdministration } from "../src/hub/roles/directory-authority.js";
+import { bindHubDirectoryAdministration, bindHubDirectoryPreparation } from "../src/hub/roles/directory-authority.js";
 import { SERVER_SET } from "../src/hub/compose/storage.js";
 import { createHubDirectorySettingsProof } from "../src/hub/settings-directory-proof.js";
 import { createHubDirectorySaveCoordinator } from "../src/hub/settings-directory-save.js";
@@ -2358,6 +2358,39 @@ describe.skipIf(process.platform === "win32")("S129 factory session classificati
 });
 
 /** The real mounted source and writer; role cutover is private fixture setup, never an upgrade claim. */
+describe.skipIf(process.platform === "win32")("S129 mounted preparation sessions", () => {
+  it.each(["recent", "rotation"] as const)("forwards the auxiliary preparation to the actual %s session adapter", async mode => {
+    const r = await directoryRuntimeRig(undefined, { people: [NOTICE_READER], beforeHttp(hub, deps, entry) {
+      provisionMountedRoles({ hub, deps, entry });
+      deps.uow.atomic(tx => {
+        const db = hubTxDatabase(tx), policy = parseRolePolicy(JSON.parse((db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body));
+        policy.revision++;
+        policy.assignments.push({ id: "preparation-administrator", roleId: policy.roles.find(r => r.kind === "admin")!.id,
+          subject: { kind: "person", person: NOTICE_READER.key }, scope: { kind: "hub" }, maxFleets: null,
+          startsAt: 0, expiresAt: null, assignedAt: 0, assignedBy: ADMIN.key });
+        db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(parseRolePolicy(policy)));
+      });
+    } });
+    try {
+      const signed = await noticeSignIn(r, NOTICE_READER); expect(signed.status).toBe(200);
+      const core = new HubCore(r.deps, hubTxDatabase), sessions = new HubSessions(core);
+      const ctx = sessions.context({ headers: { cookie: signed.cookie } } as import("node:http").IncomingMessage);
+      const p = await core.directoryPreparation(ctx), actor = { kind: "hub-administrator" as const, person: p.actor.person,
+        sessionId: p.actor.sessionId, requestId: ctx.requestId };
+      const mounted = r.runtime.directorySettings()!, source = mounted.source();
+      const proof = { preparation: bindHubDirectoryPreparation(p, actor, source), source };
+      if (mode === "recent") {
+        expect(() => mounted.sessions().recentAuthentication(actor, proof)).not.toThrow();
+        expect(typeof mounted.sessions().recentAuthentication(actor, proof)).toBe("number");
+      } else {
+        const token = signed.cookie.slice(signed.cookie.indexOf("=") + 1);
+        expect(() => mounted.sessions().prepareDirectoryRotation(token, actor, proof)).not.toThrow();
+      }
+      p.retire();
+    } finally { await r.runtime.close(); }
+  });
+});
+
 describe.skipIf(process.platform === "win32")("S129 mounted directory source", () => {
   const roles = (hub: Awaited<ReturnType<typeof initializedHub>>, deps: HubHttpDeps, entry: HubHttpEntry) =>
     provisionMountedRoles({ hub, deps, entry });

@@ -8,7 +8,7 @@ import { personKeyString } from "./identity.js";
 import { HubProtocolError, identifier, person, validated } from "./validation.js";
 import { readHubSessionEpoch } from "./session-epoch.js";
 import { z } from "zod";
-import { assertHubDirectoryAdministration, type HubDirectoryAdministration, type HubDirectoryAdministrationBinding } from "./roles/directory-authority.js";
+import { assertHubDirectoryAdministration, type HubDirectoryAdministration, type HubDirectoryAdministrationBinding, type HubDirectoryPreparation } from "./roles/directory-authority.js";
 import type { HubRequestContext } from "./types.js";
 
 const RECENT_MS = 5 * 60_000, IDLE_MS = 60 * 60_000;
@@ -17,11 +17,15 @@ const actorSchema = z.strictObject({ kind: z.literal("hub-administrator"), perso
 type Actor = z.infer<typeof actorSchema>;
 /** Internal adapter only; the witness remains opaque and belongs to this exact mounted source. */
 export interface HubDirectorySessionAdministration { witness: HubDirectoryAdministration; source: HubDirectoryAdministrationBinding }
-function administration(core: HubCore, actor: Actor, proof?: HubDirectorySessionAdministration): void {
+/** Preparation-only attestation/rotation input; never an effect-authority witness. */
+export interface HubDirectorySessionPreparation { preparation: HubDirectoryPreparation; source: HubDirectoryAdministrationBinding }
+export type HubDirectorySessionProof = HubDirectorySessionAdministration | HubDirectorySessionPreparation;
+function administration(core: HubCore, actor: Actor, proof?: HubDirectorySessionProof): void {
   if (!proof) {
     if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError("denied");
     return;
   }
+  if ("preparation" in proof) throw new HubProtocolError("unavailable");
   const check = () => {
     if (proof.source.directory !== core.deps.directory || proof.source.epoch !== core.directoryEpoch
       || personKeyString(proof.source.administrator) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError("unavailable");
@@ -46,7 +50,7 @@ function current(r: Row | undefined, who: string, epoch: number, now: number): r
 }
 
 /** Only successful trusted-directory sign-in attests authentication. Activity checks never create or renew that attestation. */
-export function recentHubDirectoryAuthentication(core: HubCore, raw: Actor, proof?: HubDirectorySessionAdministration): number | null {
+export function recentHubDirectoryAuthentication(core: HubCore, raw: Actor, proof?: HubDirectorySessionProof): number | null {
   const actor = validated(actorSchema, raw);
   if (!proof && personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) return null;
   return core.atomic(db => {
@@ -69,7 +73,7 @@ interface Rotation {
 }
 const rotations = new WeakMap<HubDirectorySessionRotation, Rotation>();
 
-export function prepareHubDirectorySessionRotation(core: HubCore, token: string, raw: Actor, proof?: HubDirectorySessionAdministration): HubDirectorySessionRotation {
+export function prepareHubDirectorySessionRotation(core: HubCore, token: string, raw: Actor, proof?: HubDirectorySessionProof): HubDirectorySessionRotation {
   const actor = validated(actorSchema, raw);
   administration(core, actor, proof);
   const snapshot = core.atomic(db => {
