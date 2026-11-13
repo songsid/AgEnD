@@ -57,7 +57,7 @@ async function fixture() {
   setRemoteSwitch(store.directory, "accounts", true, undefined, Date.now());
   const remote = () => (client as unknown as { remote(): { handle(op: string, input: unknown): Promise<unknown> } }).remote();
   const signOut = () => remote().handle("accounts.signout", { cli: "antigravity", actor: ACTOR });
-  return { hub, bridge, client, machineId: claim.machineId, events, release, deleteCredential, defaultStatus, signOut };
+  return { hub, bridge, client, store, machineId: claim.machineId, events, release, deleteCredential, defaultStatus, signOut };
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 afterEach(async () => {
@@ -93,6 +93,23 @@ describe("P2-4: default-account Disconnect and task admission exclude each other
     await expect(f.signOut()).rejects.toThrow(/A task is running on this computer/);
     expect(f.deleteCredential).not.toHaveBeenCalled(); expect(f.defaultStatus).not.toHaveBeenCalled();
     openMcp(undefined); await run;
+  });
+  it("AGEND-251: a run whose worker was lost with its end UNCONFIRMED keeps the default credential in use: Disconnect is refused and nothing is deleted; after a confirmed recovery it goes through", async () => {
+    const f = await fixture(); f.release();
+    const task = agyTask();
+    await f.hub.call(f.machineId, "run", { task });
+    expect(f.bridge.launches).toBe(1);
+    // The bridge's worker-loss state (src/windows-cli.ts): finished, outcome NOT confirmed (its native descendants may still run).
+    Object.assign(f.bridge.tasks.get(task.requestId)!, { status: "failed", finishedAt: Date.now(), outcomeConfirmed: false, error: "worker lost" });
+    await vi.waitFor(() => expect(f.store.get(task.requestId)).toMatchObject({ uncertain: true }));
+    expect(f.store.blocked()).toBe(true);
+    await expect(f.signOut()).rejects.toThrow(/A task is running on this computer/);
+    expect(f.deleteCredential).not.toHaveBeenCalled(); expect(f.defaultStatus).not.toHaveBeenCalled();
+    // Still refused after the Runtime's in-memory sets are gone: the durable journal alone is read (a restart rebuilds exactly this state).
+    expect(new RuntimeClientStore(f.store.directory).blocked()).toBe(true);
+    f.store.recover(task.requestId, true);
+    expect(await f.signOut()).toEqual({ loggedIn: false });
+    expect(f.deleteCredential).toHaveBeenCalledTimes(1);
   });
   it("positive controls: once the Disconnect has ended a run is admitted, and with nothing running the Disconnect goes through", async () => {
     const f = await fixture(); f.release();
