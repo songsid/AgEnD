@@ -33,3 +33,14 @@ Producer basis is Ridge's portable redacted Claude Code2.1.323 handoff; historic
 Retained-asset claims cover only the exact listed substitutions, including alpha's old shared Log row. An entirely old already-loaded tab cannot gain new presentation without current modules. Pre-marker local launches become observable on their normal next restart; native baseline history is not replayed. Detection initiates neither restart nor policy/model action.
 
 Alpha merges remain held for the alpha.3 rehearsal until Leader clearance. Coordinator alone merges. Rollback removes optional observation readers/projections/checkpoint; configured selections, policies, transcripts and permissions remain intact.
+
+
+## Checkpoint intent and startup read-budget repair
+
+The review found two shared problems: pending `/model` intent was missing from the checkpoint despite saved replay dedupe, and the metadata tail's explicit cursor still triggered an unbounded lookup from current EOF. The v2 checkpoint now records no intent, unresolved intent and concrete unconfirmed intent separately. Legacy v1 and invalid/missing intent restore conservatively as unresolved; a typed notice, a concrete owned confirmation or a new session can end that suppression. Served metadata remains visible.
+
+The tail now verifies a complete record at or before its captured cursor. Boundary discovery and payload share the same physical byte budget; it never touches a later unfinished suffix. A boundary or record that does not fit is omitted, without emitting a partial record. The earlier inherited monitor baseline lookup and the separate whole-line recovery bound are unchanged.
+
+Fail-first controls use private temp files and real file handles with byte counters, including a 16 MiB unfinished suffix, mid-record cursors, short reads and no-progress reads. Observer JSON round trips and actual daemon checkpoint files cover aliases, picker intent, concrete unconfirmed intent, quiet active incidents, confirmed/no-intent positives and legacy recovery. These changes add no UI, launch, native-source or lifecycle action. Existing harness, receipts and all 53 PNGs are unchanged; no new browser execution is claimed.
+
+Repair verification at `d41ec09b63267a1a151aebc6e08d7d9d5255ee7d`: **499/499 across 26 suites**, both native type projects exit0, and all **26** isolated reversals have current baseline digests and exact restoration. Six new reversals pin intent serialization/restore/legacy handling and cursor/shared/boundary budgets. The paired fail-first run has16 semantic reds and6 controls. [Repair receipt](review-fixes.json), [checks](checks.json).

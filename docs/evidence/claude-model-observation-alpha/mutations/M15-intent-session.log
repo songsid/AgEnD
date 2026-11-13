@@ -1,13 +1,13 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
 
- ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 141ms
-     × raw concrete intent needs both session and served confirmation before replacing an active switch 18ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 110ms
+     × raw concrete intent needs both session and served confirmation before replacing an active switch 10ms
 
  Test Files  1 failed (1)
       Tests  1 failed | 57 passed (58)
-   Start at  17:35:07
-   Duration  1.47s (transform 564ms, setup 230ms, import 505ms, tests 141ms, environment 0ms)
+   Start at  18:14:09
+   Duration  750ms (transform 337ms, setup 134ms, import 338ms, tests 110ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯

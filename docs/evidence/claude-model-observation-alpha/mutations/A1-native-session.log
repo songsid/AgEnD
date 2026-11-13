@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
 
  ❯ tests/claude-model-runtime-observation.test.ts (6 tests | 1 failed) 29ms
    × the native source itself never projects metadata from a different embedded session 7ms

@@ -1,13 +1,13 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
 
- ❯ tests/claude-model-runtime-observation.test.ts (6 tests | 1 failed) 37ms
-   × a native gap preserves typed evidence and suppresses inferred switches across missing intent 13ms
+ ❯ tests/claude-model-runtime-observation.test.ts (6 tests | 1 failed) 30ms
+   × a native gap preserves typed evidence and suppresses inferred switches across missing intent 10ms
 
  Test Files  1 failed (1)
       Tests  1 failed | 5 passed (6)
-   Start at  17:37:03
-   Duration  799ms (transform 414ms, setup 144ms, import 407ms, tests 37ms, environment 0ms)
+   Start at  18:14:23
+   Duration  604ms (transform 282ms, setup 114ms, import 267ms, tests 30ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
@@ -23,11 +23,11 @@ AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to match obje
 -   "active": null,
 +   "active": {
 +     "cause": "observed",
-+     "id": "cad200a5-821e-4e15-b3b8-2202a8bcb544:response:served:opus-4.8",
++     "id": "3e3beaa0-21e6-455d-9c77-52954a10c16a:response:served:opus-4.8",
 +     "original": "claude-opus-5-5",
 +     "scope": "unknown",
 +     "served": "claude-opus-4-8",
-+     "since": 1794562624560,
++     "since": 1794564864398,
 +   },
     "lastServed": "claude-opus-4-8",
     "session": null,

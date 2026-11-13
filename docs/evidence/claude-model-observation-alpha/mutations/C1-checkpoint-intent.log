@@ -1,0 +1,159 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts (15 tests | 3 failed) 134ms
+     × keeps pending intent  across JSON persistence and replay dedupe 14ms
+     × keeps pending intent claude-sonnet-5-5 across JSON persistence and replay dedupe 3ms
+     × retains an active incident while a concrete command still lacks session confirmation 2ms
+ ❯ tests/claude-model-switch-daemon.test.ts (7 tests | 3 failed) 145ms
+   × the actual daemon preserves unconfirmed /model opus through disk restore and replay 10ms
+   × the actual daemon preserves unconfirmed /model  through disk restore and replay 5ms
+   × the actual daemon preserves unconfirmed /model claude-sonnet-5-5 through disk restore and replay 3ms
+
+ Test Files  2 failed (2)
+      Tests  6 failed | 16 passed (22)
+   Start at  18:14:29
+   Duration  3.82s (transform 3.26s, setup 216ms, import 3.80s, tests 279ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > keeps pending intent  across JSON persistence and replay dedupe
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > keeps pending intent claude-sonnet-5-5 across JSON persistence and replay dedupe
+AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to deeply equal { configured: 'claude-opus-5-5', …(5) }
+
+- Expected
++ Received
+
+@@ -1,7 +1,14 @@
+  {
+-   "active": null,
++   "active": {
++     "cause": "observed",
++     "id": "session-A:fresh",
++     "original": "claude-opus-5-5",
++     "scope": "unknown",
++     "served": "claude-sonnet-5-5",
++     "since": 3,
++   },
+    "configured": "claude-opus-5-5",
+    "lastServed": "claude-sonnet-5-5",
+    "launch": "claude-opus-5-5",
+    "observedAt": 3,
+    "session": "claude-opus-5-5",
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:40:80
+     38|     expect(restored.observe(intent, configured)).toBe(false); // daemo…
+     39|     for (const o of [original, restored]) o.observe(response("fresh", …
+     40|     expect(original.snapshot().active).toBeNull(); expect(restored.sna…
+       |                                                                                ^
+     41|     if (requested) {
+     42|       restored.observe(response("confirmed", 4), sonnet);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > retains an active incident while a concrete command still lacks session confirmation
+AssertionError: expected { id: 'session-A:fallback', …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "baseline": true,
+  "cause": "observed",
+  "id": "session-A:fallback",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-opus-4-8",
+  "since": 1,
+}
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:57:92
+     55|     expect(restored.snapshot().active).toMatchObject({ served: "claude…
+     56|     expect(restored.checkpoint().expected).toBe(configured);
+     57|     restored.observe(response("confirmed", 4), sonnet); expect(restore…
+       |                                                                                            ^
+     58|   });
+     59|   it("a checkpoint with no pending intent still detects a fresh differ…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > the actual daemon preserves unconfirmed /model opus through disk restore and replay
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "observed",
+  "id": "session-A:response:after-resume:sonnet-5.5",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-sonnet-5-5",
+  "since": 1794564873735,
+}
+
+ ❯ tests/claude-model-switch-daemon.test.ts:89:45
+     87|   const monitor = resumed.buildTranscriptMonitor(null); resumed.transc…
+     88|   monitor.processEntry(intent); monitor.processEntry(served("after-res…
+     89|   expect(resumed.modelObservation().active).toBeNull();
+       |                                             ^
+     90|   expect(resumed.modelObservation()).toMatchObject({ lastServed: "clau…
+     91| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > the actual daemon preserves unconfirmed /model  through disk restore and replay
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "observed",
+  "id": "session-A:response:after-resume:sonnet-5.5",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-sonnet-5-5",
+  "since": 1794564873745,
+}
+
+ ❯ tests/claude-model-switch-daemon.test.ts:89:45
+     87|   const monitor = resumed.buildTranscriptMonitor(null); resumed.transc…
+     88|   monitor.processEntry(intent); monitor.processEntry(served("after-res…
+     89|   expect(resumed.modelObservation().active).toBeNull();
+       |                                             ^
+     90|   expect(resumed.modelObservation()).toMatchObject({ lastServed: "clau…
+     91| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > the actual daemon preserves unconfirmed /model claude-sonnet-5-5 through disk restore and replay
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "observed",
+  "id": "session-A:response:after-resume:sonnet-5.5",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-sonnet-5-5",
+  "since": 1794564873749,
+}
+
+ ❯ tests/claude-model-switch-daemon.test.ts:89:45
+     87|   const monitor = resumed.buildTranscriptMonitor(null); resumed.transc…
+     88|   monitor.processEntry(intent); monitor.processEntry(served("after-res…
+     89|   expect(resumed.modelObservation().active).toBeNull();
+       |                                             ^
+     90|   expect(resumed.modelObservation()).toMatchObject({ lastServed: "clau…
+     91| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+

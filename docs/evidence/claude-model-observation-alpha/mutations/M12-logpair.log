@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
 
  ❯ tests/web-log-tab-1218.test.ts (22 tests | 1 failed) 2910ms
    × model pairs and served values live in wrapping Log text, not the ellipsized heading 89ms

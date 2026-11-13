@@ -1,60 +1,5 @@
 [
   {
-    "name": "M1-sidechain",
-    "file": "src/claude-model-observation.ts",
-    "before": "e.isSidechain !== true",
-    "after": "true",
-    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
-    "mutantDigest": "555418f1ffe8858e5195849dee52110b1e06a12f279059b1826aab3fd464662b",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
-    "name": "M2-apierror",
-    "file": "src/claude-model-observation.ts",
-    "before": "e.isApiErrorMessage !== true",
-    "after": "true",
-    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
-    "mutantDigest": "9896d7883f04b10d597f09bd473037b3a6cd63aecbaf3efca36687de44aef6cd",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
-    "name": "M3-dedupe",
-    "file": "src/claude-model-observation.ts",
-    "before": "if (this.seen.has(key)) return false;",
-    "after": "if (false) return false;",
-    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
-    "mutantDigest": "0d91dc498d00604a48c4dabaffe6e23496f3244410a2e8a0fbc4211d5ed46406",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
-    "name": "M4-recovery",
-    "file": "src/claude-model-observation.ts",
-    "before": "this.state.active = null;\n    else if (allowInference && !this.state.active && expected",
-    "after": "{}\n    else if (allowInference && !this.state.active && expected",
-    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
-    "mutantDigest": "9e6223f154cb314a40d9077882d0d0617700f2999c709550c710163433f112d8",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
-    "name": "M5-concrete",
-    "file": "src/claude-model-observation.ts",
-    "before": "this.expected = claudeModelId(launch);",
-    "after": "this.expected = null;",
-    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
-    "mutantDigest": "99c1e6500f35ab512ba2748fe2f0d7e5e6ea9142a12982b82b64751b424f9dfd",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
     "name": "M6-hookowner",
     "file": "src/transcript-monitor.ts",
     "before": "hook._agendLaunchId === launch.id",
@@ -99,17 +44,6 @@
     "semanticRed": true
   },
   {
-    "name": "M11-commandprefix",
-    "file": "src/claude-model-observation.ts",
-    "before": "/^(?:<command-name>\\/|<command-message>)/",
-    "after": "/^<command-name>\\//",
-    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
-    "mutantDigest": "c75a94f22790285bdfb6e65039aa252b706877de798a978f3c130ad976aa5c67",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
     "name": "M12-logpair",
     "file": "src/ui/log-row.js",
     "before": "${text(modelSwitchText(x.modelSwitch))}",
@@ -127,39 +61,6 @@
     "after": "modelSwitch: modelSwitchText(it.model_observation?.active)",
     "baseDigest": "0523431fa73d3c79c52ac464dbd2d131e9cfe26753b1e383a47fbf874129e9cc",
     "mutantDigest": "9cb3e255a5430ff1e0ccb92d92819956ed362da393a64e702bed6e1d5fdba345",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
-    "name": "M14-nofallback",
-    "file": "src/claude-model-observation.ts",
-    "before": "e.subtype === \"model_refusal_fallback\" || e.subtype === \"model_fallback\"",
-    "after": "e.subtype === \"model_refusal_fallback\" || e.subtype === \"model_fallback\" || e.subtype === \"model_refusal_no_fallback\"",
-    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
-    "mutantDigest": "d05ac5ea18abf2f8ac5d636a47d03c68446fa5ed130e75a0d3935224b59eb53d",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
-    "name": "M15-intent-session",
-    "file": "src/claude-model-observation.ts",
-    "before": "&& normalizeClaudeModel(session) === normalizeClaudeModel(record.served)",
-    "after": "",
-    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
-    "mutantDigest": "9daaee2e07eff451f199db48412bcb85a7efa8fea818d3a32ff47d52d5d41e46",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
-    "name": "M10-original",
-    "file": "src/claude-model-observation.ts",
-    "before": "original = claudeModelId(e.originalModel)",
-    "after": "original = claudeModelId(e.fallbackModel)",
-    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
-    "mutantDigest": "8a6286cfebab1690ee5ed5c2a29b25dd284231571ead68648d405b4471cf7cf2",
     "types": 0,
     "testExit": 1,
     "semanticRed": true
@@ -198,23 +99,188 @@
     "semanticRed": true
   },
   {
-    "name": "A4-native-gap",
-    "file": "src/claude-model-observation.ts",
-    "before": "else if (allowInference &&",
-    "after": "else if (",
-    "baseDigest": "969f91bf3c0677bca8360d32fa38bd076611308fba884dff70f0d654d392f1c1",
-    "mutantDigest": "abbf02da05a5ffeb7c307dc03ab874d4c293cf3e24deb7993df22fe19a71fca1",
-    "types": 0,
-    "testExit": 1,
-    "semanticRed": true
-  },
-  {
     "name": "A5-native-context",
     "file": "src/transcript-monitor.ts",
     "before": "if (generation !== this.generation || this.source!.modelObservationSession?.() !== session) continue;",
     "after": "if (false) continue;",
     "baseDigest": "d9f9bfafaaf74826d457ad81e1c08944de9b88f154f0eedee2d63b142219f91d",
     "mutantDigest": "48b2c9c559035d72bf24c349727b044555d27833c3e76e8cb3f5b34ce6d43555",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M1-sidechain",
+    "file": "src/claude-model-observation.ts",
+    "before": "e.isSidechain !== true",
+    "after": "true",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "b7e19f6cff53dceca17ce2604a12203e835cda11442716dca0f68f4958f24c7f",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M2-apierror",
+    "file": "src/claude-model-observation.ts",
+    "before": "e.isApiErrorMessage !== true",
+    "after": "true",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "ba5ccc4c878479c6d63c1edbceeb08b6fbc56f2bd1e7c3e161256aa3e36b0964",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M3-dedupe",
+    "file": "src/claude-model-observation.ts",
+    "before": "if (this.seen.has(key)) return false;",
+    "after": "if (false) return false;",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "87d020d04e7395511004d99c0efd725335825c0e5b3dcb29078f9985e7b5925c",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M4-recovery",
+    "file": "src/claude-model-observation.ts",
+    "before": "this.state.active = null;\n    else if (allowInference && !this.state.active && expected",
+    "after": "{}\n    else if (allowInference && !this.state.active && expected",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "93cd0cc3d45f9203de554954c4a64279edd457c91d7ca740a887e5f6d36d91a7",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M5-concrete",
+    "file": "src/claude-model-observation.ts",
+    "before": "this.expected = claudeModelId(launch);",
+    "after": "this.expected = null;",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "7164d7a92a6ddd36484009ce82978f2839b21598e6f561c194afd3bbf3dc348c",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M11-commandprefix",
+    "file": "src/claude-model-observation.ts",
+    "before": "/^(?:<command-name>\\/|<command-message>)/",
+    "after": "/^<command-name>\\//",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "a939a29727ea1c024aed5aa4f48e421d640a4774e9cd38f5c8e99b6d17cd57f3",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M14-nofallback",
+    "file": "src/claude-model-observation.ts",
+    "before": "e.subtype === \"model_refusal_fallback\" || e.subtype === \"model_fallback\"",
+    "after": "e.subtype === \"model_refusal_fallback\" || e.subtype === \"model_fallback\" || e.subtype === \"model_refusal_no_fallback\"",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "fb3d62e668309513582baefcd777cb5e42b9d29609791a5bcdbf06d14d37dcd2",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M15-intent-session",
+    "file": "src/claude-model-observation.ts",
+    "before": "&& normalizeClaudeModel(session) === normalizeClaudeModel(record.served)",
+    "after": "",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "1e8811fe81c334205243dc18634a418a5809ddc31f0b018124522bde616eca7a",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "M10-original",
+    "file": "src/claude-model-observation.ts",
+    "before": "original = claudeModelId(e.originalModel)",
+    "after": "original = claudeModelId(e.fallbackModel)",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "fed6aafb7df5321fff6ada5157d2dade8261dd51f94e94024561eb60ec93764b",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "A4-native-gap",
+    "file": "src/claude-model-observation.ts",
+    "before": "else if (allowInference &&",
+    "after": "else if (",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "bdd76f36759767149ab72fac4f132d05e32763d320cbdb0fa5eddb3c90eff07a",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "C1-checkpoint-intent",
+    "file": "src/claude-model-observation.ts",
+    "before": "intent: this.intent === undefined ? { kind: \"none\" } : this.intent === null ? { kind: \"unresolved\" } : { kind: \"concrete\", model: this.intent }",
+    "after": "intent: { kind: \"none\" }",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "4b87fd92e85e5f49127391951c7a0187a45587996372b0e4a65e5dcbe14fbe11",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "C2-restore-intent",
+    "file": "src/claude-model-observation.ts",
+    "before": "this.intent = intent?.kind === \"none\" ? undefined\n        : intent?.kind === \"concrete\" && claudeModelId(intent.model) ? claudeModelId(intent.model) : null;",
+    "after": "this.intent = undefined;",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "7b39e236c454b2101f138ee572781ddbda9a8d9794acb7a1ba06a52a704cee33",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "C3-legacy-conservative",
+    "file": "src/claude-model-observation.ts",
+    "before": "intent?.kind === \"concrete\" && claudeModelId(intent.model) ? claudeModelId(intent.model) : null;",
+    "after": "intent?.kind === \"concrete\" && claudeModelId(intent.model) ? claudeModelId(intent.model) : undefined;",
+    "baseDigest": "ba6840d392fa9eae7ae50a096656ab5ab4d20e67e15b0be8887783dcca6ca60c",
+    "mutantDigest": "929c0326033b8100d327432e28ef61e3dce846117eaca672910b4ff441eeca30",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "T1-cursor",
+    "file": "src/log-steps.ts",
+    "before": "Math.min(opts.end ?? size, size)",
+    "after": "Math.min(size, size)",
+    "baseDigest": "6e2480d926fe157e3de18041a8f002a88ce54f79940f6d063053fa0ee129f58c",
+    "mutantDigest": "b08d8e20fce839fc6fdf3dbd66c536bc666aa759558c0e3bd4785ada7c8a3fe3",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "T2-shared-budget",
+    "file": "src/log-steps.ts",
+    "before": "let pos = end - 1;",
+    "after": "read = 0; let pos = end - 1;",
+    "baseDigest": "6e2480d926fe157e3de18041a8f002a88ce54f79940f6d063053fa0ee129f58c",
+    "mutantDigest": "dc5d44981810cf7994dfd3a5248b394e195bee7fda797550bce5d43aeae9dbd2",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true
+  },
+  {
+    "name": "T3-boundary-budget",
+    "file": "src/log-steps.ts",
+    "before": "Math.min(read === 0 ? 1 : BACKFILL_CHUNK, boundary, maxBytes - read)",
+    "after": "Math.min(read === 0 ? 1 : BACKFILL_CHUNK, boundary)",
+    "baseDigest": "6e2480d926fe157e3de18041a8f002a88ce54f79940f6d063053fa0ee129f58c",
+    "mutantDigest": "ca4309df0b248977f15fecf34524b9ba08a564f2ad5ef06bea9c57c0c8f058a9",
     "types": 0,
     "testExit": 1,
     "semanticRed": true

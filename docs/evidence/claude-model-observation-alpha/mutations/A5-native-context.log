@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
 
  ❯ tests/claude-model-runtime-observation.test.ts (6 tests | 1 failed) 34ms
    × a context callback that retires the monitor cannot leak its paired model observation 6ms

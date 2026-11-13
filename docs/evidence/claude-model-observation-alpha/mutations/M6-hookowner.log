@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
 
  ❯ tests/claude-model-switch.test.ts (58 tests | 2 failed) 66ms
      × rejects old marker 9ms

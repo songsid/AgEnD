@@ -1,17 +1,17 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
 
- ❯ tests/claude-model-switch.test.ts (58 tests | 5 failed) 96ms
-     × one incident survives repeated notices and response blocks, recovers, then allows a new incident 9ms
-     × a local fallback does not rewrite session selection and is recovered by a later configured response 2ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 5 failed) 72ms
+     × one incident survives repeated notices and response blocks, recovers, then allows a new incident 6ms
+     × a local fallback does not rewrite session selection and is recovered by a later configured response 1ms
      × a return to the configured model recovers a fallback that followed next-spawn failover 1ms
-     × a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers 2ms
-     × Needs you uses the incident identity for quiet updates, and removes it on recovery 4ms
+     × a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers 1ms
+     × Needs you uses the incident identity for quiet updates, and removes it on recovery 2ms
 
  Test Files  1 failed (1)
       Tests  5 failed | 53 passed (58)
-   Start at  17:33:40
-   Duration  708ms (transform 318ms, setup 100ms, import 311ms, tests 96ms, environment 0ms)
+   Start at  18:13:42
+   Duration  1.01s (transform 608ms, setup 436ms, import 261ms, tests 72ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
@@ -29,7 +29,7 @@ null
   "original": "claude-opus-5-5",
   "scope": "session",
   "served": "claude-opus-4-8",
-  "since": 1794562421320,
+  "since": 1794564823329,
 }
 
  ❯ tests/claude-model-switch.test.ts:88:118
@@ -55,7 +55,7 @@ null
   "original": "claude-opus-5-5",
   "scope": "turn",
   "served": "claude-opus-4-8",
-  "since": 1794562421329,
+  "since": 1794564823335,
 }
 
  ❯ tests/claude-model-switch.test.ts:95:105
@@ -81,7 +81,7 @@ null
   "original": "claude-opus-4-8",
   "scope": "session",
   "served": "claude-sonnet-5-5",
-  "since": 1794562421331,
+  "since": 1794564823337,
 }
 
  ❯ tests/claude-model-switch.test.ts:106:33
@@ -108,7 +108,7 @@ null
   "original": "claude-opus-5-5",
   "scope": "session",
   "served": "claude-opus-4-8",
-  "since": 1794562421333,
+  "since": 1794564823338,
 }
 
  ❯ tests/claude-model-switch.test.ts:127:127
@@ -139,10 +139,10 @@ AssertionError: expected [ { …(7) } ] to deeply equal []
 +       "original": "claude-opus-5-5",
 +       "scope": "session",
 +       "served": "claude-opus-4-8",
-+       "since": 1794562421338,
++       "since": 1794564823341,
 +     },
 +     "reason": "model_switch",
-+     "since": 1794562421338,
++     "since": 1794564823341,
 +     "type": "instance",
 +   },
 + ]

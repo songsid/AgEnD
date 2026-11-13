@@ -1,5 +1,5 @@
 
- RUN  v4.1.12 <checkout>
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
 
  ❯ tests/claude-model-switch-daemon.test.ts (4 tests | 1 failed) 120ms
    × the actual daemon wires metadata to read-only presentation, persists it, and fences replaced monitors/launches 18ms
