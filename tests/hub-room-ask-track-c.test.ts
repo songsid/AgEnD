@@ -57,7 +57,7 @@ describe("Track C room question presentation", () => {
 });
 
 const databases: Database.Database[] = [];
-afterEach(() => databases.splice(0).forEach(db => db.close()));
+afterEach(() => databases.splice(0).forEach(db => { if (db.open) db.close(); }));
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 function member() {
   const db = new Database(":memory:"); databases.push(db); migrateRoomAsks(db);
@@ -133,6 +133,16 @@ describe("Track C durable room adapter (injectable Track R seam)", () => {
     expect(() => f.adapter.accept(f.ask, { ...f.link, features: new Set() })).toThrow();
     expect(() => f.adapter.accept({ ...f.ask, exposureId: randomUUID() }, f.link)).toThrow();
     expect(f.db.prepare("SELECT count(*) AS n FROM hub_room_asks").get()).toEqual({ n: 0 });
+  });
+  it("requires room-ask-v1 on the actual current link for both admission and frozen-answer flush", async () => {
+    const f = member(), features = f.link.features as Set<string>;
+    features.delete("room-ask-v1"); expect(features.has("welcome-caps-v1")).toBe(true);
+    expect(() => f.adapter.accept(f.ask, f.link)).toThrow();
+    expect(f.db.prepare("SELECT count(*) AS n FROM hub_room_asks").get()).toEqual({ n: 0 });
+    features.add("room-ask-v1"); f.adapter.accept(f.ask, f.link); await f.adapter.settled(); await f.report(); expect(f.sent).toHaveLength(1);
+    features.delete("room-ask-v1"); await f.adapter.flush(); expect(f.sent).toHaveLength(1);
+    expect(f.adapter.acknowledge(f.sent[0]!, f.link)).toBe(false);
+    features.add("room-ask-v1"); await f.adapter.flush(); expect(f.sent).toHaveLength(2);
   });
   it("routes only its own correlation/agent and refuses unsupported answer extras or a stale caller", async () => {
     const f = member(); f.adapter.accept(f.ask, f.link); await f.adapter.settled(); const cid = f.inputs[0]!.correlationId;
@@ -226,6 +236,19 @@ describe("Track C durable room adapter (injectable Track R seam)", () => {
       adapter.accept(f.ask, f.link); await adapter.settled(); expect(f.inputs).toHaveLength(1);
     } finally { adapter?.close(); if (db.open) db.close(); rmSync(directory, { recursive: true, force: true }); }
   });
+  it("does not access a closed member database when a held input callback finishes after teardown", async () => {
+    const f = member(), entered = deferred<void>(), finish = deferred<boolean>();
+    f.options.deliver = async input => { expect(await input.beforeInput()).toBe(true); entered.resolve(); return finish.promise; };
+    f.adapter.accept(f.ask, f.link); await entered.promise; f.adapter.close(); f.db.close(); finish.resolve(true);
+    await expect(f.adapter.settled()).resolves.toBeUndefined();
+  });
+  it("keeps a frozen answer saved without reading the closed database after a held send settles", async () => {
+    const f = member(), sending = deferred<void>(), finish = deferred<void>();
+    f.adapter.accept(f.ask, f.link); await f.adapter.settled();
+    vi.mocked(f.link.sendAnswer).mockImplementation(async () => { sending.resolve(); await finish.promise; });
+    const report = f.report(); await sending.promise; f.adapter.close(); f.db.close(); finish.resolve();
+    await expect(report).resolves.toMatchObject({ ok: true, message: expect.stringContaining("Saved") });
+  });
 });
 
 describe("Track C current-link agent.state publisher", () => {
@@ -262,5 +285,10 @@ describe("Track C current-link agent.state publisher", () => {
     await expect(f.p.refresh()).rejects.toThrow("offline"); await f.p.refresh(); expect(f.link.sendState).toHaveBeenCalledTimes(2);
     f.read.mockRejectedValueOnce(Error("private detailed activity")); await f.p.refresh();
     expect(f.link.sendState).toHaveBeenLastCalledWith({ exposureId: f.entries[0]!.exposureId, state: "paused", note: "Checking agent state" });
+  });
+  it("does not read or export presence when the current link negotiated only welcome-caps-v1", async () => {
+    const f = publisher(); (f.link.features as Set<string>).delete("room-ask-v1");
+    await f.p.refresh(); expect(f.read).not.toHaveBeenCalled(); expect(f.link.sendState).not.toHaveBeenCalled();
+    (f.link.features as Set<string>).add("room-ask-v1"); await f.p.refresh(); expect(f.link.sendState).toHaveBeenCalledTimes(1);
   });
 });

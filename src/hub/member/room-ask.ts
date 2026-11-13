@@ -163,10 +163,12 @@ export class HubRoomAskAdapter {
           // Durable first-input intent BEFORE handing bytes to the ordinary Fleet delivery path.
           this.save(id, "input", saved); return current();
         } });
+      if (this.closed) return;
       const latest = this.row(id);
       if (latest?.state === "input") this.save(id, delivered ? "delivered" : "held", this.read(latest));
       else if (latest?.state === "dispatching") this.save(id, "queued", this.read(latest));
     } catch {
+      if (this.closed) return;
       const latest = this.row(id);
       if (latest?.state === "input") this.save(id, "held", this.read(latest));
       else if (latest?.state === "dispatching") this.save(id, "queued", this.read(latest));
@@ -213,7 +215,8 @@ export class HubRoomAskAdapter {
     }
     const link = this.link;
     const sent = row.state !== "acked" && this.usable(link) ? this.send(saved, link) : Promise.resolve();
-    return sent.then(() => ({ ok: true, message: this.row(row.message_id)?.state === "acked" ? "Delivered to the Hub room." : "Saved for the Hub room; waiting for acknowledgement." }));
+    return sent.then(() => ({ ok: true, message: !this.closed && this.row(row.message_id)?.state === "acked"
+      ? "Delivered to the Hub room." : "Saved for the Hub room; waiting for acknowledgement." }));
   }
   acknowledge(ack: RoomAnswerAck, source: RoomAskLink): boolean {
     if (!this.usable(source)) return false;
