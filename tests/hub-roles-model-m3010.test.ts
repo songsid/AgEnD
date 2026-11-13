@@ -17,16 +17,18 @@ describe("inactive Hub role model", () => {
     expect(ROLE_PERMISSIONS).toHaveLength(12); expect(new Set(ROLE_PERMISSIONS).size).toBe(12);
     expect(Object.isFrozen(ROLE_PERMISSIONS)).toBe(true); expect(Object.isFrozen(MANAGEMENT_PERMISSIONS)).toBe(true);
     const roles = builtinRoles(); expect(roles.map(r => r.defaultMaxFleets)).toEqual([8, 2, 1]);
+    expect(roles[0]!.permissions).toHaveLength(10); expect(roles[1]!.permissions).toHaveLength(5);
     expect(roles[0]!.permissions).toContain("hub.admin"); expect(roles[0]!.permissions).not.toContain("team.approve_ask");
+    for (const r of roles) expect(r.permissions).not.toContain("team.approve_join");
     expect(roles[1]!.permissions).not.toContain("team.approve_ask"); expect(roles[2]!.permissions).toEqual(["ask_agents", "publish_agents", "pair_fleet"]);
     for (const name of ["readContent", "cost.view", "conversation.read", "__proto__", "constructor", "audit.*"]) expect(() => parseRolePermission(name)).toThrow();
-    roles[0]!.permissions.length = 0; expect(builtinRoles()[0]!.permissions).toHaveLength(11);
+    roles[0]!.permissions.length = 0; expect(builtinRoles()[0]!.permissions).toHaveLength(10);
   });
   it("accepts the named defaults with person-only admin and independently scoped manager", () => {
     const p = policy({ assignments: [assignment({ roleId: BUILTIN_ROLE_IDS.admin }), assignment({ roleId: BUILTIN_ROLE_IDS.manager,
       subject: { kind: "group", group, dn: "CN=Owners,DC=test" }, scope: { kind: "group", group, dn: "CN=Team,DC=test" }, maxFleets: 0 })] });
     expect(parseRolePolicy(p)).toEqual(p);
-    const parsed = parseRolePolicy(p); parsed.roles[0]!.permissions.length = 0; expect(p.roles[0]!.permissions).toHaveLength(11);
+    const parsed = parseRolePolicy(p); parsed.roles[0]!.permissions.length = 0; expect(p.roles[0]!.permissions).toHaveLength(10);
   });
   it.each(["never-enabled", "enabled", "suspended"] as const)("keeps %s and its latch separate from rolesActive", state => {
     for (const rolesActive of [true, false]) expect(parseRolePolicy(policy({ state, rolesActive, everEnabled: state !== "never-enabled" }))).toMatchObject({ state, rolesActive });

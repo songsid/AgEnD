@@ -7,6 +7,8 @@ export const SELF_PERMISSIONS = Object.freeze([...GROUP_CAPABILITIES] as const);
 export const TEAM_PERMISSIONS = Object.freeze(["team.view", "team.usage", "team.approve_join", "team.approve_ask"] as const);
 export const MANAGEMENT_PERMISSIONS = Object.freeze(["fleets.manage", "join.manage", "roles.assign", "audit.view", "hub.admin"] as const);
 export const ROLE_PERMISSIONS = Object.freeze([...SELF_PERMISSIONS, ...TEAM_PERMISSIONS, ...MANAGEMENT_PERMISSIONS] as const);
+/** Catalogue entries reserved for phase 3; phase 1/2 writers must refuse them in every role. */
+export const ROLE_APPROVAL_PERMISSIONS = Object.freeze(["team.approve_join", "team.approve_ask"] as const);
 export type RolePermission = typeof ROLE_PERMISSIONS[number];
 export const ROLE_POLICY_MAX_BYTES = 256 * 1024;
 export const BUILTIN_ROLE_IDS = Object.freeze({ admin: "builtin:admin", manager: "builtin:manager", member: "builtin:member" });
@@ -33,8 +35,8 @@ export type HubRolePolicy = z.infer<typeof policySchema>;
 /** Return fresh objects: editors cannot mutate the catalogue or another policy's defaults. */
 export function builtinRoles(): HubRole[] {
   return [
-    { id: BUILTIN_ROLE_IDS.admin, name: "Administrator", kind: "admin", permissions: ROLE_PERMISSIONS.filter(p => p !== "team.approve_ask"), defaultMaxFleets: 8 },
-    { id: BUILTIN_ROLE_IDS.manager, name: "Manager", kind: "manager", permissions: [...SELF_PERMISSIONS, "team.view", "team.usage", "team.approve_join"], defaultMaxFleets: 2 },
+    { id: BUILTIN_ROLE_IDS.admin, name: "Administrator", kind: "admin", permissions: ROLE_PERMISSIONS.filter(p => !(ROLE_APPROVAL_PERMISSIONS as readonly string[]).includes(p)), defaultMaxFleets: 8 },
+    { id: BUILTIN_ROLE_IDS.manager, name: "Manager", kind: "manager", permissions: [...SELF_PERMISSIONS, "team.view", "team.usage"], defaultMaxFleets: 2 },
     { id: BUILTIN_ROLE_IDS.member, name: "Member", kind: "member", permissions: [...SELF_PERMISSIONS], defaultMaxFleets: 1 },
   ];
 }
