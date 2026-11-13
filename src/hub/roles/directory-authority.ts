@@ -136,11 +136,12 @@ export function assertHubDirectoryAdministration(handle: HubDirectoryAdministrat
 }
 
 /** The old no-witness path is configured-root/D3 only. A host identity never consumes a browser admin witness. */
-export function assertHubDirectoryActor(context: { actor: HubDirectoryDecisionRequest["actor"]; administration?: HubDirectoryAdministration; preparation?: HubDirectoryPreparation }, source: HubDirectoryAdministrationBinding): void {
+export function assertHubDirectoryActor(context: { actor: HubDirectoryDecisionRequest["actor"]; administration?: HubDirectoryAdministration; preparation?: HubDirectoryPreparation },
+  source: HubDirectoryAdministrationBinding, preparationOnly = false): void {
   if (context.actor.kind === "host-owner") {
     if (context.administration !== undefined || context.preparation !== undefined) throw new HubProtocolError("denied");
   } else if (context.preparation !== undefined) {
-    if (context.administration !== undefined) throw new HubProtocolError("denied");
+    if (!preparationOnly || context.administration !== undefined) throw new HubProtocolError("denied");
     assertHubDirectoryPreparation(context.preparation, context.actor, source);
   } else if (context.administration !== undefined) assertHubDirectoryAdministration(context.administration, context.actor, source);
   else if (canonicalArguments(context.actor.person) !== canonicalArguments(source.administrator)) throw new HubProtocolError("denied");

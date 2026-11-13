@@ -146,12 +146,12 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
     const t = time();
     if (stopped || ctx.signal?.aborted || actorKey(ctx.actor) !== actorKey(d.actor) || !boolean(ctx.current) || !boolean(d.source.current)) refuse("denied");
     if (d.administrationRequired && ctx.administration === undefined && ctx.preparation === undefined) refuse("denied");
-    assertHubDirectoryActor(ctx, d.source);
+    assertHubDirectoryActor(ctx, d.source, true);
     const s = capture();
     if (!boolean(s.current) || s.directory !== d.source.directory || s.image !== d.source.image || s.epoch !== d.source.epoch
       || !same(s.config, d.source.config) || s.bindPassword !== d.source.bindPassword || !same(s.administrator, d.source.administrator)
       || !same(s.groups, d.source.groups)) refuse("stale");
-    assertHubDirectoryActor(ctx, s);
+    assertHubDirectoryActor(ctx, s, true);
     // The authority/material callbacks may move the clock too. Last sample follows ALL of them.
     const final = time();
     if (t < d.createdAt || t >= d.expiresAt || final < d.createdAt || final >= d.expiresAt) refuse("expired");
@@ -239,7 +239,7 @@ export function createHubDirectorySettingsProof(deps: HubDirectoryProofDeps): Hu
       if (Object.keys(copy).some(key => !["directory", "bindPassword", "changes", "recipients"].includes(key))) refuse("invalid");
       const metadata = parseHubDirectoryDecisionMetadata({ actor: ctx.actor, changes: copy.changes, recipients: copy.recipients });
       const resolved = resolveDirectoryConfig(copy.directory);
-      assertHubDirectoryActor(ctx, source);
+      assertHubDirectoryActor(ctx, source, true);
       if (resolved.realm !== source.resolved.realm || resolved.profile !== source.resolved.profile
         || copy.directory.bindPasswordRef !== undefined && copy.directory.bindPasswordRef !== BIND_PASSWORD_REF) refuse("invalid");
       if (copy.bindPassword === undefined) {

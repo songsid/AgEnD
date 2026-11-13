@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { roleAuthorityWorld } from "./support/hub-role-authority-rig.js";
-import { assertHubDirectoryAdministration, assertHubDirectoryPreparation, authorizeHubDirectoryPreparation, bindHubDirectoryAdministration,
+import { assertHubDirectoryActor, assertHubDirectoryAdministration, assertHubDirectoryPreparation, authorizeHubDirectoryPreparation, bindHubDirectoryAdministration,
   bindHubDirectoryPreparation, type HubDirectoryPreparation } from "../src/hub/roles/directory-authority.js";
 import { BIND_PASSWORD_REF } from "../src/hub/init/layout.js";
 import { createHubDirectorySettingsProof, type HubDirectoryProofContext, type HubDirectoryProofSource } from "../src/hub/settings-directory-proof.js";
@@ -132,6 +132,13 @@ async function engineWorld(root = false) {
   return { ...w, browser, preparation, handle, actor, source, context, check, candidate, prepare, commit, probe, engine, input, saveDirectory: save };
 }
 describe("S129 preparation exchange at the directory proof engine", () => {
+  it("admits preparation only at an explicit preparation boundary, never an ordinary read control", async () => {
+    const w = await engineWorld();
+    try {
+      expect(() => assertHubDirectoryActor(w.context, w.source)).toThrow();
+      expect(() => assertHubDirectoryActor(w.context, w.source, true)).not.toThrow();
+    } finally { w.engine.close(); }
+  });
   it.each(["directory", "root"] as const)("cannot initially bind an actual preparation to another %s", async mode => {
     const w = await engineWorld(), source = { ...w.source };
     if (mode === "directory") source.directory = { ...w.directory }; else source.administrator = w.other;
