@@ -1,0 +1,361 @@
+{
+  "sourceHead": "5ca70231b519db8ee3c24aacc6046116ddeeef4c",
+  "scope": "Real R HTTP/SQLite + A service/runner + shared U1/U2 browser components; inert directory and physical worker; NewRoom mounted in a component harness until U shell mount lands",
+  "checks": [
+    {
+      "name": "desktop-en-light list reads real room and private assistant",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light complete direct group preview shows count",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light create persists complete group and never-signed-in state",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light human message uses actual SQL",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light plain private ask reaches actual A service",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light assistant label follows viewer language",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light no page errors",
+      "ok": true
+    },
+    {
+      "name": "desktop-en-light no horizontal document overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark list reads real room and private assistant",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark complete direct group preview shows count",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark create persists complete group and never-signed-in state",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark human message uses actual SQL",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark plain private ask reaches actual A service",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark assistant label follows viewer language",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark no horizontal document overflow",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "desktop-en-light-list.png",
+      "sha256": "4c1ccb84d112fdedf5e1aced18c7309b82476da3e2a0155de1c79bf7d67ee0fb"
+    },
+    {
+      "path": "desktop-en-light-new-group.png",
+      "sha256": "f0970eb2f8afc4c0ddce40d72e97fcefde61b7d06eb7eec108ad1ea6c86b94be"
+    },
+    {
+      "path": "desktop-en-light-thread.png",
+      "sha256": "44a1e2351144afd3be8b730e0280bfa5502d0ca4824646b1e53954fba2f365f0"
+    },
+    {
+      "path": "desktop-en-light-assistant.png",
+      "sha256": "cc30c3c6470cd19e4ca0306822ebac555605e7bf43d9caf025411235ede1d542"
+    },
+    {
+      "path": "phone-zh-TW-dark-list.png",
+      "sha256": "cbe7377211a869ee84afc3d92fb69f227e3d220a810c0a4612724733f024c461"
+    },
+    {
+      "path": "phone-zh-TW-dark-new-group.png",
+      "sha256": "e4b4c116566d63d9813e7bd4889e41648a4284bf718aa85119d7c7f15990b7ac"
+    },
+    {
+      "path": "phone-zh-TW-dark-thread.png",
+      "sha256": "9cb3d72865ca5afb5b2f87fb0084f407fe8094b9137cb4a86bc20a169e5873aa"
+    },
+    {
+      "path": "phone-zh-TW-dark-assistant.png",
+      "sha256": "4be68604a4f0674441b57fb2ade01662ee5b2befcce8f1f7957bf2ddf93e4fe6"
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=person",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=team",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=group",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates/group/9a449c36-0ce6-4301-8242-f50f23dd9cbf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/701baa3d-01b7-4d59-939d-0197510ede00",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/701baa3d-01b7-4d59-939d-0197510ede00/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/701baa3d-01b7-4d59-939d-0197510ede00/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/701baa3d-01b7-4d59-939d-0197510ede00/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/701baa3d-01b7-4d59-939d-0197510ede00/read",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/c54b014b-bf30-455c-a94b-3036ed934435",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/c54b014b-bf30-455c-a94b-3036ed934435/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c54b014b-bf30-455c-a94b-3036ed934435/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c54b014b-bf30-455c-a94b-3036ed934435/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c54b014b-bf30-455c-a94b-3036ed934435/read",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=person",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=team",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates?q=Pilot&kind=group",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/candidates/group/9a449c36-0ce6-4301-8242-f50f23dd9cbf",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/5494396b-0ecf-45fc-b381-5cbd75fd4c77",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/5494396b-0ecf-45fc-b381-5cbd75fd4c77/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/5494396b-0ecf-45fc-b381-5cbd75fd4c77/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/5494396b-0ecf-45fc-b381-5cbd75fd4c77/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/5494396b-0ecf-45fc-b381-5cbd75fd4c77/read",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/session",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms?v=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/c54b014b-bf30-455c-a94b-3036ed934435",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/events?notices=2",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/hub/v1/rooms/c54b014b-bf30-455c-a94b-3036ed934435/messages?limit=50",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c54b014b-bf30-455c-a94b-3036ed934435/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c54b014b-bf30-455c-a94b-3036ed934435/messages",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c54b014b-bf30-455c-a94b-3036ed934435/read",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/hub/v1/rooms/c54b014b-bf30-455c-a94b-3036ed934435/read",
+      "status": 200
+    }
+  ]
+}
