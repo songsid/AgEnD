@@ -26,8 +26,11 @@ const NOTE_KEY = { "額度用完": "pauseQuota", "等待登入": "pauseSignIn", 
 const groupIndex = (presence) => { const i = GROUP_ORDER.indexOf(presence); return i < 0 ? GROUP_ORDER.length : i; };
 
 /**
- * One member's status: { dot, word, note? }. word and note are hubRoom keys for
- * hroom(); nothing untranslated leaves this module. An offline member whose note
+ * One member's status: { dot, word, noteKey?, noteText? }. dot is the status
+ * colour; word is always a hubRoom key; noteKey is too when the member's
+ * presenceNote matches a known reason, while an unrecognised note goes to
+ * noteText and is shown verbatim — never passed through hroom, so an unknown
+ * reason can never render as a raw hubRoom.* key. An offline member whose note
  * is 需要更新 AgEnD shows as offline with its own word; a paused room assistant
  * shows 暫時無法回答.
  */
@@ -41,8 +44,8 @@ export function presenceView(member) {
   const noteKey = NOTE_KEY[member?.presenceNote];
   if (presence === "offline" && noteKey === "needsUpdate") return { dot: "offline", word: "needsUpdate" };
   const view = { dot: DOT[presence] ?? "offline", word: WORD[presence] ?? "stOffline" };
-  if (noteKey) view.note = noteKey;
-  else if (member?.presenceNote) view.note = member.presenceNote;
+  if (noteKey) view.noteKey = noteKey;
+  else if (member?.presenceNote) view.noteText = member.presenceNote;
   return view;
 }
 

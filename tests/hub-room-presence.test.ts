@@ -34,9 +34,20 @@ describe("presenceView", () => {
   });
   it("pauses carry their reason key; 需要更新 AgEnD is its own offline word", () => {
     const fx = createHubRoomsFixture();
-    expect(P.presenceView(byName(fx, "schedule-bot"))).toEqual({ dot: "paused", word: "stPaused", note: "pauseQuota" });
-    expect(P.presenceView(byName(fx, "infra-watch"))).toEqual({ dot: "paused", word: "stPaused", note: "pauseSignIn" });
+    expect(P.presenceView(byName(fx, "schedule-bot"))).toEqual({ dot: "paused", word: "stPaused", noteKey: "pauseQuota" });
+    expect(P.presenceView(byName(fx, "infra-watch"))).toEqual({ dot: "paused", word: "stPaused", noteKey: "pauseSignIn" });
     expect(P.presenceView(byName(fx, "old-helper"))).toEqual({ dot: "offline", word: "needsUpdate" });
+  });
+  it("an unrecognised note goes to noteText verbatim, never through hroom", () => {
+    const odd = { kind: "agent", name: "x", presence: "paused", presenceNote: "Quota exhausted" };
+    expect(P.presenceView(odd)).toEqual({ dot: "paused", word: "stPaused", noteText: "Quota exhausted" });
+    const fx = createHubRoomsFixture();
+    for (const lang of ["en", "zh-TW"]) {
+      i18n.setLang(lang, { store: false });
+      expect(hroom(P.presenceView(odd).word), lang).not.toContain("hubRoom.");
+      expect(P.presenceView(odd).noteText, lang).toBe("Quota exhausted");
+      expect("noteKey" in P.presenceView(odd), lang).toBe(false);
+    }
   });
   it("the room assistant pauses as 暫時無法回答", () => {
     const fx = createHubRoomsFixture();
@@ -53,7 +64,11 @@ describe("presenceView", () => {
       i18n.setLang(lang, { store: false });
       for (const v of views) {
         expect(hroom(v.word), `${lang}.${v.word}`).not.toBe(v.word);
-        if (v.note) expect(hroom(v.note), `${lang}.${v.note}`).not.toBe(v.note);
+        expect(hroom(v.word), `${lang}.${v.word}`).not.toContain("hubRoom.");
+        if (v.noteKey) {
+          expect(hroom(v.noteKey), `${lang}.${v.noteKey}`).not.toBe(v.noteKey);
+          expect(hroom(v.noteKey), `${lang}.${v.noteKey}`).not.toContain("hubRoom.");
+        }
       }
     }
   });
@@ -61,11 +76,11 @@ describe("presenceView", () => {
     const fx = createHubRoomsFixture();
     i18n.setLang("en", { store: false });
     expect(hroom(P.presenceView(byName(fx, "project-helper")).word)).toBe("Working");
-    expect(hroom(P.presenceView(byName(fx, "schedule-bot")).note)).toBe("Out of quota");
+    expect(hroom(P.presenceView(byName(fx, "schedule-bot")).noteKey)).toBe("Out of quota");
     expect(hroom(P.presenceView(byName(fx, "old-helper")).word)).toBe("Needs an AgEnD update");
     i18n.setLang("zh-TW", { store: false });
     expect(hroom(P.presenceView(byName(fx, "project-helper")).word)).toBe("處理中");
-    expect(hroom(P.presenceView(byName(fx, "schedule-bot")).note)).toBe("額度用完");
+    expect(hroom(P.presenceView(byName(fx, "schedule-bot")).noteKey)).toBe("額度用完");
     expect(hroom(P.presenceView(byName(fx, "old-helper")).word)).toBe("需要更新 AgEnD");
     expect(hroom(P.presenceView(byName(fx, "desk-notes")).word)).toBe("上線時回答");
   });
