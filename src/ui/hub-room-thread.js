@@ -29,7 +29,12 @@ const BOOT = "room";
 export function authorLine(author, mine = false, direct = false) {
   if (!author || mine) return "";
   if (author.kind === "assistant") return direct ? hroom("hubAssistant") : hroom("authorAssistant");
-  if (author.kind === "agent") return author.owner?.name ? hroom("authorAgent", String(author.name || ""), String(author.owner.name)) : String(author.name || "");
+  if (author.kind === "agent") {
+    if (!author.owner?.name) return String(author.name || "");
+    // 「Alex 的 Agent」: a Latin owner name keeps a space before a CJK word that follows it (Lumen); 「林小華的 Agent」 none.
+    const owner = String(author.owner.name), plain = hroom("authorAgent", "\u0001", "\u0002");
+    return hroom("authorAgent", String(author.name || ""), /[A-Za-z0-9)]$/.test(owner) && /\u0002[\u3400-\u9fff]/.test(plain) ? `${owner} ` : owner);
+  }
   return String(author.name || "");
 }
 /**
@@ -51,8 +56,8 @@ export function askState(ask) {
   const parts = [[ask.answered, "progAnswered"], [ask.working, "progWorking"], [ask.later, "progLater"]].filter(([n]) => Number(n) > 0).map(([n, k]) => hroom(k, String(n)));
   return { line: parts.join(" · ") };
 }
-/** How many answers of one question show before 「展開其餘 N 則」 (spec §3). */
-export const ANSWERS_SHOWN = 3;
+/** How many answers of one question show when they are folded, and from how many they fold (Lumen: all up to 5). */
+export const ANSWERS_SHOWN = 3, FOLD_FROM = 6;
 
 /**
  * Seam-1 messages (newest last) → the thread's messages. `ids`: a Map from a message id to its number in this thread
@@ -70,13 +75,14 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
     const author = m.author || {}, kind = author.kind;
     // An answer still to come (queued, or being worked on: the working bar says who) is never an empty bubble.
     if (m.answerTo && !m.text && (m.stage === "queued" || m.stage === "working")) continue;
-    // Past the first ANSWERS_SHOWN answers of a question, the rest wait behind one line (until it is opened).
+    // A question with FOLD_FROM answers or more shows its first ANSWERS_SHOWN; the rest wait behind one link right under the
+    // last one shown (until it is opened). Fewer than FOLD_FROM: every answer shows.
+    let foldAfter = null;
     if (m.answerTo && !direct && !expanded.has(m.answerTo)) {
       const list = answersOf.get(m.answerTo) || [], at = list.indexOf(m.id);
-      if (at >= ANSWERS_SHOWN) {
-        if (at === ANSWERS_SHOWN) out.push({ boot: BOOT, id: num(`expand:${m.answerTo}`), role: "status", sender: "", text: "", bare: true,
-          action: { label: hroom("expandRest", String(list.length - ANSWERS_SHOWN)), arg: m.answerTo } });
-        continue;
+      if (list.length >= FOLD_FROM) {
+        if (at >= ANSWERS_SHOWN) continue;
+        if (at === ANSWERS_SHOWN - 1) foldAfter = { label: hroom("expandRest", String(list.length - ANSWERS_SHOWN)), arg: m.answerTo };
       }
     }
     const id = num(m.id), mine = kind === "person" && author.id === meId;
@@ -88,6 +94,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
       roomMessage: m.id, ...(state?.delivery ? { delivery: state.delivery } : {}),
       ...(quoted ? { replyTo: { boot: BOOT, id: num(quoted.id), sender: authorLine(quoted.author, quoted.author?.id === meId, direct), text: String(quoted.text || "").slice(0, 120) } } : {}),
       ...(m.stage === "not-answered" ? { text: hroom("noAnswer") } : {}) });
+    if (foldAfter) out.push({ boot: BOOT, id: num(`expand:${foldAfter.arg}`), role: "status", sender: "", text: "", bare: true, fold: true, action: foldAfter });
     const line = askState(m.ask)?.line;
     // Its status, not an event: under it, without a time of its own.
     if (line) out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", text: line, progressOf: m.id, bare: true });
@@ -206,11 +213,12 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   // Read when shown: the latest message once loaded and again as messages arrive while the page is visible.
   const count = store.raw().length;
   useEffect(() => { if (store.loaded() && (typeof document === "undefined" || !document.hidden)) void store.markRead(); }, [store.loaded(), count]);
-  // The room's own mention labels, accented in every bubble as 「@Notes」 is (Lumen): @所有 Agent, the assistant, each member.
-  const labels = [hroom("mentionAll"), hroom("mentionAssistant"), ...(detail?.members || []).filter((m) => m.kind !== "assistant").map((m) => `@${m.name}`)];
+  // The room's own mention labels, accented in every bubble as 「@Notes」 is (Lumen): @所有 Agent, the assistant, each member —
+  // read when the thread draws (the thread keeps its options from its first render, before the room's members are known).
+  const labels = () => [hroom("mentionAll"), hroom("mentionAssistant"), ...(store.detail()?.members || []).filter((m) => m.kind !== "assistant").map((m) => `@${m.name}`)];
   const extra = {
     isUser: (x) => x.mine === true, canReply: () => !store.closed(),
-    mentionLabels: () => labels, statusAction: (arg) => store.expand(arg),
+    mentionLabels: labels, statusAction: (arg) => store.expand(arg),
     startReply: (x) => { setReply(x); setTimeout(() => input.current?.focus(), 0); },
     findQuoted: async () => { await store.older(); return false; },
   };
