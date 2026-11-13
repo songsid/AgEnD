@@ -1,0 +1,186 @@
+{
+  "sourceHead": "7df4c2a851f37c7ef0b3917cb065a51d9c3054a5",
+  "parentR1": "00af7e86e9d85ad977cb2f3444682676eef61cd7",
+  "dispatchSource": "9b2d83c64",
+  "framingSource": "563769ff7",
+  "checks": [
+    {
+      "name": "link-before",
+      "outcome": "3 semantic assertion failures",
+      "scope": "owned pinned TLS/WSS, no input"
+    },
+    {
+      "name": "agent-before",
+      "outcome": "6 semantic assertion failures before agent member route"
+    },
+    {
+      "name": "framing-network",
+      "tests": 17,
+      "files": 2,
+      "outcome": "pass"
+    },
+    {
+      "name": "focused",
+      "tests": 206,
+      "files": 10,
+      "outcome": "pass",
+      "scope": "before four extra agent cases, extra migration and held-answer feedback correction"
+    },
+    {
+      "name": "final-contracts",
+      "tests": 17,
+      "files": 3,
+      "outcome": "pass"
+    },
+    {
+      "name": "event-final",
+      "tests": 15,
+      "files": 2,
+      "outcome": "pass"
+    },
+    {
+      "name": "sync-final",
+      "tests": 41,
+      "files": 5,
+      "outcome": "pass",
+      "scope": "room agent14, real routing network1, link4, migration2, existing group-mount20"
+    },
+    {
+      "name": "native-source",
+      "exit": 0,
+      "scope": "final product; subsequent R1 sync changes fixtures/evidence only"
+    },
+    {
+      "name": "native-tests",
+      "exit": 0,
+      "scope": "all added code/test bodies; subsequent R1 sync only feature string arrays"
+    },
+    {
+      "name": "changelog",
+      "fragments": 458,
+      "outcome": "pass"
+    },
+    {
+      "name": "review-r1-before",
+      "tests": 16,
+      "failed": 2,
+      "outcome": "semantic assertions",
+      "costBefore": 38394,
+      "costLimit": 20,
+      "scope": "120offline targets,60simulated seconds; orphan late answer hidden-parent floor"
+    },
+    {
+      "name": "review-r1-after",
+      "tests": 54,
+      "files": 5,
+      "outcome": "pass",
+      "suites": [
+        "hub-room-agents-r2",
+        "hub-rooms-r1",
+        "hub-room-routing-network-r2",
+        "hub-rooms-migration-r1",
+        "hub-groups-mount-s89"
+      ]
+    },
+    {
+      "name": "review-r1-source-types",
+      "exit": 0
+    },
+    {
+      "name": "review-r1-test-types",
+      "exit": 0
+    }
+  ],
+  "limits": {
+    "maxWorkers": 2,
+    "GOMAXPROCS": 2,
+    "nice": 10,
+    "startLoadAtMost": 10
+  },
+  "bindings": [
+    {
+      "path": "changes/3856-room-agent-routing.md",
+      "sha256": "7eda63abbd2e7c44e1725818e7aaee78b4fa58592b2b279db9b0b1ceb37bb71f"
+    },
+    {
+      "path": "changes/3856-room-agent-routing.zh-TW.md",
+      "sha256": "00562aa14b683c80333cac60f39e7cdd221e97f0353f4f23273a569ce1418e6d"
+    },
+    {
+      "path": "docs/design/hub-rooms-server-r2.md",
+      "sha256": "b11b30024fd6cded4068bd57c681fcd588fd27e515b2e61f5114fccdc28d4662"
+    },
+    {
+      "path": "src/hub/client.ts",
+      "sha256": "0e3c0755d24273172d997361787d76772e6d6bd9fb45b4870bbe60964b0ad6ad"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "08b90e4f5fab15825f819f75498ec616c9852a84b9670f1bd65e68a340ab2b3e"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "994e94ea066c7a2e7f75a8904e3173b9597011f6719348fbd8c68cdc2b4fb03a"
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "sha256": "aa39f6a10d7978e97496443494673dee727368977263e8ffa35bbb185b0c40f5"
+    },
+    {
+      "path": "src/hub/protocol.ts",
+      "sha256": "0f61a27e699c0d2613c88df047adca11518749b250a8fcd45ac765370765513c"
+    },
+    {
+      "path": "src/hub/rooms/agents.ts",
+      "sha256": "1020ce2f8053c7489ae707a9104799a54fbc0fd1394c6b12ff01c567f670c4f6"
+    },
+    {
+      "path": "src/hub/rooms/schema.ts",
+      "sha256": "49ef3cdb27866eaa8a2b66397b35cb9fdfe3de4a6c41ad21114dfd10d4eaf581"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "d3a8c45dbf4af65e7da642a6605aca8cef5f8de45b06165ab3688053a0bad68b"
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "sha256": "7a4f00819151ac2603685638859863de3fab852c2c47aa6748ba1702d4a12210"
+    },
+    {
+      "path": "src/hub/server.ts",
+      "sha256": "7bf80bbeea018c3dbfd01c1baacfa7d8d29505322aa5802932e646ed6e43a128"
+    },
+    {
+      "path": "src/hub/types.ts",
+      "sha256": "e69e0a4e05ff4f039b1b415b5b7f0885e2d908f4405d7846e454ef4569bb84ae"
+    },
+    {
+      "path": "tests/hub-groups-mount-s89.test.ts",
+      "sha256": "f1ef80fade434516a4972e5c0ac44ddfa9d1c80c7281e1ce2272fa45bfc3a597"
+    },
+    {
+      "path": "tests/hub-room-agents-r2.test.ts",
+      "sha256": "d5c5a0a4ebb4f69b249c7950d3b5d64af71a808fa05d0b53362f9a84a81394f6"
+    },
+    {
+      "path": "tests/hub-room-link-r2.test.ts",
+      "sha256": "da7a1f63e60c48d1b6ea35dcf784a049ad1f11fdf00475d2f2bae513ac1859ab"
+    },
+    {
+      "path": "tests/hub-room-routing-network-r2.test.ts",
+      "sha256": "e8e3a00760e104cda817299d2ed36845982c952185bafdd728361a658a1a73cc"
+    },
+    {
+      "path": "tests/hub-rooms-migration-r1.test.ts",
+      "sha256": "ceaba6e460d4466f6face2974d4ff767be5d9020042d3f4acc355b3685919b10"
+    }
+  ],
+  "boundaries": [
+    "real owned HTTP/TLS/WSS/SQLite; inert directory, content and agent-delivery ports",
+    "no real Fleet/AD/account/CLI/browser/container",
+    "TrackC production adapter composition remains separate; default member omits capability",
+    "counts overlap; no summed total claimed",
+    "additive migration, older registry refuses; compatible fix-forward retains DB/keys"
+  ],
+  "previousSourceHead": "461e92dcc3f0c9a26db7c431adc5b6ea28e56a0b"
+}

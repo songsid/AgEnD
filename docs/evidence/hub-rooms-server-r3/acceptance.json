@@ -1,0 +1,118 @@
+{
+  "sourceCommit": "869a6fe98b46eb8c737494c1c9ae9dd38d58d55e",
+  "parentCommit": "74018cbf4ba594a4a7b1f4518bc55d8b101752d0",
+  "files": [
+    {
+      "path": "changes/3856-room-administration.md",
+      "sha256": "3ce5015d35bbb6afb741f17ea060ab390fa81956ec6ce8b36525c5b8610a4666"
+    },
+    {
+      "path": "changes/3856-room-administration.zh-TW.md",
+      "sha256": "097bc50177677d34ee3dcda26c354f0b3870961564105bd3ad672c97b8b613e5"
+    },
+    {
+      "path": "docs/design/hub-room-track-c-ports.md",
+      "sha256": "dc0cce393694feb43042a3ece757b6f3af28cc9b62c993bbc4b93618ba5d4535"
+    },
+    {
+      "path": "docs/design/hub-rooms-server-r3.md",
+      "sha256": "913364490a57fdb1d726a7820e30f67aa3ef617353dcad384e708091fb74c6b0"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "8c63745a8556498e17b36052e1c1cb889fa1f55f863b071d68e9cfebfaaa7b85"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "f3079a0ccb541cbf00048bbf1f1df09fec20438363297bbcbf2ea7ab403ecf67"
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "sha256": "5c61ac6c323185a6555bd11752c71f0d7f18cfaa974a9b058fb51f65001b03cb"
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "sha256": "cdf4e600aa477f97429538e98e5e4205422a1976527d63ed777fa5d941b8ade8"
+    },
+    {
+      "path": "src/hub/invitations.ts",
+      "sha256": "479245737600ad2ed764406779ad6fd8b2b5ed0a36acb5c1fc318034365debca"
+    },
+    {
+      "path": "src/hub/rooms/admin.ts",
+      "sha256": "54a68c11623ee7c7563c8feba3cc2c2144b84b1944085e5e45d27eff8f2e5996"
+    },
+    {
+      "path": "src/hub/rooms/agents.ts",
+      "sha256": "79fa22da6cf14697b85cf24223af6e2db8629803f34d77ba1dcd07d2d818ac3c"
+    },
+    {
+      "path": "src/hub/rooms/assistant.ts",
+      "sha256": "6edc4304b8ead380c43b9c76fd741d823c8fc0ace19df48eb24f9eb3cee51904"
+    },
+    {
+      "path": "src/hub/rooms/context.ts",
+      "sha256": "5d52327685ad98a7d44af366f6391fa8dddee8e4f845b48d85d34988a842109e"
+    },
+    {
+      "path": "src/hub/rooms/schema.ts",
+      "sha256": "631c783033cd23a6a4468ee34ad7e5ee83a01aeb8fdd9c814d3377c9796dc1eb"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "9d4c92abfea385b1abb59c622cd43d5a6b496e84ed43178c77ab2a37586abbdb"
+    },
+    {
+      "path": "src/hub/teams/types.ts",
+      "sha256": "de4e6f945f8a7c640a8fa15b7f711fa77362ba54336c338d74e2c78aaa8c331f"
+    },
+    {
+      "path": "tests/hub-room-admin-r3.test.ts",
+      "sha256": "b9bbcc98e1521811e60b53d86bb68cb83ead202da8e6d4b96295ffff9b660e56"
+    },
+    {
+      "path": "tests/hub-room-assistant-r3.test.ts",
+      "sha256": "e40b9129d495689b056e06b1632f95195728632fe95f56b33db97413848107d5"
+    },
+    {
+      "path": "tests/hub-room-integration-r3.test.ts",
+      "sha256": "d99ab37e1b881a6543fbc3dbec1ee2ec28f34cc5aef92b201900926d1f31755c"
+    },
+    {
+      "path": "tests/hub-rooms-migration-r1.test.ts",
+      "sha256": "fb211b3ab92820cb369aa4348a61438c9db9804bc847d091bf76c05a47b3cc69"
+    },
+    {
+      "path": "tests/hub-skill.test.ts",
+      "sha256": "ff40dee56b994eb1dedc0fb66124148bcfbfa3b1578d3c956571e6c1dcffd523"
+    }
+  ],
+  "checks": [
+    {
+      "name": "focused compatibility",
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-admin-r3.test.ts tests/hub-room-assistant-r3.test.ts tests/hub-room-integration-r3.test.ts tests/hub-rooms-r1.test.ts tests/hub-room-agents-r2.test.ts tests/hub-room-link-r2.test.ts tests/hub-rooms-migration-r1.test.ts tests/hub-compose.test.ts tests/hub-groups-mount-s89.test.ts tests/hub-attachments-rooms.test.ts tests/hub-skill.test.ts --maxWorkers=2",
+      "result": "212/212 in ten suites; migration suite had one fixture dependency failure (213/214 overall before repair)"
+    },
+    {
+      "name": "final migration fixture",
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-rooms-migration-r1.test.ts --maxWorkers=2",
+      "result": "3/3 after historical registry repair and new R2-to-R3 preservation case; no production change from the compatibility run"
+    },
+    {
+      "name": "source types",
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit",
+      "exitCode": 0
+    },
+    {
+      "name": "test types",
+      "command": "GOMAXPROCS=2 nice -n10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exitCode": 0
+    },
+    {
+      "name": "changelog",
+      "command": "node scripts/changelog-assemble.mjs --check",
+      "exitCode": 0
+    }
+  ],
+  "scope": "Real local HTTP/SQLite and production services with inert directory/content/provider/invitation/Team ports. No real CLI, API vendor, AD, account, Fleet, browser or host lifecycle. Not full Track R acceptance."
+}

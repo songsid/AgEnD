@@ -29,6 +29,16 @@ export interface HubContentStore {
   get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot } | undefined;
 }
 export interface HubHttpDeps {
+  /** C supplies consent/expiry storage; R supplies current room effects on the same Core/DB. */
+  roomInvitations?(core: import("./core.js").HubCore, host: import("../invitations.js").RoomInvitationHost): import("../invitations.js").HubRoomInvitations;
+  roomTeams?: import("../teams/types.js").HubTeamReader;
+  /** Track A's optional host adapter; absent means the room assistant is disabled. */
+  roomAssistant?: import("../rooms/types.js").RoomAssistantPort;
+  /** Structural admin port until the host service's typed DTO module lands; it owns validation and worker drain. */
+  assistantAdmin?: {
+    settings(): Promise<unknown>; configure(value: unknown): Promise<unknown>;
+    usage(): Promise<unknown>; stopRoom(roomId: string): Promise<void>;
+  };
   directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
   uow: HubUnitOfWork;
   audit: HubAuditSink;
