@@ -42,6 +42,8 @@ const { s3bRig } = await import(REPO + "/tests/helpers/hub-s3b-rig.ts");
 const { provisionHubIdentity } = await import(REPO + "/src/hub/tls.ts");
 // What the Hub's own listener serves under /ui/js (the authority — the page may ask for nothing else there).
 const { HUB_UI_MODULES } = await import(REPO + "/src/hub/http/compose.ts") as { HUB_UI_MODULES: readonly string[] };
+/** M-3092: whether this Hub offers rooms (its session lists rooms-v1): the sidebar then adds 「新房間」. */
+let roomsOffered = false;
 const allowed = (path: string) => /^\/(hub\/v1\/|assets\/|ui\/hub|favicon)/.test(path) || (path.startsWith("/ui/js/") && HUB_UI_MODULES.includes(path.slice(7)));
 async function startListener() {
   const server = createServer();
@@ -184,6 +186,7 @@ try {
       if (route.request().method() !== "GET") return route.continue();
       const res = await route.fetch(); const json = await res.json().catch(() => null);
       if (json && json.signedIn) json.features = [...new Set([...(json.features ?? []), "quick-pairing-v1"])];
+      if (json && json.signedIn) roomsOffered = (json.features ?? []).includes("rooms-v1");
       await route.fulfill({ response: res, json });
     });
     const noticeStreams: string[] = [];
@@ -234,7 +237,9 @@ try {
       if (phone) { await page.click("#sbOpen"); await page.waitForTimeout(600); await page.screenshot({ path: shotPath(SMOKE, cn, `${p.key}-drawer`) }); }
       const sb = await page.evaluate(SIDEBAR) as any;
       if (sb.missing) { check(`${tag}:sidebar`, false, "no #sidebar"); continue; }
-      const want = c.lang === "zh-TW" ? ["對話", "我分享的 Agent", "管理", "通知", "搜尋", "新對話"] : ["Chats", "My shared agents", "Administration", "Notices", "Search", "New chat"];
+      // M-3092: a Hub with rooms adds 「新房間」 for someone who may open rooms (the administrator, by default).
+      const want = [...(c.lang === "zh-TW" ? ["對話", "我分享的 Agent", "管理", "通知", "搜尋", "新對話"] : ["Chats", "My shared agents", "Administration", "Notices", "Search", "New chat"]),
+        ...(roomsOffered ? [c.lang === "zh-TW" ? "新房間" : "New room"] : [])];
       const rows = sb.rows as any[];
       check(`${tag}:sidebar:brand`, !!sb.brand && sb.brand.text === "AgEnD Hub" && sb.brand.title === "Team Hub" && sb.brand.lines === 1, sb.brand);
       check(`${tag}:sidebar:rows`, JSON.stringify(rows.map((x) => x.text)) === JSON.stringify(want), rows.map((x) => x.text));

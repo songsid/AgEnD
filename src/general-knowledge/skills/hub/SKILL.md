@@ -304,6 +304,24 @@ Sharing lets nobody ask yet. The owner allows a person or an AD security group; 
 On the Hub: **Chats** → **New chat** lists only the agents someone allowed you to ask ("Answers for *owner* · you can
 ask until *date*"). Pick one and **Ask**.
 
+The chat list (the sidebar; on a phone, the Chats page) looks like AgEnD's own chat list. Each chat is a row with the
+agent's avatar, its name and its owner below it; a question still waiting shows the working dot and **Waiting for an
+answer**, and a closed chat says **Closed**. Ctrl K (⌘K on a Mac) filters it by an agent's name or its owner. On a Hub
+that has rooms, the list has two groups: **Rooms** (房間: a square avatar, "3 people · 12 agents", unread count, an @
+mark when someone mentioned you) and **Agents** (one-to-one chats, the agent's status dot, **Hub assistant** last).
+Unread chats come first, then the most recent.
+
+In a room (a Hub with rooms), everyone sees every message. Each message says who wrote it: a person by name, an agent as
+"*agent* · *owner*'s agent", the room assistant as "Room assistant · Provided by the Hub". An agent answers only when it is
+@-mentioned: type `@` for the menu — **@All agents** (every agent answers; the line above the box says how many are online
+and how many answer when they're back), **@Room assistant**, each agent (its owner and status dot), then people (an @ to a
+person only reminds them). Under a message that asked several agents a line shows the progress ("Answered 7 · working 2 ·
+reply later 3"); each answer is a reply to that message. A message with no @agent is only for the people in the room. If
+the room doesn't let members @All agents, is archived, or you've left it, the box says so. The **Hub assistant** is the
+last chat under **Agents**: your own chat with the Hub's AI, which can't read your computer or other rooms. Room managers
+have the settings button in the room's header; **New room**, **Invitations** and **Administration → Rooms** are in the
+sidebar, the list and Administration.
+
 - "You're asking as yourself: the owner sees that you asked. The agent answers within what its owner allows."
 - Everyone who asks one agent shares its one conversation, so it may remember what others asked. Don't send what other
   askers shouldn't see.

@@ -108,9 +108,11 @@ const mdCache = new Map();
 const EMOJI_IDS = /<a?:[A-Za-z0-9_]{2,32}:(\d{15,25})>/g;
 const MENTION_IDS = /<(@!?|@&|#)(\d{15,25})>/g;
 const MENTION_KINDS = { "@": "u", "@!": "u", "@&": "r", "#": "c" };
-export function renderedMarkdown(text, cards, emojis, mentions) {
+export function renderedMarkdown(text, cards, emojis, mentions, labels) {
   const src = typeof text === "string" ? text : String(text == null ? "" : text);
   let sig = cards ? "c" : "-";
+  // M-3092: a Hub room's mention labels change the drawing, so they are part of its key.
+  if (Array.isArray(labels) && labels.length) sig += `|L${labels.join("\u0001")}`;
   if (src.includes("<")) {
     // Read as renderMarkdown reads it: it drops NUL first (its placeholder mark), so "<@\0id>" is a mention there too.
     const seen = src.includes("\u0000") ? src.replace(/\u0000/g, "") : src;
@@ -119,7 +121,9 @@ export function renderedMarkdown(text, cards, emojis, mentions) {
   }
   const key = `${sig}\u0000${src}`;
   let html = mdCache.get(key);
-  if (html === undefined) html = R().renderMarkdown(src, { htmlCards: cards, emojis, mentions });
+  // The fleet's call is unchanged; only a Hub room passes its mention labels (M-3092).
+  if (html === undefined) html = Array.isArray(labels) && labels.length ? R().renderMarkdown(src, { htmlCards: cards, emojis, mentions, mentionLabels: labels })
+    : R().renderMarkdown(src, { htmlCards: cards, emojis, mentions });
   else mdCache.delete(key);
   mdCache.set(key, html);
   while (mdCache.size > MD_CACHE_MAX) mdCache.delete(mdCache.keys().next().value);
@@ -196,7 +200,7 @@ export function createThread(list, scroller, opts) {
     // #2272: reply to it — a hover strip at its top right (phones: swipe left or long-press; R on a focused message).
     const key = msgKey(x);
     const act = opts.canReply?.() === false ? "" : `<div data-trust="thread-control" class="msg-actions"><button type="button" class="chip-btn icon-only" data-act="reply" data-arg="${escAttr(key)}" title="${escAttr(tr("chat.reply"))}" aria-label="${escAttr(tr("chat.reply"))}">${REPLY}</button></div>`;
-    return `<div class="msg ${u ? "user" : "agent"}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
   }
   /**
    * A message this page is sending (chat-store.js): its own bubble at once, dimmed with "Sending…" until the server
@@ -219,7 +223,7 @@ export function createThread(list, scroller, opts) {
       + `<button type="button" class="btn btn-sm" data-act="deleteOut" data-arg="${escAttr(x.clientId)}">${escAttr(tr("chat.deleteUnsent"))}</button></span></div>` : "";
     const state = going ? `<span class="out-state" role="status"><span class="out-spin" aria-hidden="true"></span>${escAttr(tr("chat.sending"))}</span>` : "";
     return `<div class="msg user out out-${st}" data-out="${escAttr(x.clientId)}"${going ? ' aria-busy="true"' : ""} tabindex="-1"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${state}</div>`
-      + `${quoteHtml(x.replyTo)}<div class="body">${x.text ? `<div class="md">${renderedMarkdown(x.text, false, opts.emojis, opts.mentions)}</div>` : ""}`
+      + `${quoteHtml(x.replyTo)}<div class="body">${x.text ? `<div class="md">${renderedMarkdown(x.text, false, opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>` : ""}`
       + `${files ? `<div class="out-files">${files}</div>` : ""}</div>${failed}</div>`;
   }
   /** The pending bubbles' upload bars and percentages, as their files stand now (in place: CSSOM, no redraw). */
@@ -283,7 +287,11 @@ export function createThread(list, scroller, opts) {
     // Each line its own row (folded: the first two, each clipped to one row); the line breaks stay in the text.
     const body = textLinkSegments(text, x.links).map(sg => sg.href ? `<a data-trust="link" class="st-link" href="${escAttr(sg.href)}">${escAttr(sg.text)}</a>` : escAttr(sg.text)).join("")
       .split(/\r\n?|\n/).map(l => `<span class="st-ln">${l}</span>`).join("\n");
-    return `<div class="msg status-line folded${overflows ? " overflows" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${more}</div>${tools}</div>`;
+    // `bare` (a Hub room's own lines: created, joined, its progress): no message tools, Copy included. The fleet never sets it.
+    // M-3092: a Hub room's line may carry one action (「展開其餘 N 則」): a button the page answers through opts.statusAction.
+    const action = x.action && typeof x.action.label === "string" && typeof x.action.arg === "string"
+      ? `<button type="button" data-trust="thread-control" class="chip-btn st-action" data-act="statusAction" data-arg="${escAttr(x.action.arg)}">${escAttr(x.action.label)}</button>` : "";
+    return `<div class="msg status-line folded${overflows ? " overflows" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${more}${action}</div>${x.bare === true ? "" : tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,
@@ -907,6 +915,7 @@ export function createThread(list, scroller, opts) {
     const act = el.dataset.act;
     if (act === "copyMsg") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) copyFrom(el, x.text); }
     else if (act === "copyCode") { const pre = el.closest(".codeblock")?.querySelector("pre"); if (pre) copyFrom(el, pre.textContent); }
+    else if (act === "statusAction") opts.statusAction?.(el.dataset.arg);
     else if (act === "toggleFold") {
       const box = el.closest(".codeblock, .msg.status-line"); if (!box) return;
       const folded = box.classList.toggle("folded");
