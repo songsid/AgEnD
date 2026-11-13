@@ -685,6 +685,11 @@ interface PaneEvidence {
 interface SubmissionSignature {
   value: string;
   unique: boolean;
+  /**
+   * M-3098: this delivery's own `[agend-delivery-id:…]` lead marker. Positive where the backend shows it as taken
+   * (CliBackend.readTakenMarkers: echoed or queued above a readable box); never evidence of a strand or of a loss.
+   */
+  takenMarker?: string;
   humanPositive?: (tag: HumanPositiveTag) => void;
   /**
    * The CLI's own record of this delivery (set once the durable begin has a transcript checkpoint): the transcript from
@@ -2671,16 +2676,18 @@ export class Daemon extends EventEmitter {
     // not — a pre-write failure never gets here; it is retried before begin.
     if (outcome !== "failed") this.noteWorkActivity();
     this.deliveryOutbox?.complete(delivery.deliveryId, this.bootId, delivery.attemptNo, outcome, evidence);
-    if (verdict && outcome !== "failed") this.startConsumedWatch(delivery, verdict);
+    if (verdict && outcome !== "failed") this.startConsumedWatch(delivery, verdict, outcome);
   }
 
   /**
    * #1201: a steer or a native-queue hand-off was accepted into the CLI's input (or may have been) — not read. Watch
    * the transcript from this attempt's checkpoint for the moment the CLI takes it, and record that on the delivery;
-   * an `uncertain` row becomes `delivered` then. Grok idle submissions use only their exact launch-UUID lease (#3810). The
+   * an `uncertain` row becomes `delivered` then. An uncertain idle submission is watched the same way (M-3098). Grok
+   * idle submissions use only their exact launch-UUID lease (#3810). The
    * watch belongs to this CLI: a stop, pause or respawn ends it (restart reconciliation owns the row after that).
    */
-  private startConsumedWatch(delivery: { deliveryId: string; attemptNo: number }, verdict: DeliveryVerdict): void {
+  private startConsumedWatch(delivery: { deliveryId: string; attemptNo: number }, verdict: DeliveryVerdict,
+    outcome: "delivered" | "uncertain" = "delivered"): void {
     const checkpoint = verdict.transcriptCheckpoint;
     const outbox = this.deliveryOutbox;
     if (!checkpoint || !outbox?.markConsumed) return;
@@ -2688,7 +2695,10 @@ export class Daemon extends EventEmitter {
     const grok = !checkpoint.runtime && checkpoint.backend === "grok" ? checkpoint.ownedGrok : undefined;
     if (grok) { if (verdict.submissionMode !== "idle_submit") return; }
     else {
-      if (verdict.submissionMode !== "steer" && verdict.submissionMode !== "native_queue_handoff") return;
+      // M-3098: an UNCERTAIN idle submission is watched too — the CLI's later marker is the same positive proof, and it
+      // clears the row from Needs you. A delivered one is not: it needs no upgrade, and the fleet cap stays for real doubt.
+      const lateIdle = verdict.submissionMode === "idle_submit" && outcome === "uncertain";
+      if (verdict.submissionMode !== "steer" && verdict.submissionMode !== "native_queue_handoff" && !lateIdle) return;
       if (!["claude-code", "codex"].includes(checkpoint.backend)) return;
     }
     const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, boot = this.bootId;
@@ -10736,6 +10746,10 @@ export class Daemon extends EventEmitter {
     }
     const humanDialect = humanMeta?.human_wire_dialect === "compact" ? "compact" : "legacy";
     const signature = this.submissionSignature(formatted, humanVerificationId ?? submissionId, humanVerificationId !== undefined, humanDialect);
+    // M-3098: the lead marker AgEnD put on this delivery, for a CLI that shows it as taken (Grok cuts its echo before
+    // the trailing message_id). Only AgEnD's own value for this attempt, and only when the text really leads with it.
+    const leadMarker = durableAttempt && humanVerificationId === undefined ? `[agend-delivery-id:${durableAttempt.deliveryId}]` : null;
+    if (leadMarker && formatted.startsWith(leadMarker + "\n")) signature.takenMarker = leadMarker;
     const rawPaste = durableAttempt?.submissionMode === "raw_paste";
     const humanAttempt = verdict.humanReceipt;
     const humanMode: HumanWriteMode = rawPaste ? "raw_paste" : steer ? "steer"
@@ -11731,6 +11745,13 @@ export class Daemon extends EventEmitter {
     //    Something sits in the box that cannot be attributed either way. Only a unique signature seen outside the box
     //    (below) can still prove this delivery; nothing else on screen may.
     const unattributedResidue = !attributable && (after.strandedInput || after.collapsedPastes > 0);
+
+    //    M-3098: this delivery's own lead marker shown as TAKEN above the box — a Grok echo's first row, or its queue.
+    //    Grok cuts an echo to three rows, so the trailing message_id never shows after Enter; the marker always does.
+    //    Placed after the strand checks: text of ours still in the box (or its collapsed paste) outranks it.
+    if (signature.takenMarker && after.inputReadable && this.backend?.readTakenMarkers?.(pane).includes(signature.takenMarker)) {
+      return this.submittedProof();
+    }
 
     // 2. Positive evidence. A unique signature needs no baseline: no earlier
     //    message can carry this delivery's message_id, so finding it outside

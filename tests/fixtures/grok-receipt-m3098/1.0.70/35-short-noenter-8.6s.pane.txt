@@ -1,0 +1,36 @@
+
+  /t/c/-/4/s/m/rig/work-1.0.70                                                               1.7K / 256K │ [Dashboard]
+
+
+     ❯ [agend-delivery-id:854874b4-0000-4000-8000-000000003098]                                              3:00 AM
+       [from:fixture-sender] please stall: an inert twenty-line fleet message for the M-3098 fixture.
+       line 3 of the long inert fixture body …
+
+
+     mock reply r4                                                                                           3:01 AM
+                                                                                                                       █
+     Worked for 8.1s                                                                                                   █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯ [agend-delivery-id:b6b6b6b6-0000-4000-8000-000000003098]                                                       │
+  │   [from:fixture-sender] please stall: an inert three-line fleet message for the M-3098 fixture. Its middle line  │
+  │   is long enough to wrap across the echo row, as the incident messages did on the live pane.                     │
+  │   (message_id: xmsg-1794587073675-m3098s | correlation_id: cid-m3098-short)                                      │
+  ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Enter:send  │  Alt+Enter:newline  │  Shift+Tab:mode  │  Ctrl+x:shortcuts
+
