@@ -43,7 +43,7 @@ import type { TmuxControlClient } from "./tmux-control.js";
 import type { FleetInstructionsParams } from "./instructions.js";
 import type { DeliveryStatus } from "./status-emojis.js";
 import { clearPausedMarker, hasPausedMarker, readPausedAt, readPauseReason, writePausedMarker, type PauseReason } from "./pause-marker.js";
-import { reportProviderRateLimit } from "./usage/provider-alerts.js";
+import { antigravityCapKey, reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance, GENERAL_NAME } from "./general-instance.js";
 import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
@@ -1071,6 +1071,9 @@ export class InstanceLifecycle {
   }
 
   attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
+    // AGEND-250 (#3771 review P2-6): the credential this daemon was LAUNCHED with, fixed now (a daemon is attached when it is created, from the configuration it launches with). An agent that keeps running
+    // after its account was changed in the configuration still runs as, and hits the quota of, the account it started with.
+    const launchedProfile = this.profileOf(name, this.backendOf(name));
     if(daemon.usesNativePane?.())daemon.on("native_pane_exited",safeHandler((data:{name:string;snapshot:RuntimePaneSnapshot;owner:InteractionOwner})=>this.nativePaneExited(name,daemon as Daemon,data),this.ctx.logger,`daemon.native_pane_exited[${name}]`));
     daemon.on("capacity_nudge_cancelled", safeHandler((data: { reason: string; target: string }) => {
       const reason = data.reason === "the user cancelled" ? t("inst.codex_retry_cancel_reason_user")
@@ -1507,7 +1510,7 @@ export class InstanceLifecycle {
       // (verified live — 0% used and "Individual quota reached" in the same
       // minute). Remember it so /usage can overlay the truth on that row.
       if (data.type === "quota" && this.backendOf(name) === "antigravity") {
-        reportProviderRateLimit("antigravity", data.message);
+        reportProviderRateLimit(antigravityCapKey(launchedProfile), data.message);
       }
 
       // Codex keeps old errors in pane scrollback. After a restart, the new

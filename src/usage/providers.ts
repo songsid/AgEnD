@@ -38,7 +38,7 @@ import {
 import { claudeKeychainService } from "../backend/claude-code.js";
 import { readKiroAuthTokens, type KiroStoredToken } from "../backend/kiro-auth-store.js";
 import { homedir, userInfo } from "node:os";
-import { getProviderRateLimit } from "./provider-alerts.js";
+import { antigravityCapKey, getProviderRateLimit } from "./provider-alerts.js";
 import { MUSE_USAGE_STALE_MS, readMuseUsageSnapshot } from "../muse-usage-relay.js";
 import {
   readStatuslineRateLimits,
@@ -1032,7 +1032,7 @@ function agyOptionalRead<T extends object>(base: string, token: string, method: 
   };
 }
 
-export async function fetchAntigravityUsage(storeHome?: string): Promise<Omit<ProviderUsage, "id" | "name">> {
+export async function fetchAntigravityUsage(storeHome?: string, scope: ClaudeUsageScope = {}): Promise<Omit<ProviderUsage, "id" | "name">> {
   // Monotonic: the deadline the models' budget is measured against is a timer, which a wall-clock change does not move.
   const startedAt = performance.now();
   // A CLI-observed rate limit outranks anything the quota API says. The bucket
@@ -1041,8 +1041,9 @@ export async function fetchAntigravityUsage(storeHome?: string): Promise<Omit<Pr
   // with "Individual quota reached". Showing those buckets would be the exact
   // misleading 🟢 0% this overlay exists to correct — so the row goes red and
   // the buckets are withheld until the cap lifts.
-  // (The cap is observed from the panes of agents and has no account on it: only the default sign-in's row says it, never a named account's.)
-  const capAlert = storeHome ? null : getProviderRateLimit("antigravity");
+  // The cap is kept per account (AGEND-250, #3771 review P2-6): the pane of an agent that hit it is reported under the credential that agent was launched with (`antigravityCapKey`: the default's, or the
+  // named account's), and this row reads its own account's key only. A row asked for a folder without saying which account it is (no `scope.profile`) has none to read: never another account's.
+  const capAlert = storeHome && !scope.profile ? null : getProviderRateLimit(antigravityCapKey(storeHome ? scope.profile : null));
   if (capAlert) {
     const hoursLeft = Math.max(1, Math.round((capAlert.resetsAtMs - Date.now()) / 3_600_000));
     const resetText = hoursLeft >= 48 ? `${Math.round(hoursLeft / 24)}d` : `${hoursLeft}h`;

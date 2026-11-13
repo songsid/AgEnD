@@ -11,6 +11,9 @@ import { createStructuredSignInTransport } from "../src/structured-signin-transp
 import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecycle.js";
 import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { EventEmitter } from "node:events";
+import { antigravityCapKey, clearProviderRateLimitsForTests, getProviderRateLimit } from "../src/usage/provider-alerts.js";
+import { fetchAntigravityUsage } from "../src/usage/providers.js";
 import { StructuredSignIn, type StructuredSignInTransport } from "../src/structured-signin.js";
 import { AGY_CODE, AGY_SCREEN, ID, runtimeRig, cleanScratch, waitFor } from "./helpers/machine-runtime.js";
 import { LoginWindowLock } from "../src/login-window-lock.js";
@@ -19,7 +22,7 @@ const dirs: string[] = [];
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-250-")); dirs.push(d); return d; };
 const savedAgend = process.env.AGEND_HOME, savedGemini = process.env.GEMINI_HOME;
 afterEach(() => {
-  vi.useRealTimers(); cleanScratch();
+  vi.useRealTimers(); cleanScratch(); clearProviderRateLimitsForTests(); vi.unstubAllGlobals();
   setAuthCheckRunnerForTests(null);
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
   if (savedAgend === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = savedAgend;
@@ -201,5 +204,55 @@ describe("P2-5: a real login screen followed by unknown text is an unknown scree
     await f.signIns.input(f.owner, f.agyTarget, login.id, login.revision, { kind: "code", value: AGY_CODE });
     expect(f.children[0]!.written).toBe(`${AGY_CODE}\n`);
     await f.stop();
+  });
+});
+
+describe("P2-6: the individual quota cap is kept on the account the agent was launched with", () => {
+  const CAP = "Individual quota reached. Resets in 139h12m12s";
+  const lifecycle = (profiles: Record<string, string | null>) => {
+    const current = { ...profiles };
+    const ctx = { fleetConfig: { instances: Object.fromEntries(Object.keys(profiles).map(n => [n, { backend: "antigravity" }])), defaults: {} }, logger: { info() {}, warn() {}, error() {}, debug() {} },
+      eventLog: null, isPlannedRestart: () => false, notifyInstanceTopic() {}, webhookEmit() {}, clearCancelButton() {}, checkModelFailover() {}, restartSingleInstance: async () => {},
+      getInstanceDir: (n: string) => `/nonexistent/${n}`, credentialProfileOf: (n: string) => current[n] ?? null } as unknown as LifecycleContext;
+    const lc = new InstanceLifecycle(ctx);
+    const attach = (name: string) => { const d = Object.assign(new EventEmitter(), { requestPauseWhenIdle() {} }); lc.attachIncidentHandlers(name, d as never); return d; };
+    return { attach, current };
+  };
+  const hit = (d: EventEmitter, name: string) => d.emit("pty_error", { name, type: "quota", action: "notify", message: CAP });
+  const tokenFile = (folder: string) => { mkdirSync(folder, { recursive: true }); writeFileSync(join(folder, TOKEN), JSON.stringify({ token: { access_token: "FIXTURE-ACCESS", token_type: "Bearer", expiry: new Date(Date.now() + 40 * 60_000).toISOString() }, auth_method: "oauth" })); };
+  const quota = () => ({ ok: true, status: 200, json: async () => ({ groups: [{ displayName: "Gemini Models", buckets: [{ bucketId: "gemini-5h", window: "5h", remainingFraction: 0.5, resetTime: "2026-11-09T09:00:00Z" }] }] }) });
+  it("the cap key: the default's is `antigravity`, an account's is its own, whatever the letter case", () => {
+    expect(antigravityCapKey(null)).toBe("antigravity"); expect(antigravityCapKey("Work")).toBe("antigravity:work"); expect(antigravityCapKey("work")).toBe(antigravityCapKey("WORK"));
+  });
+  it("two accounts, a cap on only ONE of them: only that account's row says it (named capped: the default is untouched; default capped: the named is untouched)", async () => {
+    const w = world(); tokenFile(w.home("work")); tokenFile(w.gemini + "/antigravity-cli");
+    vi.stubGlobal("fetch", async () => quota());
+    const { attach } = lifecycle({ a: "work", b: null });
+    hit(attach("a"), "a");
+    expect(getProviderRateLimit("antigravity:work")).not.toBeNull(); expect(getProviderRateLimit("antigravity")).toBeNull();
+    expect(await fetchAntigravityUsage(w.home("work"), { profile: "work" })).toMatchObject({ status: "error", errorI18n: { key: "usage.error.agy_cap" } });
+    expect((await fetchAntigravityUsage()).status).not.toBe("error");                          // the default's own row: no cap, its numbers
+    clearProviderRateLimitsForTests();
+    hit(attach("b"), "b");
+    expect(getProviderRateLimit("antigravity")).not.toBeNull(); expect(getProviderRateLimit("antigravity:work")).toBeNull();
+    expect(await fetchAntigravityUsage()).toMatchObject({ status: "error", errorI18n: { key: "usage.error.agy_cap" } });
+    expect((await fetchAntigravityUsage(w.home("work"), { profile: "work" })).status).not.toBe("error");
+  });
+  it("a profile change while the OLD agent still runs: its cap goes to the account it was launched with, not the one the configuration names now", () => {
+    const { attach, current } = lifecycle({ a: "work" });
+    const old = attach("a");                                        // launched as `work`
+    current.a = "other";                                            // the configuration now names another account; the running agent has not restarted
+    hit(old, "a");
+    expect(getProviderRateLimit("antigravity:work")).not.toBeNull();
+    expect(getProviderRateLimit("antigravity:other")).toBeNull(); expect(getProviderRateLimit("antigravity")).toBeNull();
+    const fresh = attach("a");                                      // the restart launches as `other`
+    hit(fresh, "a");
+    expect(getProviderRateLimit("antigravity:other")).not.toBeNull();
+  });
+  it("a row that reads a folder without saying which account it is has none to read (never the default's alert)", async () => {
+    const w = world(); tokenFile(w.home("work"));
+    vi.stubGlobal("fetch", async () => quota());
+    const { attach } = lifecycle({ b: null }); hit(attach("b"), "b");
+    expect((await fetchAntigravityUsage(w.home("work"))).status).not.toBe("error");
   });
 });
