@@ -23,3 +23,21 @@ No real AD, Fleet, account, agent input, native operating-system or full-suite c
 ## R1 review repair
 
 See r1/README.md and verification.json for expired-entry clearing/replacement and skewed-inbox isolation. Current31/4/native checks plus three compiling reversals validate the repaired server. UI and all25PNG bytes are unchanged; prior captures retain their own service-head scope. Receipt serialization is lossless, and only three verified historical public-asset fingerprints are exempted. Fresh exact-head CI remains required.
+
+## R2 inherited UI CI repair
+
+See r2-ci/README.md. The reviewed C service remains byte-identical. Two inherited UI files now consume the owner's#3867fix: shared badge typography and a rooms-v1-aware navigation expectation. Fresh two-case shell checks174/18PNGs and focused19/2 pass. The prior consent captures and R1claims remain stage-bound; no new full consent/gallery or native run is claimed.
+
+## R3 plain alpha sync
+
+See r3-sync/README.md. The merge consumes Ridge's public resolution and alpha d51240605 without changing the C service or its tests. Current67/8focused and both native programs pass. Prior43PNG bytes retain their heads; changed capture inputs are disclosed. Fresh exact CI/review and release holds remain.
+
+## Final R correction and scan
+
+See r4-final/README.md. Current84/9and both native programs pass. Ridge's final SSE correction is unchanged; consent C source/tests stay at R1.53exact inherited public-hash/message-ID findings are verified while raw R evidence stays byte-identical. Full fresh CIremerge scan remains required; no new browser claim.
+
+Current R receipts additionally use a lossless public-ID/asset encoding so the future squash push scan stays clear. All13decode round trips equal the original data at472; all R PNGs are unchanged. Runtime DTOs are unchanged. See r4-final/verify-encoding.py.
+
+## Current alpha sync
+
+See r5-alpha for the source-preserving current alpha sync,131/12focused and both native checks. The earlier interrupted run has no completed result. Current source bindings are refreshed; prior PNGs remain bound to their original heads.

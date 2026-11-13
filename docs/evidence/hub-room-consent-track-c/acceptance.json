@@ -92,5 +92,162 @@
       "localGit": "2.34.1; exact remerge unavailable",
       "exactFreshCIRequired": true
     }
+  },
+  "r2": {
+    "beforeHead": "8a1974312ba09a589b85c8eb563e76cae19f0aa7",
+    "ownerCommit": "d19c3f49a23e737a8e3d9cb7abe12d16ea597a9b",
+    "captureHead": "dd2ea70a919ddfd182ed64aee424e3b6bc580641",
+    "semanticOwnerPatchEqual": true,
+    "finalNonEvidencePaths": [
+      "scripts/manual/smoke/smoke-hub-shell-gate.mts",
+      "src/ui/shared/hub-chat.css"
+    ],
+    "consentSourceByteEqualR1": true,
+    "tokensCssByteEqualBefore": true,
+    "provisionalOwnPatchFullyReverted": true,
+    "baseline": {
+      "ciRun": 43495758266,
+      "ciShardJob": 132131367528,
+      "ciUiJob": 132130271590,
+      "localCssAssertionReds": 1,
+      "localCssControls": 6,
+      "ciSidebarAssertionReds": 8
+    },
+    "final": {
+      "focusedCases": 19,
+      "focusedFiles": 2,
+      "shellChecks": 174,
+      "shellCases": 2,
+      "shellPictures": 18,
+      "visuallyInspectedOriginals": 4,
+      "maxLoad1": 6.87841796875
+    },
+    "limits": [
+      "No repeated consent/browser flow claim.",
+      "No R2 native/wider-suite rerun.",
+      "Old25PNGs retain original capture-head scope.",
+      "Fresh exact-head CI and draft/parent/shared-presence/integrated-gallery holds remain."
+    ]
+  },
+  "r3Sync": {
+    "mergeHead": "55891e0434f25f31a1ce972d19fba7c943e2434c",
+    "parents": [
+      "1696b9e6efd1d5fe5738dc9c46bb44f3734624dd",
+      "8cbb33d31064e4c93ecb801e9b59fa97d3902ace"
+    ],
+    "incomingOwnerHead": "8cbb33d31064e4c93ecb801e9b59fa97d3902ace",
+    "alphaAncestor": "d51240605a11fc279a53c15c99801a8c25bea1b3",
+    "conflictPathsAllByteEqualOwner": [
+      "src/hub/http/compose.ts",
+      "src/hub/http/schema.ts",
+      "src/hub/rooms/agents.ts",
+      "src/hub/rooms/schema.ts",
+      "src/hub/rooms/service.ts",
+      "tests/hub-rooms-migration-r1.test.ts",
+      "tests/hub-shared-modules-a.test.ts"
+    ],
+    "protectedCPathsByteEqualBefore": [
+      "src/hub/invitations.ts",
+      "tests/hub-room-consent-track-c.test.ts",
+      "docs/design/hub-room-owner-consent.md",
+      "changes/3095-room-owner-consent.md",
+      "changes/3095-room-owner-consent.zh-TW.md"
+    ],
+    "nonEvidenceDifferenceVsOwner": [
+      "src/ui/shared/hub-chat.css"
+    ],
+    "differenceScope": "Only the U-owned d19 removal of the literal compact-count font; no R-owned change.",
+    "mergedPaths": 212,
+    "focused": {
+      "cases": 67,
+      "files": 8,
+      "exit": 0
+    },
+    "nativeSourceTypes": 0,
+    "nativeTestTypes": 0,
+    "changedPriorBoundInputs": [
+      "src/general-knowledge/skills/hub/SKILL.md",
+      "src/hub/http/compose.ts",
+      "src/hub/rooms/service.ts",
+      "src/ui/hub-invitations-strings.js",
+      "src/ui/hub-invitations.js",
+      "src/ui/hub-room-strings.js",
+      "src/ui/panel-hub.js",
+      "src/ui/shared/hub-chat.css",
+      "src/ui/shared/hub-rooms-u2.css",
+      "tests/hub-room-invitations.test.ts"
+    ],
+    "captureLimits": "No new browser run after this merge; all43previous PNG bytes retain their recorded heads. R2 shell is dd2ea70a and previous consent gallery is67080f8. Wider presence/integrated-gallery and parent/release holds remain.",
+    "inheritedWhitespace": "Eight incoming raw evidence logs have a trailing blank line; kept byte-identical. Source/test/script diff-check is clean.",
+    "serverScope": "R owns current room service/host/author.owner correction. C service and its own HTTP/SQLite controls stay byte-identical; Team implementation remains absent."
+  },
+  "r4Final": {
+    "sourceHead": "c4150c8b534a4d062948449329798000a2ddaea7",
+    "finalROwnerHead": "472aac0c60586fe416346d35611e1f31f558abac",
+    "rOnlyStreamFix": "f22af317bf7173fe3ca4ab2712c9c44ae609a126",
+    "r3Merge": "55891e0434f25f31a1ce972d19fba7c943e2434c",
+    "r4Merge": "e3b216977",
+    "CSourceAndOwnTestsByteEqualR1": true,
+    "runtimeTestScriptDifferenceVsROwner": [
+      "src/ui/shared/hub-chat.css"
+    ],
+    "focusedCases": 84,
+    "focusedFiles": 9,
+    "nativeSourceTypes": 0,
+    "nativeTestTypes": 0,
+    "historicalExactExemptions": 53,
+    "exemptionKinds": {
+      "publicSourceSha256": 13,
+      "publicMessageUuid": 40
+    },
+    "scanLimits": "Git2.34.1 lacks remerge. Conservative all-parent scan classified nonmerge matches; nonmerge-only diagnostic is green. No full local history-green claim. Exact fresh required CIremerge remains mandatory.",
+    "captureLimits": "No browser rerun after R3/R4. Old43PNG bytes retain recorded heads; R2shell174/18 and prior consent8case120/16 remain separate. Peer R5results are not counted as own validation.",
+    "holds": [
+      "draft",
+      "parents",
+      "shared presence/integrated gallery release",
+      "ordinary current-head review",
+      "exact current-head CI"
+    ],
+    "testsHead": "c6a20a97f47863687a3fb5580e9a64c43e6d49de",
+    "runtimeTestScriptsByteEqualTestsHead": true,
+    "ownerPngsByteUnchanged": 154,
+    "ownerReceiptRoundTripEqual": 13,
+    "currentOwnerEvidenceDirectoryScan": 0
+  },
+  "r5Alpha": {
+    "sourceHead": "cc27e56cea98de04e0bcd0b008cb24a13314d3db",
+    "ownerResolution": "47844b7cb2838b28b9d01909d17059a2344f3144",
+    "alpha": "ffc6bde2a841d4014026134946a602b4412cbe71",
+    "mergeParents": [
+      "21d454aa0574e34dfdecbf4b9c23fd2f3200c6c4",
+      "ffc6bde2a841d4014026134946a602b4412cbe71"
+    ],
+    "focused": {
+      "files": 12,
+      "cases": 131,
+      "exit": 0
+    },
+    "nativeSourceExit": 0,
+    "nativeTestExit": 0,
+    "protected": [
+      {
+        "path": "src/hub/invitations.ts",
+        "sha256": "11b9972a7970fb14e2feff40acb82e6a7afb69266066e2a0481718fe8440d2fa",
+        "equalsClearedR1": true
+      },
+      {
+        "path": "tests/hub-room-consent-track-c.test.ts",
+        "sha256": "5535c9d7b91dbbabcd613238481d1b5c8c88d70c1a5652be808679d670fd91ff",
+        "equalsClearedR1": true
+      }
+    ],
+    "resolutions": {
+      "R610a": "Consumed plain merge21d454aa0 from owner478; earlier six R source paths/evidence choices bound in private and public owner packet.",
+      "alphaFfc": "Latest owner U gallery+receipt from alpha; retain C2 room journal helpers and assistant admin mount. Module list combines incoming unread/U modules plus existing two assistant modules; paired inventory exact. Shared CSS incoming text comment, no old font literal.",
+      "evidence": "53 historical exact fingerprints and all13 repaired receipts retained. New owner routing format retained separately; original receipt decoder stays unchanged."
+    },
+    "currentInputs": 41,
+    "captures": "All43 C PNGs unchanged at their recorded prior heads; U owner gallery comes from shipped alpha. No new browser, live AD, Fleet, account or input claim."
   }
 }

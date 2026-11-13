@@ -1,0 +1,12 @@
+test-shard (1)	Run test shard 1/4	2026-11-13T20:03:35.6026385Z  FAIL  tests/ui-css-literals-ratchet.test.ts > stylesheet literals ratchet (style guide rule 4) > no new literal colour or px font size: use a token from tokens.css
+test-shard (1)	Run test shard 1/4	2026-11-13T20:03:35.6032323Z +   "src/ui/shared/hub-chat.css: font-px font-size: 10.5px (1 now, 0 allowed)",
+test-shard (1)	Run test shard 1/4	+   "src/ui/shared/hub-chat.css: font-px font-size: 10.5px (1 now, 0 allowed)",
+ui-gate	Run the Hub shell gate	2026-11-13T19:56:15.4522784Z FAIL desk-light-en:chats:sidebar:rows: ["Chats","My shared agents","Administration","Notices","Search","New chat","New room"]
+ui-gate	Run the Hub shell gate	2026-11-13T19:56:15.4548085Z FAIL desk-light-en:mine:sidebar:rows: ["Chats","My shared agents","Administration","Notices","Search","New chat","New room"]
+ui-gate	Run the Hub shell gate	2026-11-13T19:56:15.4567672Z FAIL desk-light-en:admin:sidebar:rows: ["Chats","My shared agents","Administration","Notices","Search","New chat","New room"]
+ui-gate	Run the Hub shell gate	2026-11-13T19:56:15.4570658Z FAIL desk-light-en:notices:sidebar:rows: ["Chats","My shared agents","Administration","Notices","Search","New chat","New room"]
+ui-gate	Run the Hub shell gate	2026-11-13T19:56:15.4573270Z FAIL phone-dark-zh-TW:chats:sidebar:rows: ["對話","我分享的 Agent","管理","通知","搜尋","新對話","新房間"]
+ui-gate	Run the Hub shell gate	2026-11-13T19:56:15.4574916Z FAIL phone-dark-zh-TW:mine:sidebar:rows: ["對話","我分享的 Agent","管理","通知","搜尋","新對話","新房間"]
+ui-gate	Run the Hub shell gate	2026-11-13T19:56:15.4577588Z FAIL phone-dark-zh-TW:admin:sidebar:rows: ["對話","我分享的 Agent","管理","通知","搜尋","新對話","新房間"]
+ui-gate	Run the Hub shell gate	2026-11-13T19:56:15.4579220Z FAIL phone-dark-zh-TW:notices:sidebar:rows: ["對話","我分享的 Agent","管理","通知","搜尋","新對話","新房間"]
+ui-gate	Run the Hub shell gate	2026-11-13T19:56:15.4581606Z Hub shell gate FAILED (8) in 20s — pictures and result.json in /home/runner/work/_temp/ui-gate/smoke-hub-shell-gate

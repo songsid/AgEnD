@@ -1,6 +1,7 @@
-/** Track C seam 5 read contracts only; no team SQL, routes or permission activation. */
+/** Track C seam 5 contracts. Runtime storage and routes require explicit composition. */
 import type Database from "better-sqlite3";
 import type { PersonId } from "../types.js";
+import type { HubRequestContext } from "../types.js";
 
 export interface HubTeamSnapshot {
   readonly id: string; readonly revision: number; readonly name: string;
@@ -29,4 +30,30 @@ export interface HubTeamReader {
   expand(db: Database.Database, teamIds: readonly string[]): HubTeamExpansion;
   /** Live roster membership for ask grants and creator rights; null means the team is missing/deleted. */
   isMember(db: Database.Database, teamId: string, person: PersonId): { readonly revision: number; readonly member: boolean } | null;
+}
+
+/** Seam-5 browser DTO. Canonical IDs stay separate from display-only directory labels. */
+export interface HubTeamView {
+  readonly id: string; readonly revision: number; readonly name: string;
+  readonly department: string; readonly departmentName: string;
+  readonly lead: PersonId; readonly leadName: string; readonly members: readonly PersonId[];
+  readonly canManage: boolean;
+  /** null means not observed, not a disabled account. Reads never choose a replacement lead. */
+  readonly leadEligible: boolean | null;
+  readonly memberInfo?: readonly {
+    readonly id: PersonId; readonly name: string; readonly login: string; readonly department: string;
+    readonly signedIn: boolean; readonly agents: readonly { readonly id: string; readonly name: string }[];
+  }[];
+  readonly impact?: { readonly grants: readonly { readonly id: string; readonly exposureId: string; readonly name: string; readonly expiresAt: number }[];
+    readonly roomCreator: boolean };
+}
+
+/** One mounted instance supplies CRUD and the existing room/permission reader ports. R wraps HTTP envelopes. */
+export interface HubTeams extends HubTeamReader {
+  candidates(db: Database.Database, prefix: string): readonly { readonly id: string; readonly name: string; readonly people: number }[];
+  list(ctx: HubRequestContext): Promise<readonly HubTeamView[]>;
+  get(ctx: HubRequestContext, id: string): Promise<HubTeamView>;
+  create(ctx: HubRequestContext, input: unknown): Promise<HubTeamView>;
+  update(ctx: HubRequestContext, id: string, input: unknown): Promise<HubTeamView>;
+  remove(ctx: HubRequestContext, id: string): Promise<void>;
 }

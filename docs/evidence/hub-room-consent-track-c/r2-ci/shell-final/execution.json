@@ -1,0 +1,80 @@
+{
+  "head": "dd2ea70a919ddfd182ed64aee424e3b6bc580641",
+  "command": "GATE=ci ionice -c3 nice -n10 tsx scripts/manual/smoke/smoke-hub-shell-gate.mts",
+  "exit": 0,
+  "pid": 10155,
+  "loads": [
+    {
+      "at": 1794600928.8104577,
+      "load1": 5.763671875
+    },
+    {
+      "at": 1794600930.8147688,
+      "load1": 5.763671875
+    },
+    {
+      "at": 1794600932.8159904,
+      "load1": 5.763671875
+    },
+    {
+      "at": 1794600934.818121,
+      "load1": 5.78271484375
+    },
+    {
+      "at": 1794600936.8200223,
+      "load1": 5.78271484375
+    },
+    {
+      "at": 1794600938.8245368,
+      "load1": 6.36083984375
+    },
+    {
+      "at": 1794600940.8266358,
+      "load1": 6.36083984375
+    },
+    {
+      "at": 1794600942.828036,
+      "load1": 6.36083984375
+    },
+    {
+      "at": 1794600944.8283794,
+      "load1": 6.17138671875
+    },
+    {
+      "at": 1794600946.8295016,
+      "load1": 6.17138671875
+    },
+    {
+      "at": 1794600948.830852,
+      "load1": 6.39794921875
+    },
+    {
+      "at": 1794600950.832039,
+      "load1": 6.39794921875
+    },
+    {
+      "at": 1794600952.834131,
+      "load1": 6.39794921875
+    },
+    {
+      "at": 1794600954.8356926,
+      "load1": 6.6064453125
+    },
+    {
+      "at": 1794600956.8377833,
+      "load1": 6.6064453125
+    },
+    {
+      "at": 1794600958.8425865,
+      "load1": 6.87841796875
+    }
+  ],
+  "env": {
+    "PW_DIR": "/home/han/.cache/wt-hubdto",
+    "CHROME": "/home/han/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+    "FONTCONFIG_FILE": "/etc/fonts/fonts.conf",
+    "REPO": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c",
+    "OUT": "/home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-invitations-track-c/.artifacts/room-invitations-track-c/r2-ci/shell-final",
+    "GATE": "ci"
+  }
+}
