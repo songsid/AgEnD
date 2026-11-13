@@ -31,3 +31,9 @@ See r2-ci/README.md. The reviewed C service remains byte-identical. Two inherite
 ## R3 plain alpha sync
 
 See r3-sync/README.md. The merge consumes Ridge's public resolution and alpha d51240605 without changing the C service or its tests. Current67/8focused and both native programs pass. Prior43PNG bytes retain their heads; changed capture inputs are disclosed. Fresh exact CI/review and release holds remain.
+
+## Final R correction and scan
+
+See r4-final/README.md. Current84/9and both native programs pass. Ridge's final SSE correction is unchanged; consent C source/tests stay at R1.53exact inherited public-hash/message-ID findings are verified while raw R evidence stays byte-identical. Full fresh CIremerge scan remains required; no new browser claim.
+
+Current R receipts additionally use a lossless public-ID/asset encoding so the future squash push scan stays clear. All13decode round trips equal the original data at472; all R PNGs are unchanged. Runtime DTOs are unchanged. See r4-final/verify-encoding.py.

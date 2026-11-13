@@ -1,0 +1,108 @@
+{
+  "incomingHead": "472aac0c60586fe416346d35611e1f31f558abac",
+  "encoding": "public-observations-v1",
+  "changes": [
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r3-consent/browser/receipt.json",
+      "beforeSha256": "d8c2c62555d630e2390b6829c100bd6df111b883f52cb8b641b336aff80e6636",
+      "afterSha256": "28d73858d17aa984c64aad501ff9ee09e2741c80fc1c72be4816d0182e93a089",
+      "roundTripEqual": true,
+      "assetMaps": 1
+    },
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r3-consent/pm-copy/browser/receipt.json",
+      "beforeSha256": "8530912a77de9c5c87bade29bd8511834531cf5d6e87852d3aafab7d64ba0d3c",
+      "afterSha256": "31f33ffe4331bd2f189043f6859cc0604d0e9b7721331d266f3f42d315fd09bd",
+      "roundTripEqual": true,
+      "assetMaps": 1
+    },
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r4-routing/final/browser/receipt.json",
+      "beforeSha256": "06e4185982447d87e28ece1f958b1367bb68d042c1d4998179318bb5ab687823",
+      "afterSha256": "ddef4d8ff9384a5a11b2e5cfb8cd3a1fd8a9b6309b30d9e5c76f24080c7ec56f",
+      "roundTripEqual": true,
+      "assetMaps": 1,
+      "publicIds": 6
+    },
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r4-routing/initial-harness/browser/receipt.json",
+      "beforeSha256": "8ef1d3270103af73caa86405f7dd81fbbe50d763fefe914b6afd988d2861be34",
+      "afterSha256": "02365c0f190333fc0e04c78983718eb5a0f2ebd7e1c3757eee5d47c66de5d3ef",
+      "roundTripEqual": true,
+      "assetMaps": 1
+    },
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r4-routing/lifecycle-retake/browser/receipt.json",
+      "beforeSha256": "a94c983fc150283cd4c8a0a5e03011d74d2a96a7ca16a27379674fbb43606e6e",
+      "afterSha256": "fe112af3fae04b891d02180793957dc9583aa1bcc9a7cae985e10f5aeb2dde9f",
+      "roundTripEqual": true,
+      "assetMaps": 1,
+      "publicIds": 3
+    },
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r4-routing/phone-pre-fix/browser/receipt.json",
+      "beforeSha256": "2cf40c2935c1d7a0f52905a8ccb4d9554f9e87e1f17534f63bbd70ad6fa7fc82",
+      "afterSha256": "f791364776dffe746bfb5d25cb59c41f4788ab1ec13b10b36d1e4d684142c333",
+      "roundTripEqual": true,
+      "assetMaps": 1,
+      "publicIds": 3
+    },
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r4-routing/pre-fix/browser/receipt.json",
+      "beforeSha256": "b55bf0339940dc47d93a78f2dd61f3706daa93bda340525ecfc8327ee37161ec",
+      "afterSha256": "39f8e99797160f58c86d5000e9f9b3625223f49a5b5a2b609d84c50685ec0249",
+      "roundTripEqual": true,
+      "assetMaps": 1,
+      "publicIds": 3
+    },
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r4-routing/presence-red/browser/receipt.json",
+      "beforeSha256": "87acc21148ec0b2504f33885384d1553d1f96e87e1d1159baf49d599e7080d8e",
+      "afterSha256": "39c72b07f9334fa85318aecbb573fd6923fdc6317927b6ad09a25c197bac2ae3",
+      "roundTripEqual": true,
+      "assetMaps": 1,
+      "publicIds": 3
+    },
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json",
+      "beforeSha256": "b8f89dc706ec171da31e55676191d16bba64032db9ee9fc47c42029612c5ce56",
+      "afterSha256": "72d2d6aff1c6c5e45c2fa38f0b8bd6c6ed42abf15a3ddce2e3fbe68cc06e395b",
+      "roundTripEqual": true,
+      "assetMaps": 1,
+      "publicIds": 10
+    },
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-event-diagnostic/receipt.json",
+      "beforeSha256": "f76ac85d6d019591d490505c0a6b9d781927ab85860e4ed7b12ed74aaa71953b",
+      "afterSha256": "95b8062b8472a9b2217bd012817f6720b332f727ed83259b3b404409bef49fa2",
+      "roundTripEqual": true,
+      "assetMaps": 1,
+      "publicIds": 3
+    },
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-final/receipt.json",
+      "beforeSha256": "7eaf5c1b7104a7bfc6fddfcf490b2be038d282224473d9af9494118d4e6b06a2",
+      "afterSha256": "09743b2dc348ebad9dbf81464311e2b09d06c0a90d7d8101c2102d0bdd2336af",
+      "roundTripEqual": true,
+      "assetMaps": 1,
+      "publicIds": 3
+    },
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-initial/receipt.json",
+      "beforeSha256": "0ef855e0dd0e7876f4ece80b30cf11cebc64cc59a3d6d8dbe17dedabf22fa76f",
+      "afterSha256": "85e691e677a1ca77a49489e37382f222e1fa413e63aeb0898f481b81fcd4a7a1",
+      "roundTripEqual": true,
+      "assetMaps": 1,
+      "publicIds": 3
+    },
+    {
+      "path": "docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-stream-diagnostic/receipt.json",
+      "beforeSha256": "ed76879d93cdb819d94295f41c518df787ea9129cd15ba1b30e09efad711b8f3",
+      "afterSha256": "d7102404e6783cdc147a143763530e42bafddce55952ca4ccd2849f936e71e50",
+      "roundTripEqual": true,
+      "assetMaps": 1,
+      "publicIds": 3
+    }
+  ],
+  "semantics": "idempotencyId maps to wire idempotencyKey; sha256ToPaths reverses asset maps; strip evidenceEncoding at root. JSON decode equality asserted for every changed receipt."
+}

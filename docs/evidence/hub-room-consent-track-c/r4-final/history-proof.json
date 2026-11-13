@@ -1,0 +1,691 @@
+{
+  "ciFailedRun": 43502307646,
+  "ciPriorNonmergeCount": 26,
+  "finalInheritedNonmergeCount": 53,
+  "counts": {
+    "public-source-sha256": 13,
+    "public-message-uuid": 40
+  },
+  "rows": [
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-event-diagnostic/receipt.json:generic-api-key:301",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-event-diagnostic/receipt.json:generic-api-key:504",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-event-diagnostic/receipt.json:generic-api-key:525",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/1/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-event-diagnostic/receipt.json:generic-api-key:672",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/8/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-final/receipt.json:generic-api-key:322",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-final/receipt.json:generic-api-key:524",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-final/receipt.json:generic-api-key:545",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/1/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-final/receipt.json:generic-api-key:692",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/8/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:720",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:1007",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:1028",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/1/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:1175",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/8/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:1465",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/1/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:1890",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/1/events/21/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:1994",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/2/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:2015",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/2/events/1/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:2210",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/2/events/14/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:2630",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/3/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/browser/receipt.json:generic-api-key:3135",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/3/events/31/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-initial/receipt.json:generic-api-key:303",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-initial/receipt.json:generic-api-key:482",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-initial/receipt.json:generic-api-key:503",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/1/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-initial/receipt.json:generic-api-key:650",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/8/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-stream-diagnostic/receipt.json:generic-api-key:301",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-stream-diagnostic/receipt.json:generic-api-key:504",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-stream-diagnostic/receipt.json:generic-api-key:525",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/1/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "472aac0c60586fe416346d35611e1f31f558abac:docs/evidence/hub-rooms-integration-r3/r5-owner-thread/history/browser-stream-diagnostic/receipt.json:generic-api-key:672",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/8/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "a31b6e3430bb6ae8c729a90bc7815c3b6f31b2a9:docs/evidence/hub-rooms-integration-r3/r4-routing/final/browser/receipt.json:generic-api-key:448",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    },
+    {
+      "fingerprint": "a31b6e3430bb6ae8c729a90bc7815c3b6f31b2a9:docs/evidence/hub-rooms-integration-r3/r4-routing/final/browser/receipt.json:generic-api-key:639",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "a31b6e3430bb6ae8c729a90bc7815c3b6f31b2a9:docs/evidence/hub-rooms-integration-r3/r4-routing/final/browser/receipt.json:generic-api-key:660",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/1/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "a31b6e3430bb6ae8c729a90bc7815c3b6f31b2a9:docs/evidence/hub-rooms-integration-r3/r4-routing/final/browser/receipt.json:generic-api-key:798",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/8/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "a31b6e3430bb6ae8c729a90bc7815c3b6f31b2a9:docs/evidence/hub-rooms-integration-r3/r4-routing/final/browser/receipt.json:generic-api-key:1067",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/1/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "a31b6e3430bb6ae8c729a90bc7815c3b6f31b2a9:docs/evidence/hub-rooms-integration-r3/r4-routing/final/browser/receipt.json:generic-api-key:1088",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/1/events/1/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "a31b6e3430bb6ae8c729a90bc7815c3b6f31b2a9:docs/evidence/hub-rooms-integration-r3/r4-routing/final/browser/receipt.json:generic-api-key:1250",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/1/events/11/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "924575a0b49249f12b285f0356f57f0a28a22131:docs/evidence/hub-rooms-integration-r3/r4-routing/phone-pre-fix/browser/receipt.json:generic-api-key:205",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    },
+    {
+      "fingerprint": "924575a0b49249f12b285f0356f57f0a28a22131:docs/evidence/hub-rooms-integration-r3/r4-routing/phone-pre-fix/browser/receipt.json:generic-api-key:361",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "924575a0b49249f12b285f0356f57f0a28a22131:docs/evidence/hub-rooms-integration-r3/r4-routing/phone-pre-fix/browser/receipt.json:generic-api-key:382",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/1/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "924575a0b49249f12b285f0356f57f0a28a22131:docs/evidence/hub-rooms-integration-r3/r4-routing/phone-pre-fix/browser/receipt.json:generic-api-key:520",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/8/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "5a921fdca1f8dd6111f676256444a5ba729abab2:docs/evidence/hub-rooms-integration-r3/r4-routing/lifecycle-retake/browser/receipt.json:generic-api-key:202",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    },
+    {
+      "fingerprint": "5a921fdca1f8dd6111f676256444a5ba729abab2:docs/evidence/hub-rooms-integration-r3/r4-routing/lifecycle-retake/browser/receipt.json:generic-api-key:356",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "5a921fdca1f8dd6111f676256444a5ba729abab2:docs/evidence/hub-rooms-integration-r3/r4-routing/lifecycle-retake/browser/receipt.json:generic-api-key:377",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/1/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "5a921fdca1f8dd6111f676256444a5ba729abab2:docs/evidence/hub-rooms-integration-r3/r4-routing/lifecycle-retake/browser/receipt.json:generic-api-key:515",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/8/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "5a921fdca1f8dd6111f676256444a5ba729abab2:docs/evidence/hub-rooms-integration-r3/r4-routing/presence-red/browser/receipt.json:generic-api-key:206",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    },
+    {
+      "fingerprint": "5a921fdca1f8dd6111f676256444a5ba729abab2:docs/evidence/hub-rooms-integration-r3/r4-routing/presence-red/browser/receipt.json:generic-api-key:361",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "5a921fdca1f8dd6111f676256444a5ba729abab2:docs/evidence/hub-rooms-integration-r3/r4-routing/presence-red/browser/receipt.json:generic-api-key:382",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/1/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "5a921fdca1f8dd6111f676256444a5ba729abab2:docs/evidence/hub-rooms-integration-r3/r4-routing/presence-red/browser/receipt.json:generic-api-key:520",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/8/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "98d54da4111f4ceb94ea5c25b98965335ad4ed20:docs/evidence/hub-rooms-integration-r3/r4-routing/initial-harness/browser/receipt.json:generic-api-key:115",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    },
+    {
+      "fingerprint": "98d54da4111f4ceb94ea5c25b98965335ad4ed20:docs/evidence/hub-rooms-integration-r3/r4-routing/pre-fix/browser/receipt.json:generic-api-key:235",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    },
+    {
+      "fingerprint": "98d54da4111f4ceb94ea5c25b98965335ad4ed20:docs/evidence/hub-rooms-integration-r3/r4-routing/pre-fix/browser/receipt.json:generic-api-key:389",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/0/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "98d54da4111f4ceb94ea5c25b98965335ad4ed20:docs/evidence/hub-rooms-integration-r3/r4-routing/pre-fix/browser/receipt.json:generic-api-key:410",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/1/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "98d54da4111f4ceb94ea5c25b98965335ad4ed20:docs/evidence/hub-rooms-integration-r3/r4-routing/pre-fix/browser/receipt.json:generic-api-key:548",
+      "classification": "public-message-uuid",
+      "jsonPointers": [
+        "/events/0/events/8/data/message/idempotencyKey"
+      ],
+      "canonicalUuid": true,
+      "onlyPublicSseMessageDto": true,
+      "publicSchemaSources": [
+        "src/hub/rooms/types.ts",
+        "src/hub/rooms/service.ts",
+        "src/ui/hub-room-thread.js"
+      ]
+    },
+    {
+      "fingerprint": "80a63f8da3d638051a50598a3baa563151ac5d08:docs/evidence/hub-rooms-integration-r3/r3-consent/pm-copy/browser/receipt.json:generic-api-key:1030",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    },
+    {
+      "fingerprint": "b1827bb363eac62e13091de50451437d0c9b69ba:docs/evidence/hub-rooms-integration-r3/r3-consent/browser/receipt.json:generic-api-key:949",
+      "classification": "public-source-sha256",
+      "jsonPointers": [
+        "/served//assets/tokens.css"
+      ],
+      "publicSourcePath": "src/ui/shared/tokens.css",
+      "publicSourceAtFindingCommitMatches": true
+    }
+  ],
+  "scope": "Conservative all-parent scan with Git2.34.1; automatic merge copies are excluded, not exempted. Exact CIremerge required. No raw receipt/PNG rewrite or global/path/rule exception.",
+  "beforeHistoryHead": "e3b21697744a14c39896fd1264260b4e67896e7c",
+  "afterExemptionsSourceHead": "c6a20a97f47863687a3fb5580e9a64c43e6d49de"
+}

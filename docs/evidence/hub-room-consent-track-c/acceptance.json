@@ -180,5 +180,39 @@
     "captureLimits": "No new browser run after this merge; all43previous PNG bytes retain their recorded heads. R2 shell is dd2ea70a and previous consent gallery is67080f8. Wider presence/integrated-gallery and parent/release holds remain.",
     "inheritedWhitespace": "Eight incoming raw evidence logs have a trailing blank line; kept byte-identical. Source/test/script diff-check is clean.",
     "serverScope": "R owns current room service/host/author.owner correction. C service and its own HTTP/SQLite controls stay byte-identical; Team implementation remains absent."
+  },
+  "r4Final": {
+    "sourceHead": "c4150c8b534a4d062948449329798000a2ddaea7",
+    "finalROwnerHead": "472aac0c60586fe416346d35611e1f31f558abac",
+    "rOnlyStreamFix": "f22af317bf7173fe3ca4ab2712c9c44ae609a126",
+    "r3Merge": "55891e0434f25f31a1ce972d19fba7c943e2434c",
+    "r4Merge": "e3b216977",
+    "CSourceAndOwnTestsByteEqualR1": true,
+    "runtimeTestScriptDifferenceVsROwner": [
+      "src/ui/shared/hub-chat.css"
+    ],
+    "focusedCases": 84,
+    "focusedFiles": 9,
+    "nativeSourceTypes": 0,
+    "nativeTestTypes": 0,
+    "historicalExactExemptions": 53,
+    "exemptionKinds": {
+      "publicSourceSha256": 13,
+      "publicMessageUuid": 40
+    },
+    "scanLimits": "Git2.34.1 lacks remerge. Conservative all-parent scan classified nonmerge matches; nonmerge-only diagnostic is green. No full local history-green claim. Exact fresh required CIremerge remains mandatory.",
+    "captureLimits": "No browser rerun after R3/R4. Old43PNG bytes retain recorded heads; R2shell174/18 and prior consent8case120/16 remain separate. Peer R5results are not counted as own validation.",
+    "holds": [
+      "draft",
+      "parents",
+      "shared presence/integrated gallery release",
+      "ordinary current-head review",
+      "exact current-head CI"
+    ],
+    "testsHead": "c6a20a97f47863687a3fb5580e9a64c43e6d49de",
+    "runtimeTestScriptsByteEqualTestsHead": true,
+    "ownerPngsByteUnchanged": 154,
+    "ownerReceiptRoundTripEqual": 13,
+    "currentOwnerEvidenceDirectoryScan": 0
   }
 }
