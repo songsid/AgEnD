@@ -139,10 +139,18 @@ Ownership of the checks:
 - **Bounded receipts and metadata** (key, person, time, outcome) are kept, although the Hub stores no transcript.
 
 **C4. Group grants and real version skew.**
-- **Grant storage and its evaluator are coordinated with Cairn's M-3016** before either migration is built.
-- **Room exposures only** may be granted to an AD group, bound to the group's GUID. Private-agent grants stay personal
-  and GUID-bound. Every authoritative reader is updated for the group subject: the catalog projection, the policy impact
-  inventory, and the grant reads.
+- **Grant model: M-3016's, the one canonical model (agreed with Cairn).** Room sharing adds no grant migration of its own.
+  - The grant subject keeps the existing tagged shape: `{ kind: "person", person: PersonKey }` or `{ kind: "group",
+    group: { realm, objectId } }`, keyed by the immutable AD GUID (objectId) as in group policy.
+  - No name or DN is authoritative. A group's label or DN is display data only, and a selection is re-resolved when it
+    is saved.
+  - M-3016 also owns the evaluator. It answers whether a person is admitted now, with session, generation and expiry
+    fences and a bounded fresh membership check, never an indefinite cache. It also updates every authoritative reader:
+    catalog, ask, read, delivery, and the policy impact inventory.
+  - A room's join list is those grant rows, read through that evaluator. Whether agents also take group grants is
+    M-3016's scope: the user's #3743 item 3 allows it.
+  - Group grants are independent of roles (roles design 74a4129cd): team, usage or audit scopes give no right to join or
+    ask.
 - **Search is feedback only**, followed by the existing resolve, preview and current checks.
 - **Skew.** An older peer's exposure schema is strict and rejects an unknown key, so:
   - an agent exposure never carries `kind`;
