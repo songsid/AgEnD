@@ -1,0 +1,460 @@
+{
+  "sourceCommit": "63b3b701f920a8c364d375b9be3ae56c0a8f06df",
+  "baseline": {
+    "passed": 48,
+    "failed": 0
+  },
+  "typeCommand": "GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.json",
+  "testCommand": "nice -n 10 node_modules/.bin/vitest run tests/hub-roles-directory-transition-s129.test.ts --maxWorkers=2",
+  "restoredSource": {
+    "src/hub/directory-decision-proof.ts": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+    "src/hub/http/core.ts": "e46c9d80d96f220552c9813061346d77684d388e705784c444d95892669c2584",
+    "src/hub/roles/authority.ts": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+    "src/hub/roles/clock.ts": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5"
+  },
+  "cases": [
+    {
+      "id": "T01-explicit-scope",
+      "file": "src/hub/roles/authority.ts",
+      "originalSha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "mutantSha256": "3e5b2b08754b5bcd3ef026c2c1756be31095edd3ea1d5d14bc4de2104a29042c",
+      "restoredSha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "replacements": [
+        {
+          "old": "const at = common(proof);",
+          "new": "const at = common();",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 37,
+      "failed": 11,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 operation-owned directory transition retains the acting admin's proof through the decision's own canonical rebind and version advance",
+          "firstLine": "AssertionError: expected [Function] to not throw an error but 'Error: group_policy_unavailable' was thrown"
+        },
+        {
+          "name": "S129 explicit administration decision authority keeps the real clock generation-strict outside the explicitly supplied frame",
+          "firstLine": "Error: group_policy_unavailable"
+        },
+        {
+          "name": "S129 explicit administration decision authority does not turn a different management permission into directory authority",
+          "firstLine": "AssertionError: expected 2 to be 1 // Object.is equality"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses actor despite a structurally current SQL decision",
+          "firstLine": "AssertionError: expected 2 to be 1 // Object.is equality"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses session despite a structurally current SQL decision",
+          "firstLine": "AssertionError: expected 2 to be 1 // Object.is equality"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses request despite a structurally current SQL decision",
+          "firstLine": "AssertionError: expected 2 to be 1 // Object.is equality"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses host despite a structurally current SQL decision",
+          "firstLine": "AssertionError: expected 2 to be 1 // Object.is equality"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses hub-binding despite a structurally current SQL decision",
+          "firstLine": "AssertionError: expected 2 to be 1 // Object.is equality"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses clock-binding despite a structurally current SQL decision",
+          "firstLine": "AssertionError: expected 2 to be 1 // Object.is equality"
+        },
+        {
+          "name": "S129 explicit administration decision authority cannot consume another database's otherwise valid same-request frame",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 explicit administration decision authority retires an explicit assertion after the successful owning callback returns",
+          "firstLine": "Error: group_policy_unavailable"
+        }
+      ]
+    },
+    {
+      "id": "T02-exact-old-policy",
+      "file": "src/hub/roles/authority.ts",
+      "originalSha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "mutantSha256": "aba86b6794eaf5d253e19b8150bad24a5a980d54ecef1e35ffaaa172b07ce0ec",
+      "restoredSha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "replacements": [
+        {
+          "old": "view.before.raw !== before.raw || ",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 47,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 explicit administration decision authority refuses policy despite a structurally current SQL decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "T03-exact-old-version",
+      "file": "src/hub/roles/authority.ts",
+      "originalSha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "mutantSha256": "656188378350be2e75731517ae844b446ab57ef3d44d320d2c16e473ae0730cc",
+      "restoredSha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "replacements": [
+        {
+          "old": " || view.expected.authorizationVersion !== authEpoch\n              || version() !== authEpoch + (view.phase === \"final\" ? 1 : 0)",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 47,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 explicit administration decision authority refuses version despite a structurally current SQL decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "T04-frame-retirement",
+      "file": "src/hub/directory-decision-proof.ts",
+      "originalSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "mutantSha256": "451f392c8127d44185cf32d9b6d6934d42ec1a47b9f278790416c4f885ff3240",
+      "restoredSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "replacements": [
+        {
+          "old": "!state.active || ",
+          "new": "",
+          "count": 2
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 46,
+      "failed": 2,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 exact synchronous decision frames retires the frame on throw and rolls back the operation",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 exact synchronous decision frames retires the frame on thenable and rolls back the operation",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "T05-complete-transport",
+      "file": "src/hub/directory-decision-proof.ts",
+      "originalSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "mutantSha256": "41f82bd183dd5572ee8af3244f7c6ed4fe173deef7117acfd07c8206a4ca446d",
+      "restoredSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "replacements": [
+        {
+          "old": "\n      || JSON.stringify(transport) !== state.transportImage",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 47,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 exact synchronous decision frames refuses final-callback transport tampering and rolls back SQL",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "T06-exact-current-policy",
+      "file": "src/hub/directory-decision-proof.ts",
+      "originalSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "mutantSha256": "7893cccdad226f5b6996a7c6e67fe5a2bc04f9c1f2b88a2fa2285fd78e82e4e4",
+      "restoredSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "replacements": [
+        {
+          "old": "row.body !== state.currentRaw || ",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 47,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 exact synchronous decision frames refuses final-callback policy tampering and rolls back SQL",
+          "firstLine": "AssertionError: expected false to be true // Object.is equality"
+        }
+      ]
+    },
+    {
+      "id": "T07-exact-actor",
+      "file": "src/hub/directory-decision-proof.ts",
+      "originalSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "mutantSha256": "2e08b922357f607d74c2a50312e560c1f0e00e0ce69b46028a99220d00b277be",
+      "restoredSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "replacements": [
+        {
+          "old": "binding.actor !== undefined && !same(binding.actor, state.request.actor)",
+          "new": "false",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 41,
+      "failed": 7,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 explicit administration decision authority refuses actor despite a structurally current SQL decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses session despite a structurally current SQL decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses request despite a structurally current SQL decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses host despite a structurally current SQL decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 exact synchronous decision frames refuses a actor binding without granting another scope",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 exact synchronous decision frames refuses a session binding without granting another scope",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 exact synchronous decision frames refuses a request binding without granting another scope",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "T08-final-time-sample",
+      "file": "src/hub/roles/authority.ts",
+      "originalSha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "mutantSha256": "a2fe8e2245eff5b04210f4a6af15a0d33a8cb673cd5cdf067872c8c37935d2b7",
+      "restoredSha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "replacements": [
+        {
+          "old": "            at = time();\n",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 47,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 explicit administration decision authority refuses final-proof late-clock loss and rolls back the decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "T09-real-clock",
+      "file": "src/hub/roles/authority.ts",
+      "originalSha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "mutantSha256": "756317283eac7816dde7b676639d61b3101ed3f5c30201419a75367d3bdcd915",
+      "restoredSha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "replacements": [
+        {
+          "old": "            if (before.kind === \"roles\") sync(decisionClock!.call(decision, proof));\n",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 42,
+      "failed": 6,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 explicit administration decision authority refuses final-proof marker loss and rolls back the decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses final-proof settled loss and rolls back the decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses final-proof owner loss and rolls back the decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses final-proof schema loss and rolls back the decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses final-proof late-clock loss and rolls back the decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 explicit administration decision authority refuses final-proof late-provider loss and rolls back the decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "T10-post-clock-provider",
+      "file": "src/hub/roles/authority.ts",
+      "originalSha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "mutantSha256": "6ea4272b0bb20495d9aa1a3e2acae6388cf44c5295e60fcfd5f9807ebbcbd018",
+      "restoredSha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "replacements": [
+        {
+          "old": "            decisionLive(); inspect();",
+          "new": "            live(); inspect();",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 47,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 explicit administration decision authority refuses final-proof late-provider loss and rolls back the decision",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "T11-core-provider",
+      "file": "src/hub/http/core.ts",
+      "originalSha256": "e46c9d80d96f220552c9813061346d77684d388e705784c444d95892669c2584",
+      "mutantSha256": "67f745b61090b1d1755f2b220657620a30823bb9b57acabfefa7c447d6120c9d",
+      "restoredSha256": "e46c9d80d96f220552c9813061346d77684d388e705784c444d95892669c2584",
+      "replacements": [
+        {
+          "old": "this.deps.management !== management || ",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 47,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 explicit administration decision authority keeps the HubCore mount/provider fence on the explicit permit method",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "T12-exact-operation",
+      "file": "src/hub/directory-decision-proof.ts",
+      "originalSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "mutantSha256": "9bffd0e05b13884b2201ef65a38ed1a552aa9a6eebeb26a25b828405fc7868eb",
+      "restoredSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "replacements": [
+        {
+          "old": "stored.body !== JSON.stringify(operation) || ",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 47,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 exact synchronous decision frames refuses final-callback operation tampering and rolls back SQL",
+          "firstLine": "AssertionError: expected false to be true // Object.is equality"
+        }
+      ]
+    },
+    {
+      "id": "T13-original-reader",
+      "file": "src/hub/directory-decision-proof.ts",
+      "originalSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "mutantSha256": "95ac688ac0ed8e917b985b16dfc0d0fe792af00393e1bf39f0adc212bdc3b3e4",
+      "restoredSha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "replacements": [
+        {
+          "old": "state.transport.read !== state.method || ",
+          "new": "",
+          "count": 1
+        },
+        {
+          "old": " || state.transport.read !== state.method",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 47,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 exact synchronous decision frames refuses final-callback reader tampering and rolls back SQL",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ]
+    },
+    {
+      "id": "T14-clock-generation",
+      "file": "src/hub/roles/clock.ts",
+      "originalSha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5",
+      "mutantSha256": "73b362cb3321d466ead5c46e4b61196e3a15972ba5ef2c06a57279a2dbeee84c",
+      "restoredSha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5",
+      "replacements": [
+        {
+          "old": "\n          || view.before.policy.generation !== generation",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 47,
+      "failed": 1,
+      "verdict": "CAUGHT",
+      "failedAssertions": [
+        {
+          "name": "S129 explicit administration decision authority does not let a clock selected for another generation consume the frame",
+          "firstLine": "AssertionError: expected +0 to be 2 // Object.is equality"
+        }
+      ]
+    }
+  ]
+}

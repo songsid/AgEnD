@@ -1,0 +1,152 @@
+{
+  "sourceCommit": "63b3b701f920a8c364d375b9be3ae56c0a8f06df",
+  "parent": {
+    "pr": 3819,
+    "head": "71b6286907a56be85dd85d0f81029b2724fa520d"
+  },
+  "task": "S-129/M-3010",
+  "recordedAt": "2026-11-13T10:57:17.656514+00:00",
+  "boundary": "inactive opt-in exact synchronous directory SQL decision; no production opt-in",
+  "originalFailFirst": {
+    "checkpoint": "746423454069a6ce14ae2cc8fc2eebfe0ca5c354",
+    "passed": 2,
+    "failed": 1,
+    "failure": "ordinary permit refuses own policy generation rebind with group_policy_unavailable",
+    "scope": "actual SQLite/role/session/transport; inert staged file hashes; fixture subsequently expanded with actual historical cutover"
+  },
+  "restored": {
+    "command": "nice -n 10 node_modules/.bin/vitest run tests/hub-roles-directory-transition-s129.test.ts tests/hub-directory-settings-decision.test.ts tests/hub-roles-authority-s129.test.ts tests/hub-roles-clock-s129.test.ts tests/hub-roles-session-s129.test.ts tests/hub-roles-directory-s129.test.ts --maxWorkers=2",
+    "passed": 292,
+    "failed": 0,
+    "skipped": 0,
+    "files": 6,
+    "newBoundaryCases": 48
+  },
+  "nativeTypes": {
+    "version": "7.0.2",
+    "source": {
+      "command": "GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.json",
+      "exit": 0
+    },
+    "tests": {
+      "command": "GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0,
+      "when": "exact source/test bytes before isolated mutations; all restored byte-for-byte"
+    }
+  },
+  "mutations": {
+    "isolated": 14,
+    "compiled": 14,
+    "semanticAssertionRed": 14,
+    "survivors": 0,
+    "restored": true,
+    "detail": "mutations.json"
+  },
+  "changelog": {
+    "command": "node scripts/changelog-assemble.mjs --check",
+    "fragments": 448,
+    "exit": 0
+  },
+  "bindings": [
+    {
+      "file": "src/hub/directory-decision-proof.ts",
+      "sha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "bytes": 5060
+    },
+    {
+      "file": "src/hub/settings-directory-decision.ts",
+      "sha256": "a7be86d307e22adc25cd9724aefee3ca5ed0db3aa951b15bc22cd7ae9acebf20",
+      "bytes": 23700
+    },
+    {
+      "file": "src/hub/roles/authority.ts",
+      "sha256": "c6cbf3a3ab8e9813525295ee929dad178f72a1f75ad96ba2818ad99525d73746",
+      "bytes": 13237
+    },
+    {
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5",
+      "bytes": 4710
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "e46c9d80d96f220552c9813061346d77684d388e705784c444d95892669c2584",
+      "bytes": 18850
+    },
+    {
+      "file": "tests/hub-roles-directory-transition-s129.test.ts",
+      "sha256": "a4614ccfcda851b294612da2b680263361b46827eb40d01234628c9bbbb3ed70",
+      "bytes": 16583
+    },
+    {
+      "file": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "c886cf7218dcb2e713259fa2be29bd27b42a134d61535a520ddf96e85ffd8b28",
+      "bytes": 7232
+    },
+    {
+      "file": "docs/design/hub-roles-directory-decision-s129.md",
+      "sha256": "947b8cef6e4ca6d9c6d2bd3a4e5a0ed734906c5672a420b9e375eee986575506",
+      "bytes": 3136
+    },
+    {
+      "file": "changes/3743-roles-directory-decision.md",
+      "sha256": "f960d8dee2f47413412bb04daf7ca88d3fdcdcc416cbe3e5b09f236710336c4c",
+      "bytes": 263
+    },
+    {
+      "file": "changes/3743-roles-directory-decision.zh-TW.md",
+      "sha256": "286013e430179963b781f44b4814e2a4b99d22b033fe5fe9a60d7af78053faf5",
+      "bytes": 245
+    },
+    {
+      "file": "src/hub/roles/directory-authority.ts",
+      "sha256": "dea8f65c4e2a4bc1a352fa22780d1e68659aa0425024d78465a526872fda628c",
+      "bytes": 4718,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-directory-proof.ts",
+      "sha256": "247df13aadb24460a2602a3609bfdbd0aab05b26c877024442aec97a40d01f05",
+      "bytes": 19554,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-commit.ts",
+      "sha256": "778284b011dd741414db9cf233ce646f506d8195993a0afdd051f650a88d0357",
+      "bytes": 36985,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/session-directory-transition.ts",
+      "sha256": "130bfb9882ad2365f44c8659b6fdc37c0da7ab4dd9327215ff49c39e84c60428",
+      "bytes": 8924,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/sessions.ts",
+      "sha256": "115f24436cb77e35ebdfd9bd0c8d37c1f34d3040e39725af80efa963c58d0e2c",
+      "bytes": 16479,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "a37e2a2c51d6291e56bce25c98ae5e4d576c7b086689fde33825f1147f06b760",
+      "bytes": 41544,
+      "unchangedFromParent": true
+    }
+  ],
+  "evidenceScopes": [
+    "Actual SQLite, sessions, required audit, transport floor and historical role cutover; fictional directory answers and controlled auxiliary-assignment setup.",
+    "File images are inert hashes. No mounted Save, file install, successor browser handoff, startup migration, browser, container, real directory, account or pilot run.",
+    "No user-facing strings/assets/configuration/skills changed; no PNG or cached-shell SKEW claim.",
+    "A rollback can leave the existing independent transport floor raised; no healthy post-rollback transport assertion.",
+    "Initial fixture/schema/type drafts are excluded from semantic proof; only the original 1-red/2-control baseline and the final compiling reversals are counted."
+  ],
+  "holds": [
+    "DRAFT",
+    "parent-first plain alpha sync and resolution review",
+    "current-head CI unverified",
+    "alpha.3 release freeze",
+    "full S-129 acceptance incomplete; no role activation"
+  ]
+}
