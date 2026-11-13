@@ -64,6 +64,16 @@ describe("the thread's mapping (pure)", () => {
     const w = { id: "a2", roomId: "r", at: 3, author: { kind: "agent", id: "n2", name: "Planner" }, text: "", mentions: [], answerTo: "q1", stage: "working" };
     const small = thread.toThreadMessages([q, a, w], { meId: FIXTURE_ME.id, ids: new Map() });
     expect(small.map((x: any) => x.sender)).toEqual(["陳主任", "Notes · 林小華的 Agent"]);
+    // A Latin owner name keeps a space before 的 (Lumen); a CJK one doesn't.
+    expect(thread.authorLine({ kind: "agent", name: "Notes", owner: { name: "Alex" } })).toBe("Notes · Alex 的 Agent");
+    // Up to five answers all show; from six, three and one link right under the third.
+    const ask = { id: "qq", roomId: "r", at: 1, author: { kind: "person", id: "p2", name: "陳主任" }, text: "@所有 Agent ?", mentions: ["all"] };
+    const ans = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `x${i}`, roomId: "r", at: 2 + i, author: { kind: "agent", id: `e${i}`, name: `bot${i}` }, text: `ok ${i}`, mentions: [], answerTo: "qq", stage: "answered" }));
+    const five = thread.toThreadMessages([ask, ...ans(5)], { meId: FIXTURE_ME.id, ids: new Map() });
+    expect([five.filter((x: any) => x.role === "agent").length, five.some((x: any) => x.action)]).toEqual([5, false]);
+    const six = thread.toThreadMessages([ask, ...ans(6)], { meId: FIXTURE_ME.id, ids: new Map() });
+    const third = six.findIndex((x: any) => x.text === "ok 2");
+    expect([six.filter((x: any) => x.role === "agent").length, six[third + 1].action.label]).toEqual([3, "展開其餘 3 則"]);
     // A final "not answered" with no text still shows, in words (Ridge: only queued and working wait unseen).
     const gone = { ...w, id: "a3", stage: "not-answered" };
     const withGone = thread.toThreadMessages([q, a, gone], { meId: FIXTURE_ME.id, ids: new Map() });
@@ -137,6 +147,42 @@ describe("a send answered with the bare message, before any stream (Ridge's serv
   });
 });
 
+describe("a room's committed order (Ridge's `sequence`)", () => {
+  const room = { id: "g1", kind: "group", name: "Order", people: 2, agents: 2 };
+  const msg = (id: string, sequence: number | undefined, extra: any = {}) => ({ id, roomId: "g1", at: 1, author: { kind: "person", id: "p1", name: "Sam" }, text: id, mentions: [], ...(sequence === undefined ? {} : { sequence }), ...extra });
+  function fake(history: any[]) {
+    const h: Record<string, (d: any) => void> = {};
+    const client = { room: async () => ({ ok: true, room, me: { id: "me", role: "member" }, members: [], settings: {} }),
+      roomMessages: async () => ({ ok: true, messages: history, more: false }), subscribeRooms: (handlers: any) => { Object.assign(h, handlers); return () => {}; },
+      markRoomRead: async () => ({ ok: true }) };
+    return { client, h };
+  }
+  it("placeholders that arrive out of order, a person between answers, answers in place: drawn by sequence", async () => {
+    const q = msg("q", 1, { mentions: ["all"], ask: { total: 3, answered: 0, working: 3, later: 0 } });
+    const ph = (id: string, seq: number, name: string) => msg(id, seq, { author: { kind: "agent", id: `e-${id}`, name }, text: "", answerTo: "q", stage: "working" });
+    const { client, h } = fake([q]);
+    const st = thread.createRoomStore("g1", { client });
+    await until(() => st.loaded());
+    h["message.added"]({ roomId: "g1", message: ph("a3", 4, "C") });                       // events out of order
+    h["message.added"]({ roomId: "g1", message: ph("a1", 2, "A") });
+    h["message.added"]({ roomId: "g1", message: msg("human", 5, { text: "between" }) });
+    h["message.added"]({ roomId: "g1", message: ph("a2", 3, "B") });
+    for (const [id, seq, name] of [["a2", 3, "B"], ["a3", 4, "C"], ["a1", 2, "A"]] as const)   // answered in place, in another order
+      h["message.updated"]({ roomId: "g1", message: { ...ph(id, seq, name), text: `${name} done`, stage: "answered" } });
+    expect(st.raw().map((m: any) => m.id)).toEqual(["q", "a1", "a2", "a3", "human"]);
+    expect(st.messages().filter((x: any) => x.role !== "status" && !x.action).map((x: any) => x.text)).toEqual(["q", "A done", "B done", "C done", "between"]);
+    st.stop();
+  });
+  it("without a sequence (a direct chat, an older Hub) the arrival order stays", async () => {
+    const { client, h } = fake([msg("a", undefined), msg("b", undefined)]);
+    const st = thread.createRoomStore("g1", { client });
+    await until(() => st.loaded());
+    h["message.added"]({ roomId: "g1", message: msg("c", undefined) });
+    expect(st.raw().map((m: any) => m.id)).toEqual(["a", "b", "c"]);
+    st.stop();
+  });
+});
+
 describe("the shared renderer's mention labels (Hub-only opt-in)", () => {
   it("accents exact labels with a space, CJK or a hyphen as it accents @Notes; without labels nothing changes", async () => {
     const R = (globalThis as any).AgendChatRender || (await import("/assets/chat-render.js"), (globalThis as any).AgendChatRender);
@@ -154,6 +200,9 @@ describe("a room on the page", () => {
     const { pg, restore } = await roomPage("room-weekly");
     try {
       expect(pg.root.querySelector(".hub-room-page .hub-chat-head strong")!.textContent).toBe("研一主管週會");
+      // Another person's @ of an agent is accented once the room's members are known (the labels are read live).
+      const chen = msgs(pg).find((m) => (m.textContent || "").includes("剛剛那一點再說清楚")) as any;
+      expect(chen.querySelector(".mention")?.textContent).toBe("@project-helper");
       // A room's own line (created …): no message tools, Copy included (Lumen).
       expect([...pg.root.querySelectorAll(".hub-room-page .thread .status-line")].every((el: any) => !el.querySelector(".msg-tools"))).toBe(true);
       expect(msgs(pg).filter((m) => m.classList.contains("user") && m.querySelector(".sender").textContent === "")).not.toHaveLength(0);
@@ -192,7 +241,7 @@ describe("a room on the page", () => {
       const answers = () => msgs(pg).filter((m) => /'s agent$/.test(m.querySelector(".sender")?.textContent || "") && /進度/.test(m.textContent)).length;
       expect(answers()).toBe(3);
       const btn = pg.root.querySelector(".hub-room-page .thread .st-action") as any;
-      expect(btn.textContent).toBe("Show the other 3");
+      expect(btn.textContent).toBe("Show 3 more");
       fire(btn, "click"); await until(() => answers() === 6);
       expect([answers(), pg.root.querySelector(".hub-room-page .thread .st-action")]).toEqual([6, null]);
     } finally { restore(); }

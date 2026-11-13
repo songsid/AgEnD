@@ -62,6 +62,30 @@ it("persists one exact answer and ACKs retries without duplicate room posts", as
   await expect(r!.http.receive(r!.frame("room.answer", { ...answer, text: "Changed" }, w.link) as never, w.link)).rejects.toThrow();
 });
 
+it("projects committed message order when an answer moves past a later human message", async () => {
+  const w = await world(), stop = new AbortController(), deadline = setTimeout(() => stop.abort(), 3000);
+  try {
+    const response = await fetch(`${r!.base}/hub/v1/rooms/events`, { headers: { Cookie: w.a.cookie }, signal: stop.signal });
+    const reader = response.body!.getReader(), parent = await send(w);
+    await vi.waitFor(() => expect(asks()).toHaveLength(1));
+    const pending = (await r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/messages`)).json.messages.find((m: any) => m.answerTo === parent.id);
+    const human = await send(w, "Human before answer", []), input = lastAsk(), text = "Answer after human";
+    await r!.http.receive(r!.frame("room.answer", { messageId: input.messageId, roomId: w.id, exposureId: w.e.id, answerId: randomUUID(), text }, w.link) as never, w.link);
+    let events = "";
+    while (!events.includes(text) || !events.slice(events.indexOf(text)).includes("\n\n")) { const chunk = await reader.read(); if (chunk.done) throw Error("stream ended"); events += new TextDecoder().decode(chunk.value); }
+    const live = events.split("\n\n").flatMap(block => block.split("\n").filter(line => line.startsWith("data: ")).map(line => JSON.parse(line.slice(6))))
+      .find(event => event.message?.text === text).message;
+    const history = (await r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/messages`)).json.messages;
+    const answer = history.find((m: any) => m.text === text);
+    expect.soft(parent.sequence).toEqual(expect.any(Number));
+    expect.soft(pending.sequence).toBeGreaterThan(parent.sequence);
+    expect.soft(human.sequence).toBeGreaterThan(pending.sequence);
+    expect.soft(answer.sequence).toBeGreaterThan(human.sequence);
+    expect.soft(live).toMatchObject({ id: pending.id, sequence: answer.sequence, stage: "answered" });
+    expect(history.filter((m: any) => [parent.id, human.id, answer.id].includes(m.id)).map((m: any) => m.id)).toEqual([parent.id, human.id, answer.id]);
+  } finally { clearTimeout(deadline); stop.abort(); }
+});
+
 it("attributes answers to their recorded owner in history and live events after an exposure changes owner", async () => {
   const w = await world(), stop = new AbortController(), deadline = setTimeout(() => stop.abort(), 3000);
   try {

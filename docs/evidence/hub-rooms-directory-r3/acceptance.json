@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "2da528a2c04dc9c856289229c0cd74fe7382dd7b",
+  "sourceCommit": "509b940cb371a92f56f427432170179beab860a8",
   "parentCommit": "5b71d3f4d0d2496278fb90f26f326ebabf19c8ed",
   "files": [
     {
@@ -12,7 +12,7 @@
     },
     {
       "path": "docs/design/hub-rooms-directory-r3.md",
-      "sha256": "23ee844376c5959639b97eea898d4a18e8a18cf8351d7b22292025f487004376"
+      "sha256": "494d378d0820ae34c592c65c69c50ee395e92680397cfb67832ae6640d7b5c68"
     },
     {
       "path": "src/general-knowledge/skills/hub/SKILL.md",
@@ -44,7 +44,7 @@
     },
     {
       "path": "src/hub/rooms/admin.ts",
-      "sha256": "711fd40255afb7917ecceb6646e1a24e60f38d293eac262665fb4dbf695ed00b"
+      "sha256": "6c9acbfd88226cea40d942efade23fc56be061c5fdb2e2b43b61692721375494"
     },
     {
       "path": "src/hub/rooms/directory.ts",
@@ -56,7 +56,7 @@
     },
     {
       "path": "src/hub/rooms/service.ts",
-      "sha256": "6be7306341b65808c72f918fbf7dfecc4234c07a5746f3b8b53d2d6190d31fb3"
+      "sha256": "2ad90b5d2f5877ae2e06936665d6c291e9b67134343275b39890bfd94116fa9f"
     },
     {
       "path": "tests/hub-room-candidates-r3.test.ts",
@@ -77,6 +77,18 @@
     {
       "path": "tests/hub-room-admin-r3.test.ts",
       "sha256": "f1135cebefcfb19fe0dfbbce06f7775f47f8198abd4f7fd960e98ed5a6d42231"
+    },
+    {
+      "path": "src/hub/rooms/types.ts",
+      "sha256": "e4ab7220700659a2d3775bae75dda63032a8b6bbe2da5977d6e37f68f6968634"
+    },
+    {
+      "path": "tests/hub-room-system-r3.test.ts",
+      "sha256": "4428bc5176e1bd82314a562cdfa91766df1954737f9f401329d4f25be923a75f"
+    },
+    {
+      "path": "tests/hub-rooms-r1.test.ts",
+      "sha256": "4d0f39f5feef8aa330f71dbe55c89f9f1a8411cc5c0b68805df33f3555e2bc79"
     }
   ],
   "checks": [
@@ -111,6 +123,10 @@
     {
       "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-client-contract-r3.test.ts tests/hub-room-candidates-r3.test.ts tests/hub-room-admin-r3.test.ts tests/hub-room-integration-r3.test.ts --maxWorkers=2",
       "result": "19/19 across4 suites on the DTO source checkpoint; overlaps historical counts, not added"
+    },
+    {
+      "command": "nice -n10 node_modules/.bin/vitest run tests/hub-room-system-r3.test.ts tests/hub-room-client-contract-r3.test.ts tests/hub-room-candidates-r3.test.ts tests/hub-room-admin-r3.test.ts tests/hub-room-integration-r3.test.ts tests/hub-rooms-r1.test.ts --maxWorkers=2",
+      "result": "37/37 across6 files after the system-event correction; overlaps historical and DTO results"
     }
   ],
   "directoryLibrary": {
@@ -128,5 +144,14 @@
     "failFirst": "Three semantic assertion failures before the fix on the broader R/C/A/U integration candidate. Relevant pre-fix methods match the prior source; not an execution of this exact draft baseline.",
     "browser": "16/16 checks and8 original EN/zh-TW PNGs through real R HTTPS/SQLite +A service/inert worker. NewRoom uses a component harness; list/thread/private assistant use the actual shell. No full invitations/Teams/settings walkthrough.",
     "natives": "Fresh source and test TypeScript programs exit0 on the DTO source body; no further product change after these checks."
+  },
+  "dtoSourceCommit": "2da528a2c04dc9c856289229c0cd74fe7382dd7b",
+  "systemEvents": {
+    "request": "Lumen actual8-PNG walkthrough at0529469f; UX8224c4675",
+    "failFirst": "3/3 new actual HTTP/SQLite tests failed with missing system metadata before implementation on234e50c37.",
+    "restored": "37/37 across6 files, both fresh native TypeScript programs exit0. Restart persistence, exact display names with English-like substrings, unmarked historical fallback, person and agent joins, explicit admin join and list preview metadata are covered.",
+    "storage": "Existing system author_id/name fields; no migration, no English parsing or rewrite. Message.system and list.lastSystem are additive.",
+    "compatibility": "Two existing R1 candidate assertions now read the candidates envelope while keeping their exact original item/eligibility expectations.",
+    "ui": "U1 owns localization/rendering and legacy fallback. U2 copy/order corrections are consumed separately by the broader integration candidate."
   }
 }
