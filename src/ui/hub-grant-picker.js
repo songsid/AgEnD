@@ -23,6 +23,15 @@ register("hubGrantPicker", {
   },
 });
 const g = (key, ...args) => t(`hubGrantPicker.${key}`, ...args);
+/** Fresh lazy picker rules must not depend on the shell's retained app.css. */
+export function linkHubGrantPickerCss(doc = typeof document !== "undefined" ? document : null) {
+  try {
+    if (!doc?.head || doc.querySelector('link[data-hub-grant-picker-css="1"]')) return;
+    const link = doc.createElement("link");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/hub-grant-picker.css"); link.setAttribute("data-hub-grant-picker-css", "1");
+    doc.head.appendChild(link);
+  } catch { /* The form's existing controls still work if the stylesheet cannot be linked. */ }
+}
 function PeopleSearch({ search, disabled, onPick }) {
   const [query, setQuery] = useState(""), [answer, setAnswer] = useState(null), [busy, setBusy] = useState(false), [retry, setRetry] = useState(0);
   const sequence = useRef(0);
@@ -57,6 +66,7 @@ export function HubGrantPicker({ x, client, act, onClose }) {
   }, [client, x.id, x.revision]);
   const groupClient = useMemo(() => ({ searchGroups: q => search("group", q) }), [search]);
   useEffect(() => {
+    linkHubGrantPickerCss();
     const mine = life.current;
     const end = client.onSignedOut?.(() => { if (life.current === mine) { life.current++; onClose(); } });
     return () => { life.current++; end?.(); for (const c of controllers.current) c.abort(); controllers.current.clear(); };

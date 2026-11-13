@@ -2,6 +2,7 @@
 import { afterEach, beforeAll, expect, it } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
+import { isServedAsset } from "../src/auth-api.js";
 let clients: any, panels: any, words: any;
 const mounted: AppPage[] = [], id = "aaaaaaaa-1111-4222-8333-444444444444";
 const person = { realm: "corp", objectId: "bbbbbbbb-1111-4222-8333-444444444444" }, group = "cccccccc-1111-4222-8333-444444444444", dn = "CN=Engineering,DC=example,DC=test";
@@ -32,6 +33,16 @@ it("offers person and AD group selection inside the current owner grant dialog",
   const select = p.root.querySelector("[data-grant-kind]") as any; select.value = "group"; fire(select, "change"); await settle(10);
   expect(p.root.textContent).toContain("Find a group"); expect(p.root.textContent).toContain("Direct members");
   expect(p.root.textContent).toContain("90 days");
+});
+it("loads the picker's own served stylesheet once, without depending on the shell's cached app.css", async () => {
+  const { p } = await mount(); await until(() => p.root.querySelector("[data-grant-picker]"));
+  const selector = 'link[data-hub-grant-picker-css="1"]';
+  expect(p.document.querySelector(selector)?.getAttribute("href")).toBe("/assets/hub-grant-picker.css");
+  expect(isServedAsset("hub-grant-picker.css")).toBe(true);
+  const kind = p.root.querySelector("[data-grant-kind]") as any;
+  kind.value = "group"; fire(kind, "change"); await settle(5);
+  const picker = await import("/ui/js/hub-grant-picker.js"); picker.linkHubGrantPickerCss(p.document);
+  expect(p.document.querySelectorAll(selector)).toHaveLength(1);
 });
 it.each(["person", "group"])("posts the selected immutable %s and exact revision once, with the chosen expiry", async kind => {
   const { p, calls } = await mount(); await until(() => p.root.querySelector("[data-grant-picker]"));

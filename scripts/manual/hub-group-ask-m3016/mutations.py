@@ -28,6 +28,9 @@ mutants=[
  ('K1','src/hub/grant-access.ts','if (at < lastObserved)','if (at < created)',subjects,'permanently retires'),
  ('K2','src/hub/grant-access.ts','lastObserved = at; return at;','return at;',subjects,'permanently retires'),
  ('K3','src/hub/grant-access.ts','if (clockRetired)','if (false)',subjects,'permanently retires'),
+ ('L1','src/ui/hub-grant-picker.js','    linkHubGrantPickerCss();','',picker,'own served stylesheet'),
+ ('L2','src/auth-api.ts','  "hub-grant-picker.css": { file: join("shared", "hub-grant-picker.css"), type: "text/css; charset=utf-8" },\n','',picker,'own served stylesheet'),
+ ('L3','src/ui/hub-grant-picker.js','if (!doc?.head || doc.querySelector(\'link[data-hub-grant-picker-css="1"]\'))','if (!doc?.head)',picker,'own served stylesheet'),
 ]
 chosen=set(sys.argv[1:]);manifest=[]
 for id,path,old,new,file,name in mutants:
