@@ -13,6 +13,7 @@ import { createHubDirectorySettingsDecision, HUB_DIRECTORY_SETTINGS_MIGRATION } 
 import { recentHubDirectoryAuthentication, prepareHubDirectorySessionRotation, completeHubRoleDirectorySessionRotation } from "../src/hub/session-directory-transition.js";
 import { assertHubDirectoryAdministration } from "../src/hub/roles/directory-authority.js";
 import type { HubDirectoryDecisionRequest } from "../src/hub/settings-directory-decision.js";
+import type { HubDirectorySessionRotation } from "../src/hub/session-directory-transition.js";
 
 type Administration = { witness: HubDirectoryAdministration; source: HubDirectoryAdministrationBinding };
 type Actor = Parameters<typeof recentHubDirectoryAuthentication>[1];
@@ -49,6 +50,59 @@ async function world(root = false) {
   };
   return { ...w, authority, decision, signInBrowser: w.browser, browser, actor, administration, commit, next };
 }
+
+interface ResponseRelease {
+  assertCurrent(): void;
+  release(): { token: string; maxAgeMs: number };
+  discard(): void;
+}
+async function prepareResponseRelease(sessions: HubSessions, rotation: HubDirectorySessionRotation, operationId: string) {
+  const prepare = (sessions as HubSessions & {
+    prepareRoleDirectoryRotationRelease?: (rotation: HubDirectorySessionRotation, operationId: string) => Promise<ResponseRelease>;
+  }).prepareRoleDirectoryRotationRelease;
+  expect(prepare).toBeTypeOf("function");
+  if (!prepare) throw Error("missing private successor-release adapter");
+  return prepare.call(sessions, rotation, operationId);
+}
+
+describe("S129 response-owned successor release", () => {
+  it("prepares without exposing a token and releases exactly once under current authority", async () => {
+    const w = await world(), { rotation, operation } = w.commit(), n = w.next();
+    const release = await prepareResponseRelease(n.sessions, rotation, operation.id);
+    expect(Object.keys(release).sort()).toEqual(["assertCurrent", "discard", "release"]);
+    expect(() => release.assertCurrent()).not.toThrow();
+    const cookie = release.release();
+    expect(n.sessions.session(cookie.token)?.person).toEqual(w.admin);
+    expect(() => release.release()).toThrow();
+  });
+  it("refuses role loss while the originating response is held", async () => {
+    const w = await world(), { rotation, operation } = w.commit(), n = w.next();
+    const release = await prepareResponseRelease(n.sessions, rotation, operation.id);
+    const before = (w.db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body;
+    w.save({ ...w.policy, generation: "g2", revision: 3, assignments: [] });
+    expect(() => release.assertCurrent()).toThrow();
+    w.db.prepare("UPDATE hub_group_policy SET body=?").run(before);
+    expect(() => release.release()).toThrow();
+  });
+  it("does not renew the fresh effect permit during a held response", async () => {
+    const w = await world(), { rotation, operation } = w.commit(), n = w.next();
+    const release = await prepareResponseRelease(n.sessions, rotation, operation.id); w.time(5000);
+    expect(() => release.assertCurrent()).toThrow(); expect(() => release.release()).toThrow();
+  });
+  it("retires when its originating rotation is cancelled", async () => {
+    const w = await world(), { rotation, operation } = w.commit(), n = w.next();
+    const release = await prepareResponseRelease(n.sessions, rotation, operation.id); rotation.discard();
+    expect(() => release.assertCurrent()).toThrow(); expect(() => release.release()).toThrow();
+  });
+  it("retains the final disclosure proof after one release, then refuses a revoked successor", async () => {
+    const w = await world(), { rotation, operation } = w.commit(), n = w.next();
+    const release = await prepareResponseRelease(n.sessions, rotation, operation.id), cookie = release.release();
+    expect(() => release.assertCurrent()).not.toThrow();
+    const successor = n.sessions.session(cookie.token)!;
+    w.db.prepare("UPDATE hub_sessions SET state='ended' WHERE id=?").run(successor.sessionId);
+    expect(() => release.assertCurrent()).toThrow(); expect(() => release.release()).toThrow();
+  });
+});
 
 describe("S129 auxiliary directory session preparation", () => {
   it("reads actual recent sign-in attestation for an auxiliary admin with an opaque named proof", async () => {
