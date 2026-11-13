@@ -85,6 +85,9 @@ try {
 finally {
   await browser?.close(); server.closeAllConnections(); await new Promise<void>(yes => server.close(() => yes())); await r.close(); rmSync(keys, { recursive: true, force: true });
   receipt.cleanup = { browserClosed: !!browser, listenerClosed: !server.listening, keysRemoved: !existsSync(keys) };
+  const servedByHash: Record<string, string[]> = {};
+  for (const [path, digest] of Object.entries(receipt.served) as [string, string][]) (servedByHash[digest] ??= []).push(path);
+  receipt.servedByHash = servedByHash; delete receipt.served;
   writeFileSync(join(out, "receipt.json"), JSON.stringify(receipt, null, 2));
 }
 console.log(JSON.stringify({ checks: receipt.checks.length, failed: receipt.checks.filter((x: any) => !x.ok).length, pictures: receipt.pictures.length }));

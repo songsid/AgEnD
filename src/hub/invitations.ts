@@ -124,8 +124,7 @@ class RoomInvitations implements HubRoomInvitations {
     const row = read(db, id); if (!row) throw new HubProtocolError("not-found");
     if (row.owner !== owner) throw new HubProtocolError("denied"); return row;
   }
-  private pendingRow(row: InvitationRow): void {
-    const now = this.now();
+  private pendingRow(row: InvitationRow, now = this.now()): void {
     if (row.state === "expired" || now >= row.expires_at) throw new HubProtocolError("not-found");
     if (now < row.created_at) throw new HubProtocolError("uncertain");
     if (row.state !== "pending") throw new HubProtocolError("not-found");
@@ -169,6 +168,9 @@ class RoomInvitations implements HubRoomInvitations {
         const existing = db.prepare("SELECT * FROM hub_room_invitations WHERE room_id=? AND exposure_id=? AND owner=? AND state='pending'")
           .get(roomId, id, exposure.owner.id) as InvitationRow | undefined;
         if (existing) { this.pendingRow(existing); result.push(existing); continue; }
+        // Retain the old history without presenting it beside its replacement. This rolls back with the new invite.
+        db.prepare("UPDATE hub_room_invitations SET state='cancelled' WHERE room_id=? AND exposure_id=? AND owner=? AND state='expired'")
+          .run(roomId, id, exposure.owner.id);
         const row: InvitationRow = { id: randomUUID(), room_id: roomId, exposure_id: id, owner: exposure.owner.id, by_person: actor.id,
           by_name: this.name(db, actor.id), agent_name: exposure.name, owner_name: exposure.owner.name, created_at: now, expires_at: now + ROOM_INVITATION_TTL, state: "pending" };
         db.prepare(`INSERT INTO hub_room_invitations VALUES(@id,@room_id,@exposure_id,@owner,@by_person,@by_name,@agent_name,@owner_name,@created_at,@expires_at,@state)`).run(row);
@@ -192,7 +194,8 @@ class RoomInvitations implements HubRoomInvitations {
     const owner = await this.who(ctx); this.expire(ctx, owner.id);
     return this.core.atomic(db => ({ invitations: (db.prepare("SELECT * FROM hub_room_invitations WHERE owner=? AND state='pending' ORDER BY created_at,id")
       .all(owner.id) as InvitationRow[]).flatMap(row => {
-      this.pendingRow(row);
+      const now = this.now(); if (now < row.created_at) return [];
+      this.pendingRow(row, now);
       let room: RoomInvitationRoom;
       try { room = this.host.room(db, row.room_id); } catch (error) {
         // A retained invitation to an archived/deleted room must not hide other rooms' pending invitations.
@@ -243,9 +246,11 @@ class RoomInvitations implements HubRoomInvitations {
       const room = this.host.managerRoom(db, roomId, actor.id), row = read(db, invitationId);
       if (!row || row.room_id !== roomId) throw new HubProtocolError("not-found");
       if (row.state === "cancelled") return [];
-      this.pendingRow(row); db.prepare("UPDATE hub_room_invitations SET state='cancelled' WHERE id=?").run(row.id);
+      const expired = row.state === "expired";
+      if (!expired) this.pendingRow(row);
+      db.prepare("UPDATE hub_room_invitations SET state='cancelled' WHERE id=?").run(row.id);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: actor.person }, action: "room.invitation-cancelled", result: "completed", roomId, exposureId: row.exposure_id });
-      this.sameRow(db, { ...row, state: "cancelled" }); this.finalTime(row);
+      this.sameRow(db, { ...row, state: "cancelled" }); if (!expired) this.finalTime(row);
       if (!equal(this.host.managerRoom(db, roomId, actor.id), room)) throw new HubProtocolError("stale");
       return [{ roomId, ownerId: row.owner, membershipChanged: false }];
     }, this.fence(ctx));

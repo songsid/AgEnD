@@ -180,3 +180,37 @@ it("retiring the owner's actual browser session during acceptance rolls back bot
   expect((await r!.call(w.o, "POST", `/hub/v1/invitations/${inv.id}/accept`, {})).status).toBe(403);
   expect(members()).toEqual([]); expect(r!.db.prepare("SELECT state FROM hub_room_invitations WHERE id=?").get(inv.id)).toEqual({ state: "pending" });
 });
+it("clears an expired invitation without restoring consent or deleting its retained history", async () => {
+  const w = await world(), inv = await w.invite();
+  w.setNow(w.now() + 7 * DAY); w.admin = await r!.signIn("admin");
+  expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.roomId}`)).json.invited).toContainEqual(expect.objectContaining({ id: inv.id, state: "expired" }));
+  expect((await r!.call(w.admin, "DELETE", `/hub/v1/rooms/${w.roomId}/invitations/${inv.id}`)).json).toEqual({ ok: true });
+  expect((await r!.call(w.admin, "DELETE", `/hub/v1/rooms/${w.roomId}/invitations/${inv.id}`)).status).toBe(200);
+  expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.roomId}`)).json.invited).toEqual([]);
+  expect(r!.db.prepare("SELECT state FROM hub_room_invitations WHERE id=?").get(inv.id)).toEqual({ state: "cancelled" });
+  expect(members()).toEqual([]);
+});
+it("re-inviting after expiry lists only the fresh pending row and rolls supersession back if audit fails", async () => {
+  const w = await world(), old = await w.invite();
+  w.setNow(w.now() + 7 * DAY); w.admin = await r!.signIn("admin");
+  r!.setAuditFails(true, "room.invitation-created");
+  expect((await r!.call(w.admin, "POST", `/hub/v1/rooms/${w.roomId}/invitations`, { agents: [w.e.id] })).status).toBeGreaterThanOrEqual(400);
+  expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.roomId}`)).json.invited).toEqual([expect.objectContaining({ id: old.id, state: "expired" })]);
+  r!.setAuditFails(false);
+  const retry = await r!.call(w.admin, "POST", `/hub/v1/rooms/${w.roomId}/invitations`, { agents: [w.e.id] }); expect(retry.status).toBe(200);
+  const fresh = retry.json.invited[0]; expect(fresh.id).not.toBe(old.id);
+  expect((await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.roomId}`)).json.invited).toEqual([expect.objectContaining({ id: fresh.id, state: "pending" })]);
+  expect(r!.db.prepare("SELECT state FROM hub_room_invitations WHERE id=?").get(old.id)).toEqual({ state: "cancelled" });
+  expect(members()).toEqual([]);
+});
+it("one future-dated invitation does not hide another current invitation from the owner's inbox", async () => {
+  const w = await world(), skewed = await w.invite(), at = w.now();
+  const other = await r!.call(w.admin, "POST", "/hub/v1/rooms", { name: "Current project" });
+  const fresh = await r!.call(w.admin, "POST", `/hub/v1/rooms/${other.json.room.id}/invitations`, { agents: [w.e.id] }); expect(fresh.status).toBe(200);
+  r!.db.prepare("UPDATE hub_room_invitations SET created_at=? WHERE id=?").run(at + 60_000, skewed.id);
+  expect((await w.pending()).map((x: { id: string }) => x.id)).toEqual([fresh.json.invited[0].id]);
+  expect((await r!.call(w.o, "POST", `/hub/v1/invitations/${skewed.id}/accept`, {})).status).toBeGreaterThanOrEqual(400);
+  expect(members()).toEqual([]);
+  w.setNow(at + 61_000);
+  expect(new Set((await w.pending()).map((x: { id: string }) => x.id))).toEqual(new Set([skewed.id, fresh.json.invited[0].id]));
+});
