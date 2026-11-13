@@ -15,7 +15,7 @@
     "caught": 14,
     "nativeCompiler": "TypeScript7.0.2",
     "sourceAndTestTypechecks": "exit0",
-    "changelogFragments": 424
+    "changelogFragments": 425
   },
   "fileDigests": {
     "src/hub/roles/cutover.ts": "2d94c6544e568a2ac25846bdec3bfd7affdb19b5cf6ca66d9de2d4bf2767a798",
@@ -224,5 +224,12 @@
     "inactive": "S-129 must convert readers/permits and register/invoke atomically before activation",
     "skillsAndSkew": "N/A: no user-facing behavior/asset/module contract change",
     "rollback": "unreferenced code can be reverted; future post-floor/precommit failures remain held, never lower floors or restore old policy"
+  },
+  "plainAlphaSync": {
+    "base": "5fc122feb46b76fd8e82eaefe73d2a2b3495db61",
+    "merge": "9302db09888b638b989a0118f494594de671f309",
+    "conflicts": false,
+    "incoming": "16 disjoint UI/docs/template/test paths; no Hub server/roles dependency changes",
+    "ownSourceAndTestDigestsUnchanged": true
   }
 }
