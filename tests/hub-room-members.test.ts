@@ -144,6 +144,19 @@ describe("Hub room members panel (section 5)", () => {
     expect(rows.find(r => r[0] === "old-helper")).toEqual(["old-helper", "dot off", "Needs an AgEnD update"]);
   });
 
+  it("presence.changed carries the reason code: a reason-only event reads in the viewer's language; an event without one clears it", async () => {
+    const { pg, client, fx } = await fixture("en");
+    await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly", detail: await detailOf(client, "room-weekly") })); await settle(20);
+    const row = (name: string) => agentRows(pg).find(r => r[0] === name);
+    fx.emit("presence.changed", { roomId: "room-weekly", memberId: "exp-01", presence: "paused", presenceReason: "quota" }); await settle(10);   // no note
+    fire(button(pg, "… 4 more"), "click"); await settle(5);
+    expect(row("project-helper")).toEqual(["project-helper", "dot warn", "Paused · Out of quota"]);
+    fx.emit("presence.changed", { roomId: "room-weekly", memberId: "exp-01", presence: "paused" }); await settle(10);   // reason omitted: cleared
+    expect(row("project-helper")).toEqual(["project-helper", "dot warn", "Paused"]);
+    fx.emit("presence.changed", { roomId: "room-weekly", memberId: "exp-08", presence: "idle" }); await settle(10);   // schedule-bot's seeded note goes too
+    expect(row("schedule-bot")).toEqual(["schedule-bot", "dot ok", "Idle"]);
+  });
+
   it("no detail yet: an empty, busy rail", async () => {
     const { pg, client } = await fixture("en");
     await pg.mount(h(panel.RoomMembersPanel, { client, roomId: "room-weekly" })); await settle(10);
