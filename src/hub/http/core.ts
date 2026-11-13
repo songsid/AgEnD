@@ -14,6 +14,7 @@ import { prepareGrantAccess, type HubGrantSubjectProof } from "../grant-access.j
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { readHubSessionEpoch } from "../session-epoch.js";
 import type { HubManagementPermission } from "../roles/authority.js";
+import type { HubDirectoryDecisionProof } from "../directory-decision-proof.js";
 import { createHubDirectoryAdmission, type HubDirectoryReads } from "../directory/admission.js";
 export { DIRECTORY_PER_PERSON, DIRECTORY_TOTAL } from "../directory/admission.js";
 
@@ -42,15 +43,25 @@ export class HubCore {
       try {
         const permit = await require.call(management, ctx, permission);
         let retired = false;
+        const check = () => {
+          this.check();
+          if (retired || this.deps.management !== management || management.require !== require) throw new HubProtocolError("unavailable");
+        };
         const assertCurrent = () => {
           try {
-            this.check();
-            if (retired || this.deps.management !== management || management.require !== require) throw new HubProtocolError("unavailable");
+            check();
             permit.assertCurrent();
           } catch (error) { retired = true; throw error; }
         };
         assertCurrent();
-        return { ...permit, assertCurrent };
+        const assertDecision = permit.assertDirectoryDecision;
+        return { ...permit, assertCurrent, ...(assertDecision ? { assertDirectoryDecision: (proof: HubDirectoryDecisionProof) => {
+          try {
+            check();
+            if (permit.assertDirectoryDecision !== assertDecision) throw new HubProtocolError("unavailable");
+            assertDecision.call(permit, proof); check();
+          } catch (error) { retired = true; throw error; }
+        } } : {}) };
       } catch (error) {
         // Preserve the real session's signed-out answer after a held proof read; a stale reader never restores the permit.
         if (ctx.isCurrent?.() === false) await ctx.current();

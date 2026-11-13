@@ -1,5 +1,6 @@
 /** Operation-owned management proof. Not mounted until canonical consumers and cutover are ready. */
 import { performance } from "node:perf_hooks";
+import type Database from "better-sqlite3";
 import { z } from "zod";
 import type { HubDirectory } from "../directory/types.js";
 import { HubGroupReadOverload, type GroupCheckContext, type HubGroupPolicyStore } from "../group-policy/store.js";
@@ -9,6 +10,7 @@ import { epoch, HubProtocolError, identifier, person, validated } from "../valid
 import { evaluateRolePolicy } from "./evaluate.js";
 import { MANAGEMENT_PERMISSIONS } from "./model.js";
 import type { HubCanonicalPolicy } from "./read.js";
+import { inspectHubDirectoryDecisionProof, type HubDirectoryDecisionProof } from "../directory-decision-proof.js";
 
 export type HubManagementPermission = typeof MANAGEMENT_PERMISSIONS[number];
 export const HUB_MANAGEMENT_PROOF_TTL = 5_000;
@@ -21,6 +23,8 @@ export interface HubManagementPermit {
   readonly expiresAt: number;
   /** Mandatory before each effect/disclosure, including after any await or reentrant callback. */
   assertCurrent(): void;
+  /** Opt-in, exact synchronous directory decision only. This does not relax assertCurrent(). */
+  assertDirectoryDecision?(proof: HubDirectoryDecisionProof): void;
 }
 /** First issuance only: the issuer identity comes from the server's retained approval, never browser input. */
 export interface HubJoinIssuerPermit {
@@ -38,6 +42,10 @@ export interface HubManagementAuthorityOptions {
   version(): number;
   /** The real expiry settlement's persisted clock fence; synchronous and mandatory on role images. */
   assertAuthorizationTime(): void;
+  directoryDecision?: {
+    db: Database.Database; hubId: string;
+    assertAuthorizationTime(proof: HubDirectoryDecisionProof): void;
+  };
   now?: () => number;
   elapsedNow?: () => number;
 }
@@ -48,6 +56,8 @@ function sync(result: unknown): void {
 }
 export function createHubManagementAuthority(options: HubManagementAuthorityOptions) {
   const { policy, directory, reads, current, version, assertAuthorizationTime } = options;
+  const decision = options.directoryDecision, decisionClock = decision?.assertAuthorizationTime,
+    decisionDb = decision?.db, decisionHub = decision?.hubId;
   const root = Object.freeze(validated(person, options.root)), method = directory.checkEligibility;
   const clock = options.now ?? Date.now, elapsedClock = options.elapsedNow ?? (() => performance.now());
   let closed = false, clockRetired = false, latestWall = 0, latestElapsed = 0;
@@ -112,18 +122,35 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
     },
     async require(incoming: HubRequestContext, permission: HubManagementPermission): Promise<HubManagementPermit> {
       const cap = validated(z.enum(MANAGEMENT_PERMISSIONS), permission);
-      validated(identifier, incoming.requestId);
+      const requestId = validated(identifier, incoming.requestId);
       if (typeof incoming.current !== "function" || typeof incoming.isCurrent !== "function"
         || typeof incoming.isIdentityCurrent !== "function") throw new HubProtocolError("unavailable");
       const authenticate = incoming.current.bind(incoming), sessionCurrent = incoming.isCurrent.bind(incoming);
       const identityCurrent = incoming.isIdentityCurrent.bind(incoming), started = time(), before = read(), authEpoch = version();
       let retired = false, actor: DirectoryActor | null = null;
-      const common = () => {
+      const common = (proof?: HubDirectoryDecisionProof) => {
         try {
           if (retired || sessionCurrent() !== true) throw new HubProtocolError("unavailable");
-          const at = time();
-          if (at.wall - started.wall >= PREPARATION_BUDGET || at.elapsed - started.elapsed >= PREPARATION_BUDGET
-            || read().raw !== before.raw || version() !== authEpoch) throw new HubProtocolError("unavailable");
+          let at = time();
+          if (at.wall - started.wall >= PREPARATION_BUDGET || at.elapsed - started.elapsed >= PREPARATION_BUDGET) throw new HubProtocolError("unavailable");
+          if (proof) {
+            const decisionLive = () => {
+              live();
+              if (!decision || !decisionClock || cap !== "hub.admin" || !actor || options.directoryDecision !== decision
+                || decision.db !== decisionDb || decision.hubId !== decisionHub || decision.assertAuthorizationTime !== decisionClock) throw new HubProtocolError("unavailable");
+            };
+            decisionLive();
+            const inspect = () => inspectHubDirectoryDecisionProof(proof, { db: decisionDb!, hubId: decisionHub!,
+              actor: { kind: "hub-administrator", person: actor!.person, sessionId: actor!.sessionId, requestId } });
+            const view = inspect();
+            if (view.before.raw !== before.raw || view.expected.authorizationVersion !== authEpoch
+              || version() !== authEpoch + (view.phase === "final" ? 1 : 0)) throw new HubProtocolError("unavailable");
+            if (before.kind === "roles") sync(decisionClock!.call(decision, proof));
+            decisionLive(); inspect();
+            if (sessionCurrent() !== true) throw new HubProtocolError("unavailable");
+            at = time();
+            if (at.wall - started.wall >= PREPARATION_BUDGET || at.elapsed - started.elapsed >= PREPARATION_BUDGET) throw new HubProtocolError("unavailable");
+          } else if (read().raw !== before.raw || version() !== authEpoch) throw new HubProtocolError("unavailable");
           if (actor && identityCurrent(actor.person, actor.sessionId) !== true) throw new HubProtocolError("unavailable");
           return at;
         } catch (error) { retired = true; throw error; }
@@ -165,6 +192,14 @@ export function createHubManagementAuthority(options: HubManagementAuthorityOpti
               || !allowed(at.wall)) throw new HubProtocolError("unavailable");
           } catch (error) { retired = true; throw error; }
         },
+        ...(decision ? { assertDirectoryDecision(proof: HubDirectoryDecisionProof) {
+          try {
+            if (!proof) throw new HubProtocolError("unavailable");
+            const at = common(proof);
+            if (at.wall >= observed.wall + HUB_MANAGEMENT_PROOF_TTL || at.elapsed >= observed.elapsed + HUB_MANAGEMENT_PROOF_TTL
+              || !allowed(at.wall)) throw new HubProtocolError("unavailable");
+          } catch (error) { retired = true; throw error; }
+        } } : {}),
       });
       permit.assertCurrent(); return permit;
     },

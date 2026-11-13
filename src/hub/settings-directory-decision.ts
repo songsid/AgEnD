@@ -15,6 +15,7 @@ import { advanceHubSessionEpoch, readHubSessionEpoch } from "./session-epoch.js"
 import { canonicalArguments, sha256 } from "./identity.js";
 import { parseCanonicalPolicy, rebindCanonicalPolicy, type HubCanonicalPolicy } from "./roles/read.js";
 import { epoch, hash, identifier, person, uuid, validated, parseStrictJson, HubProtocolError } from "./validation.js";
+import { withHubDirectoryDecisionProof, type HubDirectoryDecisionProof } from "./directory-decision-proof.js";
 
 const imageSchema = z.strictObject({ configDigest: hash, configSha: hash, directorySha: hash, manifestSha: hash, bindSecretSha: hash });
 export type HubDirectorySettingsImage = z.infer<typeof imageSchema>;
@@ -110,6 +111,8 @@ export interface HubDirectoryDecisionDeps {
   transport: HubTransportStore;
   /** Exact Hub binding, never accepted from a browser body. */
   hubId: string;
+  /** Inactive preparation: explicit proof consumers must opt in; the old callback view stays unchanged. */
+  roleProofs?: boolean;
 }
 export type HubDirectorySettingsDecision = ReturnType<typeof createHubDirectorySettingsDecision>;
 /** Internal library, no I/O on construction. The shared writer owns all file installation and proof acquisition. */
@@ -117,10 +120,17 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
   const { db, transport } = deps, hubId = validated(identifier, deps.hubId);
   // Only while THIS root decision calls its synchronous proof. The final SQL checks still validate every own change.
   let proofBasis: { expected: HubDirectoryDecisionRequest["expected"]; policy: HubCanonicalPolicy["policy"] } | null = null;
-  function prove<T>(expected: HubDirectoryDecisionRequest["expected"], policy: HubCanonicalPolicy["policy"], work: () => T): T {
+  let administrationProof: HubDirectoryDecisionProof | null = null;
+  function prove<T>(request: HubDirectoryDecisionRequest, before: ReturnType<typeof policyRow>, work: () => T, operation?: HubDirectorySettingsOperation): T {
     if (proofBasis) throw new HubProtocolError("invalid");
-    proofBasis = { expected: structuredClone(expected), policy: structuredClone(policy) };
-    try { return work(); } finally { proofBasis = null; }
+    proofBasis = { expected: structuredClone(request.expected), policy: structuredClone(before.policy) };
+    try {
+      if (!deps.roleProofs) return work();
+      return withHubDirectoryDecisionProof({ db, transport, hubId, request, beforeRaw: before.body, ...(operation ? { operation } : {}) }, proof => {
+        administrationProof = proof;
+        try { return work(); } finally { administrationProof = null; }
+      });
+    } finally { proofBasis = null; }
   }
   function inspect() {
     const head = readHubDirectorySettingsHead(db), state = transport.read(), p = policyRow(db);
@@ -139,8 +149,8 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
     if (compensation && transition) throw new HubProtocolError("invalid");
     const result = db.transaction(() => {
       assertExpected(input.expected);
-      const basisPolicy = policyRow(db).policy;
-      const initialProof = prove(input.expected, basisPolicy, assertProof); synchronous(initialProof); assertExpected(input.expected);
+      const basisPolicy = policyRow(db);
+      const initialProof = prove(input, basisPolicy, assertProof); synchronous(initialProof); assertExpected(input.expected);
       if (input.recovery) assertHubDirectoryRecoveryClock(input, initialProof);
       if (compensation?.recovery) assertHubDirectoryRecoveryClock(compensation, initialProof);
       transition?.validate(transition.clock());
@@ -183,7 +193,7 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
         db.prepare("INSERT INTO hub_settings_security_notices VALUES(?,?,?)").run(notice.id, input.id, JSON.stringify(notice));
         for (const target of targetRows(notice.recipients)) db.prepare("INSERT INTO hub_settings_security_targets VALUES(?,?,?,'queued')").run(notice.id, target.kind, target.target);
       }); // existing floor-before-audit and same-DB write; any later rollback leaves a raised floor uncertain
-      const finalProof = prove(input.expected, policy, assertProof); synchronous(finalProof);
+      const finalProof = prove(input, previous, assertProof, saved); synchronous(finalProof);
       // The shared writer returns its last clock sample, avoiding another callback after its final material/time check.
       const transitionTime = typeof finalProof === "number" ? finalProof : transition?.clock();
       if (saved.recovery) {
@@ -253,6 +263,8 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
     },
     /** Internal source projection for the exact synchronous proof; absent outside that callback (including after an await). */
     proofBasis() { return proofBasis ? structuredClone(proofBasis) : null; },
+    /** Opaque and callback-local; normal readers and operations never consume this optional view. */
+    administrationProof() { return administrationProof; },
     decide(raw: HubDirectoryDecisionRequest, assertProof: () => void | number, rotation?: HubDirectorySessionRotation) { return decide(raw, assertProof, undefined, rotation); },
     /** A new operation restoring ONLY original content; current policy/denies/revokes/provenance are never rewound. */
     compensate(originalId: string, raw: HubDirectoryDecisionRequest, assertPreauthorizedIntent: () => void | number) {

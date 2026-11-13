@@ -4,7 +4,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { afterEach, vi } from "vitest";
 import { createHubAudit, HUB_AUDIT_MIGRATION } from "../../src/hub/audit/index.js";
-import { createHubUnitOfWork, hubTxDatabase } from "../../src/hub/db.js";
+import { applyHubMigrations, bindHubInstance, createHubUnitOfWork, hubTxDatabase } from "../../src/hub/db.js";
 import { HUB_GROUP_RESOURCES_MIGRATION } from "../../src/hub/group-policy/resources.js";
 import { createHubGroupPolicyStore, groupPolicyMigration } from "../../src/hub/group-policy/store.js";
 import { HubCore } from "../../src/hub/http/core.js";
@@ -18,18 +18,28 @@ import { HubSessions, hubCookieName } from "../../src/hub/sessions.js";
 import { HubTransportStore, HUB_TRANSPORT_MIGRATION } from "../../src/hub/store.js";
 import type { Eligibility, HubDirectory } from "../../src/hub/directory/types.js";
 import type { PersonKey } from "../../src/hub/types.js";
+import { createHubRoleCutover } from "../../src/hub/roles/cutover.js";
+import { roleCutoverLegacyPlan } from "./hub-role-cutover-plan.js";
 
 const dbs: Database.Database[] = [];
 afterEach(() => { for (const db of dbs.splice(0)) db.close(); vi.restoreAllMocks(); });
 const key = (): PersonKey => ({ realm: "corp", objectId: randomUUID() });
-export async function roleAuthorityWorld(input: { hubId?: string } = {}) {
+export async function roleAuthorityWorld(input: { hubId?: string; cutover?: boolean } = {}) {
   const db = new Database(":memory:"); dbs.push(db); db.pragma("foreign_keys=ON"); const hubId = input.hubId ?? randomUUID();
-  for (const m of [HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...HUB_HTTP_MIGRATIONS,
+  const migrations = roleCutoverLegacyPlan(hubId);
+  if (input.cutover) { applyHubMigrations(db, migrations); bindHubInstance(db, hubId, "new", 100); }
+  else for (const m of [HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...HUB_HTTP_MIGRATIONS,
     groupPolicyMigration(hubId, "corp", "g1"), HUB_GROUP_RESOURCES_MIGRATION, HUB_ROLE_WRITER_MIGRATION, HUB_ROLE_EXPIRY_MIGRATION]) m.up(db);
   const root = key(), admin = key(), other = key(); let time = 100, elapsed = 0, live = true, floor = 0;
   const audit = createHubAudit({ db, contentKey: randomBytes(32), now: () => time });
   const store = new HubTransportStore(db, { floor: { read: () => floor, raise: n => { floor = n; } },
     appendAudit(event, tx) { audit.appendInTransaction(event, tx); } }); store.initialize();
+  const legacyRaw = (db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body;
+  if (input.cutover) {
+    const result = createHubRoleCutover({ db, hubId, root, realm: "corp", generation: "g1", migrations,
+      transport: store, current: () => live, now: () => time, refreshAuthorization() {} }).migrate();
+    if (!result.ok || !result.changed) throw Error("fixture actual cutover failed");
+  }
   const person = (who: PersonKey) => ({ key: structuredClone(who), login: who.objectId, dn: "CN=Synthetic", groups: [] });
   const eligible = vi.fn(async (who: PersonKey): Promise<Eligibility> => ({ eligible: true, person: person(who) }));
   const directory: HubDirectory = { realm: "corp", checkEligibility: eligible,
@@ -37,7 +47,6 @@ export async function roleAuthorityWorld(input: { hubId?: string } = {}) {
       return who && password === "synthetic" ? { ok: true, person: person(who) } : { ok: false, reason: "invalid-credentials" }; }, async close() {} };
   let expiry: ReturnType<typeof createHubRoleExpirySettlement> | undefined;
   const pool = createHubGroupPolicyStore({ db, hubId, realm: "corp", generation: "g1", directory, audit, current: () => live, now: () => time, roles: { root, assertAuthorizationTime() { if (!expiry) throw Error("clock not installed"); expiry.assertAuthorizationTime(); } } });
-  const legacyRaw = (db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body;
   const policy: HubRolePolicy = { realm: "corp", generation: "g1", revision: 1, rolesActive: true, state: "enabled", everEnabled: true,
     roles: builtinRoles(), assignments: [{ id: "auxiliary", roleId: BUILTIN_ROLE_IDS.admin, subject: { kind: "person", person: admin }, scope: { kind: "hub" },
       maxFleets: null, startsAt: 0, expiresAt: null, assignedBy: root, assignedAt: 0 }], denies: [] };

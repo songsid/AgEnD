@@ -6,12 +6,14 @@ import { epoch, HubProtocolError, person, uuid, validated } from "../validation.
 import { personKeyString } from "../identity.js";
 import { createHubCanonicalPolicyReader } from "./read.js";
 import { parseHubRoleCutoverMarker } from "./cutover-marker.js";
+import { inspectHubDirectoryDecisionProof, type HubDirectoryDecisionProof } from "../directory-decision-proof.js";
+import type { HubCanonicalPolicy } from "./read.js";
 export interface HubRoleClockOptions {
   db: Database.Database; hubId: string; realm: string; generation: string; root: PersonKey;
   transport: Pick<HubTransportStore, "read">; current(): boolean; now?: () => number;
 }
 export function createHubRoleAuthorizationClock(options: HubRoleClockOptions) {
-  const { db, transport, current, realm } = options, hubId = validated(uuid, options.hubId), root = validated(person, options.root);
+  const { db, transport, current, realm, generation } = options, hubId = validated(uuid, options.hubId), root = validated(person, options.root);
   const readTransport = transport.read, readState = readTransport.bind(transport), now = options.now ?? Date.now;
   let closed = false;
   const live = () => !closed && current() === true && root.realm === realm && transport.read === readTransport;
@@ -31,10 +33,9 @@ export function createHubRoleAuthorizationClock(options: HubRoleClockOptions) {
       { component: "roles-cutover", version: 1 }, { component: "roles-expiry", version: 1 }, { component: "roles-writer", version: 1 },
     ])) throw new HubProtocolError("unavailable");
   };
-  return {
-    assertAuthorizationTime() {
+  function assertTime(readPolicy: () => HubCanonicalPolicy) {
       try {
-        const policy = read();
+        const policy = readPolicy();
         if (policy.kind !== "roles") throw new HubProtocolError("unavailable");
         registry();
         const raw = rawMarker(), { marker } = parseHubRoleCutoverMarker(raw, hubId), settled = floor();
@@ -48,9 +49,22 @@ export function createHubRoleAuthorizationClock(options: HubRoleClockOptions) {
         // The callbacks above cannot replace the image this clock check just established.
         const confirmed = readState(), confirmedOwner = db.prepare("SELECT hub_id FROM hub_instance WHERE singleton=1").get() as { hub_id: string } | undefined;
         if (!live() || confirmedOwner?.hub_id !== hubId || confirmed.revision !== state.revision || confirmed.revocationVersion !== state.revocationVersion
-          || read().raw !== policy.raw || rawMarker() !== raw || floor() !== settled) throw new HubProtocolError("unavailable");
+          || readPolicy().raw !== policy.raw || rawMarker() !== raw || floor() !== settled) throw new HubProtocolError("unavailable");
         registry();
       } catch { throw new HubProtocolError("unavailable"); }
+  }
+  return {
+    assertAuthorizationTime() { assertTime(read); },
+    /** Only an active same-DB decision frame may expose the exact own generation rebind. */
+    assertDirectoryDecision(proof: HubDirectoryDecisionProof) {
+      const scoped = () => {
+        if (!live()) throw new HubProtocolError("unavailable");
+        const view = inspectHubDirectoryDecisionProof(proof, { db, hubId });
+        if (view.before.kind !== "roles" || view.current.kind !== "roles" || view.before.policy.realm !== realm
+          || view.before.policy.generation !== generation) throw new HubProtocolError("unavailable");
+        return view.current;
+      };
+      assertTime(scoped);
     },
     close() { closed = true; },
   };

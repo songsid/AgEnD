@@ -1,0 +1,15 @@
+# Role administration at the directory decision
+
+This slice adds an opt-in proof boundary. Production construction does not enable `roleProofs` or configure the authority's `directoryDecision` adapter. It does not activate roles, change the browser route, grant an auxiliary administrator a working Directory Save, or install files.
+
+The real directory decision rebinds the canonical policy generation and advances the transport authorization version in its root SQLite transaction. It then calls the retained administration proof before the callback-free session/head transition. An ordinary permit correctly rejects that changed image. The fail-first fixture records this refusal, while ordinary permits still reject a completed directory change and an unrelated version advance.
+
+The decision can now expose a distinct opaque WeakMap handle inside each initial/final synchronous proof callback. Inspection requires the owning database transaction, Hub, exact old policy digest, exact computed generation/revision rebind, complete transport image, old head/session epoch and the expected absent or exact newly inserted operation. The handle expires on callback return, throw or thenable. A subsequent transaction cannot revive it. The existing final decision checks for notices, targets, operation, policy and transport remain in place.
+
+An explicitly configured `hub.admin` permit can consume that handle through `assertDirectoryDecision`. It retains its original actor/session/request, complete old policy and version, physical provider identity, fresh eligibility observation, assignment window, wall/monotonic deadlines and permanent retirement. The real authorization clock gets a separate scoped entry point, retaining its historical marker, schema, owner, persistent transport floor and settled-expiry checks. Ordinary permit and clock methods keep their strict generation/version readers. HubCore wraps the explicit assertion with the same mount/provider lifetime fence.
+
+The tests use real SQLite, sessions, transport floors, required audit and historical cutover. Directory answers are fictional, auxiliary assignment setup is controlled fixture SQL, and staged file images are inert hashes. There is no mounted Save, certificate installation, browser, container, external directory, account or pilot evidence in this slice. A rejected transaction may leave the independent floor raised, as before; tests do not treat that transport as healthy afterward.
+
+Further slices must carry the opaque administration witness through this explicit boundary, update the sealed writer and session rotation with the acting identity, establish a freshly authorized successor generation, and compose the HTTP issuer. Full S-129 still requires mounted expiry/redeem/ACK, member/SSE fencing and activation acceptance. After commit the old permit and old-generation clock remain unusable. Existing forward recovery owns completion; this handle does not authorize rollback or restoration of old privileges.
+
+Rollback before activation is to leave both opt-ins absent. The alpha.3 freeze and all parent-first plain-merge/review/CI holds apply.
