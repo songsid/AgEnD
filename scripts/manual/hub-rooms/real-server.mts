@@ -89,9 +89,9 @@ try {
     const list = await r.call(actor, "GET", "/hub/v1/rooms?v=2"), assistant = list.json.rooms.find((room: any) => room.assistant);
     await p.goto(origin + "/ui/hub?room=" + assistant.id); await p.locator(".hub-room-composer textarea").waitFor();
     const directPrompt = lang === "en" ? "Ask the Hub assistant" : "問 Hub 助理";
-    // The shell mounts the composer before its real room detail arrives; judge the settled direct view.
-    await p.waitForFunction((expected: string) => document.querySelector(".hub-room-composer textarea")?.getAttribute("placeholder") === expected, directPrompt, { timeout: 5_000 });
-    check(tag + " private assistant composer uses its direct prompt", (await p.locator(".hub-room-composer textarea").getAttribute("placeholder")) === directPrompt);
+    // ComposerInput draws its placeholder in .composer-ph and exposes it through aria-label; its native placeholder is one space.
+    await p.waitForFunction((expected: string) => document.querySelector(".hub-room-composer textarea")?.getAttribute("aria-label") === expected, directPrompt, { timeout: 5_000 });
+    check(tag + " private assistant composer uses its direct prompt", (await p.locator(".hub-room-composer textarea").getAttribute("aria-label")) === directPrompt && (await p.locator(".hub-room-composer .composer-ph").innerText()) === directPrompt);
     await p.locator(".hub-room-composer textarea").fill("Browser plain assistant request " + tag); await p.locator(".hub-room-composer #sendBtn").click();
     await p.getByText("Owned assistant answer: Browser plain assistant request " + tag, { exact: true }).first().waitFor();
     check(tag + " plain private ask reaches actual A service", workerCalls > 0);
