@@ -32,4 +32,4 @@ docker --config "$output_dir/docker-config" run --rm --name ridge-hub-member-add
  --mount "type=bind,src=$(realpath "$task_root/node_modules"),dst=/work/node_modules,readonly" \
  --mount "type=bind,src=$output_dir/container-evidence,dst=/evidence" \
  -e AGEND_OWNED_CONTAINER=hub-member-address-3429 -e OUT=/evidence -e HOME=/tmp/home -e XDG_CACHE_HOME=/tmp/cache \
- ridge-hub-member-address-3429-browser node --import tsx scripts/manual/hub-member-address/accept.mts
+ ridge-hub-member-address-3429-browser node --import tsx "scripts/manual/hub-member-address/${SCRIPT:-accept.mts}"
