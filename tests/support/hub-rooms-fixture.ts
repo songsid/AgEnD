@@ -116,7 +116,8 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
   const helper = direct("room-helper", agentMembers[0]!, [[50, "me", "幫我看一下這份需求的風險。"], [52, "agent", "主要有三點：時程、測試資料、權限。"]]);
   const report = direct("room-report", agentMembers[9]!, [[20, "me", "上週的報表在哪裡？"]]);
   report.messages[0]!.stage = "queued";
-  const hubAssistant = direct("room-assistant", { ...assistant, name: "Hub 助理" }, []);
+  // Stored as the server stores it: an English fallback name; the page names it by its flag in the viewer's words (Ridge).
+  const hubAssistant = direct("room-assistant", { ...assistant, name: "Hub assistant" }, []);
   // 研發例會: I am only a member here, and members may not @all.
   const meeting: FixtureRoom = { id: "room-rd", kind: "group", name: "研發例會", members: [{ ...people[0]!, role: "member" }, { ...people[1]!, role: "manager" }, ...agentMembers.slice(0, 4)],
     messages: [], settings: { allMention: false, historyForNew: "since-join" }, archived: false, readUpTo: null, assistant: false, invited: [] };

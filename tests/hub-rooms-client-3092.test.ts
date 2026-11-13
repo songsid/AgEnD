@@ -47,13 +47,13 @@ describe("rooms (seam 1) against the fixture", () => {
     const r = await client.roomList();
     expect(calls.at(-1)).toMatchObject({ method: "GET", path: "/hub/v1/rooms?v=2" });              // Ridge #3858: /rooms stays direct-only for old tabs
     expect(r.me).toEqual({ canCreateRooms: true }); expect(r.invitations).toBe(1);
-    expect(r.rooms.map((x: any) => x.name)).toEqual(["研一主管週會", "project-helper", "研發例會", "report-bot", "去年專案", "Hub 助理"].filter(n => r.rooms.some((x: any) => x.name === n)).sort((a, b) =>
+    expect(r.rooms.map((x: any) => x.name)).toEqual(["研一主管週會", "project-helper", "研發例會", "report-bot", "去年專案", "Hub assistant"].filter(n => r.rooms.some((x: any) => x.name === n)).sort((a, b) =>
       r.rooms.findIndex((x: any) => x.name === a) - r.rooms.findIndex((x: any) => x.name === b)));
     const weekly = r.rooms.find((x: any) => x.name === "研一主管週會");
     expect(weekly).toMatchObject({ kind: "group", people: 3, agents: 12, unread: 2 });
     expect(r.rooms[0].id).toBe("room-weekly");                                                          // the only one with unread
     expect(r.rooms.find((x: any) => x.name === "去年專案")).toMatchObject({ archived: true });
-    expect(r.rooms.find((x: any) => x.name === "Hub 助理")).toMatchObject({ kind: "direct", assistant: true });
+    expect(r.rooms.find((x: any) => x.name === "Hub assistant")).toMatchObject({ kind: "direct", assistant: true });
     expect(r.rooms.find((x: any) => x.name === "report-bot")).toMatchObject({ kind: "direct", agent: { owner: { name: "吳小安" }, presence: "offline" } });
   });
   it("a room: every presence state, both notes, the assistant, my role and its settings; members only @all where allowed", async () => {
