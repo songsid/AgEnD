@@ -88,7 +88,10 @@ try {
     check(tag + " localized room assistant mention reaches actual A service", workerCalls > 0);
     const list = await r.call(actor, "GET", "/hub/v1/rooms?v=2"), assistant = list.json.rooms.find((room: any) => room.assistant);
     await p.goto(origin + "/ui/hub?room=" + assistant.id); await p.locator(".hub-room-composer textarea").waitFor();
-    check(tag + " private assistant composer uses its direct prompt", (await p.locator(".hub-room-composer textarea").getAttribute("placeholder")) === (lang === "en" ? "Ask the Hub assistant" : "問 Hub 助理"));
+    const directPrompt = lang === "en" ? "Ask the Hub assistant" : "問 Hub 助理";
+    // The shell mounts the composer before its real room detail arrives; judge the settled direct view.
+    await p.waitForFunction((expected: string) => document.querySelector(".hub-room-composer textarea")?.getAttribute("placeholder") === expected, directPrompt, { timeout: 5_000 });
+    check(tag + " private assistant composer uses its direct prompt", (await p.locator(".hub-room-composer textarea").getAttribute("placeholder")) === directPrompt);
     await p.locator(".hub-room-composer textarea").fill("Browser plain assistant request " + tag); await p.locator(".hub-room-composer #sendBtn").click();
     await p.getByText("Owned assistant answer: Browser plain assistant request " + tag, { exact: true }).first().waitFor();
     check(tag + " plain private ask reaches actual A service", workerCalls > 0);
