@@ -455,20 +455,31 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         tail = tail.then(async () => {
           if (ended) return;
           let data: Record<string, unknown> | null;
-          if (event.audiencePerson) {
-            if (event.type === "invitation.changed") {
-              data = personKeyString(await ctx.requirePerson()) === event.audiencePerson ? {} : null;
-            } else {
-              const view = await rooms.view(ctx, event.roomId);
-              if (event.type === "unread.changed") data = { roomId: event.roomId, unread: directUnread(core, view) };
-              else if (event.type === "room.changed") data = { roomId: event.roomId, room: directRoomView(view, rooms.presence(view.exposureId), directUnread(core, view)) };
-              else {
-                const page = await rooms.readPage(ctx, event.roomId, 0, streamSession.sessionId, { before: null, limit: 100 });
-                const message = directMessages(page.room, page.entries, streamSession.displayName).find(m => m.id === event.data.messageId);
-                data = message ? { roomId: event.roomId, message } : null;
-              }
+          // Concurrent agent checks can briefly fill the person's physical read slots. Keep this event in the bounded
+          // queue and re-read it after a short delay; persistent overload and all other failures still close the stream.
+          for (let attempt = 0; ; attempt++) {
+            try {
+              if (event.audiencePerson) {
+                if (event.type === "invitation.changed") {
+                  data = personKeyString(await ctx.requirePerson()) === event.audiencePerson ? {} : null;
+                } else {
+                  const view = await rooms.view(ctx, event.roomId);
+                  if (event.type === "unread.changed") data = { roomId: event.roomId, unread: directUnread(core, view) };
+                  else if (event.type === "room.changed") data = { roomId: event.roomId, room: directRoomView(view, rooms.presence(view.exposureId), directUnread(core, view)) };
+                  else {
+                    const page = await rooms.readPage(ctx, event.roomId, 0, streamSession.sessionId, { before: null, limit: 100 });
+                    const message = directMessages(page.room, page.entries, streamSession.displayName).find(m => m.id === event.data.messageId);
+                    data = message ? { roomId: event.roomId, message } : null;
+                  }
+                }
+              } else data = await groupRooms.event(ctx, event);
+              break;
+            } catch (error) {
+              if (!(error instanceof HubProtocolError) || error.code !== "backpressure" || attempt >= 3) throw error;
+              await new Promise(resolve => setTimeout(resolve, 25 * 2 ** attempt));
+              if (ended || !live() || !ctx.isCurrent?.()) return close();
             }
-          } else data = await groupRooms.event(ctx, event);
+          }
           if (ended || !live() || !ctx.isCurrent?.()) return close();
           if (data && !res.write(`event: ${event.type}\ndata: ${JSON.stringify(data)}\n\n`)) close();
         }).catch(close).finally(() => { queued--; });
