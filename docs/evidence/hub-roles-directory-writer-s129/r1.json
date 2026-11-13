@@ -1,0 +1,176 @@
+{
+  "review": "Fable W4",
+  "base": "8ae590e9d79ded6647cde82f8bcd5f7fe039c7b9",
+  "testCommit": "91b15bbd172045af7407040ccc3551a42e45f6ea",
+  "sourceCommit": "919d6809886cfb554c0559a6c03018d512cc8ece",
+  "allSourceByteIdenticalToBase": true,
+  "recordedAt": "2026-11-13T11:44:55.141673+00:00",
+  "change": "8 test lines; separate monotonic clocks: preparation100,writer101,actualproof100",
+  "baseline": {
+    "passed": 61,
+    "failed": 0
+  },
+  "mutation": {
+    "id": "W4-proof-not-older-than-writer",
+    "file": "src/hub/settings-commit.ts",
+    "originalSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519",
+    "replacements": [
+      {
+        "old": "        if (at < sampled) throw new HubSettingsError(\"denied\");\n",
+        "new": "",
+        "count": 1
+      }
+    ],
+    "testCommit": "91b15bbd172045af7407040ccc3551a42e45f6ea",
+    "mutantSha256": "bbb79f9d5c30562854173f742b93f97d27f089906dcd5cb031e95c3c45e8f9b0",
+    "typesExit": 0,
+    "testExit": 1,
+    "passed": 60,
+    "failed": 1,
+    "failedAssertions": [
+      {
+        "name": "S129 trusted writer source and final proof refuses a proof clock behind the final writer sample even while both stay within the deadline",
+        "firstLine": "AssertionError: expected [Function] to throw an error"
+      }
+    ],
+    "verdict": "CAUGHT",
+    "restoredSha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+  },
+  "restored": {
+    "passed": 61,
+    "failed": 0,
+    "files": 2,
+    "command": "nice -n 10 node_modules/.bin/vitest run tests/hub-roles-directory-writer-s129.test.ts tests/hub-roles-directory-s129.test.ts --maxWorkers=2"
+  },
+  "nativeTestTypes": {
+    "version": "7.0.2",
+    "exit": 0
+  },
+  "historicalEvidence": "receipt.json and mutations.json retain the original 375/8 and 13 reversals at8ae590e9d; r1.json binds the changed test input",
+  "equivalentGuard": "Fable W3 first selected.decision comparison duplicates the post-assert owner check; not claimed as an independently pinned guard",
+  "bindings": [
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "86722c78246201df0dfe8b0cc1d4585cf15b89725b12fa687895713558d35b40",
+      "bytes": 18880
+    },
+    {
+      "file": "src/hub/roles/authority.ts",
+      "sha256": "7158352d59b1bba25638b5f2440c09c0259773499f0c80dc1b7168ab8e0b1453",
+      "bytes": 13359
+    },
+    {
+      "file": "src/hub/roles/directory-authority.ts",
+      "sha256": "630e83b748f70c4a8a30bac280b9790582cb519d3a77915d976b8a790f37b395",
+      "bytes": 5936
+    },
+    {
+      "file": "src/hub/settings-commit.ts",
+      "sha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519",
+      "bytes": 40122
+    },
+    {
+      "file": "src/hub/settings-directory-proof.ts",
+      "sha256": "7f5519db02959d69e4517280761ead8766ece55914137ef741d46395bbea8064",
+      "bytes": 20101
+    },
+    {
+      "file": "tests/hub-roles-directory-writer-s129.test.ts",
+      "sha256": "d13cb58473f41383a701267a6ddeadab4d963d42f725021482aef1f1235fd90b",
+      "bytes": 19228
+    },
+    {
+      "file": "tests/hub-roles-directory-s129.test.ts",
+      "sha256": "a2699e91aba288a38c8d7278f19fcfd9a7f16aec17442c0222c29bd4903b4a12",
+      "bytes": 15393
+    },
+    {
+      "file": "docs/design/hub-roles-directory-writer-s129.md",
+      "sha256": "ee28e41c468ca5f99509d832bdafe1f0501b64046b15b0c481a6e8837c40fae0",
+      "bytes": 3690
+    },
+    {
+      "file": "changes/3743-roles-directory-writer.md",
+      "sha256": "1702c7868aa66415a871c9dca2e478a06b37063445792d4803ea5645d59c81a0",
+      "bytes": 210
+    },
+    {
+      "file": "changes/3743-roles-directory-writer.zh-TW.md",
+      "sha256": "f78196b18190b7df1c004f9a926b274cb35848b8ae2549f179a0dd0ca3ccaddf",
+      "bytes": 166
+    },
+    {
+      "file": "src/hub/session-directory-transition.ts",
+      "sha256": "130bfb9882ad2365f44c8659b6fdc37c0da7ab4dd9327215ff49c39e84c60428",
+      "bytes": 8924,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "a37e2a2c51d6291e56bce25c98ae5e4d576c7b086689fde33825f1147f06b760",
+      "bytes": 41544,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/sessions.ts",
+      "sha256": "115f24436cb77e35ebdfd9bd0c8d37c1f34d3040e39725af80efa963c58d0e2c",
+      "bytes": 16479,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-directory-control.ts",
+      "sha256": "0e47c1c72f1cd6f13d77ddc1afea147f2f191f74e9db37ef8e59558e7b52d19e",
+      "bytes": 7458,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-directory-save.ts",
+      "sha256": "ee26a5788898db9bbc4ae9c663f25f7520d3a1e58e37f9d6d3681bbbf6c46a48",
+      "bytes": 10506,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/directory-decision-proof.ts",
+      "sha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "bytes": 5060,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-directory-decision.ts",
+      "sha256": "a7be86d307e22adc25cd9724aefee3ca5ed0db3aa951b15bc22cd7ae9acebf20",
+      "bytes": 23700,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5",
+      "bytes": 4710,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/fleet-manager.ts",
+      "sha256": "7ae2e4817a99a8515446793f0f5cdcf4e4c98feedc324bd2e950f6c9b4b4d824",
+      "bytes": 1776962,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "tests/hub-roles-directory-witness-s129.test.ts",
+      "sha256": "efde4e20153d056e5431e1d60331585574abe4bb5ed1760d379fa7cc049213cb",
+      "bytes": 7807,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "tests/hub-roles-directory-transition-s129.test.ts",
+      "sha256": "74af41493b351c1dda47e38e3b0ea4b6196d5d8aed908f2d185bf5d9a71d0dc1",
+      "bytes": 17667,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "c886cf7218dcb2e713259fa2be29bd27b42a134d61535a520ddf96e85ffd8b28",
+      "bytes": 7232,
+      "unchangedFromParent": true
+    }
+  ],
+  "holds": "DRAFT,parent-first plain sync/resolution review,new-headCI/readiness,alpha.3 freeze,fullS129; no gate"
+}
