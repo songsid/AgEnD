@@ -46,6 +46,16 @@ describe("CodexRolloutSource", () => {
     return JSON.stringify({ type: "response_item", payload: { type: "function_call", name, arguments: JSON.stringify(args) } });
   }
 
+  it("only reports newly appended compaction records in the followed rollout (#3074)", async () => {
+    const line = JSON.stringify({ type: "compacted", payload: {} });
+    const path = writeRollout("rollout-2026-08-08T00-compact.jsonl", WORK_DIR, [line]);
+    const source = new CodexRolloutSource(WORK_DIR, sessionsDir, Date.now());
+    expect((await source.poll()).contextResets).toBeUndefined();
+    appendFileSync(path, line + "\n");
+    expect((await source.poll()).contextResets).toBe(1);
+    expect((await source.poll()).contextResets).toBeUndefined();
+  });
+
   it("reads tool calls only from the rollout whose session_meta cwd matches", async () => {
     const source = new CodexRolloutSource(WORK_DIR, sessionsDir, Date.now() - 1000);
     writeRollout("rollout-2026-08-08T01-owned.jsonl", WORK_DIR, [functionCallLine("shell", { command: ["bash", "-lc", "npm test"] })]);

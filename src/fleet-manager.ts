@@ -7365,8 +7365,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.humanReceiptDaemons.add(daemon);
     daemon.on("human_receipt_result", (result: { receipt_id: string; owner_key: string; proof: unknown }) => {
       try {
-        this.deliveryOutbox?.settleHumanReceipt(result.receipt_id, instanceName, result.owner_key,
+        const accepted = this.deliveryOutbox?.settleHumanReceipt(result.receipt_id, instanceName, result.owner_key,
           result.proof, this.humanReceiptOwner(instanceName, daemon));
+        daemon.noteHumanReceiptSettlement?.(result.receipt_id, accepted === true && result.proof !== null);
       } catch (err) { this.logger.error({ err, instanceName }, "Could not persist human delivery evidence"); }
     });
   }
@@ -7393,7 +7394,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       human_receipt_id: row.receipt_id, verification_id: row.message_id, ...(verified ? { web_verified: "1" } : {}) } };
   }
 
-  /** Bind at the actual IPC send, after all wake/reconnect waits. No human retry lane. */
+  /** Register owned preparation at IPC; bind once at the final pane write. No human retry lane. */
   private bindHumanReceiptPayload(instanceName: string, payload: Record<string, unknown>): Record<string, unknown> {
     const meta = payload.meta as Record<string, string> | undefined;
     if (!meta?.human_receipt_id || !this.deliveryOutbox) return payload;
@@ -7405,6 +7406,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     this.listenForHumanReceipt(instanceName, daemon);
     const daemonOwner = daemon.captureHumanReceiptOwner();
+    if (payload.type !== "raw_paste" && !String(payload.content ?? "").startsWith("/raw ") && daemon.registerHumanReceiptPreparation) {
+      const content = String(payload.content ?? "");
+      const kind = String(payload.type);
+      const originalMeta = { ...meta };
+      const token = daemon.registerHumanReceiptPreparation(meta.human_receipt_id, presentation => {
+        if (!daemonOwner || this.humanReceiptOwner(instanceName, daemon) !== owner) throw new Error("Human delivery ownership changed");
+        const dialectMeta = { ...originalMeta, human_wire_dialect: presentation.dialect ?? "legacy" };
+        const wire = daemon.humanReceiptWire(content, dialectMeta, kind, presentation);
+        const row = this.deliveryOutbox!.bindHumanReceipt(meta.human_receipt_id, instanceName, owner, wire, this.managerBootId);
+        if (this.humanReceiptOwner(instanceName, daemon) !== owner) throw new Error("Human delivery ownership changed");
+        return { wire, meta: { human_owner_key: owner, human_daemon_owner: daemonOwner,
+          human_wire_sha256: row.wire_sha256!, human_wire_dialect: dialectMeta.human_wire_dialect } };
+      }, () => { this.deliveryOutbox?.markHumanReceiptUncertain(meta.human_receipt_id, instanceName); });
+      return { ...payload, meta: { ...meta, human_prepare_token: token } };
+    }
     const wire = daemon.humanReceiptWire(String(payload.content ?? ""), meta, String(payload.type));
     const row = this.deliveryOutbox.bindHumanReceipt(meta.human_receipt_id, instanceName, owner, wire, this.managerBootId);
     if (!daemonOwner || this.humanReceiptOwner(instanceName, daemon) !== owner) throw new Error("Human delivery ownership changed");

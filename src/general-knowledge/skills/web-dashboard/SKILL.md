@@ -105,7 +105,7 @@ as their own Discord or Telegram account. What a guest sees:
 
 They can chat there unless `web.guests.chat` is false, run only the commands the command table lets anyone run in that
 agent's channel (on the web: `/ctx`, `/steer`, `/btw`, `/cancel`; anything else is refused), open the usage panel, and the
-agent sees them as `via web (guest)`. A guest's app has no Fleet, Settings or Needs you. Each person is **Chat** (the
+agent sees them as `@web:g`. A guest's app has no Fleet, Settings or Needs you. Each person is **Chat** (the
 default) or **Trusted** (#2855, `level: trusted` on the grant; Chat → Trusted waits for a fleet admin): a Trusted guest
 also gets a read-only **View** of those agents (no typing; 2 reads a second, 2 agents at once; for Claude Code with its earlier conversation) and **search** of the chat
 messages it can already see (6 a minute, 20 results; no messages between agents, tasks or settings). To invite someone: turn it
@@ -129,7 +129,7 @@ this computer" or the named-link option is the reason). Settings → Access & se
 by default) has the switch, **Only this computer can authorize** (`loopback_only`), **Also over my named link** (shown
 with a fixed hostname), **Also over the temporary public link**, the hours, the authorized sessions, and **Revoke web authority** (or `/web revoke`). Every change
 there applies at once, except turning a link's option on: a General or the host confirms that, never the browser asking.
-Agents then see that browser's messages as `via web (verified)` and check their receipt like a Discord or Telegram message.
+Agents then see that browser's messages as `@web:v` and check their receipt like a Discord or Telegram message.
 
 ## Chat
 
