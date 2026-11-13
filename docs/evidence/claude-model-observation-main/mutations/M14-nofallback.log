@@ -1,0 +1,78 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
+
+ ❯ tests/claude-model-switch.test.ts (58 tests | 2 failed) 65ms
+     × excludes no fallback 6ms
+   × Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records 3ms
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 56 passed (58)
+   Start at  18:40:01
+   Duration  473ms (transform 154ms, setup 88ms, import 125ms, tests 65ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > redacted Claude Code 2.1.323 record shapes > excludes no fallback
+AssertionError: expected { kind: 'switch', …(7) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "at": 1794566401814,
+  "cause": "availability",
+  "id": "notice:notice-A",
+  "kind": "switch",
+  "original": "claude-opus-5-5",
+  "scope": "session",
+  "served": "claude-opus-4-8",
+  "sessionId": "session-A",
+}
+
+ ❯ tests/claude-model-switch.test.ts:65:80
+     63|     ["unreadable time", { ...notice(), timestamp: "invalid" }],
+     64|     ["SDK snake case", { ...notice(), originalModel: undefined, fallba…
+     65|   ])("excludes %s", (_label, record) => expect(parseClaudeModelRecord(…
+       |                                                                                ^
+     66|   it("main-thread Haiku is a valid served model", () => expect(parse(s…
+     67|   it("recognizes the producer's command-message prefix as intent, neve…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records
+AssertionError: expected [ { …(6) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "id": "model:session-A:notice:notice-A",
++     "kind": "state",
++     "modelSwitch": {
++       "cause": "availability",
++       "id": "notice:notice-A",
++       "original": "claude-opus-5-5",
++       "scope": "session",
++       "served": "claude-opus-4-8",
++       "since": 1794566401842,
++     },
++     "note": "Model switched: claude-opus-5-5 → claude-opus-4-8",
++     "ts": 1794566401842,
++     "turn": "",
++   },
++ ]
+
+ ❯ tests/claude-model-switch.test.ts:183:94
+    181|   expect(JSON.stringify(steps)).not.toContain("NEVER EXPOSE");
+    182|   expect(p.push(JSON.stringify({ ...notice(), isSidechain: true }), 20…
+    183|   expect(p.push(JSON.stringify({ ...notice(), subtype: "model_refusal_…
+       |                                                                                              ^
+    184|   const response = served(); response.message.content = [{ type: "text…
+    185|   expect(p.push(JSON.stringify(response), 400)[0]).toMatchObject({ ser…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+

@@ -1,0 +1,56 @@
+{
+  "priorHead": "3591e7c32bebff3240c65ff3a59a3e0380c0d873",
+  "currentHead": "90c41b38b4a46325fbcdf07f38a0b98275a4ec1e",
+  "command": [
+    "./node_modules/.bin/vitest",
+    "run",
+    "tests/r2-before-model.fixture.test.ts",
+    "tests/r2-before-daemon.fixture.test.ts",
+    "-t",
+    "definite recovery|actual LogService|legacy quiet",
+    "--maxWorkers=2"
+  ],
+  "semanticReds": 6,
+  "otherTests": "deliberately excluded by targeted filter, not counted as pass",
+  "priorInputs": [
+    {
+      "path": "src/claude-model-observation.ts",
+      "digest": "3e64b064f90f79c102ec4c148cbfb1e7be729206ca7a421856ff37a30a30e27b"
+    },
+    {
+      "path": "src/log-steps.ts",
+      "digest": "07a20a60c3d32e3fe1ed7ec337c0338f9952390c3cdfb304d464744c2099c536"
+    },
+    {
+      "path": "src/transcript-monitor.ts",
+      "digest": "bca0dbe8f26f54068acb2a239b0b5285109a534c95a18f44234e4ef861a418c5"
+    }
+  ],
+  "testInputs": [
+    {
+      "path": "tests/r2-before-model.fixture.test.ts",
+      "savedAs": "r2-before-model.fixture.test.ts.txt",
+      "digest": "353b1566b207d57ebf99f2d58e43cba78b72382e3cad2c57ca07b5c34fb3ff8e"
+    },
+    {
+      "path": "tests/r2-before-daemon.fixture.test.ts",
+      "savedAs": "r2-before-daemon.fixture.test.ts.txt",
+      "digest": "7187193dba509fc22c53e99dab5ada36dbc11f54bb234c67cf9ff31b6d0170c2"
+    }
+  ],
+  "restoredInputs": [
+    {
+      "path": "src/claude-model-observation.ts",
+      "digest": "62392932ff176d501fc06876b2a1e797c19d70b9605494ecec647e803cbcbc1b"
+    },
+    {
+      "path": "src/log-steps.ts",
+      "digest": "7ba4e39a013bdba99c33ca181b9fbf21b5498b2eac3e9d2023382376a564a616"
+    },
+    {
+      "path": "src/transcript-monitor.ts",
+      "digest": "b7aafe3c7c00f717937c9b65a51f4349682a464aabf292c45d46972c88626a04"
+    }
+  ],
+  "allRestored": true
+}

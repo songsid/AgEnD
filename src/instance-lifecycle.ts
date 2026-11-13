@@ -1351,6 +1351,7 @@ export class InstanceLifecycle {
 
     daemon.on("instance_interaction", () => this.ctx.onAttentionChanged?.(name));
     // #2822: a usage-limit hold began or ended — Needs you lists it while it lasts.
+    daemon.on("model_observation", () => this.ctx.onAttentionChanged?.(name));
     daemon.on("usage_hold", () => this.ctx.onAttentionChanged?.(name));
 
     daemon.on("interactive_prompt", safeHandler(async (data: { name: string; kind: string; prompt: string; screen?: string }) => {

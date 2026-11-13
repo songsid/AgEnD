@@ -1,0 +1,20 @@
+{
+  "main": "951b510c3e4009fa2cf654f7d46ac77fd34f5091",
+  "alpha": "d41ec09b63267a1a151aebc6e08d7d9d5255ee7d",
+  "identicalBlobs": [
+    {
+      "path": "tests/claude-model-checkpoint-tail.test.ts",
+      "digest": "4552a5780ecebea8b60ac1e3b7682ce70016c3b95f821bd3f8b569065f73968b"
+    }
+  ],
+  "observer": "Byte-identical after retaining the existing alpha-only default-true allowInference argument/guard",
+  "tailReader": "Exact complete function body identical",
+  "designDelta": "Identical changed lines; existing alpha native-only paragraph retained",
+  "daemonTest": "Identical changed lines; existing native test retained",
+  "newSourcePaths": [
+    "src/claude-model-observation.ts",
+    "src/log-steps.ts"
+  ],
+  "nativeSourceDelta": false,
+  "uiDelta": false
+}

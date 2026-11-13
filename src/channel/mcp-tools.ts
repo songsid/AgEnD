@@ -107,7 +107,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["update_team", schemas.UpdateTeamArgs,
     "Add or remove members from an existing team. Duplicates are ignored."],
   ["describe_instance", schemas.DescribeInstanceArgs,
-    "Get detailed information about a specific instance: description, working directory, status, tags, and recent activity."],
+    "Get detailed information about a specific instance: description, working directory, status, tags, and recent activity. An active model switch is compact by default; detail:true adds configured, session and last-served model metadata. Detection never changes a model."],
   ["list_instances", schemas.ListInstancesArgs,
     "List the fleet's and ClassicBot instances (running, paused or stopped), excluding yourself. Filter by tags, name, backend or status. The name filter also matches display_name."],
   ["start_instance", schemas.StartInstanceArgs,

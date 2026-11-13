@@ -202,13 +202,19 @@ Turn it off with Settings → Chat & connections → **Web echo** (`web.echo_to_
 (#2054) a room echoes by default: an unset room follows `web.echo_to_channel`, `web_echo: false` keeps it off and
 `web_echo: true` keeps it on. Before 2.2.5, a room echoed only with `web_echo: true`.
 
+## Claude model switch observations
+
+The instance card and Details → Runtime show a localized original → fallback line with turn/session scope. Details keeps the configured model, current session selection and last served model separate. The Log has a typed switch step, and assistant steps can show their served model. These are metadata observations, not final-answer or policy guarantees.
+
+Needs you gets one item per new confirmed main-thread switch. Repeated blocks and resumed history do not announce it again; a fresh response returning to the configured/original model removes it. AgEnD does not switch models, restart the agent or change safeguards automatically. Intentional `/model` and next-spawn failover are separate; unresolved default/plan aliases are not guessed. No prompt, answer or refusal explanation is copied into the observation.
+
 ## Needs you
 
 `/ui/needs`, the sidebar row **Needs you** with a count, the phone tab of the same name, and "(N)" in the browser
 tab title. Items, grouped by instance, oldest first:
 - the CLI waiting: "Permission needed", "Dangerous command waiting", "Waiting to connect its AI account", "Waiting at a dialog", "May be
   waiting for input", "Waiting at its terminal", "Not responding", "Exited";
-- the instance: "Paused: AI account not connected", "Crashed";
+- the instance: "Paused: AI account not connected", "Crashed", and a confirmed Claude model switch (safeguards, availability, or a different served model with cause unknown);
 - deliveries from the last 24 h: "Could not confirm delivery", "Delivery failed" (source → target · kind).
 
 "Asking you a question" is a kiro V3 question card, posted to the instance's chat with a button per answer and a box

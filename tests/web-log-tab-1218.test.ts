@@ -73,6 +73,14 @@ async function app(path: string, body: Record<string, string> = {}) {
   return pg;
 }
 const tick = async (instance = "web-dev") => { for (const fn of [...ticks]) fn({ instance }); await settle(8); };
+it("model pairs and served values live in wrapping Log text, not the ellipsized heading", async () => {
+  answers = [ON({ steps: [step("switch", { kind: "state", modelSwitch: { original: "claude-opus-5-5", served: "claude-opus-4-8", cause: "safeguards", scope: "session" } }),
+    step("response", { kind: "assistant", servedModel: "claude-opus-4-8", body: "fixture" })] })];
+  const pg = await app("/ui/log/web-dev");
+  const lines = pg.root.querySelectorAll(".p-log .log-text").map((el: any) => el.textContent);
+  expect(lines).toContain("Model switched by safeguards: Opus 5.5 → Opus 4.8 · session");
+  expect(lines).toContain("Last served model: Opus 4.8");
+});
 /** Each row's head as words: its parts (icon, label, subject, status…) joined by a space, the time left out. */
 const rows = (pg: AppPage): string[] => pg.root.querySelectorAll(".p-log .log-item").map((li: any) => {
   const parts: string[] = [];

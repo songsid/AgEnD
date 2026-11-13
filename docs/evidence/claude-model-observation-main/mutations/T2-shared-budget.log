@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts (21 tests | 1 failed) 617ms
+     × does not emit a partial record when the remaining payload budget is exhausted 15ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 20 passed (21)
+   Start at  18:40:41
+   Duration  1.09s (transform 210ms, setup 107ms, import 177ms, tests 617ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > startup metadata tail: boundary and records share one physical read budget > does not emit a partial record when the remaining payload budget is exhausted
+AssertionError: expected 33 to be less than or equal to 32
+ ❯ tests/claude-model-checkpoint-tail.test.ts:136:91
+    134|     const path = join(root, "session.jsonl"); writeFileSync(path, '{"a…
+    135|     const tail = await readStartupTailRecords(path, { end: 1024, maxBy…
+    136|     expect(tail.records).toEqual([]); expect(tail.truncated).toBe(true…
+       |                                                                                           ^
+    137|   });
+    138|   it("a non-progressing boundary read throws instead of adopting a gue…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

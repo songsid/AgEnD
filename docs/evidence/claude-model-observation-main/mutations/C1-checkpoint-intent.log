@@ -1,0 +1,181 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts (21 tests | 3 failed) 411ms
+     × keeps pending intent  across JSON persistence and replay dedupe 11ms
+     × keeps pending intent claude-sonnet-5-5 across JSON persistence and replay dedupe 4ms
+     × retains an active incident while a concrete command still lacks session confirmation 3ms
+ ❯ tests/claude-model-switch-daemon.test.ts (7 tests | 4 failed) 130ms
+   × the actual daemon preserves unconfirmed /model opus through disk restore and replay 13ms
+   × the actual daemon preserves unconfirmed /model  through disk restore and replay 4ms
+   × the actual daemon preserves unconfirmed /model claude-sonnet-5-5 through disk restore and replay 3ms
+   × a legacy quiet daemon incident recovers on fresh original metadata while inference stays conservative 5ms
+
+ Test Files  2 failed (2)
+      Tests  7 failed | 21 passed (28)
+   Start at  18:40:14
+   Duration  3.48s (transform 2.91s, setup 275ms, import 3.49s, tests 541ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > keeps pending intent  across JSON persistence and replay dedupe
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > keeps pending intent claude-sonnet-5-5 across JSON persistence and replay dedupe
+AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to deeply equal { configured: 'claude-opus-5-5', …(5) }
+
+- Expected
++ Received
+
+@@ -1,7 +1,14 @@
+  {
+-   "active": null,
++   "active": {
++     "cause": "observed",
++     "id": "session-A:fresh",
++     "original": "claude-opus-5-5",
++     "scope": "unknown",
++     "served": "claude-sonnet-5-5",
++     "since": 3,
++   },
+    "configured": "claude-opus-5-5",
+    "lastServed": "claude-sonnet-5-5",
+    "launch": "claude-opus-5-5",
+    "observedAt": 3,
+    "session": "claude-opus-5-5",
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:44:80
+     42|     expect(restored.observe(intent, configured)).toBe(false); // daemo…
+     43|     for (const o of [original, restored]) o.observe(response("fresh", …
+     44|     expect(original.snapshot().active).toBeNull(); expect(restored.sna…
+       |                                                                                ^
+     45|     if (requested) {
+     46|       restored.observe(response("confirmed", 4), sonnet);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > same-session model-intent checkpoints > retains an active incident while a concrete command still lacks session confirmation
+AssertionError: expected { id: 'session-A:fallback', …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "baseline": true,
+  "cause": "observed",
+  "id": "session-A:fallback",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-opus-4-8",
+  "since": 1,
+}
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:61:92
+     59|     expect(restored.snapshot().active).toMatchObject({ served: "claude…
+     60|     expect(restored.checkpoint().expected).toBe(configured);
+     61|     restored.observe(response("confirmed", 4), sonnet); expect(restore…
+       |                                                                                            ^
+     62|   });
+     63|   it("a checkpoint with no pending intent still detects a fresh differ…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > the actual daemon preserves unconfirmed /model opus through disk restore and replay
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "observed",
+  "id": "session-A:response:after-resume:sonnet-5.5",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-sonnet-5-5",
+  "since": 1794566417499,
+}
+
+ ❯ tests/claude-model-switch-daemon.test.ts:75:45
+     73|   const monitor = resumed.buildTranscriptMonitor(null); resumed.transc…
+     74|   monitor.processEntry(intent); monitor.processEntry(served("after-res…
+     75|   expect(resumed.modelObservation().active).toBeNull();
+       |                                             ^
+     76|   expect(resumed.modelObservation()).toMatchObject({ lastServed: "clau…
+     77| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > the actual daemon preserves unconfirmed /model  through disk restore and replay
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "observed",
+  "id": "session-A:response:after-resume:sonnet-5.5",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-sonnet-5-5",
+  "since": 1794566417510,
+}
+
+ ❯ tests/claude-model-switch-daemon.test.ts:75:45
+     73|   const monitor = resumed.buildTranscriptMonitor(null); resumed.transc…
+     74|   monitor.processEntry(intent); monitor.processEntry(served("after-res…
+     75|   expect(resumed.modelObservation().active).toBeNull();
+       |                                             ^
+     76|   expect(resumed.modelObservation()).toMatchObject({ lastServed: "clau…
+     77| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > the actual daemon preserves unconfirmed /model claude-sonnet-5-5 through disk restore and replay
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "observed",
+  "id": "session-A:response:after-resume:sonnet-5.5",
+  "original": "claude-opus-5-5",
+  "scope": "unknown",
+  "served": "claude-sonnet-5-5",
+  "since": 1794566417513,
+}
+
+ ❯ tests/claude-model-switch-daemon.test.ts:75:45
+     73|   const monitor = resumed.buildTranscriptMonitor(null); resumed.transc…
+     74|   monitor.processEntry(intent); monitor.processEntry(served("after-res…
+     75|   expect(resumed.modelObservation().active).toBeNull();
+       |                                             ^
+     76|   expect(resumed.modelObservation()).toMatchObject({ lastServed: "clau…
+     77| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+
+ FAIL  tests/claude-model-switch-daemon.test.ts > a legacy quiet daemon incident recovers on fresh original metadata while inference stays conservative
+AssertionError: expected { kind: 'none' } to deeply equal { kind: 'unresolved' }
+
+- Expected
++ Received
+
+  {
+-   "kind": "unresolved",
++   "kind": "none",
+  }
+
+ ❯ tests/claude-model-switch-daemon.test.ts:92:57
+     90|   monitor.processEntry(served("legacy-unconfirmed", "claude-sonnet-5-5…
+     91|   expect(resumed.modelObservation().active).toBeNull();
+     92|   expect(JSON.parse(readFileSync(path, "utf8")).intent).toEqual({ kind…
+       |                                                         ^
+     93| });
+     94|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+

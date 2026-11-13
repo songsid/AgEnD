@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch.test.ts (55 tests | 1 failed | 54 skipped) 44ms
+     × keeps first records written by this launch before the monitor was constructed 42ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > active hook + append source ownership > keeps first records written by this launch before the monitor was constructed
+AssertionError: expected [ 'not a new text event' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "not a new text event",
++ ]
+
+ ❯ tests/claude-model-switch.test.ts:202:19
+    200|     const events: any[] = [], texts: string[] = []; m.on("model_observ…
+    201|     await m.pollIncrement(); await m.pollIncrement(); expect(events).t…
+    202|     expect(texts).toEqual([]); // Adding observations must not replay …
+       |                   ^
+    203|   });
+    204| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 54 skipped (55)
+   Start at  17:10:46
+   Duration  482ms (transform 199ms, setup 102ms, import 173ms, tests 44ms, environment 0ms)
+

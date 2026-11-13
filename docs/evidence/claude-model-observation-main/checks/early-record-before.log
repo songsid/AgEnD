@@ -1,0 +1,33 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch.test.ts (54 tests | 1 failed | 53 skipped) 38ms
+     × keeps first records written by this launch before the monitor was constructed 35ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > active hook + append source ownership > keeps first records written by this launch before the monitor was constructed
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/claude-model-switch.test.ts:194:70
+    192|     const m = new TranscriptMonitor(dir, pino({ level: "silent" }) as …
+    193|     const events: any[] = []; m.on("model_observation", e => events.pu…
+    194|     await m.pollIncrement(); await m.pollIncrement(); expect(events).t…
+       |                                                                      ^
+    195|   });
+    196| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 53 skipped (54)
+   Start at  16:44:27
+   Duration  420ms (transform 156ms, setup 94ms, import 125ms, tests 38ms, environment 0ms)
+

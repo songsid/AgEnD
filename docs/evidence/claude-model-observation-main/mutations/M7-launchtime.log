@@ -1,0 +1,75 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
+
+ ❯ tests/claude-model-switch.test.ts (58 tests | 2 failed) 75ms
+     × rejects bootstrap history even within the old 5-second alarm skew window 11ms
+     × baselines a resumed file, observes only appends, and does not replay after resetting 5ms
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 56 passed (58)
+   Start at  18:39:53
+   Duration  494ms (transform 170ms, setup 103ms, import 130ms, tests 75ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > active hook + append source ownership > rejects bootstrap history even within the old 5-second alarm skew window
+AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "at": 1794566392436,
++     "cause": "safeguards",
++     "id": "notice:notice-A",
++     "kind": "switch",
++     "original": "claude-opus-5-5",
++     "scope": "session",
++     "served": "claude-opus-4-8",
++     "sessionId": "session-A",
++   },
++ ]
+
+ ❯ tests/claude-model-switch.test.ts:208:126
+    206|   });
+    207|   it("rejects bootstrap history even within the old 5-second alarm ske…
+    208|     const r = rig(); r.m.processEntry({ ...notice(), timestamp: new Da…
+       |                                                                                                                              ^
+    209|   });
+    210|   it("baselines a resumed file, observes only appends, and does not re…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > active hook + append source ownership > baselines a resumed file, observes only appends, and does not replay after resetting
+AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "at": 1794566333449,
++     "cause": "safeguards",
++     "id": "notice:notice-A",
++     "kind": "switch",
++     "original": "claude-opus-5-5",
++     "scope": "session",
++     "served": "claude-opus-4-8",
++     "sessionId": "session-A",
++   },
++ ]
+
+ ❯ tests/claude-model-switch.test.ts:212:49
+    210|   it("baselines a resumed file, observes only appends, and does not re…
+    211|     const r = rig(); writeFileSync(r.path, JSON.stringify({ ...notice(…
+    212|     await r.m.pollIncrement(); expect(r.events).toEqual([]);
+       |                                                 ^
+    213|     appendFileSync(r.path, JSON.stringify({ ...notice(), uuid: "append…
+    214|     r.m.resetOffset(); await r.m.pollIncrement(); expect(r.events).toH…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+

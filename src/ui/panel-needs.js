@@ -1,3 +1,4 @@
+import { modelSwitchText } from "/assets/model-observation.js";
 // #1408 step 4 = #1386 part (b): the "Needs you" panel (/ui/needs) — everything waiting on the person, from every
 // world, in one list. Behind the session gate (/ui/js/), loaded the first time it is opened.
 //
@@ -102,6 +103,7 @@ const BAD = new Set(["crashed", "delivery_failed", "hang", "exited"]);
  * its question or what it lacks; anything else is the server's own words.
  */
 function detailOf(item) {
+  if (item.modelSwitch) return modelSwitchText(item.modelSwitch);
   const c = item.type === "task" ? item.card : null;
   if (!c || !c.title) return configDetail(item);
   const lacks = c.gap ? [c.gap.unchecked ? tn("gapUnchecked", c.gap.unchecked) : "", c.gap.noResult ? tn("gapNoResult") : ""].filter(Boolean).join(tn("gapJoin")) : "";

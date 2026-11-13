@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-main
+
+ ❯ tests/web-log-tab-1218.test.ts (21 tests | 1 failed) 3101ms
+   × model pairs and served values live in wrapping Log text, not the ellipsized heading 77ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 20 passed (21)
+   Start at  17:31:09
+   Duration  3.55s (transform 476ms, setup 104ms, import 166ms, tests 3.10s, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-log-tab-1218.test.ts > model pairs and served values live in wrapping Log text, not the ellipsized heading
+AssertionError: expected [ 'Last served model: Opus 4.8', …(1) ] to include 'Model switched by safeguards: Opus 5.…'
+ ❯ tests/web-log-tab-1218.test.ts:81:17
+     79|   const pg = await app("/ui/log/web-dev");
+     80|   const lines = pg.root.querySelectorAll(".p-log .log-text").map((el: …
+     81|   expect(lines).toContain("Model switched by safeguards: Opus 5.5 → Op…
+       |                 ^
+     82|   expect(lines).toContain("Last served model: Opus 4.8");
+     83| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

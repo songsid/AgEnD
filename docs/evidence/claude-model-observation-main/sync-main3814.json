@@ -1,0 +1,166 @@
+{
+  "merge": "ad488fb1173565f1083a3f19a3fdf6d1c18e9e68",
+  "parents": [
+    "f773dc990218e255e59b8bd3773f0eda2bfde429",
+    "6148c52f4ad395b0a77b8f2be92af0bb7c2efc2d"
+  ],
+  "conflicts": [
+    "src/daemon.ts imports only"
+  ],
+  "overlap": [
+    "src/backend/types.ts",
+    "src/daemon.ts"
+  ],
+  "incomingExact": [
+    "changes/3810-grok-consumed-proof.md",
+    "changes/3810-grok-consumed-proof.zh-TW.md",
+    "docs/cross-instance-messaging.md",
+    "docs/design/grok-delivery-reconciliation.md",
+    "src/backend/grok.ts",
+    "src/delivery-consumed-watch.ts",
+    "src/general-knowledge/skills/cross-instance-messaging/SKILL.md",
+    "src/grok-delivery-proof.ts",
+    "tests/fixtures/grok-consumed-3810/README.md",
+    "tests/fixtures/grok-consumed-3810/completed.pane.txt",
+    "tests/fixtures/grok-consumed-3810/completed.updates.jsonl",
+    "tests/fixtures/grok-consumed-3810/draft.chat.jsonl",
+    "tests/fixtures/grok-consumed-3810/draft.pane.txt",
+    "tests/fixtures/grok-consumed-3810/ready.pane.txt",
+    "tests/fixtures/grok-consumed-3810/submitted.pane.txt",
+    "tests/fixtures/grok-consumed-3810/submitted.updates.jsonl",
+    "tests/fixtures/grok-consumed-3810/summary.json",
+    "tests/grok-consumed-3810.test.ts",
+    "tests/pane-quota-history-3188.test.ts"
+  ],
+  "incomingInputs": [
+    {
+      "digest": "0949980b55cefbf50e3c73a01a37c8ef7a8809a2e6a6839adbb8bbafd235eda5",
+      "paths": [
+        "changes/3810-grok-consumed-proof.md"
+      ]
+    },
+    {
+      "digest": "64e72daf8daef1dab988258fb6d2bc0054ffb7c6522923d1e301c2f5217f2297",
+      "paths": [
+        "changes/3810-grok-consumed-proof.zh-TW.md"
+      ]
+    },
+    {
+      "digest": "376e2fff9d274eb6dd35d3f89d83012d38664372f4efb97b84487b3597663742",
+      "paths": [
+        "docs/cross-instance-messaging.md"
+      ]
+    },
+    {
+      "digest": "b6a081c55b15191df0bc518c1c2dacc6ea087ba6f5498d0b4237ca84df0bdc41",
+      "paths": [
+        "docs/design/grok-delivery-reconciliation.md"
+      ]
+    },
+    {
+      "digest": "cbce6068234ca081844b28aa782b26f21d5bb941d0d9c44cdbfdd0073e842152",
+      "paths": [
+        "src/backend/grok.ts"
+      ]
+    },
+    {
+      "digest": "c2d0d0e7fe7063a9215e2d8b95d704c587c136d37bda0021a140442b7bccf284",
+      "paths": [
+        "src/backend/types.ts"
+      ]
+    },
+    {
+      "digest": "3191614c5160967dba903d437835bae81657e5976a581f6f013fd2aae8da7fe0",
+      "paths": [
+        "src/daemon.ts"
+      ]
+    },
+    {
+      "digest": "4e4fceddbfd42b5142a95a252e3776ac7b3877d22610d3a6e910d715bed29af8",
+      "paths": [
+        "src/delivery-consumed-watch.ts"
+      ]
+    },
+    {
+      "digest": "c884f244ffd5938a780d6211ed97a5d48a28c45044c9c1c7922817ce32842816",
+      "paths": [
+        "src/general-knowledge/skills/cross-instance-messaging/SKILL.md"
+      ]
+    },
+    {
+      "digest": "7bb2604b02a78d96631f796a258c1543a653483963ec0824ae61f332f4bd4dc9",
+      "paths": [
+        "src/grok-delivery-proof.ts"
+      ]
+    },
+    {
+      "digest": "1ab4661439b5bdba6e9f29a97e4edd94386a48bba166da4d30cec403d6cd87c3",
+      "paths": [
+        "tests/fixtures/grok-consumed-3810/README.md"
+      ]
+    },
+    {
+      "digest": "23982ab11e30d9e7d078740dd5d4197c2c8c8818daf5a28d758bf8e01206bdb3",
+      "paths": [
+        "tests/fixtures/grok-consumed-3810/completed.pane.txt"
+      ]
+    },
+    {
+      "digest": "339fde7297bc64ad9ccd3dedf048184aaf5136c769c9f2a2da7eb2e5ffc17056",
+      "paths": [
+        "tests/fixtures/grok-consumed-3810/completed.updates.jsonl"
+      ]
+    },
+    {
+      "digest": "d70c856c4464c533b916f54a43d7d3b150d251cc8c29b5e801f926905ec6f3c7",
+      "paths": [
+        "tests/fixtures/grok-consumed-3810/draft.chat.jsonl"
+      ]
+    },
+    {
+      "digest": "815a375c9b194584e784fad8536200578d05f28dbf26c2a4e4afca6b579a9170",
+      "paths": [
+        "tests/fixtures/grok-consumed-3810/draft.pane.txt"
+      ]
+    },
+    {
+      "digest": "650dad2050dff05bef04898197531b8fa3a70b685e282c8c2502904425eee3f5",
+      "paths": [
+        "tests/fixtures/grok-consumed-3810/ready.pane.txt"
+      ]
+    },
+    {
+      "digest": "b9c4b6a79109229193712b474366a7fdcaf8b4fc1162c6becfe1c311f0369430",
+      "paths": [
+        "tests/fixtures/grok-consumed-3810/submitted.pane.txt"
+      ]
+    },
+    {
+      "digest": "1985a1197f2961e40f5547f216542c912c483e139942ff35749fbee3454452dd",
+      "paths": [
+        "tests/fixtures/grok-consumed-3810/submitted.updates.jsonl"
+      ]
+    },
+    {
+      "digest": "f04e5c62c0a90937f3ce8712ce49dc8ebf8f39d0967124d9b5d4c4f7197025c0",
+      "paths": [
+        "tests/fixtures/grok-consumed-3810/summary.json"
+      ]
+    },
+    {
+      "digest": "ab2ee0329f66a871a01eef6043795c9e67ff3ee37bfd2cb6f5e7d4aaad7e37b5",
+      "paths": [
+        "tests/grok-consumed-3810.test.ts"
+      ]
+    },
+    {
+      "digest": "31c00e4a7ce7a358ce6b467a068e1a5f540fc93c7d8158fe261c1649dd08f8eb",
+      "paths": [
+        "tests/pane-quota-history-3188.test.ts"
+      ]
+    }
+  ],
+  "ownUnchangedFiles": 152,
+  "resolution": "Keep both ClaudeModelObserver and checkpointGrokDelivery imports; preserve auto-merged Grok checkpoint/deliverySessionId/idle_submit watch and Claude observer wiring.",
+  "captureContinuity": "UI/FleetManager/observer/harness byte-identical to f773; no new browser execution."
+}

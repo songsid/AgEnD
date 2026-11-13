@@ -1,0 +1,17 @@
+
+ RUN  v4.1.12 <checkout>
+
+(node:43067) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:43393) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:43679) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:43738) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  17 passed (17)
+      Tests  390 passed (390)
+   Start at  17:14:56
+   Duration  14.16s (transform 7.99s, setup 853ms, import 7.55s, tests 17.13s, environment 1ms)
+
