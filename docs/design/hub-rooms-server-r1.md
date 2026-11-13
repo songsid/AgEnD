@@ -2,6 +2,8 @@
 
 Track R follows `hub-rooms-split.md` at 08ca97d67, `hub-rooms-ux.md` at e9b189c6f and the worked fixture in #3848 at f474423f. This slice mounts people-only group rooms and advertises `rooms-v1`. The existing direct-chat service remains responsible for grants, authorization, agent delivery, answers and receipts.
 
+The new client's `roomList()` uses `GET /hub/v1/rooms?v=2` for the combined list. The original URL remains direct-only for cached clients that render every row as an agent conversation. Older servers ignore the query and the new client's existing legacy normalizer handles their direct rows.
+
 ## Available
 
 - Create/list/get group rooms; the configured administrator creates rooms in this slice.

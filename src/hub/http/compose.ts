@@ -397,7 +397,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       streams.add(close); res.on("close", close); res.write(": connected\n\n"); return;
     }
     if (path === "/hub/v1/rooms") {
-      if (method === "GET") { signedIn(); const view = await guard(() => rooms.listAuthorized(ctx)); const groups = await guard(() => groupRooms.list(ctx));
+      if (method === "GET") { signedIn(); const view = await guard(() => rooms.listAuthorized(ctx));
+        // Cached clients draw every row as a direct agent conversation. New roomList() opts into group rows.
+        if (query.get("v") !== "2") return send(res, 200, { rooms: view.rooms.map(room => ({ ...room, ...quota.roomProjection(room, view.grantProof) })) });
+        const groups = await guard(() => groupRooms.list(ctx));
         return send(res, 200, { ...groups, rooms: [...groups.rooms, ...view.rooms.map(room => ({ ...directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room)), ...quota.roomProjection(room, view.grantProof) }))] }); }
       if (method === "POST") {
         csrf(); const b = await body();

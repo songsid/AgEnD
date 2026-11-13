@@ -17,9 +17,10 @@ async function world() {
 
 it("creates a group room with the creator as manager and lists it only for its members", async () => {
   const w = await world();
-  const list = await r!.call(w.a, "GET", "/hub/v1/rooms");
+  const list = await r!.call(w.a, "GET", "/hub/v1/rooms?v=2");
   expect(list.json).toMatchObject({ me: { canCreateRooms: false }, invitations: 0, rooms: [{ id: w.id, kind: "group", name: "Weekly", people: 3, agents: 0, unread: 1 }] });
-  expect((await r!.call(w.c, "GET", "/hub/v1/rooms")).json.rooms).toEqual([]);
+  expect((await r!.call(w.c, "GET", "/hub/v1/rooms?v=2")).json.rooms).toEqual([]);
+  expect((await r!.call(w.a, "GET", "/hub/v1/rooms")).json).toEqual({ rooms: [] }); // cached direct renderer
   const detail = await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.id}`);
   expect(detail.json.members.find((m: any) => m.id === detail.json.me.id)).toMatchObject({ name: "Hub Admin", role: "manager", kind: "person" });
   expect(detail.json.settings).toEqual({ allMention: true, historyForNew: "since-join" });
@@ -73,7 +74,7 @@ it("marks only an owned message read and keeps archived rooms readable but unsen
   const w = await world(), posted = await r!.call(w.a, "POST", `/hub/v1/rooms/${w.id}/messages`, { text: "hello", mentions: [], idempotencyKey: randomUUID() });
   expect((await r!.call(w.b, "POST", `/hub/v1/rooms/${w.id}/read`, { upTo: randomUUID() })).status).toBe(404);
   expect((await r!.call(w.b, "POST", `/hub/v1/rooms/${w.id}/read`, { upTo: posted.json.id })).status).toBe(200);
-  expect((await r!.call(w.b, "GET", "/hub/v1/rooms")).json.rooms[0].unread).toBe(0);
+  expect((await r!.call(w.b, "GET", "/hub/v1/rooms?v=2")).json.rooms[0].unread).toBe(0);
   await r!.call(w.admin, "PATCH", `/hub/v1/rooms/${w.id}`, { archived: true });
   expect((await r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}/messages`)).status).toBe(200);
   expect((await r!.call(w.a, "POST", `/hub/v1/rooms/${w.id}/messages`, { text: "late", mentions: [], idempotencyKey: randomUUID() })).json.code).toBe("archived");
@@ -115,7 +116,7 @@ it("retains room membership, history and unread across an HTTP remount", async (
   const posted = await r!.call(w.a, "POST", `/hub/v1/rooms/${w.id}/messages`, { text: "retained", idempotencyKey: randomUUID() });
   await r!.restartHttp();
   expect((await r!.call(w.b, "GET", `/hub/v1/rooms/${w.id}/messages`)).json.messages.at(-1).id).toBe(posted.json.id);
-  expect((await r!.call(w.b, "GET", "/hub/v1/rooms")).json.rooms[0].unread).toBe(2);
+  expect((await r!.call(w.b, "GET", "/hub/v1/rooms?v=2")).json.rooms[0].unread).toBe(2);
 });
 
 it("keeps direct-chat grants, receipts and old history shapes alongside seam-1 messages", async () => {
@@ -127,7 +128,7 @@ it("keeps direct-chat grants, receipts and old history shapes alongside seam-1 m
   const opened = await r.call(a, "POST", "/hub/v1/rooms", { exposureId, grantId: grant.json.grant.id }), id = opened.json.room.id;
   const key = randomUUID(), ask = await r.call(a, "POST", `/hub/v1/rooms/${id}/messages`, { text: "Direct question", mentions: [], idempotencyKey: key });
   expect(ask.json).toMatchObject({ id: ask.json.receipt.messageId, text: "Direct question", idempotencyKey: key, receipt: { stage: "queued" } });
-  const list = (await r.call(a, "GET", "/hub/v1/rooms")).json;
+  const list = (await r.call(a, "GET", "/hub/v1/rooms?v=2")).json;
   expect(list.rooms[0]).toMatchObject({ id, kind: "direct", name: "Probe", exposureId, agent: { presence: "idle" } });
   const detail = (await r.call(a, "GET", `/hub/v1/rooms/${id}`)).json;
   expect(detail.me.id).toBe(personKeyString(alex)); expect(detail.members[1].canAsk).toBe(true);
@@ -143,9 +144,9 @@ it("keeps direct-chat grants, receipts and old history shapes alongside seam-1 m
     await r.http.receive(r.frame("answer", { messageId: ask.json.id, answerId, text, contentDigest: digest, releaseLease: release.payload.lease }, link) as never, link);
     let events = ""; while (!events.includes(text)) { const chunk = await reader.read(); expect(chunk.done).toBe(false); events += new TextDecoder().decode(chunk.value); }
     expect(events).toContain("event: message.added");
-    expect((await r.call(a, "GET", "/hub/v1/rooms")).json.rooms[0].unread).toBe(1);
+    expect((await r.call(a, "GET", "/hub/v1/rooms?v=2")).json.rooms[0].unread).toBe(1);
     expect((await r.call(a, "POST", `/hub/v1/rooms/${id}/read`, { upTo: `${ask.json.id}:answer` })).status).toBe(200);
-    expect((await r.call(a, "GET", "/hub/v1/rooms")).json.rooms[0].unread).toBe(0);
+    expect((await r.call(a, "GET", "/hub/v1/rooms?v=2")).json.rooms[0].unread).toBe(0);
     const latest = (await r.call(a, "GET", `/hub/v1/rooms/${id}/messages?limit=1`)).json;
     expect(latest).toMatchObject({ messages: [{ text }], more: true });
     expect((await r.call(a, "GET", `/hub/v1/rooms/${id}/messages?before=${latest.messages[0].id}&limit=1`)).json.messages[0].text).toBe("Direct question");
