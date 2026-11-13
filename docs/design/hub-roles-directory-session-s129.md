@@ -1,0 +1,19 @@
+# Role-aware directory browser handoff
+
+This follows #3826. It adds internal session adapters; the mounted controller, production provider and HTTP routes do not call them yet. It does not establish a working auxiliary Directory Save or complete S-129.
+
+Two existing root-only checks blocked an auxiliary administrator after the directory proof engine: recent-authentication lookup returned null, and rotation preparation refused. Both can now consume an optional opaque administration witness. The binding must name the actual core's directory, configured root and directory epoch, in addition to the witness's actor/session/request/source checks. No witness keeps the root-only path. The recent-authentication record still comes only from trusted-directory sign-in; role checks or session activity never create, inherit or renew it.
+
+Preparing with a witness marks the private handle as requiring role-aware release, even for the root. It cannot fall back to legacy completion. SQL consumption, original token/session matching, declaration, epoch advance, expiration and single-use behavior retain their existing contracts. No new token or role information is added to files, notices or the operation DTO.
+
+The new `HubSessions.completeRoleDirectoryRotation` creates an internal context for the exact successor token. The new mounted core acquires a fresh named `hub.admin` permit against its current directory, canonical policy, clock and session. An old context, another real root session or a legacy capability cannot substitute for that successor. The old five-second permit is not extended across directory work.
+
+One caller claims the handle before any await. Configuration/root, directory, unit-of-work and management identities remain bound through the read. Cancellation, source replacement, role loss, sign-out, unknown eligibility, a changed declaration or expiry refuses and discards the private token. A second completion cannot start another read or cancel the first. The final SQL read repeats the exact persisted declaration/head/session checks after the new permit assertion.
+
+The existing ordinary management assertion now returns its own clock sample, and HubCore forwards it. Existing consumers may ignore the return as before. The handoff uses that sample for the final rotation/session deadline checks, with no later clock callback. It does not create authority or renew the permit. The issuer assertion is unchanged. Numeric/order and repeated field checks remain conservative fences even where the normal session implementation supplies overlapping checks.
+
+Legacy root completion remains synchronous and supported after reopening the same SQLite file with the original private handle. It must not require equality with the old closed database object. The existing physical SQLite/HTTPS reopen test and all its assertions remain unchanged.
+
+Validation uses actual memory SQLite, HubSessions, role policy, cutover/clock, transport, decision and successor rows, with fictional directory answers and synthetic file-image digests. Held reads and late callbacks are owned fixture controls. The existing root suite retains its physical file/loopback HTTPS scope; it is not new physical auxiliary-role recovery evidence. No production provider, mounted Save, browser, container, live AD/account, native platform or startup activation is claimed.
+
+Next work must produce the exact mounted administration binding, acquire the old-generation proof near the effect after slow candidate checks, compose the new session handoff with the controller, and validate actual mounted Save plus member/SSE/issued-recovery/root-self-use behavior. Parent-first plain alpha sync, resolution review, exact-head CI/readiness, the alpha.3 freeze and full-S129 holds remain. Rollback before activation is to leave the new adapter uncomposed; committed settings still recover forward without replaying an old browser permit.

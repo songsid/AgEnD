@@ -1,0 +1,403 @@
+{
+  "sourceCommit": "e0897f5484e55c6e02a5eea19fd0a68eb4c857c7",
+  "baseline": {
+    "passed": 39,
+    "failed": 0
+  },
+  "typeCommand": "GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.json",
+  "testCommand": "nice -n 10 node_modules/.bin/vitest run tests/hub-roles-directory-session-s129.test.ts --maxWorkers=2 --reporter=json",
+  "cases": [
+    {
+      "id": "S01-opaque-preparation",
+      "file": "src/hub/session-directory-transition.ts",
+      "originalSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "replacements": [
+        {
+          "old": "check(); assertHubDirectoryAdministration(proof.witness, actor, proof.source); check();",
+          "new": "check();",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "9fe5f2855ea2a14f739c085d57f49592bdb608a71da593eb125f616bab99de8e",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 32,
+      "failed": 7,
+      "failedAssertions": [
+        {
+          "name": "S129 auxiliary directory session preparation refuses forged at both preparation entry points",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 auxiliary directory session preparation refuses person at both preparation entry points",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 auxiliary directory session preparation refuses session at both preparation entry points",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 auxiliary directory session preparation refuses request at both preparation entry points",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 auxiliary directory session preparation refuses image at both preparation entry points",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 auxiliary directory session preparation refuses expired at both preparation entry points",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 auxiliary directory session preparation refuses role-loss at both preparation entry points",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "testInputCommit": "5abdf6d8a9035246b323415c97712d988105324c"
+    },
+    {
+      "id": "S02-legacy-root",
+      "file": "src/hub/session-directory-transition.ts",
+      "originalSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "replacements": [
+        {
+          "old": "if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError(\"denied\");",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "2b7c098fe6c55bae927d1a0259420db614d546838443dd60b06f734d44903d4e",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 38,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 auxiliary directory session preparation keeps a bare auxiliary identity outside both session helpers",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "testInputCommit": "5abdf6d8a9035246b323415c97712d988105324c"
+    },
+    {
+      "id": "S03-own-source",
+      "file": "src/hub/session-directory-transition.ts",
+      "originalSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "replacements": [
+        {
+          "old": "    if (proof.source.directory !== core.deps.directory || proof.source.epoch !== core.directoryEpoch\n      || personKeyString(proof.source.administrator) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError(\"unavailable\");",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "2fd6145d32c4d38df7941ef9e1ba51bc2825c87249e236a3c04c165f7a2b7f71",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 36,
+      "failed": 3,
+      "failedAssertions": [
+        {
+          "name": "S129 auxiliary directory session preparation refuses an actual witness rebound to a foreign directory source",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 auxiliary directory session preparation refuses an actual witness rebound to a foreign root source",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "name": "S129 auxiliary directory session preparation refuses an actual witness rebound to a foreign epoch source",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "testInputCommit": "5abdf6d8a9035246b323415c97712d988105324c"
+    },
+    {
+      "id": "S04-legacy-downgrade",
+      "file": "src/hub/session-directory-transition.ts",
+      "originalSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "replacements": [
+        {
+          "old": "!state || state.roleRequired || state.phase !== \"committed\"",
+          "new": "!state || state.phase !== \"committed\"",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "e7918b1e196b99117dafe0914761bde6b40dd546a7ea159b92208eb9d46d47e6",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 38,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 successor release under the new role generation will not release a witness-prepared root through the legacy completion path",
+          "firstLine": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "testInputCommit": "5abdf6d8a9035246b323415c97712d988105324c"
+    },
+    {
+      "id": "S05-final-role-proof",
+      "file": "src/hub/session-directory-transition.ts",
+      "originalSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "replacements": [
+        {
+          "old": "const out = completion(core, state, operationId, proof);",
+          "new": "const out = completion(core, state, operationId);",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "0e104613aeeb5d25e17d492dc84e47f40e0f8976ad3e06d3bfea3917149ce748",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 38,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 successor release under the new role generation re-proves the role after the fresh directory read and before publishing the token",
+          "firstLine": "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "testInputCommit": "e0897f5484e55c6e02a5eea19fd0a68eb4c857c7"
+    },
+    {
+      "id": "S06-exact-successor",
+      "file": "src/hub/session-directory-transition.ts",
+      "originalSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "replacements": [
+        {
+          "old": " || permit.actor.sessionId !== state.newId",
+          "new": "",
+          "count": 2
+        },
+        {
+          "old": " || personKeyString(permit.actor.person) !== personKeyString(state.actor.person)",
+          "new": "",
+          "count": 2
+        }
+      ],
+      "mutantSha256": "9e857894bd1135970239758ded38ef29aaa2edc70b7e9f5d11640621bec2aea5",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 38,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 successor release under the new role generation requires the exact successor even when a different real root session is supplied",
+          "firstLine": "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "testInputCommit": "e0897f5484e55c6e02a5eea19fd0a68eb4c857c7"
+    },
+    {
+      "id": "S07-mounted-composition",
+      "file": "src/hub/session-directory-transition.ts",
+      "originalSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "replacements": [
+        {
+          "old": "\n        || core.deps.config !== configuration || personKeyString(configuration.administrator) !== state.administrator\n        || core.deps.directory !== directory || core.deps.uow !== uow",
+          "new": "",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "65ddabe91d72e277a4719dee62c38e7bafc48dbe8fe9f1a4e5fe0e0694e4ec7c",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 35,
+      "failed": 4,
+      "failedAssertions": [
+        {
+          "name": "S129 successor release under the new role generation retires root during fresh successor authorization",
+          "firstLine": "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+        },
+        {
+          "name": "S129 successor release under the new role generation retires config during fresh successor authorization",
+          "firstLine": "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+        },
+        {
+          "name": "S129 successor release under the new role generation retires directory during fresh successor authorization",
+          "firstLine": "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+        },
+        {
+          "name": "S129 successor release under the new role generation retires uow during fresh successor authorization",
+          "firstLine": "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "testInputCommit": "e0897f5484e55c6e02a5eea19fd0a68eb4c857c7"
+    },
+    {
+      "id": "S08-authority-sample",
+      "file": "src/hub/roles/authority.ts",
+      "originalSha256": "5d06df4d6089ad7c69914a3a8b507ce5ffe808331fae14f5fe663e6bae3dc4dd",
+      "replacements": [
+        {
+          "old": "            return at.wall;\n",
+          "new": "            return;\n",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "ce336595c87acb194977e31f03c995109ebfa8e64b0c78e51fa89ea701896290",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 36,
+      "failed": 3,
+      "failedAssertions": [
+        {
+          "name": "S129 successor release under the new role generation releases only through fresh hub.admin for the actual successor and never grants root self-use",
+          "firstLine": "Error: Hub protocol: unavailable"
+        },
+        {
+          "name": "S129 successor release under the new role generation will not release a witness-prepared root through the legacy completion path",
+          "firstLine": "Error: promise rejected \"Error: Hub protocol: unavailable { code: '\u2026' }\" instead of resolving"
+        },
+        {
+          "name": "S129 successor release under the new role generation allows one physical fresh read and refuses a second release without cancelling the first",
+          "firstLine": "Error: promise rejected \"Error: Hub protocol: unavailable { code: '\u2026' }\" instead of resolving"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "5d06df4d6089ad7c69914a3a8b507ce5ffe808331fae14f5fe663e6bae3dc4dd",
+      "testInputCommit": "e0897f5484e55c6e02a5eea19fd0a68eb4c857c7"
+    },
+    {
+      "id": "S09-core-sample",
+      "file": "src/hub/http/core.ts",
+      "originalSha256": "8ca568a6b06f5096daf8c02a1e9eaa39fb6640d8a9eaf58901b1cba2cdb6cdb7",
+      "replacements": [
+        {
+          "old": "return permit.assertCurrent();",
+          "new": "permit.assertCurrent();",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "86722c78246201df0dfe8b0cc1d4585cf15b89725b12fa687895713558d35b40",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 36,
+      "failed": 3,
+      "failedAssertions": [
+        {
+          "name": "S129 successor release under the new role generation releases only through fresh hub.admin for the actual successor and never grants root self-use",
+          "firstLine": "Error: Hub protocol: unavailable"
+        },
+        {
+          "name": "S129 successor release under the new role generation will not release a witness-prepared root through the legacy completion path",
+          "firstLine": "Error: promise rejected \"Error: Hub protocol: unavailable { code: '\u2026' }\" instead of resolving"
+        },
+        {
+          "name": "S129 successor release under the new role generation allows one physical fresh read and refuses a second release without cancelling the first",
+          "firstLine": "Error: promise rejected \"Error: Hub protocol: unavailable { code: '\u2026' }\" instead of resolving"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "8ca568a6b06f5096daf8c02a1e9eaa39fb6640d8a9eaf58901b1cba2cdb6cdb7",
+      "testInputCommit": "e0897f5484e55c6e02a5eea19fd0a68eb4c857c7"
+    },
+    {
+      "id": "S10-single-flight",
+      "file": "src/hub/session-directory-transition.ts",
+      "originalSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "replacements": [
+        {
+          "old": "state.phase = \"completing\"; // One caller owns release; a second call cannot cancel or join this one.",
+          "new": "// Owned reversal: no early release claim.",
+          "count": 1
+        },
+        {
+          "old": "state.phase !== \"completing\" ||",
+          "new": "state.phase !== \"committed\" ||",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "548ef9f67714b4871613366b090453539e260de4b16b3e14e79c3e7122bdf124",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 38,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 successor release under the new role generation allows one physical fresh read and refuses a second release without cancelling the first",
+          "firstLine": "AssertionError: expected 'extra-read' to be 'refused' // Object.is equality"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "testInputCommit": "e0897f5484e55c6e02a5eea19fd0a68eb4c857c7"
+    },
+    {
+      "id": "S11-persisted-declaration",
+      "file": "src/hub/session-directory-transition.ts",
+      "originalSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "replacements": [
+        {
+          "old": "if (!binding.success || binding.data.previousSessionId !== state.actor.sessionId || binding.data.sessionId !== state.newId)",
+          "new": "if (!binding.success)",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "ede76cd91c15e73c219534422eb93b3b64971a896913735e8c867056eba74413",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 38,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 successor release under the new role generation rejects a changed persisted successor declaration before another directory read",
+          "firstLine": "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "testInputCommit": "e0897f5484e55c6e02a5eea19fd0a68eb4c857c7"
+    },
+    {
+      "id": "S12-final-deadline",
+      "file": "src/hub/session-directory-transition.ts",
+      "originalSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "replacements": [
+        {
+          "old": "|| !Number.isSafeInteger(now) || now < state.createdAt || now >= state.expiresAt\n      || !current(r, state.old.person, state.nextEpoch!",
+          "new": "|| !Number.isSafeInteger(now) || now < state.createdAt\n      || !current(r, state.old.person, state.nextEpoch!",
+          "count": 1
+        }
+      ],
+      "mutantSha256": "489f1dc98be53f558a44b74c8b733f72e508ea7a9a0545b6e958e0fe3d2e19f8",
+      "typesExit": 0,
+      "testExit": 1,
+      "passed": 38,
+      "failed": 1,
+      "failedAssertions": [
+        {
+          "name": "S129 successor release under the new role generation retires deadline during fresh successor authorization",
+          "firstLine": "Error: promise resolved \"{ \u2026(2) }\" instead of rejecting"
+        }
+      ],
+      "verdict": "CAUGHT",
+      "restoredSha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "testInputCommit": "e0897f5484e55c6e02a5eea19fd0a68eb4c857c7"
+    }
+  ],
+  "carriedTestCommit": "5abdf6d8a9035246b323415c97712d988105324c",
+  "earlierSurvivor": {
+    "id": "S05-final-role-proof",
+    "testInputCommit": "5abdf6d8a9035246b323415c97712d988105324c",
+    "verdict": "SURVIVED",
+    "passed": 39,
+    "failed": 0,
+    "correction": "Move the owned role-loss callback after actual HubCore.management returns; 2 test lines only, no source change; replay now has exactly one intended assertion red."
+  },
+  "excludedScriptError": "S06 exact replacement count refused before compilation/test; source restored; corrected replacement is the recorded caught case."
+}

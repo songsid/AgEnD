@@ -1,0 +1,234 @@
+{
+  "task": "S-129/M-3010",
+  "sourceCommit": "e0897f5484e55c6e02a5eea19fd0a68eb4c857c7",
+  "implementationCommit": "bd9918562cf002c7b8102e1be51aa928e9dc582e",
+  "parent": {
+    "pr": 3826,
+    "head": "69ee3cf338779ef2e07a9de6280673b8b3a694e5"
+  },
+  "plainParentSync": {
+    "commit": "5abdf6d8a9035246b323415c97712d988105324c",
+    "parents": [
+      "bd9918562cf002c7b8102e1be51aa928e9dc582e",
+      "69ee3cf338779ef2e07a9de6280673b8b3a694e5"
+    ],
+    "clean": true,
+    "incoming": "8 writer test lines plus R1 evidence; no product delta"
+  },
+  "recordedAt": "2026-11-13T12:00:51.572510+00:00",
+  "boundary": "Internal new-generation session adapter; no production controller/factory/HTTP call",
+  "failFirst": {
+    "checkpoint": "ff3f67fc559cc848ff86822d84c785d31874b1e2",
+    "passed": 2,
+    "failed": 2,
+    "failures": [
+      "actual auxiliary recent sign-in attestation returns null",
+      "actual auxiliary token-bound rotation preparation throws denied"
+    ]
+  },
+  "restored": {
+    "command": "nice -n 10 node_modules/.bin/vitest run tests/hub-directory-session-transition.test.ts tests/hub-directory-settings-proof.test.ts tests/hub-roles-authority-s129.test.ts tests/hub-roles-directory-s129.test.ts tests/hub-roles-directory-session-s129.test.ts tests/hub-roles-directory-transition-s129.test.ts tests/hub-roles-directory-witness-s129.test.ts tests/hub-roles-directory-writer-s129.test.ts tests/hub-roles-session-s129.test.ts --maxWorkers=2",
+    "passed": 315,
+    "failed": 0,
+    "skipped": 0,
+    "files": 9,
+    "newSessionCases": 39,
+    "perFile": [
+      {
+        "file": "tests/hub-directory-session-transition.test.ts",
+        "passed": 38
+      },
+      {
+        "file": "tests/hub-directory-settings-proof.test.ts",
+        "passed": 60
+      },
+      {
+        "file": "tests/hub-roles-authority-s129.test.ts",
+        "passed": 31
+      },
+      {
+        "file": "tests/hub-roles-directory-s129.test.ts",
+        "passed": 26
+      },
+      {
+        "file": "tests/hub-roles-directory-session-s129.test.ts",
+        "passed": 39
+      },
+      {
+        "file": "tests/hub-roles-directory-transition-s129.test.ts",
+        "passed": 49
+      },
+      {
+        "file": "tests/hub-roles-directory-witness-s129.test.ts",
+        "passed": 14
+      },
+      {
+        "file": "tests/hub-roles-directory-writer-s129.test.ts",
+        "passed": 35
+      },
+      {
+        "file": "tests/hub-roles-session-s129.test.ts",
+        "passed": 23
+      }
+    ]
+  },
+  "nativeTypes": {
+    "version": "7.0.2",
+    "source": {
+      "command": "GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.json",
+      "exit": 0
+    },
+    "tests": {
+      "command": "GOMAXPROCS=2 nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0
+    }
+  },
+  "mutations": {
+    "guardFamilies": 12,
+    "nativeCompilingCaught": 12,
+    "exactRestored": true,
+    "historicalInput": "S01-S04 at5ab; S05-S12 at e089 test-only correction; all product blobs identical",
+    "originalSurvivorDisclosed": true,
+    "detail": "mutations.json"
+  },
+  "retainedRecovery": "Original physical SQLite/HTTPS reopen test and all assertions unchanged; it is root-only evidence, not new physical auxiliary-role recovery",
+  "changelog": {
+    "command": "node scripts/changelog-assemble.mjs --check",
+    "exit": 0,
+    "fragments": 451
+  },
+  "limitations": [
+    "New logic uses actual memory SQLite/session/role/transport/decision state, fictional directory and synthetic file-image hashes",
+    "No production administration provider, mounted controller/HTTP activation or working auxiliary Directory Save",
+    "No auxiliary physical/WAL crash, SIGKILL, browser, container, native platform, real AD/account or startup activation claim",
+    "Legacy root physical reopen is retained in its original suite only",
+    "Parent-first plain alpha sync/resolution review/current-head CI/readiness, alpha.3 freeze and full-S129 holds remain"
+  ],
+  "rollback": "Leave the new adapter uncomposed; committed directory settings recover forward without old browser permits",
+  "bindings": [
+    {
+      "file": "src/hub/session-directory-transition.ts",
+      "sha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb",
+      "bytes": 13415
+    },
+    {
+      "file": "src/hub/sessions.ts",
+      "sha256": "40d0960d0f3969454999e270e7825888668d2d4f6abfb1edf610a32c445b5e5e",
+      "bytes": 16878
+    },
+    {
+      "file": "src/hub/roles/authority.ts",
+      "sha256": "5d06df4d6089ad7c69914a3a8b507ce5ffe808331fae14f5fe663e6bae3dc4dd",
+      "bytes": 13396
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "8ca568a6b06f5096daf8c02a1e9eaa39fb6640d8a9eaf58901b1cba2cdb6cdb7",
+      "bytes": 18887
+    },
+    {
+      "file": "tests/hub-roles-directory-session-s129.test.ts",
+      "sha256": "81a43b16a34a49b8781e46bfa127bb2315c7a66034f07d76a0f3760429cfa154",
+      "bytes": 15163
+    },
+    {
+      "file": "docs/design/hub-roles-directory-session-s129.md",
+      "sha256": "c45173a9df126c71446e14fca18a9b2c62c19968e8d965820c1951c299892b49",
+      "bytes": 3922
+    },
+    {
+      "file": "changes/3743-roles-directory-session.md",
+      "sha256": "08bced4ac9905eed1b8dd11d93cf039386e6d3486d08c159a328632ca07b4346",
+      "bytes": 221
+    },
+    {
+      "file": "changes/3743-roles-directory-session.zh-TW.md",
+      "sha256": "df5c7e176d080d0be7d7f6a278342600f4fd61ca71b8009a811b9e945362cde8",
+      "bytes": 175
+    },
+    {
+      "file": "src/hub/settings-commit.ts",
+      "sha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519",
+      "bytes": 40122,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-directory-proof.ts",
+      "sha256": "7f5519db02959d69e4517280761ead8766ece55914137ef741d46395bbea8064",
+      "bytes": 20101,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-directory-control.ts",
+      "sha256": "0e47c1c72f1cd6f13d77ddc1afea147f2f191f74e9db37ef8e59558e7b52d19e",
+      "bytes": 7458,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-directory-save.ts",
+      "sha256": "ee26a5788898db9bbc4ae9c663f25f7520d3a1e58e37f9d6d3681bbbf6c46a48",
+      "bytes": 10506,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-directory-decision.ts",
+      "sha256": "a7be86d307e22adc25cd9724aefee3ca5ed0db3aa951b15bc22cd7ae9acebf20",
+      "bytes": 23700,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/directory-decision-proof.ts",
+      "sha256": "b700f34b23b56c7a4f9996eb53fda617d97f15e2d0e71dcd14108189f88d1861",
+      "bytes": 5060,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "a37e2a2c51d6291e56bce25c98ae5e4d576c7b086689fde33825f1147f06b760",
+      "bytes": 41544,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/fleet-manager.ts",
+      "sha256": "7ae2e4817a99a8515446793f0f5cdcf4e4c98feedc324bd2e950f6c9b4b4d824",
+      "bytes": 1776962,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/settings-directory-runtime.ts",
+      "sha256": "10bda593f3795493781495fb230a9cc75304385232393a65d99e76a877a2f303",
+      "bytes": 1126,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/roles/clock.ts",
+      "sha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5",
+      "bytes": 4710,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "src/hub/http/compose.ts",
+      "sha256": "5450a50a564d7429ed352af680eadb9fa4b81ff07a10ca005a893b253b32e3f3",
+      "bytes": 41870,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "tests/hub-directory-session-transition.test.ts",
+      "sha256": "37660f09901efad29d1e3d2da0875c6e387187b3fc92c24905be95722aa7baea",
+      "bytes": 29139,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "tests/hub-roles-directory-writer-s129.test.ts",
+      "sha256": "d13cb58473f41383a701267a6ddeadab4d963d42f725021482aef1f1235fd90b",
+      "bytes": 19228,
+      "unchangedFromParent": true
+    },
+    {
+      "file": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "c886cf7218dcb2e713259fa2be29bd27b42a134d61535a520ddf96e85ffd8b28",
+      "bytes": 7232,
+      "unchangedFromParent": true
+    }
+  ]
+}
