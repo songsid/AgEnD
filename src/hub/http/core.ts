@@ -13,7 +13,7 @@ import { HubGroupPolicyError, HubGroupReadOverload, type GroupCheckContext } fro
 import { prepareGrantAccess, type HubGrantSubjectProof } from "../grant-access.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { readHubSessionEpoch } from "../session-epoch.js";
-import type { HubManagementPermission } from "../roles/authority.js";
+import type { HubDirectoryManagementPreparation, HubManagementPermission } from "../roles/authority.js";
 import type { HubDirectoryDecisionProof } from "../directory-decision-proof.js";
 import { createHubDirectoryAdmission, type HubDirectoryReads } from "../directory/admission.js";
 export { DIRECTORY_PER_PERSON, DIRECTORY_TOTAL } from "../directory/admission.js";
@@ -35,6 +35,12 @@ export class HubCore {
   /** Refuses once the server is fenced (and before every write: a stale continuation never commits). */
   live(): boolean { try { return this.lifetime() === true && this.deps.current().serverEnabled() === true; } catch { return false; } }
   check(): void { if (!this.live()) throw new HubProtocolError("unavailable"); }
+  /** Internal preparation only; effect authority is acquired afresh by the returned handle. */
+  async directoryPreparation(ctx: HubRequestContext): Promise<HubDirectoryManagementPreparation> {
+    this.check();
+    if (!this.deps.management) throw new HubProtocolError("unavailable");
+    return this.deps.management.prepareDirectory(ctx);
+  }
   async management(ctx: HubRequestContext, permission: HubManagementPermission) {
     this.check();
     const management = this.deps.management;
