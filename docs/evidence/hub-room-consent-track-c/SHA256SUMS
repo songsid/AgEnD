@@ -1,6 +1,6 @@
 e8fa1b812062091d2c30177e1e3cecaaa2a1e2c7c89a031973cdc9c762bf7af7  docs/evidence/hub-room-consent-track-c/README.md
 4d71f534de1176896c0f2f268b376054b4aa6336ccff3e7aec04e2609b028333  docs/evidence/hub-room-consent-track-c/acceptance.json
-bbccb3ddf784235029184467632de3fd1aa5eafb867f7253f93d9b2c0f917310  docs/evidence/hub-room-consent-track-c/bindings.json
+e92f293ffd5800a505695a89cf02c939997d9a3225a164c99aa7a863c59142a5  docs/evidence/hub-room-consent-track-c/bindings.json
 c341d4c4beabc93bf22790c08897395da1c4ffe852782119a0ac5ca14155a469  docs/evidence/hub-room-consent-track-c/browser-1/desktop-en-dark-accepted.png
 cd446f5c4ceff7f8bc274c35f4846c9974df9a0dd613b8e401bb9e8c69729193  docs/evidence/hub-room-consent-track-c/browser-1/desktop-en-dark-pending.png
 c97422ccddeae7ef9b7d05b1c92dcadee0821ab5c6cbc0518fc9c4bc6d2e8f44  docs/evidence/hub-room-consent-track-c/browser-1/desktop-en-light-accepted.png
@@ -82,7 +82,7 @@ bf74ada5ab5715f222b5eb53db92fa631618c6bb58298e99ac027e9515984a53  docs/evidence/
 eff9d28dcda999db81642c7ff35aed0341175aee33fed5cf0da7f24f6ab75a5d  docs/evidence/hub-room-consent-track-c/r1/prior-capture-inputs.sha256
 f79487dd6cbd1e3f5aae82619d3e78cce55e46fa4f156b1043cacd46679ca9ca  docs/evidence/hub-room-consent-track-c/r1/scan-ci.log
 37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570  docs/evidence/hub-room-consent-track-c/r1/scan-current.json
-3107d218ebb802995826aaba21ed514e3653ed937c39567d40b1f041b6d00d32  docs/evidence/hub-room-consent-track-c/r1/scan-current.log
+a410955e6255df922946db4330ae2823035146ded78b292eb07727123eee95e4  docs/evidence/hub-room-consent-track-c/r1/scan-current.log
 a4ac97ba30c892049b4d3bb714e076a8c1d88c04afd9de47d4a912a05248b299  docs/evidence/hub-room-consent-track-c/r1/scan-proof.json
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/r1/source-types.log
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/r1/test-types.log
