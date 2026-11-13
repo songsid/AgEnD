@@ -24,7 +24,7 @@ const until = async (test: () => unknown | Promise<unknown>, label: string) => {
   const end = Date.now() + 8_000; while (Date.now() < end) { if (await test()) return; await new Promise(r => setTimeout(r, 25)); } throw Error("Timed out: " + label);
 };
 const caps = [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY], net = await hubRig({ serverCapabilities: caps });
-let web: Awaited<ReturnType<typeof s3bRig>> | undefined, browser: any;
+let web: Awaited<ReturnType<typeof s3bRig>> | undefined, browser: any, activePage: any, activeTag = "setup";
 const peers: any[] = [];
 const server = createServer({ key: readFileSync(join(net.root, "hub/keys/tls-key.pem")), cert: readFileSync(join(net.root, "hub/keys/tls-cert.pem")) }, (req, res) => {
   if (!web?.http.handle(req, res)) { res.writeHead(404); res.end(); }
@@ -88,13 +88,15 @@ try {
       } };
     }, { lang, theme });
     await context.route("**/*", (route: any) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
-    const page = await context.newPage(); page.on("pageerror", (e: Error) => errors.push(e.message));
+    const page = await context.newPage(); activePage = page; activeTag = tag; page.on("pageerror", (e: Error) => errors.push(e.message));
     page.on("response", (response: any) => { const u = new URL(response.url());
       if (u.pathname.startsWith("/hub/v1/")) receipt.requests.push({ device, method: response.request().method(), path: u.pathname + u.search, status: response.status() });
       if (u.pathname.startsWith("/assets/") || u.pathname.startsWith("/ui/js/")) responses.push(response.body().then((body: Buffer) => { receipt.served[u.pathname] = sha(body); }).catch(() => {}));
     });
     const shot = async (name: string) => { const path = `${tag}-${name}.png`; await page.screenshot({ path: join(out, path), fullPage: true }); receipt.pictures.push({ path, sha256: sha(readFileSync(join(out, path))) }); };
-    await page.goto(origin + "/ui/hub?room=" + roomId); await page.locator(".hub-room-page").waitFor(); await page.locator(".hub-member-agent").first().waitFor();
+    await page.goto(origin + "/ui/hub?room=" + roomId); await page.locator(".hub-room-page").waitFor(); await page.locator(".hub-room-rail-toggle").waitFor();
+    if (await page.locator(".hub-room-rail-toggle").getAttribute("aria-pressed") === "false") await page.locator(".hub-room-rail-toggle").click();
+    await page.locator(".hub-member-agent").first().waitFor();
     const row = (name: string) => page.locator(".hub-member-agent").filter({ has: page.locator(".hub-member-name", { hasText: name }) });
     const visiblePresence = async (name: string, word: string, dot: string) => {
       if (!await page.locator(".hub-room-members").isVisible()) await page.locator(".hub-room-rail-toggle").click();
@@ -138,9 +140,14 @@ try {
       && events.some((e: any) => e.type === "message.updated" && e.data.parent?.ask?.answered === 2));
     check(tag + " no browser error", errors.length === 0, errors);
     check(tag + " no horizontal document overflow", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
-    await Promise.all(responses); await context.close();
+    await Promise.all(responses); await context.close(); activePage = null;
   }
-} catch (error) { check("run completed", false, String(error)); }
+} catch (error) {
+  check("run completed", false, String(error));
+  if (activePage) {
+    try { const path = activeTag + "-failure.png"; await activePage.screenshot({ path: join(out, path), fullPage: true }); receipt.pictures.push({ path, sha256: sha(readFileSync(join(out, path))) }); receipt.events.push({ device: activeTag, events: await activePage.evaluate(() => (window as any).__roomEvents) }); } catch { /* original assertion remains the result */ }
+  }
+}
 finally {
   writeFileSync(join(out, "receipt.json"), JSON.stringify(receipt, null, 2));
   await browser?.close(); for (const p of peers) { p.publisher.close(); await p.adapter.close(); }
