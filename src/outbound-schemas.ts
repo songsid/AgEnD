@@ -415,6 +415,7 @@ export const ReconcileKiroInstanceArgs = z.object({
 }).strict().refine(v => v.keep_session_id !== v.archive_session_id, "Keep and archive IDs must differ");
 
 export const GetUsageArgs = z.object({
+  detail: z.boolean().optional().describe("Return the full usage JSON including capacity estimates and localization metadata. Default: compact account rows."),
   force: z.boolean().optional().describe("Bypass the 5-minute cache and fetch fresh data (rate-limited by vendors — use sparingly)"),
 });
 
@@ -476,6 +477,7 @@ export const GetCacheReportArgs = z.object({
 
 /** #2122: tokens, requests, delivered messages and their API-equivalent at list price, read-only. */
 export const GetUsageReportArgs = z.object({
+  detail: z.boolean().optional().describe("Include speed stats and the full per-row basis metadata. Default: basis once, no speed stats."),
   range: z.enum(["today", "7d", "month", "all", "custom"]).optional().describe("The days to sum, in the fleet's timezone. Default: 7d. custom needs from and to."),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("custom: the first day, YYYY-MM-DD."),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("custom: the last day, YYYY-MM-DD."),
