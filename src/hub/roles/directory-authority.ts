@@ -4,20 +4,32 @@ import { parseHubDirectoryDecisionMetadata, type HubDirectoryDecisionRequest } f
 import { epoch, hash, HubProtocolError, person, validated } from "../validation.js";
 import type { HubManagementPermit } from "./authority.js";
 import type { PersonKey } from "../types.js";
+import type { HubDirectoryDecisionProof } from "../directory-decision-proof.js";
 
 type Administrator = Extract<HubDirectoryDecisionRequest["actor"], { kind: "hub-administrator" }>;
 export interface HubDirectoryAdministration { readonly directoryAdministration: true }
-export interface HubDirectoryAdministrationBinding { directory: object; administrator: PersonKey; image: string; epoch: number }
+export interface HubDirectoryAdministrationBinding {
+  directory: object; administrator: PersonKey; image: string; epoch: number;
+  /** Exact mounted decision's callback-local getter. Omission retains the strict ordinary path. */
+  decisionProof?(): HubDirectoryDecisionProof | null;
+}
 interface Proof {
   actor: Administrator;
   permit: HubManagementPermit;
   method: HubManagementPermit["assertCurrent"];
+  decisionMethod: HubManagementPermit["assertDirectoryDecision"];
+  frame: HubDirectoryAdministrationBinding["decisionProof"];
   image: string;
   binding: HubDirectoryAdministrationBinding;
   retired: boolean;
 }
 const proofs = new WeakMap<HubDirectoryAdministration, Proof>();
 const image = (permit: HubManagementPermit) => canonicalArguments({ actor: permit.actor, permission: permit.permission, source: permit.source, expiresAt: permit.expiresAt });
+function synchronous(value: unknown): void {
+  if (value && (typeof value === "object" || typeof value === "function") && typeof (value as { then?: unknown }).then === "function") {
+    void Promise.resolve(value).catch(() => {}); throw new HubProtocolError("unavailable");
+  }
+}
 const actorOf = (raw: Administrator): Administrator => {
   const actor = parseHubDirectoryDecisionMetadata({ actor: raw, changes: ["search"], recipients: [{ kind: "host", sink: "owner" }] }).actor;
   if (actor.kind !== "hub-administrator") throw new HubProtocolError("denied");
@@ -29,11 +41,12 @@ export function bindHubDirectoryAdministration(permit: HubManagementPermit, raw:
   const actor = actorOf(raw);
   if (permit.permission !== "hub.admin" || !["roles", "legacy"].includes(permit.source) || permit.actor.kind !== "directory"
     || permit.actor.sessionId !== actor.sessionId || canonicalArguments(permit.actor.person) !== canonicalArguments(actor.person)
-    || typeof permit.assertCurrent !== "function") throw new HubProtocolError("denied");
+    || typeof permit.assertCurrent !== "function" || source.decisionProof !== undefined && typeof source.decisionProof !== "function") throw new HubProtocolError("denied");
   const handle = Object.freeze({ directoryAdministration: true as const });
   const binding = { directory: source.directory, administrator: Object.freeze(validated(person, source.administrator)), image: validated(hash, source.image), epoch: validated(epoch, source.epoch) };
   if (actor.person.realm !== binding.administrator.realm) throw new HubProtocolError("denied");
-  proofs.set(handle, { actor, permit, method: permit.assertCurrent, image: image(permit), binding, retired: false });
+  proofs.set(handle, { actor, permit, method: permit.assertCurrent, decisionMethod: permit.assertDirectoryDecision,
+    frame: source.decisionProof, image: image(permit), binding, retired: false });
   assertHubDirectoryAdministration(handle, actor, source); return handle;
 }
 
@@ -42,14 +55,25 @@ export function assertHubDirectoryAdministration(handle: HubDirectoryAdministrat
   const state = proofs.get(handle);
   if (!state) throw new HubProtocolError("denied");
   try {
-    if (state.retired || canonicalArguments(raw) !== canonicalArguments(state.actor)
-      || state.permit.assertCurrent !== state.method || image(state.permit) !== state.image
-      || state.binding.directory !== source.directory || state.binding.image !== source.image || state.binding.epoch !== source.epoch
-      || canonicalArguments(state.binding.administrator) !== canonicalArguments(source.administrator)) throw new HubProtocolError("denied");
-    const answer: unknown = state.method.call(state.permit);
-    if (answer && (typeof answer === "object" || typeof answer === "function") && typeof (answer as { then?: unknown }).then === "function") {
-      void Promise.resolve(answer).catch(() => {}); throw new HubProtocolError("unavailable");
+    const check = () => {
+      if (state.retired || canonicalArguments(raw) !== canonicalArguments(state.actor)
+        || state.permit.assertCurrent !== state.method || state.permit.assertDirectoryDecision !== state.decisionMethod || image(state.permit) !== state.image
+        || source.decisionProof !== state.frame || state.binding.directory !== source.directory || state.binding.image !== source.image || state.binding.epoch !== source.epoch
+        || canonicalArguments(state.binding.administrator) !== canonicalArguments(source.administrator)) throw new HubProtocolError("denied");
+    };
+    check();
+    const frame = state.frame ? state.frame.call(source) : null;
+    synchronous(frame);
+    check();
+    if (frame === undefined) throw new HubProtocolError("unavailable");
+    let answer: unknown;
+    if (frame === null) answer = state.method.call(state.permit);
+    else {
+      if (typeof state.decisionMethod !== "function") throw new HubProtocolError("unavailable");
+      answer = state.decisionMethod.call(state.permit, frame);
     }
+    synchronous(answer);
+    check();
   } catch (error) { state.retired = true; throw error; }
 }
 
