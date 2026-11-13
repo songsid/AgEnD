@@ -149,14 +149,14 @@ describe("Hub New room dialog (section 6)", () => {
   it("the assistant switch only when the Hub offers it (read from the list when not passed); off unless switched on", async () => {
     const { pg, client, calls } = await fixture("en");
     await pg.mount(h(dlg.NewRoomDialog, { client })); await settle(20);
-    expect(calls.some(c => c.path === "/hub/v1/rooms" && c.method === "GET")).toBe(true);
+    expect(calls.some(c => c.path === "/hub/v1/rooms?v=2" && c.method === "GET")).toBe(true);
     expect(pg.root.querySelector("#hubRoomAssistant").checked).toBe(false);                 // me.assistant: true in the list
     await type(pg, "hubRoomName", "R"); fire(button(pg, "Create"), "click"); await settle(20);
     expect(calls.find(c => c.method === "POST")!.body.assistant).toBe(false);
   });
 
   it("no assistant switch when the list says the Hub has none", async () => {
-    const { pg, client } = await fixture("en", (path, init) => path === "/hub/v1/rooms" && (init.method ?? "GET") === "GET" ? { status: 200, body: { rooms: [], me: { canCreateRooms: true, assistant: false }, invitations: 0 } } : null);
+    const { pg, client } = await fixture("en", (path, init) => path === "/hub/v1/rooms?v=2" && (init.method ?? "GET") === "GET" ? { status: 200, body: { rooms: [], me: { canCreateRooms: true, assistant: false }, invitations: 0 } } : null);
     await pg.mount(h(dlg.NewRoomDialog, { client })); await settle(20);
     expect(pg.root.querySelector("#hubRoomAssistant")).toBeNull();
   });
