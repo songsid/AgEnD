@@ -31,9 +31,18 @@ export function isStaleModuleError(err) {
   return err instanceof SyntaxError || (!!err && typeof err === "object" && err.cause instanceof SyntaxError);
 }
 
-/** In place of what could not load: why, and one button that reloads the tab. */
+/** A phone or a coarse pointer: the button is a full touch target (style guide rule 7). */
+const TOUCH = "(max-width: 899px), (pointer: coarse)";
+const touch = () => { try { return typeof globalThis.matchMedia === "function" && globalThis.matchMedia(TOUCH).matches; } catch { return false; } };
+
+/**
+ * In place of what could not load: why, and one button that reloads the tab. On a phone the button's own style makes it
+ * a touch target: the tab that shows this kept its OLD app.css (the rule for .stale-tab there is new), and --tap is a
+ * token every version has.
+ */
 export function StaleTabPrompt({ reload = () => globalThis.location?.reload() } = {}) {
+  const size = touch() ? { minHeight: "var(--tap, 44px)", minWidth: "var(--tap, 44px)" } : undefined;
   return html`<div class="error-state stale-tab" role="alert" data-stale-tab="1"><${Icon} name="alert" size=${24} />
     <p>${t("staleTab.title")}</p><p class="muted">${t("staleTab.hint")}</p>
-    <button type="button" class="btn btn-primary" onClick=${() => reload()}>${t("staleTab.reload")}</button></div>`;
+    <button type="button" class="btn btn-primary" style=${size} onClick=${() => reload()}>${t("staleTab.reload")}</button></div>`;
 }

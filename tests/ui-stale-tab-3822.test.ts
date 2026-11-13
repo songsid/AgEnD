@@ -28,8 +28,8 @@ afterEach(async () => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
   delete (globalThis as any).fetch;
 });
-function open(url = "http://127.0.0.1:19281/ui/fleet/agent/coder?cat=basic") {
-  const p = page({ url, storage: { agend_tour_done: "1" } }); pages.push(p);
+function open(url = "http://127.0.0.1:19281/ui/fleet/agent/coder?cat=basic", phone = false) {
+  const p = page({ url, storage: { agend_tour_done: "1" }, matchNarrow: phone }); pages.push(p);
   (globalThis as any).fetch = async () => ({ ok: false, status: 404, json: async () => null });
   return p;
 }
@@ -52,6 +52,20 @@ describe("#3822 what a tab older than the server meets", () => {
     expect(S.isStaleModuleError(new Error("x", { cause: new TypeError("offline") }))).toBe(false);
     expect(S.isStaleModuleError(new TypeError("Failed to fetch dynamically imported module"))).toBe(false);   // the network: Retry fits
     expect(S.isStaleModuleError(new Error("x"))).toBe(false);
+  });
+});
+
+describe("#3825 r1 (Prism P2): the Reload is a touch target on a phone, whatever app.css the old tab kept", () => {
+  it("phone: the button itself carries min-height/min-width var(--tap); a wide screen leaves it to the stylesheet", async () => {
+    const p = open(undefined, true);
+    const S = await import("/assets/stale-tab.js");
+    await p.mount(h(S.StaleTabPrompt, {})); await settle(4);
+    const style = (p.root.querySelector("[data-stale-tab] button") as any).style;
+    expect([style.minHeight, style.minWidth]).toEqual(["var(--tap, 44px)", "var(--tap, 44px)"]);
+    await p.unmount(); pages.pop()!.restore();
+    const wide = open(undefined, false);
+    await wide.mount(h(S.StaleTabPrompt, {})); await settle(4);
+    expect((wide.root.querySelector("[data-stale-tab] button") as any).style.minHeight || "").toBe("");
   });
 });
 
