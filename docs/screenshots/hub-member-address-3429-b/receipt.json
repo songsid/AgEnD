@@ -1,0 +1,374 @@
+{
+  "checks": [
+    {
+      "name": "real host launch sign-in",
+      "pass": true
+    },
+    {
+      "name": "actual Settings two-level shell",
+      "pass": true
+    },
+    {
+      "name": "initializer prepare",
+      "pass": true
+    },
+    {
+      "name": "verified synthetic LDAPS",
+      "pass": true
+    },
+    {
+      "name": "initializer commit",
+      "pass": true
+    },
+    {
+      "name": "initial Hub ready",
+      "pass": true
+    },
+    {
+      "name": "actual browser directory sign-in",
+      "pass": true
+    },
+    {
+      "name": "public manual pairing offer",
+      "pass": true
+    },
+    {
+      "name": "production member pairing API",
+      "pass": true
+    },
+    {
+      "name": "public pinned connect",
+      "pass": true
+    },
+    {
+      "name": "pending fingerprint",
+      "pass": true
+    },
+    {
+      "name": "exact owner confirmation",
+      "pass": true
+    },
+    {
+      "name": "exact admin confirmation",
+      "pass": true
+    },
+    {
+      "name": "local exact fingerprint confirmation",
+      "pass": true
+    },
+    {
+      "name": "production member reconciled before",
+      "pass": true
+    },
+    {
+      "name": "en desktop: the card shows the address and one connected Fleet",
+      "pass": true
+    },
+    {
+      "name": "en desktop: Check lists the Fleet that moves",
+      "pass": true
+    },
+    {
+      "name": "en phone: the card shows the address and one connected Fleet",
+      "pass": true
+    },
+    {
+      "name": "en phone: Check lists the Fleet that moves",
+      "pass": true
+    },
+    {
+      "name": "zh-TW desktop: the card shows the address and one connected Fleet",
+      "pass": true
+    },
+    {
+      "name": "zh-TW desktop: Check lists the Fleet that moves",
+      "pass": true
+    },
+    {
+      "name": "zh-TW phone: the card shows the address and one connected Fleet",
+      "pass": true
+    },
+    {
+      "name": "zh-TW phone: Check lists the Fleet that moves",
+      "pass": true
+    },
+    {
+      "name": "Check and Back changed nothing",
+      "pass": true
+    },
+    {
+      "name": "browser prepares affected fleet",
+      "pass": true
+    },
+    {
+      "name": "the card says the Fleet followed",
+      "pass": true
+    },
+    {
+      "name": "saved exact member mount ready; the online Fleet followed",
+      "pass": true
+    },
+    {
+      "name": "the member is online again with the same credential (pairing.json byte-identical)",
+      "pass": true
+    },
+    {
+      "name": "its relocation is confirmed: the anchor is the new address",
+      "pass": true
+    },
+    {
+      "name": "the Hub kept the Fleet: same credential binding and generation",
+      "pass": true
+    },
+    {
+      "name": "browser address and Hub id preserved",
+      "pass": true
+    },
+    {
+      "name": "same browser session still signed in",
+      "pass": true
+    },
+    {
+      "name": "no reconnect notice names the Fleet that followed",
+      "pass": true
+    },
+    {
+      "name": "member SPKI and issuer retained",
+      "pass": true
+    },
+    {
+      "name": "old member endpoint refused",
+      "pass": true
+    },
+    {
+      "name": "the card names the Fleet that must reconnect",
+      "pass": true
+    },
+    {
+      "name": "the offline Fleet did not follow and must reconnect",
+      "pass": true
+    },
+    {
+      "name": "the Hub revoked it",
+      "pass": true
+    },
+    {
+      "name": "its owner's reconnect notice names it",
+      "pass": true
+    },
+    {
+      "name": "the new endpoint refuses the revoked credential",
+      "pass": true
+    },
+    {
+      "name": "exact local disconnect",
+      "pass": true
+    },
+    {
+      "name": "explicit start over retires the old profile",
+      "pass": true
+    },
+    {
+      "name": "group policy preview",
+      "pass": true
+    },
+    {
+      "name": "group policy configured once",
+      "pass": true
+    },
+    {
+      "name": "company join enabled once",
+      "pass": true
+    },
+    {
+      "name": "actual member host login",
+      "pass": true
+    },
+    {
+      "name": "real browser company sign-in reconnects",
+      "pass": true
+    },
+    {
+      "name": "fresh exact credential and new member origin",
+      "pass": true
+    },
+    {
+      "name": "reconnected Hub ID and issuer unchanged",
+      "pass": true
+    },
+    {
+      "name": "old row remains revoked; only fresh row is active",
+      "pass": true
+    },
+    {
+      "name": "one notice per change, none duplicated",
+      "pass": true
+    }
+  ],
+  "screenshots": [
+    "backend-before-hub.zh-TW.png",
+    "png/card-show.en.desktop.light.png",
+    "png/card-show.en.desktop.dark.png",
+    "png/card-edit.en.desktop.light.png",
+    "png/card-edit.en.desktop.dark.png",
+    "png/card-confirm.en.desktop.light.png",
+    "png/card-confirm.en.desktop.dark.png",
+    "png/card-show.en.phone.light.png",
+    "png/card-show.en.phone.dark.png",
+    "png/card-edit.en.phone.light.png",
+    "png/card-edit.en.phone.dark.png",
+    "png/card-confirm.en.phone.light.png",
+    "png/card-confirm.en.phone.dark.png",
+    "png/card-show.zh-TW.desktop.light.png",
+    "png/card-show.zh-TW.desktop.dark.png",
+    "png/card-edit.zh-TW.desktop.light.png",
+    "png/card-edit.zh-TW.desktop.dark.png",
+    "png/card-confirm.zh-TW.desktop.light.png",
+    "png/card-confirm.zh-TW.desktop.dark.png",
+    "png/card-show.zh-TW.phone.light.png",
+    "png/card-show.zh-TW.phone.dark.png",
+    "png/card-edit.zh-TW.phone.light.png",
+    "png/card-edit.zh-TW.phone.dark.png",
+    "png/card-confirm.zh-TW.phone.light.png",
+    "png/card-confirm.zh-TW.phone.dark.png",
+    "png/card-done.en.desktop.light.png",
+    "png/card-done.en.desktop.dark.png",
+    "png/card-done.en.phone.light.png",
+    "png/card-done.en.phone.dark.png",
+    "png/card-done.zh-TW.desktop.light.png",
+    "png/card-done.zh-TW.desktop.dark.png",
+    "png/card-done.zh-TW.phone.light.png",
+    "png/card-done.zh-TW.phone.dark.png",
+    "backend-after-reconnect.zh-TW.png"
+  ],
+  "boundary": "Owned container, --network none, explicit uid1000, no capabilities. Real Fleet health/Settings shell, D3, Hub HTTPS, synthetic verified LDAPS, legacy manual pairing followed by explicit shipped Disconnect/Start over and real browser company sign-in through the second FleetManager/member runtime with empty Agent inventory. Explicit per-client fixture CA/hostname mapping and exact :636-to-owned-wire-port mapping only; no new reconnect widget or automatic trust reset. No new address UI, full fleet daemon lifecycle, agent/model/CLI/tmux/native/real AD/pilot.",
+  "hubResponses": [
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    }
+  ],
+  "leg1": {
+    "status": 200,
+    "state": "ready",
+    "followed": 1,
+    "reconnect": []
+  },
+  "leg1Notice": [
+    {
+      "action": "reconnect",
+      "fleets": 0
+    }
+  ],
+  "leg2": {
+    "status": 200,
+    "state": "ready",
+    "followed": 0,
+    "reconnect": [
+      {
+        "id": "810e8867-d5b5-48f4-b824-344485f6267f"
+      }
+    ]
+  },
+  "policyPreview": {
+    "status": 200
+  },
+  "memberConsole": [
+    "new page: http://127.0.0.1:40439/settings/hub?joinWait=0921241e-f180-41af-acd0-4eba38b06959&joinConsent=1#target=https%3A%2F%2Fhub.example.test%3A39063"
+  ],
+  "memberRequests": [
+    "GET /ui/js/hub-company-join-strings.js",
+    "GET /ui/js/settings-hub-company-join.js",
+    "GET /api/hub/member/company-join",
+    "POST /api/hub/member/company-join/probe",
+    "POST /api/hub/member/company-join/start",
+    "POST /api/hub/member/company-join/probe",
+    "GET /api/hub/member/company-join",
+    "GET /api/hub/member/company-join",
+    "GET /api/hub/member/company-join"
+  ],
+  "debugBeforeSignin": "Hub 連接\n尚未連接\n\n使用公司帳號登入，連接成功後會啟用成員功能，不會分享任何 Agent。\n\nHub 位址\n\n找到「Synthetic address rehearsal」。這台 Fleet 會顯示為「6478f6bf28f3」 改名\n\n以公司帳號登入\n其他方式",
+  "reconciliations": 3,
+  "initialProfileSha256": "daefee56ae118f47376cb86f01f92f04968395221a2d865e6166e62a4fd8fe1a",
+  "ready": true,
+  "cleaned": true
+}
