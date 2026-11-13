@@ -140,7 +140,11 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
     async send(text, { mentions = [], replyTo } = {}) {
       const idempotencyKey = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^A-Za-z0-9-]/g, "");
       const r = await client.sendRoomMessage(roomId, { text, mentions, replyTo, idempotencyKey });
-      if (r.ok && r.message) { upsert(r.message); changed(); }
+      // The stored message, as the Hub answers it: `{ message }`, or the message itself (Ridge's server) — drawn at once,
+      // whether or not the stream is up yet (a first send after opening the room must not vanish).
+      const { ok, ...bare } = r || {};
+      const sent = r && r.message ? r.message : ok && typeof bare.id === "string" && typeof bare.roomId === "string" ? bare : null;
+      if (ok && sent) { upsert(sent); changed(); }
       return r;
     },
     async older() {
