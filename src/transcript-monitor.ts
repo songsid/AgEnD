@@ -1,5 +1,5 @@
 import { claudeTranscriptRecord, claudeTranscriptLongHead } from "./transcript-records.js";
-import { readTailRecords } from "./log-steps.js";
+import { readStartupTailRecords } from "./log-steps.js";
 import { parseClaudeModelRecord, type ClaudeModelLaunch } from "./claude-model-observation.js";
 import { EventEmitter } from "node:events";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -256,7 +256,7 @@ export class TranscriptMonitor extends EventEmitter {
           if (!fromStart && this.modelLaunch?.()) {
             // Observation-only bounded tail: keep this launch's fast first metadata without replaying existing
             // text, tools, usage errors or status notes through their established EOF baseline.
-            const tail = await readTailRecords(current, { end: initialOffset, maxBytes: 8 * 1024 * 1024, maxLines: 2000 });
+            const tail = await readStartupTailRecords(current, { end: initialOffset, maxBytes: 8 * 1024 * 1024, maxLines: 2000 });
             if (generation !== this.generation || this.transcriptPath !== current) return;
             for (const item of tail.records) {
               let line = typeof item.record === "string" ? item.record : null;

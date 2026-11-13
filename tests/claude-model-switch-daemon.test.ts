@@ -89,3 +89,18 @@ it.each(["opus", "", "claude-sonnet-5-5"])("the actual daemon preserves unconfir
   expect(resumed.modelObservation().active).toBeNull();
   expect(resumed.modelObservation()).toMatchObject({ lastServed: "claude-sonnet-5-5" });
 });
+it("a legacy quiet daemon incident recovers on fresh original metadata while inference stays conservative", () => {
+  const { d, m, dir, backend, record } = rig(); m.processEntry(record);
+  const path = join(dir, "claude-model-observation.json"), saved = JSON.parse(readFileSync(path, "utf8"));
+  delete saved.intent; saved.v = 1; writeFileSync(path, JSON.stringify(saved));
+  const resumed: any = new Daemon("worker", { backend: "claude-code", model: "claude-opus-5-5", working_directory: dir, log_level: "silent" } as any,
+    dir, false, backend, undefined, pino({ level: "silent" }) as any);
+  const monitor = resumed.buildTranscriptMonitor(null); resumed.transcriptMonitor = monitor;
+  const served = (id: string, model: string) => ({ type: "assistant", sessionId: "session-A", timestamp: new Date().toISOString(),
+    message: { id, role: "assistant", model, content: [], stop_reason: "end_turn" } });
+  monitor.processEntry(served("legacy-fresh-return", "claude-opus-5-5"));
+  expect(resumed.modelObservation()).toMatchObject({ lastServed: "claude-opus-5-5", active: null });
+  monitor.processEntry(served("legacy-unconfirmed", "claude-sonnet-5-5"));
+  expect(resumed.modelObservation().active).toBeNull();
+  expect(JSON.parse(readFileSync(path, "utf8")).intent).toEqual({ kind: "unresolved" });
+});
