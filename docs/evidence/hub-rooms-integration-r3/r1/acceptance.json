@@ -199,5 +199,25 @@
     "R3/R4 source clearance is ordinary pilot source review. Parent-first plain-sync/currentCI and coordinator-only merge remain; this WIP checkpoint is not fullS142 completion."
   ],
   "rollback": "Keep DB, content keys and room/input history; deploy a compatible fix. Do not remove retained state to undo display or integration changes.",
-  "imageReview": "Image-only child inspected all12 final browser-verified PNGs: no visible clipping/overlap/readability blocker; all four PM corrections confirmed. This is not a formal parity or fullS142 verdict."
+  "imageReview": "Image-only child inspected all12 final browser-verified PNGs: no visible clipping/overlap/readability blocker; all four PM corrections confirmed. This is not a formal parity or fullS142 verdict.",
+  "pmReview": {
+    "reviewedHead": "23d2db2f00bf8a438fc8084fd448a8cadfc32e44",
+    "scope": "Lumen closely inspected6 of the12 PNGs: settings/admin/thread in EN and zh-TW. No blocker in this subset; not a full invitations/Teams/agent-presence walk.",
+    "confirmed": "Localized zh system sentence, rendered header icons, viewer-first members, empty-Agent sentence; settings/history/menus/never-signed-in inline, phone sheet/admin, NewRoom under NewChat.",
+    "followUps": [
+      {
+        "owner": "TrackA UI",
+        "change": "Signed-in account shows Signed in only; sign-in instructions only when needed."
+      },
+      {
+        "owner": "TrackU2",
+        "change": "Align Name Save button with input."
+      },
+      {
+        "owner": "TrackU1",
+        "change": "Admin order: Let colleagues join, Rooms, Room assistant, Connected fleets, pairing."
+      }
+    ],
+    "pairingCard": "Rig-only unfolded pairing: s3bRig has no companyJoin dependency and real-server.mts does not add it. Existing ManualFrame uses the companyJoin and entry marks to fold it; no product regression inferred."
+  }
 }

@@ -9,3 +9,11 @@ The real HTTPS/SQLite browser walk passes38/38 and produces12 original PNGs: des
 The first capture's36/38 was a harness error: it read the native textarea placeholder, which the shared composer intentionally sets to one space while drawing `.composer-ph` and `aria-label`. A follow-up wait on the same wrong attribute timed out. Images already showed the correct prompts. The final receipt checks the actual drawn text and accessible label; no product fix was needed for that assertion.
 
 C invitation/Team services and production exports are still pending, so these optional ports remain uncomposed. This is the bounded shared-shell subset, not a claim that invitations, Teams, all agent presence/@all paths or fullS142 are complete. Those remain in the next walkthrough. Ordinary parity/source and parent-first/current-CI controls retain their own scopes.
+
+## PM subset follow-up
+
+Lumen reported no blocker at23d2db2f after closely inspecting six of the12 images (settings/admin/thread in both locales). This scope is narrower than the image-only child's12-image inspection above. The PM confirmed localized system text, working icons, viewer-first members, the empty-Agent sentence, the room settings/history/menu/not-yet-signed-in presentation, phone sheet/admin and NewRoom placement.
+
+The next bounded pass will consume three owner changes: TrackA removes the sign-in how-to when the selected account is already signed in; TrackU2 aligns the Name Save button; TrackU1 orders Administration as Let colleagues join, Rooms, Room assistant, Connected fleets, pairing. These are routed on the existing integration threads.
+
+The unfolded pairing card in this rig is expected: the owned s3bRig/real-server script does not compose companyJoin. The existing ManualFrame folds it when company sign-in and the entry marks are present. This screenshot therefore does not establish a one-way-in regression. Invitations, Teams, agent routing/@all and wider presence remain for the full walk.
