@@ -30,6 +30,8 @@
 .hub-room-at { flex: none; color: var(--accent); font-weight: var(--fw-semibold); font-size: var(--fs-xs); }
 .inst-line2 > .nav-count { flex: none; height: 18px; min-width: 18px; line-height: 18px; font-size: 10.5px; }
 .hub-room-archived .inst-name { color: var(--text-3); }
+/* The room composer's fixed hint and @all bar wrap without leaving a lone word on the last line. */
+.hub-room-hint, .hub-room-allbar { text-wrap: pretty; }
 
 /* a name's letter on a tone (the same tones in both themes) */
 .hub-av { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-weight: 600; font-size: 14px; color: #fff; flex: none; }

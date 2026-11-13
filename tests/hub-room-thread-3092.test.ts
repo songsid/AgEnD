@@ -145,7 +145,8 @@ describe("a room on the page", () => {
     const { pg, restore } = await roomPage("room-assistant", "zh-TW");
     try {
       await until(() => pg.root.querySelector(".hub-room-page .hub-assistant-empty"));
-      expect(pg.root.querySelector(".hub-room-page .hub-assistant-empty")!.textContent).toBe("這是 Hub 提供的 AI 助理。它讀不到你的電腦，也讀不到其他房間。");
+      expect(pg.root.querySelector(".hub-room-page .hub-assistant-empty")!.textContent).toContain("這是 Hub 提供的 AI 助理。它讀不到你的電腦，也讀不到其他房間。");
+      expect(pg.root.querySelector(".hub-room-page .hub-assistant-empty")!.textContent).toContain("Hub 助理");   // the shared Empty: its title
       expect(pg.root.querySelector(".hub-room-page .hub-room-hint")).toBeNull();                       // a 1:1: no @ needed
       // Named by its flag in the viewer's words, never by its stored English name (Ridge on #3864).
       expect(pg.root.querySelector(".hub-room-page .hub-chat-head strong")!.textContent).toBe("Hub 助理");
