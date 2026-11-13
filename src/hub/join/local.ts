@@ -4,6 +4,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { CompanyJoinClient, CompanyJoinRemoteError, CompanyJoinReachError } from "./client.js";
+import { CompanyCertificateTrust, pilotTrustChoice, type PilotTrustChoice } from "./certificate-trust.js";
 import { hostname } from "node:os";
 import { readDisplay, saveStartDisplay, settleDisplay, type CompanyDisplay } from "./display.js";
 import { CompanyTrustStore, CompanyIdentityChanged } from "./trust.js";
@@ -27,7 +28,8 @@ const deliveredSchema = remoteSchema.extend({ owner: person, credential: token, 
   ownerLabel: z.string().max(200).optional(), hubName: z.string().max(200).optional() });
 const pushedSchema = z.strictObject({ requestId: uuid, expiresAt: epoch, browserAction: z.string().max(2048) });
 interface Options {
-  home: string; client?: Pick<CompanyJoinClient, "discover" | "command">; now?(): number; schedule?: false;
+  home: string; client?: Pick<CompanyJoinClient, "discover" | "command"> & Partial<Pick<CompanyJoinClient, "inspectCertificate">>; now?(): number; schedule?: false;
+  pilotTrustEnabled?(): boolean;
   /** Relevant membership/binding incarnation only; unrelated Settings edits do not revoke consent. */
   snapshot(): JoinLocalSnapshot;
   /** Synchronous, already-confirmed internal patch. accept() captures ONLY that owned write, before yielding. */
@@ -42,7 +44,7 @@ const JOIN_WAITING = ["offer-pending", "limit-reached", "denied", "backpressure"
 export type JoinWaiting = typeof JOIN_WAITING[number];
 const sameSnapshot = (a: JoinLocalSnapshot, b: JoinLocalSnapshot) => a.membership === b.membership && a.binding === b.binding;
 export class CompanyJoinController {
-  private readonly client: Pick<CompanyJoinClient, "discover" | "command">;
+  private readonly client: NonNullable<Options["client"]>;
   private active: Operation | null = null; private generation = 0; private closed = false; private timer?: NodeJS.Timeout; private starting = false;
   constructor(private readonly options: Options) {
     this.client = options.client ?? new CompanyJoinClient();
@@ -54,6 +56,21 @@ export class CompanyJoinController {
     }
   }
   private now() { return this.options.now?.() ?? Date.now(); }
+  private pilotEnabled() { return this.options.pilotTrustEnabled?.() === true; }
+  private async discover(origin: string, current: () => boolean, display = false, choice?: PilotTrustChoice) {
+    try { return { metadata: await this.client.discover(origin, current, { display }), pilot: false }; }
+    catch (error) {
+      if (!(error instanceof CompanyJoinReachError) || error.kind !== "certificate" || !this.pilotEnabled()) throw error;
+      const store = new CompanyCertificateTrust(this.options.home), previous = store.read(origin);
+      if (choice && choice.previous !== previous) throw new HubProtocolError("stale");
+      const fingerprint = choice?.fingerprint ?? previous;
+      if (!fingerprint) throw error;
+      const enabled = () => current() && this.pilotEnabled();
+      const metadata = await this.client.discover(origin, enabled, { display, certificateFingerprint: fingerprint });
+      if (!enabled()) throw new HubProtocolError("stale");
+      return { metadata, pilot: true };
+    }
+  }
   private own(r: LocalJoinJournal, session: JoinLocalSession): void {
     if (this.closed || !session.current() || r.sessionId !== session.sessionId || r.authorityEpoch !== session.authorityEpoch)
       throw new HubProtocolError("denied");
@@ -166,7 +183,7 @@ export class CompanyJoinController {
     const current = () => !this.closed && !this.starting && generation === this.generation && sameSnapshot(snapshot, this.options.snapshot())
       && authority.session.current() && authority.confirmedCurrent();
     if (!current()) throw new HubProtocolError("denied");
-    const metadata = await this.client.discover(address.webOrigin, current);
+    const { metadata } = await this.discover(address.webOrigin, current);
     if (!current()) throw new HubProtocolError("stale");
     new CompanyTrustStore(this.options.home).repair(metadata.hub, address.expected, current);
   }
@@ -179,8 +196,8 @@ export class CompanyJoinController {
    * the suggested Fleet label. A Hub that cannot be read: { ok: false, reason: unreachable | certificate | not-hub }.
    */
   async probe(input: { address: string; fleetOrigin: string }, session: JoinLocalSession): Promise<
-    | { ok: true; hubName: string | null; webOrigin: string; companyJoin: boolean; identity: "new" | "known" | "changed"; separateHosts: boolean; suggestedLabel: string; features: string[] }
-    | { ok: false; reason: "unreachable" | "certificate" | "not-hub" | "limited" }> {
+    | { ok: true; hubName: string | null; webOrigin: string; companyJoin: boolean; identity: "new" | "known" | "changed"; separateHosts: boolean; suggestedLabel: string; features: string[]; pilotTrusted?: boolean }
+    | { ok: false; reason: "unreachable" | "certificate" | "not-hub" | "limited"; selfSigned?: boolean; trust?: { fingerprint: string; previous: string | null; expiresAt: number } }> {
     const body = validated(z.strictObject({ address: z.string().max(8192), fleetOrigin: z.string().max(2048) }), input);
     canonicalFleetOrigin(body.fleetOrigin);
     if (this.closed || !session.current()) throw new HubProtocolError("denied");
@@ -191,10 +208,20 @@ export class CompanyJoinController {
     const address = parseCompanyAddress(body.address);
     const current = () => !this.closed && session.current();
     const suggestedLabel = probeLabel();
-    let metadata;
-    try { metadata = await this.client.discover(address.webOrigin, current, { display: true }); }
+    let metadata, pilot = false;
+    try { ({ metadata, pilot } = await this.discover(address.webOrigin, current, true)); }
     catch (error) {
-      if (error instanceof CompanyJoinReachError) return { ok: false, reason: error.kind };
+      if (error instanceof CompanyJoinReachError) {
+        if (error.kind === "certificate" && this.client.inspectCertificate) {
+          try {
+            const certificate = await this.client.inspectCertificate(address.webOrigin, current);
+            if (!current()) throw new HubProtocolError("stale");
+            return { ok: false, reason: "certificate", selfSigned: true, ...(this.pilotEnabled() ? { trust: {
+              ...certificate, previous: new CompanyCertificateTrust(this.options.home).read(address.webOrigin) } } : {}) };
+          } catch { /* Expired, wrong-name and untrusted-chain failures retain the ordinary certificate message. */ }
+        }
+        return { ok: false, reason: error.kind };
+      }
       if (error instanceof CompanyJoinRemoteError && error.code === "incompatible")
         return { ok: true, hubName: null, webOrigin: address.webOrigin, companyJoin: false, identity: "new", separateHosts: separateHosts(body.fleetOrigin, address.webOrigin), suggestedLabel, features: [] };
       if (error instanceof CompanyIdentityChanged)
@@ -211,7 +238,7 @@ export class CompanyJoinController {
     const fingerprint = companyIdentityDigest(metadata.hub);
     const identity = address.expected !== null && address.expected !== fingerprint ? "changed" : new CompanyTrustStore(this.options.home).peek(metadata.hub, existing);
     return { ok: true, hubName: metadata.name ?? null, webOrigin: metadata.hub.webOrigin, companyJoin: true, identity,
-      separateHosts: separateHosts(body.fleetOrigin, metadata.hub.webOrigin), suggestedLabel, features: [...metadata.features] };
+      separateHosts: separateHosts(body.fleetOrigin, metadata.hub.webOrigin), suggestedLabel, features: [...metadata.features], ...(pilot ? { pilotTrusted: true } : {}) };
   }
   /** M-2921: what the connected card shows about the current Hub connection (display only), or null. */
   display(): CompanyDisplay | null {
@@ -298,11 +325,11 @@ export class CompanyJoinController {
     pairing.cancel();
     return left;
   }
-  async start(input: { address: string; label: string; fleetOrigin: string; handoffId?: string; code?: string }, authority: JoinLocalAuthority,
+  async start(input: { address: string; label: string; fleetOrigin: string; handoffId?: string; code?: string; trust?: PilotTrustChoice }, authority: JoinLocalAuthority,
     internal: { expected?: string; supersedes?: { fleetId: string; credential: string } } = {}) {
     // M-2921 / Phase B: an enrolment code typed with the address goes to the Hub only when it takes one (enrolment-code-v1).
     const body = validated(z.strictObject({ address: z.string().max(8192), label: z.string().trim().min(1).max(120), fleetOrigin: z.string().max(2048), handoffId: uuid.optional(),
-      code: z.string().regex(ENROLMENT_CODE).optional() }), input);
+      code: z.string().regex(ENROLMENT_CODE).optional(), trust: pilotTrustChoice.optional() }), input);
     canonicalFleetOrigin(body.fleetOrigin);
     const code = body.code ? normalEnrolmentCode(body.code) : undefined;
     if (this.closed || this.starting || !authority.session.current() || !authority.confirmedCurrent()) throw new HubProtocolError("denied");
@@ -327,7 +354,8 @@ export class CompanyJoinController {
       const address = parseCompanyAddress(body.address);
       if (code && address.invitation) throw new HubProtocolError("invalid");   // B1: a code and an invitation together are refused
       requireSeparateJoinHosts(body.fleetOrigin, address.webOrigin);
-      const metadata = await this.client.discover(address.webOrigin, current);
+      if (body.trust && !this.pilotEnabled()) throw new HubProtocolError("denied");
+      const { metadata, pilot } = await this.discover(address.webOrigin, current, false, body.trust);
       if (!current()) throw new HubProtocolError("stale");
       requireSeparateJoinHosts(body.fleetOrigin, metadata.hub.webOrigin);
       if (code && !metadata.features.includes("enrolment-code-v1")) throw new CompanyJoinRemoteError("incompatible");   // before any pin or journal
@@ -340,6 +368,8 @@ export class CompanyJoinController {
         }
       } catch { throw new HubProtocolError("uncertain"); }
       new CompanyTrustStore(this.options.home).checkAndPin(metadata.hub, address.expected ?? internal.expected ?? null, existing, current);
+      if (pilot && body.trust) new CompanyCertificateTrust(this.options.home).save(address.webOrigin, body.trust, () => current() && this.pilotEnabled());
+      if (!current() || pilot && !this.pilotEnabled()) throw new HubProtocolError("stale");
       const folder = ensurePrivateDirectory(this.options.home, "hub-member/company-joins");
       if (readdirSync(folder).length >= 1024) throw new HubProtocolError("backpressure");
       const key = generateKeyPairSync("ed25519"), verifier = randomBytes(32).toString("base64url"), operationId = randomUUID(), browserState = randomBytes(32).toString("hex");
@@ -539,4 +569,3 @@ export interface ReconnectPairing {
   disconnect(expected: { hubId?: unknown; binding?: unknown }, current?: () => boolean): Promise<{ ok: true; remote: "pending"; left?: boolean } | { ok: false; error: "unsaved" | "conflict" }>;
   cancel(): unknown;
 }
-

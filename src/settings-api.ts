@@ -18,6 +18,8 @@ import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, 
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS, effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { parseRuntimesSettingsBody, runtimeSettingsView } from "./runtime-switches.js";
+import { hubPilotTrustSettings } from "./hub-pilot-trust-settings.js";
+import { RUNNING_AGEND_VERSION } from "./web-update.js";
 import { hubMembershipSettings, parseHubMembership } from "./hub-membership-settings.js";
 import { evaluateWebRequest } from "./web-auth.js";
 import { redactInlineSecrets, restoreRedactedSecrets } from "./settings-redaction.js";
@@ -950,12 +952,14 @@ export function handleSettingsRequest(
   const cfg = ctx.fleetConfig;
 
   // This pure Settings surface remains available while membership is off; it imports no Hub runtime.
-  if (path === "/api/settings/hub/membership") {
+  if (path === "/api/settings/hub/membership" || path === "/api/settings/hub/pilot-trust") {
+    const pilot = path.endsWith("/pilot-trust");
+    const settings = (raw: unknown) => pilot ? hubPilotTrustSettings(raw, RUNNING_AGEND_VERSION) : hubMembershipSettings(raw);
     if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
     if (method === "GET") {
       if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
       // v2 is an explicit local-owner read. Older clients keep the pure boolean response and lazy-off behavior.
-      if (url.searchParams.has("v")) {
+      if (!pilot && url.searchParams.has("v")) {
         if (url.searchParams.get("v") !== "2" || [...url.searchParams.keys()].length !== 1) { json(res, 400, { ok: false, error: "invalid_hub_membership" }); return true; }
         const owner = ctx.hubCompanySession?.(req), read = ctx.hubMemberPairingView?.bind(ctx), raw = ctx.getRawFleetConfig(), configPath = ctx.configPath;
         if (!owner?.current()) { json(res, 403, { ok: false, error: "admin_required" }); return true; }
@@ -969,7 +973,7 @@ export function handleSettingsRequest(
         })().catch(() => json(res, 503, { ok: false, error: "unavailable" }));
         return true;
       }
-      try { json(res, 200, { ok: true, ...hubMembershipSettings(ctx.getRawFleetConfig()) }); }
+      try { json(res, 200, { ok: true, ...settings(ctx.getRawFleetConfig()) }); }
       catch { json(res, 409, { ok: false, error: "invalid_hub_membership" }); }
       return true;
     }
@@ -988,10 +992,10 @@ export function handleSettingsRequest(
         catch { json(res, 400, { ok: false, error: "invalid_hub_membership" }); return; }
         settingsWrite(req, () => {
           if (!settingsRequestLocalAdmin(req) || ctx.fleetConfig !== cfg || ctx.configPath !== configPath) throw Error("unavailable");
-          hubMembershipSettings(ctx.getRawFleetConfig());
-          ctx.saveFleetConfig([{ path: ["hub_member", "enabled"], value: input.enabled }]);
+          settings(ctx.getRawFleetConfig());
+          ctx.saveFleetConfig([{ path: ["hub_member", pilot ? "pilot_trust" : "enabled"], value: input.enabled }]);
         });
-        json(res, 200, { ok: true, ...hubMembershipSettings(ctx.getRawFleetConfig()) });
+        json(res, 200, { ok: true, ...settings(ctx.getRawFleetConfig()) });
       } catch { json(res, 503, { ok: false, error: "unavailable" }); }
     }).catch(() => json(res, 400, { ok: false, error: "invalid_hub_membership" }));
     return true;
@@ -1200,8 +1204,8 @@ export function handleSettingsRequest(
             json(res, 200, { ok: true, ...removed, pairing: pairing.view() });
           }
         } else if (step === "start") {
-          if (!session.fleetOrigin || !authority || !settingsRequestLocalAdmin(req) || Object.keys(body).some(k => !["address", "label", "handoffId", "code"].includes(k))) throw new HubProtocolError("invalid");
-          json(res, 200, { ok: true, operation: await api.start({ address: body.address, label: body.label, fleetOrigin: session.fleetOrigin, handoffId: body.handoffId, ...(body.code !== undefined ? { code: body.code } : {}) }, authority) });
+          if (!session.fleetOrigin || !authority || !settingsRequestLocalAdmin(req) || Object.keys(body).some(k => !["address", "label", "handoffId", "code", "trust"].includes(k))) throw new HubProtocolError("invalid");
+          json(res, 200, { ok: true, operation: await api.start({ address: body.address, label: body.label, fleetOrigin: session.fleetOrigin, handoffId: body.handoffId, ...(body.code !== undefined ? { code: body.code } : {}), ...(body.trust !== undefined ? { trust: body.trust } : {}) }, authority) });
         } else {
           if (!body || Object.keys(body).length !== 1) throw new HubProtocolError("invalid");
           const id = validated(uuid, body.operationId);

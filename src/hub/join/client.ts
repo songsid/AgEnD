@@ -8,6 +8,7 @@ import { HubProtocolError, hash, epoch, parseStrictJson, validated } from "../va
 import { hubOrigin, pinnedHubAgent, HubTlsIdentityError, verifyHubCertificate } from "../tls.js";
 import { companyIdentityDigest, joinIdentitySchema, signJoinProof, validateJoinBinding, type JoinBinding, type JoinPurpose } from "./protocol.js";
 import { CompanyIdentityChanged } from "./trust.js";
+import { pilotCertificateAgent, presentedPilotCertificate } from "./certificate.js";
 const metadataSchema = z.strictObject({ v: z.literal(1), hub: joinIdentitySchema, identityDigest: hash,
   certificatePem: z.string().max(16 * 1024), features: z.array(z.string().max(64)).max(16) });
 export type CompanyJoinMetadata = z.infer<typeof metadataSchema> & { name?: string };
@@ -20,7 +21,7 @@ const displayMetadataSchema = metadataSchema.extend({ name: z.string().max(200).
 export class CompanyJoinReachError extends HubProtocolError {
   constructor(readonly kind: "unreachable" | "certificate" | "not-hub", code: "unavailable" | "invalid" = "unavailable") { super(code); }
 }
-const CERT_ERRORS = new Set(["UNABLE_TO_VERIFY_LEAF_SIGNATURE", "UNABLE_TO_GET_ISSUER_CERT", "UNABLE_TO_GET_ISSUER_CERT_LOCALLY", "SELF_SIGNED_CERT_IN_CHAIN",
+const CERT_ERRORS = new Set(["ERR_AGEND_PILOT_CERTIFICATE", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "UNABLE_TO_GET_ISSUER_CERT", "UNABLE_TO_GET_ISSUER_CERT_LOCALLY", "SELF_SIGNED_CERT_IN_CHAIN",
   "DEPTH_ZERO_SELF_SIGNED_CERT", "CERT_HAS_EXPIRED", "CERT_NOT_YET_VALID", "ERR_TLS_CERT_ALTNAME_INVALID", "CERT_UNTRUSTED", "CERT_REVOKED", "HOSTNAME_MISMATCH"]);
 export class CompanyJoinRemoteError extends Error {
   constructor(readonly code: string) { super("Hub join refused"); }
@@ -71,10 +72,14 @@ export class CompanyJoinClient {
     });
   }
   /** `display` (M-2921 / S1.1): ask for the display-only extras (`name`); a Hub that predates them answers without. */
-  async discover(origin: string, current: () => boolean, options: { display?: boolean } = {}): Promise<CompanyJoinMetadata> {
+  async discover(origin: string, current: () => boolean, options: { display?: boolean; certificateFingerprint?: string } = {}): Promise<CompanyJoinMetadata> {
     const canonical = hubOrigin(origin);
     if (canonical !== origin) throw new HubProtocolError("invalid");
-    const raw = await this.json(origin, "/hub/v1/join/metadata", undefined, current, undefined, options.display ? { "X-AgEnD-Join-Display": "1" } : {});
+    const agent = options.certificateFingerprint === undefined ? undefined
+      : pilotCertificateAgent(origin, options.certificateFingerprint, current, this.options.lookup, this.options.now);
+    let raw: unknown;
+    try { raw = await this.json(origin, "/hub/v1/join/metadata", undefined, current, agent, options.display ? { "X-AgEnD-Join-Display": "1" } : {}); }
+    finally { agent?.destroy(); }
     const parsed = (options.display ? displayMetadataSchema : metadataSchema).safeParse(raw);
     if (!parsed.success) throw new CompanyJoinReachError("not-hub", "invalid");            // JSON, but not a Hub's metadata
     const value: CompanyJoinMetadata = parsed.data;
@@ -83,6 +88,9 @@ export class CompanyJoinClient {
     if (!current()) throw new HubProtocolError("stale");
     if (!value.features.includes("company-join-v1")) throw new CompanyJoinRemoteError("incompatible");
     return value;
+  }
+  inspectCertificate(origin: string, current: () => boolean) {
+    return presentedPilotCertificate(origin, current, this.options.lookup, this.options.now);
   }
   /** `display` (M-2921 / S1.3): ask the Hub for its display-only extras in this answer (redeem: ownerLabel, hubName). */
   async command(binding: JoinBinding, purpose: JoinPurpose, payload: unknown, key: KeyObject, current: () => boolean, options: { display?: boolean } = {}): Promise<unknown> {
