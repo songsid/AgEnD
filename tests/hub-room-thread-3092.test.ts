@@ -119,6 +119,24 @@ describe("the thread's mapping (pure)", () => {
   });
 });
 
+describe("a send answered with the bare message, before any stream (Ridge's server)", () => {
+  it("is drawn at once; the same message from the stream later is not drawn twice", async () => {
+    const fx = createHubRoomsFixture();
+    const real = client.createHubWebClient({ fetchImpl: (u: string, i?: any) => fx.fetch(u, i) as any }); await real.session();
+    const bare = Object.create(real);
+    bare.subscribeRooms = () => () => {};                                                                // no stream yet
+    bare.sendRoomMessage = async (id: string, body: any) => { const r = await real.sendRoomMessage(id, body); return r.ok ? { ok: true, ...r.message } : r; };
+    const st = thread.createRoomStore("room-weekly", { client: bare });
+    await until(() => st.loaded());
+    const before = st.raw().length;
+    const r = await st.send("bare answer please", { mentions: [] });
+    expect(r.ok && typeof r.id).toBe("string");
+    expect(st.raw().length).toBe(before + 1);
+    expect(st.messages().some((x: any) => x.text === "bare answer please")).toBe(true);
+    st.stop();
+  });
+});
+
 describe("the shared renderer's mention labels (Hub-only opt-in)", () => {
   it("accents exact labels with a space, CJK or a hyphen as it accents @Notes; without labels nothing changes", async () => {
     const R = (globalThis as any).AgendChatRender || (await import("/assets/chat-render.js"), (globalThis as any).AgendChatRender);
