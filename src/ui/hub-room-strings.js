@@ -105,7 +105,7 @@ register("hubRoom", {
     allRooms: "All rooms", active: "Active", archived: "Archived",
     noContent: "Room content is not visible here.",
     joinAsManager: "Join as a room manager",
-    // §12 unread
+    // §12 unread: unreadN is the list-row count tooltip; mentionedYou is the row's @ mark.
     unreadPrefix: "({0})", unreadN: "{0} unread", mentionMark: "@", mentionedYou: "Mentioned you",
   },
   "zh-TW": {
