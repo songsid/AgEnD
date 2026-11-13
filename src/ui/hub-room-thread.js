@@ -10,6 +10,7 @@
 import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { RailFrame } from "/assets/side-rail.js";
 import { Icon } from "/assets/ui-icons.js";
+import { Empty } from "/assets/ui-states.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
@@ -176,7 +177,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
           onClick=${openSettings}><${Icon} name="settings" size=${18} /></button>` : null}
       </header>
       <${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
-        emptyView=${room.assistant ? html`<p class="note hub-assistant-empty">${hroom("hubAssistantEmpty")}</p>`
+        emptyView=${room.assistant ? html`<div class="hub-assistant-empty"><${Empty} icon="bot" title=${hroom("hubAssistant")} hint=${hroom("hubAssistantEmpty")} /></div>`
           : group ? html`<p class="note">${hroom("composerHint")}</p>` : null} />
       <${RoomComposer} store=${store} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert} />
     </section>
