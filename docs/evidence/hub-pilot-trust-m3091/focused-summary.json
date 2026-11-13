@@ -1,0 +1,12 @@
+{
+  "source": "9149c5ff7be174246bf522d902f5e4c6f1e4689b",
+  "passed": 172,
+  "failed": 0,
+  "files": 10,
+  "success": true,
+  "fullIpJoinAndWssFollowup": {
+    "passed": 1,
+    "failed": 0,
+    "log": "private .artifacts/pilot-trust/full-join.log"
+  }
+}

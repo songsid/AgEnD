@@ -37,7 +37,7 @@ async function fixture(initial: any, over: any = {}) {
   return { pg, c, emit: async (p: any) => { current = p; listener(p); await settle(10); } };
 }
 async function connect(pg: AppPage) {
-  for (const [id, value] of [["hubAddress", "https://hub.test"], ["hubCode", "ABCD-EFGH"]]) {
+  for (const [id, value] of [["hubAddress", "https://hub.test"], ["hubCode", "1a2b-3c4d-5e6f"]]) {
     const input = pg.root.querySelector(`#${id}`)!; input.value = value; fire(input, "input");
   }
   await settle(5); fire(pg.root.querySelector("form.hub-connect"), "submit"); await settle(10);
@@ -164,5 +164,49 @@ describe("#3386 pairing confirmation hints follow the operation shown", () => {
     pg.root.querySelector(".hub-local-confirm").click(); await settle(10);
     expect(notice(pg)!.textContent).toBe(lang === "en" ? "Waiting for your confirmation" : "等待你的確認");
     expect(notice(pg)!.textContent).not.toMatch(/General|share|公開/);
+  });
+  // #3840: the pairing-code form checks the code's shape on the page, points a join code to the one box, names the member
+  // address, and after a failed confirmed apply says the handler's own reason.
+  async function typeForm(pg: AppPage, address: string, code: string) {
+    for (const [id, value] of [["hubAddress", address], ["hubCode", code]]) { const input = pg.root.querySelector(`#${id}`)!; input.value = value; fire(input, "input"); }
+    await settle(5);
+  }
+  const submit = (pg: AppPage) => pg.root.querySelector("form.hub-connect button[type=submit]");
+  const shape = (pg: AppPage) => pg.root.querySelector("form.hub-connect .hub-code-shape")?.textContent ?? null;
+  it.each([["ABCD-EFGH", "This is a join code."], ["abcd2345", "This is a join code."], ["1a2b3c4d5e6", "A pairing code is 12 characters"], ["zz2b3c4d5e6f", "A pairing code is 12 characters"]])("#3840: %s is caught on the page, before any confirmation", async (code, words) => {
+    const {pg,c}=await fixture(unpaired); await typeForm(pg, "https://hub.test:19443", code);
+    expect(shape(pg)).toContain(words); expect(submit(pg).disabled).toBe(true);
+    fire(pg.root.querySelector("form.hub-connect"), "submit"); await settle(5);
+    expect(c.connect).not.toHaveBeenCalled();
+  });
+  it.each(["1a2b-3c4d-5e6f", "1A2B 3C4D 5E6F", "abcdef012345"])("#3840: the pairing code %s (the server's own reading) is accepted", async code => {
+    const {pg,c}=await fixture(unpaired); await typeForm(pg, "https://hub.test:19443", code);
+    expect(shape(pg)).toBeNull(); expect(submit(pg).disabled).toBe(false);
+    fire(pg.root.querySelector("form.hub-connect"), "submit"); await settle(10);
+    expect(c.connect).toHaveBeenCalledTimes(1);
+  });
+  it("#3840: the address hint names the member address shown with the code, not the Hub's pages", async () => {
+    const {pg}=await fixture(unpaired);
+    expect(pg.root.querySelector("#hubAddress").parentElement.querySelector("small.note").textContent).toBe("The address shown with the pairing code (it ends in a port). It is not the address of the Hub's pages.");
+  });
+  it("#3840: zh-TW names the member address and points a join code to 「Hub 位址」", async () => {
+    i18n.setLang("zh-TW", { store: false }); const {pg:zh}=await fixture(unpaired);
+    expect(zh.root.querySelector("#hubAddress").parentElement.querySelector("small.note").textContent).toBe("配對碼一起提供的位址（結尾有連接埠），不是 Hub 網頁的位址。");
+    await typeForm(zh, "https://hub.test:19443", "ABCD-EFGH");
+    expect(shape(zh)).toBe("這是加入碼。請在這張卡片最上方的「Hub 位址」輸入位址、空一格，再輸入這組碼。");
+  });
+  it.each([["code", "not a valid pairing code"], ["address", "not a Hub's member address"], ["unreachable", "could not be reached"], ["refused", "refused this pairing code"], ["busy", "the Hub is busy"]])("#3840: a confirmed connect failed with %s names that reason", async (reason, words) => {
+    let decide!:(v:any)=>void;const settled=new Promise(r=>{decide=r;});
+    const {pg}=await fixture(unpaired,{connect:async()=>({ok:true,pendingConfirmation:true,pairing:unpaired,settled})});
+    await connect(pg); expect(notice(pg)).not.toBeNull();
+    decide({state:"failed",detail:`apply_rejected: ${reason}`}); await settle(20);
+    const error=pg.root.querySelector(".s-hub-connect > p[role=alert]")?.textContent ?? "";
+    expect(error).toContain("Confirmed, but it was not applied"); expect(error).toContain(words);
+  });
+  it("#3840: a failure with no known reason keeps the general words", async () => {
+    let decide!:(v:any)=>void;const settled=new Promise(r=>{decide=r;});
+    const {pg}=await fixture(unpaired,{connect:async()=>({ok:true,pendingConfirmation:true,pairing:unpaired,settled})});
+    await connect(pg); decide({state:"failed",detail:"apply_rejected: something_else"}); await settle(20);
+    expect(pg.root.querySelector(".s-hub-connect > p[role=alert]")?.textContent).toContain("new code");
   });
 });

@@ -23,6 +23,7 @@ import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecovery
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
+import { hubPilotTrustSettings } from "./hub-pilot-trust-settings.js";
 import { hubMembershipSettings } from "./hub-membership-settings.js";
 import { prepareSettingsEffect } from "./settings-effect.js";
 import { settingsDisplay } from "./settings-change.js";
@@ -1860,6 +1861,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.hubMemberBinding = currentBinding;
       if (this.shuttingDown || incarnation !== this.settingsGeneration) throw Error("Fleet is stopping");
       const controller = new CompanyJoinController({ home: this.dataDir,
+        pilotTrustEnabled: () => hubPilotTrustSettings(this.rawFleetConfig, RUNNING_AGEND_VERSION).enabled,
         snapshot: () => {
           const state = join(this.dataDir, "hub-member/state.json");
           return { membership: (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true,
@@ -3472,6 +3474,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       config: () => this.fleetConfig, current: () => [this.settingsGeneration, this.settingsRuntimeRevision, this.shuttingDown],
       generalLocation: input => this.previewGeneralLocation(input),
       hubMembership: raw => hubMembershipSettings(raw),
+      hubPilotTrust: raw => hubPilotTrustSettings(raw, RUNNING_AGEND_VERSION),
       // S3c (S-55): a Hub exposure publish's confirmation summary, while a member composition is attached.
       hubBrowserCertificate: (input: unknown, binding: string) => {
         const control = this.hubBrowserCertificate();

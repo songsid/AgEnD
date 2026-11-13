@@ -1,0 +1,22 @@
+{
+  "result": "PASS",
+  "scope": "Static original-image inspection by built-in image subagent; not a browser/auth/a11y measurement. No visible clipping, duplicate row or overlap. Phone expiry text wraps inside row. Open menus not captured.",
+  "inspected": [
+    "docs/evidence/hub-group-label-3824/current/current-desktop-dark-en-confirmation.png",
+    "docs/evidence/hub-group-label-3824/current/current-desktop-dark-en-row.png",
+    "docs/evidence/hub-group-label-3824/current/current-desktop-dark-zh-TW-confirmation.png",
+    "docs/evidence/hub-group-label-3824/current/current-desktop-dark-zh-TW-row.png",
+    "docs/evidence/hub-group-label-3824/current/current-desktop-light-en-confirmation.png",
+    "docs/evidence/hub-group-label-3824/current/current-desktop-light-en-row.png",
+    "docs/evidence/hub-group-label-3824/current/current-desktop-light-zh-TW-confirmation.png",
+    "docs/evidence/hub-group-label-3824/current/current-desktop-light-zh-TW-row.png",
+    "docs/evidence/hub-group-label-3824/current/current-phone-dark-en-row.png",
+    "docs/evidence/hub-group-label-3824/current/current-phone-dark-zh-TW-row.png",
+    "docs/evidence/hub-group-label-3824/current/current-phone-light-en-row.png",
+    "docs/evidence/hub-group-label-3824/current/current-phone-light-zh-TW-row.png",
+    "docs/evidence/hub-group-label-3824/before/before-desktop-dark-en-row.png",
+    "docs/evidence/hub-group-label-3824/before/before-desktop-dark-zh-TW-row.png",
+    "docs/evidence/hub-group-label-3824/before/before-desktop-light-en-row.png",
+    "docs/evidence/hub-group-label-3824/before/before-desktop-light-zh-TW-row.png"
+  ]
+}

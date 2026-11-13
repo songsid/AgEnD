@@ -202,6 +202,19 @@ turn on first.
    *your name*'s company account · This Fleet is called "*name*"** and "Your Fleet is connected. You can now choose
    which Agents to share below."
 
+**Self-signed test Hub.** A Fleet running an alpha build permits pilot trust by default; stable builds default off.
+In the **Hub address** box, a valid self-signed certificate shows **This Hub uses a self-signed test certificate**
+(這個 Hub 用的是測試用的自簽憑證), its **Certificate fingerprint** (憑證指紋), and **Show the full fingerprint**
+(顯示完整指紋). Press **Trust this Hub and continue** (信任這個 Hub 並繼續) only for your team's pilot Hub, or
+**Cancel** (取消). That press saves the exact certificate for this Hub address and opens company sign-in; a join code
+already typed stays included. The found line then says **You trusted this Hub's self-signed certificate (for testing).**
+(已信任這個 Hub 的自簽憑證（測試用）。). If that certificate changes, the saved pin refuses the connection;
+after the administrator confirms replacement, **Trust again and continue** (重新信任並繼續) explicitly replaces it.
+The Fleet's **Allow trusting a Hub with a self-signed certificate (for testing)** (允許信任自簽憑證的 Hub（測試用）)
+switch stays available in **Settings → Hub**, including after connection. Turn it off after the pilot or when the Hub
+uses a trusted certificate. With it off, Hub discovery requires ordinary certificate trust. A trusted certificate needs
+no prompt; expired certificates, incorrect host names and an untrusted issuing chain keep the certificate error.
+
 Connecting shares nothing. **Reconnect** appears when the connection stopped (revoked, expired or refused): one press
 ends the old connection and opens the Hub sign-in again. **Remove this connection** ends it from your side ("Agents
 you share will stop answering.").
@@ -211,9 +224,17 @@ consent are separate from the previous identity: old questions and receipts are 
 reconnect of the same identity keeps its delivery and acknowledgement history. Do not delete journal files to repair a
 connection; partial or inconsistent state is held rather than reset.
 
-**Other ways** holds the older **pairing code** method for a Hub without company sign-in; a pairing code pasted into
+**Other ways** holds the older **pairing code** method, and appears only for a Hub without company sign-in: once the
+Hub typed in **Hub address** answers that it takes company sign-in, **Other ways** is hidden and the company sign-in is
+the one way in. It stays while the Hub cannot be reached or its certificate is not trusted. A pairing code pasted into
 the address box opens it filled in. Its switch **Allow this fleet to connect to a Hub** (under **Hub membership**)
 applies as soon as it is changed.
+
+The pairing form checks the code before anything is confirmed. A pairing code is 12 characters, 0–9 and a–f (dashes
+and spaces are ignored). A join code (XXXX-XXXX) typed there is pointed back to the **Hub address** box at the top of the card:
+the address, a space, then the join code. The form's address is the one shown with the pairing code (it ends in a port), not the address of
+the Hub's pages. When a confirmed pairing is not applied, the page says why, for example "Confirmed, but it was not
+applied: the Hub refused this pairing code (used, expired or not issued for this Hub)."
 
 ## Held, refused and queued connections
 
