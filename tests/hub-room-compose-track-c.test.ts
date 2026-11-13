@@ -14,6 +14,8 @@ import type { HubRoomAsk } from "../src/hub/types.js";
 import type { AgentStateInput } from "../src/hub/member/room-ask.js";
 import { HubMemberProfileStore } from "../src/hub/profile.js";
 import { beginHubPairing, claimHubPairing } from "../src/hub/pairing-client.js";
+import { HubRoomAskAdapter, verifyRoomAskJournal } from "../src/hub/member/room-ask.js";
+import { HubProtocolError } from "../src/hub/validation.js";
 import { hubRig } from "./helpers/hub-rig.js";
 
 const capabilities = [...HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY];
@@ -29,6 +31,7 @@ async function harness(withState = true) {
   });
   let api: HubMemberExposureApi | null = null, reports: Parameters<HubRepresentativeHost["attachReports"]>[0] = null;
   let failed: Parameters<HubRepresentativeHost["attachReports"]>[1] = null;
+  const logs: { message: string; meta?: Record<string, unknown> }[] = [];
   const inputs: HubRepresentativeDelivery[] = [];
   let token = "test-current-agent-token";
   const readState = vi.fn((): AgentStateInput => ({ process: "running", execution: "idle" }));
@@ -40,7 +43,8 @@ async function harness(withState = true) {
   };
   const create = createHubMemberFactory({ home: r.memberHome, components: MEMBER_COMPONENTS, boundHub: () => profile.hub.hubId,
     agents: () => [{ name: "general", display: "General" }], representative,
-    attachExposures: value => { api = value; }, attachAttention: () => {}, pokeAttention: () => {}, report: () => {}, log: () => {} });
+    attachExposures: value => { api = value; }, attachAttention: () => {}, pokeAttention: () => {}, report: () => {},
+    log: (_level, message, meta) => { logs.push({ message, meta }); } });
   const start = async () => { const service = await create({}, () => true); services.push(service); await service.start(); return service; };
   const send = (type: "room.ask" | "room.answer-ack", payload: any) => r.server.send(profile.fleetId,
     { v: 1, type, requestId: randomUUID(), linkEpoch: epoch, payload });
@@ -49,7 +53,7 @@ async function harness(withState = true) {
     asker: { name: "Alex" }, text: "What changed?", context: [] });
   const row = (id: string) => { const db = new Database(join(r.memberHome, memberSet(profile.hub.hubId).database), { readonly: true });
     try { return db.prepare("SELECT state FROM hub_room_asks WHERE message_id=?").get(id); } finally { db.close(); } };
-  return { r, profile, inputs, readState, start, publish, ask, send, row, representative, api: () => api!,
+  return { r, profile, inputs, readState, start, publish, ask, send, row, representative, logs, epoch: () => epoch, api: () => api!,
     replace: () => { token = "replacement-agent-token"; },
     report: (text: string) => reports!({ caller: "general", correlationId: inputs.at(-1)!.correlationId, text, callerCurrent: () => true }),
     failed: () => failed!(inputs.at(-1)!.correlationId, "general") };
@@ -156,4 +160,38 @@ it("opens a different complete room journal after re-pair and retains the old ro
   await h.start(); expect(h.inputs).toHaveLength(1); expect(h.row(ask.messageId)).toEqual(previous);
   const db = new Database(join(h.r.memberHome, memberSet(nextProfile.hub.hubId, nextProfile).database), { readonly: true });
   try { expect(db.prepare("SELECT COUNT(*) AS n FROM hub_room_asks").get()).toEqual({ n: 0 }); } finally { db.close(); }
+});
+
+it("refuses a withdrawn room ask without dropping the link, then delivers a valid ask on that same link", async () => {
+  const h = await harness(); await h.start(); const old = h.publish(), epoch = h.epoch();
+  await h.api().withdraw(old.exposureId!, old.revision);
+  await h.send("room.ask", h.ask(old.exposureId!));
+  await vi.waitFor(() => expect(h.logs).toContainEqual(expect.objectContaining({
+    message: "Hub room ask not admitted", meta: expect.objectContaining({ reason: "denied" }) })));
+  expect(h.epoch()).toBe(epoch); expect(h.inputs).toHaveLength(0);
+  const revision = h.api().list()[0]!.revision;
+  const current = h.api().publish({ agent: "general", dataViewId: "agent", tools: [], expectedRevision: revision });
+  await h.send("room.ask", h.ask(current.exposureId!));
+  await vi.waitFor(() => expect(h.inputs).toHaveLength(1)); expect(h.epoch()).toBe(epoch);
+});
+
+it("uses a derived room key so the member audit content key cannot decrypt the room journal", async () => {
+  const h = await harness(); await h.start(); const exposure = h.publish(), ask = h.ask(exposure.exposureId!);
+  await h.send("room.ask", ask); await vi.waitFor(() => expect(h.inputs).toHaveLength(1));
+  const set = memberSet(h.profile.hub.hubId), db = new Database(join(h.r.memberHome, set.database), { readonly: true });
+  const auditKey = Buffer.from(readFileSync(join(h.r.memberHome, set.keys[1]!), "utf8").trim(), "base64");
+  try { expect(() => verifyRoomAskJournal(db, { bindingKey: memberSet(h.profile.hub.hubId, h.profile).database,
+    encryptionKey: auditKey })).toThrow("uncertain"); } finally { db.close(); }
+});
+
+it.each(["backpressure", "unexpected"] as const)("preserves the link failure path for %s instead of swallowing it as a room refusal", async kind => {
+  const h = await harness(); await h.start(); const exposure = h.publish();
+  const spy = vi.spyOn(HubRoomAskAdapter.prototype, "accept").mockImplementationOnce(() => {
+    throw kind === "backpressure" ? new HubProtocolError("backpressure") : new Error("owned storage failure");
+  });
+  try {
+    await h.send("room.ask", h.ask(exposure.exposureId!));
+    await vi.waitFor(() => expect(h.logs).toContainEqual({ message: "Hub link held", meta: { code: kind === "backpressure" ? "backpressure" : "unavailable" } }));
+    expect(h.logs.filter(row => row.message === "Hub room ask not admitted")).toEqual([]); expect(h.inputs).toHaveLength(0);
+  } finally { spy.mockRestore(); }
 });

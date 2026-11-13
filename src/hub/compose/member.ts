@@ -9,7 +9,7 @@
  * The data-view registry comes from a HubViewSource: EMPTY until the owner-approval flow exists (§7 Q2), so nothing
  * is publishable or askable — fail closed.
  */
-import { createHash, createPublicKey, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createPublicKey, hkdfSync, randomBytes, randomUUID } from "node:crypto";
 import { closeSync, existsSync, openSync, writeSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { createHubAudit, HUB_AUDIT_MIGRATION, type HubAuditStore } from "../audit/index.js";
@@ -44,6 +44,7 @@ import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../mem
 import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY } from "../protocol.js";
 import { createRoomStatePublisher, HubRoomAskAdapter, HUB_ROOM_ASK_MIGRATION, verifyRoomAskJournal,
   type AgentStateInput, type RoomAskLink, type RoomStateLink } from "../member/room-ask.js";
+import { HubProtocolError } from "../validation.js";
 
 /** The legacy location remains assigned to its first proven binding; later pairings get separate complete sets. */
 export function memberSet(hubId: string, profile?: Pick<HubMemberProfile, "fleetId" | "owner" | "issuerKeyId">): HubStateSet {
@@ -313,7 +314,9 @@ function openMemberState(options: {
       const exposures = new exposureStore.HubExposureStore(db, { floor: exposureFloor!, audit,
         binding: () => ({ owner: profile.owner, fleetId: profile.fleetId }), views: options.views.load(), now });
       if (state === "new") { journal.initialize(); exposures.initialize(); }
-      const roomKey = readKey(home, set.keys[1]!), roomBinding = memberSet(hubId, profile).database;
+      const roomBinding = memberSet(hubId, profile).database;
+      const roomKey = Buffer.from(hkdfSync("sha256", readKey(home, set.keys[1]!), Buffer.alloc(0),
+        Buffer.from(JSON.stringify(["agend-hub-room-journal-key-v1", roomBinding])), 32));
       if (!db.transaction(() => {
         // An unbound legacy set must authenticate room history before bindPairing can advance its durable floor.
         const meta = db.prepare("SELECT binding FROM hub_member_meta WHERE singleton=1").get() as { binding: string | null };
@@ -600,7 +603,15 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
         },
         receive: (frame, l) => {
-          if (frame.type === "room.ask") { room.accept(frame.payload, roomLink(l)); return Promise.resolve(); }
+          if (frame.type === "room.ask") {
+            try { room.accept(frame.payload, roomLink(l)); }
+            catch (error) {
+              // A racing withdrawal or unready agent refuses only this ask, not unrelated work on the shared link.
+              if (!(error instanceof HubProtocolError) || error.code === "backpressure") throw error;
+              options.log("warn", "Hub room ask not admitted", { messageId: frame.payload.messageId, reason: error.code });
+            }
+            return Promise.resolve();
+          }
           if (frame.type === "room.answer-ack") { room.acknowledge(frame.payload, roomLink(l)); return Promise.resolve(); }
           return receive(frame, l);
         },
