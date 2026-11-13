@@ -154,6 +154,9 @@ describe("a room on the page", () => {
     const { pg, restore } = await roomPage("room-weekly");
     try {
       expect(pg.root.querySelector(".hub-room-page .hub-chat-head strong")!.textContent).toBe("研一主管週會");
+      // Another person's @ of an agent is accented once the room's members are known (the labels are read live).
+      const chen = msgs(pg).find((m) => (m.textContent || "").includes("剛剛那一點再說清楚")) as any;
+      expect(chen.querySelector(".mention")?.textContent).toBe("@project-helper");
       // A room's own line (created …): no message tools, Copy included (Lumen).
       expect([...pg.root.querySelectorAll(".hub-room-page .thread .status-line")].every((el: any) => !el.querySelector(".msg-tools"))).toBe(true);
       expect(msgs(pg).filter((m) => m.classList.contains("user") && m.querySelector(".sender").textContent === "")).not.toHaveLength(0);

@@ -206,11 +206,12 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   // Read when shown: the latest message once loaded and again as messages arrive while the page is visible.
   const count = store.raw().length;
   useEffect(() => { if (store.loaded() && (typeof document === "undefined" || !document.hidden)) void store.markRead(); }, [store.loaded(), count]);
-  // The room's own mention labels, accented in every bubble as 「@Notes」 is (Lumen): @所有 Agent, the assistant, each member.
-  const labels = [hroom("mentionAll"), hroom("mentionAssistant"), ...(detail?.members || []).filter((m) => m.kind !== "assistant").map((m) => `@${m.name}`)];
+  // The room's own mention labels, accented in every bubble as 「@Notes」 is (Lumen): @所有 Agent, the assistant, each member —
+  // read when the thread draws (the thread keeps its options from its first render, before the room's members are known).
+  const labels = () => [hroom("mentionAll"), hroom("mentionAssistant"), ...(store.detail()?.members || []).filter((m) => m.kind !== "assistant").map((m) => `@${m.name}`)];
   const extra = {
     isUser: (x) => x.mine === true, canReply: () => !store.closed(),
-    mentionLabels: () => labels, statusAction: (arg) => store.expand(arg),
+    mentionLabels: labels, statusAction: (arg) => store.expand(arg),
     startReply: (x) => { setReply(x); setTimeout(() => input.current?.focus(), 0); },
     findQuoted: async () => { await store.older(); return false; },
   };
