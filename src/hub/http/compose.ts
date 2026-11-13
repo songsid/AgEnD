@@ -59,8 +59,8 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "h
   "hub-group-search.js", "hub-join-steps.js", "hub-grant-picker.js",
   // B2: code management and the same-request Hub approval queue.
   "hub-enrolment-code.js", "hub-enrolment-code-strings.js", "hub-join-queue.js", "hub-join-approval.js", "hub-joincode-flow-strings.js",
-  // M-3092 (Hub rooms, track U; Ridge's scoped exception): the conversation list as the Fleet roster draws it.
-  "hub-room-list.js", "hub-room-strings.js", "hub-room-thread.js", "hub-room-composer.js"]);
+  // Hub rooms: Track U1 list/thread/composer and Track U2 dialogs.
+  "hub-room-list.js", "hub-room-strings.js", "hub-room-thread.js", "hub-room-composer.js", "hub-room-new.js", "hub-room-new-strings.js", "hub-room-settings.js", "hub-room-settings-strings.js", "hub-room-members.js", "hub-room-members-strings.js", "hub-invitations.js", "hub-invitations-strings.js", "hub-admin-rooms.js", "hub-admin-rooms-strings.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
