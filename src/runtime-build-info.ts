@@ -4,7 +4,7 @@ import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RUNTIME_PANE_MODULES } from "./runtime-pane-assets.js";
-import { CLI_REGISTRY_MODULES } from "./cli-registry.js";
+import { CLI_REGISTRY_MODULES, runtimeAccountsCapabilities, runtimeSignInCapabilities } from "./cli-registry.js";
 import { RUNTIME_PROTOCOL_VERSION, validRuntimeVersion, type RuntimeInfo } from "./runtime-protocol.js";
 import { RUNTIME_CREDENTIAL_CAPABILITY } from "./runtime-credential-profiles.js";
 import { ACCOUNT_IDENTITY_CAPABILITY } from "./claude-auth-status.js";
@@ -13,7 +13,7 @@ import { nativeInstallSupported } from "./runtime-cli-install.js";
 
 export const RUNTIME_BUNDLE_MODULES = Object.freeze([
   "runtime-cli.js", "runtime-cli-background.js", "runtime-background.js", "runtime-autostart.js", "runtime-client.js", "runtime-client-store.js", "runtime-protocol.js", "runtime-build-info.js", "runtime-connection.js", "runtime-update-artifact.js", "runtime-update-activity.js", "runtime-update-protocol.js", "runtime-update-status.js", "runtime-update-lock.js", "runtime-update-install.js", "runtime-update-owners.js", "runtime-update-journal.js", "runtime-update-ipc.js", "runtime-update-controller.js", "windows-cli.js", "windows-cli-worker.js",
-  "windows-cli-providers.js", "child-process.js", "windows-native-mcp.js", "model-catalog-defaults.js", "atomic-write.js", "runtime-switches.js", "runtime-credential-profiles.js", "claude-auth-status.js", "login-url.js", "runtime-remote-setup.js", "runtime-profile-ownership.js", "runtime-signin.js", "runtime-remote-accounts.js", "runtime-cli-install.js", "cli-audited.js", ...CLI_REGISTRY_MODULES, ...RUNTIME_PANE_MODULES,
+  "windows-cli-providers.js", "child-process.js", "windows-native-mcp.js", "model-catalog-defaults.js", "atomic-write.js", "runtime-switches.js", "runtime-credential-profiles.js", "claude-auth-status.js", "login-url.js", "runtime-remote-setup.js", "runtime-profile-ownership.js", "runtime-signin.js", "runtime-remote-accounts.js", "runtime-cli-install.js", "antigravity-identity.js", "antigravity-store.js", "credential-store-proof.js", "cli-audited.js", ...CLI_REGISTRY_MODULES, ...RUNTIME_PANE_MODULES,
 ]);
 function boundedFile(path: string, limit: number): Buffer {
   const fd = openSync(path, "r");
@@ -34,6 +34,10 @@ export function runtimeCodeBuildId(version: string, modules: ReadonlyArray<reado
 export function readRuntimeInfo(options: { moduleDirectory?: string; packagePath?: string; panes?: boolean; /** The Runtime has its own CLI installer (native Windows). */ install?: boolean } = {}): RuntimeInfo {
   const directory = options.moduleDirectory ?? dirname(fileURLToPath(import.meta.url));
   const result: RuntimeInfo = { protocolVersions: [RUNTIME_PROTOCOL_VERSION], capabilities: ["exec", "mcp", ...((options.panes ?? process.platform === "win32") ? ["panes"] : []), RUNTIME_CREDENTIAL_CAPABILITY, ACCOUNT_IDENTITY_CAPABILITY, REMOTE_SIGNIN_CAPABILITY, MODEL_REFRESH_CAPABILITY,
+    // One `signin-<id>` for each CLI this build can sign in as the computer's OWN login (the registry's `runtime.signIn.profile === "none"`: Antigravity); AgEnD offers that sign-in only to a Runtime that says so.
+    ...runtimeSignInCapabilities(),
+    // One `accounts-<id>` for each CLI other than Claude Code whose named accounts this build manages (Antigravity, AGEND-124): the server shows its rows on this computer only to a Runtime that says so.
+    ...runtimeAccountsCapabilities(),
     // Claimed only when this Runtime has an installer (native Windows x64): AgEnD must not offer an install to one that cannot do it.
     ...((options.install ?? nativeInstallSupported()) ? [CLI_INSTALL_CAPABILITY, CLI_UPDATE_CAPABILITY] : [])] };
   try {

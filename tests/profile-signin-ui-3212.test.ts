@@ -69,8 +69,8 @@ describe("openSignIn routes a named account to the same dialog as the default on
     expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog);
     expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code" });
   });
-  it("an unknown backend still opens the older dialog", () => {
-    S.openSignIn({ backend: "antigravity" });
+  it("a backend the registry has no structured sign-in for still opens the older dialog", () => {
+    S.openSignIn({ backend: "no-such-cli" });
     expect(shell.shellStore.get().dialog.Component).toBe(S.SignInDialog);
   });
 });

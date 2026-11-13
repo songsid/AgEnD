@@ -205,7 +205,7 @@ describe("the transport", () => {
   };
   const SESSION = "a".repeat(32);
   it("maps the launch to a CLI id by exact match against the closed table and refuses everything else, sending nothing", async () => {
-    expect(RUNTIME_SIGNIN_CLIS).toEqual({ "claude-code": ["claude", "auth", "login"] });
+    expect(RUNTIME_SIGNIN_CLIS).toEqual({ "claude-code": ["claude", "auth", "login"], antigravity: ["agy", "acp", "--login"] });
     for (const bad of [{ argv: ["claude", "auth", "login", "--console"], profile: "work" }, { argv: ["kiro-cli", "login"], profile: "work" }, { argv: ["claude", "auth", "login"], profile: "other" }, { argv: ["claude", "auth", "login"] },
       { argv: ["claude", "auth", "login"], profile: "work", logoutArgv: ["claude", "auth", "logout"] }, { argv: ["codex", "login", "--device-auth"], profile: "work" }]) {
       const { calls, transport } = make(() => ({ sessionId: SESSION }));

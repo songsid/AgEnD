@@ -104,7 +104,7 @@ function fixture(backend: "claude-code" | "codex", opts: { profile?: string | nu
   const data = scratch(), profile = opts.profile === undefined ? "work" : opts.profile;
   const home = profile ? join(data, "credential-profiles", backend, profile) : join(data, "default-home");
   mkdirSync(home, { recursive: true });
-  const runners = { claudeStatus: vi.fn(async () => ({ code: 0, loggedIn: true })), claudeFallback: vi.fn(async () => ({ code: 0 })), codexRefresh: vi.fn(async () => ({ answered: true, accountNull: false })) };
+  const runners = { claudeStatus: vi.fn(async () => ({ code: 0, loggedIn: true })), claudeFallback: vi.fn(async () => ({ code: 0 })), codexRefresh: vi.fn(async () => ({ answered: true, accountNull: false })), antigravityModels: vi.fn(async () => ({ code: 0, signedOut: false })) };
   const logs: Fx["logs"] = [], inUse = { v: false }, claim = { v: true }, released: number[] = [];
   const deps: KeepAliveDeps = {
     dataDir: data, now: () => NOW, log: (l, m, f) => { logs.push([l, m, f]); }, homeOf: () => home,

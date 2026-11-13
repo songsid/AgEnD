@@ -348,8 +348,10 @@ caller scope and estimated/not-priced marks. Web usage and `/usage` are unchange
 ## credential profile
 
 A named credential set for one backend (`CREDENTIAL_HOMES`), so one fleet can
-act under several accounts. `/login <backend> <profile>` signs a profile in;
-chat sign-in from the fleet exists for some backends only.
+act under several accounts. `/login <backend> <profile>` signs a profile in from
+chat for Claude Code, Codex and Kiro only. Antigravity (agy) has named accounts
+too, but they are connected only from the dashboard (Settings → Accounts);
+`/login agy` in chat is not supported.
 
 - Can: separate accounts per instance or backend.
 - Can't: share across backends — a profile belongs to its backend's home.

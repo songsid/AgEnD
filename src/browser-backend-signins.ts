@@ -3,7 +3,7 @@ import { StructuredSignIn, structuredSignInSupported, type StructuredBackend,
   type SignInAction, type StructuredSignInTransport, type StructuredSignInView } from "./structured-signin.js";
 import { LoginWindowLock } from "./login-window-lock.js";
 import type { AuthCheckResult } from "./login-flows.js";
-import { onboardingBackends, readPendingBackendSignIns, writePendingBackendSignIns,
+import { ONBOARDING_BROWSER_BACKENDS, ONBOARDING_CONSOLE_BACKENDS, onboardingBackends, readPendingBackendSignIns, writePendingBackendSignIns,
   type OnboardingBackend, type PendingBackendSignIns } from "./backend-signin-pending.js";
 
 export interface BrowserBackendSignInDeps {
@@ -15,6 +15,12 @@ export interface BrowserBackendSignInDeps {
   /** The sign-in check of a CLI the page names only the console command for (cli-registry.ts: `host.firstRunSignIn` with mode "console"). */
   checkConsoleAuth?(backend: OnboardingBackend): Promise<AuthCheckResult>;
   transport(backend: StructuredBackend): StructuredSignInTransport;
+  /**
+   * This instance serves Settings → Accounts: it may START any CLI whose registry spec says `host.structuredSignIn`, including one the first-run page only names the console command for
+   * (`host.firstRunSignIn.mode === "console"`: Antigravity, `agy acp --login`). The first-run page's own instance does not set it, so there such a CLI stays "console only", as #2599
+   * left it; `refresh` reads its state through `checkConsoleAuth` either way.
+   */
+  accountsPage?: boolean;
   lock?: LoginWindowLock;
   changed?(event: { backend: StructuredBackend; phase: string; reason?: string }, owner: object, launched: boolean): void;
 }
@@ -25,6 +31,8 @@ export interface BrowserBackendSignInSnapshot {
   states: Partial<Record<OnboardingBackend, AuthCheckResult | "console_only" | "not_installed">>;
   login: StructuredSignInView | null;
   ready: boolean;
+  /** The selected CLIs the first-run list only names the console command for (cli-registry.ts: `host.firstRunSignIn.mode === "console"`); the page draws no Sign in for them there. */
+  console: OnboardingBackend[];
   /** Only in the answer to a start that CREATED a run: that run's id. A start that joined a run already there (another tab's, a double click) carries none — nobody may end it as "mine". */
   started?: string;
 }
@@ -70,7 +78,8 @@ export class BrowserBackendSignIns {
   snapshot(owner: object): BrowserBackendSignInSnapshot {
     if (!this.current(owner)) throw new Error("signin_session_expired");
     return { selected: [...this.record.selected], pending: [...this.record.pending], skipped: [...this.skipped],
-      states: { ...this.states }, login: this.run?.session.view(owner) ?? null, ready: this.ready };
+      states: { ...this.states }, login: this.run?.session.view(owner) ?? null, ready: this.ready,
+      console: this.record.selected.filter(backend => (ONBOARDING_CONSOLE_BACKENDS as readonly string[]).includes(backend)) };
   }
   async refresh(owner: object, force = false): Promise<BrowserBackendSignInSnapshot> {
     if (!this.current(owner)) throw new Error("signin_session_expired");
@@ -84,7 +93,7 @@ export class BrowserBackendSignIns {
           const checked: BrowserBackendSignInSnapshot["states"] = {};
           for (const backend of selected) {
             const status = !installed.includes(backend) ? "not_installed" : this.loginMayWrite(backend) ? "unknown"
-              : structuredSignInSupported(backend) ? await this.deps.checkAuth(backend)
+              : (ONBOARDING_BROWSER_BACKENDS as readonly string[]).includes(backend) ? await this.deps.checkAuth(backend as StructuredBackend)
               : await this.deps.checkConsoleAuth?.(backend) === "valid" ? "valid" : "console_only";
             if (!current()) return;
             checked[backend] = status;
@@ -115,9 +124,12 @@ export class BrowserBackendSignIns {
     this.persist(); this.refreshed = false;
     return this.refresh(owner);
   }
-  async begin(owner: object, backend: string, relogin = false): Promise<BrowserBackendSignInSnapshot> {
+  async begin(owner: object, requested: string, relogin = false): Promise<BrowserBackendSignInSnapshot> {
     if (!this.current(owner)) throw new Error("signin_session_expired");
-    if (!structuredSignInSupported(backend) || !this.record.selected.includes(backend)) throw new Error("signin_console_only");
+    // A CLI the first-run page offers as controls can be started from it; one it only names the console command for (registry: `host.firstRunSignIn.mode`) only where the host serves Settings → Accounts.
+    const offered = (ONBOARDING_BROWSER_BACKENDS as readonly string[]).includes(requested) || (this.deps.accountsPage === true && structuredSignInSupported(requested));
+    if (!offered || !this.record.selected.includes(requested as OnboardingBackend)) throw new Error("signin_console_only");
+    const backend = requested as OnboardingBackend & StructuredBackend;
     if (this.run?.session.view(this.run.owner).reason === "cleanup_failed") throw new Error("signin_cleanup_failed");
     if (this.run && !this.terminal(this.run)) return this.snapshot(owner); // refresh/double click joins
     const session = new StructuredSignIn(backend, owner, {

@@ -17,21 +17,30 @@
  */
 import { lstatSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { credentialProfileEnv, credentialProfileHome } from "./backend/credential-profile.js";
+import { credentialHomeSpec, credentialProfileEnv, credentialProfileHome } from "./backend/credential-profile.js";
 import { claudeConfigDirFor, claudeKeychainService } from "./backend/claude-code.js";
 import { validCredentialProfileName } from "./runtime-credential-profiles.js";
 import { ownProfileFolder, realFs, type ProfileFs } from "./accounts-profiles.js";
 import { hostFacts, hostIds } from "./cli-registry.js";
 
-/** The CLIs that can sign out from the dashboard, and how (their own logout; checked offline per CLI). cli-registry.ts: `host.signOut`. */
+/** The CLIs that can sign out from the dashboard with their own logout command (checked offline per CLI). cli-registry.ts: `host.signOut` with a `binary` and `args`. */
 export const SIGN_OUT: Readonly<Record<string, { binary: string; args: readonly string[] }>> = Object.freeze(Object.fromEntries(
-  hostIds("signOut").map(id => { const { binary, args } = hostFacts(id, "signOut")!; return [id, { binary, args: [...args] }] as const; }),
+  hostIds("signOut").flatMap(id => { const facts = hostFacts(id, "signOut")!; return "binary" in facts ? [[id, { binary: facts.binary, args: [...facts.args] }] as const] : []; }),
+));
+/**
+ * AGEND-119: the CLIs that have no logout command and are signed out by AgEnD removing the account's sign-in file(s) from its folder (Antigravity: `antigravity-oauth-token`; the TUI's `/logout` is
+ * interactive only). cli-registry.ts: `host.signOut` with `remove`. What is removed is those names in the account's folder and nothing else: no folder, no conversation, no setting.
+ */
+export const SIGN_OUT_REMOVES: Readonly<Record<string, readonly string[]>> = Object.freeze(Object.fromEntries(
+  hostIds("signOut").flatMap(id => { const facts = hostFacts(id, "signOut")!; return "remove" in facts ? [[id, [...facts.remove]] as const] : []; }),
 ));
 /** Claude Code's unsuffixed Keychain item: the default sign-in's (macOS). */
 export const CLAUDE_DEFAULT_KEYCHAIN_SERVICE = "Claude Code-credentials";
 
-export type SignOutRefusal = "unsupported" | "confirm" | "name" | "signing_in" | "missing" | "unsafe" | "default_home" | "failed";
-export type SignOutResult = { ok: true; keychainLeft?: true } | { ok: false; error: SignOutRefusal };
+/** `still_signed_in` (AGEND-119): the sign-in file was removed and the CLI's own probe still says it is signed in — its sign-in is kept somewhere AgEnD does not remove (the system's keyring), and it is told so. */
+export type SignOutRefusal = "unsupported" | "confirm" | "name" | "signing_in" | "missing" | "unsafe" | "default_home" | "failed" | "still_signed_in";
+/** `unverified` (AGEND-119): the files were removed and the CLI's probe could not answer (a timeout, a missing binary), so signed out is not proven. */
+export type SignOutResult = { ok: true; keychainLeft?: true; unverified?: true } | { ok: false; error: SignOutRefusal };
 
 export interface SignOutRequest {
   backend: string;
@@ -54,6 +63,11 @@ export interface SignOutDeps {
   stillOwner?(): boolean;
   /** macOS: whether a Keychain item with this service name is reachable. */
   keychainHas(service: string): Promise<boolean>;
+  /**
+   * AGEND-119: after the sign-in files of a CLI with no logout command are removed, the CLI's own status probe for this account (the default sign-in, or the named one with its launch). "invalid": signed
+   * out, as asked. "valid": still signed in (kept elsewhere). "unknown": it could not say. Absent: not asked (a test's stand-in), and then the answer is "unknown".
+   */
+  verify?(backend: string, profile: string | null): Promise<"valid" | "invalid" | "unknown">;
   platform: NodeJS.Platform;
   env: NodeJS.ProcessEnv;
   fs: ProfileFs;
@@ -108,10 +122,24 @@ function dirIdentity(path: string): { real: string; dev: number; ino: number } |
   try { const real = realpathSync(path), st = lstatSync(real); return st.isDirectory() ? { real, dev: st.dev, ino: st.ino } : null; } catch { return null; }
 }
 
+/** Removes the sign-in files of an account that has no logout command, only from its own folder: a regular file (or a link, which is only unlinked: what it points at is never touched), never a folder. */
+function removeSignInFiles(folder: string, names: readonly string[]): boolean {
+  for (const name of names) {
+    const path = join(folder, name);
+    try {
+      const st = lstatSync(path);
+      if (!st.isFile() && !st.isSymbolicLink()) continue;
+      rmSync(path);
+    } catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") return false; }
+  }
+  return true;
+}
+
 export async function signOutAccount(dataDir: string, req: SignOutRequest, deps: Partial<SignOutDeps> & Pick<SignOutDeps, "run" | "keychainHas">): Promise<SignOutResult> {
   const d: SignOutDeps = { platform: process.platform, env: process.env, fs: realFs(), ...deps };
+  const files = Object.hasOwn(SIGN_OUT_REMOVES, req.backend) ? SIGN_OUT_REMOVES[req.backend]! : null;
   const how = Object.hasOwn(SIGN_OUT, req.backend) ? SIGN_OUT[req.backend]! : null;
-  if (!how) return { ok: false, error: "unsupported" };
+  if (!how && !files) return { ok: false, error: "unsupported" };
   if (req.confirm !== true) return { ok: false, error: "confirm" };
   const profile = req.profile ?? null;
   if (profile !== null && !validCredentialProfileName(profile)) return { ok: false, error: "name" };
@@ -122,6 +150,22 @@ export async function signOutAccount(dataDir: string, req: SignOutRequest, deps:
     identity = { dev: own.st.dev, ino: own.st.ino };
   }
   if (req.signingIn) return { ok: false, error: "signing_in" };
+  if (files) {
+    // No logout command: the account's sign-in file goes, from the account's own folder (the default's: the CLI's home) and nowhere else, then the CLI's own probe says whether it is signed out.
+    const folder = profile !== null ? credentialProfileHome(dataDir, req.backend, profile) : credentialHomeSpec(req.backend)?.sharedRoot() ?? null;
+    if (!folder) return { ok: false, error: "failed" };
+    // The folder checked above is the one the files are removed from: its identity is compared again right before the first removal (not after: a folder swapped for a link to another
+    // account's would otherwise lose that account's token before anyone noticed).
+    if (profile !== null) {
+      const again = ownProfileFolder(dataDir, req.backend, profile, d.fs);
+      if (!again.ok || again.st.dev !== identity!.dev || again.st.ino !== identity!.ino) return { ok: false, error: "unsafe" };
+    }
+    if (d.stillOwner && !d.stillOwner()) return { ok: false, error: "failed" };
+    if (!removeSignInFiles(folder, files)) return { ok: false, error: "failed" };
+    let state: "valid" | "invalid" | "unknown" = "unknown";
+    try { state = await d.verify?.(req.backend, profile) ?? "unknown"; } catch { state = "unknown"; }
+    return state === "valid" ? { ok: false, error: "still_signed_in" } : state === "invalid" ? { ok: true } : { ok: true, unverified: true };
+  }
   const env: NodeJS.ProcessEnv = { ...d.env, ...(profile !== null ? credentialProfileEnv(dataDir, req.backend, profile) ?? {} : {}) };
   const configDir = profile !== null ? credentialProfileHome(dataDir, "claude-code", profile) : claudeConfigDirFor(null);
   // #3305 review P1 (default folder): the folder is the one seen before the logout — its real path and identity — and
@@ -129,7 +173,7 @@ export async function signOutAccount(dataDir: string, req: SignOutRequest, deps:
   const seen = req.backend === "claude-code" && profile === null ? dirIdentity(configDir) : null;
   const before = seen ? claudeBackups(seen.real) : null;
   let code: number | null;
-  try { ({ code } = await d.run(how.binary, how.args, env)); } catch { return { ok: false, error: "failed" }; }
+  try { ({ code } = await d.run(how!.binary, how!.args, env)); } catch { return { ok: false, error: "failed" }; }
   if (code !== 0) return { ok: false, error: "failed" };
   if (d.stillOwner && !d.stillOwner()) return { ok: false, error: "failed" };
   // #3305 review P1: the folder checked before the wait must be the one cleaned after it — the same directory (device

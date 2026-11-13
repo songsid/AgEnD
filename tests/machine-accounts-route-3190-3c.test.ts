@@ -153,3 +153,63 @@ describe("the sign-in route for a computer's profile", () => {
     expect(f.snapshot).not.toHaveBeenCalled();
   });
 });
+
+describe("AGEND-113: a computer's own Antigravity login (no profile in the address)", () => {
+  const A = (machine = ID) => `/ui/browser-backend-signins?machine=${machine}&backend=antigravity`;
+  const snap = { selected: ["antigravity"], pending: ["antigravity"], skipped: [], states: { antigravity: "invalid" }, login: null, ready: true, target: { machine: ID, backend: "antigravity" } };
+  it("GET reads that computer's Antigravity login, addressed by `machine` and `backend=antigravity` and nothing else", async () => {
+    const f = await fixture(), a = f.session();
+    f.snapshot.mockReturnValueOnce(snap as never);
+    expect(await f.call("GET", A(), a.headers)).toMatchObject({ status: 200, body: { selected: ["antigravity"], target: { machine: ID, backend: "antigravity" } } });
+    expect(f.snapshot.mock.calls[0]![1]).toEqual({ machine: ID, backend: "antigravity" });
+  });
+  it("a start must name Antigravity on that address (and Claude on a profile's); the rest of the controls are the same four", async () => {
+    const f = await fixture(), a = f.session();
+    expect((await f.call("POST", A(), a.headers, { operation: "start", backend: "antigravity" })).status).toBe(200);
+    expect(f.machineSignIns.begin.mock.calls.at(-1)!.slice(1)).toEqual([{ machine: ID, backend: "antigravity" }, false]);
+    expect((await f.call("POST", A(), a.headers, { operation: "start", backend: "antigravity", relogin: true })).status).toBe(200);
+    expect(f.machineSignIns.begin.mock.calls.at(-1)!.slice(1)).toEqual([{ machine: ID, backend: "antigravity" }, true]);
+    const id = "b".repeat(32);
+    expect((await f.call("POST", A(), a.headers, { operation: "input", id, revision: 2, action: { kind: "code", value: "4/0AFixture" } })).status).toBe(200);
+    expect(f.machineSignIns.input.mock.calls.at(-1)!.slice(1)).toEqual([{ machine: ID, backend: "antigravity" }, id, 2, { kind: "code", value: "4/0AFixture" }]);
+    expect((await f.call("POST", A(), a.headers, { operation: "cancel" })).status).toBe(200); expect((await f.call("POST", A(), a.headers, { operation: "refresh" })).status).toBe(200);
+    const before = f.machineSignIns.begin.mock.calls.length;
+    for (const body of [{ operation: "start", backend: "claude-code" }, { operation: "start", backend: "codex" }, { operation: "start", backend: "antigravity", method: "console" }, { operation: "start", backend: "antigravity", argv: ["agy"] },
+      { operation: "start", backend: "antigravity", profile: "work" }, { operation: "select", backends: ["antigravity"] }]) expect((await f.call("POST", A(), a.headers, body)).status, JSON.stringify(body)).toBe(400);
+    // And Antigravity cannot be started on a profile's address.
+    expect((await f.call("POST", Q(), a.headers, { operation: "start", backend: "antigravity" })).status).toBe(400);
+    expect(f.machineSignIns.begin.mock.calls.length).toBe(before);
+  });
+  it("the address is exactly a computer's id and `backend=antigravity`: a profile with it, another backend, a missing id, an extra key or a repeat is not found", async () => {
+    const f = await fixture(), a = f.session();
+    for (const path of [`/ui/browser-backend-signins?machine=${ID}&backend=claude-code`, `/ui/browser-backend-signins?machine=${ID}&backend=codex`, `/ui/browser-backend-signins?backend=antigravity`,
+      A("not-an-id"), `${A()}&x=1`, `${A()}&backend=antigravity`, `/ui/browser-backend-signins?machine=${ID}&backend=`, `/ui/browser-backend-signins?machine=${ID}&backend=ANTIGRAVITY`]) {
+      expect((await f.call("GET", path, a.headers)).status, path).toBe(404);
+    }
+    expect(f.snapshot).not.toHaveBeenCalled(); expect(f.machineSignIns.begin).not.toHaveBeenCalled();
+  });
+  it("AGEND-124: a NAMED Antigravity account of a computer is exactly a computer's id, `backend=antigravity` and a profile name; its start names Antigravity", async () => {
+    const f = await fixture(), a = f.session(), N = (profile = "work", machine = ID) => `${A(machine)}&profile=${profile}`;
+    f.snapshot.mockReturnValueOnce({ ...snap, target: { machine: ID, backend: "antigravity", profile: "work" } } as never);
+    expect(await f.call("GET", N(), a.headers)).toMatchObject({ status: 200, body: { selected: ["antigravity"], target: { machine: ID, backend: "antigravity", profile: "work" } } });
+    expect(f.snapshot.mock.calls[0]![1]).toEqual({ machine: ID, backend: "antigravity", profile: "work" });
+    expect((await f.call("POST", N(), a.headers, { operation: "start", backend: "antigravity" })).status).toBe(200);
+    expect(f.machineSignIns.begin.mock.calls.at(-1)!.slice(1)).toEqual([{ machine: ID, backend: "antigravity", profile: "work" }, false]);
+    // Not found: a path or a device name for a profile, an empty or repeated one, another key, another CLI (Claude Code's named address has no `backend`), a missing or bad id.
+    const before = f.snapshot.mock.calls.length;
+    for (const path of [N("../x"), N("con"), N("a%20b"), `${A()}&profile=`, `${N()}&profile=home`, `${N()}&x=1`, N("work", "not-an-id"),
+      `/ui/browser-backend-signins?machine=${ID}&backend=claude-code&profile=work`, `/ui/browser-backend-signins?machine=${ID}&backend=codex&profile=work`, `/ui/browser-backend-signins?machine=${ID}&profile=work&backend=ANTIGRAVITY`]) {
+      expect((await f.call("GET", path, a.headers)).status, path).toBe(404);
+    }
+    expect(f.snapshot.mock.calls.length).toBe(before);
+    // And a start that names another CLI on that address is refused.
+    expect((await f.call("POST", N(), a.headers, { operation: "start", backend: "claude-code" })).status).toBe(400);
+  });
+  it("only the local admin session reaches it, as for every other address", async () => {
+    const f = await fixture();
+    for (const headers of [{ origin: f.origin }, { "x-agend-token": f.token }, f.session("read").headers, f.session("guest").headers, f.session("admin", "gateway").headers]) {
+      expect([401, 403], JSON.stringify(Object.keys(headers))).toContain((await f.call("GET", A(), headers)).status);
+    }
+    expect(f.snapshot).not.toHaveBeenCalled();
+  });
+});

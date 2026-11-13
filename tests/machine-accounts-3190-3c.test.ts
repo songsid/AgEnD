@@ -32,7 +32,7 @@ describe("the rows under the machine scope", () => {
     expect(work!.scope).not.toHaveProperty("readOnlyReason");
     expect(home).toMatchObject({ state: "not_signed_in", signIn: true, usedBy: { agents: [], fleetDefault: false } });
     // No usage (that computer reports none), no host-only fields.
-    for (const row of mine) { expect(row.usage).toBeUndefined(); expect(row).not.toHaveProperty("install"); }
+    for (const row of mine) { expect(row.usageGroups).toBeUndefined(); expect(row).not.toHaveProperty("install"); }
     expect(Object.keys(work!).sort()).toEqual(["backend", "identity", "profile", "scope", "signIn", "state", "usedBy"]);
   });
   it("a profile this Runtime did not create (or that an older Runtime does not say) is read-only with its own reason and the command to run on that computer", () => {
@@ -49,7 +49,7 @@ describe("the rows under the machine scope", () => {
       expect(rows.find(r => r.profile === "work")!.scope, reason).toMatchObject({ readOnlyReason: reason });
       expect(rows.find(r => r.profile === "work")!.hostCommand).toBe("agend-runtime login claude-code work");
     }
-    expect(MACHINE_READ_ONLY_REASONS).toEqual(["offline", "runtime_old", "accounts_off", "switch_unreadable", "not_installed", "not_created", "default_login"]);
+    expect(MACHINE_READ_ONLY_REASONS).toEqual(["offline", "runtime_old", "accounts_off", "switch_unreadable", "not_installed", "not_created", "default_login", "cli_old", "cli_missing"]);
   });
   it("two computers are two groups; a computer with a profile of a case-variant name is matched in 'used by'; the default row is the fallback when no profile is the default", () => {
     const other = "99999999-2222-3333-4444-555555555555";
@@ -106,7 +106,7 @@ describe("what a Runtime reports about its profiles", () => {
   it("the Runtime's own report says which profiles it created (its record, not where the folder sits), and nothing about it when it is not told how to know", () => {
     const root = join(mkdtempSync(join(tmpdir(), "agend-3c-")), "credential-profiles"); roots.push(root);
     createRuntimeProfile(root, "claude-code", "ours"); ensureCredentialProfile(root, "claude-code", "by-hand");
-    const known = credentialProfileReport(root, undefined, name => isCreatedProfile(root, "claude-code", name));
+    const known = credentialProfileReport(root, undefined, (cli, name) => isCreatedProfile(root, cli, name));
     expect(known.profiles.map(p => [p.name, p.created])).toEqual([["by-hand", false], ["ours", true]]);
     expect(credentialProfileReport(root).profiles.every(p => !("created" in p))).toBe(true);
     expect(JSON.stringify(known)).not.toContain(root);

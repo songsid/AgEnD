@@ -252,7 +252,7 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
     let cards, last = "";
     // Ridge #3321 S01: "Sign in again" asks in the dashboard's own confirmation (its title names the CLI), not the browser's.
     const ask = (message, cli) => confirmDialog({ title: t("signin.reloginTitle", cli), message, confirmLabel: t("signin.reloginGo") });
-    cards = mountStructuredSignIns(root.current, { endpoint, lang, ask, dashboard: true, ...(single ? { dialog: true, focus: backend } : {}), started: id => { run.current = id; },
+    cards = mountStructuredSignIns(root.current, { endpoint, lang, ask, dashboard: true, codeHint: b => !!capsOf(b)?.codeHint, ...(single ? { dialog: true, focus: backend } : {}), started: id => { run.current = id; },
       // The dialog was closed while its start was still in flight and the server made the run after all: nobody sees it, so it is ended here — by its id, so no other run is touched.
       abandoned: id => { if (profile || single) void post(endpoint, { operation: "cancel", id }).then(() => refreshSignIn()); }, changed: next => {
       if (!profile) {
@@ -283,13 +283,13 @@ export function BrowserSignInDialog({ backend, profile, backends, onClose }) {
     showDialog(SignInDialog, { backend: chosen, ...(profile && chosen === backend ? { profile } : {}) });
   };
   const actions = html`<div class="signin-browser-actions">
-    ${backends ? backends.filter(b => b !== "antigravity").map(b => html`<button type="button" class="btn" onClick=${() => fallback(b)}>${b} · ${tn("consoleFallback")}</button>`) : null}
+    ${backends ? backends.filter(b => capsOf(b)?.chatSignIn).map(b => html`<button type="button" class="btn" onClick=${() => fallback(b)}>${b} · ${tn("consoleFallback")}</button>`) : null}
     <button type="button" class="btn" onClick=${close}>${tn("close")}</button></div>`;
   const account = backend ? `${cliLabel(backend)} · ${profile || tn("defaultAccount")}` : "";
   return html`<${Dialog} title=${backends ? tn("listTitle") : tn("title", account)} onClose=${close} actions=${actions}>
     <div class="signin-browser" ref=${root}></div>
-    ${single ? html`<p class="note"><button type="button" class="btn btn-sm btn-ghost" onClick=${() => fallback(backend)}>${tn("consoleFallback")}</button></p>` : null}
-    ${single ? html`<p class="note" data-signin-console-note>${tn("consoleFallbackNote")}</p>` : null}
+    ${single && capsOf(backend)?.chatSignIn ? html`<p class="note"><button type="button" class="btn btn-sm btn-ghost" onClick=${() => fallback(backend)}>${tn("consoleFallback")}</button></p>` : null}
+    ${single && capsOf(backend)?.chatSignIn ? html`<p class="note" data-signin-console-note>${tn("consoleFallbackNote")}</p>` : null}
   </${Dialog}>`;
 }
 

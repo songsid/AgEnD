@@ -11,6 +11,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { BACKEND_INSTALLATION_INFO } from "../src/instance-lifecycle.js";
 import { t } from "../src/locale.js";
 import { WebSessionStore, tokenEpoch } from "../src/web-session.js";
+import { dashboardSignInSupported } from "../src/web-backend-login.js";
 
 const dirs: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -93,6 +94,23 @@ describe("#2233 part 2: what the dashboard offers to sign in", () => {
       { backend: "claude-code", profile: "work", state: "not_signed_in", signIn: true },
     ]);
   });
+
+  it("AGEND-113: Antigravity's default login can be signed in from the dashboard with agy >= 1.5.0 (`agy acp --login`); an older agy keeps 'Sign in on the host' and is told to update; chat's /login stays declined", () => {
+    const { fm } = makeFleet([]);
+    const rows = (version: string | null, state = "not_signed_in") => {
+      vi.spyOn(fm, "backendAvailabilityRows").mockReturnValue([{ backend: "antigravity", state, version }] as never);
+      return fm.backendSignInTargets();
+    };
+    expect(rows("1.5.3")).toEqual([{ backend: "antigravity", state: "not_signed_in", signIn: true }]);
+    expect(rows("1.5.0", "usable")).toEqual([{ backend: "antigravity", state: "usable", signIn: true }]);
+    const install = BACKEND_INSTALLATION_INFO.antigravity!.install;
+    expect(rows("1.4.9")).toEqual([{ backend: "antigravity", state: "not_signed_in", signIn: false, hostCommand: "agy", update: install }]);
+    // A version that was not read yet is not "too old": no update hint, and no button either.
+    expect(rows(null)).toEqual([{ backend: "antigravity", state: "not_signed_in", signIn: false, hostCommand: "agy" }]);
+    expect(rows("1.5.3", "not_installed")).toEqual([{ backend: "antigravity", state: "not_installed", signIn: false, hostCommand: "agy", install }]);
+    expect(dashboardSignInSupported("antigravity")).toBe(false);
+  });
+
 
   it("a paused-for-sign-in agent's item names its login when the dashboard can sign it in (claude and, #3212 PR 4, kiro profiles included), else nothing", () => {
     const { fm } = makeFleet([]);

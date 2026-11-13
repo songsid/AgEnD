@@ -13,9 +13,9 @@ import { fire } from "./helpers/mini-dom.js";
 const VIEW = { clis: [
   { backend: "claude-code", profiles: true, installed: true, fleetDefault: null, agents: [{ name: "dev", profile: "work" }, { name: "rev", profile: null }, { name: "ops", profile: null }],
     rows: [
-      { scope: { kind: "host" }, backend: "claude-code", profile: null, state: "usable", signIn: true, identity: { maskedEmail: "ab***@example.com", plan: "max" }, usedBy: { agents: ["ops", "rev"], classic: [], fleetDefault: true }, usage: { percent: 37, windowMs: 604800000 } },
+      { scope: { kind: "host" }, backend: "claude-code", profile: null, state: "usable", signIn: true, identity: { maskedEmail: "ab***@example.com", plan: "max" }, usedBy: { agents: ["ops", "rev"], classic: [], fleetDefault: true }, usageGroups: [{ windows: [{ kind: "weekly", percent: 37, windowMs: 604800000 }] }] },
       { scope: { kind: "host" }, backend: "claude-code", profile: "personal", state: "not_signed_in", signIn: true, usedBy: { agents: [], classic: [], fleetDefault: false } },
-      { scope: { kind: "host" }, backend: "claude-code", profile: "work", state: "usable", signIn: true, identity: { maskedEmail: "cd***@corp.example", plan: "team" }, usedBy: { agents: ["dev"], classic: ["room1"], fleetDefault: false }, usage: { percent: 82, windowMs: 604800000, stale: true } },
+      { scope: { kind: "host" }, backend: "claude-code", profile: "work", state: "usable", signIn: true, identity: { maskedEmail: "cd***@corp.example", plan: "team" }, usedBy: { agents: ["dev"], classic: ["room1"], fleetDefault: false }, usageGroups: [{ windows: [{ kind: "weekly", percent: 82, windowMs: 604800000 }] }], usageStale: true },
       { scope: { kind: "machine", id: "m1", name: "Desk PC", online: false, readOnlyReason: "offline" }, backend: "claude-code", profile: "home", state: "usable", signIn: false, usedBy: { agents: [], classic: [], fleetDefault: false } },
     ] },
   { backend: "codex", profiles: true, installed: true, fleetDefault: null, agents: [{ name: "gpt", profile: "team2" }],

@@ -105,9 +105,9 @@ export function describeRemoteSwitches(switches: RemoteSwitches, now = Date.now(
 }
 
 /** Closed vocabulary of the audit record. Free text has no field here. */
-export const AUDIT_ACTIONS = ["models.refresh", "switch", "profile.add", "signin", "signin.write", "profile.signout", "profile.remove", "cli.install", "cli.update"] as const;
+export const AUDIT_ACTIONS = ["models.refresh", "switch", "profile.add", "signin", "signin.write", "profile.signout", "login.signout", "profile.remove", "cli.install", "cli.update"] as const;
 export const AUDIT_OUTCOMES = ["started", "ok", "refused", "failed"] as const;
-export const AUDIT_REASONS = ["switch_off", "invalid_request", "busy", "not_found", "not_owned", "in_use", "default_profile", "link", "unsupported", "unconfirmed", "timeout", "rate_limited", "failed"] as const;
+export const AUDIT_REASONS = ["switch_off", "invalid_request", "busy", "not_found", "not_owned", "in_use", "default_profile", "link", "unsupported", "unconfirmed", "not_isolated", "timeout", "rate_limited", "failed"] as const;
 export type AuditAction = typeof AUDIT_ACTIONS[number];
 export type AuditOutcome = typeof AUDIT_OUTCOMES[number];
 export type AuditReason = typeof AUDIT_REASONS[number];

@@ -66,8 +66,12 @@ describe("Windows native provider capabilities", () => {
     expect(parseNativeAuthResult("claude-code", true, '{"loggedIn":true}')).toBe(true);
     expect(parseNativeAuthResult("claude-code", false, '{"loggedIn":false}')).toBe(false);
     expect(parseNativeAuthResult("claude-code", false, "Unexpected option auth")).toBeNull();
+    // Antigravity has no status command (never started to ask one); its answer is the model listing it is asked for anyway (AGEND-113): a listing = signed in, "Please sign in" = signed out, the rest unknown.
     expect(nativeProvider("antigravity").authProbe).toBeNull();
-    expect(parseNativeAuthResult("antigravity", true, "Account: active")).toBeNull();
+    expect(parseNativeAuthResult("antigravity", true, "gemini-3.1-pro-high  Gemini 3.1 Pro (High)")).toBe(true);
+    expect(parseNativeAuthResult("antigravity", false, "Error: Please sign in to view available models. Launch the CLI without arguments to sign in.")).toBe(false);
+    expect(parseNativeAuthResult("antigravity", false, "dial tcp: no such host")).toBeNull();
+    expect(parseNativeAuthResult("antigravity", true, "")).toBeNull();
   });
 });
 

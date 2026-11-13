@@ -17,6 +17,7 @@ import { redactedEmail, type AccountIdentity } from "./claude-auth-status.js";
 import { spawn } from "./child-process.js";
 import { MANAGED_CLI_ROOT_ENV, managedCliRoot } from "./runtime-cli-install.js";
 import { createRuntimeProfile, isCreatedProfile, listRemovalLeftovers } from "./runtime-profile-ownership.js";
+import { runtimeFacts, runtimeIds } from "./cli-registry.js";
 import { appendAudit, describeRemoteSwitches, type AuditEntry, type RemoteSwitchState, isRemoteSwitchName, parseSwitchDuration, readRemoteSwitches, setRemoteSwitch } from "./runtime-remote-setup.js";
 import { runRuntimeWithUpdates, runtimeUpdateInternalMain } from "./runtime-update-controller.js";
 import { RUNTIME_BACKGROUND_ENV, readRuntimeInstance } from "./runtime-background.js";
@@ -115,13 +116,14 @@ function interactiveLogin(executable: NativeCliExecutable, args: string[], env: 
  * an address of the contract is dropped. `plan` and `apiKey` stay. `credentialProfileReport` itself is untouched.
  */
 function redactedReport(report: ReturnType<typeof credentialProfileReport>): ReturnType<typeof credentialProfileReport> {
-  return { ...report, profiles: report.profiles.map(row => {
+  const rows = (list: typeof report.profiles) => list.map(row => {
     if (!row.identity) return row;
     const { maskedEmail, ...rest } = row.identity, shown = maskedEmail === undefined ? undefined : redactedEmail(maskedEmail);
     const identity = { ...(shown ? { maskedEmail: shown } : {}), ...rest };
     const { identity: _full, ...bare } = row;
     return Object.keys(identity).length ? { ...bare, identity } : bare;
-  }) };
+  });
+  return { ...report, profiles: rows(report.profiles), ...(report.byCli ? { byCli: Object.fromEntries(Object.entries(report.byCli).map(([cli, list]) => [cli, rows(list)])) } : {}) };
 }
 function signInLabel(loggedIn: boolean | null): string { return loggedIn === true ? "signed in" : loggedIn === false ? "not signed in" : "not checked"; }
 /** `ab***@example.com · team`, or `API key`: a terminal line is not the Accounts page, so the address is redacted here; never the full address. */
@@ -247,7 +249,7 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     }
     process.stdout.write(`${what}: ${result.on ? "on" : "off"}${result.until !== undefined ? `, turns off by itself at ${new Date(result.until).toLocaleString()}` : ""}\n`);
     if (result.on) process.stdout.write(what === "accounts"
-      ? "AgEnD administrators can now add, sign in, sign out and remove Claude accounts that this Runtime creates on this computer. The sign-in stays on this computer, and anyone who can sign in to this Windows user can use it. Your own Claude sign-in is not touched.\n"
+      ? "AgEnD administrators can now add, sign in, sign out and remove Claude and Antigravity accounts that this Runtime creates on this computer. The sign-in stays on this computer, and anyone who can sign in to this Windows user can use it. Your own Claude sign-in is not touched. They can also sign this Windows user's OWN Antigravity login in (which REPLACES it: that login is one per computer) or out (which signs Antigravity out on this computer).\n"
       : "AgEnD administrators can now install the Claude Code and Codex versions that this Runtime's own list pins, into this Runtime's folder only.\n");
     return;
   }
@@ -255,7 +257,9 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     if (process.platform !== "win32" && !options.runLogin) throw new Error("Signing in to a Claude account here needs native Windows Node, under the Windows user whose Claude Code this Runtime uses.");
     const [cli, name] = positional;
     if (positional.length !== 2 || Object.keys(flags).some(key => key !== "--profile")) throw new Error("Usage: agend-runtime login claude-code NAME [--profile DIRECTORY]");
-    const kind = assertCredentialProfileCli(cli), { directory } = createRuntimeProfile(credentialRoot, kind, assertCredentialProfileName(name));
+    const kind = assertCredentialProfileCli(cli);
+    if (kind !== "claude-code") throw new Error(`${runtimeFacts(kind, "provider")?.name ?? kind} accounts are signed in from AgEnD's Settings → Agent → Accounts (its sign-in needs the dashboard's code box), not with this command.`);
+    const { directory } = createRuntimeProfile(credentialRoot, kind, assertCredentialProfileName(name));
     const executable = options.runLogin ? { path: "claude", command: "claude", args: [] } : await findCli(kind);
     if (!executable) throw new Error("Claude Code is not installed on this Windows computer. Install it, then run this again.");
     process.stdout.write(`Signing in "${name}". Claude Code opens its own sign-in; the result is kept only in\n  ${directory}\nand is never uploaded to AgEnD.\n`);
@@ -274,7 +278,20 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     // here and nowhere else, and is never deleted or put back by the Runtime: that is for the person at this computer.
     const leftovers = listRemovalLeftovers(credentialRoot, "claude-code");
     for (const name of leftovers) process.stdout.write(`${name}\tLEFT OVER from a removal or sign-out that could not finish, in ${join(credentialRoot, "claude-code")}. It may still hold a sign-in. To finish removing it, delete that folder yourself; to keep it, rename it to its profile name. Nothing does either for you.\n`);
-    if (!names.length) { if (!leftovers.length) process.stdout.write("No credential profiles yet. Create one: agend-runtime login claude-code NAME\n"); return; }
+    // Other CLIs' accounts (Antigravity): made and signed in from AgEnD's Accounts page, listed here with what the CLI says now.
+    const others = runtimeIds("namedAccounts").filter(id => id !== "claude-code") as CredentialProfileCli[];
+    let otherCount = 0;
+    for (const other of others) {
+      for (const name of listCredentialProfileNames(credentialRoot, other)) {
+        otherCount++;
+        let answer: CredentialProfileAnswer = { loggedIn: null };
+        try { answer = await probeStatus(other, requireCredentialProfile(credentialRoot, other, name)); } catch { /* shown as not checked */ }
+        rememberCredentialStatus(credentialRoot, other, name, answer);
+        process.stdout.write(`${other}\t${name}\t${signInLabel(answer.loggedIn)}\n`);
+      }
+      for (const name of listRemovalLeftovers(credentialRoot, other)) process.stdout.write(`${other}\t${name}\tLEFT OVER from a removal or sign-out that could not finish, in ${join(credentialRoot, other)}. It may still hold a sign-in; delete that folder yourself, or rename it to its profile name.\n`);
+    }
+    if (!names.length) { if (!leftovers.length && !otherCount) process.stdout.write("No credential profiles yet. Create one: agend-runtime login claude-code NAME\n"); return; }
     for (const name of names) {
       let answer: CredentialProfileAnswer = { loggedIn: null };
       try { answer = await probeStatus("claude-code", requireCredentialProfile(credentialRoot, "claude-code", name)); } catch { /* shown as not checked */ }
