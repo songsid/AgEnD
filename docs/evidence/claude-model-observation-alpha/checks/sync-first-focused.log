@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts (21 tests | 1 failed) 358ms
+   × actual LogService initial→poll never replays old steps beyond a long unfinished suffix 59ms
+
+ Test Files  1 failed | 3 passed (4)
+      Tests  1 failed | 172 passed (173)
+   Start at  21:09:15
+   Duration  10.73s (transform 7.24s, setup 327ms, import 9.24s, tests 2.61s, environment 0ms)
+
+(node:66925) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > actual LogService initial→poll never replays old steps beyond a long unfinished suffix
+AssertionError: expected 9437397 to be 201 // Object.is equality
+
+- Expected
++ Received
+
+- 201
++ 9437397
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:156:25
+    154|   let current: any = await service.steps("worker", { after: initial.af…
+    155|   expect(current.steps).toEqual([]);
+    156|   expect(initial.after).toBe(Buffer.byteLength(old));
+       |                         ^
+    157|   appendFileSync(path, '"}\n' + line(user("new-user", "new user")) + l…
+    158|   const steps: any[] = [];
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

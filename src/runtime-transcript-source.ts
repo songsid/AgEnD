@@ -1,3 +1,4 @@
+import { parseClaudeModelRecord } from "./claude-model-observation.js";
 /** Ordinary progress and turn events from the native runner's pinned session. No local path fallback. */
 import type { TranscriptSource, TranscriptEvents } from "./transcript-sources.js";
 import type { TranscriptTurnEvent } from "./transcript-turns.js";
@@ -18,7 +19,9 @@ export class RuntimeTranscriptSource implements TranscriptSource {
   private pendingTurns: TranscriptTurnEvent[] = [];
   private pending: TranscriptEvents = empty();
   private pendingBytes = 0;
+  private modelInference: boolean;
   constructor(private readonly port: RuntimeTranscriptPort, reference: RuntimeTranscriptReference, private readonly allowDeferredFresh = false) {
+    this.modelInference = allowDeferredFresh;
     this.reference = validateRuntimeTranscriptReference(reference);
     if (this.reference.cursor.offset !== 0) throw Error("Native progress source requires a full baseline from its pinned session");
   }
@@ -30,10 +33,12 @@ export class RuntimeTranscriptSource implements TranscriptSource {
   following(): boolean { return this.followed && !this.stopped && this.port.isTranscriptObservationCurrent(this.reference); }
   turnStateKnown(): boolean { return this.following() && !this.baseline && this.state.turnKnown; }
   currentPath(): null { return null; }
+  modelObservationSession(): string | null { return this.reference.provider === "claude-code" && !this.stopped && this.port.isTranscriptObservationCurrent(this.reference) ? this.reference.cursor.sessionId : null; }
   async checkpoint(): Promise<null> { return null; }
   takeTurns(): TranscriptTurnEvent[] { return this.pendingTurns.splice(0); }
   close(): void { this.stopped = true; this.generation++; this.followed = false; this.pending = empty(); this.pendingBytes = 0; this.pendingTurns = []; }
   reset(): void {
+    this.modelInference = false;
     this.generation++; this.stopped = false; this.baseline = true; this.followed = false;
     this.reference = { ...this.reference, cursor: { sessionId: this.reference.cursor.sessionId, offset: 0, fileId: this.reference.cursor.fileId,
       anchor: PANE_TRANSCRIPT_EMPTY_ANCHOR } }; this.deferred = false;
@@ -82,6 +87,7 @@ export class RuntimeTranscriptSource implements TranscriptSource {
       if (raw === null) { this.followed = false; return empty(); }
       if (!current()) return empty();
       if (baselining) {
+        this.modelInference = false;
         const batch = validatePaneTranscriptBaseline(raw, before.cursor.sessionId);
         if (before.cursor.fileId && batch.cursor.fileId !== before.cursor.fileId || batch.cursor.offset < before.cursor.offset) throw Error("Native baseline identity differs");
         if (batch.state === "pending") {
@@ -101,7 +107,9 @@ export class RuntimeTranscriptSource implements TranscriptSource {
         return empty();
       }
       const events = empty(), wasBaseline = this.baseline;
+      if (wasBaseline) this.modelInference = false;
       if (batch.gap) {
+        this.modelInference = false;
         if (!wasBaseline && this.state.openTurn) events.turns!.push({ kind: "retract", turnId: this.state.openTurn });
         this.state = { openTurnId: "", openTurn: null, turnKnown: false };
       } else if (before.cursor.offset === 0) this.state.turnKnown = true;
@@ -116,7 +124,12 @@ export class RuntimeTranscriptSource implements TranscriptSource {
           const orphanEnd = !this.state.turnKnown && entry.type === "event_msg" && ["task_complete", "turn_aborted"].includes(entry.payload?.type);
           if (!orphanEnd) codexTurnRecord(entry, this.state, events.turns!);
           if (!wasBaseline) codexToolRecord(entry, events);
-        } else if (!wasBaseline) claudeTranscriptRecord(entry, (...record) => events.records!.push(record));
+        } else if (!wasBaseline) {
+          const model = parseClaudeModelRecord(entry);
+          if (model && model.sessionId === before.cursor.sessionId && model.at <= Date.now() + 5000)
+            events.records!.push(["model_observation", model, undefined, this.modelInference]);
+          claudeTranscriptRecord(entry, (...record) => events.records!.push(record));
+        }
       }
       this.reference = { ...before, cursor: batch.cursor }; this.followed = batch.complete; this.deferred = false;
       if (wasBaseline) {

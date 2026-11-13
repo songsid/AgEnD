@@ -1,3 +1,4 @@
+import { modelSwitchText, modelName, observationLabel } from "/assets/model-observation.js";
 // #1389: Fleet → Org chart (/ui/fleet/org) — General at the top, then the teams fleet.yaml defines, then their
 // instances; each node names the instance, says what it does, which backend and model it runs, how it is doing now,
 // and links to its thread. Behind the session gate (/ui/js/), imported by the Fleet panel.
@@ -129,6 +130,7 @@ function Node({ n, sending }) {
     ${n.i ? html`<div class="org-meta">${n.i.backend ? html`<span class="org-chip">${n.i.backend}</span>` : null}
       ${model ? html`<span class="org-model mono" title=${model}>${model}</span>` : null}
       ${n.info.classic ? html`<span class="org-chip">${to("classic")}</span>` : null}</div>` : null}
+    ${n.i?.model_observation?.active ? html`<p class="note model-switch" role="status">${modelSwitchText(n.i.model_observation.active)}</p>` : null}
     ${n.i || thread ? html`<div class="org-links">
       ${thread ? html`<a class="org-link" href=${thread.url} target="_blank" rel="noopener noreferrer">
         <${Icon} name="external" size=${14} />${to(`thread_${thread.platform}`)}<span class="sr-only"> ${to("newTab")}</span></a>` : null}

@@ -1,0 +1,40 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+ ❯ tests/claude-model-runtime-observation.test.ts (6 tests | 1 failed) 30ms
+   × a native gap preserves typed evidence and suppresses inferred switches across missing intent 11ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  18:45:33
+   Duration  542ms (transform 258ms, setup 90ms, import 257ms, tests 30ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-runtime-observation.test.ts > a native gap preserves typed evidence and suppresses inferred switches across missing intent
+AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to match object { lastServed: 'claude-opus-4-8', …(2) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "active": null,
++   "active": {
++     "cause": "observed",
++     "id": "87db4a07-9ab2-4ac0-b734-7c1ceff96ca1:response:served:opus-4.8",
++     "original": "claude-opus-5-5",
++     "scope": "unknown",
++     "served": "claude-opus-4-8",
++     "since": 1794566733690,
++   },
+    "lastServed": "claude-opus-4-8",
+    "session": null,
+  }
+
+ ❯ tests/claude-model-runtime-observation.test.ts:39:63
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

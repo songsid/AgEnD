@@ -67,6 +67,8 @@ export interface TranscriptCheckpoint {
 }
 
 export interface TranscriptSource {
+  /** Native model metadata is owned by this exact still-current pinned session, even on partial batches. */
+  modelObservationSession?(): string | null;
   /** Read events that appeared since the previous call. Invoked serially. */
   poll(): Promise<TranscriptEvents>;
   /** Asynchronous baseline barrier, awaited before startup becomes accepting. */

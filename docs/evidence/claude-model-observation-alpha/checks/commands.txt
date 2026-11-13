@@ -1,0 +1,14 @@
+vitest run tests/claude-model-switch.test.ts tests/claude-model-switch-daemon.test.ts tests/claude-model-runtime-observation.test.ts tests/runtime-transcript-source-2950.test.ts tests/claude-credential-profile-1699.test.ts tests/claude-prompt-cache-ttl-2010.test.ts tests/claude-shared-memory-1754.test.ts tests/concepts-skill-sync.test.ts tests/claude-transcript-limits-2834.test.ts tests/transcript-monitor-generation-1218.test.ts tests/log-steps-1218.test.ts tests/needs-you-derive-1386.test.ts tests/needs-you-hub-1386.test.ts tests/office-card-2661.test.ts tests/office-share-page-2636.test.ts tests/web-details-n2.test.ts tests/web-app-modules-1408.test.ts tests/outbound-instance-identity.test.ts tests/backend/claude-code.test.ts tests/model-persist-runtime.test.ts tests/statusline-once-1956.test.ts tests/web-needs-1408.test.ts tests/web-log-tab-1218.test.ts --maxWorkers=2
+tsc --noEmit --pretty false
+tsc --noEmit -p tsconfig.test.json --pretty false
+node scripts/changelog-assemble.mjs --check
+python3 docs/evidence/claude-model-observation-alpha/mutations/run.py
+REPO=<checkout> OUT=<output> BASELINE_REF=71dbc782956047c413b9f367a572e38c39d53651 PW_DIR=<playwright-prefix> CHROME=<chromium> HP=<free-port> tsx scripts/manual/claude-model-observation-browser.mts
+
+# Checkpoint/read-budget repair (private temp files; no browser)
+vitest run tests/claude-model-checkpoint-tail.test.ts tests/claude-model-switch-daemon.test.ts --maxWorkers=2
+# Full26: original23 plus claude-model-checkpoint-tail and transcript-baseline-boundary/faults-1250
+
+# R2 recovery/Log cursor (private temp files; no browser)
+python3 docs/evidence/claude-model-observation-alpha/checks/reproduce-r2-before.py
+vitest run tests/claude-model-checkpoint-tail.test.ts tests/claude-model-switch-daemon.test.ts --maxWorkers=2

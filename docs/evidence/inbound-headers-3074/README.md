@@ -84,9 +84,9 @@ no receipt schema/authority migration.
 Alpha base `ac1e5a65905b010aa6e1419713c88f6985581749`. Shared presentation,
 human binder/receipt helpers, rules, tests and skills carry main's implementation.
 Conflict resolution retains alpha's Pane abstraction, broadcastFleetMessage,
-Follow ledger/portable transcript parser, and native transcript exclusions. Main's
-Claude model observer is not introduced by this twin; existing alpha model/session
-observations and successful owned switch boundaries are retained.
+Follow ledger/portable transcript parser, and native transcript exclusions. The initial alpha base lacked main's Claude model observer. A later plain sync
+from alpha af6f44ae1 brings #3815; its native model-current and allowInference
+fences are retained with main's genuine-boundary correction and four listener cases.
 
 Alpha-only: an owned fresh native acquisition can use the installed grammar;
 resumed/reattached native contexts require the proven legacy introduction. Native
@@ -106,8 +106,8 @@ the new hashes were recorded. Existing matrix/assertions/case count remain.
 
 Ridge's main-only observer finding: ordinary distinct served-response records
 reported a snapshot update, not a model change. The main replacement now compares
-normalized selected/served models and owned session identity; the alpha base has
-no model-observer feature, so that main-only hook is not imported. Common alpha
-paths already leave ordinary response events outside the reminder reset hooks.
+normalized selected/served models and owned session identity. The subsequent
+alpha af6f44ae1 sync brings its observer feature; the same correction and tests
+are retained, alongside alpha's native current-owner/allowInference fences.
 Fixed grammar instructions and one-time transition notices are extra context
 overhead; the header-byte estimate excludes them and is not net fleet billing.

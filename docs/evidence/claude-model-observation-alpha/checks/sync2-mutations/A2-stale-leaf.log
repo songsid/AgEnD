@@ -1,0 +1,35 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+ ❯ tests/web-app-modules-1408.test.ts (38 tests | 1 failed | 37 skipped) 129ms
+     × with no session: the entry's whole static closure loads from /assets as JavaScript, and none of it is under /ui/ 125ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 37 skipped (38)
+   Start at  21:27:14
+   Duration  8.80s (transform 6.56s, setup 127ms, import 8.36s, tests 129ms, environment 0ms)
+
+(node:6197) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-app-modules-1408.test.ts > module admission (#1408 §4) > with no session: the entry's whole static closure loads from /assets as JavaScript, and none of it is under /ui/
+AssertionError: /assets/stale-tab.js: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/web-app-modules-1408.test.ts:72:32
+     70|       for (const [path, r] of seen) {
+     71|         expect(path, path).toMatch(/^\/assets\/[a-z0-9._-]+\.js$/);
+     72|         expect(r.status, path).toBe(200);
+       |                                ^
+     73|         expect(r.type, path).toContain("javascript");
+     74|       }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

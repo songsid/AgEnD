@@ -1,0 +1,44 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-runtime-observation.test.ts (5 tests | 1 failed | 4 skipped) 38ms
+   × a context callback that retires the monitor cannot leak its paired model observation 36ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 skipped (5)
+   Start at  17:31:36
+   Duration  682ms (transform 312ms, setup 130ms, import 292ms, tests 38ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-runtime-observation.test.ts > a context callback that retires the monitor cannot leak its paired model observation
+AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "at": 1794562296855,
++     "cause": "safeguards",
++     "id": "notice:9a7ab3cc-7ec7-4f0f-8abf-2c0820799542",
++     "kind": "switch",
++     "original": "claude-opus-5-5",
++     "scope": "session",
++     "served": "claude-opus-4-8",
++     "sessionId": "7ce0e8da-5355-45c1-976d-6e548fe9433e",
++   },
++ ]
+
+ ❯ tests/claude-model-runtime-observation.test.ts:45:50
+     43|  const f = rig(); await f.monitor.initialize(); f.add(f.record()); con…
+     44|  f.monitor.on("model_context", () => f.monitor.stop()); f.monitor.on("…
+     45|  await f.monitor.pollIncrement(); expect(events).toEqual([]);
+       |                                                  ^
+     46| });
+     47|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

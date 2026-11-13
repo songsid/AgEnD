@@ -1,0 +1,826 @@
+[
+  {
+    "digest": "0a156c16975e2c9ac33a661027cdfab65a723777c1f00d2c1c66de0b4916ef6c",
+    "paths": [
+      "checks/reproduce-r2-before.py"
+    ]
+  },
+  {
+    "digest": "0a5ae7db9b2afecbb9038158e7e6a56f633e8cf6fe7146ad4f0aa8ad7b62684d",
+    "paths": [
+      "mutations/M4-recovery.log"
+    ]
+  },
+  {
+    "digest": "0d10893d6794f90468823c58c3e797c06bfab5cfe22a3e95463066485a4681a6",
+    "paths": [
+      "mutations/M10-original.log"
+    ]
+  },
+  {
+    "digest": "0f0e5aad8048ec8ac49e0d9f5564a4974061eb22d731dd45a7441afa1c746bca",
+    "paths": [
+      "checks/sync-mutations/results.json"
+    ]
+  },
+  {
+    "digest": "0fc90959f074193f13eac9d4fb45a1884a1165aa5381f3e5740709a82f15a49c",
+    "paths": [
+      "browser/availability-desk-dark-zh-TW-needs.png"
+    ]
+  },
+  {
+    "digest": "12fa060f52bd0b717559647357048969dbd425455c4031176d595289934e6445",
+    "paths": [
+      "checks/runtime-context-before.log"
+    ]
+  },
+  {
+    "digest": "13f97dc06f1b70735afba86dfc0317669e263a79923db5db6c5d0e31f8455ca8",
+    "paths": [
+      "browser/after-desk-dark-en-office-card.png"
+    ]
+  },
+  {
+    "digest": "1530b454d0902680b864c342fb456865815bed6e9305b83d69fbd54f47a95a39",
+    "paths": [
+      "checks/r2-mutations.log"
+    ]
+  },
+  {
+    "digest": "19c0239e7ccf5e71f53621b92ca04d796172abfa600d9a97b3f86ccdcd6be28c",
+    "paths": [
+      "browser/after-phone-dark-zh-TW-log.png",
+      "browser/retained-shell-phone-dark-zh-TW-log.png"
+    ]
+  },
+  {
+    "digest": "1b49c105851aef27e2c3d5cce0ba2168be7b9e13801a34a99b6c8e357b2d1463",
+    "paths": [
+      "repair-parity.json"
+    ]
+  },
+  {
+    "digest": "1d14b631cad32cbbb88f9e3ec7bfd5cae904329c2e66f7e25ee4e90e7b518e1e",
+    "paths": [
+      "mutations/M1-sidechain.log"
+    ]
+  },
+  {
+    "digest": "1e95fadf483ce7fc54fa5fcdef5111dbed983764441e455bb7c55ff642be5f3b",
+    "paths": [
+      "checks/r2-full-controls.log"
+    ]
+  },
+  {
+    "digest": "207d39f0e0762aeb7d250b1887a87f15acff2b3e90ec06a9037234d36e4412da",
+    "paths": [
+      "browser/availability-desk-light-en-log.png"
+    ]
+  },
+  {
+    "digest": "22bd29f6052b69de8ee594040449ccced705f3a35edfa6cd86847bdd8079c2aa",
+    "paths": [
+      "browser/after-desk-dark-zh-TW-office-card.png"
+    ]
+  },
+  {
+    "digest": "2381d32495f3e623062afe6c78b4d4430aac91856b4452f8455f9a83b693de16",
+    "paths": [
+      "browser/after-desk-light-en-details.png"
+    ]
+  },
+  {
+    "digest": "25aebec5a139cc83177b0a672b6707f30ce74de66d50a73868e3fd832ebb9c31",
+    "paths": [
+      "checks/runtime-controls.log"
+    ]
+  },
+  {
+    "digest": "2685c0e61cd74cf17045e38f80528bfe64c7595a8c9c0308cc965c9b9db96921",
+    "paths": [
+      "mutations/M13-officeshare.log"
+    ]
+  },
+  {
+    "digest": "28cb76f4c38cdba1392f3a3a515b0b4b060d4d66abfc817d9eec1534339905f9",
+    "paths": [
+      "browser/after-desk-light-en-needs.png",
+      "browser/retained-panels-desk-light-en-needs.png"
+    ]
+  },
+  {
+    "digest": "2af588b210e4bef22a66987a2810953f96b9f73031181d84c20b464d4ff43655",
+    "paths": [
+      "browser/after-desk-light-zh-TW-log.png"
+    ]
+  },
+  {
+    "digest": "2f4827a244817e5bea4da21a3ef4c92c8d676be4589f54370f63798c3b4d0c0f",
+    "paths": [
+      "mutations/C2-restore-intent.log"
+    ]
+  },
+  {
+    "digest": "353b1566b207d57ebf99f2d58e43cba78b72382e3cad2c57ca07b5c34fb3ff8e",
+    "paths": [
+      "checks/r2-before-tests/r2-before-model.fixture.test.ts.txt"
+    ]
+  },
+  {
+    "digest": "39ee0f0249cf21acd12a242c4b086ca120e3f0e642b5ea258578b88140c03831",
+    "paths": [
+      "checks/r2-restored-controls.log"
+    ]
+  },
+  {
+    "digest": "3a87a294d504b23cb626f2066cbeca71b52c4416e50d280f43475c2b60532cd4",
+    "paths": [
+      "mutations/L1-log-cursor.log"
+    ]
+  },
+  {
+    "digest": "3b5d0184f26fa91e0be2d09aa6b34421b40e71a861755ddc976a2d00aabd69fb",
+    "paths": [
+      "checks/runtime-before.log"
+    ]
+  },
+  {
+    "digest": "3d334b8c605225a04961ab3fa54fe3a4107820c1fc030c99e0e426dbda0a8834",
+    "paths": [
+      "mutations/A5-native-context.log"
+    ]
+  },
+  {
+    "digest": "3e9d77e78ad4fae1f2ecee5ec1e5613aefbedc5de083a7265d972d6cc1bb5d8e",
+    "paths": [
+      "checks/sync2-resolution.json"
+    ]
+  },
+  {
+    "digest": "440c27bc4e57d5d4d42f52590ce60dbd5ae59b1c305037f20ec1cdb69cf6dcb6",
+    "paths": [
+      "mutations/T3-boundary-budget.log"
+    ]
+  },
+  {
+    "digest": "440f7eff04e3c176a93fd9ccaa88df58ecd5fc8a292d2d8020a5056fb24282d1",
+    "paths": [
+      "browser/after-desk-dark-en-details.png"
+    ]
+  },
+  {
+    "digest": "44f5b667878a4119a005fa479a2454a121e9be03eb7b6865d566a0ba989de769",
+    "paths": [
+      "browser/after-phone-dark-zh-TW-details.png",
+      "browser/retained-shell-phone-dark-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "46fcc0b30f5538abf82838186ec4ba71e113e268cb2adcfd7179201f2d8f60ba",
+    "paths": [
+      "browser/retained-panels-desk-light-en-log.png"
+    ]
+  },
+  {
+    "digest": "47bbb13dc14b5ca3ad24992b6719727450a4a0b63a08ebf4e2474b79604051d1",
+    "paths": [
+      "checks/sync2-mutations/results.json"
+    ]
+  },
+  {
+    "digest": "49a713df6eb8307a78e9ce8ac028ff0b22409aa655c485341704be8302f2b6b7",
+    "paths": [
+      "browser/after-phone-light-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "4ab4156e0fad8084969b824f78b3083c9432135809ee32382d0fed70e281e0d6",
+    "paths": [
+      "mutations/C1-checkpoint-intent.log"
+    ]
+  },
+  {
+    "digest": "4c852aeb8c6dacea2450fe5fb716c2273315b996534830153f9a26a6c4bc9270",
+    "paths": [
+      "browser/after-phone-light-en-details.png",
+      "browser/retained-shell-phone-light-en-details.png"
+    ]
+  },
+  {
+    "digest": "4e94c3f5db799334dfb234f03cc4a0ebc8efd63727873140f1a34475b70b96b7",
+    "paths": [
+      "mutations/M2-apierror.log"
+    ]
+  },
+  {
+    "digest": "50232982d50bd27330bab1629629d88e75175fbc8105dea527bdfb408d9e2f4a",
+    "paths": [
+      "browser/after-desk-light-en-log.png"
+    ]
+  },
+  {
+    "digest": "51c3fa81385a9a6c03cb0ac57d69685d1aad402579422eaf3aa42de9c4f6a371",
+    "paths": [
+      "checks/checkpoint-tail-controls.log"
+    ]
+  },
+  {
+    "digest": "52b44de31485954bbb7bd3217f66c294e6ebfb3b59b03de6a81569d8bf039daa",
+    "paths": [
+      "checks/sync-restored.log"
+    ]
+  },
+  {
+    "digest": "53c410a3a5d35aa9e5248a522c47f24317e9e8329fe29a0badb62e8450ff32d6",
+    "paths": [
+      "browser/after-desk-light-en-card.png"
+    ]
+  },
+  {
+    "digest": "54dcebffaa4920def7e8acc6bad9a8410921b79e3490af7484f53ae3468f4e27",
+    "paths": [
+      "checks.json"
+    ]
+  },
+  {
+    "digest": "5631b432ac3a802b4e333f3542aa74dd60b1a2970e53bb588f3549df4a404862",
+    "paths": [
+      "browser/after-desk-dark-en-log.png"
+    ]
+  },
+  {
+    "digest": "5778f2e200963e1ee115d032514b9bfac4526d683070ad5ddee209bb9934c013",
+    "paths": [
+      "checks/browser.log"
+    ]
+  },
+  {
+    "digest": "57d324a3c9286a96563bab313ec552a3d0827f72fdbe8c1eaee6249ec6ce8ab6",
+    "paths": [
+      "review-fixes.json"
+    ]
+  },
+  {
+    "digest": "57ffc2e382cc005ecfc2b8d19719d1dcaea91af4260569ecbd9a0af46d58b31b",
+    "paths": [
+      "checks/sync2-restored.log"
+    ]
+  },
+  {
+    "digest": "5a462b2a90fb48eeb1e99465a9f52bf63373e7a5a0de75fa3e4f9a07127d5d9e",
+    "paths": [
+      "browser/receipt.json"
+    ]
+  },
+  {
+    "digest": "5ca27521807cc0a12af5fd5ca579776bc171807b716124d92430aec578ce86cf",
+    "paths": [
+      "browser/after-phone-dark-en-log.png"
+    ]
+  },
+  {
+    "digest": "5ce1c44cd993e4b7cd81e2459bc3e92ba2c496e06175ad2b2bdc034726543dc9",
+    "paths": [
+      "browser/availability-desk-light-en-needs.png"
+    ]
+  },
+  {
+    "digest": "5fc4e7cb18858ae5a169270eec8a37d131b30dd2f17fb299f01b391cab9631c7",
+    "paths": [
+      "checks/commands.txt"
+    ]
+  },
+  {
+    "digest": "62ee6ecd90a4ea694d4067fd2b6ea677c3451a1cc2aa017e6d92fa4944c05cb8",
+    "paths": [
+      "checks/sync-focused.log"
+    ]
+  },
+  {
+    "digest": "63d2d9da749ecb42e1455af98fb065a132aeed5029e190d97d3cf9a3f8a4febf",
+    "paths": [
+      "checks/sync-first-focused.log"
+    ]
+  },
+  {
+    "digest": "6514c8c12147ecc68000e262e0d2e2ee50524c281a79c29cb519e002c90c555f",
+    "paths": [
+      "mutations/M8-daemonfence.log"
+    ]
+  },
+  {
+    "digest": "6bc07612b7a267f40ee06ab2be492a67e3fe22bc731c97aaee59554e8353f341",
+    "paths": [
+      "browser/after-desk-light-zh-TW-needs.png"
+    ]
+  },
+  {
+    "digest": "711ca5697eb7b9f823a4e42818e15067d3fc3b39dd0c324661f184f30a086168",
+    "paths": [
+      "checks/r2-exact-before.log"
+    ]
+  },
+  {
+    "digest": "738eee5f5781ea67e09e64ec0628f2bf3599608a086590f327692c89e175552b",
+    "paths": [
+      "browser/after-desk-dark-zh-TW-needs.png"
+    ]
+  },
+  {
+    "digest": "776c891c12568e7f67e5f453bc40edab5151e1aad228e0e0ff6c35cbc9ba7909",
+    "paths": [
+      "browser/after-phone-dark-zh-TW-office-card.png"
+    ]
+  },
+  {
+    "digest": "79bcb7055bb5804ded7340c460780ed57f81e057a90b02505f7b831fc222ffc5",
+    "paths": [
+      "mutations/A3-native-daemon.log"
+    ]
+  },
+  {
+    "digest": "79f233faca625bc1ba75151d474e2d8f2f9b1c7eaec951a992889e45c231ca30",
+    "paths": [
+      "browser/after-phone-dark-en-needs.png"
+    ]
+  },
+  {
+    "digest": "7b6be39213cdf4c9f6f46ee3abf4c4a5b6fbb6f001bf56c50a3a18a1149aaee4",
+    "paths": [
+      "checks/r2-recovery-log-before.log"
+    ]
+  },
+  {
+    "digest": "7de423300815d982fd7a886658e51e74702dd9d1f11cbab926368e32a95dc8fb",
+    "paths": [
+      "review-r2.json"
+    ]
+  },
+  {
+    "digest": "7ee41e5bcb8a2e037168656b3ffb6772515f86a1805488c02c35704755da214f",
+    "paths": [
+      "checks/sync2-mutations.py"
+    ]
+  },
+  {
+    "digest": "8036cff51dd906618f910555a89876405307c16d0ec4881e6970a5b86c4628cd",
+    "paths": [
+      "review-sync2.json"
+    ]
+  },
+  {
+    "digest": "82ca9274be0bcb7a5f80729b9d6fba2c72dc2a66fa7c61f7e40aa2794313d186",
+    "paths": [
+      "mutations/T1-cursor.log"
+    ]
+  },
+  {
+    "digest": "82fa40771509ddcbdc01746aa6836a27d00c6f524cf6d42ecc7fa14d594e70b3",
+    "paths": [
+      "mutations/results.json"
+    ]
+  },
+  {
+    "digest": "834f54fbbd031668cb9daa1b3868bcdb0f67d77a9d2ea84c4054d818da2a16f4",
+    "paths": [
+      "checks/checkpoint-tail-final-checks.json"
+    ]
+  },
+  {
+    "digest": "89d7cab9d94dafcce2013ae9821f845643b1c9afacc3d18bf8e3219c7b63eb20",
+    "paths": [
+      "mutations/T4-startup-lane.log"
+    ]
+  },
+  {
+    "digest": "8ed34fa8edfc6d896b722db3d75df0671926fa5ada35ed30329dd638425681b6",
+    "paths": [
+      "mutations/M14-nofallback.log"
+    ]
+  },
+  {
+    "digest": "9754a3e601d30bd3a052173fc97af1226b82bc9d94e1073a2dd21a55c8ccb787",
+    "paths": [
+      "cleanup.json"
+    ]
+  },
+  {
+    "digest": "97a37774b7b5b16d1dba287c6469dba697b196b152d9cccb7f3c47f82d21a155",
+    "paths": [
+      "browser/after-phone-dark-zh-TW-needs.png",
+      "browser/retained-shell-phone-dark-zh-TW-needs.png"
+    ]
+  },
+  {
+    "digest": "991c52c61936013fd2ff68236ea6d266390e8f7843b7955941e4c8e0c50372c8",
+    "paths": [
+      "checks/sync2-checks.json"
+    ]
+  },
+  {
+    "digest": "998b93a7cd66e485e1edaa5e6d21e023d1214ebcf5b70952a10a20475209b95b",
+    "paths": [
+      "review-sync.json"
+    ]
+  },
+  {
+    "digest": "9a1be66c14d8c1aa4cdddacf869fc88ec782228cac6fd0314ad218d9e1c478ce",
+    "paths": [
+      "mutations/run.py"
+    ]
+  },
+  {
+    "digest": "9ae263b9e8c0ee969b0cd9d003f62dc093f233cbe1527bf7e6c887b05619d114",
+    "paths": [
+      "browser/availability-desk-dark-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "9cc5a810a023f156df808d923952900239cf162b6d84baf906e230cd0d971a56",
+    "paths": [
+      "browser/after-desk-light-en-office-card.png"
+    ]
+  },
+  {
+    "digest": "9e27ce2aeb7ef5b82745304504c8d2a9f8938f24bc5e32d14f0e1c026ce395eb",
+    "paths": [
+      "checks/r2-before-tests/r2-before-daemon.fixture.test.ts.txt"
+    ]
+  },
+  {
+    "digest": "a3adba0016f8fef56d1a9d22eebcff41805145eda572b14fe48a667d000d63ed",
+    "paths": [
+      "README.md"
+    ]
+  },
+  {
+    "digest": "a3bedd8a2536af9ba687028d64b881c927d22519dbefad647ee760fb4060b32c",
+    "paths": [
+      "browser/after-desk-light-zh-TW-card.png"
+    ]
+  },
+  {
+    "digest": "a436fa2db1d57301269c5387bff99dc94245d60578291bc0838355cac3f06a48",
+    "paths": [
+      "checks/checkpoint-tail-full-controls.log"
+    ]
+  },
+  {
+    "digest": "a47c8647753552720cd993858705062c5095fee7b98f384e0a4614cb5f23d4d9",
+    "paths": [
+      "checks/checkpoint-tail-mutations.log"
+    ]
+  },
+  {
+    "digest": "a73ef183c32ba2ab3f385770bc458d89df8507a0945733e12c1e785644a1bc0f",
+    "paths": [
+      "mutations/M5-concrete.log"
+    ]
+  },
+  {
+    "digest": "a837d896cc60b6c105a1cbf5754f81b1c4feb0695643776c26800ec011375e4e",
+    "paths": [
+      "browser/before-desk-dark-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "a911521bd7358aba59268514bfb073ddec906d8fd8ad40aa9bd1447e4efff8f9",
+    "paths": [
+      "checks/r2-final-checks.json"
+    ]
+  },
+  {
+    "digest": "ac23eed35819c61d8bb9251c482101f123515196f8aeea85596e306432df3aa9",
+    "paths": [
+      "browser/after-phone-light-en-office-card.png"
+    ]
+  },
+  {
+    "digest": "accf5ee3fc5efe2f7063720a55a196963dd225495679e5fae0140d451b3718f7",
+    "paths": [
+      "checks/r2-exact-before.json"
+    ]
+  },
+  {
+    "digest": "ae196466c3a29e1f445b4911db63aef4e14d5a65be298fb8997778436392a94f",
+    "paths": [
+      "checks/checkpoint-tail-restored.log"
+    ]
+  },
+  {
+    "digest": "af2bc4e74e9a27421b36e1fbb314f9907adca143ca1e9f7b97c08c656f163633",
+    "paths": [
+      "mutations/M11-commandprefix.log"
+    ]
+  },
+  {
+    "digest": "b3639302e1cbead55c46c64d18902b9f1149f6b0de217d82031b660a446186ee",
+    "paths": [
+      "browser/after-phone-light-zh-TW-log.png"
+    ]
+  },
+  {
+    "digest": "b38177255dc1e3dd5f016ab589dfc4bf1930b9fa96141e9c22058fd75b25e201",
+    "paths": [
+      "checks/sync-mutations/S3-startup-budget.log"
+    ]
+  },
+  {
+    "digest": "b7e3b920e0ab938b23710be815d0d22f778e66aa96ea6d22a58e2e7a7f386116",
+    "paths": [
+      "browser/after-desk-light-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "b8818a46ce578245dd54a72fb473cac70e1caea0c137768ac916c914b079b3fc",
+    "paths": [
+      "checks/checkpoint-tail-before.log"
+    ]
+  },
+  {
+    "digest": "bba3e3f0bda534b4ac6bf648481d9c628bababf6a012f8ad1ffc9d3bd2966d4a",
+    "paths": [
+      "browser/after-desk-dark-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "bc3aa6e9e0ec23b5d61cd43d8c1672d0db59cdf9cedd408182faf8604ddbcc81",
+    "paths": [
+      "browser/after-phone-light-en-needs.png",
+      "browser/retained-shell-phone-light-en-needs.png"
+    ]
+  },
+  {
+    "digest": "be5ceba1d275ea78726bc7d48aa35c79bca648cc373d3c6f25b9863c3a2286d3",
+    "paths": [
+      "mutations/C3-legacy-conservative.log"
+    ]
+  },
+  {
+    "digest": "c1755a8b828c3357b1f4af0a71640d28d34771f0448b3bfa9adaaccdb2ad5393",
+    "paths": [
+      "browser/after-phone-dark-en-details.png"
+    ]
+  },
+  {
+    "digest": "c32fee833db98b39feb3d7103d6d641770d0502a44abb965cecfe8f2f82b33f0",
+    "paths": [
+      "browser/after-desk-light-zh-TW-office-card.png"
+    ]
+  },
+  {
+    "digest": "c4613d45a369e67b9e5c99f79be93b161165450501748b30d6d17653cc854fb4",
+    "paths": [
+      "parity.json"
+    ]
+  },
+  {
+    "digest": "c7126b6d79577062c3fcc515649151e5ccab2cff8e0efe68bae8c9344b10d760",
+    "paths": [
+      "mutations/M6-hookowner.log"
+    ]
+  },
+  {
+    "digest": "c8590041945deb5e0181a71c2f85b70e1778eac49c5a28663c6d0ae2491ac18e",
+    "paths": [
+      "browser/availability-desk-light-en-details.png"
+    ]
+  },
+  {
+    "digest": "c9e3a85cb669029eac62743e96d81070f2e87a64eba13d5563c147348db09314",
+    "paths": [
+      "checks/sync-checks.json"
+    ]
+  },
+  {
+    "digest": "cc1648befaad7747e8b27b7176db57a292fc2c34a73bae4e3225bb5b6cd0bc7e",
+    "paths": [
+      "mutations/T2-shared-budget.log"
+    ]
+  },
+  {
+    "digest": "cd397584002d97182fa921aaed04d890074be7c44d3d6e7bff740c6d0c3d2d1d",
+    "paths": [
+      "browser/after-phone-light-en-log.png",
+      "browser/retained-shell-phone-light-en-log.png"
+    ]
+  },
+  {
+    "digest": "cf87543d06a30a43ca881a18e87ed2f93303aeedccdc847acf0561b359cb3de7",
+    "paths": [
+      "checks/sync-mutations/S2-incoming-skip.log"
+    ]
+  },
+  {
+    "digest": "d39339465ebb70af258bf865962a0da585708a40eec3fa7a54736ddc954783e1",
+    "paths": [
+      "checks/sync-mutations/S1-incoming-cursor.log"
+    ]
+  },
+  {
+    "digest": "d4a651e9547999e46ecdbb9a69663282a46945d26cadc72272813bb3e2420db9",
+    "paths": [
+      "mutations/M3-dedupe.log"
+    ]
+  },
+  {
+    "digest": "d86e636773e69720a5bc6d80143177078a7e9d3acdfe4616f5b2da4751571b3b",
+    "paths": [
+      "checks/sync2-focused.log"
+    ]
+  },
+  {
+    "digest": "da531a0f0a471310dfab328965a5d49341dcd4904157277e0ea0db930fcce4ec",
+    "paths": [
+      "checks/sync-mutations.py"
+    ]
+  },
+  {
+    "digest": "dc4d96b2740303c66358043e3df1a2fd8d8a15409925042be5dc9bb47e555141",
+    "paths": [
+      "mutations/A1-native-session.log"
+    ]
+  },
+  {
+    "digest": "dd178d0f333ac91ddac604f43ef8712eeb170f7cb304f337ab14ee441d76080c",
+    "paths": [
+      "mutations/M7-launchtime.log"
+    ]
+  },
+  {
+    "digest": "dd21cb3be37269dee777b54637aca46822bf4c628da87e0e3c84563915a35bbb",
+    "paths": [
+      "checks/sync2-mutations/A1-model-leaf.log"
+    ]
+  },
+  {
+    "digest": "e0fc161a9eb66eb378b6867c1a5112516f311db03a38dca2040fe343112b0b7e",
+    "paths": [
+      "checks/changelog-check.log"
+    ]
+  },
+  {
+    "digest": "e211c8ca445c2ecedd29b4a9bfb9bca51eb67cd5b1ab8a52b3cb013dee348b0c",
+    "paths": [
+      "mutations/M12-logpair.log"
+    ]
+  },
+  {
+    "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "paths": [
+      "checks/checkpoint-tail-source-types.log",
+      "checks/checkpoint-tail-test-types.log",
+      "checks/r2-source-types.log",
+      "checks/r2-test-types.log",
+      "checks/source-types.log",
+      "checks/sync-mutations/S1-incoming-cursor-types.log",
+      "checks/sync-mutations/S2-incoming-skip-types.log",
+      "checks/sync-mutations/S3-startup-budget-types.log",
+      "checks/sync-source-types.log",
+      "checks/sync-test-types.log",
+      "checks/sync2-mutations/A1-model-leaf-types.log",
+      "checks/sync2-mutations/A2-stale-leaf-types.log",
+      "checks/sync2-source-types.log",
+      "checks/sync2-test-types.log",
+      "checks/test-types.log",
+      "mutations/A1-native-session-types.log",
+      "mutations/A2-native-owner-types.log",
+      "mutations/A3-native-daemon-types.log",
+      "mutations/A4-native-gap-types.log",
+      "mutations/A5-native-context-types.log",
+      "mutations/C1-checkpoint-intent-types.log",
+      "mutations/C2-restore-intent-types.log",
+      "mutations/C3-legacy-conservative-types.log",
+      "mutations/C4-pending-recovery-types.log",
+      "mutations/L1-log-cursor-types.log",
+      "mutations/M1-sidechain-types.log",
+      "mutations/M10-original-types.log",
+      "mutations/M11-commandprefix-types.log",
+      "mutations/M12-logpair-types.log",
+      "mutations/M13-officeshare-types.log",
+      "mutations/M14-nofallback-types.log",
+      "mutations/M15-intent-session-types.log",
+      "mutations/M2-apierror-types.log",
+      "mutations/M3-dedupe-types.log",
+      "mutations/M4-recovery-types.log",
+      "mutations/M5-concrete-types.log",
+      "mutations/M6-hookowner-types.log",
+      "mutations/M7-launchtime-types.log",
+      "mutations/M8-daemonfence-types.log",
+      "mutations/M9-resumequiet-types.log",
+      "mutations/T1-cursor-types.log",
+      "mutations/T2-shared-budget-types.log",
+      "mutations/T3-boundary-budget-types.log",
+      "mutations/T4-startup-lane-types.log"
+    ]
+  },
+  {
+    "digest": "e5014b99a84e8a5641fe7d68a8a11f3aa6dea8930fbec09d485d87ce65d9213b",
+    "paths": [
+      "browser/availability-desk-dark-zh-TW-log.png"
+    ]
+  },
+  {
+    "digest": "e73216f6ef3d5c67f480b2b2d14c4252fd82bd5b5aadb6abd4b93399314887e0",
+    "paths": [
+      "browser/after-desk-dark-en-card.png"
+    ]
+  },
+  {
+    "digest": "e824110e8f63446156f6de485ef2dd4a1c6c7a62c18f53f693c2c7fcf46abace",
+    "paths": [
+      "mutations/A4-native-gap.log"
+    ]
+  },
+  {
+    "digest": "e8b16fb690cf24daf92d089c0825d2eb17f35a786fe0b87d19d878b31a242168",
+    "paths": [
+      "browser/after-phone-light-zh-TW-office-card.png"
+    ]
+  },
+  {
+    "digest": "ebb2769a88eb7d25787bec4643ef970519a80ce0600e7804c1ee63234e729e83",
+    "paths": [
+      "mutations/M15-intent-session.log"
+    ]
+  },
+  {
+    "digest": "f19f7f33bc14628e5bdb3b1774ac4c12d7dd622dedbfeec677b09a20b5449deb",
+    "paths": [
+      "browser/after-phone-light-zh-TW-needs.png"
+    ]
+  },
+  {
+    "digest": "f20feae61709ce35e6b79dbfcb1879c750f6cf24766fd85874f544080953f208",
+    "paths": [
+      "checks/sync2-mutations/A2-stale-leaf.log"
+    ]
+  },
+  {
+    "digest": "f2f840d67491321b087e3eddba3ffe05af7669619feb255c11e6c53104675c5a",
+    "paths": [
+      "checks/sync-resolution.json"
+    ]
+  },
+  {
+    "digest": "f424a12bf82641a480080451ebdb97d53b831194e41e6744a226a7a12baf0689",
+    "paths": [
+      "checks/final-controls.log"
+    ]
+  },
+  {
+    "digest": "f5d3dda4581dec15d08f8b060fb030a5c0336a44efdf15c0d4b9d1dad2660674",
+    "paths": [
+      "browser/after-desk-dark-zh-TW-card.png"
+    ]
+  },
+  {
+    "digest": "f7dc5b2086fc5192f1f4dde78c32a9a05a8d76b79480fcb7b2bff3c8b97d3d6c",
+    "paths": [
+      "browser/after-desk-dark-en-needs.png"
+    ]
+  },
+  {
+    "digest": "f82bcac1b5fd3b675b476293b2a8b00649437cae30319cc95639ad952f7c6a0b",
+    "paths": [
+      "browser/retained-panels-desk-light-en-details.png"
+    ]
+  },
+  {
+    "digest": "faa50fad956633d89bc84656c655ad880d4ba4321171a95d63d76c72b5ac1545",
+    "paths": [
+      "browser/before-desk-light-zh-TW-details.png"
+    ]
+  },
+  {
+    "digest": "fbc359f27cd83faa99263ccb9a2ec27d6425260958762c8c2c4c408fd6319647",
+    "paths": [
+      "mutations/M9-resumequiet.log"
+    ]
+  },
+  {
+    "digest": "fc10ea059a3043871f823530843c656e8c3cda25b41300ba1c77a723e3d1fac8",
+    "paths": [
+      "mutations/A2-native-owner.log"
+    ]
+  },
+  {
+    "digest": "fc7c5306f84f5d2ee2a973c7fd8d7be548563a0713812dd5b4399371f0392570",
+    "paths": [
+      "mutations/C4-pending-recovery.log"
+    ]
+  },
+  {
+    "digest": "fd6f16f70f39000855401d138821d503160c951398386d9cb987db82a1ee8e8f",
+    "paths": [
+      "browser/after-desk-dark-zh-TW-log.png"
+    ]
+  },
+  {
+    "digest": "fee8bbd3ded72a7a8d3db0fa3b82bc70c2ab15081e280e52215d5b394656b028",
+    "paths": [
+      "browser/after-phone-dark-en-office-card.png"
+    ]
+  }
+]
