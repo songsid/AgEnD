@@ -22,6 +22,13 @@ const fake = vi.hoisted(() => ({
   failNextStart: null as null | Error,
 }));
 
+// These cases exercise the real lifecycle with an inert Daemon, not host CLI
+// installation. Both FleetManager and lifecycle resolve the launch binary.
+vi.mock("../src/backend-availability.js", async importOriginal => ({
+  ...await importOriginal<typeof import("../src/backend-availability.js")>(),
+  resolveBackendBinary: vi.fn(async () => "/fixture/claude"),
+}));
+
 vi.mock("../src/daemon.js", async importOriginal => {
   const original = await importOriginal<typeof import("../src/daemon.js")>();
   const { EventEmitter: Emitter } = await import("node:events");
@@ -34,6 +41,7 @@ vi.mock("../src/daemon.js", async importOriginal => {
     stopped = false;
     seeded = false;
     pauseReasons: string[] = [];
+    onPause: (() => void) | null = null;
     leaseCheck: (() => boolean) | null = null;
     credentialIssuer: ((token: string) => void) | null = null;
     constructor(public name: string) { super(); fake.created.push(this); }
@@ -55,7 +63,7 @@ vi.mock("../src/daemon.js", async importOriginal => {
     }
     async abortStartup() { this.aborted = true; }
     async stop() { this.stopped = true; }
-    async pause(reason: string) { this.pauseReasons.push(reason); this.isPaused = true; }
+    async pause(reason: string) { this.pauseReasons.push(reason); this.isPaused = true; this.onPause?.(); }
     wakes = 0;
     /** When set, the next wake() runs this (inside the wake) and then waits on `wakeHold`. */
     onWake: null | (() => void) = null;
@@ -562,14 +570,18 @@ describe("error pauses carry their real reason (#1075 review P2-3)", () => {
     const { fm, config } = fleet();
     await fm.startInstance("worker", config, false);
     vi.spyOn(fm.lifecycle as any, "verifyAuthError").mockResolvedValue("invalid");
+    const paused = deferred(); fake.created[0].onPause = paused.release;
     fake.created[0].emit("pty_error", { name: "worker", type: "auth_error", action: "pause", message: "401 Unauthorized" });
-    await vi.waitFor(() => expect(fake.created[0].pauseReasons).toEqual(["auth"]));
+    await paused.promise;
+    expect(fake.created[0].pauseReasons).toEqual(["auth"]);
   });
 
   it("a non-auth pause-action error pauses with reason error, not operator", async () => {
     const { fm, config } = fleet();
     await fm.startInstance("worker", config, false);
+    const paused = deferred(); fake.created[0].onPause = paused.release;
     fake.created[0].emit("pty_error", { name: "worker", type: "unknown_error", action: "pause", message: "boom" });
-    await vi.waitFor(() => expect(fake.created[0].pauseReasons).toEqual(["error"]));
+    await paused.promise;
+    expect(fake.created[0].pauseReasons).toEqual(["error"]);
   });
 });
