@@ -2258,6 +2258,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // P1 representative mode (docs/design/hub-representative-agent.md): ordinary delivery + the report_result hook.
           representative: {
             quota: agent => this.hubAgentQuota(agent),
+            locale: getLocale(),
+            readState: agent => {
+              const process = this.getInstanceStatus(agent), interaction = this.getInstanceInteraction(agent);
+              return { process, execution: this.getInstanceExecutionState(agent),
+                pauseReason: process === "paused" ? readPauseReason(this.getInstanceDir(agent)) : null,
+                waitingForApproval: interaction?.phase === "waiting" && !interaction.stale && !interaction.suspected
+                  && (interaction.kind === "permission" || interaction.kind === "dangerous_command") };
+            },
             deliver: input => this.deliverHubQuestion(input),
             agentToken: agent => this.hubAgentToken(agent),
             // attachments-v1: a question's files go into the agent's inbox; an answer's come from its own paths.

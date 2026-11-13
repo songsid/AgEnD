@@ -61,6 +61,27 @@ type Saved = z.infer<typeof savedSchema>;
 type State = "queued" | "dispatching" | "input" | "delivered" | "held" | "answered" | "acked";
 interface Row { message_id: string; binding: string; state: State; cid: string; value: string }
 const STATES: readonly State[] = ["queued", "dispatching", "input", "delivered", "held", "answered", "acked"];
+const rowAad = (binding: string, id: string, state: State) => Buffer.from(JSON.stringify(["hub-room-ask-v1", binding, id, state]));
+function readRoomRow(row: Row, binding: string, key: Buffer): Saved {
+  try {
+    if (row.binding !== binding || !STATES.includes(row.state)) throw Error();
+    const bytes = Buffer.from(row.value, "base64");
+    if (bytes.length < 28) throw Error();
+    const cipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(0, 12));
+    cipher.setAAD(rowAad(binding, row.message_id, row.state)); cipher.setAuthTag(bytes.subarray(12, 28));
+    const saved = savedSchema.parse(JSON.parse(Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]).toString("utf8")));
+    if (saved.ask.messageId !== row.message_id || saved.cid !== row.cid || (saved.answer && (saved.answer.messageId !== row.message_id
+      || saved.answer.roomId !== saved.ask.roomId || saved.answer.exposureId !== saved.ask.exposureId))
+      || (["answered", "acked"].includes(row.state) !== !!saved.answer)) throw Error();
+    return saved;
+  } catch { throw new HubProtocolError("uncertain"); }
+}
+/** Composition verifies the entire retained room set before legacy adoption or either adapter's recovery. No writes. */
+export function verifyRoomAskJournal(db: Database.Database, options: Pick<RoomAskOptions, "bindingKey" | "encryptionKey">): void {
+  if (!options.bindingKey || options.encryptionKey.length !== 32) throw new HubProtocolError("invalid");
+  const binding = createHash("sha256").update(options.bindingKey).digest("hex");
+  for (const row of db.prepare("SELECT * FROM hub_room_asks ORDER BY rowid").all() as Row[]) readRoomRow(row, binding, options.encryptionKey);
+}
 /** Injectable until Track R's negotiated socket dispatcher and room membership checks are composed. */
 export class HubRoomAskAdapter {
   private closed = false;
@@ -88,21 +109,8 @@ export class HubRoomAskAdapter {
       : this.options.db.prepare("SELECT * FROM hub_room_asks ORDER BY rowid").all()) as Row[];
   }
   private row(id: string): Row | undefined { return this.options.db.prepare("SELECT * FROM hub_room_asks WHERE message_id=?").get(id) as Row | undefined; }
-  private aad(id: string, state: State): Buffer { return Buffer.from(JSON.stringify(["hub-room-ask-v1", this.binding, id, state])); }
-  private read(row: Row): Saved {
-    try {
-      if (row.binding !== this.binding || !STATES.includes(row.state)) throw Error();
-      const bytes = Buffer.from(row.value, "base64");
-      if (bytes.length < 28) throw Error();
-      const cipher = createDecipheriv("aes-256-gcm", this.key, bytes.subarray(0, 12));
-      cipher.setAAD(this.aad(row.message_id, row.state)); cipher.setAuthTag(bytes.subarray(12, 28));
-      const saved = savedSchema.parse(JSON.parse(Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]).toString("utf8")));
-      if (saved.ask.messageId !== row.message_id || saved.cid !== row.cid || (saved.answer && (saved.answer.messageId !== row.message_id
-        || saved.answer.roomId !== saved.ask.roomId || saved.answer.exposureId !== saved.ask.exposureId))
-        || (["answered", "acked"].includes(row.state) !== !!saved.answer)) throw Error();
-      return saved;
-    } catch { throw new HubProtocolError("uncertain"); }
-  }
+  private aad(id: string, state: State): Buffer { return rowAad(this.binding, id, state); }
+  private read(row: Row): Saved { return readRoomRow(row, this.binding, this.key); }
   private save(id: string, state: State, saved: Saved): void {
     const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", this.key, iv);
     cipher.setAAD(this.aad(id, state));
@@ -230,6 +238,14 @@ export class HubRoomAskAdapter {
     if (!this.current(saved) || saved.answer?.answerId !== ack.answerId) return false;
     if (row.state !== "acked") this.save(row.message_id, "acked", saved);
     return true;
+  }
+  /** A pane can fail after the ordinary delivery promise resolved. Never retry uncertain input or unfreeze an answer. */
+  deliveryFailed(correlationId: string, agent: string): void {
+    if (this.closed) return;
+    const row = this.options.db.prepare("SELECT * FROM hub_room_asks WHERE cid=?").get(correlationId) as Row | undefined;
+    if (!row || !["input", "delivered"].includes(row.state)) return;
+    const saved = this.read(row);
+    if (saved.local.agent === agent) this.save(row.message_id, "held", saved);
   }
   close(): void { this.closed = true; this.link = null; this.admitted.clear(); }
 }
