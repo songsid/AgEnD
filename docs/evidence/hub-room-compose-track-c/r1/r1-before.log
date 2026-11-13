@@ -1,0 +1,63 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c
+
+---------xx
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > refuses a withdrawn room ask without dropping the link, then delivers a valid ask on that same link
+AssertionError: expected [ { message: 'Hub link held', …(1) } ] to deep equally contain ObjectContaining{…}
+
+- Expected:
+ObjectContaining {
+  "message": "Hub room ask not admitted",
+  "meta": ObjectContaining {
+    "reason": "denied",
+  },
+}
+
++ Received:
+[
+  {
+    "message": "Hub link held",
+    "meta": {
+      "code": "unavailable",
+    },
+  },
+]
+
+ ❯ tests/hub-room-compose-track-c.test.ts:168:41
+    166|   await h.api().withdraw(old.exposureId!, old.revision);
+    167|   await h.send("room.ask", h.ask(old.exposureId!));
+    168|   await vi.waitFor(() => expect(h.logs).toContainEqual(expect.objectCo…
+       |                                         ^
+    169|     message: "Hub room ask not admitted", meta: expect.objectContainin…
+    170|   expect(h.epoch()).toBe(epoch); expect(h.inputs).toHaveLength(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > uses a derived room key so the member audit content key cannot decrypt the room journal
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-compose-track-c.test.ts:183:33
+    181|   const auditKey = Buffer.from(readFileSync(join(h.r.memberHome, set.k…
+    182|   try { expect(() => verifyRoomAskJournal(db, { bindingKey: memberSet(…
+    183|     encryptionKey: auditKey })).toThrow("uncertain"); } finally { db.c…
+       |                                 ^
+    184| });
+    185|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 9 skipped (11)
+   Start at  02:00:55
+   Duration  6.14s (transform 2.85s, setup 176ms, import 3.22s, tests 2.56s, environment 0ms)
+

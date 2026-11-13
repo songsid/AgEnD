@@ -1,0 +1,4 @@
+Hub shell gate listener: https://127.0.0.1:34333
+FAIL desk-light-en:notices:drawn: "the page never drew"
+FAIL phone-dark-zh-TW:notices:drawn: "the page never drew"
+Hub shell gate FAILED (2) in 49s — pictures and result.json in /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c/.artifacts/room-compose-track-c/shell-before/smoke-hub-shell-gate

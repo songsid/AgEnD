@@ -1,0 +1,45 @@
+{
+  "head": "f23658e9ee58d005177820091741c4542bc066f1",
+  "results": [
+    {
+      "label": "focused",
+      "command": [
+        "node_modules/.bin/vitest",
+        "run",
+        "tests/hub-room-compose-track-c.test.ts",
+        "tests/hub-room-ask-track-c.test.ts",
+        "tests/hub-compose-member.test.ts",
+        "tests/hub-member-journal.test.ts",
+        "tests/hub-room-link-r2.test.ts",
+        "tests/hub-room-agents-r2.test.ts",
+        "tests/hub-room-routing-network-r2.test.ts",
+        "tests/hub-shared-modules-a.test.ts",
+        "--maxWorkers=2"
+      ],
+      "exit": 0,
+      "startLoad1": 1.96142578125
+    },
+    {
+      "label": "source-types",
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.json"
+      ],
+      "exit": 0,
+      "startLoad1": 2.26904296875
+    },
+    {
+      "label": "test-types",
+      "command": [
+        "node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.test.json"
+      ],
+      "exit": 0,
+      "startLoad1": 2.64794921875
+    }
+  ]
+}

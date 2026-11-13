@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c
+
+----------x--
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > uses a derived room key so the member audit content key cannot decrypt the room journal
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ tests/hub-room-compose-track-c.test.ts:184:33
+    182|   const auditKey = Buffer.from(readFileSync(join(h.r.memberHome, set.k…
+    183|   try { expect(() => verifyRoomAskJournal(db, { bindingKey: memberSet(…
+    184|     encryptionKey: auditKey })).toThrow("uncertain"); } finally { db.c…
+       |                                 ^
+    185| });
+    186|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 12 skipped (13)
+   Start at  02:04:38
+   Duration  2.42s (transform 1.51s, setup 86ms, import 1.78s, tests 419ms, environment 0ms)
+

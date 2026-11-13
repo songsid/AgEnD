@@ -1,0 +1,44 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c
+
+---------x---
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > refuses a withdrawn room ask without dropping the link, then delivers a valid ask on that same link
+AssertionError: expected [ { message: 'Hub link held', …(1) } ] to deep equally contain ObjectContaining{…}
+
+- Expected:
+ObjectContaining {
+  "message": "Hub room ask not admitted",
+  "meta": ObjectContaining {
+    "reason": "denied",
+  },
+}
+
++ Received:
+[
+  {
+    "message": "Hub link held",
+    "meta": {
+      "code": "unavailable",
+    },
+  },
+]
+
+ ❯ tests/hub-room-compose-track-c.test.ts:169:41
+    167|   await h.api().withdraw(old.exposureId!, old.revision);
+    168|   await h.send("room.ask", h.ask(old.exposureId!));
+    169|   await vi.waitFor(() => expect(h.logs).toContainEqual(expect.objectCo…
+       |                                         ^
+    170|     message: "Hub room ask not admitted", meta: expect.objectContainin…
+    171|   expect(h.epoch()).toBe(epoch); expect(h.inputs).toHaveLength(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 12 skipped (13)
+   Start at  02:04:30
+   Duration  3.61s (transform 1.64s, setup 88ms, import 2.00s, tests 1.36s, environment 0ms)
+

@@ -1,0 +1,62 @@
+{
+  "sourceMerge": "11b71d9055d69ace23e4d54d071c6cedb4bc9842",
+  "parents": [
+    "bb58f1514d5ca7829014c091d872c61e4d9e76fb",
+    "ea02c0eceb76cb138d3994fd52884889f1c13352"
+  ],
+  "alpha": "1b74f2cc2b87a5fa18d45fce9d762870f0c98b22",
+  "kind": "clean plain merge of synced adapter parent; no manual resolution",
+  "unchangedCritical": [
+    {
+      "path": "src/hub/compose/member.ts",
+      "before": "aa66225f44f2eed846fe0b1c5b55dffc2268f016",
+      "current": "aa66225f44f2eed846fe0b1c5b55dffc2268f016"
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "before": "cb3b6112cbb7fd241ab70036f166e87193d90fe1",
+      "current": "cb3b6112cbb7fd241ab70036f166e87193d90fe1"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "before": "2e3a6640382d3a719349da24c9e080f6d60ec84f",
+      "current": "2e3a6640382d3a719349da24c9e080f6d60ec84f"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-hub-shell-gate.mts",
+      "before": "2d285ea433f01e2df2f2ed342ec6669df6b12dc6",
+      "current": "2d285ea433f01e2df2f2ed342ec6669df6b12dc6"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "before": "18071deedab968802bca805ca4d7289c9d5ab7a2",
+      "current": "18071deedab968802bca805ca4d7289c9d5ab7a2"
+    },
+    {
+      "path": "src/ui/hub-client.js",
+      "before": "efa84b3039c07e097e1946aa444a87dbf9d66dc4",
+      "current": "efa84b3039c07e097e1946aa444a87dbf9d66dc4"
+    },
+    {
+      "path": "src/ui/panel-hub.js",
+      "before": "89fbcb21e18c0bf6cf04f326e115b753edc62132",
+      "current": "89fbcb21e18c0bf6cf04f326e115b753edc62132"
+    },
+    {
+      "path": "src/ui/hub-quick-pairing.js",
+      "before": "6ba6af8272e1dacfcd2dab02a3ea5c1fe3bc949b",
+      "current": "6ba6af8272e1dacfcd2dab02a3ea5c1fe3bc949b"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "before": "fa936520bcd720be2d10a52b35eb6bdda74c6b3d",
+      "current": "fa936520bcd720be2d10a52b35eb6bdda74c6b3d"
+    },
+    {
+      "path": "src/ui/shared/tokens.css",
+      "before": "597016d5fdebdad754e1b853daefd1182a1a5680",
+      "current": "597016d5fdebdad754e1b853daefd1182a1a5680"
+    }
+  ],
+  "localVerification": "No repeated local tests/types/browser during host load above10. Prior own runtime, fixture and served UI inputs byte-equal; 70/6 and174shell checks retain original scopes. New exact-head CI/review required."
+}

@@ -1,0 +1,45 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-room-ask-compose-track-c
+
+-----------x-
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-compose-track-c.test.ts > preserves the link failure path for backpressure instead of swallowing it as a room refusal
+AssertionError: expected [ { …(2) } ] to deep equally contain { message: 'Hub link held', …(1) }
+
+- Expected:
+{
+  "message": "Hub link held",
+  "meta": {
+    "code": "backpressure",
+  },
+}
+
++ Received:
+[
+  {
+    "message": "Hub room ask not admitted",
+    "meta": {
+      "messageId": "9175d174-64a4-468c-863c-0621ef79848c",
+      "reason": "backpressure",
+    },
+  },
+]
+
+ ❯ tests/hub-room-compose-track-c.test.ts:194:43
+    192|   try {
+    193|     await h.send("room.ask", h.ask(exposure.exposureId!));
+    194|     await vi.waitFor(() => expect(h.logs).toContainEqual({ message: "H…
+       |                                           ^
+    195|     expect(h.logs.filter(row => row.message === "Hub room ask not admi…
+    196|   } finally { spy.mockRestore(); }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 12 skipped (13)
+   Start at  02:04:46
+   Duration  3.41s (transform 1.48s, setup 110ms, import 1.77s, tests 1.37s, environment 0ms)
+
