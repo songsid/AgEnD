@@ -1,12 +1,14 @@
 {
-  "sourceHead": "09f1e2f2887f25110e4648adc9781601532eb30c",
+  "sourceHead": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
   "ownSourceCommit": "64ef7fba5cbcd8e802ee57a30f197f9bb156dde8",
-  "integrationParent": "f41f8efc80647476f9fb09d0ba6f84a542588d6a",
+  "integrationParent": "d168bed13fedf26721a9abe180fcbddf8117ba68",
   "sourceSha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9",
   "focused": {
     "files": 4,
     "cases": 28,
-    "exit": 0
+    "exit": 0,
+    "head": "39b9000ad65da895b1239b5642bfa0efaf5d2a68",
+    "currentServiceByteEqual": true
   },
   "types": {
     "source": "native TS7.0.2 exit0",
@@ -25,25 +27,32 @@
     "exactRestore": true
   },
   "browser": {
-    "state": "partial; phone fails44px",
-    "desktopCompletedCases": 4,
-    "desktopPictures": 8,
-    "freshPhoneDiagnostic": {
-      "cases": 1,
-      "pictures": 1,
-      "buttonHeights": [
-        36,
-        36
-      ],
-      "stylesheetReady": true
+    "state": "eight-case candidate PASS",
+    "head": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
+    "cases": 8,
+    "checks": 120,
+    "pictures": 16,
+    "phoneFields": 12,
+    "phoneMinimumHeight": 44,
+    "maxLoad": 5.63720703125,
+    "listenerClosed": true,
+    "cleanup": {
+      "browserClosed": true,
+      "listenerClosed": true,
+      "keysRemoved": true
     },
-    "ownedCleanup": "both browser processes exited through finally; HTTPS listeners closed, rig closed, temporary key directories absent; slot released",
-    "noClaim": [
-      "phone acceptance",
-      "full8case gallery",
-      "real AD/Fleet/input",
-      "production migration composition"
-    ]
+    "historicalNegative": "phone36px after featureCSS readiness, retained separately; excluded from current pass count"
   },
-  "scope": "Actual R HTTP/SQLite, C factory/storage, inert directory/transport; U mini-DOM and actual pinned TLS/WSS ACK recovery use their existing bounded scopes. No real AD/Fleet/account/input. Factory remains optional until R composes it."
+  "scope": "Actual R HTTP/SQLite, C factory/storage, inert directory/transport; U mini-DOM and actual pinned TLS/WSS ACK recovery use their existing bounded scopes. No real AD/Fleet/account/input. Factory remains optional until R composes it.",
+  "factory": {
+    "Rsource": "d168bed13fedf26721a9abe180fcbddf8117ba68",
+    "selectedSealedHubCases": 2,
+    "unselected": 130,
+    "schemaInventoryCases": 1,
+    "inventoryUnselected": 131,
+    "nativeSource": 0,
+    "nativeTests": 0,
+    "scope": "Actual sealed-Hub/HTTPS owned controls, inert directory/transport; no realAD/Fleet/input. Factory registration is now present on the integration stack, not yet alpha release."
+  },
+  "ownerCssHead": "ae3852c81f7a3878768f54452f18483a46c6de07"
 }

@@ -15,9 +15,13 @@
     {
       "head": "0d166da349168ad09af4a9d52803439b88a35f48",
       "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
+    },
+    {
+      "head": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
+      "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
     }
   ],
-  "currentInputsHead": "0d166da349168ad09af4a9d52803439b88a35f48",
+  "currentInputsHead": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
   "captures": [
     {
       "receipt": "docs/evidence/hub-room-consent-track-c/browser-1/receipt.json",
@@ -32,6 +36,14 @@
       "harnessSha256": "d3b71dd06354deeb974d2b932a94ba9a14e1249c80a70c7cedcf2de425a4bae0",
       "pictures": 1,
       "complete": false
+    },
+    {
+      "receipt": "docs/evidence/hub-room-consent-track-c/browser-final/receipt.json",
+      "head": "67080f8bc4c57a48b134ba052480f70b8e8deb33",
+      "harnessSha256": "2464977ccab4cee4c723eaf7d6d95a4f1f6b5a5801105f610ca322a28b88665a",
+      "pictures": 16,
+      "complete": true,
+      "cssOwnerHead": "ae3852c81f7a3878768f54452f18483a46c6de07"
     }
   ]
 }
