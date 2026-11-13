@@ -50,6 +50,28 @@ describe("S129 first-issuance approver permission", () => {
     expect(JSON.parse((w.db.prepare("SELECT actor FROM hub_audit WHERE action='pairing.created'").get() as { actor: string }).actor))
       .toEqual({ kind: "person", person: w.admin });
   });
+  it.each(["signed-out", "stale-double"] as const)("retains the held approval's %s session refusal without publishing approval", async mode => {
+    const w = await world(), pairing = w.pairing(), offer = await pairing.create(w.ctx.ctx, w.other);
+    const pending = pairing.pair({ code: offer.code }), owner = await w.browser(w.other);
+    await pairing.confirmOwner(owner.ctx, pending.pairingId, pending.fingerprint);
+    const actor = await w.ctx.ctx.current(), current = vi.fn(() => w.ctx.ctx.current()), ctx = { ...w.ctx.ctx, current };
+    const entered = gate<void>(), answer = gate<Awaited<ReturnType<typeof w.eligible>>>();
+    w.eligible.mockImplementation(async who => {
+      if (who.objectId === w.other.objectId) { entered.resolve(); return answer.promise; }
+      return { eligible: true, person: w.person(who) };
+    });
+    const approving = pairing.approve(ctx, pending.pairingId, pending.fingerprint).catch(error => error);
+    await entered.promise;
+    w.sessions.signOut(w.ctx.token);
+    if (mode === "stale-double") current.mockResolvedValue(actor);
+    answer.resolve({ eligible: true, person: w.person(w.other) });
+    expect(await approving).toMatchObject({ code: mode === "signed-out" ? "revoked" : "unavailable" });
+    expect(w.store.read().pairings[0]!.adminApproved).toBe(false);
+    expect(w.store.read().fleets).toEqual([]);
+    const fresh = await w.browser();
+    await expect(pairing.approve(fresh.ctx, pending.pairingId, pending.fingerprint)).resolves.toBeUndefined();
+    expect(w.store.read().pairings[0]!.adminApproved).toBe(true);
+  });
   it.each(["manual", "code"] as const)("rolls back %s registration when its retained issuer loses permission during required audit", async source => {
     const w = await world(), prepared = source === "manual" ? await w.groups.prepareManualEnrollment(w.resource, w.admin, w.context)
       : await w.groups.prepareCodeEnrollment(w.resource, { codeId: randomUUID(), approvedBy: w.admin, scope: { kind: "directory" }, perPersonFleets: 1 }, w.context);
