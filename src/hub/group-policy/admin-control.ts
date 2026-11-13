@@ -43,6 +43,7 @@ export function createHubGroupAdminControl(options: {
   db: Database.Database; audit: Pick<HubAuditStore, "appendInTransaction">; directory: HubDirectory; administrator: PersonKey;
   transport: Pick<HubTransportStore, "read">; inventory: HubGroupAdminInventory; authorization: Pick<HubGroupAuthorization, "resume">;
   policy(): HubGroupPolicyStore; binding(): HubGroupPolicyBinding; current(): boolean; version(): number;
+  directoryReads?: Pick<import("../directory/admission.js").HubDirectoryReads, "withDirectoryRead">;
   /** Synchronous required transport writer in this exact DB transaction, with no socket effects. */
   advanceAuthorization(database: Database.Database): void;
   refreshAuthorization(): void; now?: () => number;
@@ -92,13 +93,17 @@ export function createHubGroupAdminControl(options: {
     for (const rule of canonical.groups) {
       assertPolicy(); if (now() >= deadline) throw new Refusal("unknown");
       let found;
-      try { found = await directory.resolvePolicyGroup(rule.dn); } catch { throw new Refusal("unknown"); }
+      try {
+        const read = () => directory.resolvePolicyGroup!(rule.dn);
+        found = await (options.directoryReads ? options.directoryReads.withDirectoryRead(actor.person, read) : read());
+      } catch { throw new Refusal("unknown"); }
       assertPolicy();
       if (!found.ok) throw new Refusal(found.reason === "unknown" ? "unknown" : found.reason === "unsupported" ? "unsupported" : "group-mismatch");
       if (personKeyString(validated(person, found.group.key)) !== personKeyString(rule.group)) throw new Refusal("group-mismatch");
       rule.dn = validated(resolveRequest, { dn: found.group.dn }).dn;
     }
-    const observed = await readHubGroupImpactFacts({ directory, people: snapshot.people, now, deadline, assertCurrent: assertPolicy });
+    const observed = await readHubGroupImpactFacts({ directory, people: snapshot.people, now, deadline, assertCurrent: assertPolicy,
+      ...(options.directoryReads ? { withDirectoryRead: <T>(work: () => Promise<T>) => options.directoryReads!.withDirectoryRead(actor.person, work) } : {}) });
     const fresh = await boundary.authenticate(ctx);
     if (fresh.sessionId !== actor.sessionId) throw new Refusal("conflict");
     assertSnapshot();

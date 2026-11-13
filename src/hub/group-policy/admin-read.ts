@@ -17,6 +17,7 @@ export function createHubGroupAdminReads(options: {
   administrator: PersonKey; directory: HubDirectory; current(): boolean;
   binding(): HubGroupPolicyBinding; policy(): HubGroupPolicyStore;
   inventory: HubGroupAdminInventory; authorization: Pick<HubGroupAuthorization, "resume">;
+  directoryReads?: Pick<import("../directory/admission.js").HubDirectoryReads, "withDirectoryRead">;
 }) {
   const administrator = validated(person, options.administrator), boundary = createHubGroupAdminBoundary(options);
   const { directory, inventory, authorization, binding, policy } = options;
@@ -33,11 +34,12 @@ export function createHubGroupAdminReads(options: {
     return { ok: true, groupPolicyV1: true, supported: supported(), binding: "ready", policy: saved, paused };
   };
   const resolve: HubGroupAdminControl["resolve"] = async (input, incoming): Promise<GroupResolveResponse> => {
-    const request = validated(resolveRequest, input), { ctx } = await boundary.begin(incoming);
+    const request = validated(resolveRequest, input), { ctx, actor } = await boundary.begin(incoming);
     if (!supported()) return { ok: false, reason: "unsupported" };
     let result: GroupResolveResponse = { ok: false, reason: "unknown" };
     try {
-      const found = await directory.resolvePolicyGroup!(request.dn);
+      const read = () => directory.resolvePolicyGroup!(request.dn);
+      const found = await (options.directoryReads ? options.directoryReads.withDirectoryRead(actor.person, read) : read());
       if (found.ok) {
         const key = validated(person, found.group.key), canonical = validated(resolveRequest, { dn: found.group.dn }).dn;
         if (key.realm === administrator.realm) result = { ok: true, realm: key.realm, objectId: key.objectId, dn: canonical };
