@@ -9,7 +9,7 @@ import { register, t } from "/assets/app-i18n.js";
 register("hubPairingForm", {
   en: {
     addressHint: "The address shown with the pairing code (it ends in a port). It is not the address of the Hub's pages.",
-    joinCode: "This is a join code. In “Hub address” above, type the address, a space, then this code.",
+    joinCode: "This is a join code. In “Hub address” at the top of this card, type the address, a space, then this code.",
     codeShape: "A pairing code is 12 characters, 0–9 and a–f (for example 1a2b3c4d5e6f).",
     failed_code: "Confirmed, but it was not applied: that is not a valid pairing code. A pairing code is 12 characters, 0–9 and a–f.",
     failed_address: "Confirmed, but it was not applied: that is not a Hub's member address.",
@@ -19,7 +19,7 @@ register("hubPairingForm", {
   },
   "zh-TW": {
     addressHint: "配對碼一起提供的位址（結尾有連接埠），不是 Hub 網頁的位址。",
-    joinCode: "這是加入碼。請在上方的「Hub 位址」輸入位址、空一格，再輸入這組碼。",
+    joinCode: "這是加入碼。請在這張卡片最上方的「Hub 位址」輸入位址、空一格，再輸入這組碼。",
     codeShape: "配對碼是 12 個字元，只有 0–9 與 a–f（例如 1a2b3c4d5e6f）。",
     failed_code: "已確認，但沒有套用：這不是有效的配對碼。配對碼是 12 個字元，只有 0–9 與 a–f。",
     failed_address: "已確認，但沒有套用：這不是 Hub 的成員位址。",

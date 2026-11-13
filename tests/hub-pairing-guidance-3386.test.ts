@@ -193,7 +193,7 @@ describe("#3386 pairing confirmation hints follow the operation shown", () => {
     i18n.setLang("zh-TW", { store: false }); const {pg:zh}=await fixture(unpaired);
     expect(zh.root.querySelector("#hubAddress").parentElement.querySelector("small.note").textContent).toBe("配對碼一起提供的位址（結尾有連接埠），不是 Hub 網頁的位址。");
     await typeForm(zh, "https://hub.test:19443", "ABCD-EFGH");
-    expect(shape(zh)).toBe("這是加入碼。請在上方的「Hub 位址」輸入位址、空一格，再輸入這組碼。");
+    expect(shape(zh)).toBe("這是加入碼。請在這張卡片最上方的「Hub 位址」輸入位址、空一格，再輸入這組碼。");
   });
   it.each([["code", "not a valid pairing code"], ["address", "not a Hub's member address"], ["unreachable", "could not be reached"], ["refused", "refused this pairing code"], ["busy", "the Hub is busy"]])("#3840: a confirmed connect failed with %s names that reason", async (reason, words) => {
     let decide!:(v:any)=>void;const settled=new Promise(r=>{decide=r;});
