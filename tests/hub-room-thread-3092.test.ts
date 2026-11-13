@@ -96,6 +96,22 @@ describe("a room on the page", () => {
       expect(msgs(pg).some((m) => m.textContent.includes("please report"))).toBe(true);
     } finally { restore(); }
   });
+  it("a room manager has the room settings button; a member does not; the members toggle is the team icon", async () => {
+    const mgr = await roomPage("room-weekly");
+    try {
+      await until(() => mgr.pg.root.querySelector(".hub-room-page .hub-room-settings-open"));
+      expect(mgr.pg.root.querySelector(".hub-room-page .hub-room-settings-open")!.getAttribute("aria-label")).toBe("Room settings");
+      expect(mgr.pg.root.querySelector(".hub-room-page .hub-chat-head")!.textContent).not.toContain("\u{1F465}");
+    } finally { mgr.restore(); }
+  });
+  it("a room member has no room settings button", async () => {
+    const member = await roomPage("room-rd");
+    try {
+      await until(() => member.pg.root.querySelector(".hub-room-page .composer-box"));
+      await settle(20);
+      expect(member.pg.root.querySelector(".hub-room-page .hub-room-settings-open")).toBeNull();
+    } finally { member.restore(); }
+  });
   it("members may not @all here: the refusal is worded, no resend offered", async () => {
     const { pg, restore } = await roomPage("room-rd");
     try {

@@ -9,6 +9,7 @@
 // an idempotency key, and answers HubThread's store interface.
 import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { RailFrame } from "/assets/side-rail.js";
+import { Icon } from "/assets/ui-icons.js";
 import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
@@ -138,6 +139,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const [reply, setReply] = useState(null), [rail, setRail] = useState(true);
   const input = useRef(null), threadRef = useRef(null), insert = useRef(null);
   const Panel = useMembersPanel();
+  // dev-claude2's room settings (hub-room-settings.js), opened from the header or the members panel.
+  const [settings, setSettings] = useState(null);
+  const openSettings = () => { import("./hub-room-settings.js").then((m) => { if (typeof m.RoomSettings === "function") setSettings(() => m.RoomSettings); }, () => {}); };
   const detail = store.detail(), room = detail?.room || listed || {}, group = room.kind === "group";
   // The Hub assistant's one-to-one is named by its flag, in this viewer's words (its stored name is a fallback).
   const title = room.assistant ? hroom("hubAssistant") : String(room.name || "");
@@ -158,7 +162,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         <span class=${`av${group ? " av-square" : ""}`} aria-hidden="true"><span class="av-text">${firstCharacter(title || "?") || "?"}</span></span>
         <span class="hub-chat-title"><strong>${title}</strong><span class="s">${line2}</span></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${rail ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
-          onClick=${() => setRail(!rail)}>👥</button>` : null}
+          onClick=${() => setRail(!rail)}><${Icon} name="team" size=${18} /></button>` : null}
+        ${group && detail?.me?.role === "manager" ? html`<button type="button" class="icon-btn hub-room-settings-open" title=${hroom("roomSettings")} aria-label=${hroom("roomSettings")}
+          onClick=${openSettings}><${Icon} name="settings" size=${18} /></button>` : null}
       </header>
       <${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
         emptyView=${room.assistant ? html`<p class="note hub-assistant-empty">${hroom("hubAssistantEmpty")}</p>`
@@ -169,6 +175,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
       <${Panel} client=${client} roomId=${roomId} detail=${detail}
         onMention=${(m) => insert.current?.(`@${m.name}`)}
         onOpenChat=${(m) => { const direct = rooms.find((r) => r.kind === "direct" && r.agent?.exposureId === m.id); if (direct) openRoom(direct.id); }}
-        onSettings=${() => {}} /></${RailFrame}>` : null}
+        onSettings=${openSettings} /></${RailFrame}>` : null}
+    ${settings && detail ? html`<${settings} client=${client} roomId=${roomId} detail=${detail} assistant=${hasAssistant}
+      onClose=${() => setSettings(null)} onChanged=${() => { void store.refresh(); }} />` : null}
   </div>`;
 }
