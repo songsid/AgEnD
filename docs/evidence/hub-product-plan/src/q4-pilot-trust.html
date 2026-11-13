@@ -1,13 +1,10 @@
-<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><link rel="stylesheet" href="m.css"><body><h1>試行期間：測試模式，用加入說明裡的指紋信任自簽憑證的 Hub <span class="tag">設計示意，非現有畫面</span></h1>
-<p class="sub">管理員開一個開關，複製出去的加入說明就帶著 Hub 的指紋。同仁整段貼上即可，沒有比對畫面。換上受信任的憑證後關閉。</p>
-<div class="row"><div class="col"><p class="cap">Hub 管理 →「讓同仁加入」步驟 3</p><div class="card">
-<div class="imp" style="margin-top:0;border-color:#e6c65c;background:#fffaf0"><span class="sw"></span><b>測試模式：用連結裡的指紋信任這個 Hub</b><br><span class="muted">這個 Hub 用的是自簽憑證。開啟後，同仁貼上下方的加入說明就能連接，不用先安裝憑證。換上受信任的憑證後請關閉。</span></div>
-<div class="step" style="border-top:0"><div class="num">3</div><div style="flex:1"><b>告訴同仁怎麼加入</b>
-<div class="in" style="display:block;font-size:14px">在 AgEnD「設定 → Hub」貼上這整段：<br><span class="mono">hub.example.com:19443 MDGH-KKAW</span><br><span class="mono" style="color:#777">指紋 sha256:3f9a27…c41e</span></div>
-<span class="muted">請整段複製，少了最後一行就無法連接。</span><br><span class="btn">複製</span></div></div></div></div>
-<div class="col"><p class="cap">同仁的 AgEnD「設定 → Hub」</p><div class="card"><h2>Hub 連接 <span class="pill gray">尚未連接</span></h2>
-<div class="grp">Hub 位址</div><div class="in" style="margin-top:4px;display:block;font-size:13.5px"><span class="mono">hub.example.com:19443 MDGH-KKAW 指紋 sha256:3f9a27…c41e</span></div>
-<span class="muted">找到「Acme Hub」。這台 Fleet 會顯示為「xiaoming-pc」<br><span class="ok">已帶入加入碼與這個 Hub 的指紋（測試模式）。</span></span><br><span class="btn">以公司帳號登入</span>
-<div class="imp"><b>只輸入位址時</b><br><span class="muted">hub.example.com:19443 用的是測試用的自簽憑證。請貼上 Hub 管理員給你的整段加入說明（含指紋），不要只輸入位址。</span></div></div></div></div>
-<div class="note">現在：只輸入位址是死路（「憑證不受這台電腦信任，所以沒有連接」），含金鑰指紋的長連結也一樣過不了。</div>
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><link rel="stylesheet" href="m.css"><body><h1>試行期間：在「Hub 位址」直接信任自簽憑證的 Hub <span class="tag">設計示意，非現有畫面</span></h1>
+<p class="sub">現在這裡是死路（「憑證不受這台電腦信任，所以沒有連接」）。試行期間多一個按鈕，按一次就能繼續。正式憑證綁好之後，這一段不會再出現。</p>
+<div class="card" style="max-width:820px"><h2>Hub 連接 <span class="pill gray">尚未連接</span></h2>
+<div class="grp">Hub 位址</div><div class="in" style="margin-top:4px"><span class="mono">hub.example.com:19443</span></div>
+<div class="imp" style="border-color:#e6c65c;background:#fffaf0"><b>這個 Hub 用的是測試用的自簽憑證</b><br><span class="muted">這台電腦無法自動確認它的身分。如果這是你們團隊試行中的 Hub，可以先信任它；之後它的憑證若改變，會再問你一次。</span>
+<div class="mono" style="margin:8px 0;font-size:13px">憑證指紋　3F:9A:27:…:C4:1E　<span class="link">顯示完整指紋</span></div>
+<span class="btn">信任這個 Hub 並繼續</span><span class="btn ghost">取消</span></div>
+<div class="muted" style="margin-top:10px">接著和平常一樣：找到「Acme Hub」→ 以公司帳號登入。</div></div>
+<div class="note">關閉方式：Fleet 的設定「允許信任自簽憑證的 Hub（測試用）」，alpha 版預設開啟、正式版預設關閉。Hub 換上正式憑證後，已信任的 Fleet 會自動改用一般的憑證檢查。</div>
 </body></html>
