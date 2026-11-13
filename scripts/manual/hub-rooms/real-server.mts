@@ -1,4 +1,4 @@
-/** Shared U1/U2 UI against real R HTTP/SQLite and A service. Directory/worker are inert; no API response fixture. */
+/** Shared U1/U2 UI against real R HTTP/SQLite and A service plus C consent. Directory/worker are inert; no API response fixture. */
 import { createRequire } from "node:module";
 import { createServer } from "node:https";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
@@ -10,6 +10,8 @@ import { provisionHubIdentity } from "../../../src/hub/tls.js";
 import { personKeyString } from "../../../src/hub/identity.js";
 import { createHubDirectoryAdmission } from "../../../src/hub/directory/admission.js";
 import { RoomAssistantService } from "../../../src/hub/assistant/service.js";
+import { createHubRoomInvitations, HUB_ROOM_INVITATIONS_MIGRATION } from "../../../src/hub/invitations.js";
+import type { HubExposure } from "../../../src/hub/types.js";
 
 const repo = process.cwd(), out = resolve(process.env.OUT ?? ".artifacts/rooms-integration/browser");
 mkdirSync(out, { recursive: true });
@@ -26,6 +28,9 @@ const service = new RoomAssistantService({
   store: { load: async () => null, save: async () => {} },
   backends: () => [{ id: "claude-code", name: "Claude", accounts: [{ id: null, name: "Default", state: "signed-in" }] }],
 });
+r.httpDeps.uow.atomic(tx => HUB_ROOM_INVITATIONS_MIGRATION.up(r.sql(tx)));
+r.httpDeps.roomInvitations = createHubRoomInvitations;
+const consentFleet = randomUUID(), consentLink = r.link(consentFleet, alex), exposures: HubExposure[] = [];
 await service.settings(); r.httpDeps.roomAssistant = service; r.httpDeps.assistantAdmin = service; await r.restartHttp();
 const config = { enabled: true, backend: "claude-code", account: null, cap: 3, idleMinutes: 15 };
 if ((await r.call(admin, "PUT", "/hub/v1/admin/assistant", config)).status !== 200) throw Error("assistant configure");
@@ -39,7 +44,7 @@ const server = createServer({ key: readFileSync(join(keys, "hub/keys/tls-key.pem
 await new Promise<void>(yes => server.listen(port, "127.0.0.1", yes));
 const pw = createRequire(resolve(process.env.PW_DIR!, "package.json"))("playwright-core"), browser = await pw.chromium.launch({ args: ["--no-sandbox"] });
 const sha = (data: Buffer | string) => createHash("sha256").update(data).digest("hex");
-const receipt: any = { sourceHead: execFileSync("git", ["-c", "gc.auto=0", "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), scope: "Real R HTTP/SQLite + A service/runner + shared U1/U2 browser components; inert directory and physical worker; all list/new-room/thread/settings/admin views mounted by the actual Hub shell; invitations/Teams remain uncomposed", checks: [], pictures: [], requests: [] };
+const receipt: any = { sourceHead: execFileSync("git", ["-c", "gc.auto=0", "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), scope: "Real R HTTP/SQLite + A service/runner + shared U1/U2 browser components; inert directory and physical worker; all list/new-room/thread/settings/admin views mounted by the actual Hub shell; C consent service/migration are injected at the real HTTP boundary; Teams remain uncomposed; production factory registration is checked separately by hub-compose tests", checks: [], pictures: [], requests: [], served: {} };
 const check = (name: string, ok: unknown, detail?: unknown) => { receipt.checks.push({ name, ok: !!ok, ...(ok ? {} : { detail }) }); console.log(`${ok ? "PASS" : "FAIL"} ${name}`); };
 try {
   for (const [device, lang, theme] of [["desktop", "en", "light"], ["phone", "zh-TW", "dark"]]) {
@@ -49,7 +54,12 @@ try {
     await context.addInitScript(({ lang, theme }) => { localStorage.setItem("agend_lang", lang); localStorage.setItem("agend_theme", theme); localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1"); }, { lang, theme });
     await context.route("**/*", (route: any) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
     const p = await context.newPage(); p.on("pageerror", (e: Error) => errors.push(e.message));
-    p.on("response", (response: any) => { const u = new URL(response.url()); if (u.pathname.startsWith("/hub/v1/")) receipt.requests.push({ method: response.request().method(), path: u.pathname + u.search, status: response.status() }); });
+    const responses: Promise<void>[] = [];
+    p.on("response", (response: any) => {
+      const u = new URL(response.url());
+      if (u.pathname.startsWith("/hub/v1/")) receipt.requests.push({ method: response.request().method(), path: u.pathname + u.search, status: response.status() });
+      if (u.pathname.startsWith("/assets/") || u.pathname.startsWith("/ui/js/")) responses.push(response.body().then((body: Buffer) => { receipt.served[u.pathname] = sha(body); }).catch(() => {}));
+    });
     const shot = async (name: string) => { const path = `${tag}-${name}.png`; await p.screenshot({ path: join(out, path), fullPage: true }); receipt.pictures.push({ path, sha256: sha(readFileSync(join(out, path))) }); };
     await p.goto(origin + "/ui/hub"); await p.locator(".inst-name:visible").filter({ hasText: "Pilot weekly" }).first().waitFor();
     check(tag + " list reads real room and private assistant", (await p.locator("body").innerText()).includes(lang === "en" ? "Hub assistant" : "Hub 助理")); await shot("list");
@@ -98,6 +108,35 @@ try {
     await p.getByText("Owned assistant answer: Browser plain assistant request " + tag, { exact: true }).first().waitFor();
     check(tag + " plain private ask reaches actual A service", workerCalls > 0);
     check(tag + " assistant label follows viewer language", lang !== "zh-TW" || !(await p.locator("body").innerText()).includes("Hub assistant")); await shot("assistant");
+    const exposureId = randomUUID();
+    exposures.push({ id: exposureId, fleetId: consentFleet, owner: alex, displayName: "Notes " + tag, revision: 1,
+      state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) });
+    await r.http.receive(r.frame("exposure.snapshot", { revision: exposures.length, exposures }, consentLink) as never, consentLink);
+    const consentRoom = await r.call(admin, "POST", "/hub/v1/rooms", { name: "Consent room " + tag, people: [personKeyString(unseen)] });
+    check(tag + " consent room created", consentRoom.status === 200);
+    const consentRoomId = consentRoom.json.room.id;
+    const invite = await r.call(admin, "POST", `/hub/v1/rooms/${consentRoomId}/invitations`, { agents: [exposureId] });
+    check(tag + " C invitation created by actual HTTP", invite.status === 200);
+    await p.goto(origin + "/ui/hub?view=invitations"); await p.locator(".hub-invitation").waitFor();
+    check(tag + " actual owner page discloses the room and people count", (await p.locator(".hub-invitation").innerText()).includes("Consent room " + tag)
+      && (await p.locator(".hub-invitation").innerText()).includes(lang === "en" ? "2 people" : "2 個人"));
+    await shot("consent-pending");
+    await p.getByRole("button", { name: lang === "en" ? "Agree" : "同意", exact: true }).click();
+    await p.locator(".hub-invitation").waitFor({ state: "detached" });
+    await p.goto(origin + "/ui/hub/exposures?agent=" + exposureId); await p.locator(".hub-agent-rooms li").waitFor();
+    check(tag + " owner acceptance persisted exact agent membership", !!r.db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(consentRoomId, exposureId));
+    check(tag + " consent did not add owner as person", !r.db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='person' AND subject=?").get(consentRoomId, personKeyString(alex)));
+    check(tag + " owner room list names the accepted room", (await p.locator(".hub-agent-rooms").innerText()).includes("Consent room " + tag));
+    await shot("consent-accepted");
+    await p.locator(".hub-agent-rooms button").click(); await p.locator(".hub-agent-rooms").waitFor({ state: "detached" });
+    check(tag + " owner removal persisted through actual route", !r.db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(consentRoomId, exposureId));
+    const reinvited = await r.call(admin, "POST", `/hub/v1/rooms/${consentRoomId}/invitations`, { agents: [exposureId] });
+    check(tag + " manager can invite again after owner removal", reinvited.status === 200);
+    await p.goto(origin + "/ui/hub?view=invitations"); await p.locator(".hub-invitation").waitFor();
+    await p.getByRole("button", { name: lang === "en" ? "Decline" : "不要", exact: true }).click();
+    await p.locator(".hub-invitation").waitFor({ state: "detached" });
+    check(tag + " decline persisted without re-adding agent", (r.db.prepare("SELECT state FROM hub_room_invitations WHERE id=?").get(reinvited.json.invited[0].id) as { state: string }).state === "declined"
+      && !r.db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(consentRoomId, exposureId));
     check(tag + " no page errors", errors.length === 0, errors);
     check(tag + " no horizontal document overflow", await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     const adminAt = admin.cookie.indexOf("="); await context.clearCookies();
@@ -123,7 +162,7 @@ try {
       await assistantCard.locator(".s-group .note").first().scrollIntoViewIfNeeded(); await shot("admin-account");
     }
     await p.locator(".hub-fleet-list").scrollIntoViewIfNeeded(); await shot("admin-tail");
-    await context.close();
+    await Promise.all(responses); await context.close();
   }
 } catch (error) { check("run completed", false, String(error)); }
 finally {
