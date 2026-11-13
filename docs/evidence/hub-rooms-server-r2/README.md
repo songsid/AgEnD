@@ -29,3 +29,14 @@ Current source checkpoint: `7df4c2a851f37c7ef0b3917cb065a51d9c3054a5`. Two new a
 History, last-message/unread and SSE all filter late answers by their original question's join floor. The test opens the new member's real SSE stream, completes the old answer, then receives their own new marker and proves the old answer was not disclosed. Existing members retain late-answer unread.
 
 Latest54/54 across five suites above, plus fresh native source/test programs exit0. This supersedes the prior source/fixture digests for the changed paths; earlier outcomes retain their stated historical scopes. No extra security or mutation gate was added.
+
+
+## Same-link refusal recovery and final alpha sync
+
+Source checkpoint `8598a330a61fb28bb1366e140dd1ba04fb041c49`, containing plain merge of alpha `440e613d9` after R1 merged. The new fail-first case observed only one ask after its same-link 30-second retry deadline. The Fleet's bounded local refusal keeps its link, so reconnect-only dispatch could strand that ask. A registered additive `s3-room-retry` migration adds `last_sent_at` without rewriting the issued delivery. A current live link retries due work with the same frozen payload and ID; a new epoch can resend immediately. The issued epoch remains recorded for an in-flight answer. No negative ACK or new wire frame is added.
+
+Controls prove no early resend at29,999ms, exact retry at30,000ms on the same link, timer-only progress without another state event, cessation after consent removal, and one committed answer with exact ACK retries. The existing120-offline query-count bound still passes. The actual pinned TLS/WSS routing control retains its reconnect and lost-answer-ACK behavior. Final197/197 in9 suites pass after the alpha merge. Earlier40/5 and18/1 retry runs overlap this scope; do not sum them. Both native source/test programs exit0 and459 changelog fragments validate after this sync.
+
+`retry-sync.json` records nine conflict resolutions, each retaining the R2 image because the incoming image equals the approved R1 source. All21 own delta paths,7 incoming-only paths and13,335 unchanged paths match expected Git blobs and modes at this source checkpoint. Subsequent packet edits are evidence only. Ordinary review and fresh exact-head CI remain required; coordinator alone merges. TrackC composition consumes this public fix separately. No real Fleet, directory, account, CLI or browser run is claimed.
+
+Rollback uses a compatible corrected build; a pre-retry registry refuses this component. Retain the Hub DB, content keys, issued payloads and frozen answer history.
