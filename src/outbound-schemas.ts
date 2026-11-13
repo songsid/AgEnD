@@ -694,7 +694,7 @@ export const DeliveryStatusArgs = z.object({
   delivery_id: NonEmptyString.optional().describe("Exact durable delivery ID returned by AgEnD."),
   operation_id: NonEmptyString.optional().describe("Operation ID returned when the outbound tool was accepted."),
   correlation_id: NonEmptyString.optional().describe("Correlation ID from the original request; may return multiple deliveries."),
-  message_id: NonEmptyString.optional().describe("The message_id in an inbound message's header. Verify it before acting: 'Delivery not found' may mean hidden by ACL, expired retention, or never delivered. Do not act; ask the sender to explicitly forward a verifiable reference. Never resend on uncertain."),
+  message_id: NonEmptyString.optional().describe("The message_id in an inbound message's header. Verify it before acting: 'Delivery not found' may mean hidden by ACL, expired retention, or never delivered. Do not act; ask the sender to explicitly forward a verifiable reference. On uncertain, it may already have arrived: confirm it, and resend only if it shows failed."),
   limit: z.number().int().min(1).max(100).optional().describe("Maximum rows for operation/correlation queries (default 20, maximum 100)."),
   cursor: NonEmptyString.optional().describe("Opaque next-page cursor returned by the previous query."),
 }).strict().refine(args =>

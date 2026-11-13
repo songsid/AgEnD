@@ -97,7 +97,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["report_result", schemas.ReportResultArgs,
     "Report results back to an instance that delegated a task or asked a question. Wrapper around send_to_instance with request_kind=report."],
   ["delivery_status", schemas.DeliveryStatusArgs,
-    "Read the status of a previously accepted delivery by delivery_id, operation_id, correlation_id, or message_id (human verification uses verification_id / agend-human-id, not the platform message_id). You can read your source/target rows and explicitly forwarded references; knowing an ID grants nothing. Not found also covers hidden/expired rows. Human receipts expose immutable original content, origin, original/wire hashes and owned proof_kind; native acceptance is not consumption. Uncertain means do not resend blindly."],
+    "Read the status of a previously accepted delivery by delivery_id, operation_id, correlation_id, or message_id (human verification uses verification_id / agend-human-id, not the platform message_id). You can read your source/target rows and explicitly forwarded references; knowing an ID grants nothing. Not found also covers hidden/expired rows. Human receipts expose immutable original content, origin, original/wire hashes and owned proof_kind; native acceptance is not consumption. Uncertain means it may already have arrived: confirm it, and resend only if it later shows failed."],
   ["create_team", schemas.CreateTeamArgs,
     "Create a named group of instances for targeted broadcasting. Teams persist across restarts."],
   ["delete_team", schemas.DeleteTeamArgs,

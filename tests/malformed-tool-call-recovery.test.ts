@@ -25,7 +25,7 @@ const standingIn = <T,>(stub: object): T => stub as unknown as T;
 
 const logger = pino({ level: "silent" }) as Logger;
 const dirs: string[] = [];
-const MARKER = "(Reply using the reply tool — do NOT respond with direct text)";
+const MARKER = "(Answer with the reply tool; terminal text does not reach them.)";
 const MALFORMED_PANE = [
   "older output",
   MARKER,
