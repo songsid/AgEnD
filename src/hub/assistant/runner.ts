@@ -1,4 +1,5 @@
 import type { RoomAssistant, RoomAssistantAsk, RoomAssistantConfig, RoomAssistantHost, RoomAssistantSession } from "./types.js";
+import { roomAssistantContext } from "./context.js";
 
 function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (error: unknown) => void;
@@ -50,7 +51,7 @@ export class RoomAssistantRunner implements RoomAssistant {
     return {
       enabled: !this.closed && this.config.enabled,
       backend: this.config.backend,
-      running: this.entries.size,
+      running: [...this.entries.values()].filter(entry => entry.state !== "idle").length,
       cap: this.config.cap,
       state: paused ? "paused" : this.queue.length || [...this.entries.values()].some(entry => entry.state !== "idle") ? "busy" : "idle",
       ...(failed ? { note: "instance-stop-failed" } : {}),
@@ -63,14 +64,16 @@ export class RoomAssistantRunner implements RoomAssistant {
     if (!input || typeof input.roomId !== "string" || !input.roomId || typeof input.roomName !== "string"
       || typeof input.messageId !== "string" || !input.messageId || typeof input.text !== "string"
       || !input.asker || typeof input.asker.name !== "string" || !Array.isArray(input.context)
-      || !input.context.every(row => row && typeof row.author === "string" && typeof row.text === "string" && Number.isFinite(row.at))) {
+      || !input.context.every(row => row && typeof row.author === "string" && typeof row.text === "string" && Number.isFinite(row.at)
+        && (row.repliedTo === undefined || row.repliedTo === true))
+      || input.context.filter(row => row.repliedTo === true).length > 1) {
       return Promise.reject(new Error("Invalid room assistant ask"));
     }
     // Snapshot at admission: caller mutations and an adjacent room's later asks cannot alter this turn's context.
     const copy: RoomAssistantAsk = {
       roomId: input.roomId, roomName: input.roomName, messageId: input.messageId,
       asker: { name: input.asker.name }, text: input.text,
-      context: input.context.slice(-30).map(row => ({ author: row.author, text: row.text, at: row.at })),
+      context: roomAssistantContext(input.context),
     };
     const job: Job = { ...deferred<{ text: string }>(), input: copy };
     this.queue.push(job);

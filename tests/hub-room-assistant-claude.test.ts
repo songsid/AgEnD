@@ -9,6 +9,12 @@ import { CLAUDE_ASSISTANT_MIN_VERSION, createClaudeAssistantHost } from "../src/
 import type { RoomAssistantAsk, RoomAssistantSession } from "../src/hub/assistant/types.js";
 
 const request = (roomId = "room-a"): RoomAssistantAsk => ({ roomId, roomName: "Weekly meeting", messageId: "m-1", asker: { name: "Han" }, text: "Summarise", context: [{ author: "Jo", text: "Done", at: 1 }] });
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(yes => { resolve = yes; });
+  return { promise, resolve };
+}
+const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 class FakeChild extends EventEmitter {
   stdin = new PassThrough(); stdout = new PassThrough(); stderr = new PassThrough();
   writes: string[] = [];
@@ -35,8 +41,9 @@ async function world() {
   const root = await mkdtemp(join(tmpdir(), "hub-assistant-claude-")); roots.push(root);
   const binary = join(root, "inert-claude"), home = join(root, "operator"), fleetHome = join(root, "fleet"), instanceHome = join(root, "chosen-instance-root");
   await writeFile(binary, "This inert fixture must never be executed.\n"); await mkdir(home);
+  let next = deferred<FakeChild>();
   const launch = vi.fn((binary: string, args: string[], options: any) => {
-    const child = new FakeChild(args, options); children.push(child); return child;
+    const child = new FakeChild(args, options); children.push(child); next.resolve(child); next = deferred<FakeChild>(); return child;
   });
   const version = vi.fn(async () => CLAUDE_ASSISTANT_MIN_VERSION as string | null);
   const environment = { HOME: home, PATH: "/inert", AGEND_INSTANCE_NAME: "operator", AGEND_AGENT_TOKEN: "not-for-assistant",
@@ -48,7 +55,7 @@ async function world() {
     sessions.push(session);
     return { session, child: children.at(-1)!, controller };
   };
-  return { host, root, home, fleetHome, instanceHome, binary, launch, version, environment, start };
+  return { host, root, home, fleetHome, instanceHome, binary, launch, version, environment, start, nextChild: () => next.promise };
 }
 
 describe("Hub host Fleet tools-off Claude adapter (inert process only)", () => {
@@ -99,21 +106,28 @@ describe("Hub host Fleet tools-off Claude adapter (inert process only)", () => {
     expect(w.launch).toHaveBeenCalledTimes(1);
   });
 
-  it("returns text only from the owned session's successful result and keeps one process for sequential turns", async () => {
+  it("uses a new one-shot worker for each turn, without retaining or duplicating prior conversation", async () => {
     const w = await world(), a = await w.start();
-    const first = a.session.ask(request(), a.controller.signal);
-    a.child.init(); a.child.result("**Summary**");
+    const first = a.session.ask(request(), a.controller.signal); await flush();
+    a.child.init(); a.child.result("**Summary**"); a.child.close();
     expect(await first).toEqual({ text: "**Summary**" });
+    expect(a.child.stdin.writableEnded).toBe(true);
+    const spawned = w.nextChild();
     const second = a.session.ask({ ...request(), messageId: "m-2", text: "Follow up" }, a.controller.signal);
-    a.child.result("Follow-up"); expect(await second).toEqual({ text: "Follow-up" });
-    expect(w.launch).toHaveBeenCalledTimes(1);
-    const sent = a.child.writes.map(line => JSON.parse(line));
+    const secondChild = await spawned; await flush();
+    expect(secondChild.sessionId).not.toBe(a.child.sessionId);
+    expect(secondChild.options.cwd).not.toBe(a.child.options.cwd);
+    secondChild.init(); secondChild.result("Follow-up"); secondChild.close();
+    expect(await second).toEqual({ text: "Follow-up" });
+    expect(w.launch).toHaveBeenCalledTimes(2);
+    const sent = [...a.child.writes, ...secondChild.writes].map(line => JSON.parse(line));
     expect(sent.map(frame => JSON.parse(frame.message.content))).toEqual([
       { room: { id: "room-a", name: "Weekly meeting" }, messageId: "m-1", asker: "Han", recentMessages: request().context, request: "Summarise" },
       { room: { id: "room-a", name: "Weekly meeting" }, messageId: "m-2", asker: "Han", recentMessages: request().context, request: "Follow up" },
     ]);
     await expect(a.session.ask(request("room-b"), a.controller.signal)).rejects.toThrow("unavailable");
-    expect(a.child.writes).toHaveLength(2);
+    expect(a.child.writes).toHaveLength(1); expect(secondChild.writes).toHaveLength(1);
+    expect(w.launch).toHaveBeenCalledTimes(2);
   });
 
   it.each([
@@ -125,7 +139,9 @@ describe("Hub host Fleet tools-off Claude adapter (inert process only)", () => {
     const w = await world(), a = await w.start();
     const result = a.session.ask(request(), a.controller.signal);
     const rejected = expect(result).rejects.toThrow();
+    await flush();
     a.child.frame({ session_id: a.child.sessionId, ...frame });
+    a.child.close();
     await rejected;
     expect(a.child.kill).toHaveBeenCalledWith("SIGTERM");
   });
@@ -133,12 +149,14 @@ describe("Hub host Fleet tools-off Claude adapter (inert process only)", () => {
   it.each(["no-init", "foreign-session", "vendor-error", "malformed-json", "null"])("rejects unowned or incomplete result: %s", async kind => {
     const w = await world(), a = await w.start();
     const result = a.session.ask(request(), a.controller.signal), rejected = expect(result).rejects.toThrow();
+    await flush();
     if (kind !== "no-init") a.child.init();
     if (kind === "foreign-session") a.child.result("wrong", { session_id: "another-room" });
     else if (kind === "vendor-error") a.child.result("private vendor detail must not escape", { is_error: true });
     else if (kind === "malformed-json") a.child.stdout.write("not json\n");
     else if (kind === "null") a.child.frame(null);
     else a.child.result("not proven");
+    a.child.close();
     await rejected;
     expect(a.child.kill).toHaveBeenCalledWith("SIGTERM");
   });
@@ -146,6 +164,7 @@ describe("Hub host Fleet tools-off Claude adapter (inert process only)", () => {
   it("holds stop until process close, then removes only its owned scratch directory", async () => {
     const w = await world(), a = await w.start(), result = a.session.ask(request(), a.controller.signal);
     const rejected = expect(result).rejects.toThrow("stopped");
+    await flush();
     const stop = a.session.stop(), done = vi.fn(); void stop.then(done);
     await rejected; await Promise.resolve();
     expect(done).not.toHaveBeenCalled();
@@ -155,10 +174,25 @@ describe("Hub host Fleet tools-off Claude adapter (inert process only)", () => {
     expect(await readFile(w.binary, "utf8")).toContain("inert fixture");
   });
 
+  it("returns an answer only after the one-shot worker closes, preserving an older replied-to anchor", async () => {
+    const w = await world(), a = await w.start(), ask = request();
+    ask.context = Array.from({ length: 35 }, (_, at) => ({ author: "Han", text: `Row ${at}`, at, ...(at === 1 ? { repliedTo: true as const } : {}) }));
+    const result = a.session.ask(ask, a.controller.signal), settled = vi.fn(); void result.then(settled);
+    await flush();
+    const sent = JSON.parse(JSON.parse(a.child.writes[0]).message.content);
+    expect(sent.recentMessages.map((row: any) => row.at)).toEqual([1, ...Array.from({ length: 30 }, (_, i) => i + 5)]);
+    expect(sent.recentMessages[0].repliedTo).toBe(true);
+    a.child.init(); a.child.result("Bounded answer"); await flush();
+    expect(settled).not.toHaveBeenCalled();
+    a.child.close(); expect(await result).toEqual({ text: "Bounded answer" });
+  });
+
   it("aborts a pending turn and never returns its later text", async () => {
     const w = await world(), a = await w.start(), result = a.session.ask(request(), a.controller.signal);
     const rejected = expect(result).rejects.toThrow("cancelled");
+    await flush();
     a.controller.abort(); a.child.init(); a.child.result("too late");
+    a.child.close();
     await rejected;
     expect(a.child.kill).toHaveBeenCalledTimes(1);
     await expect(a.session.ask(request(), new AbortController().signal)).rejects.toThrow("unavailable");
