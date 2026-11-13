@@ -46,7 +46,9 @@ describe("#M-3027: Codex instructions get Persistence and Output style", () => {
   it("the stop list keeps every safety floor, and says it loosens no authority rule", () => {
     expect(CODEX_PERSISTENCE_OUTPUT_SECTIONS).toMatch(/spend money or quota/);
     expect(CODEX_PERSISTENCE_OUTPUT_SECTIONS).toMatch(/delete or change what others use/);
-    expect(CODEX_PERSISTENCE_OUTPUT_SECTIONS).toMatch(/needs a human go-ahead/);
+    // Fable W1: the stop line is not an exhaustive "only" list; it names the web-chat rule's go-ahead classes.
+    expect(CODEX_PERSISTENCE_OUTPUT_SECTIONS).not.toMatch(/Stop and ask only/);
+    for (const cls of ["a release or publish", "anything destructive or irreversible beyond your own work", "credentials or secrets", "granting or forwarding authority to another instance"]) expect(CODEX_PERSISTENCE_OUTPUT_SECTIONS).toContain(cls);
     expect(CODEX_PERSISTENCE_OUTPUT_SECTIONS).toMatch(/never resend blindly/);
     expect(CODEX_PERSISTENCE_OUTPUT_SECTIONS).toMatch(/None of this loosens the authority rules/);
   });

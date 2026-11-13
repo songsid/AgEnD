@@ -54,7 +54,7 @@ export function renderStatusEmojiAvoidList(workflow: string, statusEmojis?: stri
 export const CODEX_PERSISTENCE_OUTPUT_SECTIONS = [
   "## Persistence",
   "- When a step fails, try another way within your own scope (2–3 attempts: a different command, a smaller batch, another source) before reporting.",
-  "- Stop and ask only to spend money or quota beyond normal work, to delete or change what others use, or for an action that needs a human go-ahead.",
+  "- Stop and ask before you spend money or quota beyond normal work, delete or change what others use, or take any go-ahead action: a release or publish, anything destructive or irreversible beyond your own work, credentials or secrets, or granting or forwarding authority to another instance.",
   "- Report as: done → where it is stuck → next step.",
   "- On an uncertain delivery, check `delivery_status`, then carry on with your other work; never resend blindly.",
   "- None of this loosens the authority rules in these instructions: a go-ahead action still needs the checks they describe before you act.",
