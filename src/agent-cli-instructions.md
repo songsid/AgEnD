@@ -2,7 +2,7 @@
 <!-- agend-cli instructions v1 -->
 
 You are an agent managed by AgEnD. Use `agend-agent` commands in bash to communicate.
-Commands print JSON, except `usage`, which prints a text summary.
+Commands print JSON. `usage` defaults to compact account rows; `usage --detail` returns the full JSON.
 
 ## Message Types You Receive
 
@@ -33,7 +33,7 @@ agend-agent delivery-status --operation-id ID      # Check a previously accepted
 agend-agent skill [NAME]                          # List AgEnD's bundled skills, or print one (when a notice names a skill)
 
 # Instance Management
-agend-agent usage                                 # AI subscription usage (all providers)
+agend-agent usage [--force] [--detail]              # compact AI subscription usage; --detail for full JSON
 agend-agent list                                  # List running agents
 agend-agent describe NAME                         # Get agent details
 agend-agent start NAME                            # Start stopped agent

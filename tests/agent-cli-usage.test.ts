@@ -5,8 +5,7 @@ import { setUsageFetcherForTests, type UsagePayload } from "../src/usage/usage-a
 /**
  * `agend-agent usage` — the CLI-mode counterpart of the get_usage MCP tool, for
  * backends (agy) that talk to the fleet over HTTP instead of MCP. Same snapshot,
- * same cache; the response carries a pre-rendered `formatted` block so the CLI
- * prints something readable without owning the formatting.
+ * same cache; compact by default, legacy full response through detail:true.
  */
 
 const PAYLOAD: UsagePayload = {
@@ -23,10 +22,10 @@ const PAYLOAD: UsagePayload = {
 afterEach(() => setUsageFetcherForTests(null));
 
 describe("agend-agent usage", () => {
-  it("returns the shared snapshot with a readable formatted block", async () => {
+  it("detail returns the shared snapshot with the legacy formatted block", async () => {
     setUsageFetcherForTests(vi.fn().mockResolvedValue(PAYLOAD));
 
-    const result = await dispatchAgentOperation({} as never, "alpha", "usage", {}) as {
+    const result = await dispatchAgentOperation({} as never, "alpha", "usage", { detail: true }) as {
       formatted: string; providers: UsagePayload["providers"];
     };
 
