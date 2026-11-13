@@ -107,6 +107,8 @@ register("hubRoom", {
     joinAsManager: "Join as a room manager",
     // §12 unread: unreadN is the list-row count tooltip; mentionedYou is the row's @ mark.
     unreadPrefix: "({0})", unreadN: "{0} unread", mentionMark: "@", mentionedYou: "Mentioned you",
+    // M-3092: a room's own line when an administrator joins; the prompts of a one-to-one chat (an agent's, the Hub assistant's).
+    sysAdminJoined: "{0} joined as a room manager", composerAssistant: "Ask the Hub assistant", composerDirect: "Ask {0}",
   },
   "zh-TW": {
     chat: "對話", room: "房間", members: "成員", roomManager: "房間管理",
@@ -197,6 +199,7 @@ register("hubRoom", {
     noContent: "這裡看不到任何房間的內容。",
     joinAsManager: "加入自己成為房間管理",
     unreadPrefix: "({0})", unreadN: "{0} 則未讀", mentionMark: "@", mentionedYou: "有人 @ 你",
+    sysAdminJoined: "{0} 以房間管理的身分加入", composerAssistant: "問 Hub 助理", composerDirect: "問 {0}",
   },
 });
 
