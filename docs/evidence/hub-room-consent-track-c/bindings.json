@@ -1,0 +1,37 @@
+{
+  "serviceBlobs": [
+    {
+      "head": "39b9000ad65da895b1239b5642bfa0efaf5d2a68",
+      "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
+    },
+    {
+      "head": "d92b8cb1425d46c6a7777b5e38772cf07e2ad49d",
+      "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
+    },
+    {
+      "head": "7c5f0260e70e5fe04a511c412fd67f3af56fbefd",
+      "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
+    },
+    {
+      "head": "0d166da349168ad09af4a9d52803439b88a35f48",
+      "sha256": "195e5c6a8329c01a11ac306c90ba902f96e5b97f4c43f1d93fdb7014a42f61a9"
+    }
+  ],
+  "currentInputsHead": "0d166da349168ad09af4a9d52803439b88a35f48",
+  "captures": [
+    {
+      "receipt": "docs/evidence/hub-room-consent-track-c/browser-1/receipt.json",
+      "head": "d92b8cb1425d46c6a7777b5e38772cf07e2ad49d",
+      "harnessSha256": "58ebb0acc930e033082813921e83d0d0092ebf727494bc4cce0367ecb84e912f",
+      "pictures": 8,
+      "complete": false
+    },
+    {
+      "receipt": "docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json",
+      "head": "7c5f0260e70e5fe04a511c412fd67f3af56fbefd",
+      "harnessSha256": "d3b71dd06354deeb974d2b932a94ba9a14e1249c80a70c7cedcf2de425a4bae0",
+      "pictures": 1,
+      "complete": false
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 cbccc69a64c1e6c4ec78633995bb41e0c8e9935f20c11158a655f91a9775da4b  docs/evidence/hub-room-consent-track-c/README.md
 e7b712c7fe7c5545775de2ad5f4e4f426890529a80d9a75c05c6b43b121c56c3  docs/evidence/hub-room-consent-track-c/acceptance.json
+8b444003190d51881dbab6f672758df9d6363fa50178d9bdcccfed8f1f295530  docs/evidence/hub-room-consent-track-c/bindings.json
 c341d4c4beabc93bf22790c08897395da1c4ffe852782119a0ac5ca14155a469  docs/evidence/hub-room-consent-track-c/browser-1/desktop-en-dark-accepted.png
 cd446f5c4ceff7f8bc274c35f4846c9974df9a0dd613b8e401bb9e8c69729193  docs/evidence/hub-room-consent-track-c/browser-1/desktop-en-dark-pending.png
 c97422ccddeae7ef9b7d05b1c92dcadee0821ab5c6cbc0518fc9c4bc6d2e8f44  docs/evidence/hub-room-consent-track-c/browser-1/desktop-en-light-accepted.png
@@ -14,12 +15,11 @@ e64ff4a860f8b2fc18f8e54fa5991b50b4f07bd1870bd2d032397c5c58f20b3a  docs/evidence/
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/current-baseline-types.log
 c7521ad55fad29c9bfe7b37ffc9fae4d78aaf87802ff42b21f80762dbf2a6a0d  docs/evidence/hub-room-consent-track-c/current-baseline.json
 699c29a7150b4cb113d288ea8b5127f55efaca8ee55af63c5c1f1ca7b422e7de  docs/evidence/hub-room-consent-track-c/current-baseline.log
-facfdb79b5e518b44cf05ee280af69db14f428165faa829290976bbb7c09646e  docs/evidence/hub-room-consent-track-c/inputs.sha256
+de01ffdbcd96d626c47a7f53f5dd1f12ab4521e77e856ad5bdae80088b1533e6  docs/evidence/hub-room-consent-track-c/inputs.sha256
 3c6606ea76bc03378966db661f4858ea9d97bbe30946ec96d5501ac1d6eff8ff  docs/evidence/hub-room-consent-track-c/integrated-focused.log
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/integrated-source-types.log
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/integrated-test-types.log
 8ece6eea275e320c29648322a47a80d7c196443500cb59ec52f5db0adf8af188  docs/evidence/hub-room-consent-track-c/integrated-verification.json
-5b46afa89129eaa0d438426165598ffe2538095375797c140bf80adb397ec18a  docs/evidence/hub-room-consent-track-c/mutations.py
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/mutations/I1-owner-decline-types.log
 2ba16ed7613c9d4c75ae47410563cb75e3a758bd7e5581f61401db3c769e06c2  docs/evidence/hub-room-consent-track-c/mutations/I1-owner-decline.log
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/hub-room-consent-track-c/mutations/I2-audit-rollback-types.log
@@ -34,8 +34,10 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/
 595784cccf70109fdf8ab3123789f9a00790f998c994f7b1cda7dbbf28ba671a  docs/evidence/hub-room-consent-track-c/mutations/I6-session-fence.log
 f588e3fce3bfd7d03a46354e98ed0c2c73ff0fbbd8a841166a35070534f24b41  docs/evidence/hub-room-consent-track-c/mutations/restored.json
 9ef6aa221c8195e1378176ddde26bd1c1e57f9cbc1d72c5df3753c99becad544  docs/evidence/hub-room-consent-track-c/mutations/summary.json
+5b46afa89129eaa0d438426165598ffe2538095375797c140bf80adb397ec18a  docs/evidence/hub-room-consent-track-c/mutations.py
 3b70824a79e382a23bf028b16b698724f551b8458b99ba6f20c4fe87d37841b7  docs/evidence/hub-room-consent-track-c/phone-diagnostic/execution.json
 cf66002c59481210f680ac8493b5ff614a3d260919aff81decd0898da269431b  docs/evidence/hub-room-consent-track-c/phone-diagnostic/phone-en-light-pending.png
 9300308e669b801520012c8a3d3c5ea047601a338ebdbbcbc17337eb8388817f  docs/evidence/hub-room-consent-track-c/phone-diagnostic/receipt.json
 8541410c5b7a7abe1873b2778058f8be3dcde0ac3d24d7b069d7ad4efb15fd16  docs/evidence/hub-room-consent-track-c/phone-diagnostic/run.log
 7d294d3e5afb0a6ff505f08325a8eae1afa0268ddc59596e5848f2a708700535  docs/evidence/hub-room-consent-track-c/post-baseline-restored.log
+7f6d19e9c06f5d77ede0c86e8820b58082827f0643408eaea811857969ca69fb  docs/evidence/hub-room-consent-track-c/visual-review.md
