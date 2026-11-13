@@ -42,7 +42,7 @@ const meta = { instanceName: "sender", requestId: 1, fleetRequestId: undefined, 
 
 async function callTool(tool: string, ctx: any, args: Record<string, unknown>) {
   let result: any; let error: string | undefined;
-  await outboundHandlers.get(tool)!(ctx, args, (r, e) => { result = r; error = e; }, meta as any);
+  await outboundHandlers.get(tool)!(ctx, { detail: true, ...args }, (r, e) => { result = r; error = e; }, meta as any);
   return { result, error };
 }
 

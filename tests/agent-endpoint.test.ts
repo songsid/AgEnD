@@ -23,7 +23,7 @@ describe("agent CLI reply context", () => {
       queueMirrorMessage: vi.fn(),
     } as any;
 
-    const result = await dispatchAgentOperation(ctx, "agy", op, args as Record<string, unknown>);
+    const result = await dispatchAgentOperation(ctx, "agy", op, { ...args, detail: true } as Record<string, unknown>);
 
     expect(result).toMatchObject({ operation_id: expect.any(String), durable: true, delivery_state: "queued" });
     expect(admitDurableDelivery).toHaveBeenCalled();
@@ -47,7 +47,7 @@ describe("agent CLI reply context", () => {
       admitDurableDelivery: vi.fn(() => { throw new Error("sqlite full"); }),
     } as any;
 
-    const result = await dispatchAgentOperation(ctx, "agy", "send", { instance_name: "worker", message: "hello" });
+    const result = await dispatchAgentOperation(ctx, "agy", "send", { instance_name: "worker", message: "hello", detail: true });
 
     expect(result).toMatchObject({ operation_id: expect.any(String), error: expect.stringContaining("sqlite full") });
   });

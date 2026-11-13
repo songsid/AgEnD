@@ -602,6 +602,7 @@ const ForwardMessageIds = z.array(z.string().min(1).max(256).regex(/^[^\s\u0000-
   .optional().describe("Explicit message IDs to share read-only verification access with the receiver. You must already be able to read each delivered row. Mentioning an ID in text grants no access; every relay hop must forward it explicitly.");
 
 export const SendToInstanceArgs = z.object({
+  detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
   instance_name: NonEmptyString.describe(
     "Name of the target instance (e.g., 'ccplugin', 'blog-t1385'). Use list_instances to see available instances.",
   ),
@@ -630,6 +631,7 @@ export const SendToInstanceArgs = z.object({
 const BroadcastRequestKind = z.enum(["query", "task", "update"]);
 
 export const BroadcastArgs = z.object({
+  detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
   message: NonEmptyString.describe("Message to send"),
   targets: z.array(z.string()).optional().describe("Instance names. Omit for all running."),
   team: z.string().optional()
@@ -646,6 +648,7 @@ export const BroadcastArgs = z.object({
 // be absent from these two schemas, so zod stripped it and wrapAsSend's forwarding
 // (which reads v.data.correlation_id) was dead for everything except report_result.
 export const RequestInformationArgs = z.object({
+  detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
   target_instance: NonEmptyString.describe("Name of the instance to ask."),
   question: NonEmptyString.describe("The question to ask."),
   context: z.string().optional().describe("Optional context to help the recipient answer."),
@@ -654,6 +657,7 @@ export const RequestInformationArgs = z.object({
 });
 
 export const DelegateTaskArgs = z.object({
+  detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
   target_instance: NonEmptyString.describe("Name of the instance to delegate to."),
   task: NonEmptyString.describe("Description of the task to perform."),
   forwards: ForwardMessageIds,
@@ -668,6 +672,7 @@ export const DelegateTaskArgs = z.object({
 });
 
 export const ReportResultArgs = z.object({
+  detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
   target_instance: NonEmptyString.describe("Name of the instance to report to."),
   correlation_id: z.string().optional()
     .describe("The correlation_id shown in the request's inbound block."),
@@ -680,13 +685,15 @@ export const ReportResultArgs = z.object({
 // selector is required; caller identity comes from the authenticated socket,
 // never from these arguments.
 export const DeliveryStatusArgs = z.object({
+  detail: z.boolean().optional().describe("Include full original content and delivery metadata. Default: secret-redacted excerpt, hashes and authority verdict."),
+  content_includes: z.string().min(1).max(500).optional().describe("Exact case-sensitive content check on an authorised message_id receipt, including beyond its excerpt. Returns a boolean without echoing the value."),
   delivery_id: NonEmptyString.optional().describe("Exact durable delivery ID returned by AgEnD."),
   operation_id: NonEmptyString.optional().describe("Operation ID returned when the outbound tool was accepted."),
   correlation_id: NonEmptyString.optional().describe("Correlation ID from the original request; may return multiple deliveries."),
   message_id: NonEmptyString.optional().describe("The message_id in an inbound message's header. Verify it before acting: 'Delivery not found' may mean hidden by ACL, expired retention, or never delivered. Do not act; ask the sender to explicitly forward a verifiable reference. On uncertain, it may already have arrived: confirm it, and resend only if it shows failed."),
   limit: z.number().int().min(1).max(100).optional().describe("Maximum rows for operation/correlation queries (default 20, maximum 100)."),
   cursor: NonEmptyString.optional().describe("Opaque next-page cursor returned by the previous query."),
-}).strict().refine(args =>
+}).strict().refine(args => args.content_includes === undefined || args.message_id !== undefined, { message: "content_includes requires message_id" }).refine(args =>
   [args.delivery_id, args.operation_id, args.correlation_id, args.message_id].filter(value => value !== undefined).length === 1,
 { message: "Provide exactly one of delivery_id, operation_id, correlation_id, or message_id" })
   .refine(args => !args.cursor || !args.delivery_id, {
