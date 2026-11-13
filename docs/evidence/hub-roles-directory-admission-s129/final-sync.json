@@ -1,0 +1,288 @@
+{
+  "scope": "Final parent-first plain alpha sync of shared physical admission. Roles stay unactivated; full S129 remains incomplete.",
+  "candidateMerge": "6cd4e37138d83675110f7f12d2a88aef339936bd",
+  "parents": [
+    "c7551edf98c11e00cd9c31f4f67d8df80494faac",
+    "71dbc782956047c413b9f367a572e38c39d53651"
+  ],
+  "conflictFiles": [
+    "docs/design/hub-roles-management.md",
+    "src/hub/group-policy/store.ts",
+    "src/hub/http/core.ts",
+    "src/hub/pairing.ts",
+    "src/hub/roles/read.ts",
+    "tests/hub-roles-issuer-s129.test.ts"
+  ],
+  "resolution": {
+    "oursPreserved": [
+      "src/hub/group-policy/store.ts",
+      "src/hub/http/core.ts",
+      "src/hub/roles/read.ts",
+      "src/hub/pairing.ts"
+    ],
+    "incomingPreserved": [
+      "docs/design/hub-roles-management.md",
+      "tests/hub-roles-issuer-s129.test.ts"
+    ],
+    "pairingCombined": "Shared this.eligible(owner) admission followed by incoming signed-out current() classification and mandatory permit.assertCurrent()."
+  },
+  "parity": {
+    "ownParent": "9170eac545c946702db671f6e874a22ea3660cc1",
+    "own": "c7551edf98c11e00cd9c31f4f67d8df80494faac",
+    "alpha": "71dbc782956047c413b9f367a572e38c39d53651",
+    "deltaComparisons": {
+      "src/hub/compose/server.ts": true,
+      "src/hub/directory/admission.ts": true,
+      "src/hub/group-policy/admin-control.ts": true,
+      "src/hub/group-policy/admin-facts.ts": true,
+      "src/hub/group-policy/admin-read.ts": true,
+      "src/hub/group-policy/errors.ts": true,
+      "src/hub/group-policy/store.ts": true,
+      "src/hub/http/core.ts": true,
+      "src/hub/http/deps.ts": true,
+      "src/hub/pairing-notices.ts": true,
+      "src/hub/pairing.ts": true,
+      "src/hub/roles/read.ts": true,
+      "src/hub/sessions.ts": true,
+      "tests/hub-compose.test.ts": true,
+      "tests/hub-directory-admission-s129.test.ts": true,
+      "tests/hub-roles-management-reader-s129.test.ts": true
+    },
+    "incomingOnlyEqual": 467,
+    "incomingOnlyMismatches": [],
+    "ownOriginalCommit": "bd1e6c5c8b873b762a7f88ad91f13cf3d21c7a64",
+    "ownOriginalParent": "9170eac545c946702db671f6e874a22ea3660cc1",
+    "scope": "Final alpha merge after #3802 R2. Exact original bd1 own deltas over merged alpha, incoming-only bytes; reviewer must review conflict resolution at the new head.",
+    "earlierComparisonExcluded": "Comparing entire old pre-sync parent9170 to c755 included disjoint historical alpha changes. That broad comparison was excluded; current comparison uses original bd1 commit against its parent9170 and exactly its16 product/test paths."
+  },
+  "checks": {
+    "tests": 523,
+    "passed": 523,
+    "failed": 0,
+    "skipped": 0,
+    "files": 20,
+    "sourceTypesExit": 0,
+    "testTypesExit": 0,
+    "changelogFragments": 441
+  },
+  "tests": [
+    "tests/hub-company-join-local.test.ts",
+    "tests/hub-compose.test.ts",
+    "tests/hub-directory-admission-s129.test.ts",
+    "tests/hub-grant-subjects-m3016.test.ts",
+    "tests/hub-group-admin-control.test.ts",
+    "tests/hub-group-admin-facts.test.ts",
+    "tests/hub-group-admin-read.test.ts",
+    "tests/hub-group-policy-store.test.ts",
+    "tests/hub-group-search-boundary-s2.test.ts",
+    "tests/hub-pairing-notices.test.ts",
+    "tests/hub-pairing-owner.test.ts",
+    "tests/hub-pairing.test.ts",
+    "tests/hub-roles-canonical-s129.test.ts",
+    "tests/hub-roles-company-issuer-s129.test.ts",
+    "tests/hub-roles-issuer-s129.test.ts",
+    "tests/hub-roles-management-reader-s129.test.ts",
+    "tests/hub-s3b-flow.test.ts",
+    "tests/hub-sharing-pause-m3015.test.ts",
+    "tests/hub-store-publication-s1.test.ts",
+    "tests/hub-web-origin.test.ts"
+  ],
+  "freshMutation": {
+    "source": "src/hub/pairing.ts",
+    "originalSha256": "99c75843f7ea821a6262f7d7bc26f6cfa4ae1d87c5c0bbc8600fb4427336dc7e",
+    "scope": "Only incoming R2 post-owner-await session classification in merged shared-admission code.",
+    "mutantSha256": "a1f661f6593ee249bce2f58267cb2180edf75b084c5d90c07000f7956c64fb9d",
+    "compileExit": 0,
+    "testExit": 1,
+    "passed": 1,
+    "failed": 1,
+    "failures": [
+      {
+        "name": "S129 first-issuance approver permission retains the held approval's signed-out session refusal without publishing approval",
+        "messages": [
+          "AssertionError: expected Error: Hub protocol: unavailable { code: '\u2026' } to match object { code: 'revoked' }\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol3/node_modules/@vitest/expect/dist/index.js:1283:10)\n    at Proxy.<anonymous> (file:///home/han/Projects/AgEnD-agend-dev-sol3/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///home/han/Projects/AgEnD-agend-dev-sol3/node_modules/chai/index.js:1737:25)\n    at /home/han/Projects/AgEnD-agend-dev-sol3/.worktrees/hub-roles-admission-m3010/tests/hub-roles-issuer-s129.test.ts:68:29\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/han/Projects/AgEnD-agend-dev-sol3/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+        ]
+      }
+    ],
+    "restoredSha256": "99c75843f7ea821a6262f7d7bc26f6cfa4ae1d87c5c0bbc8600fb4427336dc7e"
+  },
+  "commands": [
+    "node_modules/.bin/vitest",
+    "run",
+    "tests/hub-company-join-local.test.ts",
+    "tests/hub-compose.test.ts",
+    "tests/hub-directory-admission-s129.test.ts",
+    "tests/hub-grant-subjects-m3016.test.ts",
+    "tests/hub-group-admin-control.test.ts",
+    "tests/hub-group-admin-facts.test.ts",
+    "tests/hub-group-admin-read.test.ts",
+    "tests/hub-group-policy-store.test.ts",
+    "tests/hub-group-search-boundary-s2.test.ts",
+    "tests/hub-pairing-notices.test.ts",
+    "tests/hub-pairing-owner.test.ts",
+    "tests/hub-pairing.test.ts",
+    "tests/hub-roles-canonical-s129.test.ts",
+    "tests/hub-roles-company-issuer-s129.test.ts",
+    "tests/hub-roles-issuer-s129.test.ts",
+    "tests/hub-roles-management-reader-s129.test.ts",
+    "tests/hub-s3b-flow.test.ts",
+    "tests/hub-sharing-pause-m3015.test.ts",
+    "tests/hub-store-publication-s1.test.ts",
+    "tests/hub-web-origin.test.ts",
+    "--maxWorkers=2",
+    "--reporter=json",
+    "--outputFile=.artifacts/roles-admission-m3010/final-sync/focused.json"
+  ],
+  "typeCommands": [
+    "GOMAXPROCS=2 node_modules/.bin/tsc --noEmit",
+    "GOMAXPROCS=2 node_modules/.bin/tsc --noEmit -p tsconfig.test.json"
+  ],
+  "bindings": [
+    {
+      "file": "changes/3743-roles-directory-admission.md",
+      "sha256": "3397b34d0c8aace04aaaa674ffadb796f26e1daa11008f84986d3baff5c58a3a"
+    },
+    {
+      "file": "changes/3743-roles-directory-admission.zh-TW.md",
+      "sha256": "62a240562adaff3cf3bfd3fdf113ba037aead61041a3cbf4bfac13f2d447803b"
+    },
+    {
+      "file": "docs/design/hub-roles-directory-admission.md",
+      "sha256": "204790783f6fc097a5697570b112fb60b5f2a84d8da42b5f8795e9b47469924c"
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "a902e6eb84ca6b83e08e32dd5b81beb52f17bf6ec440aabef443bdd6ffb6537f"
+    },
+    {
+      "file": "src/hub/directory/admission.ts",
+      "sha256": "c48f8592825121403e4ec04ed32999a4544678f8876dd34e130b1908e6811dd4"
+    },
+    {
+      "file": "src/hub/group-policy/admin-control.ts",
+      "sha256": "1cacf76748d9955ca0c6a709b8e8ad6874220d7917131b61b64d748259ecf96f"
+    },
+    {
+      "file": "src/hub/group-policy/admin-facts.ts",
+      "sha256": "76424ea46fd1838a815d7cfc8b4b6cfab4b0b47246039cf33ad003cfd4321dae"
+    },
+    {
+      "file": "src/hub/group-policy/admin-read.ts",
+      "sha256": "4b6f12ac420e98b11ce7674baa5f767196a18de496c81ad142d53399655e5a74"
+    },
+    {
+      "file": "src/hub/group-policy/errors.ts",
+      "sha256": "3ff8683d230c49a965d2e1eb7843b9a8fca018fbc14b1a24932ad373f246e3a6"
+    },
+    {
+      "file": "src/hub/group-policy/store.ts",
+      "sha256": "c4396cc2d396a5e84108015787f61b7297b65f78fa30ae60fdd706db4d24072d"
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "e46a656232d8447e2505ad3cc738afe7cc17720554971fc2e9ea233d4b494fa9"
+    },
+    {
+      "file": "src/hub/http/deps.ts",
+      "sha256": "1200f59b943860ac16a5cc8946d9a344786853632f3f85553deff971141b04f0"
+    },
+    {
+      "file": "src/hub/pairing-notices.ts",
+      "sha256": "0a0e83805201dd5358f0e7bd7cbd8f1f67f321a1ac6425b2e926ebfe1b9382e1"
+    },
+    {
+      "file": "src/hub/pairing.ts",
+      "sha256": "99c75843f7ea821a6262f7d7bc26f6cfa4ae1d87c5c0bbc8600fb4427336dc7e"
+    },
+    {
+      "file": "src/hub/roles/read.ts",
+      "sha256": "37e50394e706e9be2bca8c87344c1f138ab42dbfa4bb0030087b51f33fb2e4dc"
+    },
+    {
+      "file": "src/hub/sessions.ts",
+      "sha256": "f49bfa0fc057206da9e33e785c9c95c8e29f6345b7aaa1077e1919ecb4934b0f"
+    },
+    {
+      "file": "tests/hub-company-join-local.test.ts",
+      "sha256": "e4adb78526ee7c6b5a9db6b4caed897198468b04cc19d64b9f654e1762e03b4f"
+    },
+    {
+      "file": "tests/hub-compose.test.ts",
+      "sha256": "abac570a8b61a99b670b9bf1ea8c7f072385a1f071a01ce5a8414ac59a77fbd3"
+    },
+    {
+      "file": "tests/hub-directory-admission-s129.test.ts",
+      "sha256": "d28dc81043a2229d07da09e430913d583f0565d691bd265ce0d312a86392c14d"
+    },
+    {
+      "file": "tests/hub-grant-subjects-m3016.test.ts",
+      "sha256": "58c7f04e125e836b19fb51b342f759fa88830ffb347281067d9ba5ef3c42fa20"
+    },
+    {
+      "file": "tests/hub-group-admin-control.test.ts",
+      "sha256": "3e42ed8e2dd0c34881b63fc1a5d78f85f21d093a8f5dd961258854bac934c0e2"
+    },
+    {
+      "file": "tests/hub-group-admin-facts.test.ts",
+      "sha256": "0fd0f896ffe69f81e3979fa67daff1b3a63ce29b8a2eb2f6e1ee05f0e640a993"
+    },
+    {
+      "file": "tests/hub-group-admin-read.test.ts",
+      "sha256": "11eddbfa39aeb151f48497991a398b40e8dc94de2ee4b81ccdf019ff2f676607"
+    },
+    {
+      "file": "tests/hub-group-policy-store.test.ts",
+      "sha256": "92e6517db2f37994c8e94ae1fcdafa7f5257745ff9c7259a078f35e37afc4673"
+    },
+    {
+      "file": "tests/hub-group-search-boundary-s2.test.ts",
+      "sha256": "c8e6849ba83aa8d45928795413a5b96a747d35796fa7a693139fb8c2a4214c9a"
+    },
+    {
+      "file": "tests/hub-pairing-notices.test.ts",
+      "sha256": "f2b22d6862419818e2c36d148953f0fbcddd5fe74bbe35f36d08375c1ca03d8a"
+    },
+    {
+      "file": "tests/hub-pairing-owner.test.ts",
+      "sha256": "be6ae0d0bb334a45fe4571019e2d703749ec67796033fbc50de8635f858a1fac"
+    },
+    {
+      "file": "tests/hub-pairing.test.ts",
+      "sha256": "61991176f17a3a0d9022f9d45668a5c2d5f0dafc16230fd5e5a6fe25cf1e7da3"
+    },
+    {
+      "file": "tests/hub-roles-canonical-s129.test.ts",
+      "sha256": "66dbc036dc90774ccb80f97ea3978866fb65097b2ee22308ee83daf740802b28"
+    },
+    {
+      "file": "tests/hub-roles-company-issuer-s129.test.ts",
+      "sha256": "c427e0d8e39a03337d3d466c9527afc240a9bec8f51de814cebe438560f50da3"
+    },
+    {
+      "file": "tests/hub-roles-issuer-s129.test.ts",
+      "sha256": "26eb319c39a7c85a5eb18238c5ab3ef84f836af33d48b150afd1ff65f8756143"
+    },
+    {
+      "file": "tests/hub-roles-management-reader-s129.test.ts",
+      "sha256": "c3a2f30aeb49841f25482e1dd41c3e6418345f263a515ebca7de81d9af082703"
+    },
+    {
+      "file": "tests/hub-s3b-flow.test.ts",
+      "sha256": "e09ec01fae257cf3bf37a5a31b3132bfbd9cb8001c13ebb4323aecddbf0c1d9e"
+    },
+    {
+      "file": "tests/hub-sharing-pause-m3015.test.ts",
+      "sha256": "52caf8e87ecb20c82fd9559fbb75340a947f96724825cf3a93335dbf6a5d3523"
+    },
+    {
+      "file": "tests/hub-store-publication-s1.test.ts",
+      "sha256": "ec8cdf835cab600b0af37b1bfc291acec54c1c1974076b0440a32e7f60b0204e"
+    },
+    {
+      "file": "tests/hub-web-origin.test.ts",
+      "sha256": "6f5ab17eb2a0461604b89af2e47b16cefdc612e66ce834dee4d5be46e982c59d"
+    }
+  ],
+  "whitespace": "Own delta against alpha passes git diff --check. Full historical merge delta includes 14 incoming-only sharing-pause log blank-at-EOF warnings, exact alpha bytes retained.",
+  "limits": "Owned scratch SQL/loopback HTTPS with inert directory. No browser/container/native OS/vendor account/real AD/pilot/live Fleet run. Prior11 source reversals carry historical scope, not rerun as a new11. No startup cutover, role endpoints, member/SSE integration or full S129 acceptance."
+}

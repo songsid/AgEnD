@@ -22,3 +22,16 @@ alpha; the other38incoming files match alpha byte for byte. The sync receipt
 binds all current candidate files and records496/496 tests across19files, zero
 skips, plus native source/test checks. These counts overlap the earlier409;
 they are not additive. No authority activation is added by either merge.
+
+## Ready parent sync
+
+`final-sync.json` supersedes the prior sync bindings for the current candidate.
+It records the six conflict resolutions, exact own/incoming parity, 523/523 in
+20 suites, both native checks, and the fresh compiling R2 guard reversal plus
+2/2 restoration. Counts overlap the historical 409/496; they are not additive.
+The new head requires its own parity review and exact-head CI.
+
+The diff against merged alpha passes whitespace checks. The broader historical
+merge delta also contains 14 existing blank-at-EOF warnings in incoming
+sharing-pause evidence logs; those files are byte-identical to alpha and were
+kept unchanged. No broad whitespace-clean claim is made for that history.
