@@ -1126,7 +1126,7 @@ export class ClaudeCodeBackend implements CliBackend {
     const mcpConfigPath = join(this.instanceDir, "mcp-config.json");
     const envPrefix = [`AGEND_CLAUDE_LAUNCH_ID=${this.observationLaunchId}`, "CMUX_CLAUDE_HOOKS_DISABLED=1", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"];
     // #1699: a named credential profile is its own config dir — its login, account, trust and conversations. No profile:
-    // nothing added, nothing created (the command is exactly what it was).
+    // no credential additions or directories; the common observation marker above is independent of profile selection.
     const profileDir = claudeProfileConfigDir(config.backendOptions);
     if (profileDir) {
       prepareCredentialProfileHome(credentialHomeSpec("claude-code")!, profileDir);
