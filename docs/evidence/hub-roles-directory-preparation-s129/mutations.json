@@ -1,0 +1,450 @@
+{
+  "input_commit": "651c9fa8c567f41e89a6c09081f9d0b70490b825",
+  "mutations": [
+    {
+      "id": "P01",
+      "claim": "preparation policy/session/version guard",
+      "file": "src/hub/roles/authority.ts",
+      "before": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8",
+      "mutation": "7ac0472cbfeb3e9911226b026fcb5b7ced95c2bdc44a0d7095e11ab4bba9020e",
+      "replacements": [
+        {
+          "before": "          guard();",
+          "after": "          /* reversal: no retained guard */"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "12"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "2f5fd105238d5f8f1ae374f4d6fae23e297dcdbbc5c291741257874727458dde",
+      "selection": "complete new test file",
+      "restored_sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "id": "P02",
+      "claim": "slow preparation independent of ordinary 20s acquisition",
+      "file": "src/hub/roles/authority.ts",
+      "before": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8",
+      "mutation": "16da956ff4171c5e96db4360000ada50a511397403f742f213c59d7f4ce89738",
+      "replacements": [
+        {
+          "before": "const DIRECTORY_OPERATION_BUDGET = 300_000;",
+          "after": "const DIRECTORY_OPERATION_BUDGET = 20_000;"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "08ac6c88c59333eceeae4765edba60609ac20d93773ab19f83c865707435b2f2",
+      "selection": "complete new test file",
+      "restored_sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "id": "P03",
+      "claim": "five-minute operation deadline",
+      "file": "src/hub/roles/authority.ts",
+      "before": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8",
+      "mutation": "99277c76f29b96751208759f9802f04531374bb4770db9f45b02bdacae64a9c3",
+      "replacements": [
+        {
+          "before": "          if (at.wall - started.wall >= budget || at.elapsed - started.elapsed >= budget) throw new HubProtocolError(\"unavailable\");",
+          "after": "          void budget;"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "4"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "6a3b7fefbca5fb5b0f647636e893608b34ed03c19ed0a0c9d32b85d60396e001",
+      "selection": "complete new test file",
+      "restored_sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "id": "P04",
+      "claim": "new physical effect proof rather than old permit",
+      "file": "src/hub/roles/authority.ts",
+      "before": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8",
+      "mutation": "dc51784155671f5d883e6a6a5725918231288994cd033c574044c001593eb92c",
+      "replacements": [
+        {
+          "before": "const fresh = await require(incoming, \"hub.admin\"); check();",
+          "after": "const fresh = permit; check();"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "2"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "b61a53c1ea42eaaff82cf10469a4e43d7d4969a469d7896d11a2588e1531d2ba",
+      "selection": "retains operation identity beyond|finishes a slow candidate",
+      "restored_sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "id": "P05",
+      "claim": "ordinary twenty-second fresh acquisition deadline",
+      "file": "src/hub/roles/authority.ts",
+      "before": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8",
+      "mutation": "b83a19f58acffe6198c159494bebf6a0f1d0d218de90010d5f7eda7fd38ff28d",
+      "replacements": [
+        {
+          "before": "const budget = preparation ? DIRECTORY_OPERATION_BUDGET : PREPARATION_BUDGET;",
+          "after": "const budget = DIRECTORY_OPERATION_BUDGET;"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "95a0d037bcf686215850162cb2e4f52971b9e10aac3a9da69549cb893e092b0d",
+      "selection": "complete new test file",
+      "restored_sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "id": "P06",
+      "claim": "single acquisition flight",
+      "file": "src/hub/roles/authority.ts",
+      "before": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8",
+      "mutation": "d6cb98bc3b76bddd1238ad582e6cc383c00e1454eb3887cf2c39bf9c461dc201",
+      "replacements": [
+        {
+          "before": "          if (running) throw new HubProtocolError(\"backpressure\");",
+          "after": "          void running;"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "1a2d72638f3fe0759363bed98a9457a31e6c8bcc1f29108fc48c0b6893c742b3",
+      "selection": "complete new test file",
+      "restored_sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "id": "P07",
+      "claim": "consume after exchange",
+      "file": "src/hub/roles/authority.ts",
+      "before": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8",
+      "mutation": "b5af1d0ba3b1b6b86f56072fb653df523525a9c7d109ad2a778e453e50b22416",
+      "replacements": [
+        {
+          "before": "          } finally { retired = true; }",
+          "after": "          } finally { /* reversal */ }"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "6"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "6c20a1c427db1da70136ae9d40f7dc8d6584d0b6c19db7a2a0244a8a83dd06cc",
+      "selection": "complete new test file",
+      "restored_sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "id": "P08",
+      "claim": "explicit cancellation remains retired",
+      "file": "src/hub/roles/authority.ts",
+      "before": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8",
+      "mutation": "c8251bbef29654d78ff53246baab47c0ce9f24c73dc2cbfcf85eae81f12f7f00",
+      "replacements": [
+        {
+          "before": "          if (retired || authority.require !== require) throw new HubProtocolError(\"unavailable\");",
+          "after": "          if (authority.require !== require) throw new HubProtocolError(\"unavailable\");"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "10"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "b83d8505f840cd0075d1e22598f8e32cca636f379a466be1e7b82374f6b9aca1",
+      "selection": "complete new test file",
+      "restored_sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "id": "P09",
+      "claim": "request and caller method identity",
+      "file": "src/hub/roles/authority.ts",
+      "before": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8",
+      "mutation": "405a5ca407430c70ce821516aa98684a779e2b9192d137160166d1ed31eaa0ef",
+      "replacements": [
+        {
+          "before": "            if (incoming.requestId !== requestId || incoming.current !== callerMethods.current || incoming.isCurrent !== callerMethods.isCurrent\n              || incoming.isIdentityCurrent !== callerMethods.isIdentityCurrent) throw new HubProtocolError(\"unavailable\");",
+          "after": "            void callerMethods;"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "3"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "f72500cb463cb394afe0b9a2265b022e49bfd90336e04a14141cb248495c2deb",
+      "selection": "complete new test file",
+      "restored_sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "id": "P10",
+      "claim": "original canonical image and authorization version",
+      "file": "src/hub/roles/authority.ts",
+      "before": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8",
+      "mutation": "6aad34f99d569275201ef89b5bdb7d5dc3ed18dd8c1d014a1300b01325876fb1",
+      "replacements": [
+        {
+          "before": "          } else if (read().raw !== before.raw || version() !== authEpoch) throw new HubProtocolError(\"unavailable\");",
+          "after": "          }"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "5"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "cfcac473e623c75c280c470d4473f0b9aa2ea85c1456dae1eb2eb25fdead64a6",
+      "selection": "complete new test file",
+      "restored_sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "id": "P11",
+      "claim": "exact session row person",
+      "file": "src/hub/roles/authority.ts",
+      "before": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8",
+      "mutation": "3f46a8c5460ed87961edf04c7d37e07d0c0fedd3298cd0bea1db4533517c19c4",
+      "replacements": [
+        {
+          "before": "          if (actor && identityCurrent(actor.person, actor.sessionId) !== true) throw new HubProtocolError(\"unavailable\");",
+          "after": "          /* reversal: no exact row check */"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "cb4a300617b3a9a0ec02ce7ecfc09601e818ed863d124f968a4353d0a477efaf",
+      "selection": "complete new test file",
+      "restored_sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "id": "P12",
+      "claim": "actual authority directory and configured root",
+      "file": "src/hub/roles/directory-authority.ts",
+      "before": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d",
+      "mutation": "bd3167e1ceeb605513a4f33099f3c27debced706a3c2800e14b8a88d520f4ac8",
+      "replacements": [
+        {
+          "before": " || preparation.directory !== source.directory\n    || canonicalArguments(preparation.administrator) !== canonicalArguments(source.administrator)",
+          "after": ""
+        },
+        {
+          "before": "      || state.preparation.directory !== state.binding.directory || canonicalArguments(state.preparation.administrator) !== canonicalArguments(state.binding.administrator)\n",
+          "after": ""
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "2"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "dceb5c2af8603a5b658a55e8f7bd3ae2166fee8720ec5a0d72f6e1ceeda74ac9",
+      "selection": "complete new test file",
+      "restored_sha256": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d"
+    },
+    {
+      "id": "P13",
+      "claim": "exact bound actor and request",
+      "file": "src/hub/roles/directory-authority.ts",
+      "before": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d",
+      "mutation": "1f532b53d72ded9a6950831d5a99c51175387b03a853798cbb5e74fc0babf127",
+      "replacements": [
+        {
+          "before": "if (state.retired || canonicalArguments(actor) !== canonicalArguments(state.actor)",
+          "after": "if (state.retired"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "2"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "f6069811c651e53f4583b48b5e7396ad382718507bd7f056f40b43cc0517f980",
+      "selection": "complete new test file",
+      "restored_sha256": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d"
+    },
+    {
+      "id": "P14",
+      "claim": "bound source image epoch and decision getter",
+      "file": "src/hub/roles/directory-authority.ts",
+      "before": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d",
+      "mutation": "6068211c7145c05deead98f6ee580f29b16b89db3cbe3fe33745a8609a978ae3",
+      "replacements": [
+        {
+          "before": "      || source.directory !== state.binding.directory || source.image !== state.binding.image || source.epoch !== state.binding.epoch\n      || source.decisionProof !== state.frame || canonicalArguments(source.administrator) !== canonicalArguments(state.binding.administrator)",
+          "after": ""
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "6"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "fe5974f6d5e14d860eecf6f6faeb8853ddc359212e7dbb73767a5d7c21ca3e89",
+      "selection": "complete new test file",
+      "restored_sha256": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d"
+    },
+    {
+      "id": "P15",
+      "claim": "post-await standalone source fence",
+      "file": "src/hub/roles/directory-authority.ts",
+      "before": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d",
+      "mutation": "f3881b37d95154aaaef25991fea87808399beec5a093fa08faa3880bcec6f5ea",
+      "replacements": [
+        {
+          "before": "const permit = await state.authorize.call(state.preparation); preparationState(handle, actor, source);",
+          "after": "const permit = await state.authorize.call(state.preparation);"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "cd6d5c20bfdaf654420c0142d857513503a2c9a66e7847d19d86f375d5c09284",
+      "selection": "complete new test file",
+      "restored_sha256": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d"
+    },
+    {
+      "id": "P16",
+      "claim": "fresh witness exchange before writer",
+      "file": "src/hub/settings-directory-proof.ts",
+      "before": "084fa3fc3777c0e401dea5b7dad639026cc98e00b0340ccccb1e8fc7d4d84f36",
+      "mutation": "d698cdbb99d79dc38568624f891f71194fd6e2447ee7a88b09b01af83507464c",
+      "replacements": [
+        {
+          "before": "      if (ctx.preparation !== undefined) {\n        const administration = await authorizeHubDirectoryPreparation(ctx.preparation, ctx.actor, capture());\n        ctx = { actor: ctx.actor, current: ctx.current, signal: ctx.signal, administration };\n        current(d, ctx);\n      }",
+          "after": "      /* reversal: retain preparation instead of obtaining effect authority */"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "21fd1f038066adacffbebc8565c79170b3867353c77c11876d8579b047ff1cdf",
+      "selection": "finishes a slow candidate",
+      "restored_sha256": "084fa3fc3777c0e401dea5b7dad639026cc98e00b0340ccccb1e8fc7d4d84f36"
+    },
+    {
+      "id": "P17",
+      "claim": "root draft cannot downgrade to bare legacy actor",
+      "file": "src/hub/settings-directory-proof.ts",
+      "before": "084fa3fc3777c0e401dea5b7dad639026cc98e00b0340ccccb1e8fc7d4d84f36",
+      "mutation": "9663a0e204f24f2d6e879707a43f894f42f9e7ab5b48dcd456e54fa76479a5a1",
+      "replacements": [
+        {
+          "before": "    if (d.administrationRequired && ctx.administration === undefined && ctx.preparation === undefined) refuse(\"denied\");",
+          "after": "    /* reversal: no draft authority-mode fence */"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "d0760593be2dd5c4653a9538453d4fbd1fd78dd8e8d7ecdcbc7cd71ec6b708c2",
+      "selection": "complete new test file",
+      "restored_sha256": "084fa3fc3777c0e401dea5b7dad639026cc98e00b0340ccccb1e8fc7d4d84f36"
+    },
+    {
+      "id": "P18",
+      "claim": "ordinary read boundary refuses provisional preparation",
+      "file": "src/hub/roles/directory-authority.ts",
+      "before": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d",
+      "mutation": "f73fb03be87e05c640572e331fbd16f5e79285f3edb59a1a032988dda9b7c7f0",
+      "replacements": [
+        {
+          "before": "    if (!preparationOnly || context.administration !== undefined) throw new HubProtocolError(\"denied\");",
+          "after": "    if (context.administration !== undefined) throw new HubProtocolError(\"denied\");"
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "444300dce57b2dea8e1a70a3676e5959bde51baf0bddc038f4fb09a7abc024f9",
+      "selection": "complete new test file",
+      "restored_sha256": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d"
+    },
+    {
+      "id": "P19",
+      "claim": "initial carrier binds original authority request",
+      "file": "src/hub/roles/directory-authority.ts",
+      "before": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d",
+      "mutation": "bebbdf7db4dd90d79d388dadffa922f0a92e8dec078b5171313b3392b4ffdf73",
+      "replacements": [
+        {
+          "before": " || preparation.requestId !== actor.requestId",
+          "after": ""
+        },
+        {
+          "before": "      || state.preparation.requestId !== state.actor.requestId\n",
+          "after": ""
+        }
+      ],
+      "native_exit": 0,
+      "test_exit": 1,
+      "semantic_assertion_red": true,
+      "failed_tests": [
+        "1"
+      ],
+      "compile_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_log_sha256": "1b654e416be04eea8a5ab1fa52cf1ee59a18e3ccc77f8abf6c526275320ede35",
+      "selection": "complete new test file",
+      "restored_sha256": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d"
+    }
+  ]
+}

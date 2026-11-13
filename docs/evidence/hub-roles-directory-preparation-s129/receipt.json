@@ -1,0 +1,140 @@
+{
+  "parent": "9c9183f6dc7f84b04e7ad0ab3f2395048ab6171e",
+  "source_checkpoint": "651c9fa8c567f41e89a6c09081f9d0b70490b825",
+  "fail_first": {
+    "commit": "0a1ee15fb684cf5429d4efc0b3a52459f298eea0",
+    "description": "Minimal uncomposed adapter forwards the existing five-second permit: same first3 assertions produce one semantic slow-operation red and two authority/TTL controls.",
+    "failed": 1,
+    "passed": 2,
+    "log_sha256": "66898860719fea152983548fd5845c0fa70c44a61cc20aeee462a9e429bcca31"
+  },
+  "secondary_fail_first": {
+    "base": "cd95e33f05e87454ff67b08bec14b7aa896cc797",
+    "description": "Final unchanged initial-binding assertions: another request was accepted; one semantic red, four binding controls passed, fifty unrelated cases skipped before651c9fa8c.",
+    "log_sha256": "6fe857aa4866073a62e729842961a7252cf1ffbc4e690dbef0ed760eb2cfc8f1"
+  },
+  "verification": {
+    "tests": 274,
+    "files": 8,
+    "new_cases": 55,
+    "restored_tests_after_mutations": 55,
+    "native_compiler": "7.0.2",
+    "source_types_exit": 0,
+    "test_types_exit": 0,
+    "mutations": 19,
+    "all_mutations_native_compile": true,
+    "all_mutations_assertion_red": true,
+    "fragments": 452
+  },
+  "historical_exclusions": [
+    "Initial fixture-person swap lacked its referenced person: FK setup error, repaired before final verification.",
+    "First mutation P04 removed the read awaited by held fixtures; that run was stopped, exit143, restored and excluded. Final P04 and P16 select direct positive assertions and each compiles and turns red. Earlier passes were replayed on final source; only final19 count."
+  ],
+  "scope": "Actual memory SQLite, Sessions, canonical policy, clock, transport and shared physical pool; fictional directory. New engine path uses inert candidate/writer verifying actual final opaque proof. Existing sealed-writer/root session regressions retain only their original scope.",
+  "exclusions": [
+    "No production preparation producer or mounted source/controller/session/factory/HTTP activation.",
+    "No mounted auxiliary Save, file/physical auxiliary recovery, browser, container, live directory/account, native platform or cold-start cutover claim.",
+    "No full S129 acceptance, member/SSE/issued-recovery/root-self-use clearance, gate or CI claim."
+  ],
+  "holds": [
+    "draft",
+    "parent-first plain alpha sync",
+    "resolution review",
+    "exact-head CI and readiness",
+    "alpha.3 freeze",
+    "full S129 acceptance"
+  ],
+  "bindings": [
+    {
+      "path": "src/hub/roles/authority.ts",
+      "sha256": "32f73d1e6408782fb2b4168cd425f1ea2be5ed1d60b03e463414b82beca2a0e8"
+    },
+    {
+      "path": "src/hub/roles/directory-authority.ts",
+      "sha256": "359c9c520d915e4f2964ad0745eb49aa7c90c0d46a588eab620c60e3f590386d"
+    },
+    {
+      "path": "src/hub/settings-directory-proof.ts",
+      "sha256": "084fa3fc3777c0e401dea5b7dad639026cc98e00b0340ccccb1e8fc7d4d84f36"
+    },
+    {
+      "path": "tests/hub-roles-directory-preparation-s129.test.ts",
+      "sha256": "59bcba8070435b4fdaba8b3c8c0684f1116ce6432c8395530cceb6cfdd53eb2d"
+    },
+    {
+      "path": "tests/support/hub-role-authority-rig.ts",
+      "sha256": "c886cf7218dcb2e713259fa2be29bd27b42a134d61535a520ddf96e85ffd8b28"
+    },
+    {
+      "path": "tests/hub-roles-authority-s129.test.ts",
+      "sha256": "fbce4d78d82e6bf9e6ca5dab57048b318aca03dd2e10131064abe9dba7f7526d"
+    },
+    {
+      "path": "tests/hub-roles-directory-s129.test.ts",
+      "sha256": "a2699e91aba288a38c8d7278f19fcfd9a7f16aec17442c0222c29bd4903b4a12"
+    },
+    {
+      "path": "tests/hub-directory-settings-proof.test.ts",
+      "sha256": "afe6c7a5548595600622d976172555c1c8b0876b8bb1d83d0f0ef3f0b20094f9"
+    },
+    {
+      "path": "tests/hub-directory-settings-control.test.ts",
+      "sha256": "798d6faf9e97a893732a0e3bff5678771bd410eeaeb4c13505edcddcbef7b3d9"
+    },
+    {
+      "path": "tests/hub-roles-directory-writer-s129.test.ts",
+      "sha256": "d13cb58473f41383a701267a6ddeadab4d963d42f725021482aef1f1235fd90b"
+    },
+    {
+      "path": "tests/hub-roles-directory-session-s129.test.ts",
+      "sha256": "81a43b16a34a49b8781e46bfa127bb2315c7a66034f07d76a0f3760429cfa154"
+    },
+    {
+      "path": "tests/hub-roles-directory-witness-s129.test.ts",
+      "sha256": "efde4e20153d056e5431e1d60331585574abe4bb5ed1760d379fa7cc049213cb"
+    },
+    {
+      "path": "src/hub/session-directory-transition.ts",
+      "sha256": "bc7419e2350b6c35f275d0097c5283b496cf87e7b8b610dcdd453cb0320cc9cb"
+    },
+    {
+      "path": "src/hub/settings-commit.ts",
+      "sha256": "9ee74ed41469fc73d2fb5540ce1128eda8e2e495af159c87241f8854387e0519"
+    },
+    {
+      "path": "src/hub/settings-directory-control.ts",
+      "sha256": "0e47c1c72f1cd6f13d77ddc1afea147f2f191f74e9db37ef8e59558e7b52d19e"
+    },
+    {
+      "path": "src/hub/sessions.ts",
+      "sha256": "40d0960d0f3969454999e270e7825888668d2d4f6abfb1edf610a32c445b5e5e"
+    },
+    {
+      "path": "src/hub/http/core.ts",
+      "sha256": "8ca568a6b06f5096daf8c02a1e9eaa39fb6640d8a9eaf58901b1cba2cdb6cdb7"
+    },
+    {
+      "path": "src/hub/roles/clock.ts",
+      "sha256": "7d0413fe594ea83069803503f691e4f709b6145f6147e004dfa94d85794f99c5"
+    },
+    {
+      "path": "docs/design/hub-roles-directory-preparation-s129.md",
+      "sha256": "2af259bcfb59c10db9df0152b681593f7271e3b6aea55ab1a28e2485664bf60e"
+    },
+    {
+      "path": "changes/3743-roles-directory-preparation.md",
+      "sha256": "82014a1265ee1e20840a7943b91365966e5915693e0f51b41e82a326c138ea25"
+    },
+    {
+      "path": "changes/3743-roles-directory-preparation.zh-TW.md",
+      "sha256": "f67c3af16e8b3e92246228e09624fc0f12e3581907b1f4e8fdf1f970f730f5a7"
+    }
+  ],
+  "logs": {
+    "final.log": "90a34f373ab73f21e6db3e99f727b012d858aac9c4f7b294d7a909903d44b5d5",
+    "restored-final.log": "9ce71d7fd7d5e546047d823dfcb20e15b662d133cce4596a702a7f15ef92e4cb",
+    "source-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "test-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "changelog.log": "443b90a1f4634dde65fd1f14681a8fc6b688ef72b7b59f3934f07f564d6eab47"
+  }
+}
