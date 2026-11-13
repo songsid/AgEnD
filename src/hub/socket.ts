@@ -33,6 +33,8 @@ export class HubSocket<Incoming, Outgoing> {
     this.heartbeat.unref();
   }
   current(): boolean { return !this.ended && this.ws.readyState === WebSocket.OPEN && this.options.current(); }
+  /** Physically open: not ended here and the socket still OPEN (not CLOSING/CLOSED), whatever the owner's liveness says. */
+  open(): boolean { return !this.ended && this.ws.readyState === WebSocket.OPEN; }
   async send(value: Outgoing): Promise<void> {
     if (!this.current()) throw new HubProtocolError("unavailable");
     const data = this.options.encode(value);

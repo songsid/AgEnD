@@ -7,12 +7,15 @@ import { z } from "zod";
 import { HubProtocolError, hash, epoch, parseStrictJson, validated } from "../validation.js";
 import { hubOrigin, pinnedHubAgent, HubTlsIdentityError, verifyHubCertificate } from "../tls.js";
 import { companyIdentityDigest, joinIdentitySchema, signJoinProof, validateJoinBinding, type JoinBinding, type JoinPurpose } from "./protocol.js";
+import { companyDescriptorSchema, verifyCompanyDescriptor } from "./descriptor.js";
 import { CompanyIdentityChanged } from "./trust.js";
 const metadataSchema = z.strictObject({ v: z.literal(1), hub: joinIdentitySchema, identityDigest: hash,
   certificatePem: z.string().max(16 * 1024), features: z.array(z.string().max(64)).max(16) });
-export type CompanyJoinMetadata = z.infer<typeof metadataSchema> & { name?: string };
+export type CompanyJoinMetadata = z.infer<typeof metadataSchema> & { name?: string; descriptor?: z.infer<typeof companyDescriptorSchema> };
 /** M-2921 / S1.1: the display-only extras a Hub sends when asked (X-AgEnD-Join-Display: 1); an older Hub sends none. */
 const displayMetadataSchema = metadataSchema.extend({ name: z.string().max(200).optional() });
+/** M-2901 (#3429): asked with X-AgEnD-Join-Descriptor: the Hub's issuer-signed descriptor (an older Hub sends none). */
+const descriptorField = { descriptor: companyDescriptorSchema.optional() };
 /**
  * M-2921 (the Fleet's probe): why the Hub could not be read, for the person's message — keeping the code a caller saw
  * before ("unavailable", or "invalid" for a body that is not a Hub's), so start/retry behave as they did.
@@ -71,14 +74,21 @@ export class CompanyJoinClient {
     });
   }
   /** `display` (M-2921 / S1.1): ask for the display-only extras (`name`); a Hub that predates them answers without. */
-  async discover(origin: string, current: () => boolean, options: { display?: boolean } = {}): Promise<CompanyJoinMetadata> {
+  async discover(origin: string, current: () => boolean, options: { display?: boolean; descriptor?: boolean } = {}): Promise<CompanyJoinMetadata> {
     const canonical = hubOrigin(origin);
     if (canonical !== origin) throw new HubProtocolError("invalid");
-    const raw = await this.json(origin, "/hub/v1/join/metadata", undefined, current, undefined, options.display ? { "X-AgEnD-Join-Display": "1" } : {});
-    const parsed = (options.display ? displayMetadataSchema : metadataSchema).safeParse(raw);
+    const raw = await this.json(origin, "/hub/v1/join/metadata", undefined, current, undefined,
+      { ...(options.display ? { "X-AgEnD-Join-Display": "1" } : {}), ...(options.descriptor ? { "X-AgEnD-Join-Descriptor": "1" } : {}) });
+    const base = options.display ? displayMetadataSchema : metadataSchema;
+    const parsed = (options.descriptor ? base.extend(descriptorField) : base).safeParse(raw);
     if (!parsed.success) throw new CompanyJoinReachError("not-hub", "invalid");            // JSON, but not a Hub's metadata
     const value: CompanyJoinMetadata = parsed.data;
     if (value.hub.webOrigin !== origin || companyIdentityDigest(value.hub) !== value.identityDigest) throw new CompanyIdentityChanged();
+    // M-2901 (#3429): a descriptor, when sent, must verify and sign exactly the identity this answer names; else it is absent.
+    if (value.descriptor) {
+      try { verifyCompanyDescriptor(value.descriptor); } catch { throw new CompanyIdentityChanged(); }
+      if (value.descriptor.fingerprint !== value.identityDigest) throw new CompanyIdentityChanged();
+    }
     verifyHubCertificate(value.certificatePem, value.hub.memberOrigin, value.hub.spkiSha256, this.options.now?.() ?? Date.now());
     if (!current()) throw new HubProtocolError("stale");
     if (!value.features.includes("company-join-v1")) throw new CompanyJoinRemoteError("incompatible");

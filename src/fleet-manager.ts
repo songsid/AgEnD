@@ -1812,6 +1812,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     return this.hubWebAddressControl;
   }
+  private hubMemberAddressControl:import("./hub/settings-member-address-control.js").HubMemberAddressControl|null=null;
+  async hubMemberAddress():Promise<import("./hub/settings-member-address-control.js").HubMemberAddressControl>{
+    const runtime=await this.hubRuntimeCreated();
+    if(this.shuttingDown||!this.hubSettingsWriter)throw Error("The Hub is unavailable");
+    if(!this.hubMemberAddressControl){
+      const {createHubMemberAddressControl}=await import("./hub/settings-member-address-control.js");
+      if(this.shuttingDown)throw Error("The Hub is stopping");
+      this.hubMemberAddressControl??=createHubMemberAddressControl({home:this.dataDir,readConfig:()=>this.getRawFleetConfig(),writer:this.hubSettingsWriter,
+        withDecision:(work,current)=>runtime.withMemberAddressDecision(work,current),running:hub=>runtime.serverHealth(hub)==="ready",settle:()=>this.applyHubSwitches()});
+    }
+    return this.hubMemberAddressControl;
+  }
   async hubSetup():Promise<import("./hub/init/web.js").HubWebInitializer>{
     this.hubSetupInit??=(async()=>{
       const {createHubWebInitializer}=await import("./hub/init/web.js");
@@ -2226,6 +2238,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         readHub: () => (this.rawFleetConfig as { hub?: unknown } | undefined)?.hub,
         directoryDecision: () => this.hubRuntime?.directoryDecision() ?? null,
         webAddressDecision: () => this.hubRuntime?.webAddressDecision() ?? null,
+        memberAddressDecision: () => this.hubRuntime?.memberAddressDecision() ?? null,
         saveHub: patches => this.saveFleetConfig(patches) });
       const runtime = new HubRuntime({
         home: this.dataDir,
