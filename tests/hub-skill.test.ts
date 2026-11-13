@@ -126,7 +126,7 @@ describe("the hub skill", () => {
     for (const key of ["hub.enabled", "hub_member.enabled"]) expect(SKILL).toContain(`\`${key}\``);
     expect(manager).toContain("raw?.hub?.enabled === true || raw?.hub_member?.enabled === true");
     const notYet = SKILL.slice(SKILL.indexOf("\n## Not available yet\n"), SKILL.indexOf("\n## Troubleshooting\n"));
-    for (const topic of ["Custom roles", "whole AD group to ask", "ClassicBot room", "Pause and resume", "second sign-in factor"]) expect(notYet, topic).toContain(topic);
+    for (const topic of ["Custom roles", "ClassicBot room", "Pause and resume", "second sign-in factor"]) expect(notYet, topic).toContain(topic);
   });
 
   it("after a join code: asking follows the group-policy state, sharing is never given by the code (review of #3773)", () => {

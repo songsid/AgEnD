@@ -234,6 +234,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "hub-chat.css": { file: join("shared", "hub-chat.css"), type: "text/css; charset=utf-8" },
   // #3226 C: the owner and admin pages' stylesheet (linked by hub-owner-strings.js; an older hub-chat.css lacks it).
   "hub-owner.css": { file: join("shared", "hub-owner.css"), type: "text/css; charset=utf-8" },
+  "hub-grant-picker.css": { file: join("shared", "hub-grant-picker.css"), type: "text/css; charset=utf-8" },
   "hub-quota.css": { file: join("shared", "hub-quota.css"), type: "text/css; charset=utf-8" },
   // #3298 S-89: the welcome and group permissions pages (linked by hub-group-strings.js; an older hub-chat.css lacks them).
   "hub-groups.css": { file: join("shared", "hub-groups.css"), type: "text/css; charset=utf-8" },

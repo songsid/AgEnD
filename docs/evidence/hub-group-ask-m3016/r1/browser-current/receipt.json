@@ -1,0 +1,6056 @@
+{
+  "head": "b5253efbc0810597c7aec4c7eea212159048343c",
+  "tree": "ad15df7608d7ab6b63e44290e5b9b26ad526c191",
+  "trackedDirty": "",
+  "mode": "current",
+  "base": "34bd23bdef54628059744044b79e43ee0d50749c",
+  "inputDigests": {
+    "7fd406e5a04618902a64a3dfea7f6d1691483fa9d8b9774b15032508bc68e263": [
+      "src/general-knowledge/skills/hub/SKILL.md"
+    ],
+    "2ee175f0895ee8112ffe37480ddcbef56c42540527325ffce924b1b9e79681ac": [
+      "src/hub/buttons.ts"
+    ],
+    "7eb0b40792c23608a3c80fdb0b4a228db34c0e51b2898f9760c025c3220ca05b": [
+      "src/hub/catalog.ts"
+    ],
+    "8ff6832f3d5b2e17a5d8b9fffac43aba418533a959207b83bcde68641094b993": [
+      "src/hub/compose/server.ts"
+    ],
+    "cbdab7569e2581375b8fc5fb20af13b86795f6b115069db3be3fb3e15d1e1b49": [
+      "src/hub/directory/directory.ts"
+    ],
+    "f7feef6cba1601b6e58ccc07589c8703272b355be0e6f7e04206d39f5116d3b4": [
+      "src/hub/directory/types.ts"
+    ],
+    "293fd6ee1f5b7689e567c46424e489a8e0db7b316d2a191e98487eb8e2a4fdb0": [
+      "src/hub/grant-access.ts"
+    ],
+    "2f08cd63d95a28542849df9b0df7e87470926dc6f9f08d803ecde0c3a4fa1a5f": [
+      "src/hub/grant-search.ts"
+    ],
+    "40d711e25cf0dee05f71734bfb6d28b79d3596318f6950b00b5e91fc8df140bb": [
+      "src/hub/group-policy/admin-impact.ts"
+    ],
+    "798cf0f58a576fcc9e0bef07040133ee0f95fda5945d966b412161580a417264": [
+      "src/hub/group-policy/impact-inventory.ts"
+    ],
+    "08960db9f876596334aabfb8fa95f8aa4b68bd71464d10c5960648a9a2b5b27b": [
+      "src/hub/http/compose.ts"
+    ],
+    "6ea14d7b63b100db40634bca674c5c3de592adb12c0f92268205b0497414a48e": [
+      "src/hub/http/core.ts"
+    ],
+    "a385a373479c8dbe3bc3f6f7619dec5af763725e468b45ea2a5f87581d096508": [
+      "src/hub/http/deps.ts"
+    ],
+    "6d895af57058b467ee7e5757d1585e75b279ef2f997bf38506aeafd108c4c351": [
+      "src/hub/http/schema.ts"
+    ],
+    "6b90dd038bab9050cf9ee21a782824eb7a5ba645549269da2156fa0771dde263": [
+      "src/hub/policy.ts"
+    ],
+    "531ad380acda33b5959b81999e194fe455d177316510bcc82d21f38301dbc45d": [
+      "src/hub/quota.ts"
+    ],
+    "9d71fdb2c14ab9425f5f0e3c2ac9f051f236de91c4308badb1cf29fbfb788aa7": [
+      "src/hub/roles/change.ts"
+    ],
+    "a262adcbc4ff40815e6ed847c2642c3e2c2d8462c722b16221b8925b1c76aaec": [
+      "src/hub/roles/delegation.ts"
+    ],
+    "ffd6fb47ef95ccecc3b4e282cd891ad38a5d104ffaa344e220cfab2c0dfd29bd": [
+      "src/hub/roles/evaluate.ts"
+    ],
+    "dd743de54979e05af69c8c67c451a6cfc012dfd04b72a0cb6c5c5572f693020d": [
+      "src/hub/roles/expiry.ts"
+    ],
+    "60b41ed514b99675f4828a2ea813b0904e3639fcc89b4970c87ce402b584c78a": [
+      "src/hub/roles/model.ts"
+    ],
+    "e2a649f2b630702368a422cac1756e0dd267d3228cce6a81737eb3908bee9884": [
+      "src/hub/roles/writer.ts"
+    ],
+    "9b6f0bad8b0729b139f83d70b2a7baca629e2463233b0e4c74c491cc3d4c316d": [
+      "src/hub/rooms.ts"
+    ],
+    "6338fdbd23f8cbe2d262b74606814fc09bcf65346acd37fa1952b50ff8bc87af": [
+      "src/hub/types.ts"
+    ],
+    "63dc3fc3b5efd79c0007a10af76a90246a55c8e02ae2fa701eee13f59a1b9a9c": [
+      "src/ui/hub-client.js"
+    ],
+    "812b9a889b9596e697058008b99c7e98282aedcb944c4b7fe0a4053774fe2cc5": [
+      "src/ui/hub-grant-picker.js"
+    ],
+    "b2dbde89981e82b69cc258f7b932ad875a175af25274574463fda7bff89faf2a": [
+      "src/ui/hub-group-search.js"
+    ],
+    "b7bc9486c340b89ef7f5cc3b6001668f186d95d8ee49ac87a7b031ff841d66a0": [
+      "src/ui/hub-join-one-strings.js"
+    ],
+    "958ee0b43bc94eb33f1accc2ccf0bd0d70cfeaba6f0d10fbfba22c411824be8b": [
+      "src/ui/hub-join-steps.js"
+    ],
+    "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f": [
+      "src/ui/panel-hub.js"
+    ],
+    "db592c51ec4e0240e52edfa1f4525f2769f2d1886f4380d9485df2a9ff7e64f8": [
+      "src/ui/settings-hub-company-join.js"
+    ],
+    "a9fe5a4fedb95a3999b15d1eadd6e586243fd5968ba590c82928278e2eced72c": [
+      "src/ui/shared/app.css"
+    ],
+    "f841f955dbb644b5f5f4c419c9184b8c819953cd6aa242ee9d967d81b37f69e9": [
+      "tests/helpers/hub-s3b-rig.ts"
+    ],
+    "8952c699418a0a3aa2efdbed2a0e9664f0894b40afe14803adbd51286a6cd4c4": [
+      "scripts/manual/hub-group-ask-m3016/browser.mts"
+    ]
+  },
+  "servedDigests": {
+    "ffc4f54dd8a2511eeb931a77d25d65ddd0a187e414b9deabe9290184399fe22d": [
+      "/assets/theme.js"
+    ],
+    "cd62669f84666fb16e49cf63ebdc8376d3965106eeaf0531744372bdcf70f3c9": [
+      "/assets/tokens.css"
+    ],
+    "a9fe5a4fedb95a3999b15d1eadd6e586243fd5968ba590c82928278e2eced72c": [
+      "/assets/app.css"
+    ],
+    "68dd23194827d7a83f532b1d7b3161fd27a2e696ef14cf6d593b0a65e3ad9ce8": [
+      "/assets/loading.css"
+    ],
+    "ca27cd9ab9bbee60a0ecb427fa05d5322c1eab3606154bf64a8947948ae6154c": [
+      "/assets/app.js"
+    ],
+    "8949e374c68b9252d5ee3ee788ec1b0340d12c4a6999ef8b734fe89562266bd9": [
+      "/assets/app-html.js"
+    ],
+    "d223ea3ca62d93e8991f3a92efa92de9eb0bb5ad4e72b11ce18f286e372580c2": [
+      "/assets/app-prefs.js"
+    ],
+    "feb36efef72b92a5510f881902c0a08140d6940f62304766e3857d13f5e188fa": [
+      "/assets/app-swipe.js"
+    ],
+    "5dfa69d440e16e949c469acbe9945daa6fe65bd41320d18041d6ee9981171d5f": [
+      "/assets/app-nav.js"
+    ],
+    "3c59e5ba9039ad05e18be88b71270c232f6d73bac2dc681cdec70c1825f7027a": [
+      "/assets/text-undo.js"
+    ],
+    "cc0afbe551e1b5857bcfb79447bc24ce59b7a1988972101718c2994b49a95842": [
+      "/assets/app-store.js"
+    ],
+    "49234d50df7b41e005d0221a1a5b5614d30f9b27a9c0d82312c56c694184b58b": [
+      "/assets/app-stream.js"
+    ],
+    "5b71d57a353d8e3cde1c178cb1020b2ebda68a463c57ac579d522d6b2ba58c8b": [
+      "/assets/app-shell.js"
+    ],
+    "d89c2578c4f45f9619ddd7529041d7e774474ead7f657c93d1eec335f6fa4bdd": [
+      "/assets/app-route.js"
+    ],
+    "d38412dd2327ffb4a98248ab8a847eb6abcf18470cd8f5f9635a20df3aace05e": [
+      "/assets/owner-css.js"
+    ],
+    "0ad785a7cf88d1d46dc4b747aaebb3e969945e46b9c63a1dbc50f444536832e4": [
+      "/assets/app-needs.js"
+    ],
+    "fa17fa458645e5f9b747163854449c1a5cb0c45d51379fea86ff601dc03e682d": [
+      "/assets/header-tools.js"
+    ],
+    "6f7fd589ed235fb3081d3097b4669cee511a16ad3a3b5e363d94ab4b2cefd9e5": [
+      "/assets/app-i18n.js"
+    ],
+    "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4": [
+      "/assets/htm.module.js"
+    ],
+    "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38": [
+      "/assets/preact-hooks.module.js"
+    ],
+    "c1fe9587644da4bb37524c6dcd1a64c95b6acd9cff4ad5b78eca9844c6f16c5b": [
+      "/assets/ui-confirm.js"
+    ],
+    "6f55664e3748e3837474f252035ba1dccac885385ae57ebea6be5e464deb3f50": [
+      "/assets/ui-icons.js"
+    ],
+    "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec": [
+      "/assets/app-session.js"
+    ],
+    "0d9ae9002f0cf2a8388ea9177430ce382b91abe630ea68f3a7579c80d4c28c31": [
+      "/assets/ui-states.js"
+    ],
+    "25c22c87ff575b89b52ef1ab58ff921d02aaf2744122e064d824a1fa2fd95ff6": [
+      "/assets/ui-dialog.js"
+    ],
+    "9d70a93221aa1c0499cd01ead1dd548a465e2388c5c63049457cc4efd65a7b64": [
+      "/assets/instance-nav.js"
+    ],
+    "aefbba84067328f2bb16c86bdbe7328cf125f63f40795ee88b3b87e09c27f946": [
+      "/assets/side-panel.js"
+    ],
+    "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6": [
+      "/assets/app-ctx.js"
+    ],
+    "0b675a3860b2f10a40d9557b18d609cb60ddd0e766b6cf9c1b2f27211d930596": [
+      "/assets/app-update.js"
+    ],
+    "46dc2cb17194565a8ed15d5c3477954c98323bfd4874cdbf6ee69df4b34939e1": [
+      "/assets/settings-width.js"
+    ],
+    "601074179fe7c9156d05d507f28e3d22f93b49aba43f8d903b40ae4b8b1bba8d": [
+      "/assets/ui-toast.js"
+    ],
+    "80827afbb28969692e1575339c9e4b54a372812653ede0221a361a2c6a14ad56": [
+      "/assets/side-rail.js"
+    ],
+    "886b72a54b88f65fbc27a9b86fe786d5a1f2774a24c0cc16dddfd1c6ce1fc2b4": [
+      "/assets/app-themes.js"
+    ],
+    "b7cb7d8f4df081e3d514c869cf6f99d8f64b0b730ddecaf955a8d0ccedf3ca43": [
+      "/assets/usage-dialog.js"
+    ],
+    "3c87a7c99b39adb87e624cd7292b37547e33e418b955466109e178795af927b1": [
+      "/assets/web-authorize.js"
+    ],
+    "ca93209e235040a5ff9ee7f73a39b98fc9412c9a12e46d812a961d6eec95578d": [
+      "/assets/device-roles.js"
+    ],
+    "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8": [
+      "/assets/preact.module.js"
+    ],
+    "e3e03f14648322ac8c159ebc16de5c44ad02be82bd83d79478e71fae91e52c5a": [
+      "/assets/identity-color.js"
+    ],
+    "8e90812b94bad0b93c744a0daa3fc4fe6e02249106604ca013c9d6df4ef25a43": [
+      "/assets/agent-widget.js"
+    ],
+    "9897ad69ca4983e96ede71578f6b53a47b6f2a6bcb53832aba5d8e1bcc1542ae": [
+      "/assets/machine-name.js"
+    ],
+    "f73502bef7f44e8fe028b1bf9f4ee304af6d6318be61523006e316e38638b4d8": [
+      "/assets/view-roster-store.js"
+    ],
+    "01e6cd78752e902232b60c87fdb5281947dbdc11ae9b1a09b17e9e0241d48c41": [
+      "/assets/read-stream.js"
+    ],
+    "23f03826cec94cb9bd940325b6f4c14d66faaef0473fb34cfad71cb682757d52": [
+      "/assets/view-strings.js"
+    ],
+    "2766db3d5d230dd18fdacdf44719c49ba9e25eff02ffb500c6345dcfee090200": [
+      "/assets/usage-meter.js"
+    ],
+    "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48": [
+      "/assets/ui-menu.js"
+    ],
+    "8d8f2bf95b99991b9c9934c1471b1bd5b59332ca5ea109b69c658b16eca8e64f": [
+      "/ui/js/panel-hub.js"
+    ],
+    "696e5db1efc6388e3059b9651e3e6a9fa8d4f279010eb53152b85d293ad9a112": [
+      "/ui/js/hub-owner-strings.js"
+    ],
+    "90f089c96321bdf5a45be4921fb6133f9203f0aa4826e796c02f1dc9dcb8896e": [
+      "/ui/js/hub-directory-notice-strings.js"
+    ],
+    "e11e7cd022cb23c758726f1cd7f07d530608ab38f1907085ae86a8926ac29676": [
+      "/ui/js/hub-company-join-strings.js"
+    ],
+    "7840122cfb793af9b9ae44e9081252064c8993274d3fc0a9e485c908259b9f58": [
+      "/ui/js/hub-company-join.js"
+    ],
+    "abfdaf90a367c11b1c229e6b5d8e00b75ead6b1b799fcfdfcb7d28414616c2e1": [
+      "/ui/js/hub-join-approval.js"
+    ],
+    "4c48aed807c6249f2f7695be97cf773ddabb8e4c99a47ce496ad2c3d0d0383e3": [
+      "/ui/js/hub-joincode-flow-strings.js"
+    ],
+    "c4d0a6cf1b12d7fde9bb1e30ab005da1ca9c7916b693cc86e9bf0d28f5a8f9eb": [
+      "/ui/js/hub-directory-notices.js"
+    ],
+    "e8124f3778fdb4eb70ebf5077e282f01e464a6945dcfd9730d085757dbf3209b": [
+      "/assets/chat-thread.js"
+    ],
+    "a65e96967cc72e25e6f14fb286b430c95cf6a9209316982f648a97dba431ac13": [
+      "/ui/js/hub-quick-pairing.js"
+    ],
+    "1f159b7a9c9e2ed01a7ab1468f2990101c69162f21210b3ca78d2d170a4ae076": [
+      "/assets/preview-panel.js"
+    ],
+    "20b0ec2db04b564054aee01c3b013b45eb318314ea1e9e38826f36efe11d4227": [
+      "/assets/chat-composer.js"
+    ],
+    "f12b3db0cc675c4fde91b793641cd43b8bd9ea1d87afe318bbf6c90cb3a737f2": [
+      "/ui/js/hub-strings.js"
+    ],
+    "cc1690aa8931b111e35166fd8f29120c3a7a4ec7a6720108dc7b7ef7e515ac8c": [
+      "/assets/chat-strings.js"
+    ],
+    "63dc3fc3b5efd79c0007a10af76a90246a55c8e02ae2fa701eee13f59a1b9a9c": [
+      "/ui/js/hub-client.js"
+    ],
+    "1be8bee71352ed41e8b71592b6acc404829f574327f3ab2aab433c64ace4a046": [
+      "/ui/js/hub-read-strings.js"
+    ],
+    "7903f0a70ae974c4f562d54efdbf698e4186293db3a2c6067ed1557ece11d76f": [
+      "/ui/js/hub-chat-strings.js"
+    ],
+    "dedbf75e56c51d5a8d22c449a2869bc04e7c5a9e59bda8d5e0c139e856ba5c09": [
+      "/ui/js/hub-attachments.js"
+    ],
+    "a9e9e71b8e64b54a69e3265395948d15f512f811a03353ccf3c0fa04e2788f2a": [
+      "/assets/page-head.js"
+    ],
+    "b4cf4c2c4976b3b0ba5d1440579bd89c7b54f1231a33a38b1aef4bd49bdc14d1": [
+      "/ui/js/hub-quota.js"
+    ],
+    "63d4e7dffad21cb5262d4feb959ed9d04d1c79b68b94dc83a54e9ae2088433c4": [
+      "/ui/js/hub-grant-strings.js"
+    ],
+    "b653dd4b49b92b91c1db71d6e652a08da06cc8164db5dfad4bdb46fe6ef711d5": [
+      "/ui/js/hub-preview.js"
+    ],
+    "25add8f85a324c042177876f70383a90b8ad4432fc184fe1da0494a7dd8edb8f": [
+      "/ui/js/hub-chat-store.js"
+    ],
+    "1ae6496f5838934df8008c782b0f249404a3d3dfdff96769c39879f24a2b6324": [
+      "/ui/js/hub-enrolment-code-strings.js"
+    ],
+    "958ee0b43bc94eb33f1accc2ccf0bd0d70cfeaba6f0d10fbfba22c411824be8b": [
+      "/ui/js/hub-join-steps.js"
+    ],
+    "ca3dacd41ddf8284ce6542f529cdacb9fc333722f41d1ce2beb6fb019e4b8538": [
+      "/assets/chat-time.js"
+    ],
+    "2419460a300b9aae37024348e9925d7fe142b0e3cd8d20f0c429ab24903e1d22": [
+      "/assets/chat-render.js"
+    ],
+    "d179862fd1d2535bf1c06776cb20cce601d874d5fa42e47eca0fbd7835023ff1": [
+      "/assets/preview.js"
+    ],
+    "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764": [
+      "/ui/js/hub-join-queue.js"
+    ],
+    "45ce6f2b941c6f0d8e154c51e7d6977cea9241a6ddfc03c6bf8b848323448643": [
+      "/assets/html-attachment.js"
+    ],
+    "0a6b59ad416fe04765c9ec8fcb06aea0d75f1c22cededf746415377fe19c4c35": [
+      "/ui/js/hub-quick-strings.js"
+    ],
+    "6a1fd446d3200fa3ebebafec1f814c95b365315d1e7553924a2bf587a9553925": [
+      "/assets/preview-pages.js"
+    ],
+    "31a90eea31b3f957965ffce28897cf6fb1571698ecc4a320dd95d310c4c37d3b": [
+      "/assets/chat-md-strings.js"
+    ],
+    "8e2665b14f5df60a7698ba5852a5d217257c495bd4c5c4e81b70acda8c65431f": [
+      "/assets/preview-panel-actions.js"
+    ],
+    "0583433c1027b8ca25410392c623e4f83f92dd1db6f62f46e40be23b71431814": [
+      "/assets/preview-versions.js"
+    ],
+    "0ed438dca5c96bedafd603761e786287a8465a9fc7c6bda1aca1fb6affb65063": [
+      "/ui/js/hub-button-actions.js"
+    ],
+    "b2dbde89981e82b69cc258f7b932ad875a175af25274574463fda7bff89faf2a": [
+      "/ui/js/hub-group-search.js"
+    ],
+    "dbb490b50f06f45d538259cad57f5d130ed29c17f4295d8d3c4c848b037190fb": [
+      "/assets/hub-quota.css"
+    ],
+    "06a788df08807cbc7b124add1103b36355ad4f411357cbddb3ca338feb9701be": [
+      "/assets/hub-chat.css"
+    ],
+    "f944a5a768f17d5690d0991de2d2b544ebb5cf7576ded79ceb5d221adf702472": [
+      "/assets/hub.css"
+    ],
+    "e8d9234628f8ac9e1e5a9732d15b6ddefc00fa2eba98d2a32fe52185164264bc": [
+      "/assets/hub-owner.css"
+    ],
+    "bff809d11b0869cfa0b05055fbe80a2190de5cff388d5f13d74bb71aa6e5f5cb": [
+      "/assets/hub-signin.css"
+    ],
+    "812b9a889b9596e697058008b99c7e98282aedcb944c4b7fe0a4053774fe2cc5": [
+      "/ui/js/hub-grant-picker.js"
+    ],
+    "105409f33b73dc5b2d47989ab7e99fb8ab74792f97b2fb042322f6f96070a7ea": [
+      "/ui/js/hub-client.js"
+    ],
+    "2bb084a1cd5999891278413805424624125e3516f2f8e68d40636adb6fa3697c": [
+      "/ui/js/hub-group-search.js"
+    ]
+  },
+  "substitutions": [
+    {
+      "ref": "34bd23bdef54628059744044b79e43ee0d50749c",
+      "path": "src/ui/hub-client.js",
+      "digest": "105409f33b73dc5b2d47989ab7e99fb8ab74792f97b2fb042322f6f96070a7ea"
+    },
+    {
+      "ref": "34bd23bdef54628059744044b79e43ee0d50749c",
+      "path": "src/ui/hub-group-search.js",
+      "digest": "2bb084a1cd5999891278413805424624125e3516f2f8e68d40636adb6fa3697c"
+    },
+    {
+      "ref": "34bd23bdef54628059744044b79e43ee0d50749c",
+      "path": "src/ui/hub-owner-strings.js",
+      "digest": "696e5db1efc6388e3059b9651e3e6a9fa8d4f279010eb53152b85d293ad9a112"
+    },
+    {
+      "ref": "34bd23bdef54628059744044b79e43ee0d50749c",
+      "path": "src/ui/hub-strings.js",
+      "digest": "f12b3db0cc675c4fde91b793641cd43b8bd9ea1d87afe318bbf6c90cb3a737f2"
+    },
+    {
+      "ref": "34bd23bdef54628059744044b79e43ee0d50749c",
+      "path": "src/ui/hub-grant-strings.js",
+      "digest": "63d4e7dffad21cb5262d4feb959ed9d04d1c79b68b94dc83a54e9ae2088433c4"
+    }
+  ],
+  "cases": [
+    {
+      "tag": "current-desk-light-en",
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "legacy": false,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 263,
+              "width": 480,
+              "height": 474,
+              "top": 263,
+              "right": 923,
+              "bottom": 737,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 681,
+                "width": 77.671875,
+                "height": 36,
+                "top": 681,
+                "right": 826.09375,
+                "bottom": 717,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 681,
+                "width": 68.90625,
+                "height": 36,
+                "top": 681,
+                "right": 903,
+                "bottom": 717,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 367,
+                "width": 440,
+                "height": 40,
+                "top": 367,
+                "right": 903,
+                "bottom": 407,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 463,
+                "y": 447,
+                "width": 440,
+                "height": 42,
+                "top": 447,
+                "right": 903,
+                "bottom": 489,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 553,
+                "width": 440,
+                "height": 40,
+                "top": 553,
+                "right": 903,
+                "bottom": 593,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "people",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 242,
+              "width": 480,
+              "height": 516,
+              "top": 242,
+              "right": 923,
+              "bottom": 758,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Choose",
+                "x": 820.5,
+                "y": 486,
+                "width": 70.5,
+                "height": 30,
+                "top": 486,
+                "right": 891,
+                "bottom": 516,
+                "left": 820.5
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 702,
+                "width": 77.671875,
+                "height": 36,
+                "top": 702,
+                "right": 826.09375,
+                "bottom": 738,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 702,
+                "width": 68.90625,
+                "height": 36,
+                "top": 702,
+                "right": 903,
+                "bottom": 738,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 346,
+                "width": 440,
+                "height": 40,
+                "top": 346,
+                "right": 903,
+                "bottom": 386,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 463,
+                "y": 426,
+                "width": 440,
+                "height": 42,
+                "top": 426,
+                "right": 903,
+                "bottom": 468,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 574,
+                "width": 440,
+                "height": 40,
+                "top": 574,
+                "right": 903,
+                "bottom": 614,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "person-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 277,
+              "width": 480,
+              "height": 446,
+              "top": 277,
+              "right": 923,
+              "bottom": 723,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Choose someone else",
+                "x": 736.984375,
+                "y": 451,
+                "width": 154.015625,
+                "height": 30,
+                "top": 451,
+                "right": 891,
+                "bottom": 481,
+                "left": 736.984375
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 667,
+                "width": 77.671875,
+                "height": 36,
+                "top": 667,
+                "right": 826.09375,
+                "bottom": 703,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 667,
+                "width": 68.90625,
+                "height": 36,
+                "top": 667,
+                "right": 903,
+                "bottom": 703,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 381,
+                "width": 440,
+                "height": 40,
+                "top": 381,
+                "right": 903,
+                "bottom": 421,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 539,
+                "width": 440,
+                "height": 40,
+                "top": 539,
+                "right": 903,
+                "bottom": 579,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "groups",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 200,
+              "width": 480,
+              "height": 600,
+              "top": 200,
+              "right": 923,
+              "bottom": 800,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Add",
+                "x": 841.46875,
+                "y": 444,
+                "width": 49.53125,
+                "height": 30,
+                "top": 444,
+                "right": 891,
+                "bottom": 474,
+                "left": 841.46875
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 744,
+                "width": 77.671875,
+                "height": 36,
+                "top": 744,
+                "right": 826.09375,
+                "bottom": 780,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 744,
+                "width": 68.90625,
+                "height": 36,
+                "top": 744,
+                "right": 903,
+                "bottom": 780,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 304,
+                "width": 440,
+                "height": 40,
+                "top": 304,
+                "right": 903,
+                "bottom": 344,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantGroup",
+                "x": 463,
+                "y": 384,
+                "width": 440,
+                "height": 42,
+                "top": 384,
+                "right": 903,
+                "bottom": 426,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 616,
+                "width": 440,
+                "height": 40,
+                "top": 616,
+                "right": 903,
+                "bottom": 656,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "group-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 235,
+              "width": 480,
+              "height": 530,
+              "top": 235,
+              "right": 923,
+              "bottom": 765,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Choose someone else",
+                "x": 736.984375,
+                "y": 409,
+                "width": 154.015625,
+                "height": 30,
+                "top": 409,
+                "right": 891,
+                "bottom": 439,
+                "left": 736.984375
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 709,
+                "width": 77.671875,
+                "height": 36,
+                "top": 709,
+                "right": 826.09375,
+                "bottom": 745,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 709,
+                "width": 68.90625,
+                "height": 36,
+                "top": 709,
+                "right": 903,
+                "bottom": 745,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 339,
+                "width": 440,
+                "height": 40,
+                "top": 339,
+                "right": 903,
+                "bottom": 379,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 581,
+                "width": 440,
+                "height": 40,
+                "top": 581,
+                "right": 903,
+                "bottom": 621,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": [],
+            "fields": []
+          }
+        }
+      ]
+    },
+    {
+      "tag": "current-desk-light-zh-TW",
+      "device": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "legacy": false,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 275,
+              "width": 480,
+              "height": 450,
+              "top": 275,
+              "right": 923,
+              "bottom": 725,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "取消",
+                "x": 749,
+                "y": 669,
+                "width": 60,
+                "height": 36,
+                "top": 669,
+                "right": 809,
+                "bottom": 705,
+                "left": 749
+              },
+              {
+                "label": "允許提問",
+                "x": 817,
+                "y": 669,
+                "width": 86,
+                "height": 36,
+                "top": 669,
+                "right": 903,
+                "bottom": 705,
+                "left": 817
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 379,
+                "width": 440,
+                "height": 40,
+                "top": 379,
+                "right": 903,
+                "bottom": 419,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 463,
+                "y": 459,
+                "width": 440,
+                "height": 42,
+                "top": 459,
+                "right": 903,
+                "bottom": 501,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 565,
+                "width": 440,
+                "height": 40,
+                "top": 565,
+                "right": 903,
+                "bottom": 605,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "people",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 254,
+              "width": 480,
+              "height": 492,
+              "top": 254,
+              "right": 923,
+              "bottom": 746,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "選擇",
+                "x": 841,
+                "y": 498,
+                "width": 50,
+                "height": 30,
+                "top": 498,
+                "right": 891,
+                "bottom": 528,
+                "left": 841
+              },
+              {
+                "label": "取消",
+                "x": 749,
+                "y": 690,
+                "width": 60,
+                "height": 36,
+                "top": 690,
+                "right": 809,
+                "bottom": 726,
+                "left": 749
+              },
+              {
+                "label": "允許提問",
+                "x": 817,
+                "y": 690,
+                "width": 86,
+                "height": 36,
+                "top": 690,
+                "right": 903,
+                "bottom": 726,
+                "left": 817
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 358,
+                "width": 440,
+                "height": 40,
+                "top": 358,
+                "right": 903,
+                "bottom": 398,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 463,
+                "y": 438,
+                "width": 440,
+                "height": 42,
+                "top": 438,
+                "right": 903,
+                "bottom": 480,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 586,
+                "width": 440,
+                "height": 40,
+                "top": 586,
+                "right": 903,
+                "bottom": 626,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "person-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 289,
+              "width": 480,
+              "height": 422,
+              "top": 289,
+              "right": 923,
+              "bottom": 711,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "重新選擇對象",
+                "x": 793,
+                "y": 463,
+                "width": 98,
+                "height": 30,
+                "top": 463,
+                "right": 891,
+                "bottom": 493,
+                "left": 793
+              },
+              {
+                "label": "取消",
+                "x": 749,
+                "y": 655,
+                "width": 60,
+                "height": 36,
+                "top": 655,
+                "right": 809,
+                "bottom": 691,
+                "left": 749
+              },
+              {
+                "label": "允許提問",
+                "x": 817,
+                "y": 655,
+                "width": 86,
+                "height": 36,
+                "top": 655,
+                "right": 903,
+                "bottom": 691,
+                "left": 817
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 393,
+                "width": 440,
+                "height": 40,
+                "top": 393,
+                "right": 903,
+                "bottom": 433,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 551,
+                "width": 440,
+                "height": 40,
+                "top": 551,
+                "right": 903,
+                "bottom": 591,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "groups",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 224,
+              "width": 480,
+              "height": 552,
+              "top": 224,
+              "right": 923,
+              "bottom": 776,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "新增",
+                "x": 841,
+                "y": 468,
+                "width": 50,
+                "height": 30,
+                "top": 468,
+                "right": 891,
+                "bottom": 498,
+                "left": 841
+              },
+              {
+                "label": "取消",
+                "x": 749,
+                "y": 720,
+                "width": 60,
+                "height": 36,
+                "top": 720,
+                "right": 809,
+                "bottom": 756,
+                "left": 749
+              },
+              {
+                "label": "允許提問",
+                "x": 817,
+                "y": 720,
+                "width": 86,
+                "height": 36,
+                "top": 720,
+                "right": 903,
+                "bottom": 756,
+                "left": 817
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 328,
+                "width": 440,
+                "height": 40,
+                "top": 328,
+                "right": 903,
+                "bottom": 368,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantGroup",
+                "x": 463,
+                "y": 408,
+                "width": 440,
+                "height": 42,
+                "top": 408,
+                "right": 903,
+                "bottom": 450,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 616,
+                "width": 440,
+                "height": 40,
+                "top": 616,
+                "right": 903,
+                "bottom": 656,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "group-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 259,
+              "width": 480,
+              "height": 482,
+              "top": 259,
+              "right": 923,
+              "bottom": 741,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "重新選擇對象",
+                "x": 793,
+                "y": 433,
+                "width": 98,
+                "height": 30,
+                "top": 433,
+                "right": 891,
+                "bottom": 463,
+                "left": 793
+              },
+              {
+                "label": "取消",
+                "x": 749,
+                "y": 685,
+                "width": 60,
+                "height": 36,
+                "top": 685,
+                "right": 809,
+                "bottom": 721,
+                "left": 749
+              },
+              {
+                "label": "允許提問",
+                "x": 817,
+                "y": 685,
+                "width": 86,
+                "height": 36,
+                "top": 685,
+                "right": 903,
+                "bottom": 721,
+                "left": 817
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 363,
+                "width": 440,
+                "height": 40,
+                "top": 363,
+                "right": 903,
+                "bottom": 403,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 581,
+                "width": 440,
+                "height": 40,
+                "top": 581,
+                "right": 903,
+                "bottom": 621,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": [],
+            "fields": []
+          }
+        }
+      ]
+    },
+    {
+      "tag": "current-desk-dark-en",
+      "device": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "legacy": false,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 263,
+              "width": 480,
+              "height": 474,
+              "top": 263,
+              "right": 923,
+              "bottom": 737,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 681,
+                "width": 77.671875,
+                "height": 36,
+                "top": 681,
+                "right": 826.09375,
+                "bottom": 717,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 681,
+                "width": 68.90625,
+                "height": 36,
+                "top": 681,
+                "right": 903,
+                "bottom": 717,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 367,
+                "width": 440,
+                "height": 40,
+                "top": 367,
+                "right": 903,
+                "bottom": 407,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 463,
+                "y": 447,
+                "width": 440,
+                "height": 42,
+                "top": 447,
+                "right": 903,
+                "bottom": 489,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 553,
+                "width": 440,
+                "height": 40,
+                "top": 553,
+                "right": 903,
+                "bottom": 593,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "people",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 242,
+              "width": 480,
+              "height": 516,
+              "top": 242,
+              "right": 923,
+              "bottom": 758,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Choose",
+                "x": 820.5,
+                "y": 486,
+                "width": 70.5,
+                "height": 30,
+                "top": 486,
+                "right": 891,
+                "bottom": 516,
+                "left": 820.5
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 702,
+                "width": 77.671875,
+                "height": 36,
+                "top": 702,
+                "right": 826.09375,
+                "bottom": 738,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 702,
+                "width": 68.90625,
+                "height": 36,
+                "top": 702,
+                "right": 903,
+                "bottom": 738,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 346,
+                "width": 440,
+                "height": 40,
+                "top": 346,
+                "right": 903,
+                "bottom": 386,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 463,
+                "y": 426,
+                "width": 440,
+                "height": 42,
+                "top": 426,
+                "right": 903,
+                "bottom": 468,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 574,
+                "width": 440,
+                "height": 40,
+                "top": 574,
+                "right": 903,
+                "bottom": 614,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "person-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 277,
+              "width": 480,
+              "height": 446,
+              "top": 277,
+              "right": 923,
+              "bottom": 723,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Choose someone else",
+                "x": 736.984375,
+                "y": 451,
+                "width": 154.015625,
+                "height": 30,
+                "top": 451,
+                "right": 891,
+                "bottom": 481,
+                "left": 736.984375
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 667,
+                "width": 77.671875,
+                "height": 36,
+                "top": 667,
+                "right": 826.09375,
+                "bottom": 703,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 667,
+                "width": 68.90625,
+                "height": 36,
+                "top": 667,
+                "right": 903,
+                "bottom": 703,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 381,
+                "width": 440,
+                "height": 40,
+                "top": 381,
+                "right": 903,
+                "bottom": 421,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 539,
+                "width": 440,
+                "height": 40,
+                "top": 539,
+                "right": 903,
+                "bottom": 579,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "groups",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 200,
+              "width": 480,
+              "height": 600,
+              "top": 200,
+              "right": 923,
+              "bottom": 800,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Add",
+                "x": 841.46875,
+                "y": 444,
+                "width": 49.53125,
+                "height": 30,
+                "top": 444,
+                "right": 891,
+                "bottom": 474,
+                "left": 841.46875
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 744,
+                "width": 77.671875,
+                "height": 36,
+                "top": 744,
+                "right": 826.09375,
+                "bottom": 780,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 744,
+                "width": 68.90625,
+                "height": 36,
+                "top": 744,
+                "right": 903,
+                "bottom": 780,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 304,
+                "width": 440,
+                "height": 40,
+                "top": 304,
+                "right": 903,
+                "bottom": 344,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantGroup",
+                "x": 463,
+                "y": 384,
+                "width": 440,
+                "height": 42,
+                "top": 384,
+                "right": 903,
+                "bottom": 426,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 616,
+                "width": 440,
+                "height": 40,
+                "top": 616,
+                "right": 903,
+                "bottom": 656,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "group-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 235,
+              "width": 480,
+              "height": 530,
+              "top": 235,
+              "right": 923,
+              "bottom": 765,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Choose someone else",
+                "x": 736.984375,
+                "y": 409,
+                "width": 154.015625,
+                "height": 30,
+                "top": 409,
+                "right": 891,
+                "bottom": 439,
+                "left": 736.984375
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 709,
+                "width": 77.671875,
+                "height": 36,
+                "top": 709,
+                "right": 826.09375,
+                "bottom": 745,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 709,
+                "width": 68.90625,
+                "height": 36,
+                "top": 709,
+                "right": 903,
+                "bottom": 745,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 339,
+                "width": 440,
+                "height": 40,
+                "top": 339,
+                "right": 903,
+                "bottom": 379,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 581,
+                "width": 440,
+                "height": 40,
+                "top": 581,
+                "right": 903,
+                "bottom": 621,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": [],
+            "fields": []
+          }
+        }
+      ]
+    },
+    {
+      "tag": "current-desk-dark-zh-TW",
+      "device": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "legacy": false,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 275,
+              "width": 480,
+              "height": 450,
+              "top": 275,
+              "right": 923,
+              "bottom": 725,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "取消",
+                "x": 749,
+                "y": 669,
+                "width": 60,
+                "height": 36,
+                "top": 669,
+                "right": 809,
+                "bottom": 705,
+                "left": 749
+              },
+              {
+                "label": "允許提問",
+                "x": 817,
+                "y": 669,
+                "width": 86,
+                "height": 36,
+                "top": 669,
+                "right": 903,
+                "bottom": 705,
+                "left": 817
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 379,
+                "width": 440,
+                "height": 40,
+                "top": 379,
+                "right": 903,
+                "bottom": 419,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 463,
+                "y": 459,
+                "width": 440,
+                "height": 42,
+                "top": 459,
+                "right": 903,
+                "bottom": 501,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 565,
+                "width": 440,
+                "height": 40,
+                "top": 565,
+                "right": 903,
+                "bottom": 605,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "people",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 254,
+              "width": 480,
+              "height": 492,
+              "top": 254,
+              "right": 923,
+              "bottom": 746,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "選擇",
+                "x": 841,
+                "y": 498,
+                "width": 50,
+                "height": 30,
+                "top": 498,
+                "right": 891,
+                "bottom": 528,
+                "left": 841
+              },
+              {
+                "label": "取消",
+                "x": 749,
+                "y": 690,
+                "width": 60,
+                "height": 36,
+                "top": 690,
+                "right": 809,
+                "bottom": 726,
+                "left": 749
+              },
+              {
+                "label": "允許提問",
+                "x": 817,
+                "y": 690,
+                "width": 86,
+                "height": 36,
+                "top": 690,
+                "right": 903,
+                "bottom": 726,
+                "left": 817
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 358,
+                "width": 440,
+                "height": 40,
+                "top": 358,
+                "right": 903,
+                "bottom": 398,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 463,
+                "y": 438,
+                "width": 440,
+                "height": 42,
+                "top": 438,
+                "right": 903,
+                "bottom": 480,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 586,
+                "width": 440,
+                "height": 40,
+                "top": 586,
+                "right": 903,
+                "bottom": 626,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "person-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 289,
+              "width": 480,
+              "height": 422,
+              "top": 289,
+              "right": 923,
+              "bottom": 711,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "重新選擇對象",
+                "x": 793,
+                "y": 463,
+                "width": 98,
+                "height": 30,
+                "top": 463,
+                "right": 891,
+                "bottom": 493,
+                "left": 793
+              },
+              {
+                "label": "取消",
+                "x": 749,
+                "y": 655,
+                "width": 60,
+                "height": 36,
+                "top": 655,
+                "right": 809,
+                "bottom": 691,
+                "left": 749
+              },
+              {
+                "label": "允許提問",
+                "x": 817,
+                "y": 655,
+                "width": 86,
+                "height": 36,
+                "top": 655,
+                "right": 903,
+                "bottom": 691,
+                "left": 817
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 393,
+                "width": 440,
+                "height": 40,
+                "top": 393,
+                "right": 903,
+                "bottom": 433,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 551,
+                "width": 440,
+                "height": 40,
+                "top": 551,
+                "right": 903,
+                "bottom": 591,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "groups",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 224,
+              "width": 480,
+              "height": 552,
+              "top": 224,
+              "right": 923,
+              "bottom": 776,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "新增",
+                "x": 841,
+                "y": 468,
+                "width": 50,
+                "height": 30,
+                "top": 468,
+                "right": 891,
+                "bottom": 498,
+                "left": 841
+              },
+              {
+                "label": "取消",
+                "x": 749,
+                "y": 720,
+                "width": 60,
+                "height": 36,
+                "top": 720,
+                "right": 809,
+                "bottom": 756,
+                "left": 749
+              },
+              {
+                "label": "允許提問",
+                "x": 817,
+                "y": 720,
+                "width": 86,
+                "height": 36,
+                "top": 720,
+                "right": 903,
+                "bottom": 756,
+                "left": 817
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 328,
+                "width": 440,
+                "height": 40,
+                "top": 328,
+                "right": 903,
+                "bottom": 368,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantGroup",
+                "x": 463,
+                "y": 408,
+                "width": 440,
+                "height": 42,
+                "top": 408,
+                "right": 903,
+                "bottom": 450,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 616,
+                "width": 440,
+                "height": 40,
+                "top": 616,
+                "right": 903,
+                "bottom": 656,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "group-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 259,
+              "width": 480,
+              "height": 482,
+              "top": 259,
+              "right": 923,
+              "bottom": 741,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "重新選擇對象",
+                "x": 793,
+                "y": 433,
+                "width": 98,
+                "height": 30,
+                "top": 433,
+                "right": 891,
+                "bottom": 463,
+                "left": 793
+              },
+              {
+                "label": "取消",
+                "x": 749,
+                "y": 685,
+                "width": 60,
+                "height": 36,
+                "top": 685,
+                "right": 809,
+                "bottom": 721,
+                "left": 749
+              },
+              {
+                "label": "允許提問",
+                "x": 817,
+                "y": 685,
+                "width": 86,
+                "height": 36,
+                "top": 685,
+                "right": 903,
+                "bottom": 721,
+                "left": 817
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 363,
+                "width": 440,
+                "height": 40,
+                "top": 363,
+                "right": 903,
+                "bottom": 403,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 581,
+                "width": 440,
+                "height": 40,
+                "top": 581,
+                "right": 903,
+                "bottom": 621,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": [],
+            "fields": []
+          }
+        }
+      ]
+    },
+    {
+      "tag": "current-phone-light-en",
+      "device": "phone",
+      "theme": "light",
+      "lang": "en",
+      "legacy": false,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 344,
+              "width": 390,
+              "height": 500,
+              "top": 344,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "Cancel",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "Allow",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 456,
+                "width": 350,
+                "height": 44,
+                "top": 456,
+                "right": 370,
+                "bottom": 500,
+                "left": 20
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 20,
+                "y": 540,
+                "width": 350,
+                "height": 44,
+                "top": 540,
+                "right": 370,
+                "bottom": 584,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 648,
+                "width": 350,
+                "height": 44,
+                "top": 648,
+                "right": 370,
+                "bottom": 692,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "people",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 302,
+              "width": 390,
+              "height": 542,
+              "top": 302,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "Choose",
+                "x": 287.5,
+                "y": 553,
+                "width": 70.5,
+                "height": 44,
+                "top": 553,
+                "right": 358,
+                "bottom": 597,
+                "left": 287.5
+              },
+              {
+                "label": "Cancel",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "Allow",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 414,
+                "width": 350,
+                "height": 44,
+                "top": 414,
+                "right": 370,
+                "bottom": 458,
+                "left": 20
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 20,
+                "y": 498,
+                "width": 350,
+                "height": 44,
+                "top": 498,
+                "right": 370,
+                "bottom": 542,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 648,
+                "width": 350,
+                "height": 44,
+                "top": 648,
+                "right": 370,
+                "bottom": 692,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "person-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 374,
+              "width": 390,
+              "height": 470,
+              "top": 374,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "Choose someone else",
+                "x": 203.984375,
+                "y": 553,
+                "width": 154.015625,
+                "height": 44,
+                "top": 553,
+                "right": 358,
+                "bottom": 597,
+                "left": 203.984375
+              },
+              {
+                "label": "Cancel",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "Allow",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 486,
+                "width": 350,
+                "height": 44,
+                "top": 486,
+                "right": 370,
+                "bottom": 530,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 648,
+                "width": 350,
+                "height": 44,
+                "top": 648,
+                "right": 370,
+                "bottom": 692,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "groups",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 194,
+              "width": 390,
+              "height": 650,
+              "top": 194,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "Add",
+                "x": 308.46875,
+                "y": 445,
+                "width": 49.53125,
+                "height": 44,
+                "top": 445,
+                "right": 358,
+                "bottom": 489,
+                "left": 308.46875
+              },
+              {
+                "label": "Cancel",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "Allow",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 306,
+                "width": 350,
+                "height": 44,
+                "top": 306,
+                "right": 370,
+                "bottom": 350,
+                "left": 20
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantGroup",
+                "x": 20,
+                "y": 390,
+                "width": 350,
+                "height": 44,
+                "top": 390,
+                "right": 370,
+                "bottom": 434,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 648,
+                "width": 350,
+                "height": 44,
+                "top": 648,
+                "right": 370,
+                "bottom": 692,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "group-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 242,
+              "width": 390,
+              "height": 602,
+              "top": 242,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "Choose someone else",
+                "x": 203.984375,
+                "y": 433,
+                "width": 154.015625,
+                "height": 44,
+                "top": 433,
+                "right": 358,
+                "bottom": 477,
+                "left": 203.984375
+              },
+              {
+                "label": "Cancel",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "Allow",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 354,
+                "width": 350,
+                "height": 44,
+                "top": 354,
+                "right": 370,
+                "bottom": 398,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 648,
+                "width": 350,
+                "height": 44,
+                "top": 648,
+                "right": 370,
+                "bottom": 692,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": [],
+            "fields": []
+          }
+        }
+      ]
+    },
+    {
+      "tag": "current-phone-light-zh-TW",
+      "device": "phone",
+      "theme": "light",
+      "lang": "zh-TW",
+      "legacy": false,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 368,
+              "width": 390,
+              "height": 476,
+              "top": 368,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "取消",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "允許提問",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 480,
+                "width": 350,
+                "height": 44,
+                "top": 480,
+                "right": 370,
+                "bottom": 524,
+                "left": 20
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 20,
+                "y": 564,
+                "width": 350,
+                "height": 44,
+                "top": 564,
+                "right": 370,
+                "bottom": 608,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 672,
+                "width": 350,
+                "height": 44,
+                "top": 672,
+                "right": 370,
+                "bottom": 716,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "people",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 326,
+              "width": 390,
+              "height": 518,
+              "top": 326,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "選擇",
+                "x": 308,
+                "y": 577,
+                "width": 50,
+                "height": 44,
+                "top": 577,
+                "right": 358,
+                "bottom": 621,
+                "left": 308
+              },
+              {
+                "label": "取消",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "允許提問",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 438,
+                "width": 350,
+                "height": 44,
+                "top": 438,
+                "right": 370,
+                "bottom": 482,
+                "left": 20
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 20,
+                "y": 522,
+                "width": 350,
+                "height": 44,
+                "top": 522,
+                "right": 370,
+                "bottom": 566,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 672,
+                "width": 350,
+                "height": 44,
+                "top": 672,
+                "right": 370,
+                "bottom": 716,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "person-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 398,
+              "width": 390,
+              "height": 446,
+              "top": 398,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "重新選擇對象",
+                "x": 260,
+                "y": 577,
+                "width": 98,
+                "height": 44,
+                "top": 577,
+                "right": 358,
+                "bottom": 621,
+                "left": 260
+              },
+              {
+                "label": "取消",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "允許提問",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 510,
+                "width": 350,
+                "height": 44,
+                "top": 510,
+                "right": 370,
+                "bottom": 554,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 672,
+                "width": 350,
+                "height": 44,
+                "top": 672,
+                "right": 370,
+                "bottom": 716,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "groups",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 242,
+              "width": 390,
+              "height": 602,
+              "top": 242,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "新增",
+                "x": 308,
+                "y": 493,
+                "width": 50,
+                "height": 44,
+                "top": 493,
+                "right": 358,
+                "bottom": 537,
+                "left": 308
+              },
+              {
+                "label": "取消",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "允許提問",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 354,
+                "width": 350,
+                "height": 44,
+                "top": 354,
+                "right": 370,
+                "bottom": 398,
+                "left": 20
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantGroup",
+                "x": 20,
+                "y": 438,
+                "width": 350,
+                "height": 44,
+                "top": 438,
+                "right": 370,
+                "bottom": 482,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 672,
+                "width": 350,
+                "height": 44,
+                "top": 672,
+                "right": 370,
+                "bottom": 716,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "group-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 290,
+              "width": 390,
+              "height": 554,
+              "top": 290,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "重新選擇對象",
+                "x": 260,
+                "y": 481,
+                "width": 98,
+                "height": 44,
+                "top": 481,
+                "right": 358,
+                "bottom": 525,
+                "left": 260
+              },
+              {
+                "label": "取消",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "允許提問",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 402,
+                "width": 350,
+                "height": 44,
+                "top": 402,
+                "right": 370,
+                "bottom": 446,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 672,
+                "width": 350,
+                "height": 44,
+                "top": 672,
+                "right": 370,
+                "bottom": 716,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": [],
+            "fields": []
+          }
+        }
+      ]
+    },
+    {
+      "tag": "current-phone-dark-en",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "en",
+      "legacy": false,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 344,
+              "width": 390,
+              "height": 500,
+              "top": 344,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "Cancel",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "Allow",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 456,
+                "width": 350,
+                "height": 44,
+                "top": 456,
+                "right": 370,
+                "bottom": 500,
+                "left": 20
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 20,
+                "y": 540,
+                "width": 350,
+                "height": 44,
+                "top": 540,
+                "right": 370,
+                "bottom": 584,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 648,
+                "width": 350,
+                "height": 44,
+                "top": 648,
+                "right": 370,
+                "bottom": 692,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "people",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 302,
+              "width": 390,
+              "height": 542,
+              "top": 302,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "Choose",
+                "x": 287.5,
+                "y": 553,
+                "width": 70.5,
+                "height": 44,
+                "top": 553,
+                "right": 358,
+                "bottom": 597,
+                "left": 287.5
+              },
+              {
+                "label": "Cancel",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "Allow",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 414,
+                "width": 350,
+                "height": 44,
+                "top": 414,
+                "right": 370,
+                "bottom": 458,
+                "left": 20
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 20,
+                "y": 498,
+                "width": 350,
+                "height": 44,
+                "top": 498,
+                "right": 370,
+                "bottom": 542,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 648,
+                "width": 350,
+                "height": 44,
+                "top": 648,
+                "right": 370,
+                "bottom": 692,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "person-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 374,
+              "width": 390,
+              "height": 470,
+              "top": 374,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "Choose someone else",
+                "x": 203.984375,
+                "y": 553,
+                "width": 154.015625,
+                "height": 44,
+                "top": 553,
+                "right": 358,
+                "bottom": 597,
+                "left": 203.984375
+              },
+              {
+                "label": "Cancel",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "Allow",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 486,
+                "width": 350,
+                "height": 44,
+                "top": 486,
+                "right": 370,
+                "bottom": 530,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 648,
+                "width": 350,
+                "height": 44,
+                "top": 648,
+                "right": 370,
+                "bottom": 692,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "groups",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 194,
+              "width": 390,
+              "height": 650,
+              "top": 194,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "Add",
+                "x": 308.46875,
+                "y": 445,
+                "width": 49.53125,
+                "height": 44,
+                "top": 445,
+                "right": 358,
+                "bottom": 489,
+                "left": 308.46875
+              },
+              {
+                "label": "Cancel",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "Allow",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 306,
+                "width": 350,
+                "height": 44,
+                "top": 306,
+                "right": 370,
+                "bottom": 350,
+                "left": 20
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantGroup",
+                "x": 20,
+                "y": 390,
+                "width": 350,
+                "height": 44,
+                "top": 390,
+                "right": 370,
+                "bottom": 434,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 648,
+                "width": 350,
+                "height": 44,
+                "top": 648,
+                "right": 370,
+                "bottom": 692,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "group-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 242,
+              "width": 390,
+              "height": 602,
+              "top": 242,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "Choose someone else",
+                "x": 203.984375,
+                "y": 433,
+                "width": 154.015625,
+                "height": 44,
+                "top": 433,
+                "right": 358,
+                "bottom": 477,
+                "left": 203.984375
+              },
+              {
+                "label": "Cancel",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "Allow",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 354,
+                "width": 350,
+                "height": 44,
+                "top": 354,
+                "right": 370,
+                "bottom": 398,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 648,
+                "width": 350,
+                "height": 44,
+                "top": 648,
+                "right": 370,
+                "bottom": 692,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": [],
+            "fields": []
+          }
+        }
+      ]
+    },
+    {
+      "tag": "current-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "legacy": false,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 368,
+              "width": 390,
+              "height": 476,
+              "top": 368,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "取消",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "允許提問",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 480,
+                "width": 350,
+                "height": 44,
+                "top": 480,
+                "right": 370,
+                "bottom": 524,
+                "left": 20
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 20,
+                "y": 564,
+                "width": 350,
+                "height": 44,
+                "top": 564,
+                "right": 370,
+                "bottom": 608,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 672,
+                "width": 350,
+                "height": 44,
+                "top": 672,
+                "right": 370,
+                "bottom": 716,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "people",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 326,
+              "width": 390,
+              "height": 518,
+              "top": 326,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "選擇",
+                "x": 308,
+                "y": 577,
+                "width": 50,
+                "height": 44,
+                "top": 577,
+                "right": 358,
+                "bottom": 621,
+                "left": 308
+              },
+              {
+                "label": "取消",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "允許提問",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 438,
+                "width": 350,
+                "height": 44,
+                "top": 438,
+                "right": 370,
+                "bottom": 482,
+                "left": 20
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 20,
+                "y": 522,
+                "width": 350,
+                "height": 44,
+                "top": 522,
+                "right": 370,
+                "bottom": 566,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 672,
+                "width": 350,
+                "height": 44,
+                "top": 672,
+                "right": 370,
+                "bottom": 716,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "person-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 398,
+              "width": 390,
+              "height": 446,
+              "top": 398,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "重新選擇對象",
+                "x": 260,
+                "y": 577,
+                "width": 98,
+                "height": 44,
+                "top": 577,
+                "right": 358,
+                "bottom": 621,
+                "left": 260
+              },
+              {
+                "label": "取消",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "允許提問",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 510,
+                "width": 350,
+                "height": 44,
+                "top": 510,
+                "right": 370,
+                "bottom": 554,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 672,
+                "width": 350,
+                "height": 44,
+                "top": 672,
+                "right": 370,
+                "bottom": 716,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "groups",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 242,
+              "width": 390,
+              "height": 602,
+              "top": 242,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "新增",
+                "x": 308,
+                "y": 493,
+                "width": 50,
+                "height": 44,
+                "top": 493,
+                "right": 358,
+                "bottom": 537,
+                "left": 308
+              },
+              {
+                "label": "取消",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "允許提問",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 354,
+                "width": 350,
+                "height": 44,
+                "top": 354,
+                "right": 370,
+                "bottom": 398,
+                "left": 20
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantGroup",
+                "x": 20,
+                "y": 438,
+                "width": 350,
+                "height": 44,
+                "top": 438,
+                "right": 370,
+                "bottom": 482,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 672,
+                "width": 350,
+                "height": 44,
+                "top": 672,
+                "right": 370,
+                "bottom": 716,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "group-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 290,
+              "width": 390,
+              "height": 554,
+              "top": 290,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "重新選擇對象",
+                "x": 260,
+                "y": 481,
+                "width": 98,
+                "height": 44,
+                "top": 481,
+                "right": 358,
+                "bottom": 525,
+                "left": 260
+              },
+              {
+                "label": "取消",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "允許提問",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 402,
+                "width": 350,
+                "height": 44,
+                "top": 402,
+                "right": 370,
+                "bottom": 446,
+                "left": 20
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 20,
+                "y": 672,
+                "width": 350,
+                "height": 44,
+                "top": 672,
+                "right": 370,
+                "bottom": 716,
+                "left": 20
+              }
+            ]
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": [],
+            "fields": []
+          }
+        }
+      ]
+    },
+    {
+      "tag": "old-client-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "skew": "old-client",
+      "legacy": true,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 0,
+              "y": 490,
+              "width": 390,
+              "height": 354,
+              "top": 490,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            },
+            "small": [
+              {
+                "label": "取消",
+                "x": 20,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 191,
+                "bottom": 824,
+                "left": 20
+              },
+              {
+                "label": "允許",
+                "x": 199,
+                "y": 780,
+                "width": 171,
+                "height": 44,
+                "top": 780,
+                "right": 370,
+                "bottom": 824,
+                "left": 199
+              }
+            ],
+            "fields": []
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": [],
+            "fields": []
+          }
+        }
+      ]
+    },
+    {
+      "tag": "old-group-search-desk-light-en",
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "skew": "old-group-search",
+      "legacy": false,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 263,
+              "width": 480,
+              "height": 474,
+              "top": 263,
+              "right": 923,
+              "bottom": 737,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 681,
+                "width": 77.671875,
+                "height": 36,
+                "top": 681,
+                "right": 826.09375,
+                "bottom": 717,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 681,
+                "width": 68.90625,
+                "height": 36,
+                "top": 681,
+                "right": 903,
+                "bottom": 717,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 367,
+                "width": 440,
+                "height": 40,
+                "top": 367,
+                "right": 903,
+                "bottom": 407,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 463,
+                "y": 447,
+                "width": 440,
+                "height": 42,
+                "top": 447,
+                "right": 903,
+                "bottom": 489,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 553,
+                "width": 440,
+                "height": 40,
+                "top": 553,
+                "right": 903,
+                "bottom": 593,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "people",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 242,
+              "width": 480,
+              "height": 516,
+              "top": 242,
+              "right": 923,
+              "bottom": 758,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Choose",
+                "x": 820.5,
+                "y": 486,
+                "width": 70.5,
+                "height": 30,
+                "top": 486,
+                "right": 891,
+                "bottom": 516,
+                "left": 820.5
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 702,
+                "width": 77.671875,
+                "height": 36,
+                "top": 702,
+                "right": 826.09375,
+                "bottom": 738,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 702,
+                "width": 68.90625,
+                "height": 36,
+                "top": 702,
+                "right": 903,
+                "bottom": 738,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 346,
+                "width": 440,
+                "height": 40,
+                "top": 346,
+                "right": 903,
+                "bottom": 386,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 463,
+                "y": 426,
+                "width": 440,
+                "height": 42,
+                "top": 426,
+                "right": 903,
+                "bottom": 468,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 574,
+                "width": 440,
+                "height": 40,
+                "top": 574,
+                "right": 903,
+                "bottom": 614,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "person-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 277,
+              "width": 480,
+              "height": 446,
+              "top": 277,
+              "right": 923,
+              "bottom": 723,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Choose someone else",
+                "x": 736.984375,
+                "y": 451,
+                "width": 154.015625,
+                "height": 30,
+                "top": 451,
+                "right": 891,
+                "bottom": 481,
+                "left": 736.984375
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 667,
+                "width": 77.671875,
+                "height": 36,
+                "top": 667,
+                "right": 826.09375,
+                "bottom": 703,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 667,
+                "width": 68.90625,
+                "height": 36,
+                "top": 667,
+                "right": 903,
+                "bottom": 703,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 381,
+                "width": 440,
+                "height": 40,
+                "top": 381,
+                "right": 903,
+                "bottom": 421,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 539,
+                "width": 440,
+                "height": 40,
+                "top": 539,
+                "right": 903,
+                "bottom": 579,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "groups",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 200,
+              "width": 480,
+              "height": 600,
+              "top": 200,
+              "right": 923,
+              "bottom": 800,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Add",
+                "x": 841.46875,
+                "y": 444,
+                "width": 49.53125,
+                "height": 30,
+                "top": 444,
+                "right": 891,
+                "bottom": 474,
+                "left": 841.46875
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 744,
+                "width": 77.671875,
+                "height": 36,
+                "top": 744,
+                "right": 826.09375,
+                "bottom": 780,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 744,
+                "width": 68.90625,
+                "height": 36,
+                "top": 744,
+                "right": 903,
+                "bottom": 780,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 304,
+                "width": 440,
+                "height": 40,
+                "top": 304,
+                "right": 903,
+                "bottom": 344,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantGroup",
+                "x": 463,
+                "y": 384,
+                "width": 440,
+                "height": 42,
+                "top": 384,
+                "right": 903,
+                "bottom": 426,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 616,
+                "width": 440,
+                "height": 40,
+                "top": 616,
+                "right": 903,
+                "bottom": 656,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "group-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 235,
+              "width": 480,
+              "height": 530,
+              "top": 235,
+              "right": 923,
+              "bottom": 765,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Choose someone else",
+                "x": 736.984375,
+                "y": 409,
+                "width": 154.015625,
+                "height": 30,
+                "top": 409,
+                "right": 891,
+                "bottom": 439,
+                "left": 736.984375
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 709,
+                "width": 77.671875,
+                "height": 36,
+                "top": 709,
+                "right": 826.09375,
+                "bottom": 745,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 709,
+                "width": 68.90625,
+                "height": 36,
+                "top": 709,
+                "right": 903,
+                "bottom": 745,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 339,
+                "width": 440,
+                "height": 40,
+                "top": 339,
+                "right": 903,
+                "bottom": 379,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 581,
+                "width": 440,
+                "height": 40,
+                "top": 581,
+                "right": 903,
+                "bottom": 621,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": [],
+            "fields": []
+          }
+        }
+      ]
+    },
+    {
+      "tag": "old-words-desk-light-en",
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "skew": "old-words",
+      "legacy": false,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 263,
+              "width": 480,
+              "height": 474,
+              "top": 263,
+              "right": 923,
+              "bottom": 737,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 681,
+                "width": 77.671875,
+                "height": 36,
+                "top": 681,
+                "right": 826.09375,
+                "bottom": 717,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 681,
+                "width": 68.90625,
+                "height": 36,
+                "top": 681,
+                "right": 903,
+                "bottom": 717,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 367,
+                "width": 440,
+                "height": 40,
+                "top": 367,
+                "right": 903,
+                "bottom": 407,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 463,
+                "y": 447,
+                "width": 440,
+                "height": 42,
+                "top": 447,
+                "right": 903,
+                "bottom": 489,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 553,
+                "width": 440,
+                "height": 40,
+                "top": 553,
+                "right": 903,
+                "bottom": 593,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "people",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 242,
+              "width": 480,
+              "height": 516,
+              "top": 242,
+              "right": 923,
+              "bottom": 758,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Choose",
+                "x": 820.5,
+                "y": 486,
+                "width": 70.5,
+                "height": 30,
+                "top": 486,
+                "right": 891,
+                "bottom": 516,
+                "left": 820.5
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 702,
+                "width": 77.671875,
+                "height": 36,
+                "top": 702,
+                "right": 826.09375,
+                "bottom": 738,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 702,
+                "width": 68.90625,
+                "height": 36,
+                "top": 702,
+                "right": 903,
+                "bottom": 738,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 346,
+                "width": 440,
+                "height": 40,
+                "top": 346,
+                "right": 903,
+                "bottom": 386,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantPerson",
+                "x": 463,
+                "y": 426,
+                "width": 440,
+                "height": 42,
+                "top": 426,
+                "right": 903,
+                "bottom": 468,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 574,
+                "width": 440,
+                "height": 40,
+                "top": 574,
+                "right": 903,
+                "bottom": 614,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "person-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 277,
+              "width": 480,
+              "height": 446,
+              "top": 277,
+              "right": 923,
+              "bottom": 723,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Choose someone else",
+                "x": 736.984375,
+                "y": 451,
+                "width": 154.015625,
+                "height": 30,
+                "top": 451,
+                "right": 891,
+                "bottom": 481,
+                "left": 736.984375
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 667,
+                "width": 77.671875,
+                "height": 36,
+                "top": 667,
+                "right": 826.09375,
+                "bottom": 703,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 667,
+                "width": 68.90625,
+                "height": 36,
+                "top": 667,
+                "right": 903,
+                "bottom": 703,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 381,
+                "width": 440,
+                "height": 40,
+                "top": 381,
+                "right": 903,
+                "bottom": 421,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 539,
+                "width": 440,
+                "height": 40,
+                "top": 539,
+                "right": 903,
+                "bottom": 579,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "groups",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 200,
+              "width": 480,
+              "height": 600,
+              "top": 200,
+              "right": 923,
+              "bottom": 800,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Add",
+                "x": 841.46875,
+                "y": 444,
+                "width": 49.53125,
+                "height": 30,
+                "top": 444,
+                "right": 891,
+                "bottom": 474,
+                "left": 841.46875
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 744,
+                "width": 77.671875,
+                "height": 36,
+                "top": 744,
+                "right": 826.09375,
+                "bottom": 780,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 744,
+                "width": 68.90625,
+                "height": 36,
+                "top": 744,
+                "right": 903,
+                "bottom": 780,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 304,
+                "width": 440,
+                "height": 40,
+                "top": 304,
+                "right": 903,
+                "bottom": 344,
+                "left": 463
+              },
+              {
+                "tag": "INPUT",
+                "id": "hubGrantGroup",
+                "x": 463,
+                "y": 384,
+                "width": 440,
+                "height": 42,
+                "top": 384,
+                "right": 903,
+                "bottom": 426,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 616,
+                "width": 440,
+                "height": 40,
+                "top": 616,
+                "right": 903,
+                "bottom": 656,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "group-selected",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 235,
+              "width": 480,
+              "height": 530,
+              "top": 235,
+              "right": 923,
+              "bottom": 765,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Choose someone else",
+                "x": 736.984375,
+                "y": 409,
+                "width": 154.015625,
+                "height": 30,
+                "top": 409,
+                "right": 891,
+                "bottom": 439,
+                "left": 736.984375
+              },
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 709,
+                "width": 77.671875,
+                "height": 36,
+                "top": 709,
+                "right": 826.09375,
+                "bottom": 745,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 709,
+                "width": 68.90625,
+                "height": 36,
+                "top": 709,
+                "right": 903,
+                "bottom": 745,
+                "left": 834.09375
+              }
+            ],
+            "fields": [
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 339,
+                "width": 440,
+                "height": 40,
+                "top": 339,
+                "right": 903,
+                "bottom": 379,
+                "left": 463
+              },
+              {
+                "tag": "SELECT",
+                "id": "",
+                "x": 463,
+                "y": 581,
+                "width": 440,
+                "height": 40,
+                "top": 581,
+                "right": 903,
+                "bottom": 621,
+                "left": 463
+              }
+            ]
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": [],
+            "fields": []
+          }
+        }
+      ]
+    },
+    {
+      "tag": "old-server-desk-light-en",
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "skew": "old-server",
+      "legacy": true,
+      "shots": [
+        {
+          "stage": "empty",
+          "geometry": {
+            "overflow": 0,
+            "dialog": {
+              "x": 443,
+              "y": 331,
+              "width": 480,
+              "height": 338,
+              "top": 331,
+              "right": 923,
+              "bottom": 669,
+              "left": 443
+            },
+            "small": [
+              {
+                "label": "Cancel",
+                "x": 748.421875,
+                "y": 613,
+                "width": 77.671875,
+                "height": 36,
+                "top": 613,
+                "right": 826.09375,
+                "bottom": 649,
+                "left": 748.421875
+              },
+              {
+                "label": "Allow",
+                "x": 834.09375,
+                "y": 613,
+                "width": 68.90625,
+                "height": 36,
+                "top": 613,
+                "right": 903,
+                "bottom": 649,
+                "left": 834.09375
+              }
+            ],
+            "fields": []
+          }
+        },
+        {
+          "stage": "allowed",
+          "geometry": {
+            "overflow": 0,
+            "small": [],
+            "fields": []
+          }
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "name": "at least one selected case",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-en matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-en empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-en people no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-en person-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-en personal grant persisted",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-en groups no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-en group-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-en allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-en one GUID group row",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-en no real recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW people no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW person-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW personal grant persisted",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW groups no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW group-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW one GUID group row",
+      "ok": true
+    },
+    {
+      "name": "current-desk-light-zh-TW no real recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-en matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-en empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-en people no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-en person-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-en personal grant persisted",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-en groups no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-en group-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-en allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-en one GUID group row",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-en no real recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-zh-TW matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-zh-TW empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-zh-TW people no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-zh-TW person-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-zh-TW personal grant persisted",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-zh-TW groups no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-zh-TW group-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-zh-TW allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-zh-TW one GUID group row",
+      "ok": true
+    },
+    {
+      "name": "current-desk-dark-zh-TW no real recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en empty phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en people no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en people phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en person-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en person-selected phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en personal grant persisted",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en groups no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en groups phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en group-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en group-selected phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en allowed phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en one GUID group row",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-en no real recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW empty phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW people no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW people phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW person-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW person-selected phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW personal grant persisted",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW groups no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW groups phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW group-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW group-selected phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW allowed phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW one GUID group row",
+      "ok": true
+    },
+    {
+      "name": "current-phone-light-zh-TW no real recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en empty phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en people no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en people phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en person-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en person-selected phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en personal grant persisted",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en groups no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en groups phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en group-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en group-selected phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en allowed phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en one GUID group row",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-en no real recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW empty phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW people no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW people phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW person-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW person-selected phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW personal grant persisted",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW groups no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW groups phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW group-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW group-selected phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW allowed phone controls44px",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW one GUID group row",
+      "ok": true
+    },
+    {
+      "name": "current-phone-dark-zh-TW no real recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "old-client-phone-dark-zh-TW matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "old-client-phone-dark-zh-TW empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-client-phone-dark-zh-TW allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-client-phone-dark-zh-TW no real recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "old-group-search-desk-light-en matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "old-group-search-desk-light-en empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-group-search-desk-light-en people no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-group-search-desk-light-en person-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-group-search-desk-light-en personal grant persisted",
+      "ok": true
+    },
+    {
+      "name": "old-group-search-desk-light-en groups no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-group-search-desk-light-en group-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-group-search-desk-light-en allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-group-search-desk-light-en one GUID group row",
+      "ok": true
+    },
+    {
+      "name": "old-group-search-desk-light-en no real recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "old-words-desk-light-en matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "old-words-desk-light-en empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-words-desk-light-en people no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-words-desk-light-en person-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-words-desk-light-en personal grant persisted",
+      "ok": true
+    },
+    {
+      "name": "old-words-desk-light-en groups no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-words-desk-light-en group-selected no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-words-desk-light-en allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-words-desk-light-en one GUID group row",
+      "ok": true
+    },
+    {
+      "name": "old-words-desk-light-en no real recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "old-server-desk-light-en matched picker admission",
+      "ok": true
+    },
+    {
+      "name": "old-server-desk-light-en empty no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-server-desk-light-en allowed no overflow",
+      "ok": true
+    },
+    {
+      "name": "old-server-desk-light-en no real recipient sign-in",
+      "ok": true
+    },
+    {
+      "name": "group fixture grant for live checks",
+      "ok": true
+    },
+    {
+      "name": "member opens own room",
+      "ok": true
+    },
+    {
+      "name": "leaving group stops history",
+      "ok": true
+    },
+    {
+      "name": "rejoining group restores authorized history",
+      "ok": true
+    },
+    {
+      "name": "owner revokes group",
+      "ok": true
+    },
+    {
+      "name": "revoked group cannot open",
+      "ok": true
+    },
+    {
+      "name": "all intended cases ran",
+      "ok": true
+    },
+    {
+      "name": "no browser errors",
+      "ok": true
+    }
+  ],
+  "errors": [],
+  "requests": [
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/ca993d74-0e7f-4273-80da-f3236a42e6d0/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/ca993d74-0e7f-4273-80da-f3236a42e6d0/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/ca993d74-0e7f-4273-80da-f3236a42e6d0/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/eb63134d-8d7e-45f7-bde4-c37323b7e8d4/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/eb63134d-8d7e-45f7-bde4-c37323b7e8d4/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/eb63134d-8d7e-45f7-bde4-c37323b7e8d4/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/f09a23ed-510a-42d2-a132-7a62c9d90bda/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/f09a23ed-510a-42d2-a132-7a62c9d90bda/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/f09a23ed-510a-42d2-a132-7a62c9d90bda/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/3458a22b-6ef2-4ea7-a9fd-7bee6a0aba35/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/3458a22b-6ef2-4ea7-a9fd-7bee6a0aba35/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/3458a22b-6ef2-4ea7-a9fd-7bee6a0aba35/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/c45df1ff-c827-470a-9b1f-3515c365a0a2/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/c45df1ff-c827-470a-9b1f-3515c365a0a2/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/c45df1ff-c827-470a-9b1f-3515c365a0a2/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/0cfdb947-473b-4ffc-b58b-1ba356583340/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/0cfdb947-473b-4ffc-b58b-1ba356583340/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/0cfdb947-473b-4ffc-b58b-1ba356583340/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/554d4ed1-5994-4d63-8730-d7a89323eda6/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/554d4ed1-5994-4d63-8730-d7a89323eda6/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/554d4ed1-5994-4d63-8730-d7a89323eda6/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/4b8d8315-7f04-4f22-ad40-2626fd120435/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/4b8d8315-7f04-4f22-ad40-2626fd120435/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/4b8d8315-7f04-4f22-ad40-2626fd120435/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/06bc5698-ce49-4247-b90e-f9a8eb8982c8/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/8b581036-5db3-496e-9484-fe4d4fb4e543/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/8b581036-5db3-496e-9484-fe4d4fb4e543/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/8b581036-5db3-496e-9484-fe4d4fb4e543/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/2f7a74bf-e4f1-40f8-a9c0-87dc6d674111/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/2f7a74bf-e4f1-40f8-a9c0-87dc6d674111/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/2f7a74bf-e4f1-40f8-a9c0-87dc6d674111/grant-subjects/search",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/session",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/rooms",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/pairings",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures/63be803c-abcc-4861-8f5c-0ecf838f3765/activity",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/grants",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/hub/v1/exposures",
+      "method": "GET",
+      "status": 200
+    }
+  ],
+  "scope": "Production HTTPS/cookie/CSRF/SQLite/owner UI. Inert directory GUID facts and authenticated member boundary. Real fixture grant writes/revokes, no real AD/account/Fleet/model execution. Before is retained base panel on candidate server, not a baseline server execution.",
+  "font": "MicrosoftYaHeiMono-Enhanced.ttf: \"Microsoft YaHei Mono\" \"Regular\"",
+  "browser": "156.0.8078.4",
+  "status": "PASS",
+  "cleaned": true
+}
