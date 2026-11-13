@@ -1330,7 +1330,7 @@ describe("Daemon /steer delivery", () => {
     // source and id, handoff metadata, and the reply-tool instruction.
     expect(formatted).toContain("[user:han via discord, id:u1] focus on tests");
     expect(formatted).toContain("(message_id: msg-9)");
-    expect(formatted).toContain("Reply using the reply tool");
+    expect(formatted).toContain("(Answer with the reply tool.)");
   });
 
   it("reports a cross-instance steer that fails after queue acceptance", async () => {
@@ -1409,7 +1409,7 @@ describe("Daemon /steer delivery", () => {
     const pasted = String(deliverMessage.mock.calls[0][0]);
     expect(pasted).toContain("[BTW — side question from the user.");
     expect(pasted).toContain("[user:han via discord, id:u1] what changed?");
-    expect(pasted).toContain("Reply using the reply tool");
+    expect(pasted).toContain("(Answer with the reply tool.)");
     expect(pasted).not.toContain("/btw what changed?");
     expect(pasted).not.toContain("[STEERING");
   });
