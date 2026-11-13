@@ -50,6 +50,8 @@ export function HubConnectionSettings({ onMode } = {}) {
   // M-2921 (spec 1.1 / 1.3): the company-join record of this connection (its address, label, Hub name, owner), the
   // pairing code handed over from the one input, and the held card's reconnect / remove.
   const [display, setDisplay] = useState(null), [prefill, setPrefill] = useState(null), [manualOpen, setManualOpen] = useState(false);
+  // User decision 2aeecd58 (P6): one way in — while the typed Hub takes company sign-in, Other ways is not shown.
+  const [companyOffered, setCompanyOffered] = useState(false);
   const [asking, setAsking] = useState(false), [cardError, setCardError] = useState(""), [cardNotice, setCardNotice] = useState("");
   // A reconnect's waiting tab: the join panel follows its handoff even while this pairing still reads held (it is started over in the same request).
   const joinWait = (() => { try { return !!new URLSearchParams(location.search).get("joinWait"); } catch { return false; } })();
@@ -167,12 +169,12 @@ export function HubConnectionSettings({ onMode } = {}) {
           ${reconnectable && p.hold === "revoked" && j1("revokedHint") !== "joinOne.revokedHint" ? html`<p class="note hub-revoked-hint">${j1("revokedHint")}</p>` : null}
           ${reconnectable || removable ? html`<div class="field-row">${reconnectable ? display ? html`<button type="button" class="btn btn-primary" disabled=${busy} onClick=${() => card("reconnect")}>${j1("reconnect")}</button>`
             : html`<button type="button" class="btn btn-primary" onClick=${() => setManualOpen(true)}>${j1("reconnect")}</button>` : null}${removeLink}</div>${removeAsk}` : null}</div>` : null}
-      ${p.state === "unpaired" || joinWait ? Company ? html`<${Company} embedded=${true} memberEnabled=${view.enabled} onSaved=${read} pilotRevision=${pilotRevision} onPairingCode=${v => { setPrefill(v); setManualOpen(true); }} />` : html`<${Skeleton} variant="form" lines=${3} />`
+      ${p.state === "unpaired" || joinWait ? Company ? html`<${Company} embedded=${true} memberEnabled=${view.enabled} onSaved=${read} pilotRevision=${pilotRevision} onPairingCode=${v => { setPrefill(v); setManualOpen(true); }} onOffer=${setCompanyOffered} />` : html`<${Skeleton} variant="form" lines=${3} />`
         : p.state === "held" && display ? null : view.enabled ? connected : html`<p class="note">${hc("attention")}</p>`}
-      <details class="s-ui-disclosure hub-connection-manual" open=${manualOpen} onToggle=${e => setManualOpen(e.target.open)}><summary>${p.state === "unpaired" ? j1("other") : hc("advanced")}</summary><div class="s-disclosure-body form"><p class="note">${hc("manualHint")}</p>
+      ${p.state === "unpaired" && companyOffered ? null : html`<details class="s-ui-disclosure hub-connection-manual" open=${manualOpen} onToggle=${e => setManualOpen(e.target.open)}><summary>${p.state === "unpaired" ? j1("other") : hc("advanced")}</summary><div class="s-disclosure-body form"><p class="note">${hc("manualHint")}</p>
         <label class="check"><input id="hubMemberEnabled" class="s-ui-toggle" type="checkbox" role="switch" checked=${view.enabled} disabled=${busy || !!error} onChange=${e => change(e.target.checked)} /><span>${hc("enabled")}</span></label>
         ${view.enabled && p.state === "unpaired" ? connected : null}
-      </div></details>` : null}
+      </div></details>`}` : null}
     <${HubPilotTrustSettings} onChanged=${() => setPilotRevision(v => v + 1)} />
     ${pending ? html`<div role="status" class="form"><p class="note">${hc("pending")}</p><button type="button" class="btn" onClick=${review}>${hc("review")}</button></div>` : null}
   </section>`;

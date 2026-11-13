@@ -224,9 +224,17 @@ consent are separate from the previous identity: old questions and receipts are 
 reconnect of the same identity keeps its delivery and acknowledgement history. Do not delete journal files to repair a
 connection; partial or inconsistent state is held rather than reset.
 
-**Other ways** holds the older **pairing code** method for a Hub without company sign-in; a pairing code pasted into
+**Other ways** holds the older **pairing code** method, and appears only for a Hub without company sign-in: once the
+Hub typed in **Hub address** answers that it takes company sign-in, **Other ways** is hidden and the company sign-in is
+the one way in. It stays while the Hub cannot be reached or its certificate is not trusted. A pairing code pasted into
 the address box opens it filled in. Its switch **Allow this fleet to connect to a Hub** (under **Hub membership**)
 applies as soon as it is changed.
+
+The pairing form checks the code before anything is confirmed. A pairing code is 12 characters, 0–9 and a–f (dashes
+and spaces are ignored). A join code (XXXX-XXXX) typed there is pointed back to the **Hub address** box at the top of the card:
+the address, a space, then the join code. The form's address is the one shown with the pairing code (it ends in a port), not the address of
+the Hub's pages. When a confirmed pairing is not applied, the page says why, for example "Confirmed, but it was not
+applied: the Hub refused this pairing code (used, expired or not issued for this Hub)."
 
 ## Held, refused and queued connections
 
