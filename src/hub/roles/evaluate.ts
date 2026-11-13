@@ -24,6 +24,8 @@ function readFacts(input: RolePersonFacts | undefined, who: PersonKey, now: numb
   const parsed = knownFacts.safeParse(input);
   return parsed.success && same(parsed.data.person, who) && parsed.data.observedAt <= now ? parsed.data : null;
 }
+/** Detached shape/identity/time check only; callers still bind this to their own fresh physical read. */
+export const snapshotRolePersonFacts = readFacts;
 /** observedAt is bounded by now here; live callers must additionally bind facts to their own fresh read interval. */
 export function evaluateRolePolicy(input: unknown, subject: PersonKey, permission: RolePermission,
   target: PersonKey | null, facts: RoleEvaluationFacts, now: number, root: PersonKey): RoleDecision {

@@ -1,0 +1,308 @@
+{
+  "scope": "M-3010/S-127 inactive writer, no production caller or registered migration",
+  "design": "9e000625658d55c6d8f522cfbae2a01448a9cc37",
+  "sourceBase": "d750baf8af9699348d641e285fbef5572c0529a3",
+  "checks": {
+    "focusedFiles": 9,
+    "focusedTests": 146,
+    "skips": 0,
+    "reversals": 26,
+    "reversalsCaught": 26,
+    "perReversalNativeSourceTypecheck": "all exit0",
+    "nativeCompiler": "TypeScript7.0.2",
+    "finalIntegratedChecks": "recorded in the exact-head acceptance comment"
+  },
+  "fileDigests": {
+    "src/hub/roles/model.ts": "60b41ed514b99675f4828a2ea813b0904e3639fcc89b4970c87ce402b584c78a",
+    "src/hub/roles/evaluate.ts": "ffd6fb47ef95ccecc3b4e282cd891ad38a5d104ffaa344e220cfab2c0dfd29bd",
+    "src/hub/roles/change.ts": "9d71fdb2c14ab9425f5f0e3c2ac9f051f236de91c4308badb1cf29fbfb788aa7",
+    "src/hub/roles/delegation.ts": "a262adcbc4ff40815e6ed847c2642c3e2c2d8462c722b16221b8925b1c76aaec",
+    "src/hub/roles/writer.ts": "67f51b5c65f1f7aa1a0af2d56aa49992ba05fac7ca8012e54fece76c1683a6b6",
+    "tests/hub-roles-model-m3010.test.ts": "5d758915b1168c87f987de123628830f53b27daf6b9e2e4bdfded84a163433b9",
+    "tests/hub-roles-change-m3010.test.ts": "cd7c52e6d044a982d60434f8c5e21ea6f82eb2412f15e7c36af8c2a264864448",
+    "tests/hub-roles-delegation-m3010.test.ts": "b6ad5cc4bc6c9e1b33c4aa38954dcb472568d979cd890c56215b9fdad83fc54e",
+    "tests/hub-roles-writer-m3010.test.ts": "a7874075b1b32ff1e842770c5da552b5248e64b335ec50eab0a681ca4eb53aaf"
+  },
+  "mutations": [
+    {
+      "name": "phase3",
+      "source": "src/hub/roles/change.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.70166015625,
+      "failedTests": [
+        "inactive role write planning refuses phase 3 team.approve_join in every proposed role",
+        "inactive role write planning refuses phase 3 team.approve_ask in every proposed role"
+      ]
+    },
+    {
+      "name": "stamp-actor",
+      "source": "src/hub/roles/change.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.89501953125,
+      "failedTests": [
+        "inactive role write planning stamps changed/new assignments with the actual actor and server time, keeping zero and unchanged history",
+        "inactive SQL role writer uses real auxiliary-admin sessions rather than the root-only display flag, then commits one audited CAS/epoch"
+      ]
+    },
+    {
+      "name": "destructive",
+      "source": "src/hub/roles/delegation.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.91162109375,
+      "failedTests": [
+        "inactive writer delegation requires a limited assigner to dominate the old bundle before any destructive edit"
+      ]
+    },
+    {
+      "name": "direct-self",
+      "source": "src/hub/roles/delegation.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.92578125,
+      "failedTests": [
+        "inactive writer delegation refuses direct own assignment creation, narrowing and removal for admins too"
+      ]
+    },
+    {
+      "name": "group-self",
+      "source": "src/hub/roles/delegation.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.93798828125,
+      "failedTests": [
+        "inactive writer delegation refuses indirect own group increases and unknown self-membership, but permits narrowing"
+      ]
+    },
+    {
+      "name": "quota",
+      "source": "src/hub/roles/delegation.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.861328125,
+      "failedTests": [
+        "inactive writer delegation never combines quota and expiry from different held assignments",
+        "inactive writer delegation requires a limited assigner to dominate the old bundle before any destructive edit"
+      ]
+    },
+    {
+      "name": "expiry",
+      "source": "src/hub/roles/delegation.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.95654296875,
+      "failedTests": [
+        "inactive writer delegation never combines quota and expiry from different held assignments"
+      ]
+    },
+    {
+      "name": "scope",
+      "source": "src/hub/roles/delegation.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.80908203125,
+      "failedTests": [
+        "inactive writer delegation checks each permission on its own identical team scope with no group subset inference"
+      ]
+    },
+    {
+      "name": "candidate-facts",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.82470703125,
+      "failedTests": [
+        "inactive SQL role writer consumes the preview and refuses changed membership"
+      ]
+    },
+    {
+      "name": "final-session",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.70947265625,
+      "failedTests": [
+        "inactive SQL role writer rolls back policy, notices and effects on final-session failure"
+      ]
+    },
+    {
+      "name": "final-policy",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.63232421875,
+      "failedTests": [
+        "inactive SQL role writer rolls back policy, notices and effects on final-policy failure"
+      ]
+    },
+    {
+      "name": "async-audit",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.52880859375,
+      "failedTests": [
+        "inactive SQL role writer rolls back policy, notices and effects on async-audit failure",
+        "inactive SQL role writer refuses a thenable resource commit and rolls back its synchronous prelude",
+        "inactive SQL role writer refuses a thenable resource proof and rolls back its synchronous prelude"
+      ]
+    },
+    {
+      "name": "notice-current-admin",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.4111328125,
+      "failedTests": [
+        "inactive SQL role writer records management notices for every effective admin and ends access after role loss"
+      ]
+    },
+    {
+      "name": "notice-recipient",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.3134765625,
+      "failedTests": [
+        "inactive SQL role writer records management notices for every effective admin and ends access after role loss"
+      ]
+    },
+    {
+      "name": "root-once",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.2431640625,
+      "failedTests": [
+        "inactive SQL role writer keeps root self-use out of migration and permits only its once-only separate previewed operation"
+      ]
+    },
+    {
+      "name": "reserved-root-role",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.4462890625,
+      "failedTests": [
+        "inactive SQL role writer cannot smuggle another permission, subject or scope through the named root operation"
+      ]
+    },
+    {
+      "name": "effect-identity",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.3349609375,
+      "failedTests": [
+        "inactive SQL role writer binds unseen effect-plan fingerprint and consumes malformed apply attempts",
+        "inactive SQL role writer binds unseen effect-plan changed and consumes malformed apply attempts"
+      ]
+    },
+    {
+      "name": "effect-impact",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.24853515625,
+      "failedTests": [
+        "inactive SQL role writer binds unseen effect-plan impact and consumes malformed apply attempts"
+      ]
+    },
+    {
+      "name": "final-authority",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.2490234375,
+      "failedTests": [
+        "inactive SQL role writer refuses authority expiry during-effects with the original deadline and full rollback",
+        "inactive SQL role writer refuses authority expiry during-audit with the original deadline and full rollback"
+      ]
+    },
+    {
+      "name": "monotonic",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 3.0,
+      "failedTests": [
+        "inactive SQL role writer checks the monotonic preparation budget even with unchanged wall time (20000)"
+      ]
+    },
+    {
+      "name": "preview-expiry",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 3.10546875,
+      "failedTests": [
+        "inactive SQL role writer consumes the preview and refuses changed expired",
+        "inactive SQL role writer consumes the preview and refuses changed backwards"
+      ]
+    },
+    {
+      "name": "effect-sync",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 3.24951171875,
+      "failedTests": [
+        "inactive SQL role writer refuses a thenable resource commit and rolls back its synchronous prelude"
+      ]
+    },
+    {
+      "name": "effect-proof-sync",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 3.0400390625,
+      "failedTests": [
+        "inactive SQL role writer refuses a thenable resource proof and rolls back its synchronous prelude"
+      ]
+    },
+    {
+      "name": "person-deny",
+      "source": "src/hub/roles/delegation.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 3.02490234375,
+      "failedTests": [
+        "inactive writer delegation never combines quota and expiry from different held assignments"
+      ]
+    },
+    {
+      "name": "early-authority",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 2.9404296875,
+      "failedTests": [
+        "inactive SQL role writer refuses a person without delegation authority before full inventory or other-person reads"
+      ]
+    },
+    {
+      "name": "impact-bound",
+      "source": "src/hub/roles/writer.ts",
+      "typecheckExit": 0,
+      "testExit": 1,
+      "load1": 3.02978515625,
+      "failedTests": [
+        "inactive SQL role writer refuses an oversized private impact before retaining a candidate or writing policy"
+      ]
+    }
+  ],
+  "boundaries": [
+    "in-memory SQLite, actual HubSessions and real hash-chained audit",
+    "shared production directory pool with synthetic directory answers and held promises",
+    "synthetic retained-resource adapter; real adapter and atomic cutover are not supplied/mounted",
+    "no LDAP wire, browser, container, Windows runtime, backend CLI, real account or live fleet operation"
+  ],
+  "remaining": [
+    "atomic lossless cutover and one-time migration notice",
+    "idempotent expiry settlement/scheduling",
+    "real manual/code/invitation/resource/pending-join consequences",
+    "live role permits, routes, member leases and SSE"
+  ]
+}
