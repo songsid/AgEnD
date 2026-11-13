@@ -1,5 +1,5 @@
 {
-  "sourceHead": "4bbb1f868b4d9574f89ec3f6aba70a66481e1ba8",
+  "sourceHead": "409472f13166a674327f776ec931e951de8e47d0",
   "baseline": "3e4c2b657b86d343a5f70ab9d6f47e844fddeb46",
   "sourceInputs": [
     {
@@ -51,7 +51,7 @@
       ]
     },
     {
-      "digest": "0f4adcc03f961744b4ef1a35234516a7c6ddbcf78cdc22e7e2cd07fe03b52110",
+      "digest": "d161b8a9ad7430416d75acb64ce1a6baa24ba1868890b02ee7e37d693446fee1",
       "paths": [
         "src/claude-model-observation.ts"
       ]
@@ -207,7 +207,7 @@
       ]
     },
     {
-      "digest": "e55ed1f38baaca99a6943ee102a7f68220ad5349ac6ddd613eea7169c807ae02",
+      "digest": "acae404f710c2a911e580c598c67fce9613a93c32aa4b40429c56e7186c3c451",
       "paths": [
         "tests/claude-model-switch.test.ts"
       ]
@@ -269,14 +269,13 @@
     "cleanup": "owned browser/listeners/home closed",
     "continuity": {
       "captureSourceHead": "29d3a5142d8f462798c6976f629b49f375419764",
-      "finalSourceHead": "8ec20af92c8b9058eb879bfad353c44186759d85",
+      "finalSourceHead": "409472f13166a674327f776ec931e951de8e47d0",
       "unchanged": [
         "src/ui/",
         "src/fleet-manager.ts",
-        "src/claude-model-observation.ts",
         "scripts/manual/claude-model-observation-browser.mts"
       ],
-      "laterDelta": "Metadata-only monitor startup recovery, credential fixture, tests and design. Monitor is not executed by the browser fixture."
+      "laterDelta": "Monitor-only startup isolation, credential tests/docs, and configured-return recovery after launch failover. UI/FleetManager/harness bytes unchanged; capture observer fixtures have configured=launch=original, where both recovery conditions agree. No later browser execution claimed."
     }
   },
   "liveVendorCalls": 0,
@@ -304,5 +303,14 @@
     "testTypes": 0,
     "caught": "M15-intent-session",
     "aliasLimit": "Unconfirmed alias suppresses inferred mismatch; served values and typed fallback notices continue."
+  },
+  "r2": {
+    "passed": 208,
+    "files": 8,
+    "log": "checks/r2-controls.log",
+    "sourceTypes": 0,
+    "testTypes": 0,
+    "red": "checks/configured-recovery-before.log",
+    "sourceDelta": "One recovery condition accepts configured model after launch failover; no selection/policy action. All15 isolated reversals refreshed against this source."
   }
 }

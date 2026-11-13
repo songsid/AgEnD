@@ -1,13 +1,13 @@
 
  RUN  v4.1.12 <checkout>
 
- ❯ tests/claude-model-switch.test.ts (57 tests | 1 failed) 71ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 103ms
      × raw concrete intent needs both session and served confirmation before replacing an active switch 6ms
 
  Test Files  1 failed (1)
-      Tests  1 failed | 56 passed (57)
-   Start at  17:24:15
-   Duration  457ms (transform 154ms, setup 100ms, import 119ms, tests 71ms, environment 0ms)
+      Tests  1 failed | 57 passed (58)
+   Start at  17:31:26
+   Duration  517ms (transform 170ms, setup 101ms, import 139ms, tests 103ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
@@ -18,13 +18,13 @@ AssertionError: expected 'claude-sonnet-5-5' to be 'claude-opus-5-5' // Object.i
 Expected: "claude-opus-5-5"
 Received: "claude-sonnet-5-5"
 
- ❯ tests/claude-model-switch.test.ts:133:37
-    131|     o.observe({ kind: "intent", id: "model-intent", sessionId: "sessio…
-    132|     o.observe(parse(served("claude-sonnet-5-5", "unconfirmed")), "clau…
-    133|     expect(o.checkpoint().expected).toBe("claude-opus-5-5"); expect(o.…
+ ❯ tests/claude-model-switch.test.ts:140:37
+    138|     o.observe({ kind: "intent", id: "model-intent", sessionId: "sessio…
+    139|     o.observe(parse(served("claude-sonnet-5-5", "unconfirmed")), "clau…
+    140|     expect(o.checkpoint().expected).toBe("claude-opus-5-5"); expect(o.…
        |                                     ^
-    134|     o.observe(parse(served("claude-sonnet-5-5", "confirmed")), "claude…
-    135|     expect(o.checkpoint().expected).toBe("claude-sonnet-5-5"); expect(…
+    141|     o.observe(parse(served("claude-sonnet-5-5", "confirmed")), "claude…
+    142|     expect(o.checkpoint().expected).toBe("claude-sonnet-5-5"); expect(…
 
 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
 

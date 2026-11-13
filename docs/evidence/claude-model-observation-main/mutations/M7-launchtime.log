@@ -1,14 +1,14 @@
 
  RUN  v4.1.12 <checkout>
 
- ❯ tests/claude-model-switch.test.ts (55 tests | 2 failed) 113ms
-     × rejects bootstrap history even within the old 5-second alarm skew window 21ms
-     × baselines a resumed file, observes only appends, and does not replay after resetting 30ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 2 failed) 72ms
+     × rejects bootstrap history even within the old 5-second alarm skew window 11ms
+     × baselines a resumed file, observes only appends, and does not replay after resetting 6ms
 
  Test Files  1 failed (1)
-      Tests  2 failed | 53 passed (55)
-   Start at  17:16:03
-   Duration  606ms (transform 177ms, setup 125ms, import 124ms, tests 113ms, environment 0ms)
+      Tests  2 failed | 56 passed (58)
+   Start at  17:30:52
+   Duration  503ms (transform 188ms, setup 130ms, import 129ms, tests 72ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
@@ -22,7 +22,7 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 - []
 + [
 +   {
-+     "at": 1794561363227,
++     "at": 1794562251634,
 +     "cause": "safeguards",
 +     "id": "notice:notice-A",
 +     "kind": "switch",
@@ -33,13 +33,13 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 +   },
 + ]
 
- ❯ tests/claude-model-switch.test.ts:185:126
-    183|   });
-    184|   it("rejects bootstrap history even within the old 5-second alarm ske…
-    185|     const r = rig(); r.m.processEntry({ ...notice(), timestamp: new Da…
+ ❯ tests/claude-model-switch.test.ts:208:126
+    206|   });
+    207|   it("rejects bootstrap history even within the old 5-second alarm ske…
+    208|     const r = rig(); r.m.processEntry({ ...notice(), timestamp: new Da…
        |                                                                                                                              ^
-    186|   });
-    187|   it("baselines a resumed file, observes only appends, and does not re…
+    209|   });
+    210|   it("baselines a resumed file, observes only appends, and does not re…
 
 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
 
@@ -52,7 +52,7 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 - []
 + [
 +   {
-+     "at": 1794561304250,
++     "at": 1794562192646,
 +     "cause": "safeguards",
 +     "id": "notice:notice-A",
 +     "kind": "switch",
@@ -63,13 +63,13 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 +   },
 + ]
 
- ❯ tests/claude-model-switch.test.ts:189:49
-    187|   it("baselines a resumed file, observes only appends, and does not re…
-    188|     const r = rig(); writeFileSync(r.path, JSON.stringify({ ...notice(…
-    189|     await r.m.pollIncrement(); expect(r.events).toEqual([]);
+ ❯ tests/claude-model-switch.test.ts:212:49
+    210|   it("baselines a resumed file, observes only appends, and does not re…
+    211|     const r = rig(); writeFileSync(r.path, JSON.stringify({ ...notice(…
+    212|     await r.m.pollIncrement(); expect(r.events).toEqual([]);
        |                                                 ^
-    190|     appendFileSync(r.path, JSON.stringify({ ...notice(), uuid: "append…
-    191|     r.m.resetOffset(); await r.m.pollIncrement(); expect(r.events).toH…
+    213|     appendFileSync(r.path, JSON.stringify({ ...notice(), uuid: "append…
+    214|     r.m.resetOffset(); await r.m.pollIncrement(); expect(r.events).toH…
 
 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
 

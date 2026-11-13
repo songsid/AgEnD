@@ -1,13 +1,13 @@
 
  RUN  v4.1.12 <checkout>
 
- ❯ tests/claude-model-switch.test.ts (55 tests | 1 failed) 100ms
-     × excludes API error 8ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 74ms
+     × excludes API error 7ms
 
  Test Files  1 failed (1)
-      Tests  1 failed | 54 passed (55)
-   Start at  17:02:52
-   Duration  625ms (transform 232ms, setup 116ms, import 198ms, tests 100ms, environment 0ms)
+      Tests  1 failed | 57 passed (58)
+   Start at  17:30:33
+   Duration  542ms (transform 207ms, setup 113ms, import 172ms, tests 74ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
@@ -20,7 +20,7 @@ null
 
 + Received:
 {
-  "at": 1794560573404,
+  "at": 1794562233908,
   "id": "response:response-A:opus-4.8",
   "kind": "served",
   "served": "claude-opus-4-8",

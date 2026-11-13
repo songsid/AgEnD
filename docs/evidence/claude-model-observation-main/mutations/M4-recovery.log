@@ -1,19 +1,20 @@
 
  RUN  v4.1.12 <checkout>
 
- ❯ tests/claude-model-switch.test.ts (55 tests | 4 failed) 121ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 5 failed) 73ms
      × one incident survives repeated notices and response blocks, recovers, then allows a new incident 6ms
-     × a local fallback does not rewrite session selection and is recovered by a later configured response 3ms
-     × a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers 2ms
-     × Needs you uses the incident identity for quiet updates, and removes it on recovery 3ms
+     × a local fallback does not rewrite session selection and is recovered by a later configured response 2ms
+     × a return to the configured model recovers a fallback that followed next-spawn failover 1ms
+     × a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers 1ms
+     × Needs you uses the incident identity for quiet updates, and removes it on recovery 2ms
 
  Test Files  1 failed (1)
-      Tests  4 failed | 51 passed (55)
-   Start at  17:03:04
-   Duration  587ms (transform 188ms, setup 119ms, import 147ms, tests 121ms, environment 0ms)
+      Tests  5 failed | 53 passed (58)
+   Start at  17:30:40
+   Duration  474ms (transform 174ms, setup 118ms, import 128ms, tests 73ms, environment 0ms)
 
 
-⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
 
  FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > one incident survives repeated notices and response blocks, recovers, then allows a new incident
 AssertionError: expected { …(6) } to be null
@@ -28,7 +29,7 @@ null
   "original": "claude-opus-5-5",
   "scope": "session",
   "served": "claude-opus-4-8",
-  "since": 1794560584911,
+  "since": 1794562241040,
 }
 
  ❯ tests/claude-model-switch.test.ts:88:118
@@ -39,7 +40,7 @@ null
      89|     o.observe(parse({ ...notice(), uuid: "notice-C" }), "claude-opus-4…
      90|   });
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
 
  FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a local fallback does not rewrite session selection and is recovered by a later configured response
 AssertionError: expected { …(6) } to be null
@@ -54,7 +55,7 @@ null
   "original": "claude-opus-5-5",
   "scope": "turn",
   "served": "claude-opus-4-8",
-  "since": 1794560584917,
+  "since": 1794562241046,
 }
 
  ❯ tests/claude-model-switch.test.ts:95:105
@@ -65,7 +66,33 @@ null
      96|   });
      97|   it("serving a concrete unexpected model proves a difference, not its…
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a return to the configured model recovers a fallback that followed next-spawn failover
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "safeguards",
+  "id": "session-A:notice:notice-A",
+  "original": "claude-opus-4-8",
+  "scope": "session",
+  "served": "claude-sonnet-5-5",
+  "since": 1794562241049,
+}
+
+ ❯ tests/claude-model-switch.test.ts:106:33
+    104|     expect(o.snapshot().active?.served).toBe("claude-sonnet-5-5");
+    105|     o.observe(parse(served("claude-opus-5-5", "configured-recovery")),…
+    106|     expect(o.snapshot().active).toBeNull();
+       |                                 ^
+    107|   });
+    108|   it("next-spawn failover is a launch selection, not a detected provid…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
 
  FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers
 AssertionError: expected { …(7) } to be null
@@ -81,18 +108,18 @@ null
   "original": "claude-opus-5-5",
   "scope": "session",
   "served": "claude-opus-4-8",
-  "since": 1794560584922,
+  "since": 1794562241050,
 }
 
- ❯ tests/claude-model-switch.test.ts:120:127
-    118|     const items = deriveNeedsYou({ prompts: [], instances: [{ name: "w…
-    119|     expect(items[0].quiet).toBe(true);
-    120|     resumed.observe(parse(served("claude-opus-5-5", "fresh-recovery"))…
+ ❯ tests/claude-model-switch.test.ts:127:127
+    125|     const items = deriveNeedsYou({ prompts: [], instances: [{ name: "w…
+    126|     expect(items[0].quiet).toBe(true);
+    127|     resumed.observe(parse(served("claude-opus-5-5", "fresh-recovery"))…
        |                                                                                                                               ^
-    121|     resumed.bindSession("new-session", "claude-opus-5-5"); expect(resu…
-    122|   });
+    128|     resumed.bindSession("new-session", "claude-opus-5-5"); expect(resu…
+    129|   });
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
 
  FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > Needs you uses the incident identity for quiet updates, and removes it on recovery
 AssertionError: expected [ { …(7) } ] to deeply equal []
@@ -112,21 +139,21 @@ AssertionError: expected [ { …(7) } ] to deeply equal []
 +       "original": "claude-opus-5-5",
 +       "scope": "session",
 +       "served": "claude-opus-4-8",
-+       "since": 1794560584924,
++       "since": 1794562241053,
 +     },
 +     "reason": "model_switch",
-+     "since": 1794560584924,
++     "since": 1794562241053,
 +     "type": "instance",
 +   },
 + ]
 
- ❯ tests/claude-model-switch.test.ts:150:36
-    148|     expect(deriveNeedsYou(inputs)[0].id).toBe(first[0].id);
-    149|     o.observe(parse(served("claude-opus-5-5", "recovered")), "claude-o…
-    150|     expect(deriveNeedsYou(inputs)).toEqual([]);
+ ❯ tests/claude-model-switch.test.ts:173:36
+    171|     expect(deriveNeedsYou(inputs)[0].id).toBe(first[0].id);
+    172|     o.observe(parse(served("claude-opus-5-5", "recovered")), "claude-o…
+    173|     expect(deriveNeedsYou(inputs)).toEqual([]);
        |                                    ^
-    151|   });
-    152| });
+    174|   });
+    175| });
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
 

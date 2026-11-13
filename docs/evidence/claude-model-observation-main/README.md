@@ -4,7 +4,7 @@ AgEnD previously discarded the typed fallback notices and assistant model metada
 
 This is detection only: separate configured/launch/session/served values, typed safeguards/availability notices, one quiet Needs-you incident with recovery, localized runtime cards/details and Log, and compact `describe_instance` output (`detail:true` for bounded metadata). No automatic model, policy, restart or permission operation is added.
 
-Final test/docs pin: `4bbb1f868`; product source pin: `8ec20af92`; browser capture pin: `29d3a5142` (full SHAs in [checks.json](checks.json)). Main baseline: `3e4c2b657b86d343a5f70ab9d6f47e844fddeb46`. The later source correction only isolates metadata startup recovery from existing text/alarm replay; its test and credential fixtures are separate from the browser path. The UI, pure observer, FleetManager and capture harness are byte-identical to the capture. No recapture execution is claimed.
+Final source pin: `409472f13`; browser capture pin: `29d3a5142` (full SHAs in [checks.json](checks.json)). Main baseline: `3e4c2b657b86d343a5f70ab9d6f47e844fddeb46`. Later corrections isolate metadata startup recovery and accept a return to the configured model after launch failover. UI, FleetManager and capture harness are byte-identical to the capture. Its observer cases have configured = launch = original, where old/new recovery conditions agree. No later browser execution is claimed.
 
 ## Verification
 
@@ -20,9 +20,13 @@ The browser uses synthetic typed metadata and the real pure observer, with a rea
 
 ## R1 parity pin
 
-All product bytes remain identical to `f52c67b00`. The new concrete-intent test preserves the active incident and expected model when served metadata changes but the session hook does not; its matching-session positive clears it. The removed session predicate is assertion-red (M15). **207/207 across eight changed suites**, native test types exit0.
+At R1, all product bytes remained identical to `f52c67b00`. The new concrete-intent test preserves the active incident and expected model when served metadata changes but the session hook does not; its matching-session positive clears it. The removed session predicate is assertion-red (M15). **207/207 across eight changed suites**, native test types exit0.
 
 An unresolved `/model` alias/picker deliberately keeps mismatch inference unconfirmed until a concrete owned/confirmed selection, new session or typed fallback notice. It does not stop served-model observations or typed fallback notices. A served response alone cannot resolve the intended alias.
+
+## R2 configured-return recovery
+
+A self-found [semantic red](checks/configured-recovery-before.log) pins next-spawn failover (configured5.5 / launch4.8), then a typed provider fallback, then a served return to configured5.5. The incident now retires on that return as well as the original model. **208/208 across eight changed suites**, both native types exit0; all15 isolated reversals refreshed and caught/restored against this source. No model/policy/lifecycle write. UI/harness/PNGs are unchanged.
 
 ## PNGs
 

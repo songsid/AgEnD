@@ -1,32 +1,35 @@
 
  RUN  v4.1.12 <checkout>
 
- ❯ tests/claude-model-switch.test.ts (55 tests | 17 failed) 71ms
-   × observes a typed main-thread fallback only through this launch's hook, without copying content 14ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 20 failed) 72ms
+   × observes a typed main-thread fallback only through this launch's hook, without copying content 13ms
      × retains typed originalModel even though requestedModel already names the fallback 2ms
-     × refusal scope local is turn 1ms
+     × refusal scope local is turn 0ms
      × refusal scope turn is turn 0ms
-     × refusal scope session is session 0ms
+     × refusal scope session is session 1ms
      × refusal scope undefined is session 0ms
      × refusal scope unsupported is unknown 0ms
-     × availability is distinct, with an unknown scope when the producer omits it 2ms
+     × availability is distinct, with an unknown scope when the producer omits it 3ms
      × one incident survives repeated notices and response blocks, recovers, then allows a new incident 1ms
      × a local fallback does not rewrite session selection and is recovered by a later configured response 0ms
-     × a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers 1ms
+     × a return to the configured model recovers a fallback that followed next-spawn failover 0ms
+     × a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers 0ms
      × a corrupt or differently configured checkpoint is not adopted 0ms
+     × raw concrete intent needs both session and served confirmation before replacing an active switch 0ms
+     × an unresolved alias intent keeps inference unconfirmed until a concrete selection or typed notice 0ms
      × an unconfirmed command is not an applied switch; a typed provider notice still proves fallback 0ms
      × Needs you uses the incident identity for quiet updates, and removes it on recovery 0ms
    × Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records 1ms
-     × baselines a resumed file, observes only appends, and does not replay after resetting 4ms
+     × baselines a resumed file, observes only appends, and does not replay after resetting 6ms
      × keeps first records written by this launch before the monitor was constructed 25ms
 
  Test Files  1 failed (1)
-      Tests  17 failed | 38 passed (55)
-   Start at  17:04:01
-   Duration  456ms (transform 133ms, setup 86ms, import 107ms, tests 71ms, environment 0ms)
+      Tests  20 failed | 38 passed (58)
+   Start at  17:31:30
+   Duration  550ms (transform 200ms, setup 117ms, import 152ms, tests 72ms, environment 0ms)
 
 
-⎯⎯⎯⎯⎯⎯ Failed Tests 17 ⎯⎯⎯⎯⎯⎯⎯
+⎯⎯⎯⎯⎯⎯ Failed Tests 20 ⎯⎯⎯⎯⎯⎯⎯
 
  FAIL  tests/claude-model-switch.test.ts > observes a typed main-thread fallback only through this launch's hook, without copying content
 AssertionError: expected [] to have a length of 1 but got +0
@@ -45,7 +48,7 @@ AssertionError: expected [] to have a length of 1 but got +0
      25|   expect(observations[0]).toMatchObject({ kind: "switch", original: "c…
      26|   expect(JSON.stringify(observations)).not.toContain("NEVER EXPOSE");
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/20]⎯
 
  FAIL  tests/claude-model-switch.test.ts > redacted Claude Code 2.1.323 record shapes > retains typed originalModel even though requestedModel already names the fallback
 TypeError: Cannot read properties of null (reading 'sessionId')
@@ -58,7 +61,7 @@ TypeError: Cannot read properties of null (reading 'sessionId')
     126|     this.state.session = session;
  ❯ tests/claude-model-switch.test.ts:37:14
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/20]⎯
 
  FAIL  tests/claude-model-switch.test.ts > redacted Claude Code 2.1.323 record shapes > refusal scope local is turn
  FAIL  tests/claude-model-switch.test.ts > redacted Claude Code 2.1.323 record shapes > refusal scope turn is turn
@@ -74,7 +77,7 @@ TypeError: Cannot read properties of null (reading 'scope')
      44|   it("availability is distinct, with an unknown scope when the produce…
      45|     const e = parse({ ...notice(), subtype: "model_fallback", trigger:…
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/20]⎯
 
  FAIL  tests/claude-model-switch.test.ts > redacted Claude Code 2.1.323 record shapes > availability is distinct, with an unknown scope when the producer omits it
 AssertionError: expected null to match object { cause: 'availability', …(1) }
@@ -96,7 +99,7 @@ null
      47|   });
      48|   it.each([
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/20]⎯
 
  FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > one incident survives repeated notices and response blocks, recovers, then allows a new incident
 TypeError: Cannot read properties of null (reading 'sessionId')
@@ -109,7 +112,7 @@ TypeError: Cannot read properties of null (reading 'sessionId')
     126|     this.state.session = session;
  ❯ tests/claude-model-switch.test.ts:84:7
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/20]⎯
 
  FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a local fallback does not rewrite session selection and is recovered by a later configured response
 TypeError: Cannot read properties of null (reading 'sessionId')
@@ -122,7 +125,20 @@ TypeError: Cannot read properties of null (reading 'sessionId')
     126|     this.state.session = session;
  ❯ tests/claude-model-switch.test.ts:93:7
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/20]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a return to the configured model recovers a fallback that followed next-spawn failover
+TypeError: Cannot read properties of null (reading 'sessionId')
+ ❯ ClaudeModelObserver.observe src/claude-model-observation.ts:124:29
+    122|   }
+    123|   observe(record: ClaudeModelRecord, sessionModel: unknown): boolean {
+    124|     this.bindSession(record.sessionId, sessionModel);
+       |                             ^
+    125|     const session = claudeModelId(sessionModel);
+    126|     this.state.session = session;
+ ❯ tests/claude-model-switch.test.ts:103:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/20]⎯
 
  FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a resumed checkpoint keeps one quiet incident, dedupes old blocks, and still recovers
 TypeError: Cannot read properties of null (reading 'sessionId')
@@ -133,9 +149,9 @@ TypeError: Cannot read properties of null (reading 'sessionId')
        |                             ^
     125|     const session = claudeModelId(sessionModel);
     126|     this.state.session = session;
- ❯ tests/claude-model-switch.test.ts:113:11
+ ❯ tests/claude-model-switch.test.ts:120:11
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/20]⎯
 
  FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a corrupt or differently configured checkpoint is not adopted
 TypeError: Cannot read properties of null (reading 'sessionId')
@@ -146,9 +162,35 @@ TypeError: Cannot read properties of null (reading 'sessionId')
        |                             ^
     125|     const session = claudeModelId(sessionModel);
     126|     this.state.session = session;
- ❯ tests/claude-model-switch.test.ts:124:88
+ ❯ tests/claude-model-switch.test.ts:131:88
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/20]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > raw concrete intent needs both session and served confirmation before replacing an active switch
+TypeError: Cannot read properties of null (reading 'sessionId')
+ ❯ ClaudeModelObserver.observe src/claude-model-observation.ts:124:29
+    122|   }
+    123|   observe(record: ClaudeModelRecord, sessionModel: unknown): boolean {
+    124|     this.bindSession(record.sessionId, sessionModel);
+       |                             ^
+    125|     const session = claudeModelId(sessionModel);
+    126|     this.state.session = session;
+ ❯ tests/claude-model-switch.test.ts:137:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/20]⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > an unresolved alias intent keeps inference unconfirmed until a concrete selection or typed notice
+TypeError: Cannot read properties of null (reading 'sessionId')
+ ❯ ClaudeModelObserver.observe src/claude-model-observation.ts:124:29
+    122|   }
+    123|   observe(record: ClaudeModelRecord, sessionModel: unknown): boolean {
+    124|     this.bindSession(record.sessionId, sessionModel);
+       |                             ^
+    125|     const session = claudeModelId(sessionModel);
+    126|     this.state.session = session;
+ ❯ tests/claude-model-switch.test.ts:149:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/20]⎯
 
  FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > an unconfirmed command is not an applied switch; a typed provider notice still proves fallback
 TypeError: Cannot read properties of null (reading 'sessionId')
@@ -159,9 +201,9 @@ TypeError: Cannot read properties of null (reading 'sessionId')
        |                             ^
     125|     const session = claudeModelId(sessionModel);
     126|     this.state.session = session;
- ❯ tests/claude-model-switch.test.ts:136:7
+ ❯ tests/claude-model-switch.test.ts:159:7
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/20]⎯
 
  FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > Needs you uses the incident identity for quiet updates, and removes it on recovery
 TypeError: Cannot read properties of null (reading 'sessionId')
@@ -172,9 +214,9 @@ TypeError: Cannot read properties of null (reading 'sessionId')
        |                             ^
     125|     const session = claudeModelId(sessionModel);
     126|     this.state.session = session;
- ❯ tests/claude-model-switch.test.ts:144:80
+ ❯ tests/claude-model-switch.test.ts:167:80
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/20]⎯
 
  FAIL  tests/claude-model-switch.test.ts > Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records
 AssertionError: expected undefined to match object { kind: 'state', …(2) }
@@ -192,15 +234,15 @@ AssertionError: expected undefined to match object { kind: 'state', …(2) }
 + Received:
 undefined
 
- ❯ tests/claude-model-switch.test.ts:157:20
-    155|   const p = new ClaudeStepParser();
-    156|   const steps = p.push(JSON.stringify(notice()), 100);
-    157|   expect(steps[0]).toMatchObject({ kind: "state", note: "Model switche…
+ ❯ tests/claude-model-switch.test.ts:180:20
+    178|   const p = new ClaudeStepParser();
+    179|   const steps = p.push(JSON.stringify(notice()), 100);
+    180|   expect(steps[0]).toMatchObject({ kind: "state", note: "Model switche…
        |                    ^
-    158|   expect(JSON.stringify(steps)).not.toContain("NEVER EXPOSE");
-    159|   expect(p.push(JSON.stringify({ ...notice(), isSidechain: true }), 20…
+    181|   expect(JSON.stringify(steps)).not.toContain("NEVER EXPOSE");
+    182|   expect(p.push(JSON.stringify({ ...notice(), isSidechain: true }), 20…
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/20]⎯
 
  FAIL  tests/claude-model-switch.test.ts > active hook + append source ownership > baselines a resumed file, observes only appends, and does not replay after resetting
 AssertionError: expected [] to have a length of 1 but got +0
@@ -211,32 +253,32 @@ AssertionError: expected [] to have a length of 1 but got +0
 - 1
 + 0
 
- ❯ tests/claude-model-switch.test.ts:190:131
-    188|     const r = rig(); writeFileSync(r.path, JSON.stringify({ ...notice(…
-    189|     await r.m.pollIncrement(); expect(r.events).toEqual([]);
-    190|     appendFileSync(r.path, JSON.stringify({ ...notice(), uuid: "append…
+ ❯ tests/claude-model-switch.test.ts:213:131
+    211|     const r = rig(); writeFileSync(r.path, JSON.stringify({ ...notice(…
+    212|     await r.m.pollIncrement(); expect(r.events).toEqual([]);
+    213|     appendFileSync(r.path, JSON.stringify({ ...notice(), uuid: "append…
        |                                                                                                                                   ^
-    191|     r.m.resetOffset(); await r.m.pollIncrement(); expect(r.events).toH…
-    192|   });
+    214|     r.m.resetOffset(); await r.m.pollIncrement(); expect(r.events).toH…
+    215|   });
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/20]⎯
 
  FAIL  tests/claude-model-switch.test.ts > active hook + append source ownership > keeps first records written by this launch before the monitor was constructed
-AssertionError: expected [] to have a length of 1 but got +0
+AssertionError: expected [ { kind: 'served', …(4) } ] to have a length of 2 but got 1
 
 - Expected
 + Received
 
-- 1
-+ 0
+- 2
++ 1
 
- ❯ tests/claude-model-switch.test.ts:201:70
-    199|     const m = new TranscriptMonitor(dir, pino({ level: "silent" }) as …
-    200|     const events: any[] = []; m.on("model_observation", e => events.pu…
-    201|     await m.pollIncrement(); await m.pollIncrement(); expect(events).t…
+ ❯ tests/claude-model-switch.test.ts:224:70
+    222|     const m = new TranscriptMonitor(dir, pino({ level: "silent" }) as …
+    223|     const events: any[] = [], texts: string[] = []; m.on("model_observ…
+    224|     await m.pollIncrement(); await m.pollIncrement(); expect(events).t…
        |                                                                      ^
-    202|   });
-    203| });
+    225|     expect(texts).toEqual([]); // Adding observations must not replay …
+    226|   });
 
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/17]⎯
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/20]⎯
 

@@ -1,6 +1,6 @@
 [
   {
-    "digest": "001b8764fd1c7cef5d2c69ef3f9d63101ed59fd3c4ea2edc0855b0e325691201",
+    "digest": "9bc762f58ee516a92e519b005b0bfcee140487916421914b68e3b4aa4770ade1",
     "paths": [
       "README.md"
     ]
@@ -318,9 +318,15 @@
     ]
   },
   {
-    "digest": "fe32865ef8b906aa3463acd6a12d17c5a1b284cc2e96b1f49eafbfaa62a26b09",
+    "digest": "44e232ace593a28e90bc9313e74c50d54fd651f1c2e6e86845e9eaddc203df34",
     "paths": [
       "checks/commands.txt"
+    ]
+  },
+  {
+    "digest": "6bf013ceebe587b2a42f0d10e21ac4f61444178da65cee3367477747a5c77ab4",
+    "paths": [
+      "checks/configured-recovery-before.log"
     ]
   },
   {
@@ -363,6 +369,8 @@
     "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "paths": [
       "checks/r1-test-types.log",
+      "checks/r2-source-types.log",
+      "checks/r2-test-types.log",
       "checks/source-types-final.log",
       "checks/test-types-final.log",
       "mutations/M1-sidechain-types.log",
@@ -383,6 +391,12 @@
     ]
   },
   {
+    "digest": "7d9f08c7aabd3e0e6b00cd6d57ed00d7e6d7606c1b0d7b82cede5c1d07896d72",
+    "paths": [
+      "checks/r2-controls.log"
+    ]
+  },
+  {
     "digest": "8bf2da0a66b12f54b661e9316cb8dbf272f512d102e8c2b28710a5277adc96b5",
     "paths": [
       "checks/retained-needs-before.log"
@@ -395,109 +409,109 @@
     ]
   },
   {
-    "digest": "f81ebab080e717d02ff96e3e7df415c0ed7abf69695e761873a31b2b92494daf",
+    "digest": "3d8e210a2d1fe0901fc3fb3d906f04dc46228d1a749f79c074e5d51ce095d298",
     "paths": [
       "checks.json"
     ]
   },
   {
-    "digest": "8fcf6d63ac217761704bc706ca099fcb83007328a7deae4a997e829fd7c250ec",
+    "digest": "07d7d50349b3f5557010a5a499f2601fd5e3aca8fd0c3e0666e5e8d08c1c27b2",
     "paths": [
       "mutations/M1-sidechain.log"
     ]
   },
   {
-    "digest": "510223b1c731621615f7d37f0dd941056fd5086f47335f6208835e522ace44be",
+    "digest": "b4123247c438b812709b3138bfa427d817d9856832320b9b6cd8ff3b77f023d4",
     "paths": [
       "mutations/M10-original.log"
     ]
   },
   {
-    "digest": "019dcbc197818139b6d42c9c4539fb6f0604630e32405ac64282981bc371750b",
+    "digest": "ecc0f50e3aba715530562b1460ea034328a98b96d64048d57fa755643e9332bb",
     "paths": [
       "mutations/M11-commandprefix.log"
     ]
   },
   {
-    "digest": "01a8540978e731a3d245a14b894ea5a91ce98ac56c3bb69cdab7a27c4561c0a8",
+    "digest": "a8ec7234e7507ec7e2ca41ffe430d3b658cf2a547d2086202c3c94b033b59c1c",
     "paths": [
       "mutations/M12-logpair.log"
     ]
   },
   {
-    "digest": "bb1b8b8e85f8bb4f2513a5a7dd07140b6b6c6b6bf1d620d91c33a37e60184bcd",
+    "digest": "e0ee0191f49f78acdbeb100974c3dc88b05f30ecec8722b627f53382734dcba4",
     "paths": [
       "mutations/M13-officeshare.log"
     ]
   },
   {
-    "digest": "3012228c92fb03a6324c67bf6f0f0aec9a539d074f9d99d49a246399d788835f",
+    "digest": "ce2c2ef61dea3036718786426e3fc1b801e5217dc4a35918afa48c70d68ce2b9",
     "paths": [
       "mutations/M14-nofallback.log"
     ]
   },
   {
-    "digest": "5c310fc4d642e74442a192a7b07ab4eefa115e23a0412938ca0ade8e554607b3",
+    "digest": "a69c3030ac4932760f87b92564ec2cbd52405b947ce8e9b42c5b45e303f5b9bd",
     "paths": [
       "mutations/M15-intent-session.log"
     ]
   },
   {
-    "digest": "fb6661fc315910adc8d98d02fdd303d20e7128e5f5db517b9529b63c792797fc",
+    "digest": "693cdf11dfa272ab57e5cf0fa94f006ba18961521cb84a54fbb869feb984c551",
     "paths": [
       "mutations/M2-apierror.log"
     ]
   },
   {
-    "digest": "9dd0349684f2c030fa5da6b4a91073b6e600ee203f68f582df8797131943bbeb",
+    "digest": "4f796f8a63a579ead85e9039aec9da8d3839a35265bc9a391b77cb10776bd02e",
     "paths": [
       "mutations/M3-dedupe.log"
     ]
   },
   {
-    "digest": "ee8538664d6d1f3b513d2531294b02cd451715c6dd61d121f1dad661f5c048fe",
+    "digest": "a3f1a71e841f7cb642610843f13c8829820889c51287fff5c6857778332a0f4d",
     "paths": [
       "mutations/M4-recovery.log"
     ]
   },
   {
-    "digest": "f69c08fd2b6e41d6fcf538f94edbf25ec8aec3454aa4c0def7b872d0864d88e3",
+    "digest": "0774a3341b0de8fe0d9d8f0a58272b885fabd6fd99a178b099af4059ffc9baab",
     "paths": [
       "mutations/M5-concrete.log"
     ]
   },
   {
-    "digest": "4ef9be85cc5e12c348b4af5b6fb7a1d7cbe645fa1895ebf7a787362e01c484f5",
+    "digest": "348b420e3e71f8896db9ff7dc4aec3e8286353792d54f7f25f535533096a9a0e",
     "paths": [
       "mutations/M6-hookowner.log"
     ]
   },
   {
-    "digest": "9226ac8b81c8fa6373d2a61f5db9f6ef5bfe6f2141c173e581a6095c9f943ab2",
+    "digest": "c980b00f4ca7f58f3a72baa8b7d100486eb3c58eed7817d5b9ba2dde2d3ecedd",
     "paths": [
       "mutations/M7-launchtime.log"
     ]
   },
   {
-    "digest": "d4fe9068d83d4f6e316a2c7acbbfa4d90aaa376b0ca5c1e0495faa693c1e5199",
+    "digest": "eb719a8d4cbca6a1e8573fb33716cd666b6ecb74ac1dbb26aace355367b79c98",
     "paths": [
       "mutations/M8-daemonfence.log"
     ]
   },
   {
-    "digest": "e362757eea0e187a768d0f29b74a9909a1fbcb31e5fb7ead8934b3b87aaf252c",
+    "digest": "b6b05fac005ee02561b89dbf460110eba27c01fbc8f939924c0a5a18b6efeb6a",
     "paths": [
       "mutations/M9-resumequiet.log"
     ]
   },
   {
-    "digest": "9270d1e4610c9603fb59c6ecc6e2b5150e9f4e9973cd6fe8f9ad896a3957b4b8",
+    "digest": "a8706e2783ae8f5bdd5c0dcf3e9a802e904734c9cf0bbd6a5f707057e2c71580",
     "paths": [
       "mutations/results.json"
     ]
   },
   {
-    "digest": "ab577fc9de67945d87fca09f181bbd09ae11910c44c1f1d586104c7125aa9412",
+    "digest": "09e56dce0503f14be4bf7bd3b7a0358715bc20b094729226ccf755c14a9f67ea",
     "paths": [
       "mutations/run.py"
     ]

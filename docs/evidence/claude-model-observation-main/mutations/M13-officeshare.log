@@ -1,13 +1,13 @@
 
  RUN  v4.1.12 <checkout>
 
- ❯ tests/office-card-2661.test.ts (19 tests | 1 failed) 548ms
-     × observations appear only on the authenticated card, never the Office share 12ms
+ ❯ tests/office-card-2661.test.ts (19 tests | 1 failed) 445ms
+     × observations appear only on the authenticated card, never the Office share 10ms
 
  Test Files  1 failed (1)
       Tests  1 failed | 18 passed (19)
-   Start at  17:03:51
-   Duration  1.39s (transform 824ms, setup 118ms, import 544ms, tests 548ms, environment 0ms)
+   Start at  17:31:17
+   Duration  1.16s (transform 685ms, setup 121ms, import 434ms, tests 445ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯

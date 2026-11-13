@@ -1,14 +1,14 @@
 
  RUN  v4.1.12 <checkout>
 
- ❯ tests/claude-model-switch.test.ts (55 tests | 2 failed) 96ms
-     × rejects old marker 14ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 2 failed) 66ms
+     × rejects old marker 9ms
      × rejects missing marker 2ms
 
  Test Files  1 failed (1)
-      Tests  2 failed | 53 passed (55)
-   Start at  17:15:57
-   Duration  845ms (transform 394ms, setup 190ms, import 343ms, tests 96ms, environment 0ms)
+      Tests  2 failed | 56 passed (58)
+   Start at  17:30:48
+   Duration  444ms (transform 164ms, setup 89ms, import 135ms, tests 66ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
@@ -22,7 +22,7 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 - []
 + [
 +   {
-+     "at": 1794561358739,
++     "at": 1794562248495,
 +     "cause": "safeguards",
 +     "id": "notice:notice-A",
 +     "kind": "switch",
@@ -33,13 +33,13 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 +   },
 + ]
 
- ❯ tests/claude-model-switch.test.ts:182:60
-    180|     if (kind === "other path") r.m.transcriptPath = join(r.dir, "other…
-    181|     if (kind === "missing marker") delete r.hook._agendLaunchId;
-    182|     r.save(); r.m.processEntry(notice()); expect(r.events).toEqual([]);
+ ❯ tests/claude-model-switch.test.ts:205:60
+    203|     if (kind === "other path") r.m.transcriptPath = join(r.dir, "other…
+    204|     if (kind === "missing marker") delete r.hook._agendLaunchId;
+    205|     r.save(); r.m.processEntry(notice()); expect(r.events).toEqual([]);
        |                                                            ^
-    183|   });
-    184|   it("rejects bootstrap history even within the old 5-second alarm ske…
+    206|   });
+    207|   it("rejects bootstrap history even within the old 5-second alarm ske…
 
 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
 
@@ -52,7 +52,7 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 - []
 + [
 +   {
-+     "at": 1794561358757,
++     "at": 1794562248507,
 +     "cause": "safeguards",
 +     "id": "notice:notice-A",
 +     "kind": "switch",
@@ -63,13 +63,13 @@ AssertionError: expected [ { kind: 'switch', …(7) } ] to deeply equal []
 +   },
 + ]
 
- ❯ tests/claude-model-switch.test.ts:182:60
-    180|     if (kind === "other path") r.m.transcriptPath = join(r.dir, "other…
-    181|     if (kind === "missing marker") delete r.hook._agendLaunchId;
-    182|     r.save(); r.m.processEntry(notice()); expect(r.events).toEqual([]);
+ ❯ tests/claude-model-switch.test.ts:205:60
+    203|     if (kind === "other path") r.m.transcriptPath = join(r.dir, "other…
+    204|     if (kind === "missing marker") delete r.hook._agendLaunchId;
+    205|     r.save(); r.m.processEntry(notice()); expect(r.events).toEqual([]);
        |                                                            ^
-    183|   });
-    184|   it("rejects bootstrap history even within the old 5-second alarm ske…
+    206|   });
+    207|   it("rejects bootstrap history even within the old 5-second alarm ske…
 
 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
 

@@ -1,0 +1,40 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed | 57 skipped) 20ms
+     × a return to the configured model recovers a fallback that followed next-spawn failover 16ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 57 skipped (58)
+   Start at  17:29:48
+   Duration  708ms (transform 339ms, setup 181ms, import 271ms, tests 20ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > incident lifecycle without a model/policy action > a return to the configured model recovers a fallback that followed next-spawn failover
+AssertionError: expected { …(6) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "cause": "safeguards",
+  "id": "session-A:notice:notice-A",
+  "original": "claude-opus-4-8",
+  "scope": "session",
+  "served": "claude-sonnet-5-5",
+  "since": 1794562189385,
+}
+
+ ❯ tests/claude-model-switch.test.ts:106:33
+    104|     expect(o.snapshot().active?.served).toBe("claude-sonnet-5-5");
+    105|     o.observe(parse(served("claude-opus-5-5", "configured-recovery")),…
+    106|     expect(o.snapshot().active).toBeNull();
+       |                                 ^
+    107|   });
+    108|   it("next-spawn failover is a launch selection, not a detected provid…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

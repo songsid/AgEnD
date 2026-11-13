@@ -14,3 +14,6 @@ git diff 29d3a5142 8ec20af92 -- src/ui src/fleet-manager.ts src/claude-model-obs
 # R1 test/docs-only pin
 python3 docs/evidence/claude-model-observation-main/mutations/run.py M15-intent-session
 vitest run tests/claude-model-switch.test.ts tests/claude-model-switch-daemon.test.ts tests/claude-credential-profile-1699.test.ts tests/needs-you-hub-1386.test.ts tests/office-card-2661.test.ts tests/web-details-n2.test.ts tests/web-log-tab-1218.test.ts tests/web-needs-1408.test.ts --maxWorkers=2
+
+# R2 configured-return delta; same eight-suite command as R1
+python3 docs/evidence/claude-model-observation-main/mutations/run.py

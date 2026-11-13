@@ -6,7 +6,7 @@ cases=[
  ('M1-sidechain',core,'e.isSidechain !== true','true',['tests/claude-model-switch.test.ts']),
  ('M2-apierror',core,'e.isApiErrorMessage !== true','true',['tests/claude-model-switch.test.ts']),
  ('M3-dedupe',core,'if (this.seen.has(key)) return false;','if (false) return false;',['tests/claude-model-switch.test.ts']),
- ('M4-recovery',core,'if (returnsTo && normalizeClaudeModel(record.served) === normalizeClaudeModel(returnsTo)) this.state.active = null;','if (returnsTo && normalizeClaudeModel(record.served) === normalizeClaudeModel(returnsTo)) {}',['tests/claude-model-switch.test.ts']),
+ ('M4-recovery',core,'this.state.active = null;\n    else if (!this.state.active && expected', '{}\n    else if (!this.state.active && expected',['tests/claude-model-switch.test.ts']),
  ('M5-concrete',core,'this.expected = claudeModelId(launch);','this.expected = null;',['tests/claude-model-switch.test.ts']),
  ('M6-hookowner',monitor,'hook._agendLaunchId === launch.id','true',['tests/claude-model-switch.test.ts']),
  ('M7-launchtime',monitor,'observation.at >= launch.startedAt','true',['tests/claude-model-switch.test.ts']),

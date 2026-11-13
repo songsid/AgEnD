@@ -1,15 +1,15 @@
 
  RUN  v4.1.12 <checkout>
 
- ❯ tests/claude-model-switch.test.ts (55 tests | 3 failed) 110ms
-     × excludes sidechain notice 9ms
-     × excludes sidechain response 2ms
-   × Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records 7ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 3 failed) 91ms
+     × excludes sidechain notice 8ms
+     × excludes sidechain response 1ms
+   × Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records 3ms
 
  Test Files  1 failed (1)
-      Tests  3 failed | 52 passed (55)
-   Start at  17:02:47
-   Duration  866ms (transform 434ms, setup 167ms, import 371ms, tests 110ms, environment 0ms)
+      Tests  3 failed | 55 passed (58)
+   Start at  17:30:29
+   Duration  494ms (transform 166ms, setup 98ms, import 135ms, tests 91ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
@@ -22,7 +22,7 @@ null
 
 + Received:
 {
-  "at": 1794560568204,
+  "at": 1794562229947,
   "cause": "safeguards",
   "id": "notice:notice-A",
   "kind": "switch",
@@ -50,7 +50,7 @@ null
 
 + Received:
 {
-  "at": 1794560568204,
+  "at": 1794562229947,
   "id": "response:response-A:opus-4.8",
   "kind": "served",
   "served": "claude-opus-4-8",
@@ -84,21 +84,21 @@ AssertionError: expected [ { …(6) } ] to deeply equal []
 +       "original": "claude-opus-5-5",
 +       "scope": "session",
 +       "served": "claude-opus-4-8",
-+       "since": 1794560568255,
++       "since": 1794562229983,
 +     },
 +     "note": "Model switched: claude-opus-5-5 → claude-opus-4-8",
-+     "ts": 1794560568255,
++     "ts": 1794562229983,
 +     "turn": "",
 +   },
 + ]
 
- ❯ tests/claude-model-switch.test.ts:159:75
-    157|   expect(steps[0]).toMatchObject({ kind: "state", note: "Model switche…
-    158|   expect(JSON.stringify(steps)).not.toContain("NEVER EXPOSE");
-    159|   expect(p.push(JSON.stringify({ ...notice(), isSidechain: true }), 20…
+ ❯ tests/claude-model-switch.test.ts:182:75
+    180|   expect(steps[0]).toMatchObject({ kind: "state", note: "Model switche…
+    181|   expect(JSON.stringify(steps)).not.toContain("NEVER EXPOSE");
+    182|   expect(p.push(JSON.stringify({ ...notice(), isSidechain: true }), 20…
        |                                                                           ^
-    160|   expect(p.push(JSON.stringify({ ...notice(), subtype: "model_refusal_…
-    161|   const response = served(); response.message.content = [{ type: "text…
+    183|   expect(p.push(JSON.stringify({ ...notice(), subtype: "model_refusal_…
+    184|   const response = served(); response.message.content = [{ type: "text…
 
 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
 

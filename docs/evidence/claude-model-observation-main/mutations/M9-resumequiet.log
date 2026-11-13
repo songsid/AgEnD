@@ -1,15 +1,15 @@
 
  RUN  v4.1.12 <checkout>
 
- ❯ tests/needs-you-hub-1386.test.ts (32 tests | 1 failed) 104ms
-   × restored model incidents list quietly; one new switch notifies once and recovery removes it 16ms
+ ❯ tests/needs-you-hub-1386.test.ts (32 tests | 1 failed) 93ms
+   × restored model incidents list quietly; one new switch notifies once and recovery removes it 15ms
 
  Test Files  1 failed (1)
       Tests  1 failed | 31 passed (32)
-   Start at  17:03:34
-   Duration  834ms (transform 186ms, setup 93ms, import 478ms, tests 104ms, environment 0ms)
+   Start at  17:31:02
+   Duration  710ms (transform 143ms, setup 92ms, import 383ms, tests 93ms, environment 0ms)
 
-(node:27832) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(node:82710) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
 (Use `node --trace-deprecation ...` to show where the warning was created)
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯

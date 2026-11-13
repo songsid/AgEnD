@@ -1,14 +1,14 @@
 
  RUN  v4.1.12 <checkout>
 
- ❯ tests/claude-model-switch.test.ts (55 tests | 2 failed) 108ms
-     × excludes no fallback 7ms
-   × Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records 5ms
+ ❯ tests/claude-model-switch.test.ts (58 tests | 2 failed) 82ms
+     × excludes no fallback 6ms
+   × Log uses typed structured switches and bounded served metadata, excluding child and no-fallback records 3ms
 
  Test Files  1 failed (1)
-      Tests  2 failed | 53 passed (55)
-   Start at  17:03:57
-   Duration  564ms (transform 170ms, setup 113ms, import 131ms, tests 108ms, environment 0ms)
+      Tests  2 failed | 56 passed (58)
+   Start at  17:31:22
+   Duration  513ms (transform 189ms, setup 108ms, import 150ms, tests 82ms, environment 0ms)
 
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
@@ -21,7 +21,7 @@ null
 
 + Received:
 {
-  "at": 1794560637643,
+  "at": 1794562282603,
   "cause": "availability",
   "id": "notice:notice-A",
   "kind": "switch",
@@ -58,21 +58,21 @@ AssertionError: expected [ { …(6) } ] to deeply equal []
 +       "original": "claude-opus-5-5",
 +       "scope": "session",
 +       "served": "claude-opus-4-8",
-+       "since": 1794560637682,
++       "since": 1794562282635,
 +     },
 +     "note": "Model switched: claude-opus-5-5 → claude-opus-4-8",
-+     "ts": 1794560637682,
++     "ts": 1794562282635,
 +     "turn": "",
 +   },
 + ]
 
- ❯ tests/claude-model-switch.test.ts:160:94
-    158|   expect(JSON.stringify(steps)).not.toContain("NEVER EXPOSE");
-    159|   expect(p.push(JSON.stringify({ ...notice(), isSidechain: true }), 20…
-    160|   expect(p.push(JSON.stringify({ ...notice(), subtype: "model_refusal_…
+ ❯ tests/claude-model-switch.test.ts:183:94
+    181|   expect(JSON.stringify(steps)).not.toContain("NEVER EXPOSE");
+    182|   expect(p.push(JSON.stringify({ ...notice(), isSidechain: true }), 20…
+    183|   expect(p.push(JSON.stringify({ ...notice(), subtype: "model_refusal_…
        |                                                                                              ^
-    161|   const response = served(); response.message.content = [{ type: "text…
-    162|   expect(p.push(JSON.stringify(response), 400)[0]).toMatchObject({ ser…
+    184|   const response = served(); response.message.content = [{ type: "text…
+    185|   expect(p.push(JSON.stringify(response), 400)[0]).toMatchObject({ ser…
 
 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
 
