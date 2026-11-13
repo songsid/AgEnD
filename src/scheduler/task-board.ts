@@ -1108,7 +1108,7 @@ export class TaskBoard {
    * Cards by project (an id or name; null: No project), main task (its sub tasks), assignee and status (live ones by
    * default), main tasks first, then by status and priority; at most `limit` (default 50), with how many matched.
    */
-  listCards(filter: { project?: string | number | null; parent?: string; assignee?: string; status?: CardStatus[]; limit?: number }): { cards: Card[]; total: number } {
+  listCards(filter: { project?: string | number | null; parent?: string; assignee?: string; status?: CardStatus[]; limit?: number; after?: string }): { cards: Card[]; total: number } {
     const where: string[] = [];
     const params: unknown[] = [];
     if (filter.project !== undefined) {
@@ -1123,7 +1123,15 @@ export class TaskBoard {
     const from = `FROM tasks WHERE ${where.join(" AND ")}`;
     const { n } = this.db.prepare(`SELECT COUNT(*) AS n ${from}`).get(...params) as { n: number };
     const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200);
-    const rows = this.db.prepare(`SELECT * ${from} ORDER BY CASE kind WHEN 'main' THEN 0 ELSE 1 END, ${STATUS_ORDER}, ${PRIORITY_ORDER}, sort LIMIT ?`).all(...params, limit) as Row[];
+    const order = `CASE kind WHEN 'main' THEN 0 ELSE 1 END, ${STATUS_ORDER}, ${PRIORITY_ORDER}, sort, id`;
+    let offset = 0;
+    if (filter.after !== undefined) {
+      const ids = this.db.prepare(`SELECT id ${from} ORDER BY ${order}`).all(...params) as { id: string }[];
+      const index = ids.findIndex(r => r.id === filter.after);
+      if (index < 0) throw new TaskBoardError("invalid", "cursor is invalid for this list; restart with the same filters");
+      offset = index + 1;
+    }
+    const rows = this.db.prepare(`SELECT * ${from} ORDER BY ${order} LIMIT ? OFFSET ?`).all(...params, limit, offset) as Row[];
     return { cards: rows.map(toCard), total: n };
   }
 

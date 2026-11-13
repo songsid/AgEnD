@@ -288,7 +288,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
       return `- **${d.title}**: ${firstLine}`;
     });
     if (decisions.length > MAX) {
-      lines.push(`- *(${decisions.length - MAX} more — use \`list_decisions\` to see all)*`);
+      lines.push(`- *(${decisions.length - MAX} more — use \`list_decisions\` and follow all next_cursor pages; read relevant rules with detail:true)*`);
     }
     sections.push(`## Active Decisions\n\n${lines.join("\n")}`);
   }

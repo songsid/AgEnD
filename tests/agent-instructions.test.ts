@@ -21,7 +21,7 @@ import type { Logger } from "../src/logger.js";
 import { matrixCases } from "./helpers/instructions-matrix.js";
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
-// Recorded from receipt guidance after plain sync of bcd7a4853: detail:true is intentionally required for original consent; all 576x3 combinations remain pinned.
+// Full576x3 matrix retained: full-evidence receipt verification and paged-list rule reads.
 const GOLDEN: Record<string, string> = JSON.parse(readFileSync(new URL("./fixtures/instructions-matrix.json", import.meta.url), "utf8"));
 
 describe("the complete expected agent instructions", () => {
@@ -31,7 +31,7 @@ describe("the complete expected agent instructions", () => {
     expect(Object.keys(GOLDEN).length).toBe(cases.length * 3);
     expect(new Set(cases.map(c => c.params.customPrompt)).size).toBe(2);
   });
-  it("matches the reviewed full-evidence guidance for every combination (fleet and Windows native)", () => {
+  it("matches the reviewed paged-list guidance for every combination (fleet and Windows native)", () => {
     let checked = 0;
     for (const { key, params } of cases) {
       expect(sha(buildFleetInstructions(params)), `fleet|${key}`).toBe(GOLDEN[`fleet|${key}`]);

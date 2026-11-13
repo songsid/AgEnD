@@ -109,6 +109,19 @@ async function main(): Promise<void> {
   }
   if (!INSTANCE) die("AGEND_INSTANCE_NAME not set");
 
+  const listRead = ["schedule-list", "decision-list", "decision-get"].includes(op) || op === "task" && ["list", "get"].includes(rest[0] ?? "");
+  const listFlags: Record<string, unknown> = {};
+  if (listRead) {
+    for (let i = 0; i < rest.length; i++) {
+      if (rest[i] === "--detail") { listFlags.detail = true; rest.splice(i--, 1); }
+      else if (rest[i] === "--limit" || rest[i] === "--cursor") {
+        const key = rest[i]!.slice(2), value = rest[i + 1];
+        if (value === undefined || value.startsWith("--")) die(`Missing value for --${key}`);
+        listFlags[key] = key === "limit" ? Number(value) : value;
+        rest.splice(i, 2); i--;
+      } else if (rest[i]?.startsWith("--")) die(`Unknown list option: ${rest[i]}`);
+    }
+  }
   let args: Record<string, unknown> = {};
 
   switch (op) {
@@ -415,6 +428,8 @@ async function main(): Promise<void> {
 
     default: die(`Unknown op: ${op}`);
   }
+
+  Object.assign(args, listFlags);
 
   // Strip undefined values
   for (const [k, v] of Object.entries(args)) {
