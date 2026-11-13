@@ -108,10 +108,10 @@ export class HubRoomAssistant {
       this.changed(call);
     } catch { this.fail(call); }
   }
-  forget(roomId: string): void {
-    this.core.deps.roomAssistant?.forget(roomId);
+  cancel(roomId: string): void {
     const rows = this.core.atomic(db => db.prepare("SELECT * FROM hub_room_assistant_calls WHERE room_id=? AND state IN ('queued','working')").all(roomId) as Call[]);
     for (const row of rows) this.fail(row);
   }
+  forget(roomId: string): void { this.cancel(roomId); this.core.deps.roomAssistant?.forget(roomId); }
   close(): void { this.stopped = true; for (const roomId of this.jobs.keys()) this.core.deps.roomAssistant?.forget(roomId); }
 }

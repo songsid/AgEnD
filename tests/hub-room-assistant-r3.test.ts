@@ -56,3 +56,18 @@ it("does not repeat an uncertain external input after the HTTP mount restarts", 
   expect(r!.db.prepare("SELECT state,reason FROM hub_room_assistant_calls").get()).toEqual({ state: "failed", reason: "interrupted" });
   expect((await r!.call(w.a, "GET", `/hub/v1/rooms/${id}/messages`)).text).not.toContain("Old mount output"); expect(w.calls).toHaveLength(1);
 });
+
+it("stops the active call and queued room inputs before the admin stop response", async () => {
+  const w = await world(); let release!: () => void, entered!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
+  r!.httpDeps.roomAssistant!.ask = async input => { w.calls.push(input); entered(); await held; return { text: "Stopped output" }; };
+  r!.httpDeps.assistantAdmin = { settings: async () => ({}), configure: async () => ({}), usage: async () => ({}), stopRoom: async () => { release(); } };
+  await r!.restartHttp();
+  const list = await r!.call(w.a, "GET", "/hub/v1/rooms?v=2"), id = list.json.rooms.find((x: any) => x.assistant).id;
+  const post = (text: string) => r!.call(w.a, "POST", `/hub/v1/rooms/${id}/messages`, { text, mentions: [], idempotencyKey: randomUUID() });
+  await post("First"); await started; await post("Second");
+  try { expect((await r!.call(w.admin, "POST", `/hub/v1/admin/assistant/rooms/${id}/stop`, {})).status).toBe(200); }
+  finally { release(); }
+  await vi.waitFor(() => expect(r!.db.prepare("SELECT state FROM hub_room_assistant_calls ORDER BY rowid").all()).toEqual([{ state: "failed" }, { state: "failed" }]));
+  expect(w.calls).toHaveLength(1); expect((await r!.call(w.a, "GET", `/hub/v1/rooms/${id}/messages`)).text).not.toContain("Stopped output");
+});

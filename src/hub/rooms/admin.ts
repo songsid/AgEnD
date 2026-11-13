@@ -10,9 +10,11 @@ import type { RoomEvent } from "./types.js";
 
 type DB = Database.Database;
 const personId = z.string().max(128).regex(/^[a-z][a-z0-9_-]{0,63}\/[a-f0-9-]{36}$/);
-const policy = z.strictObject({ people: z.array(personId).max(200), teams: z.array(z.string().uuid()).max(0) });
+const policy = z.strictObject({ people: z.array(personId).max(200), teams: z.array(z.string().uuid()).max(100) });
 export function canCreateRoom(core: HubCore, db: DB, person: string): boolean {
-  return person === personKeyString(core.deps.config.administrator) || !!db.prepare("SELECT 1 FROM hub_room_creators WHERE kind='person' AND subject=?").get(person);
+  return person === personKeyString(core.deps.config.administrator) || !!db.prepare("SELECT 1 FROM hub_room_creators WHERE kind='person' AND subject=?").get(person)
+    || (db.prepare("SELECT subject FROM hub_room_creators WHERE kind='team'").all() as { subject: string }[])
+      .some(row => core.deps.roomTeams?.isMember(db, row.subject, person)?.member === true);
 }
 export class HubRoomAdmin {
   constructor(private readonly core: HubCore, private readonly publish: (event: RoomEvent) => void, private readonly archived: (id: string) => void) {}
@@ -26,8 +28,10 @@ export class HubRoomAdmin {
     const body = validated(policy, input);
     for (const person of body.people) if (!await this.core.eligible(personFromString(person))) throw new HubProtocolError("invalid");
     return this.core.atomic((db, tx) => {
+      for (const team of body.teams) if (!this.core.deps.roomTeams?.read(db, team)) throw new HubProtocolError("invalid");
       db.prepare("DELETE FROM hub_room_creators").run();
       for (const person of new Set(body.people)) db.prepare("INSERT INTO hub_room_creators(kind,subject) VALUES('person',?)").run(person);
+      for (const team of new Set(body.teams)) db.prepare("INSERT INTO hub_room_creators(kind,subject) VALUES('team',?)").run(team);
       this.core.audit(tx, { requestId: ctx.requestId, actor: permit.actor.kind === "directory" ? { kind: "person", person: permit.actor.person } : { kind: "local-host" }, action: "room.creators", result: "completed" });
       return this.readPolicy(db);
     }, { assertCurrent: () => permit.assertCurrent() });

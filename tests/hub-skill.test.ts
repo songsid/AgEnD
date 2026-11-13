@@ -50,7 +50,7 @@ describe("the hub skill", () => {
 
   it("covers both sides, with an index pointing at real sections", () => {
     for (const h of ["What the Hub is", "Setting up a Hub", "Signing in to the Hub", "Letting colleagues join", "Join codes", "Connecting a Fleet",
-      "Held, refused and queued connections", "Sharing agents", "Who may ask", "Asking an agent", "Group permissions", "Administration",
+      "Held, refused and queued connections", "Sharing agents", "Who may ask", "Asking an agent", "Rooms and the Hub assistant", "Group permissions", "Administration",
       "Config keys", "Limits", "Not available yet", "Troubleshooting"]) expect(SKILL, h).toContain(`\n## ${h}\n`);
     const anchors = [...SKILL.matchAll(/\]\(#([a-z0-9-]+)\)/g)].map(m => m[1]!);
     const slugs = [...SKILL.matchAll(/\n## (.+)\n/g)].map(m => m[1]!.toLowerCase().replace(/[^a-z0-9 -]/g, "").replace(/ /g, "-"));

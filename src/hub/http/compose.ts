@@ -133,6 +133,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const grantSearch = new HubGrantSearch(core);
   const rooms = new HubRoomsService(core, policy);
   const groupRooms = new HubGroupRooms(core);
+  const invitations = deps.roomInvitations?.(core, groupRooms.invitationHost());
   const roomAdmin = new HubRoomAdmin(core, event => groupRooms.publish(event), id => { groupRooms.assistant.forget(id); groupRooms.agents.sweep(id); });
   const quota = new HubQuotaService(core);
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
@@ -347,6 +348,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method !== "GET") throw new HttpError(405, "method");
       signedIn(); return send(res, 200, { activity: await guard(() => rooms.activity(ctx, uuid(r![1]))) });
     }
+    if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/rooms$/))) {
+      if (method !== "GET") throw new HttpError(405, "method");
+      signedIn(); return send(res, 200, await guard(() => groupRooms.roomsForExposure(ctx, uuid(r![1]))));
+    }
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/sharing$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
       csrf(); const b = await body(); await guard(() => sharing.change(ctx, uuid(r![1]), b)); groupRooms.agents.publicationChanged(undefined, uuid(r![1]));
@@ -380,7 +385,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         if (method === "PUT") { const b = await body(); return send(res, 200, await guard(() => call(() => port.configure(b)))); }
       } else if (path.endsWith("/usage") && method === "GET") return send(res, 200, await guard(() => call(() => port.usage())));
       else if (method === "POST") {
-        const id = uuid(path.split("/")[6]); await guard(() => call(() => port.stopRoom(id))); return send(res, 200, { ok: true });
+        const id = uuid(path.split("/")[6]);
+        await guard(() => call(() => { groupRooms.assistant.cancel(id); return port.stopRoom(id); })); return send(res, 200, { ok: true });
       }
       throw new HttpError(405, "method");
     }
@@ -403,6 +409,29 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method !== "GET") throw new HttpError(405, "method");
       signedIn(); return send(res, 200, await guard(() => groupRooms.candidates(ctx, query.get("q") ?? "", query.get("kind") ?? "person")));
     }
+    if (path === "/hub/v1/invitations") {
+      if (!invitations) throw new HttpError(404, "not-found");
+      if (method !== "GET") throw new HttpError(405, "method");
+      signedIn(); return send(res, 200, await guard(() => invitations.pending(ctx)));
+    }
+    if ((r = m(/^\/hub\/v1\/invitations\/([^/]+)\/(accept|decline)$/))) {
+      if (!invitations) throw new HttpError(404, "not-found");
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const id = uuid(r[1]); return send(res, 200, await guard(() => r![2] === "accept" ? invitations.accept(ctx, id) : invitations.decline(ctx, id)));
+    }
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/invitations(?:\/([^/]+))?$/))) {
+      if (!invitations) throw new HttpError(404, "not-found");
+      csrf(); const id = uuid(r[1]);
+      if (method === "DELETE" && r[2]) return send(res, 200, await guard(() => invitations.cancel(ctx, id, uuid(r![2]))));
+      if (method === "POST" && !r[2]) {
+        const b = await body();
+        if (Object.keys(b).length !== 1 || !(Array.isArray(b.agents) || typeof b.team === "string")) throw new HubProtocolError("invalid");
+        const input = Array.isArray(b.agents) ? { agents: b.agents.map(value => uuid(value)) } : { team: uuid(b.team) };
+        if (input.agents && input.agents.length > 64) throw new HubProtocolError("invalid");
+        return send(res, 200, await guard(() => invitations.invite(ctx, id, input)));
+      }
+      throw new HttpError(405, "method");
+    }
     if (path === "/hub/v1/rooms/events") {
       if (method !== "GET") throw new HttpError(405, "method");
       const streamSession = signedIn(), streamPerson = personKeyString(await guard(() => ctx.requirePerson()));
@@ -423,13 +452,17 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           if (ended) return;
           let data: Record<string, unknown> | null;
           if (event.audiencePerson) {
-            const view = await rooms.view(ctx, event.roomId);
-            if (event.type === "unread.changed") data = { roomId: event.roomId, unread: directUnread(core, view) };
-            else if (event.type === "room.changed") data = { roomId: event.roomId, room: directRoomView(view, rooms.presence(view.exposureId), directUnread(core, view)) };
-            else {
-              const page = await rooms.readPage(ctx, event.roomId, 0, streamSession.sessionId, { before: null, limit: 100 });
-              const message = directMessages(page.room, page.entries, streamSession.displayName).find(m => m.id === event.data.messageId);
-              data = message ? { roomId: event.roomId, message } : null;
+            if (event.type === "invitation.changed") {
+              data = personKeyString(await ctx.requirePerson()) === event.audiencePerson ? {} : null;
+            } else {
+              const view = await rooms.view(ctx, event.roomId);
+              if (event.type === "unread.changed") data = { roomId: event.roomId, unread: directUnread(core, view) };
+              else if (event.type === "room.changed") data = { roomId: event.roomId, room: directRoomView(view, rooms.presence(view.exposureId), directUnread(core, view)) };
+              else {
+                const page = await rooms.readPage(ctx, event.roomId, 0, streamSession.sessionId, { before: null, limit: 100 });
+                const message = directMessages(page.room, page.entries, streamSession.displayName).find(m => m.id === event.data.messageId);
+                data = message ? { roomId: event.roomId, message } : null;
+              }
             }
           } else data = await groupRooms.event(ctx, event);
           if (ended || !live() || !ctx.isCurrent?.()) return close();
@@ -460,7 +493,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         // Cached clients draw every row as a direct agent conversation. New roomList() opts into group rows.
         if (query.get("v") !== "2") return send(res, 200, { rooms: view.rooms.map(room => ({ ...room, ...quota.roomProjection(room, view.grantProof) })) });
         const groups = await guard(() => groupRooms.list(ctx));
-        return send(res, 200, { ...groups, rooms: [...groups.rooms, ...view.rooms.map(room => ({ ...directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room)), ...quota.roomProjection(room, view.grantProof) }))] }); }
+        const pending = invitations ? await guard(() => invitations.pending(ctx)) : null;
+        return send(res, 200, { ...groups, invitations: pending?.invitations.length ?? 0, rooms: [...groups.rooms, ...view.rooms.map(room => ({ ...directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room)), ...quota.roomProjection(room, view.grantProof) }))] }); }
       if (method === "POST") {
         csrf(); const b = await body();
         if (b.exposureId === undefined) return send(res, 200, await guard(() => groupRooms.create(ctx, b)));
@@ -472,7 +506,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)$/))) {
       signedIn(); const roomId = uuid(r[1]);
       if (groupRooms.has(roomId)) {
-        if (method === "GET") return send(res, 200, await guard(() => groupRooms.detail(ctx, roomId)));
+        if (method === "GET") {
+          const view = await guard(() => groupRooms.detail(ctx, roomId));
+          const invited = invitations && view.me.role === "manager" ? await guard(() => invitations.forRoom(ctx, roomId)) : [];
+          return send(res, 200, { ...view, invited });
+        }
         if (method === "PATCH") { csrf(); const b = await body(); return send(res, 200, await guard(() => groupRooms.patch(ctx, roomId, b))); }
       } else if (method === "GET") {
         const room = await guard(() => rooms.view(ctx, roomId)); const person = personKeyString(room.asker), name = signedIn().displayName;

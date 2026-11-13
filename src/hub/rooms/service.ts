@@ -10,6 +10,7 @@ import { HubCore, personFromString, type HubOperationPermit } from "../http/core
 import { uuid, plain, validated, HubProtocolError } from "../validation.js";
 import type { HubRequestContext, HubTx } from "../types.js";
 import type { RoomEvent, RoomMessage } from "./types.js";
+import type { RoomInvitationHost } from "../invitations.js";
 
 type DB = Database.Database;
 interface RoomRow { id: string; name: string; created_by: string; created_at: number; archived: number; all_mention: number; history_for_new: "since-join" | "all"; assistant_for: string | null }
@@ -17,7 +18,7 @@ interface MemberRow { id: string; room_id: string; kind: "person" | "agent" | "a
 type PostRow = RoomPostRow;
 const label = plain(120).transform(s => s.trim()).refine(s => s.length > 0 && !/[\u0000-\u001f\u007f]/.test(s));
 const personId = z.string().max(128).refine(s => /^[a-z][a-z0-9_-]{0,63}\/[a-f0-9-]{36}$/.test(s));
-const createSchema = z.strictObject({ name: label, people: z.array(personId).max(100).default([]), teams: z.array(uuid).max(0).default([]),
+const createSchema = z.strictObject({ name: label, people: z.array(personId).max(100).default([]), teams: z.array(uuid).max(100).default([]),
   groups: z.array(uuid).max(0).default([]), agents: z.array(uuid).max(64).default([]), assistant: z.boolean().default(false) });
 const postSchema = z.strictObject({ text: plain(64 * 1024).refine(s => s.trim().length > 0), mentions: z.array(z.string().max(128)).max(100).default([]),
   replyTo: uuid.optional(), files: z.array(uuid).max(0).optional(), idempotencyKey: uuid });
@@ -43,6 +44,43 @@ export class HubGroupRooms {
   async close(): Promise<void> { this.listeners.clear(); this.assistant.close(); await this.agents.close(); }
   /** The direct-chat receiver shares this stream without changing its grant-backed delivery path. */
   publish(event: RoomEvent): void { this.emit(event); }
+  /** C owns invitation checks; these synchronous effects remain on its current SQL transaction. */
+  invitationHost(): RoomInvitationHost {
+    const room = (db: DB, id: string) => {
+      const row = this.room(db, id);
+      if (row.assistant_for) throw new HubRoomRefusal(403, "denied");
+      if (row.archived) throw new HubRoomRefusal(409, "archived");
+      return { id, name: row.name, people: (db.prepare("SELECT COUNT(*) n FROM hub_room_members WHERE room_id=? AND kind='person'").get(id) as { n: number }).n };
+    };
+    const owned = (db: DB, id: string, owner?: string) => {
+      const e = readExposure(db, id);
+      if (!e || owner !== undefined && e.owner !== owner) throw new HubRoomRefusal(404, "not-found"); return e;
+    };
+    return Object.freeze({
+      managerRoom: (db: DB, id: string, actor: string) => { this.member(db, id, actor, true); return room(db, id); },
+      room,
+      publishedExposure: (db: DB, id: string) => { const e = owned(db, id);
+        if (exposureOf(e).state !== "published") throw new HubRoomRefusal(403, "denied");
+        return { id, name: e.display_name, owner: { id: e.owner, name: this.name(db, e.owner) } }; },
+      addAgentMember: (db: DB, tx: HubTx, id: string, exposure: string, owner: string) => this.addAgentMember(db, tx, id, exposure, owner),
+      roomsForExposure: (db: DB, id: string, owner: string) => { owned(db, id, owner);
+        return db.prepare(`SELECT r.id,r.name,m.id memberId,(SELECT COUNT(*) FROM hub_room_members p WHERE p.room_id=r.id AND p.kind='person') people
+          FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id WHERE m.kind='agent' AND m.subject=? AND m.owner_at_join=? ORDER BY r.name,r.id`)
+          .all(id, owner) as { id: string; name: string; memberId: string; people: number }[]; },
+      changed: ({ roomId, ownerId, membershipChanged }) => {
+        if (!this.core.live()) return;
+        this.emit({ type: "invitation.changed", roomId, data: {}, audiencePerson: ownerId });
+        if (!membershipChanged) return;
+        this.emit({ type: "member.changed", roomId, data: { roomId } });
+        this.emit({ type: "room.changed", roomId, data: { roomId } });
+        const latest = this.core.atomic(db => db.prepare("SELECT * FROM hub_room_posts WHERE room_id=? ORDER BY sequence DESC LIMIT 1").get(roomId) as PostRow | undefined);
+        if (latest?.author_kind === "system") this.emit({ type: "message.added", roomId, data: { roomId, message: this.projection(latest) }, sequence: latest.sequence });
+      },
+    } satisfies RoomInvitationHost);
+  }
+  async roomsForExposure(ctx: HubRequestContext, exposure: string) {
+    const me = await this.who(ctx); return this.core.atomic(db => this.invitationHost().roomsForExposure(db, exposure, me), this.fence(ctx));
+  }
   private emit(event: RoomEvent): void { for (const listener of this.listeners) { try { listener(event); } catch { /* a disconnected viewer cannot fail a committed write */ } } }
   private fence(ctx: HubRequestContext) { return { assertCurrent: () => { this.core.check(); if (ctx.isCurrent?.() !== true) throw new HubProtocolError("revoked"); } }; }
   private async who(ctx: HubRequestContext): Promise<string> { const person = await ctx.requirePerson(); this.fence(ctx).assertCurrent(); return personKeyString(person); }
@@ -141,11 +179,20 @@ export class HubGroupRooms {
   async create(ctx: HubRequestContext, input: unknown) {
     const body = validated(createSchema, input), me = await this.who(ctx);
     this.core.atomic(db => { if (!canCreateRoom(this.core, db, me)) throw new HubRoomRefusal(403, "denied"); }, this.fence(ctx));
-    const people = [...new Set([me, ...body.people])];
+    const teams = this.core.deps.roomTeams;
+    const expansion = (db: DB) => {
+      if (!body.teams.length) return { teams: [], people: [], missing: [] };
+      if (!teams || teams !== this.core.deps.roomTeams) throw new HubProtocolError("unavailable");
+      const found = teams.expand(db, body.teams); if (found.missing.length) throw new HubProtocolError("invalid"); return found;
+    };
+    const selected = this.core.atomic(expansion), image = JSON.stringify(selected);
+    const people = [...new Set([me, ...body.people, ...selected.people])];
+    if (people.length > 100) throw new HubProtocolError("backpressure");
     for (const person of people) if (person !== me && !await this.core.eligible(personFromString(person))) throw new HubRoomRefusal(400, "invalid-person");
     const permits = await Promise.all(body.agents.map(id => this.core.groupExposure(id, null, this.core.groupContext(ctx))));
     const room = this.core.atomic((db, tx) => {
       for (const permit of permits) permit.assertCurrent();
+      if (JSON.stringify(expansion(db)) !== image) throw new HubProtocolError("conflict");
       if (!canCreateRoom(this.core, db, me)) throw new HubRoomRefusal(403, "denied");
       const id = randomUUID(); db.prepare("INSERT INTO hub_group_rooms(id,name,created_by,created_at) VALUES(?,?,?,?)").run(id, body.name, me, this.core.now());
       for (const person of people) db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence) VALUES(?,?,'person',?,?,0)").run(randomUUID(), id, person, person === me ? "manager" : "member");
