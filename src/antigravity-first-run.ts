@@ -1,24 +1,22 @@
 /**
  * AGEND-224 (upstream #3330 ruling): the first-run files of a NAMED Antigravity account's folder are GENERATED here, never copied from the default account's `~/.gemini`.
- * Without them agy starts a new folder with its first run (a welcome, a colour scheme, the terms of use, then the workspace-trust question), which an agent in an unattended pane can never answer.
+ * AGEND-251 (#3771 review round 2; upstream decision 0a47ab4b): the CONSENT screens are NOT skipped. A new account's first launch shows agy's wizard (welcome, theme, the terms with the "Interactions"
+ * data-sharing choice), and it is answered by the interactive first-run handler the upstream review approved (#3779 in main; #3780 for the alpha line): accept the terms, sharing UNTICKED. This file never
+ * writes `consumerOnboardingComplete` / `onboardingComplete` (a completion marker would skip the very screen where sharing is switched off, and would claim a consent that nobody gave), and it never infers
+ * that sharing is off from any flag in a folder. The default account and a Windows headless launch keep their limits: nothing here sets or proves their state.
  *
  * An allow-list, nothing else is ever written:
  *  - `settings.json`: `statusLine` (what AgEnD itself sets for agy: its own script, enabled) and `trustedWorkspaces` (this instance's own working directory only — the trust AgEnD gives the instance on
- *    its other backends, and what its auto-answer to agy's trust prompt grants; never a list carried over from another account);
- *  - `cache/onboarding.json`: the known first-run booleans.
+ *    its other backends, and what its auto-answer to agy's trust prompt grants; never a list carried over from another account).
  * A file is written only when it is MISSING (`wx`: never overwrites, never follows a link at the target); one the account already has is left exactly as it is. Nothing here reads any file.
  */
 import { closeSync, constants, lstatSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 
-/** The first-run outcome agy records once its welcome, theme and terms are answered (agy 1.5.x `cache/onboarding.json`). */
-export const FIRST_RUN_ONBOARDING = Object.freeze({ consumerOnboardingComplete: true, enterpriseOnboardingComplete: false, onboardingComplete: true });
-
 /** The files, by name relative to the account's folder, as they are written. Pure. */
 export function firstRunFiles(workingDirectory: string, statusLineCommand: string): Record<string, unknown> {
   return {
     "settings.json": { statusLine: { command: statusLineCommand, enabled: true }, trustedWorkspaces: [workingDirectory] },
-    "cache/onboarding.json": { ...FIRST_RUN_ONBOARDING },
   };
 }
 
