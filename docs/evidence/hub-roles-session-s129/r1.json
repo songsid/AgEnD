@@ -1,0 +1,305 @@
+{
+  "sourceCommit": "d54f55f2fa282226639cd648460ad3ca067c9233",
+  "supersedes": "receipt.json source/session/test/design bindings; historical evidence retained",
+  "checks": {
+    "passed": 280,
+    "files": 8,
+    "skipped": 0,
+    "sourceTypes": 0,
+    "testTypes": 0,
+    "restoredSessionCases": 23,
+    "isolatedCompilingReversals": 14,
+    "currentSessionSourceReversalsRerun": 7,
+    "unchangedCoreHttpFactoryReversalsCarriedByExactMutantDigests": 7,
+    "changelogFragments": 444
+  },
+  "lateSignoutBefore": {
+    "failed": 1,
+    "intentionallyUnselected": 22,
+    "semantic": "actual core proof resolves, real session signs out, old boundary answers unavailable rather than revoked"
+  },
+  "fix": "Catch covers the complete managed branch; re-proves actual current session on refusal. Mandatory classifier and permit checks retained. No permission widening.",
+  "mutations": [
+    {
+      "name": "get-final",
+      "file": "src/hub/http/compose.ts",
+      "before": "        presentation?.assertCurrent();",
+      "after": "        /* omitted GET final proof */",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 session presentation through actual HTTP rechecks the positive proof after the GET presentation await",
+          "message": "AssertionError: expected 200 to be 503 // Object.is equality"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "70842217eb395fc33e6943ac76fe8725ece9f6c5622045c6a28f3298a2c92a27"
+    },
+    {
+      "name": "post-final",
+      "file": "src/hub/http/compose.ts",
+      "before": "        presentation.assertCurrent();",
+      "after": "        /* omitted POST final proof */",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 session presentation through actual HTTP rechecks the positive proof after the POST presentation await",
+          "message": "AssertionError: expected 200 to be 503 // Object.is equality"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "1de767c2c31c5d7d51ad40017d0af4341f177bc02829b04cfc60146452617117"
+    },
+    {
+      "name": "management-object",
+      "file": "src/hub/http/core.ts",
+      "before": "this.deps.management !== management || ",
+      "after": "",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation permanently retires a core proof after observed management object replacement",
+          "message": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "53260fe8f0b7a31b5a2a98c3ae681902fe204a6a5cee3055d80462f00578084e"
+    },
+    {
+      "name": "management-method",
+      "file": "src/hub/http/core.ts",
+      "before": " || management.require !== require",
+      "after": "",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation permanently retires a core proof after observed management method replacement",
+          "message": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "c25b67038e6abaa3732dbc5fece0e936baeab5e87e014a25598fcf4d625242b3"
+    },
+    {
+      "name": "management-retire",
+      "file": "src/hub/http/core.ts",
+      "before": "} catch (error) { retired = true; throw error; }",
+      "after": "} catch (error) { throw error; }",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation permanently retires a core proof after observed management object replacement",
+          "message": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "unselected": 21,
+      "mutantSha256": "c5d7289b0f2a2bc3aab020679dc30b6d84e90054d584375d6ff5f5231b73407c"
+    },
+    {
+      "name": "factory-kind",
+      "file": "src/hub/compose/server.ts",
+      "before": "return parseCanonicalPolicy(row.body).kind === \"roles\";",
+      "after": "return false;",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 1,
+      "failed": [
+        {
+          "test": "S129 factory session classification classifies the current image without becoming an operation permit and stops on fence",
+          "message": "AssertionError: expected false to be true // Object.is equality"
+        }
+      ],
+      "unselected": 132,
+      "mutantSha256": "4938ffe4fbf0b371e58f706e8d8c878883eb45ea9c52b5867b3d779efa57a1b3"
+    },
+    {
+      "name": "factory-current",
+      "file": "src/hub/compose/server.ts",
+      "before": "            if (!live()) throw new Error(\"retired\");",
+      "after": "            /* current image guard removed */",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 factory session classification classifies the current image without becoming an operation permit and stops on fence",
+          "message": "AssertionError: expected [Function] to throw an error"
+        },
+        {
+          "test": "S129 factory session classification retains the mount's existing permanent refusal after an observed foreign owner and restoration",
+          "message": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "unselected": 132,
+      "mutantSha256": "960202682eae7a19e1b0d37533947b94d4c9c1972036d0330f58f404b4191f76"
+    },
+    {
+      "name": "admin-entry",
+      "file": "src/hub/sessions.ts",
+      "before": "      if (selected.kind === \"directory\" && !this.isAdmin(selected.person) && this.core.deps.management && this.roleSessionMode()) {\n        try {\n          const permit = await this.core.management(context, \"hub.admin\");\n          if (this.core.deps.roleSessionMode !== classify || !this.roleSessionMode()) throw new HubProtocolError(\"unavailable\");\n          permit.assertCurrent();\n          return permit.actor;\n        }\n        catch (error) { await current(); throw error; }\n      }\n",
+      "after": "",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 1,
+      "failed": [
+        {
+          "test": "S129 session administrative authority uses the composed current hub.admin authority for the actual auxiliary session",
+          "message": "Error: Hub protocol: denied"
+        },
+        {
+          "test": "S129 session administrative authority keeps an auxiliary administrator valid across a fresh browser session without changing the root",
+          "message": "Error: Hub protocol: denied"
+        }
+      ],
+      "unselected": 20,
+      "mutantSha256": "4f60cb1f773d1e6b02473938589f790e6ce7fe388f8ca2d12b94b0d23c9be1e8"
+    },
+    {
+      "name": "positive-flag",
+      "file": "src/hub/sessions.ts",
+      "before": "admin = true;",
+      "after": "admin = selected.admin;",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation presents the real auxiliary session without returning its bearer token",
+          "message": "AssertionError: expected { …(6) } to match object { admin: true, person: { …(2) } }"
+        }
+      ],
+      "unselected": 22,
+      "mutantSha256": "2ee7ecad76f30f828c976abd5bd11869c52939f3e10e426561e4bdbc20b5f36b"
+    },
+    {
+      "name": "presentation-proof",
+      "file": "src/hub/sessions.ts",
+      "before": "      permit?.assertCurrent();",
+      "after": "      /* omitted positive proof */",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation presents the real auxiliary session without returning its bearer token",
+          "message": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "unselected": 22,
+      "mutantSha256": "926efc25c4f788939e2a1535db7c3974bd67029923cddc5d089ca13eef2dc978"
+    },
+    {
+      "name": "presentation-retire",
+      "file": "src/hub/sessions.ts",
+      "before": "} catch (error) { retired = true; throw error; }",
+      "after": "} catch (error) { throw error; }",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation retires a presentation after observed authority replacement even if the same object returns",
+          "message": "AssertionError: expected [Function] to throw an error"
+        }
+      ],
+      "unselected": 22,
+      "mutantSha256": "57ce1b461128726d96001841b8b3bf8d040394dc725bee31ea39364091171052"
+    },
+    {
+      "name": "admin-classifier",
+      "file": "src/hub/sessions.ts",
+      "before": "this.core.deps.roleSessionMode !== classify || !this.roleSessionMode()",
+      "after": "this.core.deps.roleSessionMode !== classify",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 role session classification is never authority does not allow an auxiliary administrator when classification changes during its physical read",
+          "message": "AssertionError: expected { kind: 'directory', …(2) } to match object { code: 'unavailable' }"
+        }
+      ],
+      "unselected": 22,
+      "mutantSha256": "7a91f5b9d6e5aac82cba75bf6ea155fb0b6d4c0fa1f50c96fa18dd685d74e0fd"
+    },
+    {
+      "name": "unknown",
+      "file": "src/hub/sessions.ts",
+      "before": "        if (!(error instanceof HubProtocolError) || error.code !== \"denied\") throw error;",
+      "after": "        /* unknown incorrectly becomes non-admin */",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 current administrative presentation does not turn an unavailable fresh eligibility answer into a cached positive flag",
+          "message": "Error: promise resolved \"{ view: { …(6) }, …(1) }\" instead of rejecting"
+        }
+      ],
+      "unselected": 22,
+      "mutantSha256": "e6d5f44d8aa2f68da84c85ca2b27608f3d7fe50a803e5df8b1d36be06a8c8b37"
+    },
+    {
+      "name": "late-signout",
+      "file": "src/hub/sessions.ts",
+      "before": "catch (error) { await current(); throw error; }",
+      "after": "catch (error) { throw error; }",
+      "compileExit": 0,
+      "testExit": 1,
+      "passed": 0,
+      "failed": [
+        {
+          "test": "S129 administrative session final await keeps sign-out classified as revoked after the core proof resolves but before the context returns",
+          "message": "Error: expected Error: Hub protocol: unavailable { code: '…' } to match object { code: 'revoked' }"
+        }
+      ],
+      "unselected": 22,
+      "mutantSha256": "d5ac8de5ac3fe1e372483bda9229baf823425d443c6eea69b692523fc719cd72"
+    }
+  ],
+  "bindings": [
+    {
+      "file": "src/hub/sessions.ts",
+      "sha256": "115f24436cb77e35ebdfd9bd0c8d37c1f34d3040e39725af80efa963c58d0e2c"
+    },
+    {
+      "file": "src/hub/http/core.ts",
+      "sha256": "d8077bec178b4786fa10af744bbb25e27dac9ef8235944c9c7623a8c4428ec8f"
+    },
+    {
+      "file": "src/hub/http/compose.ts",
+      "sha256": "d50abaedc77e72329aba47ece36f105fe731c7c50ee822e5b128d4e8dc51bab8"
+    },
+    {
+      "file": "src/hub/http/deps.ts",
+      "sha256": "621635ae61a285c7847dbba8616cffcea80ac14c44428aeffc3c1c018f2b25fe"
+    },
+    {
+      "file": "src/hub/compose/server.ts",
+      "sha256": "a37e2a2c51d6291e56bce25c98ae5e4d576c7b086689fde33825f1147f06b760"
+    },
+    {
+      "file": "tests/hub-roles-session-s129.test.ts",
+      "sha256": "8bc7fc0d1c9b78cdbedc33addc0c8db65b676bbc591ca214aabc04e44391c704"
+    },
+    {
+      "file": "tests/hub-compose.test.ts",
+      "sha256": "48f2a9e4a0473724509c388f67dfd4b45f02a0c561c35efae6ae28adbe238086"
+    },
+    {
+      "file": "docs/design/hub-roles-session-authority.md",
+      "sha256": "2375d33dccd00571a17e5604780bb5bc1c942b455cced9d1f62494dfb5b556a3"
+    }
+  ],
+  "boundaries": "All receipt.json startup/remaining-adapter/operation-permit/private-fixture/no-live boundaries retained; no full S129 acceptance."
+}
