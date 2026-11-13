@@ -27,3 +27,5 @@ No socket refresh occurs inside this adapter. The outer writer/expiry transactio
 See `docs/evidence/hub-roles-resource-effects-s129/`. Tests use actual SQLite, audit, cutover, role writer/expiry, shared admission and the merged owner Pause service, with fictional directory answers and inert transport sinks. They do not claim a supported live cutover or a running expiry worker. No new UI, asset or response shape exists in this slice; no PNG or cached-shell result is claimed.
 
 Before activation, rollback removes this unmounted adapter and its private provenance argument. Once the later activation writes role state or raises floors, rollback must be forward-only; never restore an older policy/database/floor snapshot.
+
+The current evaluator makes every deny authoritative and incomplete facts return unknown. The adapter's extra `authoritative` qualifier is defensive against a future broader evaluator result, not an additional independently reachable refusal today.
