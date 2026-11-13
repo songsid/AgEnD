@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Own source snapshot + loopback-only browser/Hub/member rehearsal. No systemd or host lifecycle.
+# SCRIPT=accept-ui.mts (M-2901) drives the Settings card instead of the API; OUT keeps each leg's evidence apart.
 set -euo pipefail
 task_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 output_dir="${OUT:-$task_root/.artifacts/hub-address-3428}"
@@ -32,4 +33,4 @@ docker --config "$output_dir/docker-config" run --rm --name ridge-hub-address-34
  --mount "type=bind,src=$(realpath "$task_root/node_modules"),dst=/work/node_modules,readonly" \
  --mount "type=bind,src=$output_dir/container-evidence,dst=/evidence" \
  -e AGEND_OWNED_CONTAINER=hub-address-3428 -e OUT=/evidence -e HOME=/tmp/home -e XDG_CACHE_HOME=/tmp/cache \
- ridge-hub-address-3428-browser node --import tsx scripts/manual/hub-web-address/accept.mts
+ ridge-hub-address-3428-browser node --import tsx "scripts/manual/hub-web-address/${SCRIPT:-accept.mts}"

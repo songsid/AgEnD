@@ -158,7 +158,7 @@ describe("internal fleet tools need no channel reply context", () => {
       await fm.handleOutboundFromInstance("source", { tool, args, adapterId: "discord", operationId: `op-${responses.length}`, sourceDaemonBootId: "source-boot", fleetRequestId: `r-${responses.length}` });
       return responses.at(-1);
     };
-    const sent = await call("send_to_instance", { instance_name: "target", message: "local work" });
+    const sent = await call("send_to_instance", { instance_name: "target", message: "local work", detail: true });
     expect(sent.error).toBeUndefined(); expect(sent.result).toMatchObject({ sent: true, queued: true, durable: true });
     const id = sent.result.delivery_id;
     expect((await call("delivery_status", { delivery_id: id })).result.items).toMatchObject([{ delivery_id: id, target_instance: "target" }]);

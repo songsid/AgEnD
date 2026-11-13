@@ -52,7 +52,7 @@ export function createHubGroupImpactInventory(options: {
       const grant = grantOf(row), exposure = readExposure(db, grant.exposureId); if (!exposure) continue;
       const currentExposure = exposureOf(exposure);
       if (grant.subject.kind === "group") {
-        if (currentExposure.state !== "published" || grant.exposureRevision !== currentExposure.revision
+        if (!["published", "paused"].includes(currentExposure.state) || grant.exposureRevision !== currentExposure.revision
           || personKeyString(grant.owner) !== personKeyString(currentExposure.owner) || !grant.permissions.includes("ask")
           || !inventory.current({ kind: "exposure", id: exposure.id, revision: exposure.revision })) continue;
         const group = validated(person, grant.subject.group);
@@ -60,7 +60,7 @@ export function createHubGroupImpactInventory(options: {
         groupSubjects.set(personKeyString(group), group); grants.push(grant); continue;
       }
       const subject = validated(person, grant.subject.person);
-      if (currentExposure.state !== "published" || !inventory.current({ kind: "exposure", id: exposure.id, revision: exposure.revision })
+      if (!["published", "paused"].includes(currentExposure.state) || !inventory.current({ kind: "exposure", id: exposure.id, revision: exposure.revision })
         || !grantApplies(grant, currentExposure, subject, at)) continue;
       addPerson(subject, true); grants.push(grant);
     }

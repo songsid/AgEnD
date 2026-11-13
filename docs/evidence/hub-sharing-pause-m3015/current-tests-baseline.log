@@ -1,0 +1,257 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts (14 tests | 14 failed) 457ms
+     × pauses without changing grants/rooms, hides new asks, and resumes the exact allow list 101ms
+     × retains an owner pause across a repeated/new snapshot, member reconnect and Hub restart 32ms
+     × runs absolute expiry during pause, without rewriting retained long or expired grants 30ms
+     × requires the exact owner/session, publication revision, sharing epoch and strict input 21ms
+     × permanent Stop sharing cannot be undone by Resume or a reconnect 23ms
+     × rolls back pause when its audit cannot be appended 21ms
+     × rolls back resume when its audit cannot be appended 24ms
+     × retires a pre-pause operation after pause/resume even on legacy-policy fleets 27ms
+     × keeps GUID group grants intact but rechecks membership after Resume 33ms
+     × invalidates pre-pause release capabilities permanently, not just while paused 38ms
+     × Resume never bypasses independent operational group suspension 26ms
+     × fences a held Resume after session changes 35ms
+     × fences a held Resume after owner changes 24ms
+     × fences a held Resume after stop changes 19ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 14 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > pauses without changing grants/rooms, hides new asks, and resumes the exact allow list
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:29:46
+     27|   it("pauses without changing grants/rooms, hides new asks, and resume…
+     28|     const w = await world(), rows = w.r.db.prepare("SELECT * FROM hub_…
+     29|     expect((await w.change(true, 0)).status).toBe(200);
+       |                                              ^
+     30|     expect(w.r.db.prepare("SELECT * FROM hub_grants").all()).toEqual(r…
+     31|     const mine = await w.r.call(w.o, "GET", "/hub/v1/exposures"); expe…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/14]⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > retains an owner pause across a repeated/new snapshot, member reconnect and Hub restart
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:43:71
+     41|   });
+     42|   it("retains an owner pause across a repeated/new snapshot, member re…
+     43|     const w = await world(); expect((await w.change(true, 0)).status).…
+       |                                                                       ^
+     44|     w.link.alive = false; const next = w.r.link(w.link.fleetId, w.e.ow…
+     45|     await w.snapshot(1, next); await w.snapshot(2, next); await w.r.re…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/14]⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > runs absolute expiry during pause, without rewriting retained long or expired grants
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:54:46
+     52|     w.r.db.prepare("UPDATE hub_grants SET expires_at=?").run(expiry);
+     53|     const rows = w.r.db.prepare("SELECT * FROM hub_grants").all();
+     54|     expect((await w.change(true, 0)).status).toBe(200); w.advance(366 …
+       |                                              ^
+     55|     const fresh = await w.r.signIn("owner"); expect((await w.change(fa…
+     56|     expect(w.r.db.prepare("SELECT * FROM hub_grants").all()).toEqual(r…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/14]⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > requires the exact owner/session, publication revision, sharing epoch and strict input
+AssertionError: expected 404 to be 409 // Object.is equality
+
+- Expected
++ Received
+
+- 409
++ 404
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:62:68
+     60|     const w = await world();
+     61|     expect((await w.change(true, 0, w.outsider)).status).toBe(404);
+     62|     expect((await w.change(true, 0, w.o, { revision: 2 })).status).toB…
+       |                                                                    ^
+     63|     expect((await w.change(true, 0, w.o, { authority: "admin" })).stat…
+     64|     expect((await w.change(true, 0)).status).toBe(200);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/14]⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > permanent Stop sharing cannot be undone by Resume or a reconnect
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:70:71
+     68|   });
+     69|   it("permanent Stop sharing cannot be undone by Resume or a reconnect…
+     70|     const w = await world(); expect((await w.change(true, 0)).status).…
+       |                                                                       ^
+     71|     expect((await w.r.call(w.o, "POST", `/hub/v1/exposures/${w.e.id}/f…
+     72|     expect((await w.change(false, 2)).status).toBe(403); await w.snaps…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/14]⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > rolls back pause when its audit cannot be appended
+AssertionError: expected 404 to be 500 // Object.is equality
+
+- Expected
++ Received
+
+- 500
++ 404
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:78:85
+     76|     const w = await world(); if (action === "resume") expect((await w.…
+     77|     w.r.setAuditFails(true, action === "pause" ? "exposure.paused" : "…
+     78|     expect((await w.change(action === "pause", action === "pause" ? 0 …
+       |                                                                                     ^
+     79|     w.r.setAuditFails(false); const view = await w.r.call(w.o, "GET", …
+     80|     expect(view.json.mine[0].state).toBe(action === "pause" ? "publish…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/14]⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > rolls back resume when its audit cannot be appended
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:76:96
+     74|   });
+     75|   it.each(["pause", "resume"])("rolls back %s when its audit cannot be…
+     76|     const w = await world(); if (action === "resume") expect((await w.…
+       |                                                                                                ^
+     77|     w.r.setAuditFails(true, action === "pause" ? "exposure.paused" : "…
+     78|     expect((await w.change(action === "pause", action === "pause" ? 0 …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/14]⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > retires a pre-pause operation after pause/resume even on legacy-policy fleets
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:85:46
+     83|     const w = await world(), core = new HubCore(w.r.httpDeps, w.r.sql);
+     84|     const proof = await core.groupExposure(w.e.id, w.asker, { requestI…
+     85|     expect((await w.change(true, 0)).status).toBe(200); expect((await …
+       |                                              ^
+     86|     expect(() => proof.assertCurrent()).toThrow();
+     87|     (await core.groupExposure(w.e.id, w.asker, { requestId: randomUUID…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/14]⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > keeps GUID group grants intact but rechecks membership after Resume
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:103:46
+    101|     expect((await w.r.call(w.o, "POST", "/hub/v1/grants", { exposureId…
+    102|     const rows = w.r.db.prepare("SELECT * FROM hub_grants").all();
+    103|     expect((await w.change(true, 0)).status).toBe(200); expect((await …
+       |                                              ^
+    104|     expect(w.r.db.prepare("SELECT * FROM hub_grants").all()).toEqual(r…
+    105|     expect((await w.r.call(w.a, "GET", "/hub/v1/exposures")).json.aska…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/14]⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > invalidates pre-pause release capabilities permanently, not just while paused
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:113:46
+    111|     const request = { messageId: sent.json.receipt.messageId, operatio…
+    112|     const result = await policy.authorize(request, w.link); expect(res…
+    113|     expect((await w.change(true, 0)).status).toBe(200);
+       |                                              ^
+    114|     expect((await policy.authorize({ ...request, operationId: randomUU…
+    115|     expect((await w.change(false, 1)).status).toBe(200);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/14]⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > Resume never bypasses independent operational group suspension
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:119:71
+    117|   });
+    118|   it("Resume never bypasses independent operational group suspension",…
+    119|     const w = await world(); expect((await w.change(true, 0)).status).…
+       |                                                                       ^
+    120|     w.r.store.mutate({ requestId: randomUUID(), actor: { kind: "local-…
+    121|       state.fleets.push({ id: w.link.fleetId, owner: w.e.owner, genera…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/14]⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > fences a held Resume after session changes
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > fences a held Resume after owner changes
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > fences a held Resume after stop changes
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:128:71
+    126|   });
+    127|   it.each(["session", "owner", "stop"])("fences a held Resume after %s…
+    128|     const w = await world(); expect((await w.change(true, 0)).status).…
+       |                                                                       ^
+    129|     w.r.store.mutate({ requestId: randomUUID(), actor: { kind: "local-…
+    130|       state.fleets.push({ id: w.link.fleetId, owner: w.e.owner, genera…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/14]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  14 failed (14)
+   Start at  14:12:29
+   Duration  3.99s (transform 2.54s, setup 87ms, import 3.30s, tests 457ms, environment 0ms)
+

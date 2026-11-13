@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts (24 tests | 1 failed | 23 skipped) 172ms
+     × pins the accepted issued-capability boundary (expired) 170ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 23 skipped (24)
+   Start at  15:02:50
+   Duration  5.31s (transform 3.81s, setup 108ms, import 4.84s, tests 172ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-m3015.test.ts > M-3015 resumable sharing > pins the accepted issued-capability boundary (expired)
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/hub-sharing-pause-m3015.test.ts:86:30
+     84|       await m.finish();
+     85|       const allowed = ["no-pause", "in-transit", "in-transit-ABA", "fr…
+     86|       expect(m.inputCount()).toBe(allowed ? 1 : 0);
+       |                              ^
+     87|       expect(m.inputIntent() !== null).toBe(allowed);
+     88|     } finally { await m.close(); }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯

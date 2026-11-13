@@ -1,0 +1,342 @@
+{
+  "checks": [
+    {
+      "name": "real host launch sign-in",
+      "pass": true
+    },
+    {
+      "name": "actual Settings two-level shell",
+      "pass": true
+    },
+    {
+      "name": "initializer prepare",
+      "pass": true
+    },
+    {
+      "name": "verified synthetic LDAPS",
+      "pass": true
+    },
+    {
+      "name": "initializer commit",
+      "pass": true
+    },
+    {
+      "name": "initial Hub ready",
+      "pass": true
+    },
+    {
+      "name": "actual browser directory sign-in",
+      "pass": true
+    },
+    {
+      "name": "public manual pairing offer",
+      "pass": true
+    },
+    {
+      "name": "production member pairing API",
+      "pass": true
+    },
+    {
+      "name": "public pinned connect",
+      "pass": true
+    },
+    {
+      "name": "pending fingerprint",
+      "pass": true
+    },
+    {
+      "name": "exact owner confirmation",
+      "pass": true
+    },
+    {
+      "name": "exact admin confirmation",
+      "pass": true
+    },
+    {
+      "name": "local exact fingerprint confirmation",
+      "pass": true
+    },
+    {
+      "name": "production member reconciled before",
+      "pass": true
+    },
+    {
+      "name": "en desktop: without the mark there is no card (an older server)",
+      "pass": true
+    },
+    {
+      "name": "en desktop: the card shows today's address",
+      "pass": true
+    },
+    {
+      "name": "en desktop: Check prepares on the real route and asks once",
+      "pass": true
+    },
+    {
+      "name": "en phone: without the mark there is no card (an older server)",
+      "pass": true
+    },
+    {
+      "name": "en phone: the card shows today's address",
+      "pass": true
+    },
+    {
+      "name": "en phone: Check prepares on the real route and asks once",
+      "pass": true
+    },
+    {
+      "name": "zh-TW desktop: without the mark there is no card (an older server)",
+      "pass": true
+    },
+    {
+      "name": "zh-TW desktop: the card shows today's address",
+      "pass": true
+    },
+    {
+      "name": "zh-TW desktop: Check prepares on the real route and asks once",
+      "pass": true
+    },
+    {
+      "name": "zh-TW phone: without the mark there is no card (an older server)",
+      "pass": true
+    },
+    {
+      "name": "zh-TW phone: the card shows today's address",
+      "pass": true
+    },
+    {
+      "name": "zh-TW phone: Check prepares on the real route and asks once",
+      "pass": true
+    },
+    {
+      "name": "nothing changed by Check and Back",
+      "pass": true
+    },
+    {
+      "name": "a non-host session sees no card",
+      "pass": true
+    },
+    {
+      "name": "a non-host session is refused by the route",
+      "pass": true
+    },
+    {
+      "name": "zh-TW: Confirm says the Hub answers at the new address",
+      "pass": true
+    },
+    {
+      "name": "zh-TW: Open the Hub links the new address",
+      "pass": true
+    },
+    {
+      "name": "zh-TW: saved address, listener and certificate choice",
+      "pass": true
+    },
+    {
+      "name": "zh-TW: member address and issuer unchanged",
+      "pass": true
+    },
+    {
+      "name": "zh-TW: the connected Fleet reconnects with identical credential and pins",
+      "pass": true
+    },
+    {
+      "name": "zh-TW: the connected Fleet's links follow the new address",
+      "pass": true
+    },
+    {
+      "name": "zh-TW: the old Hub sign-in ended",
+      "pass": true
+    },
+    {
+      "name": "actual browser directory sign-in",
+      "pass": true
+    },
+    {
+      "name": "zh-TW: a fresh sign-in works at the new address",
+      "pass": true
+    },
+    {
+      "name": "zh-TW: the old address is refused",
+      "pass": true
+    },
+    {
+      "name": "en: Confirm says the Hub answers at the new address",
+      "pass": true
+    },
+    {
+      "name": "en: Open the Hub links the new address",
+      "pass": true
+    },
+    {
+      "name": "en: saved address, listener and certificate choice",
+      "pass": true
+    },
+    {
+      "name": "en: member address and issuer unchanged",
+      "pass": true
+    },
+    {
+      "name": "en: the connected Fleet reconnects with identical credential and pins",
+      "pass": true
+    },
+    {
+      "name": "en: the connected Fleet's links follow the new address",
+      "pass": true
+    },
+    {
+      "name": "en: the old Hub sign-in ended",
+      "pass": true
+    },
+    {
+      "name": "actual browser directory sign-in",
+      "pass": true
+    },
+    {
+      "name": "en: a fresh sign-in works at the new address",
+      "pass": true
+    },
+    {
+      "name": "en: the old address is refused",
+      "pass": true
+    }
+  ],
+  "screenshots": [
+    "before-page.en.desktop.light.png",
+    "before-page.en.desktop.dark.png",
+    "after-page.en.desktop.light.png",
+    "card-show.en.desktop.light.png",
+    "after-page.en.desktop.dark.png",
+    "card-show.en.desktop.dark.png",
+    "card-edit.en.desktop.light.png",
+    "card-edit.en.desktop.dark.png",
+    "card-edit-actions.en.desktop.light.png",
+    "card-edit-actions.en.desktop.dark.png",
+    "card-confirm.en.desktop.light.png",
+    "card-confirm.en.desktop.dark.png",
+    "before-page.en.phone.light.png",
+    "before-page.en.phone.dark.png",
+    "after-page.en.phone.light.png",
+    "card-show.en.phone.light.png",
+    "after-page.en.phone.dark.png",
+    "card-show.en.phone.dark.png",
+    "card-edit.en.phone.light.png",
+    "card-edit.en.phone.dark.png",
+    "card-edit-actions.en.phone.light.png",
+    "card-edit-actions.en.phone.dark.png",
+    "card-confirm.en.phone.light.png",
+    "card-confirm.en.phone.dark.png",
+    "before-page.zh-TW.desktop.light.png",
+    "before-page.zh-TW.desktop.dark.png",
+    "after-page.zh-TW.desktop.light.png",
+    "card-show.zh-TW.desktop.light.png",
+    "after-page.zh-TW.desktop.dark.png",
+    "card-show.zh-TW.desktop.dark.png",
+    "card-edit.zh-TW.desktop.light.png",
+    "card-edit.zh-TW.desktop.dark.png",
+    "card-edit-actions.zh-TW.desktop.light.png",
+    "card-edit-actions.zh-TW.desktop.dark.png",
+    "card-confirm.zh-TW.desktop.light.png",
+    "card-confirm.zh-TW.desktop.dark.png",
+    "before-page.zh-TW.phone.light.png",
+    "before-page.zh-TW.phone.dark.png",
+    "after-page.zh-TW.phone.light.png",
+    "card-show.zh-TW.phone.light.png",
+    "after-page.zh-TW.phone.dark.png",
+    "card-show.zh-TW.phone.dark.png",
+    "card-edit.zh-TW.phone.light.png",
+    "card-edit.zh-TW.phone.dark.png",
+    "card-edit-actions.zh-TW.phone.light.png",
+    "card-edit-actions.zh-TW.phone.dark.png",
+    "card-confirm.zh-TW.phone.light.png",
+    "card-confirm.zh-TW.phone.dark.png",
+    "card-done.zh-TW.desktop.light.png",
+    "card-done.zh-TW.desktop.dark.png",
+    "card-done.zh-TW.phone.light.png",
+    "card-done.zh-TW.phone.dark.png",
+    "card-done.en.desktop.light.png",
+    "card-done.en.desktop.dark.png",
+    "card-done.en.phone.light.png",
+    "card-done.en.phone.dark.png"
+  ],
+  "boundary": "Owned container, --network none, explicit uid1000, no capabilities. Real Fleet health/Settings shell, D3, Hub HTTPS, synthetic verified LDAPS, public manual pairing through the second FleetManager and its production member runtime with empty Agent inventory. The new Settings card is driven by clicks; no full fleet daemon lifecycle, agent/model/CLI/tmux/native/real AD/pilot.",
+  "hubResponses": [
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": false
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": false
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "signedIn": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "signedIn": true,
+      "admin": true
+    }
+  ],
+  "reconciliations": 3,
+  "profileSha256": "3b039e4fe99fd15f1bb9efe750b24b448d303f352c8043e21cad592d51c5234e",
+  "ready": true,
+  "cleaned": true
+}

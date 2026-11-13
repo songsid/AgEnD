@@ -4,6 +4,7 @@
 #   gate-merge.sh --post-merge-check <gate-squash-sha>
 #   gate-merge.sh [--dry-run] [--delivery-json <file>|-] <pr> <approved-sha> <approval-message-id>
 #
+# Use delivery_status with detail:true; the gate requires full original content and its hash, not excerpts/content_includes.
 # The approval's delivery_status result comes from --delivery-json, or stdin when that is not given. delivery_status
 # is an MCP tool, so the caller runs it and passes its JSON on. That JSON is a TRUSTED CALLER BOUNDARY: the caller
 # must pass exactly what its own delivery_status call returned. content_sha256 is checked against the content, which

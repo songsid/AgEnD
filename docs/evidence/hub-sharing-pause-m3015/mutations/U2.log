@@ -1,0 +1,47 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/hub-sharing-pause-m3015
+
+ ❯ tests/hub-sharing-pause-ui-m3015.test.ts (8 tests | 2 failed | 6 skipped) 1780ms
+   × a paused asker sees paused rather than denied, with no enabled Send (en) 114ms
+   × a paused asker sees paused rather than denied, with no enabled Send (zh-TW) 46ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-sharing-pause-ui-m3015.test.ts > a paused asker sees paused rather than denied, with no enabled Send (en)
+AssertionError: expected 'RResearchAnswers for OliviaCan askAsk…' to contain 'The owner paused sharing Research'
+
+Expected: "The owner paused sharing Research"
+Received: "RResearchAnswers for OliviaCan askAsk Research your first questionIt answers for Olivia. An answer can take a few minutes. Everyone who asks this agent shares its one conversation, so it may remember what others asked. Don't send anything other askers shouldn't see.This agent can't receive files yet.Ask ResearchSendYou're asking as yourself: the owner sees that you asked. The agent answers within what its owner allows."
+
+ ❯ tests/hub-sharing-pause-ui-m3015.test.ts:54:30
+     52| it.each(["en", "zh-TW"])("a paused asker sees paused rather than denie…
+     53|   const { p } = await mount({ state: "paused", asker: true, lang });
+     54|   expect(p.root.textContent).toContain(lang === "en" ? "The owner paus…
+       |                              ^
+     55|   expect(p.root.textContent).not.toContain(lang === "en" ? "permission…
+     56|   const send = p.root.querySelector(`[aria-label="${words.t("hubChat.s…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-sharing-pause-ui-m3015.test.ts > a paused asker sees paused rather than denied, with no enabled Send (zh-TW)
+AssertionError: expected 'RResearch代表 Olivia 回答可提問問 Research 第一…' to contain '擁有者已暫停分享 Research'
+
+Expected: "擁有者已暫停分享 Research"
+Received: "RResearch代表 Olivia 回答可提問問 Research 第一個問題它代表 Olivia 回答；回答可能要幾分鐘。所有向這個 Agent 提問的人共用它的同一段對話，它可能記得其他人問過的內容。請勿傳送不該讓其他提問者看到的內容。這個 Agent 目前還不能接收檔案。問 Research送出你是以自己的身分提問：對方會看到是你問的；Agent 用擁有者允許的範圍回答。"
+
+ ❯ tests/hub-sharing-pause-ui-m3015.test.ts:54:30
+     52| it.each(["en", "zh-TW"])("a paused asker sees paused rather than denie…
+     53|   const { p } = await mount({ state: "paused", asker: true, lang });
+     54|   expect(p.root.textContent).toContain(lang === "en" ? "The owner paus…
+       |                              ^
+     55|   expect(p.root.textContent).not.toContain(lang === "en" ? "permission…
+     56|   const send = p.root.querySelector(`[aria-label="${words.t("hubChat.s…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 6 skipped (8)
+   Start at  14:18:59
+   Duration  2.68s (transform 1.71s, setup 304ms, import 248ms, tests 1.78s, environment 0ms)
+

@@ -39,7 +39,7 @@ export function createHubGroupAdminInventory(options: { db: Database.Database; t
     } else if (input.kind === "exposure") {
       const raw = readExposure(db, input.id); if (!raw) return null;
       const exposure = exposureOf(raw), fleet = transport.read().fleets.find(f => f.id === exposure.fleetId);
-      if (exposure.state !== "published" || exposure.revision !== input.revision || !fleet || fleet.status !== "active" || !fleet.credentialHash
+      if (!["published", "paused"].includes(exposure.state) || exposure.revision !== input.revision || !fleet || fleet.status !== "active" || !fleet.credentialHash
         || personKeyString(fleet.owner) !== personKeyString(exposure.owner)) return null;
       resource = parseHubGroupResource({ ...input, owner: exposure.owner }); material = { exposure, fleet }; label = exposure.displayName;
     } else {
