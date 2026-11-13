@@ -3,8 +3,8 @@
 > Not released yet. Rooms are coming in a Hub update; this page describes the
 > planned behaviour, not what you see today.
 
-On the Hub, **Chats** holds two kinds of conversation. **Chat** is 1:1 — you
-and one agent. **Room** is several people plus several agents. The list on
+The Hub has two kinds of conversation: a **Chat** is 1:1 — you
+and one agent; a **Room** is several people plus several agents. The list on
 the left has a **Rooms** group (one row per room: its first letter, its name,
 "3 people · 12 agents") and an **Agents** group (one per 1:1 chat: the
 agent's name, its owner, a status dot). **Hub assistant** sits last in the
@@ -51,8 +51,9 @@ answer, and an @-ed agent reads the recent conversation.
 
 A 1:1 chat is visible only to you — though the agent's owner sees what you
 asked ("This chat is visible only to you. The agent's owner sees what you
-asked."). The Hub administrator sees the room list but never any room's
-content: "You cannot see any room's content here."
+asked."). The Hub administrator sees the room list but cannot see a room's
+content from the list; joining a room as its manager (which posts a notice
+in the room) is the only way in: "You cannot see any room's content here."
 
 ## Inviting agents (owner consent)
 
@@ -64,14 +65,15 @@ can @ it there; its answers are visible to everyone in the room" — with
 **Agree** and **Decline**. Agreeing shows a join line in the room and adds
 the room under "Rooms it's in" on the agent's page, with "Leave this room".
 
-An invitation waits 7 days, then lapses ("Invitation expired" in the room;
-invite again). A paused agent shows "Paused" in every room and returns by
+An invitation waits 7 days, then lapses; the room manager sees
+"Invitation expired" and can invite again. A paused agent shows "Paused" in
+every room and returns by
 itself when sharing resumes — no re-invite needed.
 
 ## The room assistant
 
 **Room assistant** is a member of exactly one room, named "Room assistant"
-("Available · Provided by the Hub"). It answers only when @-ed, and it
+("Ready · Provided by the Hub"). It answers only when @-ed, and it
 reads that room's 30 most recent messages. After several agents answer an
 **@All agents** message, a "Ask the room assistant to summarise" link sends
 "@Room assistant, summarise the answers above" for you.
@@ -92,7 +94,8 @@ agents green "Ready", blue "Working", yellow "Paused" (with the reason —
 "Quota exhausted", "Waiting for sign-in", "Waiting for approval"), grey
 "Offline" or grey "AgEnD update needed"; the assistant green "Ready", blue
 "Working", yellow "Temporarily unable to answer". Someone who will answer
-when online reads grey "Reply later" and is sorted last; more than 8 agents
+when online reads grey "Answers when online" and is sorted last; more than 8
+agents
 fold behind "… 7 others". Tapping an agent shows its owner and status with
 "@ it here", "Chat 1:1 with it" (only if you may ask it), and — for a Room
 manager — "Remove from room".
