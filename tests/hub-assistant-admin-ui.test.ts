@@ -71,6 +71,31 @@ describe("Hub room-assistant administration with the real shared UI", () => {
     expect(c.saveAssistantSettings).not.toHaveBeenCalled();
   });
 
+  it("keeps settings usable when only usage fails", async () => {
+    const { p, c } = await fixture("en", { assistantUsage: async () => { throw new Error("usage offline"); } });
+    expect(p.root.querySelector("form")).toBeTruthy();
+    expect(p.root.textContent).toContain("Could not read usage");
+    await submit(p); expect(c.saveAssistantSettings).toHaveBeenCalledOnce();
+  });
+
+  it("reports a successful stop separately from a failed status read", async () => {
+    const { p, c } = await fixture();
+    c.assistantSettings.mockRejectedValueOnce(new Error("read offline"));
+    fire(button(p, "Stop"), "click"); await settle(20);
+    expect(c.stopRoomAssistant).toHaveBeenCalledExactlyOnceWith("room-a");
+    expect(p.root.textContent).toContain("Stopped this room assistant");
+    expect(p.root.textContent).not.toContain("Could not stop");
+    expect(p.root.textContent).not.toContain("Planning");
+    expect(button(p, "Refresh").disabled).toBe(false);
+  });
+
+  it.each([[0, ""], [0, "17"], [1, "0"], [1, "241"], [0, "1.5"]])("does not submit invalid limit field %s=%s", async (index, value) => {
+    const { p, c } = await fixture();
+    change(p.root.querySelectorAll('input[type="number"]')[index], value); await settle(5);
+    expect(button(p, "Save").disabled).toBe(true);
+    await submit(p); expect(c.saveAssistantSettings).not.toHaveBeenCalled();
+  });
+
   it("offers no invented backend and keeps a disabled assistant editable when no CLI qualifies", async () => {
     const { p, c } = await fixture("en", { assistantSettings: async () => ({ ok: true, ...config(), enabled: false, backends: [], running: [] }) });
     expect(p.root.textContent).toContain("Sign in an AI account");

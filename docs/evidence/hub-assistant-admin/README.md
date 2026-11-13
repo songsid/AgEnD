@@ -22,3 +22,8 @@ OUT=.artifacts/assistant-admin-browser-cards node node_modules/tsx/dist/cli.mjs 
 
 The harness checks load1≤10 before launch and each case. Only one browser is used. The screenshots prove the UI
 with the agreed stub, not real backend sign-in, native tool denial, server authorization or live room routing.
+
+The PNGs and receipt bind the first UI commit e078ed6d2. The subsequent review delta changes usage-only
+failure isolation, the successful-stop/failed-refresh message, and invalid-limit submission; it adds seven
+focused UI cases (17/17 pass). The healthy screenshots remain historical evidence at their bound source,
+not a browser rerun of the replacement head.
