@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- Added the Hub host's opt-in room-assistant settings, daily answer counters and mounted-provider lifecycle. Configuration changes drain the previous workers, and Hub shutdown fences and joins the assistant's physical cleanup. The admin HTTP and UI surfaces follow in the rooms integration.

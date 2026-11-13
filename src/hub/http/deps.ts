@@ -34,13 +34,8 @@ export interface HubHttpDeps {
   roomTeams?: import("../teams/types.js").HubTeamReader;
   /** C-owned Team list projection; suggestions confer no creation/membership authority. */
   roomTeamCandidates?(db: Database.Database, prefix: string): readonly { id: string; name: string; people: number }[];
-  /** Track A's optional host adapter; absent means the room assistant is disabled. */
-  roomAssistant?: import("../rooms/types.js").RoomAssistantPort;
-  /** Structural admin port until the host service's typed DTO module lands; it owns validation and worker drain. */
-  assistantAdmin?: {
-    settings(): Promise<unknown>; configure(value: unknown): Promise<unknown>;
-    usage(): Promise<unknown>; stopRoom(roomId: string): Promise<void>;
-  };
+  roomAssistant?: import("../assistant/types.js").RoomAssistant;
+  assistantAdmin?: import("../assistant/admin-types.js").RoomAssistantAdmin;
   directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
   uow: HubUnitOfWork;
   audit: HubAuditSink;
