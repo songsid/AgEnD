@@ -55,7 +55,7 @@ describe("the list's groups and rows (pure)", () => {
     const groups = list.groupRooms(answer.rooms);
     expect(groups.map((x: any) => [x.key, x.items.map((r: any) => r.name)])).toEqual([
       ["rooms", ["研一主管週會", "研發例會", "去年專案"]],
-      ["agents", ["project-helper", "report-bot", "Hub 助理"]],
+      ["agents", ["project-helper", "report-bot", "Hub assistant"]],   // stored names; the rows name it by its flag
     ]);
     expect(list.groupRooms(answer.rooms, "林小華").map((x: any) => x.items.map((r: any) => r.name))).toEqual([["project-helper"]]);   // by owner
     i18n.setLang("zh-TW", { store: false });

@@ -16,10 +16,14 @@ import { RoomComposer } from "./hub-room-composer.js";
 const iso = (ms) => (Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : undefined);
 const BOOT = "room";
 
-/** One room message's author line (spec §3). `mine`: no name (the thread puts it on the right). */
-export function authorLine(author, mine = false) {
+/**
+ * One room message's author line (spec §3). `mine`: no name (the thread puts it on the right). The assistant is named by
+ * its flag, never by its stored name (Ridge: that is an older renderer's fallback): 「房間助理 · Hub 提供」 in a room,
+ * 「Hub 助理」 in its own one-to-one (`direct`).
+ */
+export function authorLine(author, mine = false, direct = false) {
   if (!author || mine) return "";
-  if (author.kind === "assistant") return hroom("authorAssistant");
+  if (author.kind === "assistant") return direct ? hroom("hubAssistant") : hroom("authorAssistant");
   if (author.kind === "agent") return author.owner?.name ? hroom("authorAgent", String(author.name || ""), String(author.owner.name)) : String(author.name || "");
   return String(author.name || "");
 }
@@ -34,7 +38,7 @@ export function askState(ask) {
  * Seam-1 messages (newest last) → the thread's messages. `ids`: a Map from a message id to its number in this thread
  * (the thread's keys and quotes are numbers), extended here in arrival order and kept by the caller.
  */
-export function toThreadMessages(messages, { meId, ids }) {
+export function toThreadMessages(messages, { meId, ids, direct = false }) {
   const out = [], byId = new Map(messages.map((m) => [m.id, m]));
   const num = (id) => { if (!ids.has(id)) ids.set(id, ids.size * 2 + 2); return ids.get(id); };
   for (const m of messages) {
@@ -46,9 +50,9 @@ export function toThreadMessages(messages, { meId, ids }) {
     if (kind === "system") { out.push({ boot: BOOT, id, role: "status", sender: "", ts: iso(m.at), text: String(m.text || "") }); continue; }
     const quoted = m.replyTo ? byId.get(m.replyTo) : null;
     const state = mine ? askState(m.ask) : null;
-    out.push({ boot: BOOT, id, role: kind === "person" ? "user" : "agent", sender: authorLine(author, mine), ts: iso(m.at), text: String(m.text || ""), mine,
+    out.push({ boot: BOOT, id, role: kind === "person" ? "user" : "agent", sender: authorLine(author, mine, direct), ts: iso(m.at), text: String(m.text || ""), mine,
       roomMessage: m.id, ...(state?.delivery ? { delivery: state.delivery } : {}),
-      ...(quoted ? { replyTo: { boot: BOOT, id: num(quoted.id), sender: authorLine(quoted.author, quoted.author?.id === meId), text: String(quoted.text || "").slice(0, 120) } } : {}),
+      ...(quoted ? { replyTo: { boot: BOOT, id: num(quoted.id), sender: authorLine(quoted.author, quoted.author?.id === meId, direct), text: String(quoted.text || "").slice(0, 120) } } : {}),
       ...(m.stage === "not-answered" ? { text: hroom("noAnswer") } : {}) });
     const line = askState(m.ask)?.line;
     if (line) out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", ts: iso(m.at), text: line, progressOf: m.id });
@@ -66,7 +70,7 @@ export function toThreadMessages(messages, { meId, ids }) {
 export function createRoomStore(roomId, { client, meId = "" } = {}) {
   const subs = new Set(), ids = new Map();
   const st = { live: true, detail: null, messages: [], loaded: false, error: null, removed: false, more: false, view: [] };
-  const changed = () => { st.view = toThreadMessages(st.messages, { meId: st.detail?.me?.id || meId, ids }); for (const fn of [...subs]) { try { fn(); } catch { /* a subscriber's own failure */ } } };
+  const changed = () => { st.view = toThreadMessages(st.messages, { meId: st.detail?.me?.id || meId, ids, direct: st.detail?.room?.kind === "direct" }); for (const fn of [...subs]) { try { fn(); } catch { /* a subscriber's own failure */ } } };
   const upsert = (m) => {
     if (!m || m.roomId !== roomId || typeof m.id !== "string") return;
     const i = st.messages.findIndex((x) => x.id === m.id || (m.idempotencyKey && x.idempotencyKey === m.idempotencyKey));
@@ -135,6 +139,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const input = useRef(null), threadRef = useRef(null), insert = useRef(null);
   const Panel = useMembersPanel();
   const detail = store.detail(), room = detail?.room || listed || {}, group = room.kind === "group";
+  // The Hub assistant's one-to-one is named by its flag, in this viewer's words (its stored name is a fallback).
+  const title = room.assistant ? hroom("hubAssistant") : String(room.name || "");
   const hasAssistant = (detail?.members || []).some((m) => m.kind === "assistant");
   // Read when shown: the latest message once loaded and again as messages arrive while the page is visible.
   const count = store.raw().length;
@@ -145,16 +151,16 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     findQuoted: async () => { await store.older(); return false; },
   };
   const line2 = group ? (hasAssistant ? hroom("roomTitle", String(room.people ?? 0), String(room.agents ?? 0)) : hroom("roomSub", String(room.people ?? 0), String(room.agents ?? 0)))
-    : String(room.agent?.owner?.name || "");
+    : room.assistant ? hroom("providedByHub") : String(room.agent?.owner?.name || "");
   return html`<div class=${`hub-chat hub-room-page${rail && Panel && group ? " with-rail" : ""}`} data-room=${roomId}>
     <section class="hub-chat-main">
       <header class="hub-chat-head" data-trust="panel-content">
-        <span class=${`av${group ? " av-square" : ""}`} aria-hidden="true"><span class="av-text">${firstCharacter(String(room.name || "?")) || "?"}</span></span>
-        <span class="hub-chat-title"><strong>${room.name || ""}</strong><span class="s">${line2}</span></span>
+        <span class=${`av${group ? " av-square" : ""}`} aria-hidden="true"><span class="av-text">${firstCharacter(title || "?") || "?"}</span></span>
+        <span class="hub-chat-title"><strong>${title}</strong><span class="s">${line2}</span></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${rail ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
           onClick=${() => setRail(!rail)}>👥</button>` : null}
       </header>
-      <${Thread} store=${store} name=${room.name || ""} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
+      <${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
         emptyView=${room.assistant ? html`<p class="note hub-assistant-empty">${hroom("hubAssistantEmpty")}</p>`
           : group ? html`<p class="note">${hroom("composerHint")}</p>` : null} />
       <${RoomComposer} store=${store} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert} />

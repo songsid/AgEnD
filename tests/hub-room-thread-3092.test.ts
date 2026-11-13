@@ -54,6 +54,8 @@ describe("the thread's mapping (pure)", () => {
     expect(out.find((x: any) => x.sender === "房間助理 · Hub 提供")).toBeTruthy();
     expect(out[0]).toMatchObject({ role: "status", text: "王經理 建立了這個房間。" });
     expect(new Set(out.filter((x: any) => x.role !== "status").map((x: any) => x.id)).size).toBe(out.filter((x: any) => x.role !== "status").length);
+    expect(thread.authorLine({ kind: "assistant", name: "Hub assistant" }, false, true)).toBe("Hub 助理");          // its own 1:1
+    expect(thread.authorLine({ kind: "assistant", name: "Hub assistant" })).toBe("房間助理 · Hub 提供");             // in a room
     expect(thread.askState({ total: 1, answered: 0, working: 1, later: 0 })).toEqual({ delivery: "processing" });
     expect(thread.askState({ total: 12, answered: 12, working: 0, later: 0 }).line).toBe("12 個都回答了");
   });
@@ -122,6 +124,10 @@ describe("a room on the page", () => {
       await until(() => pg.root.querySelector(".hub-room-page .hub-assistant-empty"));
       expect(pg.root.querySelector(".hub-room-page .hub-assistant-empty")!.textContent).toBe("這是 Hub 提供的 AI 助理。它讀不到你的電腦，也讀不到其他房間。");
       expect(pg.root.querySelector(".hub-room-page .hub-room-hint")).toBeNull();                       // a 1:1: no @ needed
+      // Named by its flag in the viewer's words, never by its stored English name (Ridge on #3864).
+      expect(pg.root.querySelector(".hub-room-page .hub-chat-head strong")!.textContent).toBe("Hub 助理");
+      expect(pg.root.querySelector(".hub-room-page .composer-ph")!.textContent).toContain("Hub 助理");
+      expect(pg.root.querySelector(".hub-room-page")!.textContent).not.toContain("Hub assistant");
     } finally { restore(); }
   });
   it("an archived room: the box says so, nothing to send", async () => {
