@@ -34,6 +34,7 @@ it.each(["en", "zh-TW"])("pause/resume is distinct from permanent Stop sharing a
   const pause = lang === "en" ? "Pause sharing" : "暫停分享", resume = lang === "en" ? "Resume sharing" : "繼續分享";
   expect(button(p, "Stop sharing…") || button(p, "停止分享…")).toBeTruthy();
   expect(p.root.textContent).toContain(lang === "en" ? "expiry dates keep running" : "到期時間照常計算");
+  expect(p.root.textContent).toContain(lang === "en" ? "may still start within a few seconds" : "可能仍會在幾秒內開始處理");
   fire(button(p, pause), "click"); await until(() => button(p, resume));
   expect(p.root.textContent).toContain("Alex Chen"); expect(p.root.querySelector(".hub-danger")).not.toBeNull();
   fire(button(p, resume), "click"); await until(() => button(p, pause));
@@ -62,4 +63,20 @@ it("a stale-tab question refused by pause does not close the conversation or dis
   const s = chats.createHubChatStore({ id: roomId, exposureState: "published", features: [] }, { client: c, timers, doc: null });
   try { expect((await s.send("kept by composer")).code).toBe("sharing-paused"); expect(s.closed()).toBe(false); expect(s.accessDenied()).toBe(false); expect(s.room().exposureState).toBe("paused"); }
   finally { s.stop(); }
+});
+it("keeps a learned pause through an older published history response, then accepts a fresh resumed read", async () => {
+  let finish!: (response: any) => void, scheduled: (() => void) | undefined, delay: number | undefined;
+  const timers = { setTimeout(fn: () => void, ms: number) { scheduled = fn; delay = ms; return 1; }, clearTimeout() { scheduled = undefined; } };
+  const c = { read: () => new Promise(r => { finish = r; }), ask: async () => ({ ok: false, code: "sharing-paused" }) };
+  const s = chats.createHubChatStore({ id: roomId, exposureState: "published", features: [] }, { client: c, timers, doc: null });
+  try {
+    await s.send("kept by composer"); expect(s.room().exposureState).toBe("paused");
+    // The immediate refresh fires while history is still in flight; it must not lose the retry.
+    scheduled!();
+    finish({ ok: true, entries: [], room: { exposureState: "published" } }); await settle(5);
+    expect(s.room().exposureState).toBe("paused"); expect(s.closed()).toBe(false);
+    expect(delay).toBe(0); scheduled!();
+    finish({ ok: true, entries: [], room: { exposureState: "published" } }); await settle(5);
+    expect(s.room().exposureState).toBe("published"); expect(delay).toBe(chats.POLL_MS);
+  } finally { s.stop(); }
 });

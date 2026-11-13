@@ -57,7 +57,7 @@ export function hubEntryToMessages(entry, room, { me = "", reason = (code) => co
  */
 export function createHubChatStore(room, { client = hubClient(), me = "", reason, timers = globalThis, doc = typeof document !== "undefined" ? document : null } = {}) {
   const subs = new Set();
-  const st = { live: true, timer: 0, inflight: false, entries: [], room: { ...room }, closed: false, loaded: false, error: null, accessDenied: false, accessEpoch: 0, pending: [], full: false, reads: 0, farTurn: 0 };
+  const st = { live: true, timer: 0, inflight: false, entries: [], room: { ...room }, closed: false, loaded: false, error: null, accessDenied: false, accessEpoch: 0, availabilityEpoch: 0, pending: [], full: false, reads: 0, farTurn: 0 };
   const emit = () => { for (const fn of subs) { try { fn(); } catch { /* a subscriber's own failure */ } } };
   const merge = (got) => {
     const byId = new Map(st.entries.map((e) => [e.messageId, e]));
@@ -74,7 +74,7 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
     if (!st.live || st.inflight || st.closed) return;
     if (doc && doc.hidden) { schedule(POLL_MS); return; }
     st.inflight = true;
-    const accessEpoch = st.accessEpoch;
+    const accessEpoch = st.accessEpoch, availabilityEpoch = st.availabilityEpoch;
     // Unsettled entries are read again (from just before the oldest one) — but a full page means there is more after
     // it: read on from the last one first, so an old open entry can never pin the read to the same page (#3246 review).
     const last = st.entries.length ? st.entries[st.entries.length - 1].sequence : 0;
@@ -101,10 +101,13 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
       // The room as the server says it now. Its quota is the server's to give: absent means withdrawn (the owner hid it,
       // the grant is gone), never "unchanged" — a band once shown must not outlive that. An answer with no room at all
       // (an older Hub) keeps what is known.
-      if (r.room) { st.room = { ...st.room, ...r.room }; if (!Object.prototype.hasOwnProperty.call(r.room, "quota")) delete st.room.quota; }
+      // A send can learn a pause while this older history read is held. Only a read begun after
+      // that refusal may restore availability; keep its history, but never undo the newer refusal.
+      const availabilityCurrent = availabilityEpoch === st.availabilityEpoch;
+      if (r.room && availabilityCurrent) { st.room = { ...st.room, ...r.room }; if (!Object.prototype.hasOwnProperty.call(r.room, "quota")) delete st.room.quota; }
       st.pending = st.pending.filter((p) => !st.entries.some((e) => e.messageId === p.messageId));
       if (r.room && accessEpoch === st.accessEpoch) st.accessDenied = false;
-      st.loaded = true; st.error = null; emit(); schedule(POLL_MS); return;
+      st.loaded = true; st.error = null; emit(); schedule(availabilityCurrent ? POLL_MS : 0); return;
     }
     if (r.code === "revoked" || r.code === "not-found") { st.closed = true; emit(); return; }
     if (r.code === "denied") { st.accessDenied = true; st.accessEpoch++; }
@@ -151,7 +154,7 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
       if (!q || st.closed) return { ok: false, code: "invalid" };
       let r;
       try { r = await client.ask(st.room.id, newKey(), q, extras); } catch { r = { ok: false, code: "unreachable" }; }
-      if (!r.ok && r.code === "sharing-paused" && st.live) { st.room = { ...st.room, exposureState: "paused" }; emit(); schedule(0); return r; }
+      if (!r.ok && r.code === "sharing-paused" && st.live) { st.availabilityEpoch++; st.room = { ...st.room, exposureState: "paused" }; emit(); schedule(0); return r; }
       if (!r.ok) { if (r.code === "denied" && st.live) { st.accessDenied = true; st.accessEpoch++; emit(); } if (r.code === "revoked") { st.closed = true; emit(); } return r; }
       st.pending.push({ messageId: r.receipt.messageId, text: q, at: r.receipt.at || Date.now() });
       emit();

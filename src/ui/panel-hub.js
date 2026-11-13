@@ -56,12 +56,12 @@ register("hubGrantStatus", {
 // These words travel with the renderer; retained dictionaries need no new exports.
 register("hubSharing", {
   en: { pause: "Pause sharing", resume: "Resume sharing", paused: "Sharing paused", title: "Pause and resume sharing",
-    lead: "Keep the people and AD groups allowed to ask. Their expiry dates keep running while sharing is paused.",
-    waiting: "Saving…", pausedChat: "The owner paused sharing {0}. You can still read this chat while your permission lasts. Sharing can resume; expiry dates keep running.",
+    lead: "Stop new questions and keep the people and AD groups allowed to ask. Their expiry dates keep running while sharing is paused. A question already being handed to the Fleet may still start within a few seconds; work already in progress may finish.",
+    waiting: "Saving…", pausedChat: "The owner paused sharing {0}. New questions are stopped; a question already being handed to the Fleet may still start within a few seconds. You can still read this chat while your permission lasts. Sharing can resume; expiry dates keep running.",
   },
   "zh-TW": { pause: "暫停分享", resume: "繼續分享", paused: "分享已暫停", title: "暫停與繼續分享",
-    lead: "保留允許提問的個人與 AD 群組。暫停期間，授權的到期時間照常計算。",
-    waiting: "儲存中…", pausedChat: "擁有者已暫停分享 {0}。權限有效期間，你仍可閱讀這段對話。之後可以繼續分享；授權的到期時間照常計算。",
+    lead: "停止接受新提問，保留允許提問的個人與 AD 群組。暫停期間，授權的到期時間照常計算。已在傳送給 Fleet 的提問，可能仍會在幾秒內開始處理；已在處理的工作可能會完成。",
+    waiting: "儲存中…", pausedChat: "擁有者已暫停分享 {0}。不再接受新提問；已在傳送給 Fleet 的提問，可能仍會在幾秒內開始處理。權限有效期間，你仍可閱讀這段對話。之後可以繼續分享；授權的到期時間照常計算。",
   },
 });
 
