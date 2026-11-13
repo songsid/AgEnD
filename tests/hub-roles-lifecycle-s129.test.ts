@@ -32,11 +32,12 @@ function fixture() {
       maxFleets: 1, startsAt: 0, expiresAt: 200, assignedBy: root, assignedAt: 0 }], denies: [] };
   const save = () => db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(body)); save();
   const resources = createHubGroupResources({ db, policy, audit, directory, current: () => true, now: () => time });
+  const refresh = vi.fn();
   const actions = createHubGroupAuthorization({ db, policy: () => policy, administrator: root, audit, directory,
     binding: () => inspectHubGroupPolicyBinding(db, "hub1", "corp", "g1"), current: () => true, now: () => time,
-    version: () => transport.read().revocationVersion, advanceAuthorization(tx) { expect(tx).toBe(db); transport.mutate({ at: time, requestId: randomUUID(), actor: { kind: "local-host" }, action: "synthetic.narrow", result: "completed" }, s => { s.revocationVersion++; }); }, refreshAuthorization() {} });
+    version: () => transport.read().revocationVersion, advanceAuthorization(tx) { expect(tx).toBe(db); transport.mutate({ at: time, requestId: randomUUID(), actor: { kind: "local-host" }, action: "synthetic.narrow", result: "completed" }, s => { s.revocationVersion++; }); }, refreshAuthorization: refresh });
   const resource: HubGroupResource = { kind: "exposure", id: "exposure1", revision: 1, owner }, ctx = { requestId: "request1", current: () => true };
-  return { db, root, owner, policy, body, save, audit, directory, groups, eligibility, clock, options, resources, actions, resource, ctx, time: (ms: number) => { time += ms; } };
+  return { db, root, owner, policy, body, save, audit, directory, groups, eligibility, clock, options, resources, actions, resource, ctx, transport, refresh, time: (ms: number) => { time += ms; } };
 }
 describe("S129 canonical self-use and retained resource consumers", () => {
   it("uses personal role assignments in the existing check and shared-pool paths without legacy projection", async () => {
@@ -115,6 +116,52 @@ describe("S129 canonical self-use and retained resource consumers", () => {
   it("never revives an expired action proof after the wall clock is restored", async () => {
     const w = fixture(), permit = await w.actions.enroll(w.resource, w.ctx); w.time(100);
     expect(() => permit.assertCurrent()).toThrow(); w.time(-100); expect(() => permit.assertCurrent()).toThrow();
+  });
+  it.each(["audit", "invalidation"] as const)("rolls back an actual SQL Resume that expires during required %s, without publishing a refresh", async stage => {
+    const w = fixture(), assignment = structuredClone(w.body.assignments[0]!);
+    await w.actions.enroll(w.resource, w.ctx);
+    w.body.assignments = []; w.save();
+    await expect(w.actions.check(w.resource, w.ctx)).rejects.toMatchObject({ reason: "denied" });
+    const before = w.resources.read(w.resource), events = w.db.prepare("SELECT * FROM hub_group_resource_events ORDER BY id").all();
+    expect(before).toMatchObject({ state: "suspended", revision: 2 });
+    expect(w.transport.read().revocationVersion).toBe(1); w.refresh.mockClear();
+    w.body.assignments = [assignment]; w.save();
+    const append = w.audit.appendInTransaction.bind(w.audit), boundary = stage === "audit" ? "group-resource.resumed" : "synthetic.narrow";
+    const spy = vi.spyOn(w.audit, "appendInTransaction").mockImplementation((...args) => {
+      const out = append(...args); if (args[0].action === boundary) w.time(100); return out;
+    });
+    try { await expect(w.actions.resume(w.resource, { ...w.ctx, requireAdmin: async () => ({ kind: "directory", person: w.root, sessionId: "root-session" }) }))
+      .rejects.toThrow("group_policy_conflict"); }
+    finally { spy.mockRestore(); }
+    expect(w.resources.read(w.resource)).toEqual(before);
+    expect(w.db.prepare("SELECT * FROM hub_group_resource_events ORDER BY id").all()).toEqual(events);
+    const state = (w.db.prepare("SELECT state FROM hub_transport_state").get() as { state: string }).state;
+    expect(JSON.parse(state).revocationVersion).toBe(1);
+    expect(w.db.prepare("SELECT id FROM hub_audit WHERE action='group-resource.resumed'").all()).toEqual([]);
+    expect(w.db.prepare("SELECT id FROM hub_audit WHERE action='synthetic.narrow'").all()).toHaveLength(1);
+    expect(w.refresh).not.toHaveBeenCalled(); expect(w.audit.verifyChain()).toMatchObject({ ok: true });
+    // The independent floor may stay raised after rollback; restoring a role still cannot reactivate the SQL row.
+    assignment.expiresAt = 400; w.save();
+    expect(await w.resources.check(w.resource, w.ctx)).toMatchObject({ outcome: "resume-required" });
+    expect(w.resources.read(w.resource)).toEqual(before);
+  });
+  it.each(["audit", "invalidation"] as const)("commits and refreshes an actual SQL Resume that remains unexpired after required %s", async stage => {
+    const w = fixture(), assignment = structuredClone(w.body.assignments[0]!);
+    await w.actions.enroll(w.resource, w.ctx); w.body.assignments = []; w.save();
+    await expect(w.actions.check(w.resource, w.ctx)).rejects.toMatchObject({ reason: "denied" });
+    w.body.assignments = [assignment]; w.save(); w.refresh.mockClear();
+    const append = w.audit.appendInTransaction.bind(w.audit), boundary = stage === "audit" ? "group-resource.resumed" : "synthetic.narrow";
+    const spy = vi.spyOn(w.audit, "appendInTransaction").mockImplementation((...args) => {
+      const out = append(...args); if (args[0].action === boundary) w.time(99); return out;
+    });
+    try {
+      const permit = await w.actions.resume(w.resource, { ...w.ctx, requireAdmin: async () => ({ kind: "directory", person: w.root, sessionId: "root-session" }) });
+      permit.assertCurrent(); expect(w.resources.read(w.resource)).toMatchObject({ state: "active", revision: 3 });
+      expect(w.transport.read().revocationVersion).toBe(2); expect(w.refresh).toHaveBeenCalledOnce();
+      expect(w.db.prepare("SELECT id FROM hub_audit WHERE action='group-resource.resumed'").all()).toHaveLength(1);
+      w.time(1); expect(() => permit.assertCurrent()).toThrow("group_policy_conflict");
+    } finally { spy.mockRestore(); }
+    expect(w.audit.verifyChain()).toMatchObject({ ok: true });
   });
   it("does not let the legacy whole-document editor erase a canonical graph", () => {
     const w = fixture(), before = (w.db.prepare("SELECT body FROM hub_group_policy").get() as { body: string }).body;

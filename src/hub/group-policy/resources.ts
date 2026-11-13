@@ -145,6 +145,9 @@ export function createHubGroupResources(options: {
         if (!actor) return { outcome: "resume-required" as const, decision };
         update(current, "active", actor, ctx);
       }
+      // Required audit and invalidation can cross the decision deadline. Refuse inside
+      // this transaction so an expired Resume cannot commit before the caller rechecks.
+      assertHubSelfUseDecisionCurrent(decision, now());
       return { outcome: "allow" as const, decision };
     }).immediate();
   };

@@ -27,8 +27,12 @@ self-use states and roles-off projection retain the model's semantics. Existing
 manual/code resource bodies and sources stay intact. Unknown holds without
 removal; restored self-use does not resume an already suspended resource. A
 captured role decision expires at its next assignment deadline, including during
-required audit callbacks and before a later registration commit. A retired
-operation proof cannot revive after the clock or document returns.
+required audit callbacks and before a later registration commit. Resume rechecks
+the deadline after audit and invalidation, inside the same transaction, so an
+expired grant cannot publish an active resource, audit event or version advance.
+A rolled-back independent floor may remain raised and hold old authorization;
+no refresh is published for the failed Resume. A retired operation proof cannot
+revive after the clock or document returns.
 
 The welcome keeps its existing version-one shape. It does not disclose role or
 assignment IDs and does not send unfamiliar reason strings to cached clients.

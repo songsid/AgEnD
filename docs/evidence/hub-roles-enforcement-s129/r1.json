@@ -1,0 +1,53 @@
+{
+  "scope": "#3795 R1: final decision deadline check inside Resume transaction, after required audit and invalidation; no activation",
+  "priorReviewedHead": "000400e74cd049c628685dbc7f7822a1c749ddde",
+  "finding": "https://github.com/songsid/AgEnD/pull/3795#pullrequestreview-5886665322",
+  "failFirst": {
+    "semanticFailures": 2,
+    "nonexpiredControlsPassed": 2,
+    "detail": "Both failures assert SQL row still suspended revision2; before fix it is active revision3 even though caller rejects."
+  },
+  "checks": {
+    "focusedFiles": 4,
+    "focusedPassed": 118,
+    "skipped": 0,
+    "restoredSelectedPassed": 4,
+    "restoredDeliberatelyUnselected": 11,
+    "sourceTypes": 0,
+    "testTypes": 0,
+    "changelogFragments": 428,
+    "diff": "pass"
+  },
+  "focusedFiles": [
+    "tests/hub-roles-lifecycle-s129.test.ts",
+    "tests/hub-group-resources.test.ts",
+    "tests/hub-group-authorization.test.ts",
+    "tests/hub-group-enrollment-transaction.test.ts"
+  ],
+  "mutation": {
+    "name": "resume-final-expiry",
+    "file": "src/hub/group-policy/resources.ts",
+    "sourceDigest": "0f1741b12291afdd5cd1f848ac131a81616394ad35e25a2fd0b61d6d337f9631",
+    "types": 0,
+    "testExit": 1,
+    "semanticRed": true,
+    "restored": true
+  },
+  "fileDigests": {
+    "src/hub/group-policy/resources.ts": "0f1741b12291afdd5cd1f848ac131a81616394ad35e25a2fd0b61d6d337f9631",
+    "tests/hub-roles-lifecycle-s129.test.ts": "6725f4ac08908f5848cb842d397eb4224e970c4bb9fa15e10ac601c104172069",
+    "docs/design/hub-roles-enforcement.md": "62c624f48e537b5d0a3e0af12eebffc344def48cb608287c7da69df14ce8c959",
+    "changes/3743-roles-canonical-consumers.md": "c0d2d784dad683879bcc65c0d1faeea0b332db30893df81a18fe858c2c415464",
+    "changes/3743-roles-canonical-consumers.zh-TW.md": "442e335bbc8fd22e91dc35feb99b61474ccf292599e33bbb4a2d171fd341b31b"
+  },
+  "logDigests": {
+    "fail-first.log": "19d52b86e3c626f5acc98c1e3c224711ec9d97e0cf2dbdad48bf6d458292f849",
+    "focused.log": "9f44997cfc930e34a13ca6efd9be37b0397f970487441f1fb72c52000c13b534",
+    "source-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "test-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mutation-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mutation-test.log": "2598029baa62fff312f19aeae6caa51be84ce0d24e0d84b6641befd4b4beedd4",
+    "restored.log": "dbd5bbe4206b12d26e81a8cb7797f8b22b91b0f3a3e2d4fa9bcef23318f49cc4"
+  },
+  "limits": "Actual resource/authorizer/NodeSQLite/audit/transport store with inert directory and administrator callback. Required audit and transport invalidation each cross expiry; failed transaction retains suspended row, SQL version and audit/events, publishes no refresh. Independent floor may remain raised after rollback, holding old authorization. Restored role still requires Resume. Prior source/evidence clearance carries except the two superseded product/test hashes. No mounted canonical roles, new network/browser/native/live operation."
+}
