@@ -1,0 +1,54 @@
+{
+  "before": "529b06d3c37713b70a6e07db98ddd1ed26a14138",
+  "alpha": "d59ecaae44dbfb5f159b338eee89f226700ae321",
+  "base": "27de80266b6820e960bfe2c10f79a196b76487e5",
+  "ownBindings": {
+    "src/hub/roles/effects.ts": "49028cad6de6b02813891e50e8e6a831be01d1a10ea8e3085c08143206f3f0d9",
+    "src/hub/roles/writer.ts": "1bab3a2b6aae6f35dc65fe31dbf60fc5d66dc12bffea1e2fcfacdf09b174cbaa",
+    "tests/hub-roles-effects-s129.test.ts": "f6c6e81dc2de4cb2946f2244926c94980235acb4d402617d0b5c4ebac6197a48"
+  },
+  "merge": "da08f9412d2b83e9c37b510b8a1bbc0d4458bf3b",
+  "parents": [
+    "529b06d3c37713b70a6e07db98ddd1ed26a14138",
+    "d59ecaae44dbfb5f159b338eee89f226700ae321"
+  ],
+  "ownFinalDeltaPaths": [
+    "changes/3743-roles-resource-effects.md",
+    "changes/3743-roles-resource-effects.zh-TW.md",
+    "docs/design/hub-roles-resource-effects.md",
+    "docs/evidence/hub-roles-resource-effects-s129/README.md",
+    "docs/evidence/hub-roles-resource-effects-s129/r1.json",
+    "docs/evidence/hub-roles-resource-effects-s129/receipt.json",
+    "src/hub/roles/effects.ts",
+    "src/hub/roles/writer.ts",
+    "tests/hub-roles-effects-s129.test.ts"
+  ],
+  "allOtherBlobAndModePathsEqualAlpha": 13078,
+  "clearedTwoProductSequencesExact": true,
+  "threeOwnSourceTestBlobsExact": true,
+  "parentMerge": "db484be16a7b70664c809cafaa182ed4dc15d276",
+  "parentPushCI": 43448331218,
+  "resolutions": [
+    {
+      "path": "docs/design/hub-roles-directory-admission.md",
+      "choice": "exact incoming alpha, only adds already-reviewed parent final-sync evidence",
+      "oursSha256": "c26df5e15e81bc5af7d001314c9a2ecab9ff138d52413d54083a288ab609a901",
+      "incomingSha256": "204790783f6fc097a5697570b112fb60b5f2a84d8da42b5f8795e9b47469924c",
+      "resolvedSha256": "204790783f6fc097a5697570b112fb60b5f2a84d8da42b5f8795e9b47469924c"
+    },
+    {
+      "path": "docs/evidence/hub-roles-directory-admission-s129/README.md",
+      "choice": "exact incoming alpha, only adds already-reviewed parent final-sync evidence",
+      "oursSha256": "b61daacab69e8fa320c4e5d274e24eb14705c0b65588f89db8d4d6e04c8c7e9e",
+      "incomingSha256": "e6cb2af986d4ff791af6a77c7c0c991ea8f35ca5a2bac212795ea0d3adfe5d06",
+      "resolvedSha256": "e6cb2af986d4ff791af6a77c7c0c991ea8f35ca5a2bac212795ea0d3adfe5d06"
+    },
+    {
+      "path": "docs/evidence/hub-roles-factory-management-s129/README.md",
+      "choice": "exact incoming alpha, only adds already-reviewed parent final-sync evidence",
+      "oursSha256": "d8ffd55ad3b4180994c60ecd1485a90e27101cd55aa20bd286856dc58f5f010b",
+      "incomingSha256": "b1dd540b83e58e197373c0a608b4912e99ed49e3398466ae1fb84f659a5029e7",
+      "resolvedSha256": "b1dd540b83e58e197373c0a608b4912e99ed49e3398466ae1fb84f659a5029e7"
+    }
+  ]
+}
