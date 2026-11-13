@@ -716,10 +716,4 @@ change waits for an admin's confirmation in General chat; a value in the "Set in
 fleet.yaml (Advanced, or the file) and `agend reload`.
 
 
-## Hub: allow a person or an AD group to ask
-
-On the Hub, open **My agents**, choose an agent you own, then **Allow access**. On supported AD directories, choose **A person** and search the beginning of their name or login, or choose **An AD security group** and use the group search. Select a result, choose 1, 7 (default), 30 or 90 days, then **Allow**. Older tabs or unsupported directories retain the exact-login form.
-
-New personal and group grants are limited to 90 days on the server as well as in the form. Existing longer grants keep their recorded expiry and remain revocable. Removing a grant ends access to its chats; granting again never transfers that history to another person or group. A person covered by more than one grant still sees one agent entry.
-
-Group grants use the directory's immutable GUID and fresh direct membership, excluding nested and primary groups. The dialog explains that an AD group manager can change who may ask. Each person's chat remains private. Joining or leaving a group takes effect on the next check. Unknown directory membership shows an unavailable state; it does not remove a grant. Hub eligibility and the operational sharing policy still apply; being a team administrator does not itself grant access to another person's private agent.
+For the Hub's **My shared agents → Who may ask** person/name search, AD group grants, expiry and revoke controls, load the `hub` skill. Those controls use the Hub's company-account session, not this Fleet dashboard's guest grants.
