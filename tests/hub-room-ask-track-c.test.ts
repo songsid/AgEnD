@@ -59,10 +59,17 @@ describe("Track C room question presentation", () => {
   ] as const)("uses actual process/execution state rather than question activity: %s", (_, input, state) => {
     expect(agentPresence(input).state).toBe(state);
   });
-  it("localizes the bounded pause reason without exporting the Fleet's detailed activity", () => {
-    expect(agentPresence({ process: "paused", execution: "working", pauseReason: "quota" }, "en")).toEqual({ state: "paused", note: "Quota exhausted" });
-    expect(agentPresence({ process: "paused", execution: "working", pauseReason: "quota" }, "zh-TW")).toEqual({ state: "paused", note: "額度用完" });
+  it("exports stable viewer-translated reason codes instead of Fleet-locale display text or crash details", () => {
+    expect(agentPresence({ process: "paused", execution: "working", pauseReason: "quota" })).toEqual({ state: "paused", reason: "quota" });
+    expect(agentPresence({ process: "paused", execution: "idle", pauseReason: "auth" })).toEqual({ state: "paused", reason: "auth" });
+    expect(agentPresence({ process: "crashed", execution: "working" })).toEqual({ state: "paused", reason: "stopped" });
+    expect(agentPresence({ process: "stopped", execution: "idle" })).toEqual({ state: "paused", reason: "stopped" });
+    expect(agentPresence({ process: "running", execution: "working", waitingForApproval: true })).toEqual({ state: "paused", reason: "approval" });
+    expect(agentPresence({ process: "paused", execution: "idle", pauseReason: "operator" })).toEqual({ state: "paused", reason: "operator" });
     expect(agentPresence({ process: "running", execution: "idle" })).toEqual({ state: "idle" });
+  });
+  it.each(["idle", "warm_cap"] as const)("keeps a wakeable %s sleep green Idle instead of Paused", pauseReason => {
+    expect(agentPresence({ process: "paused", execution: "idle", pauseReason })).toEqual({ state: "idle" });
   });
 });
 
@@ -294,7 +301,7 @@ describe("Track C current-link agent.state publisher", () => {
     const f = publisher(); vi.mocked(f.link.sendState).mockRejectedValueOnce(Error("offline"));
     await expect(f.p.refresh()).rejects.toThrow("offline"); await f.p.refresh(); expect(f.link.sendState).toHaveBeenCalledTimes(2);
     f.read.mockRejectedValueOnce(Error("private detailed activity")); await f.p.refresh();
-    expect(f.link.sendState).toHaveBeenLastCalledWith({ exposureId: f.entries[0]!.exposureId, state: "paused", note: "Checking agent state" });
+    expect(f.link.sendState).toHaveBeenLastCalledWith({ exposureId: f.entries[0]!.exposureId, state: "paused", reason: "unknown" });
   });
   it("does not read or export presence when the current link negotiated only welcome-caps-v1", async () => {
     const f = publisher(); (f.link.features as Set<string>).delete("room-ask-v1");

@@ -13,11 +13,15 @@ export interface RoomAsk {
 }
 export interface RoomAnswer { messageId: string; roomId: string; exposureId: string; answerId: string; text: string }
 export interface RoomAnswerAck { messageId: string; answerId: string }
-export interface AgentPresence { state: "idle" | "working" | "paused"; note?: string }
+/** Track R projects reason as presenceReason; the room viewer, not the Fleet, chooses its language. */
+export type RoomPresenceReason = "quota" | "auth" | "approval" | "update" | "operator" | "idle" | "capacity" | "error" | "stopped" | "crashed" | "stuck" | "unknown";
+export interface AgentPresence { state: "idle" | "working" | "paused"; reason?: RoomPresenceReason; note?: string }
 export interface AgentStateInput {
   process: "running" | "paused" | "stopped" | "crashed";
   execution: "idle" | "working" | "stuck" | null;
   pauseReason?: "quota" | "auth" | "operator" | "idle" | "warm_cap" | "error" | null;
+  /** Only a positively observed approval wait from the Fleet runtime, not inferred from an idle reading. */
+  waitingForApproval?: boolean;
 }
 export const ROOM_ASK_CAPABILITY = "room-ask-v1";
 export interface RoomExposure { agent: string; consentId: string; revision: number; token: string }
@@ -242,17 +246,14 @@ export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale:
       : `Use report_result with target_instance="agend-hub" and correlation_id="${correlationId}" to send your text answer to this room.`,
     `${zh ? "房間對話（由舊到新）與問題" : "Room conversation (oldest first) and question"}:\n\`\`\`json\n${data}\n\`\`\``].join("\n\n");
 }
-export function agentPresence(input: AgentStateInput, locale: "en" | "zh-TW" = "en"): AgentPresence {
+export function agentPresence(input: AgentStateInput): AgentPresence {
+  // A process crash is not a room-visible detail. The Hub projects stopped as grey Stopped, not link-down Offline.
+  if (input.process === "stopped" || input.process === "crashed") return { state: "paused", reason: "stopped" };
+  if (input.waitingForApproval) return { state: "paused", reason: "approval" };
+  if (input.process === "paused" && (input.pauseReason === "idle" || input.pauseReason === "warm_cap")) return { state: "idle" };
   if (input.process === "running" && (input.execution === "working" || input.execution === "idle")) return { state: input.execution };
-  const reason = input.process === "crashed" ? "crashed" : input.process === "stopped" ? "stopped"
-    : input.process === "paused" ? input.pauseReason ?? "operator" : input.execution === "stuck" ? "stuck" : "unknown";
-  const notes = {
-    quota: ["Quota exhausted", "額度用完"], auth: ["Sign-in needed", "需要登入"], operator: ["Paused by owner", "擁有者已暫停"],
-    idle: ["Agent sleeping", "Agent 休息中"], warm_cap: ["Waiting for capacity", "等待可用容量"], error: ["Agent needs attention", "Agent 需要處理"],
-    crashed: ["Agent stopped unexpectedly", "Agent 意外停止"], stopped: ["Agent stopped", "Agent 已停止"],
-    stuck: ["Agent needs attention", "Agent 需要處理"], unknown: ["Checking agent state", "正在確認 Agent 狀態"],
-  } as const;
-  return { state: "paused", note: notes[reason][locale === "zh-TW" ? 1 : 0] };
+  const reason = input.process === "paused" ? input.pauseReason ?? "operator" : input.execution === "stuck" ? "stuck" : "unknown";
+  return { state: "paused", reason: reason === "idle" || reason === "warm_cap" ? "unknown" : reason };
 }
 
 export interface RoomStateLink {
@@ -264,7 +265,6 @@ export interface RoomStateLink {
 export function createRoomStatePublisher(options: {
   exposures(): readonly { exposureId: string; agent: string }[];
   read(agent: string): AgentStateInput | Promise<AgentStateInput>;
-  locale?: "en" | "zh-TW";
 }) {
   let link: RoomStateLink | null = null, closed = false;
   let sent = new Map<string, string>();
@@ -281,7 +281,7 @@ export function createRoomStatePublisher(options: {
       try { state = await options.read(entry.agent); } catch { state = { process: "running", execution: null }; }
       if (!current(source)) return;
       if (!options.exposures().some(e => e.exposureId === entry.exposureId && e.agent === entry.agent)) continue;
-      const presence = agentPresence(state, options.locale), value = JSON.stringify([entry.agent, presence]);
+      const presence = agentPresence(state), value = JSON.stringify([entry.agent, presence]);
       if (sent.get(entry.exposureId) === value) continue;
       await source.sendState({ exposureId: entry.exposureId, ...presence });
       if (!current(source)) return;
