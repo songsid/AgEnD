@@ -1007,6 +1007,8 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
     <div class="s-section-layout">
       ${groups && !accessEntry ? html`<${GroupPermissionsEntry} />` : null}
       ${companyJoin ? html`<${CompanyJoinAdminCard} entry=${accessEntry} groups=${groups} />` : null}
+      ${/* Track U2 places AdminRooms above this assistant slot; keep it before Connected fleets and pairing. */ ""}
+      ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       <${ManualFrame} class=${accessEntry ? "s-ui-disclosure hub-admin-manual" : ""} open=${accessEntry && (!!offer || pairings.some(p => p.ownerConfirmed && !p.adminApproved))}>${accessEntry ? html`<summary>${ho("manualAdvanced")}</summary>` : null}<section class="card"><h3>${ho("pairSteps")}</h3>
@@ -1046,7 +1048,6 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
         })() : html`<p class="note">${ho("noFleets")}</p>`}
       </section>
       <${LazyThisHub} directory=${directory} />
-      ${assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
     </div></div>`;
 }
 

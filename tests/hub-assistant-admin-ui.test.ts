@@ -144,5 +144,6 @@ describe("Hub room-assistant administration with the real shared UI", () => {
     await settle(10);
     expect(read.mock.calls.length > 0).toBe(offered && capable);
     expect(p.root.textContent.includes("Room assistant")).toBe(offered && capable);
+    if (offered && capable) expect(p.root.textContent.indexOf("Room assistant")).toBeLessThan(p.root.textContent.indexOf(p.root.querySelector(".hub-fleet-list").textContent));
   });
 });
