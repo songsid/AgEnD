@@ -256,4 +256,12 @@ describe("company join local wait",()=>{
   expect(calls.slice(before).some(x=>x.path.includes("operationId="+uncertain.operationId))).toBe(true);
   (await import("/assets/app-i18n.js")).setLang("en",{store:false});
  });
+ // Fable #3776 r1 (G1): another session's held attempt with an unknown result has no Check again — reading it by id is the
+ // starting session's (the server's own() check refuses it); Recover/Cancel take it over instead.
+ it("another session's uncertain held attempt shows no Check again",async()=>{
+  fetcher(()=>response({ok:true,bound:false,operation:{operationId:"7e2c1a0b-9e8f-4a7b-8c6d-5e4f3a2b1c0d",handoffId:null,state:"held",reason:"unknown",hubOrigin:"https://hub.example.test",expiresAt:Date.now()+300000,issued:false,outcomeKnown:false,fleetId:null,waiting:null,foreign:true}}));
+  const p=await mount(false);await settle(10);
+  expect(p.root.querySelector(".hub-join-foreign")).toBeTruthy();
+  expect(p.root.querySelector(".hub-join-check")).toBeNull();expect(btn(p,"Check again")).toBeUndefined();
+ });
 });
