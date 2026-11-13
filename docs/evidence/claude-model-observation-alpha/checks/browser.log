@@ -1,0 +1,3 @@
+(node:7968) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+{"cases":15,"screenshots":53,"cleanup":"owned browser/listeners/home closed"}

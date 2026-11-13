@@ -1,0 +1,149 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+ ❯ tests/r2-before-model.fixture.test.ts (21 tests | 5 failed | 16 skipped) 68ms
+     × legacy original retires a quiet incident without enabling new inference 14ms
+     × legacy configured retires a quiet incident without enabling new inference 3ms
+     × unresolved original retires a quiet incident without enabling new inference 2ms
+     × pending concrete original retires a quiet incident without enabling new inference 1ms
+   × actual LogService initial→poll never replays old steps beyond a long unfinished suffix 46ms
+ ❯ tests/r2-before-daemon.fixture.test.ts (8 tests | 1 failed | 7 skipped) 21ms
+   × a legacy quiet daemon incident recovers on fresh original metadata while inference stays conservative 19ms
+
+ Test Files  2 failed (2)
+      Tests  6 failed | 23 skipped (29)
+   Start at  18:49:35
+   Duration  2.71s (transform 2.38s, setup 175ms, import 3.02s, tests 89ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/r2-before-daemon.fixture.test.ts > a legacy quiet daemon incident recovers on fresh original metadata while inference stays conservative
+AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to match object { lastServed: 'claude-opus-5-5', …(1) }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "active": null,
++   "active": {
++     "baseline": true,
++     "cause": "safeguards",
++     "id": "session-A:notice:notice-A",
++     "original": "claude-opus-5-5",
++     "scope": "session",
++     "served": "claude-opus-4-8",
++     "since": 1794566978424,
++   },
+    "lastServed": "claude-opus-5-5",
+  }
+
+ ❯ tests/r2-before-daemon.fixture.test.ts:102:38
+    100|     message: { id, role: "assistant", model, content: [], stop_reason:…
+    101|   monitor.processEntry(served("legacy-fresh-return", "claude-opus-5-5"…
+    102|   expect(resumed.modelObservation()).toMatchObject({ lastServed: "clau…
+       |                                      ^
+    103|   monitor.processEntry(served("legacy-unconfirmed", "claude-sonnet-5-5…
+    104|   expect(resumed.modelObservation().active).toBeNull();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/r2-before-model.fixture.test.ts > definite recovery while inference is unresolved > legacy original retires a quiet incident without enabling new inference
+ FAIL  tests/r2-before-model.fixture.test.ts > definite recovery while inference is unresolved > unresolved original retires a quiet incident without enabling new inference
+ FAIL  tests/r2-before-model.fixture.test.ts > definite recovery while inference is unresolved > pending concrete original retires a quiet incident without enabling new inference
+AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to match object { lastServed: 'claude-opus-4-8', …(1) }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "active": null,
++   "active": {
++     "baseline": true,
++     "cause": "safeguards",
++     "id": "session-A:typed-recovery",
++     "original": "claude-opus-4-8",
++     "scope": "session",
++     "served": "claude-sonnet-5-5",
++     "since": 1,
++   },
+    "lastServed": "claude-opus-4-8",
+  }
+
+ ❯ tests/r2-before-model.fixture.test.ts:99:33
+     97|     expect(restored.snapshot().active?.baseline).toBe(true);
+     98|     restored.observe(response("fresh-return", 3, returned as string), …
+     99|     expect(restored.snapshot()).toMatchObject({ lastServed: returned, …
+       |                                 ^
+    100|     expect(restored.checkpoint().expected).toBe(configured);
+    101|     restored.observe(response("still-unconfirmed", 4), sonnet);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/r2-before-model.fixture.test.ts > definite recovery while inference is unresolved > legacy configured retires a quiet incident without enabling new inference
+AssertionError: expected { configured: 'claude-opus-5-5', …(5) } to match object { lastServed: 'claude-opus-5-5', …(1) }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "active": null,
++   "active": {
++     "baseline": true,
++     "cause": "safeguards",
++     "id": "session-A:typed-recovery",
++     "original": "claude-opus-4-8",
++     "scope": "session",
++     "served": "claude-sonnet-5-5",
++     "since": 1,
++   },
+    "lastServed": "claude-opus-5-5",
+  }
+
+ ❯ tests/r2-before-model.fixture.test.ts:99:33
+     97|     expect(restored.snapshot().active?.baseline).toBe(true);
+     98|     restored.observe(response("fresh-return", 3, returned as string), …
+     99|     expect(restored.snapshot()).toMatchObject({ lastServed: returned, …
+       |                                 ^
+    100|     expect(restored.checkpoint().expected).toBe(configured);
+    101|     restored.observe(response("still-unconfirmed", 4), sonnet);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/r2-before-model.fixture.test.ts > actual LogService initial→poll never replays old steps beyond a long unfinished suffix
+AssertionError: expected [ Array(2) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "body": "old user",
++     "id": "o0.0",
++     "kind": "user",
++     "ts": 0,
++     "turn": "old-user",
++   },
++   {
++     "body": "old answer",
++     "id": "o81.0",
++     "kind": "assistant",
++     "ts": 0,
++     "turn": "old-user",
++   },
++ ]
+
+ ❯ tests/r2-before-model.fixture.test.ts:155:25
+    153|   const initial: any = await service.steps("worker", {});
+    154|   let current: any = await service.steps("worker", { after: initial.af…
+    155|   expect(current.steps).toEqual([]);
+       |                         ^
+    156|   expect(initial.after).toBe(Buffer.byteLength(old));
+    157|   appendFileSync(path, '"}\n' + line(user("new-user", "new user")) + l…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+

@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+ ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 69ms
+     × recognizes the producer's command-message prefix as intent, never as confirmation 6ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 57 passed (58)
+   Start at  18:45:07
+   Duration  552ms (transform 244ms, setup 84ms, import 240ms, tests 69ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > redacted Claude Code 2.1.323 record shapes > recognizes the producer's command-message prefix as intent, never as confirmation
+AssertionError: expected null to match object { kind: 'intent', …(1) }
+
+- Expected:
+{
+  "kind": "intent",
+  "served": "claude-sonnet-5-5[1m]",
+}
+
++ Received:
+null
+
+ ❯ tests/claude-model-switch.test.ts:70:39
+     68|     const e = { type: "user", uuid: "command-prefixed", sessionId: "se…
+     69|       message: { role: "user", content: "<command-message>model</comma…
+     70|     expect(parseClaudeModelRecord(e)).toMatchObject({ kind: "intent", …
+       |                                       ^
+     71|     expect(parseClaudeModelRecord({ ...e, message: { ...e.message, con…
+     72|     expect(parseClaudeModelRecord({ ...e, isMeta: true })).toBeNull();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

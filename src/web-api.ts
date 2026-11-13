@@ -615,6 +615,7 @@ export interface WebApiContext {
   connectIpcToInstance(name: string): Promise<void>;
   /** Human-readable model string (aligned with /ctx). */
   modelDisplayForInstance?(name: string): string;
+  modelObservationForInstance?(name: string): import("./claude-model-observation.js").ModelObservation | null;
   /** Full model resolution with source. */
   resolveInstanceModel?(name: string): { model: string; source: string; display: string };
   /** Configured effort for an instance (no live file from CLI). */
@@ -3536,6 +3537,7 @@ export function handleWebRequest(
       context_pct,
       model,
       model_source,
+      ...(backend === "claude-code" ? { model_observation: ctx.modelObservationForInstance?.(name) ?? null } : {}),
       effort,
       effort_source,
       statusline,

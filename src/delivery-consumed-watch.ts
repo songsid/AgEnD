@@ -18,6 +18,7 @@
  * - a transcript that does not grow is looked at less and less often, and every watch ends after a fixed lifetime,
  *   measured on the monotonic clock and checked again after every await (a read that returns late proves nothing).
  */
+import { grokConsumedMarker, type GrokDeliveryProof } from "./grok-delivery-proof.js";
 import { open, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { transcriptDeltaDeliveryMarker, transcriptDeltaMarkerKind } from "./delivery-reconciliation.js";
@@ -54,6 +55,9 @@ interface ConsumedWatchCommon {
   deliveryId: string;
   attemptNo: number;
   backend: string;
+  /** Grok requires an exact-session, inode-bound reader; never use ordinary path discovery. */
+  grokSessionId?: string;
+  readChunk?: GrokDeliveryProof["readChunk"];
   /** False once the attempt's CLI is no longer the one we wrote to (stop, pause, respawn): the watch ends quietly. */
   current(): boolean;
   /** The hit: record it (the outbox decides what it changes). */
@@ -164,8 +168,12 @@ export class ConsumedWatch {
         }
         return this.schedule(this.interval);
       }
+      if (this.target.backend === "grok" && (!this.target.grokSessionId || !this.target.readChunk)) return this.end("unavailable");
+      const ownedRead = this.target.readChunk ? await this.target.readChunk(this.offset, CONSUMED_WATCH.chunkBytes) : undefined;
+      if (ownedRead === null) return this.end("unavailable");
       let size: number;
-      try { size = (await stat(this.target.path)).size; } catch { return this.end("unavailable"); }
+      if (ownedRead) size = ownedRead.size;
+      else try { size = (await stat(this.target.path)).size; } catch { return this.end("unavailable"); }
       if (!this.stillLive()) return;
       if (size < this.offset) return this.end("unavailable"); // rotated or truncated below our offset
       if (size === this.offset) {
@@ -178,7 +186,7 @@ export class ConsumedWatch {
       }
       this.idleLooks = 0;
       const length = Math.min(CONSUMED_WATCH.chunkBytes, size - this.offset);
-      const chunk = await readAt(this.target.path, this.offset, length);
+      const chunk = ownedRead ? ownedRead.chunk : await readAt(this.target.path, this.offset, length);
       if (!this.stillLive()) return;
       if (!chunk) return this.end("unavailable");
       this.offset += chunk.length;
@@ -223,7 +231,9 @@ export class ConsumedWatch {
       }
       if (kept.length) {
         const text = Buffer.concat(kept).toString("utf8");
-        const kind = this.target.marker
+        const kind = this.target.backend === "grok"
+          ? grokConsumedMarker(text, this.target.grokSessionId ?? "", this.target.marker ?? `[agend-delivery-id:${this.target.deliveryId}]`)
+          : this.target.marker
           ? transcriptDeltaMarkerKind(text, this.target.backend, this.target.marker)
           : transcriptDeltaDeliveryMarker(text, this.target.backend, this.target.deliveryId);
         if (kind === "user") found = { via: "turn", evidence: "transcript-consumed:user-entry" };

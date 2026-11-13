@@ -1,6 +1,6 @@
 /**
  * #2010 (a): an opt-in Claude prompt-cache TTL per instance — `backend_options.claude-code.prompt_cache_ttl: "1h" | "5m"`.
- * Unset (the default) leaves the launch command exactly as it was, so the CLI chooses. A value adds
+ * Unset leaves the TTL-related command unchanged (apart from the common observation marker), so the CLI chooses. A value adds
  * CLAUDE_CODE_PROMPT_CACHE_TTL and CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL to the launch env; it takes effect on the next
  * launch. The validator refuses anything else, on an instance and in defaults.
  */
@@ -30,18 +30,20 @@ afterEach(() => {
 const backend = () => { const b = new ClaudeCodeBackend(inst); (b as any).binaryPath = "/usr/bin/claude"; return b; };
 const cfg = (backendOptions?: Record<string, unknown>) => ({ workingDirectory: work, instanceDir: inst, instanceName: "w", mcpServers: {}, skipPermissions: true, ...(backendOptions ? { backendOptions } : {}) }) as any;
 const BIN = (i: string) => `/usr/bin/claude --settings ${i}/claude-settings.json --mcp-config ${i}/mcp-config.json --dangerously-skip-permissions`;
-const TODAY = (i: string) => `CMUX_CLAUDE_HOOKS_DISABLED=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ${BIN(i)}`;
+const TODAY = (i: string, marker: string) => `AGEND_CLAUDE_LAUNCH_ID=${marker} CMUX_CLAUDE_HOOKS_DISABLED=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ${BIN(i)}`;
 
 describe("the launch env", () => {
   it("unset, or a value it does not know: the command is exactly today's", () => {
     for (const opts of [undefined, {}, { prompt_cache_ttl: "" }, { prompt_cache_ttl: "2h" }, { prompt_cache_ttl: 1 }, { prompt_cache_ttl: "1H" }]) {
-      expect(backend().buildCommand(cfg(opts)), JSON.stringify(opts)).toBe(TODAY(inst));
+      const b = backend();
+      expect(b.buildCommand(cfg(opts)), JSON.stringify(opts)).toBe(TODAY(inst, b.modelObservationLaunch().id));
     }
   });
   it("\"1h\" and \"5m\": the main thread's and the subagents' TTL, before the binary", () => {
     for (const ttl of ["1h", "5m"]) {
-      expect(backend().buildCommand(cfg({ prompt_cache_ttl: ttl }))).toBe(
-        `CMUX_CLAUDE_HOOKS_DISABLED=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 CLAUDE_CODE_PROMPT_CACHE_TTL=${ttl} CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=${ttl} ${BIN(inst)}`);
+      const b = backend();
+      expect(b.buildCommand(cfg({ prompt_cache_ttl: ttl }))).toBe(
+        `AGEND_CLAUDE_LAUNCH_ID=${b.modelObservationLaunch().id} CMUX_CLAUDE_HOOKS_DISABLED=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 CLAUDE_CODE_PROMPT_CACHE_TTL=${ttl} CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=${ttl} ${BIN(inst)}`);
     }
   });
   it("beside a credential profile: both", () => {

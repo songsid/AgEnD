@@ -33,6 +33,8 @@ export interface HubHttpDeps {
   uow: HubUnitOfWork;
   audit: HubAuditSink;
   directory: HubDirectory;
+  /** One physical admission owner shared with policy, management and mount reads. */
+  directoryReads?: import("../directory/admission.js").HubDirectoryReads;
   pairing: HubPairingService;
   companyJoin?: import("../join/service.js").HubCompanyJoin;
   /** Server-owned group permits; absent only in legacy injected compositions. */

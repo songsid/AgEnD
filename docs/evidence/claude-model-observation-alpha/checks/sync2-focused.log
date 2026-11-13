@@ -1,0 +1,11 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+
+ Test Files  13 passed (13)
+      Tests  278 passed (278)
+   Start at  21:25:47
+   Duration  23.53s (transform 10.50s, setup 727ms, import 14.72s, tests 27.64s, environment 1ms)
+
+(node:1627) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)

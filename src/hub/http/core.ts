@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { HubProtocolError, person as personSchema, validated } from "../validation.js";
-import { personKeyString, sha256 } from "../identity.js";
+import { personKeyString } from "../identity.js";
 import type { HubAuditRecord, HubRequestContext, HubTx, PersonKey } from "../types.js";
 import { exposureOf, readExposure, readGrant, grantOf } from "../catalog.js";
 import { HubGroupAuthorizationError, type HubGroupPermit } from "../group-policy/authorization.js";
@@ -14,12 +14,10 @@ import { prepareGrantAccess, type HubGrantSubjectProof } from "../grant-access.j
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { readHubSessionEpoch } from "../session-epoch.js";
 import type { HubManagementPermission } from "../roles/authority.js";
+import { createHubDirectoryAdmission, type HubDirectoryReads } from "../directory/admission.js";
+export { DIRECTORY_PER_PERSON, DIRECTORY_TOTAL } from "../directory/admission.js";
 
 export type HubAuditEvent = Omit<HubAuditRecord, "id" | "sequence" | "at" | "policyVersion"> & { at?: number };
-
-/** At most this many directory checks in flight per person, and in all; more is backpressure (429), never a cached allow. */
-export const DIRECTORY_PER_PERSON = 4;
-export const DIRECTORY_TOTAL = 32;
 
 export interface HubOperationPermit { readonly source?: HubGroupPermit["source"]; readonly grant?: HubGrantSubjectProof; assertCurrent(): void }
 const LEGACY_OPERATION: HubOperationPermit = Object.freeze({ source: "legacy", assertCurrent() {} });
@@ -27,10 +25,10 @@ const LEGACY_OPERATION: HubOperationPermit = Object.freeze({ source: "legacy", a
 export class HubCore {
   /** Captured at HTTP mount. A held continuation never silently adopts a newer directory epoch. */
   readonly directoryEpoch: number;
-  private readonly inflight = new Map<string, number>();
-  private total = 0;
+  private readonly directoryReads: HubDirectoryReads;
   constructor(readonly deps: HubHttpDeps, private readonly sql: HubTxDatabase, private readonly lifetime: () => boolean = () => true) {
     this.directoryEpoch = deps.uow.atomic(tx => readHubSessionEpoch(sql(tx)));
+    this.directoryReads = deps.directoryReads ?? createHubDirectoryAdmission(() => this.live());
   }
   now(): number { return this.deps.now?.() ?? Date.now(); }
   /** Refuses once the server is fenced (and before every write: a stale continuation never commits). */
@@ -187,20 +185,23 @@ export class HubCore {
   async lookupGrantRecipient(login: string): Promise<PersonKey | null> {
     return this.lookupSelectedPerson(login, "grant");
   }
+  /** One physical login read; callers retain their own sign-in throttle and authority fences. */
+  async directoryLogin<T>(login: string, work: () => Promise<T>): Promise<T> {
+    this.check();
+    try { return await this.directoryReads.withLoginRead(login, work); }
+    catch (error) {
+      if (error instanceof HubGroupReadOverload) throw new HubProtocolError("backpressure");
+      if (error instanceof HubGroupPolicyError) throw new HubProtocolError("unavailable");
+      throw error;
+    }
+  }
   private async lookupSelectedPerson(login: string, operation: "pairing" | "grant"): Promise<PersonKey | null> {
     const lookup = operation === "pairing" ? this.deps.directory.lookupForPairing : this.deps.directory.lookupForGrant;
     if (!lookup) return personByLogin(this, login); // Older injected drivers retain the same known-person behavior.
-    const key = `directory-login:${sha256(login.toLowerCase())}`, mine = this.inflight.get(key) ?? 0;
-    if (mine >= DIRECTORY_PER_PERSON || this.total >= DIRECTORY_TOTAL) throw new HubProtocolError("backpressure");
-    this.check(); this.inflight.set(key, mine + 1); this.total++;
+    this.check();
     let result;
-    try { result = await lookup.call(this.deps.directory, login); }
-    catch { throw new HubProtocolError("unavailable"); }
-    finally {
-      const n = (this.inflight.get(key) ?? 1) - 1;
-      if (n > 0) this.inflight.set(key, n); else this.inflight.delete(key);
-      this.total--;
-    }
+    try { result = await this.directoryLogin(login, () => lookup.call(this.deps.directory, login)); }
+    catch (error) { throw new HubProtocolError(error instanceof HubProtocolError && error.code === "backpressure" ? "backpressure" : "unavailable"); }
     this.check();
     if (!result.ok) {
       if (result.reason === "unavailable") throw new HubProtocolError("unavailable");
@@ -223,12 +224,9 @@ export class HubCore {
    * person's row takes the current login label, so a rename never leaves an old label pointing at them.
    */
   async current(person: PersonKey): Promise<{ login: string; displayName?: string } | null> {
-    const id = personKeyString(person);
-    const mine = this.inflight.get(id) ?? 0;
-    if (mine >= DIRECTORY_PER_PERSON || this.total >= DIRECTORY_TOTAL) throw new HubProtocolError("backpressure");
-    this.inflight.set(id, mine + 1); this.total++;
-    try {
-      const r = await this.deps.directory.checkEligibility(person);
+    const selected = Object.freeze(validated(personSchema, person)), id = personKeyString(selected);
+    try { return await this.directoryReads.withDirectoryRead(selected, async () => {
+      const r = await this.deps.directory.checkEligibility(selected);
       const ok = r.eligible && personKeyString(r.person.key) === id;
       this.check();
       this.atomic((db) => {
@@ -238,10 +236,10 @@ export class HubCore {
         if (!ok && !(!r.eligible && r.reason === "unavailable")) db.prepare("UPDATE hub_sessions SET state='ended' WHERE person=? AND state='active'").run(id);
       });
       return ok && r.eligible ? { login: r.person.login, ...(r.person.displayName ? { displayName: r.person.displayName } : {}) } : null;
-    } finally {
-      const n = (this.inflight.get(id) ?? 1) - 1;
-      if (n > 0) this.inflight.set(id, n); else this.inflight.delete(id);
-      this.total--;
+    }); } catch (error) {
+      if (error instanceof HubGroupReadOverload) throw new HubProtocolError("backpressure");
+      if (error instanceof HubGroupPolicyError) throw new HubProtocolError("unavailable");
+      throw error;
     }
   }
 }

@@ -1,0 +1,39 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+ ❯ tests/claude-model-switch.test.ts (58 tests | 1 failed) 75ms
+     × excludes API error 9ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 57 passed (58)
+   Start at  18:44:32
+   Duration  560ms (transform 243ms, setup 94ms, import 232ms, tests 75ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-switch.test.ts > redacted Claude Code 2.1.323 record shapes > excludes API error
+AssertionError: expected { kind: 'served', …(4) } to be null
+
+- Expected:
+null
+
++ Received:
+{
+  "at": 1794566673431,
+  "id": "response:response-A:opus-4.8",
+  "kind": "served",
+  "served": "claude-opus-4-8",
+  "sessionId": "session-A",
+}
+
+ ❯ tests/claude-model-switch.test.ts:65:80
+     63|     ["unreadable time", { ...notice(), timestamp: "invalid" }],
+     64|     ["SDK snake case", { ...notice(), originalModel: undefined, fallba…
+     65|   ])("excludes %s", (_label, record) => expect(parseClaudeModelRecord(…
+       |                                                                                ^
+     66|   it("main-thread Haiku is a valid served model", () => expect(parse(s…
+     67|   it("recognizes the producer's command-message prefix as intent, neve…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

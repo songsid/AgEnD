@@ -378,6 +378,7 @@ export const ListInstancesArgs = z.object({
 });
 
 export const DescribeInstanceArgs = z.object({
+  detail: z.boolean().optional().describe("Include the bounded configured/session/served model observation; default includes only an active switch summary."),
   name: NonEmptyString.describe("Instance name to describe."),
 });
 

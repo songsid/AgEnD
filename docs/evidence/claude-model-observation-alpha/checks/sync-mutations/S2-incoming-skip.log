@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /home/han/Projects/AgEnD-agend-dev-sol2/.worktrees/claude-model-switch-alpha
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts (21 tests | 1 failed) 358ms
+   × actual LogService initial→poll never replays old steps beyond a long unfinished suffix 55ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 20 passed (21)
+   Start at  21:12:37
+   Duration  1.02s (transform 371ms, setup 131ms, import 364ms, tests 358ms, environment 0ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/claude-model-checkpoint-tail.test.ts > actual LogService initial→poll never replays old steps beyond a long unfinished suffix
+AssertionError: expected { enabled: true, …(10) } to match object { after: 9437397, skip: true }
+(10 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "after": 9437397,
+-   "skip": true,
+  }
+
+ ❯ tests/claude-model-checkpoint-tail.test.ts:157:19
+    155|   expect(current.steps).toEqual([]);
+    156|   // #3809's bounded Log read keeps an interior EOF cursor and skips t…
+    157|   expect(initial).toMatchObject({ after: statSync(path).size, skip: tr…
+       |                   ^
+    158|   appendFileSync(path, '"}\n' + line(user("new-user", "new user")) + l…
+    159|   const steps: any[] = [];
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

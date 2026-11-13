@@ -61,6 +61,7 @@ import { createHubDirectoryMountBarrier } from "../settings-directory-mount.js";
 import type { HubMountedDirectory, HubDirectoryBrowserSessions } from "../settings-directory-runtime.js";
 import { collectPolicyDirectoryGroups, parseCanonicalPolicy } from "../roles/read.js";
 import type { HubDirectoryResponse, HubDirectoryResponseListener, HubDirectoryResponseOwner } from "../directory-response-owner.js";
+import { createHubDirectoryAdmission } from "../directory/admission.js";
 
 import { SERVER_SET, createKeyFile, readKeyFile } from "./storage.js";
 export { SERVER_SET } from "./storage.js";
@@ -75,6 +76,7 @@ export interface HubHttpDeps {
   /** attachments-v1 files under the content key (absent: the Hub offers no upload). */
   attachments?: HubAttachmentStore;
   directory: HubDirectory;
+  directoryReads?: import("../directory/admission.js").HubDirectoryReads;
   pairing: HubPairingService;
   companyJoin?: HubCompanyJoin;
   groups?: HubGroupAuthorization;
@@ -338,6 +340,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const { bindPasswordRef: _ref, ...directoryConfig } = settings.directory;
       const directory = options.createDirectory(directoryConfig as HubDirectoryConfig, { bindPassword });
       teardown.add("the directory client", () => (directory as { close?: () => Promise<void> }).close?.());
+      const directoryReads = createHubDirectoryAdmission(live);
+      teardown.add("physical directory reads", () => directoryReads.drain());
 
       // 4. S1 identity, pairing and the member listener; S3's HTTP entry in between (it supplies receive).
       const identity = readHubIdentity({ home: options.home, memberOrigin: settings.memberOrigin });
@@ -345,7 +349,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const issuerKey = createPrivateKey(readPrivateFile(options.home, "hub/keys/issuer-key.pem"));
       let groupPolicy: HubGroupPolicyStore | undefined;
       const policy = () => groupPolicy ??= createHubGroupPolicyStore({ db, hubId: settings.hubId, realm: resolvedDirectory.realm,
-        generation: groupGeneration, directory, audit, current: live, now });
+        generation: groupGeneration, directory, audit, current: live, now, reads: directoryReads });
       const directoryNotices = createHubDirectoryNotices({ db, transport: store, hubId: settings.hubId,
         hostSink: HUB_DIRECTORY_HOST_NOTICE_SINK, audit, current: live, now });
       teardown.add("directory security notices", () => directoryNotices.close());
@@ -363,7 +367,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           if (!live() || !http.directorySessions) throw new HubStateError("service-unavailable", "The directory session adapter is unavailable");
           return http.directorySessions;
         },
-        withDirectoryRead: <T>(person: PersonKey, work: () => Promise<T>) => policy().withDirectoryRead(person, work),
+        withDirectoryRead: <T>(person: PersonKey, work: () => Promise<T>) => directoryReads.withDirectoryRead(person, work),
       });
       const binding = () => inspectHubGroupPolicyBinding(db, settings.hubId, resolvedDirectory.realm, groupGeneration);
       const groups = createHubGroupAuthorization({ db, administrator: settings.administrator, directory,
@@ -378,7 +382,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       teardown.add("group authorization", () => groups.close());
       const retention = createHubRetentionControl({ db, hubId: settings.hubId, audit, current: live, now });
       const pairingNotices = new HubPairingNotices({ db, store, administrator: settings.administrator, directory, audit,
-        current: live, now, transport: () => memberServer });
+        current: live, now, transport: () => memberServer, directoryReads });
       pairingNotices.start();
       teardown.add("pairing security notices", () => pairingNotices.close());
       const companyIdentity = { hubId: identity.hubId, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey,
@@ -392,6 +396,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         store,
         identity: { hubId: identity.hubId, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey },
         directory,
+        directoryReads,
         enabled: live,
         now,
         fenceFleet: (fleetId, reason) => memberServer?.fenceFleet(fleetId, reason),
@@ -403,6 +408,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         automaticReservations: { count: owner => companyJoin.records.reservations(owner), retained: () => companyJoin.retained() },
       });
       const groupControl = createHubGroupAdminControl({ db, audit, directory, administrator: settings.administrator,
+        directoryReads,
         transport: store, inventory: createHubGroupAdminInventory({ db, transport: store, realm: resolvedDirectory.realm }),
         authorization: groups, policy, binding, current: live, version: () => store.read().revocationVersion, now,
         advanceAuthorization: database => {
@@ -431,6 +437,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         content: audit.content,
         attachments,
         directory,
+        directoryReads,
         pairing,
         companyJoin,
         groups,
@@ -580,11 +587,13 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         },
         fence() {
           fenced = true;
+          directoryReads.fence();
           generation += 1;
           memberServer?.fence();
         },
         async close() {
           fenced = true;
+          directoryReads.fence();
           // Rejects while any step is unconfirmed; S1 keeps ownership and retries this close before any replacement.
           await teardown.run();
         },

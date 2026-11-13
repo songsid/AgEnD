@@ -1,0 +1,24 @@
+
+  >_ OpenAI Codex (v0.169.0)
+     /tmp/codex-audit/pick
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› hello
+
+
+• ok
+
+⚠ Heads up, you have less than 5% of your weekly limit left. Run /status for a breakdown.
+
+⚠ Heads up, you have less than 5% of your 5h limit left. Run /status for a breakdown.
+
+  Worked for <1s • 12:00
+
+
+› Ask Codex to do anything
+
+  00000000-0000-0000-0000-000000000000 · Context 100% left
+  ← for agents · ? for shortcuts                                                                                            ⚠ 4 warnings · f2 to view
